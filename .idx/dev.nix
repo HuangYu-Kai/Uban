@@ -7,12 +7,12 @@
   # Use https://search.nixos.org/packages to find packages
   packages = [
     # pkgs.go
-    pkgs.python312
-    pkgs.python312Packages.pip
-    pkgs.python312Packages.fastapi
-    pkgs.python312Packages.uvicorn
-    # pkgs.nodejs_20
-    # pkgs.nodePackages.nodemon
+    # pkgs.python312
+    # pkgs.python312Packages.pip
+    # pkgs.python312Packages.fastapi
+    # pkgs.python312Packages.uvicorn
+    pkgs.nodejs_20
+    pkgs.nodePackages.nodemon
   ];
 
   # Sets environment variables in the workspace
@@ -28,7 +28,7 @@
       enable = true;
       previews = {
         web = {
-          command = ["uvicorn" "backend.main:app" "--host" "0.0.0.0" "--port" "$PORT"];
+          command = ["nodemon" "backend/index.js" "--port" "$PORT"];
           manager = "web";
         };
       };
@@ -38,8 +38,7 @@
     workspace = {
       # Runs when a workspace is first created
       onCreate = {
-        # Example: install JS dependencies from NPM
-        # npm-install = "npm install";
+        npm-install = "npm install";
       };
       # Runs when the workspace is (re)started
       onStart = {
