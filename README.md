@@ -6,3 +6,47 @@ Inspired by industrial iPaaS solutions like n8n, UniFlow simplifies the concept 
 UniFlow 是一個專為大學生打造的輕量級視覺化自動化平台。透過直觀的節點拖拉介面，使用者能輕鬆串接 Line、Discord 與 Google Sheets 等常用服務，無需編寫複雜程式碼，即可將校園資訊獲取與日常任務處理實現完全自動化。
 
 UniFlow 的設計靈感源自 n8n 等工業級 iPaaS 解決方案，並將其簡化以適應學術與校園場景。無論是當 Google 表單有人報名時自動發送 Discord 通知，或是每天定時抓取課表推送到 Line，UniFlow 都能輕鬆達成。本平台基於 React Flow 與 Node.js 構建，提供了一個友善的視覺化畫布，讓邏輯定義變得直觀可見，成功橋接了零散的校園資訊與學生的數位生活。
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js (v18 or higher)
+- npm
+
+### Installation
+
+1.  Clone the repository:
+    ```bash
+    git clone https://github.com/your-username/uniflow.git
+    ```
+2.  Install dependencies for both frontend and backend:
+    ```bash
+    cd uniflow
+    cd frontend && npm install
+    cd ../backend && npm install
+    ```
+
+## Usage
+
+### Frontend
+
+To start the frontend development server, run the following command:
+
+```bash
+cd frontend
+npm start
+```
+
+The frontend will be available at `http://localhost:5173`.
+
+### Backend
+
+To start the backend server, run the following command:
+
+```bash
+cd backend
+node index.js
+```
+
+The backend server will be running at `http://localhost:3000`.

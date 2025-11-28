@@ -1,26 +1,55 @@
-import React, { useState } from 'react';
+import React, { useCallback } from 'react';
+import ReactFlow, { MiniMap, Controls, Background, useNodesState, useEdgesState, addEdge } from 'reactflow';
+ 
+import 'reactflow/dist/style.css';
 import './App.css';
+ 
+const initialNodes = [
+  { id: '1', position: { x: 0, y: 0 }, data: { label: 'Hello' } },
+  { id: '2', position: { x: 0, y: 100 }, data: { label: 'World' } },
+];
 
+let nodeId = 3;
+ 
 function App() {
-  const [message, setMessage] = useState('');
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
-  const handleClick = async () => {
-    try {
-      const response = await fetch('/api/message');
-      const text = await response.text();
-      setMessage(text);
-    } catch (error) {
-      console.error('Error fetching data:', error);
-      setMessage('Error fetching data from the backend.');
-    }
-  };
+  const onConnect = useCallback(
+    (params) => setEdges((eds) => addEdge(params, eds)),
+    [setEdges],
+  );
+
+  const addNode = useCallback(() => {
+    const newNode = {
+      id: `${nodeId++}`,
+      position: {
+        x: Math.random() * 400,
+        y: Math.random() * 400,
+      },
+      data: {
+        label: `Node ${nodeId - 1}`,
+      },
+    };
+    setNodes((nds) => nds.concat(newNode));
+  }, [setNodes]);
 
   return (
     <div className="App">
-      <header className="App-header">
-        <p>{message || 'Click the button to fetch data from the backend'}</p>
-        <button onClick={handleClick}>Fetch Backend Data</button>
-      </header>
+      <button onClick={addNode} style={{ position: 'absolute', zIndex: 10, top: 10, left: 10 }}>
+        Add Node
+      </button>
+      <ReactFlow 
+        nodes={nodes}
+        edges={edges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+      >
+        <MiniMap />
+        <Controls />
+        <Background />
+      </ReactFlow>
     </div>
   );
 }
