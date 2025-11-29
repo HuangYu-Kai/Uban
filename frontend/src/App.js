@@ -14,6 +14,7 @@ import './CustomNode.css';
 import './App.css';
 
 const nodeTypes = { custom: CustomNode };
+const flowKey = 'flow-key';
 
 let nodeIdCounter = 1;
 
@@ -50,7 +51,6 @@ function App() {
   const nodesWithHandlers = useMemo(() => {
     return nodes.map((node) => ({
       ...node,
-      ...node,
       data: {
         ...node.data,
         onDataChange: (data) => handleDataChange(node.id, data),
@@ -76,11 +76,37 @@ function App() {
     setNodes((nds) => nds.concat(newNode));
   }, []);
 
+  const onSave = useCallback(() => {
+    const flow = {
+      nodes: nodes,
+      edges: edges,
+      nodeIdCounter: nodeIdCounter
+    };
+    localStorage.setItem(flowKey, JSON.stringify(flow));
+    alert('Flow saved!');
+  }, [nodes, edges]);
+
+  const onRestore = useCallback(() => {
+    const restore = () => {
+      const flow = JSON.parse(localStorage.getItem(flowKey));
+
+      if (flow) {
+        setNodes(flow.nodes || []);
+        setEdges(flow.edges || []);
+        nodeIdCounter = flow.nodeIdCounter || 1;
+      }
+    };
+
+    restore();
+  }, [setNodes, setEdges]);
+
   return (
     <div className="App">
-      <button onClick={addNode} style={{ position: 'absolute', zIndex: 10, top: 10, left: 10 }}>
-        Add Node
-      </button>
+      <div className="controls">
+        <button onClick={addNode}>Add Node</button>
+        <button onClick={onSave}>Save</button>
+        <button onClick={onRestore}>Restore</button>
+      </div>
       <ReactFlow
         nodes={nodesWithHandlers}
         edges={edges}

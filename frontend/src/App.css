@@ -1,4 +1,18 @@
 .App {
-  width: 100vw;
   height: 100vh;
+}
+
+.controls {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 10;
+  background: rgba(255, 255, 255, 0.8);
+  padding: 10px;
+  border-radius: 5px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+.controls button {
+  margin-right: 10px;
 }

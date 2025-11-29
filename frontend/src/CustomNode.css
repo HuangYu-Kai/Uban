@@ -3,12 +3,12 @@
   border-radius: 5px;
   background: white;
   min-width: 200px;
+  overflow: hidden; /* Ensures the background color fills the rounded corners */
 }
 
 .node-header {
-  background-color: #eee;
   padding: 5px 10px;
-  border-bottom: 1px solid #ddd;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1); /* Subtle separator */
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -16,7 +16,7 @@
 }
 
 .node-title {
-  flex-grow: 1; /* This makes the title take up most of the space */
+  flex-grow: 1;
 }
 
 .node-body {
@@ -50,7 +50,7 @@
   align-items: center;
   font-size: 16px;
   font-weight: bold;
-  margin-left: 5px; /* This adds space between the buttons */
+  margin-left: 5px;
 }
 
 .delete-button:hover,
