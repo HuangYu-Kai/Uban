@@ -29,8 +29,8 @@ UniFlow 的設計靈感源自 n8n 等工業級 iPaaS 解決方案，並將其簡
 
 1.  Clone the repository:
     ```bash
-    git clone https://github.com/your-username/uniflow.git
-    cd uniflow
+    git clone https://github.com/HuangYu-Kai/UniFlow/
+    Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
     ```
 
 2.  Install dependencies for both the frontend and backend:
