@@ -1,15 +1,23 @@
 #flutter
 
-A new Flutter project.
+本專案用於從零開始學習 Flutter。
 
-## Getting Started
+## 🛠️ Flutter 環境安裝指南 (Windows)
 
-This project is a starting point for a Flutter application.
+如果您需要在新電腦上重新建置開發環境，請依照以下步驟進行：
 
-A few resources to get you started if this is your first Flutter project:
+### 1. 安裝 Git
+*   前往 [Git 官網](https://git-scm.com/download/win) 下載並安裝 Windows 版本。
+*   安裝過程中一路按 Next 即可。
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+### 2. 下載並設定 Flutter SDK
+1.  前往 [Flutter 官網](https://docs.flutter.dev/get-started/install/windows/mobile) 下載最新的 Stable SDK zip 檔。
+2.  將檔案解壓縮到易於存取的路徑，例如 `C:\flutter` (⚠️ 請避免放在 `Program Files` 或含有中文/空格的路徑)。
+3.  **設定環境變數 (Path)**：
+    *   在 Windows 搜尋「環境變數」 -> 「編輯系統環境變數」 -> 「環境變數」。
+    *   在 **使用者變數** 中找到 `Path`，點擊「編輯」->「新增」。
+    *   加入 `C:\flutter\bin` (請依據您的實際路徑調整)。
+    *   按下確定儲存。
 
 For help getting started with Flutter development, view the
 [online documentation](https://docs.flutter.dev/), which offers tutorials,
