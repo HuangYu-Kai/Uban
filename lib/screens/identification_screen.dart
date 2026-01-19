@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'login_screen.dart';
+import 'elder_pairing_screen.dart';
 
 // 身分選擇畫面
 class IdentificationScreen extends StatelessWidget {
@@ -59,7 +60,13 @@ class IdentificationScreen extends StatelessWidget {
                 child: Center(
                   child: InkWell(
                     onTap: () {
-                      // TODO: 導向聊天畫面
+                      // 導向長輩配對畫面
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const ElderPairingScreen(),
+                        ),
+                      );
                     },
                     borderRadius: BorderRadius.circular(32),
                     child: Container(
