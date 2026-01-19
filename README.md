@@ -1,4 +1,4 @@
-# Flutter 練習專案
+#flutter
 
 本專案用於從零開始學習 Flutter。
 
@@ -19,45 +19,12 @@
     *   加入 `C:\flutter\bin` (請依據您的實際路徑調整)。
     *   按下確定儲存。
 
-### 3. 安裝開發工具 (VS Code)
-1.  安裝 [Visual Studio Code](https://code.visualstudio.com/)。
-2.  開啟 VS Code，前往左側擴充功能 (Extensions) 分頁。
-3.  搜尋並安裝 **"Flutter"** (這會自動安裝 Dart 套件)。
+For help getting started with Flutter development, view the
+[online documentation](https://docs.flutter.dev/), which offers tutorials,
+samples, guidance on mobile development, and a full API reference.
 
-### 4. 安裝 Android 模擬器 (Android Studio)
-為了執行 Android APP，需要安裝 Android Studio：
-1.  下載並安裝 [Android Studio](https://developer.android.com/studio)。
-2.  安裝時務必勾選 `Android SDK`, `Android SDK Platform`, `Android Virtual Device`。
-3.  開啟 Android Studio -> **Virtual Device Manager** -> **Create device** -> 選擇任一手機型號 (如 Pixel 5) -> 下載並選擇系統映像檔 (如 API 34) -> 完成建立。
-4.  回到終端機，執行 `flutter doctor --android-licenses` 並全部同意授權 (按 `y`)。
-
-### 5. 驗證安裝
-開啟終端機 (PowerShell 或 CMD)(crtl + shift + `)，輸入以下指令檢查環境：
-
-```bash
-flutter doctor
-```
-
-如果看到全綠的勾勾 ✅，代表環境已就緒！
-
----
-
-## 🚀 如何執行本專案
-
-1.  確認 VS Code右下角已選擇裝置 (Windows 或 Android Emulator)。
-2. ```bash
-flutter clean
-```
-3. ```bash
-flutter pub get
- ```
-4. ```bash
- flutter run
- ```
-
-
----
-
-### 相關資源
-- [Flutter 官方文件](https://docs.flutter.dev/)
-- [Dart 語言導覽](https://dart.dev/guides)
+#技術需求分析
+手機轉攝像頭、通話:WebRTC、flask + SocketIO or FastAPI + Starlette WebSockets
+存mp3檔案的資料庫:MiniO(?)
+與mp3檔案對接:flask
+SQL資料庫:可以考慮換用Django或MySQL，PostgreSQL有點不好用，Django下學期會教
