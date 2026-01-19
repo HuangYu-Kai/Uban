@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'elder_home_screen.dart';
 
 class ElderPairingScreen extends StatefulWidget {
   const ElderPairingScreen({super.key});
@@ -130,15 +131,35 @@ class _ElderPairingScreenState extends State<ElderPairingScreen> {
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(16),
                   ),
-                  child: QrImageView(
-                    data: '0820', // TODO: 替換為實際配對碼連結或資料
-                    version: QrVersions.auto,
-                    size: 160.0,
-                    backgroundColor: Colors.white,
+                  child: GestureDetector(
+                    onLongPress: () {
+                      // 模擬綁定成功，長按 QR Code 跳轉
+                      Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const ElderHomeScreen(),
+                        ),
+                      );
+                    },
+                    child: QrImageView(
+                      data: '0820', // TODO: 替換為實際配對碼連結或資料
+                      version: QrVersions.auto,
+                      size: 160.0,
+                      backgroundColor: Colors.white,
+                    ),
                   ),
                 ),
 
-                const SizedBox(height: 48),
+                const SizedBox(height: 16),
+                Text(
+                  '(長按 QR Code 模擬綁定成功)',
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 12,
+                    color: Colors.grey,
+                  ),
+                ),
+
+                const SizedBox(height: 32),
 
                 // 返回按鈕
                 Align(
