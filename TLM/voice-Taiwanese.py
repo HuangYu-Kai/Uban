@@ -1,45 +1,56 @@
-import torch
-from transformers import VitsModel, AutoTokenizer
-import scipy.io.wavfile
-from taibun import Converter
+import asyncio
+import edge_tts
+import os
+import pygame
+import time
 
 # === 設定區 ===
-# 1. 載入 Meta 的台語 TTS 模型 (第一次執行會下載)
-print("正在載入 TTS 模型...")
-tts_model = VitsModel.from_pretrained("facebook/mms-tts-nan")
-tokenizer = AutoTokenizer.from_pretrained("facebook/mms-tts-nan")
+# 這裡不需要 Key，也不用選地區，直接指定聲音名稱即可
+# 女聲：nan-TW-HsiaoYuNeural
+# 男聲：nan-TW-YunJheNeural
+VOICE = "nan-TW-HsiaoYuNeural"
 
-# 2. 設定漢字轉拼音工具 (這是讓發音準確的關鍵！)
-# system="Tailo" (臺羅拼音)
-t_convert = Converter(system="Tailo", dialect="south") 
+async def speak_taigi_edge(text_hanji):
+    print(f"正在合成台語 (使用 Edge 引擎)：{text_hanji} ...")
+    
+    output_file = "taigi_edge.mp3"
+    
+    # 1. 建立溝通物件
+    communicate = edge_tts.Communicate(text_hanji, VOICE)
+    
+    # 2. 存檔
+    await communicate.save(output_file)
+    
+    print(f"✅ 合成成功！檔案已儲存：{os.path.abspath(output_file)}")
+    
+    # 3. 播放聲音 (使用 pygame 比較穩定)
+    play_audio(output_file)
 
-def text_to_speech_taigi(text_hanji):
-    """
-    將台語漢字轉成語音 wav
-    """
-    # 步驟 A: 漢字 -> 臺羅拼音 (解決破音字與變調問題)
-    # 雖然 MMS 宣稱支援漢字，但在地化拼音通常唸得比較準
+def play_audio(file_path):
+    print("🎵 正在播放...")
     try:
-        # 這裡做簡單轉換，實際應用可能需要更強的斷詞庫
-        text_tailo = t_convert.get(text_hanji)
-        print(f"拼音轉換: {text_hanji} -> {text_tailo}")
-    except:
-        text_tailo = text_hanji # 如果轉換失敗就直接用漢字衝衝看
+        pygame.mixer.init()
+        pygame.mixer.music.load(file_path)
+        pygame.mixer.music.play()
+        
+        # 等待播放完畢
+        while pygame.mixer.music.get_busy():
+            time.sleep(0.1)
+            
+        pygame.mixer.quit() # 釋放資源
+        
+        # 播放完刪除檔案 (可選)
+        # os.remove(file_path) 
+        
+    except Exception as e:
+        print(f"播放失敗，請手動開啟檔案: {e}")
+        # 如果 pygame 失敗，嘗試用系統預設播放器
+        os.startfile(file_path)
 
-    # 步驟 B: 轉成模型看得懂的 tokens
-    inputs = tokenizer(text_tailo, return_tensors="pt")
+# === 測試區 ===
+# 這是 Llama-3 的台語回答
+ai_response = "這幾工雨落甲真濟，出門愛記得帶雨傘，無者會淋甲落湯雞。"
 
-    # 步驟 C: 生成波形
-    with torch.no_grad():
-        output = tts_model(**inputs).waveform
-
-    # 步驟 D: 存檔或播放
-    # 這裡示範存成檔案 output.wav
-    scipy.io.wavfile.write("output.wav", rate=tts_model.config.sampling_rate, data=output.float().numpy().T)
-    print("✅ 語音已生成: output.wav")
-
-# === 測試整合 ===
-# 假設這是剛剛 Llama-3-70B 的回答
-ai_response = "這幾工雨落甲真濟，出門愛記得帶雨傘。"
-
-text_to_speech_taigi(ai_response)
+if __name__ == "__main__":
+    # 因為 edge-tts 是非同步的 (async)，所以要用這行來執行
+    asyncio.run(speak_taigi_edge(ai_response))
