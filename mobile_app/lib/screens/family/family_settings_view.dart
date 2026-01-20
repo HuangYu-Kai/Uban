@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'family_subscription_screen.dart';
 
 import '../identification_screen.dart';
+import '../../services/api_service.dart';
 
 class FamilySettingsView extends StatefulWidget {
   const FamilySettingsView({super.key});
@@ -115,7 +116,7 @@ class _FamilySettingsViewState extends State<FamilySettingsView> {
                 Icons.qr_code_scanner,
                 '管理配對碼',
                 '新增長輩端設備',
-                onTap: () {},
+                onTap: () => _showPairingCodeDialog(),
               ),
               _buildSettingItem(
                 Icons.people_outline,
@@ -276,6 +277,63 @@ class _FamilySettingsViewState extends State<FamilySettingsView> {
         activeTrackColor: const Color(0xFFFF9800).withValues(alpha: 0.5),
         activeThumbColor: const Color(0xFFFF9800),
       ),
+    );
+  }
+
+  void _showPairingCodeDialog() {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('管理配對碼'),
+              content: FutureBuilder<Map<String, dynamic>>(
+                future: ApiService.generatePairingCode(2), // 演示 ID
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const SizedBox(
+                      height: 100,
+                      child: Center(child: CircularProgressIndicator()),
+                    );
+                  }
+                  if (snapshot.hasError || snapshot.data?['error'] != null) {
+                    return const Text('無法連線到伺服器，請確認後端已啟動。');
+                  }
+                  final code = snapshot.data?['pairing_code'] ?? '----';
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('請將此四位數代碼提供給長輩：'),
+                      const SizedBox(height: 16),
+                      Text(
+                        code,
+                        style: GoogleFonts.inter(
+                          fontSize: 56,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 12,
+                          color: Colors.orange[800],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        '代碼有效期限為 10 分鐘',
+                        style: TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                    ],
+                  );
+                },
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('完成'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 }

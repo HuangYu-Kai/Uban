@@ -120,7 +120,7 @@ class _FamilyMarketplaceViewState extends State<FamilyMarketplaceView> {
 
             // 精選劇本列表
             Text(
-              '大家都在買',
+              '熱門推薦',
               style: GoogleFonts.notoSansTc(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
@@ -129,24 +129,27 @@ class _FamilyMarketplaceViewState extends State<FamilyMarketplaceView> {
             const SizedBox(height: 16),
             _buildMarketCard(
               title: '懷境金曲引導流',
-              desc: '透過音樂帶動長輩開口分享往事，提升認知能力。',
-              author: '王醫師 (認知心理專家)',
-              price: '190',
+              desc: '由專家設計的互動路徑，引導長輩從音樂進入往事回憶，有效提升認知活躍度。',
+              author: '王醫師',
+              isExpert: true,
+              price: '50',
               icon: Icons.music_note,
               color: Colors.purple,
             ),
             _buildMarketCard(
-              title: '早起活力操 (互動版)',
-              desc: 'AI 監測動作並給予語音鼓勵，讓復健運動變有趣。',
-              author: 'UniFlow 官方團隊',
-              price: '120',
-              icon: Icons.fitness_center,
-              color: Colors.orange,
+              title: '每日節氣食補建議',
+              desc: '根據當前節氣與長輩健康數據，自動生成溫暖的飲食叮嚀與家常聊點。',
+              author: '李營養師',
+              isExpert: true,
+              price: '30',
+              icon: Icons.spa,
+              color: Colors.green,
             ),
             _buildMarketCard(
               title: '睡前放鬆冥想',
-              desc: '搭配輕型廣播電台，引導長輩平穩入睡並減少焦慮。',
-              author: '陳老師 (專業諮商師)',
+              desc: '專業助眠引導語配搭環境音，幫助長輩降低焦慮，平穩進入夢鄉。',
+              author: 'UBan 團隊',
+              isExpert: false,
               price: '免費',
               icon: Icons.nights_stay,
               color: Colors.indigo,
@@ -203,6 +206,7 @@ class _FamilyMarketplaceViewState extends State<FamilyMarketplaceView> {
     required String price,
     required IconData icon,
     required Color color,
+    bool isExpert = false,
   }) {
     final bool isInstalled = _installedScripts.contains(title);
     final bool isInstalling = _installingScripts.contains(title);
@@ -246,12 +250,37 @@ class _FamilyMarketplaceViewState extends State<FamilyMarketplaceView> {
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    Text(
-                      '作者：$author',
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 12,
-                        color: Colors.grey,
-                      ),
+                    Row(
+                      children: [
+                        Text(
+                          '作者：$author',
+                          style: GoogleFonts.notoSansTc(
+                            fontSize: 12,
+                            color: Colors.grey,
+                          ),
+                        ),
+                        if (isExpert) ...[
+                          const SizedBox(width: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 4,
+                              vertical: 1,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Text(
+                              '專家認證',
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: Colors.blue,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ],
                 ),
