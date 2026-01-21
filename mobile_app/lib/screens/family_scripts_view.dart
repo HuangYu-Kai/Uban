@@ -18,10 +18,16 @@ class _FamilyScriptsViewState extends State<FamilyScriptsView> {
   @override
   void initState() {
     super.initState();
+    _initData();
+  }
+
+  Future<void> _initData() async {
+    await ScriptDataService().ensureLoaded();
     _refreshScripts();
   }
 
   void _refreshScripts() {
+    if (!mounted) return;
     setState(() {
       _scripts = List.from(ScriptDataService().getAllScripts());
     });
@@ -221,8 +227,11 @@ class _FamilyScriptsViewState extends State<FamilyScriptsView> {
                 ),
                 Switch(
                   value: script.isActive,
-                  onChanged: (v) {
-                    ScriptDataService().toggleScriptActive(script.title, v);
+                  onChanged: (v) async {
+                    await ScriptDataService().toggleScriptActive(
+                      script.title,
+                      v,
+                    );
                     _refreshScripts();
                   },
                   activeThumbColor: const Color(0xFFFF9800),
@@ -419,12 +428,13 @@ class _FamilyScriptsViewState extends State<FamilyScriptsView> {
                   const SizedBox(width: 16),
                   Expanded(
                     child: ElevatedButton(
-                      onPressed: () {
+                      onPressed: () async {
                         if (controller.text.isNotEmpty) {
-                          ScriptDataService().addScript(
+                          await ScriptDataService().addScript(
                             ScriptMetadata(title: controller.text),
                           );
                           _refreshScripts();
+                          if (!context.mounted) return;
                           Navigator.pop(context); // Close sheet
                           Navigator.push(
                             context,
@@ -477,10 +487,12 @@ class _FamilyScriptsViewState extends State<FamilyScriptsView> {
             child: const Text('取消'),
           ),
           TextButton(
-            onPressed: () {
-              ScriptDataService().deleteScript(script.title);
-              _refreshScripts();
-              Navigator.pop(context);
+            onPressed: () async {
+              await ScriptDataService().deleteScript(script.title);
+              if (context.mounted) {
+                _refreshScripts();
+                Navigator.pop(context);
+              }
             },
             child: const Text('刪除', style: TextStyle(color: Colors.red)),
           ),
@@ -506,15 +518,15 @@ class _FamilyScriptsViewState extends State<FamilyScriptsView> {
             child: const Text('取消'),
           ),
           TextButton(
-            onPressed: () {
+            onPressed: () async {
               if (controller.text.isNotEmpty) {
-                ScriptDataService().updateScriptTitle(
+                await ScriptDataService().updateScriptTitle(
                   script.title,
                   controller.text,
                 );
                 _refreshScripts();
               }
-              Navigator.pop(context);
+              if (context.mounted) Navigator.pop(context);
             },
             child: const Text('更名'),
           ),
