@@ -16,6 +16,7 @@ class _RadioStationScreenState extends State<RadioStationScreen> {
   final FlutterTts flutterTts = FlutterTts();
 
   // 頻道清單
+  final List<String> channels = ['懷舊金曲', '農場話題', '養生保健', '以前的故事'];
   final List<dynamic> channelIcons = [
     'assets/images/gramophone.png', // 懷舊金曲 (使用上傳的圖片)
     Icons.local_florist, // 農場話題 (花草/種植)
@@ -497,14 +498,24 @@ class _RadioStationScreenState extends State<RadioStationScreen> {
                       ],
                     ),
                   ),
-                  // 頻道 Icon
-                  Icon(
-                    channelIcons[index],
-                    color: isSelected
-                        ? const Color(0xFF3E2723)
-                        : Colors.grey[600],
-                    size: 30,
-                  ),
+                  // 頻道 Icon / Image
+                  if (channelIcons[index] is IconData)
+                    Icon(
+                      channelIcons[index] as IconData,
+                      color: isSelected
+                          ? const Color(0xFF3E2723)
+                          : Colors.grey[600],
+                      size: 48,
+                    )
+                  else if (channelIcons[index] is String)
+                    Image.asset(
+                      channelIcons[index] as String,
+                      width: 48,
+                      height: 48,
+                      color: isSelected
+                          ? const Color(0xFF3E2723)
+                          : Colors.grey[600],
+                    ),
                 ],
               ),
             ],
