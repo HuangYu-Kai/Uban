@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'dart:async';
@@ -18,7 +19,7 @@ class _RadioStationScreenState extends State<RadioStationScreen> {
   // 頻道清單
   final List<String> channels = ['懷舊金曲', '農場話題', '養生保健', '以前的故事'];
   final List<dynamic> channelIcons = [
-    'assets/images/gramophone.png', // 懷舊金曲 (使用上傳的圖片)
+    FontAwesomeIcons.recordVinyl, // 懷舊金曲 (唱片/留聲機)
     Icons.local_florist, // 農場話題 (花草/種植)
     Icons.spa, // 養生保健 (身心靈/葉子)
     Icons.history_edu, // 以前的故事 (歷史/書寫)
