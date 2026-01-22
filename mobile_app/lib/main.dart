@@ -1,6 +1,8 @@
+// 路徑: mobile_app/lib/main.dart
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'screens/identification_screen.dart';
+import 'screens/camera_screen.dart'; // 引入新畫面
 
 void main() {
   runApp(const MyApp());
@@ -22,7 +24,13 @@ class MyApp extends StatelessWidget {
         // 設定預設字體
         textTheme: GoogleFonts.notoSansTcTextTheme(Theme.of(context).textTheme),
       ),
-      home: const IdentificationScreen(), // 設定首頁為身分選擇畫面
+      // 設定首頁為身分選擇畫面 (保持不變)
+      //home: const IdentificationScreen(),
+      home: const CameraScreen(),
+      // 定義路由表，方便從任何地方跳轉到監控畫面
+      routes: {
+        '/monitor': (context) => const CameraScreen(),
+      },
     );
   }
 }
