@@ -3,7 +3,7 @@ from openai import OpenAI
 # 建立客戶端連線
 client = OpenAI(
   base_url = "https://integrate.api.nvidia.com/v1",
-  api_key = "---------------------------------------------------" # 請記得填回您的 NVIDIA API Key
+  api_key = "nvapi--" # 請記得填回您的 NVIDIA API Key
 )
 
 # 1. 初始化對話紀錄 (加入 System Prompt 設定人設)
