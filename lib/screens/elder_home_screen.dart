@@ -76,7 +76,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
                   borderRadius: BorderRadius.circular(24),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.redAccent.withOpacity(0.2),
+                      color: Colors.teal.withOpacity(0.2), // 統一陰影色
                       blurRadius: 15,
                       offset: const Offset(0, 8),
                     ),
@@ -143,7 +143,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
                             ),
                           ],
                           border: Border.all(
-                            color: Colors.orange.withOpacity(0.3), // 橘色邊框
+                            color: Colors.teal.withOpacity(0.3), // 統一邊框色
                             width: 2,
                           ),
                         ),
@@ -151,7 +151,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
                           children: [
                             const FaIcon(
                               FontAwesomeIcons.cloudSun,
-                              color: Colors.deepOrange, // 深橘色圖示
+                              color: Colors.teal, // 統一圖示色
                               size: 48,
                             ),
                             const SizedBox(height: 8),
@@ -171,7 +171,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
                               style: GoogleFonts.notoSansTc(
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
-                                color: Colors.deepOrange,
+                                color: Colors.teal,
                               ),
                             ),
                           ],
@@ -191,7 +191,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
                   style: GoogleFonts.notoSansTc(
                     fontSize: 36, // 大字體
                     fontWeight: FontWeight.bold,
-                    color: const Color(0xFF5D4037), // 深褐色
+                    color: const Color(0xFF00695C), // 深青色文字
                     letterSpacing: 2.0,
                   ),
                 ),
@@ -238,17 +238,17 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
       child:
           Container(
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFF7043), // 復古橘
+                  color: const Color(0xFF26A69A), // 青色
                   borderRadius: BorderRadius.circular(36),
                   // 擬物化紋理 (Gradient)
                   gradient: const LinearGradient(
-                    colors: [Color(0xFFFF8A65), Color(0xFFFF5722)], // 橘紅漸層
+                    colors: [Color(0xFF4DB6AC), Color(0xFF00897B)], // 青色漸層
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFFFF7043).withOpacity(0.4),
+                      color: const Color(0xFF00897B).withOpacity(0.4),
                       blurRadius: 20,
                       offset: const Offset(0, 10),
                     ),
@@ -415,15 +415,15 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
       ),
       child: Container(
         decoration: BoxDecoration(
-          color: const Color(0xFFFFCC80), // 淺橘
+          color: const Color(0xFFA5D6A7), // 淺綠
           borderRadius: BorderRadius.circular(28),
           gradient: const LinearGradient(
-            colors: [Color(0xFFFFCC80), Color(0xFFFFB74D)], // 淺橘漸層
+            colors: [Color(0xFFA5D6A7), Color(0xFF66BB6A)], // 淺綠漸層
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
           boxShadow: [
-            BoxShadow(color: Colors.orange.withOpacity(0.2), blurRadius: 10),
+            BoxShadow(color: Colors.green.withOpacity(0.2), blurRadius: 10),
           ],
         ),
         child: Stack(
