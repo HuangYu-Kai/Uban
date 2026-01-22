@@ -17,7 +17,7 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false, // 隱藏 debug 標籤
       theme: ThemeData(
         // 設定種子顏色
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFFFFB673)),
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFFFF6B6B)),
         useMaterial3: true,
         // 設定預設字體
         textTheme: GoogleFonts.notoSansTcTextTheme(Theme.of(context).textTheme),

@@ -8,7 +8,7 @@ class RadioStationScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFFFFBF0),
+      backgroundColor: const Color(0xFFFFFBF0), // 溫馨米黃
       appBar: AppBar(
         title: Text('老友廣播站', style: GoogleFonts.notoSansTc()),
         backgroundColor: Colors.transparent,
@@ -25,7 +25,7 @@ class RadioStationScreen extends StatelessWidget {
             const FaIcon(
               FontAwesomeIcons.radio,
               size: 80,
-              color: Color(0xFFFFB673),
+              color: Colors.deepOrange, // 深橘色
             ),
             const SizedBox(height: 20),
             Text(
