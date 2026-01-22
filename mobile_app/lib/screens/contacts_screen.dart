@@ -279,7 +279,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                         borderRadius: BorderRadius.circular(24),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.05),
+                            color: Colors.black.withValues(alpha: 0.05),
                             blurRadius: 10,
                             offset: const Offset(0, 4),
                           ),
@@ -294,7 +294,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               border: Border.all(
-                                color: Colors.teal.withOpacity(0.5), // 青綠色
+                                color: Colors.teal.withValues(
+                                  alpha: 0.5,
+                                ), // 青綠色
                                 width: 2,
                               ),
                             ),

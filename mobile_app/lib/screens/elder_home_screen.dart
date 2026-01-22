@@ -74,7 +74,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
                   borderRadius: BorderRadius.circular(24),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.orange.withOpacity(0.3),
+                      color: Colors.orange.withValues(alpha: 0.3),
                       blurRadius: 15,
                       offset: const Offset(0, 8),
                     ),
@@ -94,7 +94,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
                             style: GoogleFonts.notoSansTc(
                               fontSize: 32,
                               fontWeight: FontWeight.w500,
-                              color: Colors.white.withOpacity(0.9), // 白字
+                              color: Colors.white.withValues(alpha: 0.9), // 白字
                             ),
                           ),
                           // 使用 FittedBox 避免字太大的時候爆版
@@ -131,17 +131,17 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
                           vertical: 8,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.9),
+                          color: Colors.white.withValues(alpha: 0.9),
                           borderRadius: BorderRadius.circular(20),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.1),
+                              color: Colors.black.withValues(alpha: 0.1),
                               blurRadius: 10,
                               offset: const Offset(0, 4),
                             ),
                           ],
                           border: Border.all(
-                            color: Colors.orange.withOpacity(0.3), // 橘色邊框
+                            color: Colors.orange.withValues(alpha: 0.3), // 橘色邊框
                             width: 2,
                           ),
                         ),
@@ -228,130 +228,127 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
 
   // 📻 復古收音機卡片 (Coral Theme)
   Widget _buildRadioCard(BuildContext context) {
-    return GestureDetector(
+    return _buildElderTouchable(
       onTap: () => Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => const RadioStationScreen()),
       ),
-      child:
-          Container(
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFF7043), // 復古橘
-                  borderRadius: BorderRadius.circular(36),
-                  // 擬物化紋理 (Gradient)
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFFF8A65), Color(0xFFFF5722)], // 橘紅漸層
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFFFF7043).withOpacity(0.4),
-                      blurRadius: 20,
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
-                ),
-                child: Stack(
-                  children: [
-                    // 喇叭網孔紋理 (裝飾)
-                    Positioned(
-                      right: -20,
-                      top: -20,
-                      child: Icon(
-                        Icons.speaker,
-                        size: 200, // 加大
-                        color: Colors.black.withOpacity(0.05),
-                      ),
-                    ),
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFFFF7043), // 復古橘
+          borderRadius: BorderRadius.circular(36),
+          // 擬物化紋理 (Gradient)
+          gradient: const LinearGradient(
+            colors: [Color(0xFFFF8A65), Color(0xFFFF5722)], // 橘紅漸層
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFFFF7043).withValues(alpha: 0.4),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: Stack(
+          children: [
+            // 喇拔網孔紋理 (裝飾)
+            Positioned(
+              right: -20,
+              top: -20,
+              child: Icon(
+                Icons.speaker,
+                size: 200, // 加大
+                color: Colors.black.withValues(alpha: 0.05),
+              ),
+            ),
 
-                    Padding(
-                      padding: const EdgeInsets.all(28.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // ON AIR 燈號
-                          Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 8,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.redAccent,
-                                  borderRadius: BorderRadius.circular(20),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.redAccent.withOpacity(0.5),
-                                      blurRadius: 10,
-                                    ),
-                                  ],
-                                ),
-                                child: Text(
-                                  'ON AIR',
-                                  style: GoogleFonts.inter(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16, // 加大
-                                  ),
-                                ),
-                              )
-                              .animate(onPlay: (c) => c.repeat(reverse: true))
-                              .fade(duration: 1000.ms),
-
-                          const Spacer(),
-
-                          Row(
-                            children: [
-                              const FaIcon(
-                                FontAwesomeIcons.radio,
-                                color: Colors.white,
-                                size: 60, // 加大
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    FittedBox(
-                                      fit: BoxFit.scaleDown,
-                                      child: Text(
-                                        '老友廣播站',
-                                        style: GoogleFonts.notoSansTc(
-                                          fontSize: 48, // 加大
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                    ),
-                                    FittedBox(
-                                      fit: BoxFit.scaleDown,
-                                      child: Text(
-                                        '點擊收聽大家的故事',
-                                        style: GoogleFonts.notoSansTc(
-                                          fontSize: 32, // 加大
-                                          color: Colors.white.withOpacity(0.9),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
+            Padding(
+              padding: const EdgeInsets.all(28.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // ON AIR 燈號
+                  Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.redAccent,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.redAccent.withValues(alpha: 0.5),
+                              blurRadius: 10,
+                            ),
+                          ],
+                        ),
+                        child: Text(
+                          'ON AIR',
+                          style: GoogleFonts.inter(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16, // 加大
                           ),
-                        ],
+                        ),
+                      )
+                      .animate(onPlay: (c) => c.repeat(reverse: true))
+                      .fade(duration: 1000.ms),
+
+                  const Spacer(),
+
+                  Row(
+                    children: [
+                      const FaIcon(
+                        FontAwesomeIcons.radio,
+                        color: Colors.white,
+                        size: 60, // 加大
                       ),
-                    ),
-                  ],
-                ),
-              )
-              .animate(onPlay: (c) => c.repeat(reverse: true))
-              .scaleXY(end: 1.02, duration: 2000.ms), // 呼吸效果
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                '老友廣播站',
+                                style: GoogleFonts.notoSansTc(
+                                  fontSize: 48, // 加大
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                '點擊收聽大家的故事',
+                                style: GoogleFonts.notoSansTc(
+                                  fontSize: 32, // 加大
+                                  color: Colors.white.withValues(alpha: 0.9),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
   // 🖼️ 數位相框 (通訊錄) - Coral Theme
   Widget _buildContactsCard(BuildContext context) {
-    return GestureDetector(
+    return _buildElderTouchable(
       onTap: () => Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => const ContactsScreen()),
@@ -366,7 +363,10 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
             end: Alignment.bottomRight,
           ),
           boxShadow: [
-            BoxShadow(color: Colors.amber.withOpacity(0.3), blurRadius: 10),
+            BoxShadow(
+              color: Colors.amber.withValues(alpha: 0.3),
+              blurRadius: 10,
+            ),
           ],
         ),
         child: ClipRRect(
@@ -402,13 +402,13 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
             ],
           ),
         ),
-      ).animate().fadeIn(delay: 400.ms).slideX(begin: -0.2, end: 0),
+      ),
     );
   }
 
   // 🤖 AI 貼心陪聊 (Character) - Coral Theme
   Widget _buildAICard(BuildContext context) {
-    return GestureDetector(
+    return _buildElderTouchable(
       onTap: () => Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => const AIChatScreen()),
@@ -423,7 +423,10 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
             end: Alignment.bottomRight,
           ),
           boxShadow: [
-            BoxShadow(color: Colors.orange.withOpacity(0.2), blurRadius: 10),
+            BoxShadow(
+              color: Colors.orange.withValues(alpha: 0.2),
+              blurRadius: 10,
+            ),
           ],
         ),
         child: Stack(
@@ -457,7 +460,27 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
             ),
           ],
         ),
-      ).animate().fadeIn(delay: 500.ms).slideX(begin: 0.2, end: 0),
+      ),
+    );
+  }
+
+  // Helper for touchable cards with scale feedback
+  Widget _buildElderTouchable({
+    required Widget child,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: child
+          .animate(
+            onPlay: (c) => c.stop(),
+          ) // Animation is triggered by external events or manually
+          .scale(
+            begin: const Offset(1.0, 1.0),
+            end: const Offset(0.95, 0.95),
+            duration: 100.ms,
+            curve: Curves.easeInOut,
+          ),
     );
   }
 }
