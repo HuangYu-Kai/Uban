@@ -11,7 +11,7 @@ from gradio_client import Client, handle_file
 # ==========================================
 
 # ⚠️ 請填入您的 NVIDIA API Key
-NVIDIA_API_KEY = "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" 
+NVIDIA_API_KEY = "nvapi----------------------------------------------------" 
 
 # TTS 服務網址
 TTS_APP_URL = "https://tts.ivoice.tw:5003/"
