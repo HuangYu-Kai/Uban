@@ -74,7 +74,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
                   borderRadius: BorderRadius.circular(24),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.orange.withOpacity(0.3),
+                      color: Colors.orange.withValues(alpha: 0.3),
                       blurRadius: 15,
                       offset: const Offset(0, 8),
                     ),
@@ -94,7 +94,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
                             style: GoogleFonts.notoSansTc(
                               fontSize: 32,
                               fontWeight: FontWeight.w500,
-                              color: Colors.white.withOpacity(0.9), // 白字
+                              color: Colors.white.withValues(alpha: 0.9), // 白字
                             ),
                           ),
                           // 使用 FittedBox 避免字太大的時候爆版
@@ -131,17 +131,17 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
                           vertical: 8,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.9),
+                          color: Colors.white.withValues(alpha: 0.9),
                           borderRadius: BorderRadius.circular(20),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.1),
+                              color: Colors.black.withValues(alpha: 0.1),
                               blurRadius: 10,
                               offset: const Offset(0, 4),
                             ),
                           ],
                           border: Border.all(
-                            color: Colors.orange.withOpacity(0.3), // 橘色邊框
+                            color: Colors.orange.withValues(alpha: 0.3), // 橘色邊框
                             width: 2,
                           ),
                         ),
@@ -246,7 +246,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFFFF7043).withOpacity(0.4),
+                      color: const Color(0xFFFF7043).withValues(alpha: 0.4),
                       blurRadius: 20,
                       offset: const Offset(0, 10),
                     ),
@@ -261,7 +261,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
                       child: Icon(
                         Icons.speaker,
                         size: 200, // 加大
-                        color: Colors.black.withOpacity(0.05),
+                        color: Colors.black.withValues(alpha: 0.05),
                       ),
                     ),
 
@@ -281,7 +281,9 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
                                   borderRadius: BorderRadius.circular(20),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: Colors.redAccent.withOpacity(0.5),
+                                      color: Colors.redAccent.withValues(
+                                        alpha: 0.5,
+                                      ),
                                       blurRadius: 10,
                                     ),
                                   ],
@@ -329,7 +331,9 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
                                         '點擊收聽大家的故事',
                                         style: GoogleFonts.notoSansTc(
                                           fontSize: 32, // 加大
-                                          color: Colors.white.withOpacity(0.9),
+                                          color: Colors.white.withValues(
+                                            alpha: 0.9,
+                                          ),
                                         ),
                                       ),
                                     ),
@@ -366,7 +370,10 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
             end: Alignment.bottomRight,
           ),
           boxShadow: [
-            BoxShadow(color: Colors.amber.withOpacity(0.3), blurRadius: 10),
+            BoxShadow(
+              color: Colors.amber.withValues(alpha: 0.3),
+              blurRadius: 10,
+            ),
           ],
         ),
         child: ClipRRect(
@@ -423,7 +430,10 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
             end: Alignment.bottomRight,
           ),
           boxShadow: [
-            BoxShadow(color: Colors.orange.withOpacity(0.2), blurRadius: 10),
+            BoxShadow(
+              color: Colors.orange.withValues(alpha: 0.2),
+              blurRadius: 10,
+            ),
           ],
         ),
         child: Stack(

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
-import 'login_screen.dart';
 import 'elder_pairing_screen.dart';
+import 'family_main_screen.dart';
 
 // 身分選擇畫面
 class IdentificationScreen extends StatelessWidget {
@@ -80,7 +80,7 @@ class IdentificationScreen extends StatelessWidget {
                         borderRadius: BorderRadius.circular(32),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.1),
+                            color: Colors.black.withValues(alpha: 0.1),
                             blurRadius: 20,
                             offset: const Offset(0, 10),
                           ),
@@ -125,7 +125,7 @@ class IdentificationScreen extends StatelessWidget {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => const LoginScreen(),
+                      builder: (context) => const FamilyMainScreen(),
                     ),
                   );
                 },
