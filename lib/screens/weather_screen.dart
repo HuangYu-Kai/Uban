@@ -45,7 +45,7 @@ class WeatherScreen extends StatelessWidget {
                   borderRadius: BorderRadius.circular(32),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.blue.withOpacity(0.3),
+                      color: Colors.blue.withValues(alpha: 0.3),
                       blurRadius: 15,
                       offset: const Offset(0, 8),
                     ),
@@ -151,13 +151,13 @@ class WeatherScreen extends StatelessWidget {
   Widget _buildDetailItem(IconData icon, String label, String value) {
     return Column(
       children: [
-        FaIcon(icon, color: Colors.white.withOpacity(0.8), size: 30),
+        FaIcon(icon, color: Colors.white.withValues(alpha: 0.8), size: 30),
         const SizedBox(height: 8),
         Text(
           label,
           style: GoogleFonts.notoSansTc(
             fontSize: 20,
-            color: Colors.white.withOpacity(0.9),
+            color: Colors.white.withValues(alpha: 0.9),
           ),
         ),
         Text(
@@ -188,7 +188,7 @@ class WeatherScreen extends StatelessWidget {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),

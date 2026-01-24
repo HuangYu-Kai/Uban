@@ -27,7 +27,7 @@ class _RadioStationScreenState extends State<RadioStationScreen> {
   int _currentChannelIndex = 0;
 
   // 模擬語音留言
-  List<Map<String, dynamic>> _voiceMessages = [];
+  final List<Map<String, dynamic>> _voiceMessages = [];
   bool _isRecording = false;
 
   // 模擬後台 Log
@@ -347,7 +347,7 @@ class _RadioStationScreenState extends State<RadioStationScreen> {
                     : 5,
                 margin: const EdgeInsets.symmetric(horizontal: 2),
                 decoration: BoxDecoration(
-                  color: Colors.greenAccent.withOpacity(0.8),
+                  color: Colors.greenAccent.withValues(alpha: 0.8),
                   borderRadius: BorderRadius.circular(2),
                 ),
               )
@@ -439,7 +439,7 @@ class _RadioStationScreenState extends State<RadioStationScreen> {
             border: Border.all(
               color: isSelected
                   ? Colors.black12
-                  : Colors.white.withOpacity(0.8),
+                  : Colors.white.withValues(alpha: 0.8),
               width: 1.5,
             ),
           ),
@@ -460,7 +460,7 @@ class _RadioStationScreenState extends State<RadioStationScreen> {
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
                         colors: [
-                          Colors.white.withOpacity(0.5),
+                          Colors.white.withValues(alpha: 0.5),
                           Colors.transparent,
                         ],
                       ),
@@ -485,7 +485,7 @@ class _RadioStationScreenState extends State<RadioStationScreen> {
                       boxShadow: [
                         BoxShadow(
                           color: isSelected
-                              ? Colors.redAccent.withOpacity(0.8)
+                              ? Colors.redAccent.withValues(alpha: 0.8)
                               : Colors.transparent,
                           blurRadius: isSelected ? 6 : 0,
                           spreadRadius: isSelected ? 2 : 0,
