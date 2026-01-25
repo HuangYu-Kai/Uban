@@ -127,7 +127,7 @@ def speak_taigi_pinyin(romanized_text):
             # 稍微暫停一下防止連續音檔打架 (可選)
             time.sleep(0.2)
         else:
-            print("❌ TTS 合成無回傳檔案")
+            print("TTS 合成無回傳檔案")
 
     except Exception as e:
         print(f"❌ 發音錯誤: {e}")
