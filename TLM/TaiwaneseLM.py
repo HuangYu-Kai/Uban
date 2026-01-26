@@ -1,243 +1,168 @@
 import os
-import shutil
-import time
-import requests
-import urllib3
+import asyncio
+import pygame
 import datetime
 from openai import OpenAI
-from gradio_client import Client, handle_file
+import edge_tts
+from duckduckgo_search import DDGS
 
-# ==========================================
-# 1. 設定區
-# ==========================================
+# --- 設定區 ---
+NVIDIA_API_KEY = "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"  # ★★★ 請填回您的 NVIDIA API Key ★★★
+TTS_VOICE = "zh-TW-HsiaoYuNeural" 
 
-# ⚠️ 請填入您的 NVIDIA API Key
-NVIDIA_API_KEY = "-----" 
+# --- 初始化客戶端 ---
+client = OpenAI(
+    base_url="https://integrate.api.nvidia.com/v1",
+    api_key=NVIDIA_API_KEY
+)
 
-# TTS 服務網址與備用檔案
-TTS_APP_URL = "https://tts.ivoice.tw:5003/"
-FALLBACK_AUDIO_URL = "https://tts.ivoice.tw:5003/gradio_api/file=/home/tianyi/tts_taigi/gradio_cache/169345990328661d3035ba3c7e69d5ffb04bb34947acf44c22416982989c8bdc/文化相放伴_ep080_085_測試集.wav"
-FALLBACK_TEXT = "ai3 tsu3- i3 an1- tsuan5 --ooh4 , a1- kong1 tshue1 tian7- hong1 , lin2 u7 oh8 --khi2- lai5 ah8 bo5 ?"
-LOCAL_REF_AUDIO = "reference_audio.wav"
+# --- 工具函式 ---
+def get_current_time_str():
+    now = datetime.datetime.now()
+    week_days = ["一", "二", "三", "四", "五", "六", "日"]
+    weekday = week_days[now.weekday()]
+    return now.strftime(f"%Y年%m月%d日 星期{weekday} %p %I:%M")
 
-# 分隔符號
-SEPARATOR = "###TL###"
-
-# 全域變數
-GLOBAL_CLIENT = None
-GLOBAL_REF_AUDIO = None
-GLOBAL_REF_TEXT = None
-
-# 忽略 SSL 警告
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-# ==========================================
-# 2. 系統初始化 (雙重保險機制)
-# ==========================================
-
-def download_fallback_file():
-    """ 強制下載官方音檔到本地 """
-    if os.path.exists(LOCAL_REF_AUDIO):
-        return True
-    print("📥 正在下載備用參考音檔...")
+def search_web(query):
+    print(f"   [系統] 執行聯網搜尋: {query}...")
     try:
-        response = requests.get(FALLBACK_AUDIO_URL, verify=False, timeout=30)
-        with open(LOCAL_REF_AUDIO, 'wb') as f:
-            f.write(response.content)
-        return True
+        results = DDGS().text(query, region="wt-wt", max_results=3) 
+        if results:
+            context_str = ""
+            for i, res in enumerate(results):
+                context_str += f"{i+1}. {res['body']}\n"
+            print(f"   [系統] 搜尋成功，取得 {len(results)} 筆資料")
+            return context_str
     except Exception as e:
-        print(f"❌ 下載失敗: {e}")
-        return False
+        print(f"   [搜尋失敗]: {e}")
+    return ""
 
-def init_tts_system():
-    global GLOBAL_CLIENT, GLOBAL_REF_AUDIO, GLOBAL_REF_TEXT
-    
-    # 1. 先把備用檔案準備好 (保命符)
-    download_fallback_file()
-    
-    print("⚙️ 正在連線 TTS 系統...")
+async def speak_response(text):
+    output_file = "temp_response.mp3"
+    communicate = edge_tts.Communicate(text, TTS_VOICE, rate="-20%")
+    await communicate.save(output_file)
     try:
-        GLOBAL_CLIENT = Client(TTS_APP_URL, ssl_verify=False)
-        
-        # 2. 嘗試動態切換模型
-        try:
-            result = GLOBAL_CLIENT.predict(
-                model_path="pretrained_For_Selection/台語模型",
-                api_name="/change_model"
-            )
-            # 嘗試抓取伺服器回傳的音檔
-            raw_audio = result[2]
-            if isinstance(raw_audio, dict):
-                server_audio = raw_audio.get('path') or raw_audio.get('url')
-            else:
-                server_audio = raw_audio
-            
-            # 3. 判斷：如果伺服器給的檔案有效，就用伺服器的；否則用本地備份
-            if server_audio:
-                GLOBAL_REF_AUDIO = server_audio
-                print("✅ 使用伺服器提供的參考音檔")
-            else:
-                raise ValueError("伺服器回傳空值")
-                
-            GLOBAL_REF_TEXT = result[3]
-
-        except Exception as e:
-            print(f"⚠️ 動態取得參考音檔失敗 ({e})，切換至本地備用方案...")
-            # === 備用方案啟動 ===
-            GLOBAL_REF_AUDIO = LOCAL_REF_AUDIO
-            GLOBAL_REF_TEXT = FALLBACK_TEXT
-            print(f"✅ 已切換使用本地音檔: {LOCAL_REF_AUDIO}")
-
-        return True
-
+        pygame.mixer.init()
+        pygame.mixer.music.load(output_file)
+        pygame.mixer.music.play()
+        while pygame.mixer.music.get_busy():
+            await asyncio.sleep(0.1)
+        pygame.mixer.music.unload()
+        pygame.mixer.quit()
+        if os.path.exists(output_file):
+            os.remove(output_file)
     except Exception as e:
-        print(f"❌ TTS 系統連線徹底失敗: {e}")
-        return False
+        print(f"[播放錯誤]: {e}")
 
-# ==========================================
-# 3. 語音合成
-# ==========================================
-
-def speak_taigi_pinyin(romanized_text):
-    if not romanized_text or not romanized_text.strip(): return
-    romanized_text = romanized_text.replace("\n", " ").strip()
-
-    # 再次檢查音檔是否存在
-    final_ref_audio = GLOBAL_REF_AUDIO
-    # 如果是用本地檔案，要確保路徑正確傳入
-    if final_ref_audio == LOCAL_REF_AUDIO:
-        if not os.path.exists(LOCAL_REF_AUDIO):
-            print("❌ 找不到本地參考音檔，無法發音")
-            return
+# --- 【核心新功能】意圖判斷 (AI 路由) ---
+def check_intent(user_input):
+    """
+    讓 AI 判斷使用者的意圖是 [閒聊] 還是 [查資料]
+    """
+    print("   [系統] 正在思考要不要上網...")
     
-    if not GLOBAL_CLIENT:
-        print("⚠️ TTS Client 未連線")
-        return
-
-    try:
-        timestamp = datetime.datetime.now().strftime("%H%M%S%f")
-        final_filename = f"response_{timestamp}.wav"
-
-        # print(f"[DEBUG] 發音內容: {romanized_text}")
-        
-        result_path = GLOBAL_CLIENT.predict(
-            tts_text=romanized_text,
-            mode_checkbox_group="3s極速覆刻",
-            prompt_text=GLOBAL_REF_TEXT,
-            # 這裡 handle_file 會自動處理網址或本地路徑
-            prompt_wav_upload=handle_file(final_ref_audio), 
-            prompt_wav_record=None,
-            instruct_text="Speak very slowly",
-            seed=0,
-            speed=1.0,
-            enable_translation=False, # 關閉翻譯，唸拼音
-            api_name="/generate"
-        )
-
-        if isinstance(result_path, dict):
-            result_path = result_path.get('path') or result_path.get('url')
-
-        if result_path and os.path.exists(result_path):
-            shutil.copy(result_path, final_filename)
-            os.startfile(final_filename)
-            time.sleep(0.2)
-        else:
-            print("❌ TTS 合成無檔案")
-
-    except Exception as e:
-        print(f"❌ 發音錯誤: {e}")
-
-# ==========================================
-# 4. 主程式
-# ==========================================
-
-def main():
-    client = OpenAI(
-        base_url = "https://integrate.api.nvidia.com/v1",
-        api_key = NVIDIA_API_KEY
-    )
-
-    system_prompt = f"""
-    你是一個精通「臺灣閩南語（台語）」的 AI 助理。
+    prompt = f"""
+    你是一個意圖分類器。請分析使用者的輸入。
     
-    【規則】
-    1. 前半段：請用「繁體華語」回答，不要出現拼音。
-    2. 分隔符：回答結束後，必須換行並加上 "{SEPARATOR}"，再換行。
-    3. 後半段：將前半段翻譯成「臺羅拼音 (Tâi-lô)」。
-       - 只要給拼音就好，不要加任何解釋文字。
-       - 聲調用數字 (1-8)。
+    規則：
+    1. 如果使用者問的是：天氣、新聞、即時資訊、特定知識、價格、地點、或是你不知道的事實。 -> 回答 "SEARCH"
+    2. 如果使用者是：打招呼、閒聊、問你的名字、問候身體、情感抒發、翻譯句子。 -> 回答 "CHAT"
     
-    範例：
-    你好，很高興認識你。
-    {SEPARATOR}
-    Li2 ho2, tsin1 huan-hi2 jin7-bat4 li2.
+    只回答 "SEARCH" 或 "CHAT"，不要有其他文字。
+    
+    使用者輸入："{user_input}"
     """
 
-    conversation_history = [{"role": "system", "content": system_prompt}]
+    try:
+        response = client.chat.completions.create(
+            model="yentinglin/llama-3-taiwan-70b-instruct",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.1, # 溫度低一點，讓判斷更準確固定
+            max_tokens=10
+        )
+        intent = response.choices[0].message.content.strip()
+        # 清理一下可能的雜訊 (有些模型會回 "Answer: SEARCH")
+        if "SEARCH" in intent: return "SEARCH"
+        return "CHAT"
+    except:
+        return "CHAT" # 發生錯誤預設就當閒聊
 
-    print("=== 台語 AI 聊天室 (Hybrid Final) ===")
+# --- 主程式 ---
+async def main():
+    print(f"=== 台語 AI 萬事通 (智慧路由版) ===")
     
-    if init_tts_system():
-        print("✅ 語音系統就緒！\n")
-    else:
-        print("⚠️ 語音系統故障。\n")
+    # 這裡可以存放對話歷史，讓它有短期記憶
+    conversation_history = [] 
 
     while True:
-        try:
-            user_input = input("\n你：")
-            if user_input.lower() in ["exit", "quit", "離開"]:
-                speak_taigi_pinyin("To-sia7, tsai3-hue7!")
-                time.sleep(3)
-                break
-            
-            conversation_history.append({"role": "user", "content": user_input})
+        user_input = await asyncio.to_thread(input, "\n你：")
+        
+        if user_input.lower() in ["exit", "quit", "離開"]:
+            print("AI：多謝你的使用，再會！")
+            await speak_response("多謝你的使用，再會！")
+            break
+        
+        current_time = get_current_time_str()
+        web_context = ""
+        
+        # 1. 第一階段：AI 判斷意圖
+        intent = await asyncio.to_thread(check_intent, user_input)
+        
+        if intent == "SEARCH":
+            print("   [判定] 需要上網查詢資料 (SEARCH)")
+            # 如果需要搜尋，去網路上抓資料
+            # 這裡我們直接把使用者的整句話拿去搜尋，通常效果就不錯
+            search_result = await asyncio.to_thread(search_web, user_input)
+            if search_result:
+                web_context = f"\n【網路即時資料】:\n{search_result}\n"
+        else:
+            print("   [判定] 純閒聊或記憶回答 (CHAT)")
 
+        # 2. 第二階段：正式回答
+        system_prompt = f"""
+        現在時間是：{current_time}。
+        你是一個精通「臺灣閩南語（台語）」的 AI 助理。
+        請根據使用者的問題回答。
+        
+        規則：
+        1. 優先使用「全漢字」或「漢羅混寫」回答。
+        2. 語氣要親切、像在跟長輩聊天。
+        3. 如果有提供【網路即時資料】，請根據資料回答；如果沒有，請依照你的知識庫回答。
+        4. 回答要簡短，適合語音播報。
+        """
+
+        # 組合當次對話 (不使用累積歷史，避免 System Prompt 被擠掉，或 RAG 資料混亂)
+        # 若需要記憶，可以將 conversation_history 加進來，但要小心 token 上限
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"{web_context}使用者問題：{user_input}"}
+        ]
+
+        try:
             completion = client.chat.completions.create(
                 model="yentinglin/llama-3-taiwan-70b-instruct",
-                messages=conversation_history,
-                temperature=0.3, # 溫度調低，格式較穩
-                top_p=1,
+                messages=messages,
+                temperature=0.5,
                 max_tokens=1024,
                 stream=True
             )
 
             print("AI：", end="")
             full_response = ""
-            is_printing = True
 
             for chunk in completion:
                 if chunk.choices[0].delta.content is not None:
                     content = chunk.choices[0].delta.content
+                    print(content, end="", flush=True)
                     full_response += content
-                    
-                    if is_printing:
-                        if SEPARATOR not in full_response:
-                            print(content, end="", flush=True)
-                        else:
-                            if SEPARATOR in content:
-                                print(content.split(SEPARATOR)[0], end="", flush=True)
-                            is_printing = False
-
-            print()
-
-            conversation_history.append({"role": "assistant", "content": full_response})
             
-            if SEPARATOR in full_response:
-                # 使用 split，並確保有取到後半段
-                parts = full_response.split(SEPARATOR)
-                if len(parts) > 1:
-                    pinyin_part = parts[1].strip()
-                    speak_taigi_pinyin(pinyin_part)
-                else:
-                    print("(AI 未產生完整拼音)")
-            else:
-                pass 
-                # print("(未偵測到分隔符號)")
-        
-        except KeyboardInterrupt:
-            break
+            print() 
+
+            if full_response.strip():
+                await speak_response(full_response)
+
         except Exception as e:
-            print(f"錯誤: {e}")
+            print(f"發生錯誤: {e}")
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
