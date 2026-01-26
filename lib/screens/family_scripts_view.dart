@@ -29,7 +29,7 @@ class FamilyScriptsView extends StatelessWidget {
               color: Color(0xFFFF9800),
               size: 30,
             ),
-            onPressed: () {},
+            onPressed: () => _showCreateScriptSheet(context),
           ),
           const SizedBox(width: 8),
         ],
@@ -340,6 +340,102 @@ class FamilyScriptsView extends StatelessWidget {
           ],
         ),
       ).animate().shimmer(delay: 1.seconds, duration: 1500.ms),
+    );
+  }
+
+  void _showCreateScriptSheet(BuildContext context) {
+    final TextEditingController controller = TextEditingController();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(32.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '新增智慧劇本',
+                style: GoogleFonts.notoSansTc(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '為您的長輩量身打造專屬的 AI 互動流程',
+                style: GoogleFonts.notoSansTc(
+                  fontSize: 14,
+                  color: Colors.black45,
+                ),
+              ),
+              const SizedBox(height: 32),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                style: GoogleFonts.notoSansTc(fontSize: 18),
+                decoration: InputDecoration(
+                  labelText: '劇本名稱',
+                  hintText: '例如：寒流早晨關懷、吃藥後散步提醒...',
+                  prefixIcon: const Icon(Icons.edit_note),
+                  filled: true,
+                  fillColor: Colors.grey[100],
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 32),
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton(
+                  onPressed: () {
+                    if (controller.text.isNotEmpty) {
+                      Navigator.pop(context);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => FamilyScriptEditorScreen(
+                            scriptTitle: controller.text,
+                          ),
+                        ),
+                      );
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFFF9800),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: Text(
+                    '開啟編輯器',
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

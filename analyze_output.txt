@@ -1,0 +1,5 @@
+﻿Analyzing UniFlow...                                            
+
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\screens\family\family_subscription_screen.dart:98:50 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\screens\family\family_subscription_screen.dart:104:28 - deprecated_member_use
+

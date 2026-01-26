@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'family_script_editor_screen.dart';
+import 'family/family_care_journal_view.dart';
 
 class FamilyDashboardView extends StatelessWidget {
   const FamilyDashboardView({super.key});
@@ -21,7 +22,7 @@ class FamilyDashboardView extends StatelessWidget {
               const SizedBox(height: 24),
 
               // 2. AI Mood Card
-              _buildMoodCard(),
+              _buildMoodCard(context),
               const SizedBox(height: 24),
 
               // 3. Quick Actions
@@ -213,89 +214,104 @@ class FamilyDashboardView extends StatelessWidget {
     );
   }
 
-  Widget _buildMoodCard() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFFFFA726), Color(0xFFFFB74D)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+  Widget _buildMoodCard(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const FamilyCareJournalView(),
+          ),
+        );
+      },
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFFFFA726), Color(0xFFFFB74D)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(32),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.orange.withValues(alpha: 0.3),
+              blurRadius: 15,
+              offset: const Offset(0, 8),
+            ),
+          ],
         ),
-        borderRadius: BorderRadius.circular(32),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.orange.withValues(alpha: 0.3),
-            blurRadius: 15,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.auto_awesome, color: Colors.white70, size: 24),
-              const Spacer(),
-            ],
-          ),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
+        child: Column(
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.auto_awesome, color: Colors.white70, size: 24),
+                const Spacer(),
+                const Icon(
+                  Icons.chevron_right,
+                  color: Colors.white70,
+                  size: 20,
                 ),
-                child: const Text('😄', style: TextStyle(fontSize: 50)),
-              ).animate().scale(
-                delay: 500.ms,
-                duration: 800.ms,
-                curve: Curves.elasticOut,
-              ),
-              const SizedBox(width: 20),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '心情愉快',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 32,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  Text(
-                    '今日互動指數：高',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 16,
-                      color: Colors.white.withValues(alpha: 0.9),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(16),
+              ],
             ),
-            child: Text(
-              '「媽媽今天精神很好！早上聊到『鄧麗君』的時候特別開心，還跟著唱了兩句。目前沒有發現負面情緒。」',
-              style: GoogleFonts.notoSansTc(
-                fontSize: 16,
-                color: Colors.white,
-                height: 1.5,
-              ),
-              textAlign: TextAlign.center,
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Text('😄', style: TextStyle(fontSize: 50)),
+                ).animate().scale(
+                  delay: 500.ms,
+                  duration: 800.ms,
+                  curve: Curves.elasticOut,
+                ),
+                const SizedBox(width: 20),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '心情愉快',
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: 32,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    Text(
+                      '今日互動指數：高',
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: 16,
+                        color: Colors.white.withValues(alpha: 0.9),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
-          ),
-        ],
+            const SizedBox(height: 20),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Text(
+                '「媽媽今天精神很好！早上聊到『鄧麗君』的時候特別開心，還跟著唱了兩句。目前沒有發現負面情緒。」',
+                style: GoogleFonts.notoSansTc(
+                  fontSize: 16,
+                  color: Colors.white,
+                  height: 1.5,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
