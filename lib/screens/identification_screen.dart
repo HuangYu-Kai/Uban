@@ -20,7 +20,7 @@ class IdentificationScreen extends StatelessWidget {
               const SizedBox(height: 60), // 頂部間距
               // 標題: CompanionFlow
               Text(
-                'CompanionFlow',
+                'UBan',
                 style: GoogleFonts.inter(
                   fontSize: 24,
                   fontWeight: FontWeight.w400,

@@ -19,7 +19,6 @@ class ScriptNode {
   final IconData icon;
   final Color color;
   final List<String> childrenIds;
-  final String type; // 'trigger', 'action', 'logic', 'rag'
 
   ScriptNode({
     required this.id,
@@ -29,143 +28,45 @@ class ScriptNode {
     required this.icon,
     required this.color,
     this.childrenIds = const [],
-    this.type = 'action',
   });
 }
 
 class _FamilyScriptEditorScreenState extends State<FamilyScriptEditorScreen> {
   final List<ScriptNode> _nodes = [];
   String? _selectedNodeId;
-  bool _isGeneratingAI = false;
-  final TransformationController _transformationController =
-      TransformationController();
+  bool _showSimulator = false;
 
   @override
   void initState() {
     super.initState();
-    _resetToDefault();
-  }
-
-  void _resetToDefault() {
-    _nodes.clear();
     _nodes.addAll([
       ScriptNode(
         id: 'start',
-        title: '觸發時機',
-        content: '當長輩提到「以前的事情」',
+        title: '觸發',
+        content: '當長輩說「我今天好無聊」',
         position: const Offset(400, 100),
-        icon: Icons.mic_none_rounded,
+        icon: Icons.mic,
         color: Colors.blueAccent,
-        childrenIds: ['rag_search'],
-        type: 'trigger',
+        childrenIds: ['action_1'],
       ),
       ScriptNode(
-        id: 'rag_search',
-        title: '知識庫檢索 (RAG)',
-        content: '檢索關鍵字：#1970年代 #阿里山 #老照片',
+        id: 'action_1',
+        title: '動作',
+        content: 'AI 自動生成關於「懷舊廣播」的對話',
         position: const Offset(400, 300),
-        icon: Icons.search_rounded,
-        color: Colors.cyanAccent,
-        childrenIds: ['ai_reply'],
-        type: 'rag',
+        icon: Icons.auto_awesome,
+        color: Colors.purpleAccent,
+        childrenIds: ['end'],
       ),
       ScriptNode(
-        id: 'ai_reply',
-        title: 'AI 情感回應',
-        content: '語音引導：\n「哇！這張照片是在阿里山拍的嗎？那天很涼爽吧？」',
+        id: 'end',
+        title: '結束',
+        content: '記錄話題到照顧日誌',
         position: const Offset(400, 500),
-        icon: Icons.auto_awesome_rounded,
-        color: Colors.purpleAccent,
-        type: 'action',
+        icon: Icons.check_circle,
+        color: Colors.greenAccent,
       ),
     ]);
-  }
-
-  void _addNode(String type) {
-    setState(() {
-      final id = 'node_${DateTime.now().millisecondsSinceEpoch}';
-      Color color = Colors.grey;
-      IconData icon = Icons.help_outline;
-      String title = '新節點';
-
-      if (type == 'action') {
-        color = Colors.purpleAccent;
-        icon = Icons.play_arrow_rounded;
-        title = '執行動作';
-      } else if (type == 'rag') {
-        color = Colors.cyanAccent;
-        icon = Icons.storage_rounded;
-        title = '檢索記憶環節';
-      }
-
-      _nodes.add(
-        ScriptNode(
-          id: id,
-          title: title,
-          content: '點擊編輯內容...',
-          position: const Offset(200, 200),
-          icon: icon,
-          color: color,
-          type: type,
-        ),
-      );
-    });
-  }
-
-  Future<void> _generateWithAI() async {
-    setState(() => _isGeneratingAI = true);
-    await Future.delayed(2.seconds); // 模擬 AI 思考
-
-    setState(() {
-      _isGeneratingAI = false;
-      // AI 幫忙增加一個分叉：如果長輩沒回應，則推播一張老照片
-      if (!_nodes.any((n) => n.id == 'ai_branch')) {
-        final last = _nodes.lastWhere((n) => n.id == 'ai_reply');
-
-        final branchId = 'ai_branch_logic';
-        _nodes.add(
-          ScriptNode(
-            id: branchId,
-            title: 'AI 智慧分叉',
-            content: '如果長輩沈默超過 10 秒',
-            position: const Offset(650, 600),
-            icon: Icons.alt_route_rounded,
-            color: Colors.orangeAccent,
-            childrenIds: ['photo_push'],
-            type: 'logic',
-          ),
-        );
-
-        _nodes.add(
-          ScriptNode(
-            id: 'photo_push',
-            title: '視覺引導',
-            content: '推播老照片集至電視/螢幕',
-            position: const Offset(650, 800),
-            icon: Icons.image_rounded,
-            color: Colors.pinkAccent,
-            type: 'action',
-          ),
-        );
-
-        // 建立連接
-        final index = _nodes.indexOf(last);
-        _nodes[index] = ScriptNode(
-          id: last.id,
-          title: last.title,
-          content: last.content,
-          position: last.position,
-          icon: last.icon,
-          color: last.color,
-          type: last.type,
-          childrenIds: [branchId],
-        );
-      }
-    });
-
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('✨ AI 已為您優化劇本邏輯：新增了沈默時的視覺引導')));
   }
 
   @override
@@ -175,201 +76,358 @@ class _FamilyScriptEditorScreenState extends State<FamilyScriptEditorScreen> {
       appBar: AppBar(
         title: Text(
           widget.scriptTitle,
-          style: GoogleFonts.notoSansTc(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-          ),
+          style: GoogleFonts.notoSansTc(color: Colors.white),
         ),
         backgroundColor: Colors.transparent,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
-          _buildAIButton(),
-          const SizedBox(width: 8),
           TextButton.icon(
             onPressed: () => Navigator.pop(context),
             icon: const Icon(Icons.save, color: Colors.blueAccent),
             label: Text(
-              '儲存編輯',
+              '儲存',
               style: GoogleFonts.notoSansTc(color: Colors.blueAccent),
             ),
           ),
           const SizedBox(width: 12),
         ],
       ),
-      body: Stack(
+      body: Row(
         children: [
-          InteractiveViewer(
-            transformationController: _transformationController,
-            constrained: false,
-            minScale: 0.1,
-            maxScale: 2.5,
-            child: SizedBox(
-              width: 3000,
-              height: 3000,
-              child: Stack(
-                children: [
-                  Positioned.fill(child: CustomPaint(painter: GridPainter())),
-                  Positioned.fill(
-                    child: CustomPaint(painter: NodeLinkPainter(_nodes)),
+          // 左側編輯畫布 (Canvas)
+          Expanded(
+            flex: 2,
+            child: Stack(
+              children: [
+                InteractiveViewer(
+                  constrained: false,
+                  minScale: 0.1,
+                  maxScale: 2.0,
+                  child: SizedBox(
+                    width: 2000,
+                    height: 2000,
+                    child: Stack(
+                      children: [
+                        Positioned.fill(
+                          child: CustomPaint(painter: GridPainter()),
+                        ),
+                        Positioned.fill(
+                          child: CustomPaint(painter: NodeLinkPainter(_nodes)),
+                        ),
+                        ..._nodes.map((node) => _buildNodeCard(node)),
+                      ],
+                    ),
                   ),
-                  ..._nodes.map((node) => _buildNodeCard(node)),
-                ],
-              ),
+                ),
+                Positioned(left: 20, top: 20, child: _buildToolbar()),
+                Positioned(
+                  right: 20,
+                  bottom: 20,
+                  child: _buildToggleSimulatorButton(),
+                ),
+              ],
             ),
           ),
 
-          if (_isGeneratingAI)
-            Container(
-              color: Colors.black54,
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const CircularProgressIndicator(color: Colors.purpleAccent),
-                    const SizedBox(height: 16),
-                    Text(
-                      'UniFlow AI 正在生成智慧邏輯...',
-                      style: GoogleFonts.notoSansTc(
-                        color: Colors.white,
-                        fontSize: 18,
-                      ),
-                    ),
-                  ],
-                ),
+          // 右側模擬器面板 (Simulator)
+          if (_showSimulator)
+            AnimatedContainer(
+              duration: 300.ms,
+              width: 380,
+              decoration: const BoxDecoration(
+                color: Color(0xFF1A1A1A),
+                border: Border(left: BorderSide(color: Colors.white10)),
               ),
-            ),
-
-          Positioned(left: 20, top: 20, child: _buildEditorToolbar()),
+              child: _buildElderSimulator(),
+            ).animate().slideX(begin: 1.0, end: 0, curve: Curves.easeOutCubic),
         ],
       ),
     );
   }
 
-  Widget _buildAIButton() {
+  Widget _buildToggleSimulatorButton() {
     return Container(
-          margin: const EdgeInsets.symmetric(vertical: 8),
-          child: ElevatedButton.icon(
-            onPressed: _isGeneratingAI ? null : _generateWithAI,
-            icon: const Icon(Icons.auto_awesome, size: 18),
-            label: const Text('AI 生成輔助'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.purple[700],
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
+      decoration: BoxDecoration(
+        boxShadow: [
+          BoxShadow(
+            color: (_showSimulator ? Colors.grey : Colors.indigo).withValues(
+              alpha: 0.4,
             ),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
           ),
-        )
-        .animate(onPlay: (controller) => controller.repeat(reverse: true))
-        .shimmer(duration: 2.seconds, color: Colors.white24);
+        ],
+      ),
+      child: ElevatedButton.icon(
+        onPressed: () => setState(() => _showSimulator = !_showSimulator),
+        icon: Icon(
+          _showSimulator ? Icons.visibility_off : Icons.visibility,
+          size: 20,
+        ),
+        label: Text(
+          _showSimulator ? '隱藏模擬器' : '即時模擬預覽',
+          style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: _showSimulator
+              ? const Color(0xFF2A2A2A)
+              : const Color(0xFF3F51B5),
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          elevation: 0,
+        ),
+      ),
+    ).animate().scale(delay: 500.ms);
   }
 
   Widget _buildNodeCard(ScriptNode node) {
-    final bool isSelected = _selectedNodeId == node.id;
-
+    bool isSelected = _selectedNodeId == node.id;
     return Positioned(
       left: node.position.dx,
       top: node.position.dy,
       child: GestureDetector(
-        onPanUpdate: (details) {
-          setState(() {
-            final index = _nodes.indexOf(node);
-            _nodes[index].position += details.delta;
-          });
-        },
+        onPanUpdate: (d) => setState(() => node.position += d.delta),
         onTap: () => setState(() => _selectedNodeId = node.id),
-        child:
-            Container(
-                  width: 260,
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1E1E1E),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: isSelected
-                          ? Colors.white
-                          : node.color.withValues(alpha: 0.4),
-                      width: isSelected ? 3 : 1,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: node.color.withValues(
-                          alpha: isSelected ? 0.3 : 0.05,
-                        ),
-                        blurRadius: 20,
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(node.icon, color: node.color, size: 22),
-                          const SizedBox(width: 8),
-                          Text(
-                            node.title,
-                            style: GoogleFonts.notoSansTc(
-                              color: node.color,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 15,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const Divider(color: Colors.white10, height: 24),
-                      Text(
-                        node.content,
-                        style: GoogleFonts.notoSansTc(
-                          color: Colors.white,
-                          fontSize: 17,
-                          height: 1.4,
-                        ),
-                      ),
-                    ],
-                  ),
-                )
-                .animate(target: isSelected ? 1 : 0)
-                .scale(
-                  begin: const Offset(1, 1),
-                  end: const Offset(1.03, 1.03),
+        child: Container(
+          width: 220,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF252525),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: isSelected
+                  ? Colors.white
+                  : node.color.withValues(alpha: 0.3),
+              width: isSelected ? 3 : 1,
+            ),
+            boxShadow: [
+              if (isSelected)
+                BoxShadow(
+                  color: node.color.withValues(alpha: 0.3),
+                  blurRadius: 20,
                 ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(node.icon, color: node.color, size: 18),
+                  const SizedBox(width: 8),
+                  Text(
+                    node.title,
+                    style: GoogleFonts.notoSansTc(
+                      color: node.color,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+              const Divider(color: Colors.white10),
+              Text(
+                node.content,
+                style: GoogleFonts.notoSansTc(
+                  color: Colors.white.withValues(alpha: 0.8),
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
 
-  Widget _buildEditorToolbar() {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF2A2A2A),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white10),
-      ),
-      child: Column(
-        children: [
-          _toolbarIcon(
-            Icons.add_task_rounded,
-            '新增動作',
-            () => _addNode('action'),
+  Widget _buildElderSimulator() {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(24),
+          child: Row(
+            children: [
+              const Icon(Icons.smartphone, color: Colors.blueAccent),
+              const SizedBox(width: 12),
+              Text(
+                '長輩端即時對話模擬',
+                style: GoogleFonts.notoSansTc(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
           ),
-          _toolbarIcon(Icons.cloud_sync_rounded, '新增檢索', () => _addNode('rag')),
-          _toolbarIcon(Icons.alt_route_rounded, '新增判斷', () {}),
-          const Divider(color: Colors.white10),
-          _toolbarIcon(Icons.refresh_rounded, '重置劇本', _resetToDefault),
+        ),
+        const Divider(color: Colors.white10, height: 1),
+        Expanded(
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 32),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFFBF0), // 長輩端典型的溫暖背景色
+              borderRadius: BorderRadius.circular(36),
+              border: Border.all(color: Colors.grey[800]!, width: 8),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(28),
+              child: Column(
+                children: [
+                  // 模擬長輩端介面內容
+                  Expanded(
+                    child: ListView(
+                      padding: const EdgeInsets.all(20),
+                      children: [
+                        const SizedBox(height: 40),
+                        Center(
+                          child:
+                              CircleAvatar(
+                                    radius: 40,
+                                    backgroundColor: Colors.blue[100],
+                                    child: const Icon(
+                                      Icons.smart_toy,
+                                      size: 40,
+                                      color: Colors.blue,
+                                    ),
+                                  )
+                                  .animate(
+                                    onPlay: (c) => c.repeat(reverse: true),
+                                  )
+                                  .scale(
+                                    duration: 2.seconds,
+                                    begin: const Offset(1, 1),
+                                    end: const Offset(1.1, 1.1),
+                                  ),
+                        ),
+                        const SizedBox(height: 24),
+                        Container(
+                              padding: const EdgeInsets.all(20),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(24),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.05),
+                                    blurRadius: 10,
+                                  ),
+                                ],
+                              ),
+                              child: const Text(
+                                '長輩：我今天好無聊...\n\nAI：聽起來您今天想聊聊天呢！要不要來聽聽關於阿里山的老故事？',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  height: 1.5,
+                                  color: Colors.black87,
+                                ),
+                              ),
+                            )
+                            .animate()
+                            .fadeIn(delay: 500.ms)
+                            .slideY(begin: 0.1, end: 0),
+                      ],
+                    ),
+                  ),
+                  _buildMockElderButtons(),
+                ],
+              ),
+            ),
+          ),
+        ),
+        _buildSimulatorStatus(),
+      ],
+    );
+  }
+
+  Widget _buildMockElderButtons() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      color: Colors.white70,
+      child: Row(
+        children: [
+          Expanded(
+            child: Container(
+              height: 50,
+              decoration: BoxDecoration(
+                color: Colors.green,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Center(
+                child: Text(
+                  '好啊！',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Container(
+              height: 50,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Center(
+                child: Text('先不要', style: TextStyle(color: Colors.black54)),
+              ),
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _toolbarIcon(IconData icon, String tooltip, VoidCallback onTap) {
-    return IconButton(
-      icon: Icon(icon, color: Colors.white70, size: 24),
-      onPressed: onTap,
-      tooltip: tooltip,
+  Widget _buildSimulatorStatus() {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      color: Colors.blueAccent.withValues(alpha: 0.1),
+      child: Row(
+        children: [
+          const Icon(Icons.flash_on, color: Colors.blueAccent, size: 16),
+          const SizedBox(width: 8),
+          Text(
+            '正在根據當前動作節點運算...',
+            style: GoogleFonts.notoSansTc(
+              color: Colors.blueAccent,
+              fontSize: 13,
+            ),
+          ),
+        ],
+      ),
     );
+  }
+
+  Widget _buildToolbar() {
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF2A2A2A),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Column(
+        children: [
+          IconButton(
+            icon: const Icon(Icons.add_box_outlined, color: Colors.white70),
+            onPressed: () {},
+          ),
+          IconButton(
+            icon: const Icon(Icons.smart_button, color: Colors.purpleAccent),
+            onPressed: () {},
+          ),
+          IconButton(
+            icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+            onPressed: () {},
+          ),
+        ],
+      ),
+    ).animate().slideX(begin: -1.0, end: 0);
   }
 }
 
@@ -380,37 +438,24 @@ class NodeLinkPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.15)
-      ..strokeWidth = 2.5
+      ..color = Colors.white10
+      ..strokeWidth = 2
       ..style = PaintingStyle.stroke;
-
     for (var node in nodes) {
       if (node.childrenIds.isEmpty) continue;
-
-      final startPoint = node.position + const Offset(130, 110);
-
-      for (var childId in node.childrenIds) {
-        final findChild = nodes.where((n) => n.id == childId);
-        if (findChild.isEmpty) continue;
-
-        final childNode = findChild.first;
-        final endPoint = childNode.position + const Offset(130, 0);
-
-        final path = Path();
-        path.moveTo(startPoint.dx, startPoint.dy);
-
-        final controlPoint1 = Offset(startPoint.dx, startPoint.dy + 80);
-        final controlPoint2 = Offset(endPoint.dx, endPoint.dy - 80);
-
+      final start = node.position + const Offset(110, 80);
+      for (var cid in node.childrenIds) {
+        final childNode = nodes.firstWhere((n) => n.id == cid);
+        final end = childNode.position + const Offset(110, 0);
+        final path = Path()..moveTo(start.dx, start.dy);
         path.cubicTo(
-          controlPoint1.dx,
-          controlPoint1.dy,
-          controlPoint2.dx,
-          controlPoint2.dy,
-          endPoint.dx,
-          endPoint.dy,
+          start.dx,
+          start.dy + 60,
+          end.dx,
+          end.dy - 60,
+          end.dx,
+          end.dy,
         );
-
         canvas.drawPath(path, paint);
       }
     }
@@ -424,14 +469,12 @@ class GridPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.03)
+      ..color = Colors.white.withValues(alpha: 0.05)
       ..strokeWidth = 1;
-
-    const spacing = 50.0;
-    for (double i = 0; i < size.width; i += spacing) {
+    for (double i = 0; i < size.width; i += 40) {
       canvas.drawLine(Offset(i, 0), Offset(i, size.height), paint);
     }
-    for (double i = 0; i < size.height; i += spacing) {
+    for (double i = 0; i < size.height; i += 40) {
       canvas.drawLine(Offset(0, i), Offset(size.width, i), paint);
     }
   }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'family_dashboard_view.dart';
 import 'family_scripts_view.dart';
+import 'family/family_settings_view.dart';
 
 class FamilyMainScreen extends StatefulWidget {
   const FamilyMainScreen({super.key});
@@ -15,7 +16,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> {
   final List<Widget> _views = [
     const FamilyDashboardView(),
     const FamilyScriptsView(),
-    const Center(child: Text('設定')),
+    const FamilySettingsView(),
   ];
 
   void _onItemTapped(int index) {
