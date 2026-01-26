@@ -1,6 +1,7 @@
 import os
 import shutil
 import time
+import requests
 import urllib3
 import datetime
 from openai import OpenAI
@@ -11,129 +12,143 @@ from gradio_client import Client, handle_file
 # ==========================================
 
 # ⚠️ 請填入您的 NVIDIA API Key
-NVIDIA_API_KEY = "nvapi-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" 
+NVIDIA_API_KEY = "-----" 
 
-# TTS 服務網址
+# TTS 服務網址與備用檔案
 TTS_APP_URL = "https://tts.ivoice.tw:5003/"
+FALLBACK_AUDIO_URL = "https://tts.ivoice.tw:5003/gradio_api/file=/home/tianyi/tts_taigi/gradio_cache/169345990328661d3035ba3c7e69d5ffb04bb34947acf44c22416982989c8bdc/文化相放伴_ep080_085_測試集.wav"
+FALLBACK_TEXT = "ai3 tsu3- i3 an1- tsuan5 --ooh4 , a1- kong1 tshue1 tian7- hong1 , lin2 u7 oh8 --khi2- lai5 ah8 bo5 ?"
+LOCAL_REF_AUDIO = "reference_audio.wav"
 
-# 分隔符號 (用來切分 華語顯示 與 台語拼音)
+# 分隔符號
 SEPARATOR = "###TL###"
 
-# 全域變數：儲存從伺服器動態取得的參數
+# 全域變數
 GLOBAL_CLIENT = None
 GLOBAL_REF_AUDIO = None
 GLOBAL_REF_TEXT = None
 
-# 忽略 SSL 警告 (必要，因為該伺服器憑證為自簽)
+# 忽略 SSL 警告
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # ==========================================
-# 2. TTS 模型初始化 (依照您的要求修改)
+# 2. 系統初始化 (雙重保險機制)
 # ==========================================
 
+def download_fallback_file():
+    """ 強制下載官方音檔到本地 """
+    if os.path.exists(LOCAL_REF_AUDIO):
+        return True
+    print("📥 正在下載備用參考音檔...")
+    try:
+        response = requests.get(FALLBACK_AUDIO_URL, verify=False, timeout=30)
+        with open(LOCAL_REF_AUDIO, 'wb') as f:
+            f.write(response.content)
+        return True
+    except Exception as e:
+        print(f"❌ 下載失敗: {e}")
+        return False
+
 def init_tts_system():
-    """
-    連線到 Gradio Server，並執行 /change_model 
-    以取得正確的參考音檔路徑與參考文本。
-    """
     global GLOBAL_CLIENT, GLOBAL_REF_AUDIO, GLOBAL_REF_TEXT
     
-    print("⚙️ 正在初始化 TTS 系統 (執行 /change_model)...")
+    # 1. 先把備用檔案準備好 (保命符)
+    download_fallback_file()
     
+    print("⚙️ 正在連線 TTS 系統...")
     try:
-        # 1. 建立連線 (ssl_verify=False 避開憑證錯誤)
         GLOBAL_CLIENT = Client(TTS_APP_URL, ssl_verify=False)
         
-        # 2. 切換模型 (這是您指定要用的程式碼)
-        result = GLOBAL_CLIENT.predict(
-            model_path="pretrained_For_Selection/台語模型",
-            api_name="/change_model"
-        )
-        
-        # print("DEBUG Result:", result) # 除錯用
-        
-        # 3. 解析回傳資料
-        # 根據 API 定義：
-        # result[2] = prompt_wav (參考音訊)
-        # result[3] = prompt_text (參考文本)
-        
-        raw_audio = result[2]
-        
-        # 處理 Gradio 新舊版本回傳格式差異 (字串 vs 字典)
-        if isinstance(raw_audio, dict):
-            GLOBAL_REF_AUDIO = raw_audio.get('path') or raw_audio.get('url')
-        else:
-            GLOBAL_REF_AUDIO = raw_audio
+        # 2. 嘗試動態切換模型
+        try:
+            result = GLOBAL_CLIENT.predict(
+                model_path="pretrained_For_Selection/台語模型",
+                api_name="/change_model"
+            )
+            # 嘗試抓取伺服器回傳的音檔
+            raw_audio = result[2]
+            if isinstance(raw_audio, dict):
+                server_audio = raw_audio.get('path') or raw_audio.get('url')
+            else:
+                server_audio = raw_audio
             
-        GLOBAL_REF_TEXT = result[3]
+            # 3. 判斷：如果伺服器給的檔案有效，就用伺服器的；否則用本地備份
+            if server_audio:
+                GLOBAL_REF_AUDIO = server_audio
+                print("✅ 使用伺服器提供的參考音檔")
+            else:
+                raise ValueError("伺服器回傳空值")
+                
+            GLOBAL_REF_TEXT = result[3]
 
-        print("✅ TTS 模型設定完成！")
-        print(f"   - 參考音檔: {os.path.basename(GLOBAL_REF_AUDIO) if GLOBAL_REF_AUDIO else 'None'}")
+        except Exception as e:
+            print(f"⚠️ 動態取得參考音檔失敗 ({e})，切換至本地備用方案...")
+            # === 備用方案啟動 ===
+            GLOBAL_REF_AUDIO = LOCAL_REF_AUDIO
+            GLOBAL_REF_TEXT = FALLBACK_TEXT
+            print(f"✅ 已切換使用本地音檔: {LOCAL_REF_AUDIO}")
+
         return True
 
     except Exception as e:
-        print(f"❌ TTS 初始化失敗: {e}")
+        print(f"❌ TTS 系統連線徹底失敗: {e}")
         return False
 
 # ==========================================
-# 3. 語音合成 (只接收拼音)
+# 3. 語音合成
 # ==========================================
 
 def speak_taigi_pinyin(romanized_text):
-    """
-    接收羅馬拼音 -> 傳給 TTS -> 播放
-    """
-    # 簡單防呆與清洗
-    if not romanized_text or not romanized_text.strip():
-        return
-    
-    # 移除可能存在的換行符號，避免 API 誤判
+    if not romanized_text or not romanized_text.strip(): return
     romanized_text = romanized_text.replace("\n", " ").strip()
 
-    if not GLOBAL_CLIENT or not GLOBAL_REF_AUDIO:
-        print("⚠️ TTS 未就緒，略過發音。")
+    # 再次檢查音檔是否存在
+    final_ref_audio = GLOBAL_REF_AUDIO
+    # 如果是用本地檔案，要確保路徑正確傳入
+    if final_ref_audio == LOCAL_REF_AUDIO:
+        if not os.path.exists(LOCAL_REF_AUDIO):
+            print("❌ 找不到本地參考音檔，無法發音")
+            return
+    
+    if not GLOBAL_CLIENT:
+        print("⚠️ TTS Client 未連線")
         return
 
-    # print(f"[DEBUG] 傳送拼音給 TTS: {romanized_text}")
-
     try:
-        # 產生唯一檔名，避免截斷問題
         timestamp = datetime.datetime.now().strftime("%H%M%S%f")
         final_filename = f"response_{timestamp}.wav"
 
+        # print(f"[DEBUG] 發音內容: {romanized_text}")
+        
         result_path = GLOBAL_CLIENT.predict(
-            tts_text=romanized_text,  # 這裡傳入全拼音
+            tts_text=romanized_text,
             mode_checkbox_group="3s極速覆刻",
-            prompt_text=GLOBAL_REF_TEXT,      # 使用剛剛動態取得的參考文本
-            prompt_wav_upload=handle_file(GLOBAL_REF_AUDIO), # 使用剛剛動態取得的參考音檔
+            prompt_text=GLOBAL_REF_TEXT,
+            # 這裡 handle_file 會自動處理網址或本地路徑
+            prompt_wav_upload=handle_file(final_ref_audio), 
             prompt_wav_record=None,
             instruct_text="Speak very slowly",
             seed=0,
             speed=1.0,
-            enable_translation=False, # 🔥 關鍵：設為 False，告訴模型「我給你的就是拼音，不要翻譯」
+            enable_translation=False, # 關閉翻譯，唸拼音
             api_name="/generate"
         )
 
-        # 解析回傳路徑
         if isinstance(result_path, dict):
             result_path = result_path.get('path') or result_path.get('url')
 
         if result_path and os.path.exists(result_path):
             shutil.copy(result_path, final_filename)
-            
-            # 播放
             os.startfile(final_filename)
-            
-            # 稍微暫停一下防止連續音檔打架 (可選)
             time.sleep(0.2)
         else:
-            print("TTS 合成無回傳檔案")
+            print("❌ TTS 合成無檔案")
 
     except Exception as e:
         print(f"❌ 發音錯誤: {e}")
 
 # ==========================================
-# 4. 主程式 (LLM 控制中心)
+# 4. 主程式
 # ==========================================
 
 def main():
@@ -142,49 +157,45 @@ def main():
         api_key = NVIDIA_API_KEY
     )
 
-    # 🔥 System Prompt 修改：要求「華語顯示」但給「台語拼音」
     system_prompt = f"""
     你是一個精通「臺灣閩南語（台語）」的 AI 助理。
     
-    【輸出規則】
-    1. 對使用者的顯示（前半段）：請完全使用「繁體華語（台灣慣用語）」回答，不要出現台語漢字或拼音。
-    2. 分隔符號：回答結束後，插入 "{SEPARATOR}"。
-    3. 給語音系統的指令（後半段）：請將前半段的內容翻譯成「臺羅拼音 (Tâi-lô)」。
-       - 聲調請用數字標示 (1-8)。
-       - 句子之間請用標點符號隔開。
-       - 不要包含任何解釋性文字。
-
-    範例互動：
-    使用者：你好嗎？
-    AI 回答：我很好，謝謝你的關心。{SEPARATOR}Gua2 tsin1 ho2, to-sia7 li2 e5 kuan-sim.
+    【規則】
+    1. 前半段：請用「繁體華語」回答，不要出現拼音。
+    2. 分隔符：回答結束後，必須換行並加上 "{SEPARATOR}"，再換行。
+    3. 後半段：將前半段翻譯成「臺羅拼音 (Tâi-lô)」。
+       - 只要給拼音就好，不要加任何解釋文字。
+       - 聲調用數字 (1-8)。
+    
+    範例：
+    你好，很高興認識你。
+    {SEPARATOR}
+    Li2 ho2, tsin1 huan-hi2 jin7-bat4 li2.
     """
 
     conversation_history = [{"role": "system", "content": system_prompt}]
 
-    print("=== 台語 AI 聊天室 (華語文字 / 台語發音) ===")
+    print("=== 台語 AI 聊天室 (Hybrid Final) ===")
     
-    # 1. 先初始化 TTS
     if init_tts_system():
-        print("✅ 系統準備就緒！\n")
+        print("✅ 語音系統就緒！\n")
     else:
-        print("⚠️ TTS 系統連線失敗，將僅有文字回應。\n")
+        print("⚠️ 語音系統故障。\n")
 
     while True:
         try:
             user_input = input("\n你：")
             if user_input.lower() in ["exit", "quit", "離開"]:
-                print("AI：謝謝使用，再見！")
-                speak_taigi_pinyin("To-sia7 su2-iong7, tsai3-hue7!")
+                speak_taigi_pinyin("To-sia7, tsai3-hue7!")
                 time.sleep(3)
                 break
             
             conversation_history.append({"role": "user", "content": user_input})
 
-            # 呼叫 LLM
             completion = client.chat.completions.create(
                 model="yentinglin/llama-3-taiwan-70b-instruct",
                 messages=conversation_history,
-                temperature=0.4,
+                temperature=0.3, # 溫度調低，格式較穩
                 top_p=1,
                 max_tokens=1024,
                 stream=True
@@ -194,7 +205,6 @@ def main():
             full_response = ""
             is_printing = True
 
-            # 串流顯示邏輯 (只印分隔符號前面的華語)
             for chunk in completion:
                 if chunk.choices[0].delta.content is not None:
                     content = chunk.choices[0].delta.content
@@ -202,32 +212,27 @@ def main():
                     
                     if is_printing:
                         if SEPARATOR not in full_response:
-                            # 還沒出現分隔符，正常印出華語
                             print(content, end="", flush=True)
                         else:
-                            # 發現分隔符了！
-                            # 如果這個 content 裡剛好包含分隔符前半段，把它印完
                             if SEPARATOR in content:
                                 print(content.split(SEPARATOR)[0], end="", flush=True)
-                            # 停止印出，剩下的都是拼音
                             is_printing = False
 
-            print() # 換行
+            print()
 
-            # 存入對話紀錄 (建議存完整版，讓 AI 保持格式)
             conversation_history.append({"role": "assistant", "content": full_response})
             
-            # 處理語音 (取出分隔符號後面的拼音)
             if SEPARATOR in full_response:
+                # 使用 split，並確保有取到後半段
                 parts = full_response.split(SEPARATOR)
-                # 確保有後半段
                 if len(parts) > 1:
                     pinyin_part = parts[1].strip()
                     speak_taigi_pinyin(pinyin_part)
+                else:
+                    print("(AI 未產生完整拼音)")
             else:
-                # 萬一 AI 沒遵守格式，就不發音 (因為華語丟進去給台語拼音模型會亂念)
-                # print("(AI 未提供拼音，無法發音)")
-                pass
+                pass 
+                # print("(未偵測到分隔符號)")
         
         except KeyboardInterrupt:
             break
