@@ -7,7 +7,7 @@ import edge_tts
 from duckduckgo_search import DDGS
 
 # --- 設定區 ---
-NVIDIA_API_KEY = "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"  # ★★★ 請填回您的 NVIDIA API Key ★★★
+NVIDIA_API_KEY = "-"  # ★★★ 請填回您的 NVIDIA API Key ★★★
 TTS_VOICE = "zh-TW-HsiaoYuNeural" 
 
 # --- 初始化客戶端 ---
