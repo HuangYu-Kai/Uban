@@ -153,8 +153,33 @@ class _FamilyCareJournalViewState extends State<FamilyCareJournalView> {
                 },
               ),
             ),
-            leftTitles: const AxisTitles(
-              sideTitles: SideTitles(showTitles: false),
+            leftTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                interval: 1,
+                getTitlesWidget: (value, meta) {
+                  String emoji = '';
+                  switch (value.toInt()) {
+                    case 1:
+                      emoji = '😞';
+                      break;
+                    case 3:
+                      emoji = '😐';
+                      break;
+                    case 5:
+                      emoji = '😄';
+                      break;
+                    default:
+                      return const SizedBox();
+                  }
+                  return SideTitleWidget(
+                    meta: meta,
+                    space: 4,
+                    child: Text(emoji, style: const TextStyle(fontSize: 18)),
+                  );
+                },
+                reservedSize: 40,
+              ),
             ),
             topTitles: const AxisTitles(
               sideTitles: SideTitles(showTitles: false),
@@ -162,6 +187,30 @@ class _FamilyCareJournalViewState extends State<FamilyCareJournalView> {
             rightTitles: const AxisTitles(
               sideTitles: SideTitles(showTitles: false),
             ),
+          ),
+          minY: 0,
+          maxY: 6,
+          extraLinesData: ExtraLinesData(
+            horizontalLines: [
+              HorizontalLine(
+                y: 1,
+                color: Colors.grey.withValues(alpha: 0.1),
+                strokeWidth: 1,
+                dashArray: [5, 5],
+              ),
+              HorizontalLine(
+                y: 3,
+                color: Colors.grey.withValues(alpha: 0.1),
+                strokeWidth: 1,
+                dashArray: [5, 5],
+              ),
+              HorizontalLine(
+                y: 5,
+                color: Colors.grey.withValues(alpha: 0.1),
+                strokeWidth: 1,
+                dashArray: [5, 5],
+              ),
+            ],
           ),
           borderData: FlBorderData(show: false),
           lineBarsData: [
