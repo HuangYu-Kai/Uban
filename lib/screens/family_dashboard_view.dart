@@ -411,6 +411,7 @@ class FamilyDashboardView extends StatelessWidget {
           '「這張照片是在阿里山拍的啦，那...」',
           true,
           Colors.blue,
+          isFirst: true,
         ),
         _buildTimelineItem('13:00', '記憶遊戲', '完成程度：80%', false, Colors.orange),
         _buildTimelineItem(
@@ -420,6 +421,7 @@ class FamilyDashboardView extends StatelessWidget {
           true,
           Colors.green,
           isAudio: true,
+          isLast: true,
         ),
       ],
     );
@@ -432,90 +434,112 @@ class FamilyDashboardView extends StatelessWidget {
     bool showAction,
     Color color, {
     bool isAudio = false,
+    bool isFirst = false,
+    bool isLast = false,
   }) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 24),
+    return IntrinsicHeight(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Column(
-            children: [
-              CircleAvatar(
-                radius: 8,
-                backgroundColor: Colors.white,
-                child: CircleAvatar(radius: 6, backgroundColor: color),
-              ),
-              Container(width: 2, height: 80, color: Colors.grey[300]),
-            ],
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          SizedBox(
+            width: 32,
+            child: Stack(
+              alignment: Alignment.topCenter,
               children: [
-                Text(
-                  time,
-                  style: GoogleFonts.inter(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black54,
+                if (!isLast)
+                  Positioned(
+                    top: 20,
+                    bottom: 0,
+                    child: Container(width: 2, color: Colors.grey[300]!),
                   ),
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.05),
-                        blurRadius: 5,
-                      ),
-                    ],
+                if (!isFirst)
+                  Positioned(
+                    top: 0,
+                    bottom: 0,
+                    child: Container(width: 2, color: Colors.grey[300]!),
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: GoogleFonts.notoSansTc(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        content,
-                        style: GoogleFonts.notoSansTc(
-                          fontSize: 14,
-                          color: Colors.grey[700],
-                        ),
-                      ),
-                      if (showAction) ...[
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Icon(
-                              isAudio ? Icons.play_arrow : Icons.play_arrow,
-                              color: Colors.blue,
-                              size: 20,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              isAudio ? '點擊播放' : '點擊觀看',
-                              style: GoogleFonts.notoSansTc(
-                                color: Colors.blue,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ],
+                Positioned(
+                  top: 8,
+                  child: CircleAvatar(
+                    radius: 8,
+                    backgroundColor: const Color(0xFFFAF9F6),
+                    child: CircleAvatar(radius: 6, backgroundColor: color),
                   ),
                 ),
               ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    time,
+                    style: GoogleFonts.inter(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black54,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.05),
+                          blurRadius: 5,
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: GoogleFonts.notoSansTc(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          content,
+                          style: GoogleFonts.notoSansTc(
+                            fontSize: 14,
+                            color: Colors.grey[700],
+                          ),
+                        ),
+                        if (showAction) ...[
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Icon(
+                                isAudio ? Icons.play_arrow : Icons.play_arrow,
+                                color: Colors.blue,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                isAudio ? '點擊播放' : '點擊觀看',
+                                style: GoogleFonts.notoSansTc(
+                                  color: Colors.blue,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
