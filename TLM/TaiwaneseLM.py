@@ -2,12 +2,15 @@ import os
 import asyncio
 import pygame
 import datetime
+from collections import deque
 from openai import OpenAI
 import edge_tts
-from duckduckgo_search import DDGS
+# 這裡使用官方建議的標準引入方式
+from duckduckgo_search import DDGS 
 
 # --- 設定區 ---
-NVIDIA_API_KEY = "-"  # ★★★ 請填回您的 NVIDIA API Key ★★★
+# ★★★ 請確認您的 API Key ★★★
+NVIDIA_API_KEY = "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" 
 TTS_VOICE = "zh-TW-HsiaoYuNeural" 
 
 # --- 初始化客戶端 ---
@@ -16,26 +19,57 @@ client = OpenAI(
     api_key=NVIDIA_API_KEY
 )
 
+# 記憶佇列
+conversation_history = deque(maxlen=10)
+
 # --- 工具函式 ---
 def get_current_time_str():
     now = datetime.datetime.now()
     week_days = ["一", "二", "三", "四", "五", "六", "日"]
     weekday = week_days[now.weekday()]
-    return now.strftime(f"%Y年%m月%d日 星期{weekday} %p %I:%M")
+    return now.strftime(f"%Y年%m月%d日")
 
-def search_web(query):
-    print(f"   [系統] 執行聯網搜尋: {query}...")
+# ★★★ 修改後的搜尋函式 (使用 with DDGS() 模式) ★★★
+def search_web(user_query):
+    # 1. 關鍵字優化
+    search_term = user_query
+    # 針對菜價特別優化搜尋詞
+    if "菜" in user_query and ("價" in user_query or "便宜" in user_query):
+        search_term = f"{get_current_time_str()} 台灣 蔬菜批發行情"
+    elif "天氣" in user_query:
+        search_term = f"{user_query} 氣象"
+    
+    print(f"   [系統] 正在搜尋: {search_term}...")
+
     try:
-        results = DDGS().text(query, region="wt-wt", max_results=3) 
-        if results:
+        # 2. 使用 Context Manager (with 語法)
+        # 這能避免 socket 佔用問題，大幅減少連線錯誤
+        with DDGS() as ddgs:
+            # backend="html" 是最穩定的模式，模擬傳統網頁請求
+            results = ddgs.text(
+                keywords=search_term,
+                region="wt-wt", # 台灣地區
+                backend="html", # 關鍵：抗封鎖模式
+                max_results=5
+            )
+            
             context_str = ""
-            for i, res in enumerate(results):
-                context_str += f"{i+1}. {res['body']}\n"
-            print(f"   [系統] 搜尋成功，取得 {len(results)} 筆資料")
-            return context_str
+            if results:
+                count = 0
+                for res in results:
+                    count += 1
+                    # 抓取標題與內文
+                    context_str += f"[{count}] {res['title']}: {res['body']}\n"
+                
+                print(f"   [系統] 搜尋成功，取得 {count} 筆資料")
+                return context_str
+            else:
+                print("   [系統] 搜尋結果為空 (可能無相關資料)")
+                return ""
+            
     except Exception as e:
         print(f"   [搜尋失敗]: {e}")
-    return ""
+        return ""
 
 async def speak_response(text):
     output_file = "temp_response.mp3"
@@ -54,45 +88,48 @@ async def speak_response(text):
     except Exception as e:
         print(f"[播放錯誤]: {e}")
 
-# --- 【核心新功能】意圖判斷 (AI 路由) ---
+# --- 意圖判斷 ---
 def check_intent(user_input):
-    """
-    讓 AI 判斷使用者的意圖是 [閒聊] 還是 [查資料]
-    """
-    print("   [系統] 正在思考要不要上網...")
-    
+    print("   [系統] 思考意圖中...")
+    # 關鍵字快篩
+    keywords = ["天氣", "氣溫", "價格", "多少錢", "誰", "哪裡", "便宜", "新聞", "比分", "幾度"]
+    if any(k in user_input for k in keywords):
+        return "SEARCH"
+
+    # AI 複查
     prompt = f"""
-    你是一個意圖分類器。請分析使用者的輸入。
-    
-    規則：
-    1. 如果使用者問的是：天氣、新聞、即時資訊、特定知識、價格、地點、或是你不知道的事實。 -> 回答 "SEARCH"
-    2. 如果使用者是：打招呼、閒聊、問你的名字、問候身體、情感抒發、翻譯句子。 -> 回答 "CHAT"
-    
-    只回答 "SEARCH" 或 "CHAT"，不要有其他文字。
-    
+    判斷使用者意圖。
+    需聯網查詢(如天氣、價格、新聞、事實) -> 回答 "SEARCH"
+    閒聊或記憶 -> 回答 "CHAT"
     使用者輸入："{user_input}"
     """
-
     try:
         response = client.chat.completions.create(
             model="yentinglin/llama-3-taiwan-70b-instruct",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.1, # 溫度低一點，讓判斷更準確固定
-            max_tokens=10
+            temperature=0.1,
+            max_tokens=5
         )
-        intent = response.choices[0].message.content.strip()
-        # 清理一下可能的雜訊 (有些模型會回 "Answer: SEARCH")
+        intent = response.choices[0].message.content.strip().upper()
         if "SEARCH" in intent: return "SEARCH"
         return "CHAT"
     except:
-        return "CHAT" # 發生錯誤預設就當閒聊
+        return "CHAT"
 
 # --- 主程式 ---
 async def main():
-    print(f"=== 台語 AI 萬事通 (智慧路由版) ===")
+    print(f"=== 台語 AI 萬事通 (DDGS 最新版) ===")
     
-    # 這裡可以存放對話歷史，讓它有短期記憶
-    conversation_history = [] 
+    base_system_prompt = """
+    你是一個精通「臺灣閩南語（台語）」的 AI 助理。
+    
+    規則：
+    1. 優先使用「一般台灣中文」回答，避免使用流行用語。
+    2. 語氣要親切、像在跟長輩聊天。
+    3. 記住使用者的名字。
+    4. 若有【網路搜尋資料】，請根據資料中的數字回答(例如菜價、溫度)；若無，則老實說不知道。
+    5. 回答盡量簡短。
+    """
 
     while True:
         user_input = await asyncio.to_thread(input, "\n你：")
@@ -102,41 +139,23 @@ async def main():
             await speak_response("多謝你的使用，再會！")
             break
         
-        current_time = get_current_time_str()
-        web_context = ""
-        
-        # 1. 第一階段：AI 判斷意圖
         intent = await asyncio.to_thread(check_intent, user_input)
         
+        web_context = ""
+        
         if intent == "SEARCH":
-            print("   [判定] 需要上網查詢資料 (SEARCH)")
-            # 如果需要搜尋，去網路上抓資料
-            # 這裡我們直接把使用者的整句話拿去搜尋，通常效果就不錯
+            print("   [判定] 需要聯網 (SEARCH)")
             search_result = await asyncio.to_thread(search_web, user_input)
             if search_result:
-                web_context = f"\n【網路即時資料】:\n{search_result}\n"
+                web_context = f"\n【網路搜尋資料】:\n{search_result}\n"
         else:
-            print("   [判定] 純閒聊或記憶回答 (CHAT)")
+            print("   [判定] 使用記憶/閒聊 (CHAT)")
 
-        # 2. 第二階段：正式回答
-        system_prompt = f"""
-        現在時間是：{current_time}。
-        你是一個精通「臺灣閩南語（台語）」的 AI 助理。
-        請根據使用者的問題回答。
-        
-        規則：
-        1. 優先使用「全漢字」或「漢羅混寫」回答。
-        2. 語氣要親切、像在跟長輩聊天。
-        3. 如果有提供【網路即時資料】，請根據資料回答；如果沒有，請依照你的知識庫回答。
-        4. 回答要簡短，適合語音播報。
-        """
-
-        # 組合當次對話 (不使用累積歷史，避免 System Prompt 被擠掉，或 RAG 資料混亂)
-        # 若需要記憶，可以將 conversation_history 加進來，但要小心 token 上限
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"{web_context}使用者問題：{user_input}"}
-        ]
+        # 組合 Prompt
+        messages = [{"role": "system", "content": base_system_prompt}]
+        messages.extend(conversation_history)
+        final_user_content = f"{web_context}使用者說：{user_input}"
+        messages.append({"role": "user", "content": final_user_content})
 
         try:
             completion = client.chat.completions.create(
@@ -159,6 +178,8 @@ async def main():
             print() 
 
             if full_response.strip():
+                conversation_history.append({"role": "user", "content": user_input})
+                conversation_history.append({"role": "assistant", "content": full_response})
                 await speak_response(full_response)
 
         except Exception as e:
