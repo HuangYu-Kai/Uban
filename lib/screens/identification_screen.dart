@@ -11,7 +11,7 @@ class IdentificationScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFFFFBF0), // 背景色 (從 Mockup 取樣)
+      backgroundColor: const Color(0xFFFFFBF0), // 背景色 -> 溫馨米黃
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24.0),
@@ -44,7 +44,7 @@ class IdentificationScreen extends StatelessWidget {
                     TextSpan(
                       text: '想聊什麼',
                       style: TextStyle(
-                        color: const Color(0xFFFF9F69), // 橘色強調
+                        color: Color(0xFFFF7043), // 橘色強調
                       ),
                     ),
                     const TextSpan(text: '？'),
@@ -76,7 +76,7 @@ class IdentificationScreen extends StatelessWidget {
                         maxHeight: 360,
                       ),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFFFB673), // 按鈕橘色背景
+                        color: const Color(0xFFFF7043), // 按鈕橘色背景
                         borderRadius: BorderRadius.circular(32),
                         boxShadow: [
                           BoxShadow(

@@ -16,6 +16,9 @@
     *   `font_awesome_flutter`: 用於社群登入與 UI 圖示。
     *   `qr_flutter`: 用於長輩配對畫面產生 QR Code。
     *   `flutter_tts`: 用於長輩配對畫面的語音播報。
+    *   `flutter_animate`: 用於 UI 動效 (呼吸燈、進場動畫)。
+    *   `lunar`: 用於農曆日期轉換。
+    *   `intl`: 用於日期格式化 (zh_TW)。
 
 ## 3. 已完成功能 (Completed Features)
 
@@ -37,19 +40,38 @@
         *   顯示 4 位數配對碼 (目前 Hardcode 為 "0820")。
         *   顯示 QR Code。
         *   **語音播報**: 進入畫面時自動播放「歡迎加入，請將此畫面秀給家人看」。
-    *   進入方式: 在身分選擇畫面點擊「我是長輩」後進入。
+        *   **隱藏捷徑**: 長按 QR Code 可模擬綁定成功，跳轉至首頁。
+
+### D. 長輩首頁 (Elder Home Screen) - V2 (Polished)
+*   **首頁 (Elder Home Screen)**:
+    *   位置: `lib/screens/elder_home_screen.dart`
+    *   風格: **Bento Grid** 佈局，強調**擬物化**與**大字體**。
+    *   功能:
+        *   **超大日期顯示**: 80px 國曆日期 + 32px 星期。
+        *   **農曆日期**: 顯示農曆 (如：乙巳年 十二月 廿一)。
+        *   **老友廣播站**: 復古收音機造型，具備呼吸動畫與 "ON AIR" 燈號 (Placeholder)。
+        *   **親友通訊錄**: 木質相框造型 (Placeholder)。
+        *   **AI 陪聊**: 機器人造型 (Placeholder)。
+        *   **主動問候**: 進入時語音播報「爺爺早安...」。
 
 ## 4. 關鍵檔案結構 (Key File Structure)
 ```
 lib/
-├── main.dart                  # 程式入口，設定 Theme 與 Home (IdentificationScreen)
+├── main.dart                  # 程式入口，設定 Theme 與 Home
 └── screens/
     ├── identification_screen.dart  # 身分選擇頁
     ├── login_screen.dart           # 登入頁
-    └── elder_pairing_screen.dart   # 長輩配對頁
+    ├── elder_pairing_screen.dart   # 長輩配對頁
+    ├── elder_home_screen.dart      # 長輩首頁 (主畫面)
+    ├── contacts_screen.dart        # 親友通訊錄 (Placeholder)
+    ├── ai_chat_screen.dart         # AI 陪聊 (Placeholder)
+    └── radio_station_screen.dart   # 老友廣播站 (Placeholder)
 ```
 
 ## 5. 待辦事項/未來規劃 (Next Steps)
 *   串接後端 API 進行實際登入與配對碼驗證。
-*   實作長輩聊天介面 (Chat Interface)。
+*   **實作功能內頁**:
+    *   老友廣播站: 串接音訊串流或模擬電台 UI。
+    *   親友通訊錄: 串接聯絡人資料與撥打功能。
+    *   AI 陪聊: 串接 LLM API。
 *   實作家屬管理介面 (Dashboard)。

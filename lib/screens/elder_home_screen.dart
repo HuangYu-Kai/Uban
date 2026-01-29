@@ -7,9 +7,11 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:lunar/lunar.dart';
+
 import 'contacts_screen.dart';
 import 'ai_chat_screen.dart';
 import 'radio_station_screen.dart';
+import 'weather_screen.dart';
 
 // 長輩首頁 V2 (Polish & Engagement)
 class ElderHomeScreen extends StatefulWidget {
@@ -52,27 +54,27 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
     final Lunar lunar = Lunar.fromDate(now);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFFFFBF0),
+      backgroundColor: const Color(0xFFFFF8E1), // 溫馨米黃 (Warm Amber)
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(24.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 1. 頂部日期 (Header) - 增加漸層背景質感
+              // 1. 頂部日期 (Header)
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
-                    colors: [Color(0xFFFFF3E0), Color(0xFFFFE0B2)],
+                    colors: [Color(0xFFFFA726), Color(0xFFFF7043)], // 暖橘漸層
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
                   borderRadius: BorderRadius.circular(24),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.orange.withOpacity(0.1),
+                      color: Colors.orange.withOpacity(0.3),
                       blurRadius: 15,
                       offset: const Offset(0, 8),
                     ),
@@ -92,10 +94,10 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
                             style: GoogleFonts.notoSansTc(
                               fontSize: 32,
                               fontWeight: FontWeight.w500,
-                              color: Colors.grey[700],
+                              color: Colors.white.withOpacity(0.9), // 白字
                             ),
                           ),
-                          // 使用 FittedBox 避免字太大的時候爆版 (黃黑條紋)
+                          // 使用 FittedBox 避免字太大的時候爆版
                           FittedBox(
                             fit: BoxFit.scaleDown,
                             alignment: Alignment.centerLeft,
@@ -104,7 +106,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
                               style: GoogleFonts.notoSansTc(
                                 fontSize: 80,
                                 fontWeight: FontWeight.bold,
-                                color: const Color(0xFF333333),
+                                color: Colors.white, // 白字
                                 height: 1.0,
                               ),
                             ),
@@ -113,28 +115,66 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
                       ),
                     ),
                     const SizedBox(width: 16), // 間距
-                    // Right Side: Weather (Animated)
-                    Column(
-                      children: [
-                        const FaIcon(
-                              FontAwesomeIcons.sun,
-                              color: Colors.orange,
-                              size: 48,
-                            )
-                            .animate(
-                              onPlay: (controller) => controller.repeat(),
-                            )
-                            .rotate(duration: 4000.ms),
-                        const SizedBox(height: 8),
-                        Text(
-                          '24°C',
-                          style: GoogleFonts.inter(
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.grey[700],
+                    // 天氣 (Button Style)
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const WeatherScreen(),
+                          ),
+                        );
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.9),
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.1),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                          border: Border.all(
+                            color: Colors.orange.withOpacity(0.3), // 橘色邊框
+                            width: 2,
                           ),
                         ),
-                      ],
+                        child: Column(
+                          children: [
+                            const FaIcon(
+                              FontAwesomeIcons.cloudSun,
+                              color: Colors.deepOrange, // 深橘色圖示
+                              size: 48,
+                            ),
+                            const SizedBox(height: 8),
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                '24°C',
+                                style: GoogleFonts.inter(
+                                  fontSize: 36,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.grey[800],
+                                ),
+                              ),
+                            ),
+                            Text(
+                              '看氣象',
+                              style: GoogleFonts.notoSansTc(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.deepOrange,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -142,14 +182,14 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
 
               const SizedBox(height: 32),
 
-              // 2. 農曆日期 (取代原本的週曆)
+              // 2. 農曆日期
               Center(
                 child: Text(
                   '${lunar.getYearInGanZhi()}年 ${lunar.getMonthInChinese()}月 ${lunar.getDayInChinese()}',
                   style: GoogleFonts.notoSansTc(
                     fontSize: 36, // 大字體
                     fontWeight: FontWeight.bold,
-                    color: const Color(0xFF8D6E63),
+                    color: const Color(0xFF5D4037), // 深褐色
                     letterSpacing: 2.0,
                   ),
                 ),
@@ -161,10 +201,10 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
               Expanded(
                 child: Column(
                   children: [
-                    // A. 老友廣播站 (Retro Radio Style)
+                    // A. 老友廣播站 (Coral Style)
                     Expanded(flex: 3, child: _buildRadioCard(context)),
                     const SizedBox(height: 20),
-                    // B. 通訊錄 & AI (Photo Frame & Character)
+                    // B. 通訊錄 & AI
                     Expanded(
                       flex: 2,
                       child: Row(
@@ -186,7 +226,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
     );
   }
 
-  // 📻 復古收音機卡片
+  // 📻 復古收音機卡片 (Coral Theme)
   Widget _buildRadioCard(BuildContext context) {
     return GestureDetector(
       onTap: () => Navigator.push(
@@ -196,17 +236,17 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
       child:
           Container(
                 decoration: BoxDecoration(
-                  color: const Color(0xFFD87836), // 復古橘
+                  color: const Color(0xFFFF7043), // 復古橘
                   borderRadius: BorderRadius.circular(36),
                   // 擬物化紋理 (Gradient)
                   gradient: const LinearGradient(
-                    colors: [Color(0xFFE88A4A), Color(0xFFC46221)],
+                    colors: [Color(0xFFFF8A65), Color(0xFFFF5722)], // 橘紅漸層
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFFD87836).withOpacity(0.4),
+                      color: const Color(0xFFFF7043).withOpacity(0.4),
                       blurRadius: 20,
                       offset: const Offset(0, 10),
                     ),
@@ -220,7 +260,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
                       top: -20,
                       child: Icon(
                         Icons.speaker,
-                        size: 180,
+                        size: 200, // 加大
                         color: Colors.black.withOpacity(0.05),
                       ),
                     ),
@@ -233,8 +273,8 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
                           // ON AIR 燈號
                           Container(
                                 padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 6,
+                                  horizontal: 16,
+                                  vertical: 8,
                                 ),
                                 decoration: BoxDecoration(
                                   color: Colors.redAccent,
@@ -251,7 +291,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
                                   style: GoogleFonts.inter(
                                     color: Colors.white,
                                     fontWeight: FontWeight.bold,
-                                    fontSize: 12,
+                                    fontSize: 16, // 加大
                                   ),
                                 ),
                               )
@@ -265,28 +305,36 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
                               const FaIcon(
                                 FontAwesomeIcons.radio,
                                 color: Colors.white,
-                                size: 40,
+                                size: 60, // 加大
                               ),
                               const SizedBox(width: 16),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    '老友廣播站',
-                                    style: GoogleFonts.notoSansTc(
-                                      fontSize: 28,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      child: Text(
+                                        '老友廣播站',
+                                        style: GoogleFonts.notoSansTc(
+                                          fontSize: 48, // 加大
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                        ),
+                                      ),
                                     ),
-                                  ),
-                                  Text(
-                                    '點擊收聽大家的故事',
-                                    style: GoogleFonts.notoSansTc(
-                                      fontSize: 16,
-                                      color: Colors.white.withOpacity(0.9),
+                                    FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      child: Text(
+                                        '點擊收聽大家的故事',
+                                        style: GoogleFonts.notoSansTc(
+                                          fontSize: 32, // 加大
+                                          color: Colors.white.withOpacity(0.9),
+                                        ),
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
                             ],
                           ),
@@ -301,7 +349,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
     );
   }
 
-  // 🖼️ 數位相框 (通訊錄)
+  // 🖼️ 數位相框 (通訊錄) - Coral Theme
   Widget _buildContactsCard(BuildContext context) {
     return GestureDetector(
       onTap: () => Navigator.push(
@@ -310,11 +358,15 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
       ),
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: const Color(0xFFFFD54F), // 溫暖黃
           borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: const Color(0xFF8D6E63), width: 8), // 木質邊框感
+          gradient: const LinearGradient(
+            colors: [Color(0xFFFFECB3), Color(0xFFFFD54F)], // 淡黃 -> 暖黃
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
           boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10),
+            BoxShadow(color: Colors.amber.withOpacity(0.3), blurRadius: 10),
           ],
         ),
         child: ClipRRect(
@@ -322,8 +374,6 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              // 模擬照片背景 (淺灰)
-              Container(color: Colors.grey[100]),
               // 示意圖示
               Center(
                 child: Column(
@@ -331,16 +381,19 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
                   children: [
                     const FaIcon(
                       FontAwesomeIcons.solidAddressBook,
-                      size: 40,
-                      color: Color(0xFF8D6E63),
+                      size: 60, // 加大
+                      color: Color(0xFF5D4037), // 深棕色
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '找家人',
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: const Color(0xFF5D4037),
+                    const SizedBox(height: 16),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        '找家人',
+                        style: GoogleFonts.notoSansTc(
+                          fontSize: 36, // 加大
+                          fontWeight: FontWeight.bold,
+                          color: const Color(0xFF5D4037), // 深棕色
+                        ),
                       ),
                     ),
                   ],
@@ -353,7 +406,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
     );
   }
 
-  // 🤖 AI 貼心陪聊 (Character)
+  // 🤖 AI 貼心陪聊 (Character) - Coral Theme
   Widget _buildAICard(BuildContext context) {
     return GestureDetector(
       onTap: () => Navigator.push(
@@ -362,10 +415,10 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
       ),
       child: Container(
         decoration: BoxDecoration(
-          color: const Color(0xFFFFCC80),
+          color: const Color(0xFFFFCC80), // 淺橘
           borderRadius: BorderRadius.circular(28),
           gradient: const LinearGradient(
-            colors: [Color(0xFFFFCC80), Color(0xFFFFB74D)],
+            colors: [Color(0xFFFFCC80), Color(0xFFFFB74D)], // 淺橘漸層
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -382,18 +435,21 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
                   // 眨眼動畫
                   const FaIcon(
                         FontAwesomeIcons.robot,
-                        size: 50,
+                        size: 60, // 加大
                         color: Colors.white,
                       )
                       .animate(onPlay: (c) => c.repeat())
                       .shake(delay: 2000.ms, duration: 500.ms),
-                  const SizedBox(height: 8),
-                  Text(
-                    '貼心陪聊',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                  const SizedBox(height: 16),
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      '貼心陪聊',
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: 36, // 加大
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
                 ],
