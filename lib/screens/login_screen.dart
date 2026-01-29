@@ -16,7 +16,7 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFFFFBF0), // 背景色
+      backgroundColor: const Color(0xFFFFFBF0), // 溫馨米黃
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -107,7 +107,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     // TODO: 登入邏輯
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFFFAB60), // 按鈕顏色
+                    backgroundColor: const Color(0xFFFF7043), // 橘色
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),
