@@ -42,6 +42,8 @@ dependencies:
   flutter_animate: ^4.5.2
   lunar: ^1.7.8
   url_launcher: ^6.3.2
+  flutter_webrtc: ^0.10.8
+  socket_io_client: ^2.0.0
   fl_chart: ^1.1.1
 
 dev_dependencies:
