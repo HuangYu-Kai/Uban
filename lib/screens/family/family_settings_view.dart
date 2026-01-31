@@ -2,8 +2,78 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'family_subscription_screen.dart';
 
-class FamilySettingsView extends StatelessWidget {
+import '../identification_screen.dart';
+
+class FamilySettingsView extends StatefulWidget {
   const FamilySettingsView({super.key});
+
+  @override
+  State<FamilySettingsView> createState() => _FamilySettingsViewState();
+}
+
+class _FamilySettingsViewState extends State<FamilySettingsView> {
+  String _userName = '林子強 (家政管理員)';
+  bool _isEmergencyOn = true;
+  bool _isDailySummaryOn = true;
+  bool _isAiInsightOn = false;
+
+  void _handleLogout() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('登出'),
+        content: const Text('確定要登出並回到身分選擇頁面嗎？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context); // Close dialog
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (_) => const IdentificationScreen()),
+                (route) => false,
+              );
+            },
+            child: const Text('登出', style: TextStyle(color: Colors.redAccent)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _handleEditProfile() {
+    final TextEditingController controller = TextEditingController(
+      text: _userName,
+    );
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('編輯個人資料'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(labelText: '顯示名稱'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () {
+              setState(() {
+                _userName = controller.text;
+              });
+              Navigator.pop(context);
+            },
+            child: const Text('儲存'),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -59,10 +129,21 @@ class FamilySettingsView extends StatelessWidget {
               _buildSwitchItem(
                 Icons.notifications_active_outlined,
                 '緊急狀況警報',
-                true,
+                _isEmergencyOn,
+                (val) => setState(() => _isEmergencyOn = val),
               ),
-              _buildSwitchItem(Icons.summarize_outlined, '每日摘要通知', true),
-              _buildSwitchItem(Icons.auto_awesome, 'AI 洞察提醒', false),
+              _buildSwitchItem(
+                Icons.summarize_outlined,
+                '每日摘要通知',
+                _isDailySummaryOn,
+                (val) => setState(() => _isDailySummaryOn = val),
+              ),
+              _buildSwitchItem(
+                Icons.auto_awesome,
+                'AI 洞察提醒',
+                _isAiInsightOn,
+                (val) => setState(() => _isAiInsightOn = val),
+              ),
             ]),
             const SizedBox(height: 24),
             _buildSettingsGroup('系統與介面', [
@@ -81,7 +162,7 @@ class FamilySettingsView extends StatelessWidget {
             ]),
             const SizedBox(height: 32),
             TextButton(
-              onPressed: () {},
+              onPressed: _handleLogout,
               child: Text(
                 '登出帳號',
                 style: GoogleFonts.notoSansTc(
@@ -107,7 +188,7 @@ class FamilySettingsView extends StatelessWidget {
             radius: 36,
             backgroundColor: Colors.orange[100],
             child: Text(
-              '家',
+              _userName.isNotEmpty ? _userName[0] : '家',
               style: GoogleFonts.notoSansTc(
                 fontSize: 24,
                 color: Colors.orange[800],
@@ -120,7 +201,7 @@ class FamilySettingsView extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '林子強 (家政管理員)',
+                  _userName,
                   style: GoogleFonts.notoSansTc(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
@@ -133,7 +214,10 @@ class FamilySettingsView extends StatelessWidget {
               ],
             ),
           ),
-          IconButton(onPressed: () {}, icon: const Icon(Icons.edit_outlined)),
+          IconButton(
+            onPressed: _handleEditProfile,
+            icon: const Icon(Icons.edit_outlined),
+          ),
         ],
       ),
     );
@@ -177,13 +261,18 @@ class FamilySettingsView extends StatelessWidget {
     );
   }
 
-  Widget _buildSwitchItem(IconData icon, String title, bool value) {
+  Widget _buildSwitchItem(
+    IconData icon,
+    String title,
+    bool value,
+    ValueChanged<bool> onChanged,
+  ) {
     return ListTile(
       leading: Icon(icon, color: Colors.black87),
       title: Text(title, style: GoogleFonts.notoSansTc()),
       trailing: Switch(
         value: value,
-        onChanged: (val) {},
+        onChanged: onChanged,
         activeTrackColor: const Color(0xFFFF9800).withValues(alpha: 0.5),
         activeThumbColor: const Color(0xFFFF9800),
       ),

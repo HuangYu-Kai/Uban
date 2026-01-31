@@ -30,21 +30,25 @@ class FamilyDashboardView extends StatelessWidget {
                 children: [
                   Expanded(
                     child: _buildQuickAction(
+                      context,
                       '撥打視訊',
                       'Call Mom',
                       Icons.videocam_rounded,
                       [const Color(0xFFE3F2FD), const Color(0xFFBBDEFB)],
                       const Color(0xFF1976D2),
+                      () => _showVideoCallSimulation(context),
                     ),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
                     child: _buildQuickAction(
+                      context,
                       '聽聽媽媽說什麼',
                       'Listen',
                       Icons.mic_none_rounded,
                       [const Color(0xFFF1F8E9), const Color(0xFFDCEDC8)],
                       const Color(0xFF388E3C),
+                      () => _showVoiceListenSimulation(context),
                     ),
                   ),
                 ],
@@ -316,88 +320,179 @@ class FamilyDashboardView extends StatelessWidget {
     );
   }
 
+  void _showVideoCallSimulation(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 16),
+            const CircleAvatar(
+              radius: 40,
+              backgroundImage: NetworkImage('https://i.pravatar.cc/150?u=mom'),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              '撥號給 媽媽...',
+              style: GoogleFonts.notoSansTc(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text('等待接聽中...'),
+            const SizedBox(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                FloatingActionButton(
+                  onPressed: () => Navigator.pop(context),
+                  backgroundColor: Colors.redAccent,
+                  child: const Icon(Icons.call_end),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showVoiceListenSimulation(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Text(
+          '媽媽說了什麼？',
+          style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.play_arrow, color: Colors.blue),
+                  SizedBox(width: 12),
+                  Expanded(child: Text('一段錄音 - 0:15')),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              '「小明啊，今天外面的太陽好大，我有去樓下公園走走喔...」',
+              style: GoogleFonts.notoSansTc(
+                color: Colors.grey[700],
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('關閉'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildQuickAction(
+    BuildContext context,
     String label,
     String subLabel,
     IconData icon,
     List<Color> gradientColors,
     Color accentColor,
+    VoidCallback onTap,
   ) {
-    return Container(
-      height: 120, // Reduced from 160 to fit constraints
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: gradientColors,
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 120, // Reduced from 160 to fit constraints
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: gradientColors,
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: accentColor.withValues(alpha: 0.2),
+              blurRadius: 15,
+              offset: const Offset(0, 8),
+            ),
+          ],
         ),
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: accentColor.withValues(alpha: 0.2),
-            blurRadius: 15,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Stack(
-        children: [
-          Positioned(
-            right: -5,
-            bottom: -5,
-            child: Icon(
-              icon,
-              size: 60, // Reduced size
-              color: accentColor.withValues(alpha: 0.1),
+        child: Stack(
+          children: [
+            Positioned(
+              right: -5,
+              bottom: -5,
+              child: Icon(
+                icon,
+                size: 60, // Reduced size
+                color: accentColor.withValues(alpha: 0.1),
+              ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(16.0), // Reduced padding
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment
-                  .spaceBetween, // Use spaceBetween instead of Spacer
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.5),
-                    shape: BoxShape.circle,
+            Padding(
+              padding: const EdgeInsets.all(16.0), // Reduced padding
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment
+                    .spaceBetween, // Use spaceBetween instead of Spacer
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.5),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(icon, size: 24, color: accentColor),
                   ),
-                  child: Icon(icon, size: 24, color: accentColor),
-                ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(
-                        label,
-                        style: GoogleFonts.notoSansTc(
-                          fontSize: 18, // Slightly smaller
-                          fontWeight: FontWeight.bold,
-                          color: accentColor.withValues(alpha: 0.9),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          label,
+                          style: GoogleFonts.notoSansTc(
+                            fontSize: 18, // Slightly smaller
+                            fontWeight: FontWeight.bold,
+                            color: accentColor.withValues(alpha: 0.9),
+                          ),
                         ),
                       ),
-                    ),
-                    FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(
-                        subLabel,
-                        style: GoogleFonts.inter(
-                          fontSize: 12, // Slightly smaller
-                          color: accentColor.withValues(alpha: 0.6),
-                          fontWeight: FontWeight.w500,
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          subLabel,
+                          style: GoogleFonts.inter(
+                            fontSize: 12, // Slightly smaller
+                            color: accentColor.withValues(alpha: 0.6),
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

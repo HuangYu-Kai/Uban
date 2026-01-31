@@ -2,8 +2,68 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
-class FamilyMarketplaceView extends StatelessWidget {
+class FamilyMarketplaceView extends StatefulWidget {
   const FamilyMarketplaceView({super.key});
+
+  @override
+  State<FamilyMarketplaceView> createState() => _FamilyMarketplaceViewState();
+}
+
+class _FamilyMarketplaceViewState extends State<FamilyMarketplaceView> {
+  final Set<String> _installedScripts = {};
+  final Set<String> _installingScripts = {};
+
+  void _handleInstall(String title) async {
+    if (_installedScripts.contains(title) ||
+        _installingScripts.contains(title)) {
+      return;
+    }
+
+    setState(() {
+      _installingScripts.add(title);
+    });
+
+    // Simulate network delay
+    await Future.delayed(const Duration(seconds: 2));
+
+    if (mounted) {
+      setState(() {
+        _installingScripts.remove(title);
+        _installedScripts.add(title);
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('已成功安裝劇本：$title'),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
+  }
+
+  void _showDetails(String title, String desc) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Text(
+          title,
+          style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold),
+        ),
+        content: Text(desc),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('關閉'),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -144,6 +204,9 @@ class FamilyMarketplaceView extends StatelessWidget {
     required IconData icon,
     required Color color,
   }) {
+    final bool isInstalled = _installedScripts.contains(title);
+    final bool isInstalling = _installingScripts.contains(title);
+
     return Container(
       margin: const EdgeInsets.only(bottom: 20),
       padding: const EdgeInsets.all(20),
@@ -228,17 +291,37 @@ class FamilyMarketplaceView extends StatelessWidget {
               const SizedBox(width: 4),
               const Text('4.9 (1.2k+ 次購買)'),
               const Spacer(),
-              TextButton(onPressed: () {}, child: const Text('了解更多')),
-              ElevatedButton(
-                onPressed: () {},
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: color,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+              TextButton(
+                onPressed: () => _showDetails(title, desc),
+                child: const Text('了解更多'),
+              ),
+              SizedBox(
+                width: 100,
+                child: ElevatedButton(
+                  onPressed: (isInstalled || isInstalling)
+                      ? null
+                      : () => _handleInstall(title),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: isInstalled ? Colors.grey : color,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    padding: EdgeInsets.zero,
                   ),
+                  child: isInstalling
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Colors.white,
+                            ),
+                          ),
+                        )
+                      : Text(isInstalled ? '已安裝' : '取得劇本'),
                 ),
-                child: const Text('取得劇本'),
               ),
             ],
           ),
