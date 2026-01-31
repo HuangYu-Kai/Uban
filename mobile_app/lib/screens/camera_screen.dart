@@ -1,7 +1,9 @@
 // 路徑: mobile_app/lib/screens/camera_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:permission_handler/permission_handler.dart'; // 新增這行
 import '../services/signaling.dart'; // 注意引入路徑
+
 
 class CameraScreen extends StatefulWidget {
   const CameraScreen({super.key});
@@ -28,12 +30,29 @@ class _CameraScreenState extends State<CameraScreen> {
       });
     });
 
-    // 自動連線 Socket
-    signaling.connect();
-    // 自動開啟鏡頭
-    signaling.openUserMedia(_localRenderer, _remoteRenderer).then((_) {
-      setState(() {});
-    });
+    // --- 修改這裡：先請求權限，成功才連線 ---
+    _initCamera(); 
+  }
+
+  // 新增這個函式來處理權限
+  Future<void> _initCamera() async {
+    // 請求相機與麥克風權限
+    Map<Permission, PermissionStatus> statuses = await [
+      Permission.camera,
+      Permission.microphone,
+    ].request();
+
+    // 檢查是否都允許了
+    if (statuses[Permission.camera]!.isGranted && statuses[Permission.microphone]!.isGranted) {
+      // 權限通過，才開始連線與開啟鏡頭
+      signaling.connect();
+      signaling.openUserMedia(_localRenderer, _remoteRenderer).then((_) {
+        setState(() {});
+      });
+    } else {
+      print("使用者拒絕了相機或麥克風權限！");
+      // 這裡可以跳出一個 Dialog 提示使用者去設定開啟
+    }
   }
 
   @override

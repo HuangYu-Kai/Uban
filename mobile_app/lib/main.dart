@@ -25,8 +25,8 @@ class MyApp extends StatelessWidget {
         textTheme: GoogleFonts.notoSansTcTextTheme(Theme.of(context).textTheme),
       ),
       // 設定首頁為身分選擇畫面 (保持不變)
-      //home: const IdentificationScreen(),
-      home: const CameraScreen(),
+      home: const IdentificationScreen(),
+      //home: const CameraScreen(),
       // 定義路由表，方便從任何地方跳轉到監控畫面
       routes: {
         '/monitor': (context) => const CameraScreen(),
