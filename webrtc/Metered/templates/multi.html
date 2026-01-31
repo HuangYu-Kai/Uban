@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebRTC</title>
+    <style>
+        body { font-family: monospace; text-align: center; margin: 0; background: #222; color: #fff; }
+        
+        /* 視訊區塊 */
+        .video-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 5px;
+            padding: 5px;
+            margin-bottom: 150px; /* 留位置給 Log */
+        }
+        .video-wrapper {
+            position: relative;
+            background: #000;
+            border: 1px solid #555;
+            aspect-ratio: 4/3;
+        }
+        video { width: 100%; height: 100%; object-fit: cover; }
+        .label {
+            position: absolute; bottom: 2px; left: 2px;
+            background: rgba(0,0,0,0.7); font-size: 10px; padding: 2px;
+        }
+
+        /* 除錯日誌區 (最重要！) */
+        #debug-console {
+            position: fixed; bottom: 0; left: 0; width: 100%; height: 150px;
+            background: rgba(0,0,0,0.9); border-top: 2px solid #0f0;
+            overflow-y: scroll; text-align: left; padding: 5px;
+            font-size: 10px; z-index: 999;
+        }
+        .log-line { border-bottom: 1px solid #333; padding: 1px; }
+        .log-error { color: #ff5555; }
+        .log-success { color: #55ff55; }
+        
+        /* 開始按鈕遮罩 */
+        #overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.95); z-index: 1000;
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+        }
+        button { padding: 15px 30px; font-size: 18px; cursor: pointer; background: #0f0; border: none; }
+    </style>
+</head>
+<body>
+
+    <div id="overlay">
+        <h3>WebRTC 連線診斷</h3>
+        <p>請點擊下方按鈕開始</p>
+        <button onclick="startApp()">啟動並顯示 Log</button>
+    </div>
+
+    <div id="video-grid" class="video-grid">
+        <div class="video-wrapper">
+            <video id="localVideo" autoplay playsinline muted></video>
+            <div class="label">我 (Local)</div>
+        </div>
+    </div>
+
+    <div id="debug-console"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script>
+        // --- 自定義 Log 系統 ---
+        const debugConsole = document.getElementById('debug-console');
+        function log(msg, type = 'info') {
+            const div = document.createElement('div');
+            div.className = 'log-line ' + (type === 'error' ? 'log-error' : (type === 'success' ? 'log-success' : ''));
+            const time = new Date().toLocaleTimeString();
+            div.textContent = `[${time}] ${msg}`;
+            debugConsole.appendChild(div);
+            debugConsole.scrollTop = debugConsole.scrollHeight;
+            console.log(msg); // 也要印在原本的 console
+        }
+        window.onerror = function(msg, url, line) {
+            log(`系統錯誤: ${msg} (${line})`, 'error');
+        };
+
+        // --- WebRTC 設定 ---
+        // ★★★ 請在這裡填入你申請的 Metered 設定，成功率最高 ★★★
+        const rtcConfig = {
+        iceServers: [
+            {
+                urls: "stun:stun.relay.metered.ca:80",
+            },
+            {
+                urls: "turn:global.relay.metered.ca:80",
+                username: "962ef6155b0abb2482311180",
+                credential: "kTr3sk2NyQCJ7FAt",
+            },
+            {
+                urls: "turn:global.relay.metered.ca:80?transport=tcp",
+                username: "962ef6155b0abb2482311180",
+                credential: "kTr3sk2NyQCJ7FAt",
+            },
+            {
+                urls: "turn:global.relay.metered.ca:443",
+                username: "962ef6155b0abb2482311180",
+                credential: "kTr3sk2NyQCJ7FAt",
+            },
+            {
+                urls: "turns:global.relay.metered.ca:443?transport=tcp",
+                username: "962ef6155b0abb2482311180",
+                credential: "kTr3sk2NyQCJ7FAt",
+            },
+        ],
+        };
+
+        let socket;
+        const roomName = "demo_room";
+        const localVideo = document.getElementById('localVideo');
+        const videoGrid = document.getElementById('video-grid');
+        let localStream;
+        const peers = {}; 
+        const pendingCandidates = {}; 
+
+        async function startApp() {
+            document.getElementById('overlay').style.display = 'none';
+            log("應用程式啟動...", 'success');
+
+            socket = io();
+            
+            socket.on('connect', () => {
+                log("Socket.IO 連線成功!", 'success');
+            });
+            
+            socket.on('connect_error', (err) => {
+                log("Socket 連線失敗: " + err, 'error');
+            });
+
+            try {
+                log("正在請求攝影機權限...");
+                localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                localVideo.srcObject = localStream;
+                log("取得攝影機成功", 'success');
+
+                bindSocketEvents();
+                socket.emit('join', { room: roomName });
+                log("已發送加入房間請求...");
+
+            } catch (e) {
+                log("無法取得攝影機: " + e.message + " " + e.name, 'error');
+                alert("攝影機錯誤: " + e.message);
+            }
+        }
+
+        function bindSocketEvents() {
+            socket.on('user-joined', (userId) => {
+                log(`收到 user-joined: ${userId.substr(0,4)}`, 'info');
+                createPeerConnection(userId, true); 
+            });
+
+            socket.on('user-left', (userId) => {
+                log(`用戶離開: ${userId.substr(0,4)}`);
+                if (peers[userId]) { peers[userId].close(); delete peers[userId]; }
+                const el = document.getElementById(`wrapper-${userId}`);
+                if (el) el.remove();
+            });
+
+            socket.on('signal', async (msg) => {
+                const { sender: senderId, type, data } = msg;
+                // log(`收到信令 ${type} 來自 ${senderId.substr(0,4)}`);
+
+                if (!peers[senderId]) createPeerConnection(senderId, false);
+                const pc = peers[senderId];
+
+                try {
+                    if (type === 'offer') {
+                        log(`處理 Offer 來自 ${senderId.substr(0,4)}`);
+                        await pc.setRemoteDescription(new RTCSessionDescription(data));
+                        processPendingCandidates(senderId);
+                        
+                        const answer = await pc.createAnswer();
+                        await pc.setLocalDescription(answer);
+                        sendSignal('answer', answer, senderId);
+                    } 
+                    else if (type === 'answer') {
+                        log(`處理 Answer 來自 ${senderId.substr(0,4)}`);
+                        await pc.setRemoteDescription(new RTCSessionDescription(data));
+                        processPendingCandidates(senderId);
+                    } 
+                    else if (type === 'candidate') {
+                        if (pc.remoteDescription) {
+                            await pc.addIceCandidate(new RTCIceCandidate(data));
+                        } else {
+                            if (!pendingCandidates[senderId]) pendingCandidates[senderId] = [];
+                            pendingCandidates[senderId].push(data);
+                        }
+                    }
+                } catch (e) {
+                    log(`信令錯誤 (${type}): ${e.message}`, 'error');
+                }
+            });
+        }
+
+        function createPeerConnection(targetId, isInitiator) {
+            log(`建立 PeerConnection -> ${targetId.substr(0,4)} (主動? ${isInitiator})`);
+            const pc = new RTCPeerConnection(rtcConfig);
+            peers[targetId] = pc;
+
+            pc.oniceconnectionstatechange = () => {
+                const state = pc.iceConnectionState;
+                log(`ICE 狀態變更 (${targetId.substr(0,4)}): ${state}`, state === 'connected' ? 'success' : (state === 'failed' ? 'error' : 'info'));
+                if (state === 'failed') {
+                    log("嘗試 ICE 重啟...", 'error');
+                    pc.restartIce();
+                }
+            };
+
+            pc.onicecandidate = (event) => {
+                if (event.candidate) sendSignal('candidate', event.candidate, targetId);
+            };
+
+            pc.ontrack = (event) => {
+                log(`收到影像流 track! (${targetId.substr(0,4)})`, 'success');
+                if (document.getElementById(`video-${targetId}`)) return;
+
+                const wrapper = document.createElement('div');
+                wrapper.className = 'video-wrapper';
+                wrapper.id = `wrapper-${targetId}`;
+                
+                const video = document.createElement('video');
+                video.id = `video-${targetId}`;
+                video.autoplay = true;
+                video.playsInline = true;
+                video.srcObject = event.streams[0];
+
+                const label = document.createElement('div');
+                label.className = 'label';
+                label.innerText = `User ${targetId.substr(0,4)}`;
+
+                wrapper.appendChild(video);
+                wrapper.appendChild(label);
+                videoGrid.appendChild(wrapper);
+                
+                video.play().catch(e => log(`自動播放被阻擋: ${e.message}`, 'error'));
+            };
+
+            // ★★★ 修正重點：改回使用 addTrack ★★★
+            // addTrack 會自動判斷：
+            // 1. 如果我是發起者，它會建立新的 Transceiver
+            // 2. 如果我是接收者，它會自動把軌道「塞進」對方傳過來的 Transceiver 裡
+            localStream.getTracks().forEach(track => {
+                pc.addTrack(track, localStream);
+            });
+
+            if (isInitiator) {
+                const offerOptions = {
+                    offerToReceiveAudio: true,
+                    offerToReceiveVideo: true
+                };
+                pc.createOffer(offerOptions).then(offer => {
+                    pc.setLocalDescription(offer);
+                    sendSignal('offer', offer, targetId);
+                });
+            }
+            return pc;
+        }
+
+        function processPendingCandidates(userId) {
+            const pc = peers[userId];
+            const queue = pendingCandidates[userId];
+            if (queue) {
+                log(`加入 ${queue.length} 個暫存 Candidates`);
+                queue.forEach(c => pc.addIceCandidate(new RTCIceCandidate(c)));
+                delete pendingCandidates[userId];
+            }
+        }
+
+        function sendSignal(type, data, targetId) {
+            socket.emit('signal', { type, data, target: targetId });
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Twilio WebRTC 完整版</title>
+    <style>
+        body { font-family: monospace; text-align: center; margin: 0; background: #222; color: #fff; }
+        
+        /* 視訊區塊網格 */
+        .video-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 10px;
+            padding: 10px;
+            margin-bottom: 220px; /* 留空間給下方控制列 */
+        }
+        .video-wrapper {
+            position: relative;
+            background: #000;
+            border: 4px solid #666; /* 預設灰色邊框 (等待中) */
+            aspect-ratio: 4/3;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        video { width: 100%; height: 100%; object-fit: cover; }
+        
+        .label {
+            position: absolute; bottom: 5px; left: 5px;
+            background: rgba(0,0,0,0.7); font-size: 12px; padding: 2px 5px;
+            border-radius: 4px; z-index: 10;
+        }
+        
+        /* 手動播放按鈕 (解決自動播放被擋) */
+        .play-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.6);
+            display: flex; justify-content: center; align-items: center;
+            cursor: pointer; z-index: 20; display: none;
+        }
+        .play-btn { font-size: 30px; }
+
+        /* 控制按鈕列 */
+        #controls-bar {
+            position: fixed; bottom: 150px; left: 0; width: 100%;
+            height: 60px; background: rgba(0,0,0,0.8);
+            display: flex; justify-content: center; align-items: center;
+            gap: 20px; z-index: 990; border-top: 1px solid #444;
+        }
+        .ctrl-btn {
+            padding: 10px 20px; font-size: 16px; border-radius: 20px;
+            border: none; cursor: pointer; color: white; min-width: 100px;
+        }
+        .btn-on { background-color: #28a745; } 
+        .btn-off { background-color: #dc3545; } 
+
+        /* 除錯日誌 */
+        #debug-console {
+            position: fixed; bottom: 0; left: 0; width: 100%; height: 150px;
+            background: #111; border-top: 2px solid #0f0;
+            overflow-y: scroll; text-align: left; padding: 5px;
+            font-size: 12px; font-family: monospace; z-index: 999;
+        }
+        .log-line { border-bottom: 1px solid #333; padding: 2px; }
+        .log-error { color: #ff5555; }
+        .log-success { color: #55ff55; }
+        .log-warn { color: #ffff55; }
+        
+        /* 開始遮罩 */
+        #overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.95); z-index: 1000;
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+        }
+        #start-btn { padding: 15px 30px; font-size: 18px; cursor: pointer; background: #0f0; border: none; border-radius: 5px; }
+    </style>
+</head>
+<body>
+
+    <div id="overlay">
+        <h3>WebRTC (Twilio 版)</h3>
+        <p>紅框=失敗 / 黃框=連線中 / 綠框=成功</p>
+        <button id="start-btn" onclick="startApp()">啟動並獲取連線設定</button>
+    </div>
+
+    <div id="video-grid" class="video-grid">
+        <div class="video-wrapper" style="border-color: #0f0;">
+            <video id="localVideo" autoplay playsinline muted></video>
+            <div class="label">我 (Local)</div>
+        </div>
+    </div>
+
+    <div id="controls-bar">
+        <button id="btn-mic" class="ctrl-btn btn-on" onclick="toggleAudio()">Mic: ON</button>
+        <button id="btn-cam" class="ctrl-btn btn-on" onclick="toggleVideo()">Cam: ON</button>
+    </div>
+
+    <div id="debug-console"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script>
+        const debugConsole = document.getElementById('debug-console');
+        function log(msg, type = 'info') {
+            const div = document.createElement('div');
+            div.className = 'log-line ' + (type === 'error' ? 'log-error' : (type === 'success' ? 'log-success' : (type === 'warn' ? 'log-warn' : '')));
+            const time = new Date().toLocaleTimeString();
+            div.textContent = `[${time}] ${msg}`;
+            debugConsole.appendChild(div);
+            debugConsole.scrollTop = debugConsole.scrollHeight;
+        }
+
+        let socket;
+        const roomName = "demo_room";
+        const localVideo = document.getElementById('localVideo');
+        const videoGrid = document.getElementById('video-grid');
+        let localStream;
+        const peers = {}; 
+        
+        // 排隊機制：存放還沒準備好的 ICE Candidate
+        const pendingCandidates = {}; 
+        // 存放從後端抓來的 Twilio 設定
+        let fetchedIceServers = [];
+
+        let isAudioEnabled = true;
+        let isVideoEnabled = true;
+
+        // --- 功能：開關麥克風 ---
+        function toggleAudio() {
+            if (localStream) {
+                const audioTracks = localStream.getAudioTracks();
+                if (audioTracks.length > 0) {
+                    isAudioEnabled = !isAudioEnabled;
+                    audioTracks[0].enabled = isAudioEnabled;
+                    const btn = document.getElementById('btn-mic');
+                    btn.textContent = isAudioEnabled ? "Mic: ON" : "Mic: OFF";
+                    btn.className = isAudioEnabled ? "ctrl-btn btn-on" : "ctrl-btn btn-off";
+                }
+            }
+        }
+
+        // --- 功能：開關鏡頭 ---
+        function toggleVideo() {
+            if (localStream) {
+                const videoTracks = localStream.getVideoTracks();
+                if (videoTracks.length > 0) {
+                    isVideoEnabled = !isVideoEnabled;
+                    videoTracks[0].enabled = isVideoEnabled;
+                    const btn = document.getElementById('btn-cam');
+                    btn.textContent = isVideoEnabled ? "Cam: ON" : "Cam: OFF";
+                    btn.className = isVideoEnabled ? "ctrl-btn btn-on" : "ctrl-btn btn-off";
+                }
+            }
+        }
+
+        // --- 主程式啟動 ---
+        async function startApp() {
+            document.getElementById('overlay').style.display = 'none';
+            log("應用程式啟動...", 'success');
+
+            try {
+                // 1. 取得本地攝影機
+                localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                localVideo.srcObject = localStream;
+                log("取得攝影機成功", 'success');
+
+                // 2. 向後端請求 Twilio 的 TURN 設定
+                log("正在請求最佳連線路徑 (Twilio)...");
+                try {
+                    const response = await fetch('/get_ice_servers');
+                    fetchedIceServers = await response.json();
+                    log(`取得 ${fetchedIceServers.length} 組 ICE Servers`, 'success');
+                } catch(e) {
+                    log("獲取 ICE 失敗，使用預設 Google STUN", 'warn');
+                    fetchedIceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
+                }
+
+                // 3. 連線 WebSocket
+                socket = io();
+                bindSocketEvents();
+                socket.emit('join', { room: roomName });
+
+            } catch (e) {
+                log("啟動錯誤: " + e.message, 'error');
+                alert("錯誤：無法取得攝影機或連線失敗");
+            }
+        }
+
+        // --- Socket 事件綁定 ---
+        function bindSocketEvents() {
+            socket.on('user-joined', (userId) => {
+                log(`新用戶加入: ${userId.substr(0,4)}`);
+                createPeerConnection(userId, true); 
+            });
+
+            socket.on('user-left', (userId) => {
+                log(`用戶離開: ${userId.substr(0,4)}`);
+                if (peers[userId]) { peers[userId].close(); delete peers[userId]; }
+                if (pendingCandidates[userId]) delete pendingCandidates[userId];
+                const el = document.getElementById(`wrapper-${userId}`);
+                if (el) el.remove();
+            });
+
+            socket.on('signal', async (msg) => {
+                const { sender: senderId, type, data } = msg;
+
+                if (!peers[senderId]) createPeerConnection(senderId, false);
+                const pc = peers[senderId];
+
+                try {
+                    if (type === 'offer') {
+                        await pc.setRemoteDescription(new RTCSessionDescription(data));
+                        processPendingCandidates(senderId); // 處理積壓
+                        const answer = await pc.createAnswer();
+                        await pc.setLocalDescription(answer);
+                        sendSignal('answer', answer, senderId);
+                    } 
+                    else if (type === 'answer') {
+                        await pc.setRemoteDescription(new RTCSessionDescription(data));
+                        processPendingCandidates(senderId); // 處理積壓
+                    } 
+                    else if (type === 'candidate') {
+                        if (pc.remoteDescription && pc.remoteDescription.type) {
+                            await pc.addIceCandidate(new RTCIceCandidate(data));
+                        } else {
+                            if (!pendingCandidates[senderId]) pendingCandidates[senderId] = [];
+                            pendingCandidates[senderId].push(data);
+                        }
+                    }
+                } catch (e) {
+                    log(`Signal Error: ${e.message}`, 'error');
+                }
+            });
+        }
+
+        // --- 核心 WebRTC 連線建立 ---
+        function createPeerConnection(targetId, isInitiator) {
+            log(`建立連線 -> ${targetId.substr(0,4)} (主動? ${isInitiator})`);
+            
+            // 使用後端給的 Twilio 設定
+            const rtcConfig = {
+                iceServers: fetchedIceServers,
+                iceTransportPolicy: 'all'
+            };
+
+            const pc = new RTCPeerConnection(rtcConfig);
+            peers[targetId] = pc;
+
+            // 監控連線狀態 (視覺化)
+            pc.oniceconnectionstatechange = () => {
+                const state = pc.iceConnectionState;
+                log(`ICE 狀態 (${targetId.substr(0,4)}): ${state}`, state === 'connected' ? 'success' : (state === 'failed' ? 'error' : 'warn'));
+                
+                const wrapper = document.getElementById(`wrapper-${targetId}`);
+                if (wrapper) {
+                    if (state === 'checking') wrapper.style.borderColor = 'yellow';
+                    else if (state === 'connected' || state === 'completed') wrapper.style.borderColor = '#0f0';
+                    else if (state === 'failed' || state === 'disconnected') wrapper.style.borderColor = 'red';
+                }
+                if (state === 'failed') pc.restartIce();
+            };
+
+            pc.onicecandidate = (event) => {
+                if (event.candidate) sendSignal('candidate', event.candidate, targetId);
+            };
+
+            pc.ontrack = (event) => {
+                log(`收到影像流 (${targetId.substr(0,4)})`, 'success');
+                if (document.getElementById(`video-${targetId}`)) return;
+
+                const wrapper = document.createElement('div');
+                wrapper.className = 'video-wrapper';
+                wrapper.id = `wrapper-${targetId}`;
+                
+                const video = document.createElement('video');
+                video.id = `video-${targetId}`;
+                video.autoplay = true;
+                video.playsInline = true;
+                video.srcObject = event.streams[0];
+
+                const label = document.createElement('div');
+                label.className = 'label';
+                label.innerText = `User ${targetId.substr(0,4)}`;
+
+                // 手動播放按鈕 (遮罩)
+                const playOverlay = document.createElement('div');
+                playOverlay.className = 'play-overlay';
+                playOverlay.innerHTML = '<span class="play-btn">▶️ 點擊播放</span>';
+                playOverlay.onclick = () => { video.play(); playOverlay.style.display = 'none'; };
+                
+                wrapper.appendChild(video);
+                wrapper.appendChild(label);
+                wrapper.appendChild(playOverlay);
+                videoGrid.appendChild(wrapper);
+
+                video.play().catch(e => {
+                    log(`自動播放被阻擋 (${targetId.substr(0,4)})`, 'warn');
+                    playOverlay.style.display = 'flex';
+                });
+            };
+
+            // 使用 addTrack (確保雙向相容性)
+            localStream.getTracks().forEach(track => {
+                pc.addTrack(track, localStream);
+            });
+
+            if (isInitiator) {
+                // 強制要求接收對方的影音
+                const offerOptions = { offerToReceiveAudio: true, offerToReceiveVideo: true };
+                pc.createOffer(offerOptions).then(offer => {
+                    pc.setLocalDescription(offer);
+                    sendSignal('offer', offer, targetId);
+                });
+            }
+            return pc;
+        }
+
+        function processPendingCandidates(userId) {
+            const pc = peers[userId];
+            const queue = pendingCandidates[userId];
+            if (queue && queue.length > 0) {
+                queue.forEach(c => pc.addIceCandidate(new RTCIceCandidate(c)));
+                delete pendingCandidates[userId];
+            }
+        }
+
+        function sendSignal(type, data, targetId) {
+            socket.emit('signal', { type, data, target: targetId });
+        }
+    </script>
+</body>
+</html>
