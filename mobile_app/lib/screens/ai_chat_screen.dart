@@ -184,7 +184,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
+                  color: Colors.black.withValues(alpha: 0.05),
                   blurRadius: 10,
                   offset: const Offset(0, -5),
                 ),
@@ -244,7 +244,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
                                   (_isListening
                                           ? Colors.tealAccent
                                           : Colors.teal)
-                                      .withOpacity(0.4),
+                                      .withValues(alpha: 0.4),
                               blurRadius: 20,
                               spreadRadius: _isListening ? 10 : 2,
                             ),
@@ -312,7 +312,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: Colors.black.withValues(alpha: 0.05),
               blurRadius: 5,
               offset: const Offset(0, 2),
             ),
@@ -351,7 +351,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
+                      color: Colors.black.withValues(alpha: 0.1),
                       blurRadius: 5,
                       offset: const Offset(0, 2),
                     ),

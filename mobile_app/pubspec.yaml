@@ -42,6 +42,7 @@ dependencies:
   flutter_animate: ^4.5.2
   lunar: ^1.7.8
   url_launcher: ^6.3.2
+  fl_chart: ^1.1.1
 
 dev_dependencies:
   flutter_test:
