@@ -72,7 +72,7 @@ packages:
       sha256: "4ed7b9fa9924e5a81eb39271e2c2356739dd1039d60a13b86ba6c5f448625086"
       url: "https://pub.dev"
     source: hosted
-    version: "1.4.8"
+    version: "1.7.0"
   equatable:
     dependency: transitive
     description:
