@@ -1,30 +1,27 @@
 // 路徑: mobile_app/lib/services/signaling.dart
+import 'package:flutter/foundation.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 
 typedef void StreamStateCallback(MediaStream stream);
 
 class Signaling {
-  // 替換成您的電腦 IP，不能用 localhost，因為手機與電腦是不同裝置
-  // 例如: 'http://192.168.50.10:5000'
+  // ★★★ 請修改這裡：換成您電腦的區網 IP ★★★
   final String _socketUrl = 'http://192.168.0.4:5000'; 
 
   Map<String, dynamic> configuration = {
     'iceServers': [
-      {
-        'urls': [
-          'stun:stun1.l.google.com:19302',
-          'stun:stun2.l.google.com:19302'
-        ]
-      }
+      {'urls': ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302']}
     ]
   };
 
   IO.Socket? socket;
   RTCPeerConnection? peerConnection;
   MediaStream? localStream;
-  MediaStream? remoteStream;
   StreamStateCallback? onAddRemoteStream;
+  
+  // 新增：斷線通知回呼
+  VoidCallback? onConnectionLost;
 
   void connect() {
     socket = IO.io(_socketUrl, <String, dynamic>{
@@ -34,23 +31,17 @@ class Signaling {
 
     socket!.connect();
 
-    socket!.onConnect((_) {
-      print('connected to signaling server');
-    });
+    socket!.onConnect((_) => print('已連線到信令伺服器'));
 
     socket!.on('offer', (data) async {
       await _createPeerConnection();
       var description = RTCSessionDescription(data['sdp'], data['type']);
       await peerConnection?.setRemoteDescription(description);
       
-      // 接收端建立 Answer
       var answer = await peerConnection?.createAnswer();
-      await peerConnection?.setLocalDescription(answer!);
+      await peerConnection?.setLocalDescription(answer!); // 修正 Null Safety
       
-      socket!.emit('answer', {
-        'type': 'answer',
-        'sdp': answer!.sdp,
-      });
+      socket!.emit('answer', {'type': 'answer', 'sdp': answer!.sdp});
     });
 
     socket!.on('answer', (data) async {
@@ -60,9 +51,7 @@ class Signaling {
 
     socket!.on('candidate', (data) async {
       var candidate = RTCIceCandidate(
-        data['candidate'],
-        data['sdpMid'],
-        data['sdpMLineIndex'],
+        data['candidate'], data['sdpMid'], data['sdpMLineIndex']
       );
       await peerConnection?.addCandidate(candidate);
     });
@@ -70,6 +59,15 @@ class Signaling {
 
   Future<void> _createPeerConnection() async {
     peerConnection = await createPeerConnection(configuration);
+
+    // ★★★ 監聽連線狀態：如果斷線，通知 UI 重連 ★★★
+    peerConnection!.onIceConnectionState = (state) {
+      print("WebRTC 連線狀態: $state");
+      if (state == RTCIceConnectionState.RTCIceConnectionStateFailed ||
+          state == RTCIceConnectionState.RTCIceConnectionStateDisconnected) {
+        if (onConnectionLost != null) onConnectionLost!();
+      }
+    };
 
     peerConnection!.onIceCandidate = (candidate) {
       if (socket != null) {
@@ -98,18 +96,13 @@ class Signaling {
     var stream = await navigator.mediaDevices.getUserMedia({'video': true, 'audio': true});
     localVideo.srcObject = stream;
     localStream = stream;
-    // remoteVideo 不需要在此設定，它是透過 onAddRemoteStream 設定的
   }
 
   Future<void> createOffer() async {
     await _createPeerConnection();
     RTCSessionDescription offer = await peerConnection!.createOffer();
     await peerConnection!.setLocalDescription(offer);
-    
-    socket!.emit('offer', {
-      'type': 'offer',
-      'sdp': offer.sdp,
-    });
+    socket!.emit('offer', {'type': 'offer', 'sdp': offer.sdp});
   }
 
   void dispose() {

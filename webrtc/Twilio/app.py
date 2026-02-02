@@ -10,8 +10,8 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 # ==========================================
 # ★★★ 請在此填入你的 Twilio 帳號資訊 ★★★
 # ==========================================
-#TWILIO_ACCOUNT_SID = '--'
-#TWILIO_AUTH_TOKEN = '---'
+TWILIO_ACCOUNT_SID = '-------'
+TWILIO_AUTH_TOKEN = '------'
 
 @app.route('/')
 def index():
@@ -59,4 +59,4 @@ def on_signal(data):
 
 if __name__ == '__main__':
     # host='0.0.0.0' 確保區網/外網可連入
-    socketio.run(app, debug=True, host='0.0.0.0', port=5000)
+    socketio.run(app, debug=True, host='0.0.0.0', port=5001)

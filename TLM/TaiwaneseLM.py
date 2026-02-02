@@ -10,7 +10,7 @@ from duckduckgo_search import DDGS
 
 # --- 設定區 ---
 # ★★★ 請確認您的 API Key ★★★
-NVIDIA_API_KEY = "nvapi------" 
+NVIDIA_API_KEY = "nvapi----" 
 TTS_VOICE = "zh-TW-HsiaoYuNeural" 
 
 # --- 初始化客戶端 ---

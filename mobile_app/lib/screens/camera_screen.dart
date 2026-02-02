@@ -1,9 +1,9 @@
 // 路徑: mobile_app/lib/screens/camera_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
-import 'package:permission_handler/permission_handler.dart'; // 新增這行
-import '../services/signaling.dart'; // 注意引入路徑
-
+import 'package:permission_handler/permission_handler.dart';
+import 'package:wakelock_plus/wakelock_plus.dart'; // 防休眠
+import '../services/signaling.dart';
 
 class CameraScreen extends StatefulWidget {
   const CameraScreen({super.key});
@@ -16,7 +16,7 @@ class _CameraScreenState extends State<CameraScreen> {
   final Signaling signaling = Signaling();
   final RTCVideoRenderer _localRenderer = RTCVideoRenderer();
   final RTCVideoRenderer _remoteRenderer = RTCVideoRenderer();
-  bool _inCalling = false;
+  bool _isReconnecting = false; // 防止重複重連
 
   @override
   void initState() {
@@ -24,39 +24,78 @@ class _CameraScreenState extends State<CameraScreen> {
     _localRenderer.initialize();
     _remoteRenderer.initialize();
 
+    // 1. 啟用防休眠 (重要)
+    WakelockPlus.enable();
+
+    // 2. 設定收到對方畫面時的行為
     signaling.onAddRemoteStream = ((stream) {
       setState(() {
         _remoteRenderer.srcObject = stream;
       });
+      // ★★★ 強制接收端開啟擴音 (解決聽不到聲音) ★★★
+      Helper.setSpeakerphoneOn(true);
     });
 
-    // --- 修改這裡：先請求權限，成功才連線 ---
-    _initCamera(); 
+    // 3. 設定斷線自動重連邏輯
+    signaling.onConnectionLost = () {
+      if (mounted && !_isReconnecting) {
+        print("偵測到斷線，3秒後嘗試自動重連...");
+        _handleAutoReconnect();
+      }
+    };
+
+    _initCameraAndConnect();
   }
 
-  // 新增這個函式來處理權限
-  Future<void> _initCamera() async {
-    // 請求相機與麥克風權限
+  Future<void> _initCameraAndConnect() async {
+    // 請求權限
     Map<Permission, PermissionStatus> statuses = await [
       Permission.camera,
       Permission.microphone,
     ].request();
 
-    // 檢查是否都允許了
-    if (statuses[Permission.camera]!.isGranted && statuses[Permission.microphone]!.isGranted) {
-      // 權限通過，才開始連線與開啟鏡頭
+    if (statuses[Permission.camera]!.isGranted && 
+        statuses[Permission.microphone]!.isGranted) {
+      
       signaling.connect();
-      signaling.openUserMedia(_localRenderer, _remoteRenderer).then((_) {
-        setState(() {});
-      });
+      await signaling.openUserMedia(_localRenderer, _remoteRenderer);
+      
+      // ★★★ 強制發送端開啟擴音 ★★★
+      Helper.setSpeakerphoneOn(true); 
+      setState(() {});
     } else {
-      print("使用者拒絕了相機或麥克風權限！");
-      // 這裡可以跳出一個 Dialog 提示使用者去設定開啟
+      if(mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("請允許相機與麥克風權限以使用此功能")),
+        );
+      }
+    }
+  }
+
+  Future<void> _handleAutoReconnect() async {
+    if (_isReconnecting) return;
+    setState(() => _isReconnecting = true);
+    
+    // 等待一下再重連
+    await Future.delayed(const Duration(seconds: 3));
+
+    try {
+      await signaling.createOffer();
+      Helper.setSpeakerphoneOn(true); // 重連後再次確認擴音
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("已觸發自動重連...")),
+      );
+    } catch (e) {
+      print("重連失敗: $e");
+    } finally {
+      if (mounted) setState(() => _isReconnecting = false);
     }
   }
 
   @override
   void dispose() {
+    // 離開頁面時關閉防休眠
+    WakelockPlus.disable();
     signaling.dispose();
     _localRenderer.dispose();
     _remoteRenderer.dispose();
@@ -66,38 +105,25 @@ class _CameraScreenState extends State<CameraScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("即時監控"),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-      ),
+      appBar: AppBar(title: const Text("即時監控")),
       body: Column(
         children: [
           Expanded(
             child: Row(
               children: [
-                // 本地畫面 (加上邊框以示區別)
+                // 本地畫面 (鏡面)
                 Expanded(
                   child: Container(
-                    decoration: BoxDecoration(border: Border.all(color: Colors.blue)),
-                    child: Stack(
-                      children: [
-                        RTCVideoView(_localRenderer, mirror: true),
-                        const Positioned(top: 10, left: 10, child: Text("Local", style: TextStyle(color: Colors.white))),
-                      ],
-                    ),
-                  ),
+                      decoration: BoxDecoration(border: Border.all(color: Colors.blue)),
+                      child: RTCVideoView(_localRenderer, mirror: true)
+                  )
                 ),
                 // 遠端畫面
                 Expanded(
                   child: Container(
-                    decoration: BoxDecoration(border: Border.all(color: Colors.red)),
-                    child: Stack(
-                      children: [
-                        RTCVideoView(_remoteRenderer),
-                        const Positioned(top: 10, left: 10, child: Text("Remote", style: TextStyle(color: Colors.white))),
-                      ],
-                    ),
-                  ),
+                      decoration: BoxDecoration(border: Border.all(color: Colors.red)),
+                      child: RTCVideoView(_remoteRenderer)
+                  )
                 ),
               ],
             ),
@@ -108,17 +134,19 @@ class _CameraScreenState extends State<CameraScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 ElevatedButton.icon(
-                  onPressed: _inCalling ? null : () async {
+                  onPressed: () async {
                     await signaling.createOffer();
-                    setState(() {
-                      _inCalling = true;
-                    });
+                    Helper.setSpeakerphoneOn(true);
                   },
                   icon: const Icon(Icons.videocam),
-                  label: const Text("開始監控 (發送 Offer)"),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                  ),
+                  label: const Text("開始監控"),
+                ),
+                const SizedBox(width: 20),
+                // 手動重連按鈕 (備用)
+                ElevatedButton(
+                  onPressed: _handleAutoReconnect,
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.orange.shade100),
+                  child: const Text("重連"),
                 ),
               ],
             ),
