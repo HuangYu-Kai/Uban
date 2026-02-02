@@ -10,7 +10,7 @@ from duckduckgo_search import DDGS
 
 # --- 設定區 ---
 # ★★★ 請確認您的 API Key ★★★
-NVIDIA_API_KEY = "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" 
+NVIDIA_API_KEY = "nvapi------" 
 TTS_VOICE = "zh-TW-HsiaoYuNeural" 
 
 # --- 初始化客戶端 ---
@@ -118,7 +118,7 @@ def check_intent(user_input):
 
 # --- 主程式 ---
 async def main():
-    print(f"=== 台語 AI 萬事通 (DDGS 最新版) ===")
+    print(f"=== AI 小幫手 ===")
     
     base_system_prompt = """
     你是一個精通「臺灣閩南語（台語）」的 AI 助理。
