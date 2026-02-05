@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -28,6 +29,7 @@ class _FamilyScriptEditorScreenState extends State<FamilyScriptEditorScreen> {
   final List<ScriptNode> _nodes = [];
   String? _selectedNodeId;
   bool _showSimulator = false;
+  bool _isTimelineMode = true;
   final TransformationController _transformationController =
       TransformationController();
 
@@ -68,6 +70,7 @@ class _FamilyScriptEditorScreenState extends State<FamilyScriptEditorScreen> {
                 personaPrompt: d.personaPrompt,
                 memoryKey: d.memoryKey,
                 memoryValue: d.memoryValue,
+                timeRange: d.timeRange ?? '全天',
               ),
             )
             .toList(),
@@ -119,10 +122,21 @@ class _FamilyScriptEditorScreenState extends State<FamilyScriptEditorScreen> {
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
+          IconButton(
+            onPressed: () => setState(() => _isTimelineMode = !_isTimelineMode),
+            icon: Icon(
+              _isTimelineMode
+                  ? Icons.account_tree_outlined
+                  : Icons.view_timeline,
+              color: Colors.white70,
+            ),
+            tooltip: _isTimelineMode ? '切換至畫布' : '切換至時間軸',
+          ),
+          const SizedBox(width: 8),
           TextButton.icon(
-            onPressed: () {
+            onPressed: () async {
               // Save nodes to service
-              ScriptDataService().saveNodes(
+              await ScriptDataService().saveNodes(
                 widget.scriptTitle,
                 _nodes
                     .map(
@@ -151,11 +165,12 @@ class _FamilyScriptEditorScreenState extends State<FamilyScriptEditorScreen> {
                         personaPrompt: n.personaPrompt,
                         memoryKey: n.memoryKey,
                         memoryValue: n.memoryValue,
+                        timeRange: n.timeRange,
                       ),
                     )
                     .toList(),
               );
-              Navigator.pop(context);
+              if (context.mounted) Navigator.pop(context);
             },
             icon: const Icon(Icons.save, color: Colors.blueAccent),
             label: Text(
@@ -171,65 +186,7 @@ class _FamilyScriptEditorScreenState extends State<FamilyScriptEditorScreen> {
           // 左側編輯畫布 (Canvas)
           Expanded(
             flex: 2,
-            child: Stack(
-              children: [
-                InteractiveViewer(
-                  transformationController: _transformationController,
-                  constrained: false,
-                  minScale: 0.1,
-                  maxScale: 2.0,
-                  child: SizedBox(
-                    width: 4000,
-                    height: 4000,
-                    child: Stack(
-                      children: [
-                        Positioned.fill(
-                          child: CustomPaint(painter: GridPainter()),
-                        ),
-                        Positioned.fill(
-                          child: CustomPaint(
-                            painter: NodeLinkPainter(
-                              _nodes,
-                              _currentSimulatorNodeId,
-                            ),
-                          ),
-                        ),
-                        ..._nodes.map(
-                          (node) => NodeCard(
-                            node: node,
-                            isSelected: _selectedNodeId == node.id,
-                            isActive: _currentSimulatorNodeId == node.id,
-                            onTap: () =>
-                                setState(() => _selectedNodeId = node.id),
-                            onPanUpdate: (d) =>
-                                setState(() => node.position += d.delta),
-                            onDoubleTap: () => _showInlineEditDialog(node),
-                            onQuickAdd: () => _showQuickAddMenu(node),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                Positioned(
-                  left: 20,
-                  bottom: 20,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      _buildComponentBox(),
-                      const SizedBox(width: 12),
-                      _buildCanvasControls(),
-                    ],
-                  ),
-                ),
-                Positioned(
-                  right: 20,
-                  bottom: 20,
-                  child: _buildToggleSimulatorButton(),
-                ),
-              ],
-            ),
+            child: _isTimelineMode ? _buildTimelineView() : _buildCanvasView(),
           ),
 
           // 右側面板：屬性編輯器或模擬器
@@ -275,6 +232,324 @@ class _FamilyScriptEditorScreenState extends State<FamilyScriptEditorScreen> {
     );
   }
 
+  Widget _buildCanvasView() {
+    return Stack(
+      children: [
+        InteractiveViewer(
+          transformationController: _transformationController,
+          constrained: false,
+          minScale: 0.1,
+          maxScale: 2.0,
+          child: SizedBox(
+            width: 4000,
+            height: 4000,
+            child: Stack(
+              children: [
+                Positioned.fill(child: CustomPaint(painter: GridPainter())),
+                Positioned.fill(
+                  child: CustomPaint(
+                    painter: NodeLinkPainter(_nodes, _currentSimulatorNodeId),
+                  ),
+                ),
+                ..._nodes.map(
+                  (node) => NodeCard(
+                    node: node,
+                    isSelected: _selectedNodeId == node.id,
+                    isActive: _currentSimulatorNodeId == node.id,
+                    onTap: () => setState(() => _selectedNodeId = node.id),
+                    onPanUpdate: (d) =>
+                        setState(() => node.position += d.delta),
+                    onDoubleTap: () => _showInlineEditDialog(node),
+                    onQuickAdd: () => _showQuickAddMenu(node),
+                  ),
+                ),
+                if (_nodes.isEmpty) _buildEmptyCanvasPlaceholder(),
+              ],
+            ),
+          ),
+        ),
+        Positioned(left: 20, top: 20, child: _buildCanvasControls()),
+        Positioned(left: 20, bottom: 20, child: _buildComponentBox()),
+        Positioned(right: 20, bottom: 20, child: _buildToggleSimulatorButton()),
+      ],
+    );
+  }
+
+  Widget _buildEmptyCanvasPlaceholder() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.auto_fix_high,
+            size: 64,
+            color: Colors.white.withValues(alpha: 0.1),
+          ),
+          const SizedBox(height: 24),
+          Text(
+            '畫布還是空的',
+            style: GoogleFonts.notoSansTc(color: Colors.white24, fontSize: 18),
+          ),
+          const SizedBox(height: 32),
+          ElevatedButton.icon(
+            onPressed: () {
+              final id = 'start';
+              setState(() {
+                _nodes.add(
+                  ScriptNode(
+                    id: id,
+                    title: '開始觸發',
+                    content: '當長輩對我說...',
+                    position: const Offset(1900, 1900),
+                    icon: Icons.mic,
+                    color: Colors.blueAccent,
+                  ),
+                );
+                _selectedNodeId = id;
+              });
+            },
+            icon: const Icon(Icons.add),
+            label: const Text('開始建立第一步'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blueAccent,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          OutlinedButton.icon(
+            onPressed: _loadBreadBakingTemplate,
+            icon: const Icon(Icons.auto_stories, size: 20),
+            label: const Text('載入範例：麵包烘焙橋樑'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.purpleAccent,
+              side: const BorderSide(color: Colors.purpleAccent),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTimelineView() {
+    final orderedNodes = _getOrderedNodes();
+    return Stack(
+      children: [
+        if (orderedNodes.isEmpty)
+          _buildEmptyCanvasPlaceholder()
+        else
+          ListView.builder(
+            padding: const EdgeInsets.fromLTRB(24, 60, 24, 120),
+            itemCount: orderedNodes.length,
+            itemBuilder: (context, index) {
+              final node = orderedNodes[index];
+              final isLast = index == orderedNodes.length - 1;
+              return Column(
+                children: [
+                  _buildTimelineNode(node),
+                  if (!isLast)
+                    _buildTimelineConnector(node, orderedNodes[index + 1]),
+                  if (isLast) _buildTimelineEndGuide(node),
+                ],
+              );
+            },
+          ),
+        Positioned(right: 20, bottom: 20, child: _buildToggleSimulatorButton()),
+      ],
+    );
+  }
+
+  List<ScriptNode> _getOrderedNodes() {
+    if (_nodes.isEmpty) return [];
+    List<ScriptNode> result = [];
+    Set<String> visited = {};
+
+    void traverse(String id) {
+      if (visited.contains(id)) return;
+      final node = _nodes.where((n) => n.id == id).firstOrNull;
+      if (node != null) {
+        visited.add(id);
+        result.add(node);
+        // In timeline mode, we just follow the first branch for simplicity
+        if (node.childrenIds.isNotEmpty) {
+          traverse(node.childrenIds.first);
+        }
+      }
+    }
+
+    final startNode =
+        _nodes.where((n) => n.id == 'start').firstOrNull ?? _nodes.firstOrNull;
+    if (startNode != null) {
+      traverse(startNode.id);
+    }
+
+    return result;
+  }
+
+  Widget _buildTimelineConnector(ScriptNode from, ScriptNode to) {
+    return Column(
+      children: [
+        Container(
+          height: 20,
+          width: 2,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [from.color, to.color],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+            ),
+          ),
+        ),
+        IconButton(
+              onPressed: () => _showInsertMenu(from, to),
+              icon: const Icon(Icons.add_circle_outline, size: 24),
+              color: Colors.white24,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              visualDensity: VisualDensity.compact,
+            )
+            .animate(onPlay: (c) => c.repeat(reverse: true))
+            .scale(
+              duration: 2.seconds,
+              begin: const Offset(0.9, 0.9),
+              end: const Offset(1.1, 1.1),
+            ),
+        Container(
+          height: 20,
+          width: 2,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [from.color, to.color],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTimelineEndGuide(ScriptNode lastNode) {
+    return Column(
+      children: [
+        Container(
+          height: 30,
+          width: 2,
+          color: lastNode.color.withValues(alpha: 0.3),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: ElevatedButton.icon(
+            onPressed: () => _showQuickAddMenu(lastNode),
+            icon: const Icon(Icons.add, size: 20),
+            label: const Text('接續下一步'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: lastNode.color.withValues(alpha: 0.1),
+              foregroundColor: lastNode.color,
+              side: BorderSide(color: lastNode.color.withValues(alpha: 0.5)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTimelineNode(ScriptNode node) {
+    final isSelected = _selectedNodeId == node.id;
+    final isActive = _currentSimulatorNodeId == node.id;
+
+    return GestureDetector(
+      onTap: () => setState(() => _selectedNodeId = node.id),
+      child: AnimatedScale(
+        scale: isSelected ? 1.02 : 1.0,
+        duration: 200.ms,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+            child: AnimatedContainer(
+              duration: 300.ms,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFF252525).withValues(alpha: 0.6),
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(
+                  color: isActive
+                      ? Colors.blueAccent
+                      : (isSelected
+                            ? Colors.white
+                            : node.color.withValues(alpha: 0.2)),
+                  width: (isActive || isSelected) ? 2 : 1,
+                ),
+                boxShadow: [
+                  if (isActive || isSelected)
+                    BoxShadow(
+                      color: (isActive ? Colors.blueAccent : node.color)
+                          .withValues(alpha: 0.2),
+                      blurRadius: 15,
+                    ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: node.color.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Icon(node.icon, color: node.color, size: 22),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          node.title,
+                          style: GoogleFonts.notoSansTc(
+                            color: node.color,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          node.content,
+                          style: GoogleFonts.notoSansTc(
+                            color: Colors.white.withValues(alpha: 0.8),
+                            fontSize: 13,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    Icons.chevron_right,
+                    color: Colors.white.withValues(alpha: 0.2),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   void _addNode(String type) {
     final id = 'node_${DateTime.now().millisecondsSinceEpoch}';
     // Offset slightly based on node count to avoid exact overlap
@@ -308,7 +583,7 @@ class _FamilyScriptEditorScreenState extends State<FamilyScriptEditorScreen> {
   }
 
   void _deleteSelectedNode() {
-    if (_selectedNodeId == null) return;
+    if (_selectedNodeId == null || _selectedNodeId == 'start') return;
     setState(() {
       _nodes.removeWhere((n) => n.id == _selectedNodeId);
       // Clean up references in other nodes
@@ -317,6 +592,27 @@ class _FamilyScriptEditorScreenState extends State<FamilyScriptEditorScreen> {
       }
       _selectedNodeId = null;
     });
+  }
+
+  bool _hasCycle(String startNodeId, String targetNodeId) {
+    if (startNodeId == targetNodeId) return true;
+
+    final visited = <String>{};
+    final queue = <String>[targetNodeId];
+
+    while (queue.isNotEmpty) {
+      final currentId = queue.removeAt(0);
+      if (currentId == startNodeId) return true;
+
+      if (!visited.contains(currentId)) {
+        visited.add(currentId);
+        final currentNode = _nodes.where((n) => n.id == currentId).firstOrNull;
+        if (currentNode != null) {
+          queue.addAll(currentNode.childrenIds);
+        }
+      }
+    }
+    return false;
   }
 
   void _tidyUpNodes() {
@@ -382,7 +678,9 @@ class _FamilyScriptEditorScreenState extends State<FamilyScriptEditorScreen> {
             children: _nodes
                 .where(
                   (n) =>
-                      n.id != parent.id && !parent.childrenIds.contains(n.id),
+                      n.id != parent.id &&
+                      !parent.childrenIds.contains(n.id) &&
+                      !_hasCycle(parent.id, n.id),
                 )
                 .map(
                   (n) => ListTile(
@@ -575,18 +873,104 @@ class _FamilyScriptEditorScreenState extends State<FamilyScriptEditorScreen> {
     );
   }
 
+  void _showInsertMenu(ScriptNode from, ScriptNode to) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E1E1E),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '在中間插入節點',
+              style: GoogleFonts.notoSansTc(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 24),
+            Wrap(
+              spacing: 20,
+              runSpacing: 20,
+              children: [
+                _buildQuickAddItem(
+                  context,
+                  from,
+                  '觸發',
+                  Icons.mic,
+                  Colors.blueAccent,
+                  'trigger',
+                  insertTo: to,
+                ),
+                _buildQuickAddItem(
+                  context,
+                  from,
+                  '動作',
+                  Icons.auto_awesome,
+                  Colors.purpleAccent,
+                  'action',
+                  insertTo: to,
+                ),
+                _buildQuickAddItem(
+                  context,
+                  from,
+                  '條件',
+                  Icons.call_split,
+                  Colors.orangeAccent,
+                  'condition',
+                  insertTo: to,
+                ),
+                _buildQuickAddItem(
+                  context,
+                  from,
+                  '人格',
+                  Icons.face,
+                  Colors.tealAccent,
+                  'persona',
+                  insertTo: to,
+                ),
+                _buildQuickAddItem(
+                  context,
+                  from,
+                  '記憶',
+                  Icons.memory,
+                  Colors.amberAccent,
+                  'memory',
+                  insertTo: to,
+                ),
+                _buildQuickAddItem(
+                  context,
+                  from,
+                  '多擇',
+                  Icons.list,
+                  Colors.pinkAccent,
+                  'choice',
+                  insertTo: to,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildQuickAddItem(
     BuildContext context,
     ScriptNode parent,
     String label,
     IconData icon,
     Color color,
-    String type,
-  ) {
+    String type, {
+    ScriptNode? insertTo,
+  }) {
     return InkWell(
       onTap: () {
         Navigator.pop(context);
-        _addNodeLinked(parent, type);
+        _addNodeLinked(parent, type, insertTo: insertTo);
       },
       borderRadius: BorderRadius.circular(16),
       child: Column(
@@ -610,7 +994,7 @@ class _FamilyScriptEditorScreenState extends State<FamilyScriptEditorScreen> {
     );
   }
 
-  void _addNodeLinked(ScriptNode parent, String type) {
+  void _addNodeLinked(ScriptNode parent, String type, {ScriptNode? insertTo}) {
     final id = 'node_${DateTime.now().millisecondsSinceEpoch}';
     IconData icon = Icons.help;
     Color color = Colors.grey;
@@ -662,8 +1046,15 @@ class _FamilyScriptEditorScreenState extends State<FamilyScriptEditorScreen> {
     );
 
     setState(() {
+      if (insertTo != null) {
+        // Insert node in sequence: parent -> newNode -> insertTo
+        parent.childrenIds.remove(insertTo.id);
+        parent.childrenIds.add(id);
+        newNode.childrenIds.add(insertTo.id);
+      } else {
+        parent.childrenIds.add(id);
+      }
       _nodes.add(newNode);
-      parent.childrenIds.add(id);
       _selectedNodeId = id;
     });
   }
@@ -758,27 +1149,31 @@ class _FamilyScriptEditorScreenState extends State<FamilyScriptEditorScreen> {
     return Container(
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: const Color(0xFF2A2A2A),
+        color: const Color(0xFF2A2A2A).withValues(alpha: 0.8),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.white10),
         boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 10),
+          BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 10),
         ],
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           IconButton(
-            icon: const Icon(Icons.center_focus_strong, color: Colors.white70),
+            icon: const Icon(
+              Icons.center_focus_strong,
+              color: Colors.white70,
+              size: 20,
+            ),
             tooltip: '重置視角',
             onPressed: () {
               _transformationController.value = Matrix4.identity();
               setState(() {});
             },
           ),
-          const SizedBox(width: 4),
+          Container(width: 1, height: 20, color: Colors.white10),
           IconButton(
-            icon: const Icon(Icons.zoom_in, color: Colors.white70),
+            icon: const Icon(Icons.zoom_in, color: Colors.white70, size: 20),
             onPressed: () {
               final val = _transformationController.value.clone();
               val.multiply(Matrix4.diagonal3Values(1.2, 1.2, 1.0));
@@ -787,7 +1182,7 @@ class _FamilyScriptEditorScreenState extends State<FamilyScriptEditorScreen> {
             },
           ),
           IconButton(
-            icon: const Icon(Icons.zoom_out, color: Colors.white70),
+            icon: const Icon(Icons.zoom_out, color: Colors.white70, size: 20),
             onPressed: () {
               final val = _transformationController.value.clone();
               val.multiply(Matrix4.diagonal3Values(0.8, 0.8, 1.0));
@@ -797,6 +1192,72 @@ class _FamilyScriptEditorScreenState extends State<FamilyScriptEditorScreen> {
           ),
         ],
       ),
-    ).animate().slideX(begin: -1.0, end: 0);
+    ).animate().slideY(begin: -0.5, end: 0).fadeIn();
+  }
+
+  void _loadBreadBakingTemplate() {
+    setState(() {
+      _nodes.clear();
+      _nodes.addAll([
+        ScriptNode(
+          id: 'start',
+          title: '每天 10:00',
+          content: '定時自動開啟對話',
+          position: const Offset(400, 100),
+          icon: Icons.timer,
+          color: Colors.blueAccent,
+          triggerType: 'time',
+          triggerTime: '10:00',
+          childrenIds: ['node_search'],
+        ),
+        ScriptNode(
+          id: 'node_search',
+          title: '搜尋食譜',
+          content: '搜尋簡單麵包食譜，並用溫暖語氣改寫',
+          position: const Offset(400, 300),
+          icon: Icons.auto_awesome,
+          color: Colors.purpleAccent,
+          childrenIds: ['node_reply'],
+        ),
+        ScriptNode(
+          id: 'node_reply',
+          title: '偵測媽媽反應',
+          content: '系統將偵測：[負面/困難] 或是 [正面/有趣]',
+          position: const Offset(400, 500),
+          icon: Icons.list,
+          color: Colors.pinkAccent,
+          choiceLabels: ['這好像很難...', '太棒了，來試試！'],
+          childrenIds: ['node_encourage', 'node_happy'],
+        ),
+        ScriptNode(
+          id: 'node_encourage',
+          title: 'AI 鼓勵模式',
+          content: '不會啦！小明（孫子）上次說想吃耶，妳試試看？',
+          position: const Offset(200, 750),
+          icon: Icons.face,
+          color: Colors.tealAccent,
+          childrenIds: ['node_bridge'],
+        ),
+        ScriptNode(
+          id: 'node_happy',
+          title: 'AI 讚賞模式',
+          content: '媽妳太厲害了！做完記得傳照片給我看喔！',
+          position: const Offset(600, 750),
+          icon: Icons.celebration,
+          color: Colors.orangeAccent,
+          childrenIds: ['node_bridge'],
+        ),
+        ScriptNode(
+          id: 'node_bridge',
+          title: '世代連結橋樑',
+          content: '截圖通話摘要並發送給兒子：媽媽今天對做麵包很有興趣',
+          position: const Offset(400, 1000),
+          icon: Icons.family_restroom,
+          color: Colors.greenAccent,
+        ),
+      ]);
+      _selectedNodeId = 'start';
+      _currentSimulatorNodeId = 'start';
+    });
   }
 }
