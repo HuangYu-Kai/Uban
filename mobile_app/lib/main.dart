@@ -29,7 +29,8 @@ class MyApp extends StatelessWidget {
       // ★★★ 關鍵修改：設定首頁為角色選擇頁 ★★★
       // 因為現在 CameraScreen(roomId: ...) 需要參數，不能直接在這裡呼叫無參數的版本
       // 所以必須從 RoleSelectionScreen 進入，讓使用者輸入房號
-      home: const RoleSelectionScreen(), 
+      home: const IdentificationScreen(),
+      //home: const RoleSelectionScreen(), 
       
       // ★★★ 路由設定說明 ★★★
       // 舊的寫法 '/monitor': (context) => const CameraScreen() 會報錯，
