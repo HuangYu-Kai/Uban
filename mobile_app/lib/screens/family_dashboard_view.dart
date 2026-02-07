@@ -150,7 +150,9 @@ class FamilyDashboardView extends StatelessWidget {
           color: const Color(0xFF0F172A), // Slate 900
           onTap: () => Navigator.push(
             context,
-            MaterialPageRoute(builder: (c) => const CameraScreen()),
+            MaterialPageRoute(
+              builder: (c) => const CameraScreen(roomId: 'default-room'),
+            ),
           ),
         ),
         const SizedBox(height: 16),
