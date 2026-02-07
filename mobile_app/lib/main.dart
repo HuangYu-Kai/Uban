@@ -16,7 +16,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'CompanionFlow',
+      title: 'Uban',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         // 保留您原本的暖色系設計風格 (紅色/珊瑚色)
