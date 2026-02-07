@@ -109,9 +109,9 @@ python inspect_db.py
 
 ### AI 核心 (AI Core)
 
+```bash
 pip install openai edge_tts pygame duckduckgo_search
 python TaiwaneseLM.py
-
 ```
 
 ---

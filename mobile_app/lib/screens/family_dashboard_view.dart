@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'family_script_editor_screen.dart';
+import 'package:fl_chart/fl_chart.dart';
+import 'dart:ui';
 import 'family/family_care_journal_view.dart';
+import 'camera_screen.dart';
 
 class FamilyDashboardView extends StatelessWidget {
   const FamilyDashboardView({super.key});
@@ -10,205 +12,171 @@ class FamilyDashboardView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFFFFBF0),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // 1. Header: Switch Elder + Avatar
-              _buildHeader(),
-              const SizedBox(height: 24),
+      backgroundColor: const Color(0xFFF8FAFC), // Arctic Slate
+      body: RefreshIndicator(
+        onRefresh: () async => await Future.delayed(const Duration(seconds: 1)),
+        color: const Color(0xFF2563EB),
+        backgroundColor: Colors.white,
+        child: SafeArea(
+          bottom: false,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 1. Sleek Header
+                _buildHeader(),
+                const SizedBox(height: 32),
 
-              // 2. AI Mood Card
-              _buildMoodCard(context),
-              const SizedBox(height: 24),
+                // 2. High-Contrast Hero Actions
+                _buildHeroActions(context),
+                const SizedBox(height: 32),
 
-              // 3. Quick Actions
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildQuickAction(
-                      context,
-                      '撥打視訊',
-                      'Call Mom',
-                      Icons.videocam_rounded,
-                      [const Color(0xFFE3F2FD), const Color(0xFFBBDEFB)],
-                      const Color(0xFF1976D2),
-                      () => _showVideoCallSimulation(context),
-                    ),
+                // 3. Status Report (AI Card)
+                _buildStatusReport(context),
+                const SizedBox(height: 32),
+
+                // 4. Activity Insight
+                _buildActivityInsight(context),
+                const SizedBox(height: 32),
+
+                // 5. Interaction Log (Timeline)
+                Text(
+                  '動態日誌',
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF0F172A),
+                    letterSpacing: -0.5,
                   ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: _buildQuickAction(
-                      context,
-                      '聽聽媽媽說什麼',
-                      'Listen',
-                      Icons.mic_none_rounded,
-                      [const Color(0xFFF1F8E9), const Color(0xFFDCEDC8)],
-                      const Color(0xFF388E3C),
-                      () => _showVoiceListenSimulation(context),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 32),
-
-              // 3.5 Quick Link to Scripts Editor
-              _buildEditorQuickLink(context),
-              const SizedBox(height: 32),
-
-              // 4. Timeline
-              Text(
-                '今日動態',
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
                 ),
-              ),
-              const SizedBox(height: 16),
-              _buildTimeline(),
-            ],
+                const SizedBox(height: 20),
+                _buildInteractionLog(),
+                const SizedBox(height: 100), // Space for fab-like dock
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildEditorQuickLink(BuildContext context) {
-    return GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) =>
-                const FamilyScriptEditorScreen(scriptTitle: '新劇本編輯'),
-          ),
-        );
-      },
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFF3F51B5), Color(0xFF5C6BC0)],
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-          ),
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.indigo.withValues(alpha: 0.3),
-              blurRadius: 15,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.2),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.bolt, color: Colors.white, size: 30),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '探索劇本功能',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  Text(
-                    '視覺化編輯長輩的互動流程',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 14,
-                      color: Colors.white.withValues(alpha: 0.8),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 20),
-          ],
-        ),
-      ).animate().shimmer(delay: 2.seconds, duration: 1500.ms),
-    );
-  }
-
   Widget _buildHeader() {
     return Row(
       children: [
-        // Switch Elder Button
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          decoration: BoxDecoration(
-            color: const Color(0xFFFFAB60),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.sync, color: Colors.white, size: 24),
-              const SizedBox(width: 8),
-              Text(
-                '切換長輩',
-                style: GoogleFonts.notoSansTc(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const Spacer(),
-        // Elder Name & Status
         Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '正在陪伴',
-              style: GoogleFonts.notoSansTc(fontSize: 14, color: Colors.grey),
+              '正在關照',
+              style: GoogleFonts.notoSansTc(
+                fontSize: 14,
+                color: const Color(0xFF64748B),
+                fontWeight: FontWeight.w600,
+                letterSpacing: 1.2,
+              ),
             ),
+            const SizedBox(height: 4),
             Text(
               '林美玲 媽媽',
               style: GoogleFonts.notoSansTc(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
+                fontSize: 26,
+                fontWeight: FontWeight.w900,
+                color: const Color(0xFF0F172A),
+                letterSpacing: -0.8,
               ),
             ),
           ],
         ),
-        const SizedBox(width: 12),
+        const Spacer(),
         Stack(
           children: [
-            CircleAvatar(
-              radius: 28,
-              backgroundImage: const NetworkImage(
-                'https://randomuser.me/api/portraits/women/90.jpg',
+            Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 3),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.1),
+                    blurRadius: 15,
+                    offset: const Offset(0, 5),
+                  ),
+                ],
               ),
-              backgroundColor: Colors.grey[200],
+              child: const CircleAvatar(
+                radius: 30,
+                backgroundImage: NetworkImage(
+                  'https://randomuser.me/api/portraits/women/90.jpg',
+                ),
+              ),
             ),
             Positioned(
               right: 2,
               bottom: 2,
-              child: Container(
-                width: 14,
-                height: 14,
-                decoration: BoxDecoration(
-                  color: Colors.green,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 2),
+              child:
+                  Container(
+                        width: 14,
+                        height: 14,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF10B981), // Emerald 500
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                        ),
+                      )
+                      .animate(onPlay: (c) => c.repeat(reverse: true))
+                      .scale(
+                        begin: const Offset(1, 1),
+                        end: const Offset(1.2, 1.2),
+                        duration: 1.seconds,
+                        curve: Curves.easeInOut,
+                      ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHeroActions(BuildContext context) {
+    return Column(
+      children: [
+        // 監控英雄卡 (Wide Hero)
+        _buildHeroCard(
+          context,
+          title: '即時影像監控',
+          subtitle: '查看家中即時情況',
+          icon: Icons.emergency_recording_rounded,
+          color: const Color(0xFF0F172A), // Slate 900
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (c) => const CameraScreen()),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              child: _buildActionBtn(
+                context,
+                title: '視訊通話',
+                icon: Icons.videocam_rounded,
+                color: const Color(0xFF2563EB), // Primary Blue
+                onTap: () => _showVideoCallSimulation(context),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: _buildActionBtn(
+                context,
+                title: '關照日誌',
+                icon: Icons.assignment_rounded,
+                color: const Color(0xFF64748B),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (c) => const FamilyCareJournalView(),
+                  ),
                 ),
               ),
             ),
@@ -218,100 +186,366 @@ class FamilyDashboardView extends StatelessWidget {
     );
   }
 
-  Widget _buildMoodCard(BuildContext context) {
+  Widget _buildHeroCard(
+    BuildContext context, {
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
     return GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => const FamilyCareJournalView(),
-          ),
-        );
-      },
+      onTap: onTap,
       child: Container(
-        width: double.infinity,
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFFFFA726), Color(0xFFFFB74D)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(32),
+          color: color,
+          borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(
-              color: Colors.orange.withValues(alpha: 0.3),
-              blurRadius: 15,
-              offset: const Offset(0, 8),
+              color: color.withValues(alpha: 0.3),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: GoogleFonts.notoSansTc(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: GoogleFonts.notoSansTc(
+                      color: Colors.white.withValues(alpha: 0.7),
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: Colors.white, size: 32),
+            ),
+          ],
+        ),
+      ),
+    ).animate().fadeIn(duration: 600.ms).slideX(begin: 0.1, end: 0);
+  }
+
+  Widget _buildActionBtn(
+    BuildContext context, {
+    required String title,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.03),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
             ),
           ],
         ),
         child: Column(
           children: [
-            Row(
-              children: [
-                const Icon(Icons.auto_awesome, color: Colors.white70, size: 24),
-                const Spacer(),
-                const Icon(
-                  Icons.chevron_right,
-                  color: Colors.white70,
-                  size: 20,
-                ),
-              ],
-            ),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Text('😄', style: TextStyle(fontSize: 50)),
-                ).animate().scale(
-                  delay: 500.ms,
-                  duration: 800.ms,
-                  curve: Curves.elasticOut,
-                ),
-                const SizedBox(width: 20),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '心情愉快',
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 32,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                    Text(
-                      '今日互動指數：高',
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 16,
-                        color: Colors.white.withValues(alpha: 0.9),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(16),
+            Icon(icon, color: color, size: 32),
+            const SizedBox(height: 12),
+            Text(
+              title,
+              style: GoogleFonts.notoSansTc(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF1E293B),
               ),
-              child: Text(
-                '「媽媽今天精神很好！早上聊到『鄧麗君』的時候特別開心，還跟著唱了兩句。目前沒有發現負面情緒。」',
+            ),
+          ],
+        ),
+      ),
+    ).animate().fadeIn(delay: 200.ms).scale(begin: const Offset(0.9, 0.9));
+  }
+
+  Widget _buildStatusReport(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.auto_awesome_rounded,
+                color: Color(0xFFFACC15),
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'AI 每日現況摘要',
                 style: GoogleFonts.notoSansTc(
-                  fontSize: 16,
-                  color: Colors.white,
-                  height: 1.5,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF64748B),
                 ),
-                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF1F5F9),
+                  shape: BoxShape.circle,
+                ),
+                child: const Text('😊', style: TextStyle(fontSize: 28)),
+              ),
+              const SizedBox(width: 16),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '當前心情：愉快',
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFF0F172A),
+                    ),
+                  ),
+                  Text(
+                    '穩定度 98% · 昨日無異常',
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 12,
+                      color: const Color(0xFF10B981),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Text(
+            '媽媽今天在練習書法時展現了極佳的專注力，提到以前在小學當老師的故事。體感活動達標。',
+            style: GoogleFonts.notoSansTc(
+              fontSize: 15,
+              color: const Color(0xFF334155),
+              height: 1.6,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActivityInsight(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '活動趨勢分析',
+            style: GoogleFonts.notoSansTc(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: const Color(0xFF0F172A),
+            ),
+          ),
+          const SizedBox(height: 24),
+          SizedBox(
+            height: 130, // 增加高度以容納 X 軸標籤
+            child: BarChart(
+              BarChartData(
+                alignment: BarChartAlignment.spaceEvenly,
+                maxY: 10,
+                barTouchData: BarTouchData(enabled: false),
+                titlesData: FlTitlesData(
+                  show: true,
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      getTitlesWidget: (value, meta) {
+                        const days = ['一', '二', '三', '四', '五', '六', '日'];
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 8.0),
+                          child: Text(
+                            days[value.toInt() % 7],
+                            style: GoogleFonts.notoSansTc(
+                              color: const Color(0xFF94A3B8),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  leftTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  topTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  rightTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                ),
+                gridData: const FlGridData(show: false),
+                borderData: FlBorderData(show: false),
+                barGroups: [
+                  _makeBar(0, 5, const Color(0xFFCBD5E1)),
+                  _makeBar(1, 8, const Color(0xFFCBD5E1)),
+                  _makeBar(2, 4, const Color(0xFFCBD5E1)),
+                  _makeBar(3, 9, const Color(0xFF2563EB)), // Today
+                  _makeBar(4, 3, const Color(0xFFCBD5E1)),
+                  _makeBar(5, 7, const Color(0xFFCBD5E1)),
+                  _makeBar(6, 6, const Color(0xFFCBD5E1)),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  BarChartGroupData _makeBar(int x, double y, Color color) {
+    return BarChartGroupData(
+      x: x,
+      barRods: [
+        BarChartRodData(
+          toY: y,
+          color: color,
+          width: 16,
+          borderRadius: BorderRadius.circular(4),
+          backDrawRodData: BackgroundBarChartRodData(
+            show: true,
+            toY: 10,
+            color: const Color(0xFFF1F5F9),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildInteractionLog() {
+    return Column(
+      children: [
+        _buildLogItem(
+          '14:40',
+          '視訊連線',
+          '與家屬完成了 15 分鐘的通話',
+          Icons.videocam_rounded,
+          const Color(0xFF2563EB),
+        ),
+        _buildLogItem(
+          '12:15',
+          '健康檢測',
+          '血壓與心率數值正常',
+          Icons.favorite_rounded,
+          const Color(0xFFEF4444),
+        ),
+        _buildLogItem(
+          '09:00',
+          '自動排程',
+          '播放了早晨喚醒音樂',
+          Icons.music_note_rounded,
+          const Color(0xFF8B5CF6),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLogItem(
+    String time,
+    String title,
+    String detail,
+    IconData icon,
+    Color color,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: color, size: 18),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF1E293B),
+                    ),
+                  ),
+                  Text(
+                    detail,
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 13,
+                      color: const Color(0xFF64748B),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Text(
+              time,
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                color: const Color(0xFF94A3B8),
+                fontWeight: FontWeight.w500,
               ),
             ),
           ],
@@ -324,320 +558,49 @@ class FamilyDashboardView extends StatelessWidget {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFFF8FAFC),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const SizedBox(height: 16),
             const CircleAvatar(
-              radius: 40,
+              radius: 45,
               backgroundImage: NetworkImage('https://i.pravatar.cc/150?u=mom'),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
             Text(
-              '撥號給 媽媽...',
+              '撥號中...',
               style: GoogleFonts.notoSansTc(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
+                fontSize: 20,
+                fontWeight: FontWeight.w900,
+                color: const Color(0xFF0F172A),
               ),
             ),
             const SizedBox(height: 8),
-            const Text('等待接聽中...'),
-            const SizedBox(height: 24),
+            const Text('正在邀請 媽媽 加入通話'),
+            const SizedBox(height: 32),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                FloatingActionButton(
-                  onPressed: () => Navigator.pop(context),
-                  backgroundColor: Colors.redAccent,
-                  child: const Icon(Icons.call_end),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showVoiceListenSimulation(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: Text(
-          '媽媽說了什麼？',
-          style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.grey[100],
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: const Row(
-                children: [
-                  Icon(Icons.play_arrow, color: Colors.blue),
-                  SizedBox(width: 12),
-                  Expanded(child: Text('一段錄音 - 0:15')),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              '「小明啊，今天外面的太陽好大，我有去樓下公園走走喔...」',
-              style: GoogleFonts.notoSansTc(
-                color: Colors.grey[700],
-                fontStyle: FontStyle.italic,
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('關閉'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildQuickAction(
-    BuildContext context,
-    String label,
-    String subLabel,
-    IconData icon,
-    List<Color> gradientColors,
-    Color accentColor,
-    VoidCallback onTap,
-  ) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        height: 120, // Reduced from 160 to fit constraints
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: gradientColors,
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: [
-            BoxShadow(
-              color: accentColor.withValues(alpha: 0.2),
-              blurRadius: 15,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: Stack(
-          children: [
-            Positioned(
-              right: -5,
-              bottom: -5,
-              child: Icon(
-                icon,
-                size: 60, // Reduced size
-                color: accentColor.withValues(alpha: 0.1),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(16.0), // Reduced padding
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment
-                    .spaceBetween, // Use spaceBetween instead of Spacer
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.5),
+                GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFEF4444),
                       shape: BoxShape.circle,
                     ),
-                    child: Icon(icon, size: 24, color: accentColor),
-                  ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Text(
-                          label,
-                          style: GoogleFonts.notoSansTc(
-                            fontSize: 18, // Slightly smaller
-                            fontWeight: FontWeight.bold,
-                            color: accentColor.withValues(alpha: 0.9),
-                          ),
-                        ),
-                      ),
-                      FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Text(
-                          subLabel,
-                          style: GoogleFonts.inter(
-                            fontSize: 12, // Slightly smaller
-                            color: accentColor.withValues(alpha: 0.6),
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTimeline() {
-    return Column(
-      children: [
-        _buildTimelineItem(
-          '14:15',
-          '記錄了媽媽的一段回憶',
-          '「這張照片是在阿里山拍的啦，那...」',
-          true,
-          Colors.blue,
-          isFirst: true,
-        ),
-        _buildTimelineItem('13:00', '記憶遊戲', '完成程度：80%', false, Colors.orange),
-        _buildTimelineItem(
-          '10:00',
-          '廣播錄音',
-          '媽媽發布了一則關於「種蘭花」的語音。',
-          true,
-          Colors.green,
-          isAudio: true,
-          isLast: true,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildTimelineItem(
-    String time,
-    String title,
-    String content,
-    bool showAction,
-    Color color, {
-    bool isAudio = false,
-    bool isFirst = false,
-    bool isLast = false,
-  }) {
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 32,
-            child: Stack(
-              alignment: Alignment.topCenter,
-              children: [
-                if (!isLast)
-                  Positioned(
-                    top: 20,
-                    bottom: 0,
-                    child: Container(width: 2, color: Colors.grey[300]!),
-                  ),
-                if (!isFirst)
-                  Positioned(
-                    top: 0,
-                    bottom: 0,
-                    child: Container(width: 2, color: Colors.grey[300]!),
-                  ),
-                Positioned(
-                  top: 8,
-                  child: CircleAvatar(
-                    radius: 8,
-                    backgroundColor: const Color(0xFFFAF9F6),
-                    child: CircleAvatar(radius: 6, backgroundColor: color),
+                    child: const Icon(
+                      Icons.call_end,
+                      color: Colors.white,
+                      size: 28,
+                    ),
                   ),
                 ),
               ],
             ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    time,
-                    style: GoogleFonts.inter(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black54,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.05),
-                          blurRadius: 5,
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          title,
-                          style: GoogleFonts.notoSansTc(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          content,
-                          style: GoogleFonts.notoSansTc(
-                            fontSize: 14,
-                            color: Colors.grey[700],
-                          ),
-                        ),
-                        if (showAction) ...[
-                          const SizedBox(height: 12),
-                          Row(
-                            children: [
-                              Icon(
-                                isAudio ? Icons.play_arrow : Icons.play_arrow,
-                                color: Colors.blue,
-                                size: 20,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                isAudio ? '點擊播放' : '點擊觀看',
-                                style: GoogleFonts.notoSansTc(
-                                  color: Colors.blue,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
