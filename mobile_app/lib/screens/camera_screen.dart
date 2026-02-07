@@ -54,20 +54,19 @@ class _CameraScreenState extends State<CameraScreen> {
       Permission.microphone,
     ].request();
 
-    if (statuses[Permission.camera]!.isGranted && 
+    if (statuses[Permission.camera]!.isGranted &&
         statuses[Permission.microphone]!.isGranted) {
-      
       signaling.connect();
       await signaling.openUserMedia(_localRenderer, _remoteRenderer);
-      
+
       // ★★★ 強制發送端開啟擴音 ★★★
-      Helper.setSpeakerphoneOn(true); 
+      Helper.setSpeakerphoneOn(true);
       setState(() {});
     } else {
-      if(mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("請允許相機與麥克風權限以使用此功能")),
-        );
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text("請允許相機與麥克風權限以使用此功能")));
       }
     }
   }
@@ -75,16 +74,18 @@ class _CameraScreenState extends State<CameraScreen> {
   Future<void> _handleAutoReconnect() async {
     if (_isReconnecting) return;
     setState(() => _isReconnecting = true);
-    
+
     // 等待一下再重連
     await Future.delayed(const Duration(seconds: 3));
 
     try {
       await signaling.createOffer();
       Helper.setSpeakerphoneOn(true); // 重連後再次確認擴音
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("已觸發自動重連...")),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text("已觸發自動重連...")));
+      }
     } catch (e) {
       print("重連失敗: $e");
     } finally {
@@ -114,16 +115,20 @@ class _CameraScreenState extends State<CameraScreen> {
                 // 本地畫面 (鏡面)
                 Expanded(
                   child: Container(
-                      decoration: BoxDecoration(border: Border.all(color: Colors.blue)),
-                      child: RTCVideoView(_localRenderer, mirror: true)
-                  )
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.blue),
+                    ),
+                    child: RTCVideoView(_localRenderer, mirror: true),
+                  ),
                 ),
                 // 遠端畫面
                 Expanded(
                   child: Container(
-                      decoration: BoxDecoration(border: Border.all(color: Colors.red)),
-                      child: RTCVideoView(_remoteRenderer)
-                  )
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.red),
+                    ),
+                    child: RTCVideoView(_remoteRenderer),
+                  ),
                 ),
               ],
             ),
@@ -145,7 +150,9 @@ class _CameraScreenState extends State<CameraScreen> {
                 // 手動重連按鈕 (備用)
                 ElevatedButton(
                   onPressed: _handleAutoReconnect,
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.orange.shade100),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange.shade100,
+                  ),
                   child: const Text("重連"),
                 ),
               ],

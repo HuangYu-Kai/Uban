@@ -36,7 +36,7 @@ class _FamilyScriptsViewState extends State<FamilyScriptsView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFFFFBF0),
+      backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
         title: Text(
           '劇本管理',
@@ -52,7 +52,7 @@ class _FamilyScriptsViewState extends State<FamilyScriptsView> {
           IconButton(
             icon: const Icon(
               Icons.add_circle_outline,
-              color: Color(0xFFFF9800),
+              color: Color(0xFF2563EB),
               size: 30,
             ),
             onPressed: () => _showCreateScriptSheet(context),

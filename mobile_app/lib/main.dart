@@ -2,9 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 // 如果之後要接回原本的主流程，保留此 import，目前先用不到可以註解或留著
-import 'screens/identification_screen.dart'; 
-// 引入刚刚建立的角色選擇頁面，這是新的入口
-import 'screens/role_selection_screen.dart'; 
+import 'screens/identification_screen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -25,13 +23,13 @@ class MyApp extends StatelessWidget {
         // 設定字體
         textTheme: GoogleFonts.notoSansTcTextTheme(Theme.of(context).textTheme),
       ),
-      
+
       // ★★★ 關鍵修改：設定首頁為角色選擇頁 ★★★
       // 因為現在 CameraScreen(roomId: ...) 需要參數，不能直接在這裡呼叫無參數的版本
       // 所以必須從 RoleSelectionScreen 進入，讓使用者輸入房號
       home: const IdentificationScreen(),
-      //home: const RoleSelectionScreen(), 
-      
+      //home: const RoleSelectionScreen(),
+
       // ★★★ 路由設定說明 ★★★
       // 舊的寫法 '/monitor': (context) => const CameraScreen() 會報錯，
       // 因為 CameraScreen 現在必須要有 roomId。
