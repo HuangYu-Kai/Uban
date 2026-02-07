@@ -6,7 +6,7 @@ import '../services/signaling.dart';
 
 class CameraScreen extends StatefulWidget {
   final String roomId;
-  const CameraScreen({Key? key, required this.roomId}) : super(key: key);
+  const CameraScreen({super.key, required this.roomId});
 
   @override
   State<CameraScreen> createState() => _CameraScreenState();

@@ -1,17 +1,17 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
-import 'package:socket_io_client/socket_io_client.dart' as IO;
+import 'package:socket_io_client/socket_io_client.dart' as socket_io;
 
-typedef void StreamStateCallback(MediaStream stream);
+typedef StreamStateCallback = void Function(MediaStream stream);
 
 class Signaling {
   // ★ 請確認 IP 正確
   final String _socketUrl = 'http://IP:5000';
 
-  IO.Socket? socket;
+  socket_io.Socket? socket;
   RTCPeerConnection? peerConnection;
   MediaStream? localStream;
-  
+
   StreamStateCallback? onAddRemoteStream;
   StreamStateCallback? onLocalStream;
   VoidCallback? onConnectionLost;
@@ -23,23 +23,23 @@ class Signaling {
   final Map<String, dynamic> _configuration = {
     'iceServers': [
       {'urls': 'stun:stun.l.google.com:19302'},
-    ]
+    ],
   };
 
   // 連線: 必須帶入 role
   void connect(String roomId, String role) {
     _currentRoomId = roomId;
 
-    socket = IO.io(_socketUrl, <String, dynamic>{
+    socket = socket_io.io(_socketUrl, <String, dynamic>{
       'transports': ['websocket'],
       'autoConnect': false,
-      'forceNew': true
+      'forceNew': true,
     });
 
     socket!.connect();
 
     socket!.onConnect((_) {
-      print('✅ 已連線。加入房間: $roomId, 角色: $role');
+      debugPrint('✅ 已連線。加入房間: $roomId, 角色: $role');
       socket!.emit('join', {'room': roomId, 'role': role});
     });
 
@@ -48,38 +48,40 @@ class Signaling {
         onUserListUpdate!(data as List<dynamic>);
       }
     });
-    
+
     // 處理 Offer
     socket!.on('offer', (data) async {
-      print('📩 收到 Offer');
+      debugPrint('📩 收到 Offer');
       _peerSocketId = data['senderId']; // 記錄來源
 
       await _createPeerConnection();
-      
+
       var description = RTCSessionDescription(data['sdp'], data['type']);
       await peerConnection?.setRemoteDescription(description);
-      
+
       var answer = await peerConnection?.createAnswer();
       await peerConnection?.setLocalDescription(answer!);
-      
+
       // 回傳 Answer (優先回給 senderId，沒有則廣播)
       socket!.emit('answer', {
         'room': _currentRoomId,
         'targetId': _peerSocketId,
         'type': 'answer',
-        'sdp': answer!.sdp
+        'sdp': answer!.sdp,
       });
     });
 
     socket!.on('answer', (data) async {
-      print('📩 收到 Answer');
+      debugPrint('📩 收到 Answer');
       var description = RTCSessionDescription(data['sdp'], data['type']);
       await peerConnection?.setRemoteDescription(description);
     });
 
     socket!.on('candidate', (data) async {
       var candidate = RTCIceCandidate(
-        data['candidate'], data['sdpMid'], data['sdpMLineIndex']
+        data['candidate'],
+        data['sdpMid'],
+        data['sdpMLineIndex'],
       );
       await peerConnection?.addCandidate(candidate);
     });
@@ -96,7 +98,7 @@ class Signaling {
           'targetId': _peerSocketId,
           'candidate': candidate.candidate,
           'sdpMid': candidate.sdpMid,
-          'sdpMLineIndex': candidate.sdpMLineIndex
+          'sdpMLineIndex': candidate.sdpMLineIndex,
         });
       }
     };
@@ -117,23 +119,23 @@ class Signaling {
   // ★★★ 修復重點：加回 createOffer (給雙向視訊用) ★★★
   // 這會觸發 app.py 的廣播模式
   Future<void> createOffer() async {
-    print('📞 發起雙向通話 Offer (廣播)...');
+    debugPrint('📞 發起雙向通話 Offer (廣播)...');
     await _createPeerConnection();
 
     RTCSessionDescription offer = await peerConnection!.createOffer();
     await peerConnection!.setLocalDescription(offer);
-    
+
     // 不帶 targetId，只帶 room
     socket!.emit('offer', {
-      'room': _currentRoomId, 
+      'room': _currentRoomId,
       'type': 'offer',
-      'sdp': offer.sdp
+      'sdp': offer.sdp,
     });
   }
 
   // ★★★ 監控專用：指定 Socket ID ★★★
   Future<void> startMonitoring(String targetSocketId) async {
-    print('🎥 對 $targetSocketId 發起監控...');
+    debugPrint('🎥 對 $targetSocketId 發起監控...');
     _peerSocketId = targetSocketId;
 
     await _createPeerConnection();
@@ -146,18 +148,21 @@ class Signaling {
 
     RTCSessionDescription offer = await peerConnection!.createOffer();
     await peerConnection!.setLocalDescription(offer);
-    
+
     // 帶上 targetId
     socket!.emit('offer', {
       'targetId': targetSocketId,
       'room': _currentRoomId,
       'type': 'offer',
-      'sdp': offer.sdp
+      'sdp': offer.sdp,
     });
   }
 
   Future<void> openUserMedia(RTCVideoRenderer localVideo) async {
-    var stream = await navigator.mediaDevices.getUserMedia({'video': true, 'audio': true});
+    var stream = await navigator.mediaDevices.getUserMedia({
+      'video': true,
+      'audio': true,
+    });
     localVideo.srcObject = stream;
     localStream = stream;
     if (onLocalStream != null) onLocalStream!(stream);
