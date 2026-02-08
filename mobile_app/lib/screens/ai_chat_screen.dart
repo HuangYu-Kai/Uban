@@ -219,7 +219,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
                           size: 30,
                         ),
                         onPressed: () {
-                          // TODO: 開啟鍵盤輸入
+                          _showTextInputDialog();
                         },
                       ),
                     ),
@@ -433,5 +433,63 @@ class _AIChatScreenState extends State<AIChatScreen> {
         ),
       ),
     ).animate().fadeIn();
+  }
+
+  void _showTextInputDialog() {
+    final TextEditingController textController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          title: Text(
+            '輸入訊息',
+            style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold),
+          ),
+          content: TextField(
+            controller: textController,
+            style: GoogleFonts.notoSansTc(fontSize: 24),
+            decoration: const InputDecoration(
+              hintText: '請輸入您想說的話...',
+              border: OutlineInputBorder(),
+            ),
+            maxLines: 3,
+            autofocus: true,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(
+                '取消',
+                style: GoogleFonts.notoSansTc(fontSize: 20, color: Colors.grey),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final text = textController.text.trim();
+                if (text.isNotEmpty) {
+                  _handleUserMessage(text);
+                }
+                Navigator.pop(context);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange,
+                foregroundColor: Colors.white,
+              ),
+              child: Text(
+                '發送',
+                style: GoogleFonts.notoSansTc(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 }

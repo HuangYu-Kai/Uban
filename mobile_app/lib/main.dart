@@ -18,26 +18,17 @@ class MyApp extends StatelessWidget {
       title: 'Uban',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        // 保留您原本的暖色系設計風格 (紅色/珊瑚色)
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFFFF6B6B)),
         useMaterial3: true,
-        // 設定字體
         textTheme: GoogleFonts.notoSansTcTextTheme(Theme.of(context).textTheme),
       ),
-      
-      // ★★★ 關鍵修改：設定首頁為角色選擇頁 ★★★
-      // 因為現在 CameraScreen(roomId: ...) 需要參數，不能直接在這裡呼叫無參數的版本
-      // 所以必須從 RoleSelectionScreen 進入，讓使用者輸入房號
+      // ★★★ 關鍵修改：設定首頁為識別頁 ★★★
       home: const IdentificationScreen(),
-      //home: const RoleSelectionScreen(), 
-      
       // ★★★ 路由設定說明 ★★★
       // 舊的寫法 '/monitor': (context) => const CameraScreen() 會報錯，
       // 因為 CameraScreen 現在必須要有 roomId。
-      // 既然 RoleSelectionScreen 已經用 Navigator.push 直接跳轉，這裡可以先清空或留白。
       routes: {
         // 如果之後有不需要傳參數的頁面，可以在這裡加
-        // '/home': (context) => const IdentificationScreen(),
       },
     );
   }

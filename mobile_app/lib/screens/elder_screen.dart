@@ -4,10 +4,10 @@ import '../services/signaling.dart';
 
 class ElderScreen extends StatefulWidget {
   final String roomId;
-  const ElderScreen({Key? key, required this.roomId}) : super(key: key);
+  const ElderScreen({super.key, required this.roomId});
 
   @override
-  _ElderScreenState createState() => _ElderScreenState();
+  State<ElderScreen> createState() => _ElderScreenState();
 }
 
 class _ElderScreenState extends State<ElderScreen> {
@@ -18,7 +18,7 @@ class _ElderScreenState extends State<ElderScreen> {
   void initState() {
     super.initState();
     _localRenderer.initialize();
-    
+
     // 預覽自己的畫面
     _signaling.onLocalStream = ((stream) {
       setState(() {
@@ -45,14 +45,23 @@ class _ElderScreenState extends State<ElderScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('長輩端 - ${widget.roomId}'), backgroundColor: Colors.orange),
+      appBar: AppBar(
+        title: Text('長輩端 - ${widget.roomId}'),
+        backgroundColor: Colors.orange,
+      ),
       body: Stack(
         children: [
           Positioned.fill(child: RTCVideoView(_localRenderer, mirror: true)),
           const Center(
-            child: Text("等待家屬連線...", 
-              style: TextStyle(color: Colors.white, backgroundColor: Colors.black54, fontSize: 20)),
-          )
+            child: Text(
+              "等待家屬連線...",
+              style: TextStyle(
+                color: Colors.white,
+                backgroundColor: Colors.black54,
+                fontSize: 20,
+              ),
+            ),
+          ),
         ],
       ),
     );

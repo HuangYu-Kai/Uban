@@ -1,4 +1,0 @@
-﻿Analyzing UniFlow...                                            
-
-   info - Statements in an if should be enclosed in a block - lib\screens\family_marketplace_view.dart:18:7 - curly_braces_in_flow_control_structures
-

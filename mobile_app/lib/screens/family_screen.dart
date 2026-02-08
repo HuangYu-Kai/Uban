@@ -4,16 +4,16 @@ import '../services/signaling.dart';
 
 class FamilyScreen extends StatefulWidget {
   final String roomId;
-  const FamilyScreen({Key? key, required this.roomId}) : super(key: key);
+  const FamilyScreen({super.key, required this.roomId});
 
   @override
-  _FamilyScreenState createState() => _FamilyScreenState();
+  State<FamilyScreen> createState() => _FamilyScreenState();
 }
 
 class _FamilyScreenState extends State<FamilyScreen> {
   final Signaling _signaling = Signaling();
   final RTCVideoRenderer _remoteRenderer = RTCVideoRenderer();
-  
+
   // 儲存線上的長輩設備列表
   List<dynamic> _onlineElders = [];
   // 是否正在觀看
@@ -30,7 +30,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
         _isWatching = true; // 收到畫面，切換到觀看模式
       });
     });
-    
+
     // 監聽後端傳來的設備列表
     _signaling.onUserListUpdate = (users) {
       setState(() {
@@ -62,14 +62,12 @@ class _FamilyScreenState extends State<FamilyScreen> {
                 onPressed: () {
                   // 簡單實作：退回列表需重連 (或是掛斷 peerConnection)
                   // 這裡為了穩定，直接讓使用者退回上一頁重選
-                  Navigator.pop(context); 
+                  Navigator.pop(context);
                 },
               )
             : null,
       ),
-      body: _isWatching
-          ? _buildVideoView()
-          : _buildDeviceList(),
+      body: _isWatching ? _buildVideoView() : _buildDeviceList(),
     );
   }
 
@@ -96,7 +94,11 @@ class _FamilyScreenState extends State<FamilyScreen> {
         return Card(
           margin: const EdgeInsets.all(10),
           child: ListTile(
-            leading: const Icon(Icons.camera_indoor, size: 40, color: Colors.orange),
+            leading: const Icon(
+              Icons.camera_indoor,
+              size: 40,
+              color: Colors.orange,
+            ),
             title: Text("長輩設備 ${index + 1}"),
             subtitle: Text("ID: ${device['id']}"),
             trailing: ElevatedButton(
@@ -114,9 +116,6 @@ class _FamilyScreenState extends State<FamilyScreen> {
 
   // 畫面 2: 監控畫面
   Widget _buildVideoView() {
-    return Container(
-      color: Colors.black,
-      child: RTCVideoView(_remoteRenderer),
-    );
+    return Container(color: Colors.black, child: RTCVideoView(_remoteRenderer));
   }
 }
