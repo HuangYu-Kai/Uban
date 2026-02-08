@@ -1,7 +1,6 @@
 // 路徑: mobile_app/lib/main.dart
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-// 如果之後要接回原本的主流程，保留此 import，目前先用不到可以註解或留著
 import 'screens/identification_screen.dart'; 
 // 引入刚刚建立的角色選擇頁面，這是新的入口
 import 'screens/role_selection_screen.dart'; 
