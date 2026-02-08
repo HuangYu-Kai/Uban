@@ -1,72 +1,35 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import '../services/script_data_service.dart';
+import '../models/script_node.dart';
+import '../widgets/script_editor/script_editor_painters.dart';
+import '../widgets/script_editor/node_card.dart';
+import '../widgets/script_editor/property_panel.dart';
+import '../widgets/script_editor/elder_simulator.dart';
 
 class FamilyScriptEditorScreen extends StatefulWidget {
   final String scriptTitle;
-  const FamilyScriptEditorScreen({super.key, required this.scriptTitle});
+  final bool isNew;
+  const FamilyScriptEditorScreen({
+    super.key,
+    required this.scriptTitle,
+    this.isNew = false,
+  });
 
   @override
   State<FamilyScriptEditorScreen> createState() =>
       _FamilyScriptEditorScreenState();
 }
 
-class ScriptNode {
-  final String id;
-  String title;
-  String content;
-  Offset position;
-  final IconData icon;
-  final Color color;
-  final List<String> childrenIds;
-
-  // Trigger Settings
-  String triggerType; // 'voice', 'time', 'weather', 'health', 'iot'
-  List<String>? keywords;
-  double? moodThreshold;
-  String? triggerTime;
-  String? weatherCondition;
-  String? healthMetric;
-  double? healthThreshold;
-  String? iotDevice;
-  String? iotEvent;
-
-  // Action Settings
-  String? voiceTone;
-  int delaySeconds;
-  String? mediaUrl;
-
-  // Condition Settings
-  String? timeRange;
-
-  ScriptNode({
-    required this.id,
-    required this.title,
-    required this.content,
-    required this.position,
-    required this.icon,
-    required this.color,
-    this.childrenIds = const [],
-    this.triggerType = 'voice',
-    this.keywords,
-    this.moodThreshold = 0.5,
-    this.triggerTime,
-    this.weatherCondition = '雨天',
-    this.healthMetric = '心率',
-    this.healthThreshold = 100,
-    this.iotDevice = '門窗感測器',
-    this.iotEvent = '開啟',
-    this.voiceTone = '溫暖',
-    this.delaySeconds = 0,
-    this.mediaUrl,
-    this.timeRange = '全天',
-  });
-}
-
 class _FamilyScriptEditorScreenState extends State<FamilyScriptEditorScreen> {
+  String? _currentSimulatorNodeId;
+  bool _showComponentBox = false;
   final List<ScriptNode> _nodes = [];
   String? _selectedNodeId;
   bool _showSimulator = false;
+  bool _isTimelineMode = true;
   final TransformationController _transformationController =
       TransformationController();
 
@@ -75,39 +38,76 @@ class _FamilyScriptEditorScreenState extends State<FamilyScriptEditorScreen> {
     super.initState();
     // Start zoomed out slightly or centered
     _transformationController.value = Matrix4.identity();
-    super.initState();
-    _nodes.addAll([
-      ScriptNode(
-        id: 'start',
-        title: '觸發',
-        content: '當長輩說「我今天好無聊」',
-        position: const Offset(400, 100),
-        icon: Icons.mic,
-        color: Colors.blueAccent,
-        childrenIds: ['action_1'],
-      ),
-      ScriptNode(
-        id: 'action_1',
-        title: '動作',
-        content: 'AI 自動生成關於「懷舊廣播」的對話',
-        position: const Offset(400, 300),
-        icon: Icons.auto_awesome,
-        color: Colors.purpleAccent,
-        childrenIds: ['end'],
-      ),
-      ScriptNode(
-        id: 'end',
-        title: '結束',
-        content: '記錄話題到照顧日誌',
-        position: const Offset(400, 500),
-        icon: Icons.check_circle,
-        color: Colors.greenAccent,
-      ),
-    ]);
-    _currentSimulatorNodeId = 'start';
-  }
 
-  String? _currentSimulatorNodeId;
+    // Load persisted nodes if available
+    final persistedNodes = ScriptDataService().getNodes(widget.scriptTitle);
+    if (persistedNodes.isNotEmpty) {
+      _nodes.addAll(
+        persistedNodes
+            .map(
+              (d) => ScriptNode(
+                id: d.id,
+                title: d.title,
+                content: d.content,
+                position: d.position,
+                icon: d.icon,
+                color: d.color,
+                childrenIds: List.from(d.childrenIds),
+                triggerType: d.triggerType ?? 'voice',
+                keywords: d.keywords,
+                moodThreshold: d.moodThreshold,
+                triggerTime: d.triggerTime,
+                weatherCondition: d.weatherCondition ?? '雨天',
+                healthMetric: d.healthMetric ?? '心率',
+                healthThreshold: d.healthThreshold ?? 100,
+                iotDevice: d.iotDevice ?? '門窗感測器',
+                iotEvent: d.iotEvent ?? '開啟',
+                voiceTone: d.voiceTone ?? '溫暖',
+                delaySeconds: d.delaySeconds,
+                mediaUrl: d.mediaUrl,
+                choiceLabels: d.choiceLabels,
+                personaName: d.personaName,
+                personaPrompt: d.personaPrompt,
+                memoryKey: d.memoryKey,
+                memoryValue: d.memoryValue,
+                timeRange: d.timeRange ?? '全天',
+              ),
+            )
+            .toList(),
+      );
+      _currentSimulatorNodeId = _nodes.firstOrNull?.id;
+    } else if (!widget.isNew) {
+      _nodes.addAll([
+        ScriptNode(
+          id: 'start',
+          title: '觸發',
+          content: '當長輩說「我今天好無聊」...',
+          position: const Offset(400, 100),
+          icon: Icons.mic,
+          color: Colors.blueAccent,
+          childrenIds: ['action_1'],
+        ),
+        ScriptNode(
+          id: 'action_1',
+          title: '動作',
+          content: 'AI 自動生成關於「懷舊廣播」的對話',
+          position: const Offset(400, 300),
+          icon: Icons.auto_awesome,
+          color: Colors.purpleAccent,
+          childrenIds: ['end'],
+        ),
+        ScriptNode(
+          id: 'end',
+          title: '結束',
+          content: '記錄話題到照顧日誌...',
+          position: const Offset(400, 500),
+          icon: Icons.check_circle,
+          color: Colors.greenAccent,
+        ),
+      ]);
+      _currentSimulatorNodeId = 'start';
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -122,8 +122,56 @@ class _FamilyScriptEditorScreenState extends State<FamilyScriptEditorScreen> {
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
+          IconButton(
+            onPressed: () => setState(() => _isTimelineMode = !_isTimelineMode),
+            icon: Icon(
+              _isTimelineMode
+                  ? Icons.account_tree_outlined
+                  : Icons.view_timeline,
+              color: Colors.white70,
+            ),
+            tooltip: _isTimelineMode ? '切換至畫布' : '切換至時間軸',
+          ),
+          const SizedBox(width: 8),
           TextButton.icon(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () async {
+              // Save nodes to service
+              await ScriptDataService().saveNodes(
+                widget.scriptTitle,
+                _nodes
+                    .map(
+                      (n) => ScriptNodeData(
+                        id: n.id,
+                        title: n.title,
+                        content: n.content,
+                        position: n.position,
+                        icon: n.icon,
+                        color: n.color,
+                        childrenIds: List.from(n.childrenIds),
+                        triggerType: n.triggerType,
+                        keywords: n.keywords,
+                        moodThreshold: n.moodThreshold,
+                        triggerTime: n.triggerTime,
+                        weatherCondition: n.weatherCondition,
+                        healthMetric: n.healthMetric,
+                        healthThreshold: n.healthThreshold,
+                        iotDevice: n.iotDevice,
+                        iotEvent: n.iotEvent,
+                        voiceTone: n.voiceTone,
+                        delaySeconds: n.delaySeconds,
+                        mediaUrl: n.mediaUrl,
+                        choiceLabels: n.choiceLabels,
+                        personaName: n.personaName,
+                        personaPrompt: n.personaPrompt,
+                        memoryKey: n.memoryKey,
+                        memoryValue: n.memoryValue,
+                        timeRange: n.timeRange,
+                      ),
+                    )
+                    .toList(),
+              );
+              if (context.mounted) Navigator.pop(context);
+            },
             icon: const Icon(Icons.save, color: Colors.blueAccent),
             label: Text(
               '儲存',
@@ -138,43 +186,7 @@ class _FamilyScriptEditorScreenState extends State<FamilyScriptEditorScreen> {
           // 左側編輯畫布 (Canvas)
           Expanded(
             flex: 2,
-            child: Stack(
-              children: [
-                InteractiveViewer(
-                  transformationController: _transformationController,
-                  constrained: false,
-                  minScale: 0.1,
-                  maxScale: 2.0,
-                  child: SizedBox(
-                    width: 4000,
-                    height: 4000,
-                    child: Stack(
-                      children: [
-                        Positioned.fill(
-                          child: CustomPaint(painter: GridPainter()),
-                        ),
-                        Positioned.fill(
-                          child: CustomPaint(
-                            painter: NodeLinkPainter(
-                              _nodes,
-                              _currentSimulatorNodeId,
-                            ),
-                          ),
-                        ),
-                        ..._nodes.map((node) => _buildNodeCard(node)),
-                      ],
-                    ),
-                  ),
-                ),
-                Positioned(left: 20, top: 20, child: _buildToolbar()),
-                Positioned(left: 20, bottom: 20, child: _buildCanvasControls()),
-                Positioned(
-                  right: 20,
-                  bottom: 20,
-                  child: _buildToggleSimulatorButton(),
-                ),
-              ],
-            ),
+            child: _isTimelineMode ? _buildTimelineView() : _buildCanvasView(),
           ),
 
           // 右側面板：屬性編輯器或模擬器
@@ -186,7 +198,16 @@ class _FamilyScriptEditorScreenState extends State<FamilyScriptEditorScreen> {
                 color: Color(0xFF1E1E1E),
                 border: Border(left: BorderSide(color: Colors.white10)),
               ),
-              child: _buildPropertyPanel(),
+              child: PropertyPanel(
+                node: _nodes.firstWhere((n) => n.id == _selectedNodeId),
+                allNodes: _nodes,
+                onUpdate: () => setState(() {}),
+                onDelete: _deleteSelectedNode,
+                onClose: () => setState(() => _selectedNodeId = null),
+                onAddConnection: () => _showConnectDialog(
+                  _nodes.firstWhere((n) => n.id == _selectedNodeId),
+                ),
+              ),
             ).animate().slideX(begin: 1.0, end: 0, curve: Curves.easeOutCubic),
 
           if (_showSimulator)
@@ -197,15 +218,346 @@ class _FamilyScriptEditorScreenState extends State<FamilyScriptEditorScreen> {
                 color: Color(0xFF1A1A1A),
                 border: Border(left: BorderSide(color: Colors.white10)),
               ),
-              child: _buildElderSimulator(),
+              child: ElderSimulator(
+                allNodes: _nodes,
+                currentSimulatorNodeId: _currentSimulatorNodeId,
+                onNodeChange: (id) =>
+                    setState(() => _currentSimulatorNodeId = id),
+                onReset: () =>
+                    setState(() => _currentSimulatorNodeId = 'start'),
+              ),
             ).animate().slideX(begin: 1.0, end: 0, curve: Curves.easeOutCubic),
         ],
       ),
     );
   }
 
+  Widget _buildCanvasView() {
+    return Stack(
+      children: [
+        InteractiveViewer(
+          transformationController: _transformationController,
+          constrained: false,
+          minScale: 0.1,
+          maxScale: 2.0,
+          child: SizedBox(
+            width: 4000,
+            height: 4000,
+            child: Stack(
+              children: [
+                Positioned.fill(child: CustomPaint(painter: GridPainter())),
+                Positioned.fill(
+                  child: CustomPaint(
+                    painter: NodeLinkPainter(_nodes, _currentSimulatorNodeId),
+                  ),
+                ),
+                ..._nodes.map(
+                  (node) => NodeCard(
+                    node: node,
+                    isSelected: _selectedNodeId == node.id,
+                    isActive: _currentSimulatorNodeId == node.id,
+                    onTap: () => setState(() => _selectedNodeId = node.id),
+                    onPanUpdate: (d) =>
+                        setState(() => node.position += d.delta),
+                    onDoubleTap: () => _showInlineEditDialog(node),
+                    onQuickAdd: () => _showQuickAddMenu(node),
+                  ),
+                ),
+                if (_nodes.isEmpty) _buildEmptyCanvasPlaceholder(),
+              ],
+            ),
+          ),
+        ),
+        Positioned(left: 20, top: 20, child: _buildCanvasControls()),
+        Positioned(left: 20, bottom: 20, child: _buildComponentBox()),
+        Positioned(right: 20, bottom: 20, child: _buildToggleSimulatorButton()),
+      ],
+    );
+  }
+
+  Widget _buildEmptyCanvasPlaceholder() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.auto_fix_high,
+            size: 64,
+            color: Colors.white.withValues(alpha: 0.1),
+          ),
+          const SizedBox(height: 24),
+          Text(
+            '畫布還是空的',
+            style: GoogleFonts.notoSansTc(color: Colors.white24, fontSize: 18),
+          ),
+          const SizedBox(height: 32),
+          ElevatedButton.icon(
+            onPressed: () {
+              final id = 'start';
+              setState(() {
+                _nodes.add(
+                  ScriptNode(
+                    id: id,
+                    title: '開始觸發',
+                    content: '當長輩對我說...',
+                    position: const Offset(1900, 1900),
+                    icon: Icons.mic,
+                    color: Colors.blueAccent,
+                  ),
+                );
+                _selectedNodeId = id;
+              });
+            },
+            icon: const Icon(Icons.add),
+            label: const Text('開始建立第一步'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blueAccent,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          OutlinedButton.icon(
+            onPressed: _loadBreadBakingTemplate,
+            icon: const Icon(Icons.auto_stories, size: 20),
+            label: const Text('載入範例：麵包烘焙橋樑'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.purpleAccent,
+              side: const BorderSide(color: Colors.purpleAccent),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTimelineView() {
+    final orderedNodes = _getOrderedNodes();
+    return Stack(
+      children: [
+        if (orderedNodes.isEmpty)
+          _buildEmptyCanvasPlaceholder()
+        else
+          ListView.builder(
+            padding: const EdgeInsets.fromLTRB(24, 60, 24, 120),
+            itemCount: orderedNodes.length,
+            itemBuilder: (context, index) {
+              final node = orderedNodes[index];
+              final isLast = index == orderedNodes.length - 1;
+              return Column(
+                children: [
+                  _buildTimelineNode(node),
+                  if (!isLast)
+                    _buildTimelineConnector(node, orderedNodes[index + 1]),
+                  if (isLast) _buildTimelineEndGuide(node),
+                ],
+              );
+            },
+          ),
+        Positioned(right: 20, bottom: 20, child: _buildToggleSimulatorButton()),
+      ],
+    );
+  }
+
+  List<ScriptNode> _getOrderedNodes() {
+    if (_nodes.isEmpty) return [];
+    List<ScriptNode> result = [];
+    Set<String> visited = {};
+
+    void traverse(String id) {
+      if (visited.contains(id)) return;
+      final node = _nodes.where((n) => n.id == id).firstOrNull;
+      if (node != null) {
+        visited.add(id);
+        result.add(node);
+        // In timeline mode, we just follow the first branch for simplicity
+        if (node.childrenIds.isNotEmpty) {
+          traverse(node.childrenIds.first);
+        }
+      }
+    }
+
+    final startNode =
+        _nodes.where((n) => n.id == 'start').firstOrNull ?? _nodes.firstOrNull;
+    if (startNode != null) {
+      traverse(startNode.id);
+    }
+
+    return result;
+  }
+
+  Widget _buildTimelineConnector(ScriptNode from, ScriptNode to) {
+    return Column(
+      children: [
+        Container(
+          height: 20,
+          width: 2,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [from.color, to.color],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+            ),
+          ),
+        ),
+        IconButton(
+              onPressed: () => _showInsertMenu(from, to),
+              icon: const Icon(Icons.add_circle_outline, size: 24),
+              color: Colors.white24,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              visualDensity: VisualDensity.compact,
+            )
+            .animate(onPlay: (c) => c.repeat(reverse: true))
+            .scale(
+              duration: 2.seconds,
+              begin: const Offset(0.9, 0.9),
+              end: const Offset(1.1, 1.1),
+            ),
+        Container(
+          height: 20,
+          width: 2,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [from.color, to.color],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTimelineEndGuide(ScriptNode lastNode) {
+    return Column(
+      children: [
+        Container(
+          height: 30,
+          width: 2,
+          color: lastNode.color.withValues(alpha: 0.3),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: ElevatedButton.icon(
+            onPressed: () => _showQuickAddMenu(lastNode),
+            icon: const Icon(Icons.add, size: 20),
+            label: const Text('接續下一步'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: lastNode.color.withValues(alpha: 0.1),
+              foregroundColor: lastNode.color,
+              side: BorderSide(color: lastNode.color.withValues(alpha: 0.5)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTimelineNode(ScriptNode node) {
+    final isSelected = _selectedNodeId == node.id;
+    final isActive = _currentSimulatorNodeId == node.id;
+
+    return GestureDetector(
+      onTap: () => setState(() => _selectedNodeId = node.id),
+      child: AnimatedScale(
+        scale: isSelected ? 1.02 : 1.0,
+        duration: 200.ms,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+            child: AnimatedContainer(
+              duration: 300.ms,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFF252525).withValues(alpha: 0.6),
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(
+                  color: isActive
+                      ? Colors.blueAccent
+                      : (isSelected
+                            ? Colors.white
+                            : node.color.withValues(alpha: 0.2)),
+                  width: (isActive || isSelected) ? 2 : 1,
+                ),
+                boxShadow: [
+                  if (isActive || isSelected)
+                    BoxShadow(
+                      color: (isActive ? Colors.blueAccent : node.color)
+                          .withValues(alpha: 0.2),
+                      blurRadius: 15,
+                    ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: node.color.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Icon(node.icon, color: node.color, size: 22),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          node.title,
+                          style: GoogleFonts.notoSansTc(
+                            color: node.color,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          node.content,
+                          style: GoogleFonts.notoSansTc(
+                            color: Colors.white.withValues(alpha: 0.8),
+                            fontSize: 13,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    Icons.chevron_right,
+                    color: Colors.white.withValues(alpha: 0.2),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   void _addNode(String type) {
     final id = 'node_${DateTime.now().millisecondsSinceEpoch}';
+    // Offset slightly based on node count to avoid exact overlap
+    final offset = Offset(
+      100.0 + (_nodes.length % 5) * 40,
+      100.0 + (_nodes.length % 5) * 40,
+    );
+
     setState(() {
       _nodes.add(
         ScriptNode(
@@ -215,7 +567,7 @@ class _FamilyScriptEditorScreenState extends State<FamilyScriptEditorScreen> {
           content: type == 'trigger'
               ? '新觸發事件...'
               : (type == 'condition' ? '如果...' : 'AI 執行...'),
-          position: const Offset(100, 100),
+          position: offset,
           icon: type == 'trigger'
               ? Icons.mic
               : (type == 'condition' ? Icons.call_split : Icons.auto_awesome),
@@ -231,7 +583,7 @@ class _FamilyScriptEditorScreenState extends State<FamilyScriptEditorScreen> {
   }
 
   void _deleteSelectedNode() {
-    if (_selectedNodeId == null) return;
+    if (_selectedNodeId == null || _selectedNodeId == 'start') return;
     setState(() {
       _nodes.removeWhere((n) => n.id == _selectedNodeId);
       // Clean up references in other nodes
@@ -240,6 +592,27 @@ class _FamilyScriptEditorScreenState extends State<FamilyScriptEditorScreen> {
       }
       _selectedNodeId = null;
     });
+  }
+
+  bool _hasCycle(String startNodeId, String targetNodeId) {
+    if (startNodeId == targetNodeId) return true;
+
+    final visited = <String>{};
+    final queue = <String>[targetNodeId];
+
+    while (queue.isNotEmpty) {
+      final currentId = queue.removeAt(0);
+      if (currentId == startNodeId) return true;
+
+      if (!visited.contains(currentId)) {
+        visited.add(currentId);
+        final currentNode = _nodes.where((n) => n.id == currentId).firstOrNull;
+        if (currentNode != null) {
+          queue.addAll(currentNode.childrenIds);
+        }
+      }
+    }
+    return false;
   }
 
   void _tidyUpNodes() {
@@ -283,407 +656,6 @@ class _FamilyScriptEditorScreenState extends State<FamilyScriptEditorScreen> {
     });
   }
 
-  Widget _buildPropertyPanel() {
-    final node = _nodes.firstWhere((n) => n.id == _selectedNodeId);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(24),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                '節點屬性',
-                style: GoogleFonts.notoSansTc(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.close, color: Colors.white54),
-                onPressed: () => setState(() => _selectedNodeId = null),
-              ),
-            ],
-          ),
-        ),
-        const Divider(color: Colors.white10, height: 1),
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.all(24),
-            children: [
-              _buildPanelField(
-                '標題',
-                node.title,
-                (val) => setState(() => node.title = val),
-              ),
-              const SizedBox(height: 20),
-              _buildPanelField(
-                '內容 / 腳本',
-                node.content,
-                (val) => setState(() => node.content = val),
-                maxLines: 5,
-              ),
-              const SizedBox(height: 24),
-
-              // Conditional Fields based on node type
-              if (node.title == '觸發' || node.icon == Icons.mic) ...[
-                _buildSectionTitle('觸發來源設定'),
-                _buildDropdownField(
-                  '觸發類型',
-                  node.triggerType,
-                  ['voice', 'time', 'weather', 'health', 'iot'],
-                  (val) => setState(() {
-                    node.triggerType = val;
-                    // Update content/icon based on type for better visual feedback
-                    if (val == 'voice') {
-                      node.content = '語音觸發...';
-                    } else if (val == 'time') {
-                      node.content = '定時觸發...';
-                      node.triggerTime ??= '08:00';
-                    } else if (val == 'weather') {
-                      node.content = '當天氣變為...時';
-                    } else if (val == 'health') {
-                      node.content = '當監測到健康數據異常...';
-                    } else if (val == 'iot') {
-                      node.content = '當居家感測器偵測到...';
-                    }
-                  }),
-                ),
-                const SizedBox(height: 16),
-
-                if (node.triggerType == 'voice') ...[
-                  _buildPanelField(
-                    '關鍵字 (用逗號隔開)',
-                    (node.keywords ?? []).join(','),
-                    (val) {
-                      setState(
-                        () => node.keywords = val
-                            .split(',')
-                            .map((e) => e.trim())
-                            .toList(),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  _buildSliderField(
-                    '情緒門檻 (低於此值觸發)',
-                    node.moodThreshold ?? 0.5,
-                    0,
-                    1,
-                    (val) => setState(() => node.moodThreshold = val),
-                  ),
-                ],
-
-                if (node.triggerType == 'time') ...[
-                  _buildPanelField(
-                    '觸發時間 (HH:mm)',
-                    node.triggerTime ?? '08:00',
-                    (val) => setState(() => node.triggerTime = val),
-                  ),
-                ],
-
-                if (node.triggerType == 'weather') ...[
-                  _buildDropdownField(
-                    '天氣狀況',
-                    node.weatherCondition ?? '雨天',
-                    ['雨天', '高溫', '低溫', '颱風', '強風'],
-                    (val) => setState(() => node.weatherCondition = val),
-                  ),
-                ],
-
-                if (node.triggerType == 'health') ...[
-                  _buildDropdownField(
-                    '監測清單',
-                    node.healthMetric ?? '心率',
-                    ['心率', '步數', '異常靜止', '血壓'],
-                    (val) => setState(() => node.healthMetric = val),
-                  ),
-                  const SizedBox(height: 16),
-                  _buildPanelField(
-                    '異常數值設定',
-                    node.healthThreshold.toString(),
-                    (val) => setState(
-                      () => node.healthThreshold = double.tryParse(val) ?? 100,
-                    ),
-                  ),
-                ],
-
-                if (node.triggerType == 'iot') ...[
-                  _buildDropdownField(
-                    '設備類型',
-                    node.iotDevice ?? '門窗感測器',
-                    ['門窗感測器', '藥盒感測器', '跌倒偵測器', '瓦斯偵測', '床墊感測器'],
-                    (val) => setState(() => node.iotDevice = val),
-                  ),
-                  const SizedBox(height: 16),
-                  _buildDropdownField(
-                    '事件動作',
-                    node.iotEvent ?? '開啟',
-                    ['開啟', '關閉', '觸發', '未動作', '低電量'],
-                    (val) => setState(() => node.iotEvent = val),
-                  ),
-                ],
-                const SizedBox(height: 16),
-              ],
-
-              if (node.title == '動作' || node.icon == Icons.auto_awesome) ...[
-                _buildSectionTitle('AI 調音'),
-                _buildDropdownField(
-                  '語氣選擇',
-                  node.voiceTone ?? '溫暖',
-                  ['溫暖', '幽默', '理性', '活力'],
-                  (val) {
-                    setState(() => node.voiceTone = val);
-                  },
-                ),
-                const SizedBox(height: 16),
-                _buildSliderField(
-                  '延遲發送 (秒)',
-                  node.delaySeconds.toDouble(),
-                  0,
-                  60,
-                  (val) {
-                    setState(() => node.delaySeconds = val.toInt());
-                  },
-                ),
-                const SizedBox(height: 16),
-                _buildPanelField('附件圖片/影片 URL', node.mediaUrl ?? '', (val) {
-                  setState(() => node.mediaUrl = val);
-                }),
-                const SizedBox(height: 16),
-              ],
-
-              if (node.title == '條件' || node.icon == Icons.call_split) ...[
-                _buildSectionTitle('進階判斷'),
-                _buildSliderField(
-                  '心情預值 (0~1)',
-                  node.moodThreshold ?? 0.5,
-                  0,
-                  1,
-                  (val) {
-                    setState(() => node.moodThreshold = val);
-                  },
-                ),
-                const SizedBox(height: 16),
-                _buildDropdownField(
-                  '適用時段',
-                  node.timeRange ?? '全天',
-                  ['全天', '早上', '下午', '晚上'],
-                  (val) {
-                    setState(() => node.timeRange = val);
-                  },
-                ),
-                const SizedBox(height: 16),
-              ],
-
-              const SizedBox(height: 8),
-              _buildSectionTitle('連接設置'),
-              const SizedBox(height: 12),
-              _buildConnectionList(node),
-            ],
-          ),
-        ),
-        Container(
-          padding: const EdgeInsets.all(24),
-          decoration: const BoxDecoration(
-            border: Border(top: BorderSide(color: Colors.white10)),
-          ),
-          child: SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _deleteSelectedNode,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.redAccent.withValues(alpha: 0.1),
-                foregroundColor: Colors.redAccent,
-                side: const BorderSide(color: Colors.redAccent),
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: const Text('刪除此節點'),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSectionTitle(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Text(
-        title,
-        style: GoogleFonts.notoSansTc(
-          color: Colors.white70,
-          fontSize: 14,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDropdownField(
-    String label,
-    String value,
-    List<String> options,
-    Function(String) onChanged,
-  ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: GoogleFonts.notoSansTc(color: Colors.white54, fontSize: 13),
-        ),
-        const SizedBox(height: 8),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.05),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              value: value,
-              isExpanded: true,
-              dropdownColor: const Color(0xFF2A2A2A),
-              style: GoogleFonts.notoSansTc(color: Colors.white),
-              items: options.map((String val) {
-                return DropdownMenuItem<String>(value: val, child: Text(val));
-              }).toList(),
-              onChanged: (v) {
-                if (v != null) onChanged(v);
-              },
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSliderField(
-    String label,
-    double value,
-    double min,
-    double max,
-    Function(double) onChanged,
-  ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              label,
-              style: GoogleFonts.notoSansTc(
-                color: Colors.white54,
-                fontSize: 13,
-              ),
-            ),
-            Text(
-              value.toStringAsFixed(1),
-              style: const TextStyle(color: Colors.white70),
-            ),
-          ],
-        ),
-        Slider(
-          value: value,
-          min: min,
-          max: max,
-          activeColor: Colors.blueAccent,
-          onChanged: onChanged,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildPanelField(
-    String label,
-    String value,
-    Function(String) onChanged, {
-    int maxLines = 1,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: GoogleFonts.notoSansTc(color: Colors.white54, fontSize: 13),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: TextEditingController(text: value)
-            ..selection = TextSelection.collapsed(offset: value.length),
-          onChanged: onChanged,
-          maxLines: maxLines,
-          style: GoogleFonts.notoSansTc(color: Colors.white),
-          decoration: InputDecoration(
-            filled: true,
-            fillColor: Colors.white.withValues(alpha: 0.05),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide.none,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildConnectionList(ScriptNode node) {
-    return Column(
-      children: [
-        ...node.childrenIds.map((cid) {
-          final child = _nodes.firstWhere((n) => n.id == cid);
-          return Container(
-            margin: const EdgeInsets.only(bottom: 8),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.03),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              children: [
-                Icon(child.icon, color: child.color, size: 16),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    child.title,
-                    style: const TextStyle(color: Colors.white70),
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(
-                    Icons.link_off,
-                    size: 18,
-                    color: Colors.white30,
-                  ),
-                  onPressed: () => setState(() => node.childrenIds.remove(cid)),
-                ),
-              ],
-            ),
-          );
-        }),
-        OutlinedButton.icon(
-          onPressed: () => _showConnectDialog(node),
-          icon: const Icon(Icons.add_link, size: 18),
-          label: const Text('新增連接節點'),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: Colors.blueAccent,
-            side: const BorderSide(color: Colors.blueAccent),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
   void _showConnectDialog(ScriptNode parent) {
     showDialog(
       context: context,
@@ -706,7 +678,9 @@ class _FamilyScriptEditorScreenState extends State<FamilyScriptEditorScreen> {
             children: _nodes
                 .where(
                   (n) =>
-                      n.id != parent.id && !parent.childrenIds.contains(n.id),
+                      n.id != parent.id &&
+                      !parent.childrenIds.contains(n.id) &&
+                      !_hasCycle(parent.id, n.id),
                 )
                 .map(
                   (n) => ListTile(
@@ -778,140 +752,6 @@ class _FamilyScriptEditorScreenState extends State<FamilyScriptEditorScreen> {
     ).animate().fadeIn(delay: 500.ms);
   }
 
-  Widget _buildNodeCard(ScriptNode node) {
-    bool isSelected = _selectedNodeId == node.id;
-    bool isActive = _currentSimulatorNodeId == node.id;
-
-    return Positioned(
-      left: node.position.dx,
-      top: node.position.dy,
-      child: GestureDetector(
-        onPanUpdate: (d) {
-          setState(() {
-            node.position += d.delta;
-          });
-        },
-        onTap: () => setState(() => _selectedNodeId = node.id),
-        child: AnimatedScale(
-          scale: isActive ? 1.05 : 1.0,
-          duration: 300.ms,
-          curve: Curves.easeOutBack,
-          child: Container(
-            width: 220,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: const Color(0xFF252525),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: isActive
-                    ? Colors.blueAccent
-                    : (isSelected
-                          ? Colors.white
-                          : node.color.withValues(alpha: 0.3)),
-                width: (isActive || isSelected) ? 3 : 1,
-              ),
-              boxShadow: [
-                if (isActive || isSelected)
-                  BoxShadow(
-                    color: (isActive ? Colors.blueAccent : node.color)
-                        .withValues(alpha: 0.4),
-                    blurRadius: isActive ? 30 : 20,
-                    spreadRadius: isActive ? 2 : 0,
-                  ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(node.icon, color: node.color, size: 18),
-                    const SizedBox(width: 8),
-                    Text(
-                      node.title,
-                      style: GoogleFonts.notoSansTc(
-                        color: node.color,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-                const Divider(color: Colors.white10),
-                GestureDetector(
-                  onDoubleTap: () => _showInlineEditDialog(node),
-                  child: Text(
-                    node.content,
-                    style: GoogleFonts.notoSansTc(
-                      color: Colors.white.withValues(alpha: 0.8),
-                      fontSize: 14,
-                    ),
-                  ),
-                ),
-                if (isSelected) ...[
-                  const SizedBox(height: 12),
-                  const Divider(color: Colors.white10),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      _buildQuickAddSocket(
-                        node,
-                        'action',
-                        Icons.auto_awesome,
-                        Colors.purpleAccent,
-                      ),
-                      const SizedBox(width: 8),
-                      _buildQuickAddSocket(
-                        node,
-                        'condition',
-                        Icons.call_split,
-                        Colors.orangeAccent,
-                      ),
-                    ],
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildQuickAddSocket(
-    ScriptNode parent,
-    String type,
-    IconData icon,
-    Color color,
-  ) {
-    return InkWell(
-      onTap: () {
-        final id = 'node_${DateTime.now().millisecondsSinceEpoch}';
-        final newNode = ScriptNode(
-          id: id,
-          title: type == 'action' ? '動作' : '條件',
-          content: type == 'action' ? '新動作...' : '新條件...',
-          position: parent.position + const Offset(0, 200),
-          icon: icon,
-          color: color,
-        );
-        setState(() {
-          _nodes.add(newNode);
-          parent.childrenIds.add(id);
-          _selectedNodeId = id;
-        });
-      },
-      child: Container(
-        padding: const EdgeInsets.all(4),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: color.withValues(alpha: 0.3)),
-        ),
-        child: Icon(Icons.add, size: 14, color: color),
-      ),
-    );
-  }
-
   void _showInlineEditDialog(ScriptNode node) {
     final controller = TextEditingController(text: node.content);
     showDialog(
@@ -946,499 +786,478 @@ class _FamilyScriptEditorScreenState extends State<FamilyScriptEditorScreen> {
     );
   }
 
-  Widget _buildElderSimulator() {
-    final currentNode = _nodes.any((n) => n.id == _currentSimulatorNodeId)
-        ? _nodes.firstWhere((n) => n.id == _currentSimulatorNodeId)
-        : _nodes.isNotEmpty
-        ? _nodes.first
-        : null;
+  void _showQuickAddMenu(ScriptNode parent) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E1E1E),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => Container(
+        padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '快速延伸節點',
+              style: GoogleFonts.notoSansTc(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _buildQuickAddItem(
+                  context,
+                  parent,
+                  '觸發',
+                  Icons.mic,
+                  Colors.blueAccent,
+                  'trigger',
+                ),
+                _buildQuickAddItem(
+                  context,
+                  parent,
+                  '動作',
+                  Icons.auto_awesome,
+                  Colors.purpleAccent,
+                  'action',
+                ),
+                _buildQuickAddItem(
+                  context,
+                  parent,
+                  '條件',
+                  Icons.call_split,
+                  Colors.orangeAccent,
+                  'condition',
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _buildQuickAddItem(
+                  context,
+                  parent,
+                  '人格',
+                  Icons.face,
+                  Colors.tealAccent,
+                  'persona',
+                ),
+                _buildQuickAddItem(
+                  context,
+                  parent,
+                  '記憶',
+                  Icons.memory,
+                  Colors.amberAccent,
+                  'memory',
+                ),
+                _buildQuickAddItem(
+                  context,
+                  parent,
+                  '多擇',
+                  Icons.list,
+                  Colors.pinkAccent,
+                  'choice',
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+          ],
+        ),
+      ),
+    );
+  }
 
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(24),
-          child: Row(
-            children: [
-              const Icon(Icons.smartphone, color: Colors.blueAccent),
-              const SizedBox(width: 12),
-              Text(
-                '長輩端即時對話模擬',
-                style: GoogleFonts.notoSansTc(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
+  void _showInsertMenu(ScriptNode from, ScriptNode to) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E1E1E),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '在中間插入節點',
+              style: GoogleFonts.notoSansTc(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
               ),
-              const Spacer(),
-              IconButton(
-                icon: const Icon(
-                  Icons.refresh,
-                  color: Colors.white54,
-                  size: 20,
+            ),
+            const SizedBox(height: 24),
+            Wrap(
+              spacing: 20,
+              runSpacing: 20,
+              children: [
+                _buildQuickAddItem(
+                  context,
+                  from,
+                  '觸發',
+                  Icons.mic,
+                  Colors.blueAccent,
+                  'trigger',
+                  insertTo: to,
                 ),
-                onPressed: () =>
-                    setState(() => _currentSimulatorNodeId = 'start'),
-              ),
-            ],
-          ),
+                _buildQuickAddItem(
+                  context,
+                  from,
+                  '動作',
+                  Icons.auto_awesome,
+                  Colors.purpleAccent,
+                  'action',
+                  insertTo: to,
+                ),
+                _buildQuickAddItem(
+                  context,
+                  from,
+                  '條件',
+                  Icons.call_split,
+                  Colors.orangeAccent,
+                  'condition',
+                  insertTo: to,
+                ),
+                _buildQuickAddItem(
+                  context,
+                  from,
+                  '人格',
+                  Icons.face,
+                  Colors.tealAccent,
+                  'persona',
+                  insertTo: to,
+                ),
+                _buildQuickAddItem(
+                  context,
+                  from,
+                  '記憶',
+                  Icons.memory,
+                  Colors.amberAccent,
+                  'memory',
+                  insertTo: to,
+                ),
+                _buildQuickAddItem(
+                  context,
+                  from,
+                  '多擇',
+                  Icons.list,
+                  Colors.pinkAccent,
+                  'choice',
+                  insertTo: to,
+                ),
+              ],
+            ),
+          ],
         ),
-        const Divider(color: Colors.white10, height: 1),
-        Expanded(
-          child: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 32),
+      ),
+    );
+  }
+
+  Widget _buildQuickAddItem(
+    BuildContext context,
+    ScriptNode parent,
+    String label,
+    IconData icon,
+    Color color,
+    String type, {
+    ScriptNode? insertTo,
+  }) {
+    return InkWell(
+      onTap: () {
+        Navigator.pop(context);
+        _addNodeLinked(parent, type, insertTo: insertTo);
+      },
+      borderRadius: BorderRadius.circular(16),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: const Color(0xFFFFFBF0), // 長輩端典型的溫暖背景色
-              borderRadius: BorderRadius.circular(36),
-              border: Border.all(color: Colors.grey[800]!, width: 8),
+              color: color.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: color.withValues(alpha: 0.3)),
             ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(28),
-              child: currentNode == null
-                  ? const Center(child: Text('尚未定義腳本節點'))
-                  : Column(
-                      children: [
-                        // 模擬長輩端介面內容
-                        Expanded(
-                          child: ListView(
-                            padding: const EdgeInsets.all(20),
-                            children: [
-                              const SizedBox(height: 40),
-                              Center(
-                                child:
-                                    CircleAvatar(
-                                          radius: 40,
-                                          backgroundColor: currentNode.color
-                                              .withValues(alpha: 0.2),
-                                          child: Icon(
-                                            currentNode.icon,
-                                            size: 40,
-                                            color: currentNode.color,
-                                          ),
-                                        )
-                                        .animate(
-                                          onPlay: (c) =>
-                                              c.repeat(reverse: true),
-                                        )
-                                        .shimmer(duration: 2.seconds),
-                              ),
-                              const SizedBox(height: 24),
-                              Container(
-                                    padding: const EdgeInsets.all(20),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(24),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.black.withValues(
-                                            alpha: 0.05,
-                                          ),
-                                          blurRadius: 10,
-                                        ),
-                                      ],
-                                    ),
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          currentNode.title,
-                                          style: TextStyle(
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.bold,
-                                            color: currentNode.color,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 8),
-                                        Text(
-                                          currentNode.content,
-                                          style: const TextStyle(
-                                            fontSize: 18,
-                                            height: 1.5,
-                                            color: Colors.black87,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  )
-                                  .animate(key: ValueKey(currentNode.id))
-                                  .fadeIn(duration: 400.ms)
-                                  .slideY(begin: 0.1, end: 0),
-                            ],
-                          ),
-                        ),
-                        _buildMockElderButtons(currentNode),
-                      ],
-                    ),
+            child: Icon(icon, color: color, size: 28),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            label,
+            style: GoogleFonts.notoSansTc(color: Colors.white70, fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _addNodeLinked(ScriptNode parent, String type, {ScriptNode? insertTo}) {
+    final id = 'node_${DateTime.now().millisecondsSinceEpoch}';
+    IconData icon = Icons.help;
+    Color color = Colors.grey;
+    String title = '新節點';
+    String content = '請點擊設定內容...';
+
+    switch (type) {
+      case 'trigger':
+        icon = Icons.mic;
+        color = Colors.blueAccent;
+        title = '觸發';
+        break;
+      case 'action':
+        icon = Icons.auto_awesome;
+        color = Colors.purpleAccent;
+        title = '動作';
+        break;
+      case 'condition':
+        icon = Icons.call_split;
+        color = Colors.orangeAccent;
+        title = '條件';
+        break;
+      case 'persona':
+        icon = Icons.face;
+        color = Colors.tealAccent;
+        title = 'AI 人格';
+        break;
+      case 'memory':
+        icon = Icons.memory;
+        color = Colors.amberAccent;
+        title = 'AI 記憶';
+        break;
+      case 'choice':
+        icon = Icons.list;
+        color = Colors.pinkAccent;
+        title = '多項選擇';
+        break;
+    }
+
+    // Position new node below the parent with a slight horizontal offset if it's the 2nd/3rd child
+    final horizontalOffset = (parent.childrenIds.length * 50.0) - 50.0;
+    final newNode = ScriptNode(
+      id: id,
+      title: title,
+      content: content,
+      position: parent.position + Offset(horizontalOffset, 220),
+      icon: icon,
+      color: color,
+    );
+
+    setState(() {
+      if (insertTo != null) {
+        // Insert node in sequence: parent -> newNode -> insertTo
+        parent.childrenIds.remove(insertTo.id);
+        parent.childrenIds.add(id);
+        newNode.childrenIds.add(insertTo.id);
+      } else {
+        parent.childrenIds.add(id);
+      }
+      _nodes.add(newNode);
+      _selectedNodeId = id;
+    });
+  }
+
+  Widget _buildComponentBox() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (_showComponentBox)
+          Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: const Color(0xFF2A2A2A),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white10),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.5),
+                  blurRadius: 15,
+                ),
+              ],
             ),
+            child: Column(
+              children: [
+                _buildComponentIcon(
+                  Icons.mic,
+                  Colors.blueAccent,
+                  '觸發',
+                  () => _addNode('trigger'),
+                ),
+                _buildComponentIcon(
+                  Icons.auto_awesome,
+                  Colors.purpleAccent,
+                  '動作',
+                  () => _addNode('action'),
+                ),
+                _buildComponentIcon(
+                  Icons.call_split,
+                  Colors.orangeAccent,
+                  '條件',
+                  () => _addNode('condition'),
+                ),
+                const Divider(color: Colors.white10),
+                if (_selectedNodeId != null)
+                  _buildComponentIcon(
+                    Icons.delete_outline,
+                    Colors.redAccent,
+                    '刪除',
+                    _deleteSelectedNode,
+                  ),
+                _buildComponentIcon(
+                  Icons.auto_fix_high,
+                  Colors.amberAccent,
+                  '對齊',
+                  _tidyUpNodes,
+                ),
+              ],
+            ),
+          ).animate().slideY(begin: 0.2, end: 0).fadeIn(),
+        FloatingActionButton(
+          onPressed: () =>
+              setState(() => _showComponentBox = !_showComponentBox),
+          backgroundColor: Colors.blueAccent,
+          child: Icon(
+            _showComponentBox ? Icons.close : Icons.add,
+            color: Colors.white,
           ),
         ),
-        // 在手機外殼下方加入模擬事件面板
-        _buildEventSimulationPanel(),
-        _buildSimulatorStatus(currentNode),
       ],
     );
   }
 
-  Widget _buildEventSimulationPanel() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: const BoxDecoration(
-        color: Color(0xFF1E1E1E),
-        border: Border(top: BorderSide(color: Colors.white10)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.flash_on, size: 14, color: Colors.amber),
-              const SizedBox(width: 4),
-              Text(
-                '測試模擬：點擊對應事件',
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white54,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _buildSimEventChip('語音偵測', Icons.mic, 'voice', Colors.blue),
-              _buildSimEventChip(
-                '定時到達',
-                Icons.timer,
-                'time',
-                Colors.indigoAccent,
-              ),
-              _buildSimEventChip(
-                '天氣變化',
-                Icons.wb_cloudy,
-                'weather',
-                Colors.cyan,
-              ),
-              _buildSimEventChip(
-                '健康數據',
-                Icons.favorite,
-                'health',
-                Colors.redAccent,
-              ),
-              _buildSimEventChip(
-                '感測器觸發',
-                Icons.sensors,
-                'iot',
-                Colors.orangeAccent,
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSimEventChip(
-    String label,
+  Widget _buildComponentIcon(
     IconData icon,
-    String type,
     Color color,
+    String tooltip,
+    VoidCallback onTap,
   ) {
-    return ActionChip(
-      avatar: Icon(icon, size: 14, color: Colors.white),
-      label: Text(
-        label,
-        style: const TextStyle(fontSize: 11, color: Colors.white),
-      ),
-      backgroundColor: color.withValues(alpha: 0.3),
-      side: BorderSide(color: color.withValues(alpha: 0.5)),
-      padding: EdgeInsets.zero,
+    return IconButton(
+      icon: Icon(icon, color: color),
+      tooltip: tooltip,
       onPressed: () {
-        // Find the first trigger node of this type
-        final triggerNode =
-            _nodes
-                .where(
-                  (n) =>
-                      (n.title == '觸發' || n.triggerType != 'voice') &&
-                      n.triggerType == type,
-                )
-                .firstOrNull ??
-            _nodes.where((n) => n.id == 'start').firstOrNull;
-
-        if (triggerNode != null) {
-          setState(() => _currentSimulatorNodeId = triggerNode.id);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('已模擬發送「$label」事件'),
-              duration: 1.seconds,
-              behavior: SnackBarBehavior.floating,
-              width: 250,
-              backgroundColor: color.withValues(alpha: 0.8),
-            ),
-          );
-        }
+        onTap();
+        setState(() => _showComponentBox = false);
       },
     );
-  }
-
-  Widget _buildMockElderButtons(ScriptNode currentNode) {
-    if (currentNode.childrenIds.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.all(20),
-        color: Colors.white70,
-        child: Center(
-          child: Text(
-            '腳本結束',
-            style: GoogleFonts.notoSansTc(
-              color: Colors.grey,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      color: Colors.white70,
-      child: Column(
-        children: currentNode.childrenIds.map((cid) {
-          final nextNode = _nodes.firstWhere((n) => n.id == cid);
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: InkWell(
-              onTap: () => setState(() => _currentSimulatorNodeId = cid),
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                decoration: BoxDecoration(
-                  color: nextNode.color,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Center(
-                  child: Text(
-                    '下一步：${nextNode.title}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-
-  Widget _buildSimulatorStatus(ScriptNode? currentNode) {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      color: (currentNode?.color ?? Colors.blueAccent).withValues(alpha: 0.1),
-      child: Row(
-        children: [
-          Icon(
-            Icons.flash_on,
-            color: currentNode?.color ?? Colors.blueAccent,
-            size: 16,
-          ),
-          const SizedBox(width: 8),
-          Text(
-            currentNode != null ? '正在模擬「${currentNode.title}」階段...' : '無活動節點',
-            style: GoogleFonts.notoSansTc(
-              color: currentNode?.color ?? Colors.blueAccent,
-              fontSize: 13,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildToolbar() {
-    return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: const Color(0xFF2A2A2A),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white10),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 10),
-        ],
-      ),
-      child: Column(
-        children: [
-          IconButton(
-            icon: const Icon(Icons.add_box_outlined, color: Colors.blueAccent),
-            tooltip: '新增觸發',
-            onPressed: () => _addNode('trigger'),
-          ),
-          IconButton(
-            icon: const Icon(Icons.smart_button, color: Colors.purpleAccent),
-            tooltip: '新增動作',
-            onPressed: () => _addNode('action'),
-          ),
-          IconButton(
-            icon: const Icon(Icons.call_split, color: Colors.orangeAccent),
-            tooltip: '新增條件',
-            onPressed: () => _addNode('condition'),
-          ),
-          const Divider(color: Colors.white10),
-          IconButton(
-            icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-            tooltip: '刪除節點',
-            onPressed: _deleteSelectedNode,
-          ),
-          const Divider(color: Colors.white10),
-          IconButton(
-            icon: const Icon(Icons.auto_fix_high, color: Colors.amberAccent),
-            tooltip: '自動對齊',
-            onPressed: _tidyUpNodes,
-          ),
-        ],
-      ),
-    ).animate().slideX(begin: -1.0, end: 0);
   }
 
   Widget _buildCanvasControls() {
     return Container(
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: const Color(0xFF2A2A2A),
+        color: const Color(0xFF2A2A2A).withValues(alpha: 0.8),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.white10),
         boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 10),
+          BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 10),
         ],
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           IconButton(
-            icon: const Icon(Icons.center_focus_strong, color: Colors.white70),
+            icon: const Icon(
+              Icons.center_focus_strong,
+              color: Colors.white70,
+              size: 20,
+            ),
             tooltip: '重置視角',
             onPressed: () {
               _transformationController.value = Matrix4.identity();
               setState(() {});
             },
           ),
-          const SizedBox(width: 4),
+          Container(width: 1, height: 20, color: Colors.white10),
           IconButton(
-            icon: const Icon(Icons.zoom_in, color: Colors.white70),
+            icon: const Icon(Icons.zoom_in, color: Colors.white70, size: 20),
             onPressed: () {
               final val = _transformationController.value.clone();
               val.multiply(Matrix4.diagonal3Values(1.2, 1.2, 1.0));
               _transformationController.value = val;
+              setState(() {});
             },
           ),
           IconButton(
-            icon: const Icon(Icons.zoom_out, color: Colors.white70),
+            icon: const Icon(Icons.zoom_out, color: Colors.white70, size: 20),
             onPressed: () {
               final val = _transformationController.value.clone();
               val.multiply(Matrix4.diagonal3Values(0.8, 0.8, 1.0));
               _transformationController.value = val;
+              setState(() {});
             },
           ),
         ],
       ),
-    ).animate().slideX(begin: -1.0, end: 0);
-  }
-}
-
-class NodeLinkPainter extends CustomPainter {
-  final List<ScriptNode> nodes;
-  final String? activeNodeId;
-  NodeLinkPainter(this.nodes, this.activeNodeId);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    for (var node in nodes) {
-      if (node.childrenIds.isEmpty) continue;
-      final start = node.position + const Offset(110, 80);
-
-      bool isNodeActive = activeNodeId == node.id;
-
-      for (var cid in node.childrenIds) {
-        final childNode = nodes.any((n) => n.id == cid)
-            ? nodes.firstWhere((n) => n.id == cid)
-            : null;
-        if (childNode == null) continue;
-
-        final end = childNode.position + const Offset(110, 0);
-        bool isPathActive =
-            isNodeActive &&
-            (activeNodeId !=
-                null); // Simplification: highlight all outgoing from active
-
-        final paint = Paint()
-          ..color = isPathActive
-              ? Colors.blueAccent.withValues(alpha: 0.6)
-              : Colors.white24
-          ..strokeWidth = isPathActive ? 3 : 2
-          ..style = PaintingStyle.stroke;
-
-        final arrowPaint = Paint()
-          ..color = isPathActive
-              ? Colors.blueAccent.withValues(alpha: 0.8)
-              : Colors.white24
-          ..style = PaintingStyle.fill;
-
-        final path = Path()..moveTo(start.dx, start.dy);
-        path.cubicTo(
-          start.dx,
-          start.dy + 60,
-          end.dx,
-          end.dy - 60,
-          end.dx,
-          end.dy,
-        );
-
-        if (isPathActive) {
-          // Glow effect for active path
-          canvas.drawPath(
-            path,
-            Paint()
-              ..color = Colors.blueAccent.withValues(alpha: 0.2)
-              ..strokeWidth = 8
-              ..style = PaintingStyle.stroke
-              ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
-          );
-        }
-
-        canvas.drawPath(path, paint);
-
-        // Draw Arrowhead
-        final arrowPath = Path();
-        arrowPath.moveTo(end.dx, end.dy);
-        arrowPath.lineTo(end.dx - 6, end.dy - 10);
-        arrowPath.lineTo(end.dx + 6, end.dy - 10);
-        arrowPath.close();
-        canvas.drawPath(arrowPath, arrowPaint);
-      }
-    }
+    ).animate().slideY(begin: -0.5, end: 0).fadeIn();
   }
 
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
-}
-
-class GridPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.02)
-      ..strokeWidth = 0.5;
-    for (double i = 0; i < size.width; i += 40) {
-      canvas.drawLine(Offset(i, 0), Offset(i, size.height), paint);
-    }
-    for (double i = 0; i < size.height; i += 40) {
-      canvas.drawLine(Offset(0, i), Offset(size.width, i), paint);
-    }
+  void _loadBreadBakingTemplate() {
+    setState(() {
+      _nodes.clear();
+      _nodes.addAll([
+        ScriptNode(
+          id: 'start',
+          title: '每天 10:00',
+          content: '定時自動開啟對話',
+          position: const Offset(400, 100),
+          icon: Icons.timer,
+          color: Colors.blueAccent,
+          triggerType: 'time',
+          triggerTime: '10:00',
+          childrenIds: ['node_search'],
+        ),
+        ScriptNode(
+          id: 'node_search',
+          title: '搜尋食譜',
+          content: '搜尋簡單麵包食譜，並用溫暖語氣改寫',
+          position: const Offset(400, 300),
+          icon: Icons.auto_awesome,
+          color: Colors.purpleAccent,
+          childrenIds: ['node_reply'],
+        ),
+        ScriptNode(
+          id: 'node_reply',
+          title: '偵測媽媽反應',
+          content: '系統將偵測：[負面/困難] 或是 [正面/有趣]',
+          position: const Offset(400, 500),
+          icon: Icons.list,
+          color: Colors.pinkAccent,
+          choiceLabels: ['這好像很難...', '太棒了，來試試！'],
+          childrenIds: ['node_encourage', 'node_happy'],
+        ),
+        ScriptNode(
+          id: 'node_encourage',
+          title: 'AI 鼓勵模式',
+          content: '不會啦！小明（孫子）上次說想吃耶，妳試試看？',
+          position: const Offset(200, 750),
+          icon: Icons.face,
+          color: Colors.tealAccent,
+          childrenIds: ['node_bridge'],
+        ),
+        ScriptNode(
+          id: 'node_happy',
+          title: 'AI 讚賞模式',
+          content: '媽妳太厲害了！做完記得傳照片給我看喔！',
+          position: const Offset(600, 750),
+          icon: Icons.celebration,
+          color: Colors.orangeAccent,
+          childrenIds: ['node_bridge'],
+        ),
+        ScriptNode(
+          id: 'node_bridge',
+          title: '世代連結橋樑',
+          content: '截圖通話摘要並發送給兒子：媽媽今天對做麵包很有興趣',
+          position: const Offset(400, 1000),
+          icon: Icons.family_restroom,
+          color: Colors.greenAccent,
+        ),
+      ]);
+      _selectedNodeId = 'start';
+      _currentSimulatorNodeId = 'start';
+    });
   }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

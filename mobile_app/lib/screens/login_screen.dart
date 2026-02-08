@@ -83,7 +83,9 @@ class _LoginScreenState extends State<LoginScreen> {
                 alignment: Alignment.centerRight,
                 child: TextButton(
                   onPressed: () {
-                    // TODO: 忘記密碼邏輯
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('已傳送重設連結至您的 Email')),
+                    );
                   },
                   child: Text(
                     '忘記密碼?',
@@ -104,7 +106,9 @@ class _LoginScreenState extends State<LoginScreen> {
                 height: 56,
                 child: ElevatedButton(
                   onPressed: () {
-                    // TODO: 登入邏輯
+                    // 模擬登入成功後跳轉到家屬首頁
+                    // 在真實 App 中會先驗證 API
+                    Navigator.pushReplacementNamed(context, '/family_home');
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFFF7043), // 橘色

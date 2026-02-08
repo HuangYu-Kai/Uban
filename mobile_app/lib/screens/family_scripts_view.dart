@@ -3,14 +3,40 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'family_script_editor_screen.dart';
 import 'family_marketplace_view.dart';
+import '../services/script_data_service.dart';
 
-class FamilyScriptsView extends StatelessWidget {
+class FamilyScriptsView extends StatefulWidget {
   const FamilyScriptsView({super.key});
+
+  @override
+  State<FamilyScriptsView> createState() => _FamilyScriptsViewState();
+}
+
+class _FamilyScriptsViewState extends State<FamilyScriptsView> {
+  late List<ScriptMetadata> _scripts;
+
+  @override
+  void initState() {
+    super.initState();
+    _initData();
+  }
+
+  Future<void> _initData() async {
+    await ScriptDataService().ensureLoaded();
+    _refreshScripts();
+  }
+
+  void _refreshScripts() {
+    if (!mounted) return;
+    setState(() {
+      _scripts = List.from(ScriptDataService().getAllScripts());
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFFFFBF0),
+      backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
         title: Text(
           '劇本管理',
@@ -26,7 +52,7 @@ class FamilyScriptsView extends StatelessWidget {
           IconButton(
             icon: const Icon(
               Icons.add_circle_outline,
-              color: Color(0xFFFF9800),
+              color: Color(0xFF2563EB),
               size: 30,
             ),
             onPressed: () => _showCreateScriptSheet(context),
@@ -98,36 +124,7 @@ class FamilyScriptsView extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
-            _buildFlowItem(
-              context,
-              '每日血壓藥提醒',
-              '每天 08:00',
-              '動作：發出警報 + AI 語音 ("爸，吃藥囉，吃完按一下")',
-              '邏輯：若 15分 未按 -> Line 通知我',
-              true,
-              Icons.check_circle,
-              Colors.green,
-            ),
-            _buildFlowItem(
-              context,
-              '週三下午茶話題 (京劇)',
-              '週三 14:00',
-              '動作：RAG 搜尋 "最新京劇演出" -> 推播影片連結',
-              '邏輯：自動推送到廣播站頻道',
-              true,
-              Icons.check_circle,
-              Colors.green,
-            ),
-            _buildFlowItem(
-              context,
-              '寒流關懷 (暫停中)',
-              '氣象局發布低溫特報',
-              '動作：AI 提醒 ("這兩天很冷，圍巾要圍喔")',
-              '邏輯：自動語音對話觸發',
-              false,
-              Icons.warning_amber_rounded,
-              Colors.orange,
-            ),
+            ..._scripts.map((script) => _buildFlowItem(context, script)),
           ],
         ),
       ),
@@ -174,24 +171,16 @@ class FamilyScriptsView extends StatelessWidget {
     );
   }
 
-  Widget _buildFlowItem(
-    BuildContext context,
-    String title,
-    String trigger,
-    String action,
-    String logic,
-    bool isActive,
-    IconData statusIcon,
-    Color statusColor,
-  ) {
+  Widget _buildFlowItem(BuildContext context, ScriptMetadata script) {
     return GestureDetector(
       onTap: () {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => FamilyScriptEditorScreen(scriptTitle: title),
+            builder: (context) =>
+                FamilyScriptEditorScreen(scriptTitle: script.title),
           ),
-        );
+        ).then((_) => _refreshScripts());
       },
       child: Container(
         margin: const EdgeInsets.only(bottom: 20),
@@ -212,31 +201,49 @@ class FamilyScriptsView extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(statusIcon, color: statusColor, size: 24),
+                Icon(script.statusIcon, color: script.statusColor, size: 24),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    title,
+                    script.title,
                     style: GoogleFonts.notoSansTc(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
-                      color: isActive ? Colors.black87 : Colors.grey,
+                      color: script.isActive ? Colors.black87 : Colors.grey,
                     ),
                   ),
                 ),
+                IconButton(
+                  icon: const Icon(Icons.edit, size: 20, color: Colors.grey),
+                  onPressed: () => _showRenameDialog(context, script),
+                ),
+                IconButton(
+                  icon: const Icon(
+                    Icons.delete_outline,
+                    size: 20,
+                    color: Colors.redAccent,
+                  ),
+                  onPressed: () => _showDeleteConfirm(context, script),
+                ),
                 Switch(
-                  value: isActive,
-                  onChanged: (v) {},
+                  value: script.isActive,
+                  onChanged: (v) async {
+                    await ScriptDataService().toggleScriptActive(
+                      script.title,
+                      v,
+                    );
+                    _refreshScripts();
+                  },
                   activeThumbColor: const Color(0xFFFF9800),
                 ),
               ],
             ),
             const Divider(height: 24),
-            _buildDetailRow(Icons.access_time, '觸發：', trigger),
+            _buildDetailRow(Icons.access_time, '觸發：', script.trigger),
             const SizedBox(height: 8),
-            _buildDetailRow(Icons.play_circle_outline, '動作：', action),
+            _buildDetailRow(Icons.play_circle_outline, '動作：', script.action),
             const SizedBox(height: 8),
-            _buildDetailRow(Icons.psychology_outlined, '邏輯：', logic),
+            _buildDetailRow(Icons.psychology_outlined, '邏輯：', script.logic),
           ],
         ),
       ).animate().fadeIn(duration: 500.ms).slideY(begin: 0.1, end: 0),
@@ -397,44 +404,133 @@ class FamilyScriptsView extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 32),
-              SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton(
-                  onPressed: () {
-                    if (controller.text.isNotEmpty) {
-                      Navigator.pop(context);
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => FamilyScriptEditorScreen(
-                            scriptTitle: controller.text,
-                          ),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
                         ),
-                      );
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFFF9800),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    elevation: 0,
-                  ),
-                  child: Text(
-                    '開啟編輯器',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
+                        side: BorderSide(color: Colors.grey[300]!),
+                      ),
+                      child: Text(
+                        '取消',
+                        style: GoogleFonts.notoSansTc(
+                          fontSize: 18,
+                          color: Colors.grey[600],
+                        ),
+                      ),
                     ),
                   ),
-                ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () async {
+                        if (controller.text.isNotEmpty) {
+                          await ScriptDataService().addScript(
+                            ScriptMetadata(title: controller.text),
+                          );
+                          _refreshScripts();
+                          if (!context.mounted) return;
+                          Navigator.pop(context); // Close sheet
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => FamilyScriptEditorScreen(
+                                scriptTitle: controller.text,
+                                isNew: true,
+                              ),
+                            ),
+                          );
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFFF9800),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        elevation: 0,
+                      ),
+                      child: Text(
+                        '開啟編輯器',
+                        style: GoogleFonts.notoSansTc(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 16),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  void _showDeleteConfirm(BuildContext context, ScriptMetadata script) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('刪除劇本'),
+        content: Text('確定要刪除「${script.title}」嗎？此動作無法撤銷。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () async {
+              await ScriptDataService().deleteScript(script.title);
+              if (context.mounted) {
+                _refreshScripts();
+                Navigator.pop(context);
+              }
+            },
+            child: const Text('刪除', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showRenameDialog(BuildContext context, ScriptMetadata script) {
+    final controller = TextEditingController(text: script.title);
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('重新命名劇本'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: '劇本名稱'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () async {
+              if (controller.text.isNotEmpty) {
+                await ScriptDataService().updateScriptTitle(
+                  script.title,
+                  controller.text,
+                );
+                _refreshScripts();
+              }
+              if (context.mounted) Navigator.pop(context);
+            },
+            child: const Text('更名'),
+          ),
+        ],
       ),
     );
   }

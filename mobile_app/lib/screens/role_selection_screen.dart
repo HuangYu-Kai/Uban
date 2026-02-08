@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'camera_screen.dart'; // 雙向視訊
-import 'elder_screen.dart';  // 監控端-長輩
+import 'elder_screen.dart'; // 監控端-長輩
 import 'family_screen.dart'; // 監控端-家屬
 
 class RoleSelectionScreen extends StatefulWidget {
-  const RoleSelectionScreen({Key? key}) : super(key: key);
+  const RoleSelectionScreen({super.key});
 
   @override
-  _RoleSelectionScreenState createState() => _RoleSelectionScreenState();
+  State<RoleSelectionScreen> createState() => _RoleSelectionScreenState();
 }
 
 class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
@@ -15,15 +15,12 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
 
   void _navigateTo(Widget page) {
     if (_roomController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('請輸入裝置編號/房號')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('請輸入裝置編號/房號')));
       return;
     }
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => page),
-    );
+    Navigator.push(context, MaterialPageRoute(builder: (context) => page));
   }
 
   @override
@@ -45,9 +42,12 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
               keyboardType: TextInputType.number,
             ),
             const SizedBox(height: 30),
-            
+
             const Divider(thickness: 2, height: 40),
-            const Text("功能 A: 雙向視訊通話", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const Text(
+              "功能 A: 雙向視訊通話",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 10),
             ElevatedButton.icon(
               icon: const Icon(Icons.video_call),
@@ -57,12 +57,17 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                 foregroundColor: Colors.white,
                 minimumSize: const Size(double.infinity, 50),
               ),
-              onPressed: () => _navigateTo(CameraScreen(roomId: _roomController.text.trim())),
+              onPressed: () => _navigateTo(
+                CameraScreen(roomId: _roomController.text.trim()),
+              ),
             ),
 
             const SizedBox(height: 30),
             const Divider(thickness: 2, height: 40),
-            const Text("功能 B: 遠端居家監控", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const Text(
+              "功能 B: 遠端居家監控",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 10),
             Row(
               children: [
@@ -75,7 +80,9 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 15),
                     ),
-                    onPressed: () => _navigateTo(ElderScreen(roomId: _roomController.text.trim())),
+                    onPressed: () => _navigateTo(
+                      ElderScreen(roomId: _roomController.text.trim()),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -88,7 +95,9 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 15),
                     ),
-                    onPressed: () => _navigateTo(FamilyScreen(roomId: _roomController.text.trim())),
+                    onPressed: () => _navigateTo(
+                      FamilyScreen(roomId: _roomController.text.trim()),
+                    ),
                   ),
                 ),
               ],

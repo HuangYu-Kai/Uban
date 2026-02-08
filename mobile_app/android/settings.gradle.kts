@@ -1,3 +1,5 @@
+rootProject.name = "uniflow_mobile_android"
+
 pluginManagement {
     val flutterSdkPath =
         run {
