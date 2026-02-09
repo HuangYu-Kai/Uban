@@ -24,6 +24,7 @@ class MyApp extends StatelessWidget {
       ),
       // ★★★ 關鍵修改：設定首頁為識別頁 ★★★
       home: const IdentificationScreen(),
+      //home: const RoleSelectionScreen(),
       // ★★★ 路由設定說明 ★★★
       // 舊的寫法 '/monitor': (context) => const CameraScreen() 會報錯，
       // 因為 CameraScreen 現在必須要有 roomId。
