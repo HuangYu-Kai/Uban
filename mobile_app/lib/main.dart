@@ -2,7 +2,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'screens/identification_screen.dart'; 
-// 引入刚刚建立的角色選擇頁面，這是新的入口
 import 'screens/role_selection_screen.dart'; 
 
 void main() {
