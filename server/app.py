@@ -1,9 +1,48 @@
+import os
 from flask import Flask, request
 from flask_socketio import SocketIO, emit, join_room, leave_room
+from extensions import db
+from routes.auth import auth_bp
+from routes.pairing import pairing_bp
+from routes.user import user_bp
+from routes.ai import ai_bp
+
+from flask_cors import CORS
 
 app = Flask(__name__)
+CORS(app) # 允許跨域請求
 app.config['SECRET_KEY'] = 'secret!'
+
+# 資料庫設定
+base_dir = os.path.dirname(os.path.abspath(__file__))
+db_path = os.path.join(base_dir, 'instance', 'uban.db')
+app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# 初始化擴充功能
+db.init_app(app)
 socketio = SocketIO(app, cors_allowed_origins="*")
+
+# 註冊藍圖 (API 路由)
+app.register_blueprint(auth_bp, url_prefix='/api/auth')
+app.register_blueprint(pairing_bp, url_prefix='/api/pairing')
+app.register_blueprint(user_bp, url_prefix='/api/user')
+app.register_blueprint(ai_bp, url_prefix='/api/ai')
+
+@app.route('/')
+def index():
+    return "UBan Backend is Running! 🚀"
+
+@app.route('/api/health')
+def health():
+    return {"status": "ok", "message": "Backend is reachable"}
+
+# 自動建立資料表
+with app.app_context():
+    if not os.path.exists(os.path.dirname(db_path)):
+        os.makedirs(os.path.dirname(db_path))
+    db.create_all()
+    print("✅ 資料庫與資料表已初始化。")
 
 rooms_manager = {}
 

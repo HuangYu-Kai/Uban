@@ -123,8 +123,10 @@ class _FamilyScriptsViewState extends State<FamilyScriptsView> {
                 color: Colors.black54,
               ),
             ),
-            const SizedBox(height: 16),
             ..._scripts.map((script) => _buildFlowItem(context, script)),
+            const SizedBox(
+              height: 140,
+            ), // Ensure content is not hidden by the bottom dock
           ],
         ),
       ),

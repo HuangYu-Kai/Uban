@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'family_subscription_screen.dart';
-
 import '../identification_screen.dart';
-import '../../services/api_service.dart';
 
 class FamilySettingsView extends StatefulWidget {
   const FamilySettingsView({super.key});
@@ -172,7 +170,9 @@ class _FamilySettingsViewState extends State<FamilySettingsView> {
                 ),
               ),
             ),
-            const SizedBox(height: 40),
+            const SizedBox(
+              height: 140,
+            ), // Ensure content is not hidden by the bottom dock
           ],
         ),
       ),
@@ -284,54 +284,15 @@ class _FamilySettingsViewState extends State<FamilySettingsView> {
     showDialog(
       context: context,
       builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text('管理配對碼'),
-              content: FutureBuilder<Map<String, dynamic>>(
-                future: ApiService.generatePairingCode(2), // 演示 ID
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const SizedBox(
-                      height: 100,
-                      child: Center(child: CircularProgressIndicator()),
-                    );
-                  }
-                  if (snapshot.hasError || snapshot.data?['error'] != null) {
-                    return const Text('無法連線到伺服器，請確認後端已啟動。');
-                  }
-                  final code = snapshot.data?['pairing_code'] ?? '----';
-                  return Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text('請將此四位數代碼提供給長輩：'),
-                      const SizedBox(height: 16),
-                      Text(
-                        code,
-                        style: GoogleFonts.inter(
-                          fontSize: 56,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 12,
-                          color: Colors.orange[800],
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      const Text(
-                        '代碼有效期限為 10 分鐘',
-                        style: TextStyle(fontSize: 12, color: Colors.grey),
-                      ),
-                    ],
-                  );
-                },
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('完成'),
-                ),
-              ],
-            );
-          },
+        return AlertDialog(
+          title: const Text('管理長輩連結'),
+          content: const Text('目前配對由登入時強制引導，如需新增其他長輩，此功能開發中。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('確定'),
+            ),
+          ],
         );
       },
     );

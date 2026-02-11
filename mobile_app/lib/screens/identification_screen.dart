@@ -2,10 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'elder_pairing_screen.dart';
-import 'family_main_screen.dart';
-// Note: origin/main suggested LoginScreen, but we are using FamilyMainScreen for the family UI flow.
-// import 'login_screen.dart';
+import 'elder_pairing_display_screen.dart';
+import 'login_screen.dart';
 
 class IdentificationScreen extends StatelessWidget {
   const IdentificationScreen({super.key});
@@ -185,7 +183,9 @@ class IdentificationScreen extends StatelessWidget {
       onTap: () {
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (context) => const ElderPairingScreen()),
+          MaterialPageRoute(
+            builder: (context) => const ElderPairingDisplayScreen(),
+          ),
         );
       },
       child:
@@ -282,7 +282,7 @@ class IdentificationScreen extends StatelessWidget {
           onPressed: () {
             Navigator.push(
               context,
-              MaterialPageRoute(builder: (context) => const FamilyMainScreen()),
+              MaterialPageRoute(builder: (context) => const LoginScreen()),
             );
           },
           style: OutlinedButton.styleFrom(
