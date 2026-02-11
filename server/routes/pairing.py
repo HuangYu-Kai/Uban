@@ -3,28 +3,28 @@ from datetime import datetime, timedelta
 from models import User, PairingCode, Relationship
 from extensions import db
 from utils import generate_random_code
+from werkzeug.security import generate_password_hash
 
 pairing_bp = Blueprint('pairing', __name__)
 
-@pairing_bp.route('/generate', methods=['POST'])
-def generate_code():
-    data = request.json
-    family_id = data.get('family_id')
+# --- Elder (VM) Flow ---
 
-    # 驗證家屬身分
-    user = User.query.get(family_id)
-    if not user or user.role != 'family':
-        return jsonify({'error': 'Invalid family ID'}), 403
-
-    # 產心 4 位數配對碼，效期 10 分鐘
+@pairing_bp.route('/request_code', methods=['POST'])
+def request_code():
+    """
+    長輩端 (VM) 請求一個代碼來顯示。
+    這裡暫時不綁定 ID，因為長輩還沒註冊，只是產生一個 PIN 並記住是誰生成的（如果是已登入狀態）。
+    但在目前設計中，長輩端是未登入狀態，所以 PIN 只是暫時存放。
+    """
+    # 產生 4 位數代碼
     code = generate_random_code()
-    # 避免重複 (簡單實作)
     while PairingCode.query.filter_by(code=code, is_used=False).first():
         code = generate_random_code()
 
+    # 這裡 creator_id 先帶 0 代表是長輩端請求的待配對碼 (或者用一個特殊的 ID)
     new_pairing = PairingCode(
         code=code,
-        creator_id=family_id,
+        creator_id=0, # 0 表示由長輩端發起，等待家屬認領
         expires_at=datetime.utcnow() + timedelta(minutes=10)
     )
     db.session.add(new_pairing)
@@ -35,33 +35,73 @@ def generate_code():
         'expires_in_seconds': 600
     })
 
-@pairing_bp.route('/verify', methods=['POST'])
-def verify_code():
+@pairing_bp.route('/check_status/<code>', methods=['GET'])
+def check_status(code):
+    """
+    長輩端輪詢是否已配對成功。
+    """
+    pairing = PairingCode.query.filter_by(code=code, is_used=True).first()
+    if pairing:
+        # 找到對應的關係
+        relationship = Relationship.query.filter_by(family_id=pairing.creator_id).filter(Relationship.elder_id != 0).order_by(Relationship.id.desc()).first()
+        if relationship:
+             return jsonify({'status': 'paired', 'elder_id': relationship.elder_id})
+    
+    return jsonify({'status': 'waiting'})
+
+# --- Caregiver (Phone) Flow ---
+
+@pairing_bp.route('/confirm', methods=['POST'])
+def confirm_pairing():
+    """
+    家屬端 (手機) 輸入代碼與長輩名稱。
+    這會同時：
+    1. 建立長輩 User 帳號
+    2. 建立 Relationship
+    3. 標記 PairingCode 為已使用
+    """
     data = request.json
-    elder_id = data.get('elder_id')
+    family_id = data.get('family_id')
     code = data.get('code')
+    elder_name = data.get('elder_name')
 
-    if not elder_id or not code:
-        return jsonify({'error': 'Missing data'}), 400
+    if not all([family_id, code, elder_name]):
+        return jsonify({'error': 'Missing required data'}), 400
 
-    # 找到有效且未使用的配對碼
+    # 1. 驗證代碼
     pairing = PairingCode.query.filter_by(code=code, is_used=False).first()
-
-    if not pairing:
+    if not pairing or pairing.expires_at < datetime.utcnow():
         return jsonify({'error': 'Invalid or expired code'}), 404
 
-    if pairing.expires_at < datetime.utcnow():
-        pairing.is_used = True
-        db.session.commit()
-        return jsonify({'error': 'Code expired'}), 404
+    # 2. 自動為長輩建立帳號
+    # 為長輩產生隨機 Email
+    random_id = generate_random_code(6)
+    elder_email = f"elder_{random_id}@uban.com"
+    hashed_pw = generate_password_hash("password123") # 預設密碼
 
-    # 建立關係
-    new_rel = Relationship(elder_id=elder_id, family_id=pairing.creator_id)
-    pairing.is_used = True
+    new_elder = User(
+        user_name=elder_name,
+        user_email=elder_email,
+        password=hashed_pw,
+        gender='M',
+        age=70,
+        role='elder',
+        user_authority='Normal'
+    )
+    db.session.add(new_elder)
+    db.session.flush() # 取得 new_elder.id
+
+    # 3. 建立關係
+    new_rel = Relationship(elder_id=new_elder.id, family_id=family_id)
     db.session.add(new_rel)
+
+    # 4. 更新代碼狀態 (將家屬 ID 存入 creator_id，供長輩端查詢)
+    pairing.is_used = True
+    pairing.creator_id = family_id
+    
     db.session.commit()
 
     return jsonify({
-        'message': 'Successfully paired!',
-        'family_id': pairing.creator_id
+        'message': 'Successfully paired and elder account created!',
+        'elder_id': new_elder.id
     })

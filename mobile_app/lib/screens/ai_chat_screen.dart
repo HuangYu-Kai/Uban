@@ -4,6 +4,7 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'dart:async';
+import '../services/api_service.dart';
 
 class AIChatScreen extends StatefulWidget {
   const AIChatScreen({super.key});
@@ -15,6 +16,9 @@ class AIChatScreen extends StatefulWidget {
 class _AIChatScreenState extends State<AIChatScreen> {
   final FlutterTts flutterTts = FlutterTts();
   final ScrollController _scrollController = ScrollController();
+
+  // 演示用固定的 User ID (對應後端資料庫中的長輩)
+  final int _elderId = 1;
 
   // 聊天記錄
   final List<Map<String, dynamic>> _messages = [
@@ -42,7 +46,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
 
   Future<void> _initTts() async {
     await flutterTts.setLanguage("zh-TW");
-    await flutterTts.setSpeechRate(0.5); // 語速慢一點
+    await flutterTts.setSpeechRate(0.5);
   }
 
   Future<void> _speak(String text) async {
@@ -78,26 +82,38 @@ class _AIChatScreenState extends State<AIChatScreen> {
   }
 
   // 處理使用者訊息
-  void _handleUserMessage(String text) {
+  Future<void> _handleUserMessage(String text) async {
     setState(() {
       _messages.add({'role': 'user', 'text': text});
       _isThinking = true;
     });
     _scrollToBottom();
 
-    // 模擬 AI 思考與回應
-    Future.delayed(const Duration(seconds: 2), () {
+    try {
+      // 呼叫後端 AI 介面
+      final result = await ApiService.aiChat(_elderId, text);
+
       if (!mounted) return;
 
-      String response = "那真是太棒了！公園的空氣一定很新鮮。\n記得帶瓶水，慢慢走，注意安全喔！";
-
+      if (result.containsKey('reply')) {
+        String response = result['reply'];
+        setState(() {
+          _isThinking = false;
+          _messages.add({'role': 'ai', 'text': response});
+        });
+        _scrollToBottom();
+        _speak(response);
+      } else {
+        throw Exception('回傳格式錯誤');
+      }
+    } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isThinking = false;
-        _messages.add({'role': 'ai', 'text': response});
+        _messages.add({'role': 'ai', 'text': '抱歉，小幫手現在連不上網路。您可以待會再試試看嗎？'});
       });
       _scrollToBottom();
-      _speak(response);
-    });
+    }
   }
 
   void _scrollToBottom() {
