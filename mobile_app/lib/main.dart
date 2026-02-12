@@ -1,7 +1,7 @@
 // 路徑: mobile_app/lib/main.dart
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'screens/identification_screen.dart'; 
+//import 'screens/identification_screen.dart'; 
 import 'screens/role_selection_screen.dart'; 
 
 void main() {
@@ -22,8 +22,8 @@ class MyApp extends StatelessWidget {
         textTheme: GoogleFonts.notoSansTcTextTheme(Theme.of(context).textTheme),
       ),
       // ★★★ 關鍵修改：設定首頁為識別頁 ★★★
-      home: const IdentificationScreen(),
-      //home: const RoleSelectionScreen(),
+      //home: const IdentificationScreen(),
+      home: const RoleSelectionScreen(),
       // ★★★ 路由設定說明 ★★★
       // 舊的寫法 '/monitor': (context) => const CameraScreen() 會報錯，
       // 因為 CameraScreen 現在必須要有 roomId。
