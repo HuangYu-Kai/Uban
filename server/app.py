@@ -33,8 +33,7 @@ def get_elder_data():
         cursor = db.get_mysql_cursor()
         
         # 查詢語法：從 elder_user_data 表中查找
-        # 根據您的截圖，欄位是 elder_id, elder_name, user_id
-        query = "SELECT elder_id, elder_name FROM elder_user_data WHERE user_id = %s LIMIT 1"
+        query = "SELECT elder_id, elder_name FROM elder_user_data WHERE user_id = %s LIMIT 1" #這會限制user_id只能使用最上面的elder_id，但user_id會有很多elder_id，之後再修改
         cursor.execute(query, (user_id,))
         result = cursor.fetchone()
         cursor.close()
