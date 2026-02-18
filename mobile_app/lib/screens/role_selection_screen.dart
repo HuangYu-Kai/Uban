@@ -1,9 +1,8 @@
-// 路徑: lib/screens/role_selection_screen.dart
+// lib/screens/role_selection_screen.dart
 import 'package:flutter/material.dart';
-import '../services/api_service.dart'; // 引入 API Service
-import 'camera_screen.dart'; // 雙向視訊頁
-import 'elder_screen.dart';  // 長輩端頁
-import 'family_screen.dart'; // 家屬監控頁
+import '../services/api_service.dart';
+import 'family_dashboard_screen.dart';
+import 'elder_screen.dart';
 
 class RoleSelectionScreen extends StatefulWidget {
   const RoleSelectionScreen({Key? key}) : super(key: key);
@@ -13,186 +12,132 @@ class RoleSelectionScreen extends StatefulWidget {
 }
 
 class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
-  // 輸入控制器：輸入 User ID (INT)
-  final TextEditingController _userIdController = TextEditingController();
+  final TextEditingController _inputController = TextEditingController();
   final ApiService _apiService = ApiService();
-  
   bool _isLoading = false;
+  String? _selectedRole; 
 
   @override
   void dispose() {
-    _userIdController.dispose();
+    _inputController.dispose();
     super.dispose();
   }
 
-  // 處理導航邏輯：查詢 ID -> 跳轉
-  Future<void> _handleNavigation(String role) async {
-    String userIdText = _userIdController.text.trim();
-
-    if (userIdText.isEmpty) {
-      _showErrorSnackBar('請輸入 User ID (數字)');
+  Future<void> _handleSubmit() async {
+    String inputText = _inputController.text.trim();
+    if (inputText.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('請輸入 ID')));
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-    });
+    if (_selectedRole == 'family') {
+      setState(() => _isLoading = true);
+      List<dynamic> elders = await _apiService.getElderData(inputText);
+      setState(() => _isLoading = false);
 
-    // 1. 呼叫後端 API 查詢 elder_id
-    final data = await _apiService.getElderData(userIdText);
-
-    setState(() {
-      _isLoading = false;
-    });
-
-    if (data != null && data['status'] == 'success') {
-      // 2. 獲取資料庫回傳的 4 碼 elder_id
-      String elderId = data['elder_id'];
-      String elderName = data['elder_name'] ?? 'Unknown';
-
-      print("✅ 成功獲取通道 ID: $elderId ($elderName)");
-
-      // 3. 根據選擇的角色跳轉頁面，並傳入 elderId 作為 Room ID
-      Widget nextScreen;
-      switch (role) {
-        case 'camera': // 雙向視訊
-          nextScreen = CameraScreen(roomId: elderId);
-          break;
-        case 'elder': // 長輩端 (被監控)
-          nextScreen = ElderScreen(roomId: elderId);
-          break;
-        case 'family': // 家屬端 (監控)
-          nextScreen = FamilyScreen(roomId: elderId);
-          break;
-        default:
-          return;
+      if (elders.isEmpty) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('查無資料')));
+        return;
       }
+      if (mounted) {
+        Navigator.push(context, MaterialPageRoute(builder: (context) => FamilyDashboardScreen(elders: elders)));
+      }
+    } else {
+      // 長輩邏輯
+      String deviceName = "預設設備";
+      TextEditingController nameCtrl = TextEditingController();
+      await showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          title: const Text('設備命名'),
+          content: TextField(
+            controller: nameCtrl,
+            decoration: const InputDecoration(hintText: '例如: 客廳、臥室'),
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () {
+                if (nameCtrl.text.isNotEmpty) deviceName = nameCtrl.text;
+                Navigator.pop(context);
+              },
+              child: const Text('確定'),
+            )
+          ],
+        ),
+      );
 
-      // 跳轉頁面
+      bool? isCCTV = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          title: const Text('選擇模式'),
+          actions: [
+            TextButton.icon(
+              icon: const Icon(Icons.phone_in_talk),
+              label: const Text('視訊通訊機'),
+              onPressed: () => Navigator.pop(context, false),
+            ),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.videocam),
+              label: const Text('CCTV 監控機'),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+              onPressed: () => Navigator.pop(context, true),
+            ),
+          ],
+        ),
+      );
+
+      if (isCCTV == null) return;
+
       if (mounted) {
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (context) => nextScreen),
+          MaterialPageRoute(
+            builder: (context) => ElderScreen(
+              roomId: inputText,
+              isCCTVMode: isCCTV,
+              deviceName: deviceName,
+            ),
+          ),
         );
       }
-    } else {
-      // 錯誤處理
-      _showErrorSnackBar('找不到此 User ID 對應的長輩設定檔，請確認資料庫');
-    }
-  }
-
-  void _showErrorSnackBar(String message) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message), backgroundColor: Colors.red),
-      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    bool isRoleSelected = _selectedRole != null;
     return Scaffold(
-      backgroundColor: const Color(0xFFFFF8E1), // 暖色系背景
-      appBar: AppBar(
-        title: const Text('UniFlow - 自動通道分配'),
-        backgroundColor: Colors.orange,
-        elevation: 0,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Icon(Icons.cloud_sync, size: 80, color: Colors.orangeAccent),
-            const SizedBox(height: 20),
-            const Text(
-              "模擬登入與通道分配",
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.brown),
-            ),
-            const SizedBox(height: 10),
-            const Text(
-              "輸入 User ID 後，系統將自動從 MySQL 讀取對應的 Elder ID (4碼) 並建立連線。",
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey),
-            ),
-            const SizedBox(height: 40),
-
-            // User ID 輸入框
-            TextField(
-              controller: _userIdController,
-              keyboardType: TextInputType.number, // 限制數字輸入
-              decoration: InputDecoration(
-                labelText: 'User ID (INT)',
-                hintText: '請輸入資料庫中的 user_id (例如: 1)',
-                prefixIcon: const Icon(Icons.person_search),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                filled: true,
-                fillColor: Colors.white,
-              ),
-            ),
-            
-            const SizedBox(height: 40),
-
-            if (_isLoading)
-              const Center(child: CircularProgressIndicator())
-            else ...[
-              // 功能區塊 A: 雙向視訊
-              ElevatedButton.icon(
-                icon: const Icon(Icons.video_call),
-                label: const Text('雙向視訊 (Two-way Call)'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blueAccent,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                onPressed: () => _handleNavigation('camera'),
-              ),
-
+      backgroundColor: const Color(0xFFF5F5F5),
+      appBar: isRoleSelected 
+          ? AppBar(leading: IconButton(icon: const Icon(Icons.arrow_back, color: Colors.black), onPressed: () => setState(() { _selectedRole = null; _inputController.clear(); })), backgroundColor: Colors.transparent, elevation: 0)
+          : null,
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            children: [
+              const Icon(Icons.connect_without_contact, size: 80, color: Colors.blueAccent),
               const SizedBox(height: 20),
-              
-              // 功能區塊 B: 監控模式
-              Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      icon: const Icon(Icons.elderly),
-                      label: const Text('長輩端\n(被監控)', textAlign: TextAlign.center),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.orange,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      onPressed: () => _handleNavigation('elder'),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      icon: const Icon(Icons.visibility),
-                      label: const Text('家屬端\n(監控)', textAlign: TextAlign.center),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      onPressed: () => _handleNavigation('family'),
-                    ),
-                  ),
-                ],
-              ),
+              const Text("Uban 系統入口", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 40),
+
+              if (!isRoleSelected) ...[
+                ElevatedButton.icon(icon: const Icon(Icons.visibility), label: const Text("我是家屬"), onPressed: () => setState(() => _selectedRole = 'family'), style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(60))),
+                const SizedBox(height: 20),
+                ElevatedButton.icon(icon: const Icon(Icons.elderly), label: const Text("我是長輩"), style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, minimumSize: const Size.fromHeight(60)), onPressed: () => setState(() => _selectedRole = 'elder')),
+              ],
+
+              if (isRoleSelected) ...[
+                Text(_selectedRole == 'family' ? "請輸入 User ID" : "請輸入 Elder ID"),
+                const SizedBox(height: 20),
+                TextField(controller: _inputController, decoration: const InputDecoration(border: OutlineInputBorder())),
+                const SizedBox(height: 20),
+                if (_isLoading) const CircularProgressIndicator() else ElevatedButton(onPressed: _handleSubmit, child: const Text("下一步")),
+              ],
             ],
-            
-            const SizedBox(height: 20),
-            const Text(
-              "測試提示：請確保 MySQL 的 elder_user_data 表中已有該 User ID 的資料。",
-              style: TextStyle(color: Colors.redAccent, fontSize: 12),
-              textAlign: TextAlign.center,
-            ),
-          ],
+          ),
         ),
       ),
     );
