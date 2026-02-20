@@ -5,7 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'screens/role_selection_screen.dart'; 
 
 // ★★★ 1. 定義全域導航 Key ★★★
-final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>(); //全域通訊狀態
 void main() {
   runApp(const MyApp());
 }
