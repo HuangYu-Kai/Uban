@@ -6,7 +6,14 @@ import 'family_scripts_view.dart';
 import 'family/family_settings_view.dart';
 
 class FamilyMainScreen extends StatefulWidget {
-  const FamilyMainScreen({super.key});
+  final int userId;
+  final String userName;
+
+  const FamilyMainScreen({
+    super.key,
+    required this.userId,
+    required this.userName,
+  });
 
   @override
   State<FamilyMainScreen> createState() => _FamilyMainScreenState();
@@ -15,11 +22,17 @@ class FamilyMainScreen extends StatefulWidget {
 class _FamilyMainScreenState extends State<FamilyMainScreen> {
   int _selectedIndex = 0;
 
-  final List<Widget> _views = [
-    const FamilyDashboardView(),
-    const FamilyScriptsView(),
-    const FamilySettingsView(),
-  ];
+  late final List<Widget> _views;
+
+  @override
+  void initState() {
+    super.initState();
+    _views = [
+      FamilyDashboardView(userId: widget.userId, userName: widget.userName),
+      const FamilyScriptsView(),
+      FamilySettingsView(userId: widget.userId, userName: widget.userName),
+    ];
+  }
 
   void _onItemTapped(int index) {
     setState(() {

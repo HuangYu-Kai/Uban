@@ -1,399 +1,463 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:intl/intl.dart';
-// ignore: depend_on_referenced_packages
-import 'package:intl/date_symbol_data_local.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
-import 'package:flutter_animate/flutter_animate.dart';
-import 'package:flutter_tts/flutter_tts.dart';
 import 'package:lunar/lunar.dart';
+import 'package:intl/intl.dart';
 
-import 'contacts_screen.dart';
-import 'ai_chat_screen.dart';
-import 'radio_station_screen.dart';
-import 'weather_screen.dart';
-
-// 長輩首頁 V2 (Polish & Engagement)
 class ElderHomeScreen extends StatefulWidget {
-  const ElderHomeScreen({super.key});
+  final int userId;
+  final String userName;
+
+  const ElderHomeScreen({
+    super.key,
+    required this.userId,
+    required this.userName,
+  });
 
   @override
   State<ElderHomeScreen> createState() => _ElderHomeScreenState();
 }
 
 class _ElderHomeScreenState extends State<ElderHomeScreen> {
-  final FlutterTts flutterTts = FlutterTts();
+  int _selectedIndex = 0; // 0: Home/Calendar, 1: Chat, 2: Profile/Settings
+  late String _lunarDate;
+  late String _solarTerm;
+  late String _dayName;
+  late String _dateStr;
+  late String _monthStr;
+  late String _yearStr;
 
   @override
   void initState() {
     super.initState();
-    initializeDateFormatting('zh_TW', null);
-    _speakWelcome();
+    _updateTime();
   }
 
-  Future<void> _speakWelcome() async {
-    await flutterTts.setLanguage("zh-TW");
-    await flutterTts.setSpeechRate(0.5);
-    await flutterTts.speak("爺爺早安，今天要不要聽聽老歌？");
-  }
+  void _updateTime() {
+    final now = DateTime.now();
+    final lunar = Lunar.fromDate(now);
 
-  @override
-  void dispose() {
-    flutterTts.stop();
-    super.dispose();
+    setState(() {
+      _lunarDate = "${lunar.getMonthInChinese()}月${lunar.getDayInChinese()}";
+      _solarTerm = lunar.getJieQi();
+      if (_solarTerm.isEmpty) {
+        _solarTerm = "立春";
+      }
+
+      try {
+        _dayName = DateFormat('EEEE', 'zh_TW').format(now);
+        _dateStr = DateFormat('dd').format(now);
+        _monthStr = DateFormat('MM月', 'zh_TW').format(now);
+        _yearStr = DateFormat('yyyy').format(now);
+      } catch (e) {
+        debugPrint('DateFormat error: $e');
+        _dayName = "星期${['一', '二', '三', '四', '五', '六', '日'][now.weekday - 1]}";
+        _dateStr = now.day.toString().padLeft(2, '0');
+        _monthStr = "${now.month}月";
+        _yearStr = now.year.toString();
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    // 獲取當前日期
-    final DateTime now = DateTime.now();
-    final String dateStr = DateFormat('M月d日', 'zh_TW').format(now);
-    final String weekdayStr = DateFormat('EEEE', 'zh_TW').format(now);
-
-    // 獲取農曆日期
-    final Lunar lunar = Lunar.fromDate(now);
-
     return Scaffold(
-      backgroundColor: const Color(0xFFFFF8E1), // 溫馨米黃 (Warm Amber)
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+      backgroundColor: const Color(0xFFF1F5F9),
+      body: Stack(
+        children: [
+          // 頁面內容切換
+          IndexedStack(
+            index: _selectedIndex,
             children: [
-              // 1. 頂部日期 (Header)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFFFA726), Color(0xFFFF7043)], // 暖橘漸層
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.orange.withValues(alpha: 0.3),
-                      blurRadius: 15,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  crossAxisAlignment: CrossAxisAlignment.center, // 垂直置中
-                  children: [
-                    // Left Side: Date (Expanded to take available space)
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            weekdayStr,
-                            style: GoogleFonts.notoSansTc(
-                              fontSize: 32,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.white.withValues(alpha: 0.9), // 白字
-                            ),
-                          ),
-                          // 使用 FittedBox 避免字太大的時候爆版
-                          FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              dateStr,
-                              style: GoogleFonts.notoSansTc(
-                                fontSize: 80,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white, // 白字
-                                height: 1.0,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 16), // 間距
-                    // 天氣 (Button Style)
-                    GestureDetector(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const WeatherScreen(),
-                          ),
-                        );
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.9),
-                          borderRadius: BorderRadius.circular(20),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.1),
-                              blurRadius: 10,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                          border: Border.all(
-                            color: Colors.orange.withValues(alpha: 0.3), // 橘色邊框
-                            width: 2,
-                          ),
-                        ),
-                        child: Column(
-                          children: [
-                            const FaIcon(
-                              FontAwesomeIcons.cloudSun,
-                              color: Colors.deepOrange, // 深橘色圖示
-                              size: 48,
-                            ),
-                            const SizedBox(height: 8),
-                            FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Text(
-                                '24°C',
-                                style: GoogleFonts.inter(
-                                  fontSize: 36,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.grey[800],
-                                ),
-                              ),
-                            ),
-                            Text(
-                              '看氣象',
-                              style: GoogleFonts.notoSansTc(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.deepOrange,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ).animate().fadeIn(duration: 600.ms).slideY(begin: -0.2, end: 0),
-
-              const SizedBox(height: 32),
-
-              // 2. 農曆日期
-              Center(
-                child: Text(
-                  '${lunar.getYearInGanZhi()}年 ${lunar.getMonthInChinese()}月 ${lunar.getDayInChinese()}',
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 36, // 大字體
-                    fontWeight: FontWeight.bold,
-                    color: const Color(0xFF5D4037), // 深褐色
-                    letterSpacing: 2.0,
-                  ),
-                ),
-              ).animate().fadeIn(delay: 200.ms),
-
-              const SizedBox(height: 32),
-
-              // 3. 功能區 (Features)
-              Expanded(
-                child: Column(
-                  children: [
-                    // A. 老友廣播站 (Coral Style)
-                    Expanded(flex: 3, child: _buildRadioCard(context)),
-                    const SizedBox(height: 20),
-                    // B. 通訊錄 & AI
-                    Expanded(
-                      flex: 2,
-                      child: Row(
-                        children: [
-                          Expanded(child: _buildContactsCard(context)),
-                          const SizedBox(width: 20),
-                          Expanded(child: _buildAICard(context)),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
+              _buildHomeView(),
+              _buildEmptyView('聊天區域'),
+              _buildEmptyView('個人頁面'),
             ],
           ),
+          // 自定義浮動導覽列
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: _buildFloatingNavBar(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyView(String title) {
+    return Center(
+      child: Text(
+        title,
+        style: GoogleFonts.notoSansTc(fontSize: 24, color: Colors.grey),
+      ),
+    );
+  }
+
+  Widget _buildHomeView() {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFF59B294), Color(0xFFF1F5F9)],
+          stops: [0.0, 0.3],
+        ),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            _buildHeader(),
+            Expanded(
+              child: Container(
+                width: double.infinity,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(32),
+                    topRight: Radius.circular(32),
+                  ),
+                ),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    children: [
+                      _buildGreetingRow(),
+                      const SizedBox(height: 20),
+                      _buildCalendarCard(),
+                      const SizedBox(height: 20),
+                      _buildMainFeaturesRow(),
+                      const SizedBox(height: 20),
+                      _buildNewsSection(),
+                      const SizedBox(height: 100), // 留白給浮動底部
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  // 📻 復古收音機卡片 (Coral Theme)
-  Widget _buildRadioCard(BuildContext context) {
-    return _buildElderTouchable(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const RadioStationScreen()),
-      ),
-      child: Container(
-        decoration: BoxDecoration(
-          color: const Color(0xFFFF7043), // 復古橘
-          borderRadius: BorderRadius.circular(36),
-          // 擬物化紋理 (Gradient)
-          gradient: const LinearGradient(
-            colors: [Color(0xFFFF8A65), Color(0xFFFF5722)], // 橘紅漸層
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+  Widget _buildFloatingNavBar() {
+    return Container(
+      height: 90,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(30),
+          topRight: Radius.circular(30),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, -5),
           ),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFFFF7043).withValues(alpha: 0.4),
-              blurRadius: 20,
-              offset: const Offset(0, 10),
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _buildNavItem(0, Icons.home_rounded),
+          _buildNavItem(1, Icons.chat_bubble_rounded),
+          _buildNavItem(2, Icons.person_rounded),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNavItem(int index, IconData icon) {
+    final isSelected = _selectedIndex == index;
+    return GestureDetector(
+      onTap: () => setState(() => _selectedIndex = index),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOutCubic,
+        transform: Matrix4.translationValues(0, isSelected ? -15 : 0, 0),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF59B294) : Colors.transparent,
+          shape: BoxShape.circle,
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: const Color(0xFF59B294).withOpacity(0.3),
+                    blurRadius: 10,
+                    offset: const Offset(0, 5),
+                  ),
+                ]
+              : [],
+        ),
+        child: Icon(
+          icon,
+          size: 32,
+          color: isSelected ? Colors.white : Colors.grey[400],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return const SizedBox(height: 20);
+  }
+
+  Widget _buildGreetingRow() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '早安！',
+              style: GoogleFonts.notoSansTc(
+                fontSize: 48,
+                fontWeight: FontWeight.w900,
+                color: const Color(0xFF1E293B),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEF3C7),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.wb_sunny_rounded,
+                    color: Colors.orange,
+                    size: 16,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '超級會員',
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 14,
+                      color: Colors.orange[800],
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
-        child: Stack(
-          children: [
-            // 喇拔網孔紋理 (裝飾)
-            Positioned(
-              right: -20,
-              top: -20,
-              child: Icon(
-                Icons.speaker,
-                size: 200, // 加大
-                color: Colors.black.withValues(alpha: 0.05),
+        CircleAvatar(
+          radius: 35,
+          backgroundImage: const NetworkImage(
+            'https://i.pravatar.cc/150?u=elder',
+          ), // Mock
+          child: Container(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 3),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCalendarCard() {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: Colors.white, width: 2),
+      ),
+      child: Row(
+        children: [
+          // 左側西曆方塊
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                color: const Color(0xFF59B294).withValues(alpha: 0.3),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      _monthStr,
+                      style: GoogleFonts.notoSansTc(
+                        color: const Color(0xFF59B294),
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      _yearStr,
+                      style: GoogleFonts.inter(
+                        color: const Color(0xFF59B294),
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                Text(
+                  _dateStr,
+                  style: GoogleFonts.inter(
+                    fontSize: 64,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF59B294),
+                  ),
+                ),
+                Text(
+                  _dayName,
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 14,
+                    color: const Color(0xFF59B294),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 20),
+          // 右側農曆標註
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _lunarDate,
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF59B294),
+                  ),
+                ),
+                Text(
+                  _solarTerm,
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF59B294),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMainFeaturesRow() {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 代誌報給你知
+        Expanded(
+          flex: 3,
+          child: Container(
+            height: 220,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(24),
+              image: const DecorationImage(
+                image: AssetImage('assets/images/newspaper.png'),
+                fit: BoxFit.cover,
               ),
             ),
-
-            Padding(
-              padding: const EdgeInsets.all(28.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // ON AIR 燈號
-                  Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.redAccent,
-                          borderRadius: BorderRadius.circular(20),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.redAccent.withValues(alpha: 0.5),
-                              blurRadius: 10,
-                            ),
-                          ],
-                        ),
-                        child: Text(
-                          'ON AIR',
-                          style: GoogleFonts.inter(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16, // 加大
-                          ),
-                        ),
-                      )
-                      .animate(onPlay: (c) => c.repeat(reverse: true))
-                      .fade(duration: 1000.ms),
-
-                  const Spacer(),
-
-                  Row(
+            child: Stack(
+              children: [
+                Positioned(
+                  top: 20,
+                  left: 20,
+                  right: 20,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const FaIcon(
-                        FontAwesomeIcons.radio,
-                        color: Colors.white,
-                        size: 60, // 加大
+                      Text(
+                        '代誌',
+                        style: TextStyle(
+                          fontFamily: 'StarPanda',
+                          fontSize: 32,
+                          color: const Color(0xFF334155),
+                        ),
                       ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Text(
-                                '老友廣播站',
-                                style: GoogleFonts.notoSansTc(
-                                  fontSize: 48, // 加大
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
-                            FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Text(
-                                '點擊收聽大家的故事',
-                                style: GoogleFonts.notoSansTc(
-                                  fontSize: 32, // 加大
-                                  color: Colors.white.withValues(alpha: 0.9),
-                                ),
-                              ),
-                            ),
-                          ],
+                      Text(
+                        '報給你知',
+                        style: TextStyle(
+                          fontFamily: 'StarPanda',
+                          fontSize: 32,
+                          color: const Color(0xFF334155),
                         ),
                       ),
                     ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // 🖼️ 數位相框 (通訊錄) - Coral Theme
-  Widget _buildContactsCard(BuildContext context) {
-    return _buildElderTouchable(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const ContactsScreen()),
-      ),
-      child: Container(
-        decoration: BoxDecoration(
-          color: const Color(0xFFFFD54F), // 溫暖黃
-          borderRadius: BorderRadius.circular(28),
-          gradient: const LinearGradient(
-            colors: [Color(0xFFFFECB3), Color(0xFFFFD54F)], // 淡黃 -> 暖黃
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.amber.withValues(alpha: 0.3),
-              blurRadius: 10,
-            ),
-          ],
         ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(20),
-          child: Stack(
-            fit: StackFit.expand,
+        const SizedBox(width: 16),
+        // 朋友
+        Expanded(
+          flex: 2,
+          child: Column(
             children: [
-              // 示意圖示
-              Center(
+              Container(
+                height: 220,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFCFEADF),
+                  borderRadius: BorderRadius.circular(24),
+                ),
                 child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const FaIcon(
-                      FontAwesomeIcons.solidAddressBook,
-                      size: 60, // 加大
-                      color: Color(0xFF5D4037), // 深棕色
-                    ),
-                    const SizedBox(height: 16),
-                    FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(
-                        '找家人',
-                        style: GoogleFonts.notoSansTc(
-                          fontSize: 36, // 加大
-                          fontWeight: FontWeight.bold,
-                          color: const Color(0xFF5D4037), // 深棕色
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          '朋友',
+                          style: GoogleFonts.notoSansTc(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w900,
+                            color: const Color(0xFF1E293B),
+                          ),
                         ),
+                        const Icon(
+                          Icons.arrow_circle_right,
+                          color: Color(0xFF59B294),
+                          size: 28,
+                        ),
+                      ],
+                    ),
+                    const Expanded(child: SizedBox()),
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          _buildFriendAvatar('GAWA'),
+                          _buildFriendAvatar('倪阿恭'),
+                        ],
                       ),
                     ),
                   ],
@@ -402,85 +466,119 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
             ],
           ),
         ),
-      ),
+      ],
     );
   }
 
-  // 🤖 AI 貼心陪聊 (Character) - Coral Theme
-  Widget _buildAICard(BuildContext context) {
-    return _buildElderTouchable(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const AIChatScreen()),
-      ),
-      child: Container(
-        decoration: BoxDecoration(
-          color: const Color(0xFFFFCC80), // 淺橘
-          borderRadius: BorderRadius.circular(28),
-          gradient: const LinearGradient(
-            colors: [Color(0xFFFFCC80), Color(0xFFFFB74D)], // 淺橘漸層
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+  Widget _buildFriendAvatar(String name) {
+    return Column(
+      children: [
+        CircleAvatar(
+          radius: 18,
+          backgroundColor: Colors.grey[200],
+          child: const Icon(Icons.person, size: 20),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          name,
+          style: GoogleFonts.notoSansTc(
+            fontSize: 10,
+            fontWeight: FontWeight.bold,
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.orange.withValues(alpha: 0.2),
-              blurRadius: 10,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildNewsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                const Text(
+                  '最新',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                ),
+                Container(
+                  margin: const EdgeInsets.only(left: 4),
+                  width: 6,
+                  height: 6,
+                  decoration: const BoxDecoration(
+                    color: Colors.red,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 20),
+                Text(
+                  '賽金豬',
+                  style: GoogleFonts.notoSansTc(
+                    color: Colors.grey,
+                    fontSize: 18,
+                  ),
+                ),
+              ],
             ),
           ],
         ),
-        child: Stack(
-          children: [
-            Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+        const SizedBox(height: 12),
+        Text(
+          '頭條早知道',
+          style: TextStyle(
+            fontFamily: 'StarPanda',
+            fontSize: 40,
+            color: const Color(0xFF59B294),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // 眨眼動畫
-                  const FaIcon(
-                        FontAwesomeIcons.robot,
-                        size: 60, // 加大
-                        color: Colors.white,
-                      )
-                      .animate(onPlay: (c) => c.repeat())
-                      .shake(delay: 2000.ms, duration: 500.ms),
-                  const SizedBox(height: 16),
-                  FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      '貼心陪聊',
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 36, // 加大
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.newspaper,
+                        color: Colors.orange,
+                        size: 20,
                       ),
-                    ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '聯合新聞網',
+                        style: GoogleFonts.notoSansTc(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey[700],
+                        ),
+                      ),
+                    ],
                   ),
+                  Text('02-05', style: GoogleFonts.inter(color: Colors.grey)),
                 ],
               ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // Helper for touchable cards with scale feedback
-  Widget _buildElderTouchable({
-    required Widget child,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: child
-          .animate(
-            onPlay: (c) => c.stop(),
-          ) // Animation is triggered by external events or manually
-          .scale(
-            begin: const Offset(1.0, 1.0),
-            end: const Offset(0.95, 0.95),
-            duration: 100.ms,
-            curve: Curves.easeInOut,
+              const SizedBox(height: 12),
+              Text(
+                '過半台灣人想「微退休」！滙豐揭關鍵門檻：先存到 730 萬元',
+                style: GoogleFonts.notoSansTc(
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                  height: 1.5,
+                ),
+              ),
+            ],
           ),
+        ),
+      ],
     );
   }
 }

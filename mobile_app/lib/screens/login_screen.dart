@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../services/api_service.dart';
+import 'registration_screen.dart';
+import 'family_onboarding_screen.dart';
+import 'family_main_screen.dart';
 
 // 家屬/照護者登入畫面
 class LoginScreen extends StatefulWidget {
@@ -11,7 +16,76 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
   bool _obscurePassword = true;
+  bool _isLoading = false;
+
+  Future<void> _handleLogin() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+
+    if (email.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('請填寫所有欄位')));
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    try {
+      final result = await ApiService.login(email, password);
+      if (!mounted) return;
+
+      if (result.containsKey('user_id')) {
+        // 登入成功
+        final int userId = result['user_id'];
+        final String userName = result['user_name'] ?? '使用者';
+
+        // 持久化儲存登入狀態
+        final prefs = await SharedPreferences.getInstance();
+        if (!mounted) return;
+
+        await prefs.setInt('caregiver_id', userId);
+        await prefs.setString('caregiver_name', userName);
+
+        if (!mounted) return; // MUST check again after async setInt/setString
+
+        final bool hasPaired = result['has_paired_elder'] ?? false;
+
+        if (hasPaired) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(
+              builder: (context) =>
+                  FamilyMainScreen(userId: userId, userName: userName),
+            ),
+            (route) => false,
+          );
+        } else {
+          // 未配對時，引導進入溫馨介紹畫面
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) =>
+                  FamilyOnboardingScreen(userId: userId, userName: userName),
+            ),
+          );
+        }
+      } else {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(result['error'] ?? '登入失敗')));
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('連線失敗: $e')));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -60,12 +134,16 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(height: 48),
 
               // Email / 手機號碼 輸入框
-              _buildTextField(hintText: 'Email / 手機號碼'),
+              _buildTextField(
+                controller: _emailController,
+                hintText: 'Email / 手機號碼',
+              ),
 
               const SizedBox(height: 16),
 
               // 密碼 輸入框
               _buildTextField(
+                controller: _passwordController,
                 hintText: '密碼',
                 isPassword: true,
                 obscureText: _obscurePassword,
@@ -105,11 +183,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 width: double.infinity,
                 height: 56,
                 child: ElevatedButton(
-                  onPressed: () {
-                    // 模擬登入成功後跳轉到家屬首頁
-                    // 在真實 App 中會先驗證 API
-                    Navigator.pushReplacementNamed(context, '/family_home');
-                  },
+                  onPressed: _isLoading ? null : _handleLogin,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFFF7043), // 橘色
                     shape: RoundedRectangleBorder(
@@ -117,12 +191,69 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     elevation: 2,
                   ),
-                  child: Text(
-                    '登入',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                  child: _isLoading
+                      ? const CircularProgressIndicator(color: Colors.white)
+                      : Text(
+                          '登入',
+                          style: GoogleFonts.notoSansTc(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              // 診斷按鈕：連線測試
+              Center(
+                child: TextButton.icon(
+                  onPressed: () async {
+                    final health = await ApiService.checkHealth();
+                    if (!context.mounted) return;
+                    if (health.containsKey('status') &&
+                        health['status'] == 'ok') {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('✅ 連線成功：後端運作中')),
+                      );
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('❌ 連線失敗：${health['error']}')),
+                      );
+                    }
+                  },
+                  icon: const Icon(Icons.network_check, size: 16),
+                  label: const Text('連線測試 (診斷用)'),
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              // 註冊連結
+              Center(
+                child: TextButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const RegistrationScreen(),
+                      ),
+                    );
+                  },
+                  child: RichText(
+                    text: TextSpan(
+                      text: '還沒有帳號？',
+                      style: GoogleFonts.notoSansTc(color: Colors.grey[600]),
+                      children: [
+                        TextSpan(
+                          text: ' 立即註冊',
+                          style: GoogleFonts.notoSansTc(
+                            color: const Color(0xFFFF7043),
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -181,6 +312,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Widget _buildTextField({
+    required TextEditingController controller,
     required String hintText,
     bool isPassword = false,
     bool obscureText = false,
@@ -193,6 +325,7 @@ class _LoginScreenState extends State<LoginScreen> {
         border: Border.all(color: Colors.grey[300]!),
       ),
       child: TextField(
+        controller: controller,
         obscureText: obscureText,
         decoration: InputDecoration(
           hintText: hintText,
