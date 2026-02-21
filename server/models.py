@@ -11,6 +11,7 @@ class User(db.Model):
     user_authority = db.Column(db.String(20), nullable=False, default='Normal') # Normal, Sub1, Sub2, admin, root
     role = db.Column(db.String(20), nullable=False)  # 'elder' 或 'family'
     created_at = db.Column(db.DateTime, default=datetime.utcnow) #對應 account_create_time
+    last_seen = db.Column(db.DateTime, default=datetime.utcnow)
 
 class PairingCode(db.Model):
     id = db.Column(db.Integer, primary_key=True)

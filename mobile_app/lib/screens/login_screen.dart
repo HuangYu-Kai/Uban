@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import 'registration_screen.dart';
-import 'caregiver_pairing_screen.dart';
+import 'family_onboarding_screen.dart';
+import 'family_main_screen.dart';
 
 // 家屬/照護者登入畫面
 class LoginScreen extends StatefulWidget {
@@ -37,26 +39,36 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (result.containsKey('user_id')) {
         // 登入成功
+        final int userId = result['user_id'];
+        final String userName = result['user_name'] ?? '使用者';
+
+        // 持久化儲存登入狀態
+        final prefs = await SharedPreferences.getInstance();
+        if (!mounted) return;
+
+        await prefs.setInt('caregiver_id', userId);
+        await prefs.setString('caregiver_name', userName);
+
+        if (!mounted) return; // MUST check again after async setInt/setString
+
         final bool hasPaired = result['has_paired_elder'] ?? false;
 
         if (hasPaired) {
-          Navigator.pushReplacementNamed(
+          Navigator.pushAndRemoveUntil(
             context,
-            '/family_home',
-            arguments: {
-              'user_id': result['user_id'],
-              'user_name': result['user_name'],
-            },
+            MaterialPageRoute(
+              builder: (context) =>
+                  FamilyMainScreen(userId: userId, userName: userName),
+            ),
+            (route) => false,
           );
         } else {
-          // 強制前往配對頁面
+          // 未配對時，引導進入溫馨介紹畫面
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
-              builder: (context) => CaregiverPairingScreen(
-                familyId: result['user_id'],
-                familyName: result['user_name'],
-              ),
+              builder: (context) =>
+                  FamilyOnboardingScreen(userId: userId, userName: userName),
             ),
           );
         }

@@ -30,7 +30,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> {
     _views = [
       FamilyDashboardView(userId: widget.userId, userName: widget.userName),
       const FamilyScriptsView(),
-      const FamilySettingsView(),
+      FamilySettingsView(userId: widget.userId, userName: widget.userName),
     ];
   }
 

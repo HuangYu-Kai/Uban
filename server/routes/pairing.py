@@ -45,7 +45,12 @@ def check_status(code):
         # 找到對應的關係
         relationship = Relationship.query.filter_by(family_id=pairing.creator_id).filter(Relationship.elder_id != 0).order_by(Relationship.id.desc()).first()
         if relationship:
-             return jsonify({'status': 'paired', 'elder_id': relationship.elder_id})
+             elder = User.query.get(relationship.elder_id)
+             return jsonify({
+                 'status': 'paired', 
+                 'elder_id': relationship.elder_id,
+                 'elder_name': elder.user_name if elder else "長輩"
+             })
     
     return jsonify({'status': 'waiting'})
 
@@ -64,6 +69,8 @@ def confirm_pairing():
     family_id = data.get('family_id')
     code = data.get('code')
     elder_name = data.get('elder_name')
+    gender = data.get('gender', 'M')
+    age = data.get('age', 70)
 
     if not all([family_id, code, elder_name]):
         return jsonify({'error': 'Missing required data'}), 400
@@ -83,8 +90,8 @@ def confirm_pairing():
         user_name=elder_name,
         user_email=elder_email,
         password=hashed_pw,
-        gender='M',
-        age=70,
+        gender=gender,
+        age=age,
         role='elder',
         user_authority='Normal'
     )
