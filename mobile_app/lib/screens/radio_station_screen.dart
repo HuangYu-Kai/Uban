@@ -153,7 +153,6 @@ class _RadioStationScreenState extends State<RadioStationScreen> {
   @override
   void dispose() {
     flutterTts.stop();
-
     super.dispose();
   }
 

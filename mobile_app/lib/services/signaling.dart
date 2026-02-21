@@ -6,7 +6,7 @@ typedef StreamStateCallback = void Function(MediaStream stream);
 
 class Signaling {
   // ★ 請確認 IP 正確
-  final String _socketUrl = 'http://IP:5000';
+  final String _socketUrl = 'http://192.168.31.209:5000';
 
   socket_io.Socket? socket;
   RTCPeerConnection? peerConnection;

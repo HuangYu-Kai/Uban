@@ -1,39 +1,83 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'family_subscription_screen.dart';
-
-import '../identification_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/api_service.dart';
+import '../identification_screen.dart';
+import 'family_subscription_screen.dart';
+import '../caregiver_pairing_screen.dart';
 
 class FamilySettingsView extends StatefulWidget {
-  const FamilySettingsView({super.key});
+  final int userId;
+  final String userName;
+
+  const FamilySettingsView({
+    super.key,
+    required this.userId,
+    required this.userName,
+  });
 
   @override
   State<FamilySettingsView> createState() => _FamilySettingsViewState();
 }
 
 class _FamilySettingsViewState extends State<FamilySettingsView> {
-  String _userName = '林子強 (家政管理員)';
+  late String _userName;
   bool _isEmergencyOn = true;
   bool _isDailySummaryOn = true;
   bool _isAiInsightOn = false;
+  List<dynamic> _pairedElders = [];
+  bool _isLoadingElders = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _userName = widget.userName;
+    _fetchPairedElders();
+  }
+
+  Future<void> _fetchPairedElders() async {
+    try {
+      final elders = await ApiService.getPairedElders(widget.userId);
+      if (mounted) {
+        setState(() {
+          _pairedElders = elders;
+          _isLoadingElders = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingElders = false);
+      }
+    }
+  }
 
   void _handleLogout() {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
+        // Rename to avoid shadowing
         title: const Text('登出'),
         content: const Text('確定要登出並回到身分選擇頁面嗎？'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text('取消'),
           ),
           TextButton(
-            onPressed: () {
-              Navigator.pop(context); // Close dialog
-              Navigator.pushAndRemoveUntil(
-                context,
+            onPressed: () async {
+              // 1. 在 await 之前捕獲狀態
+              final navigator = Navigator.of(context);
+              final prefs = await SharedPreferences.getInstance();
+
+              await prefs.remove('caregiver_id');
+              await prefs.remove('caregiver_name');
+
+              // 2. 檢查是否仍掛載於 Widget Tree
+              if (!mounted) return;
+
+              // 3. 使用捕獲的狀態而非 Context
+              Navigator.pop(dialogContext);
+              navigator.pushAndRemoveUntil(
                 MaterialPageRoute(builder: (_) => const IdentificationScreen()),
                 (route) => false,
               );
@@ -116,8 +160,31 @@ class _FamilySettingsViewState extends State<FamilySettingsView> {
                 Icons.qr_code_scanner,
                 '管理配對碼',
                 '新增長輩端設備',
-                onTap: () => _showPairingCodeDialog(),
+                onTap: () async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => CaregiverPairingScreen(
+                        familyId: widget.userId,
+                        familyName: widget.userName,
+                      ),
+                    ),
+                  );
+                  _fetchPairedElders(); // Refresh list after potential new pairing
+                },
               ),
+              if (_isLoadingElders)
+                const Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else if (_pairedElders.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: Text('目前尚未綁定任何長輩'),
+                )
+              else
+                ..._pairedElders.map((elder) => _buildElderTile(elder)),
               _buildSettingItem(
                 Icons.people_outline,
                 '聯絡人權限',
@@ -172,7 +239,9 @@ class _FamilySettingsViewState extends State<FamilySettingsView> {
                 ),
               ),
             ),
-            const SizedBox(height: 40),
+            const SizedBox(
+              height: 140,
+            ), // Ensure content is not hidden by the bottom dock
           ],
         ),
       ),
@@ -209,7 +278,7 @@ class _FamilySettingsViewState extends State<FamilySettingsView> {
                   ),
                 ),
                 Text(
-                  'ID: user_882910',
+                  'ID: user_${widget.userId}',
                   style: GoogleFonts.inter(color: Colors.grey),
                 ),
               ],
@@ -280,60 +349,267 @@ class _FamilySettingsViewState extends State<FamilySettingsView> {
     );
   }
 
-  void _showPairingCodeDialog() {
+  Widget _buildElderTile(dynamic elder) {
+    return ListTile(
+      leading: const CircleAvatar(
+        backgroundColor: Colors.blueAccent,
+        child: Icon(Icons.person, color: Colors.white),
+      ),
+      title: Text(elder['user_name'] ?? '未知長輩'),
+      subtitle: Text(
+        'ID: ${elder['id']} | 年齡: ${elder['age']} | 性別: ${elder['gender'] == 'M' ? '男' : '女'}',
+      ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.green[50],
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              '已連線',
+              style: TextStyle(color: Colors.green[700], fontSize: 12),
+            ),
+          ),
+          const SizedBox(width: 8),
+          const Icon(Icons.edit_note, color: Colors.blueAccent, size: 20),
+        ],
+      ),
+      onTap: () => _showEditElderDialog(elder),
+    );
+  }
+
+  void _showEditElderDialog(dynamic elder) {
+    final nameController = TextEditingController(text: elder['user_name']);
+    final ageController = TextEditingController(text: elder['age'].toString());
+    String currentGender = elder['gender'] ?? 'M';
+
     showDialog(
       context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text('管理配對碼'),
-              content: FutureBuilder<Map<String, dynamic>>(
-                future: ApiService.generatePairingCode(2), // 演示 ID
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const SizedBox(
-                      height: 100,
-                      child: Center(child: CircularProgressIndicator()),
-                    );
-                  }
-                  if (snapshot.hasError || snapshot.data?['error'] != null) {
-                    return const Text('無法連線到伺服器，請確認後端已啟動。');
-                  }
-                  final code = snapshot.data?['pairing_code'] ?? '----';
-                  return Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text('請將此四位數代碼提供給長輩：'),
-                      const SizedBox(height: 16),
-                      Text(
-                        code,
-                        style: GoogleFonts.inter(
-                          fontSize: 56,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 12,
-                          color: Colors.orange[800],
-                        ),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(28),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      '編輯資訊',
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: const Color(0xFF1E293B),
                       ),
-                      const SizedBox(height: 12),
-                      const Text(
-                        '代碼有效期限為 10 分鐘',
-                        style: TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.close, color: Colors.grey),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                _buildFieldLabel('長輩姓名'),
+                TextField(
+                  controller: nameController,
+                  decoration: _dialogInputDecoration(
+                    Icons.person_outline,
+                    '例如：王大明',
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildFieldLabel('年齡'),
+                          TextField(
+                            controller: ageController,
+                            keyboardType: TextInputType.number,
+                            decoration: _dialogInputDecoration(null, '歲'),
+                          ),
+                        ],
                       ),
-                    ],
-                  );
-                },
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('完成'),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      flex: 3,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildFieldLabel('性別'),
+                          Container(
+                            height: 56,
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.grey[100],
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Row(
+                              children: [
+                                _genderChoice(
+                                  label: '男',
+                                  isSelected: currentGender == 'M',
+                                  onTap: () =>
+                                      setDialogState(() => currentGender = 'M'),
+                                ),
+                                _genderChoice(
+                                  label: '女',
+                                  isSelected: currentGender == 'F',
+                                  onTap: () =>
+                                      setDialogState(() => currentGender = 'F'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 32),
+                SizedBox(
+                  width: double.infinity,
+                  height: 56,
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      // 1. 在 await 之前捕獲狀態
+                      final navigator = Navigator.of(context);
+                      final messenger = ScaffoldMessenger.of(context);
+
+                      final result = await ApiService.updateElderInfo(
+                        familyId: widget.userId,
+                        elderId: elder['id'],
+                        userName: nameController.text.trim(),
+                        age: int.tryParse(ageController.text.trim()),
+                        gender: currentGender,
+                      );
+
+                      if (!mounted) return;
+
+                      if (result.containsKey('message')) {
+                        // 2. 使用捕獲的狀態
+                        navigator.pop();
+                        _fetchPairedElders();
+
+                        messenger.showSnackBar(
+                          SnackBar(
+                            content: const Text('更新成功 ✨'),
+                            backgroundColor: Colors.green[600],
+                            behavior: SnackBarBehavior.floating,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF2563EB),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    child: Text(
+                      '儲存變更',
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
                 ),
               ],
-            );
-          },
-        );
-      },
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFieldLabel(String label) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, bottom: 8),
+      child: Text(
+        label,
+        style: GoogleFonts.notoSansTc(
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+          color: Colors.blueGrey,
+        ),
+      ),
+    );
+  }
+
+  InputDecoration _dialogInputDecoration(IconData? icon, String hint) {
+    return InputDecoration(
+      hintText: hint,
+      prefixIcon: icon != null ? Icon(icon, size: 20) : null,
+      filled: true,
+      fillColor: Colors.grey[100],
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide.none,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide.none,
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: const BorderSide(color: Color(0xFF2563EB), width: 1.5),
+      ),
+    );
+  }
+
+  Widget _genderChoice({
+    required String label,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          margin: const EdgeInsets.all(4),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: isSelected ? Colors.white : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.05),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Text(
+            label,
+            style: GoogleFonts.notoSansTc(
+              fontSize: 14,
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              color: isSelected ? const Color(0xFF2563EB) : Colors.grey[600],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
