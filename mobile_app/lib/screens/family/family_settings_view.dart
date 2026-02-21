@@ -65,19 +65,18 @@ class _FamilySettingsViewState extends State<FamilySettingsView> {
           ),
           TextButton(
             onPressed: () async {
-              // 1. 在 await 之前捕獲狀態
-              final navigator = Navigator.of(context);
-              final prefs = await SharedPreferences.getInstance();
+              // 1. 先關閉對話框 (同步操作)
+              Navigator.pop(dialogContext);
 
+              // 2. 執行異步清除
+              final prefs = await SharedPreferences.getInstance();
               await prefs.remove('caregiver_id');
               await prefs.remove('caregiver_name');
 
-              // 2. 檢查是否仍掛載於 Widget Tree
+              // 3. 確保組件仍掛載，然後執行跳轉
               if (!mounted) return;
 
-              // 3. 使用捕獲的狀態而非 Context
-              Navigator.pop(dialogContext);
-              navigator.pushAndRemoveUntil(
+              Navigator.of(context).pushAndRemoveUntil(
                 MaterialPageRoute(builder: (_) => const IdentificationScreen()),
                 (route) => false,
               );

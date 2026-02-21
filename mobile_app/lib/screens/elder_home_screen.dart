@@ -154,7 +154,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, -5),
           ),
@@ -186,7 +186,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
           boxShadow: isSelected
               ? [
                   BoxShadow(
-                    color: const Color(0xFF59B294).withOpacity(0.3),
+                    color: const Color(0xFF59B294).withValues(alpha: 0.3),
                     blurRadius: 10,
                     offset: const Offset(0, 5),
                   ),
