@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'family/family_care_journal_view.dart';
 import 'camera_screen.dart';
 import 'family_ai_chat_screen.dart';
+import 'elder_selection_screen.dart';
 
 class FamilyDashboardView extends StatefulWidget {
   final int userId;
@@ -21,12 +23,27 @@ class FamilyDashboardView extends StatefulWidget {
 }
 
 class _FamilyDashboardViewState extends State<FamilyDashboardView> {
+  String _elderName = '長輩';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSelectedElder();
+  }
+
+  Future<void> _loadSelectedElder() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _elderName = prefs.getString('selected_elder_name') ?? '長輩';
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC), // Arctic Slate
       body: RefreshIndicator(
-        onRefresh: () async => await Future.delayed(const Duration(seconds: 1)),
+        onRefresh: () async => await _loadSelectedElder(),
         color: const Color(0xFF2563EB),
         backgroundColor: Colors.white,
         child: SafeArea(
@@ -60,7 +77,6 @@ class _FamilyDashboardViewState extends State<FamilyDashboardView> {
                     fontSize: 20,
                     fontWeight: FontWeight.w800,
                     color: const Color(0xFF0F172A),
-                    letterSpacing: -0.5,
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -76,6 +92,7 @@ class _FamilyDashboardViewState extends State<FamilyDashboardView> {
 
   Widget _buildHeader() {
     return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -83,23 +100,74 @@ class _FamilyDashboardViewState extends State<FamilyDashboardView> {
             Text(
               '${widget.userName} 您好',
               style: GoogleFonts.notoSansTc(
-                fontSize: 26,
-                fontWeight: FontWeight.w900,
+                fontSize: 28,
+                fontWeight: FontWeight.w800,
                 color: const Color(0xFF0F172A),
-                letterSpacing: -0.8,
               ),
             ),
             const SizedBox(height: 4),
-            Text(
-              '正在關照您的長輩',
-              style: GoogleFonts.notoSansTc(
-                fontSize: 14,
-                color: const Color(0xFF64748B),
-                fontWeight: FontWeight.w600,
-                letterSpacing: 1.2,
-              ),
+            Row(
+              children: [
+                Text(
+                  '正在關照：',
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 14,
+                    color: const Color(0xFF64748B),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  _elderName,
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 14,
+                    color: const Color(0xFF2563EB),
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
             ),
           ],
+        ),
+        // 切換長輩按鈕
+        GestureDetector(
+          onTap: () async {
+            await Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (c) => ElderSelectionScreen(
+                  userId: widget.userId,
+                  userName: widget.userName,
+                ),
+              ),
+            );
+            _loadSelectedElder(); // 返回後重新整理
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFEFF6FF),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: const Color(0xFFDBEAFE)),
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.sync_rounded,
+                  color: Color(0xFF2563EB),
+                  size: 18,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  '切換長輩',
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 15,
+                    color: const Color(0xFF2563EB),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ],
     );

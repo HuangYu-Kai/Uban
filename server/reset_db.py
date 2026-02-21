@@ -4,20 +4,13 @@ from models import User, PairingCode, Relationship, ActivityLog
 
 def reset_database():
     with app.app_context():
-        print("正在清理資料表內容...")
-        
-        # 依照依賴關係清理 (從子資料表開始)
+        print("正在重建資料庫結構...")
         try:
-            db.session.query(ActivityLog).delete()
-            db.session.query(Relationship).delete()
-            db.session.query(PairingCode).delete()
-            db.session.query(User).delete()
-            
-            db.session.commit()
-            print("✅ 所有資料表已清空！")
+            db.drop_all()
+            db.create_all()
+            print("✅ 資料庫結構已重建，所有資料已重置！")
         except Exception as e:
-            db.session.rollback()
-            print(f"❌ 清理失敗: {e}")
+            print(f"❌ 重置失敗: {e}")
 
 if __name__ == "__main__":
     reset_database()

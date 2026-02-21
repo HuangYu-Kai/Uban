@@ -13,7 +13,7 @@ class FamilyScriptsView extends StatefulWidget {
 }
 
 class _FamilyScriptsViewState extends State<FamilyScriptsView> {
-  late List<ScriptMetadata> _scripts;
+  List<ScriptMetadata> _scripts = [];
 
   @override
   void initState() {
