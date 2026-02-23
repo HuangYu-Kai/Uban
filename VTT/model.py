@@ -74,7 +74,7 @@ class FunASRNano(nn.Module):
         llm_dim = None
 
         llm_load_kwargs = llm_conf.get("load_kwargs", {})
-        config = AutoConfig.from_pretrained(init_param_path)
+        config = AutoConfig.from_pretrained(init_param_path, trust_remote_code=True)
         model = AutoModelForCausalLM.from_config(config, **llm_load_kwargs)
 
         freeze = llm_conf.get("freeze", True)
