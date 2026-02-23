@@ -39,7 +39,9 @@ class _SplashScreenState extends State<SplashScreen> {
       if (userId != null && userName != null) {
         // 先獲取當前使用者資訊以判斷角色
         try {
-          final userProfile = await ApiService.getStatus(userId);
+          final userProfile = await ApiService.getStatus(
+            userId,
+          ).timeout(const Duration(seconds: 5));
           if (!mounted) return;
           final role = userProfile['role'] ?? 'family';
 
@@ -56,7 +58,9 @@ class _SplashScreenState extends State<SplashScreen> {
           }
 
           // 子女端邏輯：直接進入主要儀表板容器
-          final elders = await ApiService.getPairedElders(userId);
+          final elders = await ApiService.getPairedElders(
+            userId,
+          ).timeout(const Duration(seconds: 5));
           if (!mounted) return;
 
           if (elders.isNotEmpty) {
@@ -80,6 +84,7 @@ class _SplashScreenState extends State<SplashScreen> {
           }
         } catch (e) {
           // 若 API 失敗，保守處理
+          debugPrint('Splash API error: $e');
           if (mounted) _goNext();
         }
       } else {
