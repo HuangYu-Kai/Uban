@@ -137,6 +137,12 @@ def on_call_accept(data):
     print(f"📞 Call Accepted by {request.sid}, notifying {target_id}")
     emit('call-accept', {'accepterId': request.sid}, to=target_id)
 
+@socketio.on('call-busy')
+def on_call_busy(data):
+    target_id = data.get('targetId')
+    print(f"🚫 Call Busy from {request.sid}, notifying {target_id}")
+    emit('call-busy', {'targetId': request.sid}, to=target_id)
+
 # --- WebRTC 信令 ---
 @socketio.on('offer')
 def on_offer(data):
@@ -169,8 +175,6 @@ def on_end_call(data):
     
     if target:
         emit('end-call', {'senderId': request.sid}, to=target)
-    elif room:
-        emit('end-call', {'senderId': request.sid}, to=room, include_self=False)
 
 if __name__ == '__main__':
     print("🚀 Server starting on port 5000...")

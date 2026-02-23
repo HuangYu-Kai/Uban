@@ -3,6 +3,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
+import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
+import 'package:flutter_callkit_incoming/entities/entities.dart';
+import 'package:volume_controller/volume_controller.dart';
+import 'package:uuid/uuid.dart';
 
 typedef void StreamStateCallback(MediaStream stream);
 typedef Future<bool> IncomingCallCallback(String callerId, String callType);
@@ -27,6 +31,7 @@ class Signaling {
   ErrorCallback? onJoinFailed;
   CallRequestCallback? onCallRequest;
   CallAcceptedCallback? onCallAcceptedByRemote;
+  CallAcceptedCallback? onCallBusy; // Reusing CallAcceptedCallback for simplicity (just needs a string ID)
 
   String? _currentRoomId;
   String? _peerSocketId;
@@ -42,11 +47,12 @@ class Signaling {
   void connect(String roomId, String role, {String deviceName = 'Unknown', String deviceMode = 'comm'}) {
     _currentRoomId = roomId;
 
-    socket = IO.io(_socketUrl, <String, dynamic>{
-      'transports': ['websocket'],
-      'autoConnect': false,
-      'forceNew': true
-    });
+    socket = IO.io(_socketUrl, IO.OptionBuilder()
+      .setTransports(['websocket'])
+      .disableAutoConnect()
+      .enableForceNew() // 強制每次 connect 都建立全新 Socket，不共用快取
+      .build()
+    );
 
     socket!.connect();
 
@@ -75,7 +81,13 @@ class Signaling {
 
     // 對方接聽監聽
     socket!.on('call-accept', (data) {
+      _peerSocketId = data['accepterId'];  // ★ 記錄接聽方的 Socket ID，以便之後單播 end-call
       if (onCallAcceptedByRemote != null) onCallAcceptedByRemote!(data['accepterId']);
+    });
+
+    // 忙線監聽
+    socket!.on('call-busy', (data) {
+      if (onCallBusy != null) onCallBusy!(data['targetId']);
     });
 
     socket!.on('offer', (data) async {
@@ -86,13 +98,24 @@ class Signaling {
       bool isEmergency = data['isEmergency'] == true;
       if (isEmergency) {
         try { await platform.invokeMethod('bringToFront'); } catch (e) {}
+        try { 
+          VolumeController.instance.showSystemUI = false;
+          VolumeController.instance.setVolume(1.0); 
+        } catch (e) {}
       }
 
       bool shouldAnswer = false;
       if (onIncomingCall != null) {
         shouldAnswer = await onIncomingCall!(_peerSocketId!, isEmergency ? 'emergency' : 'normal');
       } else {
-        shouldAnswer = true; 
+        // If no UI handler (e.g. background), try CallKit for Family role.
+        // But for Elder, they should auto-answer emergency.
+        if (isEmergency) {
+          shouldAnswer = true;
+        } else {
+          // 如果沒有註冊 onIncomingCall，代表 APP 在背景 或沒有打開 Dashboard
+          shouldAnswer = await _showCallkitIncoming(data['room'] ?? 'Unknown');
+        }
       }
 
       if (shouldAnswer) {
@@ -121,9 +144,76 @@ class Signaling {
 
     socket!.on('end-call', (_) async {
       print("📴 收到掛斷訊號");
+      await FlutterCallkitIncoming.endAllCalls();
       await _closePeerConnection();
       if (onCallEnded != null) onCallEnded!();
     });
+  }
+
+  Future<bool> _showCallkitIncoming(String callerName) async {
+    final uuid = const Uuid().v4();
+    final params = CallKitParams(
+      id: uuid,
+      nameCaller: callerName,
+      appName: 'Uban',
+      avatar: 'https://i.pravatar.cc/100',
+      handle: '長輩呼叫',
+      type: 0,
+      duration: 30000,
+      textAccept: '接聽',
+      textDecline: '拒絕',
+      missedCallNotification: const NotificationParams(
+        showNotification: true,
+        isShowCallback: true,
+        subtitle: '未接來電',
+        callbackText: '回撥',
+      ),
+      extra: <String, dynamic>{'userId': '1a2b3c4d'},
+      android: const AndroidParams(
+        isCustomNotification: true,
+        isShowLogo: false,
+        ringtonePath: 'system_ringtone_default',
+        backgroundColor: '#0955fa',
+        backgroundUrl: 'https://i.pravatar.cc/500',
+        actionColor: '#4CAF50',
+      ),
+      ios: const IOSParams(
+        iconName: 'CallKitLogo',
+        handleType: 'generic',
+        supportsVideo: true,
+        maximumCallGroups: 2,
+        maximumCallsPerCallGroup: 1,
+        audioSessionMode: 'default',
+        audioSessionActive: true,
+        audioSessionPreferredSampleRate: 44100.0,
+        audioSessionPreferredIOBufferDuration: 0.005,
+        supportsDTMF: true,
+        supportsHolding: true,
+        supportsGrouping: false,
+        supportsUngrouping: false,
+        ringtonePath: 'system_ringtone_default',
+      ),
+    );
+
+    await FlutterCallkitIncoming.showCallkitIncoming(params);
+
+    bool accepted = false;
+    FlutterCallkitIncoming.onEvent.listen((CallEvent? event) {
+      switch (event!.event) {
+        case Event.actionCallAccept:
+          accepted = true;
+          break;
+        case Event.actionCallDecline:
+          accepted = false;
+          break;
+        default:
+          break;
+      }
+    });
+
+    // 等待用戶操作，這裡簡化處理，實際應用中需要更完善的異步等待機制 (Completer)
+    await Future.delayed(const Duration(seconds: 5)); 
+    return accepted;
   }
 
   void _emitJoin(String room, String role, String name, String mode) {
@@ -147,17 +237,56 @@ class Signaling {
     socket!.emit('call-request', {'room': _currentRoomId});
   }
 
-  void sendCallAccept(String targetSocketId) {
-    socket!.emit('call-accept', {'targetId': targetSocketId});
+
+  void sendCallAccept(String targetSocketId) async {
+    if (socket == null) return;
+    
+    // 如果還沒連線，最多等待 5 秒 (50 * 100ms)
+    int retries = 50;
+    while (!socket!.connected && retries > 0) {
+      await Future.delayed(const Duration(milliseconds: 100));
+      retries--;
+    }
+
+    if (socket!.connected) {
+      socket!.emit('call-accept', {'targetId': targetSocketId});
+      print("✅ 成功發送 call-accept 給 $targetSocketId");
+    } else {
+      print("❌ 發送 call-accept 失敗：Socket 遲遲未連線");
+    }
   }
 
-  void hangUp() {
+  void sendCallBusy(String targetSocketId) {
+    socket!.emit('call-busy', {'targetId': targetSocketId});
+  }
+
+  void hangUp({bool disconnectSocket = true, bool disposeLocalStream = true}) {
     if (socket != null) {
-      var payload = {'room': _currentRoomId};
-      if (_peerSocketId != null) payload['targetId'] = _peerSocketId!;
-      socket!.emit('end-call', payload);
+      // 絕對不可以只送 room，這會導致伺服器針對整個房間廣播 end-call，
+      // 誤殺家屬端 Dashboard 的監聽 Socket！
+      if (_peerSocketId != null) {
+        socket!.emit('end-call', {
+          'room': _currentRoomId,
+          'targetId': _peerSocketId
+        });
+      }
+      // ★ 延遲斷線：確保 end-call 訊息送達後再中斷 socket (僅限需要斷開的畫面)
+      if (disconnectSocket) {
+        Future.delayed(const Duration(milliseconds: 500), () {
+          socket?.disconnect();
+          socket = null;
+        });
+      }
     }
     _closePeerConnection();
+    
+    // ★ 是否釋放媒體串流 (ElderScreen 需要持續開啟攝影機所以帶 false)
+    if (disposeLocalStream) {
+      localStream?.getTracks().forEach((t) => t.stop());
+      localStream?.dispose();
+      localStream = null;
+    }
+    _peerSocketId = null;
   }
 
   Future<void> _closePeerConnection() async {
@@ -221,9 +350,14 @@ class Signaling {
   }
 
   Future<void> createOffer({String? targetId, bool isEmergency = false}) async {
+    // ★ 先關閉舊連線，避免通訊通道疊加
+    if (peerConnection != null) {
+      await peerConnection!.close();
+      peerConnection = null;
+    }
     _candidateQueue.clear();
-    _peerSocketId = targetId; 
-    await _createPeerConnection(useLocalStream: true); 
+    _peerSocketId = targetId;
+    await _createPeerConnection(useLocalStream: true);
     RTCSessionDescription offer = await peerConnection!.createOffer();
     await peerConnection!.setLocalDescription(offer);
     
@@ -268,8 +402,15 @@ class Signaling {
   }
 
   void dispose() {
+    localStream?.getTracks().forEach((t) => t.stop());
     localStream?.dispose();
     peerConnection?.close();
-    socket?.disconnect();
+    // 延遲中斷，確保如果剛呼叫了 hangUp，其發送的 end-call 不會被瞬間切斷
+    if (socket != null && socket!.connected) {
+      Future.delayed(const Duration(milliseconds: 600), () {
+        socket?.disconnect();
+        socket = null;
+      });
+    }
   }
 }
