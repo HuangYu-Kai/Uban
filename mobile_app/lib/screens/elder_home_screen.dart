@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lunar/lunar.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'identification_screen.dart';
 
 class ElderHomeScreen extends StatefulWidget {
   final int userId;
@@ -19,6 +21,7 @@ class ElderHomeScreen extends StatefulWidget {
 
 class _ElderHomeScreenState extends State<ElderHomeScreen> {
   int _selectedIndex = 0; // 0: Home/Calendar, 1: Chat, 2: Profile/Settings
+  bool _isRecording = false;
   late String _lunarDate;
   late String _solarTerm;
   late String _dayName;
@@ -67,11 +70,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
           // 頁面內容切換
           IndexedStack(
             index: _selectedIndex,
-            children: [
-              _buildHomeView(),
-              _buildEmptyView('聊天區域'),
-              _buildEmptyView('個人頁面'),
-            ],
+            children: [_buildHomeView(), _buildChatView(), _buildProfileView()],
           ),
           // 自定義浮動導覽列
           Positioned(
@@ -85,11 +84,328 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
     );
   }
 
-  Widget _buildEmptyView(String title) {
-    return Center(
-      child: Text(
-        title,
-        style: GoogleFonts.notoSansTc(fontSize: 24, color: Colors.grey),
+  Widget _buildProfileView() {
+    return Container(
+      color: const Color(0xFFF1F5F9),
+      width: double.infinity,
+      child: SafeArea(
+        child: Column(
+          children: [
+            const SizedBox(height: 40),
+            CircleAvatar(
+              radius: 60,
+              backgroundColor: const Color(0xFF59B294).withValues(alpha: 0.1),
+              child: const Icon(
+                Icons.person_rounded,
+                size: 80,
+                color: Color(0xFF59B294),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              widget.userName,
+              style: GoogleFonts.notoSansTc(
+                fontSize: 32,
+                fontWeight: FontWeight.bold,
+                color: const Color(0xFF1E293B),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '長輩模式 (測試中)',
+              style: GoogleFonts.notoSansTc(fontSize: 18, color: Colors.grey),
+            ),
+            const Spacer(),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 40),
+              child: SizedBox(
+                width: double.infinity,
+                height: 70,
+                child: ElevatedButton.icon(
+                  onPressed: _handleLogout,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: Colors.redAccent,
+                    elevation: 0,
+                    side: const BorderSide(color: Colors.redAccent, width: 2),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                  ),
+                  icon: const Icon(Icons.logout_rounded, size: 28),
+                  label: Text(
+                    '登出測試環境',
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 80), // 避開導覽列
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _handleLogout() {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(
+          '切換身分',
+          style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold),
+        ),
+        content: Text('確定要登出並回到身分辨識頁面嗎？', style: GoogleFonts.notoSansTc()),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(
+              '取消',
+              style: GoogleFonts.notoSansTc(color: Colors.grey),
+            ),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(dialogContext);
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.remove('caregiver_id');
+              await prefs.remove('caregiver_name');
+
+              if (!mounted) return;
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (_) => const IdentificationScreen()),
+                (route) => false,
+              );
+            },
+            child: Text(
+              '登出',
+              style: GoogleFonts.notoSansTc(
+                color: Colors.redAccent,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChatView() {
+    return Container(
+      color: const Color(0xFFFDFCF9), // 稍微暖色系的背景
+      child: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            // 1. Header 與 搜尋區
+            _buildChatHeader(),
+
+            // 2. 快捷功能 Grid
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 20,
+                ),
+                child: Column(
+                  children: [
+                    const Icon(
+                      Icons.search,
+                      size: 36,
+                      color: Color(0xFF1E293B),
+                    ),
+                    const SizedBox(height: 30),
+                    GridView.count(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      crossAxisCount: 2,
+                      mainAxisSpacing: 24,
+                      crossAxisSpacing: 24,
+                      children: [
+                        _buildQuickActionCard(
+                          '今日\n農曆宜忌',
+                          Icons.calendar_today_rounded,
+                          Colors.blue[50]!,
+                        ),
+                        _buildQuickActionCard(
+                          '士林區\n天氣',
+                          Icons.wb_sunny_rounded,
+                          Colors.orange[50]!,
+                        ),
+                        _buildQuickActionCard(
+                          '身體\n不舒服',
+                          Icons.health_and_safety_rounded,
+                          Colors.red[50]!,
+                        ),
+                        _buildQuickActionCard(
+                          '這是\n詐騙嗎？',
+                          Icons.verified_user_rounded,
+                          Colors.green[50]!,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // 4. 底部輸入區域
+            _buildChatInputArea(),
+            const SizedBox(height: 100), // 留白給導航欄
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChatHeader() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: const BoxDecoration(
+        color: Color(0xFF8DB08B), // 墨綠色系 (對應截圖)
+        borderRadius: BorderRadius.only(
+          bottomLeft: Radius.circular(20),
+          bottomRight: Radius.circular(20),
+        ),
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            icon: const Icon(
+              Icons.arrow_back_ios_new_rounded,
+              color: Colors.white,
+              size: 28,
+            ),
+            onPressed: () => setState(() => _selectedIndex = 0),
+          ),
+          const Spacer(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuickActionCard(String title, IconData icon, Color bgColor) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(32),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 15,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            icon,
+            size: 40,
+            color: const Color(0xFF1E293B).withValues(alpha: 0.6),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: GoogleFonts.notoSansTc(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              color: const Color(0xFF1E293B),
+              height: 1.3,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChatInputArea() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Row(
+        children: [
+          // 「+」按鈕 (功能擴展)
+          Container(
+            width: 54,
+            height: 54,
+            decoration: BoxDecoration(
+              color: const Color(0xFF8DB08B).withValues(alpha: 0.7),
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: const Icon(Icons.add, color: Colors.white, size: 32),
+          ),
+          const SizedBox(width: 12),
+          // 純語音控制列 (移除文字輸入)
+          Expanded(
+            child: Container(
+              height: 54,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(30),
+                border: Border.all(
+                  color: const Color(0xFF8DB08B).withValues(alpha: 0.2),
+                  width: 1.5,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.04),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () {
+                    setState(() {
+                      _isRecording = !_isRecording;
+                    });
+                  },
+                  borderRadius: BorderRadius.circular(30),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        _isRecording
+                            ? Icons.stop_circle_rounded
+                            : Icons.mic_none_rounded,
+                        color: _isRecording
+                            ? Colors.redAccent
+                            : const Color(0xFF8DB08B),
+                        size: 30,
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        _isRecording ? '正在錄音... (點擊停止)' : '按這裡開始說話',
+                        style: GoogleFonts.notoSansTc(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: _isRecording
+                              ? Colors.redAccent
+                              : const Color(0xFF8DB08B),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
