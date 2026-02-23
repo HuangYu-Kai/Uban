@@ -94,6 +94,23 @@ class _ElderScreenState extends State<ElderScreen> {
       }
     };
 
+    // 對方忙線中
+    _signaling.onCallBusy = (targetId) {
+      if (mounted) {
+        setState(() {
+          _status = "家人通話中，請稍後再撥";
+          _isInCall = false;
+        });
+        
+        // 延遲幾秒後恢復預設狀態
+        Future.delayed(const Duration(seconds: 3), () {
+          if (mounted && !_isInCall) {
+            setState(() => _status = "等待連線...");
+          }
+        });
+      }
+    };
+
     _signaling.onIncomingCall = (callerId, callType) async {
       bool isEmergency = callType == 'emergency';
       if (widget.isCCTVMode || isEmergency) {
@@ -124,7 +141,7 @@ class _ElderScreenState extends State<ElderScreen> {
   }
 
   void _hangUp() {
-    _signaling.hangUp();
+    _signaling.hangUp(disconnectSocket: false, disposeLocalStream: false);
     setState(() { _remoteRenderer.srcObject = null; _status = "等待連線..."; _isInCall = false; });
   }
 
