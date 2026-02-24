@@ -10,7 +10,8 @@ class DatabaseManager:
         self.mongo_client = None
         self.mongo_db = None
         self.mysql_conn = None
-
+    #先不要MongoDB
+    '''
     def connect_mongo(self):
         uri = os.getenv('MONGO_URI')
         db_name = os.getenv('MONGO_DB_NAME')
@@ -22,7 +23,7 @@ class DatabaseManager:
             print(f"✅ [MongoDB] 連線成功: {uri}")
         except Exception as e:
             print(f"❌ [MongoDB] 連線失敗: {e}")
-
+    '''
     def connect_mysql(self):
         try:
             self.mysql_conn = mysql.connector.connect(
@@ -56,8 +57,8 @@ if __name__ == "__main__":
     print("--- 開始測試資料庫連線 ---")
     
     # 測試 MongoDB
-    print("正在嘗試連線 MongoDB...")
-    db.connect_mongo()
+    #print("正在嘗試連線 MongoDB...")
+    #db.connect_mongo()
     
     # 測試 MySQL
     print("正在嘗試連線 MySQL...")
