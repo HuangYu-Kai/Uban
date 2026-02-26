@@ -2,7 +2,9 @@ from flask import Blueprint, request, jsonify
 from datetime import datetime
 from models import ActivityLog, User
 from extensions import db
+from services.gemini_service import gemini_service
 import json
+import os
 
 ai_bp = Blueprint('ai', __name__)
 
@@ -44,17 +46,36 @@ def ai_chat():
     if not user_id or not user_message:
         return jsonify({'error': 'Missing user_id or message'}), 400
 
-    # 模擬 AI 推理與日誌檢索
-    # 真實場景會從 ActivityLog 撈取數據整合進 Prompt
+    # --- 整合 Gemini 2.5 (Agentic RAG + Memory) ---
+    # 1. 嘗試從 ActivityLog 獲取最近的對話歷史 (最近 5 輪/10 筆)
+    history = []
+    past_logs = ActivityLog.query.filter_by(
+        user_id=user_id, 
+        event_type='chat'
+    ).order_by(ActivityLog.timestamp.desc()).limit(5).all()
     
-    # 範例回應邏輯
-    response_text = ""
-    if "吃藥" in user_message:
-        response_text = "我幫您查了一下，您今天早上的藥已經吃過囉！真棒。"
-    elif "運動" in user_message:
-        response_text = "今天天氣不錯，待會要不要去公園散散步呢？"
-    else:
-        response_text = "收到！我會一直陪著您的。還有什麼想聊聊的嗎？"
+    print(f"DEBUG: Found {len(past_logs)} past logs for user {user_id}")
+    
+    # 將歷史反轉為正序，並格式化為 Gemini 要求的格式
+    for log in reversed(past_logs):
+        try:
+            # 格式解析：長者詢問：XXX | AI 回應：YYY
+            parts = log.content.split(" | AI 回應：")
+            if len(parts) == 2:
+                user_part = parts[0].replace("長者詢問：", "")
+                ai_part = parts[1]
+                history.append({"role": "user", "parts": [user_part]})
+                history.append({"role": "model", "parts": [ai_part]})
+        except Exception as e:
+            print(f"DEBUG: Error parsing history log: {e}")
+            continue
+
+    print(f"DEBUG: Formatted history length: {len(history)} items")
+
+    # 2. 傳入 history 讓 AI 具備上下文記憶
+    print(f"DEBUG: Sending message to Gemini: {user_message}")
+    response_text = gemini_service.get_response(user_message, user_id=user_id, history=history)
+    print(f"DEBUG: Gemini response received: {response_text[:50]}...")
 
     # 自動記錄聊天意圖到 ActivityLog
     log_content = f"長者詢問：{user_message} | AI 回應：{response_text}"

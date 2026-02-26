@@ -52,6 +52,7 @@ dependencies:
   path_provider: ^2.1.3
   mobile_scanner: ^5.0.0
   shared_preferences: ^2.2.1
+  speech_to_text: ^7.0.0
 
 dev_dependencies:
   flutter_test:
