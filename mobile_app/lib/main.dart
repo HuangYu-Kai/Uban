@@ -17,7 +17,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Uban',
-      navigatorKey: navigatorKey, // ★★★ 2. 綁定 Key ★★★
+      navigatorKey: navigatorKey, 
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFFFF6B6B)),
