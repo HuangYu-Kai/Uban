@@ -1,11 +1,12 @@
 // lib/screens/role_selection_screen.dart
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import 'family_dashboard_screen.dart';
 import 'elder_screen.dart';
 
 class RoleSelectionScreen extends StatefulWidget {
-  const RoleSelectionScreen({Key? key}) : super(key: key);
+  const RoleSelectionScreen({super.key});
 
   @override
   _RoleSelectionScreenState createState() => _RoleSelectionScreenState();
@@ -14,8 +15,48 @@ class RoleSelectionScreen extends StatefulWidget {
 class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
   final TextEditingController _inputController = TextEditingController();
   final ApiService _apiService = ApiService();
-  bool _isLoading = false;
+  bool _isLoading = true; // 初始啟動時顯示讀取中，檢查本機快取
   String? _selectedRole; 
+
+  @override
+  void initState() {
+    super.initState();
+    _checkLoginStatus();
+  }
+
+  Future<void> _checkLoginStatus() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedRole = prefs.getString('saved_role');
+    final savedId = prefs.getString('saved_id');
+    
+    if (savedRole != null && savedId != null) {
+      if (savedRole == 'family') {
+        List<dynamic> elders = await _apiService.getElderData(savedId);
+        if (elders.isNotEmpty && mounted) {
+          Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => FamilyDashboardScreen(elders: elders)));
+          return;
+        }
+      } else if (savedRole == 'elder') {
+        final deviceName = prefs.getString('saved_device_name') ?? '預設設備';
+        final isCCTV = prefs.getBool('saved_is_cctv') ?? false;
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => ElderScreen(
+                roomId: savedId,
+                isCCTVMode: isCCTV,
+                deviceName: deviceName,
+              ),
+            ),
+          );
+          return;
+        }
+      }
+    }
+    // 如果沒有儲存的登入狀態或驗證失敗，顯示一般登入畫面
+    if (mounted) setState(() => _isLoading = false);
+  }
 
   @override
   void dispose() {
@@ -39,8 +80,14 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('查無資料')));
         return;
       }
+      
+      // ★ 登入成功，儲存狀態
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('saved_role', 'family');
+      await prefs.setString('saved_id', inputText);
+
       if (mounted) {
-        Navigator.push(context, MaterialPageRoute(builder: (context) => FamilyDashboardScreen(elders: elders)));
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => FamilyDashboardScreen(elders: elders)));
       }
     } else {
       // 長輩邏輯
@@ -90,8 +137,15 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
 
       if (isCCTV == null) return;
 
+      // ★ 登入成功，儲存狀態
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('saved_role', 'elder');
+      await prefs.setString('saved_id', inputText);
+      await prefs.setString('saved_device_name', deviceName);
+      await prefs.setBool('saved_is_cctv', isCCTV);
+
       if (mounted) {
-        Navigator.push(
+        Navigator.pushReplacement(
           context,
           MaterialPageRoute(
             builder: (context) => ElderScreen(
