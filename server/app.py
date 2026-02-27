@@ -14,6 +14,16 @@ eventlet.monkey_patch()
 from flask import Flask, request, jsonify
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from db import db  
+import firebase_admin
+from firebase_admin import credentials, messaging
+
+# 初始化 Firebase Admin SDK
+try:
+    cred = credentials.Certificate("serviceAccountKey.json")
+    firebase_admin.initialize_app(cred)
+    print("✅ Firebase Admin SDK 已初始化")
+except Exception as e:
+    print(f"⚠️ Firebase 初始化失敗: {e}")
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
@@ -65,6 +75,7 @@ def on_join(data):
     role = data.get('role', 'unknown')
     device_name = data.get('deviceName', 'Unknown Device')
     device_mode = data.get('deviceMode', 'comm') 
+    fcm_token = data.get('fcmToken') # ★ 接收 FCM Token
     sid = request.sid
 
     if room:
@@ -84,7 +95,8 @@ def on_join(data):
         rooms_manager[room][sid] = {
             'role': role,
             'deviceName': device_name,
-            'deviceMode': device_mode
+            'deviceMode': device_mode,
+            'fcmToken': fcm_token # ★ 儲存 FCM Token
         }
         
         print(f"✅ User {sid} ({role} - {device_name}) joined room: {room}")
@@ -128,8 +140,30 @@ def on_call_request(data):
     room = data.get('room')
     sender_id = request.sid
     print(f"🔔 Call Request from {sender_id} in {room}")
-    # 廣播給房間內所有家屬
+    
+    # 1. 廣播給房間內所有還活著的 Socket
     emit('call-request', {'senderId': sender_id, 'room': room}, to=room, include_self=False)
+
+    # 2. 針對房間內的所有註冊用戶發送 FCM 靜默推播喚醒 (Data Message)
+    if room in rooms_manager:
+        for sid, info in rooms_manager[room].items():
+            if sid != sender_id and 'fcmToken' in info and info['fcmToken']:
+                token = info['fcmToken']
+                try:
+                    message = messaging.Message(
+                        data={
+                            'type': 'call-request',
+                            'senderId': sender_id,
+                            'roomId': room
+                        },
+                        token=token,
+                        # 使用 Android 高優先級確保能穿透 Doze mode
+                        android=messaging.AndroidConfig(priority='extreme')
+                    )
+                    response = messaging.send(message)
+                    print(f"✅ FCM 推播已發送至 {info['role']} ({info['deviceName']}): {response}")
+                except Exception as e:
+                    print(f"⚠️ FCM 推播發送失敗 ({info['role']}): {e}")
 
 @socketio.on('call-accept')
 def on_call_accept(data):

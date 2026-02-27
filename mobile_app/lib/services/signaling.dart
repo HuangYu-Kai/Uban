@@ -7,6 +7,7 @@ import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:flutter_callkit_incoming/entities/entities.dart';
 import 'package:volume_controller/volume_controller.dart';
 import 'package:uuid/uuid.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 typedef void StreamStateCallback(MediaStream stream);
 typedef Future<bool> IncomingCallCallback(String callerId, String callType);
@@ -216,8 +217,22 @@ class Signaling {
     return accepted;
   }
 
-  void _emitJoin(String room, String role, String name, String mode) {
-    socket!.emit('join', {'room': room, 'role': role, 'deviceName': name, 'deviceMode': mode});
+  void _emitJoin(String room, String role, String name, String mode) async {
+    String? fcmToken;
+    try {
+      fcmToken = await FirebaseMessaging.instance.getToken();
+      print("🔔 本機 FCM Token 獲取成功: $fcmToken");
+    } catch (e) {
+      print("⚠️ 無法獲取 FCM Token: $e");
+    }
+    
+    socket!.emit('join', {
+      'room': room, 
+      'role': role, 
+      'deviceName': name, 
+      'deviceMode': mode,
+      'fcmToken': fcmToken
+    });
   }
 
   void joinRoom(String roomId) {
