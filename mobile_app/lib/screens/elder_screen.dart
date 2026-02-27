@@ -2,7 +2,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/signaling.dart';
+import 'role_selection_screen.dart';
 
 class ElderScreen extends StatefulWidget {
   final String roomId;
@@ -156,7 +158,28 @@ class _ElderScreenState extends State<ElderScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(widget.deviceName), backgroundColor: widget.isCCTVMode ? Colors.redAccent : Colors.orange),
+      appBar: AppBar(
+        title: Text(widget.deviceName),
+        backgroundColor: widget.isCCTVMode ? Colors.redAccent : Colors.orange,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout),
+            tooltip: '登出',
+            onPressed: () async {
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.clear();
+              if (mounted) {
+                // 回到角色選擇畫面，並清空路由歷史
+                Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(builder: (context) => const RoleSelectionScreen()),
+                  (route) => false,
+                );
+              }
+            },
+          ),
+        ],
+      ),
       body: Stack(
         children: [
           if (widget.isCCTVMode)
