@@ -54,6 +54,8 @@ dependencies:
   volume_controller: ^3.4.1
   uuid: ^4.5.3
   shared_preferences: ^2.2.3
+  firebase_core: ^4.4.0
+  firebase_messaging: ^16.1.1
 #webrtc還沒到測試最終版，先不整合
 
 dev_dependencies:
