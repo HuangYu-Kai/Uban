@@ -16,9 +16,9 @@ class FamilySettingsView extends StatefulWidget {
     required this.userName,
   });
 
-  @override
-  State<FamilySettingsView> createState() => _FamilySettingsViewState();
-}
+//   @override
+//   State<FamilySettingsView> createState() => _FamilySettingsViewState();
+// }
 
 class _FamilySettingsViewState extends State<FamilySettingsView> {
   late String _userName;
@@ -88,36 +88,36 @@ class _FamilySettingsViewState extends State<FamilySettingsView> {
     );
   }
 
-  void _handleEditProfile() {
-    final TextEditingController controller = TextEditingController(
-      text: _userName,
-    );
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('編輯個人資料'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(labelText: '顯示名稱'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () {
-              setState(() {
-                _userName = controller.text;
-              });
-              Navigator.pop(context);
-            },
-            child: const Text('儲存'),
-          ),
-        ],
-      ),
-    );
-  }
+//   void _handleEditProfile() {
+//     final TextEditingController controller = TextEditingController(
+//       text: _userName,
+//     );
+//     showDialog(
+//       context: context,
+//       builder: (context) => AlertDialog(
+//         title: const Text('編輯個人資料'),
+//         content: TextField(
+//           controller: controller,
+//           decoration: const InputDecoration(labelText: '顯示名稱'),
+//         ),
+//         actions: [
+//           TextButton(
+//             onPressed: () => Navigator.pop(context),
+//             child: const Text('取消'),
+//           ),
+//           TextButton(
+//             onPressed: () {
+//               setState(() {
+//                 _userName = controller.text;
+//               });
+//               Navigator.pop(context);
+//             },
+//             child: const Text('儲存'),
+//           ),
+//         ],
+//       ),
+//     );
+//   }
 
   @override
   Widget build(BuildContext context) {
@@ -292,61 +292,61 @@ class _FamilySettingsViewState extends State<FamilySettingsView> {
     );
   }
 
-  Widget _buildSettingsGroup(String title, List<Widget> items) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-          child: Text(
-            title,
-            style: GoogleFonts.notoSansTc(
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-              color: Colors.grey[600],
-            ),
-          ),
-        ),
-        Container(
-          color: Colors.white,
-          child: Column(children: items),
-        ),
-      ],
-    );
-  }
+//   Widget _buildSettingsGroup(String title, List<Widget> items) {
+//     return Column(
+//       crossAxisAlignment: CrossAxisAlignment.start,
+//       children: [
+//         Padding(
+//           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+//           child: Text(
+//             title,
+//             style: GoogleFonts.notoSansTc(
+//               fontSize: 14,
+//               fontWeight: FontWeight.bold,
+//               color: Colors.grey[600],
+//             ),
+//           ),
+//         ),
+//         Container(
+//           color: Colors.white,
+//           child: Column(children: items),
+//         ),
+//       ],
+//     );
+//   }
 
-  Widget _buildSettingItem(
-    IconData icon,
-    String title,
-    String subtitle, {
-    required VoidCallback onTap,
-  }) {
-    return ListTile(
-      leading: Icon(icon, color: Colors.black87),
-      title: Text(title, style: GoogleFonts.notoSansTc()),
-      subtitle: Text(subtitle, style: GoogleFonts.notoSansTc(fontSize: 12)),
-      trailing: const Icon(Icons.chevron_right, size: 20),
-      onTap: onTap,
-    );
-  }
+//   Widget _buildSettingItem(
+//     IconData icon,
+//     String title,
+//     String subtitle, {
+//     required VoidCallback onTap,
+//   }) {
+//     return ListTile(
+//       leading: Icon(icon, color: Colors.black87),
+//       title: Text(title, style: GoogleFonts.notoSansTc()),
+//       subtitle: Text(subtitle, style: GoogleFonts.notoSansTc(fontSize: 12)),
+//       trailing: const Icon(Icons.chevron_right, size: 20),
+//       onTap: onTap,
+//     );
+//   }
 
-  Widget _buildSwitchItem(
-    IconData icon,
-    String title,
-    bool value,
-    ValueChanged<bool> onChanged,
-  ) {
-    return ListTile(
-      leading: Icon(icon, color: Colors.black87),
-      title: Text(title, style: GoogleFonts.notoSansTc()),
-      trailing: Switch(
-        value: value,
-        onChanged: onChanged,
-        activeTrackColor: const Color(0xFFFF9800).withValues(alpha: 0.5),
-        activeThumbColor: const Color(0xFFFF9800),
-      ),
-    );
-  }
+//   Widget _buildSwitchItem(
+//     IconData icon,
+//     String title,
+//     bool value,
+//     ValueChanged<bool> onChanged,
+//   ) {
+//     return ListTile(
+//       leading: Icon(icon, color: Colors.black87),
+//       title: Text(title, style: GoogleFonts.notoSansTc()),
+//       trailing: Switch(
+//         value: value,
+//         onChanged: onChanged,
+//         activeTrackColor: const Color(0xFFFF9800).withValues(alpha: 0.5),
+//         activeThumbColor: const Color(0xFFFF9800),
+//       ),
+//     );
+//   }
 
   Widget _buildElderTile(dynamic elder) {
     return ListTile(
