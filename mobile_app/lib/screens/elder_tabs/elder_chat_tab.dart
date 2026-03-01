@@ -5,6 +5,7 @@ import 'package:flutter_tts/flutter_tts.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../../services/api_service.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 
 class ElderChatTab extends StatefulWidget {
   final int userId;
@@ -112,6 +113,32 @@ class _ElderChatTabState extends State<ElderChatTab> {
     }
   }
 
+  void _handleAIActions(List<dynamic> actions) {
+    if (!mounted) return;
+    for (var action in actions) {
+      if (action is Map<String, dynamic>) {
+        final type = action['type'];
+        if (type == 'PLAY_MUSIC') {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('🎵 系統正在為您播放最愛的音樂...'),
+              backgroundColor: Color(0xFF59B294),
+            ),
+          );
+        } else if (type == 'CONTACT_FAMILY') {
+          final reason = action['reason'] ?? '需要協助';
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('📞 已自動發送緊急通知給家屬：$reason'),
+              backgroundColor: Colors.redAccent,
+              duration: const Duration(seconds: 5),
+            ),
+          );
+        }
+      }
+    }
+  }
+
   Future<void> _sendToAIChat(String message) async {
     if (message.trim().isEmpty) return;
 
@@ -135,6 +162,12 @@ class _ElderChatTabState extends State<ElderChatTab> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final reply = data['reply'] ?? '沒有回應';
+
+        final actions = data['actions'] as List<dynamic>?;
+        if (actions != null && actions.isNotEmpty) {
+          _handleAIActions(actions);
+        }
+
         setState(() {
           // 將 AI 的話加入清單
           _messages.add({"role": "ai", "text": reply});
@@ -199,13 +232,6 @@ class _ElderChatTabState extends State<ElderChatTab> {
                     if (_messages.isNotEmpty || _isAILoading)
                       _buildChatDialogueArea(),
 
-                    // 如果沒有對話也沒在載入，則顯示歡迎圖示
-                    if (_messages.isEmpty && !_isAILoading)
-                      Column(
-                        children: [
-                          const Icon(Icons.search, color: Color(0xFF1E293B)),
-                        ],
-                      ),
                     // 如果沒有對話也沒在載入，則顯示歡迎圖示與快捷按鈕
                     if (_messages.isEmpty && !_isAILoading)
                       Column(
@@ -346,13 +372,21 @@ class _ElderChatTabState extends State<ElderChatTab> {
                       ],
                     ),
                     const SizedBox(height: 10),
-                    Text(
-                      msg['text'],
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: const Color(0xFF1E293B),
-                        height: 1.4,
+                    MarkdownBody(
+                      data: msg['text'],
+                      styleSheet: MarkdownStyleSheet(
+                        p: GoogleFonts.notoSansTc(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: const Color(0xFF1E293B),
+                          height: 1.4,
+                        ),
+                        strong: GoogleFonts.notoSansTc(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w900,
+                          color: const Color(0xFF59B294),
+                          height: 1.4,
+                        ),
                       ),
                     ),
                   ],
