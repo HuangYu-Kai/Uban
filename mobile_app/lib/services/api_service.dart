@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 class ApiService {
   // 對於實機測試，請使用您電腦的區域網路 IP (如 192.168.31.209)
   // 對於 Android 模擬器，請使用 http://10.0.2.2:5001/api
-  static const String baseUrl = 'http://10.0.2.2:5001/api';
+  static const String baseUrl = 'http://192.168.31.209:5001/api';
 
   static Future<Map<String, dynamic>> register({
     required String username,
@@ -135,6 +135,78 @@ class ApiService {
   static Future<List<dynamic>> getPairedElders(int userId) async {
     final response = await http.get(Uri.parse('$baseUrl/user/$userId/elders'));
     return jsonDecode(response.body);
+  }
+
+  static Future<Map<String, dynamic>> getElderProfile(int userId) async {
+    final response = await http.get(Uri.parse('$baseUrl/user/profile/$userId'));
+    return jsonDecode(response.body);
+  }
+
+  static Future<Map<String, dynamic>> updateElderProfile({
+    required int userId,
+    String? phone,
+    String? location,
+    String? aiPersona,
+    String? chronicDiseases,
+    String? medicationNotes,
+    String? interests,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/user/profile/$userId'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        if (phone != null) 'phone': phone,
+        if (location != null) 'location': location,
+        if (aiPersona != null) 'ai_persona': aiPersona,
+        if (chronicDiseases != null) 'chronic_diseases': chronicDiseases,
+        if (medicationNotes != null) 'medication_notes': medicationNotes,
+        if (interests != null) 'interests': interests,
+      }),
+    );
+    return jsonDecode(response.body);
+  }
+
+  static Future<Map<String, dynamic>> unbindElder(
+    int familyId,
+    int elderId,
+  ) async {
+    try {
+      final response = await http
+          .delete(Uri.parse('$baseUrl/pairing/$familyId/$elderId'))
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        return {'error': 'Failed to unbind elder: ${response.statusCode}'};
+      }
+    } catch (e) {
+      return {'error': e.toString()};
+    }
+  }
+
+  static Future<Map<String, dynamic>> uploadAvatar(
+    int userId,
+    String filePath,
+  ) async {
+    try {
+      var request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/user/$userId/avatar'),
+      );
+      request.files.add(await http.MultipartFile.fromPath('avatar', filePath));
+
+      var streamedResponse = await request.send();
+      var response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        return {'error': 'Failed to upload avatar: ${response.statusCode}'};
+      }
+    } catch (e) {
+      return {'error': e.toString()};
+    }
   }
 
   static Future<Map<String, dynamic>> checkHealth() async {

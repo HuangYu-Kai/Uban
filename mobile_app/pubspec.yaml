@@ -53,6 +53,7 @@ dependencies:
   mobile_scanner: ^5.0.0
   shared_preferences: ^2.2.1
   speech_to_text: ^7.0.0
+  flutter_markdown: ^0.7.7+1
 
 dev_dependencies:
   flutter_test:

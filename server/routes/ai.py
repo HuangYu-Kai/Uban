@@ -1,12 +1,48 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, g
 from datetime import datetime
 from models import ActivityLog, User
 from extensions import db
 from services.gemini_service import gemini_service
 import json
 import os
+import threading
 
 ai_bp = Blueprint('ai', __name__)
+
+def _summarize_chat_history(user_id):
+    """
+    在背景執行的任務：當對話滿 10 筆時，自動進行總結並存為 chat_summary。
+    需在 local app context 下執行以存取 DB。
+    """
+    # 避免 circular import，在此引入 app
+    from app import app
+    with app.app_context():
+        logs = ActivityLog.query.filter_by(user_id=user_id, event_type='chat')\
+                               .order_by(ActivityLog.timestamp.desc()).limit(10).all()
+        if len(logs) < 10:
+            return
+            
+        text_to_summarize = "以下是長輩最近的一段對話紀錄：\n"
+        for log in reversed(logs):
+            text_to_summarize += f"- {log.content}\n"
+            
+        import google.generativeai as genai
+        try:
+            model = genai.GenerativeModel("gemini-2.5-flash-lite")
+            prompt = f"{text_to_summarize}\n請總結這段對話中長輩的狀態，包含：身體狀況、心情、重點關注事項。請用繁體中文，盡量簡短(約 100 字)，以第三人稱客觀描述長輩的狀況。"
+            response = model.generate_content(prompt)
+            summary = response.text.strip()
+            
+            new_log = ActivityLog(
+                user_id=user_id,
+                event_type='chat_summary',
+                content=summary
+            )
+            db.session.add(new_log)
+            db.session.commit()
+            print(f"DEBUG: Background summary saved for user {user_id}")
+        except Exception as e:
+            print(f"DEBUG: Failed to summarize chat: {e}")
 
 @ai_bp.route('/log_activity', methods=['POST'])
 def log_activity():
@@ -76,6 +112,9 @@ def ai_chat():
     print(f"DEBUG: Sending message to Gemini: {user_message}")
     response_text = gemini_service.get_response(user_message, user_id=user_id, history=history)
     print(f"DEBUG: Gemini response received: {response_text[:50]}...")
+    
+    # 獲取工具執行期間存入的 actions
+    actions = getattr(g, 'pending_actions', [])
 
     # 自動記錄聊天意圖到 ActivityLog
     log_content = f"長者詢問：{user_message} | AI 回應：{response_text}"
@@ -87,7 +126,13 @@ def ai_chat():
     db.session.add(new_log)
     db.session.commit()
 
+    # 觸發長期記憶總結機制
+    chat_count = ActivityLog.query.filter_by(user_id=user_id, event_type='chat').count()
+    if chat_count > 0 and chat_count % 10 == 0:
+        threading.Thread(target=_summarize_chat_history, args=(user_id,)).start()
+
     return jsonify({
         'reply': response_text,
+        'actions': actions,
         'status': 'success'
     })
