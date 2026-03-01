@@ -150,7 +150,7 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
-                    value: _aiPersona,
+                    initialValue: _aiPersona,
                     decoration: InputDecoration(
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
