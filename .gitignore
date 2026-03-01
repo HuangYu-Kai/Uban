@@ -82,3 +82,7 @@ bin/
 # Database
 *.db
 *.sqlite3
+
+#api key
+mobile_app/android/app/google-services.json
+server/serviceAccountKey.json
