@@ -9,14 +9,13 @@ class RoleSelectionScreen extends StatefulWidget {
   const RoleSelectionScreen({super.key});
 
   @override
-  _RoleSelectionScreenState createState() => _RoleSelectionScreenState();
+  State<RoleSelectionScreen> createState() => _RoleSelectionScreenState();
 }
 
 class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
   final TextEditingController _inputController = TextEditingController();
-  final ApiService _apiService = ApiService();
   bool _isLoading = true; // 初始啟動時顯示讀取中，檢查本機快取
-  String? _selectedRole; 
+  String? _selectedRole;
 
   @override
   void initState() {
@@ -31,7 +30,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
     
     if (savedRole != null && savedId != null) {
       if (savedRole == 'family') {
-        List<dynamic> elders = await _apiService.getElderData(savedId);
+        List<dynamic> elders = await ApiService.getElderData(savedId);
         if (elders.isNotEmpty && mounted) {
           Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => FamilyDashboardScreen(elders: elders)));
           return;
@@ -73,7 +72,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
 
     if (_selectedRole == 'family') {
       setState(() => _isLoading = true);
-      List<dynamic> elders = await _apiService.getElderData(inputText);
+      List<dynamic> elders = await ApiService.getElderData(inputText);
       setState(() => _isLoading = false);
 
       if (elders.isEmpty) {
@@ -114,6 +113,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
         ),
       );
 
+      if (!mounted) return;
       bool? isCCTV = await showDialog<bool>(
         context: context,
         barrierDismissible: false,

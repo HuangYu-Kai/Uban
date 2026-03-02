@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 
 class ApiService {
   // 對於實機測試，請使用您電腦的區域網路 IP
-  static const String baseUrl = 'http://192.168.31.209:5000/api';
+  static const String baseUrl = 'https://50ef-61-65-116-7.ngrok-free.app/api';
 
   static Future<Map<String, dynamic>> register({
     required String username,
@@ -129,6 +129,17 @@ class ApiService {
       }),
     );
     return jsonDecode(response.body);
+  }
+
+  static Future<List<dynamic>> getElderData(String userId) async {
+    final response = await http.get(Uri.parse('$baseUrl/get_elder_data?user_id=$userId'));
+    if (response.statusCode == 200) {
+      final decoded = jsonDecode(response.body);
+      if (decoded['status'] == 'success') {
+        return decoded['elders'] as List<dynamic>;
+      }
+    }
+    return [];
   }
 
   static Future<List<dynamic>> getPairedElders(int userId) async {

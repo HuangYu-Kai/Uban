@@ -90,7 +90,8 @@ class MyApp extends StatelessWidget {
         textTheme: GoogleFonts.notoSansTcTextTheme(Theme.of(context).textTheme),
       ),
       // ★★★ 關鍵修改：設定首頁為啟動頁 ★★★
-      home: const SplashScreen(),
+      home: const RoleSelectionScreen(),
+      /*
       onGenerateRoute: (settings) {
         if (settings.name == '/family_home') {
           final args = settings.arguments as Map<String, dynamic>? ?? {};
@@ -107,6 +108,7 @@ class MyApp extends StatelessWidget {
         '/login': (context) => const LoginScreen(),
         '/identification': (context) => const IdentificationScreen(),
       },
+      */
     );
   }
 }

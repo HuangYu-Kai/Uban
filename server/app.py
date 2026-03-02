@@ -26,7 +26,7 @@ except Exception as e:
     print(f"⚠️ Firebase 初始化失敗: {e}")
 
 app = Flask(__name__)
-CORS(app) # 允許跨域請求
+#CORS(app) # 允許跨域請求
 app.config['SECRET_KEY'] = 'secret!'
 
 # 使用 Eventlet 模式
