@@ -37,6 +37,16 @@ UBan 是一個領先的「AI 跨世代感知照護系統」，致力於透過生
 
 ## 🌟 核心功能亮點 (Key Features)
 
+### 0. 影音視訊監控 (Video Monitoring)
+
+整合 WebRTC (Twilio/Metered) 提供家屬與長輩間的高品質即時視訊通話與居家監控功能。
+
+```bash
+# 安裝後端依賴
+cd backend
+npm install
+```
+
 ### 1. 視覺化劇本編輯器 2.0 (Visual Script Editor)
 
 家屬可以透過「樂高式」的介面，為長輩定義自動化對話流。
