@@ -14,9 +14,9 @@ class RoleSelectionScreen extends StatefulWidget {
 
 class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
   final TextEditingController _inputController = TextEditingController();
-  final ApiService _apiService = ApiService();
   bool _isLoading = true; // 初始啟動時顯示讀取中，檢查本機快取
-  String? _selectedRole; 
+
+  String? _selectedRole;
 
   @override
   void initState() {
@@ -28,12 +28,20 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
     final prefs = await SharedPreferences.getInstance();
     final savedRole = prefs.getString('saved_role');
     final savedId = prefs.getString('saved_id');
-    
+
     if (savedRole != null && savedId != null) {
       if (savedRole == 'family') {
-        List<dynamic> elders = await _apiService.getElderData(savedId);
+        List<dynamic> elders = await ApiService.getPairedElders(
+          int.parse(savedId),
+        );
+
         if (elders.isNotEmpty && mounted) {
-          Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => FamilyDashboardScreen(elders: elders)));
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => FamilyDashboardScreen(elders: elders),
+            ),
+          );
           return;
         }
       } else if (savedRole == 'elder') {
@@ -67,27 +75,40 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
   Future<void> _handleSubmit() async {
     String inputText = _inputController.text.trim();
     if (inputText.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('請輸入 ID')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('請輸入 ID')));
       return;
     }
 
     if (_selectedRole == 'family') {
       setState(() => _isLoading = true);
-      List<dynamic> elders = await _apiService.getElderData(inputText);
+      List<dynamic> elders = await ApiService.getPairedElders(
+        int.parse(inputText),
+      );
+
       setState(() => _isLoading = false);
 
       if (elders.isEmpty) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('查無資料')));
+        if (mounted)
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('查無資料')));
         return;
       }
-      
+
       // ★ 登入成功，儲存狀態
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('saved_role', 'family');
       await prefs.setString('saved_id', inputText);
 
       if (mounted) {
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => FamilyDashboardScreen(elders: elders)));
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => FamilyDashboardScreen(elders: elders),
+          ),
+        );
       }
     } else {
       // 長輩邏輯
@@ -109,7 +130,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                 Navigator.pop(context);
               },
               child: const Text('確定'),
-            )
+            ),
           ],
         ),
       );
@@ -128,7 +149,9 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
             ElevatedButton.icon(
               icon: const Icon(Icons.videocam),
               label: const Text('CCTV 監控機'),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.redAccent,
+              ),
               onPressed: () => Navigator.pop(context, true),
             ),
           ],
@@ -164,31 +187,76 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
     bool isRoleSelected = _selectedRole != null;
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F5),
-      appBar: isRoleSelected 
-          ? AppBar(leading: IconButton(icon: const Icon(Icons.arrow_back, color: Colors.black), onPressed: () => setState(() { _selectedRole = null; _inputController.clear(); })), backgroundColor: Colors.transparent, elevation: 0)
+      appBar: isRoleSelected
+          ? AppBar(
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back, color: Colors.black),
+                onPressed: () => setState(() {
+                  _selectedRole = null;
+                  _inputController.clear();
+                }),
+              ),
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+            )
           : null,
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24.0),
           child: Column(
             children: [
-              const Icon(Icons.connect_without_contact, size: 80, color: Colors.blueAccent),
+              const Icon(
+                Icons.connect_without_contact,
+                size: 80,
+                color: Colors.blueAccent,
+              ),
               const SizedBox(height: 20),
-              const Text("Uban 系統入口", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
+              const Text(
+                "Uban 系統入口",
+                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+              ),
               const SizedBox(height: 40),
 
               if (!isRoleSelected) ...[
-                ElevatedButton.icon(icon: const Icon(Icons.visibility), label: const Text("我是家屬"), onPressed: () => setState(() => _selectedRole = 'family'), style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(60))),
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.visibility),
+                  label: const Text("我是家屬"),
+                  onPressed: () => setState(() => _selectedRole = 'family'),
+                  style: ElevatedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(60),
+                  ),
+                ),
                 const SizedBox(height: 20),
-                ElevatedButton.icon(icon: const Icon(Icons.elderly), label: const Text("我是長輩"), style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, minimumSize: const Size.fromHeight(60)), onPressed: () => setState(() => _selectedRole = 'elder')),
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.elderly),
+                  label: const Text("我是長輩"),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange,
+                    minimumSize: const Size.fromHeight(60),
+                  ),
+                  onPressed: () => setState(() => _selectedRole = 'elder'),
+                ),
               ],
 
               if (isRoleSelected) ...[
-                Text(_selectedRole == 'family' ? "請輸入 User ID" : "請輸入 Elder ID"),
+                Text(
+                  _selectedRole == 'family' ? "請輸入 User ID" : "請輸入 Elder ID",
+                ),
                 const SizedBox(height: 20),
-                TextField(controller: _inputController, decoration: const InputDecoration(border: OutlineInputBorder())),
+                TextField(
+                  controller: _inputController,
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                  ),
+                ),
                 const SizedBox(height: 20),
-                if (_isLoading) const CircularProgressIndicator() else ElevatedButton(onPressed: _handleSubmit, child: const Text("下一步")),
+                if (_isLoading)
+                  const CircularProgressIndicator()
+                else
+                  ElevatedButton(
+                    onPressed: _handleSubmit,
+                    child: const Text("下一步"),
+                  ),
               ],
             ],
           ),
