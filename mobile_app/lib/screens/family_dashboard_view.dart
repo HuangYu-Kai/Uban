@@ -4,7 +4,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'family/family_care_journal_view.dart';
-import 'camera_screen.dart';
+import 'monitoring_screen.dart';
+
 import 'family_ai_chat_screen.dart';
 import 'elder_selection_screen.dart';
 
@@ -186,7 +187,10 @@ class _FamilyDashboardViewState extends State<FamilyDashboardView> {
           onTap: () => Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (c) => const CameraScreen(roomId: 'default-room'),
+              builder: (c) => const MonitoringScreen(
+                roomId: 'default-room',
+                targetSocketId: 'default-target',
+              ),
             ),
           ),
         ),
