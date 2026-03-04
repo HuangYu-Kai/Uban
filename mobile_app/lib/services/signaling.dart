@@ -38,7 +38,7 @@ class Signaling {
   String? _peerSocketId;
   List<RTCIceCandidate> _candidateQueue = [];
   
-  // 保留這個修復：暫存房間，解決 "只能收到第一個響鈴" 的問題
+  // 暫存房間，解決 "只能收到第一個響鈴" 的問題
   final List<String> _pendingRooms = [];
 
   final Map<String, dynamic> _configuration = {
