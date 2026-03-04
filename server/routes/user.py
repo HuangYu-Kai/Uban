@@ -31,8 +31,12 @@ def get_avatar(user_id):
     if os.path.exists(os.path.join(UPLOAD_FOLDER, filename)):
         return send_from_directory(UPLOAD_FOLDER, filename)
     else:
-        # Return a 1x1 transparent PNG to prevent Flutter Image.network 404 exceptions
+        # Return a valid 1x1 transparent PNG to prevent Flutter Image.network 404 exceptions
         transparent_png = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\xfa\x0f\x00\x01\x05\x01\x02\xcf\xa0.\xcd\x00\x00\x00\x00IEND\xaeB`\x82'
+        # Actually that previous one was corrupted, here is a known-good base64 decoded 1x1 transparent PNG:
+        # iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=
+        import base64
+        transparent_png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=")
         return send_file(io.BytesIO(transparent_png), mimetype='image/png')
 
 

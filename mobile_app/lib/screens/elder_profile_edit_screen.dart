@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
 import '../services/api_service.dart';
 
 class ElderProfileEditScreen extends StatefulWidget {
@@ -22,7 +24,8 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
   // 基本資料 Controller
   late TextEditingController _nameController;
   late TextEditingController _ageController;
-  late TextEditingController _locationController;
+  late TextEditingController _cityController;
+  late TextEditingController _districtController;
   late TextEditingController _phoneController;
 
   late TextEditingController _chronicDiseasesController;
@@ -37,6 +40,7 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
   final List<String> _personaOptions = ['溫暖孫子', '專業護理師', '老朋友', '細心女兒'];
 
   bool _isLoading = true;
+  bool _isLocating = false;
 
   @override
   void initState() {
@@ -47,7 +51,34 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
     _ageController = TextEditingController(
       text: widget.elderData['age']?.toString(),
     );
-    _locationController = TextEditingController();
+
+    String location = widget.elderData['location'] ?? '';
+    String initialCity = '';
+    String initialDistrict = '';
+
+    if (location.isNotEmpty) {
+      int cityIndex = location.indexOf('市');
+      int countyIndex = location.indexOf('縣');
+      int splitIndex = -1;
+
+      if (cityIndex != -1 && countyIndex != -1) {
+        splitIndex = cityIndex < countyIndex ? cityIndex : countyIndex;
+      } else if (cityIndex != -1) {
+        splitIndex = cityIndex;
+      } else if (countyIndex != -1) {
+        splitIndex = countyIndex;
+      }
+
+      if (splitIndex != -1 && splitIndex + 1 < location.length) {
+        initialCity = location.substring(0, splitIndex + 1);
+        initialDistrict = location.substring(splitIndex + 1);
+      } else {
+        initialCity = location;
+      }
+    }
+
+    _cityController = TextEditingController(text: initialCity);
+    _districtController = TextEditingController(text: initialDistrict);
     _phoneController = TextEditingController();
     _chronicDiseasesController = TextEditingController();
     _medicationNotesController = TextEditingController();
@@ -69,7 +100,32 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
       if (mounted) {
         setState(() {
           _phoneController.text = profile['phone'] ?? '';
-          _locationController.text = profile['location'] ?? '台北市士林區';
+          String fullLocation = profile['location'] ?? '台北市士林區';
+          String loadedCity = '';
+          String loadedDistrict = '';
+
+          if (fullLocation.isNotEmpty) {
+            int cityIndex = fullLocation.indexOf('市');
+            int countyIndex = fullLocation.indexOf('縣');
+            int splitIndex = -1;
+
+            if (cityIndex != -1 && countyIndex != -1) {
+              splitIndex = cityIndex < countyIndex ? cityIndex : countyIndex;
+            } else if (cityIndex != -1) {
+              splitIndex = cityIndex;
+            } else if (countyIndex != -1) {
+              splitIndex = countyIndex;
+            }
+
+            if (splitIndex != -1 && splitIndex + 1 < fullLocation.length) {
+              loadedCity = fullLocation.substring(0, splitIndex + 1);
+              loadedDistrict = fullLocation.substring(splitIndex + 1);
+            } else {
+              loadedCity = fullLocation;
+            }
+          }
+          _cityController.text = loadedCity;
+          _districtController.text = loadedDistrict;
           _aiPersona = profile['ai_persona'] ?? '溫暖孫子';
           if (!_personaOptions.contains(_aiPersona)) {
             _aiPersona = '溫暖孫子';
@@ -90,7 +146,8 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
   void dispose() {
     _nameController.dispose();
     _ageController.dispose();
-    _locationController.dispose();
+    _cityController.dispose();
+    _districtController.dispose();
     _phoneController.dispose();
     _chronicDiseasesController.dispose();
     _medicationNotesController.dispose();
@@ -121,7 +178,8 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
       await ApiService.updateElderProfile(
         userId: elderId,
         phone: _phoneController.text,
-        location: _locationController.text,
+        location:
+            '${_cityController.text.trim()}${_districtController.text.trim()}',
         aiPersona: _aiPersona,
         chronicDiseases: _chronicDiseasesController.text,
         medicationNotes: _medicationNotesController.text,
@@ -139,6 +197,67 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('儲存失敗: $e')));
+      }
+    }
+  }
+
+  Future<void> _getCurrentLocation() async {
+    setState(() {
+      _isLocating = true;
+    });
+
+    try {
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          throw Exception('需要定位權限才能獲取位置');
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        throw Exception('定位權限已被永久拒絕，請至設定開啟');
+      }
+
+      Position position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.medium,
+        ),
+      );
+
+      List<Placemark> placemarks = await placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      );
+
+      if (placemarks.isNotEmpty) {
+        Placemark place = placemarks[0];
+        // 例如：台北市士林區
+        String city = place.administrativeArea ?? '';
+        String district = place.subAdministrativeArea ?? place.locality ?? '';
+
+        // 處理有時行政區(縣市)抓不到，但locality有值的情況
+        if (city.isEmpty && district.isNotEmpty) {
+          city = district;
+          district = '';
+        }
+
+        setState(() {
+          _cityController.text = city;
+          _districtController.text = district;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('無法取得位置: $e')));
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLocating = false;
+        });
       }
     }
   }
@@ -248,10 +367,115 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
               keyboardType: TextInputType.phone,
             ),
             const SizedBox(height: 16),
-            _buildTextField(
-              controller: _locationController,
-              label: '居住地區 (用於精準天氣預報)',
-              icon: Icons.location_on_outlined,
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(left: 4, bottom: 8),
+                  child: Text(
+                    '居住地區 (用於精準天氣預報)',
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.blueGrey,
+                    ),
+                  ),
+                ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: Colors.grey.shade200),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.map_outlined,
+                              color: Color(0xFF2563EB),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: TextField(
+                                controller: _cityController,
+                                decoration: InputDecoration(
+                                  hintText: '縣/市',
+                                  hintStyle: GoogleFonts.notoSansTc(
+                                    color: Colors.grey[400],
+                                    fontSize: 14,
+                                  ),
+                                  border: InputBorder.none,
+                                  isDense: true,
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    vertical: 16,
+                                  ),
+                                ),
+                                style: GoogleFonts.notoSansTc(fontSize: 15),
+                              ),
+                            ),
+                            Container(
+                              width: 1,
+                              height: 24,
+                              color: Colors.grey.shade300,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: TextField(
+                                controller: _districtController,
+                                decoration: InputDecoration(
+                                  hintText: '鄉鎮市區',
+                                  hintStyle: GoogleFonts.notoSansTc(
+                                    color: Colors.grey[400],
+                                    fontSize: 14,
+                                  ),
+                                  border: InputBorder.none,
+                                  isDense: true,
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    vertical: 16,
+                                  ),
+                                ),
+                                style: GoogleFonts.notoSansTc(fontSize: 15),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Container(
+                      height: 52,
+                      width: 52,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE8F4F0),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: const Color(0xFF59B294).withValues(alpha: 0.3),
+                        ),
+                      ),
+                      child: IconButton(
+                        icon: _isLocating
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Color(0xFF59B294),
+                                ),
+                              )
+                            : const Icon(
+                                Icons.my_location,
+                                color: Color(0xFF59B294),
+                              ),
+                        onPressed: _getCurrentLocation,
+                        tooltip: '獲取目前位置',
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
             const SizedBox(height: 32),
 
@@ -402,6 +626,7 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
     required String label,
     required IconData icon,
     TextInputType keyboardType = TextInputType.text,
+    Widget? suffixIcon,
   }) {
     return TextField(
       controller: controller,
@@ -410,6 +635,7 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
         labelText: label,
         labelStyle: GoogleFonts.notoSansTc(color: Colors.grey[600]),
         prefixIcon: Icon(icon, color: const Color(0xFF2563EB)),
+        suffixIcon: suffixIcon,
         filled: true,
         fillColor: Colors.white,
         border: OutlineInputBorder(

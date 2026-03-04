@@ -11,64 +11,79 @@ class IdentificationScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: const Color(0xFFFDFDFB),
       body: SafeArea(
-        child: Column(
-          children: [
-            const SizedBox(height: 80),
-            // "誰在使用？" Title
-            Text(
-              '誰在使用？',
-              style: GoogleFonts.notoSansTc(
-                fontSize: 48,
-                fontWeight: FontWeight.bold,
-                color: const Color(0xFF59B294),
-                letterSpacing: 2,
-              ),
-            ),
-            const Spacer(),
-            // Cards Row
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Row(
+        child: Center(
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // Elder Card
-                  Expanded(
-                    child: _buildRoleCard(
-                      context: context,
-                      label: '我是長者',
-                      imagePath: 'assets/images/elder_illustration.png',
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) =>
-                                const ElderPairingDisplayScreen(),
-                          ),
-                        );
-                      },
+                  const SizedBox(height: 24),
+                  // "誰在使用？" Title
+                  Text(
+                    '誰在使用？',
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 40, // Slightly smaller for better fit
+                      fontWeight: FontWeight.bold,
+                      color: const Color(0xFF59B294),
+                      letterSpacing: 2,
                     ),
                   ),
-                  const SizedBox(width: 20),
-                  // Caregiver Card
-                  Expanded(
-                    child: _buildRoleCard(
-                      context: context,
-                      label: '我是家屬 / 照護者',
-                      imagePath: 'assets/images/family_illustration.png',
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const LoginScreen(),
+                  const SizedBox(height: 48),
+                  // Cards Row
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(
+                        maxWidth: 800,
+                      ), // Limit max width for tablets
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          // Elder Card
+                          Expanded(
+                            child: _buildRoleCard(
+                              context: context,
+                              label: '我是長者',
+                              imagePath: 'assets/images/elder_illustration.png',
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) =>
+                                        const ElderPairingDisplayScreen(),
+                                  ),
+                                );
+                              },
+                            ),
                           ),
-                        );
-                      },
+                          const SizedBox(width: 24),
+                          // Caregiver Card
+                          Expanded(
+                            child: _buildRoleCard(
+                              context: context,
+                              label: '我是家屬 / 照護者',
+                              imagePath:
+                                  'assets/images/family_illustration.png',
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => const LoginScreen(),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
+                  const SizedBox(height: 48),
                 ],
               ),
             ),
-            const Spacer(flex: 2),
-          ],
+          ),
         ),
       ),
     );

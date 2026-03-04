@@ -109,6 +109,7 @@ def ai_chat():
     print(f"DEBUG: Formatted history length: {len(history)} items")
 
     # 2. 傳入 history 讓 AI 具備上下文記憶
+    g.current_user_id = user_id
     print(f"DEBUG: Sending message to Gemini: {user_message}")
     response_text = gemini_service.get_response(user_message, user_id=user_id, history=history)
     print(f"DEBUG: Gemini response received: {response_text[:50]}...")
@@ -136,3 +137,75 @@ def ai_chat():
         'actions': actions,
         'status': 'success'
     })
+
+from flask import Response
+
+@ai_bp.route('/chat_stream', methods=['POST', 'GET'])
+def ai_chat_stream():
+    """
+    使用 Server-Sent Events (SSE) 將 AI 的回覆以串流方式回傳給前端。
+    支援 GET (將資料附在 URL 參數) 或 POST (JSON)
+    """
+    if request.method == 'POST':
+        data = request.json
+    else:
+        # 允許前端使用 GET 方法傳遞參數，方便某些 SSE 客戶端實作
+        data = {
+            'user_id': request.args.get('user_id'),
+            'message': request.args.get('message')
+        }
+
+    user_id = data.get('user_id')
+    user_message = data.get('message')
+
+    if not user_id or not user_message:
+        return jsonify({'error': 'Missing user_id or message'}), 400
+
+    def generate_response():
+        # --- 整合 Gemini 2.5 (Agentic RAG + Memory) ---
+        history = []
+        # 因為 DB 查詢在 yield 前需要 app_context
+        from app import app
+        with app.app_context():
+            past_logs = ActivityLog.query.filter_by(
+                user_id=user_id, 
+                event_type='chat'
+            ).order_by(ActivityLog.timestamp.desc()).limit(5).all()
+            
+            for log in reversed(past_logs):
+                try:
+                    parts = log.content.split(" | AI 回應：")
+                    if len(parts) == 2:
+                        user_part = parts[0].replace("長者詢問：", "")
+                        ai_part = parts[1]
+                        history.append({"role": "user", "parts": [user_part]})
+                        history.append({"role": "model", "parts": [ai_part]})
+                except Exception:
+                    continue
+
+            # 傳遞資料到 Gemini Service
+            full_reply = ""
+            for chunk in gemini_service.get_response_stream(user_message, user_id=user_id, history=history):
+                full_reply += chunk
+                # 遵循 SSE 格式：data: <json string>\n\n
+                yield f"data: {json.dumps({'chunk': chunk}, ensure_ascii=False)}\n\n"
+            
+            # 串流結束後，儲存對話紀錄
+            log_content = f"長者詢問：{user_message} | AI 回應：{full_reply}"
+            new_log = ActivityLog(
+                user_id=user_id,
+                event_type='chat',
+                content=log_content
+            )
+            db.session.add(new_log)
+            db.session.commit()
+
+            # 發送結束標記，讓前端知道完成了
+            yield f"data: {json.dumps({'done': True}, ensure_ascii=False)}\n\n"
+
+            # 觸發長期記憶
+            chat_count = ActivityLog.query.filter_by(user_id=user_id, event_type='chat').count()
+            if chat_count > 0 and chat_count % 10 == 0:
+                threading.Thread(target=_summarize_chat_history, args=(user_id,)).start()
+
+    return Response(generate_response(), mimetype='text/event-stream')
