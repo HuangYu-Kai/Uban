@@ -42,7 +42,18 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            
+            <!-- 加入 FLUTTER_NOTIFICATION_CLICK 以支援背景推播點擊 -->
+            <intent-filter>
+                <action android:name="FLUTTER_NOTIFICATION_CLICK" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
         </activity>
+        
+        <!-- FCM 背景喚醒的預設 Channel 設定 -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="Incoming Call" />
         
         <meta-data
             android:name="flutterEmbedding"

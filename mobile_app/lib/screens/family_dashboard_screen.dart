@@ -42,23 +42,43 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> {
     _signaling.onCallRequest = (roomId, senderId) {
       if (!mounted) return;
       
+      // Remove any existing dialogs to prevent multiple stacking, or if the user cancels
+      if (Navigator.canPop(context)) {
+        // Warning: This pops the current top route. Assuming the only pop-able route here is the dialog.
+        // It's safer to use a named route or track the dialog state, but let's try pop first.
+      }
+      
       var caller = widget.elders.firstWhere((e) => e['elder_id'] == roomId, orElse: () => {'elder_name': '未知長輩'});
 
       // ★ 在顯示 Dialog 前先記錄 Dashboard 自己的 Route，
       //    之後可以用 popUntil 回到這層並清除上層的通話頁面
       final thisRoute = ModalRoute.of(context);
+      
+      // Define a dialog identifier or key if possible, but for now we'll rely on a boolean flag
+      bool isDialogOpen = true;
 
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => AlertDialog(
+        builder: (dialogContext) {
+            // Register cancel-call listener tightly to this dialog's lifecycle
+            _signaling.onCancelCall = (cancelRoomId, cancelSenderId) {
+                if (roomId == cancelRoomId && isDialogOpen && mounted) {
+                    Navigator.of(dialogContext).pop();
+                    isDialogOpen = false;
+                }
+            };
+
+            return AlertDialog(
           title: const Text('📞 求助電話'),
           content: Text('${caller['elder_name']} (ID: $roomId) 正在呼叫！'),
           backgroundColor: Colors.red[50],
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.pop(context);
+                isDialogOpen = false;
+                _signaling.sendCallBusy(senderId); // explicitly inform elder someone declined
+                Navigator.pop(dialogContext);
               }, 
               child: const Text('忽略')
             ),
@@ -67,7 +87,8 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> {
               label: const Text('接聽'),
               style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
               onPressed: () {
-                Navigator.pop(context); // 關閉彈窗
+                isDialogOpen = false;
+                Navigator.pop(dialogContext); // 關閉彈窗
 
                 // ★ 先回到儀表板層（關閉任何正在通話中的 VideoCallScreen）
                 //    確保舊的通話結束並釋放攝影機權限
@@ -93,7 +114,8 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> {
               },
             ),
           ],
-        ),
+        );
+      },
       );
     };
   }
