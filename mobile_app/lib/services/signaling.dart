@@ -31,6 +31,8 @@ class Signaling {
   VoidCallback? onCallEnded;
   ErrorCallback? onJoinFailed;
   CallRequestCallback? onCallRequest;
+  CallRequestCallback? onCancelCall;
+  CallRequestCallback? onEmergencyCall;
   CallAcceptedCallback? onCallAcceptedByRemote;
   CallAcceptedCallback? onCallBusy; // Reusing CallAcceptedCallback for simplicity (just needs a string ID)
 
@@ -78,6 +80,16 @@ class Signaling {
     // 響鈴監聽
     socket!.on('call-request', (data) {
       if (onCallRequest != null) onCallRequest!(data['room'], data['senderId']);
+    });
+
+    // 取消呼叫監聽
+    socket!.on('cancel-call', (data) {
+      if (onCancelCall != null) onCancelCall!(data['room'], data['senderId']);
+    });
+
+    // 緊急呼叫監聽
+    socket!.on('emergency-call', (data) {
+      if (onEmergencyCall != null) onEmergencyCall!(data['room'], data['senderId']);
     });
 
     // 對方接聽監聽
@@ -171,7 +183,7 @@ class Signaling {
       ),
       extra: <String, dynamic>{'userId': '1a2b3c4d'},
       android: const AndroidParams(
-        isCustomNotification: true,
+        isCustomNotification: false,
         isShowLogo: false,
         ringtonePath: 'system_ringtone_default',
         backgroundColor: '#0955fa',
@@ -273,6 +285,14 @@ class Signaling {
 
   void sendCallBusy(String targetSocketId) {
     socket!.emit('call-busy', {'targetId': targetSocketId});
+  }
+
+  void sendCancelCall(String room) {
+    socket!.emit('cancel-call', {'room': room});
+  }
+
+  void sendEmergencyCall(String room) {
+    socket!.emit('emergency-call', {'room': room});
   }
 
   void hangUp({bool disconnectSocket = true, bool disposeLocalStream = true}) {

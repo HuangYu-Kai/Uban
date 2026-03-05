@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import 'family_dashboard_screen.dart';
 import 'elder_screen.dart';
+import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 
 class RoleSelectionScreen extends StatefulWidget {
   const RoleSelectionScreen({super.key});
@@ -20,6 +21,19 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
   @override
   void initState() {
     super.initState();
+    _checkPermissionsAndLogin();
+  }
+
+  Future<void> _checkPermissionsAndLogin() async {
+    try {
+      final canUseFullScreenIntent = await FlutterCallkitIncoming.canUseFullScreenIntent();
+      if (!canUseFullScreenIntent) {
+        await FlutterCallkitIncoming.requestFullIntentPermission();
+      }
+    } catch (e) {
+      print("Permission Action failed: $e");
+    }
+    
     _checkLoginStatus();
   }
 

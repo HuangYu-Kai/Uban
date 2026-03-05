@@ -143,6 +143,12 @@ class _ElderScreenState extends State<ElderScreen> {
   }
 
   void _hangUp() {
+    // If we are hanging up while the status is "正在呼叫家人..." (Calling Family),
+    // it means the family hasn't answered yet. We should send a cancel-call so 
+    // the family's CallKit dismisses.
+    if (_status == "正在呼叫家人...") {
+      _signaling.sendCancelCall(widget.roomId);
+    }
     _signaling.hangUp(disconnectSocket: false, disposeLocalStream: false);
     setState(() { _remoteRenderer.srcObject = null; _status = "等待連線..."; _isInCall = false; });
   }
