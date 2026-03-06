@@ -1,6 +1,6 @@
 import io
 from flask import Blueprint, jsonify, request, send_from_directory, send_file
-from models import User, Relationship, ElderProfile
+from models import User, Relationship, ElderProfile, FamilyMessage
 from extensions import db
 from datetime import datetime
 from werkzeug.utils import secure_filename
@@ -156,3 +156,29 @@ def update_elder_profile(user_id):
     db.session.commit()
     return jsonify({'message': 'Profile updated successfully'})
 
+
+@user_bp.route('/message', methods=['POST'])
+def send_family_message():
+    """
+    接收家屬端的便條訊息，寫入 FamilyMessage 資料表。
+    """
+    data = request.json
+    family_id = data.get('family_id')
+    elder_id = data.get('elder_id')
+    content = data.get('content')
+    
+    if not all([family_id, elder_id, content]):
+        return jsonify({'error': 'Missing required fields'}), 400
+        
+    try:
+        msg = FamilyMessage(
+            family_id=family_id,
+            elder_id=elder_id,
+            content=content
+        )
+        db.session.add(msg)
+        db.session.commit()
+        return jsonify({'message': 'Message sent successfully', 'id': msg.id}), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500

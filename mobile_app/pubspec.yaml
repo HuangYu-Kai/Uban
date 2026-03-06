@@ -56,6 +56,8 @@ dependencies:
   flutter_markdown: ^0.7.7+1
   geolocator: ^14.0.2
   geocoding: ^4.0.0
+  video_player: ^2.11.0
+  markdown: ^7.3.0
 
 dev_dependencies:
   flutter_test:
