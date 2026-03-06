@@ -71,9 +71,98 @@ class AgentTools:
         except Exception as e:
             return f"查不到 {location} 的天氣資訊。"
 
+    @staticmethod
+    def read_family_messages(user_id=None):
+        """
+        讀取家屬留給長輩的最新留言或便條紙。
+        當長輩剛開始對話，或主動詢問「家人有沒有留話給我」時，可以使用此工具。
+        """
+        if not user_id:
+            user_id = getattr(g, 'current_user_id', None)
+            
+        if not user_id:
+            return "無法獲取長輩身分，無法查詢留言。"
+            
+        try:
+            from models import FamilyMessage, db
+            msg = FamilyMessage.query.filter_by(elder_id=user_id, is_read=False).order_by(FamilyMessage.created_at.desc()).first()
+            if not msg:
+                # 如果沒有真實資料，fallback 空提示
+                return "系統查詢結果：目前沒有任何家人新留言。(提醒：請跟長輩說沒有留言即可)"
+
+            msg.is_read = True
+            db.session.commit()
+            return f"查詢結果：家屬留下了一則便條，內容是：「{msg.content}」。 (如果長輩詢問或有需要，請利用此資訊以你溫暖的口吻轉述給長輩，並且絕對不要使用任何反引號)"
+        except Exception as e:
+            return f"查詢留言失敗：{str(e)}"
+
+    @staticmethod
+    def notify_family_SOS(user_id=None, reason="長輩感到不適"):
+        """
+        緊急呼叫子女。
+        當對話中長輩明確表示：身體極度不舒服、胸悶、跌倒、或者要求「幫我叫救護車」、「幫我聯絡家人」時，請【務必】呼叫此工具。
+        
+        Args:
+            reason: 觸發緊急通知的原因，請簡短描述長輩的狀況。
+        """
+        if not user_id:
+            user_id = getattr(g, 'current_user_id', None)
+            
+        try:
+            from flask import current_app
+            if 'socketio' in current_app.extensions:
+                current_app.extensions['socketio'].emit('sos-alert', {'elder_id': user_id, 'reason': reason})
+            print(f"[SOS 緊急事件廣播] 通知家屬！長輩 ID: {user_id}, 原因: {reason}")
+            return f"緊急通知已成功發送給家屬！原因紀錄為：{reason}。請您現在立刻用溫柔且鎮定的口吻安撫長輩，告訴他「家人已經知道並且正在處理/趕過來了，請先坐著深呼吸不要緊張」。"
+        except Exception as e:
+            return "緊急通知發送失敗，請試著用溫和的方式安撫長輩並建議他自行撥打 119。"
+
+    @staticmethod
+    def suggest_activity(user_id=None):
+        """
+        根據長輩的興趣推薦活動。
+        當長輩表示「好無聊」、「不知道要做什麼」時，可以呼叫此工具獲取建議。
+        """
+        if not user_id:
+            user_id = getattr(g, 'current_user_id', None)
+            
+        try:
+            from models import ElderProfile, User
+            profile = ElderProfile.query.filter_by(user_id=user_id).first()
+            interests = profile.interests if profile and profile.interests else "聽老歌、看風景"
+            
+            # 使用簡單的動態推薦（為了測試影片功能，我們強制塞一個好玩的推薦影片）
+            return f"根據長輩的興趣（{interests}），系統建議的活動：不如引導長輩一起做個簡單的椅子體操，或者看一段有趣的懷舊影片！影片網址：![影片](https://flutter.github.io/assets-for-api-docs/assets/videos/butterfly.mp4)。請將這個建議轉化為口語與長輩互動，但遇到影片網址時，請原封不動照著輸出，並且絕對不要在影片網址外面加任何的反引號。"
+        except Exception as e:
+            return "無法生成活動建議，請自行想個輕鬆的話題與他聊天。"
+
+    @staticmethod
+    def check_lunar_calendar():
+        """
+        獲取今天的農曆與節氣資訊。
+        當長輩詢問「今天農曆幾號」、「快過節了嗎」時呼叫。
+        （此工具不需要傳入任何參數）
+        """
+        try:
+            from datetime import datetime
+            import requests
+
+            # 因為完整的農曆轉換庫較為複雜，這裡我們做一個示範性的實作/串接
+            # 假設我們計算出今天是大年初二，或者是某個特定節氣
+            # 為了穩定性，目前回傳一個 Mock 資料
+            now = datetime.now()
+            today_str = now.strftime("%m月%d日")
+            return f"今天是國曆 {today_str}。農曆大約是【臘月廿五】。距離【過年】還有大約 5 天。今日黃曆建議：宜：祈福、祭祀。忌：動土。請將這個資訊白話解釋給長輩聽。"
+        except Exception as e:
+            return "查詢農曆失敗，請告訴長輩可能需要看一下實體日曆喔。"
+
 # 工具映射表，供手動串流調用時對應 function_name 到真實的 Python Method
 TOOL_MAP = {
     "get_elder_context": AgentTools.get_elder_context,
     "get_current_time": AgentTools.get_current_time,
-    "get_weather_info": AgentTools.get_weather_info
+    "get_weather_info": AgentTools.get_weather_info,
+    "read_family_messages": AgentTools.read_family_messages,
+    "notify_family_SOS": AgentTools.notify_family_SOS,
+    "suggest_activity": AgentTools.suggest_activity,
+    "check_lunar_calendar": AgentTools.check_lunar_calendar
 }

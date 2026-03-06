@@ -6,8 +6,10 @@ import 'package:http/http.dart' as http;
 import 'dart:async';
 import 'dart:convert';
 import 'package:permission_handler/permission_handler.dart';
-import '../../services/api_service.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:video_player/video_player.dart';
+import 'package:markdown/markdown.dart' as md;
+import '../../services/api_service.dart';
 
 class ElderChatTab extends StatefulWidget {
   final int userId;
@@ -368,15 +370,18 @@ class _ElderChatTabState extends State<ElderChatTab>
               }
 
               if (data['chunk'] != null) {
+                // 第一個字進來時，就該消除「思考中」的泡泡
+                if (_isAILoading) {
+                  setState(() => _isAILoading = false);
+                }
+
                 final chunk = data['chunk'] as String;
                 currentParagraph += chunk;
                 pendingSentence += chunk;
 
-                // 同步將過濾後的乾淨文字顯示在畫面上，避免長輩看到奇怪的符號
-                String cleanParagraph = currentParagraph.replaceAll(
-                  RegExp(r'^(\*\*|\*|).*?(\*\*|\*|)[：:]\s*'),
-                  '',
-                );
+                // 直接保留原始文字交由 Markdown 渲染。
+                // (過去用來過濾角色前綴的 Regex 已移除，因會誤砍含有冒號的 url 如 https: 且後端已限制不生成前綴)
+                String cleanParagraph = currentParagraph;
 
                 setState(() {
                   _messages[aiMsgIndex]["text"] = cleanParagraph;
@@ -385,14 +390,9 @@ class _ElderChatTabState extends State<ElderChatTab>
 
                 // 若遇到標點符號，把這句話推進語音佇列
                 if (RegExp(r'[，。！？；,\.!\?]').hasMatch(chunk)) {
-                  // 方案二：前端強制過濾 (Regex)
-                  // 2. 過濾掉可能生成的角色前綴，例如「**老朋友**：」、「小美：」等
-                  String cleanSentence = pendingSentence.replaceAll(
-                    RegExp(r'^(\*\*|\*|).*?(\*\*|\*|)[：:]\s*'),
-                    '',
-                  );
-
-                  cleanSentence = cleanSentence.trim();
+                  // 方案二：前端強制過濾 (Regex) 已取消。
+                  // 避免 `https:` 冒號前的內容被誤會是標題而被砍掉。
+                  String cleanSentence = pendingSentence.trim();
 
                   if (cleanSentence.isNotEmpty) {
                     _sentenceQueue.add(cleanSentence);
@@ -618,17 +618,12 @@ class _ElderChatTabState extends State<ElderChatTab>
             const SizedBox(height: 10),
             MarkdownBody(
               data: text,
+              builders: {'img': CustomImageBuilder()},
               styleSheet: MarkdownStyleSheet(
                 p: GoogleFonts.notoSansTc(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
                   color: const Color(0xFF1E293B),
-                  height: 1.4,
-                ),
-                strong: GoogleFonts.notoSansTc(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w900,
-                  color: const Color(0xFF59B294),
                   height: 1.4,
                 ),
               ),
@@ -799,54 +794,45 @@ class _ElderChatTabState extends State<ElderChatTab>
                 width: 54,
                 height: 54,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF8DB08B).withValues(alpha: 0.7),
+                  color: Colors.white,
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withValues(alpha: 0.05),
                       blurRadius: 10,
-                      offset: const Offset(0, 4),
                     ),
                   ],
                 ),
-                child: const Icon(Icons.add, color: Colors.white, size: 32),
+                child: IconButton(
+                  icon: const Icon(
+                    Icons.add_rounded,
+                    color: Color(0xFF8DB08B),
+                    size: 30,
+                  ),
+                  onPressed: () {
+                    // TODO: 其他功能
+                  },
+                ),
               ),
               const SizedBox(width: 12),
 
-              // ① 長按麥克風按鈕
+              // 麥克風按鈕
               Expanded(
                 child: GestureDetector(
-                  onLongPressStart: (_) {
-                    if (!locked) _startListening();
-                  },
-                  onLongPressEnd: (_) {
-                    if (_isRecording) _stopListening();
-                  },
-                  onLongPressCancel: () {
-                    if (_isRecording) _stopListening(shouldSend: false);
-                  },
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    constraints: const BoxConstraints(minHeight: 54),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
-                    ),
+                  onLongPress: locked ? null : _startListening,
+                  onLongPressUp: locked ? null : _stopListening,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
                     decoration: BoxDecoration(
-                      color: _isRecording
-                          ? Colors.redAccent.withValues(alpha: 0.08)
-                          : Colors.white,
+                      color: micColor,
                       borderRadius: BorderRadius.circular(30),
-                      border: Border.all(
-                        color: micColor.withValues(alpha: 0.4),
-                        width: 1.8,
-                      ),
                       boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.04),
-                          blurRadius: 8,
-                          offset: const Offset(0, 4),
-                        ),
+                        if (_isRecording)
+                          BoxShadow(
+                            color: Colors.redAccent.withValues(alpha: 0.3),
+                            blurRadius: 15,
+                            spreadRadius: 2,
+                          ),
                       ],
                     ),
                     child: Row(
@@ -855,26 +841,17 @@ class _ElderChatTabState extends State<ElderChatTab>
                         Icon(
                           _isRecording
                               ? Icons.mic_rounded
-                              : locked
-                              ? Icons.lock_rounded
                               : Icons.mic_none_rounded,
-                          color: micColor,
-                          size: 30,
+                          color: Colors.white,
+                          size: 28,
                         ),
-                        const SizedBox(width: 10),
-                        Flexible(
-                          child: Text(
-                            statusText,
-                            style: GoogleFonts.notoSansTc(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: _isRecording
-                                  ? Colors.redAccent
-                                  : locked
-                                  ? Colors.grey
-                                  : const Color(0xFF8DB08B),
-                            ),
-                            overflow: TextOverflow.ellipsis,
+                        const SizedBox(width: 8),
+                        Text(
+                          statusText,
+                          style: GoogleFonts.notoSansTc(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
                           ),
                         ),
                       ],
@@ -882,31 +859,6 @@ class _ElderChatTabState extends State<ElderChatTab>
                   ),
                 ),
               ),
-
-              // 取消按鈕（錄音中才顯示）
-              if (_isRecording) ...[
-                const SizedBox(width: 8),
-                GestureDetector(
-                  onTap: () => _stopListening(shouldSend: false),
-                  child: Container(
-                    width: 54,
-                    height: 54,
-                    decoration: BoxDecoration(
-                      color: Colors.redAccent.withValues(alpha: 0.1),
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: Colors.redAccent.withValues(alpha: 0.3),
-                        width: 1.5,
-                      ),
-                    ),
-                    child: const Icon(
-                      Icons.close_rounded,
-                      color: Colors.redAccent,
-                      size: 28,
-                    ),
-                  ),
-                ),
-              ],
             ],
           ),
         ],
@@ -918,46 +870,164 @@ class _ElderChatTabState extends State<ElderChatTab>
   Widget _buildQuickActionCard(
     String title,
     IconData icon, {
-    VoidCallback? onTap,
+    required VoidCallback onTap,
   }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(32),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 15,
-            offset: const Offset(0, 8),
-          ),
-        ],
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 40, color: const Color(0xFF8DB08B)),
+            const SizedBox(height: 12),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.notoSansTc(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: const Color(0xFF1E293B),
+              ),
+            ),
+          ],
+        ),
       ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                size: 40,
-                color: const Color(0xFF1E293B).withValues(alpha: 0.6),
+    );
+  }
+}
+
+// ─── 影片播放器元件 ───────────────────────────────────────────────────────────
+class VideoPlayerWidget extends StatefulWidget {
+  final String videoUrl;
+
+  const VideoPlayerWidget({super.key, required this.videoUrl});
+
+  @override
+  State<VideoPlayerWidget> createState() => _VideoPlayerWidgetState();
+}
+
+class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
+  late VideoPlayerController _controller;
+  bool _isError = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = VideoPlayerController.networkUrl(Uri.parse(widget.videoUrl))
+      ..initialize()
+          .then((_) {
+            // Initialization complete
+            setState(() {});
+          })
+          .catchError((err) {
+            debugPrint("Video play error: $err");
+            setState(() {
+              _isError = true;
+            });
+          });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isError) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        color: Colors.grey[200],
+        child: const Text("影片載入失敗", style: TextStyle(color: Colors.red)),
+      );
+    }
+
+    if (!_controller.value.isInitialized) {
+      return const Padding(
+        padding: EdgeInsets.all(20.0),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AspectRatio(
+          aspectRatio: _controller.value.aspectRatio,
+          child: VideoPlayer(_controller),
+        ),
+        VideoProgressIndicator(_controller, allowScrubbing: true),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            IconButton(
+              icon: Icon(
+                _controller.value.isPlaying ? Icons.pause : Icons.play_arrow,
+                color: const Color(0xFF59B294),
+                size: 30,
               ),
-              const SizedBox(height: 12),
-              Text(
-                title,
-                textAlign: TextAlign.center,
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: const Color(0xFF1E293B),
-                  height: 1.3,
-                ),
-              ),
-            ],
-          ),
+              onPressed: () {
+                setState(() {
+                  _controller.value.isPlaying
+                      ? _controller.pause()
+                      : _controller.play();
+                });
+              },
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+// ─── Markdown 多媒體擴充 ──────────────────────────────────────────────────────
+
+class CustomImageBuilder extends MarkdownElementBuilder {
+  @override
+  Widget visitElementAfter(md.Element element, TextStyle? preferredStyle) {
+    final url = element.attributes['src'] ?? '';
+    final alt = element.attributes['alt'] ?? '';
+    if (url.isEmpty) return const SizedBox.shrink();
+
+    // 如果 alt 或副檔名符合影片格式，則渲染影片 (利用 Markdown 圖片連結偽裝影片指令)
+    if (alt == '影片' || url.toLowerCase().endsWith('.mp4')) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8.0),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: VideoPlayerWidget(videoUrl: url),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Image.network(
+          url,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) {
+            return Container(
+              padding: const EdgeInsets.all(16),
+              color: Colors.grey[200],
+              child: const Text("圖片載入失敗", style: TextStyle(color: Colors.red)),
+            );
+          },
         ),
       ),
     );
