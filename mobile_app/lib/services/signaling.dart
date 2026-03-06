@@ -17,13 +17,14 @@ typedef void CallRequestCallback(String roomId, String senderId);
 typedef void CallAcceptedCallback(String accepterId);
 
 class Signaling {
+  // ★ 請確認 IP 正確 (實機: 192.168.31.209, 模擬器: 10.0.2.2)
   final String _socketUrl = 'http://192.168.0.4:5000'; // 請確認 IP
   static const platform = MethodChannel('com.example.app/bring_to_front');
 
   IO.Socket? socket;
   RTCPeerConnection? peerConnection;
   MediaStream? localStream;
-  
+
   StreamStateCallback? onAddRemoteStream;
   StreamStateCallback? onLocalStream;
   Function(List<dynamic>)? onElderDevicesUpdate;
@@ -32,27 +33,37 @@ class Signaling {
   ErrorCallback? onJoinFailed;
   CallRequestCallback? onCallRequest;
   CallAcceptedCallback? onCallAcceptedByRemote;
-  CallAcceptedCallback? onCallBusy; // Reusing CallAcceptedCallback for simplicity (just needs a string ID)
+  CallAcceptedCallback?
+  onCallBusy; // Reusing CallAcceptedCallback for simplicity (just needs a string ID)
 
   String? _currentRoomId;
   String? _peerSocketId;
   List<RTCIceCandidate> _candidateQueue = [];
-  
+
   // 保留這個修復：暫存房間，解決 "只能收到第一個響鈴" 的問題
   final List<String> _pendingRooms = [];
 
   final Map<String, dynamic> _configuration = {
-    'iceServers': [{'urls': 'stun:stun.l.google.com:19302'}]
+    'iceServers': [
+      {'urls': 'stun:stun.l.google.com:19302'},
+    ],
   };
 
-  void connect(String roomId, String role, {String deviceName = 'Unknown', String deviceMode = 'comm'}) {
+  void connect(
+    String roomId,
+    String role, {
+    String deviceName = 'Unknown',
+    String deviceMode = 'comm',
+  }) {
     _currentRoomId = roomId;
 
-    socket = IO.io(_socketUrl, IO.OptionBuilder()
-      .setTransports(['websocket'])
-      .disableAutoConnect()
-      .enableForceNew() // 強制每次 connect 都建立全新 Socket，不共用快取
-      .build()
+    socket = IO.io(
+      _socketUrl,
+      IO.OptionBuilder()
+          .setTransports(['websocket'])
+          .disableAutoConnect()
+          .enableForceNew() // 強制每次 connect 都建立全新 Socket，不共用快取
+          .build(),
     );
 
     socket!.connect();
@@ -60,7 +71,7 @@ class Signaling {
     socket!.onConnect((_) {
       print('✅ Socket 連線成功');
       _emitJoin(roomId, role, deviceName, deviceMode);
-      
+
       // 加入暫存的房間
       for (var pendingRoom in _pendingRooms) {
         _emitJoin(pendingRoom, 'family', 'Dashboard_Listener', 'listener');
@@ -73,8 +84,11 @@ class Signaling {
       socket?.disconnect();
     });
 
-    socket!.on('elder-devices-list', (data) => onElderDevicesUpdate?.call(data as List<dynamic>));
-    
+    socket!.on(
+      'elder-devices-list',
+      (data) => onElderDevicesUpdate?.call(data as List<dynamic>),
+    );
+
     // 響鈴監聽
     socket!.on('call-request', (data) {
       if (onCallRequest != null) onCallRequest!(data['room'], data['senderId']);
@@ -82,8 +96,9 @@ class Signaling {
 
     // 對方接聽監聽
     socket!.on('call-accept', (data) {
-      _peerSocketId = data['accepterId'];  // ★ 記錄接聽方的 Socket ID，以便之後單播 end-call
-      if (onCallAcceptedByRemote != null) onCallAcceptedByRemote!(data['accepterId']);
+      _peerSocketId = data['accepterId']; // ★ 記錄接聽方的 Socket ID，以便之後單播 end-call
+      if (onCallAcceptedByRemote != null)
+        onCallAcceptedByRemote!(data['accepterId']);
     });
 
     // 忙線監聽
@@ -98,16 +113,21 @@ class Signaling {
 
       bool isEmergency = data['isEmergency'] == true;
       if (isEmergency) {
-        try { await platform.invokeMethod('bringToFront'); } catch (e) {}
-        try { 
+        try {
+          await platform.invokeMethod('bringToFront');
+        } catch (e) {}
+        try {
           VolumeController.instance.showSystemUI = false;
-          VolumeController.instance.setVolume(1.0); 
+          VolumeController.instance.setVolume(1.0);
         } catch (e) {}
       }
 
       bool shouldAnswer = false;
       if (onIncomingCall != null) {
-        shouldAnswer = await onIncomingCall!(_peerSocketId!, isEmergency ? 'emergency' : 'normal');
+        shouldAnswer = await onIncomingCall!(
+          _peerSocketId!,
+          isEmergency ? 'emergency' : 'normal',
+        );
       } else {
         // If no UI handler (e.g. background), try CallKit for Family role.
         // But for Elder, they should auto-answer emergency.
@@ -120,7 +140,7 @@ class Signaling {
       }
 
       if (shouldAnswer) {
-        await _acceptCall(data, useLocalStream: true); 
+        await _acceptCall(data, useLocalStream: true);
       }
     });
 
@@ -135,8 +155,13 @@ class Signaling {
     });
 
     socket!.on('candidate', (data) async {
-      var candidate = RTCIceCandidate(data['candidate'], data['sdpMid'], data['sdpMLineIndex']);
-      if (peerConnection != null && await peerConnection?.getRemoteDescription() != null) {
+      var candidate = RTCIceCandidate(
+        data['candidate'],
+        data['sdpMid'],
+        data['sdpMLineIndex'],
+      );
+      if (peerConnection != null &&
+          await peerConnection?.getRemoteDescription() != null) {
         await peerConnection?.addCandidate(candidate);
       } else {
         _candidateQueue.add(candidate);
@@ -213,7 +238,7 @@ class Signaling {
     });
 
     // 等待用戶操作，這裡簡化處理，實際應用中需要更完善的異步等待機制 (Completer)
-    await Future.delayed(const Duration(seconds: 5)); 
+    await Future.delayed(const Duration(seconds: 5));
     return accepted;
   }
 
@@ -225,13 +250,13 @@ class Signaling {
     } catch (e) {
       print("⚠️ 無法獲取 FCM Token: $e");
     }
-    
+
     socket!.emit('join', {
-      'room': room, 
-      'role': role, 
-      'deviceName': name, 
+      'room': room,
+      'role': role,
+      'deviceName': name,
       'deviceMode': mode,
-      'fcmToken': fcmToken
+      'fcmToken': fcmToken,
     });
   }
 
@@ -252,10 +277,9 @@ class Signaling {
     socket!.emit('call-request', {'room': _currentRoomId});
   }
 
-
   void sendCallAccept(String targetSocketId) async {
     if (socket == null) return;
-    
+
     // 如果還沒連線，最多等待 5 秒 (50 * 100ms)
     int retries = 50;
     while (!socket!.connected && retries > 0) {
@@ -282,7 +306,7 @@ class Signaling {
       if (_peerSocketId != null) {
         socket!.emit('end-call', {
           'room': _currentRoomId,
-          'targetId': _peerSocketId
+          'targetId': _peerSocketId,
         });
       }
       // ★ 延遲斷線：確保 end-call 訊息送達後再中斷 socket (僅限需要斷開的畫面)
@@ -294,7 +318,7 @@ class Signaling {
       }
     }
     _closePeerConnection();
-    
+
     // ★ 是否釋放媒體串流 (ElderScreen 需要持續開啟攝影機所以帶 false)
     if (disposeLocalStream) {
       localStream?.getTracks().forEach((t) => t.stop());
@@ -312,7 +336,10 @@ class Signaling {
     _candidateQueue.clear();
   }
 
-  Future<void> _acceptCall(Map<String, dynamic> data, {required bool useLocalStream}) async {
+  Future<void> _acceptCall(
+    Map<String, dynamic> data, {
+    required bool useLocalStream,
+  }) async {
     if (peerConnection != null) await peerConnection!.close();
     await _createPeerConnection(useLocalStream: useLocalStream);
 
@@ -326,7 +353,7 @@ class Signaling {
         'room': _currentRoomId,
         'targetId': _peerSocketId,
         'type': 'answer',
-        'sdp': answer!.sdp
+        'sdp': answer!.sdp,
       });
     } catch (e) {
       print("❌ Accept Error: $e");
@@ -348,7 +375,7 @@ class Signaling {
           'room': _currentRoomId,
           'candidate': candidate.candidate,
           'sdpMid': candidate.sdpMid,
-          'sdpMLineIndex': candidate.sdpMLineIndex
+          'sdpMLineIndex': candidate.sdpMLineIndex,
         };
         if (_peerSocketId != null) payload['targetId'] = _peerSocketId!;
         socket!.emit('candidate', payload);
@@ -360,7 +387,9 @@ class Signaling {
       }
     };
     if (useLocalStream && localStream != null) {
-      localStream!.getTracks().forEach((track) => peerConnection?.addTrack(track, localStream!));
+      localStream!.getTracks().forEach(
+        (track) => peerConnection?.addTrack(track, localStream!),
+      );
     }
   }
 
@@ -375,9 +404,9 @@ class Signaling {
     await _createPeerConnection(useLocalStream: true);
     RTCSessionDescription offer = await peerConnection!.createOffer();
     await peerConnection!.setLocalDescription(offer);
-    
+
     var payload = {
-      'room': _currentRoomId, 
+      'room': _currentRoomId,
       'type': 'offer',
       'sdp': offer.sdp,
       'isEmergency': isEmergency,
@@ -389,7 +418,7 @@ class Signaling {
   Future<void> startMonitoring(String targetId) async {
     _candidateQueue.clear();
     _peerSocketId = targetId;
-    await _createPeerConnection(useLocalStream: false); 
+    await _createPeerConnection(useLocalStream: false);
     await peerConnection!.addTransceiver(
       kind: RTCRtpMediaType.RTCRtpMediaTypeVideo,
       init: RTCRtpTransceiverInit(direction: TransceiverDirection.RecvOnly),
@@ -405,12 +434,15 @@ class Signaling {
       'room': _currentRoomId,
       'type': 'offer',
       'sdp': offer.sdp,
-      'isEmergency': true, 
+      'isEmergency': true,
     });
   }
 
   Future<void> openUserMedia(RTCVideoRenderer localVideo) async {
-    var stream = await navigator.mediaDevices.getUserMedia({'video': true, 'audio': true});
+    var stream = await navigator.mediaDevices.getUserMedia({
+      'video': true,
+      'audio': true,
+    });
     localVideo.srcObject = stream;
     localStream = stream;
     if (onLocalStream != null) onLocalStream!(stream);

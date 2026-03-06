@@ -66,5 +66,11 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>我們需要錄音權限，讓長輩能透過語音與 AI 聊天。</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>我們需要語音辨識權限，將長輩的聲音轉換為文字。</string>
+	<key>NSCameraUsageDescription</key>
+	<string>我們需要相機權限，以進行掃碼配對。</string>
 </dict>
 </plist>
