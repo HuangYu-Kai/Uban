@@ -1,41 +1,58 @@
-# UBan - AI-Powered Generative Care Ecosystem
+# Uban - AI 跨世代感知照護系統：使用教學 (Tutorial)
 
-UBan 是一個領先的「AI 跨世代感知照護系統」，致力於透過生成式 AI 技術與直覺的數位工具，打造一個充滿溫度、能主動感知的智慧守護平台。
-
----
-
-## 📂 專案核心架構 (System Architecture)
-
-本專案採用現代化的多模組架構，將行動端、AI 核心與通訊服務進行解耦：
-
-### 📱 [Mobile App](./mobile_app) (Flutter)
-
-這是系統的門面，分為 **長輩端 (Elderly)** 與 **家屬端 (Family)** 兩大入口。
-
-* **技術棧**: Flutter, Dart, `flutter_animate`, `fl_chart`, `google_fonts`.
-* **關鍵畫面**:
-  * **Premium Entry**: 高質感身分選擇頁，具備流暢動態背景。
-  * **Visual Script Editor**: 工業級劇本編輯器，支援多維度觸發（語音/天氣/健康/IoT）。
-  * **Care Journal**: 視覺化長輩情緒波動趨勢（心情折線圖）。
-
-### 🤖 [TLM (Taiwanese Language Model)](./TLM) (Python/AI)
-
-這是系統的「大腦」，專為台灣語境優化。
-
-* **模型**: 整合 **NVIDIA Llama-Taiwan** (70B/Instruct)，提供道地的繁體中文與台語交流。
-* **功能**:
-  * **聯網搜尋 (Search)**: 整合 DuckDuckGo Search，即時獲取天氣與市場菜價。
-  * **意圖判斷 (Intent)**: 自動判別使用者是要閒聊還是查詢事實。
-  * **語音轉換 (TTS)**: 整合 `edge_tts` 提供溫潤的台灣腔語音回饋。
-
-### 📡 [WebRTC](./webrtc) & [Server](./server)
-
-* **WebRTC**: 提供即時的影音視訊對講能力。
-* **Server**: 基於 Python Flask 的後端 API（目前架構中，主要邏輯分佈在各模組，此處為擴展預留）。
+本文件將引導您從零開始架設並執行 **Uban** 系統。Uban 是一個結合 Gemini 2.5 Agentic RAG 技術與 WebRTC 實時通訊的照護平台，旨在連接近端長輩與遠端家屬。
 
 ---
 
-## 🌟 核心功能亮點 (Key Features)
+## 🛠️ 第一部分：後端環境架設 (Server Setup)
+
+後端基於 Python Flask 構建，負責處理 AI 記憶、配對邏輯與 WebRTC 信令。
+
+### 1. 準備環境
+
+建議使用虛擬環境以保持系統乾淨：
+
+```bash
+cd server
+python -m venv venv
+# Windows:
+venv\Scripts\activate
+# macOS/Linux:
+source venv/bin/activate
+```
+
+### 2. 安裝依賴項
+
+安裝 Flask、SQLAlchemy 與 SocketIO 等核心套件：
+
+```bash
+pip install -r requirements.txt
+```
+
+### 3. 配置環境變數
+
+在 `server/` 目錄下建立 `.env` 檔案，並填入您的 Gemini API Key：
+
+```env
+GEMINI_API_KEY=您的_GEMINI_API_金鑰
+```
+
+### 4. 初始化與啟動
+
+首次啟動時，系統會自動在 `instance/` 資料夾建立 SQLite 資料庫 (`uban.db`)：
+
+```bash
+python app.py
+```
+
+* **API 服務**：預設運行於 `5000` 埠。
+* **Socket.IO/信令服務**：預設運行於 `5001` 埠。
+
+---
+
+## 📱 第二部分：行動端架設 (Mobile App Setup)
+
+App 使用 Flutter 開發，支援長輩端與家屬端兩種模式。
 
 ### 0. 影音視訊監控 (Video Monitoring)
 
@@ -49,80 +66,56 @@ npm install
 
 ### 1. 視覺化劇本編輯器 2.0 (Visual Script Editor)
 
-家屬可以透過「樂高式」的介面，為長輩定義自動化對話流。
+### 1. 取得套件
 
-* **多來源觸發器**: 支援 **語音識別**、**定時任務**、**天氣劇變**、**健康指標 (心率/步數)**、**居家感測器 (跌倒偵測)**。
-* **智能畫布系統**: 具備 **Auto-Layout (自動排版)**、縮放與全自由滑動。
-* **模擬器連動**: 編輯劇本時，右側模擬器會與左側畫布同步高亮，提供即時回饋感。
-
-### 2. 生成式 AI 陪伴者 (Generative Chat)
-
-針對長輩設計的超大字體、超大麥克風介面。
-
-* **貼心陪聊**: AI 不只會回答，還會基於家屬輸入的「家族話題」主動開啟對話（如：傳送一張家庭旅遊照片並發問）。
-* **主動語音**: 所有內容皆可透過語音朗讀，減少長輩閱讀負擔。
-
-### 3. 家屬端智慧管理 (Smart Dashboard)
-
-* **AI 情感判讀**: 自動分析長輩對話，提煉出一週心情洞察。
-* **多層級方案**: 提供「UBan 訂閱模型」，包含免費版到家庭專業版的完整介面。
-
----
-
-## �️ 技術規格 (Tech Stack)
-
-| 領域 | 技術 / 工具 |
-| :--- | :--- |
-| **前端開發** | Flutter, Dart |
-| **動畫引擎** | `flutter_animate` |
-| **數據圖表** | `fl_chart` |
-| **AI 模型** | NVIDIA yentinglin/llama-3-taiwan (Llama 3 Taiwan) |
-| **語音技術** | Microsoft Edge TTS |
-| **後端框架** | Python Flask (Pygame for audio testing) |
-| **實時通訊** | WebRTC (Twilio/Metered) |
-
----
-
-## 🚀 未來開發藍圖 (Roadmap)
-
-1. **後端數據持久化 (Phase 1)**: 將劇本 JSON 存入資料庫，實作家屬與長輩的正式帳套與配對碼機制。
-2. **AI 人格客製化 (Phase 2)**: 讓家屬能透過 UI 設定 AI 的「人設」（如：慈母、頑童、醫師）。
-3. **邊緣感應接入 (Phase 3)**: 與實體手環（如 Fitbit/Garmin）及門窗感測器串接，讓「跌倒偵測」真正具備緊急通知能力。
-
----
-
-## � 安裝與啟動 (Getting Started)
-
-### 行動端 (Mobile)
+確保您已安裝 Flutter SDK，並在 `mobile_app` 目錄執行：
 
 ```bash
 cd mobile_app
 flutter pub get
+```
+
+### 2. 啟動 App
+
+您可以啟動模擬器或連接實體手機：
+
+```bash
 flutter run
 ```
 
-### 伺服器 (Server)
+---
 
-需進入 server 目錄：`cd server`
+## 🚀 第三部分：核心操作指南 (Core Tutorial)
 
-#### 1. 安裝依賴
+### 1. 角色選擇 (Role Selection)
 
-pip install -r requirements.txt
+App 啟動後，請選擇您的身份：
 
-#### 2. 啟動伺服器
+* **長輩端 (Elder)**：通常安裝在平板或放置於長輩家中。
+* **家屬端 (Family)**：安裝在家屬的手機中。
 
-python app.py
+### 2. 雙向配對流程 (Pairing Flow)
 
-#### 3. 檢查資料庫
+這是系統運作的核心步驟：
 
-python inspect_db.py
+1. **長輩端取得代碼**：在長輩端介面點擊「顯示配對碼」，系統會從伺服器取得一組 **4 位數 PIN 碼**。
+2. **家屬端認領**：家屬登入後，點擊「新增長輩」，輸入上述的 **PIN 碼**，並填寫長輩的稱呼（如：外公）。
+3. **自動註冊**：伺服器會自動為該長輩建立專屬帳號，並將家屬與長輩進行「強綁定」。
+4. **成功連線**：配對完成後，長輩端會自動進入主畫面，顯示對話介面與懷舊收音機。
 
-### AI 核心 (AI Core)
+### 3. AI 陪伴與記憶系統
 
-```bash
-pip install openai edge_tts pygame duckduckgo_search
-python TaiwaneseLM.py
-```
+* **語音互動**：點擊麥克風即可開始說話。後端 Gemini Agent 會根據 `ElderProfile`（居住地、興趣、病史）提供個人化的回覆。
+* **自動總結**：系統每 10 次對話會自動產出「健康摘要」，讓家屬隨時掌握長輩的心情與身體狀況。
+
+### 4. 遠端監控與視訊 (WebRTC)
+
+* **單向監控**：家屬端可選擇「查看環境」，此時長輩端會自動建立 P2P 連線並回傳影像（具備被動接聽邏輯），這讓家屬在不打擾長輩的情況下確認居家安全。
+* **雙向通訊**：支援低延遲的語音與視訊通話。
 
 ---
-*UBan - 用生成式 AI 填補距離，讓關心無所不在。*
+
+## ⚠️ 常見問題 (Troubleshooting)
+
+* **連線失敗**：請確認手機與伺服器是否在同一個網路網段，或將 App 中的 API URL 設定為伺服器的區域 IP 地址（例如 `192.168.x.x`）。
+* **AI 無回應**：請檢查 `.env` 中的金鑰是否有效，並確認伺服器終端機是否有出現「Quota Exceeded」錯誤。

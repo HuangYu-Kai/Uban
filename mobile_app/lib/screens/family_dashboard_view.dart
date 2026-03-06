@@ -8,6 +8,7 @@ import 'monitoring_screen.dart';
 
 import 'family_ai_chat_screen.dart';
 import 'elder_selection_screen.dart';
+import 'elder_profile_edit_screen.dart';
 
 class FamilyDashboardView extends StatefulWidget {
   final int userId;
@@ -129,46 +130,87 @@ class _FamilyDashboardViewState extends State<FamilyDashboardView> {
             ),
           ],
         ),
-        // 切換長輩按鈕
-        GestureDetector(
-          onTap: () async {
-            await Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (c) => ElderSelectionScreen(
-                  userId: widget.userId,
-                  userName: widget.userName,
+        // 右側操作列
+        Row(
+          children: [
+            // 編輯資料按鈕
+            GestureDetector(
+              onTap: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (c) => ElderProfileEditScreen(
+                      // 此處暫時帶入靜態版模擬數據，後續可從 API 載入真實長輩資料
+                      elderData: {
+                        'name': _elderName,
+                        'age': 75,
+                        'location': '台北市士林區',
+                        'phone': '0912-345-678',
+                      },
+                    ),
+                  ),
+                );
+              },
+              child: Container(
+                margin: const EdgeInsets.only(right: 12),
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: const Icon(
+                  Icons.edit_note_rounded,
+                  color: Color(0xFF475569),
+                  size: 22,
                 ),
               ),
-            );
-            _loadSelectedElder(); // 返回後重新整理
-          },
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              color: const Color(0xFFEFF6FF),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: const Color(0xFFDBEAFE)),
             ),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.sync_rounded,
-                  color: Color(0xFF2563EB),
-                  size: 18,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  '切換長輩',
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 15,
-                    color: const Color(0xFF2563EB),
-                    fontWeight: FontWeight.w700,
+            // 切換長輩按鈕
+            GestureDetector(
+              onTap: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (c) => ElderSelectionScreen(
+                      userId: widget.userId,
+                      userName: widget.userName,
+                    ),
                   ),
+                );
+                _loadSelectedElder(); // 返回後重新整理
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
                 ),
-              ],
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEFF6FF),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFFDBEAFE)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.sync_rounded,
+                      color: Color(0xFF2563EB),
+                      size: 18,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      '切換',
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: 15,
+                        color: const Color(0xFF2563EB),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
-          ),
+          ],
         ),
       ],
     );

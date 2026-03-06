@@ -34,3 +34,21 @@ class ActivityLog(db.Model):
     
     # 用於儲存更詳細的機器可讀數據 (JSON 格式字串)
     extra_data = db.Column(db.Text, nullable=True) 
+
+class ElderProfile(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, unique=True)
+    phone = db.Column(db.String(20), nullable=True)
+    location = db.Column(db.String(100), nullable=True)
+    ai_persona = db.Column(db.String(50), nullable=True, default='溫暖孫子')
+    chronic_diseases = db.Column(db.Text, nullable=True)
+    medication_notes = db.Column(db.Text, nullable=True)
+    interests = db.Column(db.Text, nullable=True)
+
+class FamilyMessage(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    family_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    elder_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    is_read = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)

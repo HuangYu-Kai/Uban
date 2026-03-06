@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../services/api_service.dart';
 import '../identification_screen.dart';
 import 'family_subscription_screen.dart';
 import '../caregiver_pairing_screen.dart';
+import '../elder_profile_edit_screen.dart';
 
 class FamilySettingsView extends StatefulWidget {
   final int userId;
@@ -82,6 +84,87 @@ class _FamilySettingsViewState extends State<FamilySettingsView> {
               );
             },
             child: const Text('登出', style: TextStyle(color: Colors.redAccent)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _pickAndUploadAvatar(int targetUserId) async {
+    final ImagePicker picker = ImagePicker();
+    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+
+    if (image != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('正在上傳大頭照...'), duration: Duration(seconds: 1)),
+      );
+      final result = await ApiService.uploadAvatar(targetUserId, image.path);
+
+      if (!mounted) return;
+      if (result.containsKey('avatar_url')) {
+        setState(() {}); // Trigger rebuild to refresh image with new timestamp
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('大頭照更新成功！'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('更新失敗: ${result['error']}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Widget _buildAvatar(int userId, String defaultName, double radius) {
+    return GestureDetector(
+      onTap: () => _pickAndUploadAvatar(userId),
+      child: Stack(
+        children: [
+          Container(
+            width: radius * 2,
+            height: radius * 2,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.orange[100],
+            ),
+            clipBehavior: Clip.hardEdge,
+            child: Image.network(
+              '${ApiService.baseUrl}/user/$userId/avatar?v=${DateTime.now().millisecondsSinceEpoch}',
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) {
+                return Center(
+                  child: Text(
+                    defaultName.isNotEmpty ? defaultName[0] : 'U',
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: radius * 0.7,
+                      color: Colors.orange[800],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          Positioned(
+            right: 0,
+            bottom: 0,
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.grey[200]!, width: 1),
+              ),
+              child: const Icon(
+                Icons.camera_alt,
+                size: 14,
+                color: Colors.blueAccent,
+              ),
+            ),
           ),
         ],
       ),
@@ -253,17 +336,7 @@ class _FamilySettingsViewState extends State<FamilySettingsView> {
       color: Colors.white,
       child: Row(
         children: [
-          CircleAvatar(
-            radius: 36,
-            backgroundColor: Colors.orange[100],
-            child: Text(
-              _userName.isNotEmpty ? _userName[0] : '家',
-              style: GoogleFonts.notoSansTc(
-                fontSize: 24,
-                color: Colors.orange[800],
-              ),
-            ),
-          ),
+          _buildAvatar(widget.userId, _userName, 36),
           const SizedBox(width: 20),
           Expanded(
             child: Column(
@@ -350,10 +423,7 @@ class _FamilySettingsViewState extends State<FamilySettingsView> {
 
   Widget _buildElderTile(dynamic elder) {
     return ListTile(
-      leading: const CircleAvatar(
-        backgroundColor: Colors.blueAccent,
-        child: Icon(Icons.person, color: Colors.white),
-      ),
+      leading: _buildAvatar(elder['id'], elder['user_name'] ?? '長', 20),
       title: Text(elder['user_name'] ?? '未知長輩'),
       subtitle: Text(
         'ID: ${elder['id']} | 年齡: ${elder['age']} | 性別: ${elder['gender'] == 'M' ? '男' : '女'}',
@@ -376,238 +446,83 @@ class _FamilySettingsViewState extends State<FamilySettingsView> {
           const Icon(Icons.edit_note, color: Colors.blueAccent, size: 20),
         ],
       ),
-      onTap: () => _showEditElderDialog(elder),
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ElderProfileEditScreen(
+              elderData: elder,
+              familyId: widget.userId,
+              onUnbind: () {
+                Navigator.pop(context); // Close profile edit screen
+                _showUnbindConfirmDialog(elder);
+              },
+            ),
+          ),
+        ).then((_) {
+          _fetchPairedElders(); // Refresh on return
+        });
+      },
     );
   }
 
-  void _showEditElderDialog(dynamic elder) {
-    final nameController = TextEditingController(text: elder['user_name']);
-    final ageController = TextEditingController(text: elder['age'].toString());
-    String currentGender = elder['gender'] ?? 'M';
-
+  void _showUnbindConfirmDialog(dynamic elder) {
     showDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(28),
+      builder: (context) => AlertDialog(
+        title: Text(
+          '解除綁定',
+          style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold),
+        ),
+        content: Text(
+          '確定要解除與「${elder['user_name']}」的綁定嗎？\n\n警告：這將會永久刪除該長輩的所有資料與對話紀錄，無法復原。',
+          style: GoogleFonts.notoSansTc(color: Colors.redAccent, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('取消', style: GoogleFonts.notoSansTc()),
           ),
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      '編輯資訊',
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: const Color(0xFF1E293B),
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.close, color: Colors.grey),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                _buildFieldLabel('長輩姓名'),
-                TextField(
-                  controller: nameController,
-                  decoration: _dialogInputDecoration(
-                    Icons.person_outline,
-                    '例如：王大明',
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () async {
+              final navigator = Navigator.of(context);
+              final messenger = ScaffoldMessenger.of(context);
+
+              final result = await ApiService.unbindElder(
+                widget.userId,
+                elder['id'],
+              );
+
+              if (!mounted) return;
+
+              if (result.containsKey('message')) {
+                navigator.pop();
+                _fetchPairedElders();
+                messenger.showSnackBar(
+                  SnackBar(
+                    content: const Text('已刪除並解除綁定'),
+                    backgroundColor: Colors.redAccent,
+                    behavior: SnackBarBehavior.floating,
                   ),
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  children: [
-                    Expanded(
-                      flex: 2,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildFieldLabel('年齡'),
-                          TextField(
-                            controller: ageController,
-                            keyboardType: TextInputType.number,
-                            decoration: _dialogInputDecoration(null, '歲'),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      flex: 3,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildFieldLabel('性別'),
-                          Container(
-                            height: 56,
-                            padding: const EdgeInsets.symmetric(horizontal: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.grey[100],
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: Row(
-                              children: [
-                                _genderChoice(
-                                  label: '男',
-                                  isSelected: currentGender == 'M',
-                                  onTap: () =>
-                                      setDialogState(() => currentGender = 'M'),
-                                ),
-                                _genderChoice(
-                                  label: '女',
-                                  isSelected: currentGender == 'F',
-                                  onTap: () =>
-                                      setDialogState(() => currentGender = 'F'),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 32),
-                SizedBox(
-                  width: double.infinity,
-                  height: 56,
-                  child: ElevatedButton(
-                    onPressed: () async {
-                      // 1. 在 await 之前捕獲狀態
-                      final navigator = Navigator.of(context);
-                      final messenger = ScaffoldMessenger.of(context);
-
-                      final result = await ApiService.updateElderInfo(
-                        familyId: widget.userId,
-                        elderId: elder['id'],
-                        userName: nameController.text.trim(),
-                        age: int.tryParse(ageController.text.trim()),
-                        gender: currentGender,
-                      );
-
-                      if (!mounted) return;
-
-                      if (result.containsKey('message')) {
-                        // 2. 使用捕獲的狀態
-                        navigator.pop();
-                        _fetchPairedElders();
-
-                        messenger.showSnackBar(
-                          SnackBar(
-                            content: const Text('更新成功 ✨'),
-                            backgroundColor: Colors.green[600],
-                            behavior: SnackBarBehavior.floating,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                        );
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF2563EB),
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                    child: Text(
-                      '儲存變更',
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                );
+              } else {
+                navigator.pop();
+                messenger.showSnackBar(
+                  SnackBar(
+                    content: Text('刪除失敗: ${result['error']}'),
+                    backgroundColor: Colors.redAccent,
+                    behavior: SnackBarBehavior.floating,
                   ),
-                ),
-              ],
+                );
+              }
+            },
+            child: Text(
+              '確定刪除',
+              style: GoogleFonts.notoSansTc(color: Colors.white),
             ),
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFieldLabel(String label) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 4, bottom: 8),
-      child: Text(
-        label,
-        style: GoogleFonts.notoSansTc(
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
-          color: Colors.blueGrey,
-        ),
-      ),
-    );
-  }
-
-  InputDecoration _dialogInputDecoration(IconData? icon, String hint) {
-    return InputDecoration(
-      hintText: hint,
-      prefixIcon: icon != null ? Icon(icon, size: 20) : null,
-      filled: true,
-      fillColor: Colors.grey[100],
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
-        borderSide: BorderSide.none,
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
-        borderSide: BorderSide.none,
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
-        borderSide: const BorderSide(color: Color(0xFF2563EB), width: 1.5),
-      ),
-    );
-  }
-
-  Widget _genderChoice({
-    required String label,
-    required bool isSelected,
-    required VoidCallback onTap,
-  }) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          margin: const EdgeInsets.all(4),
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: isSelected ? Colors.white : Colors.transparent,
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: isSelected
-                ? [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
-                      blurRadius: 4,
-                      offset: const Offset(0, 2),
-                    ),
-                  ]
-                : null,
-          ),
-          child: Text(
-            label,
-            style: GoogleFonts.notoSansTc(
-              fontSize: 14,
-              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-              color: isSelected ? const Color(0xFF2563EB) : Colors.grey[600],
-            ),
-          ),
-        ),
+        ],
       ),
     );
   }

@@ -112,3 +112,34 @@ def confirm_pairing():
         'message': 'Successfully paired and elder account created!',
         'elder_id': new_elder.id
     })
+
+@pairing_bp.route('/<int:family_id>/<int:elder_id>', methods=['DELETE'])
+def unbind_elder(family_id, elder_id):
+    """
+    解除家屬與長輩的綁定關係，並刪除該長輩的關聯資料。
+    """
+    try:
+        from models import ActivityLog, ElderProfile
+        
+        # 1. 刪除 Relationship
+        rel = Relationship.query.filter_by(family_id=family_id, elder_id=elder_id).first()
+        if rel:
+            db.session.delete(rel)
+            
+        # 2. 刪除 ActivityLog
+        ActivityLog.query.filter_by(user_id=elder_id).delete()
+        
+        # 3. 刪除 ElderProfile
+        ElderProfile.query.filter_by(user_id=elder_id).delete()
+        
+        # 4. 刪除 User 帳號
+        elder_user = User.query.get(elder_id)
+        if elder_user:
+            db.session.delete(elder_user)
+            
+        db.session.commit()
+        return jsonify({'message': 'Unbound and deleted elder data successfully'}), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
