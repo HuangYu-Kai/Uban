@@ -54,18 +54,6 @@ python app.py
 
 App 使用 Flutter 開發，支援長輩端與家屬端兩種模式。
 
-### 0. 影音視訊監控 (Video Monitoring)
-
-整合 WebRTC (Twilio/Metered) 提供家屬與長輩間的高品質即時視訊通話與居家監控功能。
-
-```bash
-# 安裝後端依賴
-cd backend
-npm install
-```
-
-### 1. 視覺化劇本編輯器 2.0 (Visual Script Editor)
-
 ### 1. 取得套件
 
 確保您已安裝 Flutter SDK，並在 `mobile_app` 目錄執行：
