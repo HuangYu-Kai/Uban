@@ -32,6 +32,7 @@ class _ElderChatTabState extends State<ElderChatTab>
   bool _speechEnabled = false;
   bool _isRecording = false;
   String _lastWords = '';
+  String? _sttLocaleToUse; // 緩存語系，避免每次按下麥克風都要搜尋
 
   // --- TTS ---
   final FlutterTts _flutterTts = FlutterTts();
@@ -152,6 +153,21 @@ class _ElderChatTabState extends State<ElderChatTab>
           },
           onError: (err) => debugPrint('STT error: $err'),
         );
+
+        // 初始化時順便找好支援的繁體語系並存起來
+        if (_speechEnabled) {
+          _speechToText.locales().then((locales) {
+            final zhTw = locales.where(
+              (l) => l.localeId.contains('zh') || l.localeId.contains('cmn'),
+            );
+            if (zhTw.isNotEmpty) {
+              _sttLocaleToUse = zhTw.first.localeId;
+              debugPrint('STT pre-cached Locale: $_sttLocaleToUse');
+            } else {
+              debugPrint('zh-TW not found during STT init');
+            }
+          });
+        }
       } catch (e) {
         debugPrint('STT init failed: $e');
         _speechEnabled = false;
@@ -193,19 +209,6 @@ class _ElderChatTabState extends State<ElderChatTab>
     });
 
     try {
-      // 嘗試找到 zh-TW 語系，沒有就用裝置預設
-      String? localeToUse;
-      final locales = await _speechToText.locales();
-      final zhTw = locales.where(
-        (l) => l.localeId.contains('zh') || l.localeId.contains('cmn'),
-      );
-      if (zhTw.isNotEmpty) {
-        localeToUse = zhTw.first.localeId;
-        debugPrint('STT Locale: ${zhTw.first.localeId}');
-      } else {
-        debugPrint('zh-TW not found, using device default');
-      }
-
       await _speechToText.listen(
         onResult: (result) {
           debugPrint('STT result: ${result.recognizedWords}');
@@ -213,7 +216,7 @@ class _ElderChatTabState extends State<ElderChatTab>
         },
         listenFor: const Duration(seconds: 30),
         pauseFor: const Duration(seconds: 4),
-        localeId: localeToUse,
+        localeId: _sttLocaleToUse, // 直接使用已經挑好的語系
         listenOptions: SpeechListenOptions(
           partialResults: true,
           cancelOnError: true,
@@ -273,20 +276,6 @@ class _ElderChatTabState extends State<ElderChatTab>
     }
   }
 
-  // 方案一：填補空白詞 (Filler Words)
-  void _playFillerWord() async {
-    final fillers = ["嗯...", "我想想喔...", "好，我聽到了...", "原來如此..."];
-    fillers.shuffle();
-    final filler = fillers.first;
-
-    // 如果沒有在說話，先墊一句維持溫度
-    if (!_isSpeaking && mounted) {
-      setState(() => _isSpeaking = true);
-      await _flutterTts.speak(filler);
-      // 注意：這裡不設 _isSpeaking = false，因為馬上好戲上場
-    }
-  }
-
   // 接收到句子後的語音佇列
   final List<String> _sentenceQueue = [];
   bool _isProcessingQueue = false;
@@ -324,10 +313,8 @@ class _ElderChatTabState extends State<ElderChatTab>
       // 預先塞入一個空的 AI 回覆，之後靠串流更新這個 index
       _messages.add({"role": "ai", "text": ""});
     });
-    _scrollToBottom();
 
-    // 馬上播放填補詞，消除機器感
-    _playFillerWord();
+    _scrollToBottom();
 
     try {
       final String apiUrl = "${ApiService.baseUrl}/ai/chat_stream";
@@ -644,10 +631,7 @@ class _ElderChatTabState extends State<ElderChatTab>
           color: Colors.white,
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 10,
-            ),
+            BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10),
           ],
         ),
         child: Row(
