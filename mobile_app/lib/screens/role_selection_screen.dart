@@ -9,7 +9,7 @@ class RoleSelectionScreen extends StatefulWidget {
   const RoleSelectionScreen({super.key});
 
   @override
-  _RoleSelectionScreenState createState() => _RoleSelectionScreenState();
+  State<RoleSelectionScreen> createState() => _RoleSelectionScreenState();
 }
 
 class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
@@ -90,10 +90,11 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
       setState(() => _isLoading = false);
 
       if (elders.isEmpty) {
-        if (mounted)
+        if (mounted && context.mounted) {
           ScaffoldMessenger.of(
             context,
           ).showSnackBar(const SnackBar(content: Text('查無資料')));
+        }
         return;
       }
 
@@ -135,6 +136,8 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
         ),
       );
 
+      if (!mounted || !context.mounted) return;
+
       bool? isCCTV = await showDialog<bool>(
         context: context,
         barrierDismissible: false,
@@ -167,7 +170,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
       await prefs.setString('saved_device_name', deviceName);
       await prefs.setBool('saved_is_cctv', isCCTV);
 
-      if (mounted) {
+      if (mounted && context.mounted) {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(

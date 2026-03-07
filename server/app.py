@@ -12,6 +12,7 @@ if not hasattr(ssl, 'wrap_socket'):
 eventlet.monkey_patch()
 
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from db import db  
 import firebase_admin

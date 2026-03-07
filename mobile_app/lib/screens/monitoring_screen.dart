@@ -7,10 +7,14 @@ class MonitoringScreen extends StatefulWidget {
   final String roomId;
   final String targetSocketId;
 
-  const MonitoringScreen({Key? key, required this.roomId, required this.targetSocketId}) : super(key: key);
+  const MonitoringScreen({
+    super.key,
+    required this.roomId,
+    required this.targetSocketId,
+  });
 
   @override
-  _MonitoringScreenState createState() => _MonitoringScreenState();
+  State<MonitoringScreen> createState() => _MonitoringScreenState();
 }
 
 class _MonitoringScreenState extends State<MonitoringScreen> {
@@ -27,7 +31,12 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
   Future<void> _initMonitoring() async {
     await _remoteRenderer.initialize();
     _signaling.onAddRemoteStream = ((stream) {
-      if (mounted) setState(() { _remoteRenderer.srcObject = stream; _isConnected = true; });
+      if (mounted) {
+        setState(() {
+          _remoteRenderer.srcObject = stream;
+          _isConnected = true;
+        });
+      }
     });
 
     // 解決黑屏
@@ -59,8 +68,8 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        title: const Text("監控中"), 
-        backgroundColor: Colors.transparent, 
+        title: const Text("監控中"),
+        backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
           IconButton(
@@ -70,12 +79,15 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
               _initMonitoring();
             },
             tooltip: '重新連線',
-          )
+          ),
         ],
       ),
       body: Center(
         child: _isConnected
-            ? RTCVideoView(_remoteRenderer, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover)
+            ? RTCVideoView(
+                _remoteRenderer,
+                objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+              )
             : const CircularProgressIndicator(color: Colors.white),
       ),
     );
