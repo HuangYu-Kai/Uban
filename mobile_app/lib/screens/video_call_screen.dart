@@ -9,14 +9,14 @@ class VideoCallScreen extends StatefulWidget {
   final bool isIncomingCall;
 
   const VideoCallScreen({
-    Key? key,
+    super.key,
     required this.roomId,
     required this.targetSocketId,
     this.isIncomingCall = false,
-  }) : super(key: key);
+  });
 
   @override
-  _VideoCallScreenState createState() => _VideoCallScreenState();
+  State<VideoCallScreen> createState() => _VideoCallScreenState();
 }
 
 class _VideoCallScreenState extends State<VideoCallScreen> {
@@ -37,7 +37,12 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     await _remoteRenderer.initialize();
 
     _signaling.onAddRemoteStream = ((stream) {
-      if (mounted) setState(() { _remoteRenderer.srcObject = stream; _inCall = true; });
+      if (mounted) {
+        setState(() {
+          _remoteRenderer.srcObject = stream;
+          _inCall = true;
+        });
+      }
     });
     _signaling.onLocalStream = ((stream) {
       if (mounted) setState(() => _localRenderer.srcObject = stream);
@@ -49,9 +54,9 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     // 對方掛斷 → 退出頁面
     _signaling.onCallEnded = () {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("對方已結束通話")),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text("對方已結束通話")));
         Navigator.pop(context);
       }
     };
@@ -88,8 +93,11 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
               child: _inCall
                   ? RTCVideoView(_remoteRenderer)
                   : const Center(
-                      child: Text("連線中...",
-                          style: TextStyle(color: Colors.white))),
+                      child: Text(
+                        "連線中...",
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ),
             ),
           ),
           Positioned(
@@ -98,7 +106,9 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
             width: 100,
             height: 150,
             child: Container(
-              decoration: BoxDecoration(border: Border.all(color: Colors.white)),
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.white),
+              ),
               child: RTCVideoView(_localRenderer, mirror: true),
             ),
           ),
@@ -115,14 +125,18 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                     backgroundColor: Colors.green,
                     child: const Icon(Icons.call),
                     onPressed: () => _signaling.createOffer(
-                        targetId: widget.targetSocketId, isEmergency: false),
+                      targetId: widget.targetSocketId,
+                      isEmergency: false,
+                    ),
                   ),
                   FloatingActionButton(
                     heroTag: "emer",
                     backgroundColor: Colors.red,
                     child: const Icon(Icons.warning),
                     onPressed: () => _signaling.createOffer(
-                        targetId: widget.targetSocketId, isEmergency: true),
+                      targetId: widget.targetSocketId,
+                      isEmergency: true,
+                    ),
                   ),
                 ],
                 FloatingActionButton(
@@ -133,7 +147,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                 ),
               ],
             ),
-          )
+          ),
         ],
       ),
     );

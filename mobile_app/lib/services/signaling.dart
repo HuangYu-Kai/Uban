@@ -2,26 +2,26 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
-import 'package:socket_io_client/socket_io_client.dart' as IO;
+import 'package:socket_io_client/socket_io_client.dart' as io;
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:flutter_callkit_incoming/entities/entities.dart';
 import 'package:volume_controller/volume_controller.dart';
 import 'package:uuid/uuid.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
 
-typedef void StreamStateCallback(MediaStream stream);
-typedef Future<bool> IncomingCallCallback(String callerId, String callType);
-typedef void VoidCallback();
-typedef void ErrorCallback(String message);
-typedef void CallRequestCallback(String roomId, String senderId);
-typedef void CallAcceptedCallback(String accepterId);
+typedef StreamStateCallback = void Function(MediaStream stream);
+typedef IncomingCallCallback =
+    Future<bool> Function(String callerId, String callType);
+typedef VoidCallback = void Function();
+typedef ErrorCallback = void Function(String message);
+typedef CallRequestCallback = void Function(String roomId, String senderId);
+typedef CallAcceptedCallback = void Function(String accepterId);
 
 class Signaling {
   // ★ 請確認 IP 正確 (實機: 192.168.31.209, 模擬器: 10.0.2.2)
   final String _socketUrl = 'http://192.168.0.4:5000'; // 請確認 IP
   static const platform = MethodChannel('com.example.app/bring_to_front');
 
-  IO.Socket? socket;
+  io.Socket? socket;
   RTCPeerConnection? peerConnection;
   MediaStream? localStream;
 
@@ -38,7 +38,7 @@ class Signaling {
 
   String? _currentRoomId;
   String? _peerSocketId;
-  List<RTCIceCandidate> _candidateQueue = [];
+  final List<RTCIceCandidate> _candidateQueue = [];
 
   // 保留這個修復：暫存房間，解決 "只能收到第一個響鈴" 的問題
   final List<String> _pendingRooms = [];
@@ -57,9 +57,9 @@ class Signaling {
   }) {
     _currentRoomId = roomId;
 
-    socket = IO.io(
+    socket = io.io(
       _socketUrl,
-      IO.OptionBuilder()
+      io.OptionBuilder()
           .setTransports(['websocket'])
           .disableAutoConnect()
           .enableForceNew() // 強制每次 connect 都建立全新 Socket，不共用快取
@@ -69,7 +69,7 @@ class Signaling {
     socket!.connect();
 
     socket!.onConnect((_) {
-      print('✅ Socket 連線成功');
+      debugPrint('✅ Socket 連線成功');
       _emitJoin(roomId, role, deviceName, deviceMode);
 
       // 加入暫存的房間
@@ -97,17 +97,20 @@ class Signaling {
     // 對方接聽監聽
     socket!.on('call-accept', (data) {
       _peerSocketId = data['accepterId']; // ★ 記錄接聽方的 Socket ID，以便之後單播 end-call
-      if (onCallAcceptedByRemote != null)
+      if (onCallAcceptedByRemote != null) {
         onCallAcceptedByRemote!(data['accepterId']);
+      }
     });
 
     // 忙線監聽
     socket!.on('call-busy', (data) {
-      if (onCallBusy != null) onCallBusy!(data['targetId']);
+      if (onCallBusy != null) {
+        onCallBusy!(data['targetId']);
+      }
     });
 
     socket!.on('offer', (data) async {
-      print('📩 收到 Offer');
+      debugPrint('📩 收到 Offer');
       _peerSocketId = data['senderId'];
       _candidateQueue.clear();
 
@@ -115,11 +118,15 @@ class Signaling {
       if (isEmergency) {
         try {
           await platform.invokeMethod('bringToFront');
-        } catch (e) {}
+        } catch (e) {
+          debugPrint(e.toString());
+        }
         try {
           VolumeController.instance.showSystemUI = false;
           VolumeController.instance.setVolume(1.0);
-        } catch (e) {}
+        } catch (e) {
+          debugPrint(e.toString());
+        }
       }
 
       bool shouldAnswer = false;
@@ -150,7 +157,7 @@ class Signaling {
         await peerConnection?.setRemoteDescription(description);
         await _processCandidateQueue();
       } catch (e) {
-        print("❌ Answer Error: $e");
+        debugPrint("❌ Answer Error: $e");
       }
     });
 
@@ -169,7 +176,7 @@ class Signaling {
     });
 
     socket!.on('end-call', (_) async {
-      print("📴 收到掛斷訊號");
+      debugPrint("📴 收到掛斷訊號");
       await FlutterCallkitIncoming.endAllCalls();
       await _closePeerConnection();
       if (onCallEnded != null) onCallEnded!();
@@ -243,20 +250,11 @@ class Signaling {
   }
 
   void _emitJoin(String room, String role, String name, String mode) async {
-    String? fcmToken;
-    try {
-      fcmToken = await FirebaseMessaging.instance.getToken();
-      print("🔔 本機 FCM Token 獲取成功: $fcmToken");
-    } catch (e) {
-      print("⚠️ 無法獲取 FCM Token: $e");
-    }
-
     socket!.emit('join', {
       'room': room,
       'role': role,
       'deviceName': name,
       'deviceMode': mode,
-      'fcmToken': fcmToken,
     });
   }
 
@@ -289,9 +287,9 @@ class Signaling {
 
     if (socket!.connected) {
       socket!.emit('call-accept', {'targetId': targetSocketId});
-      print("✅ 成功發送 call-accept 給 $targetSocketId");
+      debugPrint("✅ 成功發送 call-accept 給 $targetSocketId");
     } else {
-      print("❌ 發送 call-accept 失敗：Socket 遲遲未連線");
+      debugPrint("❌ 發送 call-accept 失敗：Socket 遲遲未連線");
     }
   }
 
@@ -356,7 +354,7 @@ class Signaling {
         'sdp': answer!.sdp,
       });
     } catch (e) {
-      print("❌ Accept Error: $e");
+      debugPrint("❌ Accept Error: $e");
     }
   }
 

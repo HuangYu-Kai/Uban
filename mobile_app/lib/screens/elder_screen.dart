@@ -11,10 +11,15 @@ class ElderScreen extends StatefulWidget {
   final bool isCCTVMode;
   final String deviceName;
 
-  const ElderScreen({Key? key, required this.roomId, this.isCCTVMode = false, required this.deviceName}) : super(key: key);
+  const ElderScreen({
+    super.key,
+    required this.roomId,
+    this.isCCTVMode = false,
+    required this.deviceName,
+  });
 
   @override
-  _ElderScreenState createState() => _ElderScreenState();
+  State<ElderScreen> createState() => _ElderScreenState();
 }
 
 class _ElderScreenState extends State<ElderScreen> {
@@ -40,9 +45,16 @@ class _ElderScreenState extends State<ElderScreen> {
     await _remoteRenderer.initialize();
 
     _signaling.onAddRemoteStream = ((stream) {
-      if(mounted) setState(() { _remoteRenderer.srcObject = stream; _status = "通話中"; _isInCall = true; });
+      if (mounted) {
+        setState(() {
+          _remoteRenderer.srcObject = stream;
+          _status = "通話中";
+          _isInCall = true;
+        });
+      }
     });
-    _signaling.onLocalStream = ((stream) => setState(() => _localRenderer.srcObject = stream));
+    _signaling.onLocalStream = ((stream) =>
+        setState(() => _localRenderer.srcObject = stream));
 
     // 處理加入失敗 (名稱重複)
     _signaling.onJoinFailed = (errorMessage) {
@@ -55,12 +67,12 @@ class _ElderScreenState extends State<ElderScreen> {
             content: Text(errorMessage),
             actions: [
               ElevatedButton(
-                onPressed: () { 
+                onPressed: () {
                   Navigator.pop(context); // 關閉 Dialog
                   Navigator.pop(context); // 退出頁面
-                }, 
-                child: const Text('確定')
-              )
+                },
+                child: const Text('確定'),
+              ),
             ],
           ),
         );
@@ -69,29 +81,34 @@ class _ElderScreenState extends State<ElderScreen> {
 
     // ★★★ 關鍵：家屬接聽後，才發送 Offer (解決影像連線問題) ★★★
     _signaling.onCallAcceptedByRemote = (accepterId) {
-      print("✅ 家屬($accepterId) 已接聽，開始定向發送 Offer...");
-      if (mounted) setState(() { _status = "連線建立中..."; _isInCall = true; });
-      
+      debugPrint("✅ 家屬($accepterId) 已接聽，開始定向發送 Offer...");
+      if (mounted) {
+        setState(() {
+          _status = "連線建立中...";
+          _isInCall = true;
+        });
+      }
+
       // 傳入 accepterId，確保點對點連線
       _signaling.createOffer(targetId: accepterId, isEmergency: false);
     };
 
     await _signaling.openUserMedia(_localRenderer);
-    
+
     _signaling.connect(
-      widget.roomId, 
-      'elder', 
+      widget.roomId,
+      'elder',
       deviceName: widget.deviceName,
-      deviceMode: widget.isCCTVMode ? 'cctv' : 'comm'
+      deviceMode: widget.isCCTVMode ? 'cctv' : 'comm',
     );
 
     // 掛斷後重置狀態
     _signaling.onCallEnded = () {
       if (mounted) {
-        setState(() { 
-          _remoteRenderer.srcObject = null; 
-          _status = "通話結束"; 
-          _isInCall = false; 
+        setState(() {
+          _remoteRenderer.srcObject = null;
+          _status = "通話結束";
+          _isInCall = false;
         });
       }
     };
@@ -103,7 +120,7 @@ class _ElderScreenState extends State<ElderScreen> {
           _status = "家人通話中，請稍後再撥";
           _isInCall = false;
         });
-        
+
         // 延遲幾秒後恢復預設狀態
         Future.delayed(const Duration(seconds: 3), () {
           if (mounted && !_isInCall) {
@@ -117,20 +134,28 @@ class _ElderScreenState extends State<ElderScreen> {
       bool isEmergency = callType == 'emergency';
       if (widget.isCCTVMode || isEmergency) {
         setState(() => _isInCall = true);
-        return true; 
+        return true;
       }
-      bool accept = await showDialog<bool>(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => AlertDialog(
-          title: const Text('家人來電'),
-          content: const Text('是否接聽？'),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('拒絕')),
-            ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('接聽')),
-          ],
-        ),
-      ) ?? false;
+      bool accept =
+          await showDialog<bool>(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => AlertDialog(
+              title: const Text('家人來電'),
+              content: const Text('是否接聽？'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('拒絕'),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('接聽'),
+                ),
+              ],
+            ),
+          ) ??
+          false;
       if (accept) setState(() => _isInCall = true);
       return accept;
     };
@@ -138,13 +163,20 @@ class _ElderScreenState extends State<ElderScreen> {
 
   // 主動呼叫 (先響鈴)
   void _makeCall() {
-    setState(() { _status = "正在呼叫家人..."; _isInCall = true; });
+    setState(() {
+      _status = "正在呼叫家人...";
+      _isInCall = true;
+    });
     _signaling.requestCall();
   }
 
   void _hangUp() {
     _signaling.hangUp(disconnectSocket: false, disposeLocalStream: false);
-    setState(() { _remoteRenderer.srcObject = null; _status = "等待連線..."; _isInCall = false; });
+    setState(() {
+      _remoteRenderer.srcObject = null;
+      _status = "等待連線...";
+      _isInCall = false;
+    });
   }
 
   @override
@@ -168,11 +200,13 @@ class _ElderScreenState extends State<ElderScreen> {
             onPressed: () async {
               final prefs = await SharedPreferences.getInstance();
               await prefs.clear();
-              if (mounted) {
+              if (mounted && context.mounted) {
                 // 回到角色選擇畫面，並清空路由歷史
                 Navigator.pushAndRemoveUntil(
                   context,
-                  MaterialPageRoute(builder: (context) => const RoleSelectionScreen()),
+                  MaterialPageRoute(
+                    builder: (context) => const RoleSelectionScreen(),
+                  ),
                   (route) => false,
                 );
               }
@@ -183,19 +217,71 @@ class _ElderScreenState extends State<ElderScreen> {
       body: Stack(
         children: [
           if (widget.isCCTVMode)
-            Positioned.fill(child: Container(color: Colors.black, child: RTCVideoView(_localRenderer, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover)))
+            Positioned.fill(
+              child: Container(
+                color: Colors.black,
+                child: RTCVideoView(
+                  _localRenderer,
+                  objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                ),
+              ),
+            )
           else
-            Stack(children: [
-              Positioned.fill(child: Container(color: Colors.black87, child: _remoteRenderer.srcObject != null ? RTCVideoView(_remoteRenderer, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover) : Center(child: Text(_status, style: const TextStyle(color: Colors.white, fontSize: 20))))),
-              Positioned(right: 20, top: 20, width: 100, height: 150, child: Container(decoration: BoxDecoration(border: Border.all(color: Colors.white)), child: RTCVideoView(_localRenderer, mirror: true))),
-            ]),
-          
+            Stack(
+              children: [
+                Positioned.fill(
+                  child: Container(
+                    color: Colors.black87,
+                    child: _remoteRenderer.srcObject != null
+                        ? RTCVideoView(
+                            _remoteRenderer,
+                            objectFit: RTCVideoViewObjectFit
+                                .RTCVideoViewObjectFitCover,
+                          )
+                        : Center(
+                            child: Text(
+                              _status,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 20,
+                              ),
+                            ),
+                          ),
+                  ),
+                ),
+                Positioned(
+                  right: 20,
+                  top: 20,
+                  width: 100,
+                  height: 150,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.white),
+                    ),
+                    child: RTCVideoView(_localRenderer, mirror: true),
+                  ),
+                ),
+              ],
+            ),
+
           if (widget.isCCTVMode)
-             const Positioned(bottom: 30, left: 0, right: 0, child: Center(child: Chip(label: Text("CCTV 運作中"), backgroundColor: Colors.red))),
+            const Positioned(
+              bottom: 30,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Chip(
+                  label: Text("CCTV 運作中"),
+                  backgroundColor: Colors.red,
+                ),
+              ),
+            ),
 
           if (!widget.isCCTVMode)
             Positioned(
-              bottom: 40, left: 0, right: 0,
+              bottom: 40,
+              left: 0,
+              right: 0,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -203,14 +289,32 @@ class _ElderScreenState extends State<ElderScreen> {
                     ElevatedButton.icon(
                       icon: const Icon(Icons.call, size: 32),
                       label: const Text("呼叫家人", style: TextStyle(fontSize: 20)),
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30))),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 40,
+                          vertical: 20,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(30),
+                        ),
+                      ),
                       onPressed: _makeCall,
                     ),
                   if (_isInCall)
                     ElevatedButton.icon(
                       icon: const Icon(Icons.call_end, size: 32),
                       label: const Text("掛斷", style: TextStyle(fontSize: 20)),
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.red, padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30))),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 40,
+                          vertical: 20,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(30),
+                        ),
+                      ),
                       onPressed: _hangUp,
                     ),
                 ],

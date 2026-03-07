@@ -631,7 +631,10 @@ class _ElderChatTabState extends State<ElderChatTab>
           color: Colors.white,
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10),
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 10,
+            ),
           ],
         ),
         child: Row(
@@ -793,9 +796,7 @@ class _ElderChatTabState extends State<ElderChatTab>
                     color: Color(0xFF8DB08B),
                     size: 30,
                   ),
-                  onPressed: () {
-                    // TODO: 其他功能
-                  },
+                  onPressed: () {},
                 ),
               ),
               const SizedBox(width: 12),

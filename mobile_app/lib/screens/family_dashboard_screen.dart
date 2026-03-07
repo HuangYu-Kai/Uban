@@ -1,23 +1,23 @@
 // lib/screens/family_dashboard_screen.dart
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../services/signaling.dart'; 
+import '../services/signaling.dart';
 import 'device_selection_screen.dart';
-import 'video_call_screen.dart'; 
+import 'video_call_screen.dart';
 import 'role_selection_screen.dart';
 
 class FamilyDashboardScreen extends StatefulWidget {
   final List<dynamic> elders;
 
-  const FamilyDashboardScreen({Key? key, required this.elders}) : super(key: key);
+  const FamilyDashboardScreen({super.key, required this.elders});
 
   @override
-  _FamilyDashboardScreenState createState() => _FamilyDashboardScreenState();
+  State<FamilyDashboardScreen> createState() => _FamilyDashboardScreenState();
 }
 
 class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> {
   final Signaling _signaling = Signaling();
-  
+
   // 移除阻擋多重對話框的 bool
 
   @override
@@ -28,7 +28,9 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> {
 
   void _connectAndListenAll() {
     // 1. 連線 Lobby (隨意選一個 ID 或固定字串)
-    String firstRoom = widget.elders.isNotEmpty ? widget.elders[0]['elder_id'] : 'family_lobby';
+    String firstRoom = widget.elders.isNotEmpty
+        ? widget.elders[0]['elder_id']
+        : 'family_lobby';
     _signaling.connect(firstRoom, 'family', deviceName: 'Dashboard');
 
     // 2. 加入其他長輩房間
@@ -41,8 +43,11 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> {
     // 3. 處理響鈴 (使用當前的 Context)
     _signaling.onCallRequest = (roomId, senderId) {
       if (!mounted) return;
-      
-      var caller = widget.elders.firstWhere((e) => e['elder_id'] == roomId, orElse: () => {'elder_name': '未知長輩'});
+
+      var caller = widget.elders.firstWhere(
+        (e) => e['elder_id'] == roomId,
+        orElse: () => {'elder_name': '未知長輩'},
+      );
 
       // ★ 在顯示 Dialog 前先記錄 Dashboard 自己的 Route，
       //    之後可以用 popUntil 回到這層並清除上層的通話頁面
@@ -59,8 +64,8 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> {
             TextButton(
               onPressed: () {
                 Navigator.pop(context);
-              }, 
-              child: const Text('忽略')
+              },
+              child: const Text('忽略'),
             ),
             ElevatedButton.icon(
               icon: const Icon(Icons.call),
@@ -77,7 +82,7 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> {
 
                 // ★ 使用 microtask 確保 popUntil dispose() 完成後再推入新頁面
                 Future.microtask(() {
-                  if (mounted) {
+                  if (mounted && context.mounted) {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -116,10 +121,12 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> {
             onPressed: () async {
               final prefs = await SharedPreferences.getInstance();
               await prefs.clear();
-              if (mounted) {
+              if (mounted && context.mounted) {
                 Navigator.pushAndRemoveUntil(
                   context,
-                  MaterialPageRoute(builder: (context) => const RoleSelectionScreen()),
+                  MaterialPageRoute(
+                    builder: (context) => const RoleSelectionScreen(),
+                  ),
                   (route) => false,
                 );
               }
