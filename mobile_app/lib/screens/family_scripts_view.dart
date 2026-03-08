@@ -236,7 +236,7 @@ class _FamilyScriptsViewState extends State<FamilyScriptsView> {
                     );
                     _refreshScripts();
                   },
-                  activeThumbColor: const Color(0xFFFF9800),
+                  activeColor: const Color(0xFFFF9800),
                 ),
               ],
             ),

@@ -173,7 +173,7 @@ class _FamilyCareJournalViewState extends State<FamilyCareJournalView> {
                       return const SizedBox();
                   }
                   return SideTitleWidget(
-                    meta: meta,
+                    axisSide: meta.axisSide,
                     space: 4,
                     child: Text(emoji, style: const TextStyle(fontSize: 18)),
                   );
