@@ -416,7 +416,7 @@ class _FamilySettingsViewState extends State<FamilySettingsView> {
         value: value,
         onChanged: onChanged,
         activeTrackColor: const Color(0xFFFF9800).withValues(alpha: 0.5),
-        activeThumbColor: const Color(0xFFFF9800),
+        activeColor: const Color(0xFFFF9800),
       ),
     );
   }

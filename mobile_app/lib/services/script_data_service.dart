@@ -67,7 +67,7 @@ class ScriptNodeData {
       'content': content,
       'position': {'dx': position.dx, 'dy': position.dy},
       'icon': icon.codePoint,
-      'color': color.toARGB32(),
+      'color': color.value,
       'childrenIds': childrenIds,
       'triggerType': triggerType,
       'keywords': keywords,
@@ -100,9 +100,8 @@ class ScriptNodeData {
       color: Color(map['color']),
       childrenIds: List<String>.from(map['childrenIds']),
       triggerType: map['triggerType'],
-      keywords: map['keywords'] != null
-          ? List<String>.from(map['keywords'])
-          : null,
+      keywords:
+          map['keywords'] != null ? List<String>.from(map['keywords']) : null,
       moodThreshold: map['moodThreshold'],
       triggerTime: map['triggerTime'],
       weatherCondition: map['weatherCondition'],
@@ -152,7 +151,7 @@ class ScriptMetadata {
       'logic': logic,
       'isActive': isActive,
       'statusIcon': statusIcon.codePoint,
-      'statusColor': statusColor.toARGB32(),
+      'statusColor': statusColor.value,
     };
   }
 
@@ -167,7 +166,7 @@ class ScriptMetadata {
         map['statusIcon'] ?? Icons.edit_calendar.codePoint,
         fontFamily: 'MaterialIcons',
       ),
-      statusColor: Color(map['statusColor'] ?? Colors.blueAccent.toARGB32()),
+      statusColor: Color(map['statusColor'] ?? Colors.blueAccent.value),
     );
   }
 }
@@ -207,9 +206,8 @@ class ScriptDataService {
         if (await nodeFile.exists()) {
           final nodeContent = await nodeFile.readAsString();
           final List<dynamic> nodeJsonList = jsonDecode(nodeContent);
-          _scriptNodes[script.title] = nodeJsonList
-              .map((e) => ScriptNodeData.fromMap(e))
-              .toList();
+          _scriptNodes[script.title] =
+              nodeJsonList.map((e) => ScriptNodeData.fromMap(e)).toList();
         }
       }
 
@@ -319,9 +317,8 @@ class ScriptDataService {
       final triggerNode = nodes
           .where((n) => n.title == '觸發' || n.triggerType != null)
           .firstOrNull;
-      final actionNodes = nodes
-          .where((n) => n.title == '動作' || n.voiceTone != null)
-          .toList();
+      final actionNodes =
+          nodes.where((n) => n.title == '動作' || n.voiceTone != null).toList();
 
       if (triggerNode != null) {
         _scripts[index].trigger = _getTriggerSummary(triggerNode);

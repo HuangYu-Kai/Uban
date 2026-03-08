@@ -1,0 +1,104 @@
+============================================================
+UniFlow mobile_app — 依賴版本衝突修復紀錄
+建立日期：2026-03-08
+============================================================
+
+【問題根源】
+本專案的 Flutter 開發環境安裝的 Dart SDK 版本為 3.6.0。
+但 pubspec.yaml 中原始的套件版本都是最新版，而大多數最新版
+套件已要求 Dart SDK >= 3.7.0、3.9.0 或更高，造成 `flutter pub get`
+無法解析依賴，所有 .dart 檔案全部出現「Target of URI doesn't exist」
+的連鎖錯誤。
+
+============================================================
+【第一步：修正 pubspec.yaml 的 Dart SDK 約束】
+============================================================
+
+原始設定：
+  environment:
+    sdk: ^3.10.7   ← 高於本機 Dart 3.6.0，導致直接拒絕
+
+修改後：
+  environment:
+    sdk: ^3.5.0    ← 讓 Dart 3.6.0 可以通過限制
+
+============================================================
+【第二步：降低各套件版本至相容 Dart 3.6.0 的版本】
+============================================================
+
+以下套件在使用最新版時，其自身要求的 Dart SDK 高於 3.6.0，
+必須降版：
+
+┌─────────────────────────┬───────────────┬───────────────┬──────────────────────────────────┐
+│ 套件名稱                │ 原始版本      │ 修改後版本    │ 原因                             │
+├─────────────────────────┼───────────────┼───────────────┼──────────────────────────────────┤
+│ google_fonts            │ ^7.0.2        │ ^6.2.1        │ 7.x 要求 Dart >= 3.7.0           │
+│ font_awesome_flutter    │ ^10.12.0      │ ^10.7.0       │ 10.12.x 要求 Dart >= 3.9.0       │
+│ intl                    │ ^0.20.2       │ ^0.19.0       │ 0.20.x 要求 Dart >= 3.7.0        │
+│ firebase_core           │ ^4.4.0        │ ^3.5.0        │ 4.x 要求 Dart >= 3.7.0           │
+│ firebase_messaging      │ ^16.1.1       │ ^15.0.3       │ 16.x 要求 Dart >= 3.7.0          │
+│ permission_handler      │ ^12.0.1       │ ^11.4.0       │ 12.x 要求 Dart >= 3.7.0          │
+│ flutter_lints (dev)     │ ^6.0.0        │ ^5.0.0        │ 6.x 要求 Dart >= 3.7.0           │
+│ mobile_scanner          │ ^7.2.0        │ ^5.0.0        │ 7.x 要求 Dart >= 3.7.0           │
+│ fl_chart                │ ^1.1.1        │ ^0.69.0       │ 1.x 要求 Dart >= 3.6.2 (超出範圍)│
+└─────────────────────────┴───────────────┴───────────────┴──────────────────────────────────┘
+
+注意：url_launcher 從 ^6.3.2 改為 ^6.3.1 是次要調整。
+
+============================================================
+【第三步：修正因套件版本降級而產生的 API 相容性問題】
+============================================================
+
+問題一：Color.toARGB32() 方法不存在於舊版 Flutter/Dart
+  影響檔案：lib/services/script_data_service.dart (行 70, 155, 170)
+  原始程式碼：color.toARGB32()
+  修改後：    color.value
+  說明：toARGB32() 是 Dart 3.9+ 新增的 API。
+        舊版使用 Color.value 屬性可得到相同的 ARGB 整數值。
+
+問題二：fl_chart SideTitleWidget 的 API 在 0.69.x 版本不同
+  影響檔案：lib/screens/family/family_care_journal_view.dart (行 175)
+  原始程式碼：SideTitleWidget(meta: meta, ...)
+  修改後：    SideTitleWidget(axisSide: meta.axisSide, ...)
+  說明：fl_chart 1.x 版將 axisSide 參數改包在 TitleMeta 物件中，
+        但 0.69.x 版仍使用直接傳入 axisSide 的舊式 API。
+
+問題三：Switch widget 的 activeThumbColor 參數不存在
+  影響檔案：
+    - lib/screens/family/family_settings_view.dart (行 346)
+    - lib/screens/family_scripts_view.dart (行 240)
+  原始程式碼：activeThumbColor: const Color(0xFFFF9800)
+  修改後：    activeColor: const Color(0xFFFF9800)
+  說明：activeThumbColor 參數是較新版 Flutter 才有的。
+        舊版使用 activeColor 可達到相同效果（同時著色 thumb 和 track）。
+
+============================================================
+【最終結果】
+============================================================
+
+執行 `flutter pub get`：✅ 成功，71 個套件全部解析完成
+執行 `flutter analyze`：✅ 無任何 error（僅有 info 等級的風格建議）
+
+============================================================
+【給未來 AI 的提示】
+============================================================
+
+如果升級了 Dart 或 Flutter SDK，可以考慮把所有套件版本
+升回最新版。升回的流程建議：
+
+1. 確認本機 Dart SDK 版本：dart --version
+2. 如果 Dart >= 3.9.0，可考慮：
+   - google_fonts: ^8.x
+   - font_awesome_flutter: ^10.12.x
+   - intl: ^0.20.x
+   - firebase_core: ^4.x
+   - firebase_messaging: ^16.x
+   - permission_handler: ^12.x
+   - fl_chart: ^1.x（注意同時要改回 SideTitleWidget(meta: meta) API）
+   - Color.value 可改回 Color.toARGB32()
+   - activeColor 可考慮改回 activeThumbColor（但 activeColor 也沒問題）
+
+3. 執行 flutter pub get 並確認無錯誤
+4. 執行 flutter analyze 確認無 error
+
+============================================================
