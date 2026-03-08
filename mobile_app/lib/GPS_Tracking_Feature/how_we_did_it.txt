@@ -1,0 +1,36 @@
+GPS 定位與步數追蹤功能實作說明
+
+這份文件記錄了如何使用 Flutter 實作設計圖中的「個人檔案 (Profile)、GPS 軌跡追蹤、步數紀錄」功能。
+
+1. 核心實作概念：
+- 步數追蹤：利用手機內部的計步器感測器 (Pedometer) 來取得每日行走步數與距離。
+- GPS 定位與軌跡：利用手機的 GPS 模組持續取得經緯度，並在地圖套件上將這些座標點連成線條 (Polyline)。
+- 數據圖表：將一週的步數資料整理後，繪製成長條圖。
+- 登出對話框：使用 Flutter 內建的 AlertDialog 或簡化的 Dialog 來實作彈出的確認視窗。
+
+2. 使用的關鍵套件 (Flutter Packages)：
+建議在專案中的 `pubspec.yaml` 內加入以下實用套件：
+- `geolocator`: 獲取使用者的當前 GPS 座標、並透過 Stream 持續追蹤位置變化。
+- `google_maps_flutter` (或 `flutter_map`): 用來顯示地圖、標記使用者大頭貼目前的位址，並繪製移動軌跡 (Polyline)。
+- `pedometer`: 讀取手機硬體的計步數據，精準呈現 "一共走了 3,5 公里" 與 "8,406" 步。
+- `fl_chart`: 用來繪製中間深色的「一週步數長條圖 (柱狀圖)」。
+- `permission_handler`: 處理向使用者請求 APP 所需的「定位權限」、「活動紀錄權限」(iOS 的 Motion，Android 的 Activity Recognition)。
+- `shared_preferences` (或 `sqflite`): 負責在手機端儲存每天記錄的步數與經緯度歷史資料，以防 APP 關閉後重新開啟時資料遺失。
+
+3. 開發步驟與架構建議：
+【步驟一】權限設定 (非常重要)
+- Android: 在 `android/app/src/main/AndroidManifest.xml` 中加入 `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`, `ACCESS_BACKGROUND_LOCATION` 以及 `ACTIVITY_RECOGNITION` 權限。
+- iOS: 在 `ios/Runner/Info.plist` 中加入定位相關的 `NSLocationWhenInUseUsageDescription`, `NSLocationAlwaysUsageDescription`，以及計步相關的 `NSMotionUsageDescription`。
+
+【步驟二】背景追蹤定位
+若要讓使用者把手機放在口袋也能記錄軌跡，建議使用 `geolocator` 的背景設定，將獲取的經緯度 (latitude, longitude) 持續加入一個 `List<LatLng>` 的陣列中。
+
+【步驟三】地圖與軌跡繪製
+利用地圖的 Widget，傳入 `polylines` 參數，將剛才記錄的 `List<LatLng>` 連接成設計圖上的黑色路線。目前位置的大頭貼可以使用地圖上的 `Marker` 並自訂 Icon 來實作。
+
+【步驟四】圖表與 UI 切換
+從設計圖可以看出，頁面佈局為垂直捲動方式。上方是個人資訊，中間是步數長條圖與地圖視圖。登出按鈕則位於畫面最下方。
+
+4. 專案輔助程式說明：
+本資料夾中我也為你準備好了一份名為 `profile_screen_demo.dart` 的 Flutter 檔案。裡面已經幫你把畫面的 UI 骨架先切版切好了（包含大頭貼、步數卡片、長條圖區塊設計、地圖區塊預留空間、登出按鈕以及美美的 Dialog）！
+等你套件安裝好後，你可以直接把這個 UI 放進你的 Flutter 專案裡，再依序把 `geolocator` 跟 `fl_chart` 的真實資料接入即可。
