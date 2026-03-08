@@ -63,6 +63,11 @@ dependencies:
   uuid: ^4.5.3
   firebase_core: ^3.5.0
   firebase_messaging: ^15.0.3
+#webrtc還沒到測試最終版，先不整合
+  mobile_scanner: ^5.0.0
+  # GPS 定位與地圖
+  geolocator: ^11.0.0
+  google_maps_flutter: ^2.9.0
 
 dev_dependencies:
   flutter_test:
