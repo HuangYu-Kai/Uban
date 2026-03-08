@@ -58,6 +58,7 @@ dependencies:
   firebase_messaging: ^16.1.1
 #webrtc還沒到測試最終版，先不整合
   mobile_scanner: ^7.2.0
+  android_intent_plus: ^6.0.0
 
 
 dev_dependencies:

@@ -71,11 +71,7 @@ class _DeviceSelectionScreenState extends State<DeviceSelectionScreen> {
                             if (mode == 'comm')
                               IconButton(
                                 icon: const Icon(Icons.call, color: Colors.green),
-                                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => VideoCallScreen(
-                                  roomId: widget.elderId,
-                                  targetSocketId: socketId,
-                                  isIncomingCall: false,
-                                ))),
+                                onPressed: () => _showCallTypeDialog(widget.elderId, socketId),
                               ),
                           ],
                         ),
@@ -84,5 +80,116 @@ class _DeviceSelectionScreenState extends State<DeviceSelectionScreen> {
                   },
                 ),
     );
+  }
+
+  void _showCallTypeDialog(String roomId, String targetId) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("選擇通話類型"),
+        content: const Text("一般通話將測試長輩接聽意願；緊急通話將強制開啟對方視訊畫面。"),
+        actions: [
+          TextButton(
+            child: const Text("一般通話"),
+            onPressed: () {
+              Navigator.pop(context);
+              _initiateNormalCall(roomId, targetId);
+            },
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text("🚨 緊急通話", style: TextStyle(color: Colors.white)),
+            onPressed: () {
+              Navigator.pop(context);
+              _initiateEmergencyCall(roomId, targetId);
+            },
+          )
+        ],
+      )
+    );
+  }
+
+  void _initiateNormalCall(String roomId, String targetId) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text("正在呼叫長輩..."),
+        content: const Text("等待長輩接聽中"),
+        actions: [
+          TextButton(
+            child: const Text("取消", style: TextStyle(color: Colors.red)),
+            onPressed: () {
+              _signaling.sendCancelCall(roomId);
+              Navigator.pop(dialogContext);
+            },
+          )
+        ],
+      ),
+    );
+
+    _signaling.onCallAcceptedByRemote = (accepterId) {
+      if (mounted) {
+        Navigator.pop(context); // Close dialog
+        Navigator.push(context, MaterialPageRoute(builder: (_) => VideoCallScreen(
+          roomId: roomId,
+          targetSocketId: accepterId,
+          isIncomingCall: false, // We initiated, they accepted
+          autoStart: true,
+          isEmergency: false,
+        )));
+      }
+    };
+
+    _signaling.onCallBusy = (busyTargetId) {
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("對方忙線中或已拒絕")));
+      }
+    };
+
+    _signaling.sendCallRequest(roomId);
+  }
+
+  void _initiateEmergencyCall(String roomId, String targetId) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text("發送緊急通話..."),
+        content: const Text("正在強制喚醒長輩設備，請稍候..."),
+        actions: [
+          TextButton(
+            child: const Text("取消", style: TextStyle(color: Colors.red)),
+            onPressed: () {
+              _signaling.sendCancelCall(roomId);
+              Navigator.pop(dialogContext);
+            },
+          )
+        ],
+      ),
+    );
+
+    _signaling.onCallAcceptedByRemote = (accepterId) {
+      if (mounted) {
+        Navigator.pop(context); // Close dialog
+        Navigator.push(context, MaterialPageRoute(builder: (_) => VideoCallScreen(
+          roomId: roomId,
+          targetSocketId: accepterId,
+          isIncomingCall: false,
+          autoStart: true,
+          isEmergency: true,
+        )));
+      }
+    };
+
+    _signaling.onCallBusy = (busyTargetId) {
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("對方忙線中或已拒絕")));
+      }
+    };
+
+    _signaling.sendEmergencyCall(roomId);
   }
 }
