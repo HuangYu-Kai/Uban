@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 
 class ApiService {
   // 對於實機測試，請使用您電腦的區域網路 IP
-  static const String baseUrl = 'https://50ef-61-65-116-7.ngrok-free.app/api';
+  static const String baseUrl = 'https://0149-61-65-116-7.ngrok-free.app/api';
 
   static Future<Map<String, dynamic>> register({
     required String username,

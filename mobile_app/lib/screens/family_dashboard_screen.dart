@@ -1,6 +1,9 @@
 // lib/screens/family_dashboard_screen.dart
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
+import '../main.dart'; // import callKitDeclineStream
 import '../services/signaling.dart'; 
 import 'device_selection_screen.dart';
 import 'video_call_screen.dart'; 
@@ -15,15 +18,46 @@ class FamilyDashboardScreen extends StatefulWidget {
   _FamilyDashboardScreenState createState() => _FamilyDashboardScreenState();
 }
 
-class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> {
+class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> with WidgetsBindingObserver {
   final Signaling _signaling = Signaling();
+  StreamSubscription? _declineSub;
+  String? _currentDialogRoomId;
+  BuildContext? _dialogContext;
   
   // 移除阻擋多重對話框的 bool
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    
+    // Listen for declines from CallKit (which can happen while app is in background)
+    _declineSub = callKitDeclineStream.stream.listen((declinedRoomId) {
+      if (_currentDialogRoomId == declinedRoomId && _dialogContext != null) {
+        if (Navigator.canPop(_dialogContext!)) {
+          Navigator.pop(_dialogContext!);
+        }
+        _currentDialogRoomId = null;
+        _dialogContext = null;
+      }
+    });
+
     _connectAndListenAll();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) async {
+    if (state == AppLifecycleState.resumed) {
+      // Check if the CallKit notification was cleared or answered outside the app
+      final activeCalls = await FlutterCallkitIncoming.activeCalls();
+      if (activeCalls is List && activeCalls.isEmpty && _dialogContext != null) {
+        if (Navigator.canPop(_dialogContext!)) {
+          Navigator.pop(_dialogContext!);
+        }
+        _currentDialogRoomId = null;
+        _dialogContext = null;
+      }
+    }
   }
 
   void _connectAndListenAll() {
@@ -56,16 +90,21 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> {
       
       // Define a dialog identifier or key if possible, but for now we'll rely on a boolean flag
       bool isDialogOpen = true;
+      _currentDialogRoomId = roomId;
 
       showDialog(
         context: context,
         barrierDismissible: false,
         builder: (dialogContext) {
+            _dialogContext = dialogContext;
+            
             // Register cancel-call listener tightly to this dialog's lifecycle
             _signaling.onCancelCall = (cancelRoomId, cancelSenderId) {
                 if (roomId == cancelRoomId && isDialogOpen && mounted) {
                     Navigator.of(dialogContext).pop();
                     isDialogOpen = false;
+                    _currentDialogRoomId = null;
+                    _dialogContext = null;
                 }
             };
 
@@ -77,6 +116,8 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> {
             TextButton(
               onPressed: () {
                 isDialogOpen = false;
+                _currentDialogRoomId = null;
+                _dialogContext = null;
                 _signaling.sendCallBusy(senderId); // explicitly inform elder someone declined
                 Navigator.pop(dialogContext);
               }, 
@@ -88,6 +129,8 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> {
               style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
               onPressed: () {
                 isDialogOpen = false;
+                _currentDialogRoomId = null;
+                _dialogContext = null;
                 Navigator.pop(dialogContext); // 關閉彈窗
 
                 // ★ 先回到儀表板層（關閉任何正在通話中的 VideoCallScreen）
@@ -122,6 +165,8 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _declineSub?.cancel();
     _signaling.dispose();
     super.dispose();
   }
