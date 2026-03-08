@@ -16,11 +16,13 @@ from flask_socketio import SocketIO, emit, join_room, leave_room
 from db import db  
 import firebase_admin
 from firebase_admin import credentials, messaging
+import os
 
 # 初始化 Firebase Admin SDK
 try:
     if not firebase_admin._apps:
-        cred = credentials.Certificate("serviceAccountKey.json")
+        cred_path = os.path.join(os.path.dirname(__file__), "serviceAccountKey.json")
+        cred = credentials.Certificate(cred_path)
         firebase_admin.initialize_app(cred)
         print("✅ Firebase Admin SDK 已初始化")
     else:
@@ -154,26 +156,28 @@ def on_disconnect():
 def on_call_request(data):
     room = data.get('room')
     sender_id = request.sid
-    print(f"🔔 Call Request from {sender_id} in {room}")
-    
-    # 1. 廣播給房間內所有還活著的 Socket
-    emit('call-request', {'senderId': sender_id, 'room': room}, to=room, include_self=False)
+    sender_role = data.get('role') or rooms_manager.get(room, {}).get(sender_id, {}).get('role')
+    target_role = 'elder' if sender_role == 'family' else 'family'
 
-    # 2. 針對房間內的所有註冊用戶發送 FCM 靜默推播喚醒 (Data Message)
+    print(f"🔔 Call Request from {sender_id} ({sender_role}) to {target_role} in {room}")
+    
+    # 1. 針對房間內符合目標角色的 Socket 發送
+    if room in rooms_manager:
+        for sid, info in rooms_manager[room].items():
+            if info.get('role') == target_role:
+                emit('call-request', {'senderId': sender_id, 'room': room}, to=sid)
+
+    # 2. 針對目標角色發送 FCM 靜默推播喚醒
     if room in room_fcm_tokens:
         for token, info in room_fcm_tokens[room].items():
-            if info['role'] == 'family': # 只有 call-request 時喚醒家屬
+            if info.get('role') == target_role:
                 try:
                     message = messaging.Message(
-                        data={
-                            'type': 'call-request',
-                            'senderId': sender_id,
-                            'roomId': room
-                        },
+                        data={'type': 'call-request', 'senderId': sender_id, 'roomId': room},
                         token=token,
                         android=messaging.AndroidConfig(priority='high')
                     )
-                    response = messaging.send(message)
+                    messaging.send(message)
                 except Exception as e:
                     print(f"⚠️ FCM 推播發送失敗 ({info['role']}): {e}")
 
@@ -181,53 +185,55 @@ def on_call_request(data):
 def on_cancel_call(data):
     room = data.get('room')
     sender_id = request.sid
-    print(f"🔕 Cancel Call Request from {sender_id} in {room}")
+    sender_role = data.get('role') or rooms_manager.get(room, {}).get(sender_id, {}).get('role')
+    target_role = 'elder' if sender_role == 'family' else 'family'
+
+    print(f"🔕 Cancel Call Request from {sender_id} to {target_role} in {room}")
     
-    emit('cancel-call', {'senderId': sender_id, 'room': room}, to=room, include_self=False)
+    if room in rooms_manager:
+        for sid, info in rooms_manager[room].items():
+            if info.get('role') == target_role:
+                emit('cancel-call', {'senderId': sender_id, 'room': room}, to=sid)
 
     if room in room_fcm_tokens:
         for token, info in room_fcm_tokens[room].items():
-            if info['role'] == 'family':
+            if info.get('role') == target_role:
                 try:
                     message = messaging.Message(
-                        data={
-                            'type': 'cancel-call',
-                            'senderId': sender_id,
-                            'roomId': room
-                        },
+                        data={'type': 'cancel-call', 'senderId': sender_id, 'roomId': room},
                         token=token,
                         android=messaging.AndroidConfig(priority='high')
                     )
                     messaging.send(message)
-                except Exception as e:
+                except Exception:
                     pass
 
 @socketio.on('emergency-call')
 def on_emergency_call(data):
     room = data.get('room')
     sender_id = request.sid
-    print(f"🚨 Emergency Call Request from {sender_id} in {room}")
-    
-    # 廣播給房間內所有的設備
-    emit('emergency-call', {'senderId': sender_id, 'room': room}, to=room, include_self=False)
+    sender_role = data.get('role') or rooms_manager.get(room, {}).get(sender_id, {}).get('role')
+    target_role = 'elder' if sender_role == 'family' else 'family'
 
-    # 用 FCM 喚醒所有長輩端 (如果是鎖屏狀態)
+    print(f"🚨 Emergency Call Request from {sender_id} to {target_role} in {room}")
+    
+    if room in rooms_manager:
+        for sid, info in rooms_manager[room].items():
+            if info.get('role') == target_role:
+                emit('emergency-call', {'senderId': sender_id, 'room': room}, to=sid)
+
     if room in room_fcm_tokens:
         for token, info in room_fcm_tokens[room].items():
-            if info['role'] == 'elder': 
+            if info.get('role') == target_role:
                 try:
                     message = messaging.Message(
-                        data={
-                            'type': 'emergency-call',
-                            'senderId': sender_id,
-                            'roomId': room
-                        },
+                        data={'type': 'emergency-call', 'senderId': sender_id, 'roomId': room},
                         token=token,
                         android=messaging.AndroidConfig(priority='high')
                     )
-                    response = messaging.send(message)
+                    messaging.send(message)
                 except Exception as e:
-                    print(f"⚠️ FCM 緊急推播發送失敗 ({info['role']}): {e}")
+                    print(f"⚠️ FCM 緊急推播失敗 ({info['role']}): {e}")
 
 @socketio.on('call-accept')
 def on_call_accept(data):

@@ -7,12 +7,16 @@ class VideoCallScreen extends StatefulWidget {
   final String roomId;
   final String targetSocketId;
   final bool isIncomingCall;
+  final bool autoStart;
+  final bool isEmergency;
 
   const VideoCallScreen({
     Key? key,
     required this.roomId,
     required this.targetSocketId,
     this.isIncomingCall = false,
+    this.autoStart = false,
+    this.isEmergency = false,
   }) : super(key: key);
 
   @override
@@ -63,6 +67,13 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     if (widget.isIncomingCall) {
       // 接聽模式：等 socket 連線後通知長輩發送 Offer
       _signaling.sendCallAccept(widget.targetSocketId);
+    } else if (widget.autoStart) {
+      // 自動發起模式：因為已經事先彈出 CallKit 被接聽，或屬於緊急通話，直接建立連線
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) {
+          _signaling.createOffer(targetId: widget.targetSocketId, isEmergency: widget.isEmergency);
+        }
+      });
     }
   }
 
@@ -109,7 +120,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                if (!widget.isIncomingCall) ...[
+                if (!widget.isIncomingCall && !widget.autoStart) ...[
                   FloatingActionButton(
                     heroTag: "call",
                     backgroundColor: Colors.green,

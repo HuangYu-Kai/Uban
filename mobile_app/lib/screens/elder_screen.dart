@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 import '../services/signaling.dart';
 import 'role_selection_screen.dart';
 
@@ -17,7 +18,7 @@ class ElderScreen extends StatefulWidget {
   _ElderScreenState createState() => _ElderScreenState();
 }
 
-class _ElderScreenState extends State<ElderScreen> {
+class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   final Signaling _signaling = Signaling();
   final RTCVideoRenderer _localRenderer = RTCVideoRenderer();
   final RTCVideoRenderer _remoteRenderer = RTCVideoRenderer();
@@ -27,7 +28,41 @@ class _ElderScreenState extends State<ElderScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _checkPermissions();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkPendingEmergency();
+    }
+  }
+
+  Future<void> _checkPendingEmergency() async {
+    final prefs = await SharedPreferences.getInstance();
+    final pendingRoom = prefs.getString('pending_emergency_room');
+    final pendingSender = prefs.getString('pending_emergency_sender');
+
+    if (pendingRoom != null && pendingRoom == widget.roomId && pendingSender != null) {
+      await prefs.remove('pending_emergency_room');
+      await prefs.remove('pending_emergency_sender');
+      _handleEmergencyAccept(pendingSender);
+    }
+  }
+
+  Future<void> _handleEmergencyAccept(String senderId) async {
+    if (!_isInCall && mounted) {
+      setState(() => _isInCall = true);
+      
+      FlutterTts flutterTts = FlutterTts();
+      await flutterTts.setLanguage("zh-TW");
+      await flutterTts.setVolume(1.0);
+      await flutterTts.speak("緊急通話，自動接聽中。緊急通話，自動接聽中。");
+
+      // Notify the Family App that we are awake and ready to receive the Offer!
+      _signaling.sendCallAccept(senderId);
+    }
   }
 
   Future<void> _checkPermissions() async {
@@ -65,6 +100,11 @@ class _ElderScreenState extends State<ElderScreen> {
           ),
         );
       }
+    };
+
+    // 如果在前景收到緊急通訊 Socket
+    _signaling.onEmergencyCall = (roomId, senderId) {
+       _handleEmergencyAccept(senderId);
     };
 
     // ★★★ 關鍵：家屬接聽後，才發送 Offer (解決影像連線問題) ★★★
@@ -139,7 +179,7 @@ class _ElderScreenState extends State<ElderScreen> {
   // 主動呼叫 (先響鈴)
   void _makeCall() {
     setState(() { _status = "正在呼叫家人..."; _isInCall = true; });
-    _signaling.requestCall();
+    _signaling.sendCallRequest(widget.roomId);
   }
 
   void _hangUp() {

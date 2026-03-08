@@ -4,7 +4,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import 'family_dashboard_screen.dart';
 import 'elder_screen.dart';
+import 'video_call_screen.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
+import '../globals.dart';
 
 class RoleSelectionScreen extends StatefulWidget {
   const RoleSelectionScreen({super.key});
@@ -39,6 +41,31 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
 
   Future<void> _checkLoginStatus() async {
     final prefs = await SharedPreferences.getInstance();
+    
+    // ★ 檢查是否有背景背景廣播傳進來的 Emergency Call 狀態
+    final pendingEmergencyRoom = prefs.getString('pending_emergency_room');
+    final pendingEmergencySender = prefs.getString('pending_emergency_sender');
+    if (pendingEmergencyRoom != null && pendingEmergencyRoom.isNotEmpty && pendingEmergencySender != null) {
+      print("🚨 發現暫存的緊急呼叫！立即導向強制接聽畫面");
+      // 清除，以免下次打開又觸發
+      await prefs.remove('pending_emergency_room');
+      await prefs.remove('pending_emergency_sender');
+      
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => VideoCallScreen(
+              roomId: pendingEmergencyRoom,
+              targetSocketId: pendingEmergencySender,
+              isIncomingCall: true,
+            ),
+          ),
+        );
+        return;
+      }
+    }
+
     final savedRole = prefs.getString('saved_role');
     final savedId = prefs.getString('saved_id');
     
@@ -47,6 +74,18 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
         List<dynamic> elders = await ApiService.getElderData(savedId);
         if (elders.isNotEmpty && mounted) {
           Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => FamilyDashboardScreen(elders: elders)));
+          
+          if (pendingAcceptedCall != null) {
+            final args = pendingAcceptedCall!;
+            pendingAcceptedCall = null;
+            Navigator.push(context, MaterialPageRoute(
+              builder: (context) => VideoCallScreen(
+                roomId: args['roomId']!,
+                targetSocketId: args['senderId']!,
+                isIncomingCall: true,
+              ),
+            ));
+          }
           return;
         }
       } else if (savedRole == 'elder') {
