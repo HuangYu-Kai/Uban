@@ -21,6 +21,7 @@ class FamilyMainScreen extends StatefulWidget {
 
 class _FamilyMainScreenState extends State<FamilyMainScreen> {
   int _selectedIndex = 0;
+
   late final List<Widget> _views;
 
   @override
