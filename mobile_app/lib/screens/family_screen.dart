@@ -32,7 +32,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
     });
 
     // 監聽後端傳來的設備列表
-    _signaling.onElderDevicesUpdate = (users) {
+    _signaling.onUserListUpdate = (users) {
       setState(() {
         // 過濾出角色是 'elder' 的設備
         _onlineElders = users.where((u) => u['role'] == 'elder').toList();

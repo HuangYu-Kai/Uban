@@ -193,7 +193,6 @@ class _FamilyScriptsViewState extends State<FamilyScriptsView> {
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.05),
-
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -310,7 +309,6 @@ class _FamilyScriptsViewState extends State<FamilyScriptsView> {
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.2),
-
               blurRadius: 15,
               offset: const Offset(0, 8),
             ),
