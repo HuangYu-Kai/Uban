@@ -17,7 +17,7 @@ typedef void CallRequestCallback(String roomId, String senderId);
 typedef void CallAcceptedCallback(String accepterId);
 
 class Signaling {
-  final String _socketUrl = 'https://0149-61-65-116-7.ngrok-free.app'; // 容我先自己使用，感恩的心
+  final String _socketUrl = 'https://e588-61-65-116-7.ngrok-free.app'; // 容我先自己使用，感恩的心
   static const platform = MethodChannel('com.example.app/bring_to_front');
 
   IO.Socket? socket;
