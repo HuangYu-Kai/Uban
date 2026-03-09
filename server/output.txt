@@ -1,0 +1,66 @@
+﻿CREATE TABLE user (
+	id INTEGER NOT NULL, 
+	user_name VARCHAR(32) NOT NULL, 
+	user_email VARCHAR(64) NOT NULL, 
+	password VARCHAR(128) NOT NULL, 
+	gender VARCHAR(1) NOT NULL, 
+	age INTEGER NOT NULL, 
+	user_authority VARCHAR(20) NOT NULL, 
+	role VARCHAR(20) NOT NULL, 
+	created_at DATETIME, 
+	last_seen DATETIME, 
+	PRIMARY KEY (id), 
+	UNIQUE (user_email)
+)
+CREATE TABLE pairing_code (
+	id INTEGER NOT NULL, 
+	code VARCHAR(6) NOT NULL, 
+	creator_id INTEGER NOT NULL, 
+	is_used BOOLEAN, 
+	expires_at DATETIME NOT NULL, 
+	PRIMARY KEY (id), 
+	UNIQUE (code), 
+	FOREIGN KEY(creator_id) REFERENCES user (id)
+)
+CREATE TABLE relationship (
+	id INTEGER NOT NULL, 
+	elder_id INTEGER NOT NULL, 
+	family_id INTEGER NOT NULL, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(elder_id) REFERENCES user (id), 
+	FOREIGN KEY(family_id) REFERENCES user (id)
+)
+CREATE TABLE activity_log (
+	id INTEGER NOT NULL, 
+	user_id INTEGER NOT NULL, 
+	event_type VARCHAR(50) NOT NULL, 
+	content TEXT NOT NULL, 
+	timestamp DATETIME, 
+	extra_data TEXT, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(user_id) REFERENCES user (id)
+)
+CREATE TABLE elder_profile (
+	id INTEGER NOT NULL, 
+	user_id INTEGER NOT NULL, 
+	phone VARCHAR(20), 
+	location VARCHAR(100), 
+	ai_persona VARCHAR(50), 
+	chronic_diseases TEXT, 
+	medication_notes TEXT, 
+	interests TEXT, 
+	PRIMARY KEY (id), 
+	UNIQUE (user_id), 
+	FOREIGN KEY(user_id) REFERENCES user (id)
+)
+CREATE TABLE family_message (
+	id INTEGER NOT NULL, 
+	family_id INTEGER NOT NULL, 
+	elder_id INTEGER NOT NULL, 
+	content TEXT NOT NULL, 
+	is_read BOOLEAN, 
+	created_at DATETIME, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(family_id) REFERENCES user (id), 
+	FOREIGN KEY(elder_id) REFERENCES user (id)
+)
