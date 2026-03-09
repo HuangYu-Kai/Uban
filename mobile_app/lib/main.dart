@@ -1,16 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-
-import 'screens/splash_screen.dart';
+import 'package:intl/intl.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'screens/identification_screen.dart';
-import 'screens/login_screen.dart';
+import 'screens/splash_screen.dart';
 import 'screens/family_main_screen.dart';
-
-final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+import 'screens/login_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
+  try {
+    // 強化初始化：同時載入 zh 與 zh_TW，並設定全域預設 Locale
+    await Future.wait([
+      initializeDateFormatting('zh_TW', null),
+      initializeDateFormatting('zh', null),
+    ]);
+    Intl.defaultLocale = 'zh_TW';
+  } catch (e) {
+    debugPrint('Intl initialization failed: $e');
+  }
   runApp(const MyApp());
 }
 
@@ -20,8 +28,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Uban',
-      navigatorKey: navigatorKey,
+      title: 'UBan',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF59B294)),
