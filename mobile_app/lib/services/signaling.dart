@@ -5,8 +5,18 @@ import 'package:socket_io_client/socket_io_client.dart' as socket_io;
 typedef StreamStateCallback = void Function(MediaStream stream);
 
 class Signaling {
-  // ★ 請確認 IP 正確 (實機: 192.168.31.209, 模擬器: 10.0.2.2)
-  final String _socketUrl = 'http://10.0.2.2:5001';
+  static const String _serverIp = String.fromEnvironment(
+    'SERVER_IP',
+    defaultValue: '10.0.2.2',
+  );
+
+  String get _socketUrl {
+    if (_serverIp.contains('ngrok-free.app') ||
+        _serverIp.contains('ngrok-free.dev')) {
+      return 'https://$_serverIp';
+    }
+    return 'http://$_serverIp:5001';
+  }
 
   socket_io.Socket? socket;
   RTCPeerConnection? peerConnection;
