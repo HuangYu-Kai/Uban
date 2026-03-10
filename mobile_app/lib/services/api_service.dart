@@ -2,9 +2,18 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class ApiService {
-  // 對於實機測試，請使用您電腦的區域網路 IP (如 192.168.31.209)
-  // 對於 Android 模擬器，請使用 http://10.0.2.2:5001/api
-  static const String baseUrl = 'http://192.168.31.209:5001/api';
+  static const String serverIp = String.fromEnvironment(
+    'SERVER_IP',
+    defaultValue: '10.0.2.2',
+  );
+
+  static String get baseUrl {
+    if (serverIp.contains('ngrok-free.app') ||
+        serverIp.contains('ngrok-free.dev')) {
+      return 'https://$serverIp/api';
+    }
+    return 'http://$serverIp:5001/api';
+  }
 
   static Future<Map<String, dynamic>> register({
     required String username,
