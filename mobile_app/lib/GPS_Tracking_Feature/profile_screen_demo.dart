@@ -573,7 +573,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                         height: 22,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: const Color(0xFF4CAF50),
+                          color: const Color(0xFF4DCB9D), // 改為卡片主色
                           border: Border.all(color: Colors.white, width: 3),
                           boxShadow: [
                             BoxShadow(
@@ -587,15 +587,15 @@ class _ProfileScreenState extends State<ProfileScreen>
                     ),
                   ],
                 ),
-              // ── 目前位置：大頭貼地圖釘 ────────────────────────
+              // ── 目前位置：大頭貼圓點 ───────────────────────────
               if (_currentPosition != null)
                 MarkerLayer(
                   markers: [
                     Marker(
                       point: _currentPosition!,
-                      width: 54,
-                      height: 66,
-                      alignment: Alignment.bottomCenter,
+                      width: 44,
+                      height: 44,
+                      alignment: Alignment.center, // 改為居中對齊
                       child: const _AvatarPin(),
                     ),
                   ],
@@ -848,83 +848,32 @@ class _PulsingDotState extends State<_PulsingDot>
   }
 }
 
-// ── 大頭貼地圖釘（目前位置） ────────────────────────────────
+// ── 大頭貼位置點（目前位置） ────────────────────────────────
 class _AvatarPin extends StatelessWidget {
   const _AvatarPin();
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // 圓形大頭貼
-        Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: const Color(0xFFE0E0E0),
-            border: Border.all(color: Colors.white, width: 3),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.30),
-                blurRadius: 8,
-                offset: const Offset(0, 3),
-              ),
-            ],
+    return Container(
+      width: 44,
+      height: 44,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: const Color(0xFFE0E0E0),
+        border: Border.all(color: Colors.white, width: 3.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.15),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
           ),
-          child: const ClipOval(
-            child: Icon(Icons.person, size: 30, color: Color(0xFF757575)),
-          ),
-        ),
-        // 三角形針腳
-        CustomPaint(
-          size: const Size(16, 10),
-          painter: _PinNeedlePainter(),
-        ),
-      ],
+        ],
+      ),
+      child: const ClipOval(
+        child: Icon(Icons.person, size: 28, color: Color(0xFF757575)),
+      ),
     );
   }
-}
-
-// 地圖釘下方三角形（白色邊框，黑色實心）
-class _PinNeedlePainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    // 陰影
-    final shadowPaint = Paint()
-      ..color = Colors.black.withValues(alpha: 0.20)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2);
-    final shadowPath = Path()
-      ..moveTo(size.width / 2 - 1, 2)
-      ..lineTo(size.width / 2, size.height + 1)
-      ..lineTo(size.width / 2 + 1, 2)
-      ..close();
-    canvas.drawPath(shadowPath, shadowPaint);
-
-    // 白色外框
-    final borderPaint = Paint()
-      ..color = Colors.white
-      ..strokeWidth = 3
-      ..style = PaintingStyle.stroke;
-    final path = Path()
-      ..moveTo(2, 0)
-      ..lineTo(size.width / 2, size.height)
-      ..lineTo(size.width - 2, 0);
-    canvas.drawPath(path, borderPaint);
-
-    // 實心黑色針腳
-    final fillPaint = Paint()..color = const Color(0xFFE0E0E0);
-    final fillPath = Path()
-      ..moveTo(3, 0)
-      ..lineTo(size.width / 2, size.height - 1)
-      ..lineTo(size.width - 3, 0)
-      ..close();
-    canvas.drawPath(fillPath, fillPaint);
-  }
-
-  @override
-  bool shouldRepaint(CustomPainter oldDelegate) => false;
 }
 
 // ── 步數泡泡下方小三角 ──────────────────────────────────────
