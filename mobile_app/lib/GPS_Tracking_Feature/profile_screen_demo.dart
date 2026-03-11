@@ -101,6 +101,11 @@ class _ProfileScreenState extends State<ProfileScreen>
   // ── 載入持久化路徑 ──────────────────────────────────────────
   Future<void> _loadPersistedRoute() async {
     final prefs = await SharedPreferences.getInstance();
+    
+    // [清除舊資料] 強制清除先前儲存的美國位置以便能顯示最新狀況
+    await prefs.remove('route_points');
+    await prefs.remove('total_distance');
+
     final dateStr = prefs.getString('last_track_date') ?? '';
     final today = DateTime.now().toIso8601String().substring(0, 10);
 
@@ -123,6 +128,10 @@ class _ProfileScreenState extends State<ProfileScreen>
         _totalDistance = prefs.getDouble('total_distance') ?? 0.0;
       });
     }
+
+    // [測試用] 強制載入中正紀念堂到台北商業大學的假路徑（供展示用）
+    // 放於最後確保能夠蓋過所有先前的錯誤歷史紀錄。
+    _loadMockDemoRoute();
   }
 
   // ── 儲存當前點位與里程 ──────────────────────────────────────
@@ -133,6 +142,26 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
     await prefs.setString('route_points', pointsJson);
     await prefs.setDouble('total_distance', _totalDistance);
+  }
+
+  // ── [展示用] 載入中正紀念堂到北商的假路徑 ───────────────────
+  void _loadMockDemoRoute() {
+    // 中正紀念堂 (25.0346, 121.5218) 到 台北商業大學 (25.0423, 121.5249) 的大致路段
+    final mockPoints = [
+      const LatLng(25.0346, 121.5218), // 中正紀念堂
+      const LatLng(25.0355, 121.5218), // 中山南路往北
+      const LatLng(25.0368, 121.5219), // 靠近仁愛路路口
+      const LatLng(25.0375, 121.5222), // 轉向林森南路
+      const LatLng(25.0390, 121.5225), // 沿著林森南路往北
+      const LatLng(25.0405, 121.5230), // 濟南路交叉口
+      const LatLng(25.0423, 121.5249), // 抵達北商附近
+    ];
+    setState(() {
+      _routePoints.clear();
+      _routePoints.addAll(mockPoints);
+      _currentPosition = mockPoints.last;
+      _totalDistance = 1.25; // 假裝走了 1.25 km
+    });
   }
 
   @override
@@ -191,9 +220,24 @@ class _ProfileScreenState extends State<ProfileScreen>
 
       setState(() => _currentPosition = newPoint);
 
-      // 地圖跟著目前位置移動
-      if (_mapController.camera.zoom != 0) {
-        _mapController.move(newPoint, 18.0);
+      // ── 自動自適應視角 (Auto-Fit Bounds) ─────────────────────
+      if (_routePoints.length > 1) {
+        // 算出所有點的邊界
+        final bounds = LatLngBounds.fromPoints(_routePoints);
+        // 如果地圖還沒準備好會報錯，所以加個 try-catch 或檢查
+        try {
+          _mapController.fitCamera(
+            CameraFit.bounds(
+              bounds: bounds,
+              padding: const EdgeInsets.all(40.0), // 留出邊界空間
+            ),
+          );
+        } catch (_) {}
+      } else {
+        // 只有一個點時，直接切到該點並拉近
+        if (_mapController.camera.zoom != 0) {
+          _mapController.move(newPoint, 18.0);
+        }
       }
     });
 
@@ -476,11 +520,19 @@ class _ProfileScreenState extends State<ProfileScreen>
           // ── FlutterMap ──────────────────────────────────────
           FlutterMap(
             mapController: _mapController,
-            options: const MapOptions(
-              initialCenter: _defaultCenter,
+            options: MapOptions(
+              initialCenter: _routePoints.isNotEmpty
+                  ? _routePoints.last
+                  : (_currentPosition ?? _defaultCenter),
               initialZoom: 18.0,
-              interactionOptions: InteractionOptions(
-                flags: InteractiveFlag.none,
+              initialCameraFit: _routePoints.length > 1
+                  ? CameraFit.bounds(
+                      bounds: LatLngBounds.fromPoints(_routePoints),
+                      padding: const EdgeInsets.all(40.0),
+                    )
+                  : null,
+              interactionOptions: const InteractionOptions(
+                flags: InteractiveFlag.none, // 依然禁止手動拖動/縮放
               ),
             ),
             children: [
@@ -577,9 +629,12 @@ class _ProfileScreenState extends State<ProfileScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 30, 20, 20),
-          child: Column(
+        child: ScrollConfiguration(
+          behavior: const ScrollBehavior().copyWith(overscroll: false), // 停用 Android 12+ 果凍拉伸特效
+          child: SingleChildScrollView(
+            physics: const ClampingScrollPhysics(), // 停用 iOS/Android 的拉伸回彈效果
+            padding: const EdgeInsets.fromLTRB(20, 30, 20, 20),
+            child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               // 標頭
@@ -713,6 +768,7 @@ class _ProfileScreenState extends State<ProfileScreen>
               const SizedBox(height: 20),
             ],
           ),
+        ),
         ),
       ),
       bottomNavigationBar: BottomNavigationBar(
