@@ -1,12 +1,12 @@
-import 'dart:math' show pi;
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:geolocator_android/geolocator_android.dart';
+import 'package:latlong2/latlong.dart' hide Path;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 
-// GPS 功能 Demo 頁面
-// 已安裝套件：geolocator + google_maps_flutter（見 pubspec.yaml）
-// 要顯示真實地圖，請：
-//   1. 至 Google Cloud Console 取得 Maps API Key
-//   2. 貼到 android/app/src/main/AndroidManifest.xml 的 YOUR_GOOGLE_MAPS_API_KEY_HERE
-//   3. 將 _buildMapPlaceholder 換成真正的 GoogleMap() widget
 void main() => runApp(const MyApp());
 
 class MyApp extends StatelessWidget {
@@ -39,11 +39,21 @@ class _ProfileScreenState extends State<ProfileScreen>
   final String greetingText = '今天一共走了';
   final String kilometers = '3.5 公里';
 
-  // ── Animation ──────────────────────────────────────────────
+  // ── 步數動畫 ──────────────────────────────────────────────
   late AnimationController _ctrl;
-  late Animation<double> _greenSlide; // 綠卡往下滑出
-  late Animation<double> _numScale; // 數字史萊姆縮放
-  late Animation<double> _numOpacity; // 數字淡入
+  late Animation<double> _greenSlide;
+  late Animation<double> _numScale;
+  late Animation<double> _numOpacity;
+
+  // ── GPS 追蹤 ──────────────────────────────────────────────
+  bool _isTracking = false;
+  final List<LatLng> _routePoints = [];
+  StreamSubscription<Position>? _positionStream;
+  final MapController _mapController = MapController();
+  double _totalDistance = 0.0; // 公里
+  LatLng? _currentPosition;
+  // 台北 101 作為預設中心點
+  static const LatLng _defaultCenter = LatLng(25.0339, 121.5645);
 
   @override
   void initState() {
@@ -75,16 +85,121 @@ class _ProfileScreenState extends State<ProfileScreen>
       ),
     );
 
-    // 0.2 秒後開始動畫
     Future.delayed(const Duration(milliseconds: 200), () {
       if (mounted) _ctrl.forward();
     });
+
+    _autoStartTracking();
+  }
+
+  // ── 自動啟動追蹤與持久化初始化 ──────────────────────────────
+  Future<void> _autoStartTracking() async {
+    await _loadPersistedRoute();
+    await _startTracking();
+  }
+
+  // ── 載入持久化路徑 ──────────────────────────────────────────
+  Future<void> _loadPersistedRoute() async {
+    final prefs = await SharedPreferences.getInstance();
+    final dateStr = prefs.getString('last_track_date') ?? '';
+    final today = DateTime.now().toIso8601String().substring(0, 10);
+
+    if (dateStr != today) {
+      // 跨日，清空數據
+      await prefs.remove('route_points');
+      await prefs.setDouble('total_distance', 0.0);
+      await prefs.setString('last_track_date', today);
+      return;
+    }
+
+    // 載入當日已有點位
+    final pointsJson = prefs.getString('route_points');
+    if (pointsJson != null) {
+      final List<dynamic> decoded = jsonDecode(pointsJson);
+      setState(() {
+        _routePoints.addAll(
+          decoded.map((p) => LatLng(p['lat'], p['lng'])).toList(),
+        );
+        _totalDistance = prefs.getDouble('total_distance') ?? 0.0;
+      });
+    }
+  }
+
+  // ── 儲存當前點位與里程 ──────────────────────────────────────
+  Future<void> _persistRoute() async {
+    final prefs = await SharedPreferences.getInstance();
+    final pointsJson = jsonEncode(
+      _routePoints.map((p) => {'lat': p.latitude, 'lng': p.longitude}).toList(),
+    );
+    await prefs.setString('route_points', pointsJson);
+    await prefs.setDouble('total_distance', _totalDistance);
   }
 
   @override
   void dispose() {
     _ctrl.dispose();
+    _positionStream?.cancel();
     super.dispose();
+  }
+
+  // ── 請求位置權限 ────────────────────────────────────────
+  Future<bool> _requestPermission() async {
+    LocationPermission perm = await Geolocator.checkPermission();
+    if (perm == LocationPermission.denied) {
+      perm = await Geolocator.requestPermission();
+    }
+    return perm == LocationPermission.always ||
+        perm == LocationPermission.whileInUse;
+  }
+
+  // ── 開始 GPS 追蹤（自動前景服務版） ────────────────────────
+  Future<void> _startTracking() async {
+    if (_isTracking) return;
+
+    final granted = await _requestPermission();
+    if (!granted) {
+      return;
+    }
+
+    _positionStream = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 10,
+      ),
+    ).listen((Position pos) {
+      final newPoint = LatLng(pos.latitude, pos.longitude);
+
+      if (_routePoints.isNotEmpty) {
+        final lastPoint = _routePoints.last;
+        final distM = Geolocator.distanceBetween(
+          lastPoint.latitude,
+          lastPoint.longitude,
+          newPoint.latitude,
+          newPoint.longitude,
+        );
+        // 過濾雜訊：若移動距離太小或跳動過大則忽略
+        if (distM > 2.0) {
+          _totalDistance += distM / 1000.0;
+          setState(() {
+            _routePoints.add(newPoint);
+            _persistRoute(); // 持久化
+          });
+        }
+      } else {
+        setState(() => _routePoints.add(newPoint));
+      }
+
+      setState(() => _currentPosition = newPoint);
+
+      // 地圖跟著目前位置移動
+      if (_mapController.camera.zoom != 0) {
+        _mapController.move(newPoint, _mapController.camera.zoom);
+      }
+    });
+
+    setState(() {
+      _isTracking = true;
+    });
   }
 
   // ── 登出對話框 ──────────────────────────────────────────────
@@ -94,8 +209,9 @@ class _ProfileScreenState extends State<ProfileScreen>
       barrierColor: Colors.black26,
       builder: (BuildContext context) {
         return Dialog(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
           child: Container(
             padding: const EdgeInsets.symmetric(vertical: 30, horizontal: 20),
             decoration: BoxDecoration(
@@ -105,9 +221,10 @@ class _ProfileScreenState extends State<ProfileScreen>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text('確認登出?',
-                    style:
-                        TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                const Text(
+                  '確認登出?',
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                ),
                 const SizedBox(height: 30),
                 _dialogBtn('登出', const Color(0xFFF05161), () {
                   Navigator.of(context).pop();
@@ -132,24 +249,28 @@ class _ProfileScreenState extends State<ProfileScreen>
         onPressed: onPressed,
         style: ElevatedButton.styleFrom(
           backgroundColor: color,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           elevation: 0,
         ),
-        child: Text(label,
-            style: const TextStyle(
-                fontSize: 18,
-                color: Colors.white,
-                fontWeight: FontWeight.w600)),
+        child: Text(
+          label,
+          style: const TextStyle(
+            fontSize: 18,
+            color: Colors.white,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
       ),
     );
   }
 
   // ── 步數動畫卡片 ────────────────────────────────────────────
   Widget _buildAnimatedStepCard() {
-    const double darkCardH = 200.0; // 黑卡高度
-    const double greenPeek = 32.0; // 綠卡最終露出高度
-    const double greenCardH = 56.0; // 綠卡總高度
+    const double darkCardH = 200.0;
+    const double greenPeek = 32.0;
+    const double greenCardH = 56.0;
 
     return AnimatedBuilder(
       animation: _ctrl,
@@ -162,13 +283,13 @@ class _ProfileScreenState extends State<ProfileScreen>
           child: Stack(
             clipBehavior: Clip.none,
             children: [
-              // ① 綠卡（斜的，從黑卡下方彈出）
+              // ① 綠卡
               Positioned(
                 bottom: 0,
                 left: 0,
                 right: 0,
                 child: Transform.rotate(
-                  angle: -3.5 * pi / 180, // 往左傾斜約 3.5 度
+                  angle: -0.0611, // -3.5 度，約等於 -3.5 * pi / 180
                   alignment: Alignment.centerLeft,
                   child: Container(
                     height: greenCardH,
@@ -180,8 +301,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                   ),
                 ),
               ),
-
-              // ② 黑卡（上層，靜止）
+              // ② 黑卡
               Positioned(
                 top: 0,
                 left: 0,
@@ -197,19 +317,18 @@ class _ProfileScreenState extends State<ProfileScreen>
                   child: Stack(
                     clipBehavior: Clip.none,
                     children: [
-                      // 標題
                       const Positioned(
                         top: 0,
                         left: 0,
                         child: Text(
                           '步數',
                           style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600),
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
-                      // 長條圖（對齊底部）
                       Positioned(
                         bottom: 0,
                         left: 0,
@@ -238,7 +357,6 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
   }
 
-  // ── 一般長條 ────────────────────────────────────────────────
   Widget _buildBar(String day, double ratio) {
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -258,9 +376,8 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
   }
 
-  // ── 今天長條（泡泡用 Stack 絕對定位，完全擺脫寬度限制）────────
   Widget _buildBarToday(String day, double ratio, String steps) {
-    const double barH = 90.0 * 1.0; // ratio = 1.0
+    const double barH = 90.0;
     return AnimatedBuilder(
       animation: _ctrl,
       builder: (context, _) {
@@ -268,9 +385,8 @@ class _ProfileScreenState extends State<ProfileScreen>
           clipBehavior: Clip.none,
           alignment: Alignment.bottomCenter,
           children: [
-            // 泡泡：Positioned 完全脫離 layout flow
             Positioned(
-              bottom: barH + 6 + 15 + 8, // bar + SizedBox + dayText高度 + 間距
+              bottom: barH + 6 + 15 + 8,
               child: Opacity(
                 opacity: _numOpacity.value,
                 child: Transform.scale(
@@ -281,7 +397,9 @@ class _ProfileScreenState extends State<ProfileScreen>
                     children: [
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 4),
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(8),
@@ -298,9 +416,10 @@ class _ProfileScreenState extends State<ProfileScreen>
                           softWrap: false,
                           maxLines: 1,
                           style: const TextStyle(
-                              color: Colors.black,
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold),
+                            color: Colors.black,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
                       CustomPaint(
@@ -312,7 +431,6 @@ class _ProfileScreenState extends State<ProfileScreen>
                 ),
               ),
             ),
-            // 長條 + 日期文字（決定這個格子的實際高度）
             Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.center,
@@ -326,9 +444,10 @@ class _ProfileScreenState extends State<ProfileScreen>
                   ),
                 ),
                 const SizedBox(height: 6),
-                Text(day,
-                    style:
-                        TextStyle(color: Colors.grey.shade500, fontSize: 11)),
+                Text(
+                  day,
+                  style: TextStyle(color: Colors.grey.shade500, fontSize: 11),
+                ),
               ],
             ),
           ],
@@ -337,28 +456,262 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
   }
 
-  // ── 地圖佔位（換成真實 GoogleMap widget）──────────────────
-  Widget _buildMapPlaceholder() {
+  // ── ✨ 真實 OpenStreetMap 地圖 + GPS 追蹤 ────────────────────
+  Widget _buildRealMap() {
     return Container(
-      height: 350,
+      height: 380,
       decoration: BoxDecoration(
-        color: Colors.grey.shade300,
         borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.14),
+            blurRadius: 14,
+            offset: const Offset(0, 5),
+          ),
+        ],
       ),
       clipBehavior: Clip.antiAlias,
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.map_outlined, size: 48, color: Colors.grey),
-            const SizedBox(height: 8),
-            Text(
-              'GPS 地圖（已安裝 google_maps_flutter）\n取得 API Key 後替換此區塊',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+      child: Stack(
+        children: [
+          // ── FlutterMap ──────────────────────────────────────
+          FlutterMap(
+            mapController: _mapController,
+            options: MapOptions(
+              initialCenter: _currentPosition ?? _defaultCenter,
+              initialZoom: 15.0,
+              interactionOptions: const InteractionOptions(
+                flags: InteractiveFlag.all,
+              ),
             ),
-          ],
-        ),
+            children: [
+              // CartoDB Positron：極簡淡色底圖（類 Nike Run 風格）
+              TileLayer(
+                urlTemplate:
+                    'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+                subdomains: const ['a', 'b', 'c', 'd'],
+                retinaMode: true,
+                userAgentPackageName: 'com.uban.app',
+                maxZoom: 20,
+              ),
+              // 追蹤路線（黑色粗線，Nike Run 風格）
+              if (_routePoints.length >= 2)
+                PolylineLayer(
+                  polylines: [
+                    Polyline(
+                      points: _routePoints,
+                      strokeWidth: 5.5,
+                      color: const Color(0xFF111111),
+                      borderStrokeWidth: 1.5,
+                      borderColor: const Color(0xFF444444),
+                      strokeJoin: StrokeJoin.round,
+                      strokeCap: StrokeCap.round,
+                    ),
+                  ],
+                ),
+              // ── 起點標記（綠色實心圓）──────────────────────────
+              if (_routePoints.isNotEmpty)
+                MarkerLayer(
+                  markers: [
+                    Marker(
+                      point: _routePoints.first,
+                      width: 22,
+                      height: 22,
+                      child: Container(
+                        width: 22,
+                        height: 22,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: const Color(0xFF4CAF50),
+                          border: Border.all(color: Colors.white, width: 3),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.25),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              // ── 目前位置：大頭貼地圖釘 ────────────────────────
+              if (_currentPosition != null)
+                MarkerLayer(
+                  markers: [
+                    Marker(
+                      point: _currentPosition!,
+                      width: 54,
+                      height: 66,
+                      alignment: Alignment.bottomCenter,
+                      child: const _AvatarPin(),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+
+          // ── 頂部統計列 ─────────────────────────────────────
+          Positioned(
+            top: 12,
+            left: 12,
+            right: 12,
+            child: Row(
+              children: [
+                // 距離標籤
+                _statBadge(
+                  icon: Icons.straighten,
+                  value: _totalDistance >= 1.0
+                      ? '${_totalDistance.toStringAsFixed(2)} km'
+                      : '${(_totalDistance * 1000).toStringAsFixed(0)} m',
+                  label: '距離',
+                ),
+                const SizedBox(width: 8),
+                // 路線點數標籤
+                _statBadge(
+                  icon: Icons.location_on,
+                  value: '${_routePoints.length}',
+                  label: '記錄點',
+                ),
+                const Spacer(),
+                // OSM 標示
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.82),
+                    borderRadius: BorderRadius.circular(5),
+                  ),
+                  child: const Text(
+                    '© CartoDB',
+                    style: TextStyle(fontSize: 9, color: Colors.black45),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // ── 底部：狀態提示（自動記錄中） ───────────────────────
+          Positioned(
+            bottom: 20,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.9),
+                  borderRadius: BorderRadius.circular(25),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.1),
+                      blurRadius: 10,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 10,
+                      height: 10,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFF4CAF50),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    const Text(
+                      '今日步行路徑自動記錄中',
+                      style: TextStyle(
+                        color: Colors.black87,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          // ── 回到目前位置按鈕（右下角）────────────────────────
+          if (_currentPosition != null)
+            Positioned(
+              right: 12,
+              bottom: 80,
+              child: GestureDetector(
+                onTap: () => _mapController.move(_currentPosition!, 15.0),
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.15),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.my_location,
+                    size: 20,
+                    color: Color(0xFF111111),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // 統計小標籤
+  Widget _statBadge({
+    required IconData icon,
+    required String value,
+    required String label,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 6),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: const Color(0xFFFF6B35)),
+          const SizedBox(width: 4),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+              Text(
+                label,
+                style: const TextStyle(fontSize: 9, color: Colors.grey),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -381,9 +734,14 @@ class _ProfileScreenState extends State<ProfileScreen>
                     width: 70,
                     height: 70,
                     decoration: const BoxDecoration(
-                        shape: BoxShape.circle, color: Colors.grey),
-                    child:
-                        const Icon(Icons.person, size: 40, color: Colors.white),
+                      shape: BoxShape.circle,
+                      color: Colors.grey,
+                    ),
+                    child: const Icon(
+                      Icons.person,
+                      size: 40,
+                      color: Colors.white,
+                    ),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
@@ -396,14 +754,17 @@ class _ProfileScreenState extends State<ProfileScreen>
                               TextSpan(
                                 text: userName,
                                 style: const TextStyle(
-                                    fontSize: 24,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.black87),
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.black87,
+                                ),
                               ),
                               const TextSpan(
                                 text: ' 您好！',
                                 style: TextStyle(
-                                    fontSize: 22, color: Colors.black87),
+                                  fontSize: 22,
+                                  color: Colors.black87,
+                                ),
                               ),
                             ],
                           ),
@@ -430,21 +791,31 @@ class _ProfileScreenState extends State<ProfileScreen>
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.directions_walk,
-                        size: 40, color: Colors.black54),
+                    const Icon(
+                      Icons.directions_walk,
+                      size: 40,
+                      color: Colors.black54,
+                    ),
                     const SizedBox(width: 16),
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(greetingText,
-                            style: TextStyle(
-                                fontSize: 14, color: Colors.grey.shade600)),
+                        Text(
+                          greetingText,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
                         const SizedBox(height: 4),
-                        Text(kilometers,
-                            style: const TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.black87)),
+                        Text(
+                          kilometers,
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black87,
+                          ),
+                        ),
                       ],
                     ),
                   ],
@@ -452,12 +823,12 @@ class _ProfileScreenState extends State<ProfileScreen>
               ),
               const SizedBox(height: 20),
 
-              // ✨ 步數動畫卡片（黑卡 + 斜綠卡 + 史萊姆數字）
+              // 步數動畫卡片
               _buildAnimatedStepCard(),
               const SizedBox(height: 20),
 
-              // 地圖佔位
-              _buildMapPlaceholder(),
+              // ✨ 真實 OpenStreetMap 地圖 + GPS 追蹤
+              _buildRealMap(),
               const SizedBox(height: 30),
 
               // 登出按鈕
@@ -469,14 +840,18 @@ class _ProfileScreenState extends State<ProfileScreen>
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFF05161),
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                     elevation: 0,
                   ),
-                  child: const Text('登出',
-                      style: TextStyle(
-                          fontSize: 18,
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold)),
+                  child: const Text(
+                    '登出',
+                    style: TextStyle(
+                      fontSize: 18,
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(height: 20),
@@ -491,11 +866,13 @@ class _ProfileScreenState extends State<ProfileScreen>
         elevation: 10,
         items: [
           const BottomNavigationBarItem(
-              icon: Icon(Icons.home_outlined, color: Colors.grey),
-              label: 'Home'),
+            icon: Icon(Icons.home_outlined, color: Colors.grey),
+            label: 'Home',
+          ),
           const BottomNavigationBarItem(
-              icon: Icon(Icons.chat_bubble_outline, color: Colors.grey),
-              label: 'Chat'),
+            icon: Icon(Icons.chat_bubble_outline, color: Colors.grey),
+            label: 'Chat',
+          ),
           BottomNavigationBarItem(
             icon: Container(
               padding: const EdgeInsets.all(8),
@@ -513,7 +890,132 @@ class _ProfileScreenState extends State<ProfileScreen>
   }
 }
 
-// 提示框下方小三角
+// ── 追蹤中紅點動畫 ───────────────────────────────────────────
+class _PulsingDot extends StatefulWidget {
+  @override
+  State<_PulsingDot> createState() => _PulsingDotState();
+}
+
+class _PulsingDotState extends State<_PulsingDot>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _c;
+  late Animation<double> _a;
+
+  @override
+  void initState() {
+    super.initState();
+    _c = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
+    _a = Tween<double>(begin: 0.4, end: 1.0).animate(_c);
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _a,
+      builder: (_, __) => Opacity(
+        opacity: _a.value,
+        child: Container(
+          width: 8,
+          height: 8,
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            shape: BoxShape.circle,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── 大頭貼地圖釘（目前位置） ────────────────────────────────
+class _AvatarPin extends StatelessWidget {
+  const _AvatarPin();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // 圓形大頭貼
+        Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: const Color(0xFFE0E0E0),
+            border: Border.all(color: Colors.white, width: 3),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.30),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: const ClipOval(
+            child: Icon(Icons.person, size: 30, color: Color(0xFF757575)),
+          ),
+        ),
+        // 三角形針腳
+        CustomPaint(
+          size: const Size(16, 10),
+          painter: _PinNeedlePainter(),
+        ),
+      ],
+    );
+  }
+}
+
+// 地圖釘下方三角形（白色邊框，黑色實心）
+class _PinNeedlePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    // 陰影
+    final shadowPaint = Paint()
+      ..color = Colors.black.withValues(alpha: 0.20)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2);
+    final shadowPath = Path()
+      ..moveTo(size.width / 2 - 1, 2)
+      ..lineTo(size.width / 2, size.height + 1)
+      ..lineTo(size.width / 2 + 1, 2)
+      ..close();
+    canvas.drawPath(shadowPath, shadowPaint);
+
+    // 白色外框
+    final borderPaint = Paint()
+      ..color = Colors.white
+      ..strokeWidth = 3
+      ..style = PaintingStyle.stroke;
+    final path = Path()
+      ..moveTo(2, 0)
+      ..lineTo(size.width / 2, size.height)
+      ..lineTo(size.width - 2, 0);
+    canvas.drawPath(path, borderPaint);
+
+    // 實心黑色針腳
+    final fillPaint = Paint()..color = const Color(0xFFE0E0E0);
+    final fillPath = Path()
+      ..moveTo(3, 0)
+      ..lineTo(size.width / 2, size.height - 1)
+      ..lineTo(size.width - 3, 0)
+      ..close();
+    canvas.drawPath(fillPath, fillPaint);
+  }
+
+  @override
+  bool shouldRepaint(CustomPainter oldDelegate) => false;
+}
+
+// ── 步數泡泡下方小三角 ──────────────────────────────────────
 class TrianglePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
