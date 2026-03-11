@@ -2,6 +2,18 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>需要您的位置以顯示目前位置並追蹤運動路線</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>需要您的位置以追蹤背景運動路線</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>需要您的位置以追蹤背景運動路線</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
