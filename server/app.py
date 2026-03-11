@@ -1,5 +1,19 @@
 import os
-from flask import Flask, request
+# server/app.py
+import eventlet
+import ssl
+
+# SSL 補丁 (針對 Python 3.13+)
+if not hasattr(ssl, 'wrap_socket'):
+    def dummy_wrap_socket(sock, *args, **kwargs):
+        context = ssl.SSLContext(kwargs.get('ssl_version', ssl.PROTOCOL_TLS))
+        return context.wrap_socket(sock, *args, **kwargs)
+    ssl.wrap_socket = dummy_wrap_socket
+
+eventlet.monkey_patch()
+
+from flask import Flask, request, jsonify
+from flask_cors import CORS
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from extensions import db
 from routes.auth import auth_bp
