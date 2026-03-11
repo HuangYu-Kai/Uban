@@ -193,7 +193,7 @@ class _ProfileScreenState extends State<ProfileScreen>
 
       // 地圖跟著目前位置移動
       if (_mapController.camera.zoom != 0) {
-        _mapController.move(newPoint, _mapController.camera.zoom);
+        _mapController.move(newPoint, 18.0);
       }
     });
 
@@ -476,11 +476,11 @@ class _ProfileScreenState extends State<ProfileScreen>
           // ── FlutterMap ──────────────────────────────────────
           FlutterMap(
             mapController: _mapController,
-            options: MapOptions(
-              initialCenter: _currentPosition ?? _defaultCenter,
-              initialZoom: 15.0,
-              interactionOptions: const InteractionOptions(
-                flags: InteractiveFlag.all,
+            options: const MapOptions(
+              initialCenter: _defaultCenter,
+              initialZoom: 18.0,
+              interactionOptions: InteractionOptions(
+                flags: InteractiveFlag.none,
               ),
             ),
             children: [
@@ -551,165 +551,21 @@ class _ProfileScreenState extends State<ProfileScreen>
             ],
           ),
 
-          // ── 頂部統計列 ─────────────────────────────────────
+          // ── OSM 標示（右下角極小化） ───────────────────────────
           Positioned(
-            top: 12,
-            left: 12,
-            right: 12,
-            child: Row(
-              children: [
-                // 距離標籤
-                _statBadge(
-                  icon: Icons.straighten,
-                  value: _totalDistance >= 1.0
-                      ? '${_totalDistance.toStringAsFixed(2)} km'
-                      : '${(_totalDistance * 1000).toStringAsFixed(0)} m',
-                  label: '距離',
-                ),
-                const SizedBox(width: 8),
-                // 路線點數標籤
-                _statBadge(
-                  icon: Icons.location_on,
-                  value: '${_routePoints.length}',
-                  label: '記錄點',
-                ),
-                const Spacer(),
-                // OSM 標示
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 7,
-                    vertical: 3,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.82),
-                    borderRadius: BorderRadius.circular(5),
-                  ),
-                  child: const Text(
-                    '© CartoDB',
-                    style: TextStyle(fontSize: 9, color: Colors.black45),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // ── 底部：狀態提示（自動記錄中） ───────────────────────
-          Positioned(
-            bottom: 20,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.9),
-                  borderRadius: BorderRadius.circular(25),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.1),
-                      blurRadius: 10,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 10,
-                      height: 10,
-                      decoration: const BoxDecoration(
-                        color: Color(0xFF4CAF50),
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    const Text(
-                      '今日步行路徑自動記錄中',
-                      style: TextStyle(
-                        color: Colors.black87,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
+            bottom: 8,
+            right: 8,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(3),
+              ),
+              child: const Text(
+                '© CartoDB',
+                style: TextStyle(fontSize: 8, color: Colors.black38),
               ),
             ),
-          ),
-
-          // ── 回到目前位置按鈕（右下角）────────────────────────
-          if (_currentPosition != null)
-            Positioned(
-              right: 12,
-              bottom: 80,
-              child: GestureDetector(
-                onTap: () => _mapController.move(_currentPosition!, 15.0),
-                child: Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.15),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: const Icon(
-                    Icons.my_location,
-                    size: 20,
-                    color: Color(0xFF111111),
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  // 統計小標籤
-  Widget _statBadge({
-    required IconData icon,
-    required String value,
-    required String label,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 6),
-        ],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: const Color(0xFFFF6B35)),
-          const SizedBox(width: 4),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                value,
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
-                ),
-              ),
-              Text(
-                label,
-                style: const TextStyle(fontSize: 9, color: Colors.grey),
-              ),
-            ],
           ),
         ],
       ),
