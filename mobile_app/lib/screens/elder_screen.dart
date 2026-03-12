@@ -179,7 +179,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   // 主動呼叫 (先響鈴)
   void _makeCall() {
     setState(() { _status = "正在呼叫家人..."; _isInCall = true; });
-    _signaling.sendCallRequest(widget.roomId);
+    _signaling.sendCallRequest(widget.roomId, role: 'elder');
   }
 
   void _hangUp() {

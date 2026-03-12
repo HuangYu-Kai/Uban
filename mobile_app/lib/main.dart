@@ -9,6 +9,7 @@ import 'package:socket_io_client/socket_io_client.dart' as IO;
 
 import 'dart:async';
 import 'globals.dart';
+import 'services/signaling.dart'; // import to access socketUrl
 import 'screens/role_selection_screen.dart';
 import 'screens/video_call_screen.dart'; // Add this import
 import 'package:flutter/services.dart';
@@ -82,14 +83,35 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     await prefs.setString('pending_emergency_room', message.data['roomId'] ?? '');
     await prefs.setString('pending_emergency_sender', message.data['senderId'] ?? '');
 
+    // Attempt to bring the app to the foreground if it is in the background.
     try {
-      final intent = AndroidIntent(
+      final intent = const AndroidIntent(
         action: 'android.intent.action.MAIN',
-        package: 'com.example.flutter_application_1', // Your exact android package name
+        flags: [Flag.FLAG_ACTIVITY_NEW_TASK, Flag.FLAG_ACTIVITY_REORDER_TO_FRONT],
+        package: 'com.example.flutter_application_1', 
         componentName: 'com.example.flutter_application_1.MainActivity',
-        flags: <int>[Flag.FLAG_ACTIVITY_NEW_TASK, Flag.FLAG_ACTIVITY_REORDER_TO_FRONT],
       );
       await intent.launch();
+
+      const platform = MethodChannel('com.example.app/bring_to_front');
+      await platform.invokeMethod('bringToFront');
+      
+      // Auto-accept the call in CallKit so it drops the UI and just goes into the app
+      // Note: 'params' is not defined in this scope for 'emergency-call'.
+      // If CallKit is intended to be used here, 'params' needs to be constructed
+      // similarly to the 'call-request' block, using data from 'message'.
+      // For now, assuming 'params' is a placeholder or will be defined elsewhere.
+      // If the intent is to just bring the app to front and handle the emergency
+      // within the app, then `startCall` might not be necessary or might need
+      // a different approach.
+      // For the purpose of this edit, I'm adding the line as requested,
+      // but flagging the potential missing 'params' definition.
+      // If the user meant to use CallKit for emergency calls, 'params' would need to be built.
+      // As the original code didn't use CallKit for emergency, this line might be problematic.
+      // I will comment it out to avoid a compilation error, assuming the primary goal
+      // is to bring the app to front. If CallKit integration is desired,
+      // the user needs to define `params` for emergency calls.
+      // await FlutterCallkitIncoming.startCall(params); 
     } catch (e) {
       print("Failed to bring app to front: $e");
     }
@@ -153,7 +175,7 @@ class _MyAppState extends State<MyApp> {
 
   void _sendDeclineEvent(String roomId, String senderId) {
     print("❌ Call Declined from CallKit, sending call-busy to $senderId...");
-    final IO.Socket socket = IO.io('https://50ef-61-65-116-7.ngrok-free.app', 
+    final IO.Socket socket = IO.io(Signaling.socketUrl, 
       IO.OptionBuilder()
         .setTransports(['websocket'])
         .disableAutoConnect()
@@ -175,7 +197,7 @@ class _MyAppState extends State<MyApp> {
   }
 
   void _navigateToVideoCall(String roomId, String senderId) {
-    if (navigatorKey.currentState != null && navigatorKey.currentState!.canPop()) {
+    if (navigatorKey.currentState != null) {
       // Pop any active dialogs (like the incoming call alert on the dashboard) 
       // before bringing up the VideoCallScreen from CallKit.
       navigatorKey.currentState?.popUntil((route) => route.isFirst);
@@ -190,7 +212,7 @@ class _MyAppState extends State<MyApp> {
         ),
       );
     } else {
-      // App is cold booting. Save it for RoleSelectionScreen to pick up.
+      // App is cold booting or navigator not ready. Save it for RoleSelectionScreen to pick up.
       pendingAcceptedCall = {'roomId': roomId, 'senderId': senderId};
     }
   }
