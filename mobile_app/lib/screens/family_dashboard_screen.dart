@@ -8,6 +8,7 @@ import '../services/signaling.dart';
 import 'device_selection_screen.dart';
 import 'video_call_screen.dart'; 
 import 'role_selection_screen.dart';
+import '../globals.dart';
 
 class FamilyDashboardScreen extends StatefulWidget {
   final List<dynamic> elders;
@@ -30,6 +31,29 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> with Widg
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    
+    //宣告儀表板已經完成初始掛載，允許main.dart直接發動Push
+    isAppReady = true;
+
+    // ★ 檢查是否有系統冷啟動時接聽的通話 (解決 Bug 8)
+    if (pendingAcceptedCall != null) {
+      final args = pendingAcceptedCall!;
+      pendingAcceptedCall = null;
+      Future.microtask(() {
+        if (mounted) {
+          Navigator.push(context, MaterialPageRoute(
+            builder: (context) => VideoCallScreen(
+              roomId: args['roomId']!,
+              targetSocketId: args['senderId']!,
+              isIncomingCall: true,
+            ),
+          ));
+        }
+      });
+    } else {
+      // 若 Dart 層沒收到事件 (完全被系統殺死時可能遺失)，主動去向 Native 查詢是否有接聽中的通話
+      _checkColdBootCallKit();
+    }
     
     // Listen for declines from CallKit (which can happen while app is in background)
     _declineSub = callKitDeclineStream.stream.listen((declinedRoomId) {
@@ -57,6 +81,43 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> with Widg
         _currentDialogRoomId = null;
         _dialogContext = null;
       }
+    }
+  }
+
+  Future<void> _checkColdBootCallKit() async {
+    try {
+      final activeCalls = await FlutterCallkitIncoming.activeCalls();
+      if (activeCalls is List && activeCalls.isNotEmpty) {
+        final call = activeCalls[0];
+        final extra = call['extra'];
+        if (extra != null && extra is Map) {
+          final roomId = extra['roomId'];
+          final senderId = extra['senderId'];
+          if (roomId != null && senderId != null) {
+            // 清除 CallKit UI
+            await FlutterCallkitIncoming.endAllCalls();
+            
+            if (mounted) {
+              // 如果有對話框顯示中，關閉它
+              if (_dialogContext != null && Navigator.canPop(_dialogContext!)) {
+                Navigator.pop(_dialogContext!);
+                _currentDialogRoomId = null;
+                _dialogContext = null;
+              }
+              
+              Navigator.push(context, MaterialPageRoute(
+                builder: (context) => VideoCallScreen(
+                  roomId: roomId.toString(),
+                  targetSocketId: senderId.toString(),
+                  isIncomingCall: true, // 這會讓視訊房自動送出接聽通知給長輩
+                ),
+              ));
+            }
+          }
+        }
+      }
+    } catch (e) {
+      print("Cold boot active call check failed: $e");
     }
   }
 

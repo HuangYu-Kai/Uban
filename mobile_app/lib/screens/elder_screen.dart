@@ -5,7 +5,9 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import '../services/signaling.dart';
+import '../services/signaling.dart';
 import 'role_selection_screen.dart';
+import '../globals.dart';
 
 class ElderScreen extends StatefulWidget {
   final String roomId;
@@ -24,11 +26,13 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   final RTCVideoRenderer _remoteRenderer = RTCVideoRenderer();
   String _status = "等待連線...";
   bool _isInCall = false;
+  BuildContext? _incomingCallDialogContext;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    isAppReady = true;
     _checkPermissions();
   }
 
@@ -125,9 +129,20 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       deviceMode: widget.isCCTVMode ? 'cctv' : 'comm'
     );
 
+    // ★ Bug 14 解決方案：除了靠 AppLifecycleState.resumed 觸發以外，
+    // 在啟動完成且剛連上 Socket 的這瞬間，也要主動去檢查有沒有 pending 的通話要求。
+    // 這樣在 App 全程被關掉並依靠推播冷啟動時，就能第一時間回傳 sendCallAccept 解除家屬端的對話框。
+    Future.delayed(const Duration(milliseconds: 1500), () {
+      _checkPendingEmergency();
+    });
+
     // 掛斷後重置狀態
     _signaling.onCallEnded = () {
       if (mounted) {
+        if (_incomingCallDialogContext != null && Navigator.canPop(_incomingCallDialogContext!)) {
+          Navigator.pop(_incomingCallDialogContext!);
+          _incomingCallDialogContext = null;
+        }
         setState(() { 
           _remoteRenderer.srcObject = null; 
           _status = "通話結束"; 
@@ -136,7 +151,60 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       }
     };
 
-    // 對方忙線中
+    // 背景來的正常通話要求 (會由這支負責彈窗)
+    _signaling.onCallRequest = (reqRoomId, reqSenderId) async {
+       if (mounted) {
+         bool accept = await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (dialogContext) {
+            _incomingCallDialogContext = dialogContext;
+            return AlertDialog(
+              title: const Text('家人來電'),
+              content: const Text('是否接聽？'),
+              actions: [
+                TextButton(onPressed: () {
+                  _incomingCallDialogContext = null;
+                  Navigator.pop(dialogContext, false);
+                }, child: const Text('拒絕')),
+                ElevatedButton(onPressed: () {
+                  _incomingCallDialogContext = null;
+                  Navigator.pop(dialogContext, true);
+                }, child: const Text('接聽')),
+              ],
+            );
+          },
+        ) ?? false;
+        
+        if (accept) {
+          setState(() { _status = "連線建立中..."; _isInCall = true; });
+          _signaling.sendCallAccept(reqSenderId);
+        } else {
+          _signaling.sendCallBusy(reqSenderId);
+        }
+       }
+    };
+
+    // 對方取消來電
+    _signaling.onCancelCall = (cancelRoomId, senderId) {
+      if (mounted) {
+        if (_incomingCallDialogContext != null && Navigator.canPop(_incomingCallDialogContext!)) {
+          Navigator.pop(_incomingCallDialogContext!);
+          _incomingCallDialogContext = null;
+        }
+        setState(() {
+          _status = "對方已取消來電";
+          _isInCall = false;
+        });
+        
+        Future.delayed(const Duration(seconds: 3), () {
+          if (mounted && !_isInCall) {
+            setState(() => _status = "等待連線...");
+          }
+        });
+      }
+    };
+
     _signaling.onCallBusy = (targetId) {
       if (mounted) {
         setState(() {
@@ -153,26 +221,24 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       }
     };
 
-    _signaling.onIncomingCall = (callerId, callType) async {
-      bool isEmergency = callType == 'emergency';
-      if (widget.isCCTVMode || isEmergency) {
-        setState(() => _isInCall = true);
-        return true; 
+    // 背景來的被強制登出要求 (Feature 12)
+    _signaling.socket?.on('force-logout', (_) async {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.clear();
+      if (mounted) {
+         Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (context) => const RoleSelectionScreen()),
+          (route) => false,
+        );
       }
-      bool accept = await showDialog<bool>(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => AlertDialog(
-          title: const Text('家人來電'),
-          content: const Text('是否接聽？'),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('拒絕')),
-            ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('接聽')),
-          ],
-        ),
-      ) ?? false;
-      if (accept) setState(() => _isInCall = true);
-      return accept;
+    });
+
+    _signaling.onIncomingCall = (callerId, callType) async {
+      // 由於一般來電已經在 onCallRequest 那邊彈出視窗且使用者點擊同意了，
+      // 所以這時收到的 Offer 一律放行 (不論是 CCTV、Emergency、或是剛答應的 Normal)
+      setState(() => _isInCall = true);
+      return true; 
     };
   }
 
