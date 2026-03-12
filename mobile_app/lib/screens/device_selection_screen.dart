@@ -54,25 +54,39 @@ class _DeviceSelectionScreenState extends State<DeviceSelectionScreen> {
                     final String name = device['deviceName'] ?? 'Unknown';
                     final String socketId = device['id'];
                     final String mode = device['deviceMode'] ?? 'comm'; 
+                    final bool isOnline = device['isOnline'] ?? true; // 相容舊版，預設為在線
 
                     return Card(
                       child: ListTile(
-                        leading: Icon(mode == 'cctv' ? Icons.videocam : Icons.phone_in_talk, color: mode == 'cctv' ? Colors.red : Colors.green),
-                        title: Text(name),
+                        leading: Icon(
+                          mode == 'cctv' ? Icons.videocam : Icons.phone_in_talk, 
+                          color: isOnline ? (mode == 'cctv' ? Colors.red : Colors.green) : Colors.grey
+                        ),
+                        title: Text(isOnline ? name : "(離線) $name", style: TextStyle(color: isOnline ? Colors.black : Colors.grey)),
                         subtitle: Text(mode == 'cctv' ? "監控模式" : "通訊模式"),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             if (mode == 'cctv')
                               IconButton(
-                                icon: const Icon(Icons.videocam, color: Colors.blue),
-                                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MonitoringScreen(roomId: widget.elderId, targetSocketId: socketId))),
+                                icon: Icon(Icons.videocam, color: isOnline ? Colors.blue : Colors.grey),
+                                onPressed: () {
+                                  if (isOnline) {
+                                     Navigator.push(context, MaterialPageRoute(builder: (_) => MonitoringScreen(roomId: widget.elderId, targetSocketId: socketId)));
+                                  } else {
+                                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("設備離線中，無法觀看 CCTV")));
+                                  }
+                                }
                               ),
                             if (mode == 'comm')
                               IconButton(
-                                icon: const Icon(Icons.call, color: Colors.green),
-                                onPressed: () => _showCallTypeDialog(widget.elderId, socketId),
+                                icon: Icon(Icons.call, color: isOnline ? Colors.green : Colors.grey),
+                                onPressed: () => _showCallTypeDialog(widget.elderId, socketId, isOnline: isOnline),
                               ),
+                            IconButton(
+                              icon: const Icon(Icons.delete, color: Colors.red),
+                              onPressed: () => _confirmDeleteDevice(widget.elderId, socketId, name),
+                            )
                           ],
                         ),
                       ),
@@ -82,12 +96,12 @@ class _DeviceSelectionScreenState extends State<DeviceSelectionScreen> {
     );
   }
 
-  void _showCallTypeDialog(String roomId, String targetId) {
+  void _showCallTypeDialog(String roomId, String targetId, {bool isOnline = true}) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text("選擇通話類型"),
-        content: const Text("一般通話將測試長輩接聽意願；緊急通話將強制開啟對方視訊畫面。"),
+        title: Text(isOnline ? "選擇通話類型" : "🚨 裝置目前離線"),
+        content: Text(isOnline ? "一般通話將測試長輩接聽意願；緊急通話將強制開啟對方視訊畫面。" : "裝置目前無法連線。但您依然可以使用「緊急通話」或「一般通話」透過高優先級推播喚醒對方的設備。"),
         actions: [
           TextButton(
             child: const Text("一般通話"),
@@ -102,6 +116,31 @@ class _DeviceSelectionScreenState extends State<DeviceSelectionScreen> {
             onPressed: () {
               Navigator.pop(context);
               _initiateEmergencyCall(roomId, targetId);
+            },
+          )
+        ],
+      )
+    );
+  }
+
+  void _confirmDeleteDevice(String roomId, String targetId, String deviceName) {
+     showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("移除設備"),
+        content: Text("確定要強制登出並移除「$deviceName」嗎？此操作不可逆。"),
+        actions: [
+          TextButton(
+            child: const Text("取消"),
+            onPressed: () => Navigator.pop(context),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text("刪除", style: TextStyle(color: Colors.white)),
+            onPressed: () {
+              Navigator.pop(context);
+              _signaling.sendDeleteDevice(roomId, targetId);
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("已發送刪除指令給 $deviceName")));
             },
           )
         ],
