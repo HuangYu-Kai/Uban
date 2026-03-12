@@ -165,7 +165,8 @@ def on_call_request(data):
     if room in rooms_manager:
         for sid, info in rooms_manager[room].items():
             if info.get('role') == target_role:
-                emit('call-request', {'senderId': sender_id, 'room': room}, to=sid)
+                # 明確告知接起端: call-request 是從誰發起的
+                emit('call-request', {'senderId': sender_id, 'room': room, 'role': sender_role}, to=sid)
 
     # 2. 針對目標角色發送 FCM 靜默推播喚醒
     if room in room_fcm_tokens:
@@ -173,9 +174,19 @@ def on_call_request(data):
             if info.get('role') == target_role:
                 try:
                     message = messaging.Message(
-                        data={'type': 'call-request', 'senderId': sender_id, 'roomId': room},
+                        data={'type': 'call-request', 'senderId': sender_id, 'roomId': room, 'role': str(sender_role)},
                         token=token,
-                        android=messaging.AndroidConfig(priority='high')
+                        android=messaging.AndroidConfig(
+                            priority='high',
+                            notification=messaging.AndroidNotification(
+                                channel_id='Call_Ring_Channel'
+                            )
+                        ),
+                        apns=messaging.APNSConfig(
+                            payload=messaging.APNSPayload(
+                                aps=messaging.Aps(content_available=True)
+                            )
+                        )
                     )
                     messaging.send(message)
                 except Exception as e:
@@ -202,7 +213,12 @@ def on_cancel_call(data):
                     message = messaging.Message(
                         data={'type': 'cancel-call', 'senderId': sender_id, 'roomId': room},
                         token=token,
-                        android=messaging.AndroidConfig(priority='high')
+                        android=messaging.AndroidConfig(priority='high'),
+                        apns=messaging.APNSConfig(
+                            payload=messaging.APNSPayload(
+                                aps=messaging.Aps(content_available=True)
+                            )
+                        )
                     )
                     messaging.send(message)
                 except Exception:
@@ -229,7 +245,17 @@ def on_emergency_call(data):
                     message = messaging.Message(
                         data={'type': 'emergency-call', 'senderId': sender_id, 'roomId': room},
                         token=token,
-                        android=messaging.AndroidConfig(priority='high')
+                        android=messaging.AndroidConfig(
+                            priority='high',
+                            notification=messaging.AndroidNotification(
+                                channel_id='Emergency_Ring_Channel'
+                            )
+                        ),
+                        apns=messaging.APNSConfig(
+                            payload=messaging.APNSPayload(
+                                aps=messaging.Aps(content_available=True)
+                            )
+                        )
                     )
                     messaging.send(message)
                 except Exception as e:

@@ -17,7 +17,7 @@ typedef void CallRequestCallback(String roomId, String senderId);
 typedef void CallAcceptedCallback(String accepterId);
 
 class Signaling {
-  final String _socketUrl = 'https://e588-61-65-116-7.ngrok-free.app'; // 容我先自己使用，感恩的心
+  static const String socketUrl = 'https://b88d-61-65-116-7.ngrok-free.app'; // Exposing for main.dart background decline
   static const platform = MethodChannel('com.example.app/bring_to_front');
 
   IO.Socket? socket;
@@ -50,7 +50,7 @@ class Signaling {
   void connect(String roomId, String role, {String deviceName = 'Unknown', String deviceMode = 'comm'}) {
     _currentRoomId = roomId;
 
-    socket = IO.io(_socketUrl, IO.OptionBuilder()
+    socket = IO.io(socketUrl, IO.OptionBuilder()
       .setTransports(['websocket'])
       .disableAutoConnect()
       .enableForceNew() // 強制每次 connect 都建立全新 Socket，不共用快取
@@ -260,8 +260,8 @@ class Signaling {
     Helper.setSpeakerphoneOn(enable);
   }
 
-  void sendCallRequest(String room) {
-    socket!.emit('call-request', {'room': room});
+  void sendCallRequest(String room, {String role = 'family'}) {
+    socket!.emit('call-request', {'room': room, 'role': role});
   }
 
 
