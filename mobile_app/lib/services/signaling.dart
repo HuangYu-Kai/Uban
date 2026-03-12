@@ -295,6 +295,12 @@ class Signaling {
     socket!.emit('emergency-call', {'room': room});
   }
 
+  void sendDeleteDevice(String room, String targetId) {
+    if (socket != null && socket!.connected) {
+      socket!.emit('delete-device', {'room': room, 'targetId': targetId});
+    }
+  }
+
   void hangUp({bool disconnectSocket = true, bool disposeLocalStream = true}) {
     if (socket != null) {
       // 絕對不可以只送 room，這會導致伺服器針對整個房間廣播 end-call，

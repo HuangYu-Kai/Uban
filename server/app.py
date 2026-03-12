@@ -113,7 +113,8 @@ def on_join(data):
         if fcm_token:
             room_fcm_tokens[room][fcm_token] = {
                 'role': role,
-                'deviceName': device_name
+                'deviceName': device_name,
+                'deviceMode': device_mode
             }
         
         print(f"✅ User {sid} ({role} - {device_name}) joined room: {room}")
@@ -128,15 +129,32 @@ def on_join(data):
 
         # 回傳長輩列表給家屬
         if role == 'family':
-            elder_devices = [
-                {
-                    'id': k, 
-                    'deviceName': v['deviceName'], 
-                    'deviceMode': v.get('deviceMode', 'comm')
-                } 
-                for k, v in rooms_manager[room].items() 
-                if v['role'] == 'elder'
-            ]
+            elder_devices = []
+            online_device_names = set()
+
+            # 1. 抓取有連線在 Socket 的在線裝置 
+            if room in rooms_manager:
+                for k, v in rooms_manager[room].items():
+                    if v.get('role') == 'elder':
+                        elder_devices.append({
+                            'id': k, 
+                            'deviceName': v['deviceName'], 
+                            'deviceMode': v.get('deviceMode', 'comm'),
+                            'isOnline': True
+                        })
+                        online_device_names.add(v['deviceName'])
+
+            # 2. 從歷史 FCM Token 紀錄中找出離線的裝置 (方便家屬用 FCM 喚醒)
+            if room in room_fcm_tokens:
+                for token, info in room_fcm_tokens[room].items():
+                    if info.get('role') == 'elder' and info['deviceName'] not in online_device_names:
+                        elder_devices.append({
+                            'id': f"offline_{token[-8:]}", # 隨便建一個虛擬 Socket ID，因為會走 FCM
+                            'deviceName': info['deviceName'],
+                            'deviceMode': info.get('deviceMode', 'comm'),
+                            'isOnline': False
+                        })
+                        
             emit('elder-devices-list', elder_devices, to=sid)
 
 @socketio.on('disconnect')
@@ -301,10 +319,69 @@ def on_candidate(data):
 def on_end_call(data):
     target = data.get('targetId')
     room = data.get('room')
-    print(f"📴 End Call from {request.sid}")
+    if target: 
+        emit('end-call', {'room': room}, to=target)
+
+@socketio.on('delete-device')
+def on_delete_device(data):
+    room = data.get('room')
+    target_id = data.get('targetId')
+    sender_id = request.sid
     
-    if target:
-        emit('end-call', {'senderId': request.sid}, to=target)
+    print(f"🗑️ Delete Device Request from {sender_id} to remove {target_id} in {room}")
+
+    # 1. 處理歷史 FCM Token (離線裝置)
+    if room in room_fcm_tokens:
+        tokens_to_delete = []
+        for token, info in room_fcm_tokens[room].items():
+            if f"offline_{token[-8:]}" == target_id or token == target_id:
+                tokens_to_delete.append(token)
+                try:
+                    message = messaging.Message(
+                        data={'type': 'force-logout', 'roomId': room},
+                        token=token,
+                        android=messaging.AndroidConfig(priority='high')
+                    )
+                    messaging.send(message)
+                except Exception:
+                    pass
+        for t in tokens_to_delete:
+            del room_fcm_tokens[room][t]
+
+    # 2. 處理線上 Socket 裝置
+    if room in rooms_manager and target_id in rooms_manager[room]:
+        emit('force-logout', {}, to=target_id)
+        # 直接踢掉
+        del rooms_manager[room][target_id]
+        emit('user-left', target_id, to=room)
+
+    # 回傳更新後的裝置列表給呼叫的家屬端 (這樣他畫面上的刪除裝置就會消失)
+    if room in rooms_manager and sender_id in rooms_manager[room]:
+        elder_devices = []
+        online_device_names = set()
+
+        if room in rooms_manager:
+            for k, v in rooms_manager[room].items():
+                if v.get('role') == 'elder':
+                    elder_devices.append({
+                        'id': k, 
+                        'deviceName': v['deviceName'], 
+                        'deviceMode': v.get('deviceMode', 'comm'),
+                        'isOnline': True
+                    })
+                    online_device_names.add(v['deviceName'])
+
+        if room in room_fcm_tokens:
+            for token, info in room_fcm_tokens[room].items():
+                if info.get('role') == 'elder' and info['deviceName'] not in online_device_names:
+                    elder_devices.append({
+                        'id': f"offline_{token[-8:]}",
+                        'deviceName': info['deviceName'],
+                        'deviceMode': info.get('deviceMode', 'comm'),
+                        'isOnline': False
+                    })
+                    
+        emit('elder-devices-list', elder_devices, to=sender_id)
 
 if __name__ == '__main__':
     print("🚀 Server starting on port 5000...")
