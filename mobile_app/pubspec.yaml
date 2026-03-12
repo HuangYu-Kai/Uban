@@ -54,9 +54,9 @@ dependencies:
   shared_preferences: ^2.2.1
   speech_to_text: ^7.0.0
   flutter_markdown: ^0.7.7+1
-  geolocator: ^14.0.2
+  geolocator: ^13.0.4
   geocoding: ^4.0.0
-  video_player: ^2.11.0
+  video_player: 2.10.0
   markdown: ^7.3.0
   flutter_callkit_incoming: ^3.0.0
   volume_controller: ^3.4.1
@@ -65,7 +65,7 @@ dependencies:
   firebase_messaging: ^15.0.3
 #webrtc還沒到測試最終版，先不整合
   # GPS 定位與地圖（OpenStreetMap 免費，無需 API Key）
-  geolocator_android: ^5.0.2
+  geolocator_android: ^4.3.0
   flutter_map: ^7.0.0
   latlong2: ^0.9.0
 
