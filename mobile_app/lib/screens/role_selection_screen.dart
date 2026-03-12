@@ -6,6 +6,7 @@ import 'family_dashboard_screen.dart';
 import 'elder_screen.dart';
 import 'video_call_screen.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../globals.dart';
 
 class RoleSelectionScreen extends StatefulWidget {
@@ -36,35 +37,54 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
       print("Permission Action failed: $e");
     }
     
+    // 檢查核心權限
+    Map<Permission, PermissionStatus> statuses = await [
+      Permission.camera,
+      Permission.microphone,
+      Permission.notification,
+      Permission.ignoreBatteryOptimizations,
+    ].request();
+
+    bool isCriticalDenied = false;
+    if (statuses[Permission.notification] != PermissionStatus.granted) isCriticalDenied = true;
+    if (statuses[Permission.ignoreBatteryOptimizations] != PermissionStatus.granted) isCriticalDenied = true;
+
+    if (isCriticalDenied && mounted) {
+      bool? openedSettings = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          title: const Text('⚠️ 權限不足警告'),
+          content: const Text('Uban 需要「通知」與「無限制電池(允許背景執行)」權限才能在鎖定畫面或背景成功接收緊急通話。若您拒絕這些權限，將無法正常收到來電。\n\n請前往系統設定中允許這些權限。'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context, false);
+              },
+              child: const Text('忽略並繼續 (不建議)'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                openAppSettings();
+                Navigator.pop(context, true);
+              },
+              child: const Text('前往設定'),
+            ),
+          ],
+        ),
+      );
+      
+      // 如果用戶去了設定，我們給他一點時間回來，或者就直接讓他們繼續往下走 (因為設定跳轉回來不會自動重觸發 init)
+      // 這裡選擇繼續執行登入檢查
+    }
+
     _checkLoginStatus();
   }
 
   Future<void> _checkLoginStatus() async {
     final prefs = await SharedPreferences.getInstance();
-    
-    // ★ 檢查是否有背景背景廣播傳進來的 Emergency Call 狀態
-    final pendingEmergencyRoom = prefs.getString('pending_emergency_room');
-    final pendingEmergencySender = prefs.getString('pending_emergency_sender');
-    if (pendingEmergencyRoom != null && pendingEmergencyRoom.isNotEmpty && pendingEmergencySender != null) {
-      print("🚨 發現暫存的緊急呼叫！立即導向強制接聽畫面");
-      // 清除，以免下次打開又觸發
-      await prefs.remove('pending_emergency_room');
-      await prefs.remove('pending_emergency_sender');
-      
-      if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => VideoCallScreen(
-              roomId: pendingEmergencyRoom,
-              targetSocketId: pendingEmergencySender,
-              isIncomingCall: true,
-            ),
-          ),
-        );
-        return;
-      }
-    }
+    // ★ 交由 ElderScreen 的 initState 來處理背景背景廣播傳進來的 Emergency Call 狀態，
+    // 不再這裡越俎代庖直接 Push，這會導致掛斷時 Pop 找不到 Navigator 返回而黑屏 (Bug 10)。
 
     final savedRole = prefs.getString('saved_role');
     final savedId = prefs.getString('saved_id');
@@ -74,18 +94,6 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
         List<dynamic> elders = await ApiService.getElderData(savedId);
         if (elders.isNotEmpty && mounted) {
           Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => FamilyDashboardScreen(elders: elders)));
-          
-          if (pendingAcceptedCall != null) {
-            final args = pendingAcceptedCall!;
-            pendingAcceptedCall = null;
-            Navigator.push(context, MaterialPageRoute(
-              builder: (context) => VideoCallScreen(
-                roomId: args['roomId']!,
-                targetSocketId: args['senderId']!,
-                isIncomingCall: true,
-              ),
-            ));
-          }
           return;
         }
       } else if (savedRole == 'elder') {

@@ -197,7 +197,7 @@ class _MyAppState extends State<MyApp> {
   }
 
   void _navigateToVideoCall(String roomId, String senderId) {
-    if (navigatorKey.currentState != null) {
+    if (navigatorKey.currentState != null && isAppReady) {
       // Pop any active dialogs (like the incoming call alert on the dashboard) 
       // before bringing up the VideoCallScreen from CallKit.
       navigatorKey.currentState?.popUntil((route) => route.isFirst);
@@ -212,7 +212,7 @@ class _MyAppState extends State<MyApp> {
         ),
       );
     } else {
-      // App is cold booting or navigator not ready. Save it for RoleSelectionScreen to pick up.
+      // App is cold booting or navigator not ready. Save it for Dashboard/Elder screen to pick up.
       pendingAcceptedCall = {'roomId': roomId, 'senderId': senderId};
     }
   }
