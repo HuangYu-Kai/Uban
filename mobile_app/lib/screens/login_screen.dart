@@ -356,7 +356,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Widget _buildSocialButton({
-    required IconData icon,
+    required dynamic icon,
     required Color color,
     required VoidCallback onTap,
   }) {
@@ -374,7 +374,7 @@ class _LoginScreenState extends State<LoginScreen> {
         child: Center(
           // 使用 Stack 模擬彩色 icon
           child: FaIcon(
-            icon,
+            icon ?? FontAwesomeIcons.question,
             size: 60, // 加大圖示
             color: color,
           ),

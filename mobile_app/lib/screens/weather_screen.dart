@@ -67,7 +67,7 @@ class WeatherScreen extends StatelessWidget {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const FaIcon(
+                        FaIcon(
                           FontAwesomeIcons.cloudSun,
                           size: 80,
                           color: Colors.white,
@@ -148,7 +148,7 @@ class WeatherScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildDetailItem(IconData icon, String label, String value) {
+  Widget _buildDetailItem(dynamic icon, String label, String value) {
     return Column(
       children: [
         FaIcon(icon, color: Colors.white.withValues(alpha: 0.8), size: 30),
@@ -174,7 +174,7 @@ class WeatherScreen extends StatelessWidget {
 
   Widget _buildForecastItem(
     String time,
-    IconData icon,
+    dynamic icon,
     String status,
     String temp,
   ) {
