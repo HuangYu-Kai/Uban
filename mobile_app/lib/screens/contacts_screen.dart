@@ -98,9 +98,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
                   backgroundImage: contact.imageUrl != null
                       ? NetworkImage(contact.imageUrl!)
                       : null,
-                  child: contact.imageUrl == null
-                      ? const FaIcon(FontAwesomeIcons.user, size: 60)
-                      : null,
+                      child: contact.imageUrl == null
+                          ? FaIcon(FontAwesomeIcons.user, size: 60)
+                          : null,
                 ),
                 const SizedBox(height: 24),
 
@@ -246,7 +246,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                     ),
                     elevation: 5,
                   ),
-                  icon: const FaIcon(FontAwesomeIcons.truckMedical, size: 50),
+                  icon: FaIcon(FontAwesomeIcons.truckMedical, size: 50),
                   label: Text(
                     'SOS 求救',
                     style: GoogleFonts.notoSansTc(
@@ -306,13 +306,13 @@ class _ContactsScreenState extends State<ContactsScreen> {
                               backgroundImage: contact.imageUrl != null
                                   ? NetworkImage(contact.imageUrl!)
                                   : null,
-                              child: contact.imageUrl == null
-                                  ? const FaIcon(
-                                      FontAwesomeIcons.user,
-                                      size: 50,
-                                      color: Colors.grey,
-                                    )
-                                  : null,
+                                  child: contact.imageUrl == null
+                                      ? FaIcon(
+                                          FontAwesomeIcons.user,
+                                          size: 50,
+                                          color: Colors.grey,
+                                        )
+                                      : null,
                             ),
                           ),
                           const SizedBox(height: 8),

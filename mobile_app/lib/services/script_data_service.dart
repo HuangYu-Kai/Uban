@@ -67,7 +67,7 @@ class ScriptNodeData {
       'content': content,
       'position': {'dx': position.dx, 'dy': position.dy},
       'icon': icon.codePoint,
-      'color': color.value,
+      'color': color.toARGB32(),
       'childrenIds': childrenIds,
       'triggerType': triggerType,
       'keywords': keywords,
@@ -151,7 +151,7 @@ class ScriptMetadata {
       'logic': logic,
       'isActive': isActive,
       'statusIcon': statusIcon.codePoint,
-      'statusColor': statusColor.value,
+      'statusColor': statusColor.toARGB32(),
     };
   }
 
@@ -166,7 +166,7 @@ class ScriptMetadata {
         map['statusIcon'] ?? Icons.edit_calendar.codePoint,
         fontFamily: 'MaterialIcons',
       ),
-      statusColor: Color(map['statusColor'] ?? Colors.blueAccent.value),
+      statusColor: Color(map['statusColor'] ?? Colors.blueAccent.toARGB32()),
     );
   }
 }
