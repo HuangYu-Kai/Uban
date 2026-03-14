@@ -91,12 +91,14 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
     
     if (savedRole != null && savedId != null) {
       if (savedRole == 'family') {
+        appRole = 'family';
         List<dynamic> elders = await ApiService.getElderData(savedId);
         if (elders.isNotEmpty && mounted) {
           Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => FamilyDashboardScreen(elders: elders)));
           return;
         }
       } else if (savedRole == 'elder') {
+        appRole = 'elder';
         final deviceName = prefs.getString('saved_device_name') ?? '預設設備';
         final isCCTV = prefs.getBool('saved_is_cctv') ?? false;
         if (mounted) {
@@ -145,6 +147,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('saved_role', 'family');
       await prefs.setString('saved_id', inputText);
+      appRole = 'family';
 
       if (mounted) {
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => FamilyDashboardScreen(elders: elders)));
@@ -204,6 +207,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
       await prefs.setString('saved_id', inputText);
       await prefs.setString('saved_device_name', deviceName);
       await prefs.setBool('saved_is_cctv', isCCTV);
+      appRole = 'elder';
 
       if (mounted) {
         Navigator.pushReplacement(

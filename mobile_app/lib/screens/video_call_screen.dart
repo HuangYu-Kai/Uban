@@ -79,11 +79,15 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
 
   @override
   void dispose() {
-    // ★ 通話頁面完整清除，包含 socket（此 socket 為本頁專屬）
+    // ★ Do NOT call _signaling.dispose() because it's a Singleton.
+    // Instead, just hang up the peer connection and stop media.
     _signaling.hangUp();
+    _signaling.onAddRemoteStream = null;
+    _signaling.onCallEnded = null;
+    _signaling.onIncomingCall = null;
+    
     _localRenderer.dispose();
     _remoteRenderer.dispose();
-    _signaling.dispose();
     super.dispose();
   }
 
