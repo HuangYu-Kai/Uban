@@ -43,7 +43,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       duration: 30000,
       textAccept: '接聽',
       textDecline: '拒絕',
-      extra: <String, dynamic>{'senderId': senderId, 'roomId': roomId},
+      extra: <String, dynamic>{'senderId': senderId, 'roomId': roomId, 'callId': message.data['callId']},
       headers: <String, dynamic>{'apiKey': 'v1.0', 'platform': 'flutter'},
       android: const AndroidParams(
         isCustomNotification: true,
@@ -126,6 +126,11 @@ void main() async {
   await Firebase.initializeApp();
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
   
+  // ★ Bug 16 解決方案：在 APP 啟動最源頭就載入身份，確保冷啟動時的通話路由正確
+  final prefs = await SharedPreferences.getInstance();
+  appRole = prefs.getString('saved_role');
+  print("🛠️ App Booting. Detected Role: $appRole");
+
   // Request permissions for high priority notifications on Android 13+ and iOS
   await FirebaseMessaging.instance.requestPermission();
 
@@ -155,11 +160,12 @@ class _MyAppState extends State<MyApp> {
       if (extra == null || extra is! Map) return;
       final roomId = extra['roomId'] as String?;
       final senderId = extra['senderId'] as String?;
+      final callId = extra['callId'] as String?;
 
       if (roomId == null || senderId == null) return;
 
       if (event.event == Event.actionCallAccept) {
-        _navigateToVideoCall(roomId, senderId);
+        _navigateToVideoCall(roomId, senderId, callId: callId);
       } else if (event.event == Event.actionCallDecline) {
         // Broadcast the decline event so that active dialogs in the app can close themselves
         callKitDeclineStream.add(roomId);
@@ -196,7 +202,31 @@ class _MyAppState extends State<MyApp> {
     });
   }
 
-  void _navigateToVideoCall(String roomId, String senderId) {
+  void _navigateToVideoCall(String roomId, String senderId, {String? callId}) {
+    // ★ Bug 16 解決方案：如果身分是長輩，絕對不可啟動 VideoCallScreen (那是給家屬用的)。
+    // 我們僅儲存 pendingAcceptedCall，讓長輩主畫面 (ElderScreen) 啟動後去接手。
+    if (appRole == 'elder') {
+      print("📱 Elder role detected, skipping VideoCallScreen push and caching accepted call.");
+      pendingAcceptedCall.value = <String, String?>{'roomId': roomId, 'senderId': senderId, 'callId': callId};
+      
+      // ★ 喚醒長輩 APP 並帶到最前台，這會觸發 ElderScreen 的 _checkPendingAcceptedCall
+      try {
+        final intent = const AndroidIntent(
+          action: 'android.intent.action.MAIN',
+          flags: [Flag.FLAG_ACTIVITY_NEW_TASK, Flag.FLAG_ACTIVITY_REORDER_TO_FRONT],
+          package: 'com.example.flutter_application_1',
+          componentName: 'com.example.flutter_application_1.MainActivity',
+        );
+        intent.launch();
+
+        const platform = MethodChannel('com.example.app/bring_to_front');
+        platform.invokeMethod('bringToFront');
+      } catch (e) {
+        print("Failed to bring elder app to front: $e");
+      }
+      return;
+    }
+
     if (navigatorKey.currentState != null && isAppReady) {
       // Pop any active dialogs (like the incoming call alert on the dashboard) 
       // before bringing up the VideoCallScreen from CallKit.
@@ -213,7 +243,7 @@ class _MyAppState extends State<MyApp> {
       );
     } else {
       // App is cold booting or navigator not ready. Save it for Dashboard/Elder screen to pick up.
-      pendingAcceptedCall = {'roomId': roomId, 'senderId': senderId};
+      pendingAcceptedCall.value = {'roomId': roomId, 'senderId': senderId};
     }
   }
 

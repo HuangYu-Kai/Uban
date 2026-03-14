@@ -36,9 +36,9 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> with Widg
     isAppReady = true;
 
     // ★ 檢查是否有系統冷啟動時接聽的通話 (解決 Bug 8)
-    if (pendingAcceptedCall != null) {
-      final args = pendingAcceptedCall!;
-      pendingAcceptedCall = null;
+    if (pendingAcceptedCall.value != null) {
+      final args = pendingAcceptedCall.value!;
+      pendingAcceptedCall.value = null;
       Future.microtask(() {
         if (mounted) {
           Navigator.push(context, MaterialPageRoute(
@@ -134,7 +134,7 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> with Widg
     }
 
     // 3. 處理響鈴 (使用當前的 Context)
-    _signaling.onCallRequest = (roomId, senderId) {
+    _signaling.onCallRequest = (roomId, senderId, callId) {
       if (!mounted) return;
       
       // Remove any existing dialogs to prevent multiple stacking, or if the user cancels
@@ -160,7 +160,7 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> with Widg
             _dialogContext = dialogContext;
             
             // Register cancel-call listener tightly to this dialog's lifecycle
-            _signaling.onCancelCall = (cancelRoomId, cancelSenderId) {
+            _signaling.onCancelCall = (cancelRoomId, cancelSenderId, cancelCallId) {
                 if (roomId == cancelRoomId && isDialogOpen && mounted) {
                     Navigator.of(dialogContext).pop();
                     isDialogOpen = false;
@@ -179,7 +179,7 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> with Widg
                 isDialogOpen = false;
                 _currentDialogRoomId = null;
                 _dialogContext = null;
-                _signaling.sendCallBusy(senderId); // explicitly inform elder someone declined
+                _signaling.sendCallBusy(senderId, callId: callId); // explicitly inform elder someone declined
                 Navigator.pop(dialogContext);
               }, 
               child: const Text('忽略')

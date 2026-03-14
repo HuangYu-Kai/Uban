@@ -13,12 +13,17 @@ typedef void StreamStateCallback(MediaStream stream);
 typedef Future<bool> IncomingCallCallback(String callerId, String callType);
 typedef void VoidCallback();
 typedef void ErrorCallback(String message);
-typedef void CallRequestCallback(String roomId, String senderId);
-typedef void CallAcceptedCallback(String accepterId);
+typedef void CallRequestCallback(String roomId, String senderId, String? callId);
+typedef void CallAcceptedCallback(String accepterId, String? callId);
 
 class Signaling {
-  static const String socketUrl = 'https://b88d-61-65-116-7.ngrok-free.app'; // Exposing for main.dart background decline
+  static const String socketUrl = 'https://d019-61-65-116-7.ngrok-free.app'; 
   static const platform = MethodChannel('com.example.app/bring_to_front');
+
+  // ★ Singleton Pattern
+  static final Signaling _instance = Signaling._internal();
+  factory Signaling() => _instance;
+  Signaling._internal();
 
   IO.Socket? socket;
   RTCPeerConnection? peerConnection;
@@ -34,36 +39,42 @@ class Signaling {
   CallRequestCallback? onCancelCall;
   CallRequestCallback? onEmergencyCall;
   CallAcceptedCallback? onCallAcceptedByRemote;
-  CallAcceptedCallback? onCallBusy; // Reusing CallAcceptedCallback for simplicity (just needs a string ID)
+  CallAcceptedCallback? onCallBusy; 
 
   String? _currentRoomId;
   String? _peerSocketId;
-  List<RTCIceCandidate> _candidateQueue = [];
-  
-  // 暫存房間，解決 "只能收到第一個響鈴" 的問題
+  final List<RTCIceCandidate> _candidateQueue = [];
   final List<String> _pendingRooms = [];
 
   final Map<String, dynamic> _configuration = {
     'iceServers': [{'urls': 'stun:stun.l.google.com:19302'}]
   };
 
-  void connect(String roomId, String role, {String deviceName = 'Unknown', String deviceMode = 'comm'}) {
+  void connect(String roomId, String role, {String deviceName = 'Unknown', String deviceMode = 'comm', String? fcmToken}) {
     _currentRoomId = roomId;
 
+    if (socket != null && socket!.connected) {
+      print("♻️ Reusing existing socket connection. Joining room $roomId...");
+      _emitJoin(roomId, role, deviceName, deviceMode, fcmToken: fcmToken);
+      return;
+    }
+
+    print("🔌 Creating new socket connection...");
     socket = IO.io(socketUrl, IO.OptionBuilder()
       .setTransports(['websocket'])
       .disableAutoConnect()
-      .enableForceNew() // 強制每次 connect 都建立全新 Socket，不共用快取
       .build()
     );
 
+    _registerSocketListeners(roomId, role, deviceName, deviceMode, fcmToken);
     socket!.connect();
+  }
 
+  void _registerSocketListeners(String roomId, String role, String deviceName, String deviceMode, String? fcmToken) {
     socket!.onConnect((_) {
-      print('✅ Socket 連線成功');
-      _emitJoin(roomId, role, deviceName, deviceMode);
+      print('✅ Socket 連線成功 (SID: ${socket!.id})');
+      _emitJoin(roomId, role, deviceName, deviceMode, fcmToken: fcmToken);
       
-      // 加入暫存的房間
       for (var pendingRoom in _pendingRooms) {
         _emitJoin(pendingRoom, 'family', 'Dashboard_Listener', 'listener');
       }
@@ -79,33 +90,40 @@ class Signaling {
     
     // 響鈴監聽
     socket!.on('call-request', (data) {
-      if (onCallRequest != null) onCallRequest!(data['room'], data['senderId']);
+      if (onCallRequest != null) onCallRequest!(data['room'], data['senderId'], data['callId']);
     });
 
     // 取消呼叫監聽
     socket!.on('cancel-call', (data) {
-      if (onCancelCall != null) onCancelCall!(data['room'], data['senderId']);
+      if (onCancelCall != null) onCancelCall!(data['room'], data['senderId'], data['callId']);
     });
 
     // 緊急呼叫監聽
     socket!.on('emergency-call', (data) {
-      if (onEmergencyCall != null) onEmergencyCall!(data['room'], data['senderId']);
+      if (onEmergencyCall != null) onEmergencyCall!(data['room'], data['senderId'], data['callId']);
     });
 
     // 對方接聽監聽
     socket!.on('call-accept', (data) {
-      _peerSocketId = data['accepterId'];  // ★ 記錄接聽方的 Socket ID，以便之後單播 end-call
-      if (onCallAcceptedByRemote != null) onCallAcceptedByRemote!(data['accepterId']);
+      _peerSocketId = data['accepterId'];  
+      if (onCallAcceptedByRemote != null) onCallAcceptedByRemote!(data['accepterId'], data['callId']);
     });
 
     // 忙線監聽
     socket!.on('call-busy', (data) {
-      if (onCallBusy != null) onCallBusy!(data['targetId']);
+      if (onCallBusy != null) onCallBusy!(data['targetId'], data['callId']);
+    });
+
+    socket!.on('elder-devices-update', (devices) {
+      print("📡 [Signaling] Received elder-devices-update (count: ${devices.length})");
+      if (onElderDevicesUpdate != null) onElderDevicesUpdate!(devices);
     });
 
     socket!.on('offer', (data) async {
-      print('📩 收到 Offer');
-      _peerSocketId = data['senderId'];
+      final senderId = data['senderId'];
+      final callId = data['callId'];
+      print('📩 [Signaling] Received Offer from $senderId (CallId: $callId)');
+      _peerSocketId = senderId;
       _candidateQueue.clear();
 
       bool isEmergency = data['isEmergency'] == true;
@@ -229,21 +247,28 @@ class Signaling {
     return accepted;
   }
 
-  void _emitJoin(String room, String role, String name, String mode) async {
-    String? fcmToken;
-    try {
-      fcmToken = await FirebaseMessaging.instance.getToken();
-      print("🔔 本機 FCM Token 獲取成功: $fcmToken");
-    } catch (e) {
-      print("⚠️ 無法獲取 FCM Token: $e");
-    }
+  void _emitJoin(String room, String role, String name, String mode, {String? fcmToken}) async {
+    print("📢 [Signaling] Emitting join: $room ($role) as $name");
     
-    socket!.emit('join', {
-      'room': room, 
-      'role': role, 
-      'deviceName': name, 
-      'deviceMode': mode,
-      'fcmToken': fcmToken
+    // Non-blocking FCM token retrieval
+    FirebaseMessaging.instance.getToken().then((token) {
+      if (token != null) print("🔔 [Signaling] FCM Token retrieved: ${token.substring(0, 8)}...");
+      socket!.emit('join', {
+        'room': room, 
+        'role': role, 
+        'deviceName': name, 
+        'deviceMode': mode,
+        'fcmToken': token ?? fcmToken
+      });
+    }).catchError((e) {
+      print("⚠️ [Signaling] FCM Token failed: $e, joining without token.");
+      socket!.emit('join', {
+        'room': room, 
+        'role': role, 
+        'deviceName': name, 
+        'deviceMode': mode,
+        'fcmToken': fcmToken
+      });
     });
   }
 
@@ -260,31 +285,39 @@ class Signaling {
     Helper.setSpeakerphoneOn(enable);
   }
 
-  void sendCallRequest(String room, {String role = 'family'}) {
-    socket!.emit('call-request', {'room': room, 'role': role});
+  void sendCallRequest(String room, {String role = 'family', String? callId}) {
+    socket!.emit('call-request', {'room': room, 'role': role, 'callId': callId});
+  }
+
+  // ★ Feature 13: 請求更新長輩設備列表
+  void sendGetElderDevices(String roomId) {
+    if (socket != null && socket!.connected) {
+      socket!.emit('get-elder-devices', roomId);
+    }
   }
 
 
-  void sendCallAccept(String targetSocketId) async {
+  void sendCallAccept(String targetSocketId, {String? callId}) async {
     if (socket == null) return;
     
-    // 如果還沒連線，最多等待 5 秒 (50 * 100ms)
-    int retries = 50;
+    int retries = 100;
     while (!socket!.connected && retries > 0) {
       await Future.delayed(const Duration(milliseconds: 100));
       retries--;
     }
 
     if (socket!.connected) {
-      socket!.emit('call-accept', {'targetId': targetSocketId});
-      print("✅ 成功發送 call-accept 給 $targetSocketId");
+      print("✅ [Accept] Sending call-accept to $targetSocketId (CallId: $callId)");
+      socket!.emit('call-accept', {'targetId': targetSocketId, 'callId': callId});
     } else {
-      print("❌ 發送 call-accept 失敗：Socket 遲遲未連線");
+      print("❌ [Accept] Socket connection timed out. Could not send accept.");
     }
   }
 
-  void sendCallBusy(String targetSocketId) {
-    socket!.emit('call-busy', {'targetId': targetSocketId});
+  void sendCallBusy(String targetSocketId, {String? callId}) {
+    if (socket != null && socket!.connected) {
+      socket!.emit('call-busy', {'targetId': targetSocketId, 'callId': callId});
+    }
   }
 
   void sendCancelCall(String room) {
@@ -299,43 +332,6 @@ class Signaling {
     if (socket != null && socket!.connected) {
       socket!.emit('delete-device', {'room': room, 'targetId': targetId});
     }
-  }
-
-  void hangUp({bool disconnectSocket = true, bool disposeLocalStream = true}) {
-    if (socket != null) {
-      // 絕對不可以只送 room，這會導致伺服器針對整個房間廣播 end-call，
-      // 誤殺家屬端 Dashboard 的監聽 Socket！
-      if (_peerSocketId != null) {
-        socket!.emit('end-call', {
-          'room': _currentRoomId,
-          'targetId': _peerSocketId
-        });
-      }
-      // ★ 延遲斷線：確保 end-call 訊息送達後再中斷 socket (僅限需要斷開的畫面)
-      if (disconnectSocket) {
-        Future.delayed(const Duration(milliseconds: 500), () {
-          socket?.disconnect();
-          socket = null;
-        });
-      }
-    }
-    _closePeerConnection();
-    
-    // ★ 是否釋放媒體串流 (ElderScreen 需要持續開啟攝影機所以帶 false)
-    if (disposeLocalStream) {
-      localStream?.getTracks().forEach((t) => t.stop());
-      localStream?.dispose();
-      localStream = null;
-    }
-    _peerSocketId = null;
-  }
-
-  Future<void> _closePeerConnection() async {
-    if (peerConnection != null) {
-      await peerConnection!.close();
-      peerConnection = null;
-    }
-    _candidateQueue.clear();
   }
 
   Future<void> _acceptCall(Map<String, dynamic> data, {required bool useLocalStream}) async {
@@ -443,15 +439,60 @@ class Signaling {
   }
 
   void dispose() {
+    stopMedia();
+    peerConnection?.close();
+    peerConnection = null;
+    
+    // NOTE: We no longer disconnect the socket here because Signaling is a Singleton.
+    // Screens should just clear their callbacks if they want to stop listening.
+    onAddRemoteStream = null;
+    onLocalStream = null;
+    onElderDevicesUpdate = null;
+    onIncomingCall = null;
+    onCallEnded = null;
+    onJoinFailed = null; // Added this line as it was missing in the provided snippet
+    onCallRequest = null;
+    onCancelCall = null;
+    onEmergencyCall = null;
+    onCallAcceptedByRemote = null;
+    onCallBusy = null;
+  }
+
+  void hangUp({bool disconnectSocket = false, bool disposeLocalStream = true}) {
+    print("📢 [Signaling] Hanging up (disconnectSocket: $disconnectSocket, disposeLocalStream: $disposeLocalStream)...");
+    if (socket != null && _currentRoomId != null) {
+      socket!.emit('end-call', {'room': _currentRoomId, 'targetId': _peerSocketId});
+    }
+    
+    _closePeerConnection();
+    
+    if (disposeLocalStream) {
+      stopMedia();
+    }
+
+    if (disconnectSocket) {
+      forceDisconnect();
+    }
+  }
+
+  Future<void> _closePeerConnection() async {
+    if (peerConnection != null) {
+      await peerConnection!.close();
+      peerConnection = null;
+    }
+    _peerSocketId = null;
+  }
+
+  void stopMedia() {
     localStream?.getTracks().forEach((t) => t.stop());
     localStream?.dispose();
-    peerConnection?.close();
-    // 延遲中斷，確保如果剛呼叫了 hangUp，其發送的 end-call 不會被瞬間切斷
+    localStream = null;
+  }
+
+  void forceDisconnect() {
     if (socket != null && socket!.connected) {
-      Future.delayed(const Duration(milliseconds: 600), () {
-        socket?.disconnect();
-        socket = null;
-      });
+      socket?.disconnect();
+      socket = null;
     }
   }
 }
