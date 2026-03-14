@@ -17,6 +17,7 @@ from db import db
 import firebase_admin
 from firebase_admin import credentials, messaging
 import os
+import uuid
 
 # 初始化 Firebase Admin SDK
 try:
@@ -155,7 +156,39 @@ def on_join(data):
                             'isOnline': False
                         })
                         
-            emit('elder-devices-list', elder_devices, to=sid)
+            emit('elder-devices-update', elder_devices, to=sid)
+
+@socketio.on('get-elder-devices')
+def on_get_elder_devices(room):
+    sid = request.sid
+    print(f"🔍 [Get Devices] Request from {sid} for room {room}")
+    elder_devices = []
+    online_device_names = set()
+
+    # 1. 抓取有連線在 Socket 的在線裝置 
+    if room in rooms_manager:
+        for k, v in rooms_manager[room].items():
+            if v.get('role') == 'elder':
+                elder_devices.append({
+                    'id': k, 
+                    'deviceName': v['deviceName'], 
+                    'deviceMode': v.get('deviceMode', 'comm'),
+                    'isOnline': True
+                })
+                online_device_names.add(v['deviceName'])
+
+    # 2. 從歷史 FCM Token 紀錄中找出離線的裝置
+    if room in room_fcm_tokens:
+        for token, info in room_fcm_tokens[room].items():
+            if info.get('role') == 'elder' and info['deviceName'] not in online_device_names:
+                elder_devices.append({
+                    'id': f"offline_{token[-8:]}", 
+                    'deviceName': info['deviceName'],
+                    'deviceMode': info.get('deviceMode', 'comm'),
+                    'isOnline': False
+                })
+                
+    emit('elder-devices-update', elder_devices, to=sid)
 
 @socketio.on('disconnect')
 def on_disconnect():
@@ -172,10 +205,16 @@ def on_disconnect():
 # --- 響鈴與接聽 (Handshake) ---
 @socketio.on('call-request')
 def on_call_request(data):
+    sid = request.sid # 新增: 獲取發起者的 sid
     room = data.get('room')
     sender_id = request.sid
     sender_role = data.get('role') or rooms_manager.get(room, {}).get(sender_id, {}).get('role')
     target_role = 'elder' if sender_role == 'family' else 'family'
+    target_id = data.get('targetId') # 新增: 獲取目標 ID
+    print(f"📡 [Call Request] From: {sid} In: {room} -> Target: {target_id}") # 新增: 記錄發起者、房間和目標
+    
+    # 建立一個臨時通話 ID
+    call_id = str(uuid.uuid4()) # 新增: 生成唯一的 call_id
 
     print(f"🔔 Call Request from {sender_id} ({sender_role}) to {target_role} in {room}")
     
@@ -184,7 +223,7 @@ def on_call_request(data):
         for sid, info in rooms_manager[room].items():
             if info.get('role') == target_role:
                 # 明確告知接起端: call-request 是從誰發起的
-                emit('call-request', {'senderId': sender_id, 'room': room, 'role': sender_role}, to=sid)
+                emit('call-request', {'senderId': sender_id, 'room': room, 'role': sender_role, 'callId': call_id}, to=sid) # 修改: 傳遞 callId
 
     # 2. 針對目標角色發送 FCM 靜默推播喚醒
     if room in room_fcm_tokens:
@@ -192,7 +231,7 @@ def on_call_request(data):
             if info.get('role') == target_role:
                 try:
                     message = messaging.Message(
-                        data={'type': 'call-request', 'senderId': sender_id, 'roomId': room, 'role': str(sender_role)},
+                        data={'type': 'call-request', 'senderId': sender_id, 'roomId': room, 'role': str(sender_role), 'callId': call_id}, # 修改: 傳遞 callId
                         token=token,
                         android=messaging.AndroidConfig(
                             priority='high',
@@ -216,20 +255,21 @@ def on_cancel_call(data):
     sender_id = request.sid
     sender_role = data.get('role') or rooms_manager.get(room, {}).get(sender_id, {}).get('role')
     target_role = 'elder' if sender_role == 'family' else 'family'
+    call_id = data.get('callId') # 新增: 接收 callId
 
-    print(f"🔕 Cancel Call Request from {sender_id} to {target_role} in {room}")
+    print(f"🔕 Cancel Call Request from {sender_id} to {target_role} in {room} (Call ID: {call_id})") # 修改: 記錄 callId
     
     if room in rooms_manager:
         for sid, info in rooms_manager[room].items():
             if info.get('role') == target_role:
-                emit('cancel-call', {'senderId': sender_id, 'room': room}, to=sid)
+                emit('cancel-call', {'senderId': sender_id, 'room': room, 'callId': call_id}, to=sid) # 修改: 傳遞 callId
 
     if room in room_fcm_tokens:
         for token, info in room_fcm_tokens[room].items():
             if info.get('role') == target_role:
                 try:
                     message = messaging.Message(
-                        data={'type': 'cancel-call', 'senderId': sender_id, 'roomId': room},
+                        data={'type': 'cancel-call', 'senderId': sender_id, 'roomId': room, 'callId': call_id}, # 修改: 傳遞 callId
                         token=token,
                         android=messaging.AndroidConfig(priority='high'),
                         apns=messaging.APNSConfig(
@@ -248,20 +288,21 @@ def on_emergency_call(data):
     sender_id = request.sid
     sender_role = data.get('role') or rooms_manager.get(room, {}).get(sender_id, {}).get('role')
     target_role = 'elder' if sender_role == 'family' else 'family'
+    call_id = str(uuid.uuid4()) # 新增: 生成唯一的 call_id
 
-    print(f"🚨 Emergency Call Request from {sender_id} to {target_role} in {room}")
+    print(f"🚨 Emergency Call Request from {sender_id} to {target_role} in {room} (Call ID: {call_id})") # 修改: 記錄 callId
     
     if room in rooms_manager:
         for sid, info in rooms_manager[room].items():
             if info.get('role') == target_role:
-                emit('emergency-call', {'senderId': sender_id, 'room': room}, to=sid)
+                emit('emergency-call', {'senderId': sender_id, 'room': room, 'callId': call_id}, to=sid) # 修改: 傳遞 callId
 
     if room in room_fcm_tokens:
         for token, info in room_fcm_tokens[room].items():
             if info.get('role') == target_role:
                 try:
                     message = messaging.Message(
-                        data={'type': 'emergency-call', 'senderId': sender_id, 'roomId': room},
+                        data={'type': 'emergency-call', 'senderId': sender_id, 'roomId': room, 'callId': call_id}, # 修改: 傳遞 callId
                         token=token,
                         android=messaging.AndroidConfig(
                             priority='high',
@@ -281,15 +322,18 @@ def on_emergency_call(data):
 
 @socketio.on('call-accept')
 def on_call_accept(data):
+    sid = request.sid
     target_id = data.get('targetId')
-    print(f"📞 Call Accepted by {request.sid}, notifying {target_id}")
-    emit('call-accept', {'accepterId': request.sid}, to=target_id)
+    call_id = data.get('callId') # 新增: 接收 callId
+    print(f"📞 [Call Accept] {sid} accepted for Target: {target_id} (Call ID: {call_id})") # 修改: 記錄 callId
+    emit('call-accept', {'accepterId': sid, 'callId': call_id}, to=target_id) # 修改: 傳遞 callId
 
 @socketio.on('call-busy')
 def on_call_busy(data):
     target_id = data.get('targetId')
-    print(f"🚫 Call Busy from {request.sid}, notifying {target_id}")
-    emit('call-busy', {'targetId': request.sid}, to=target_id)
+    call_id = data.get('callId') # 新增: 接收 callId
+    print(f"🚫 Call Busy from {request.sid}, notifying {target_id} (Call ID: {call_id})") # 修改: 記錄 callId
+    emit('call-busy', {'targetId': request.sid, 'callId': call_id}, to=target_id) # 修改: 傳遞 callId
 
 # --- WebRTC 信令 ---
 @socketio.on('offer')
@@ -330,57 +374,68 @@ def on_delete_device(data):
     
     print(f"🗑️ Delete Device Request from {sender_id} to remove {target_id} in {room}")
 
-    # 1. 處理歷史 FCM Token (離線裝置)
-    if room in room_fcm_tokens:
-        tokens_to_delete = []
-        for token, info in room_fcm_tokens[room].items():
-            if f"offline_{token[-8:]}" == target_id or token == target_id:
-                tokens_to_delete.append(token)
-                try:
-                    message = messaging.Message(
-                        data={'type': 'force-logout', 'roomId': room},
-                        token=token,
-                        android=messaging.AndroidConfig(priority='high')
-                    )
-                    messaging.send(message)
-                except Exception:
-                    pass
-        for t in tokens_to_delete:
-            del room_fcm_tokens[room][t]
+    resolved_device_name = None
 
-    # 2. 處理線上 Socket 裝置
+    # 1. 嘗試從目前在線列表中找出該 ID 對應的名稱
     if room in rooms_manager and target_id in rooms_manager[room]:
-        emit('force-logout', {}, to=target_id)
-        # 直接踢掉
-        del rooms_manager[room][target_id]
-        emit('user-left', target_id, to=room)
+        resolved_device_name = rooms_manager[room][target_id].get('deviceName')
 
-    # 回傳更新後的裝置列表給呼叫的家屬端 (這樣他畫面上的刪除裝置就會消失)
+    # 2. 如果沒找到，嘗試從 FCM 註冊表 (離線列表) 中找出對應名稱
+    if not resolved_device_name and room in room_fcm_tokens:
+        for token, info in room_fcm_tokens[room].items():
+            if token == target_id or f"offline_{token[-8:]}" == target_id:
+                resolved_device_name = info.get('deviceName')
+                break
+
+    if not resolved_device_name:
+        print(f"⚠️ Could not resolve device name for deletion: {target_id}")
+        return
+
+    print(f"🧹 Scrubbing all instances of device: {resolved_device_name} in room: {room}")
+
+    # 3. 從在線列表 (Socket) 移除所有名稱相符的裝置
+    if room in rooms_manager:
+        sids_to_kick = [sid for sid, info in rooms_manager[room].items() if info.get('deviceName') == resolved_device_name]
+        for sid in sids_to_kick:
+            emit('force-logout', {}, to=sid)
+            del rooms_manager[room][sid]
+            emit('user-left', sid, to=room)
+
+    # 4. 從離線列表 (FCM Tokens) 移除所有名稱相符的裝置
+    if room in room_fcm_tokens:
+        tokens_to_wipe = [token for token, info in room_fcm_tokens[room].items() if info.get('deviceName') == resolved_device_name]
+        for token in tokens_to_wipe:
+            # 發送最後一發強制登出推播 (以防萬一關機中或剛好離線)
+            try:
+                message = messaging.Message(
+                    data={'type': 'force-logout', 'roomId': room},
+                    token=token,
+                    android=messaging.AndroidConfig(priority='high')
+                )
+                messaging.send(message)
+            except Exception:
+                pass
+            del room_fcm_tokens[room][token]
+
+    # 5. 主動回傳更新後的清單給操作者
     if room in rooms_manager and sender_id in rooms_manager[room]:
         elder_devices = []
-        online_device_names = set()
-
-        if room in rooms_manager:
-            for k, v in rooms_manager[room].items():
-                if v.get('role') == 'elder':
-                    elder_devices.append({
-                        'id': k, 
-                        'deviceName': v['deviceName'], 
-                        'deviceMode': v.get('deviceMode', 'comm'),
-                        'isOnline': True
-                    })
-                    online_device_names.add(v['deviceName'])
-
+        online_names = set()
+        for k, v in rooms_manager[room].items():
+            if v.get('role') == 'elder':
+                elder_devices.append({
+                    'id': k, 'deviceName': v['deviceName'], 
+                    'deviceMode': v.get('deviceMode', 'comm'), 'isOnline': True
+                })
+                online_names.add(v['deviceName'])
+        
         if room in room_fcm_tokens:
             for token, info in room_fcm_tokens[room].items():
-                if info.get('role') == 'elder' and info['deviceName'] not in online_device_names:
+                if info.get('role') == 'elder' and info['deviceName'] not in online_names:
                     elder_devices.append({
-                        'id': f"offline_{token[-8:]}",
-                        'deviceName': info['deviceName'],
-                        'deviceMode': info.get('deviceMode', 'comm'),
-                        'isOnline': False
+                        'id': f"offline_{token[-8:]}", 'deviceName': info['deviceName'],
+                        'deviceMode': info.get('deviceMode', 'comm'), 'isOnline': False
                     })
-                    
         emit('elder-devices-list', elder_devices, to=sender_id)
 
 if __name__ == '__main__':
