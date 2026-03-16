@@ -1,30 +1,23 @@
 from flask import Blueprint, request, jsonify
 from datetime import datetime, timedelta
-from models import User, PairingCode, Relationship
+import uuid
+from models import UserAccountData, PairingCode, FamilyElderRelationship, ElderProfile
 from extensions import db
 from utils import generate_random_code
 from werkzeug.security import generate_password_hash
 
 pairing_bp = Blueprint('pairing', __name__)
 
-# --- Elder (VM) Flow ---
-
 @pairing_bp.route('/request_code', methods=['POST'])
 def request_code():
-    """
-    長輩端 (VM) 請求一個代碼來顯示。
-    這裡暫時不綁定 ID，因為長輩還沒註冊，只是產生一個 PIN 並記住是誰生成的（如果是已登入狀態）。
-    但在目前設計中，長輩端是未登入狀態，所以 PIN 只是暫時存放。
-    """
-    # 產生 4 位數代碼
-    code = generate_random_code()
+    """長輩端 (VM) 請求配對代碼"""
+    code = generate_random_code(4) # 生成 4 位數字配對碼
     while PairingCode.query.filter_by(code=code, is_used=False).first():
         code = generate_random_code()
 
-    # 這裡 creator_id 先帶 0 代表是長輩端請求的待配對碼 (或者用一個特殊的 ID)
     new_pairing = PairingCode(
         code=code,
-        creator_id=0, # 0 表示由長輩端發起，等待家屬認領
+        creator_id=0, # 初始為 0
         expires_at=datetime.utcnow() + timedelta(minutes=10)
     )
     db.session.add(new_pairing)
@@ -35,36 +28,9 @@ def request_code():
         'expires_in_seconds': 600
     })
 
-@pairing_bp.route('/check_status/<code>', methods=['GET'])
-def check_status(code):
-    """
-    長輩端輪詢是否已配對成功。
-    """
-    pairing = PairingCode.query.filter_by(code=code, is_used=True).first()
-    if pairing:
-        # 找到對應的關係
-        relationship = Relationship.query.filter_by(family_id=pairing.creator_id).filter(Relationship.elder_id != 0).order_by(Relationship.id.desc()).first()
-        if relationship:
-             elder = User.query.get(relationship.elder_id)
-             return jsonify({
-                 'status': 'paired', 
-                 'elder_id': relationship.elder_id,
-                 'elder_name': elder.user_name if elder else "長輩"
-             })
-    
-    return jsonify({'status': 'waiting'})
-
-# --- Caregiver (Phone) Flow ---
-
 @pairing_bp.route('/confirm', methods=['POST'])
 def confirm_pairing():
-    """
-    家屬端 (手機) 輸入代碼與長輩名稱。
-    這會同時：
-    1. 建立長輩 User 帳號
-    2. 建立 Relationship
-    3. 標記 PairingCode 為已使用
-    """
+    """家屬端 (手機) 輸入代碼進行配對並初始化長輩帳號與檔案"""
     data = request.json
     family_id = data.get('family_id')
     code = data.get('code')
@@ -73,73 +39,90 @@ def confirm_pairing():
     age = data.get('age', 70)
 
     if not all([family_id, code, elder_name]):
-        return jsonify({'error': 'Missing required data'}), 400
+        return jsonify({'error': 'Missing required fields'}), 400
 
-    # 1. 驗證代碼
     pairing = PairingCode.query.filter_by(code=code, is_used=False).first()
     if not pairing or pairing.expires_at < datetime.utcnow():
         return jsonify({'error': 'Invalid or expired code'}), 404
 
-    # 2. 自動為長輩建立帳號
-    # 為長輩產生隨機 Email
-    random_id = generate_random_code(6)
-    elder_email = f"elder_{random_id}@uban.com"
-    hashed_pw = generate_password_hash("password123") # 預設密碼
-
-    new_elder = User(
+    # 1. 自動建立長輩帳號
+    # 基於新 ERD：UserAccountData 包含名稱
+    elder_email = f"elder_{generate_random_code(4)}@uban.com"
+    new_account = UserAccountData(
         user_name=elder_name,
         user_email=elder_email,
-        password=hashed_pw,
+        password=generate_password_hash("password123"),
+        registered_platform='Local'
+    )
+    db.session.add(new_account)
+    db.session.flush()
+
+    # 2. 初始化長輩專屬檔案 (ElderProfile)
+    # 基於新 ERD：包含 gender, age
+    elder_uuid = str(uuid.uuid4())
+    new_profile = ElderProfile(
+        elder_id=elder_uuid,
+        user_id=new_account.user_id,
+        elder_name=elder_name,
         gender=gender,
         age=age,
-        role='elder',
-        user_authority='Normal'
+        ai_emotion_tone=50,
+        ai_text_verbosity=50
     )
-    db.session.add(new_elder)
-    db.session.flush() # 取得 new_elder.id
+    db.session.add(new_profile)
 
-    # 3. 建立關係
-    new_rel = Relationship(elder_id=new_elder.id, family_id=family_id)
+    # 3. 建立綁定關係
+    # 基於新 ERD：FamilyElderRelationship 使用 elder_id (VARCHAR)
+    new_rel = FamilyElderRelationship(
+        elder_id=elder_uuid,
+        family_id=family_id
+    )
     db.session.add(new_rel)
 
-    # 4. 更新代碼狀態 (將家屬 ID 存入 creator_id，供長輩端查詢)
+    # 4. 更新代碼狀態
     pairing.is_used = True
     pairing.creator_id = family_id
     
     db.session.commit()
 
     return jsonify({
-        'message': 'Successfully paired and elder account created!',
-        'elder_id': new_elder.id
+        'message': 'Successfully paired and elder profile initialized!',
+        'elder_id': new_account.user_id,
+        'elder_profile_id': elder_uuid
     })
+
+@pairing_bp.route('/check_status/<code>', methods=['GET'])
+def check_status(code):
+    """長輩端輪詢配對狀態"""
+    pairing = PairingCode.query.filter_by(code=code, is_used=True).first()
+    if pairing:
+        # 基於新 ERD：找到與此家屬綁定的最新長輩
+        relationship = FamilyElderRelationship.query.filter_by(family_id=pairing.creator_id).order_by(FamilyElderRelationship.relationship_id.desc()).first()
+        if relationship:
+             profile = ElderProfile.query.filter_by(elder_id=relationship.elder_id).first()
+             return jsonify({
+                 'status': 'paired', 
+                 'elder_id': profile.user_id if profile else 0,
+                 'elder_name': profile.elder_name if profile else "長輩"
+             })
+    
+    return jsonify({'status': 'waiting'})
 
 @pairing_bp.route('/<int:family_id>/<int:elder_id>', methods=['DELETE'])
 def unbind_elder(family_id, elder_id):
-    """
-    解除家屬與長輩的綁定關係，並刪除該長輩的關聯資料。
-    """
+    """解除綁定 (清理關係與內容，但保留帳號)"""
     try:
-        from models import ActivityLog, ElderProfile
-        
-        # 1. 刪除 Relationship
-        rel = Relationship.query.filter_by(family_id=family_id, elder_id=elder_id).first()
-        if rel:
-            db.session.delete(rel)
-            
-        # 2. 刪除 ActivityLog
-        ActivityLog.query.filter_by(user_id=elder_id).delete()
-        
-        # 3. 刪除 ElderProfile
-        ElderProfile.query.filter_by(user_id=elder_id).delete()
-        
-        # 4. 刪除 User 帳號
-        elder_user = User.query.get(elder_id)
-        if elder_user:
-            db.session.delete(elder_user)
+        from models import ActivityLog
+        # 1. 找到長輩的 profile 取得 UUID
+        profile = ElderProfile.query.filter_by(user_id=elder_id).first()
+        if profile:
+            # 刪除關係
+            FamilyElderRelationship.query.filter_by(family_id=family_id, elder_id=profile.elder_id).delete()
+            # 刪除日誌
+            ActivityLog.query.filter_by(user_id=elder_id).delete()
             
         db.session.commit()
-        return jsonify({'message': 'Unbound and deleted elder data successfully'}), 200
-        
+        return jsonify({'message': 'Unbound successfully'}), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500

@@ -58,10 +58,11 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
         if (status['status'] == 'paired') {
           timer.cancel();
 
-          // 核心修復：持久化儲存長輩 ID 與姓名
+          // 核心修復：持久化儲存長輩 ID、姓名與角色
           final prefs = await SharedPreferences.getInstance();
           await prefs.setInt('caregiver_id', status['elder_id']);
           await prefs.setString('caregiver_name', status['elder_name'] ?? '長輩');
+          await prefs.setString('user_role', 'elder');
 
           if (!mounted) return;
 
@@ -94,90 +95,90 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
       backgroundColor: const Color(0xFFFFFBF0),
       body: SafeArea(
         child: Center(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 40),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(
-                  Icons.qr_code_scanner_rounded,
-                  size: 100,
-                  color: Colors.orange,
-                ),
-                const SizedBox(height: 40),
-                Text(
-                  '等待家人配對',
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                    color: const Color(0xFF333333),
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.qr_code_scanner_rounded,
+                    size: 100,
+                    color: Colors.orange,
                   ),
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  '請子女開啟手機上的 UBan App\n並輸入下方的 4 位數配對碼',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 18, color: Colors.grey),
-                ),
-                const SizedBox(height: 48),
-
-                if (_isLoading)
-                  const CircularProgressIndicator()
-                else if (_pairingCode != null)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 24,
+                  const SizedBox(height: 40),
+                  Text(
+                    '等待家人配對',
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                      color: const Color(0xFF333333),
                     ),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(32),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.1),
-                          blurRadius: 30,
-                          offset: const Offset(0, 15),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      children: [
-                        FittedBox(
-                          child: Text(
-                            _pairingCode!,
-                            style: GoogleFonts.inter(
-                              fontSize: 72,
-                              fontWeight: FontWeight.w900,
-                              color: Colors.orange,
-                              letterSpacing: 8,
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    '請子女開啟手機上的 UBan App\n並輸入下方的 4 位數配對碼',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 18, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 48),
+                  if (_isLoading)
+                    const CircularProgressIndicator()
+                  else if (_pairingCode != null)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 24,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(32),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.1),
+                            blurRadius: 30,
+                            offset: const Offset(0, 15),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        children: [
+                          FittedBox(
+                            child: Text(
+                              _pairingCode!,
+                              style: GoogleFonts.inter(
+                                fontSize: 72,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.orange,
+                                letterSpacing: 8,
+                              ),
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 20),
-                        QrImageView(
-                          data: _pairingCode!,
-                          version: QrVersions.auto,
-                          size: 160.0,
-                          backgroundColor: Colors.white,
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          '倒數: $_secondsLeft 秒',
-                          style: const TextStyle(
-                            color: Colors.redAccent,
-                            fontWeight: FontWeight.bold,
+                          const SizedBox(height: 20),
+                          QrImageView(
+                            data: _pairingCode!,
+                            version: QrVersions.auto,
+                            size: 160.0,
+                            backgroundColor: Colors.white,
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 16),
+                          Text(
+                            '倒數: $_secondsLeft 秒',
+                            style: const TextStyle(
+                              color: Colors.redAccent,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
+                  const SizedBox(height: 48),
+                  TextButton(
+                    onPressed: _requestNewCode,
+                    child: const Text('更換代碼', style: TextStyle(fontSize: 18)),
                   ),
-
-                const SizedBox(height: 48),
-                TextButton(
-                  onPressed: _requestNewCode,
-                  child: const Text('更換代碼', style: TextStyle(fontSize: 18)),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
