@@ -1,15 +1,49 @@
 import io
+import os
+import uuid
 from flask import Blueprint, jsonify, request, send_from_directory, send_file
-from models import User, Relationship, ElderProfile, FamilyMessage
+from models import UserAccountData, FamilyElderRelationship, ElderProfile, FamilyMessage
 from extensions import db
 from datetime import datetime
 from werkzeug.utils import secure_filename
-import os
 
 user_bp = Blueprint('user', __name__)
 
 UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'uploads', 'avatars')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+@user_bp.route('/profile/<int:user_id>', methods=['GET'])
+def get_profile(user_id):
+    """獲取使用者詳細資料 (家屬或長輩)"""
+    account = UserAccountData.query.get(user_id)
+    if not account:
+        return jsonify({'error': 'User not found'}), 404
+
+    profile = ElderProfile.query.filter_by(user_id=user_id).first()
+    
+    profile_data = {
+        'user_id': account.user_id,
+        'user_name': account.user_name,
+        'email': account.user_email,
+        'authority': account.user_authority,
+        'is_elder': profile is not None
+    }
+
+    if profile:
+        profile_data.update({
+            'elder_id': profile.elder_id,
+            'elder_name': profile.elder_name,
+            'appellation': profile.elder_appellation,
+            'gender': profile.gender,
+            'age': profile.age,
+            'medication_notes': profile.medication_notes,
+            'chronic_diseases': profile.chronic_diseases,
+            'location': profile.location,
+            'ai_emotion_tone': profile.ai_emotion_tone,
+            'ai_text_verbosity': profile.ai_text_verbosity
+        })
+
+    return jsonify(profile_data)
 
 @user_bp.route('/<int:user_id>/avatar', methods=['POST'])
 def upload_avatar(user_id):
@@ -31,154 +65,65 @@ def get_avatar(user_id):
     if os.path.exists(os.path.join(UPLOAD_FOLDER, filename)):
         return send_from_directory(UPLOAD_FOLDER, filename)
     else:
-        # Return a valid 1x1 transparent PNG to prevent Flutter Image.network 404 exceptions
-        transparent_png = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\xfa\x0f\x00\x01\x05\x01\x02\xcf\xa0.\xcd\x00\x00\x00\x00IEND\xaeB`\x82'
-        # Actually that previous one was corrupted, here is a known-good base64 decoded 1x1 transparent PNG:
-        # iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=
+        # 回傳透明圖片避免前端報錯
         import base64
         transparent_png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=")
         return send_file(io.BytesIO(transparent_png), mimetype='image/png')
 
-
-# ... (existing routes)
-
-@user_bp.route('/update_elder', methods=['POST'])
-def update_elder():
+@user_bp.route('/profile/<int:user_id>', methods=['POST', 'PUT'])
+def update_profile(user_id):
+    """更新使用者資料"""
     data = request.json
-    family_id = data.get('family_id')
-    elder_id = data.get('elder_id')
-    new_name = data.get('user_name')
-    new_age = data.get('age')
-    new_gender = data.get('gender')
-
-    if not all([family_id, elder_id]):
-        return jsonify({'error': 'Missing required identification'}), 400
-
-    # 驗證權限：該家屬是否真的綁定了這位長輩
-    rel = Relationship.query.filter_by(family_id=family_id, elder_id=elder_id).first()
-    if not rel:
-        return jsonify({'error': 'UnAuthorized: Relationship not found'}), 403
-
-    elder = User.query.get(elder_id)
-    if not elder:
-        return jsonify({'error': 'Elder not found'}), 404
-
-    # 更新欄位
-    if new_name: elder.user_name = new_name
-    if new_age: elder.age = new_age
-    if new_gender: elder.gender = new_gender
-
-    db.session.commit()
-    return jsonify({'message': 'Elder info updated successfully'})
-
-@user_bp.route('/status/<int:user_id>', methods=['GET'])
-def get_status(user_id):
-    user = User.query.get(user_id)
-    if not user:
+    account = UserAccountData.query.get(user_id)
+    if not account:
         return jsonify({'error': 'User not found'}), 404
 
-    # 查詢關聯對象
-    if user.role == 'elder':
-        rel = Relationship.query.filter_by(elder_id=user_id).first()
-        partner = User.query.get(rel.family_id) if rel else None
-    else:
-        rel = Relationship.query.filter_by(family_id=user_id).first()
-        partner = User.query.get(rel.elder_id) if rel else None
-
-    return jsonify({
-        'user_name': user.user_name,
-        'role': user.role,
-        'partner_name': partner.user_name if partner else None
-    })
-
-@user_bp.route('/<int:user_id>/elders', methods=['GET'])
-def get_paired_elders(user_id):
-    user = User.query.get(user_id)
-    if not user:
-        return jsonify({'error': 'User not found'}), 404
-        
-    if user.role != 'family':
-        return jsonify({'error': 'Only family members can fetch paired elders'}), 403
-        
-    elders = []
-    now = datetime.utcnow()
-    # Correctly query the relationships from the database
-    user_relationships = Relationship.query.filter_by(family_id=user_id).all()
-    for rel in user_relationships:
-        elder = User.query.get(rel.elder_id)
-        if elder:
-            # 判斷在線狀態 (例如 5 分鐘內有活動視為在線)
-            is_online = (now - elder.last_seen).total_seconds() < 300 if elder.last_seen else False
-            elders.append({
-                'id': elder.id,
-                'user_name': elder.user_name,
-                'gender': elder.gender,
-                'age': elder.age,
-                'is_online': is_online,
-                'last_seen': elder.last_seen.isoformat() if elder.last_seen else None
-            })
-            
-    return jsonify(elders)
-
-@user_bp.route('/profile/<int:user_id>', methods=['GET'])
-def get_elder_profile(user_id):
-    profile = ElderProfile.query.filter_by(user_id=user_id).first()
-    if not profile:
-        return jsonify({
-            'phone': '', 'location': '台北市士林區', 'ai_persona': '溫暖孫子',
-            'chronic_diseases': '', 'medication_notes': '', 'interests': ''
-        })
-    return jsonify({
-        'phone': profile.phone,
-        'location': profile.location,
-        'ai_persona': profile.ai_persona,
-        'chronic_diseases': profile.chronic_diseases,
-        'medication_notes': profile.medication_notes,
-        'interests': profile.interests
-    })
-
-@user_bp.route('/profile/<int:user_id>', methods=['POST'])
-def update_elder_profile(user_id):
-    data = request.json
-    profile = ElderProfile.query.filter_by(user_id=user_id).first()
+    if 'user_name' in data: account.user_name = data['user_name']
     
-    if not profile:
-        profile = ElderProfile(user_id=user_id)
-        db.session.add(profile)
-        
-    profile.phone = data.get('phone', profile.phone)
-    profile.location = data.get('location', profile.location)
-    profile.ai_persona = data.get('ai_persona', profile.ai_persona)
-    profile.chronic_diseases = data.get('chronic_diseases', profile.chronic_diseases)
-    profile.medication_notes = data.get('medication_notes', profile.medication_notes)
-    profile.interests = data.get('interests', profile.interests)
-    
+    profile = ElderProfile.query.filter_by(user_id=user_id).first()
+    if profile:
+        if 'elder_name' in data: profile.elder_name = data['elder_name']
+        if 'appellation' in data: profile.elder_appellation = data['appellation']
+        if 'gender' in data: profile.gender = data['gender']
+        if 'age' in data: profile.age = data['age']
+        if 'medication_notes' in data: profile.medication_notes = data['medication_notes']
+        if 'chronic_diseases' in data: profile.chronic_diseases = data['chronic_diseases']
+        if 'location' in data: profile.location = data['location']
+        if 'ai_emotion_tone' in data: profile.ai_emotion_tone = data['ai_emotion_tone']
+        if 'ai_text_verbosity' in data: profile.ai_text_verbosity = data['ai_text_verbosity']
+
     db.session.commit()
     return jsonify({'message': 'Profile updated successfully'})
 
-
-@user_bp.route('/message', methods=['POST'])
-def send_family_message():
-    """
-    接收家屬端的便條訊息，寫入 FamilyMessage 資料表。
-    """
-    data = request.json
-    family_id = data.get('family_id')
-    elder_id = data.get('elder_id')
-    content = data.get('content')
+@user_bp.route('/<int:user_id>/elders', methods=['GET'])
+def get_paired_elders(user_id):
+    """獲取與家屬綁定的長輩列表"""
+    relationships = FamilyElderRelationship.query.filter_by(family_id=user_id).all()
+    elders_list = []
     
-    if not all([family_id, elder_id, content]):
-        return jsonify({'error': 'Missing required fields'}), 400
-        
-    try:
-        msg = FamilyMessage(
-            family_id=family_id,
-            elder_id=elder_id,
-            content=content
-        )
-        db.session.add(msg)
-        db.session.commit()
-        return jsonify({'message': 'Message sent successfully', 'id': msg.id}), 201
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'error': str(e)}), 500
+    for rel in relationships:
+        profile = ElderProfile.query.filter_by(elder_id=rel.elder_id).first()
+        if profile:
+            elders_list.append({
+                'id': profile.user_id,             # Flutter expects 'id'
+                'user_id': profile.user_id,        # Keep for compatibility
+                'elder_id': profile.elder_id,
+                'user_name': profile.elder_name,   # Flutter expects 'user_name'
+                'gender': profile.gender,
+                'age': profile.age,
+                'location': profile.location or "未知",
+                'is_online': True                  # Mock online status
+            })
+            
+    return jsonify(elders_list)
+
+@user_bp.route('/status/<int:user_id>', methods=['GET'])
+def get_status(user_id):
+    """取得使用者狀態與角色判定"""
+    profile = ElderProfile.query.filter_by(user_id=user_id).first()
+    role = 'elder' if profile else 'family'
+    return jsonify({
+        'status': 'online', 
+        'user_id': user_id,
+        'role': role
+    })

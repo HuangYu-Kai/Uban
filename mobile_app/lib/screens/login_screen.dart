@@ -48,6 +48,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
         await prefs.setInt('caregiver_id', userId);
         await prefs.setString('caregiver_name', userName);
+        await prefs.setString('user_role', 'family');
 
         if (!mounted) return; // MUST check again after async setInt/setString
 

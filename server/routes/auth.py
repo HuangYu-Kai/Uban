@@ -1,48 +1,49 @@
 from flask import Blueprint, request, jsonify
-from models import User, Relationship
+from models import UserAccountData, FamilyElderRelationship
 from extensions import db
 from werkzeug.security import generate_password_hash, check_password_hash
+from datetime import datetime
 
 auth_bp = Blueprint('auth', __name__)
 
 @auth_bp.route('/register', methods=['POST'])
 def register():
+    """註冊新使用者 (家屬或長輩)"""
     data = request.json
-    user_name = data.get('username')
-    user_email = data.get('email')
+    user_name = data.get('username') or data.get('user_name')
+    user_email = data.get('email') or data.get('user_email')
     password = data.get('password')
-    gender = data.get('gender', 'M')
-    age = data.get('age', 20)
-    role = data.get('role') # 'elder' or 'family'
+    role = data.get('role', 'family') # 'elder' or 'family'
 
-    if not user_name or not user_email or not password or not role:
-        return jsonify({'error': 'Missing required fields'}), 400
+    if not all([user_name, user_email, password]):
+        return jsonify({'error': 'Missing required fields (need user_name/username, user_email/email, password)'}), 400
 
-    if User.query.filter_by(user_email=user_email).first():
+    if UserAccountData.query.filter_by(user_email=user_email).first():
         return jsonify({'error': 'Email already exists'}), 409
 
     hashed_pw = generate_password_hash(password)
-    new_user = User(
+    
+    # 基於新 ERD：基本資料直接存在帳號表
+    new_account = UserAccountData(
         user_name=user_name,
         user_email=user_email,
         password=hashed_pw,
-        gender=gender,
-        age=age,
-        role=role,
+        registered_platform='Local',
+        account_create_time=datetime.utcnow(),
         user_authority='Normal'
     )
-    db.session.add(new_user)
+    db.session.add(new_account)
     db.session.commit()
 
     return jsonify({
         'message': 'User registered successfully',
-        'user_id': new_user.id,
-        'user_name': new_user.user_name,
-        'role': new_user.role
+        'user_id': new_account.user_id,
+        'user_name': new_account.user_name
     }), 201
 
 @auth_bp.route('/login', methods=['POST'])
 def login():
+    """使用者登入"""
     data = request.json
     email = data.get('email')
     password = data.get('password')
@@ -50,19 +51,16 @@ def login():
     if not email or not password:
         return jsonify({'error': 'Email and password required'}), 400
 
-    user = User.query.filter_by(user_email=email).first()
-    if not user or not check_password_hash(user.password, password):
+    account = UserAccountData.query.filter_by(user_email=email).first()
+    if not account or not check_password_hash(account.password, password):
         return jsonify({'error': 'Invalid email or password'}), 401
 
-    # 檢查是否已配對長輩 (如果是家屬)
-    has_paired_elder = False
-    if user.role == 'family':
-        has_paired_elder = Relationship.query.filter_by(family_id=user.id).first() is not None
+    # 檢查是否已配對長輩 (家屬端邏輯)
+    has_paired_elder = FamilyElderRelationship.query.filter_by(family_id=account.user_id).first() is not None
 
     return jsonify({
         'message': 'Login successful',
-        'user_id': user.id,
-        'user_name': user.user_name,
-        'role': user.role,
+        'user_id': account.user_id,
+        'user_name': account.user_name,
         'has_paired_elder': has_paired_elder
     }), 200
