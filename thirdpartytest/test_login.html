@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -16,18 +17,21 @@
             background-color: #f0f2f5;
             margin: 0;
         }
+
         .container {
             background-color: white;
             padding: 40px;
             border-radius: 10px;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
             text-align: center;
             width: 300px;
         }
+
         h2 {
             margin-bottom: 20px;
             color: #333;
         }
+
         .login-btn {
             display: block;
             width: 100%;
@@ -41,6 +45,7 @@
             text-decoration: none;
             box-sizing: border-box;
         }
+
         .google-btn {
             background-color: #fff;
             color: #757575;
@@ -50,16 +55,20 @@
             justify-content: center;
             gap: 10px;
         }
+
         .google-btn:hover {
             background-color: #f8f8f8;
         }
+
         .line-btn {
             background-color: #06C755;
             color: white;
         }
+
         .line-btn:hover {
             background-color: #05b34c;
         }
+
         #result {
             margin-top: 20px;
             padding: 10px;
@@ -72,76 +81,66 @@
         }
     </style>
 </head>
+
 <body>
 
-<div class="container">
-    <h2>登入測試</h2>
+    <div class="container">
+        <h2>登入測試</h2>
 
-    <!-- Google 登入按鈕容器 -->
-    <div id="g_id_onload"
-         data-client_id="YOUR_GOOGLE_CLIENT_ID_HERE"
-         data-context="signin"
-         data-ux_mode="popup"
-         data-callback="handleGoogleCredentialResponse"
-         data-auto_prompt="false">
+        <!-- Google 登入按鈕容器 -->
+        <div id="g_id_onload" data-client_id="69997871966-9dl46qarug7dc2g06al84q6njdtf74fn.apps.googleusercontent.com"
+            data-context="signin" data-ux_mode="popup" data-callback="handleGoogleCredentialResponse"
+            data-auto_prompt="false">
+        </div>
+
+        <div style="width: 100%; margin-bottom: 15px;">
+            <div class="g_id_signin" data-type="standard" data-shape="rectangular" data-theme="outline"
+                data-text="signin_with" data-size="large" data-logo_alignment="left" data-width="300">
+            </div>
+        </div>
+
+        <!-- Line 登入按鈕 -->
+        <a href="#" class="login-btn line-btn" onclick="lineLogin()">
+            使用 LINE 登入
+        </a>
+
+        <div id="result"></div>
     </div>
 
-    <div class="g_id_signin"
-         data-type="standard"
-         data-shape="rectangular"
-         data-theme="outline"
-         data-text="signin_with"
-         data-size="large"
-         data-logo_alignment="left"
-         style="margin-bottom: 15px;">
-    </div>
+    <script>
+        // 處理 Google 登入成功後的回傳
+        function handleGoogleCredentialResponse(response) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.style.display = 'block';
 
-    <!-- Line 登入按鈕 -->
-    <a href="#" class="login-btn line-btn" onclick="lineLogin()">
-        使用 LINE 登入
-    </a>
-
-    <div id="result"></div>
-</div>
-
-<script>
-    // 處理 Google 登入成功後的回傳
-    function handleGoogleCredentialResponse(response) {
-        const resultDiv = document.getElementById('result');
-        resultDiv.style.display = 'block';
-        
-        // response.credential 是一段 JWT Token
-        resultDiv.innerHTML = `<strong>Google 登入成功！</strong><br><br>
+            // response.credential 是一段 JWT Token
+            resultDiv.innerHTML = `<strong>Google 登入成功！</strong><br><br>
                                <span style="color: green;">取得的 ID Token:</span><br>
                                <textarea style="width: 100%; height: 100px; margin-top: 10px; font-size: 12px; resize: none;" readonly>${response.credential}</textarea><br>
                                <small style="color: #666;">（此 Token 可傳遞給後端進行驗證並解析出 Email/姓名）</small>`;
-        
-        console.log("Encoded JWT ID token: " + response.credential);
-    }
 
-    // 處理 Line 登入導向
-    function lineLogin() {
-        // 替換為你的 Line Channel ID
-        const clientId = 'YOUR_LINE_CHANNEL_ID_HERE';
-        // 替換為你的回傳網址 (在本地測試時可以是 http://localhost:5000/auth/line/callback，但需要在 Line 控制台設定)
-        const redirectUri = encodeURIComponent('http://localhost:5000/auth/line/callback'); 
-        const state = 'random_state_string_123';
-        const scope = 'profile openid email';
-
-        if (clientId === 'YOUR_LINE_CHANNEL_ID_HERE') {
-            const resultDiv = document.getElementById('result');
-            resultDiv.style.display = 'block';
-            resultDiv.innerHTML = `<span style="color: red;">請先在 HTML 程式碼中填入 YOUR_LINE_CHANNEL_ID_HERE 及設定正確的 Redirect URI！</span>`;
-            return;
+            console.log("Encoded JWT ID token: " + response.credential);
         }
 
-        // 組合 LINE Login 授權網址
-        const lineAuthUrl = `https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}&state=${state}&scope=${scope}`;
-        
-        // 導向 LINE 登入頁面
-        window.location.href = lineAuthUrl;
-    }
-</script>
+        // 處理 Line 登入導向
+        function lineLogin() {
+            // 替換為你的 Line Channel ID
+            const clientId = '2009487514';
+            // 替換為你的回傳網址 (既然你目前用 port 8000 測試，我們就先導到 8000，讓你看看回傳什麼)
+            const redirectUri = encodeURIComponent('http://localhost:8000/auth/line/callback');
+            const state = 'random_state_string_123';
+            const scope = 'profile openid email';
+
+
+
+            // 組合 LINE Login 授權網址
+            const lineAuthUrl = `https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}&state=${state}&scope=${scope}`;
+
+            // 導向 LINE 登入頁面
+            window.location.href = lineAuthUrl;
+        }
+    </script>
 
 </body>
+
 </html>
