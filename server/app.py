@@ -60,6 +60,33 @@ with app.app_context():
 
 rooms_manager = {}
 
+# --- [API] 獲取長輩列表 ---
+@app.route('/api/get_elder_data', methods=['GET'])
+def get_elder_data():
+    user_id = request.args.get('user_id')
+    if not user_id:
+        return jsonify({'status': 'error', 'message': 'Missing user_id'}), 400
+
+    try:
+        cursor = db.get_mysql_cursor()
+        query = "SELECT elder_id, elder_name FROM elder_user_data WHERE user_id = %s"
+        cursor.execute(query, (user_id,))
+        results = cursor.fetchall()
+        cursor.close()
+        
+        if results:
+            elders_list = [
+                {'elder_id': row['elder_id'], 'elder_name': row['elder_name']}
+                for row in results
+            ]
+            return jsonify({'status': 'success', 'elders': elders_list})
+        else:
+            return jsonify({'status': 'error', 'message': '查無資料'}), 404
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+# --- [Socket] 信令邏輯 ---
+
 @socketio.on('join')
 def on_join(data):
     room = data.get('room')
