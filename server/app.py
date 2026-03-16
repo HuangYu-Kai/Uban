@@ -1,16 +1,6 @@
 import os
 # server/app.py
-import eventlet
-import ssl
-
-# SSL 補丁 (針對 Python 3.13+)
-if not hasattr(ssl, 'wrap_socket'):
-    def dummy_wrap_socket(sock, *args, **kwargs):
-        context = ssl.SSLContext(kwargs.get('ssl_version', ssl.PROTOCOL_TLS))
-        return context.wrap_socket(sock, *args, **kwargs)
-    ssl.wrap_socket = dummy_wrap_socket
-
-eventlet.monkey_patch()
+from flask import Flask, request, jsonify
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -27,10 +17,19 @@ app = Flask(__name__)
 CORS(app) # 允許跨域請求
 app.config['SECRET_KEY'] = 'secret!'
 
+# server/app.py
+from dotenv import load_dotenv
+load_dotenv()
+
 # 資料庫設定
-base_dir = os.path.dirname(os.path.abspath(__file__))
-db_path = os.path.join(base_dir, 'instance', 'uban.db')
-app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
+MYSQL_HOST = os.getenv('MYSQL_HOST', 'localhost')
+MYSQL_PORT = os.getenv('MYSQL_PORT', '3306')
+MYSQL_USER = os.getenv('MYSQL_USER', 'root')
+MYSQL_PASSWORD = os.getenv('MYSQL_PASSWORD', '0000')
+MYSQL_DB_NAME = os.getenv('MYSQL_DB_NAME', 'uban')
+
+# 使用 MySQL 連線字串 (pymysql 驅動)
+app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql+pymysql://{MYSQL_USER}:{MYSQL_PASSWORD}@{MYSQL_HOST}:{MYSQL_PORT}/{MYSQL_DB_NAME}?charset=utf8mb4'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # 初始化擴充功能
@@ -53,10 +52,8 @@ def health():
 
 # 自動建立資料表
 with app.app_context():
-    if not os.path.exists(os.path.dirname(db_path)):
-        os.makedirs(os.path.dirname(db_path))
     db.create_all()
-    print("✅ 資料庫與資料表已初始化。")
+    print(f"✅ MySQL 資料庫 ({MYSQL_DB_NAME}) 與資料表已初始化。")
 
 rooms_manager = {}
 

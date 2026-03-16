@@ -26,7 +26,7 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
   late TextEditingController _ageController;
   late TextEditingController _cityController;
   late TextEditingController _districtController;
-  late TextEditingController _phoneController;
+  late TextEditingController _appellationController;
 
   late TextEditingController _chronicDiseasesController;
   late TextEditingController _medicationNotesController;
@@ -35,21 +35,22 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
   // 基本資料 - 性別
   String _currentGender = 'M';
 
-  // AI 性格偏好
-  String _aiPersona = '溫暖孫子';
-  final List<String> _personaOptions = ['溫暖孫子', '專業護理師', '老朋友', '細心女兒'];
+  // AI 性格偏好 (滑桿版本)
+  double _aiEmotionTone = 50;
+  double _aiTextVerbosity = 50;
 
   bool _isLoading = true;
+  bool _isSaving = false;
   bool _isLocating = false;
 
   @override
   void initState() {
     super.initState();
     _nameController = TextEditingController(
-      text: widget.elderData['user_name'] ?? widget.elderData['name'],
+      text: widget.elderData['user_name'] ?? widget.elderData['elder_name'] ?? '',
     );
     _ageController = TextEditingController(
-      text: widget.elderData['age']?.toString(),
+      text: widget.elderData['age']?.toString() ?? '',
     );
 
     String location = widget.elderData['location'] ?? '';
@@ -79,7 +80,7 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
 
     _cityController = TextEditingController(text: initialCity);
     _districtController = TextEditingController(text: initialDistrict);
-    _phoneController = TextEditingController();
+    _appellationController = TextEditingController();
     _chronicDiseasesController = TextEditingController();
     _medicationNotesController = TextEditingController();
     _interestsController = TextEditingController();
@@ -90,7 +91,7 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
 
   Future<void> _loadProfile() async {
     try {
-      final elderId = widget.elderData['id'];
+      final elderId = widget.elderData['user_id'] ?? widget.elderData['id'];
       if (elderId == null) {
         setState(() => _isLoading = false);
         return;
@@ -99,37 +100,15 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
       final profile = await ApiService.getElderProfile(elderId);
       if (mounted) {
         setState(() {
-          _phoneController.text = profile['phone'] ?? '';
-          String fullLocation = profile['location'] ?? '台北市士林區';
-          String loadedCity = '';
-          String loadedDistrict = '';
-
+          _appellationController.text = profile['appellation'] ?? '';
+          _aiEmotionTone = (profile['ai_emotion_tone'] ?? 50).toDouble();
+          _aiTextVerbosity = (profile['ai_text_verbosity'] ?? 50).toDouble();
+          
+          String fullLocation = profile['location'] ?? '';
           if (fullLocation.isNotEmpty) {
-            int cityIndex = fullLocation.indexOf('市');
-            int countyIndex = fullLocation.indexOf('縣');
-            int splitIndex = -1;
-
-            if (cityIndex != -1 && countyIndex != -1) {
-              splitIndex = cityIndex < countyIndex ? cityIndex : countyIndex;
-            } else if (cityIndex != -1) {
-              splitIndex = cityIndex;
-            } else if (countyIndex != -1) {
-              splitIndex = countyIndex;
-            }
-
-            if (splitIndex != -1 && splitIndex + 1 < fullLocation.length) {
-              loadedCity = fullLocation.substring(0, splitIndex + 1);
-              loadedDistrict = fullLocation.substring(splitIndex + 1);
-            } else {
-              loadedCity = fullLocation;
-            }
+             _parseLocation(fullLocation);
           }
-          _cityController.text = loadedCity;
-          _districtController.text = loadedDistrict;
-          _aiPersona = profile['ai_persona'] ?? '溫暖孫子';
-          if (!_personaOptions.contains(_aiPersona)) {
-            _aiPersona = '溫暖孫子';
-          }
+          
           _chronicDiseasesController.text = profile['chronic_diseases'] ?? '';
           _medicationNotesController.text = profile['medication_notes'] ?? '';
           _interestsController.text = profile['interests'] ?? '';
@@ -142,13 +121,34 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
     }
   }
 
+  void _parseLocation(String fullLocation) {
+    int cityIndex = fullLocation.indexOf('市');
+    int countyIndex = fullLocation.indexOf('縣');
+    int splitIndex = -1;
+
+    if (cityIndex != -1 && countyIndex != -1) {
+      splitIndex = cityIndex < countyIndex ? cityIndex : countyIndex;
+    } else if (cityIndex != -1) {
+      splitIndex = cityIndex;
+    } else if (countyIndex != -1) {
+      splitIndex = countyIndex;
+    }
+
+    if (splitIndex != -1 && splitIndex + 1 < fullLocation.length) {
+      _cityController.text = fullLocation.substring(0, splitIndex + 1);
+      _districtController.text = fullLocation.substring(splitIndex + 1);
+    } else {
+      _cityController.text = fullLocation;
+    }
+  }
+
   @override
   void dispose() {
     _nameController.dispose();
     _ageController.dispose();
     _cityController.dispose();
     _districtController.dispose();
-    _phoneController.dispose();
+    _appellationController.dispose();
     _chronicDiseasesController.dispose();
     _medicationNotesController.dispose();
     _interestsController.dispose();
@@ -156,13 +156,15 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
   }
 
   void _saveProfile() async {
-    final elderId = widget.elderData['id'];
+    final elderId = widget.elderData['user_id'] ?? widget.elderData['id'];
     if (elderId == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('無法儲存：無效的長輩 ID')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('無法儲存：無效的長輩 ID')),
+      );
       return;
     }
+
+    setState(() => _isSaving = true);
 
     try {
       if (widget.familyId != null) {
@@ -177,34 +179,34 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
 
       await ApiService.updateElderProfile(
         userId: elderId,
-        phone: _phoneController.text,
-        location:
-            '${_cityController.text.trim()}${_districtController.text.trim()}',
-        aiPersona: _aiPersona,
-        chronicDiseases: _chronicDiseasesController.text,
-        medicationNotes: _medicationNotesController.text,
-        interests: _interestsController.text,
+        location: '${_cityController.text.trim()}${_districtController.text.trim()}',
+        appellation: _appellationController.text.trim(),
+        aiEmotionTone: _aiEmotionTone.toInt(),
+        aiTextVerbosity: _aiTextVerbosity.toInt(),
+        chronicDiseases: _chronicDiseasesController.text.trim(),
+        medicationNotes: _medicationNotesController.text.trim(),
+        interests: _interestsController.text.trim(),
       );
 
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('資料已成功更新，AI 將採用新的設定與性格。')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('資料已成功更新 ✨ AI 將採用新的設定')),
+        );
         Navigator.pop(context);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('儲存失敗: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('儲存失敗: $e')),
+        );
       }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
   Future<void> _getCurrentLocation() async {
-    setState(() {
-      _isLocating = true;
-    });
+    setState(() => _isLocating = true);
 
     try {
       LocationPermission permission = await Geolocator.checkPermission();
@@ -216,13 +218,11 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
       }
 
       if (permission == LocationPermission.deniedForever) {
-        throw Exception('定位權限已被永久拒絕，請至設定開啟');
+        throw Exception('定位權限已被永久拒絕');
       }
 
       Position position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.medium,
-        ),
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.medium),
       );
 
       List<Placemark> placemarks = await placemarkFromCoordinates(
@@ -232,388 +232,376 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
 
       if (placemarks.isNotEmpty) {
         Placemark place = placemarks[0];
-        // 例如：台北市士林區
-        String city = place.administrativeArea ?? '';
-        String district = place.subAdministrativeArea ?? place.locality ?? '';
-
-        // 處理有時行政區(縣市)抓不到，但locality有值的情況
-        if (city.isEmpty && district.isNotEmpty) {
-          city = district;
-          district = '';
-        }
-
         setState(() {
-          _cityController.text = city;
-          _districtController.text = district;
+          _cityController.text = place.administrativeArea ?? '';
+          _districtController.text = place.subAdministrativeArea ?? place.locality ?? '';
         });
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('無法取得位置: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('無法取得位置: $e')),
+        );
       }
     } finally {
-      if (mounted) {
-        setState(() {
-          _isLocating = false;
-        });
-      }
+      if (mounted) setState(() => _isLocating = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return Scaffold(
-        backgroundColor: const Color(0xFFF8FAFC),
-        appBar: AppBar(
-          title: Text(
-            '編輯長輩資料',
-            style: GoogleFonts.notoSansTc(
-              color: const Color(0xFF1E293B),
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          backgroundColor: Colors.white,
-          elevation: 0,
-          iconTheme: const IconThemeData(color: Color(0xFF1E293B)),
-        ),
-        body: const Center(child: CircularProgressIndicator()),
-      );
-    }
-
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      appBar: AppBar(
-        title: Text(
-          '編輯長輩資料',
-          style: GoogleFonts.notoSansTc(
-            color: const Color(0xFF1E293B),
-            fontWeight: FontWeight.bold,
-          ),
+      backgroundColor: const Color(0xFFF9FAFB),
+      appBar: _buildAppBar(),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _buildBody(),
+    );
+  }
+
+  PreferredSizeWidget _buildAppBar() {
+    return AppBar(
+      title: Text(
+        '編輯長輩資料',
+        style: GoogleFonts.notoSansTc(
+          color: const Color(0xFF1F2937),
+          fontWeight: FontWeight.w800,
+          fontSize: 20,
         ),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Color(0xFF1E293B)),
-        actions: [
-          TextButton(
-            onPressed: _saveProfile,
-            child: Text(
-              '儲存',
-              style: GoogleFonts.notoSansTc(
-                color: const Color(0xFF2563EB),
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-              ),
+      ),
+      backgroundColor: Colors.white,
+      elevation: 0,
+      centerTitle: true,
+      leading: IconButton(
+        icon: const Icon(Icons.close_rounded, color: Color(0xFF4B5563)),
+        onPressed: () => Navigator.pop(context),
+      ),
+      actions: [
+        if (!_isLoading)
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: TextButton(
+              onPressed: _isSaving ? null : _saveProfile,
+              child: _isSaving
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(
+                      '儲存',
+                      style: GoogleFonts.notoSansTc(
+                        color: const Color(0xFF3B82F6),
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16,
+                      ),
+                    ),
             ),
           ),
-        ],
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildSectionTitle('基本身分資料'),
-            _buildTextField(
-              controller: _nameController,
-              label: '稱呼 (AI 將如何稱呼長輩)',
-              icon: Icons.person_outline,
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildTextField(
-                    controller: _ageController,
-                    label: '年齡',
-                    icon: Icons.cake_outlined,
-                    keyboardType: TextInputType.number,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Container(
-                    height: 56,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.grey.shade200),
-                    ),
-                    child: Row(
+      ],
+    );
+  }
+
+  Widget _buildBody() {
+    return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 40),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildInfoCard(
+            title: '基本身分資料',
+            icon: Icons.person_rounded,
+            color: const Color(0xFF3B82F6),
+            children: [
+              _buildInputLabel('真實姓名'),
+              _buildModernTextField(
+                controller: _nameController,
+                hintText: '請輸入長輩姓名',
+                icon: Icons.badge_outlined,
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _genderChoice(
-                          label: '男',
-                          isSelected: _currentGender == 'M',
-                          onTap: () => setState(() => _currentGender = 'M'),
-                        ),
-                        _genderChoice(
-                          label: '女',
-                          isSelected: _currentGender == 'F',
-                          onTap: () => setState(() => _currentGender = 'F'),
+                        _buildInputLabel('年齡'),
+                        _buildModernTextField(
+                          controller: _ageController,
+                          hintText: '歲數',
+                          icon: Icons.cake_outlined,
+                          keyboardType: TextInputType.number,
                         ),
                       ],
                     ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            _buildTextField(
-              controller: _phoneController,
-              label: '聯絡電話',
-              icon: Icons.phone_outlined,
-              keyboardType: TextInputType.phone,
-            ),
-            const SizedBox(height: 16),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(left: 4, bottom: 8),
-                  child: Text(
-                    '居住地區 (用於精準天氣預報)',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.blueGrey,
-                    ),
-                  ),
-                ),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: Colors.grey.shade200),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(
-                              Icons.map_outlined,
-                              color: Color(0xFF2563EB),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: TextField(
-                                controller: _cityController,
-                                decoration: InputDecoration(
-                                  hintText: '縣/市',
-                                  hintStyle: GoogleFonts.notoSansTc(
-                                    color: Colors.grey[400],
-                                    fontSize: 14,
-                                  ),
-                                  border: InputBorder.none,
-                                  isDense: true,
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    vertical: 16,
-                                  ),
-                                ),
-                                style: GoogleFonts.notoSansTc(fontSize: 15),
-                              ),
-                            ),
-                            Container(
-                              width: 1,
-                              height: 24,
-                              color: Colors.grey.shade300,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: TextField(
-                                controller: _districtController,
-                                decoration: InputDecoration(
-                                  hintText: '鄉鎮市區',
-                                  hintStyle: GoogleFonts.notoSansTc(
-                                    color: Colors.grey[400],
-                                    fontSize: 14,
-                                  ),
-                                  border: InputBorder.none,
-                                  isDense: true,
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    vertical: 16,
-                                  ),
-                                ),
-                                style: GoogleFonts.notoSansTc(fontSize: 15),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Container(
-                      height: 52,
-                      width: 52,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE8F4F0),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: const Color(0xFF59B294).withValues(alpha: 0.3),
-                        ),
-                      ),
-                      child: IconButton(
-                        icon: _isLocating
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Color(0xFF59B294),
-                                ),
-                              )
-                            : const Icon(
-                                Icons.my_location,
-                                color: Color(0xFF59B294),
-                              ),
-                        onPressed: _getCurrentLocation,
-                        tooltip: '獲取目前位置',
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            const SizedBox(height: 32),
-
-            _buildSectionTitle('健康與護理備註'),
-            _buildTextArea(
-              controller: _chronicDiseasesController,
-              label: '慢性病史或過敏史',
-              hint: '例如：高血壓、對盤尼西林過敏...',
-            ),
-            const SizedBox(height: 16),
-            _buildTextArea(
-              controller: _medicationNotesController,
-              label: '每日用藥提醒備註',
-              hint: '例如：早晚飯後需服用高血壓藥...',
-            ),
-            const SizedBox(height: 32),
-
-            _buildSectionTitle('AI 性格與陪伴偏好'),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.grey.shade200),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'AI 陪伴角色設定',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 14,
-                      color: Colors.grey[600],
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    initialValue: _aiPersona,
-                    decoration: InputDecoration(
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: Colors.grey.shade300),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                      ),
-                    ),
-                    items: _personaOptions.map((String value) {
-                      return DropdownMenuItem<String>(
-                        value: value,
-                        child: Text(value, style: GoogleFonts.notoSansTc()),
-                      );
-                    }).toList(),
-                    onChanged: (newValue) {
-                      setState(() {
-                        _aiPersona = newValue!;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'AI 將採用此人設的說話方式與長輩互動，例如「溫暖孫子」會更常撒嬌與關心，「專業護理師」會更著重健康提醒。',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 13,
-                      color: Colors.grey[500],
+                  const SizedBox(width: 20),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildInputLabel('性別'),
+                        _buildGenderToggle(),
+                      ],
                     ),
                   ),
                 ],
               ),
-            ),
-            const SizedBox(height: 16),
-            _buildTextArea(
-              controller: _interestsController,
-              label: '專屬話題與興趣',
-              hint: '例如：喜歡聽鄧麗君的歌、以前是老師、愛聊園藝...',
-            ),
-            if (widget.familyId != null && widget.onUnbind != null) ...[
-              const SizedBox(height: 32),
-              Center(
-                child: TextButton.icon(
-                  onPressed: widget.onUnbind,
-                  icon: const Icon(
-                    Icons.delete_forever,
-                    color: Colors.redAccent,
-                  ),
-                  label: Text(
-                    '解除綁定並刪除資料',
-                    style: GoogleFonts.notoSansTc(
-                      color: Colors.redAccent,
-                      fontWeight: FontWeight.bold,
+            ],
+          ),
+          
+          const SizedBox(height: 24),
+          
+          _buildInfoCard(
+            title: '生活地區',
+            icon: Icons.location_on_rounded,
+            color: const Color(0xFF10B981),
+            children: [
+              _buildInputLabel('主要居住地 (用於天氣與活動建議)'),
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      children: [
+                        _buildModernTextField(
+                          controller: _cityController,
+                          hintText: '縣/市',
+                          icon: Icons.location_city_rounded,
+                        ),
+                        const SizedBox(height: 12),
+                        _buildModernTextField(
+                          controller: _districtController,
+                          hintText: '鄉鎮市區',
+                          icon: Icons.map_rounded,
+                        ),
+                      ],
                     ),
                   ),
-                ),
+                  const SizedBox(width: 12),
+                  _buildLocateButton(),
+                ],
               ),
             ],
-            const SizedBox(height: 48), // Bottom padding
+          ),
+
+          const SizedBox(height: 24),
+
+          _buildInfoCard(
+            title: 'AI 陪伴助手設定',
+            icon: Icons.auto_awesome_rounded,
+            color: const Color(0xFF8B5CF6),
+            children: [
+              _buildInputLabel('長輩對 AI 的稱呼 (例：奶奶)'),
+              _buildModernTextField(
+                controller: _appellationController,
+                hintText: 'AI 將以此稱呼長輩',
+                icon: Icons.record_voice_over_rounded,
+              ),
+              const SizedBox(height: 24),
+              _buildPersonalitySlider(
+                label: '陪伴語氣',
+                value: _aiEmotionTone,
+                leftLabel: '客觀專業',
+                rightLabel: '熱情親切',
+                onChanged: (v) => setState(() => _aiEmotionTone = v),
+                gradient: const [Color(0xFF6366F1), Color(0xFFEC4899)],
+              ),
+              const SizedBox(height: 24),
+              _buildPersonalitySlider(
+                label: '話匣子開關',
+                value: _aiTextVerbosity,
+                leftLabel: '簡潔扼要',
+                rightLabel: '滔滔不絕',
+                onChanged: (v) => setState(() => _aiTextVerbosity = v),
+                gradient: const [Color(0xFF10B981), Color(0xFF3B82F6)],
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 24),
+
+          _buildInfoCard(
+            title: '健康與護理備註',
+            icon: Icons.health_and_safety_rounded,
+            color: const Color(0xFFF59E0B),
+            children: [
+              _buildInputLabel('慢性病史或過敏史'),
+              _buildModernTextArea(
+                controller: _chronicDiseasesController,
+                hintText: '例如：高血壓、對盤尼西林過敏...',
+              ),
+              const SizedBox(height: 20),
+              _buildInputLabel('每日用藥提醒'),
+              _buildModernTextArea(
+                controller: _medicationNotesController,
+                hintText: '例如：早晚飯後需服用高血壓藥...',
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 24),
+
+          _buildInfoCard(
+            title: '個人興趣與記憶',
+            icon: Icons.favorite_rounded,
+            color: const Color(0xFFEF4444),
+            children: [
+              _buildInputLabel('讓 AI 更懂他 (興趣、教職經歷等)'),
+              _buildModernTextArea(
+                controller: _interestsController,
+                hintText: '例如：喜歡聽鄧麗君、愛聊園藝...',
+              ),
+            ],
+          ),
+
+          if (widget.onUnbind != null) ...[
+            const SizedBox(height: 40),
+            _buildUnbindButton(),
           ],
-        ),
+        ],
       ),
     );
   }
 
-  Widget _buildSectionTitle(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16.0),
-      child: Text(
-        title,
-        style: GoogleFonts.notoSansTc(
-          fontSize: 18,
-          fontWeight: FontWeight.bold,
-          color: const Color(0xFF1E293B),
-        ),
-      ),
-    );
-  }
-
-  Widget _genderChoice({
-    required String label,
-    required bool isSelected,
-    required VoidCallback onTap,
+  Widget _buildInfoCard({
+    required String title,
+    required IconData icon,
+    required Color color,
+    required List<Widget> children,
   }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.08),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(icon, color: color, size: 22),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  title,
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF111827),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Divider(height: 1, color: Colors.grey.withValues(alpha: 0.1)),
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: children,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInputLabel(String label) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, bottom: 8),
+      child: Text(
+        label,
+        style: GoogleFonts.notoSansTc(
+          fontSize: 14,
+          fontWeight: FontWeight.w700,
+          color: const Color(0xFF6B7280),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModernTextField({
+    required TextEditingController controller,
+    required String hintText,
+    required IconData icon,
+    TextInputType keyboardType = TextInputType.text,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFFF9FAFB),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: TextField(
+        controller: controller,
+        keyboardType: keyboardType,
+        style: GoogleFonts.inter(fontSize: 16, color: const Color(0xFF111827), fontWeight: FontWeight.w600),
+        decoration: InputDecoration(
+          hintText: hintText,
+          hintStyle: GoogleFonts.notoSansTc(color: const Color(0xFF9CA3AF), fontSize: 15),
+          prefixIcon: Icon(icon, color: const Color(0xFF9CA3AF), size: 20),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGenderToggle() {
+    return Container(
+      height: 48,
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF9FAFB),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: Row(
+        children: [
+          _buildGenderBtn('男', _currentGender == 'M', () => setState(() => _currentGender = 'M')),
+          _buildGenderBtn('女', _currentGender == 'F', () => setState(() => _currentGender = 'F')),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGenderBtn(String label, bool isSelected, VoidCallback onTap) {
     return Expanded(
       child: GestureDetector(
         onTap: onTap,
-        child: Container(
-          margin: const EdgeInsets.all(4),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: isSelected ? const Color(0xFF2563EB) : Colors.transparent,
+            color: isSelected ? Colors.white : Colors.transparent,
             borderRadius: BorderRadius.circular(12),
+            boxShadow: isSelected
+                ? [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4, offset: const Offset(0, 2))]
+                : [],
           ),
           child: Text(
             label,
             style: GoogleFonts.notoSansTc(
               fontSize: 14,
-              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-              color: isSelected ? Colors.white : Colors.grey[600],
+              fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+              color: isSelected ? const Color(0xFF3B82F6) : const Color(0xFF6B7280),
             ),
           ),
         ),
@@ -621,65 +609,141 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
     );
   }
 
-  Widget _buildTextField({
-    required TextEditingController controller,
-    required String label,
-    required IconData icon,
-    TextInputType keyboardType = TextInputType.text,
-    Widget? suffixIcon,
-  }) {
-    return TextField(
-      controller: controller,
-      keyboardType: keyboardType,
-      decoration: InputDecoration(
-        labelText: label,
-        labelStyle: GoogleFonts.notoSansTc(color: Colors.grey[600]),
-        prefixIcon: Icon(icon, color: const Color(0xFF2563EB)),
-        suffixIcon: suffixIcon,
-        filled: true,
-        fillColor: Colors.white,
-        border: OutlineInputBorder(
+  Widget _buildLocateButton() {
+    return GestureDetector(
+      onTap: _isLocating ? null : _getCurrentLocation,
+      child: Container(
+        height: 108,
+        width: 52,
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF10B981), Color(0xFF059669)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
           borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide.none,
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF10B981).withValues(alpha: 0.3),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: Colors.grey.shade200),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: Color(0xFF2563EB), width: 2),
+        child: Center(
+          child: _isLocating
+              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+              : const Icon(Icons.gps_fixed_rounded, color: Colors.white, size: 24),
         ),
       ),
     );
   }
 
-  Widget _buildTextArea({
-    required TextEditingController controller,
+  Widget _buildPersonalitySlider({
     required String label,
-    required String hint,
+    required double value,
+    required String leftLabel,
+    required String rightLabel,
+    required ValueChanged<double> onChanged,
+    required List<Color> gradient,
   }) {
-    return TextField(
-      controller: controller,
-      maxLines: 3,
-      decoration: InputDecoration(
-        labelText: label,
-        hintText: hint,
-        labelStyle: GoogleFonts.notoSansTc(color: Colors.grey[600]),
-        alignLabelWithHint: true,
-        filled: true,
-        fillColor: Colors.white,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide.none,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: GoogleFonts.notoSansTc(
+            fontSize: 15,
+            fontWeight: FontWeight.w800,
+            color: const Color(0xFF374151),
+          ),
         ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: Colors.grey.shade200),
+        const SizedBox(height: 12),
+        Container(
+          height: 12,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(6),
+            gradient: LinearGradient(colors: gradient),
+          ),
+          child: SliderTheme(
+            data: SliderThemeData(
+              trackHeight: 12,
+              activeTrackColor: Colors.transparent,
+              inactiveTrackColor: Colors.transparent,
+              thumbColor: Colors.white,
+              overlayColor: Colors.white.withValues(alpha: 0.2),
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 12, elevation: 4),
+            ),
+            child: Slider(
+              value: value,
+              min: 0,
+              max: 100,
+              onChanged: onChanged,
+            ),
+          ),
         ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: Color(0xFF2563EB), width: 2),
+        const SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(leftLabel, style: GoogleFonts.notoSansTc(fontSize: 12, color: const Color(0xFF9CA3AF), fontWeight: FontWeight.w600)),
+            Text(rightLabel, style: GoogleFonts.notoSansTc(fontSize: 12, color: const Color(0xFF9CA3AF), fontWeight: FontWeight.w600)),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildModernTextArea({
+    required TextEditingController controller,
+    required String hintText,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFFF9FAFB),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: TextField(
+        controller: controller,
+        maxLines: 4,
+        style: GoogleFonts.notoSansTc(fontSize: 15, color: const Color(0xFF111827), height: 1.5),
+        decoration: InputDecoration(
+          hintText: hintText,
+          hintStyle: GoogleFonts.notoSansTc(color: const Color(0xFF9CA3AF), fontSize: 14),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.all(16),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUnbindButton() {
+    return Center(
+      child: InkWell(
+        onTap: widget.onUnbind,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          decoration: BoxDecoration(
+            border: Border.all(color: const Color(0xFFFEE2E2)),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.link_off_rounded, color: Color(0xFFEF4444), size: 20),
+              const SizedBox(width: 8),
+              Text(
+                '解除與此長輩的綁定關係',
+                style: GoogleFonts.notoSansTc(
+                  color: const Color(0xFFEF4444),
+                  fontWeight: FontWeight.w800,
+                  fontSize: 15,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
