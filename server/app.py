@@ -70,14 +70,28 @@ def on_join(data):
         join_room(room)
         if room not in rooms_manager:
             rooms_manager[room] = {}
-        rooms_manager[room][sid] = role
+        
+        rooms_manager[room][sid] = {
+            'role': role,
+            'deviceName': device_name,
+            'deviceMode': device_mode,
+            'fcmToken': fcm_token # ★ 儲存 FCM Token
+        }
         
         print(f"User {sid} ({role}) joined room: {room}")
         emit('user-joined', {'id': sid, 'role': role}, to=room, include_self=False)
 
         if role == 'family':
-            current_users = [{'id': k, 'role': v} for k, v in rooms_manager[room].items() if k != sid]
-            emit('user-list', current_users, to=sid)
+            elder_devices = [
+                {
+                    'id': k, 
+                    'deviceName': v['deviceName'], 
+                    'deviceMode': v.get('deviceMode', 'comm')
+                } 
+                for k, v in rooms_manager[room].items() 
+                if v['role'] == 'elder'
+            ]
+            emit('elder-devices-list', elder_devices, to=sid)
 
 @socketio.on('disconnect')
 def on_disconnect():
@@ -89,8 +103,50 @@ def on_disconnect():
             print(f"User {sid} disconnected")
             break
 
-# --- 關鍵修正：同時支援 P2P (監控) 與 Broadcast (雙向視訊) ---
+# --- 響鈴與接聽 (Handshake) ---
+@socketio.on('call-request')
+def on_call_request(data):
+    room = data.get('room')
+    sender_id = request.sid
+    print(f"🔔 Call Request from {sender_id} in {room}")
+    
+    # 1. 廣播給房間內所有還活著的 Socket
+    emit('call-request', {'senderId': sender_id, 'room': room}, to=room, include_self=False)
 
+    # 2. 針對房間內的所有註冊用戶發送 FCM 靜默推播喚醒 (Data Message)
+    if room in rooms_manager:
+        for sid, info in rooms_manager[room].items():
+            if sid != sender_id and 'fcmToken' in info and info['fcmToken']:
+                token = info['fcmToken']
+                try:
+                    message = messaging.Message(
+                        data={
+                            'type': 'call-request',
+                            'senderId': sender_id,
+                            'roomId': room
+                        },
+                        token=token,
+                        # 使用 Android 高優先級確保能穿透 Doze mode
+                        android=messaging.AndroidConfig(priority='extreme')
+                    )
+                    response = messaging.send(message)
+                    print(f"✅ FCM 推播已發送至 {info['role']} ({info['deviceName']}): {response}")
+                except Exception as e:
+                    print(f"⚠️ FCM 推播發送失敗 ({info['role']}): {e}")
+
+@socketio.on('call-accept')
+def on_call_accept(data):
+    target_id = data.get('targetId')
+    print(f"📞 Call Accepted by {request.sid}, notifying {target_id}")
+    emit('call-accept', {'accepterId': request.sid}, to=target_id)
+
+@socketio.on('call-busy')
+def on_call_busy(data):
+    target_id = data.get('targetId')
+    print(f"🚫 Call Busy from {request.sid}, notifying {target_id}")
+    emit('call-busy', {'targetId': request.sid}, to=target_id)
+
+# --- WebRTC 信令 ---
 @socketio.on('offer')
 def on_offer(data):
     target = data.get('targetId')
@@ -119,12 +175,10 @@ def on_answer(data):
 def on_candidate(data):
     target = data.get('targetId')
     room = data.get('room')
-    data['senderId'] = request.sid
-
+    print(f"📴 End Call from {request.sid}")
+    
     if target:
-        emit('candidate', data, to=target)
-    elif room:
-        emit('candidate', data, to=room, include_self=False)
+        emit('end-call', {'senderId': request.sid}, to=target)
 
 if __name__ == '__main__':
     socketio.run(app, debug=True, use_reloader=False, host='0.0.0.0', port=5001)

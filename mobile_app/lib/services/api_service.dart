@@ -2,18 +2,8 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class ApiService {
-  static const String serverIp = String.fromEnvironment(
-    'SERVER_IP',
-    defaultValue: '10.0.2.2',
-  );
-
-  static String get baseUrl {
-    if (serverIp.contains('ngrok-free.app') ||
-        serverIp.contains('ngrok-free.dev')) {
-      return 'https://$serverIp/api';
-    }
-    return 'http://$serverIp:5001/api';
-  }
+  // 對於實機測試，請使用您電腦的區域網路 IP
+  static const String baseUrl = 'https://d019-61-65-116-7.ngrok-free.app/api'; //再換成虛擬機IP
 
   static Future<Map<String, dynamic>> register({
     required String username,
@@ -139,6 +129,17 @@ class ApiService {
       }),
     );
     return jsonDecode(response.body);
+  }
+
+  static Future<List<dynamic>> getElderData(String userId) async {
+    final response = await http.get(Uri.parse('$baseUrl/get_elder_data?user_id=$userId'));
+    if (response.statusCode == 200) {
+      final decoded = jsonDecode(response.body);
+      if (decoded['status'] == 'success') {
+        return decoded['elders'] as List<dynamic>;
+      }
+    }
+    return [];
   }
 
   static Future<List<dynamic>> getPairedElders(int userId) async {

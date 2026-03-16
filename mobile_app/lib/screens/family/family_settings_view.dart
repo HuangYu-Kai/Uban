@@ -1,3 +1,10 @@
+// import 'package:flutter/material.dart';
+// import 'package:google_fonts/google_fonts.dart';
+// import 'package:shared_preferences/shared_preferences.dart';
+// import '../../services/api_service.dart';
+// import '../identification_screen.dart';
+// import 'family_subscription_screen.dart';
+// import '../caregiver_pairing_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -8,27 +15,47 @@ import 'family_subscription_screen.dart';
 import '../caregiver_pairing_screen.dart';
 import '../elder_profile_edit_screen.dart';
 
-class FamilySettingsView extends StatefulWidget {
-  final int userId;
-  final String userName;
+// class FamilySettingsView extends StatefulWidget {
+//   final int userId;
+//   final String userName;
 
-  const FamilySettingsView({
-    super.key,
-    required this.userId,
-    required this.userName,
-  });
+//   const FamilySettingsView({
+//     super.key,
+//     required this.userId,
+//     required this.userName,
+//   });
+
+// //   @override
+// //   State<FamilySettingsView> createState() => _FamilySettingsViewState();
+// // }
+
+// class _FamilySettingsViewState extends State<FamilySettingsView> {
+//   late String _userName;
+//   bool _isEmergencyOn = true;
+//   bool _isDailySummaryOn = true;
+//   bool _isAiInsightOn = false;
+//   List<dynamic> _pairedElders = [];
+//   bool _isLoadingElders = true;
 
   @override
   State<FamilySettingsView> createState() => _FamilySettingsViewState();
 }
 
-class _FamilySettingsViewState extends State<FamilySettingsView> {
-  late String _userName;
-  bool _isEmergencyOn = true;
-  bool _isDailySummaryOn = true;
-  bool _isAiInsightOn = false;
-  List<dynamic> _pairedElders = [];
-  bool _isLoadingElders = true;
+//   Future<void> _fetchPairedElders() async {
+//     try {
+//       final elders = await ApiService.getPairedElders(widget.userId);
+//       if (mounted) {
+//         setState(() {
+//           _pairedElders = elders;
+//           _isLoadingElders = false;
+//         });
+//       }
+//     } catch (e) {
+//       if (mounted) {
+//         setState(() => _isLoadingElders = false);
+//       }
+//     }
+//   }
 
   @override
   void initState() {
@@ -202,133 +229,36 @@ class _FamilySettingsViewState extends State<FamilySettingsView> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        title: Text(
-          '設定',
-          style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        foregroundColor: Colors.black87,
-      ),
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            const SizedBox(height: 16),
-            _buildProfileSection(),
-            const SizedBox(height: 24),
-            _buildSettingsGroup('訂閱與方案', [
-              _buildSettingItem(
-                Icons.card_membership_outlined,
-                '當前方案：免費版',
-                '點擊查看更多方案與功能',
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const FamilySubscriptionScreen(),
-                    ),
-                  );
-                },
-              ),
-            ]),
-            const SizedBox(height: 24),
-            _buildSettingsGroup('設備與配對', [
-              _buildSettingItem(
-                Icons.qr_code_scanner,
-                '管理配對碼',
-                '新增長輩端設備',
-                onTap: () async {
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => CaregiverPairingScreen(
-                        familyId: widget.userId,
-                        familyName: widget.userName,
-                      ),
-                    ),
-                  );
-                  _fetchPairedElders(); // Refresh list after potential new pairing
-                },
-              ),
-              if (_isLoadingElders)
-                const Padding(
-                  padding: EdgeInsets.all(16.0),
-                  child: Center(child: CircularProgressIndicator()),
-                )
-              else if (_pairedElders.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.all(16.0),
-                  child: Text('目前尚未綁定任何長輩'),
-                )
-              else
-                ..._pairedElders.map((elder) => _buildElderTile(elder)),
-              _buildSettingItem(
-                Icons.people_outline,
-                '聯絡人權限',
-                '管理共同照顧者',
-                onTap: () {},
-              ),
-            ]),
-            const SizedBox(height: 24),
-            _buildSettingsGroup('通知與提醒', [
-              _buildSwitchItem(
-                Icons.notifications_active_outlined,
-                '緊急狀況警報',
-                _isEmergencyOn,
-                (val) => setState(() => _isEmergencyOn = val),
-              ),
-              _buildSwitchItem(
-                Icons.summarize_outlined,
-                '每日摘要通知',
-                _isDailySummaryOn,
-                (val) => setState(() => _isDailySummaryOn = val),
-              ),
-              _buildSwitchItem(
-                Icons.auto_awesome,
-                'AI 洞察提醒',
-                _isAiInsightOn,
-                (val) => setState(() => _isAiInsightOn = val),
-              ),
-            ]),
-            const SizedBox(height: 24),
-            _buildSettingsGroup('系統與介面', [
-              _buildSettingItem(
-                Icons.color_lens_outlined,
-                '介面主題',
-                '溫暖淺色',
-                onTap: () {},
-              ),
-              _buildSettingItem(
-                Icons.language_outlined,
-                '語文',
-                '繁體中文',
-                onTap: () {},
-              ),
-            ]),
-            const SizedBox(height: 32),
-            TextButton(
-              onPressed: _handleLogout,
-              child: Text(
-                '登出帳號',
-                style: GoogleFonts.notoSansTc(
-                  color: Colors.redAccent,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-            const SizedBox(
-              height: 140,
-            ), // Ensure content is not hidden by the bottom dock
-          ],
-        ),
-      ),
-    );
-  }
+// //   void _handleEditProfile() {
+// //     final TextEditingController controller = TextEditingController(
+// //       text: _userName,
+// //     );
+// //     showDialog(
+// //       context: context,
+// //       builder: (context) => AlertDialog(
+// //         title: const Text('編輯個人資料'),
+// //         content: TextField(
+// //           controller: controller,
+// //           decoration: const InputDecoration(labelText: '顯示名稱'),
+// //         ),
+// //         actions: [
+// //           TextButton(
+// //             onPressed: () => Navigator.pop(context),
+// //             child: const Text('取消'),
+// //           ),
+// //           TextButton(
+// //             onPressed: () {
+// //               setState(() {
+// //                 _userName = controller.text;
+// //               });
+// //               Navigator.pop(context);
+// //             },
+// //             child: const Text('儲存'),
+// //           ),
+// //         ],
+// //       ),
+// //     );
+// //   }
 
   Widget _buildProfileSection() {
     return Container(
