@@ -12,8 +12,8 @@ class FamilyScriptsView extends StatefulWidget {
   State<FamilyScriptsView> createState() => _FamilyScriptsViewState();
 }
 
-class _FamilyScriptsViewState extends State<FamilyScriptsView> {
-  List<ScriptMetadata> _scripts = [];
+// class _FamilyScriptsViewState extends State<FamilyScriptsView> {
+//   List<ScriptMetadata> _scripts = [];
 
   @override
   void initState() {
