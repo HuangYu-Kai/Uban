@@ -22,14 +22,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # 資料庫設定
-MYSQL_HOST = os.getenv('MYSQL_HOST', 'localhost')
-MYSQL_PORT = os.getenv('MYSQL_PORT', '3306')
-MYSQL_USER = os.getenv('MYSQL_USER', 'root')
-MYSQL_PASSWORD = os.getenv('MYSQL_PASSWORD', '0000')
-MYSQL_DB_NAME = os.getenv('MYSQL_DB_NAME', 'uban')
-
-# 使用 MySQL 連線字串 (pymysql 驅動)
-app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql+pymysql://{MYSQL_USER}:{MYSQL_PASSWORD}@{MYSQL_HOST}:{MYSQL_PORT}/{MYSQL_DB_NAME}?charset=utf8mb4'
+base_dir = os.path.dirname(os.path.abspath(__file__))
+db_path = os.path.join(base_dir, 'instance', 'uban.db')
+app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # 初始化擴充功能
@@ -52,8 +47,10 @@ def health():
 
 # 自動建立資料表
 with app.app_context():
+    if not os.path.exists(os.path.dirname(db_path)):
+        os.makedirs(os.path.dirname(db_path))
     db.create_all()
-    print(f"✅ MySQL 資料庫 ({MYSQL_DB_NAME}) 與資料表已初始化。")
+    print("✅ 資料庫與資料表已初始化。")
 
 rooms_manager = {}
 

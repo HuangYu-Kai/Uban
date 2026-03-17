@@ -157,14 +157,30 @@ class _ElderChatTabState extends State<ElderChatTab>
         // 初始化時順便找好支援的繁體語系並存起來
         if (_speechEnabled) {
           _speechToText.locales().then((locales) {
+            // 診斷：印出所有可用語系
+            debugPrint('--- [STT Diagnostic: Available Locales] ---');
+            for (var l in locales) {
+              debugPrint('Locale Name: ${l.name}, ID: ${l.localeId}');
+            }
+            debugPrint('-------------------------------------------');
+
             final zhTw = locales.where(
-              (l) => l.localeId.contains('zh') || l.localeId.contains('cmn'),
+              (l) => l.localeId.toLowerCase() == 'zh_tw' || l.localeId.toLowerCase() == 'zh-tw',
             );
+            
             if (zhTw.isNotEmpty) {
               _sttLocaleToUse = zhTw.first.localeId;
-              debugPrint('STT pre-cached Locale: $_sttLocaleToUse');
+              debugPrint('STT Diagnostic: Picked Exact zh_TW -> $_sttLocaleToUse');
             } else {
-              debugPrint('zh-TW not found during STT init');
+              // 退而求其次找任何中文
+              final anyZh = locales.where((l) => l.localeId.contains('zh') || l.localeId.contains('cmn'));
+              if (anyZh.isNotEmpty) {
+                _sttLocaleToUse = anyZh.first.localeId;
+                debugPrint('STT Diagnostic: Fallback to any Chinese -> $_sttLocaleToUse');
+              } else {
+                _sttLocaleToUse = null;
+                debugPrint('STT Diagnostic: No Chinese found, using system default');
+              }
             }
           });
         }
