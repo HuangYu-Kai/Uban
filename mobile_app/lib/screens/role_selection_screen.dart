@@ -4,7 +4,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import 'family_dashboard_screen.dart';
 import 'elder_screen.dart';
-import 'video_call_screen.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../globals.dart';
@@ -34,7 +33,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
         await FlutterCallkitIncoming.requestFullIntentPermission();
       }
     } catch (e) {
-      print("Permission Action failed: $e");
+      debugPrint("Permission Action failed: $e");
     }
     
     // 檢查核心權限
@@ -50,7 +49,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
     if (statuses[Permission.ignoreBatteryOptimizations] != PermissionStatus.granted) isCriticalDenied = true;
 
     if (isCriticalDenied && mounted) {
-      bool? openedSettings = await showDialog<bool>(
+      await showDialog<bool>(
         context: context,
         barrierDismissible: false,
         builder: (context) => AlertDialog(

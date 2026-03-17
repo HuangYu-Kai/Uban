@@ -3,19 +3,19 @@ import 'elder_tabs/elder_home_tab.dart';
 import 'elder_tabs/elder_chat_tab.dart';
 import 'elder_tabs/elder_profile_tab.dart';
 
-// class ElderHomeScreen extends StatefulWidget {
-//   final int userId;
-//   final String userName;
+class ElderHomeScreen extends StatefulWidget {
+  final int userId;
+  final String userName;
 
-//   const ElderHomeScreen({
-//     super.key,
-//     required this.userId,
-//     required this.userName,
-//   });
+  const ElderHomeScreen({
+    super.key,
+    required this.userId,
+    required this.userName,
+  });
 
-//   @override
-//   State<ElderHomeScreen> createState() => _ElderHomeScreenState();
-// }
+  @override
+  State<ElderHomeScreen> createState() => _ElderHomeScreenState();
+}
 
 class _ElderHomeScreenState extends State<ElderHomeScreen> {
   int _selectedIndex = 0; // 0: Home/Calendar, 1: Chat, 2: Profile/Settings

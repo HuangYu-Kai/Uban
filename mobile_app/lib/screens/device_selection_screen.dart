@@ -1,17 +1,16 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import '../services/signaling.dart';
-import 'monitoring_screen.dart';
 import 'video_call_screen.dart';
 
 class DeviceSelectionScreen extends StatefulWidget {
   final String elderId;
   final String elderName;
 
-  const DeviceSelectionScreen({Key? key, required this.elderId, required this.elderName}) : super(key: key);
+  const DeviceSelectionScreen({super.key, required this.elderId, required this.elderName});
 
   @override
-  _DeviceSelectionScreenState createState() => _DeviceSelectionScreenState();
+  State<DeviceSelectionScreen> createState() => _DeviceSelectionScreenState();
 }
 
 class _DeviceSelectionScreenState extends State<DeviceSelectionScreen> {
@@ -32,7 +31,7 @@ class _DeviceSelectionScreenState extends State<DeviceSelectionScreen> {
   void _startPeriodicRefresh() {
     _refreshTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
       if (mounted && _signaling.socket != null && _signaling.socket!.connected) {
-        print("🔄 Periodic Refresh: Requesting device list update...");
+        debugPrint("🔄 Periodic Refresh: Requesting device list update...");
         setState(() => _isSyncing = true);
         _signaling.sendGetElderDevices(widget.elderId);
       }
@@ -127,7 +126,12 @@ class _DeviceSelectionScreenState extends State<DeviceSelectionScreen> {
                                       icon: Icon(Icons.videocam, color: isOnline ? Colors.blue : Colors.grey),
                                       onPressed: () {
                                         if (isOnline) {
-                                           Navigator.push(context, MaterialPageRoute(builder: (_) => MonitoringScreen(roomId: widget.elderId, targetSocketId: socketId)));
+                                            Navigator.push(context, MaterialPageRoute(builder: (_) => VideoCallScreen(
+                                              roomId: widget.elderId, 
+                                              targetSocketId: socketId,
+                                              isEmergency: true,
+                                              autoStart: true,
+                                            )));
                                         } else {
                                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("設備離線中，無法觀看 CCTV")));
                                         }

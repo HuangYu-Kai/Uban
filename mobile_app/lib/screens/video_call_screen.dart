@@ -11,16 +11,16 @@ class VideoCallScreen extends StatefulWidget {
   final bool isEmergency;
 
   const VideoCallScreen({
-    Key? key,
+    super.key,
     required this.roomId,
     required this.targetSocketId,
     this.isIncomingCall = false,
     this.autoStart = false,
     this.isEmergency = false,
-  }) : super(key: key);
+  });
 
   @override
-  _VideoCallScreenState createState() => _VideoCallScreenState();
+  State<VideoCallScreen> createState() => _VideoCallScreenState();
 }
 
 class _VideoCallScreenState extends State<VideoCallScreen> {
