@@ -5,4 +5,5 @@ flask-socketio==5.5.0
 eventlet==0.35.2
 google-generativeai==0.8.5
 python-dotenv==1.0.1
-pymysql==1.1.0
+firebase-admin==6.6.0
+werkzeug==3.1.3

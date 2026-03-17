@@ -9,17 +9,23 @@ import uuid
 from dotenv import load_dotenv
 load_dotenv()
 
-# 初始化 Firebase Admin SDK
+# 初始化 Firebase Admin SDK (容錯化處理)
+firebase_enabled = False
 try:
     if not firebase_admin._apps:
         cred_path = os.path.join(os.path.dirname(__file__), "serviceAccountKey.json")
-        cred = credentials.Certificate(cred_path)
-        firebase_admin.initialize_app(cred)
-        print("✅ Firebase Admin SDK 已初始化")
+        if os.path.exists(cred_path):
+            cred = credentials.Certificate(cred_path)
+            firebase_admin.initialize_app(cred)
+            firebase_enabled = True
+            print("✅ Firebase Admin SDK 已初始化")
+        else:
+            print("⚠️ Firebase serviceAccountKey.json 缺失，將停用 FCM 功能")
     else:
+        firebase_enabled = True
         print("✅ Firebase Admin SDK 已取得現有實例")
 except Exception as e:
-    print(f"⚠️ Firebase 初始化失敗: {e}")
+    print(f"⚠️ Firebase 啟動失敗 (將停用推播功能): {e}")
 
 app = Flask(__name__)
 #CORS(app) # 允許跨域請求
@@ -47,8 +53,8 @@ def get_elder_data():
         return jsonify({'status': 'error', 'message': 'Missing user_id'}), 400
 
     try:
-        cursor = db.get_mysql_cursor()
-        query = "SELECT elder_id, elder_name FROM elder_user_data WHERE user_id = %s"
+        cursor = db.get_cursor()
+        query = "SELECT elder_id, elder_name FROM elder_profile WHERE user_id = ?"
         cursor.execute(query, (user_id,))
         results = cursor.fetchall()
         cursor.close()
@@ -233,7 +239,10 @@ def on_call_request(data):
                             )
                         )
                     )
-                    messaging.send(message)
+                    if firebase_enabled:
+                        messaging.send(message)
+                    else:
+                        print(f"ℹ️ Firebase 未啟用，跳過發送 FCM 給 {info['role']}")
                 except Exception as e:
                     print(f"⚠️ FCM 推播發送失敗 ({info['role']}): {e}")
 
@@ -266,7 +275,8 @@ def on_cancel_call(data):
                             )
                         )
                     )
-                    messaging.send(message)
+                    if firebase_enabled:
+                        messaging.send(message)
                 except Exception:
                     pass
 
@@ -304,7 +314,10 @@ def on_emergency_call(data):
                             )
                         )
                     )
-                    messaging.send(message)
+                    if firebase_enabled:
+                        messaging.send(message)
+                    else:
+                        print(f"ℹ️ Firebase 未啟用，跳過緊急 FCM 給 {info['role']}")
                 except Exception as e:
                     print(f"⚠️ FCM 緊急推播失敗 ({info['role']}): {e}")
 
@@ -400,7 +413,8 @@ def on_delete_device(data):
                     token=token,
                     android=messaging.AndroidConfig(priority='high')
                 )
-                messaging.send(message)
+                if firebase_enabled:
+                    messaging.send(message)
             except Exception:
                 pass
             del room_fcm_tokens[room][token]
