@@ -1,6 +1,6 @@
 import os
 import mysql.connector
-from pymongo import MongoClient
+#from pymongo import MongoClient
 from dotenv import load_dotenv
 
 load_dotenv()
