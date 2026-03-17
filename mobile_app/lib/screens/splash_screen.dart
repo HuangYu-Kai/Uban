@@ -35,13 +35,16 @@ class _SplashScreenState extends State<SplashScreen> {
 
       final int? userId = prefs.getInt('caregiver_id');
       final String? userName = prefs.getString('caregiver_name');
+      final String? localRole = prefs.getString('user_role');
 
       if (userId != null && userName != null) {
-        // 先獲取當前使用者資訊以判斷角色
+        // 先嘗試獲取當前使用者資訊，以驗證連線與角色
         try {
           final userProfile = await ApiService.getStatus(userId);
           if (!mounted) return;
-          final role = userProfile['role'] ?? 'family';
+          
+          // 角色優先序：1. 後端最新狀態 2. 本地紀錄 3. 預設子女
+          final role = userProfile['role'] ?? localRole ?? 'family';
 
           if (role == 'elder') {
             // 長輩端：直接進入長輩首頁
@@ -60,7 +63,7 @@ class _SplashScreenState extends State<SplashScreen> {
           if (!mounted) return;
 
           if (elders.isNotEmpty) {
-            // 已有長輩，進入主介面（不再強制先進入選擇頁）
+            // 已有長輩，進入主介面
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(
@@ -79,8 +82,20 @@ class _SplashScreenState extends State<SplashScreen> {
             );
           }
         } catch (e) {
-          // 若 API 失敗，保守處理
-          if (mounted) _goNext();
+          // 若 API 失敗，使用本地紀錄決定跳轉
+          if (mounted) {
+            if (localRole == 'elder') {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (context) =>
+                      ElderHomeScreen(userId: userId, userName: userName),
+                ),
+              );
+            } else {
+              _goNext();
+            }
+          }
         }
       } else {
         // 未登入，進入身分辨識頁
