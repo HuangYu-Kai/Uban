@@ -85,10 +85,41 @@ Set-Location "$root"
 
 # --- 4. Start Flask Backend ---
 Write-Host "[1/2] Launching Backend Server (Flask)..." -ForegroundColor Cyan
+# Kill any existing process on port 5001 to avoid "Address already in use"
+$oldProc = Get-NetTCPConnection -LocalPort 5001 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -First 1
+if ($oldProc) { Stop-Process -Id $oldProc -Force }
+
 Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$root'; .\venv\Scripts\python.exe server\app.py"
+
+# Wait for backend to be ready
+Write-Host "[*] Waiting for backend to be ready..." -ForegroundColor Gray
+$retryCount = 0
+$backendReady = $false
+while ($retryCount -lt 10) {
+    try {
+        $resp = Invoke-RestMethod -Uri "http://localhost:5001/api/health" -ErrorAction SilentlyContinue
+        if ($resp.status -eq "ok") {
+            $backendReady = $true
+            break
+        }
+    } catch {}
+    Start-Sleep -Seconds 1
+    $retryCount++
+}
+
+if (-not $backendReady) {
+    Write-Error "Backend failed to start properly. Please check the backend window for errors."
+    exit
+}
+Write-Host "✅ Backend is UP and running.`n" -ForegroundColor Green
 
 # --- 5. Start Flutter Frontend ---
 Write-Host "[2/2] Launching Frontend App (Flutter) with Server IP: $localIP" -ForegroundColor Green
+if ($localIP -like "169.254.*" -or $localIP -eq "127.0.0.1") {
+    Write-Host "[!] WARNING: Detected IP ($localIP) may not be reachable from mobile devices." -ForegroundColor Yellow
+    Write-Host "    If you are using a physical phone, please ensure you are on the same WiFi or use [3] ngrok." -ForegroundColor Yellow
+}
+
 Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$root\mobile_app'; flutter run --dart-define=SERVER_IP=$localIP"
 
 Write-Host "`nUban is starting in separate windows!" -ForegroundColor Yellow
