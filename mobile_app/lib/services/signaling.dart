@@ -2,19 +2,19 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
-import 'package:socket_io_client/socket_io_client.dart' as IO;
+import 'package:socket_io_client/socket_io_client.dart' as io;
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:flutter_callkit_incoming/entities/entities.dart';
 import 'package:volume_controller/volume_controller.dart';
 import 'package:uuid/uuid.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
-typedef void StreamStateCallback(MediaStream stream);
-typedef Future<bool> IncomingCallCallback(String callerId, String callType);
-typedef void VoidCallback();
-typedef void ErrorCallback(String message);
-typedef void CallRequestCallback(String roomId, String senderId, String? callId);
-typedef void CallAcceptedCallback(String accepterId, String? callId);
+typedef StreamStateCallback = void Function(MediaStream stream);
+typedef IncomingCallCallback = Future<bool> Function(String callerId, String callType);
+typedef VoidCallback = void Function();
+typedef ErrorCallback = void Function(String message);
+typedef CallRequestCallback = void Function(String roomId, String senderId, String? callId);
+typedef CallAcceptedCallback = void Function(String accepterId, String? callId);
 
 class Signaling {
   static const String socketUrl = 'https://d019-61-65-116-7.ngrok-free.app'; 
@@ -25,7 +25,7 @@ class Signaling {
   factory Signaling() => _instance;
   Signaling._internal();
 
-  IO.Socket? socket;
+  io.Socket? socket;
   RTCPeerConnection? peerConnection;
   MediaStream? localStream;
   
@@ -40,6 +40,7 @@ class Signaling {
   CallRequestCallback? onEmergencyCall;
   CallAcceptedCallback? onCallAcceptedByRemote;
   CallAcceptedCallback? onCallBusy; 
+  VoidCallback? onConnectionLost; 
 
   String? _currentRoomId;
   String? _peerSocketId;
@@ -54,13 +55,13 @@ class Signaling {
     _currentRoomId = roomId;
 
     if (socket != null && socket!.connected) {
-      print("♻️ Reusing existing socket connection. Joining room $roomId...");
+      debugPrint("♻️ Reusing existing socket connection. Joining room $roomId...");
       _emitJoin(roomId, role, deviceName, deviceMode, fcmToken: fcmToken);
       return;
     }
 
-    print("🔌 Creating new socket connection...");
-    socket = IO.io(socketUrl, IO.OptionBuilder()
+    debugPrint("🔌 Creating new socket connection...");
+    socket = io.io(socketUrl, io.OptionBuilder()
       .setTransports(['websocket'])
       .disableAutoConnect()
       .build()
@@ -72,7 +73,7 @@ class Signaling {
 
   void _registerSocketListeners(String roomId, String role, String deviceName, String deviceMode, String? fcmToken) {
     socket!.onConnect((_) {
-      print('✅ Socket 連線成功 (SID: ${socket!.id})');
+      debugPrint('✅ Socket 連線成功 (SID: ${socket!.id})');
       _emitJoin(roomId, role, deviceName, deviceMode, fcmToken: fcmToken);
       
       for (var pendingRoom in _pendingRooms) {
@@ -115,24 +116,24 @@ class Signaling {
     });
 
     socket!.on('elder-devices-update', (devices) {
-      print("📡 [Signaling] Received elder-devices-update (count: ${devices.length})");
+      debugPrint("📡 [Signaling] Received elder-devices-update (count: ${devices.length})");
       if (onElderDevicesUpdate != null) onElderDevicesUpdate!(devices);
     });
 
     socket!.on('offer', (data) async {
       final senderId = data['senderId'];
       final callId = data['callId'];
-      print('📩 [Signaling] Received Offer from $senderId (CallId: $callId)');
+      debugPrint('📩 [Signaling] Received Offer from $senderId (CallId: $callId)');
       _peerSocketId = senderId;
       _candidateQueue.clear();
 
       bool isEmergency = data['isEmergency'] == true;
       if (isEmergency) {
-        try { await platform.invokeMethod('bringToFront'); } catch (e) {}
+        try { await platform.invokeMethod('bringToFront'); } catch (e) { debugPrint('BringToFront error: $e'); }
         try { 
           VolumeController.instance.showSystemUI = false;
           VolumeController.instance.setVolume(1.0); 
-        } catch (e) {}
+        } catch (e) { debugPrint('Volume control error: $e'); }
       }
 
       bool shouldAnswer = false;
@@ -160,7 +161,7 @@ class Signaling {
         await peerConnection?.setRemoteDescription(description);
         await _processCandidateQueue();
       } catch (e) {
-        print("❌ Answer Error: $e");
+        debugPrint("❌ Answer Error: $e");
       }
     });
 
@@ -174,7 +175,7 @@ class Signaling {
     });
 
     socket!.on('end-call', (_) async {
-      print("📴 收到掛斷訊號");
+      debugPrint("📴 收到掛斷訊號");
       await FlutterCallkitIncoming.endAllCalls();
       await _closePeerConnection();
       if (onCallEnded != null) onCallEnded!();
@@ -248,11 +249,11 @@ class Signaling {
   }
 
   void _emitJoin(String room, String role, String name, String mode, {String? fcmToken}) async {
-    print("📢 [Signaling] Emitting join: $room ($role) as $name");
+    debugPrint("📢 [Signaling] Emitting join: $room ($role) as $name");
     
     // Non-blocking FCM token retrieval
     FirebaseMessaging.instance.getToken().then((token) {
-      if (token != null) print("🔔 [Signaling] FCM Token retrieved: ${token.substring(0, 8)}...");
+      if (token != null) debugPrint("🔔 [Signaling] FCM Token retrieved: ${token.substring(0, 8)}...");
       socket!.emit('join', {
         'room': room, 
         'role': role, 
@@ -261,7 +262,7 @@ class Signaling {
         'fcmToken': token ?? fcmToken
       });
     }).catchError((e) {
-      print("⚠️ [Signaling] FCM Token failed: $e, joining without token.");
+      debugPrint("⚠️ [Signaling] FCM Token failed: $e, joining without token.");
       socket!.emit('join', {
         'room': room, 
         'role': role, 
@@ -307,10 +308,10 @@ class Signaling {
     }
 
     if (socket!.connected) {
-      print("✅ [Accept] Sending call-accept to $targetSocketId (CallId: $callId)");
+      debugPrint("✅ [Accept] Sending call-accept to $targetSocketId (CallId: $callId)");
       socket!.emit('call-accept', {'targetId': targetSocketId, 'callId': callId});
     } else {
-      print("❌ [Accept] Socket connection timed out. Could not send accept.");
+      debugPrint("❌ [Accept] Socket connection timed out. Could not send accept.");
     }
   }
 
@@ -351,7 +352,7 @@ class Signaling {
         'sdp': answer!.sdp
       });
     } catch (e) {
-      print("❌ Accept Error: $e");
+      debugPrint("❌ Accept Error: $e");
     }
   }
 
@@ -459,7 +460,7 @@ class Signaling {
   }
 
   void hangUp({bool disconnectSocket = false, bool disposeLocalStream = true}) {
-    print("📢 [Signaling] Hanging up (disconnectSocket: $disconnectSocket, disposeLocalStream: $disposeLocalStream)...");
+    debugPrint("📢 [Signaling] Hanging up (disconnectSocket: $disconnectSocket, disposeLocalStream: $disposeLocalStream)...");
     if (socket != null && _currentRoomId != null) {
       socket!.emit('end-call', {'room': _currentRoomId, 'targetId': _peerSocketId});
     }

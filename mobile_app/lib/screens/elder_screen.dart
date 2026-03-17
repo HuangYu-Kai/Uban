@@ -10,7 +10,15 @@ import '../globals.dart';
 
 class ElderScreen extends StatefulWidget {
   final String roomId;
-  const ElderScreen({super.key, required this.roomId});
+  final bool isCCTVMode;
+  final String deviceName;
+
+  const ElderScreen({
+    super.key,
+    required this.roomId,
+    this.isCCTVMode = false,
+    this.deviceName = 'Elder Device',
+  });
 
   @override
   State<ElderScreen> createState() => _ElderScreenState();
@@ -33,10 +41,19 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     
     // ★ Bug 16 解決方案：監聽從系統層 (main.dart) 傳進來的 CallKit 接聽動作
     pendingAcceptedCall.addListener(_onPendingCallChanged);
+
+    _initElderMode();
+  }
+
+  Future<void> _checkPermissions() async {
+    await [
+      Permission.camera,
+      Permission.microphone,
+    ].request();
   }
 
   void _onPendingCallChanged() {
-    print("🔔 pendingAcceptedCall Changed: ${pendingAcceptedCall.value}");
+    debugPrint("🔔 pendingAcceptedCall Changed: ${pendingAcceptedCall.value}");
     _checkPendingAcceptedCall();
   }
 
@@ -70,7 +87,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       final roomId = args['roomId']!;
       final callId = args['callId'];
       
-      print("📞 Detected Accepted Call from $senderId (Room: $roomId, CallId: $callId). Bridging...");
+      debugPrint("📞 Detected Accepted Call from $senderId (Room: $roomId, CallId: $callId). Bridging...");
       
       _handleAcceptedCallFromBackground(senderId, callId: callId);
     }
@@ -88,7 +105,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
         final platform = MethodChannel('com.example.app/bring_to_front');
         await platform.invokeMethod('bringToFront');
       } catch (e) {
-        print("Bring to front failed: $e");
+        debugPrint("Bring to front failed: $e");
       }
 
       // 回報已接聽，讓家屬端發送 Offer
@@ -111,9 +128,6 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       // Notify the Family App that we are awake and ready to receive the Offer!
       _signaling.sendCallAccept(senderId, callId: callId);
     }
-  }
-
-    _initElderMode();
   }
 
   Future<void> _initElderMode() async {
@@ -157,12 +171,12 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     _signaling.onCallRequest = (roomId, senderId, callId) {
         // 在長輩端，一般通話通常是跳出 Dialog，這裡暫時與緊急通話處理邏輯分開，或者視需求自動接聽
         // 目前暫不處理一般通話主動彈窗 (因為長輩端通常是被動接收)
-        print("📱 Foreground Call Request from $senderId (Room: $roomId, CallId: $callId)");
+        debugPrint("📱 Foreground Call Request from $senderId (Room: $roomId, CallId: $callId)");
     };
 
     // ★★★ 關鍵：家屬接聽後，才發送 Offer (解決影像連線問題) ★★★
     _signaling.onCallAcceptedByRemote = (accepterId, callId) {
-      print("✅ 家屬($accepterId) 已接聽 (CallId: $callId)，開始定向發送 Offer...");
+      debugPrint("✅ 家屬($accepterId) 已接聽 (CallId: $callId)，開始定向發送 Offer...");
       if (mounted) setState(() { _status = "連線建立中..."; _isInCall = true; });
       
       // 傳入 accepterId，確保點對點連線

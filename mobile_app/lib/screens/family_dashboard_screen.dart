@@ -13,10 +13,10 @@ import '../globals.dart';
 class FamilyDashboardScreen extends StatefulWidget {
   final List<dynamic> elders;
 
-  const FamilyDashboardScreen({Key? key, required this.elders}) : super(key: key);
+  const FamilyDashboardScreen({super.key, required this.elders});
 
   @override
-  _FamilyDashboardScreenState createState() => _FamilyDashboardScreenState();
+  State<FamilyDashboardScreen> createState() => _FamilyDashboardScreenState();
 }
 
 class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> with WidgetsBindingObserver {
@@ -117,7 +117,7 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> with Widg
         }
       }
     } catch (e) {
-      print("Cold boot active call check failed: $e");
+      debugPrint("Cold boot active call check failed: $e");
     }
   }
 
@@ -242,15 +242,13 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> with Widg
             icon: const Icon(Icons.logout),
             tooltip: '登出',
             onPressed: () async {
+              final navigator = Navigator.of(context);
               final prefs = await SharedPreferences.getInstance();
               await prefs.clear();
-              if (mounted) {
-                Navigator.pushAndRemoveUntil(
-                  context,
-                  MaterialPageRoute(builder: (context) => const RoleSelectionScreen()),
-                  (route) => false,
-                );
-              }
+              navigator.pushAndRemoveUntil(
+                MaterialPageRoute(builder: (context) => const RoleSelectionScreen()),
+                (route) => false,
+              );
             },
           ),
         ],

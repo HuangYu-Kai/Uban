@@ -5,24 +5,15 @@ import 'family_dashboard_view.dart';
 import 'family_scripts_view.dart';
 import 'family/family_settings_view.dart';
 
-// class FamilyMainScreen extends StatefulWidget {
-//   final int userId;
-//   final String userName;
+class FamilyMainScreen extends StatefulWidget {
+  final int userId;
+  final String userName;
 
-//   const FamilyMainScreen({
-//     super.key,
-//     required this.userId,
-//     required this.userName,
-//   });
-
-// //   @override
-// //   State<FamilyMainScreen> createState() => _FamilyMainScreenState();
-// // }
-
-// // class _FamilyMainScreenState extends State<FamilyMainScreen> {
-// //   int _selectedIndex = 0;
-
-//   late final List<Widget> _views;
+  const FamilyMainScreen({
+    super.key,
+    required this.userId,
+    required this.userName,
+  });
 
   @override
   State<FamilyMainScreen> createState() => _FamilyMainScreenState();
@@ -30,7 +21,6 @@ import 'family/family_settings_view.dart';
 
 class _FamilyMainScreenState extends State<FamilyMainScreen> {
   int _selectedIndex = 0;
-
   late final List<Widget> _views;
 
   @override
