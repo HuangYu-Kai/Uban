@@ -1,4 +1,0 @@
-﻿Analyzing mobile_app...                                         
-
-   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\screens\family_dashboard_screen.dart:249:19 - use_build_context_synchronously
-
