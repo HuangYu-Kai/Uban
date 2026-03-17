@@ -1,16 +1,4 @@
 # server/app.py
-import eventlet
-import ssl
-
-# SSL 補丁 (針對 Python 3.13+)
-if not hasattr(ssl, 'wrap_socket'):
-    def dummy_wrap_socket(sock, *args, **kwargs):
-        context = ssl.SSLContext(kwargs.get('ssl_version', ssl.PROTOCOL_TLS))
-        return context.wrap_socket(sock, *args, **kwargs)
-    ssl.wrap_socket = dummy_wrap_socket
-
-eventlet.monkey_patch()
-
 from flask import Flask, request, jsonify
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from db import db  
@@ -18,6 +6,8 @@ import firebase_admin
 from firebase_admin import credentials, messaging
 import os
 import uuid
+from dotenv import load_dotenv
+load_dotenv()
 
 # 初始化 Firebase Admin SDK
 try:
@@ -38,13 +28,11 @@ app.config['SECRET_KEY'] = 'secret!'
 # 使用 Eventlet 模式
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
-# 初始化資料庫
-try:
-    print("正在連接資料庫...")
-    db.connect_mysql()
-    #db.connect_mongo()
-except Exception as e:
-    print(f"⚠️ 資料庫連線警告: {e}")
+# 資料庫設定 (SQLite)
+base_dir = os.path.dirname(os.path.abspath(__file__))
+db_path = os.path.join(base_dir, 'instance', 'uban.db')
+app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # 房間管理結構：rooms_manager[room_id][socket_id] = {role, deviceName, deviceMode}
 rooms_manager = {}
