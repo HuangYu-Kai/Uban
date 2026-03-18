@@ -50,7 +50,7 @@ else
 fi
 
 # --- 2. Auto Setup Check ---
-if [ ! -d "venv" ]; then
+if [ ! -d ".venv" ]; then
     echo "[!] Virtual environment (venv) not found. Starting auto-setup..."
     
     # Check if python3 is available
@@ -59,11 +59,11 @@ if [ ! -d "venv" ]; then
         exit 1
     fi
 
-    echo "Creating venv using python3..."
-    python3 -m venv venv
+    echo "Creating .venv using python3..."
+    python3 -m .venv venv
     
     echo "Installing dependencies..."
-    ./venv/bin/pip install -r server/requirements.txt
+    ./.venv/bin/pip install -r server/requirements.txt
     echo "Setup complete!"
 fi
 
@@ -89,8 +89,8 @@ echo "[*] Waiting for backend to be ready..."
 retryCount=0
 backendReady=false
 while [ $retryCount -lt 10 ]; do
-    status=$(curl -s http://localhost:5001/api/health | grep -o '"status":"ok"')
-    if [ "$status" == '"status":"ok"' ]; then
+    status=$(curl -s http://localhost:5001/api/health)
+    if echo "$status" | grep -q "ok"; then
         backendReady=true
         break
     fi
