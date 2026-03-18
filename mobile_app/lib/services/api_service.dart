@@ -2,8 +2,13 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class ApiService {
-  // 對於實機測試，請使用您電腦的區域網路 IP
-  static const String baseUrl = 'https://d019-61-65-116-7.ngrok-free.app/api'; //再換成虛擬機IP
+  // --- 動態伺服器 IP 設置 ---
+  static const String _serverIp = String.fromEnvironment('SERVER_IP', defaultValue: '10.0.2.2');
+  
+  // 依據是否為 ngrok 自動切換 http/https 與 埠號
+  static final String baseUrl = _serverIp.contains('ngrok') 
+      ? 'https://$_serverIp/api' 
+      : 'http://$_serverIp:5001/api';
 
   static Future<Map<String, dynamic>> register({
     required String username,
@@ -40,19 +45,39 @@ class ApiService {
     return jsonDecode(response.body);
   }
 
+  static Map<String, dynamic> _safeDecode(http.Response response) {
+    try {
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {
+        'status': 'error',
+        'message': '伺服器回傳格式錯誤 (可能已離線)',
+        'details': response.body.length > 50 ? response.body.substring(0, 50) : response.body
+      };
+    }
+  }
+
   static Future<Map<String, dynamic>> requestPairingCode() async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/pairing/request_code'),
-      headers: {'Content-Type': 'application/json'},
-    );
-    return jsonDecode(response.body);
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/pairing/request_code'),
+        headers: {'Content-Type': 'application/json'},
+      ).timeout(const Duration(seconds: 10));
+      return _safeDecode(response);
+    } catch (e) {
+      return {'status': 'error', 'message': '網路連線失敗: $e'};
+    }
   }
 
   static Future<Map<String, dynamic>> checkPairingStatus(String code) async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/pairing/check_status/$code'),
-    );
-    return jsonDecode(response.body);
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/pairing/check_status/$code'),
+      ).timeout(const Duration(seconds: 10));
+      return _safeDecode(response);
+    } catch (e) {
+      return {'status': 'error', 'message': '網路連線失敗: $e'};
+    }
   }
 
   static Future<Map<String, dynamic>> confirmPairing({
