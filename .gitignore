@@ -86,3 +86,5 @@ bin/
 # api key
 server/serviceAccountKey.json
 mobile_app/android/app/google-services.json
+
+.vscode/
