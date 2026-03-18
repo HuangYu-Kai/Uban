@@ -15,8 +15,8 @@ import 'package:android_intent_plus/flag.dart';
 import 'package:flutter/services.dart';
 
 // Screens
-import 'screens/role_selection_screen.dart';
 import 'screens/video_call_screen.dart';
+import 'screens/splash_screen.dart';
 
 // Utils & Globals
 import 'globals.dart';
@@ -228,8 +228,8 @@ class _MyAppState extends State<MyApp> {
         useMaterial3: true,
         textTheme: GoogleFonts.notoSansTcTextTheme(Theme.of(context).textTheme),
       ),
-      // ★★★ 關鍵修改：設定首頁為啟動頁 ★★★
-      home: const RoleSelectionScreen(),
+      // ★★★ 還原為原始入口：SplashScreen ★★★
+      home: const SplashScreen(),
       /*
       onGenerateRoute: (settings) {
         if (settings.name == '/family_home') {
