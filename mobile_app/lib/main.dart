@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
@@ -26,7 +27,12 @@ final StreamController<String> callKitDeclineStream = StreamController<String>.b
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp();
+  try {
+    await Firebase.initializeApp();
+  } catch (e) {
+    debugPrint("⚠️ Background Firebase initialization failed: $e");
+    return;
+  }
   debugPrint("📩 Background message received: ${message.data}");
   
   if (message.data['type'] == 'call-request') {
@@ -81,15 +87,23 @@ void main() async {
     debugPrint('Intl initialization failed: $e');
   }
 
-  await Firebase.initializeApp();
-  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-  
-  // Bug 16: Ensure role is loaded at boot
-  final prefs = await SharedPreferences.getInstance();
-  appRole = prefs.getString('saved_role');
-  debugPrint("🛠️ App Booting. Detected Role: $appRole");
+  try {
+    // Bug 16: Ensure role is loaded at boot
+    final prefs = await SharedPreferences.getInstance();
+    appRole = prefs.getString('saved_role');
+    debugPrint("🛠️ App Booting. Detected Role: $appRole");
 
-  await FirebaseMessaging.instance.requestPermission();
+    if (kIsWeb) {
+      // On Web, skip initialization if FirebaseOptions is missing to prevent crash
+      debugPrint("🌐 Web platform detected. Skipping Firebase if no options.");
+    } else {
+      await Firebase.initializeApp();
+      FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+      await FirebaseMessaging.instance.requestPermission();
+    }
+  } catch (e) {
+    debugPrint("⚠️ Firebase initialization failed or missing: $e");
+  }
 
   runApp(const MyApp());
 }
