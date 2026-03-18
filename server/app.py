@@ -13,11 +13,16 @@ eventlet.monkey_patch()
 
 from flask import Flask, request, jsonify
 from flask_socketio import SocketIO, emit, join_room, leave_room
-from db import db  
+from db import db
+import uuid, os
+from dotenv import load_dotenv
+
+load_dotenv()
 import firebase_admin
 from firebase_admin import credentials, messaging
-import os
-import uuid
+from extensions import db as sqlalchemy_db
+from routes.user import user_bp
+from routes.game_logic import game_logic_bp
 
 # 初始化 Firebase Admin SDK
 try:
@@ -37,6 +42,15 @@ app.config['SECRET_KEY'] = 'secret!'
 
 # 使用 Eventlet 模式
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+
+# SQLAlchemy 初始化
+app.config['SQLALCHEMY_DATABASE_URI'] = f"mysql+mysqlconnector://{os.getenv('MYSQL_USER')}:{os.getenv('MYSQL_PASSWORD')}@{os.getenv('MYSQL_HOST')}/{os.getenv('MYSQL_DB_NAME')}?ssl_disabled=true"
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+sqlalchemy_db.init_app(app)
+
+# 註冊 Blueprints
+app.register_blueprint(user_bp, url_prefix='/api/user')
+app.register_blueprint(game_logic_bp, url_prefix='/api/game')
 
 # 初始化資料庫
 try:
