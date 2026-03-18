@@ -45,6 +45,11 @@ rooms_manager = {}
 # FCM Token 持久化結構：room_fcm_tokens[room_id][fcm_token] = {role, deviceName}
 room_fcm_tokens = {}
 
+# --- [API] 健康檢查 ---
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    return jsonify({'status': 'ok'})
+
 # --- [API] 獲取長輩列表 ---
 @app.route('/api/get_elder_data', methods=['GET'])
 def get_elder_data():
@@ -241,8 +246,6 @@ def on_call_request(data):
                     )
                     if firebase_enabled:
                         messaging.send(message)
-                    else:
-                        print(f"ℹ️ Firebase 未啟用，跳過發送 FCM 給 {info['role']}")
                 except Exception as e:
                     print(f"⚠️ FCM 推播發送失敗 ({info['role']}): {e}")
 
@@ -316,8 +319,6 @@ def on_emergency_call(data):
                     )
                     if firebase_enabled:
                         messaging.send(message)
-                    else:
-                        print(f"ℹ️ Firebase 未啟用，跳過緊急 FCM 給 {info['role']}")
                 except Exception as e:
                     print(f"⚠️ FCM 緊急推播失敗 ({info['role']}): {e}")
 
@@ -441,6 +442,6 @@ def on_delete_device(data):
         emit('elder-devices-list', elder_devices, to=sender_id)
 
 if __name__ == '__main__':
-    print("🚀 Server starting on port 5000...")
+    print("🚀 Server starting on port 5001...")
     import eventlet.wsgi
-    eventlet.wsgi.server(eventlet.listen(('0.0.0.0', 5000)), app)
+    eventlet.wsgi.server(eventlet.listen(('0.0.0.0', 5001)), app)
