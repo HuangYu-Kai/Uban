@@ -31,7 +31,8 @@ class DatabaseManager:
                 user=os.getenv('MYSQL_USER'),
                 password=os.getenv('MYSQL_PASSWORD'),
                 database=os.getenv('MYSQL_DB_NAME'),
-                port=int(os.getenv('MYSQL_PORT', 3306))
+                port=int(os.getenv('MYSQL_PORT', 3306)),
+                ssl_disabled=True
             )
             if self.mysql_conn.is_connected():
                  print(f"✅ [MySQL] 連線成功: {os.getenv('MYSQL_HOST')}")
