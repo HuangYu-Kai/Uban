@@ -17,7 +17,13 @@ typedef CallRequestCallback = void Function(String roomId, String senderId, Stri
 typedef CallAcceptedCallback = void Function(String accepterId, String? callId);
 
 class Signaling {
-  static const String socketUrl = 'https://d019-61-65-116-7.ngrok-free.app'; 
+  // --- 伺服器 IP 配置 ---
+  static const String _serverIp = String.fromEnvironment('SERVER_IP', defaultValue: '10.0.2.2');
+  
+  static String get serverUrl => _serverIp.contains('ngrok') 
+      ? 'https://$_serverIp' 
+      : 'http://$_serverIp:5001';
+
   static const platform = MethodChannel('com.example.app/bring_to_front');
 
   // ★ Singleton Pattern
@@ -61,7 +67,7 @@ class Signaling {
     }
 
     debugPrint("🔌 Creating new socket connection...");
-    socket = io.io(socketUrl, io.OptionBuilder()
+    socket = io.io(serverUrl, io.OptionBuilder()
       .setTransports(['websocket'])
       .disableAutoConnect()
       .build()

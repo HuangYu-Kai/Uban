@@ -20,7 +20,7 @@ import 'screens/splash_screen.dart';
 
 // Utils & Globals
 import 'globals.dart';
-import 'services/signaling.dart';
+import 'services/signaling.dart' as sig;
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 final StreamController<String> callKitDeclineStream = StreamController<String>.broadcast();
@@ -152,7 +152,7 @@ class _MyAppState extends State<MyApp> {
 
   void _sendDeclineEvent(String roomId, String senderId) {
     debugPrint("❌ Call Declined from CallKit, sending call-busy to $senderId...");
-    final io.Socket socket = io.io(Signaling.socketUrl, 
+    final io.Socket socket = io.io(sig.Signaling.serverUrl, 
       io.OptionBuilder()
         .setTransports(['websocket'])
         .disableAutoConnect()

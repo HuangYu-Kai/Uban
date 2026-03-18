@@ -20,7 +20,7 @@ class PairingCode(db.Model):
     """配對機制：用於家屬綁定長者"""
     __tablename__ = 'pairing_code'
     code_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    creator_id = db.Column(db.Integer, db.ForeignKey('user_account_data.user_id'), nullable=False)
+    creator_id = db.Column(db.Integer, db.ForeignKey('user_account_data.user_id'), nullable=True)
     code = db.Column(db.String(4), unique=True, nullable=False) # 改為 4 碼數字
     is_used = db.Column(db.Boolean, default=False)
     expires_at = db.Column(db.DateTime, nullable=False)
