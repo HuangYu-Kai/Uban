@@ -1,5 +1,6 @@
 // lib/screens/role_selection_screen.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import 'family_dashboard_screen.dart';
@@ -27,54 +28,54 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
   }
 
   Future<void> _checkPermissionsAndLogin() async {
-    try {
-      final canUseFullScreenIntent = await FlutterCallkitIncoming.canUseFullScreenIntent();
-      if (!canUseFullScreenIntent) {
-        await FlutterCallkitIncoming.requestFullIntentPermission();
+    if (!kIsWeb) {
+      try {
+        final canUseFullScreenIntent = await FlutterCallkitIncoming.canUseFullScreenIntent();
+        if (!canUseFullScreenIntent) {
+          await FlutterCallkitIncoming.requestFullIntentPermission();
+        }
+      } catch (e) {
+        debugPrint("Permission Action failed: $e");
       }
-    } catch (e) {
-      debugPrint("Permission Action failed: $e");
     }
     
-    // 檢查核心權限
-    Map<Permission, PermissionStatus> statuses = await [
-      Permission.camera,
-      Permission.microphone,
-      Permission.notification,
-      Permission.ignoreBatteryOptimizations,
-    ].request();
+    if (!kIsWeb) {
+      Map<Permission, PermissionStatus> statuses = await [
+        Permission.camera,
+        Permission.microphone,
+        Permission.notification,
+        Permission.ignoreBatteryOptimizations,
+      ].request();
 
-    bool isCriticalDenied = false;
-    if (statuses[Permission.notification] != PermissionStatus.granted) isCriticalDenied = true;
-    if (statuses[Permission.ignoreBatteryOptimizations] != PermissionStatus.granted) isCriticalDenied = true;
+      bool isCriticalDenied = false;
+      if (statuses[Permission.notification] != PermissionStatus.granted) isCriticalDenied = true;
+      if (statuses[Permission.ignoreBatteryOptimizations] != PermissionStatus.granted) isCriticalDenied = true;
 
-    if (isCriticalDenied && mounted) {
-      await showDialog<bool>(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => AlertDialog(
-          title: const Text('⚠️ 權限不足警告'),
-          content: const Text('Uban 需要「通知」與「無限制電池(允許背景執行)」權限才能在鎖定畫面或背景成功接收緊急通話。若您拒絕這些權限，將無法正常收到來電。\n\n請前往系統設定中允許這些權限。'),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context, false);
-              },
-              child: const Text('忽略並繼續 (不建議)'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                openAppSettings();
-                Navigator.pop(context, true);
-              },
-              child: const Text('前往設定'),
-            ),
-          ],
-        ),
-      );
-      
-      // 如果用戶去了設定，我們給他一點時間回來，或者就直接讓他們繼續往下走 (因為設定跳轉回來不會自動重觸發 init)
-      // 這裡選擇繼續執行登入檢查
+      if (isCriticalDenied && mounted) {
+        await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            title: const Text('⚠️ 權限不足警告'),
+            content: const Text('Uban 需要「通知」與「無限制電池(允許背景執行)」權限才能在鎖定畫面或背景成功接收緊急通話。若您拒絕這些權限，將無法正常收到來電。\n\n請前往系統設定中允許這些權限。'),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context, false);
+                },
+                child: const Text('忽略並繼續 (不建議)'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  openAppSettings();
+                  Navigator.pop(context, true);
+                },
+                child: const Text('前往設定'),
+              ),
+            ],
+          ),
+        );
+      }
     }
 
     _checkLoginStatus();

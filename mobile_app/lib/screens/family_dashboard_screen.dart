@@ -1,6 +1,7 @@
 // lib/screens/family_dashboard_screen.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb; // 新增
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import '../main.dart'; // import callKitDeclineStream
@@ -52,7 +53,9 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> with Widg
       });
     } else {
       // 若 Dart 層沒收到事件 (完全被系統殺死時可能遺失)，主動去向 Native 查詢是否有接聽中的通話
-      _checkColdBootCallKit();
+      if (!kIsWeb) {
+        _checkColdBootCallKit();
+      }
     }
     
     // Listen for declines from CallKit (which can happen while app is in background)
@@ -71,7 +74,7 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> with Widg
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) async {
-    if (state == AppLifecycleState.resumed) {
+    if (state == AppLifecycleState.resumed && !kIsWeb) {
       // Check if the CallKit notification was cleared or answered outside the app
       final activeCalls = await FlutterCallkitIncoming.activeCalls();
       if (activeCalls is List && activeCalls.isEmpty && _dialogContext != null) {
@@ -85,6 +88,7 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> with Widg
   }
 
   Future<void> _checkColdBootCallKit() async {
+    if (kIsWeb) return;
     try {
       final activeCalls = await FlutterCallkitIncoming.activeCalls();
       if (activeCalls is List && activeCalls.isNotEmpty) {

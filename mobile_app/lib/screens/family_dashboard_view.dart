@@ -4,8 +4,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'family/family_care_journal_view.dart';
-import 'camera_screen.dart';
 import 'family_ai_chat_screen.dart';
+import 'family_call_history_screen.dart'; // 新增
 import 'elder_selection_screen.dart';
 import 'elder_profile_edit_screen.dart';
 import '../services/signaling.dart'; // 新增
@@ -262,12 +262,23 @@ title: '即時影像監控',
 subtitle: '查看家中即時情況',
 icon: Icons.emergency_recording_rounded,
 color: const Color(0xFF0F172A), // Slate 900
-onTap: () => Navigator.push(
-context,
-MaterialPageRoute(
-builder: (c) => const CameraScreen(roomId: 'default-room'),
-),
-),
+onTap: () {
+  if (_elderId == null) {
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("請先選擇長輩")));
+    return;
+  }
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (c) => VideoCallScreen(
+        roomId: _elderId.toString(),
+        targetSocketId: _elderSocketId, // 如果為空則廣播，不要給硬編碼字串
+        autoStart: true,
+        isEmergency: true,
+      ),
+    ),
+  );
+},
 ),
 const SizedBox(height: 16),
 Row(
@@ -285,7 +296,6 @@ context,
                   }
                   if (_elderSocketId == null) {
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("長輩目前不在線上，正在嘗試呼叫...")));
-                    // 即使不點在線，也可以嘗試進入頁面發起 FCM 呼叫
                   }
                   
                   Navigator.push(
@@ -293,7 +303,7 @@ context,
                     MaterialPageRoute(
                       builder: (c) => VideoCallScreen(
                         roomId: _elderId.toString(),
-                        targetSocketId: _elderSocketId ?? 'fallback_fcm_logic',
+                        targetSocketId: _elderSocketId,
                         autoStart: true,
                       ),
                     ),
@@ -301,7 +311,31 @@ context,
                 },
 ),
 ),
-const SizedBox(width: 16),
+const SizedBox(width: 12),
+Expanded(
+child: _buildActionBtn(
+context,
+                title: '通訊紀錄',
+                icon: Icons.history_rounded,
+                color: const Color(0xFF10B981), // Emerald Green
+                onTap: () {
+                  if (_elderId == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("請先選擇長輩")));
+                    return;
+                  }
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (c) => FamilyCallHistoryScreen(
+                        roomId: _elderId.toString(),
+                        elderName: _elderName,
+                      ),
+                    ),
+                  );
+                },
+),
+),
+const SizedBox(width: 12),
 Expanded(
 child: _buildActionBtn(
 context,
