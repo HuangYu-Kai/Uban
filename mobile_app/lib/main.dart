@@ -13,6 +13,7 @@ import 'package:socket_io_client/socket_io_client.dart' as io;
 import 'package:android_intent_plus/android_intent.dart';
 import 'package:android_intent_plus/flag.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_line_sdk/flutter_line_sdk.dart';
 
 // Screens
 import 'screens/video_call_screen.dart';
@@ -23,25 +24,28 @@ import 'globals.dart';
 import 'services/signaling.dart' as sig;
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
-final StreamController<String> callKitDeclineStream = StreamController<String>.broadcast();
+final StreamController<String> callKitDeclineStream =
+    StreamController<String>.broadcast();
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   try {
     await Firebase.initializeApp();
+    await LineSDK.instance.setup("2009500424");
   } catch (e) {
     debugPrint("⚠️ Background Firebase initialization failed: $e");
     return;
   }
   debugPrint("📩 Background message received: ${message.data}");
-  
-  if (message.data['type'] == 'call-request' && !kIsWeb) {
+
+  if (message.data['type'] == 'call-request') {
     final roomId = message.data['roomId'];
     final senderId = message.data['senderId'];
     final callerName = message.data['callerName'] ?? '家屬來通話';
 
     final params = CallKitParams(
-      id: message.data['callId'] ?? 'call_${DateTime.now().millisecondsSinceEpoch}',
+      id: message.data['callId'] ??
+          'call_${DateTime.now().millisecondsSinceEpoch}',
       nameCaller: callerName,
       appName: 'UniFlow',
       avatar: 'assets/user_avatar.png',
@@ -50,7 +54,11 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       duration: 30000,
       textAccept: '接聽',
       textDecline: '拒絕',
-      extra: <String, dynamic>{'senderId': senderId, 'roomId': roomId, 'callId': message.data['callId']},
+      extra: <String, dynamic>{
+        'senderId': senderId,
+        'roomId': roomId,
+        'callId': message.data['callId']
+      },
       android: const AndroidParams(
         isCustomNotification: true,
         isShowLogo: false,
@@ -75,7 +83,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   try {
     // Initialize date formatting
     await Future.wait([
@@ -98,7 +106,12 @@ void main() async {
       debugPrint("🌐 Web platform detected. Skipping Firebase if no options.");
     } else {
       await Firebase.initializeApp();
-      FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+      // Initialize LINE SDK
+      await LineSDK.instance.setup("2009500424").then((_) {
+        debugPrint("🟢 LineSDK Initialized in main()");
+      });
+      FirebaseMessaging.onBackgroundMessage(
+          _firebaseMessagingBackgroundHandler);
       await FirebaseMessaging.instance.requestPermission();
     }
   } catch (e) {
@@ -116,7 +129,6 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
-
   @override
   void initState() {
     super.initState();
@@ -131,7 +143,7 @@ class _MyAppState extends State<MyApp> {
       // 根據角色決定是否彈出通話視窗或處理
 
       debugPrint("🔔 [Main] Foreground Call Request: $roomId from $senderId");
-      
+
       final context = navigatorKey.currentContext;
       if (context != null) {
         showDialog(
@@ -165,7 +177,7 @@ class _MyAppState extends State<MyApp> {
   void _setupCallKitListener() {
     FlutterCallkitIncoming.onEvent.listen((CallEvent? event) {
       if (event == null) return;
-      
+
       final extra = event.body['extra'];
       if (extra == null || extra is! Map) return;
       final roomId = extra['roomId'] as String?;
@@ -190,21 +202,23 @@ class _MyAppState extends State<MyApp> {
   }
 
   void _sendDeclineEvent(String roomId, String senderId) {
-    debugPrint("❌ Call Declined from CallKit, sending call-busy to $senderId...");
-    final io.Socket socket = io.io(sig.Signaling.serverUrl, 
-      io.OptionBuilder()
-        .setTransports(['websocket'])
-        .disableAutoConnect()
-        .enableForceNew()
-        .build()
-    );
-    
+    debugPrint(
+        "❌ Call Declined from CallKit, sending call-busy to $senderId...");
+    final io.Socket socket = io.io(
+        sig.Signaling.serverUrl,
+        io.OptionBuilder()
+            .setTransports(['websocket'])
+            .disableAutoConnect()
+            .enableForceNew()
+            .build());
+
     socket.connect();
     socket.onConnect((_) {
       debugPrint('✅ Socket 連線成功 (Main-Decline Handler)');
-      socket.emit('join', {'room': roomId, 'role': 'family', 'deviceName': 'Decline_Handler'});
+      socket.emit('join',
+          {'room': roomId, 'role': 'family', 'deviceName': 'Decline_Handler'});
       socket.emit('call-busy', {'targetId': senderId});
-      
+
       // Delay to ensure the event is fired, then disconnect to clean up
       Future.delayed(const Duration(milliseconds: 500), () {
         socket.disconnect();
@@ -216,14 +230,22 @@ class _MyAppState extends State<MyApp> {
     // ★ Bug 16 解決方案：如果身分是長輩，絕對不可啟動 VideoCallScreen (那是給家屬用的)。
     // 我們僅儲存 pendingAcceptedCall，讓長輩主畫面 (ElderScreen) 啟動後去接手。
     if (appRole == 'elder') {
-      debugPrint("📱 Elder role detected, skipping VideoCallScreen push and caching accepted call.");
-      pendingAcceptedCall.value = <String, String?>{'roomId': roomId, 'senderId': senderId, 'callId': callId};
-      
+      debugPrint(
+          "📱 Elder role detected, skipping VideoCallScreen push and caching accepted call.");
+      pendingAcceptedCall.value = <String, String?>{
+        'roomId': roomId,
+        'senderId': senderId,
+        'callId': callId
+      };
+
       // ★ 喚醒長輩 APP 並帶到最前台，這會觸發 ElderScreen 的 _checkPendingAcceptedCall
       try {
         final intent = const AndroidIntent(
           action: 'android.intent.action.MAIN',
-          flags: [Flag.FLAG_ACTIVITY_NEW_TASK, Flag.FLAG_ACTIVITY_REORDER_TO_FRONT],
+          flags: [
+            Flag.FLAG_ACTIVITY_NEW_TASK,
+            Flag.FLAG_ACTIVITY_REORDER_TO_FRONT
+          ],
           package: 'com.example.flutter_application_1',
           componentName: 'com.example.flutter_application_1.MainActivity',
         );
@@ -238,10 +260,10 @@ class _MyAppState extends State<MyApp> {
     }
 
     if (navigatorKey.currentState != null && isAppReady) {
-      // Pop any active dialogs (like the incoming call alert on the dashboard) 
+      // Pop any active dialogs (like the incoming call alert on the dashboard)
       // before bringing up the VideoCallScreen from CallKit.
       navigatorKey.currentState?.popUntil((route) => route.isFirst);
-      
+
       navigatorKey.currentState?.push(
         MaterialPageRoute(
           builder: (context) => VideoCallScreen(

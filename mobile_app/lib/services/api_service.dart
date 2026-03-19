@@ -3,11 +3,12 @@ import 'package:http/http.dart' as http;
 
 class ApiService {
   // --- 動態伺服器 IP 設置 ---
-  static const String _serverIp = String.fromEnvironment('SERVER_IP', defaultValue: '10.0.2.2');
-  
+  static const String _serverIp =
+      String.fromEnvironment('SERVER_IP', defaultValue: '10.0.2.2');
+
   // 依據是否為 ngrok 自動切換 http/https 與 埠號
-  static final String baseUrl = _serverIp.contains('ngrok') 
-      ? 'https://$_serverIp/api' 
+  static final String baseUrl = _serverIp.contains('ngrok')
+      ? 'https://$_serverIp/api'
       : 'http://$_serverIp:5001/api';
 
   static Future<Map<String, dynamic>> register({
@@ -48,7 +49,9 @@ class ApiService {
       return {
         'status': 'error',
         'message': '伺服器回傳格式錯誤 (可能已離線)',
-        'details': response.body.length > 50 ? response.body.substring(0, 50) : response.body
+        'details': response.body.length > 50
+            ? response.body.substring(0, 50)
+            : response.body
       };
     }
   }
@@ -67,9 +70,11 @@ class ApiService {
 
   static Future<Map<String, dynamic>> checkPairingStatus(String code) async {
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/pairing/check_status/$code'),
-      ).timeout(const Duration(seconds: 10));
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/pairing/check_status/$code'),
+          )
+          .timeout(const Duration(seconds: 10));
       return _safeDecode(response);
     } catch (e) {
       return {'status': 'error', 'message': '網路連線失敗: $e'};
@@ -153,7 +158,8 @@ class ApiService {
   }
 
   static Future<List<dynamic>> getElderData(String userId) async {
-    final response = await http.get(Uri.parse('$baseUrl/get_elder_data?user_id=$userId'));
+    final response =
+        await http.get(Uri.parse('$baseUrl/get_elder_data?user_id=$userId'));
     if (response.statusCode == 200) {
       final decoded = jsonDecode(response.body);
       if (decoded['status'] == 'success') {
@@ -252,6 +258,31 @@ class ApiService {
       return jsonDecode(response.body);
     } catch (e) {
       return {'error': e.toString()};
+    }
+  }
+
+  static Future<Map<String, dynamic>> testOidc({
+    required String provider,
+    required String email,
+    required String uid,
+    required String token,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/auth/test_oidc'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'provider': provider,
+              'email': email,
+              'uid': uid,
+              'token': token,
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
+      return _safeDecode(response);
+    } catch (e) {
+      return {'status': 'error', 'message': '網路連線失敗: $e'};
     }
   }
 }
