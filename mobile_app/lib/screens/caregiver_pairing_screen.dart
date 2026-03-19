@@ -3,6 +3,9 @@ import 'package:google_fonts/google_fonts.dart';
 import '../services/api_service.dart';
 import 'qr_scanner_screen.dart';
 import 'elder_selection_screen.dart';
+import 'login_screen.dart';
+import '../services/auth_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class CaregiverPairingScreen extends StatefulWidget {
   final int familyId;
@@ -98,6 +101,22 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
     }
   }
 
+  Future<void> _handleLogout() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.clear(); // 清除所有登入資訊
+
+    // 同步登出第三方
+    await AuthService.signOutGoogle();
+    await AuthService.signOutLine();
+
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (context) => const LoginScreen()),
+      (route) => false,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -111,6 +130,13 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
         elevation: 0,
         backgroundColor: Colors.transparent,
         foregroundColor: const Color(0xFF1E293B),
+        actions: [
+          IconButton(
+            onPressed: _handleLogout,
+            icon: const Icon(Icons.logout_rounded, color: Colors.redAccent),
+            tooltip: '登出',
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
