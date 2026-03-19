@@ -26,7 +26,6 @@ elif [ "$choice" == "3" ]; then
     echo "[*] Waiting for ngrok to initialize (5s)..."
     sleep 5
     
-    # Extract ngrok URL from local API
     ngrok_url=$(curl -s http://localhost:4040/api/tunnels | grep -o 'https://[^"]*' | head -n 1 | sed 's/https:\/\///')
     if [ -z "$ngrok_url" ]; then
         echo "Error: Failed to get ngrok URL. Is ngrok running?"
@@ -36,7 +35,6 @@ elif [ "$choice" == "3" ]; then
     echo "Detected ngrok URL: $localIP"
 else
     echo "[*] Detecting Local IP..."
-    # macOS typical IP detection for 192.168.* or 10.*
     localIP=$(ifconfig | grep "inet " | grep -v 127.0.0.1 | awk '{print $2}' | grep -E '^(192\.168\.|10\.)' | head -n 1)
     
     if [ -z "$localIP" ]; then
@@ -50,20 +48,19 @@ else
 fi
 
 # --- 2. Auto Setup Check ---
-if [ ! -d ".venv" ]; then
+if [ ! -d "venv" ]; then
     echo "[!] Virtual environment (venv) not found. Starting auto-setup..."
     
-    # Check if python3 is available
     if ! command -v python3 &> /dev/null; then
         echo "Error: python3 is required but not found. Please install it."
         exit 1
     fi
 
-    echo "Creating .venv using python3..."
-    python3 -m .venv venv
+    echo "Creating venv using python3..."
+    python3 -m venv venv
     
     echo "Installing dependencies..."
-    ./.venv/bin/pip install -r server/requirements.txt
+    ./venv/bin/pip install -r server/requirements.txt
     echo "Setup complete!"
 fi
 
@@ -73,18 +70,50 @@ cd mobile_app
 flutter pub get
 cd ..
 
-# --- 4. Start Flask Backend ---
+# --- 4. Start Android Emulator ---
+echo "[*] Checking Android Emulator..."
+emulator_running=$(flutter devices 2>/dev/null | grep -i "emulator")
+
+if [ -z "$emulator_running" ]; then
+    echo "[*] No Android emulator detected. Starting one..."
+    avd_name=$(emulator -list-avds | head -n 1)
+    if [ -z "$avd_name" ]; then
+        echo "Error: No AVD found. Please create one in Android Studio."
+        exit 1
+    fi
+    echo "[*] Booting emulator: $avd_name"
+    emulator -avd "$avd_name" -no-snapshot-load > /dev/null 2>&1 &
+
+    echo "[*] Waiting for emulator to fully boot..."
+    booted=false
+    for i in $(seq 1 30); do
+        boot_status=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+        if [ "$boot_status" == "1" ]; then
+            booted=true
+            break
+        fi
+        echo "    ... waiting ($i/30)"
+        sleep 3
+    done
+
+    if [ "$booted" == false ]; then
+        echo "Error: Emulator failed to boot in time."
+        exit 1
+    fi
+    echo "✅ Emulator is ready."
+else
+    echo "✅ Emulator already running."
+fi
+
+# --- 5. Start Flask Backend ---
 echo "[1/2] Launching Backend Server (Flask)..."
-# Kill any existing process on port 5001
 oldProc=$(lsof -ti :5001)
 if [ ! -z "$oldProc" ]; then
     kill -9 $oldProc
 fi
 
-# Launch backend in a new Terminal window (macOS specific)
 osascript -e "tell application \"Terminal\" to do script \"cd '$(pwd)'; ./venv/bin/python server/app.py\""
 
-# Wait for backend to be ready
 echo "[*] Waiting for backend to be ready..."
 retryCount=0
 backendReady=false
@@ -104,13 +133,12 @@ if [ "$backendReady" == false ]; then
 fi
 echo "✅ Backend is UP and running."
 
-# --- 5. Start Flutter Frontend ---
+# --- 6. Start Flutter Frontend ---
 echo "[2/2] Launching Frontend App (Flutter) with Server IP: $localIP"
 if [[ $localIP == 169.254.* ]] || [[ $localIP == "127.0.0.1" ]]; then
     echo "[!] WARNING: Detected IP ($localIP) may not be reachable from mobile devices."
 fi
 
-# Launch flutter in a new Terminal window
 osascript -e "tell application \"Terminal\" to do script \"cd '$(pwd)/mobile_app'; flutter run --dart-define=SERVER_IP=$localIP\""
 
 echo "Uban is starting in separate windows!"
