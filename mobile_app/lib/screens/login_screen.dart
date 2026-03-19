@@ -6,355 +6,421 @@ import '../services/api_service.dart';
 import 'registration_screen.dart';
 import 'family_onboarding_screen.dart';
 import 'family_main_screen.dart';
+import '../services/auth_service.dart';
 
 // 家屬/照護者登入畫面
 class LoginScreen extends StatefulWidget {
-const LoginScreen({super.key});
+  const LoginScreen({super.key});
 
-@override
-State<LoginScreen> createState() => _LoginScreenState();
+  @override
+  State<LoginScreen> createState() => _LoginScreenState();
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-final TextEditingController _emailController = TextEditingController();
-final TextEditingController _passwordController = TextEditingController();
-bool _obscurePassword = true;
-bool _isLoading = false;
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  bool _obscurePassword = true;
+  bool _isLoading = false;
 
-Future<void> _handleLogin() async {
-final email = _emailController.text.trim();
-final password = _passwordController.text.trim();
+  Future<void> _handleLogin() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
 
-if (email.isEmpty || password.isEmpty) {
-ScaffoldMessenger.of(
-context,
-).showSnackBar(const SnackBar(content: Text('請填寫所有欄位')));
-return;
-}
+    if (email.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('請填寫所有欄位')));
+      return;
+    }
 
-setState(() => _isLoading = true);
-try {
-final result = await ApiService.login(email, password);
-if (!mounted) return;
+    setState(() => _isLoading = true);
+    try {
+      final result = await ApiService.login(email, password);
+      if (!mounted) return;
 
-if (result.containsKey('user_id')) {
+      if (result.containsKey('user_id')) {
 // 登入成功
-final int userId = result['user_id'];
-final String userName = result['user_name'] ?? '使用者';
+        final int userId = result['user_id'];
+        final String userName = result['user_name'] ?? '使用者';
 
 // 持久化儲存登入狀態
-final prefs = await SharedPreferences.getInstance();
-if (!mounted) return;
+        final prefs = await SharedPreferences.getInstance();
+        if (!mounted) return;
 
         await prefs.setInt('caregiver_id', userId);
         await prefs.setString('caregiver_name', userName);
         await prefs.setString('user_role', 'family');
 
-if (!mounted) return; // MUST check again after async setInt/setString
+        if (!mounted) return; // MUST check again after async setInt/setString
 
-final bool hasPaired = result['has_paired_elder'] ?? false;
+        final bool hasPaired = result['has_paired_elder'] ?? false;
 
-if (hasPaired) {
-Navigator.pushAndRemoveUntil(
-context,
-MaterialPageRoute(
-builder: (context) =>
-FamilyMainScreen(userId: userId, userName: userName),
-),
-(route) => false,
-);
-} else {
+        if (hasPaired) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(
+              builder: (context) =>
+                  FamilyMainScreen(userId: userId, userName: userName),
+            ),
+            (route) => false,
+          );
+        } else {
 // 未配對時，引導進入溫馨介紹畫面
-Navigator.pushReplacement(
-context,
-MaterialPageRoute(
-builder: (context) =>
-FamilyOnboardingScreen(userId: userId, userName: userName),
-),
-);
-}
-} else {
-ScaffoldMessenger.of(
-context,
-).showSnackBar(SnackBar(content: Text(result['error'] ?? '登入失敗')));
-}
-} catch (e) {
-if (!mounted) return;
-ScaffoldMessenger.of(
-context,
-).showSnackBar(SnackBar(content: Text('連線失敗: $e')));
-} finally {
-if (mounted) setState(() => _isLoading = false);
-}
-}
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) =>
+                  FamilyOnboardingScreen(userId: userId, userName: userName),
+            ),
+          );
+        }
+      } else {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(result['error'] ?? '登入失敗')));
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('連線失敗: $e')));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
 
-@override
-Widget build(BuildContext context) {
-return Scaffold(
-backgroundColor: const Color(0xFFFFFBF0), // 溫馨米黃
-appBar: AppBar(
-backgroundColor: Colors.transparent,
-elevation: 0,
-leading: IconButton(
-icon: const Icon(Icons.arrow_back, color: Colors.black, size: 32),
-onPressed: () => Navigator.pop(context),
-),
-),
-body: SafeArea(
-child: SingleChildScrollView(
-padding: const EdgeInsets.symmetric(horizontal: 24.0),
-child: Column(
-crossAxisAlignment: CrossAxisAlignment.start,
-children: [
-const SizedBox(height: 40),
+  Future<void> _handleGoogleLogin() async {
+    setState(() => _isLoading = true);
+    try {
+      final idTokenData = await AuthService.signInWithGoogle();
+      if (!mounted) return;
+
+      if (idTokenData != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Google 登入成功！(正在執行 OIDC 測試...)')),
+        );
+
+        // 執行 OIDC 測試：將資料傳給後端寫入檔案
+        await ApiService.testOidc(
+          provider: 'google',
+          email: idTokenData['email'] ?? 'N/A',
+          uid: idTokenData['uid'] ?? 'N/A',
+          token: idTokenData['token'] ?? 'N/A',
+        );
+
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('OIDC 測試完成！請查看根目錄 oidc_test_results.txt')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Google 登入失敗: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _handleLineLogin() async {
+    setState(() => _isLoading = true);
+    try {
+      final accessTokenData = await AuthService.signInWithLine();
+      if (!mounted) return;
+
+      if (accessTokenData != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('LINE 登入成功！(正在執行 OIDC 測試...)')),
+        );
+
+        // 執行 OIDC 測試：將資料傳給後端寫入檔案
+        await ApiService.testOidc(
+          provider: 'line',
+          email: accessTokenData['email'] ?? 'N/A',
+          uid: accessTokenData['uid'] ?? 'N/A',
+          token: accessTokenData['token'] ?? 'N/A',
+        );
+
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('OIDC 測試完成！請查看根目錄 oidc_test_results.txt')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('LINE 登入失敗: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFFFFBF0), // 溫馨米黃
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.black, size: 32),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 40),
 
 // 標題: 歡迎回來
-Center(
-child: Text(
-'歡迎回來',
-style: GoogleFonts.notoSansTc(
-fontSize: 32,
-fontWeight: FontWeight.bold,
-color: const Color(0xFF333333),
-),
-),
-),
-const SizedBox(height: 8),
+              Center(
+                child: Text(
+                  '歡迎回來',
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                    color: const Color(0xFF333333),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
 
 // 副標題
-Center(
-child: Text(
-'登入以管理家人的陪伴計畫',
-style: GoogleFonts.notoSansTc(
-fontSize: 16,
-color: Colors.grey[600],
-),
-),
-),
+              Center(
+                child: Text(
+                  '登入以管理家人的陪伴計畫',
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 16,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ),
 
-const SizedBox(height: 48),
+              const SizedBox(height: 48),
 
 // Email / 手機號碼 輸入框
-_buildTextField(
-controller: _emailController,
-hintText: 'Email / 手機號碼',
-),
+              _buildTextField(
+                controller: _emailController,
+                hintText: 'Email / 手機號碼',
+              ),
 
-const SizedBox(height: 16),
+              const SizedBox(height: 16),
 
 // 密碼 輸入框
-_buildTextField(
-controller: _passwordController,
-hintText: '密碼',
-isPassword: true,
-obscureText: _obscurePassword,
-onToggleVisibility: () {
-setState(() {
-_obscurePassword = !_obscurePassword;
-});
-},
-),
+              _buildTextField(
+                controller: _passwordController,
+                hintText: '密碼',
+                isPassword: true,
+                obscureText: _obscurePassword,
+                onToggleVisibility: () {
+                  setState(() {
+                    _obscurePassword = !_obscurePassword;
+                  });
+                },
+              ),
 
-const SizedBox(height: 16),
+              const SizedBox(height: 16),
 
 // 忘記密碼?
-Align(
-alignment: Alignment.centerRight,
-child: TextButton(
-onPressed: () {
-ScaffoldMessenger.of(context).showSnackBar(
-const SnackBar(content: Text('已傳送重設連結至您的 Email')),
-);
-},
-child: Text(
-'忘記密碼?',
-style: GoogleFonts.notoSansTc(
-fontSize: 14,
-color: Colors.black,
-fontWeight: FontWeight.bold,
-),
-),
-),
-),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('已傳送重設連結至您的 Email')),
+                    );
+                  },
+                  child: Text(
+                    '忘記密碼?',
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 14,
+                      color: Colors.black,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
 
-const SizedBox(height: 24),
+              const SizedBox(height: 24),
 
 // 登入按鈕
-SizedBox(
-width: double.infinity,
-height: 56,
-child: ElevatedButton(
-onPressed: _isLoading ? null : _handleLogin,
-style: ElevatedButton.styleFrom(
-backgroundColor: const Color(0xFFFF7043), // 橘色
-shape: RoundedRectangleBorder(
-borderRadius: BorderRadius.circular(16),
-),
-elevation: 2,
-),
-child: _isLoading
-? const CircularProgressIndicator(color: Colors.white)
-: Text(
-'登入',
-style: GoogleFonts.notoSansTc(
-fontSize: 20,
-fontWeight: FontWeight.bold,
-color: Colors.white,
-),
-),
-),
-),
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton(
+                  onPressed: _isLoading ? null : _handleLogin,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFFF7043), // 橘色
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    elevation: 2,
+                  ),
+                  child: _isLoading
+                      ? const CircularProgressIndicator(color: Colors.white)
+                      : Text(
+                          '登入',
+                          style: GoogleFonts.notoSansTc(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                ),
+              ),
 
-const SizedBox(height: 12),
+              const SizedBox(height: 12),
 
 // 診斷按鈕：連線測試
-Center(
-child: TextButton.icon(
-onPressed: () async {
-final health = await ApiService.checkHealth();
-if (!context.mounted) return;
-if (health.containsKey('status') &&
-health['status'] == 'ok') {
-ScaffoldMessenger.of(context).showSnackBar(
-const SnackBar(content: Text('✅ 連線成功：後端運作中')),
-);
-} else {
-ScaffoldMessenger.of(context).showSnackBar(
-SnackBar(content: Text('❌ 連線失敗：${health['error']}')),
-);
-}
-},
-icon: const Icon(Icons.network_check, size: 16),
-label: const Text('連線測試 (診斷用)'),
-),
-),
+              Center(
+                child: TextButton.icon(
+                  onPressed: () async {
+                    final health = await ApiService.checkHealth();
+                    if (!context.mounted) return;
+                    if (health.containsKey('status') &&
+                        health['status'] == 'ok') {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('✅ 連線成功：後端運作中')),
+                      );
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('❌ 連線失敗：${health['error']}')),
+                      );
+                    }
+                  },
+                  icon: const Icon(Icons.network_check, size: 16),
+                  label: const Text('連線測試 (診斷用)'),
+                ),
+              ),
 
-const SizedBox(height: 16),
+              const SizedBox(height: 16),
 
 // 註冊連結
-Center(
-child: TextButton(
-onPressed: () {
-Navigator.push(
-context,
-MaterialPageRoute(
-builder: (context) => const RegistrationScreen(),
-),
-);
-},
-child: RichText(
-text: TextSpan(
-text: '還沒有帳號？',
-style: GoogleFonts.notoSansTc(color: Colors.grey[600]),
-children: [
-TextSpan(
-text: ' 立即註冊',
-style: GoogleFonts.notoSansTc(
-color: const Color(0xFFFF7043),
-fontWeight: FontWeight.bold,
-),
-),
-],
-),
-),
-),
-),
+              Center(
+                child: TextButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const RegistrationScreen(),
+                      ),
+                    );
+                  },
+                  child: RichText(
+                    text: TextSpan(
+                      text: '還沒有帳號？',
+                      style: GoogleFonts.notoSansTc(color: Colors.grey[600]),
+                      children: [
+                        TextSpan(
+                          text: ' 立即註冊',
+                          style: GoogleFonts.notoSansTc(
+                            color: const Color(0xFFFF7043),
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
 
-const SizedBox(height: 48),
+              const SizedBox(height: 48),
 
 // 分隔線 or
-Row(
-children: [
-Expanded(child: Divider(color: Colors.grey[300])),
-Padding(
-padding: const EdgeInsets.symmetric(horizontal: 16),
-child: Text(
-'or',
-style: GoogleFonts.inter(
-color: Colors.grey[400],
-fontSize: 16,
-),
-),
-),
-Expanded(child: Divider(color: Colors.grey[300])),
-],
-),
+              Row(
+                children: [
+                  Expanded(child: Divider(color: Colors.grey[300])),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Text(
+                      'or',
+                      style: GoogleFonts.inter(
+                        color: Colors.grey[400],
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                  Expanded(child: Divider(color: Colors.grey[300])),
+                ],
+              ),
 
-const SizedBox(height: 40),
+              const SizedBox(height: 40),
 
-// 社群登入按鈕
-Row(
-mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-children: [
-_buildSocialButton(
-icon: FontAwesomeIcons.google,
-color: Colors.red,
-onTap: () {},
-),
-_buildSocialButton(
-icon: FontAwesomeIcons.facebookF,
-color: const Color(0xFF1877F2),
-onTap: () {},
-),
-_buildSocialButton(
-icon: FontAwesomeIcons.line,
-color: const Color(0xFF00C300),
-onTap: () {},
-),
-],
-),
+              // 社群登入按鈕
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _buildSocialButton(
+                    icon: FontAwesomeIcons.google,
+                    color: Colors.red,
+                    onTap: _isLoading ? () {} : _handleGoogleLogin,
+                  ),
+                  _buildSocialButton(
+                    icon: FontAwesomeIcons.line,
+                    color: const Color(0xFF00C300),
+                    onTap: _isLoading ? () {} : _handleLineLogin,
+                  ),
+                ],
+              ),
 
-const SizedBox(height: 24),
-],
-),
-),
-),
-);
-}
+              const SizedBox(height: 24),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
-Widget _buildTextField({
-required TextEditingController controller,
-required String hintText,
-bool isPassword = false,
-bool obscureText = false,
-VoidCallback? onToggleVisibility,
-}) {
-return Container(
-decoration: BoxDecoration(
-color: Colors.white,
-borderRadius: BorderRadius.circular(16),
-border: Border.all(color: Colors.grey[300]!),
-),
-child: TextField(
-controller: controller,
-obscureText: obscureText,
-decoration: InputDecoration(
-hintText: hintText,
-hintStyle: GoogleFonts.notoSansTc(
-color: Colors.grey[500],
-fontSize: 16,
-fontWeight: FontWeight.bold,
-),
-border: InputBorder.none,
-contentPadding: const EdgeInsets.symmetric(
-horizontal: 20,
-vertical: 16,
-),
-suffixIcon: isPassword
-? IconButton(
-icon: Icon(
-obscureText
-? Icons.visibility_outlined
-: Icons.visibility_off_outlined,
-color: Colors.grey[600],
-),
-onPressed: onToggleVisibility,
-)
-: null,
-),
-),
-);
-}
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String hintText,
+    bool isPassword = false,
+    bool obscureText = false,
+    VoidCallback? onToggleVisibility,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey[300]!),
+      ),
+      child: TextField(
+        controller: controller,
+        obscureText: obscureText,
+        decoration: InputDecoration(
+          hintText: hintText,
+          hintStyle: GoogleFonts.notoSansTc(
+            color: Colors.grey[500],
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 20,
+            vertical: 16,
+          ),
+          suffixIcon: isPassword
+              ? IconButton(
+                  icon: Icon(
+                    obscureText
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined,
+                    color: Colors.grey[600],
+                  ),
+                  onPressed: onToggleVisibility,
+                )
+              : null,
+        ),
+      ),
+    );
+  }
 
   Widget _buildSocialButton({
     required dynamic icon,

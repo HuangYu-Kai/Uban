@@ -64,3 +64,37 @@ def login():
         'user_name': account.user_name,
         'has_paired_elder': has_paired_elder
     }), 200
+
+@auth_bp.route('/test_oidc', methods=['POST'])
+def test_oidc():
+    """測試 OIDC 並將結果寫入根目錄檔案"""
+    import os
+    data = request.json
+    provider = data.get('provider')
+    email = data.get('email', 'N/A')
+    uid = data.get('uid', 'N/A')
+    token = data.get('token', 'N/A')
+
+    # 取得專案根目錄 (UniFlow)
+    # 目前檔案在 UniFlow/server/routes/auth.py
+    # 根目錄應為 ../../../ (相對於此檔)
+    # 但更簡單的方式是 os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    file_path = os.path.join(root_dir, 'oidc_test_results.txt')
+
+    content = f"""
+========================================
+OIDC Test Results ({datetime.now().strftime('%Y-%m-%d %H:%M:%S')})
+========================================
+Provider: {provider}
+UID: {uid}
+Email: {email}
+Token Snippet: {token[:20]}...{token[-10:] if len(token) > 30 else ''}
+========================================
+"""
+    try:
+        with open(file_path, 'a', encoding='utf-8') as f:
+            f.write(content)
+        return jsonify({'status': 'success', 'file': file_path}), 200
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500

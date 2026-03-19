@@ -16,7 +16,7 @@ class AuthService {
   );
 
   /// 執行 Google 登入並返回使用者的 ID Token (用於傳遞給後端驗證)
-  static Future<String?> signInWithGoogle() async {
+  static Future<Map<String, dynamic>?> signInWithGoogle() async {
     try {
       // 觸發原生 Google 登入畫面
       final GoogleSignInAccount? account = await _googleSignIn.signIn();
@@ -31,7 +31,11 @@ class AuthService {
       debugPrint('Google ID Token: ${auth.idToken}');
       
       // 通常我們需要 idToken 回傳給後端去 JWT 解析
-      return auth.idToken;
+      return {
+        'token': auth.idToken,
+        'email': account.email,
+        'uid': account.id,
+      };
     } catch (e) {
       debugPrint('Google Sign-In Error: $e');
       rethrow;
@@ -57,7 +61,7 @@ class AuthService {
   }
 
   /// 執行 LINE 登入並返回 Access Token (可用於傳遞給後端驗證)
-  static Future<String?> signInWithLine() async {
+  static Future<Map<String, dynamic>?> signInWithLine() async {
     try {
       // 觸發原生 LINE 登入畫面
       // 注意：如果您需要 'email' 權限，必須先在 LINE Developers 後台申請「Email address permission」，否則會出現 400 錯誤。
@@ -65,11 +69,14 @@ class AuthService {
         scopes: ['profile', 'openid'],
       );
       
-      debugPrint('LINE Access Token: ${result.accessToken.value}');
       debugPrint('LINE User ID: ${result.userProfile?.userId}');
       debugPrint('LINE Display Name: ${result.userProfile?.displayName}');
       
-      return result.accessToken.value;
+      return {
+        'token': result.accessToken.value,
+        'email': result.userProfile?.data['email'], // 注意：需申請權限
+        'uid': result.userProfile?.userId,
+      };
     } catch (e) {
       debugPrint('LINE Sign-In Error: $e');
       rethrow;
