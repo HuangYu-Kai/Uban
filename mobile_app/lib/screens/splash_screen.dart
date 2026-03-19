@@ -6,6 +6,7 @@ import 'identification_screen.dart';
 import 'family_onboarding_screen.dart';
 import 'elder_home_screen.dart';
 import 'family_main_screen.dart';
+import '../globals.dart'; // ★ 新增
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -45,6 +46,7 @@ class _SplashScreenState extends State<SplashScreen> {
           
           // 角色優先序：1. 後端最新狀態 2. 本地紀錄 3. 預設子女
           final role = userProfile['role'] ?? localRole ?? 'family';
+          appRole = role; // ★ 新增：同步到全域變數，確保啟動後通話偵聽正常
 
           if (role == 'elder') {
             // 長輩端：直接進入長輩首頁

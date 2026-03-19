@@ -6,6 +6,7 @@ import '../services/api_service.dart';
 import 'registration_screen.dart';
 import 'family_onboarding_screen.dart';
 import 'family_main_screen.dart';
+import '../globals.dart';
 
 // 家屬/照護者登入畫面
 class LoginScreen extends StatefulWidget {
@@ -49,6 +50,7 @@ if (!mounted) return;
         await prefs.setInt('caregiver_id', userId);
         await prefs.setString('caregiver_name', userName);
         await prefs.setString('user_role', 'family');
+        appRole = 'family'; // ★ 新增：更新全域變數，確保通話偵聽正常
 
 if (!mounted) return; // MUST check again after async setInt/setString
 

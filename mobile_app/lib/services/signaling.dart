@@ -50,6 +50,7 @@ class Signaling {
 
   String? _currentRoomId;
   String? _peerSocketId;
+  int? _userId; // 新增：儲存當前使用者的資料庫 ID
   final List<RTCIceCandidate> _candidateQueue = [];
   final List<String> _pendingRooms = [];
 
@@ -57,8 +58,9 @@ class Signaling {
     'iceServers': [{'urls': 'stun:stun.l.google.com:19302'}]
   };
 
-  void connect(String roomId, String role, {String deviceName = 'Unknown', String deviceMode = 'comm', String? fcmToken}) {
+  void connect(String roomId, String role, {int? userId, String deviceName = 'Unknown', String deviceMode = 'comm', String? fcmToken}) {
     _currentRoomId = roomId;
+    _userId = userId;
 
     if (socket != null && socket!.connected) {
       debugPrint("♻️ Reusing existing socket connection. Joining room $roomId...");
@@ -68,7 +70,7 @@ class Signaling {
 
     debugPrint("🔌 Creating new socket connection...");
     socket = io.io(serverUrl, io.OptionBuilder()
-      .setTransports(['websocket'])
+      .setTransports(['websocket', 'polling']) // 允許在 WebSocket 不可用時降級為 polling
       .disableAutoConnect()
       .build()
     );
@@ -78,9 +80,12 @@ class Signaling {
   }
 
   void _registerSocketListeners(String roomId, String role, String deviceName, String deviceMode, String? fcmToken) {
+    socket!.onConnectError((err) => debugPrint('❌ Socket Connect Error: $err (Server: $serverUrl)'));
+    socket!.onError((err) => debugPrint('❌ Socket Error: $err'));
+
     socket!.onConnect((_) {
       debugPrint('✅ Socket 連線成功 (SID: ${socket!.id})');
-      _emitJoin(roomId, role, deviceName, deviceMode, fcmToken: fcmToken);
+      _emitJoin(roomId, role, deviceName, deviceMode, userId: _userId, fcmToken: fcmToken);
       
       for (var pendingRoom in _pendingRooms) {
         _emitJoin(pendingRoom, 'family', 'Dashboard_Listener', 'listener');
@@ -134,7 +139,7 @@ class Signaling {
       _candidateQueue.clear();
 
       bool isEmergency = data['isEmergency'] == true;
-      if (isEmergency) {
+      if (isEmergency && !kIsWeb) {
         try { await platform.invokeMethod('bringToFront'); } catch (e) { debugPrint('BringToFront error: $e'); }
         try { 
           VolumeController.instance.showSystemUI = false;
@@ -163,6 +168,7 @@ class Signaling {
 
     socket!.on('answer', (data) async {
       try {
+        _peerSocketId = data['senderId']; // 關鍵：更新對方的 Socket ID 才能換 Candidate
         var description = RTCSessionDescription(data['sdp'], data['type']);
         await peerConnection?.setRemoteDescription(description);
         await _processCandidateQueue();
@@ -182,13 +188,16 @@ class Signaling {
 
     socket!.on('end-call', (_) async {
       debugPrint("📴 收到掛斷訊號");
-      await FlutterCallkitIncoming.endAllCalls();
+      if (!kIsWeb) {
+        await FlutterCallkitIncoming.endAllCalls();
+      }
       await _closePeerConnection();
       if (onCallEnded != null) onCallEnded!();
     });
   }
 
   Future<bool> _showCallkitIncoming(String callerName) async {
+    if (kIsWeb) return false;
     final uuid = const Uuid().v4();
     final params = CallKitParams(
       id: uuid,
@@ -254,10 +263,24 @@ class Signaling {
     return accepted;
   }
 
-  void _emitJoin(String room, String role, String name, String mode, {String? fcmToken}) async {
-    debugPrint("📢 [Signaling] Emitting join: $room ($role) as $name");
+  void _emitJoin(String room, String role, String name, String mode, {int? userId, String? fcmToken}) async {
+    debugPrint("📢 [Signaling] Emitting join: $room ($role) as $name (UID: $userId)");
     
-    // Non-blocking FCM token retrieval
+    // ★ Bug: Web 版不支援 FirebaseMessaging.instance.getToken() 若未正確設定 VAPID
+    // 且 Web 版通訊多在前景，暫不需要 FCM 推播。
+    if (kIsWeb) {
+      socket!.emit('join', {
+        'room': room, 
+        'role': role, 
+        'deviceName': name, 
+        'deviceMode': mode,
+        'userId': userId,
+        'fcmToken': fcmToken
+      });
+      return;
+    }
+
+    // Non-blocking FCM token retrieval (Mobile Only)
     FirebaseMessaging.instance.getToken().then((token) {
       if (token != null) debugPrint("🔔 [Signaling] FCM Token retrieved: ${token.substring(0, 8)}...");
       socket!.emit('join', {
@@ -265,6 +288,7 @@ class Signaling {
         'role': role, 
         'deviceName': name, 
         'deviceMode': mode,
+        'userId': userId,
         'fcmToken': token ?? fcmToken
       });
     }).catchError((e) {
@@ -274,6 +298,7 @@ class Signaling {
         'role': role, 
         'deviceName': name, 
         'deviceMode': mode,
+        'userId': userId,
         'fcmToken': fcmToken
       });
     });
@@ -293,7 +318,12 @@ class Signaling {
   }
 
   void sendCallRequest(String room, {String role = 'family', String? callId}) {
-    socket!.emit('call-request', {'room': room, 'role': role, 'callId': callId});
+    socket!.emit('call-request', {
+      'room': room, 
+      'role': role, 
+      'callId': callId,
+      'callerUserId': _userId // 新增：主動發送發起者的資料庫 ID
+    });
   }
 
   // ★ Feature 13: 請求更新長輩設備列表
@@ -355,7 +385,8 @@ class Signaling {
         'room': _currentRoomId,
         'targetId': _peerSocketId,
         'type': 'answer',
-        'sdp': answer!.sdp
+        'sdp': answer!.sdp,
+        'senderId': socket!.id // 告知對方我是誰
       });
     } catch (e) {
       debugPrint("❌ Accept Error: $e");
@@ -371,8 +402,14 @@ class Signaling {
 
   Future<void> _createPeerConnection({required bool useLocalStream}) async {
     peerConnection = await createPeerConnection(_configuration);
+    
+    peerConnection!.onIceConnectionState = (state) {
+      debugPrint("❄️ ICE Connection State: $state");
+    };
+
     peerConnection!.onIceCandidate = (candidate) {
       if (socket != null) {
+        debugPrint("🧊 Generated ICE Candidate: ${candidate.candidate?.substring(0, 15)}...");
         var payload = {
           'room': _currentRoomId,
           'candidate': candidate.candidate,
@@ -383,7 +420,9 @@ class Signaling {
         socket!.emit('candidate', payload);
       }
     };
+    
     peerConnection!.onTrack = (event) {
+      debugPrint("🛤️ Received Remote Track: ${event.track.kind}");
       if (event.streams.isNotEmpty && onAddRemoteStream != null) {
         onAddRemoteStream!(event.streams[0]);
       }

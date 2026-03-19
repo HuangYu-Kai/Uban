@@ -35,7 +35,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   }
   debugPrint("📩 Background message received: ${message.data}");
   
-  if (message.data['type'] == 'call-request') {
+  if (message.data['type'] == 'call-request' && !kIsWeb) {
     final roomId = message.data['roomId'];
     final senderId = message.data['senderId'];
     final callerName = message.data['callerName'] ?? '家屬來通話';
@@ -88,9 +88,9 @@ void main() async {
   }
 
   try {
-    // Bug 16: Ensure role is loaded at boot
+    // Bug 16: Ensure role is loaded at boot (Check both common keys)
     final prefs = await SharedPreferences.getInstance();
-    appRole = prefs.getString('saved_role');
+    appRole = prefs.getString('user_role') ?? prefs.getString('saved_role');
     debugPrint("🛠️ App Booting. Detected Role: $appRole");
 
     if (kIsWeb) {
@@ -120,7 +120,46 @@ class _MyAppState extends State<MyApp> {
   @override
   void initState() {
     super.initState();
-    _setupCallKitListener();
+    if (!kIsWeb) {
+      _setupCallKitListener();
+    }
+    _setupSignalingListener();
+  }
+
+  void _setupSignalingListener() {
+    sig.Signaling().onCallRequest = (roomId, senderId, callId) {
+      // 根據角色決定是否彈出通話視窗或處理
+
+      debugPrint("🔔 [Main] Foreground Call Request: $roomId from $senderId");
+      
+      final context = navigatorKey.currentContext;
+      if (context != null) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (c) => AlertDialog(
+            title: const Text('💡 視訊通話申請'),
+            content: Text('您的家人正在呼叫 (房間: $roomId)'),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(c);
+                  sig.Signaling().sendCallBusy(senderId, callId: callId);
+                },
+                child: const Text('拒絕', style: TextStyle(color: Colors.red)),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(c);
+                  _navigateToVideoCall(roomId, senderId, callId: callId);
+                },
+                child: const Text('接聽'),
+              ),
+            ],
+          ),
+        );
+      }
+    };
   }
 
   void _setupCallKitListener() {
