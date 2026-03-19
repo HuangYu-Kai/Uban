@@ -5,6 +5,9 @@ import random
 
 game_logic_bp = Blueprint('game_logic', __name__)
 
+# 開發者可自由更改此日期，作為外觀資料更換及步數結算的統一重置時間
+GLOBAL_RESET_DATE = datetime(2026, 12, 31, 23, 59, 59)
+
 @game_logic_bp.route('/distribute_appearances', methods=['POST'])
 def distribute_appearances():
     """
@@ -113,17 +116,41 @@ def get_leaderboard(elder_id):
 @game_logic_bp.route('/check_reset', methods=['POST'])
 def check_reset():
     """
-    結束時間一到將所有elder_profile的所有資料的step_total欄位重設為0。
+    管理者設定的時間到或是管理者強制手動重置時：
+    將原先的step_total儲存在get_appearance_list中的gawa_size欄位，
+    並重置elder_profile中的step_total為0。
     """
     now = datetime.utcnow()
-    # Check if ANY appearance session has ended
-    expired = GetAppearanceList.query.filter(GetAppearanceList.feed_endtime <= now).first()
+    data = request.json or {}
+    force_reset = data.get('force', False)
     
-    if expired:
-        # Reset ALL elders' step_total to 0
-        ElderProfile.query.update({ElderProfile.step_total: 0})
-        # Optional: cleanup or mark as handled
-        db.session.commit()
-        return jsonify({"status": "success", "message": "All step_total reset due to expiration"})
+    # 若尚未到達全域重置時間，且也並非手動強制重置，則不執行
+    if now < GLOBAL_RESET_DATE and not force_reset:
+        return jsonify({"status": "success", "message": "No reset needed, time not reached yet"})
     
-    return jsonify({"status": "success", "message": "No reset needed"})
+    # 找出所有目前正在配戴的造型紀錄
+    # 若有需求，可只撈 feed_endtime 即將到期或已到期的
+    # 這裡我們假設目前資料表中的即為當季造型
+    active_appearances = GetAppearanceList.query.all()
+    
+    updated_count = 0
+    for app in active_appearances:
+        elder = ElderProfile.query.filter_by(elder_id=app.elder_id).first()
+        if elder:
+            # 1. 儲存 step_total 到 gawa_size
+            app.gawa_size = elder.step_total if elder.step_total is not None else 0
+            
+            # 2. 結束時間設為現在 (如果是強制重置的話)
+            app.feed_endtime = now
+            
+            # 3. 重置大步數
+            elder.step_total = 0
+            
+            updated_count += 1
+            
+    db.session.commit()
+    
+    return jsonify({
+        "status": "success", 
+        "message": f"Successfully cached step_total and reset for {updated_count} elders"
+    })

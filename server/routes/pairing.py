@@ -1,9 +1,13 @@
 from flask import Blueprint, request, jsonify
 from datetime import datetime, timedelta
-from models import User, PairingCode, Relationship
+from models import User, PairingCode, Relationship, ElderProfile, GawaAppearance, GetAppearanceList
 from extensions import db
 from utils import generate_random_code
 from werkzeug.security import generate_password_hash
+import random
+
+# Import GLOBAL_RESET_DATE to use as feed_endtime for appearances
+from routes.game_logic import GLOBAL_RESET_DATE
 
 pairing_bp = Blueprint('pairing', __name__)
 
@@ -98,19 +102,52 @@ def confirm_pairing():
     db.session.add(new_elder)
     db.session.flush() # 取得 new_elder.id
 
-    # 3. 建立關係
-    new_rel = Relationship(elder_id=new_elder.id, family_id=family_id)
+    # 3. 建立 ElderProfile 及產生 elder_id
+    # 產生不重複的 4 位數 elder_id
+    elder_id_str = generate_random_code(4)
+    while ElderProfile.query.filter_by(elder_id=elder_id_str).first():
+        elder_id_str = generate_random_code(4)
+        
+    elder_profile = ElderProfile(
+        elder_id=elder_id_str,
+        user_id=new_elder.id,
+        elder_name=elder_name,
+        gender=gender,
+        age=age,
+        phone='',
+        location='台北市士林區',
+        ai_persona='溫暖孫子',
+        step_total=0
+    )
+    db.session.add(elder_profile)
+
+    # 4. 建立關係 (修正：存入真正的 elder_id 字串)
+    new_rel = Relationship(elder_id=elder_id_str, family_id=family_id)
     db.session.add(new_rel)
 
-    # 4. 更新代碼狀態 (將家屬 ID 存入 creator_id，供長輩端查詢)
+    # 5. 更新代碼狀態 (將家屬 ID 存入 creator_id，供長輩端查詢)
     pairing.is_used = True
     pairing.creator_id = family_id
+    
+    # 6. 發放初始外觀資料 (如果資料庫裡有外觀可發的話)
+    appearances = GawaAppearance.query.all()
+    if appearances:
+        initial_appearance = random.choice(appearances)
+        new_app_entry = GetAppearanceList(
+            elder_id=elder_id_str,
+            gawa_id=initial_appearance.gawa_id,
+            feed_starttime=datetime.utcnow(),
+            feed_endtime=GLOBAL_RESET_DATE,
+            gawa_size=0
+        )
+        db.session.add(new_app_entry)
     
     db.session.commit()
 
     return jsonify({
         'message': 'Successfully paired and elder account created!',
-        'elder_id': new_elder.id
+        'elder_id': elder_id_str,
+        'user_id': new_elder.id
     })
 
 @pairing_bp.route('/<int:family_id>/<int:elder_id>', methods=['DELETE'])
