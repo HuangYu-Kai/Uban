@@ -223,6 +223,13 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
           _status = "通話結束"; 
           _isInCall = false; 
         });
+        
+        // ★ 延遲 2 秒後自動回到首頁，優化長輩體驗
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted) {
+            Navigator.of(context).pop();
+          }
+        });
       }
     };
 
