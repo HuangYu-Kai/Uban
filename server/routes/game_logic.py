@@ -48,22 +48,30 @@ def distribute_appearances():
             
             print(f"Processing elder {elder.elder_id}: current steps = {current_steps}")
             
-            # 1. 刪除該長輩現有的造型紀錄 (確保 get_appearance_list 只有一筆該長輩目前的資料)
-            GetAppearanceList.query.filter_by(elder_id=elder.elder_id).delete()
+            # 1. 不再刪除現有造型紀錄！這是一個收集歷史，不能刪除。
+            owned_gawas = GetAppearanceList.query.filter_by(elder_id=elder.elder_id).all()
+            owned_gawa_ids = [app.gawa_id for app in owned_gawas]
+            
+            # 找出尚未擁有的外觀
+            available_appearances = [a for a in appearances if a.gawa_id not in owned_gawa_ids]
+            
+            if not available_appearances:
+                print(f"Elder {elder.elder_id} already has all appearances!")
+                continue # 若已經收集完所有，則跳過
+                
+            random_appearance = random.choice(available_appearances)
             
             # 2. 建立新的紀錄，紀錄目前的步數 (若是 0 就紀錄 0)
             new_entry = GetAppearanceList(
                 elder_id=elder.elder_id,
                 gawa_id=random_appearance.gawa_id,
                 feed_starttime=now,
-                feed_endtime=endtime,
+                feed_endtime=GLOBAL_RESET_DATE, # 修正: 設定為全域變數
                 gawa_size=current_steps
             )
             db.session.add(new_entry)
             
             # 3. 重置該長輩的步數
-            # 使用者提到「不要自動修改像step_total數值」，但在分發時重置是先前明確要求的邏輯
-            # 我們這裡仍然執行重置，但確保分發邏輯嚴格依照上述規則
             elder.step_total = 0
             distributed += 1
             
@@ -128,10 +136,9 @@ def check_reset():
     if now < GLOBAL_RESET_DATE and not force_reset:
         return jsonify({"status": "success", "message": "No reset needed, time not reached yet"})
     
-    # 找出所有目前正在配戴的造型紀錄
-    # 若有需求，可只撈 feed_endtime 即將到期或已到期的
-    # 這裡我們假設目前資料表中的即為當季造型
-    active_appearances = GetAppearanceList.query.all()
+    # 找出所有尚未到期（當季）的造型紀錄
+    # ER圖顯示 (elder_id, gawa_id) 為複合主鍵，代表是陣列歷史，所以不能直接 query.all()，必須找當季(feed_endtime == GLOBAL_RESET_DATE 或是大於此刻)
+    active_appearances = GetAppearanceList.query.filter(GetAppearanceList.feed_endtime >= now).all()
     
     updated_count = 0
     for app in active_appearances:
