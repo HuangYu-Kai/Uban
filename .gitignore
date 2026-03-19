@@ -88,3 +88,4 @@ server/serviceAccountKey.json
 mobile_app/android/app/google-services.json
 
 .vscode/
+oidc_test_results.txt

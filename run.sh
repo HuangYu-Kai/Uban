@@ -57,7 +57,7 @@ if [ ! -d "venv" ]; then
     fi
 
     echo "Creating venv using python3..."
-    python3 -m venv venv
+    python3 -m venv .venv
     
     echo "Installing dependencies..."
     ./venv/bin/pip install -r server/requirements.txt
