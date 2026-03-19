@@ -6,6 +6,7 @@ import '../services/api_service.dart';
 import 'registration_screen.dart';
 import 'family_onboarding_screen.dart';
 import 'family_main_screen.dart';
+import '../services/auth_service.dart';
 
 // 家屬/照護者登入畫面
 class LoginScreen extends StatefulWidget {
@@ -83,9 +84,53 @@ if (!mounted) return;
 ScaffoldMessenger.of(
 context,
 ).showSnackBar(SnackBar(content: Text('連線失敗: $e')));
-} finally {
-if (mounted) setState(() => _isLoading = false);
+  } finally {
+    if (mounted) setState(() => _isLoading = false);
+  }
 }
+
+Future<void> _handleGoogleLogin() async {
+  setState(() => _isLoading = true);
+  try {
+    final idToken = await AuthService.signInWithGoogle();
+    if (!mounted) return;
+
+    if (idToken != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Google 登入成功！(正在整合後端...)')),
+      );
+      // TODO: 呼叫 ApiService.loginWithGoogle(idToken) 並處理導向
+    }
+  } catch (e) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Google 登入失敗: $e')),
+    );
+  } finally {
+    if (mounted) setState(() => _isLoading = false);
+  }
+}
+
+Future<void> _handleLineLogin() async {
+  setState(() => _isLoading = true);
+  try {
+    final accessToken = await AuthService.signInWithLine();
+    if (!mounted) return;
+
+    if (accessToken != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('LINE 登入成功！(正在整合後端...)')),
+      );
+      // TODO: 呼叫 ApiService.loginWithLine(accessToken) 並處理導向
+    }
+  } catch (e) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('LINE 登入失敗: $e')),
+    );
+  } finally {
+    if (mounted) setState(() => _isLoading = false);
+  }
 }
 
 @override
@@ -282,27 +327,22 @@ Expanded(child: Divider(color: Colors.grey[300])),
 
 const SizedBox(height: 40),
 
-// 社群登入按鈕
-Row(
-mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-children: [
-_buildSocialButton(
-icon: FontAwesomeIcons.google,
-color: Colors.red,
-onTap: () {},
-),
-_buildSocialButton(
-icon: FontAwesomeIcons.facebookF,
-color: const Color(0xFF1877F2),
-onTap: () {},
-),
-_buildSocialButton(
-icon: FontAwesomeIcons.line,
-color: const Color(0xFF00C300),
-onTap: () {},
-),
-],
-),
+    // 社群登入按鈕
+    Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: [
+        _buildSocialButton(
+          icon: FontAwesomeIcons.google,
+          color: Colors.red,
+          onTap: _isLoading ? () {} : _handleGoogleLogin,
+        ),
+        _buildSocialButton(
+          icon: FontAwesomeIcons.line,
+          color: const Color(0xFF00C300),
+          onTap: _isLoading ? () {} : _handleLineLogin,
+        ),
+      ],
+    ),
 
 const SizedBox(height: 24),
 ],
