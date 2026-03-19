@@ -5,6 +5,7 @@ from extensions import db
 from datetime import datetime
 from werkzeug.utils import secure_filename
 import os
+from utils import generate_random_code
 
 user_bp = Blueprint('user', __name__)
 
@@ -143,7 +144,12 @@ def update_elder_profile(user_id):
     profile = ElderProfile.query.filter_by(user_id=user_id).first()
     
     if not profile:
-        profile = ElderProfile(user_id=user_id)
+        # Fallback profile creation (normally handled in pairing.py)
+        elder_id_str = generate_random_code(4)
+        while ElderProfile.query.filter_by(elder_id=elder_id_str).first():
+            elder_id_str = generate_random_code(4)
+            
+        profile = ElderProfile(elder_id=elder_id_str, user_id=user_id)
         db.session.add(profile)
         
     profile.phone = data.get('phone', profile.phone)
