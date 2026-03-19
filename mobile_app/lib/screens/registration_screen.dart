@@ -13,25 +13,20 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-  final TextEditingController _ageController = TextEditingController();
 
-  String _selectedGender = 'M';
   bool _isLoading = false;
 
   Future<void> _handleRegister() async {
     final name = _nameController.text.trim();
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
-    final ageStr = _ageController.text.trim();
 
-    if (name.isEmpty || email.isEmpty || password.isEmpty || ageStr.isEmpty) {
+    if (name.isEmpty || email.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('請填寫所有欄位')));
       return;
     }
-
-    final age = int.tryParse(ageStr) ?? 20;
 
     setState(() => _isLoading = true);
     try {
@@ -40,8 +35,6 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         email: email,
         password: password,
         role: 'family', // 子女端註冊
-        gender: _selectedGender,
-        age: age,
       );
 
       if (!mounted) return;
@@ -113,42 +106,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                 Icons.lock_outline,
                 isPassword: true,
               ),
-              const SizedBox(height: 16),
-
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildTextField(
-                      _ageController,
-                      '年齡',
-                      Icons.cake_outlined,
-                      keyboardType: TextInputType.number,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.grey[300]!),
-                    ),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<String>(
-                        value: _selectedGender,
-                        items: const [
-                          DropdownMenuItem(value: 'M', child: Text('男')),
-                          DropdownMenuItem(value: 'F', child: Text('女')),
-                        ],
-                        onChanged: (val) =>
-                            setState(() => _selectedGender = val!),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 40),
+              const SizedBox(height: 32),
 
               SizedBox(
                 width: double.infinity,

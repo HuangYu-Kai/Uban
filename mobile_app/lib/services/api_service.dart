@@ -15,8 +15,6 @@ class ApiService {
     required String email,
     required String password,
     required String role,
-    String gender = 'M',
-    int age = 20,
   }) async {
     final response = await http.post(
       Uri.parse('$baseUrl/auth/register'),
@@ -26,8 +24,6 @@ class ApiService {
         'email': email,
         'password': password,
         'role': role,
-        'gender': gender,
-        'age': age,
       }),
     );
     return jsonDecode(response.body);

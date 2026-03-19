@@ -82,3 +82,19 @@ class FamilyMessage(db.Model):
     content = db.Column(db.Text, nullable=False)
     is_read = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class CallRecord(db.Model):
+    """通話紀錄：用於追蹤視訊通話狀態與歷史"""
+    __tablename__ = 'call_record'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    call_id = db.Column(db.String(64), unique=True, nullable=False) # UUID
+    room_id = db.Column(db.String(64), nullable=False)
+    caller_id = db.Column(db.Integer, db.ForeignKey('user_account_data.user_id'), nullable=False)
+    callee_id = db.Column(db.Integer, db.ForeignKey('user_account_data.user_id'), nullable=True)
+    start_time = db.Column(db.DateTime, default=datetime.utcnow)
+    end_time = db.Column(db.DateTime, nullable=True)
+    status = db.Column(db.String(20), default='ringing') # 'ringing', 'connected', 'missed', 'rejected', 'ended'
+    
+    # 關聯
+    caller = db.relationship('UserAccountData', foreign_keys=[caller_id])
+    callee = db.relationship('UserAccountData', foreign_keys=[callee_id])

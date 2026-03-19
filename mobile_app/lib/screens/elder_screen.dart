@@ -12,12 +12,14 @@ class ElderScreen extends StatefulWidget {
   final String roomId;
   final bool isCCTVMode;
   final String deviceName;
+  final bool autoCall; // 新增參數
 
   const ElderScreen({
     super.key,
     required this.roomId,
     this.isCCTVMode = false,
     this.deviceName = 'Elder Device',
+    this.autoCall = false,
   });
 
   @override
@@ -43,6 +45,14 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     pendingAcceptedCall.addListener(_onPendingCallChanged);
 
     _initElderMode();
+
+    if (widget.autoCall) {
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted && !_isInCall) {
+          _makeCall();
+        }
+      });
+    }
   }
 
   Future<void> _checkPermissions() async {
@@ -188,6 +198,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     _signaling.connect(
       widget.roomId, 
       'elder', 
+      userId: int.tryParse(widget.roomId), // 將 roomId 解析為 int userId
       deviceName: widget.deviceName,
       deviceMode: widget.isCCTVMode ? 'cctv' : 'comm'
     );
@@ -346,9 +357,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
           // 在 UI 渲染時也檢查一次，確保不會漏掉
           return Stack(
             children: [
-              if (widget.isCCTVMode)
-                Positioned.fill(child: Container(color: Colors.black, child: RTCVideoView(_localRenderer, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover)))
-              else
+                // 無論是否為 CCTV 模式，只要有遠端串流就顯示雙向畫面，達成「雙向視訊」
                 Stack(children: [
                   Positioned.fill(child: Container(color: Colors.black87, child: _remoteRenderer.srcObject != null ? RTCVideoView(_remoteRenderer, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover) : Center(child: Text(_status, style: const TextStyle(color: Colors.white, fontSize: 20))))),
                   Positioned(right: 20, top: 20, width: 100, height: 150, child: Container(decoration: BoxDecoration(border: Border.all(color: Colors.white)), child: RTCVideoView(_localRenderer, mirror: true))),

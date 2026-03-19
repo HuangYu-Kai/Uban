@@ -1,11 +1,12 @@
 // lib/screens/video_call_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/signaling.dart';
 
 class VideoCallScreen extends StatefulWidget {
   final String roomId;
-  final String targetSocketId;
+  final String? targetSocketId;
   final bool isIncomingCall;
   final bool autoStart;
   final bool isEmergency;
@@ -13,7 +14,7 @@ class VideoCallScreen extends StatefulWidget {
   const VideoCallScreen({
     super.key,
     required this.roomId,
-    required this.targetSocketId,
+    this.targetSocketId,
     this.isIncomingCall = false,
     this.autoStart = false,
     this.isEmergency = false,
@@ -24,7 +25,6 @@ class VideoCallScreen extends StatefulWidget {
 }
 
 class _VideoCallScreenState extends State<VideoCallScreen> {
-  // ★ 獨立的 Signaling 實例，不與 Dashboard 共用，避免狀態汙染
   final Signaling _signaling = Signaling();
   final RTCVideoRenderer _localRenderer = RTCVideoRenderer();
   final RTCVideoRenderer _remoteRenderer = RTCVideoRenderer();
@@ -41,34 +41,45 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     await _remoteRenderer.initialize();
 
     _signaling.onAddRemoteStream = ((stream) {
-      if (mounted) setState(() { _remoteRenderer.srcObject = stream; _inCall = true; });
+      if (mounted) {
+        setState(() {
+          _remoteRenderer.srcObject = stream;
+          _inCall = true;
+        });
+      }
     });
     _signaling.onLocalStream = ((stream) {
       if (mounted) setState(() => _localRenderer.srcObject = stream);
     });
 
-    // ★ 關鍵：在通話畫面中收到 offer 直接接聽，不觸發 CallKit 5 秒阻擋
     _signaling.onIncomingCall = (callerId, callType) async => true;
 
-    // 對方掛斷 → 退出頁面
     _signaling.onCallEnded = () {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("對方已結束通話")),
+          const SnackBar(content: Text("通話已結束")),
         );
         Navigator.pop(context);
       }
     };
 
     await _signaling.openUserMedia(_localRenderer);
-    // ★ 用自己的 socket 連線，role='family'，不干擾 Dashboard 的監聽 socket
-    _signaling.connect(widget.roomId, 'family', deviceName: '家屬端');
+
+    // ★ 自動讀取使用者 ID 與名稱
+    final prefs = await SharedPreferences.getInstance();
+    final int? userId = prefs.getInt('caregiver_id');
+    final String userName = prefs.getString('caregiver_name') ?? '家屬端';
+
+    _signaling.connect(
+      widget.roomId, 
+      'family', 
+      userId: userId, 
+      deviceName: userName
+    );
 
     if (widget.isIncomingCall) {
-      // 接聽模式：等 socket 連線後通知長輩發送 Offer
-      _signaling.sendCallAccept(widget.targetSocketId);
+      _signaling.sendCallAccept(widget.targetSocketId!);
     } else if (widget.autoStart) {
-      // 自動發起模式：因為已經事先彈出 CallKit 被接聽，或屬於緊急通話，直接建立連線
       Future.delayed(const Duration(milliseconds: 500), () {
         if (mounted) {
           _signaling.createOffer(targetId: widget.targetSocketId, isEmergency: widget.isEmergency);
@@ -79,8 +90,6 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
 
   @override
   void dispose() {
-    // ★ Do NOT call _signaling.dispose() because it's a Singleton.
-    // Instead, just hang up the peer connection and stop media.
     _signaling.hangUp();
     _signaling.onAddRemoteStream = null;
     _signaling.onCallEnded = null;
@@ -124,25 +133,9 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                if (!widget.isIncomingCall && !widget.autoStart) ...[
-                  FloatingActionButton(
-                    heroTag: "call",
-                    backgroundColor: Colors.green,
-                    child: const Icon(Icons.call),
-                    onPressed: () => _signaling.createOffer(
-                        targetId: widget.targetSocketId, isEmergency: false),
-                  ),
-                  FloatingActionButton(
-                    heroTag: "emer",
-                    backgroundColor: Colors.red,
-                    child: const Icon(Icons.warning),
-                    onPressed: () => _signaling.createOffer(
-                        targetId: widget.targetSocketId, isEmergency: true),
-                  ),
-                ],
                 FloatingActionButton(
                   heroTag: "end",
-                  backgroundColor: Colors.grey,
+                  backgroundColor: Colors.red,
                   child: const Icon(Icons.call_end),
                   onPressed: () => Navigator.pop(context),
                 ),

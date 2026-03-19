@@ -2,17 +2,36 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../identification_screen.dart';
+import '../elder_screen.dart';
 
 class ElderProfileTab extends StatefulWidget {
+  final int userId;
   final String userName;
 
-  const ElderProfileTab({super.key, required this.userName});
+  const ElderProfileTab({
+    super.key,
+    required this.userId,
+    required this.userName,
+  });
 
   @override
   State<ElderProfileTab> createState() => _ElderProfileTabState();
 }
 
 class _ElderProfileTabState extends State<ElderProfileTab> {
+  void _handleCall() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ElderScreen(
+          roomId: widget.userId.toString(),
+          deviceName: widget.userName,
+          autoCall: true, // 新增參數，讓 ElderScreen 自動呼叫
+        ),
+      ),
+    );
+  }
+
   void _handleLogout() {
     showDialog(
       context: context,
@@ -68,7 +87,7 @@ class _ElderProfileTabState extends State<ElderProfileTab> {
             const SizedBox(height: 40),
             CircleAvatar(
               radius: 60,
-              backgroundColor: const Color(0xFF59B294).withValues(alpha: 0.1),
+              backgroundColor: const Color(0xFF59B294).withOpacity(0.1),
               child: const Icon(
                 Icons.person_rounded,
                 size: 80,
@@ -90,8 +109,37 @@ class _ElderProfileTabState extends State<ElderProfileTab> {
               style: GoogleFonts.notoSansTc(fontSize: 18, color: Colors.grey),
             ),
             const Spacer(),
+            // 呼叫家人按鈕
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 40),
+              padding: const EdgeInsets.symmetric(horizontal: 40),
+              child: SizedBox(
+                width: double.infinity,
+                height: 70,
+                child: ElevatedButton.icon(
+                  onPressed: _handleCall,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF59B294),
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                  ),
+                  icon: const Icon(Icons.call_rounded, size: 28),
+                  label: Text(
+                    '呼叫家人',
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            // 登出按鈕
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 40),
               child: SizedBox(
                 width: double.infinity,
                 height: 70,
