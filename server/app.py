@@ -8,6 +8,8 @@ from firebase_admin import credentials, messaging
 import os
 import uuid
 from dotenv import load_dotenv
+from datetime import datetime
+from models import CallRecord
 
 # 引入路由
 from routes.auth import auth_bp
@@ -98,6 +100,31 @@ def get_elder_data():
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+# --- [API] 獲取通話紀錄 ---
+@app.route('/api/call_history', methods=['GET'])
+def get_call_history():
+    room_id = request.args.get('room_id')
+    if not room_id:
+        return jsonify({'status': 'error', 'message': 'Missing room_id'}), 400
+
+    try:
+        records = CallRecord.query.filter_by(room_id=room_id).order_by(CallRecord.start_time.desc()).limit(50).all()
+        history = []
+        for r in records:
+            history.append({
+                'call_id': r.call_id,
+                'caller_id': r.caller_id,
+                'callee_id': r.callee_id,
+                'start_time': r.start_time.isoformat() if r.start_time else None,
+                'end_time': r.end_time.isoformat() if r.end_time else None,
+                'status': r.status,
+                'caller_name': r.caller.user_name if r.caller else "未知",
+                'callee_name': r.callee.user_name if r.callee else "未知"
+            })
+        return jsonify({'status': 'success', 'history': history})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 # --- [Socket] 信令邏輯 ---
 
 @socketio.on('join')
@@ -111,11 +138,13 @@ def on_join(data):
 
     if room:
         if role == 'elder' and room in rooms_manager:
+            sids_to_remove = []
             for existing_sid, info in rooms_manager[room].items():
-                if info['role'] == 'elder' and info['deviceName'] == device_name:
-                    print(f"⛔ Join Failed: Name '{device_name}' exists in room {room}")
-                    emit('join-failed', {'message': f'名稱 "{device_name}" 已被使用，請更換名稱'}, to=sid)
-                    return 
+                if info['role'] == 'elder' and info['deviceName'] == device_name and existing_sid != sid:
+                    print(f"⚠️ Conflict detected: Removing old session {existing_sid} for {device_name}")
+                    sids_to_remove.append(existing_sid)
+            for old_sid in sids_to_remove:
+                del rooms_manager[room][old_sid]
 
         join_room(room)
         
@@ -124,11 +153,13 @@ def on_join(data):
         if room not in room_fcm_tokens:
             room_fcm_tokens[room] = {}
         
+        user_id = data.get('userId') # 從客戶端傳來的資料庫 ID
         rooms_manager[room][sid] = {
             'role': role,
             'deviceName': device_name,
             'deviceMode': device_mode,
-            'fcmToken': fcm_token
+            'fcmToken': fcm_token,
+            'userId': user_id # 儲存資料庫 ID 綁定到 SID
         }
 
         if fcm_token:
@@ -224,8 +255,25 @@ def on_call_request(data):
     target_id = data.get('targetId')
     call_id = str(uuid.uuid4())
 
-    print(f"📡 [Call Request] From: {sid} In: {room} -> Target: {target_id}")
+    print(f"📡 [Call Request] From: {sid} In: {room} -> Target: {target_id} (CallId: {call_id})")
     
+    # [CRUD] 建立通話紀錄
+    try:
+        caller_user_id = data.get('callerUserId') or rooms_manager.get(room, {}).get(sender_id, {}).get('userId')
+        if caller_user_id:
+            new_call = CallRecord(
+                call_id=call_id,
+                room_id=room,
+                caller_id=int(caller_user_id),
+                status='ringing'
+            )
+            db.session.add(new_call)
+            db.session.commit()
+            print(f"📝 Call record created: {call_id}")
+    except Exception as e:
+        print(f"⚠️ Failed to create call record: {e}")
+        db.session.rollback()
+
     if room in rooms_manager:
         for target_sid, info in rooms_manager[room].items():
             if info.get('role') == target_role:
@@ -273,6 +321,16 @@ def on_cancel_call(data):
                         messaging.send(message)
                 except Exception: pass
 
+    # [CRUD] 更新為未接
+    if call_id:
+        try:
+            record = CallRecord.query.filter_by(call_id=call_id).first()
+            if record:
+                record.status = 'missed'
+                record.end_time = datetime.utcnow()
+                db.session.commit()
+        except Exception: pass
+
 @socketio.on('emergency-call')
 def on_emergency_call(data):
     room = data.get('room')
@@ -306,12 +364,45 @@ def on_call_accept(data):
     sid = request.sid
     target_id = data.get('targetId')
     call_id = data.get('callId')
+    print(f"📞 [Call Accept] {sid} accepted for Target: {target_id} (CallId: {call_id})")
+    
+    # [CRUD] 更新通話紀錄狀態為已接聽
+    if call_id:
+        try:
+            record = CallRecord.query.filter_by(call_id=call_id).first()
+            if record:
+                # 獲取接聽者的 userId
+                accepter_user_id = None
+                for rm in rooms_manager.values():
+                    if sid in rm:
+                        accepter_user_id = rm[sid].get('userId')
+                        break
+                
+                if accepter_user_id:
+                    record.callee_id = int(accepter_user_id)
+                record.status = 'connected'
+                db.session.commit()
+        except Exception as e:
+            print(f"⚠️ Failed to update call accept: {e}")
+
     emit('call-accept', {'accepterId': sid, 'callId': call_id}, to=target_id)
 
 @socketio.on('call-busy')
 def on_call_busy(data):
     target_id = data.get('targetId')
     call_id = data.get('callId')
+    print(f"🚫 Call Busy from {request.sid}, notifying {target_id} (CallId: {call_id})")
+
+    # [CRUD] 更新為拒絕
+    if call_id:
+        try:
+            record = CallRecord.query.filter_by(call_id=call_id).first()
+            if record:
+                record.status = 'rejected'
+                record.end_time = datetime.utcnow()
+                db.session.commit()
+        except Exception: pass
+
     emit('call-busy', {'targetId': request.sid, 'callId': call_id}, to=target_id)
 
 @socketio.on('offer')
@@ -338,7 +429,21 @@ def on_candidate(data):
 def on_end_call(data):
     target = data.get('targetId')
     room = data.get('room')
-    if target: emit('end-call', {'room': room}, to=target)
+    call_id = data.get('callId')
+    
+    # [CRUD] 更新通話結束時間
+    if call_id:
+        try:
+            record = CallRecord.query.filter_by(call_id=call_id).first()
+            if record:
+                record.status = 'ended'
+                record.end_time = datetime.utcnow()
+                db.session.commit()
+                print(f"🏁 Call record ended: {call_id}")
+        except Exception: pass
+
+    if target: 
+        emit('end-call', {'room': room}, to=target)
 
 @socketio.on('delete-device')
 def on_delete_device(data):

@@ -107,54 +107,65 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '早安！',
-              style: GoogleFonts.notoSansTc(
-                fontSize: 48,
-                fontWeight: FontWeight.w900,
-                color: const Color(0xFF1E293B),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '早安！',
+                style: GoogleFonts.notoSansTc(
+                  fontSize: 48,
+                  fontWeight: FontWeight.w900,
+                  color: const Color(0xFF1E293B),
+                ),
               ),
-            ),
-            const SizedBox(height: 4),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFEF3C7),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.wb_sunny_rounded,
-                    color: Colors.orange,
-                    size: 16,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    '超級會員',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 14,
-                      color: Colors.orange[800],
-                      fontWeight: FontWeight.w600,
+              const SizedBox(height: 4),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFEF3C7),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min, // ★ 避免 Row 撐開
+                  children: [
+                    const Icon(
+                      Icons.wb_sunny_rounded,
+                      color: Colors.orange,
+                      size: 16,
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 4),
+                    Flexible( // ★ 避免文字過長導致 Overflow
+                      child: Text(
+                        '超級會員',
+                        style: GoogleFonts.notoSansTc(
+                          fontSize: 14,
+                          color: Colors.orange[800],
+                          fontWeight: FontWeight.w600,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
         CircleAvatar(
           radius: 35,
-          backgroundImage: const NetworkImage(
-            'https://i.pravatar.cc/150?u=elder',
-          ), // Mock
-          child: Container(
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 3),
+          backgroundColor: Colors.white,
+          child: ClipOval(
+            child: Image.network(
+              'https://i.pravatar.cc/150?u=elder',
+              fit: BoxFit.cover,
+              width: 70,
+              height: 70,
+              errorBuilder: (context, error, stackTrace) => const Icon(
+                Icons.person,
+                size: 40,
+                color: Color(0xFF59B294),
+              ),
             ),
           ),
         ),
