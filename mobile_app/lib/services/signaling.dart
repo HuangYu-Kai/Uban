@@ -58,19 +58,27 @@ class Signaling {
     'iceServers': [{'urls': 'stun:stun.l.google.com:19302'}]
   };
 
+  final Map<String, dynamic> _constraints = {
+    'mandatory': {
+      'OfferToReceiveAudio': true,
+      'OfferToReceiveVideo': true,
+    },
+    'optional': [],
+  };
+
   void connect(String roomId, String role, {int? userId, String deviceName = 'Unknown', String deviceMode = 'comm', String? fcmToken}) {
     _currentRoomId = roomId;
     _userId = userId;
 
     if (socket != null && socket!.connected) {
       debugPrint("♻️ Reusing existing socket connection. Joining room $roomId...");
-      _emitJoin(roomId, role, deviceName, deviceMode, fcmToken: fcmToken);
+      _asyncJoin(roomId, role, deviceName, deviceMode, fcmToken: fcmToken);
       return;
     }
 
     debugPrint("🔌 Creating new socket connection...");
     socket = io.io(serverUrl, io.OptionBuilder()
-      .setTransports(['websocket', 'polling']) // 允許在 WebSocket 不可用時降級為 polling
+      .setTransports(['websocket', 'polling'])
       .disableAutoConnect()
       .build()
     );
@@ -79,16 +87,28 @@ class Signaling {
     socket!.connect();
   }
 
+  Future<void> _asyncJoin(String roomId, String role, String deviceName, String deviceMode, {int? userId, String? fcmToken}) async {
+    String? effectiveToken = fcmToken;
+    if (effectiveToken == null && !kIsWeb) {
+      try {
+        effectiveToken = await FirebaseMessaging.instance.getToken();
+      } catch (e) {
+        debugPrint("⚠️ Failed to auto-capture FCM Token: $e");
+      }
+    }
+    _emitJoin(roomId, role, deviceName, deviceMode, userId: userId ?? _userId, fcmToken: effectiveToken);
+  }
+
   void _registerSocketListeners(String roomId, String role, String deviceName, String deviceMode, String? fcmToken) {
     socket!.onConnectError((err) => debugPrint('❌ Socket Connect Error: $err (Server: $serverUrl)'));
     socket!.onError((err) => debugPrint('❌ Socket Error: $err'));
 
-    socket!.onConnect((_) {
+    socket!.onConnect((_) async {
       debugPrint('✅ Socket 連線成功 (SID: ${socket!.id})');
-      _emitJoin(roomId, role, deviceName, deviceMode, userId: _userId, fcmToken: fcmToken);
+      _asyncJoin(roomId, role, deviceName, deviceMode, fcmToken: fcmToken);
       
       for (var pendingRoom in _pendingRooms) {
-        _emitJoin(pendingRoom, 'family', 'Dashboard_Listener', 'listener');
+        _asyncJoin(pendingRoom, 'family', 'Dashboard_Listener', 'listener', fcmToken: fcmToken);
       }
       _pendingRooms.clear();
     });
@@ -117,6 +137,7 @@ class Signaling {
 
     // 對方接聽監聽
     socket!.on('call-accept', (data) {
+      debugPrint("📞 [Signaling] Received call-accept (SenderId: ${data['accepterId']}, CallId: ${data['callId']})");
       _peerSocketId = data['accepterId'];  
       if (onCallAcceptedByRemote != null) onCallAcceptedByRemote!(data['accepterId'], data['callId']);
     });
@@ -134,7 +155,7 @@ class Signaling {
     socket!.on('offer', (data) async {
       final senderId = data['senderId'];
       final callId = data['callId'];
-      debugPrint('📩 [Signaling] Received Offer from $senderId (CallId: $callId)');
+      debugPrint('📩 [Signaling] RECEIVED OFFER from $senderId (CallId: $callId)');
       _peerSocketId = senderId;
       _candidateQueue.clear();
 
@@ -167,8 +188,9 @@ class Signaling {
     });
 
     socket!.on('answer', (data) async {
+      debugPrint('📩 [Signaling] RECEIVED ANSWER from ${data['senderId']}');
       try {
-        _peerSocketId = data['senderId']; // 關鍵：更新對方的 Socket ID 才能換 Candidate
+        _peerSocketId = data['senderId'];
         var description = RTCSessionDescription(data['sdp'], data['type']);
         await peerConnection?.setRemoteDescription(description);
         await _processCandidateQueue();
@@ -178,11 +200,20 @@ class Signaling {
     });
 
     socket!.on('candidate', (data) async {
-      var candidate = RTCIceCandidate(data['candidate'], data['sdpMid'], data['sdpMLineIndex']);
-      if (peerConnection != null && await peerConnection?.getRemoteDescription() != null) {
-        await peerConnection?.addCandidate(candidate);
-      } else {
-        _candidateQueue.add(candidate);
+      debugPrint('🧊 [Signaling] RECEIVED CANDIDATE from ${data['senderId'] ?? 'unknown'}');
+      try {
+        var candidate = RTCIceCandidate(
+          data['candidate'],
+          data['sdpMid'],
+          data['sdpMLineIndex'],
+        );
+        if (peerConnection != null) {
+          await peerConnection!.addCandidate(candidate);
+        } else {
+          _candidateQueue.add(candidate);
+        }
+      } catch (e) {
+        debugPrint("❌ Candidate Error: $e");
       }
     });
 
@@ -379,7 +410,7 @@ class Signaling {
       var description = RTCSessionDescription(data['sdp'], data['type']);
       await peerConnection?.setRemoteDescription(description);
       await _processCandidateQueue();
-      var answer = await peerConnection?.createAnswer();
+      var answer = await peerConnection?.createAnswer(_constraints);
       await peerConnection?.setLocalDescription(answer!);
       socket!.emit('answer', {
         'room': _currentRoomId,
@@ -405,6 +436,14 @@ class Signaling {
     
     peerConnection!.onIceConnectionState = (state) {
       debugPrint("❄️ ICE Connection State: $state");
+    };
+
+    peerConnection!.onConnectionState = (state) {
+      debugPrint("🔌 [Signaling] Connection State: $state");
+    };
+    
+    peerConnection!.onIceConnectionState = (state) {
+      debugPrint("🧊 [Signaling] ICE Connection State: $state");
     };
 
     peerConnection!.onIceCandidate = (candidate) {
@@ -439,19 +478,23 @@ class Signaling {
       peerConnection = null;
     }
     _candidateQueue.clear();
+    debugPrint("🚀 [Signaling] Creating WebRTC Offer...");
     _peerSocketId = targetId;
     await _createPeerConnection(useLocalStream: true);
-    RTCSessionDescription offer = await peerConnection!.createOffer();
+    
+    // 建立 Offer 時帶入 constraints，確保雙向通訊
+    RTCSessionDescription offer = await peerConnection!.createOffer(_constraints);
     await peerConnection!.setLocalDescription(offer);
     
-    var payload = {
-      'room': _currentRoomId, 
-      'type': 'offer',
-      'sdp': offer.sdp,
-      'isEmergency': isEmergency,
-    };
-    if (targetId != null) payload['targetId'] = targetId;
-    socket!.emit('offer', payload);
+    debugPrint("📤 [Signaling] Emitting offer to $targetId");
+    socket!.emit('offer', {
+        'room': _currentRoomId,
+        'targetId': targetId,
+        'senderId': socket!.id,
+        'type': 'offer',
+        'sdp': offer.sdp,
+        'isEmergency': isEmergency
+    });
   }
 
   Future<void> startMonitoring(String targetId) async {

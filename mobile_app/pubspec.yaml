@@ -63,6 +63,7 @@ dependencies:
   uuid: ^4.5.3
   firebase_core: ^4.5.0
   firebase_messaging: ^16.1.2
+  firebase_analytics: any
   android_intent_plus: ^5.0.0
 #webrtc還沒到測試最終版，先不整合
   # GPS 定位與地圖（OpenStreetMap 免費，無需 API Key）
