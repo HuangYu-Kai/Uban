@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:flutter_callkit_incoming/entities/entities.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -30,8 +31,8 @@ final StreamController<String> callKitDeclineStream =
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   try {
+    // ⚠ 重要：背景 Isolate 不要執行複雜的 SDK 初始化 (如 LineSDK)，避免導致崩潰
     await Firebase.initializeApp();
-    await LineSDK.instance.setup("2009500424");
   } catch (e) {
     debugPrint("⚠️ Background Firebase initialization failed: $e");
     return;
@@ -106,6 +107,13 @@ void main() async {
       debugPrint("🌐 Web platform detected. Skipping Firebase if no options.");
     } else {
       await Firebase.initializeApp();
+      // Initialize Firebase Analytics
+      try {
+        FirebaseAnalytics.instance.logAppOpen();
+      } catch (e) {
+        debugPrint("⚠️ Firebase Analytics initialization failed: $e");
+      }
+      
       // Initialize LINE SDK
       await LineSDK.instance.setup("2009500424").then((_) {
         debugPrint("🟢 LineSDK Initialized in main()");
@@ -132,17 +140,36 @@ class _MyAppState extends State<MyApp> {
   @override
   void initState() {
     super.initState();
+    isAppReady = true; // ★ 標記 APP 已就緒，允許導航
     if (!kIsWeb) {
       _setupCallKitListener();
+      _setupForegroundMessaging(); // ★ 新增：背景推播之外，前景也要監聽
     }
     _setupSignalingListener();
+  }
+
+  // ★ Foreground FCM Listener: 當手機收到與 Signaling 同步的推播時，也能彈窗
+  void _setupForegroundMessaging() {
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      debugPrint("📩 [Main] Foreground message received: ${message.data}");
+      if (message.data['type'] == 'call-request') {
+        final roomId = message.data['roomId'];
+        final senderId = message.data['senderId'];
+        final callId = message.data['callId'];
+        
+        debugPrint("🔔 [FCM-Backup] Call Request from $senderId in room $roomId (ID: $callId)");
+        // 備援：如果 Socket 沒反應，這裡可以考慮手動彈窗。
+        // 為避免重複，我們目前僅作 Log 紀錄背景同步狀態。
+      }
+    });
   }
 
   void _setupSignalingListener() {
     sig.Signaling().onCallRequest = (roomId, senderId, callId) {
       // 根據角色決定是否彈出通話視窗或處理
 
-      debugPrint("🔔 [Main] Foreground Call Request: $roomId from $senderId");
+      debugPrint("🔔 [Main] Foreground Call Request: Room $roomId from $senderId (CallId: $callId)");
+      debugPrint("🛠️ Current App State: Ready=$isAppReady, Role=$appRole");
 
       final context = navigatorKey.currentContext;
       if (context != null) {
@@ -170,6 +197,8 @@ class _MyAppState extends State<MyApp> {
             ],
           ),
         );
+      } else {
+        debugPrint("⚠️ [Main] Cannot show dialog: navigatorKey.currentContext is NULL!");
       }
     };
   }
@@ -282,6 +311,7 @@ class _MyAppState extends State<MyApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: navigatorKey, // ★ 關鍵：必須綁定 navigatorKey，否則無法顯示彈窗或導航
       title: 'UBan',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
