@@ -37,56 +37,54 @@ def distribute_appearances():
     try:
         distributed = 0
         now = datetime.utcnow()
-        endtime = now + timedelta(days=180)
         
         for elder in elders:
-            random_appearance = random.choice(appearances)
+            # 💡 依照使用者定義的 3 步驟順序：
             
-            # 獲取目前的步數，如果為 None 則設為 0
-            # 根據使用者要求：如果 step_total 是 0，不要將 gawa_size 修改成 1
-            current_steps = elder.step_total if elder.step_total is not None else 0
+            # 【一：備份目前狀態至歷史紀錄 (GetAppearanceList)】
+            # 將目前 `elder_profile` 的狀態寫入歷史，包括當前步數與目前的造型開始時間
+            if elder.gawa_id:
+                history_entry = GetAppearanceList(
+                    elder_id=elder.elder_id,
+                    gawa_id=elder.gawa_id,
+                    feed_starttime=elder.feed_starttime or elder.create_ts, # 使用目前的開始時間，若無則用建立時間
+                    feed_endtime=now, # 結束時間即為目前執行動作的時間
+                    gawa_size=elder.step_total if elder.step_total is not None else 0
+                )
+                db.session.add(history_entry)
             
-            print(f"Processing elder {elder.elder_id}: current steps = {current_steps}")
-            
-            # 1. 不再刪除現有造型紀錄！這是一個收集歷史，不能刪除。
-            owned_gawas = GetAppearanceList.query.filter_by(elder_id=elder.elder_id).all()
-            owned_gawa_ids = [app.gawa_id for app in owned_gawas]
-            
-            # 找出尚未擁有的外觀
-            available_appearances = [a for a in appearances if a.gawa_id not in owned_gawa_ids]
-            
-            if not available_appearances:
-                print(f"Elder {elder.elder_id} already has all appearances!")
-                continue # 若已經收集完所有，則跳過
-                
-            random_appearance = random.choice(available_appearances)
-            
-            # 2. 建立新的紀錄，紀錄目前的步數 (若是 0 就紀錄 0)
-            new_entry = GetAppearanceList(
-                elder_id=elder.elder_id,
-                gawa_id=random_appearance.gawa_id,
-                feed_starttime=now,
-                feed_endtime=GLOBAL_RESET_DATE, # 修正: 設定為全域變數
-                gawa_size=current_steps
-            )
-            db.session.add(new_entry)
-            
-            # 3. 重置該長輩的步數
+            # 【二：重置狀態】
             elder.step_total = 0
+            # (邏輯上下一步會直接覆蓋 feed_starttime，故不需顯式刪除)
+            
+            # 【三：分配新造型並設定新開始時間】
+            # 獲取尚未擁有的外觀 (若已經全買了，則從全部裡面挑)
+            owned_gawas = GetAppearanceList.query.filter_by(elder_id=elder.elder_id).all()
+            owned_ids = [g.gawa_id for g in owned_gawas]
+            available = [a for a in appearances if a.gawa_id not in owned_ids]
+            
+            if not available:
+                # 若全部都擁有過，則隨機從所有造型裡挑一個
+                new_appearance = random.choice(appearances)
+            else:
+                new_appearance = random.choice(available)
+            
+            elder.gawa_id = new_appearance.gawa_id
+            elder.feed_starttime = now
+            
             distributed += 1
             
         db.session.commit()
-        print(f"Successfully committed changes for {distributed} elders.")
+        print(f"Successfully processed distribution for {distributed} elders.")
         
         return jsonify({
             "status": "success",
             "message": f"Distributed appearances to {distributed} elders",
-            "start_time": now.isoformat(),
-            "end_time": endtime.isoformat()
+            "timestamp": now.isoformat()
         })
     except Exception as e:
         db.session.rollback()
-        print(f"❌ Error in distribute_appearances: {str(e)}")
+        print(f"Error in distribute_appearances: {str(e)}")
         import traceback
         traceback.print_exc()
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -97,29 +95,35 @@ def get_leaderboard(elder_id):
     建立一個專屬於該elder的排行榜，排行榜的排序依照elder_profile的step_total做降冪排序。
     依照elder_fellowship_data做一個依照不同elder_id的之間的交友關係
     """
-    # Find all successful fellowships for this elder
-    relations = ElderFellowshipData.query.filter(
-        ((ElderFellowshipData.requester_id == elder_id) | (ElderFellowshipData.addressee_id == elder_id)) &
-        (ElderFellowshipData.status == 'success')
-    ).all()
-    
-    friend_ids = {elder_id}
-    for rel in relations:
-        friend_ids.add(rel.requester_id)
-        friend_ids.add(rel.addressee_id)
-    
-    # Query ElderProfile for these IDs and sort by step_total descending
-    leaderboard_data = ElderProfile.query.filter(ElderProfile.elder_id.in_(friend_ids)).order_by(ElderProfile.step_total.desc()).all()
-    
-    result = []
-    for entry in leaderboard_data:
-        result.append({
-            "elder_id": entry.elder_id,
-            "step_total": entry.step_total,
-            "persona": entry.ai_persona
-        })
+    try:
+        # Find all successful fellowships for this elder
+        relations = ElderFellowshipData.query.filter(
+            ((ElderFellowshipData.requester_id == elder_id) | (ElderFellowshipData.addressee_id == elder_id)) &
+            (ElderFellowshipData.status == 'success')
+        ).all()
         
-    return jsonify(result)
+        friend_ids = {elder_id}
+        for rel in relations:
+            friend_ids.add(rel.requester_id)
+            friend_ids.add(rel.addressee_id)
+        
+        # Query ElderProfile for these IDs and sort by step_total descending
+        leaderboard_data = ElderProfile.query.filter(ElderProfile.elder_id.in_(friend_ids)).order_by(ElderProfile.step_total.desc()).all()
+        
+        result = []
+        for entry in leaderboard_data:
+            result.append({
+                "elder_id": entry.elder_id,
+                "elder_name": entry.elder_name, # 💡 加上長輩名稱，以便介面顯示
+                "step_total": entry.step_total if entry.step_total is not None else 0
+            })
+            
+        return jsonify(result)
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @game_logic_bp.route('/check_reset', methods=['POST'])
 def check_reset():
@@ -160,4 +164,20 @@ def check_reset():
     return jsonify({
         "status": "success", 
         "message": f"Successfully cached step_total and reset for {updated_count} elders"
+    })
+@game_logic_bp.route('/elder_status/<string:elder_id>', methods=['GET'])
+def get_elder_status(elder_id):
+    elder = ElderProfile.query.filter_by(elder_id=elder_id).first()
+    if not elder:
+        return jsonify({"status": "error", "message": "Elder not found"}), 404
+        
+    appearance = GawaAppearance.query.get(elder.gawa_id) if elder.gawa_id else None
+    
+    return jsonify({
+        "status": "success",
+        "elder_name": elder.elder_name,
+        "step_total": elder.step_total,
+        "gawa_id": elder.gawa_id,
+        "gawa_name": appearance.gawa_name if appearance else "無",
+        "feed_starttime": elder.feed_starttime.isoformat() if elder.feed_starttime else None
     })

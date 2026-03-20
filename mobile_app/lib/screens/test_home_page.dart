@@ -11,37 +11,29 @@ class TestHomePage extends StatefulWidget {
 
 class _TestHomePageState extends State<TestHomePage> {
   final GameService _gameService = GameService();
-  final TextEditingController _idController = TextEditingController(text: 'E001');
+  final TextEditingController _idController = TextEditingController(text: 'AAAA');
   String _status = '等待操作...';
-
-  Future<void> _handleDistribute() async {
-    final elderId = _idController.text.trim();
-    setState(() => _status = '正在為 $elderId 分配造型...');
-    try {
-      final result = await _gameService.distributeAppearances(elderId: elderId);
-      setState(() => _status = '成功: ${result['message']}');
-    } catch (e) {
-      setState(() => _status = '失敗: $e');
-    }
-  }
+  Map<String, dynamic>? _elderStatus;
 
   Future<void> _handleDistributeAll() async {
     setState(() => _status = '正在為所有長輩分配造型...');
     try {
       final result = await _gameService.distributeAppearances();
       setState(() => _status = '成功: ${result['message']}');
+      _fetchElderStatus(); // 分配完刷新狀態
     } catch (e) {
       setState(() => _status = '失敗: $e');
     }
   }
 
-  Future<void> _handleCheckReset() async {
-    setState(() => _status = '正在檢查重置...');
+  Future<void> _fetchElderStatus() async {
+    final elderId = _idController.text.trim();
+    if (elderId.isEmpty) return;
     try {
-      final result = await _gameService.checkResetStepTotal();
-      setState(() => _status = '結果: ${result['message']}');
+      final status = await _gameService.getElderStatus(elderId);
+      setState(() => _elderStatus = status);
     } catch (e) {
-      setState(() => _status = '失敗: $e');
+      debugPrint('Fetch Status Failed: $e');
     }
   }
 
@@ -49,57 +41,46 @@ class _TestHomePageState extends State<TestHomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('遊戲功能測試主頁'),
+        title: const Text('遊戲測試介面'),
         centerTitle: true,
-        flexibleSpace: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              colors: [Color(0xFF59B294), Color(0xFF338A70)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-          ),
-        ),
+        backgroundColor: Colors.teal,
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(24.0),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text('測試設置', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _idController,
-              decoration: const InputDecoration(
-                labelText: '當前長輩 ID',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.person),
-              ),
-            ),
-            const SizedBox(height: 24),
-            const Text('功能操作', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            ElevatedButton.icon(
-              onPressed: _handleDistribute,
-              icon: const Icon(Icons.person_add_alt_1),
-              label: Text('分配隨機造型給 ID: ${_idController.text}'),
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                backgroundColor: Colors.teal.shade700,
-                foregroundColor: Colors.white,
-              ),
-            ),
+            _buildSectionTitle('管理者功能 (資料維護)'),
             const SizedBox(height: 12),
             ElevatedButton.icon(
               onPressed: _handleDistributeAll,
               icon: const Icon(Icons.auto_awesome),
-              label: const Text('分配隨機造型給所有長輩'),
+              label: const Text('為所有長輩重新分配造型 (重置步數)'),
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
-                backgroundColor: Colors.teal,
+                backgroundColor: Colors.teal.shade700,
                 foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
+            const SizedBox(height: 24),
+            _buildSectionTitle('使用者測試 (依 ID 查詢)'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _idController,
+              decoration: InputDecoration(
+                labelText: '輸入長輩 ID',
+                hintText: '例如: AAAA',
+                border: const OutlineInputBorder(),
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.search),
+                  onPressed: _fetchElderStatus,
+                ),
+              ),
+              onSubmitted: (_) => _fetchElderStatus(),
+            ),
+            const SizedBox(height: 16),
+            if (_elderStatus != null) _buildElderStatusCard(),
             const SizedBox(height: 12),
             ElevatedButton.icon(
               onPressed: () {
@@ -110,44 +91,71 @@ class _TestHomePageState extends State<TestHomePage> {
                 );
               },
               icon: const Icon(Icons.leaderboard),
-              label: const Text('查看專屬排行榜'),
+              label: const Text('查看該長輩的專屬排行榜'),
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
-                backgroundColor: Colors.orange,
+                backgroundColor: Colors.orange.shade700,
                 foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
-            const SizedBox(height: 12),
-            ElevatedButton.icon(
-              onPressed: _handleCheckReset,
-              icon: const Icon(Icons.refresh),
-              label: const Text('手動觸發過期步數重置'),
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                backgroundColor: Colors.blueGrey,
-                foregroundColor: Colors.white,
-              ),
+            const SizedBox(height: 40),
+            _buildStatusConsole(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionTitle(String title) {
+    return Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueGrey));
+  }
+
+  Widget _buildElderStatusCard() {
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            ListTile(
+              leading: const CircleAvatar(backgroundColor: Colors.teal, child: Icon(Icons.person, color: Colors.white)),
+              title: Text('長輩: ${_elderStatus!['elder_name']}'),
+              subtitle: Text('ID: ${_idController.text}'),
             ),
-            const Spacer(),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.grey.shade300),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('系統狀態:', style: TextStyle(fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 4),
-                  Text(_status, style: TextStyle(color: _status.contains('失敗') ? Colors.red : Colors.blue)),
-                ],
-              ),
+            const Divider(),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _buildInfoItem('當前步數', '${_elderStatus!['step_total']}'),
+                _buildInfoItem('當前造型', '${_elderStatus!['gawa_name']}'),
+              ],
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildInfoItem(String label, String value) {
+    return Column(
+      children: [
+        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+        const SizedBox(height: 4),
+        Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.teal)),
+      ],
+    );
+  }
+
+  Widget _buildStatusConsole() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text('系統狀態: $_status', style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic)),
     );
   }
 }
