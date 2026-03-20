@@ -51,7 +51,20 @@ def login():
         return jsonify({'error': 'Email and password required'}), 400
 
     user = User.query.filter_by(user_email=email).first()
-    if not user or not check_password_hash(user.password, password):
+    if not user:
+        return jsonify({'error': 'Invalid email or password'}), 401
+
+    # 兼容舊有明碼密碼 (例如 0000) 與新加密密碼
+    is_password_correct = False
+    try:
+        if check_password_hash(user.password, password):
+            is_password_correct = True
+    except Exception:
+        # 如果不是加密格式，嘗試直接對比 (處理舊資料)
+        if user.password == password:
+            is_password_correct = True
+
+    if not is_password_correct:
         return jsonify({'error': 'Invalid email or password'}), 401
 
     # 檢查是否已配對長輩 (如果是家屬)

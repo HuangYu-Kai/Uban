@@ -36,4 +36,13 @@ class GameService {
       throw Exception('Failed to check reset: ${response.body}');
     }
   }
+
+  Future<Map<String, dynamic>> getElderStatus(String elderId) async {
+    final response = await http.get(Uri.parse('$baseUrl/elder_status/$elderId'));
+    if (response.statusCode == 200) {
+      return json.decode(response.body);
+    } else {
+      throw Exception('Failed to fetch elder status: ${response.body}');
+    }
+  }
 }

@@ -1,5 +1,5 @@
 import os
-import mysql.connector
+import pymysql
 #from pymongo import MongoClient
 from dotenv import load_dotenv
 
@@ -10,44 +10,31 @@ class DatabaseManager:
         self.mongo_client = None
         self.mongo_db = None
         self.mysql_conn = None
-    #先不要MongoDB
-    '''
-    def connect_mongo(self):
-        uri = os.getenv('MONGO_URI')
-        db_name = os.getenv('MONGO_DB_NAME')
-        try:
-            self.mongo_client = MongoClient(uri)
-            self.mongo_db = self.mongo_client[db_name]
-            # 測試連線
-            self.mongo_client.admin.command('ping')
-            print(f"✅ [MongoDB] 連線成功: {uri}")
-        except Exception as e:
-            print(f"❌ [MongoDB] 連線失敗: {e}")
-    '''
+    
     def connect_mysql(self):
         try:
-            self.mysql_conn = mysql.connector.connect(
+            self.mysql_conn = pymysql.connect(
                 host=os.getenv('MYSQL_HOST'),
                 user=os.getenv('MYSQL_USER'),
                 password=os.getenv('MYSQL_PASSWORD'),
                 database=os.getenv('MYSQL_DB_NAME'),
                 port=int(os.getenv('MYSQL_PORT', 3306)),
-                ssl_disabled=True
+                cursorclass=pymysql.cursors.DictCursor,
+                autocommit=True # 自動提交
             )
-            if self.mysql_conn.is_connected():
-                 print(f"✅ [MySQL] 連線成功: {os.getenv('MYSQL_HOST')}")
+            print(f"MySQL Connection Successful: {os.getenv('MYSQL_HOST')}")
         except Exception as e:
-            print(f"❌ [MySQL] 連線失敗: {e}")
-
-    def get_mongo_collection(self, collection_name):
-        if self.mongo_db is None:
-            self.connect_mongo()
-        return self.mongo_db[collection_name]
+            print(f"MySQL Connection Failed: {e}")
 
     def get_mysql_cursor(self):
-        if self.mysql_conn is None or not self.mysql_conn.is_connected():
+        if self.mysql_conn is None:
             self.connect_mysql()
-        return self.mysql_conn.cursor(dictionary=True) # dictionary=True 讓回傳結果變成字典，方便操作
+        try:
+            # 確保連線依然有效
+            self.mysql_conn.ping(reconnect=True)
+        except:
+            self.connect_mysql()
+        return self.mysql_conn.cursor()
 
 
 # 建立全域實體
