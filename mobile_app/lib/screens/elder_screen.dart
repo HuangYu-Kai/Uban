@@ -144,10 +144,15 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     await _localRenderer.initialize();
     await _remoteRenderer.initialize();
 
-    _signaling.onAddRemoteStream = ((stream) {
-      if(mounted) setState(() { _remoteRenderer.srcObject = stream; _status = "通話中"; _isInCall = true; });
+    _signaling.onLocalStream = ((stream) {
+      debugPrint("🤳 [ElderScreen] Local stream set! Tracks: ${stream.getTracks().length}");
+      if (mounted) setState(() => _localRenderer.srcObject = stream);
     });
-    _signaling.onLocalStream = ((stream) => setState(() => _localRenderer.srcObject = stream));
+
+    _signaling.onAddRemoteStream = ((stream) {
+      debugPrint("📺 [ElderScreen] Remote stream added! Tracks: ${stream.getTracks().length}");
+      if (mounted) setState(() { _remoteRenderer.srcObject = stream; _status = "通話中"; _isInCall = true; });
+    });
 
     // 處理加入失敗 (名稱重複)
     _signaling.onJoinFailed = (errorMessage) {
@@ -170,18 +175,6 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
           ),
         );
       }
-    };
-
-    // 如果在前景收到緊急通訊 Socket
-    _signaling.onEmergencyCall = (roomId, senderId, callId) {
-        _handleEmergencyAccept(senderId, callId: callId);
-    };
-
-    // 如果在前景收到一般通訊 Socket
-    _signaling.onCallRequest = (roomId, senderId, callId) {
-        // 在長輩端，一般通話通常是跳出 Dialog，這裡暫時與緊急通話處理邏輯分開，或者視需求自動接聽
-        // 目前暫不處理一般通話主動彈窗 (因為長輩端通常是被動接收)
-        debugPrint("📱 Foreground Call Request from $senderId (Room: $roomId, CallId: $callId)");
     };
 
     // ★★★ 關鍵：家屬接聽後，才發送 Offer (解決影像連線問題) ★★★
@@ -235,6 +228,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
 
     // 背景來的正常通話要求 (會由這支負責彈窗)
     _signaling.onCallRequest = (reqRoomId, reqSenderId, callId) async {
+       debugPrint("🔔 [ElderScreen] Received Call Request from $reqSenderId");
        if (mounted) {
          bool accept = await showDialog<bool>(
           context: context,
@@ -260,6 +254,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
         
         if (accept) {
           setState(() { _status = "連線建立中..."; _isInCall = true; });
+          await _signaling.openUserMedia(_localRenderer); // ★ 確保接聽時攝影機已啟動
           _signaling.sendCallAccept(reqSenderId, callId: callId);
         } else {
           _signaling.sendCallBusy(reqSenderId, callId: callId);
@@ -317,10 +312,13 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     });
 
     _signaling.onIncomingCall = (callerId, callType) async {
-      // 由於一般來電已經在 onCallRequest 那邊彈出視窗且使用者點擊同意了，
-      // 所以這時收到的 Offer 一律放行 (不論是 CCTV、Emergency、或是剛答應的 Normal)
-      setState(() => _isInCall = true);
-      return true; 
+      debugPrint("📞 [ElderScreen] Incoming Offer from $callerId (Type: $callType)");
+      // 如果已接聽 (isInCall) 或是緊急/CCTV，就自動答應 WebRTC Offer
+      if (_isInCall || callType == 'emergency' || widget.isCCTVMode) {
+        if (mounted) setState(() => _isInCall = true);
+        return true; 
+      }
+      return false; 
     };
   }
 
@@ -354,44 +352,151 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text('長輩端 - ${widget.roomId}'),
-        backgroundColor: Colors.orange,
-      ),
+      backgroundColor: Colors.black,
       body: ValueListenableBuilder(
         valueListenable: pendingAcceptedCall,
         builder: (context, pendingCall, _) {
-          // 在 UI 渲染時也檢查一次，確保不會漏掉
           return Stack(
             children: [
-                // 無論是否為 CCTV 模式，只要有遠端串流就顯示雙向畫面，達成「雙向視訊」
-                Stack(children: [
-                  Positioned.fill(child: Container(color: Colors.black87, child: _remoteRenderer.srcObject != null ? RTCVideoView(_remoteRenderer, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover) : Center(child: Text(_status, style: const TextStyle(color: Colors.white, fontSize: 20))))),
-                  Positioned(right: 20, top: 20, width: 100, height: 150, child: Container(decoration: BoxDecoration(border: Border.all(color: Colors.white)), child: RTCVideoView(_localRenderer, mirror: true))),
-                ]),
-              
+              // 1. 全螢幕視訊區塊 (沉浸式)
+              Positioned.fill(
+                child: Container(
+                  color: const Color(0xFF121212),
+                  child: _remoteRenderer.srcObject != null
+                      ? RTCVideoView(
+                          _remoteRenderer,
+                          objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                        )
+                      : Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              if (_isInCall)
+                                const CircularProgressIndicator(color: Colors.orangeAccent),
+                              const SizedBox(height: 24),
+                              Text(
+                                _status,
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                ),
+              ),
+
+              // 2. 本地預覽 (精緻 PIP)
+              Positioned(
+                right: 20,
+                top: MediaQuery.of(context).padding.top + 20,
+                width: 110,
+                height: 160,
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.4),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                    border: Border.all(color: Colors.white24, width: 1.5),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(14),
+                    child: RTCVideoView(_localRenderer, mirror: true, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
+                  ),
+                ),
+              ),
+
+              // 3. CCTV 模式提示
               if (widget.isCCTVMode)
-                 const Positioned(bottom: 30, left: 0, right: 0, child: Center(child: Chip(label: Text("CCTV 運作中"), backgroundColor: Colors.red))),
-    
+                Positioned(
+                  top: MediaQuery.of(context).padding.top + 20,
+                  left: 20,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.redAccent.withOpacity(0.8),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.videocam, color: Colors.white, size: 18),
+                        SizedBox(width: 8),
+                        Text("CCTV 守護中", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ),
+                ),
+
+              // 4. 底部控制列 (大按鈕，便於操作)
               if (!widget.isCCTVMode)
                 Positioned(
-                  bottom: 40, left: 0, right: 0,
+                  bottom: 60,
+                  left: 0,
+                  right: 0,
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       if (!_isInCall)
-                        ElevatedButton.icon(
-                          icon: const Icon(Icons.call, size: 32),
-                          label: const Text("呼叫家人", style: TextStyle(fontSize: 20)),
-                          style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30))),
-                          onPressed: _makeCall,
+                        GestureDetector(
+                          onTap: _makeCall,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 20),
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFF4CAF50), Color(0xFF2E7D32)],
+                              ),
+                              borderRadius: BorderRadius.circular(40),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Colors.black26,
+                                  blurRadius: 10,
+                                  offset: Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: const Row(
+                              children: [
+                                Icon(Icons.call, color: Colors.white, size: 28),
+                                SizedBox(width: 12),
+                                Text(
+                                  "呼叫家人",
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       if (_isInCall)
-                        ElevatedButton.icon(
-                          icon: const Icon(Icons.call_end, size: 32),
-                          label: const Text("掛斷", style: TextStyle(fontSize: 20)),
-                          style: ElevatedButton.styleFrom(backgroundColor: Colors.red, padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30))),
-                          onPressed: _hangUp,
+                        GestureDetector(
+                          onTap: _hangUp,
+                          child: Container(
+                            width: 90,
+                            height: 90,
+                            decoration: const BoxDecoration(
+                              color: Colors.redAccent,
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black26,
+                                  blurRadius: 10,
+                                  offset: Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: const Icon(Icons.call_end, color: Colors.white, size: 48),
+                          ),
                         ),
                     ],
                   ),
