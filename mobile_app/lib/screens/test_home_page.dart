@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/game_service.dart';
 import 'leaderboard_screen.dart';
+import 'admin_appearance_screen.dart';
 
 class TestHomePage extends StatefulWidget {
   const TestHomePage({super.key});
@@ -14,17 +15,6 @@ class _TestHomePageState extends State<TestHomePage> {
   final TextEditingController _idController = TextEditingController(text: 'AAAA');
   String _status = '等待操作...';
   Map<String, dynamic>? _elderStatus;
-
-  Future<void> _handleDistributeAll() async {
-    setState(() => _status = '正在為所有長輩分配造型...');
-    try {
-      final result = await _gameService.distributeAppearances();
-      setState(() => _status = '成功: ${result['message']}');
-      _fetchElderStatus(); // 分配完刷新狀態
-    } catch (e) {
-      setState(() => _status = '失敗: $e');
-    }
-  }
 
   Future<void> _fetchElderStatus() async {
     final elderId = _idController.text.trim();
@@ -53,12 +43,16 @@ class _TestHomePageState extends State<TestHomePage> {
             _buildSectionTitle('管理者功能 (資料維護)'),
             const SizedBox(height: 12),
             ElevatedButton.icon(
-              onPressed: _handleDistributeAll,
-              icon: const Icon(Icons.auto_awesome),
-              label: const Text('為所有長輩重新分配造型 (重置步數)'),
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (context) => const AdminAppearanceScreen()),
+                );
+              },
+              icon: const Icon(Icons.admin_panel_settings),
+              label: const Text('開啟造型管理員介面'),
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
-                backgroundColor: Colors.teal.shade700,
+                backgroundColor: Colors.indigo,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
