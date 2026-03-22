@@ -1,4 +1,5 @@
 // lib/services/signaling.dart
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
@@ -66,6 +67,21 @@ class Signaling {
     'optional': [],
   };
 
+  StreamSubscription<String>? _tokenRefreshSubscription;
+
+  void _setupTokenMonitor() {
+    _tokenRefreshSubscription?.cancel();
+    _tokenRefreshSubscription = FirebaseMessaging.instance.onTokenRefresh.listen((newToken) {
+      debugPrint("🆕 [Signaling] FCM Token Refreshed: ${newToken.substring(0, 10)}...");
+      if (socket != null && socket!.connected && _currentRoomId != null) {
+        socket!.emit('update-fcm-token', {
+          'room': _currentRoomId,
+          'token': newToken,
+        });
+      }
+    });
+  }
+
   void connect(String roomId, String role, {int? userId, String deviceName = 'Unknown', String deviceMode = 'comm', String? fcmToken}) {
     _currentRoomId = roomId;
     _userId = userId;
@@ -85,6 +101,18 @@ class Signaling {
 
     _registerSocketListeners(roomId, role, deviceName, deviceMode, fcmToken);
     socket!.connect();
+    _setupTokenMonitor();
+  }
+
+  void reconnect() {
+    if (_currentRoomId == null || socket == null) return;
+    debugPrint("🔄 [Signaling] Manual Reconnect/Rejoin triggered for room $_currentRoomId");
+    if (!socket!.connected) {
+      socket!.connect();
+    } else {
+      // 如果已經連著，也要重新 emit join 確保伺服器狀態正確
+      _asyncJoin(_currentRoomId!, 'family', 'Reconnected_Device', 'comm'); 
+    }
   }
 
   Future<void> _asyncJoin(String roomId, String role, String deviceName, String deviceMode, {int? userId, String? fcmToken}) async {
@@ -527,24 +555,18 @@ class Signaling {
     if (onLocalStream != null) onLocalStream!(stream);
   }
 
-  void dispose() {
+  void clearSession() {
     stopMedia();
-    peerConnection?.close();
-    peerConnection = null;
+    _closePeerConnection();
     
-    // NOTE: We no longer disconnect the socket here because Signaling is a Singleton.
-    // Screens should just clear their callbacks if they want to stop listening.
+    // 僅清除與「單次通話連線」相關的介面回調
     onAddRemoteStream = null;
     onLocalStream = null;
-    onElderDevicesUpdate = null;
-    onIncomingCall = null;
-    onCallEnded = null;
-    onJoinFailed = null; // Added this line as it was missing in the provided snippet
-    onCallRequest = null;
-    onCancelCall = null;
-    onEmergencyCall = null;
     onCallAcceptedByRemote = null;
     onCallBusy = null;
+    onCallEnded = null;
+    
+    debugPrint("🧹 [Signaling] Session cleared. Persistent listeners (CallRequest, etc.) remain active.");
   }
 
   void hangUp({bool disconnectSocket = false, bool disposeLocalStream = true}) {

@@ -99,7 +99,7 @@ class _CameraScreenState extends State<CameraScreen> {
   @override
   void dispose() {
     WakelockPlus.disable();
-    _signaling.dispose();
+    _signaling.clearSession();
     _localRenderer.dispose();
     _remoteRenderer.dispose();
     super.dispose();

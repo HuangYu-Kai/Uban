@@ -136,19 +136,53 @@ class MyApp extends StatefulWidget {
   State<MyApp> createState() => _MyAppState();
 }
 
-class _MyAppState extends State<MyApp> {
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     isAppReady = true; // ★ 標記 APP 已就緒，允許導航
     if (!kIsWeb) {
       _setupCallKitListener();
       _setupForegroundMessaging(); // ★ 新增：背景推播之外，前景也要監聽
+      _checkInitialCall(); // ★ 冷啟動檢查：是否有正在進行的 CallKit
     }
     _setupSignalingListener();
   }
 
-  // ★ Foreground FCM Listener: 當手機收到與 Signaling 同步的推播時，也能彈窗
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      debugPrint("☀️ [Main] App Resumed. Triggering self-healing reconnection...");
+      sig.Signaling().reconnect();
+    }
+  }
+
+  // ★ 冷啟動恢復：如果 App 因點擊接聽而啟動，這裡會抓到並導航
+  Future<void> _checkInitialCall() async {
+    final activeCalls = await FlutterCallkitIncoming.activeCalls();
+    if (activeCalls is List && activeCalls.isNotEmpty) {
+      final call = activeCalls.first;
+      final extra = call['extra'];
+      if (extra != null) {
+        final roomId = extra['roomId'] as String?;
+        final senderId = extra['senderId'] as String?;
+        if (roomId != null && senderId != null) {
+          debugPrint("🚀 [Main] Initial Active Call found! Auto-navigating...");
+          _navigateToVideoCall(roomId, senderId, callId: extra['callId']);
+        }
+      }
+    }
+  }
+
+  BuildContext? _activeCallDialogContext;
+
   void _setupForegroundMessaging() {
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       debugPrint("📩 [Main] Foreground message received: ${message.data}");
@@ -158,49 +192,82 @@ class _MyAppState extends State<MyApp> {
         final callId = message.data['callId'];
         
         debugPrint("🔔 [FCM-Backup] Call Request from $senderId in room $roomId (ID: $callId)");
-        // 備援：如果 Socket 沒反應，這裡可以考慮手動彈窗。
-        // 為避免重複，我們目前僅作 Log 紀錄背景同步狀態。
+        // 備援：如果 Socket 沒連接，或是剛好斷線，這裡同樣調用彈窗邏輯。
+        // 但為了避免重複彈窗，我們由 _setupSignalingListener 內的 _showIncomingCallDialog 統一控管。
+        _showIncomingCallDialog(roomId, senderId, callId: callId);
       }
     });
   }
 
   void _setupSignalingListener() {
-    sig.Signaling().onCallRequest = (roomId, senderId, callId) {
-      // 根據角色決定是否彈出通話視窗或處理
+    final s = sig.Signaling();
+    
+    // 響鈴彈窗
+    s.onCallRequest = (roomId, senderId, callId) {
+      _showIncomingCallDialog(roomId, senderId, callId: callId);
+    };
 
-      debugPrint("🔔 [Main] Foreground Call Request: Room $roomId from $senderId (CallId: $callId)");
-      debugPrint("🛠️ Current App State: Ready=$isAppReady, Role=$appRole");
-
-      final context = navigatorKey.currentContext;
-      if (context != null) {
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (c) => AlertDialog(
-            title: const Text('💡 視訊通話申請'),
-            content: Text('您的家人正在呼叫 (房間: $roomId)'),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(c);
-                  sig.Signaling().sendCallBusy(senderId, callId: callId);
-                },
-                child: const Text('拒絕', style: TextStyle(color: Colors.red)),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(c);
-                  _navigateToVideoCall(roomId, senderId, callId: callId);
-                },
-                child: const Text('接聽'),
-              ),
-            ],
-          ),
-        );
-      } else {
-        debugPrint("⚠️ [Main] Cannot show dialog: navigatorKey.currentContext is NULL!");
+    // 對方取消來電
+    s.onCancelCall = (roomId, senderId, callId) {
+      if (_activeCallDialogContext != null) {
+        debugPrint("🔕 [Main] Remote canceled call. Dismissing global dialog...");
+        if (Navigator.canPop(_activeCallDialogContext!)) {
+          Navigator.pop(_activeCallDialogContext!);
+        }
+        _activeCallDialogContext = null;
       }
     };
+
+    // WebRTC Offer 自動答應 (因為已經在 CallRequest 階段按過接聽了)
+    s.onIncomingCall = (callerId, callType) async {
+      debugPrint("📞 [Main] Global Incoming Offer from $callerId (Type: $callType). Auto-accepting...");
+      return true; 
+    };
+  }
+
+  void _showIncomingCallDialog(String roomId, String senderId, {String? callId}) {
+    if (_activeCallDialogContext != null) {
+      debugPrint("🚫 [Main] Dialog already showing, skipping...");
+      return;
+    }
+
+    final context = navigatorKey.currentContext;
+    if (context == null) {
+      debugPrint("⚠️ [Main] Cannot show dialog: navigatorKey.currentContext is NULL!");
+      return;
+    }
+
+    final String callerLabel = (appRole == 'elder') ? '您的家人' : '長輩';
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (c) {
+        _activeCallDialogContext = c;
+        return AlertDialog(
+          title: const Text('💡 視訊通話申請'),
+          content: Text('$callerLabel 正在呼叫 (房間: $roomId)'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                _activeCallDialogContext = null;
+                Navigator.pop(c);
+                sig.Signaling().sendCallBusy(senderId, callId: callId);
+              },
+              child: const Text('拒絕', style: TextStyle(color: Colors.red)),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                _activeCallDialogContext = null;
+                Navigator.pop(c);
+                _navigateToVideoCall(roomId, senderId, callId: callId);
+              },
+              child: const Text('接聽'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   void _setupCallKitListener() {

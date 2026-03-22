@@ -32,7 +32,6 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   final RTCVideoRenderer _remoteRenderer = RTCVideoRenderer();
   String _status = "等待連線...";
   bool _isInCall = false;
-  BuildContext? _incomingCallDialogContext;
 
   @override
   void initState() {
@@ -154,7 +153,6 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       if (mounted) setState(() { _remoteRenderer.srcObject = stream; _status = "通話中"; _isInCall = true; });
     });
 
-    // 處理加入失敗 (名稱重複)
     _signaling.onJoinFailed = (errorMessage) {
       if (mounted) {
         showDialog(
@@ -177,12 +175,9 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       }
     };
 
-    // ★★★ 關鍵：家屬接聽後，才發送 Offer (解決影像連線問題) ★★★
     _signaling.onCallAcceptedByRemote = (accepterId, callId) {
       debugPrint("✅ 家屬($accepterId) 已接聽 (CallId: $callId)，開始定向發送 Offer...");
       if (mounted) setState(() { _status = "連線建立中..."; _isInCall = true; });
-      
-      // 傳入 accepterId，確保點對點連線
       _signaling.createOffer(targetId: accepterId, isEmergency: false);
     };
 
@@ -191,92 +186,27 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     _signaling.connect(
       widget.roomId, 
       'elder', 
-      userId: int.tryParse(widget.roomId), // 將 roomId 解析為 int userId
+      userId: int.tryParse(widget.roomId),
       deviceName: widget.deviceName,
       deviceMode: widget.isCCTVMode ? 'cctv' : 'comm'
     );
 
-    // ★ Bug 14 解決方案：除了靠 AppLifecycleState.resumed 觸發以外，
-    // 在啟動完成且剛連上 Socket 的這瞬間，也要主動去檢查有沒有 pending 的通話要求。
-    // 這樣在 App 全程被關掉並依靠推播冷啟動時，就能第一時間回傳 sendCallAccept 解除家屬端的對話框。
     Future.delayed(const Duration(milliseconds: 1500), () {
       _checkPendingEmergency();
       _checkPendingAcceptedCall();
     });
 
-    // 掛斷後重置狀態
     _signaling.onCallEnded = () {
       if (mounted) {
-        if (_incomingCallDialogContext != null && Navigator.canPop(_incomingCallDialogContext!)) {
-          Navigator.pop(_incomingCallDialogContext!);
-          _incomingCallDialogContext = null;
-        }
         setState(() { 
           _remoteRenderer.srcObject = null; 
           _status = "通話結束"; 
           _isInCall = false; 
         });
         
-        // ★ 延遲 2 秒後自動回到首頁，優化長輩體驗
         Future.delayed(const Duration(seconds: 2), () {
           if (mounted) {
             Navigator.of(context).pop();
-          }
-        });
-      }
-    };
-
-    // 背景來的正常通話要求 (會由這支負責彈窗)
-    _signaling.onCallRequest = (reqRoomId, reqSenderId, callId) async {
-       debugPrint("🔔 [ElderScreen] Received Call Request from $reqSenderId");
-       if (mounted) {
-         bool accept = await showDialog<bool>(
-          context: context,
-          barrierDismissible: false,
-          builder: (dialogContext) {
-            _incomingCallDialogContext = dialogContext;
-            return AlertDialog(
-              title: const Text('家人來電'),
-              content: const Text('是否接聽？'),
-              actions: [
-                TextButton(onPressed: () {
-                  _incomingCallDialogContext = null;
-                  Navigator.pop(dialogContext, false);
-                }, child: const Text('拒絕')),
-                ElevatedButton(onPressed: () {
-                  _incomingCallDialogContext = null;
-                  Navigator.pop(dialogContext, true);
-                }, child: const Text('接聽')),
-              ],
-            );
-          },
-        ) ?? false;
-        
-        if (accept) {
-          setState(() { _status = "連線建立中..."; _isInCall = true; });
-          await _signaling.openUserMedia(_localRenderer); // ★ 確保接聽時攝影機已啟動
-          _signaling.sendCallAccept(reqSenderId, callId: callId);
-        } else {
-          _signaling.sendCallBusy(reqSenderId, callId: callId);
-        }
-       }
-    };
-
-    // 對方取消來電
-    _signaling.onCancelCall = (cancelRoomId, senderId, callId) {
-      if (mounted) {
-        if (_incomingCallDialogContext != null && Navigator.canPop(_incomingCallDialogContext!)) {
-          Navigator.pop(_incomingCallDialogContext!);
-          _incomingCallDialogContext = null;
-        }
-        setState(() {
-          _status = "對方已取消來電";
-          _isInCall = false;
-        });
-        
-        Future.delayed(const Duration(seconds: 3), () {
-          if (mounted && !_isInCall) {
-            setState(() => _status = "等待連線...");
           }
         });
       }
@@ -289,7 +219,6 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
           _isInCall = false;
         });
         
-        // 延遲幾秒後恢復預設狀態
         Future.delayed(const Duration(seconds: 3), () {
           if (mounted && !_isInCall) {
             setState(() => _status = "等待連線...");
@@ -298,7 +227,6 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       }
     };
 
-    // 背景來的被強制登出要求 (Feature 12)
     _signaling.socket?.on('force-logout', (_) async {
       final prefs = await SharedPreferences.getInstance();
       await prefs.clear();
@@ -313,7 +241,6 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
 
     _signaling.onIncomingCall = (callerId, callType) async {
       debugPrint("📞 [ElderScreen] Incoming Offer from $callerId (Type: $callType)");
-      // 如果已接聽 (isInCall) 或是緊急/CCTV，就自動答應 WebRTC Offer
       if (_isInCall || callType == 'emergency' || widget.isCCTVMode) {
         if (mounted) setState(() => _isInCall = true);
         return true; 
@@ -336,7 +263,18 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       _signaling.sendCancelCall(widget.roomId);
     }
     _signaling.hangUp(disconnectSocket: false, disposeLocalStream: false);
-    setState(() { _remoteRenderer.srcObject = null; _status = "等待連線..."; _isInCall = false; });
+    setState(() { 
+      _remoteRenderer.srcObject = null; 
+      _status = "通話結束"; 
+      _isInCall = false; 
+    });
+
+    // ★ 延遲 1.5 秒後自動回到首頁
+    Future.delayed(const Duration(milliseconds: 1500), () {
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    });
   }
 
   @override
@@ -344,8 +282,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     pendingAcceptedCall.removeListener(_onPendingCallChanged);
     _localRenderer.dispose();
     _remoteRenderer.dispose();
-    _signaling.dispose();
-    _localRenderer.dispose();
+    _signaling.clearSession();
     super.dispose();
   }
 
