@@ -232,7 +232,7 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> with Widg
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _declineSub?.cancel();
-    _signaling.dispose();
+    _signaling.clearSession();
     super.dispose();
   }
 

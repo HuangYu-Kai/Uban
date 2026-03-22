@@ -178,31 +178,48 @@ def on_join(data):
         }, to=room, include_self=False)
 
         if role == 'family':
-            elder_devices = []
-            online_device_names = set()
+            _push_elder_devices_update(room, sid)
 
-            if room in rooms_manager:
-                for k, v in rooms_manager[room].items():
-                    if v.get('role') == 'elder':
-                        elder_devices.append({
-                            'id': k, 
-                            'deviceName': v['deviceName'], 
-                            'deviceMode': v.get('deviceMode', 'comm'),
-                            'isOnline': True
-                        })
-                        online_device_names.add(v['deviceName'])
+@socketio.on('update-fcm-token')
+def on_update_fcm_token(data):
+    sid = request.sid
+    room = data.get('room')
+    token = data.get('token')
+    if room in rooms_manager and sid in rooms_manager[room]:
+        rooms_manager[room][sid]['fcmToken'] = token
+        # 更新備援池
+        if room not in room_fcm_tokens:
+            room_fcm_tokens[room] = {}
+        room_fcm_tokens[room][token] = {
+            'role': rooms_manager[room][sid]['role'],
+            'deviceName': rooms_manager[room][sid]['deviceName'],
+            'deviceMode': rooms_manager[room][sid].get('deviceMode', 'comm')
+        }
+        print(f"🔄 FCM Token updated for {sid} in room {room}")
 
-            if room in room_fcm_tokens:
-                for token, info in room_fcm_tokens[room].items():
-                    if info.get('role') == 'elder' and info['deviceName'] not in online_device_names:
-                        elder_devices.append({
-                            'id': f"offline_{token[-8:]}", 
-                            'deviceName': info['deviceName'],
-                            'deviceMode': info.get('deviceMode', 'comm'),
-                            'isOnline': False
-                        })
-                        
-            emit('elder-devices-update', elder_devices, to=sid)
+def _push_elder_devices_update(room, sid):
+    elder_devices = []
+    online_device_names = set()
+    if room in rooms_manager:
+        for k, v in rooms_manager[room].items():
+            if v.get('role') == 'elder':
+                elder_devices.append({
+                    'id': k, 
+                    'deviceName': v['deviceName'], 
+                    'deviceMode': v.get('deviceMode', 'comm'),
+                    'isOnline': True
+                })
+                online_device_names.add(v['deviceName'])
+    if room in room_fcm_tokens:
+        for token, info in room_fcm_tokens[room].items():
+            if info.get('role') == 'elder' and info['deviceName'] not in online_device_names:
+                elder_devices.append({
+                    'id': f"offline_{token[-8:]}", 
+                    'deviceName': info['deviceName'],
+                    'deviceMode': info.get('deviceMode', 'comm'),
+                    'isOnline': False
+                })
+    emit('elder-devices-update', elder_devices, to=sid)
 
 @socketio.on('get-elder-devices')
 def on_get_elder_devices(room):

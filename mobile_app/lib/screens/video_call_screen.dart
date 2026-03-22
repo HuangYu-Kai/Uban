@@ -97,12 +97,9 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     }
   }
 
-  @override
   void dispose() {
     _signaling.hangUp();
-    _signaling.onAddRemoteStream = null;
-    _signaling.onCallEnded = null;
-    _signaling.onIncomingCall = null;
+    _signaling.clearSession();
     
     _localRenderer.dispose();
     _remoteRenderer.dispose();
