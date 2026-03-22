@@ -50,6 +50,30 @@ sqlalchemy_db.init_app(app)
 app.register_blueprint(user_bp, url_prefix='/api/user')
 app.register_blueprint(game_logic_bp, url_prefix='/api/game')
 
+from apscheduler.schedulers.background import BackgroundScheduler
+from routes.game_logic import do_distribute_appearances, load_schedule_time, save_schedule_time
+from datetime import datetime
+
+# 啟動排程器 (設定時間自動派發造型)
+scheduler = BackgroundScheduler()
+
+def check_and_distribute():
+    dist_time_str = load_schedule_time()
+    if not dist_time_str:
+        return
+        
+    try:
+        dist_time = datetime.fromisoformat(dist_time_str)
+        now = datetime.utcnow()
+        if now >= dist_time:
+            print(f"Executing scheduled distribution for time: {dist_time_str}")
+            with app.app_context():
+                do_distribute_appearances()
+            save_schedule_time(None)
+    except Exception as e:
+        print(f"Error checking schedule: {e}")
+
+scheduler.add_job(check_and_distribute, 'interval', minutes=1)
 
 # 房間管理結構：rooms_manager[room_id][socket_id] = {role, deviceName, deviceMode}
 rooms_manager = {}
@@ -372,5 +396,7 @@ if __name__ == '__main__':
         print(f'Warning: Database connection issue: {e}')
 
     print('Server starting on port 5000...')
+    # 啟動自動派發排程器
+    scheduler.start()
     # 啟動 SocketIO 伺服器
     socketio.run(app, host='0.0.0.0', port=5000, debug=False, allow_unsafe_werkzeug=True)

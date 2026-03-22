@@ -45,4 +45,50 @@ class GameService {
       throw Exception('Failed to fetch elder status: ${response.body}');
     }
   }
+
+  // --- New Admin & Elder Endpoints ---
+  
+  Future<Map<String, dynamic>> getElderCollection(String elderId) async {
+    final response = await http.get(Uri.parse('$baseUrl/elder/collection/$elderId'));
+    if (response.statusCode == 200) {
+      return json.decode(response.body);
+    } else {
+      throw Exception('Failed to fetch elder collection: ${response.body}');
+    }
+  }
+
+  Future<Map<String, dynamic>> getAdminElderInfo(String elderId) async {
+    final response = await http.get(Uri.parse('$baseUrl/admin/elder_info/$elderId'));
+    if (response.statusCode == 200) {
+      return json.decode(response.body);
+    } else {
+      throw Exception('Failed to fetch admin elder info: ${response.body}');
+    }
+  }
+
+  Future<Map<String, dynamic>> assignAppearance(String elderId, int gawaId) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/admin/assign_appearance'),
+      headers: {'Content-Type': 'application/json'},
+      body: json.encode({'elder_id': elderId, 'gawa_id': gawaId}),
+    );
+    if (response.statusCode == 200) {
+      return json.decode(response.body);
+    } else {
+      throw Exception('Failed to assign appearance: ${response.body}');
+    }
+  }
+
+  Future<Map<String, dynamic>> setDistributionTime(String isoTimeStr) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/admin/set_distribution_time'),
+      headers: {'Content-Type': 'application/json'},
+      body: json.encode({'distribution_time': isoTimeStr}),
+    );
+    if (response.statusCode == 200) {
+      return json.decode(response.body);
+    } else {
+      throw Exception('Failed to set distribution time: ${response.body}');
+    }
+  }
 }

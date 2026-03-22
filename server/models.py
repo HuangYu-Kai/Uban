@@ -56,6 +56,7 @@ class GawaAppearance(db.Model):
     gawa_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     gawa_name = db.Column(db.String(16), nullable=False)
     gawa_rarity = db.Column(db.String(10), nullable=False) # 'common', 'rare', 'epic', 'legendary'
+    bonus = db.Column(db.Float, default=0.0)
 
 class GetAppearanceList(db.Model):
     __tablename__ = 'get_appearance_list'
