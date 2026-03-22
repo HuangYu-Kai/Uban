@@ -2,98 +2,111 @@ from flask import Blueprint, jsonify, request
 from models import ElderProfile, GawaAppearance, GetAppearanceList, ElderFellowshipData, db
 from datetime import datetime, timedelta
 import random
+import os
+import json
+
+CONFIG_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'schedule_config.json')
+
+def load_schedule_time():
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, 'r') as f:
+                data = json.load(f)
+                return data.get('distribution_time')
+        except:
+            pass
+    return None
+
+def save_schedule_time(iso_time_str):
+    with open(CONFIG_FILE, 'w') as f:
+        json.dump({'distribution_time': iso_time_str}, f)
 
 game_logic_bp = Blueprint('game_logic', __name__)
 
-# 開發者可自由更改此日期，作為外觀資料更換及步數結算的統一重置時間
+# ???芰?湔甇斗??雿憭?鞈??湔??郊?貊?蝞?蝯曹??蔭??
 GLOBAL_RESET_DATE = datetime(2026, 12, 31, 23, 59, 59)
 
 @game_logic_bp.route('/distribute_appearances', methods=['POST'])
 def distribute_appearances():
     """
-    每一段時間為每一個elder隨機發放一個來自gawa_appearance紀錄裡面的隨機一筆資料
-    並在隨機分配後將記錄儲存在get_appearance_list
+    蝞∠????葫閰衣嚗???elder_profile鞈????
     """
-    # 獲取請求資料
-    data = request.json or {}
-    target_elder_id = data.get('elder_id')
-    
-    # 1. 決定要發放的長輩對象
-    if target_elder_id:
-        elders = ElderProfile.query.filter_by(elder_id=target_elder_id).all()
-        if not elders:
-             return jsonify({"error": f"Elder with ID {target_elder_id} not found"}), 404
-    else:
-        elders = ElderProfile.query.filter(ElderProfile.elder_id.isnot(None)).all()
-        
-    # 2. 獲取所有造型
-    appearances = GawaAppearance.query.all()
-    
-    if not elders:
-         return jsonify({"error": "No elders found to process"}), 400
-    if not appearances:
-        return jsonify({"error": "No appearances found in database"}), 400
-        
+    res, status_code = do_distribute_appearances()
+    return jsonify(res), status_code
+
+def do_distribute_appearances(app_context=None):
+    """
+    ?瑁????潭?祕??頛荔?靘?API ???舀?蝔??
+    """
     try:
+        elders = ElderProfile.query.all()
+        appearances = GawaAppearance.query.all()
+        
+        if not elders:
+             return {"error": "No elders found to process"}, 400
+        if not appearances:
+            return {"error": "No appearances found in database"}, 400
+            
         distributed = 0
         now = datetime.utcnow()
         
         for elder in elders:
-            # 💡 依照使用者定義的 3 步驟順序：
+            # ? 靘雿輻??蝢拍? 3 甇仿???嚗?
             
-            # 【一：備份目前狀態至歷史紀錄 (GetAppearanceList)】
-            # 將目前 `elder_profile` 的狀態寫入歷史，包括當前步數與目前的造型開始時間
+            # ??嚗?隞賜???甇瑕蝝??(GetAppearanceList)??
             if elder.gawa_id:
                 history_entry = GetAppearanceList(
                     elder_id=elder.elder_id,
                     gawa_id=elder.gawa_id,
-                    feed_starttime=elder.feed_starttime or elder.create_ts, # 使用目前的開始時間，若無則用建立時間
-                    feed_endtime=now, # 結束時間即為目前執行動作的時間
+                    feed_starttime=elder.feed_starttime or elder.create_ts,
+                    feed_endtime=now,
                     gawa_size=elder.step_total if elder.step_total is not None else 0
                 )
                 db.session.add(history_entry)
             
-            # 【二：重置狀態】
+            # ??嚗?蝵桃???
             elder.step_total = 0
-            # (邏輯上下一步會直接覆蓋 feed_starttime，故不需顯式刪除)
             
-            # 【三：分配新造型並設定新開始時間】
-            # 獲取尚未擁有的外觀 (若已經全買了，則從全部裡面挑)
-            owned_gawas = GetAppearanceList.query.filter_by(elder_id=elder.elder_id).all()
-            owned_ids = [g.gawa_id for g in owned_gawas]
-            available = [a for a in appearances if a.gawa_id not in owned_ids]
-            
-            if not available:
-                # 若全部都擁有過，則隨機從所有造型裡挑一個
-                new_appearance = random.choice(appearances)
-            else:
-                new_appearance = random.choice(available)
-            
-            elder.gawa_id = new_appearance.gawa_id
+            # ??嚗????銝西身摰??????
+            random_appearance = random.choice(appearances)
+            elder.gawa_id = random_appearance.gawa_id
             elder.feed_starttime = now
             
             distributed += 1
             
         db.session.commit()
-        print(f"Successfully processed distribution for {distributed} elders.")
-        
-        return jsonify({
+        return {
             "status": "success",
             "message": f"Distributed appearances to {distributed} elders",
             "timestamp": now.isoformat()
-        })
+        }, 200
     except Exception as e:
         db.session.rollback()
         print(f"Error in distribute_appearances: {str(e)}")
         import traceback
         traceback.print_exc()
-        return jsonify({"status": "error", "message": str(e)}), 500
+        traceback.print_exc()
+        return {"status": "error", "message": str(e)}, 500
+
+@game_logic_bp.route('/admin/set_distribution_time', methods=['POST'])
+def set_distribution_time():
+    data = request.json or {}
+    dist_time = data.get('distribution_time') 
+    if not dist_time:
+        return jsonify({"status": "error", "message": "Missing distribution_time"}), 400
+        
+    save_schedule_time(dist_time)
+    
+    return jsonify({
+        "status": "success", 
+        "message": f"Global distribution scheduled for {dist_time}"
+    })
 
 @game_logic_bp.route('/leaderboard/<elder_id>', methods=['GET'])
 def get_leaderboard(elder_id):
     """
-    建立一個專屬於該elder的排行榜，排行榜的排序依照elder_profile的step_total做降冪排序。
-    依照elder_fellowship_data做一個依照不同elder_id的之間的交友關係
+    撱箇?銝??撅祆閰涪lder??銵?嚗?銵???摨??呈lder_profile?tep_total???芣?摨?
+    靘elder_fellowship_data?????找??lder_id????鈭文???
     """
     try:
         # Find all successful fellowships for this elder
@@ -111,14 +124,29 @@ def get_leaderboard(elder_id):
         leaderboard_data = ElderProfile.query.filter(ElderProfile.elder_id.in_(friend_ids)).order_by(ElderProfile.step_total.desc()).all()
         
         result = []
-        for entry in leaderboard_data:
-            result.append({
+        user_entry = None
+        user_rank = -1
+        
+        for index, entry in enumerate(leaderboard_data):
+            entry_dict = {
                 "elder_id": entry.elder_id,
-                "elder_name": entry.elder_name, # 💡 加上長輩名稱，以便介面顯示
-                "step_total": entry.step_total if entry.step_total is not None else 0
-            })
+                "elder_name": entry.elder_name, # ? ???瑁憬?迂
+                "step_total": entry.step_total if entry.step_total is not None else 0,
+                "rank": index + 1
+            }
+            if entry.elder_id == elder_id:
+                user_entry = entry_dict
+                user_rank = index + 1
+            result.append(entry_dict)
             
-        return jsonify(result)
+        # 蝭拚??10 ??
+        top_10 = result[:10]
+        
+        # 憒?雿輻???典? 10 ??撠??敺?
+        if user_rank > 10 and user_entry:
+            top_10.append(user_entry)
+            
+        return jsonify(top_10)
     except Exception as e:
         db.session.rollback()
         import traceback
@@ -128,33 +156,33 @@ def get_leaderboard(elder_id):
 @game_logic_bp.route('/check_reset', methods=['POST'])
 def check_reset():
     """
-    管理者設定的時間到或是管理者強制手動重置時：
-    將原先的step_total儲存在get_appearance_list中的gawa_size欄位，
-    並重置elder_profile中的step_total為0。
+    蝞∠??身摰????唳??舐恣?撥?嗆???蝵格?嚗?
+    撠???step_total?脣??狂et_appearance_list銝剔?gawa_size甈?嚗?
+    銝阡?蝵容lder_profile銝剔?step_total????
     """
     now = datetime.utcnow()
     data = request.json or {}
     force_reset = data.get('force', False)
     
-    # 若尚未到達全域重置時間，且也並非手動強制重置，則不執行
+    # ?亙??芸???蝵格???銝?銝阡???撘瑕?蔭嚗?銝銵?
     if now < GLOBAL_RESET_DATE and not force_reset:
         return jsonify({"status": "success", "message": "No reset needed, time not reached yet"})
     
-    # 找出所有尚未到期（當季）的造型紀錄
-    # ER圖顯示 (elder_id, gawa_id) 為複合主鍵，代表是陣列歷史，所以不能直接 query.all()，必須找當季(feed_endtime == GLOBAL_RESET_DATE 或是大於此刻)
+    # ?曉????芸???嗅迤嚗???蝝??
+    # ER?＊蝷?(elder_id, gawa_id) ?箄??蜓?蛛?隞?”?舫?風?莎??隞乩??賜??query.all()嚗???嗅迤(feed_endtime == GLOBAL_RESET_DATE ?憭扳甇文)
     active_appearances = GetAppearanceList.query.filter(GetAppearanceList.feed_endtime >= now).all()
     
     updated_count = 0
     for app in active_appearances:
         elder = ElderProfile.query.filter_by(elder_id=app.elder_id).first()
         if elder:
-            # 1. 儲存 step_total 到 gawa_size
+            # 1. ?脣? step_total ??gawa_size
             app.gawa_size = elder.step_total if elder.step_total is not None else 0
             
-            # 2. 結束時間設為現在 (如果是強制重置的話)
+            # 2. 蝯???閮剔?曉 (憒??臬撥?園?蝵桃?閰?
             app.feed_endtime = now
             
-            # 3. 重置大步數
+            # 3. ?蔭憭扳郊??
             elder.step_total = 0
             
             updated_count += 1
@@ -181,3 +209,127 @@ def get_elder_status(elder_id):
         "gawa_name": appearance.gawa_name if appearance else "無",
         "feed_starttime": elder.feed_starttime.isoformat() if elder.feed_starttime else None
     })
+
+# --- [Elder API] ???????蜇?? ---
+@game_logic_bp.route('/elder/collection/<elder_id>', methods=['GET'])
+def get_elder_collection(elder_id):
+    try:
+        # 取得目前使用中的造型
+        elder = ElderProfile.query.filter_by(elder_id=elder_id).first()
+        current_gawa_id = elder.gawa_id if elder else None
+
+        # 從歷史紀錄中獲取所有擁有的造型
+        owned = GetAppearanceList.query.filter_by(elder_id=elder_id).all()
+        # 確保不重複
+        gawa_ids = list(set([o.gawa_id for o in owned]))
+        
+        # 加入目前正在使用的造型
+        if current_gawa_id and current_gawa_id not in gawa_ids:
+            gawa_ids.append(current_gawa_id)
+        
+        if not gawa_ids:
+            return jsonify({
+                "status": "success",
+                "total_bonus": 0.0,
+                "collection": []
+            })
+            
+        appearances = GawaAppearance.query.filter(GawaAppearance.gawa_id.in_(gawa_ids)).all()
+        total_bonus = sum([a.bonus for a in appearances if a.bonus is not None])
+        
+        collection = []
+        for app in appearances:
+            collection.append({
+                "gawa_id": app.gawa_id,
+                "gawa_name": app.gawa_name,
+                "gawa_rarity": app.gawa_rarity,
+                "bonus": app.bonus if app.bonus is not None else 0.0
+            })
+            
+        return jsonify({
+            "status": "success",
+            "total_bonus": total_bonus,
+            "collection": collection
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# --- [Admin API] 查詢指派長輩資料 ---
+@game_logic_bp.route('/admin/elder_info/<elder_id>', methods=['GET'])
+def get_admin_elder_info(elder_id):
+    elder = ElderProfile.query.filter_by(elder_id=elder_id).first()
+    if not elder:
+        return jsonify({"status": "error", "message": "Elder not found"}), 404
+        
+    owned = GetAppearanceList.query.filter_by(elder_id=elder_id).all()
+    gawa_ids = list(set([o.gawa_id for o in owned]))
+    
+    # 加入目前正在使用的造型
+    if elder.gawa_id and elder.gawa_id not in gawa_ids:
+        gawa_ids.append(elder.gawa_id)
+        
+    appearances = GawaAppearance.query.filter(GawaAppearance.gawa_id.in_(gawa_ids)).all() if gawa_ids else []
+    total_bonus = sum([a.bonus for a in appearances if a.bonus is not None])
+    
+    collection = [{"gawa_id": a.gawa_id, "gawa_name": a.gawa_name, "bonus": a.bonus if a.bonus is not None else 0.0} for a in appearances]
+    
+    return jsonify({
+        "status": "success",
+        "elder_id": elder.elder_id,
+        "elder_name": elder.elder_name,
+        "step_total": elder.step_total if elder.step_total is not None else 0,
+        "total_bonus": total_bonus,
+        "owned_count": len(appearances),
+        "collection": collection
+    })
+
+# --- [Admin API] ?桃???? ---
+@game_logic_bp.route('/admin/assign_appearance', methods=['POST'])
+def assign_appearance():
+    data = request.json or {}
+    elder_id = data.get('elder_id')
+    gawa_id = data.get('gawa_id')
+    
+    if not elder_id or not gawa_id:
+        return jsonify({"status": "error", "message": "Missing elder_id or gawa_id"}), 400
+        
+    try:
+        elder = ElderProfile.query.filter_by(elder_id=elder_id).first()
+        appearance = GawaAppearance.query.get(gawa_id)
+        
+        if not elder or not appearance:
+            return jsonify({"status": "error", "message": "Elder or Appearance not found"}), 404
+            
+        now = datetime.utcnow()
+        
+        # 1. ?遢?桀???甇瑕蝝??
+        if elder.gawa_id:
+            history_entry = GetAppearanceList(
+                elder_id=elder.elder_id,
+                gawa_id=elder.gawa_id,
+                feed_starttime=elder.feed_starttime or elder.create_ts,
+                feed_endtime=now,
+                gawa_size=elder.step_total if elder.step_total is not None else 0
+            )
+            db.session.add(history_entry)
+            
+        # 2. ?蔭???
+        elder.step_total = 0
+        
+        # 3. ???圈?銝西身摰????
+        elder.gawa_id = appearance.gawa_id
+        elder.feed_starttime = now
+        
+        db.session.commit()
+        return jsonify({
+            "status": "success", 
+            "message": f"Assigned appearance {appearance.gawa_name} to {elder.elder_name}"
+        })
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": str(e)}), 500
+
