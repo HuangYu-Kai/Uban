@@ -20,26 +20,35 @@
    - 實作 `/ai/chat_stream` API 端點。
    - 使 AI 的回應能夠以字元/詞彙為單位（Chunk）即時推送到前端，實現「邊思考邊打字」的打字機效果，大幅減少長輩等待第一句話的時間。
 
-## 二、 AI 代理工具/技能 (Agent Tools)
+## 二、 模組化 AI 技能系統 (Modular AI Skills)
 
-透過 Function Calling 技術，授權予 Gemini 一系列自訂後端工具。當對話觸發特定情境時，AI 將主動呼叫對應的 Tool 獲取真實資料後再回答長輩。
+系統捨棄了單一大類別的設計，採用 **「技能為導向 (Skill-based)」** 的模組化架構。每個 Skill 都是一個具備完整定義與註解的獨立 Python 函數，這使得系統在擴充新功能時更具靈活性且更易於測試。
 
-1. `get_elder_context`：讀取 `ElderProfile`，獲取長輩基本資料、居住地、近期健康狀況或用藥提醒。
-2. `get_current_time`：提供當下準確的日期與時間。
-3. `get_weather_info`：串接或模擬查詢指定居住地的即時天氣變化。
-4. `read_family_messages`：幫長輩讀取 `FamilyMessage` 資料表中，尚未讀取的家屬留下的溫暖便條。
-5. `notify_family_SOS`：緊急呼叫處置。當長輩提到劇痛、胸悶或要求救護車時觸發。會透過 Socket.IO 發出 `sos-alert` 事件。
-6. `suggest_activity`：在長輩覺得無聊時，根據其興趣模型推薦專屬活動，並可挾帶**影片連結**供觀賞。
-7. `check_lunar_calendar`：提供當日的農曆日期、節氣甚至黃曆宜忌資訊。
+### 1. 核心技能集 (Core Skills)
+
+- **基礎工具 (Common Skills)**：
+  - `get_current_time`：獲取當下準確的日期與時間。
+  - `get_weather_info`：查詢指定地區的即時天氣與穿衣建議。
+- **長輩專屬技能 (Elder Skills)**：
+  - `get_elder_context`：讀取長輩的背景、疾病、用藥與話題禁忌，讓 AI 互動更貼心。
+  - `notify_family_SOS`：緊急呼叫處置，即時通知家屬。
+  - `suggest_activity`：推薦日常活動，如聽歌、運動或益智遊戲。
+
+### 2. 技術特性
+
+- **原生 Function Calling**：利用 Gemini 原生支援，AI 能自動根據長輩需求決定調用的工具組合。
+- **自動參數注入 (Dynamic Context Injection)**：後端服務會根據當前對話者的身份，自動將 `user_id` 等系統環境參數注入到對應的技能函數中，實現「無感連動」。
+- **獨立可維護性**：技能依照功能存放於不同的模組檔案（如 `elder_skills.py`），能獨立進行單元測試而無需啟動完整的伺服器。
 
 ## 三、 資料庫設計 (Database - SQLAlchemy)
 
 目前已建置支撐 AI 與使用者狀態的核心資料表：
-1. `User`：儲存使用者帳號基礎資料。
-2. `Relationship`：定義長輩與家屬/照護員之間的關係鏈結。
-3. `ElderProfile`：儲存長輩詳細設定，如疾病史、用藥備註、生活興趣等。
-4. `ActivityLog`：紀錄包含系統事件、對話歷史與摘要的軌跡表。
-5. `FamilyMessage`：儲存家屬寫給長輩的實體留言板資訊（包含文字、圖片連結及未讀狀態）。
+
+1. **User**：儲存使用者帳號基礎資料。
+2. **Relationship**：定義長輩與家屬/照護員之間的關係鏈結。
+3. **ElderProfile**：儲存長輩詳細設定，如疾病史、用藥備註、生活興趣等。
+4. **ActivityLog**：紀錄包含系統事件、對話歷史與摘要的軌跡表。
+5. **FamilyMessage**：儲存家屬寫給長輩的實體留言板資訊（包含文字、圖片連結及未讀狀態）。
 
 ## 四、 長輩端 App 介面與互動體驗 (Mobile App - Flutter)
 
@@ -52,7 +61,7 @@
 
 2. **Markdown 多媒體卡片渲染**
    - 捨棄純文字對話，使用 `flutter_markdown` 套件。
-   - **自定義圖片/影片建構器 (`CustomImageBuilder`)**：當攔截到 AI 傳來的 `![影片](.mp4_url)` 或 `![圖片描述](image_url)` 時：
+   - **自定義圖片/影片建構器 (CustomImageBuilder)**：當攔截到 AI 傳來的 `![影片](.mp4_url)` 或 `![圖片描述](image_url)` 時：
      - 如果判斷是影片：自動轉換為原生的 `VideoPlayerWidget` 卡片，長輩可直接點擊播放。
      - 如果判斷是圖片：自動轉換為圓角、帶有光影效果的 `Image.network` 卡片。
 
@@ -74,5 +83,32 @@
    - **GPS 快速地區選擇**：在編輯長輩資料的介面中整合定位服務，家屬能夠透過 GPS 一鍵自動獲取並帶入目前的行政區域，省去繁瑣的手動下拉或輸入步驟。
    - **設定陪伴大腦**：家屬可設定影響 Gemini 提示詞的 `ElderProfile`（居住地、病史、備註），AI 會直接讀取並應用在與長輩的對話中。
 
+## 六、 視訊通話與可靠通訊模組 (Video Call & Reliable Signaling)
+
+1. **WebRTC 點對點視訊 (P2P Video)**
+   - 實作基於 `flutter_webrtc` 的高品質視訊通話。
+   - 支援自動處理 NAT 穿透與連線建立。
+   - **分流渲染**：長輩端大螢幕渲染家屬影像，小螢幕 (PIP) 顯示本地預覽。
+
+2. **全域通訊中心化管理 (Centralized Signaling)**
+   - 在 `main.dart` 建立全域監聽器，解決頁面切換導致的 Context 遺失問題。
+   - 利用 `NavigatorKey` 確保不論 App 處在何種狀態，皆能穩定彈出來電對話框。
+   - **通話取消同步**：當撥打方取消時，接收端全域彈窗會立即自動消失。
+
+3. **三層備援來電偵測 (Multi-layer Call Detection)**
+   - **Socket.io 第一層**：前景快速響鈴。
+   - **FCM 第二層**：前景/背景推播備援，確保 Socket 斷線時仍可收到邀請。
+   - **Cold Start 恢復機制**：處理 App 因點擊系統通知而冷啟動的情況，自動提取通話參數並完成握手。
+
+4. **長輩模式特化與自動接聽 (Elder Mode & Auto-Answer)**
+   - **CCTV/緊急模式**：支援家屬遠端發起自動接聽功能，解決長輩無法操作手機時的守護需求。
+   - **自動語音提示**：接聽前自動播報「緊急通話，自動接聽中」，減少長輩驚嚇。
+
+5. **家屬端沉浸式體驗 (Immersive Family Experience)**
+   - 全螢幕沉浸式視訊介面。
+   - Glassmorphism 毛玻璃風格按鈕與控制台。
+   - 提供實時通話狀態反饋（連線中、通話中、通話結束）。
+
 ---
-📝 *文件產生時間：2026/03/06*
+
+📝 *文件最後更新時間：2026/03/23*

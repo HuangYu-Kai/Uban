@@ -97,6 +97,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     }
   }
 
+  @override
   void dispose() {
     _signaling.hangUp();
     _signaling.clearSession();
@@ -136,7 +137,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                           Text(
                             "正在連線中...",
                             style: TextStyle(
-                              color: Colors.white.withOpacity(0.8),
+                              color: Colors.white.withValues(alpha: 0.8),
                               fontSize: 18,
                               letterSpacing: 1.2,
                             ),
@@ -191,7 +192,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.5),
+                    color: Colors.black.withValues(alpha: 0.5),
                     blurRadius: 10,
                     offset: const Offset(0, 4),
                   ),
@@ -217,7 +218,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                 child: Container(
                   height: 80,
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.1),
+                    color: Colors.white.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(30),
                     border: Border.all(color: Colors.white10),
                   ),
