@@ -52,7 +52,7 @@ app.register_blueprint(game_logic_bp, url_prefix='/api/game')
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from routes.game_logic import do_distribute_appearances, load_schedule_time, save_schedule_time
-from datetime import datetime
+from datetime import datetime, timezone
 
 # 啟動排程器 (設定時間自動派發造型)
 scheduler = BackgroundScheduler()
@@ -64,7 +64,11 @@ def check_and_distribute():
         
     try:
         dist_time = datetime.fromisoformat(dist_time_str)
-        now = datetime.utcnow()
+        # 確保 dist_time 是 aware (如果是 naive，假設為 UTC 並轉為 aware)
+        if dist_time.tzinfo is None:
+            dist_time = dist_time.replace(tzinfo=timezone.utc)
+            
+        now = datetime.now(timezone.utc)
         if now >= dist_time:
             print(f"Executing scheduled distribution for time: {dist_time_str}")
             with app.app_context():

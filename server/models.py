@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from extensions import db
 
 class User(db.Model):
@@ -12,8 +12,8 @@ class User(db.Model):
     age = db.Column(db.Integer, nullable=True, default=20)
     user_authority = db.Column(db.String(20), nullable=True, default='Normal')
     role = db.Column(db.String(20), nullable=True, default='family') # 預設為家屬
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, name='account_create_time')
-    last_seen = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), name='account_create_time')
+    last_seen = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
 class PairingCode(db.Model):
     __tablename__ = 'pairing_code'
@@ -35,7 +35,7 @@ class ActivityLog(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     event_type = db.Column(db.String(50), nullable=False)  # 'exercise', 'medication', 'mood', 'chat'
     content = db.Column(db.Text, nullable=False)
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    timestamp = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     
     # 用於儲存更詳細的機器可讀數據 (JSON 格式字串)
     extra_data = db.Column(db.Text, nullable=True) 
@@ -47,7 +47,7 @@ class ElderProfile(db.Model):
     elder_name = db.Column(db.String(32), nullable=True)
     elder_appellation = db.Column(db.String(16), nullable=True)
     step_total = db.Column(db.Integer, default=0)
-    create_ts = db.Column(db.DateTime, default=datetime.utcnow)
+    create_ts = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     gawa_id = db.Column(db.Integer, db.ForeignKey('gawa_appearance.gawa_id'), nullable=True)
     feed_starttime = db.Column(db.DateTime, nullable=True)
 
@@ -62,7 +62,7 @@ class GetAppearanceList(db.Model):
     __tablename__ = 'get_appearance_list'
     elder_id = db.Column(db.String(4), db.ForeignKey('elder_profile.elder_id'), primary_key=True)
     gawa_id = db.Column(db.Integer, db.ForeignKey('gawa_appearance.gawa_id'), primary_key=True)
-    feed_starttime = db.Column(db.DateTime, default=datetime.utcnow)
+    feed_starttime = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     feed_endtime = db.Column(db.DateTime, nullable=False)
     gawa_size = db.Column(db.Integer, default=0)
 
@@ -71,7 +71,7 @@ class ElderFellowshipData(db.Model):
     requester_id = db.Column(db.String(4), primary_key=True)
     addressee_id = db.Column(db.String(4), primary_key=True)
     status = db.Column(db.String(20), nullable=False) # 'success', 'blocked'
-    create_ts = db.Column(db.DateTime, default=datetime.utcnow)
+    create_ts = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
 class FamilyMessage(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -79,4 +79,4 @@ class FamilyMessage(db.Model):
     elder_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     content = db.Column(db.Text, nullable=False)
     is_read = db.Column(db.Boolean, default=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
