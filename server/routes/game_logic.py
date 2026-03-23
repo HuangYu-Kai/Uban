@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify, request
 from models import ElderProfile, GawaAppearance, GetAppearanceList, ElderFellowshipData, db
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import random
 import os
 import json
@@ -48,7 +48,7 @@ def do_distribute_appearances(app_context=None):
             return {"error": "No appearances found in database"}, 400
             
         distributed = 0
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         
         for elder in elders:
             # ? 靘雿輻??蝢拍? 3 甇仿???嚗?
@@ -160,7 +160,7 @@ def check_reset():
     撠???step_total?脣??狂et_appearance_list銝剔?gawa_size甈?嚗?
     銝阡?蝵容lder_profile銝剔?step_total????
     """
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     data = request.json or {}
     force_reset = data.get('force', False)
     
@@ -218,14 +218,8 @@ def get_elder_collection(elder_id):
         elder = ElderProfile.query.filter_by(elder_id=elder_id).first()
         current_gawa_id = elder.gawa_id if elder else None
 
-        # 從歷史紀錄中獲取所有擁有的造型
-        owned = GetAppearanceList.query.filter_by(elder_id=elder_id).all()
-        # 確保不重複
-        gawa_ids = list(set([o.gawa_id for o in owned]))
-        
-        # 加入目前正在使用的造型
-        if current_gawa_id and current_gawa_id not in gawa_ids:
-            gawa_ids.append(current_gawa_id)
+        # 根據需求：目前造型只需顯示當前在elder_profile的gawa_id即可，不需要顯示包含get_appearance_list裡的所有擁有過的造型紀錄
+        gawa_ids = [current_gawa_id] if current_gawa_id else []
         
         if not gawa_ids:
             return jsonify({
@@ -263,12 +257,8 @@ def get_admin_elder_info(elder_id):
     if not elder:
         return jsonify({"status": "error", "message": "Elder not found"}), 404
         
-    owned = GetAppearanceList.query.filter_by(elder_id=elder_id).all()
-    gawa_ids = list(set([o.gawa_id for o in owned]))
-    
-    # 加入目前正在使用的造型
-    if elder.gawa_id and elder.gawa_id not in gawa_ids:
-        gawa_ids.append(elder.gawa_id)
+    # 根據需求：目前造型只需顯示當前在elder_profile的gawa_id即可
+    gawa_ids = [elder.gawa_id] if elder.gawa_id else []
         
     appearances = GawaAppearance.query.filter(GawaAppearance.gawa_id.in_(gawa_ids)).all() if gawa_ids else []
     total_bonus = sum([a.bonus for a in appearances if a.bonus is not None])
@@ -302,7 +292,7 @@ def assign_appearance():
         if not elder or not appearance:
             return jsonify({"status": "error", "message": "Elder or Appearance not found"}), 404
             
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         
         # 1. ?遢?桀???甇瑕蝝??
         if elder.gawa_id:

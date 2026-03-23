@@ -2,7 +2,7 @@ import io
 from flask import Blueprint, jsonify, request, send_from_directory, send_file
 from models import User, Relationship, ElderProfile, FamilyMessage
 from extensions import db
-from datetime import datetime
+from datetime import datetime, timezone
 from werkzeug.utils import secure_filename
 import os
 from utils import generate_random_code
@@ -102,7 +102,7 @@ def get_paired_elders(user_id):
         return jsonify({'error': 'Only family members can fetch paired elders'}), 403
         
     elders = []
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     # Correctly query the relationships from the database
     user_relationships = Relationship.query.filter_by(family_id=user_id).all()
     for rel in user_relationships:

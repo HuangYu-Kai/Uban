@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from models import User, PairingCode, Relationship, ElderProfile, GawaAppearance, GetAppearanceList
 from extensions import db
 from utils import generate_random_code
@@ -29,7 +29,7 @@ def request_code():
     new_pairing = PairingCode(
         code=code,
         creator_id=0, # 0 表示由長輩端發起，等待家屬認領
-        expires_at=datetime.utcnow() + timedelta(minutes=10)
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=10)
     )
     db.session.add(new_pairing)
     db.session.commit()
@@ -81,7 +81,7 @@ def confirm_pairing():
 
     # 1. 驗證代碼
     pairing = PairingCode.query.filter_by(code=code, is_used=False).first()
-    if not pairing or pairing.expires_at < datetime.utcnow():
+    if not pairing or pairing.expires_at < datetime.now(timezone.utc):
         return jsonify({'error': 'Invalid or expired code'}), 404
 
     # 2. 自動為長輩建立帳號
@@ -136,7 +136,7 @@ def confirm_pairing():
         new_app_entry = GetAppearanceList(
             elder_id=elder_id_str,
             gawa_id=initial_appearance.gawa_id,
-            feed_starttime=datetime.utcnow(),
+            feed_starttime=datetime.now(timezone.utc),
             feed_endtime=GLOBAL_RESET_DATE,
             gawa_size=0
         )
