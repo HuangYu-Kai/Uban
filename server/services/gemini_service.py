@@ -1,8 +1,6 @@
-import google.generativeai as genai
-import os
 import json
 from dotenv import load_dotenv
-from services.tools_service import TOOL_MAP, AgentTools
+from skills import ALL_SKILLS, get_elder_context
 
 load_dotenv()
 
@@ -28,13 +26,15 @@ class GeminiService:
         from models import ElderProfile
         profile = ElderProfile.query.filter_by(user_id=user_id).first() if user_id else None
         
-        # 獲得最新背景資料並直接注入指令中
-        context = AgentTools.get_elder_context(user_id)
-        instruction = f"你是一位親切的長輩陪伴助手。{self._get_personality(profile)}\n{context}"
+        # 獲得最新背景資料並直接注入指令中 (作為基礎啟動背景)
+        instruction = (
+            f"你是一位親切的長輩陪伴助手。{self._get_personality(profile)}\n"
+            "當長輩需要幫助、詢問天氣、時間、健康建議或發生緊急狀況時，請務必使用對應的「工具（技能）」來獲取資訊或執行動作。"
+        )
         
         model = genai.GenerativeModel(
             model_name="gemini-2.5-flash",
-            tools=[AgentTools.get_elder_context, AgentTools.get_current_time, AgentTools.notify_family_SOS, AgentTools.get_weather_info],
+            tools=ALL_SKILLS,
             system_instruction=instruction
         )
         
@@ -54,15 +54,17 @@ class GeminiService:
             
         from models import ElderProfile
         profile = ElderProfile.query.filter_by(user_id=user_id).first() if user_id else None
-        context = AgentTools.get_elder_context(user_id)
-        instruction = f"你是一位親切的長輩陪伴助手。{self._get_personality(profile)}\n{context}"
+        instruction = (
+            f"你是一位親切的長輩陪伴助手。{self._get_personality(profile)}\n"
+            "當長輩需要幫助、詢問天氣、時間、健康建議或發生緊急狀況時，請務必使用對應的「工具（技能）」來獲取資訊或執行動作。"
+        )
         
         print(f"--- [AI Stream] Starting request for user {user_id} ---")
         
         model = genai.GenerativeModel(
             model_name="gemini-2.5-flash", 
             system_instruction=instruction,
-            tools=[AgentTools.get_elder_context, AgentTools.get_current_time, AgentTools.notify_family_SOS, AgentTools.get_weather_info]
+            tools=ALL_SKILLS
         )
         
         try:
@@ -93,16 +95,24 @@ class GeminiService:
                                     
                                     print(f"--- [AI Stream] AI requested tool: {tool_name} with {tool_args} ---")
                                     
-                                    # 執行工具 (依賴注入 user_id)
-                                    if tool_name == "get_elder_context":
-                                        tool_args["user_id"] = user_id
-                                    
+                                    # 執行工具 (自動適配參數，若工具包含 user_id 則注入)
                                     try:
-                                        tool_func = TOOL_MAP.get(tool_name)
-                                        tool_result = tool_func(**tool_args) if tool_func else f"Tool {tool_name} not found."
+                                        # 從匯出的 ALL_SKILLS 找對應函數
+                                        tool_func = next((f for f in ALL_SKILLS if f.__name__ == tool_name), None)
+                                        if tool_func:
+                                            # 注入 user_id (如果函數需要)
+                                            import inspect
+                                            params = inspect.signature(tool_func).parameters
+                                            if 'user_id' in params:
+                                                tool_args['user_id'] = user_id
+                                            
+                                            tool_result = tool_func(**tool_args)
+                                        else:
+                                            tool_result = f"Tool {tool_name} not found in modular skills."
+                                        
                                         print(f"--- [AI Stream] Tool result: {str(tool_result)[:100]}... ---")
                                     except Exception as te:
-                                        tool_result = f"Error: {te}"
+                                        tool_result = f"Error executing {tool_name}: {te}"
                                         print(f"--- [AI Stream] Tool error: {te} ---")
                                     
                                     # 將結果送回 AI 繼續生成

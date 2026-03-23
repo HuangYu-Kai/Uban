@@ -336,7 +336,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
                     borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.4),
+                        color: Colors.black.withValues(alpha: 0.4),
                         blurRadius: 8,
                         offset: const Offset(0, 4),
                       ),
@@ -358,7 +358,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     decoration: BoxDecoration(
-                      color: Colors.redAccent.withOpacity(0.8),
+                      color: Colors.redAccent.withValues(alpha: 0.8),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: const Row(

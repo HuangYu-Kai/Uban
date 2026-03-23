@@ -1,3 +1,6 @@
+import eventlet
+eventlet.monkey_patch()
+
 # server/app.py
 from flask import Flask, request, jsonify
 from flask_socketio import SocketIO, emit, join_room, leave_room
@@ -61,7 +64,7 @@ app.register_blueprint(ai_bp, url_prefix='/api/ai')
 
 # 使用 Eventlet 模式
 # cors_allowed_origins="*" 放在最後初始化 app 之後
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
 with app.app_context():
     import models  # 確保模型被讀取

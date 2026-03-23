@@ -87,7 +87,7 @@ class _ElderProfileTabState extends State<ElderProfileTab> {
             const SizedBox(height: 40),
             CircleAvatar(
               radius: 60,
-              backgroundColor: const Color(0xFF59B294).withOpacity(0.1),
+              backgroundColor: const Color(0xFF59B294).withValues(alpha: 0.1),
               child: const Icon(
                 Icons.person_rounded,
                 size: 80,
