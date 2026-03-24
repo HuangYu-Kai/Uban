@@ -21,6 +21,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     _fetchData();
   }
 
+
   Future<void> _fetchData() async {
     try {
       final leaderboardData = await _gameService.getLeaderboard(widget.elderId);
