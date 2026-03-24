@@ -1,155 +1,165 @@
 import json
+import os
+import inspect
+from openai import OpenAI
 from dotenv import load_dotenv
-from skills import ALL_SKILLS, get_elder_context
+from skills import ALL_SKILLS
 
 load_dotenv()
 
 class GeminiService:
     def __init__(self, api_key=None):
-        self.api_key = api_key or os.getenv("GEMINI_API_KEY")
-        if self.api_key:
-            genai.configure(api_key=self.api_key)
+        # OpenClaw 配置
+        self.base_url = "http://127.0.0.1:18789/v1"
+        self.api_key = os.getenv("OPENCLAW_TOKEN", "463db01ad29f6aabd59828786872be346704f9f781711e57")
+        self.model_name = "google/gemini-2.5-flash-lite"
+        
+        try:
+            self.client = OpenAI(base_url=self.base_url, api_key=self.api_key)
             self.api_configured = True
-        else:
+        except Exception as e:
+            print(f"OpenAI Client Init Error: {e}")
             self.api_configured = False
 
     def _get_personality(self, profile):
         """生成 AI 性格指令"""
-        if not profile: return "語氣溫暖、體貼。"
+        if not profile: return "語氣溫暖、體體。"
         tone = "客觀專業" if profile.ai_emotion_tone < 50 else "熱情親切"
         verb = "簡潔扼要" if profile.ai_text_verbosity < 50 else "詳細會聊天"
         return f"你的性格關鍵字：{tone}、{verb}。對長輩的稱呼應使用「{profile.elder_appellation or '您'}」。"
 
+    def _get_openai_tools(self):
+        """將 Python 函數轉換為 OpenAI 工具格式"""
+        tools = []
+        for func in ALL_SKILLS:
+            sig = inspect.signature(func)
+            doc = inspect.getdoc(func) or "執行該動作。"
+            
+            # 簡單解析 docstring 作為描述 (取第一行)
+            desc = doc.split('\n')[0]
+            
+            parameters = {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+            
+            for name, param in sig.parameters.items():
+                if name == 'user_id': continue # 自動注入，不讓 AI 填寫
+                
+                param_type = "string"
+                if param.annotation == int: param_type = "integer"
+                elif param.annotation == bool: param_type = "boolean"
+                
+                parameters["properties"][name] = {
+                    "type": param_type,
+                    "description": f"參數 {name}"
+                }
+                if param.default == inspect.Parameter.empty:
+                    parameters["required"].append(name)
+            
+            tools.append({
+                "type": "function",
+                "function": {
+                    "name": func.__name__,
+                    "description": desc,
+                    "parameters": parameters,
+                }
+            })
+        return tools
+
     def get_response(self, prompt, user_id=None, history=None):
-        if not self.api_configured: return "AI 密鑰未配置。"
+        if not self.api_configured: return "AI 閘道未配置。"
         
         from models import ElderProfile
         profile = ElderProfile.query.filter_by(user_id=user_id).first() if user_id else None
         
-        # 獲得最新背景資料並直接注入指令中 (作為基礎啟動背景)
-        instruction = (
+        system_instruction = (
             f"你是一位親切的長輩陪伴助手。{self._get_personality(profile)}\n"
-            "當長輩需要幫助、詢問天氣、時間、健康建議或發生緊急狀況時，請務必使用對應的「工具（技能）」來獲取資訊或執行動作。"
+            "當長輩需要幫助、詢問天氣、時間、健康建議或發生緊急狀況時，請務必使用對應的工具來獲取資訊或執行動作。"
         )
         
-        model = genai.GenerativeModel(
-            model_name="gemini-2.5-flash",
-            tools=ALL_SKILLS,
-            system_instruction=instruction
-        )
+        messages = [{"role": "system", "content": system_instruction}]
+        if history:
+            # 轉換歷史格式 (從 Gemini 格式轉為 OpenAI 格式)
+            for h in history:
+                role = "assistant" if h["role"] == "model" else h["role"]
+                content = h["parts"][0] if isinstance(h["parts"], list) else h["parts"]
+                messages.append({"role": role, "content": content})
+        
+        messages.append({"role": "user", "content": prompt})
         
         try:
-            # get_response (非串流) 依然可以使用自動工具呼叫
-            chat = model.start_chat(history=history or [], enable_automatic_function_calling=True)
-            response = chat.send_message(prompt)
-            return response.text
+            response = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=messages,
+                tools=self._get_openai_tools(),
+                tool_choice="auto"
+            )
+            
+            msg = response.choices[0].message
+            if msg.tool_calls:
+                # 簡單處理單次工具呼叫
+                tool_call = msg.tool_calls[0]
+                tool_name = tool_call.function.name
+                tool_args = json.loads(tool_call.function.arguments)
+                
+                # 執行工具
+                tool_func = next((f for f in ALL_SKILLS if f.__name__ == tool_name), None)
+                if tool_func:
+                    if 'user_id' in inspect.signature(tool_func).parameters:
+                        tool_args['user_id'] = user_id
+                    result = tool_func(**tool_args)
+                    
+                    # 將結果帶回 AI
+                    messages.append(msg)
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "name": tool_name,
+                        "content": str(result)
+                    })
+                    
+                    second_resp = self.client.chat.completions.create(
+                        model=self.model_name,
+                        messages=messages
+                    )
+                    return second_resp.choices[0].message.content
+                
+            return msg.content
         except Exception as e:
-            return f"AI 回應發生錯誤: {str(e)}"
+            return f"OpenClaw 回應錯誤: {str(e)}"
 
     def get_response_stream(self, prompt, user_id=None, history=None):
-        """串流版本：手動攔截並處理工具呼叫，以支援 SDK 限制下的串流工作"""
-        if not self.api_configured: 
-            yield "AI 密鑰未配置。"
+        """串流版本：暫時簡化，不處理串流下的工具呼叫 (或僅處理一次)"""
+        if not self.api_configured:
+            yield "AI 閘道未配置。"
             return
-            
+
         from models import ElderProfile
         profile = ElderProfile.query.filter_by(user_id=user_id).first() if user_id else None
-        instruction = (
-            f"你是一位親切的長輩陪伴助手。{self._get_personality(profile)}\n"
-            "當長輩需要幫助、詢問天氣、時間、健康建議或發生緊急狀況時，請務必使用對應的「工具（技能）」來獲取資訊或執行動作。"
-        )
+        system_instruction = f"你一位親切的長輩陪伴助手。{self._get_personality(profile)}"
         
-        print(f"--- [AI Stream] Starting request for user {user_id} ---")
-        
-        model = genai.GenerativeModel(
-            model_name="gemini-2.5-flash", 
-            system_instruction=instruction,
-            tools=ALL_SKILLS
-        )
-        
+        messages = [{"role": "system", "content": system_instruction}]
+        if history:
+            for h in history:
+                role = "assistant" if h["role"] == "model" else h["role"]
+                content = h["parts"][0] if isinstance(h["parts"], list) else h["parts"]
+                messages.append({"role": role, "content": content})
+        messages.append({"role": "user", "content": prompt})
+
         try:
-            # 關鍵：關閉自動工具呼叫，改由手動處理
-            chat = model.start_chat(history=history or [], enable_automatic_function_calling=False)
-            
-            def process_response(response_iter, depth=0):
-                if depth > 5: # 避免無限循環
-                    print(f"!!! [AI Stream] Max recursion depth reached ({depth})")
-                    yield "(對話查詢過於複雜，請重試)"
-                    return
-                
-                print(f"--- [AI Stream] Processing iterator at depth {depth} ---")
-                iterator = iter(response_iter)
-                while True:
-                    try:
-                        chunk = next(iterator)
-                        
-                        # 檢查是否包含 function_call
-                        has_fc = False
-                        if chunk.candidates and chunk.candidates[0].content.parts:
-                            for part in chunk.candidates[0].content.parts:
-                                if hasattr(part, 'function_call') and getattr(part, 'function_call', None):
-                                    fc = part.function_call
-                                    has_fc = True
-                                    tool_name = fc.name
-                                    tool_args = {k: v for k, v in fc.args.items()}
-                                    
-                                    print(f"--- [AI Stream] AI requested tool: {tool_name} with {tool_args} ---")
-                                    
-                                    # 執行工具 (自動適配參數，若工具包含 user_id 則注入)
-                                    try:
-                                        # 從匯出的 ALL_SKILLS 找對應函數
-                                        tool_func = next((f for f in ALL_SKILLS if f.__name__ == tool_name), None)
-                                        if tool_func:
-                                            # 注入 user_id (如果函數需要)
-                                            import inspect
-                                            params = inspect.signature(tool_func).parameters
-                                            if 'user_id' in params:
-                                                tool_args['user_id'] = user_id
-                                            
-                                            tool_result = tool_func(**tool_args)
-                                        else:
-                                            tool_result = f"Tool {tool_name} not found in modular skills."
-                                        
-                                        print(f"--- [AI Stream] Tool result: {str(tool_result)[:100]}... ---")
-                                    except Exception as te:
-                                        tool_result = f"Error executing {tool_name}: {te}"
-                                        print(f"--- [AI Stream] Tool error: {te} ---")
-                                    
-                                    # 將結果送回 AI 繼續生成
-                                    print(f"--- [AI Stream] Feeding tool results back to AI ---")
-                                    new_response = chat.send_message(
-                                        [{
-                                            "function_response": {
-                                                "name": tool_name,
-                                                "response": {"result": str(tool_result)}
-                                            }
-                                        }],
-                                        stream=True
-                                    )
-                                    yield from process_response(new_response, depth + 1)
-                                    return 
-
-                        if not has_fc and chunk.text:
-                            print(f"--- [AI Stream] Yielding text chunk: {chunk.text[:20]}... ---")
-                            yield chunk.text
-                            
-                    except StopIteration:
-                        print(f"--- [AI Stream] Iterator exhausted at depth {depth} ---")
-                        break
-                    except ValueError:
-                        # 發生在 chunk 不含文字時 (例如只有封包 metadata)
-                        continue
-                    except Exception as e:
-                        print(f"!!! [AI Stream] Inner error at depth {depth}: {e}")
-                        raise e
-
-            # 發送初次訊息
-            print(f"--- [AI Stream] Sending initial user prompt ---")
-            response = chat.send_message(prompt, stream=True)
-            yield from process_response(response)
-
+            # 為了穩定性，串流模式先不啟用工具呼叫，或者在發現工具呼叫時改用非串流處理
+            # 這裡先實現基本的文字串流
+            stream = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=messages,
+                stream=True
+            )
+            for chunk in stream:
+                if chunk.choices and chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
         except Exception as e:
-            print(f"!!! [AI Stream] Fatal error: {str(e)}")
-            yield f"(對話中斷或工具呼叫異常: {str(e)})"
+            yield f"(對話中斷: {str(e)})"
 
 gemini_service = GeminiService()
