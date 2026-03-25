@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/game_service.dart';
 import 'leaderboard_screen.dart';
 import 'admin_appearance_screen.dart';
+import 'pedometer_test_screen.dart';
 
 class TestHomePage extends StatefulWidget {
   const TestHomePage({super.key});
@@ -53,6 +54,24 @@ class _TestHomePageState extends State<TestHomePage> {
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 backgroundColor: Colors.indigo,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+            const SizedBox(height: 24),
+            _buildSectionTitle('硬體感測器測試 (獨立測試)'),
+            const SizedBox(height: 12),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (context) => const PedometerTestScreen()),
+                );
+              },
+              icon: const Icon(Icons.directions_walk),
+              label: const Text('開啟實體計步器測試沙盒'),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                backgroundColor: Colors.green.shade700,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),

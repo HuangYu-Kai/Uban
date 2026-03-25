@@ -29,3 +29,17 @@
 
 ### 6. Pedometer Integration & Documents (計步器設計與架構導覽)
 - **設計文件 `feedgawa_intro.md`**：建立專屬說明文件，清楚定義前端與後端的檔案關聯，並針對您要求的「實體走路偵測累積步數」功能，撰寫了採用 `pedometer` 硬體感測方案的技術建議與實作指南。
+
+### 7. Real-Time Step Tracking (實體步數偵測實作)
+- **硬體權限開通**：已在 `AndroidManifest.xml` 加入 `ACTIVITY_RECOGNITION`，並在 `Info.plist` 中配置 `NSMotionUsageDescription`，允許應用程式存取作業系統底層的健康與運動感測器。
+- **後端同步 API**：在 `game_logic.py` 中新增 `POST /elder/update_steps` 端點，負責接收前端傳來的步數增量 (`delta_steps`) 並安全地穩定累加到資料庫的 `step_total` 內。
+- **前端串接與防暴衝機制**：
+  - 在 `leaderboard_screen.dart` (長輩專屬儀表板) 載入時自動請求權限並實作 `Pedometer.stepCountStream` 的串流監聽。
+  - 結合 `SharedPreferences` 暫存本地上次硬體的總步數基準，精準計算出真實的「新增步數 (Delta)」。
+  - 導入了 **10秒定時緩衝 (Sync Timer)** 機制。若長輩連續走動，會先將增加的步數緩存在本地即時更新 UI 排名，每隔 10 秒才統一將累積的這段步數一次性送回後端伺服器，大幅節省 API 負載並保留高流暢度的互動體驗。即便是離開頁面，也會在 `dispose()` 時進行最後一次強制安全同步。
+
+### 8. Pedometer Fallback & UI Enhancement (最佳相容性步數方案)
+- **架構降級與相容性修復**：因部分 Android 廠牌 (如老舊的 Xiaomi / MIUI) 出廠並未正確搭載 Google Health Connect 的核心元件，導致原先的 `health` 作業系統層級 API 無法彈出授權視窗。為此，我們依據您的指示切回了相容性 100% 的 **硬體層感測器 (`pedometer`)** 方案 (Option 2)。
+- **前端數字增加視覺化加強**：
+  - **痛點解決**：直接讀取硬體計步感測器雖然不會有授權失敗的問題，但由於現代 Android 系統省電機制，每走十幾步硬體才會每「10 秒左右」整包吐出一次積累的步數去更新，造成 UI 視覺上會有「走很久才跳 10 步」的卡頓感。
+  - **UI 強化實作**：為了掩蓋這個硬體延遲，在 `pedometer_test_screen.dart` 中我們導入了 `TweenAnimationBuilder` 進行 **1.5秒的平滑過渡滾動動畫**。當底層每 10 秒傳來增加了 15 步的訊號時，畫面的巨大數字會像吃角子老虎機一樣，滑順地連續滾動上升 (例如: 100 -> 103 -> 108 -> ... -> 115)！這樣便能大幅增加您在走動時看著螢幕的真實「增長感」。

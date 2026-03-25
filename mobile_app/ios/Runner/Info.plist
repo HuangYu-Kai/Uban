@@ -63,5 +63,11 @@
 	<string>我們需要語音辨識權限，將長輩的聲音轉換為文字。</string>
 	<key>NSCameraUsageDescription</key>
 	<string>我們需要相機權限，以進行掃碼配對。</string>
+	<key>NSMotionUsageDescription</key>
+	<string>我們需要讀取健康資料權限，以追蹤您的步數並參與造型加成活動。</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>我們將與 HealthKit 整合，為您記錄實體步數並獲取加成獎勵。</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>我們將與 HealthKit 整合，為您記錄實體步數並獲取加成獎勵。</string>
 </dict>
 </plist>

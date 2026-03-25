@@ -54,3 +54,39 @@ This plan details the implementation of the new Admin and Elder specific interfa
 
 ### Manual Verification
 - Render the new UI components in Flutter to ensure they accurately display the Top 10 leaderboard logic and collection details.
+
+## Phase 4: Pedometer (Step Tracking) Integration
+
+### [Native Configurations]
+- **Android**: Add `ACTIVITY_RECOGNITION` permission to `AndroidManifest.xml`.
+- **iOS**: Add `NSMotionUsageDescription` to `Info.plist`.
+- **Dependencies**: Add `pedometer` to `pubspec.yaml` (since `permission_handler` and `shared_preferences` are already present).
+
+### [Backend API]
+- **`POST /api/game/elder/update_steps`**: Add a new endpoint in `game_logic.py` that accepts `elder_id` and `delta_steps`. It will increment the `step_total` in the Database by `delta_steps` to accurately handle continuous counting.
+
+### [Frontend Integration]
+- **`game_service.dart`**: Implement `updateSteps(String elderId, int deltaSteps)`.
+- **`leaderboard_screen.dart`**: 
+  1. Request `Permission.activityRecognition` on screen load.
+  2. Implement `Pedometer.stepCountStream`.
+  3. Keep a cache of the last recorded hardware step count using `SharedPreferences`.
+  4. Calculate the delta (`current - cached`) and buffer it.
+  5. Sync the buffered steps to the backend in batches (e.g., every 10 steps or periodically) to avoid API spam. Update the local UI optimistically.
+
+## Phase 5: OS Health API (Apple Health / Google Fit) Integration
+
+### [Native Configurations]
+- **Dependencies**: Replace `pedometer` usage with the `health` package (`flutter pub add health`).
+- **Android**:
+  - Add `Health Connect` specific permissions (`android.permission.health.READ_STEPS`).
+  - Add `AndroidManifest.xml` intent filters to explicitly support Health Connect bindings.
+- **iOS**:
+  - Add `NSHealthShareUsageDescription` and `NSHealthUpdateUsageDescription` to `Info.plist`.
+
+### [Frontend Testing Screen]
+- **`pedometer_test_screen.dart`**: 
+  1. Revamp this sandbox to utilize `health` package APIs.
+  2. Implement an authorization flow (`Health().requestAuthorization([HealthDataType.STEPS])`).
+  3. Formulate a daily step query (`Health().getTotalStepsInInterval(midnight, now)`).
+  4. Build a UI to display authoritative daily steps fetched directly from the OS database.

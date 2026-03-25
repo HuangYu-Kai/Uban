@@ -241,6 +241,41 @@ def get_elder_collection(elder_id):
         traceback.print_exc()
         return jsonify({"status": "error", "message": str(e)}), 500
 
+# --- [Elder API] 更新長輩步數 ---
+@game_logic_bp.route('/elder/update_steps', methods=['POST'])
+def update_steps():
+    data = request.json or {}
+    elder_id = data.get('elder_id')
+    try:
+        delta_steps = int(data.get('delta_steps', 0))
+    except (ValueError, TypeError):
+        delta_steps = 0
+        
+    if not elder_id or delta_steps <= 0:
+        return jsonify({"status": "error", "message": "Invalid elder_id or delta_steps"}), 400
+        
+    try:
+        elder = ElderProfile.query.filter_by(elder_id=elder_id).first()
+        if not elder:
+            return jsonify({"status": "error", "message": "Elder not found"}), 404
+            
+        if elder.step_total is None:
+            elder.step_total = 0
+            
+        elder.step_total += delta_steps
+        db.session.commit()
+        
+        return jsonify({
+            "status": "success", 
+            "message": f"Added {delta_steps} steps",
+            "new_total": elder.step_total
+        })
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 # --- [Admin API] 查詢指派長輩資料 ---
 @game_logic_bp.route('/admin/elder_info/<elder_id>', methods=['GET'])
 def get_admin_elder_info(elder_id):

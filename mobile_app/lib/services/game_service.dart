@@ -57,6 +57,22 @@ class GameService {
     }
   }
 
+  Future<Map<String, dynamic>> updateSteps(String elderId, int deltaSteps) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/elder/update_steps'),
+      headers: {'Content-Type': 'application/json'},
+      body: json.encode({
+        'elder_id': elderId,
+        'delta_steps': deltaSteps,
+      }),
+    );
+    if (response.statusCode == 200) {
+      return json.decode(response.body);
+    } else {
+      throw Exception('Failed to update steps: ${response.body}');
+    }
+  }
+
   Future<Map<String, dynamic>> getAdminElderInfo(String elderId) async {
     final response = await http.get(Uri.parse('$baseUrl/admin/elder_info/$elderId'));
     if (response.statusCode == 200) {
