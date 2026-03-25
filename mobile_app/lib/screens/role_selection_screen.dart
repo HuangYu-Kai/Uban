@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import 'family_dashboard_screen.dart';
 import 'elder_screen.dart';
+import 'video_call_screen.dart'; // 引入 VideoCallScreen 以便測試
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../globals.dart';
@@ -255,6 +256,51 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                 const SizedBox(height: 20),
                 if (_isLoading) const CircularProgressIndicator() else ElevatedButton(onPressed: _handleSubmit, child: const Text("下一步")),
               ],
+
+              const SizedBox(height: 40),
+              // --- 測試專用按鈕 ---
+              const Divider(),
+              const SizedBox(height: 10),
+              Text("開發測試專區", style: TextStyle(color: Colors.grey.shade600, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 10),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.videocam),
+                    label: const Text("測試發話方"),
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const VideoCallScreen(
+                            roomId: 'test_demo_room',
+                            autoStart: true,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(width: 10),
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.call_received),
+                    label: const Text("測試接聽方"),
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const VideoCallScreen(
+                            roomId: 'test_demo_room',
+                            autoStart: false,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
             ],
           ),
         ),
