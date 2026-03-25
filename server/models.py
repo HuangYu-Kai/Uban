@@ -19,7 +19,7 @@ class PairingCode(db.Model):
     __tablename__ = 'pairing_code'
     id = db.Column(db.Integer, primary_key=True, name='code_id')
     code = db.Column(db.String(6), unique=True, nullable=False)
-    creator_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    creator_id = db.Column(db.Integer, db.ForeignKey('user_account_data.user_id'), nullable=False)
     is_used = db.Column(db.Boolean, default=False)
     expires_at = db.Column(db.DateTime, nullable=False)
 
@@ -27,12 +27,12 @@ class Relationship(db.Model):
     __tablename__ = 'family_elder_relationship'
     id = db.Column(db.Integer, primary_key=True, name='relation_id')
     elder_id = db.Column(db.String(4), db.ForeignKey('elder_profile.elder_id'), nullable=False)
-    family_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    family_id = db.Column(db.Integer, db.ForeignKey('user_account_data.user_id'), nullable=False)
 
 class ActivityLog(db.Model):
     __tablename__ = 'activity_log'
     id = db.Column(db.Integer, primary_key=True, name='log_id')
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user_account_data.user_id'), nullable=False)
     event_type = db.Column(db.String(50), nullable=False)  # 'exercise', 'medication', 'mood', 'chat'
     content = db.Column(db.Text, nullable=False)
     timestamp = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
@@ -76,8 +76,8 @@ class ElderFellowshipData(db.Model):
 
 class FamilyMessage(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    family_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    elder_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    family_id = db.Column(db.Integer, db.ForeignKey('user_account_data.user_id'), nullable=False)
+    elder_id = db.Column(db.Integer, db.ForeignKey('user_account_data.user_id'), nullable=False)
     content = db.Column(db.Text, nullable=False)
     is_read = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))

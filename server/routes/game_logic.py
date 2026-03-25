@@ -25,6 +25,27 @@ game_logic_bp = Blueprint('game_logic', __name__)
 
 GLOBAL_RESET_DATE = datetime(2026, 12, 31, 23, 59, 59)
 
+def get_level(steps):
+    """
+    根據步數計算等級:
+    Lv1: 0~1,000
+    Lv2: 1,001~20,000
+    Lv3: 20,001~50,000
+    Lv4: 50,001~150,000
+    Lv5: 150,001~300,000
+    Lv6: 300,001~700,000
+    Lv7: 700,001~1,000,000
+    Lv8: 1,000,001以上
+    """
+    if steps <= 1000: return 1
+    if steps <= 20000: return 2
+    if steps <= 50000: return 3
+    if steps <= 150000: return 4
+    if steps <= 300000: return 5
+    if steps <= 700000: return 6
+    if steps <= 1000000: return 7
+    return 8
+
 @game_logic_bp.route('/distribute_appearances', methods=['POST'])
 def distribute_appearances():
     res, status_code = do_distribute_appearances()
@@ -54,8 +75,9 @@ def do_distribute_appearances(app_context=None):
                 )
                 db.session.add(history_entry)
             
-            if elder.step_total:
-                elder.gawa_xp = (elder.gawa_xp or 0) + elder.step_total
+            # gawa_xp 欄位不存在或不使用，僅處理 step_total 重置邏輯 (依需求保留步數重置或轉移)
+            # if elder.step_total:
+            #     elder.gawa_xp = (elder.gawa_xp or 0) + elder.step_total
             elder.step_total = 0
             
             random_appearance = random.choice(appearances)
@@ -107,7 +129,7 @@ def get_leaderboard(elder_id):
             friend_ids.add(rel.requester_id)
             friend_ids.add(rel.addressee_id)
         
-        # Query ElderProfile for these IDs and sort by step_total descending
+        # Query ElderProfile and sort by step_total DESC
         leaderboard_data = ElderProfile.query.filter(ElderProfile.elder_id.in_(friend_ids)).order_by(ElderProfile.step_total.desc()).all()
         
         result = []
@@ -115,11 +137,12 @@ def get_leaderboard(elder_id):
         user_rank = -1
         
         for index, entry in enumerate(leaderboard_data):
+            steps = entry.step_total if entry.step_total is not None else 0
             entry_dict = {
                 "elder_id": entry.elder_id,
-                "elder_name": entry.elder_name, # ? ???瑁憬?迂
-                "step_total": entry.step_total if entry.step_total is not None else 0,
-                "gawa_xp": entry.gawa_xp if entry.gawa_xp is not None else 0,
+                "elder_name": entry.elder_name,
+                "step_total": steps,
+                "level": get_level(steps),
                 "rank": index + 1
             }
             if entry.elder_id == elder_id:
@@ -171,8 +194,9 @@ def check_reset():
             app.feed_endtime = now
             
             # 3. ?蔭憭扳郊??
-            if elder.step_total:
-                elder.gawa_xp = (elder.gawa_xp or 0) + elder.step_total
+            # 3. 步數重置邏輯 (若需要)
+            # if elder.step_total:
+            #     elder.gawa_xp = (elder.gawa_xp or 0) + elder.step_total
             elder.step_total = 0
             
             updated_count += 1
@@ -191,11 +215,13 @@ def get_elder_status(elder_id):
         
     appearance = GawaAppearance.query.get(elder.gawa_id) if elder.gawa_id else None
     
+    steps = elder.step_total if elder.step_total is not None else 0
+    
     return jsonify({
         "status": "success",
         "elder_name": elder.elder_name,
-        "step_total": elder.step_total,
-        "gawa_xp": elder.gawa_xp if elder.gawa_xp is not None else 0,
+        "step_total": steps,
+        "level": get_level(steps),
         "gawa_id": elder.gawa_id,
         "gawa_name": appearance.gawa_name if appearance else "無",
         "feed_starttime": elder.feed_starttime.isoformat() if elder.feed_starttime else None
@@ -263,6 +289,7 @@ def update_steps():
             elder.step_total = 0
             
         elder.step_total += delta_steps
+        # elder.gawa_xp 欄位不使用
         db.session.commit()
         
         return jsonify({
@@ -363,8 +390,6 @@ def save_steps():
         return jsonify({"status": "error", "message": "Elder not found"}), 404
         
     elder.step_total = (elder.step_total or 0) + (steps or 0)
-    elder.gawa_xp = (elder.gawa_xp or 0) + (steps or 0)
-    
     db.session.commit()
-    return jsonify({"status": "success", "step_total": elder.step_total, "gawa_xp": elder.gawa_xp})
+    return jsonify({"status": "success", "step_total": elder.step_total})
 
