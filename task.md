@@ -17,3 +17,15 @@
     - [x] Draft `feedgawa_intro.md` explaining the appearance and step tracking architecture.
     - [x] Document pedometer integration possibilities.
     - [x] Test all new UI flows and API endpoints.
+
+- [x] **Phase 4: Pedometer Integration**
+    - [x] Run `flutter pub add pedometer` to install the plugin.
+    - [x] Update `AndroidManifest.xml` with `ACTIVITY_RECOGNITION` and `Info.plist` with `NSMotionUsageDescription`.
+    - [x] Add `update_steps` API to Flask `game_logic.py`.
+    - [x] Add `updateSteps` to `game_service.dart`.
+    - [x] Implement pedometer listener and UI logic in `leaderboard_screen.dart`.
+
+- [x] **Phase 5: OS Health API Migration**
+    - [x] Run `flutter pub remove pedometer` and `flutter pub add health`.
+    - [x] Configure `AndroidManifest.xml` Health Connect permissions.
+    - [x] Revamp `pedometer_test_screen.dart` with `Health().getTotalStepsInInterval()` logic to display the accurate daily steps directly from the system.
