@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lunar/lunar.dart';
@@ -246,6 +247,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                 image: AssetImage('assets/images/newspaper.png'),
                 fit: BoxFit.cover,
               ),
+              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 10, offset: const Offset(0, 5))],
             ),
             child: Stack(
               children: [
@@ -342,19 +344,13 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     );
   }
 
-  // ── ✨ 小遊戲插件 (寵物養成) ───────────────────────────────────
   Widget _buildPetMiniGame() {
     return Container(
       margin: const EdgeInsets.only(top: 20),
-      padding: const EdgeInsets.all(20),
+      height: 180,
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFFE8F5E9), Color(0xFFC8E6C9)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: Colors.white, width: 2),
         boxShadow: [
           BoxShadow(
             color: Colors.green.withValues(alpha: 0.1),
@@ -364,58 +360,70 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
         ],
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // 寵物主角
-          Stack(
-            alignment: Alignment.center,
-            children: [
-              Container(
-                width: 80,
-                height: 80,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.5),
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const Icon(Icons.psychology_alt_rounded, size: 50, color: Color(0xFF388E3C)),
-            ],
-          ),
-          const SizedBox(width: 20),
+          // 左半邊溫馨圖片
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '小花 正在等您...',
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: const Color(0xFF2E7D32),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: LinearProgressIndicator(
-                    value: 0.7,
-                    minHeight: 12,
-                    backgroundColor: Colors.white.withValues(alpha: 0.5),
-                    valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF66BB6A)),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  '再走 500 步就能升級囉！🌱',
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 15,
-                    color: const Color(0xFF455A64),
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
+            flex: 2,
+            child: ClipRRect(
+              borderRadius: const BorderRadius.horizontal(left: Radius.circular(28)),
+              child: Image.asset('assets/images/pet_garden.png', fit: BoxFit.cover),
             ),
           ),
-          const Icon(Icons.arrow_forward_ios_rounded, color: Color(0xFF388E3C), size: 20),
+          // 右半邊遊戲進度
+          Expanded(
+            flex: 3,
+            child: Container(
+              padding: const EdgeInsets.all(20),
+              decoration: const BoxDecoration(
+                color: Color(0xFFF8FAF7),
+                borderRadius: BorderRadius.horizontal(right: Radius.circular(28)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.eco_rounded, size: 28, color: Color(0xFF388E3C)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '小花 正在等您...',
+                          style: GoogleFonts.notoSansTc(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: const Color(0xFF1B5E20),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: LinearProgressIndicator(
+                      value: 0.7,
+                      minHeight: 14,
+                      backgroundColor: const Color(0xFFC8E6C9),
+                      valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF43A047)),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    '再走 500 步就能升級囉！🌱',
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 14,
+                      color: const Color(0xFF2E7D32),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );
