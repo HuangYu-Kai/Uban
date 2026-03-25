@@ -23,21 +23,14 @@ def save_schedule_time(iso_time_str):
 
 game_logic_bp = Blueprint('game_logic', __name__)
 
-# ???芰?湔甇斗??雿憭?鞈??湔??郊?貊?蝞?蝯曹??蔭??
 GLOBAL_RESET_DATE = datetime(2026, 12, 31, 23, 59, 59)
 
 @game_logic_bp.route('/distribute_appearances', methods=['POST'])
 def distribute_appearances():
-    """
-    蝞∠????葫閰衣嚗???elder_profile鞈????
-    """
     res, status_code = do_distribute_appearances()
     return jsonify(res), status_code
 
 def do_distribute_appearances(app_context=None):
-    """
-    ?瑁????潭?祕??頛荔?靘?API ???舀?蝔??
-    """
     try:
         elders = ElderProfile.query.all()
         appearances = GawaAppearance.query.all()
@@ -51,9 +44,6 @@ def do_distribute_appearances(app_context=None):
         now = datetime.now(timezone.utc)
         
         for elder in elders:
-            # ? 靘雿輻??蝢拍? 3 甇仿???嚗?
-            
-            # ??嚗?隞賜???甇瑕蝝??(GetAppearanceList)??
             if elder.gawa_id:
                 history_entry = GetAppearanceList(
                     elder_id=elder.elder_id,
@@ -64,14 +54,13 @@ def do_distribute_appearances(app_context=None):
                 )
                 db.session.add(history_entry)
             
-            # ??嚗?蝵桃???
+            if elder.step_total:
+                elder.gawa_xp = (elder.gawa_xp or 0) + elder.step_total
             elder.step_total = 0
             
-            # ??嚗????銝西身摰??????
             random_appearance = random.choice(appearances)
             elder.gawa_id = random_appearance.gawa_id
             elder.feed_starttime = now
-            
             distributed += 1
             
         db.session.commit()
@@ -82,9 +71,7 @@ def do_distribute_appearances(app_context=None):
         }, 200
     except Exception as e:
         db.session.rollback()
-        print(f"Error in distribute_appearances: {str(e)}")
         import traceback
-        traceback.print_exc()
         traceback.print_exc()
         return {"status": "error", "message": str(e)}, 500
 
@@ -132,6 +119,7 @@ def get_leaderboard(elder_id):
                 "elder_id": entry.elder_id,
                 "elder_name": entry.elder_name, # ? ???瑁憬?迂
                 "step_total": entry.step_total if entry.step_total is not None else 0,
+                "gawa_xp": entry.gawa_xp if entry.gawa_xp is not None else 0,
                 "rank": index + 1
             }
             if entry.elder_id == elder_id:
@@ -183,6 +171,8 @@ def check_reset():
             app.feed_endtime = now
             
             # 3. ?蔭憭扳郊??
+            if elder.step_total:
+                elder.gawa_xp = (elder.gawa_xp or 0) + elder.step_total
             elder.step_total = 0
             
             updated_count += 1
@@ -205,6 +195,7 @@ def get_elder_status(elder_id):
         "status": "success",
         "elder_name": elder.elder_name,
         "step_total": elder.step_total,
+        "gawa_xp": elder.gawa_xp if elder.gawa_xp is not None else 0,
         "gawa_id": elder.gawa_id,
         "gawa_name": appearance.gawa_name if appearance else "無",
         "feed_starttime": elder.feed_starttime.isoformat() if elder.feed_starttime else None
@@ -322,4 +313,23 @@ def assign_appearance():
         import traceback
         traceback.print_exc()
         return jsonify({"status": "error", "message": str(e)}), 500
+
+@game_logic_bp.route('/save_steps', methods=['POST'])
+def save_steps():
+    data = request.json or {}
+    elder_id = data.get('elder_id')
+    steps = data.get('steps', 0)
+    
+    if not elder_id:
+        return jsonify({"status": "error", "message": "Missing elder_id"}), 400
+        
+    elder = ElderProfile.query.filter_by(elder_id=elder_id).first()
+    if not elder:
+        return jsonify({"status": "error", "message": "Elder not found"}), 404
+        
+    elder.step_total = (elder.step_total or 0) + (steps or 0)
+    elder.gawa_xp = (elder.gawa_xp or 0) + (steps or 0)
+    
+    db.session.commit()
+    return jsonify({"status": "success", "step_total": elder.step_total, "gawa_xp": elder.gawa_xp})
 

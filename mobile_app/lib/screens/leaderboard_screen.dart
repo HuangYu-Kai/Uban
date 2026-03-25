@@ -105,10 +105,30 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                               entry['elder_name'] ?? '長輩 ${entry['elder_id']}', // 💡 使用長輩名稱
                               style: TextStyle(fontWeight: isMe ? FontWeight.bold : FontWeight.normal, color: isMe ? Colors.teal : Colors.black87),
                             ),
-                            subtitle: Text('ID: ${entry['elder_id']}'),
-                            trailing: Text(
-                              '${entry['step_total']} 步',
-                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.orangeAccent),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('ID: ${entry['elder_id']}'),
+                                Text(
+                                  'Gawa 經驗: ${entry['gawa_xp'] ?? 0} XP',
+                                  style: const TextStyle(fontSize: 12, color: Colors.teal),
+                                ),
+                                Text(
+                                  '成長倍率: x${(1.0 + ((entry['gawa_xp'] ?? 0) / 1000.0) * 0.05).toStringAsFixed(2)}',
+                                  style: const TextStyle(fontSize: 11, color: Colors.blueGrey),
+                                ),
+                              ],
+                            ),
+                            trailing: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text(
+                                  '${entry['step_total']} 步',
+                                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.orangeAccent),
+                                ),
+                                const Icon(Icons.pets, size: 16, color: Colors.teal),
+                              ],
                             ),
                           ),
                         );
