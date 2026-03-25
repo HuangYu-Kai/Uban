@@ -91,4 +91,17 @@ class GameService {
       throw Exception('Failed to set distribution time: ${response.body}');
     }
   }
+
+  Future<Map<String, dynamic>> saveSteps(String elderId, int steps) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/save_steps'),
+      headers: {'Content-Type': 'application/json'},
+      body: json.encode({'elder_id': elderId, 'steps': steps}),
+    );
+    if (response.statusCode == 200) {
+      return json.decode(response.body);
+    } else {
+      throw Exception('Failed to save steps: ${response.body}');
+    }
+  }
 }

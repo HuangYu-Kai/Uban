@@ -47,6 +47,7 @@ class ElderProfile(db.Model):
     elder_name = db.Column(db.String(32), nullable=True)
     elder_appellation = db.Column(db.String(16), nullable=True)
     step_total = db.Column(db.Integer, default=0)
+    gawa_xp = db.Column(db.Integer, default=0)
     create_ts = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     gawa_id = db.Column(db.Integer, db.ForeignKey('gawa_appearance.gawa_id'), nullable=True)
     feed_starttime = db.Column(db.DateTime, nullable=True)
