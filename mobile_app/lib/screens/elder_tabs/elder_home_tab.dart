@@ -2,9 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lunar/lunar.dart';
 import 'package:intl/intl.dart';
+import '../elder_screen.dart';
+import '../../services/api_service.dart';
 
 class ElderHomeTab extends StatefulWidget {
-  const ElderHomeTab({super.key});
+  final int userId;
+  final String userName;
+
+  const ElderHomeTab({
+    super.key,
+    required this.userId,
+    required this.userName,
+  });
 
   @override
   State<ElderHomeTab> createState() => _ElderHomeTabState();
@@ -18,10 +27,30 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
   late String _monthStr;
   late String _yearStr;
 
+  List<dynamic> _familyList = [];
+  bool _isLoadingFamily = true;
+
   @override
   void initState() {
     super.initState();
     _updateTime();
+    _fetchFamily();
+  }
+
+  Future<void> _fetchFamily() async {
+    try {
+      final family = await ApiService.getPairedFamily(widget.userId);
+      if (mounted) {
+        setState(() {
+          _familyList = family;
+          _isLoadingFamily = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingFamily = false);
+      }
+    }
   }
 
   void _updateTime() {
@@ -80,14 +109,15 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                   padding: const EdgeInsets.all(20),
                   child: Column(
                     children: [
-                      _buildGreetingRow(),
-                      const SizedBox(height: 20),
                       _buildCalendarCard(),
                       const SizedBox(height: 20),
                       _buildMainFeaturesRow(),
                       const SizedBox(height: 20),
+                      // ✨ 新增小遊戲插件
+                      _buildPetMiniGame(),
+                      const SizedBox(height: 30),
                       _buildNewsSection(),
-                      const SizedBox(height: 100), // 留白給浮動底部
+                      const SizedBox(height: 120), // 留白給浮動底部
                     ],
                   ),
                 ),
@@ -103,75 +133,6 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     return const SizedBox(height: 20);
   }
 
-  Widget _buildGreetingRow() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '早安！',
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 48,
-                  fontWeight: FontWeight.w900,
-                  color: const Color(0xFF1E293B),
-                ),
-              ),
-              const SizedBox(height: 4),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFEF3C7),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min, // ★ 避免 Row 撐開
-                  children: [
-                    const Icon(
-                      Icons.wb_sunny_rounded,
-                      color: Colors.orange,
-                      size: 16,
-                    ),
-                    const SizedBox(width: 4),
-                    Flexible( // ★ 避免文字過長導致 Overflow
-                      child: Text(
-                        '超級會員',
-                        style: GoogleFonts.notoSansTc(
-                          fontSize: 14,
-                          color: Colors.orange[800],
-                          fontWeight: FontWeight.w600,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        CircleAvatar(
-          radius: 35,
-          backgroundColor: Colors.white,
-          child: ClipOval(
-            child: Image.network(
-              'https://i.pravatar.cc/150?u=elder',
-              fit: BoxFit.cover,
-              width: 70,
-              height: 70,
-              errorBuilder: (context, error, stackTrace) => const Icon(
-                Icons.person,
-                size: 40,
-                color: Color(0xFF59B294),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
 
   Widget _buildCalendarCard() {
     return Container(
@@ -319,84 +280,389 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
           ),
         ),
         const SizedBox(width: 16),
-        // 朋友
+        // 聯絡親友大按鈕
         Expanded(
           flex: 2,
-          child: Column(
-            children: [
-              Container(
-                height: 220,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFCFEADF),
-                  borderRadius: BorderRadius.circular(24),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          '朋友',
-                          style: GoogleFonts.notoSansTc(
-                            fontSize: 24,
-                            fontWeight: FontWeight.w900,
-                            color: const Color(0xFF1E293B),
-                          ),
-                        ),
-                        const Icon(
-                          Icons.arrow_circle_right,
-                          color: Color(0xFF59B294),
-                          size: 28,
-                        ),
-                      ],
-                    ),
-                    const Expanded(child: SizedBox()),
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          _buildFriendAvatar('GAWA'),
-                          _buildFriendAvatar('倪阿恭'),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+          child: GestureDetector(
+            onTap: () => _showFriendsBottomSheet(context),
+            child: Container(
+              height: 220,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFCFEADF),
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF59B294).withValues(alpha: 0.2),
+                    blurRadius: 15,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
               ),
-            ],
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Spacer(),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.diversity_1_rounded,
+                      size: 48,
+                      color: Color(0xFF59B294),
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    '聯絡家人',
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                      color: const Color(0xFF1E293B),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '點擊可通話',
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF59B294),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildFriendAvatar(String name) {
-    return Column(
-      children: [
-        CircleAvatar(
-          radius: 18,
-          backgroundColor: Colors.grey[200],
-          child: const Icon(Icons.person, size: 20),
+  // ── ✨ 小遊戲插件 (寵物養成) ───────────────────────────────────
+  Widget _buildPetMiniGame() {
+    return Container(
+      margin: const EdgeInsets.only(top: 20),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFFE8F5E9), Color(0xFFC8E6C9)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
-        const SizedBox(height: 4),
-        Text(
-          name,
-          style: GoogleFonts.notoSansTc(
-            fontSize: 10,
-            fontWeight: FontWeight.bold,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: Colors.white, width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.green.withValues(alpha: 0.1),
+            blurRadius: 15,
+            offset: const Offset(0, 8),
           ),
-        ),
-      ],
+        ],
+      ),
+      child: Row(
+        children: [
+          // 寵物主角
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.5),
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const Icon(Icons.psychology_alt_rounded, size: 50, color: Color(0xFF388E3C)),
+            ],
+          ),
+          const SizedBox(width: 20),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '小花 正在等您...',
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: const Color(0xFF2E7D32),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: LinearProgressIndicator(
+                    value: 0.7,
+                    minHeight: 12,
+                    backgroundColor: Colors.white.withValues(alpha: 0.5),
+                    valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF66BB6A)),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '再走 500 步就能升級囉！🌱',
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 15,
+                    color: const Color(0xFF455A64),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Icon(Icons.arrow_forward_ios_rounded, color: Color(0xFF388E3C), size: 20),
+        ],
+      ),
     );
   }
+
+  // ── ✨ 聯絡家人彈跳視窗與邏輯 ───────────────────────────────────
+  void _showFriendsBottomSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => _buildContactListSheet(ctx),
+    );
+  }
+
+  Widget _buildContactListSheet(BuildContext popupContext) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 40,
+            height: 5,
+            decoration: BoxDecoration(
+              color: Colors.grey[300],
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            '請問您想聯絡誰？',
+            style: GoogleFonts.notoSansTc(
+              fontSize: 24,
+              fontWeight: FontWeight.w900,
+              color: const Color(0xFF1E293B),
+            ),
+          ),
+          const SizedBox(height: 24),
+          if (_isLoadingFamily)
+            const Center(child: CircularProgressIndicator())
+          else if (_familyList.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Text(
+                "目前尚未綁定任何家屬",
+                style: GoogleFonts.notoSansTc(color: Colors.grey, fontSize: 18),
+              ),
+            )
+          else
+            ..._familyList.map((family) => Padding(
+                  padding: const EdgeInsets.only(bottom: 16.0),
+                  child: _buildContactListItem(
+                      popupContext, family['user_name'] ?? '家人', '主要照護者'),
+                )),
+          const SizedBox(height: 14),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildContactListItem(BuildContext popupContext, String name, String relation) {
+    return InkWell(
+      onTap: () {
+        Navigator.pop(popupContext); // Close first popup
+        _showActionBottomSheet(context, name, relation); // Open second popup
+      },
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF1F5F9),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
+        ),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 30,
+              backgroundColor: const Color(0xFFCFEADF),
+              child: const Icon(Icons.person, size: 35, color: Color(0xFF59B294)),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: const Color(0xFF1E293B),
+                    ),
+                  ),
+                  Text(
+                    relation,
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 16,
+                      color: const Color(0xFF64748B),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.arrow_forward_ios_rounded, color: Color(0xFF94A3B8)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showActionBottomSheet(BuildContext context, String name, String relation) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => _buildActionSheet(ctx, name, relation),
+    );
+  }
+
+  Widget _buildActionSheet(BuildContext popupContext, String name, String relation) {
+    return Container(
+      padding: const EdgeInsets.all(30),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(36)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CircleAvatar(
+            radius: 40,
+            backgroundColor: const Color(0xFFCFEADF),
+            child: const Icon(Icons.person, size: 45, color: Color(0xFF59B294)),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            name,
+            style: GoogleFonts.notoSansTc(
+              fontSize: 28,
+              fontWeight: FontWeight.w900,
+              color: const Color(0xFF1E293B),
+            ),
+          ),
+          Text(
+            relation,
+            style: GoogleFonts.notoSansTc(
+              fontSize: 18,
+              color: const Color(0xFF64748B),
+            ),
+          ),
+          const SizedBox(height: 32),
+          Row(
+            children: [
+              Expanded(
+                child: _buildCallButton(
+                  icon: Icons.call_rounded,
+                  label: '語音通話',
+                  color: const Color(0xFF3B82F6),
+                  onTap: () {
+                    Navigator.pop(popupContext);
+                    _handleCall(name, isVideo: false);
+                  },
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _buildCallButton(
+                  icon: Icons.videocam_rounded,
+                  label: '視訊通話',
+                  color: const Color(0xFF10B981),
+                  onTap: () {
+                    Navigator.pop(popupContext);
+                    _handleCall(name, isVideo: true);
+                  },
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 30),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCallButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 20),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: color.withValues(alpha: 0.3), width: 2),
+        ),
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: color,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(color: color.withValues(alpha: 0.3), blurRadius: 10, offset: const Offset(0, 4)),
+                ],
+              ),
+              child: Icon(icon, size: 32, color: Colors.white),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              label,
+              style: GoogleFonts.notoSansTc(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _handleCall(String friendName, {bool isVideo = true}) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ElderScreen(
+          roomId: widget.userId.toString(),
+          deviceName: widget.userName,
+          autoCall: true,
+        ),
+      ),
+    );
+  }
+
 
   Widget _buildNewsSection() {
     return Column(
@@ -478,10 +744,27 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
               Text(
                 '過半台灣人想「微退休」！滙豐揭關鍵門檻：先存到 730 萬元',
                 style: GoogleFonts.notoSansTc(
-                  fontSize: 17,
-                  fontWeight: FontWeight.bold,
-                  height: 1.5,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                  height: 1.4,
+                  color: const Color(0xFF1E293B),
                 ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Text(
+                    '繼續閱讀',
+                    style: GoogleFonts.notoSansTc(
+                      color: const Color(0xFF59B294),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  const Icon(Icons.arrow_forward_rounded, color: Color(0xFF59B294), size: 18),
+                ],
               ),
             ],
           ),

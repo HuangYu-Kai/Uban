@@ -78,7 +78,10 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
           IndexedStack(
             index: _selectedIndex,
             children: [
-              const ElderHomeTab(),
+              ElderHomeTab(
+                userId: widget.userId,
+                userName: widget.userName,
+              ),
               ElderChatTab(
                 userId: widget.userId,
                 onBackToHome: () => setState(() => _selectedIndex = 0),

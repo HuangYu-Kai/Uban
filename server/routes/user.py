@@ -117,6 +117,28 @@ def get_paired_elders(user_id):
             
     return jsonify(elders_list)
 
+@user_bp.route('/<int:user_id>/family', methods=['GET'])
+def get_paired_family(user_id):
+    """獲取與長輩綁定的家屬列表"""
+    profile = ElderProfile.query.filter_by(user_id=user_id).first()
+    if not profile:
+        return jsonify([])
+    
+    relationships = FamilyElderRelationship.query.filter_by(elder_id=profile.elder_id).all()
+    family_list = []
+    
+    for rel in relationships:
+        account = UserAccountData.query.get(rel.family_id)
+        if account:
+            family_list.append({
+                'user_id': account.user_id,
+                'user_name': account.user_name,
+                'email': account.user_email,
+                'role': 'family'
+            })
+            
+    return jsonify(family_list)
+
 @user_bp.route('/status/<int:user_id>', methods=['GET'])
 def get_status(user_id):
     """取得使用者狀態與角色判定"""

@@ -48,9 +48,13 @@ class _ElderChatTabState extends State<ElderChatTab>
   // --- ④ 連續對話模式 ---
   bool _voiceLoopEnabled = false;
 
-  // --- 聲波動畫控制器（直接初始化避免 late 熱重載問題）---
+  // --- 聲波動畫控制器 ---
   final List<AnimationController> _waveControllers = [];
   final List<Animation<double>> _waveAnimations = [];
+
+  // --- 麥克風呼吸燈動畫 ---
+  AnimationController? _micPulseController;
+  Animation<double>? _micPulseAnimation;
 
   @override
   void initState() {
@@ -58,6 +62,18 @@ class _ElderChatTabState extends State<ElderChatTab>
     _initSpeech();
     _initTts();
     _initWaveAnimations();
+    _initMicPulseAnimation();
+  }
+
+  void _initMicPulseAnimation() {
+    final controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    );
+    _micPulseController = controller;
+    _micPulseAnimation = Tween<double>(begin: 0.0, end: 12.0).animate(
+      CurvedAnimation(parent: controller, curve: Curves.easeInOut),
+    );
   }
 
   // ② 初始化聲波動畫（3 條不同頻率的波）
@@ -222,6 +238,7 @@ class _ElderChatTabState extends State<ElderChatTab>
     setState(() {
       _lastWords = '';
       _isRecording = true;
+      _micPulseController?.repeat(reverse: true);
     });
 
     try {
@@ -266,6 +283,8 @@ class _ElderChatTabState extends State<ElderChatTab>
       setState(() {
         _isRecording = false;
         _lastWords = '';
+        _micPulseController?.stop();
+        _micPulseController?.reset();
       });
     }
 
@@ -444,6 +463,7 @@ class _ElderChatTabState extends State<ElderChatTab>
     for (final c in _waveControllers) {
       c.dispose();
     }
+    _micPulseController?.dispose();
     _scrollController.dispose();
     _flutterTts.stop();
     super.dispose();
@@ -641,15 +661,17 @@ class _ElderChatTabState extends State<ElderChatTab>
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 20),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+        margin: const EdgeInsets.only(bottom: 25, top: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: const Color(0xFF59B294).withValues(alpha: 0.2), width: 2),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 10,
+              color: const Color(0xFF59B294).withValues(alpha: 0.08),
+              blurRadius: 20,
+              offset: const Offset(0, 8),
             ),
           ],
         ),
@@ -657,19 +679,19 @@ class _ElderChatTabState extends State<ElderChatTab>
           mainAxisSize: MainAxisSize.min,
           children: [
             const SizedBox(
-              width: 20,
-              height: 20,
+              width: 28,
+              height: 28,
               child: CircularProgressIndicator(
-                strokeWidth: 3,
+                strokeWidth: 4,
                 color: Color(0xFF59B294),
               ),
             ),
-            const SizedBox(width: 15),
+            const SizedBox(width: 20),
             Text(
-              '正在思考...',
+              '正在為您思考中...',
               style: GoogleFonts.notoSansTc(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
+                fontSize: 22,
+                fontWeight: FontWeight.w900,
                 color: const Color(0xFF59B294),
               ),
             ),
@@ -819,53 +841,69 @@ class _ElderChatTabState extends State<ElderChatTab>
               ),
               const SizedBox(width: 12),
 
-              // 麥克風按鈕
               Expanded(
                 child: GestureDetector(
                   onLongPress: locked ? null : _startListening,
                   onLongPressUp: locked ? null : _stopListening,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    decoration: BoxDecoration(
-                      color: micColor,
-                      borderRadius: BorderRadius.circular(30),
-                      boxShadow: [
-                        if (_isRecording)
-                          BoxShadow(
-                            color: Colors.redAccent.withValues(alpha: 0.3),
-                            blurRadius: 15,
-                            spreadRadius: 2,
+                  child: (_micPulseAnimation != null)
+                      ? AnimatedBuilder(
+                          animation: _micPulseAnimation!,
+                          builder: (context, child) {
+                            return Container(
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              decoration: BoxDecoration(
+                                color: micColor,
+                                borderRadius: BorderRadius.circular(30),
+                                boxShadow: [
+                                  if (_isRecording)
+                                    BoxShadow(
+                                      color: Colors.redAccent.withValues(alpha: 0.5),
+                                      blurRadius: _micPulseAnimation!.value + 10,
+                                      spreadRadius: _micPulseAnimation!.value / 2,
+                                    ),
+                                ],
+                              ),
+                              child: child,
+                            );
+                          },
+                          child: _buildMicButtonContent(statusText),
+                        )
+                      : Container(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          decoration: BoxDecoration(
+                            color: micColor,
+                            borderRadius: BorderRadius.circular(30),
                           ),
-                      ],
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          _isRecording
-                              ? Icons.mic_rounded
-                              : Icons.mic_none_rounded,
-                          color: Colors.white,
-                          size: 28,
+                          child: _buildMicButtonContent(statusText),
                         ),
-                        const SizedBox(width: 8),
-                        Text(
-                          statusText,
-                          style: GoogleFonts.notoSansTc(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
                 ),
               ),
             ],
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildMicButtonContent(String statusText) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(
+          _isRecording ? Icons.mic_rounded : Icons.mic_none_rounded,
+          color: Colors.white,
+          size: 28,
+        ),
+        const SizedBox(width: 8),
+        Text(
+          statusText,
+          style: GoogleFonts.notoSansTc(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+      ],
     );
   }
 
