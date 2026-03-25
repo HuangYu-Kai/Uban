@@ -6,8 +6,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart' hide Path;
 import 'dart:async';
 import 'dart:convert';
+import 'package:intl/intl.dart';
 import '../identification_screen.dart';
-import '../elder_screen.dart';
 
 class ElderProfileTab extends StatefulWidget {
   final int userId;
@@ -42,6 +42,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
   final MapController _mapController = MapController();
   double _totalDistance = 0.0; // 公里
   LatLng? _currentPosition;
+  DateTime _lastUpdateTime = DateTime.now();
   // 台北 101 作為預設中心點
   static const LatLng _defaultCenter = LatLng(25.0339, 121.5645);
   @override
@@ -195,7 +196,10 @@ class _ElderProfileTabState extends State<ElderProfileTab>
       } else {
         setState(() => _routePoints.add(newPoint));
       }
-      setState(() => _currentPosition = newPoint);
+      setState(() {
+        _currentPosition = newPoint;
+        _lastUpdateTime = DateTime.now();
+      });
       if (_routePoints.length > 1) {
         final bounds = LatLngBounds.fromPoints(_routePoints);
         try {
@@ -506,6 +510,21 @@ class _ElderProfileTabState extends State<ElderProfileTab>
             ],
           ),
           Positioned(
+            top: 16,
+            right: 16,
+            child: FloatingActionButton.small(
+              onPressed: () {
+                if (_currentPosition != null) {
+                  _mapController.move(_currentPosition!, 18.0);
+                }
+              },
+              backgroundColor: Colors.white,
+              foregroundColor: const Color(0xFF59B294),
+              elevation: 4,
+              child: const Icon(Icons.my_location_rounded),
+            ),
+          ),
+          Positioned(
             bottom: 8,
             right: 8,
             child: Container(
@@ -525,18 +544,6 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     );
   }
 
-  void _handleCall() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => ElderScreen(
-          roomId: widget.userId.toString(),
-          deviceName: widget.userName,
-          autoCall: true, // 新增參數，讓 ElderScreen 自動呼叫
-        ),
-      ),
-    );
-  }
 
   void _handleLogout() {
     showDialog(
@@ -654,42 +661,101 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                 ),
                 const SizedBox(height: 30),
 
-                // ── 今日公里數 (Distance Card) ───────────────────────
                 Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(color: const Color(0xFFE2E8F0)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.03),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
                   ),
                   child: Row(
                     children: [
-                      const Icon(
-                        Icons.directions_walk,
-                        size: 40,
-                        color: Color(0xFF475569),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.directions_walk_rounded,
+                          size: 32,
+                          color: Color(0xFF59B294),
+                        ),
                       ),
-                      const SizedBox(width: 16),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            greetingText,
-                            style: GoogleFonts.notoSansTc(
-                              fontSize: 14,
-                              color: const Color(0xFF64748B),
+                      const SizedBox(width: 20),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    greetingText,
+                                    style: GoogleFonts.notoSansTc(
+                                      fontSize: 14,
+                                      color: const Color(0xFF64748B),
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                  Text(
+                                    '${DateFormat('HH:mm').format(_lastUpdateTime)} 已更新',
+                                    style: GoogleFonts.notoSansTc(
+                                      fontSize: 12,
+                                      color: const Color(0xFF94A3B8),
+                                    ),
+                                  ),
+                                ],
                             ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            kilometers,
-                            style: GoogleFonts.notoSansTc(
-                              fontSize: 22,
-                              fontWeight: FontWeight.bold,
-                              color: const Color(0xFF111827),
+                            const SizedBox(height: 6),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.baseline,
+                              textBaseline: TextBaseline.alphabetic,
+                              children: [
+                                Text(
+                                  _totalDistance.toStringAsFixed(2),
+                                  style: GoogleFonts.notoSansTc(
+                                    fontSize: 32,
+                                    fontWeight: FontWeight.w900,
+                                    color: const Color(0xFF1E293B),
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '公里',
+                                  style: GoogleFonts.notoSansTc(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: const Color(0xFF64748B),
+                                  ),
+                                ),
+                                const Spacer(),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFDF2F2),
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Text(
+                                    '≈ ${(_totalDistance * 1450).toInt()} 步',
+                                    style: GoogleFonts.notoSansTc(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w900,
+                                      color: const Color(0xFFEF4444),
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ],
                   ),
@@ -705,29 +771,6 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                 const SizedBox(height: 30),
 
                 // ── 功能按鈕區 (Action Buttons) ───────────────────────
-                SizedBox(
-                  width: double.infinity,
-                  height: 60,
-                  child: ElevatedButton.icon(
-                    onPressed: _handleCall,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF59B294),
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    icon: const Icon(Icons.call_rounded, size: 24),
-                    label: Text(
-                      '呼叫家人',
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
                 const SizedBox(height: 12),
                 SizedBox(
                   width: double.infinity,

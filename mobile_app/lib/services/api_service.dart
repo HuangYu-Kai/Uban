@@ -174,6 +174,18 @@ class ApiService {
     return jsonDecode(response.body);
   }
 
+  static Future<List<dynamic>> getPairedFamily(int userId) async {
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/user/$userId/family'));
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+    } catch (e) {
+      print('Error fetching paired family: $e');
+    }
+    return [];
+  }
+
   static Future<Map<String, dynamic>> getElderProfile(int userId) async {
     final response = await http.get(Uri.parse('$baseUrl/user/profile/$userId'));
     return jsonDecode(response.body);
