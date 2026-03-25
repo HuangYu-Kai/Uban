@@ -4,12 +4,12 @@ import 'package:http/http.dart' as http;
 class ApiService {
   // --- 動態伺服器 IP 設置 ---
   static const String _serverIp =
-      String.fromEnvironment('SERVER_IP', defaultValue: '10.0.2.2');
+      String.fromEnvironment('SERVER_IP', defaultValue: 'localhost-0.tail5abf5e.ts.net');
 
   // 依據是否為 ngrok 自動切換 http/https 與 埠號
-  static final String baseUrl = _serverIp.contains('ngrok')
+  static final String baseUrl = _serverIp.contains('ngrok') || _serverIp.contains('ts.net')
       ? 'https://$_serverIp/api'
-      : 'http://$_serverIp:5001/api';
+      : 'http://$_serverIp:8000/api';
 
   static Future<Map<String, dynamic>> register({
     required String username,
@@ -110,14 +110,12 @@ class ApiService {
     String? gender,
   }) async {
     final response = await http.post(
-      Uri.parse('$baseUrl/user/update_elder'),
+      Uri.parse('$baseUrl/user/profile/$elderId'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
-        'family_id': familyId,
-        'elder_id': elderId,
-        'user_name': userName,
-        'age': age,
-        'gender': gender,
+        if (userName != null) 'user_name': userName,
+        if (age != null) 'age': age,
+        if (gender != null) 'gender': gender,
       }),
     );
     return jsonDecode(response.body);
@@ -158,20 +156,33 @@ class ApiService {
   }
 
   static Future<List<dynamic>> getElderData(String userId) async {
-    final response =
-        await http.get(Uri.parse('$baseUrl/get_elder_data?user_id=$userId'));
-    if (response.statusCode == 200) {
-      final decoded = jsonDecode(response.body);
-      if (decoded['status'] == 'success') {
-        return decoded['elders'] as List<dynamic>;
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/user/$userId/elders'));
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        if (decoded['status'] == 'success') {
+          return decoded['data'] as List<dynamic>;
+        }
       }
+      return [];
+    } catch (e) {
+      return [];
     }
-    return [];
   }
 
   static Future<List<dynamic>> getPairedElders(int userId) async {
-    final response = await http.get(Uri.parse('$baseUrl/user/$userId/elders'));
-    return jsonDecode(response.body);
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/user/$userId/elders'));
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        if (decoded['status'] == 'success') {
+          return decoded['data'] as List<dynamic>;
+        }
+      }
+      return [];
+    } catch (e) {
+      return [];
+    }
   }
 
   static Future<Map<String, dynamic>> getElderProfile(int userId) async {
@@ -252,10 +263,14 @@ class ApiService {
 
   static Future<Map<String, dynamic>> checkHealth() async {
     try {
+      final rootUrl = baseUrl.replaceAll('/api', '');
       final response = await http
-          .get(Uri.parse('$baseUrl/health'))
+          .get(Uri.parse(rootUrl))
           .timeout(const Duration(seconds: 5));
-      return jsonDecode(response.body);
+      if (response.statusCode == 200) {
+        return {'status': 'ok'};
+      }
+      return {'error': '伺服器狀態異常: ${response.statusCode}'};
     } catch (e) {
       return {'error': e.toString()};
     }
