@@ -28,7 +28,8 @@ class MyApp extends StatelessWidget {
 }
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  final String? elderId;
+  const ProfileScreen({super.key, this.elderId});
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -50,7 +51,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   // ── 步數與 Gawa 資料 ────────────────────────────────────────
   int _steps = 8406;
   int _gawaXp = 0;
-  String _elderId = '1001'; // Default test ID
+  late String _elderId;
   final GameService _gameService = GameService();
   double _lastAltitude = 0.0;
   double _gawaScale = 1.0;
@@ -68,6 +69,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   @override
   void initState() {
     super.initState();
+    _elderId = widget.elderId ?? '1001';
 
     _ctrl = AnimationController(
       duration: const Duration(milliseconds: 1600),
