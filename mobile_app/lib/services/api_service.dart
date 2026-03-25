@@ -1,9 +1,10 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class ApiService {
-  // 對於實機測試，請使用您電腦的區域網路 IP
-  static const String baseUrl = 'https://d019-61-65-116-7.ngrok-free.app/api'; //再換成虛擬機IP
+  // 動態讀取 .env 中的 IP
+  static String get baseUrl => '${dotenv.env['API_BASE_URL'] ?? 'http://10.0.2.2:5000'}/api';
 
   static Future<Map<String, dynamic>> register({
     required String username,

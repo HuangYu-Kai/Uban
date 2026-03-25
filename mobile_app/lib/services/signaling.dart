@@ -8,6 +8,7 @@ import 'package:flutter_callkit_incoming/entities/entities.dart';
 import 'package:volume_controller/volume_controller.dart';
 import 'package:uuid/uuid.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 typedef void StreamStateCallback(MediaStream stream);
 typedef Future<bool> IncomingCallCallback(String callerId, String callType);
@@ -17,7 +18,7 @@ typedef void CallRequestCallback(String roomId, String senderId, String? callId)
 typedef void CallAcceptedCallback(String accepterId, String? callId);
 
 class Signaling {
-  static const String socketUrl = 'https://d019-61-65-116-7.ngrok-free.app'; 
+  static String get socketUrl => dotenv.env['API_BASE_URL'] ?? 'http://10.0.2.2:5000';
   static const platform = MethodChannel('com.example.app/bring_to_front');
 
   // ★ Singleton Pattern

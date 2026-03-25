@@ -1,9 +1,11 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../globals.dart';
 
 class GameService {
-  static const String baseUrl = 'http://10.0.2.2:5000/api/game'; // Adjust for your environment
+  // 動態讀取 .env 中的 IP
+  static String get baseUrl => '${dotenv.env['API_BASE_URL'] ?? 'http://10.0.2.2:5000'}/api/game';
 
   Future<Map<String, dynamic>> distributeAppearances({String? elderId}) async {
     final response = await http.post(
