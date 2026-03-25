@@ -71,6 +71,7 @@ dependencies:
   google_sign_in: ^7.2.0
   flutter_line_sdk: ^2.7.0
   pedometer: ^4.2.0
+  flutter_dotenv: ^6.0.0
 
 dev_dependencies:
   flutter_test:
@@ -96,6 +97,7 @@ flutter:
 
   # To add assets to your application, add an assets section, like this:
   assets:
+    - .env
     - assets/images/
 
   # An image asset can refer to one or more resolution-specific "variants", see

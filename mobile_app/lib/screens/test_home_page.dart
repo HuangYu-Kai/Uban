@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import '../services/game_service.dart';
 import 'leaderboard_screen.dart';
 import 'admin_appearance_screen.dart';
-import 'pedometer_test_screen.dart';
-import '../GPS_Tracking_Feature/profile_screen_demo.dart';
 
 class TestHomePage extends StatefulWidget {
   const TestHomePage({super.key});
@@ -60,41 +58,6 @@ class _TestHomePageState extends State<TestHomePage> {
               ),
             ),
             const SizedBox(height: 24),
-            _buildSectionTitle('硬體感測器測試 (獨立測試)'),
-            const SizedBox(height: 12),
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (context) => const PedometerTestScreen()),
-                );
-              },
-              icon: const Icon(Icons.directions_walk),
-              label: const Text('開啟實體計步器測試沙盒'),
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                backgroundColor: Colors.green.shade700,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-            ),
-            const SizedBox(height: 12),
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => ProfileScreen(elderId: _idController.text),
-                  ),
-                );
-              },
-              icon: const Icon(Icons.pets),
-              label: const Text('開啟 Gawa 成長與走路偵測測試'),
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                backgroundColor: Colors.teal.shade800,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-            ),
             const SizedBox(height: 24),
             _buildSectionTitle('使用者測試 (依 ID 查詢)'),
             const SizedBox(height: 12),
