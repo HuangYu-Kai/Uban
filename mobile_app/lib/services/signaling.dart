@@ -18,12 +18,11 @@ typedef CallRequestCallback = void Function(String roomId, String senderId, Stri
 typedef CallAcceptedCallback = void Function(String accepterId, String? callId);
 
 class Signaling {
-  // --- 伺服器 IP 配置 ---
-  static const String _serverIp = String.fromEnvironment('SERVER_IP', defaultValue: '10.0.2.2');
+  static const String _serverIp = String.fromEnvironment('SERVER_IP', defaultValue: 'localhost-0.tail5abf5e.ts.net');
   
-  static String get serverUrl => _serverIp.contains('ngrok') 
+  static String get serverUrl => _serverIp.contains('ngrok') || _serverIp.contains('ts.net')
       ? 'https://$_serverIp' 
-      : 'http://$_serverIp:5001';
+      : 'http://$_serverIp:8000';
 
   static const platform = MethodChannel('com.example.app/bring_to_front');
 
