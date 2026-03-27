@@ -75,9 +75,22 @@ def ai_chat_stream():
                     history.append({"role": "model", "parts": [parts[1]]})
 
             full_reply = ""
+            current_chunk = ""
             for chunk in ollama_service.get_response_stream(user_message, user_id=user_id, history=history):
+                if not chunk: continue
                 full_reply += chunk
-                yield f"data: {json.dumps({'chunk': chunk}, ensure_ascii=False)}\n\n"
+                current_chunk += chunk
+                
+                # 如果積累了足夠的長度 (例如 8 個字) 或者是標點符號，則發送一次
+                if len(current_chunk) >= 8 or any(p in chunk for p in ["。", "！", "？", "\n", " ", ",", "，"]):
+                    payload = json.dumps({'chunk': current_chunk}, ensure_ascii=False)
+                    yield f"data: {payload}\n\n"
+                    current_chunk = ""
+            
+            # 發送最後剩下的部分
+            if current_chunk:
+                payload = json.dumps({'chunk': current_chunk}, ensure_ascii=False)
+                yield f"data: {payload}\n\n"
             
             # 結尾儲存
             new_log = ActivityLog(
@@ -87,7 +100,9 @@ def ai_chat_stream():
             )
             db.session.add(new_log)
             db.session.commit()
-            yield f"data: {json.dumps({'done': True}, ensure_ascii=False)}\n\n"
+            
+            done_payload = json.dumps({'done': True}, ensure_ascii=False)
+            yield f"data: {done_payload}\n\n"
 
     return Response(generate_response(), mimetype='text/event-stream')
 

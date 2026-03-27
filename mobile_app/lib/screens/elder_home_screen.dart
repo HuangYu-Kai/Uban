@@ -4,6 +4,7 @@ import 'elder_tabs/elder_chat_tab.dart';
 import 'elder_tabs/elder_profile_tab.dart';
 import '../globals.dart';
 import 'elder_screen.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 import '../services/signaling.dart'; // ★ 新增
 
 class ElderHomeScreen extends StatefulWidget {
@@ -22,6 +23,7 @@ class ElderHomeScreen extends StatefulWidget {
 
 class _ElderHomeScreenState extends State<ElderHomeScreen> {
   int _selectedIndex = 0; // 0: Home/Calendar, 1: Chat, 2: Profile/Settings
+  final GlobalKey<ElderChatTabState> _chatTabKey = GlobalKey<ElderChatTabState>();
 
   @override
   void initState() {
@@ -37,6 +39,41 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
     );
 
     pendingAcceptedCall.addListener(_onPendingCallChanged);
+
+    // ★ 核心：監聽主動式心跳 (Heartbeat)
+    Signaling().onHeartbeatMessage = (message) {
+      if (mounted) {
+        _handleProactiveMessage(message);
+      }
+    };
+  }
+
+  final FlutterTts _flutterTts = FlutterTts();
+
+  Future<void> _handleProactiveMessage(String message) async {
+    // 1. 播放語音 (TTS)
+    await _flutterTts.setLanguage("zh-TW");
+    await _flutterTts.setSpeechRate(0.5);
+    await _flutterTts.speak(message);
+
+    // 2. 如果目前不在聊天頁，顯示提示
+    if (_selectedIndex != 1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('小優：$message', style: const TextStyle(fontSize: 18)),
+          backgroundColor: const Color(0xFF59B294),
+          duration: const Duration(seconds: 5),
+          action: SnackBarAction(
+            label: '回覆部',
+            textColor: Colors.white,
+            onPressed: () => setState(() => _selectedIndex = 1),
+          ),
+        ),
+      );
+    }
+    
+    // 3. 通知 ChatTab 更新
+    _chatTabKey.currentState?.addAIMessage(message);
   }
 
   @override
@@ -55,8 +92,9 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
 
       if (!mounted) return;
       
+      final currentContext = context;
       Navigator.push(
-        context,
+        currentContext,
         MaterialPageRoute(
           builder: (context) => ElderScreen(
             roomId: call['roomId']!,
@@ -83,6 +121,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
                 userName: widget.userName,
               ),
               ElderChatTab(
+                key: _chatTabKey,
                 userId: widget.userId,
                 onBackToHome: () => setState(() => _selectedIndex = 0),
               ),
