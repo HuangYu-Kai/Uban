@@ -33,3 +33,27 @@ def get_weather_info(location: str = "台北"):
         return f"暫時無法獲取 {location} 的天氣資訊。"
     except Exception as e:
         return f"獲取天氣失敗：{str(e)}"
+
+def update_agent_memory(filename: str, content: str):
+    """更新長輩的長期記憶庫 (MEMORY.md) 或使用者基本資料 (USER.md)。
+    當你在對話中得知重要訊息（如：孫子姓名、藥物種類、興趣習慣）時，應主動更新對應檔案。
+    
+    Args:
+        filename: 要更新的檔案名稱 (限 'MEMORY.md' 或 'USER.md')
+        content: 更新後的完整 Markdown 內容 (請保留既有資訊並加上新的發現)
+    """
+    import os
+    if filename not in ['MEMORY.md', 'USER.md']:
+        return "錯誤：目前僅支援更新 MEMORY.md 與 USER.md。"
+    
+    try:
+        # 根據目錄結構定位 server/agent/
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        file_path = os.path.join(base_dir, 'agent', filename)
+        
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+            
+        return f"✅ 已成功更新 {filename}！我現在已經記住這些重要細節了。"
+    except Exception as e:
+        return f"❌ 更新記憶失敗：{str(e)}"

@@ -13,6 +13,7 @@ import 'package:flutter_webrtc/flutter_webrtc.dart' show Helper, AndroidAudioCon
 import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../../services/api_service.dart';
+import '../../services/signaling.dart';
 
 class ElderChatTab extends StatefulWidget {
   final int userId;
@@ -25,10 +26,10 @@ class ElderChatTab extends StatefulWidget {
   });
 
   @override
-  State<ElderChatTab> createState() => _ElderChatTabState();
+  State<ElderChatTab> createState() => ElderChatTabState();
 }
 
-class _ElderChatTabState extends State<ElderChatTab>
+class ElderChatTabState extends State<ElderChatTab>
     with TickerProviderStateMixin {
   // --- STT ---
   final SpeechToText _speechToText = SpeechToText();
@@ -78,6 +79,16 @@ class _ElderChatTabState extends State<ElderChatTab>
     _initTts();
     _initWaveAnimations();
     _initMicPulseAnimation();
+  }
+
+  // 公開方法：供外部（如 HomeScreen）推波主動訊息進來
+  void addAIMessage(String message) {
+    if (mounted) {
+      setState(() {
+        _messages.add({"role": "ai", "text": message});
+      });
+      _scrollToBottom();
+    }
   }
 
   void _initMicPulseAnimation() {
