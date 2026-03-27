@@ -19,6 +19,8 @@ from routes.auth import auth_bp
 from routes.user import user_bp
 from routes.pairing import pairing_bp
 from routes.ai import ai_bp
+from services.ollama_service import ollama_service
+from services.heartbeat_manager import HeartbeatManager
 
 env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
 load_dotenv(env_path, override=True)
@@ -78,6 +80,10 @@ with app.app_context():
 rooms_manager = {}
 # FCM Token 持久化結構：room_fcm_tokens[room_id][fcm_token] = {role, deviceName}
 room_fcm_tokens = {}
+
+# 初始化並啟動主動式心跳機制 (Heartbeat)
+heartbeat_manager = HeartbeatManager(socketio, ollama_service, rooms_manager)
+heartbeat_manager.start()
 
 # --- [API] 健康檢查 ---
 @app.route('/api/health', methods=['GET'])

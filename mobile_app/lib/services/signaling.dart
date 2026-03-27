@@ -48,6 +48,7 @@ class Signaling {
   CallAcceptedCallback? onCallAcceptedByRemote;
   CallAcceptedCallback? onCallBusy; 
   VoidCallback? onConnectionLost; 
+  Function(String message)? onHeartbeatMessage; // 新增：主動式心跳消息回傳
 
   String? _currentRoomId;
   String? _peerSocketId;
@@ -252,6 +253,12 @@ class Signaling {
       }
       await _closePeerConnection();
       if (onCallEnded != null) onCallEnded!();
+    });
+    
+    // 客製化主動式巡檢消息
+    socket!.on('heartbeat-message', (data) {
+       debugPrint("💓 [Signaling] Received heartbeat-message: ${data['reply']}");
+       if (onHeartbeatMessage != null) onHeartbeatMessage!(data['reply']);
     });
   }
 
