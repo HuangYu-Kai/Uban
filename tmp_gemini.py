@@ -1,6 +1,4 @@
-import google.generativeai as genai
 import json
-import os
 from dotenv import load_dotenv
 from skills import ALL_SKILLS, get_elder_context
 
