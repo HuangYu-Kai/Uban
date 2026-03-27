@@ -9,7 +9,7 @@ def test_mysql_connection():
     # 從環境變數讀取連線資訊
     host = os.getenv('host')
     port = int(os.getenv('port', 3306))
-    user = os.getenv('username')
+    user = os.getenv('user')
     password = os.getenv('password')
     db_name = os.getenv('name')
 

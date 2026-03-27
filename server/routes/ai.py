@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify, g
 from datetime import datetime
 from models import ActivityLog, UserAccountData, ElderProfile
 from extensions import db
-from services.gemini_service import gemini_service
+from services.ollama_service import ollama_service
 import json
 import threading
 
@@ -33,9 +33,9 @@ def ai_chat():
             history.append({"role": "user", "parts": [user_part]})
             history.append({"role": "model", "parts": [ai_part]})
 
-    # 調用 Gemini
+    # 調用 Ollama
     g.current_user_id = user_id
-    response_text = gemini_service.get_response(user_message, user_id=user_id, history=history)
+    response_text = ollama_service.get_response(user_message, user_id=user_id, history=history)
 
     # 儲存日誌 (基於新 ERD：ActivityLog)
     new_log = ActivityLog(
@@ -75,7 +75,7 @@ def ai_chat_stream():
                     history.append({"role": "model", "parts": [parts[1]]})
 
             full_reply = ""
-            for chunk in gemini_service.get_response_stream(user_message, user_id=user_id, history=history):
+            for chunk in ollama_service.get_response_stream(user_message, user_id=user_id, history=history):
                 full_reply += chunk
                 yield f"data: {json.dumps({'chunk': chunk}, ensure_ascii=False)}\n\n"
             

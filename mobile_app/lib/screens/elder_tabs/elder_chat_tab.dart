@@ -9,6 +9,9 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:video_player/video_player.dart';
 import 'package:markdown/markdown.dart' as md;
+import 'package:flutter_webrtc/flutter_webrtc.dart' show Helper, AndroidAudioConfiguration, AndroidAudioMode, AndroidAudioFocusMode, AndroidAudioStreamType, AndroidAudioAttributesUsageType, AndroidAudioAttributesContentType;
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import '../../services/api_service.dart';
 
 class ElderChatTab extends StatefulWidget {
@@ -59,6 +62,18 @@ class _ElderChatTabState extends State<ElderChatTab>
   @override
   void initState() {
     super.initState();
+    // 解決 Android WebRTC 與 STT 麥克風音訊焦點衝突問題
+    if (!kIsWeb && Platform.isAndroid) {
+      Helper.setAndroidAudioConfiguration(AndroidAudioConfiguration(
+        manageAudioFocus: false,
+        androidAudioMode: AndroidAudioMode.normal,
+        androidAudioFocusMode: AndroidAudioFocusMode.gain,
+        androidAudioStreamType: AndroidAudioStreamType.music,
+        androidAudioAttributesUsageType: AndroidAudioAttributesUsageType.media,
+        androidAudioAttributesContentType: AndroidAudioAttributesContentType.unknown,
+      ));
+      Helper.clearAndroidCommunicationDevice();
+    }
     _initSpeech();
     _initTts();
     _initWaveAnimations();

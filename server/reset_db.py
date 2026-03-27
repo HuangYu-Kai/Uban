@@ -1,5 +1,6 @@
 import os
 from flask import Flask
+from dotenv import load_dotenv, dotenv_values
 from extensions import db
 from models import (
     UserAccountData, PairingCode, FamilyElderRelationship,
@@ -8,11 +9,18 @@ from models import (
 
 def reset_database():
     app = Flask(__name__)
+    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
+    load_dotenv(env_path, override=True)
     
-    # 資料庫設定 (與 app.py 內容保持一致)
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    db_path = os.path.join(base_dir, 'instance', 'uban.db')
-    app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
+    # 資料庫設定 (MySQL)
+    env_config = dotenv_values(env_path)
+    db_host = env_config.get('host', 'localhost')
+    db_port = env_config.get('port', '3306')
+    db_user = env_config.get('user', 'root')
+    db_pass = env_config.get('password', '')
+    db_name = env_config.get('name', 'uban')
+
+    app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql+pymysql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}?charset=utf8mb4'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     
     db.init_app(app)

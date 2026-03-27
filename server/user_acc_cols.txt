@@ -1,0 +1,8 @@
+('user_id', 'int', 'NO', 'PRI', None, 'auto_increment')
+('user_name', 'varchar(32)', 'NO', '', None, '')
+('user_email', 'varchar(64)', 'NO', '', None, '')
+('password', 'varchar(255)', 'NO', '', None, '')
+('account_create_time', 'date', 'NO', '', 'curdate()', 'DEFAULT_GENERATED')
+('user_authority', "enum('Normal','Sub1','Sub2','admin','root')", 'NO', '', None, '')
+('payment_channel', 'varchar(32)', 'NO', '', None, '')
+('registed_platform', "enum('Local','Google')", 'NO', '', None, '')
