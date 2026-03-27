@@ -10,7 +10,7 @@ import firebase_admin
 from firebase_admin import credentials, messaging
 import os
 import uuid
-from dotenv import load_dotenv
+from dotenv import load_dotenv, dotenv_values
 from datetime import datetime
 from models import CallRecord
 
@@ -20,7 +20,8 @@ from routes.user import user_bp
 from routes.pairing import pairing_bp
 from routes.ai import ai_bp
 
-load_dotenv()
+env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
+load_dotenv(env_path, override=True)
 
 # 初始化 Firebase Admin SDK (容錯化處理)
 firebase_enabled = False
@@ -44,13 +45,15 @@ app = Flask(__name__)
 CORS(app)
 app.config['SECRET_KEY'] = 'secret!'
 
-# 資料庫設定 (SQLite)
-base_dir = os.path.dirname(os.path.abspath(__file__))
-db_path = os.path.join(base_dir, 'instance', 'uban.db')
-if not os.path.exists(os.path.join(base_dir, 'instance')):
-    os.makedirs(os.path.join(base_dir, 'instance'))
+# 資料庫設定 (MySQL)
+env_config = dotenv_values(env_path)
+db_host = env_config.get('host', 'localhost')
+db_port = env_config.get('port', '3306')
+db_user = env_config.get('user', 'root')
+db_pass = env_config.get('password', '')
+db_name = env_config.get('name', 'uban')
 
-app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
+app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql+pymysql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}?charset=utf8mb4'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # 初始化 SQLAlchemy

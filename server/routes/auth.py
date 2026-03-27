@@ -28,9 +28,10 @@ def register():
         user_name=user_name,
         user_email=user_email,
         password=hashed_pw,
-        registered_platform='Local',
+        register_platform='Local',
         account_create_time=datetime.utcnow(),
-        user_authority='Normal'
+        user_authority='Normal',
+        payment_channel=''
     )
     db.session.add(new_account)
     db.session.commit()

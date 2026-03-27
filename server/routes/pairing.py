@@ -17,7 +17,7 @@ def request_code():
 
     new_pairing = PairingCode(
         code=code,
-        creator_id=0, # 初始為 0
+        creator_id=None, # 改為 None (NULL)，避開 MySQL 外鍵報錯
         expires_at=datetime.utcnow() + timedelta(minutes=10)
     )
     db.session.add(new_pairing)
@@ -52,16 +52,16 @@ def confirm_pairing():
         user_name=elder_name,
         user_email=elder_email,
         password=generate_password_hash("password123"),
-        registered_platform='Local'
+        register_platform='Local'
     )
     db.session.add(new_account)
     db.session.flush()
 
     # 2. 初始化長輩專屬檔案 (ElderProfile)
-    # 基於新 ERD：包含 gender, age
-    elder_uuid = str(uuid.uuid4())
+    # 基於新 ERD：DB 為 varchar(4)，這裡改用隨機 4 碼
+    elder_id_short = generate_random_code(4)
     new_profile = ElderProfile(
-        elder_id=elder_uuid,
+        elder_id=elder_id_short,
         user_id=new_account.user_id,
         elder_name=elder_name,
         gender=gender,
@@ -72,9 +72,9 @@ def confirm_pairing():
     db.session.add(new_profile)
 
     # 3. 建立綁定關係
-    # 基於新 ERD：FamilyElderRelationship 使用 elder_id (VARCHAR)
+    # 基於新 ERD：FamilyElderRelationship 使用 elder_id (VARCHAR(4))
     new_rel = FamilyElderRelationship(
-        elder_id=elder_uuid,
+        elder_id=elder_id_short,
         family_id=family_id
     )
     db.session.add(new_rel)
@@ -88,7 +88,7 @@ def confirm_pairing():
     return jsonify({
         'message': 'Successfully paired and elder profile initialized!',
         'elder_id': new_account.user_id,
-        'elder_profile_id': elder_uuid
+        'elder_profile_id': elder_id_short
     })
 
 @pairing_bp.route('/check_status/<code>', methods=['GET'])
@@ -96,8 +96,8 @@ def check_status(code):
     """長輩端輪詢配對狀態"""
     pairing = PairingCode.query.filter_by(code=code, is_used=True).first()
     if pairing:
-        # 基於新 ERD：找到與此家屬綁定的最新長輩
-        relationship = FamilyElderRelationship.query.filter_by(family_id=pairing.creator_id).order_by(FamilyElderRelationship.relationship_id.desc()).first()
+        # 基於新 ERD：找到與此家屬綁定的最新長輩 (修正為 relation_id)
+        relationship = FamilyElderRelationship.query.filter_by(family_id=pairing.creator_id).order_by(FamilyElderRelationship.relation_id.desc()).first()
         if relationship:
              profile = ElderProfile.query.filter_by(elder_id=relationship.elder_id).first()
              return jsonify({

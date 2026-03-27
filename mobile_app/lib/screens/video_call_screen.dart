@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'dart:ui';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import '../services/signaling.dart';
 
 class VideoCallScreen extends StatefulWidget {
@@ -34,6 +36,9 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   @override
   void initState() {
     super.initState();
+    if (!kIsWeb && Platform.isAndroid) {
+      Helper.setAndroidAudioConfiguration(AndroidAudioConfiguration.communication);
+    }
     _initCall();
   }
 
@@ -104,6 +109,19 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     
     _localRenderer.dispose();
     _remoteRenderer.dispose();
+    
+    if (!kIsWeb && Platform.isAndroid) {
+      Helper.setAndroidAudioConfiguration(AndroidAudioConfiguration(
+        manageAudioFocus: false,
+        androidAudioMode: AndroidAudioMode.normal,
+        androidAudioFocusMode: AndroidAudioFocusMode.gain,
+        androidAudioStreamType: AndroidAudioStreamType.music,
+        androidAudioAttributesUsageType: AndroidAudioAttributesUsageType.media,
+        androidAudioAttributesContentType: AndroidAudioAttributesContentType.unknown,
+      ));
+      Helper.clearAndroidCommunicationDevice();
+    }
+    
     super.dispose();
   }
 
