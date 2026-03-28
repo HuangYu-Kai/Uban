@@ -1,4 +1,4 @@
-# server/app.py
+﻿# server/app.py
 import ssl
 
 # SSL 補丁 (針對 Python 3.13+)
@@ -219,7 +219,7 @@ def on_call_request(data):
     sender_id = request.sid
     sender_role = data.get('role') or (rooms_manager.get(room, {}).get(sender_id, {}).get('role'))
     target_role = 'elder' if sender_role == 'family' else 'family'
-    target_id = data.get('targetId')
+    target_id = data.get('targetId') 
     call_id = str(uuid.uuid4())
 
     print(f"[Call Request] {sender_role} ({sender_id}) in {room} -> Target: {target_id or target_role}")
