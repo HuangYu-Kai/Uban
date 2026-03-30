@@ -110,6 +110,22 @@ class GameService {
     }
   }
 
+  Future<Map<String, dynamic>> setSteps(String elderId, int totalSteps) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/elder/set_steps'),
+      headers: {'Content-Type': 'application/json'},
+      body: json.encode({
+        'elder_id': elderId,
+        'total_steps': totalSteps,
+      }),
+    );
+    if (response.statusCode == 200) {
+      return json.decode(response.body);
+    } else {
+      throw Exception('Failed to set steps: ${response.body}');
+    }
+  }
+
   Future<Map<String, dynamic>> saveSteps(String elderId, int steps) async {
     final response = await http.post(
       Uri.parse('$baseUrl/save_steps'),

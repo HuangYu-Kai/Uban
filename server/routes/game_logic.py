@@ -391,5 +391,38 @@ def save_steps():
         
     elder.step_total = (elder.step_total or 0) + (steps or 0)
     db.session.commit()
-    return jsonify({"status": "success", "step_total": elder.step_total})
+    return jsonify({
+        "status": "success", 
+        "step_total": elder.step_total
+    })
+
+@game_logic_bp.route('/elder/set_steps', methods=['POST'])
+def set_steps():
+    data = request.json or {}
+    elder_id = data.get('elder_id')
+    try:
+        total_steps = int(data.get('total_steps', 0))
+    except (ValueError, TypeError):
+        total_steps = 0
+            
+    if not elder_id:
+        return jsonify({"status": "error", "message": "Invalid elder_id"}), 400
+        
+    try:
+        elder = ElderProfile.query.filter_by(elder_id=elder_id).first()
+        if not elder:
+            return jsonify({"status": "error", "message": "Elder not found"}), 404
+            
+        elder.step_total = total_steps
+        db.session.commit()
+        return jsonify({
+            "status": "success", 
+            "message": f"Set steps to {total_steps}",
+            "new_total": elder.step_total
+        })
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": str(e)}), 500
 

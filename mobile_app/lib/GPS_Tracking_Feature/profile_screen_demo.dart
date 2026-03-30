@@ -50,7 +50,6 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   // ── 步數與 Gawa 資料 ────────────────────────────────────────
   int _steps = 8406;
-  int _gawaXp = 0;
   late String _elderId;
   final GameService _gameService = GameService();
   double _lastAltitude = 0.0;
@@ -115,10 +114,6 @@ class _ProfileScreenState extends State<ProfileScreen>
   Future<void> _loadPersistedRoute() async {
     final prefs = await SharedPreferences.getInstance();
     
-    // [清除舊資料] 強制清除先前儲存的美國位置以便能顯示最新狀況
-    await prefs.remove('route_points');
-    await prefs.remove('total_distance');
-
     final dateStr = prefs.getString('last_track_date') ?? '';
     final today = DateTime.now().toIso8601String().substring(0, 10);
 
@@ -141,10 +136,6 @@ class _ProfileScreenState extends State<ProfileScreen>
         _totalDistance = prefs.getDouble('total_distance') ?? 0.0;
       });
     }
-
-    // [測試用] 強制載入中正紀念堂到台北商業大學的假路徑（供展示用）
-    // 放於最後確保能夠蓋過所有先前的錯誤歷史紀錄。
-    _loadMockDemoRoute();
   }
 
   // ── 儲存當前點位與里程 ──────────────────────────────────────
@@ -166,7 +157,7 @@ class _ProfileScreenState extends State<ProfileScreen>
       final status = await _gameService.getElderStatus(_elderId);
       if (status['status'] == 'success') {
         setState(() {
-          _gawaXp = status['gawa_xp'] ?? 0;
+          _steps = (status['step_total'] as num?)?.toInt() ?? _steps;
           _updateGawaScale();
         });
       }
@@ -177,7 +168,8 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   void _updateGawaScale() {
     // 成長公式：每 1000 步增加 5% 大小，最大 3 倍
-    double newScale = 1.0 + (_gawaXp / 1000.0) * 0.05;
+    // 使用 _steps (伺服器上的 step_total) 作為成長依據
+    double newScale = 1.0 + (_steps / 1000.0) * 0.05;
     if (newScale > 3.0) newScale = 3.0;
     setState(() {
       _gawaScale = newScale;
@@ -233,7 +225,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     _positionStream = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.high,
-        distanceFilter: 10,
+        distanceFilter: 2, // 縮小過濾範圍以捕捉精細動作
       ),
     ).listen((Position pos) {
       final newPoint = LatLng(pos.latitude, pos.longitude);
@@ -248,10 +240,10 @@ class _ProfileScreenState extends State<ProfileScreen>
         );
         
         // ── 嚴格走路偵測邏輯 ──────────────────────────────────
-        // 1. 速度需在走路範圍 (0.5m/s ~ 3.0m/s)
-        // 2. 移動距離需大於 1.5 米 (過濾 GPS 漂移)
-        // 3. 高度變化需在合理範圍 (過濾開車或電梯，初步判斷)
-        bool isWalking = distM > 1.5 && pos.speed >= 0.5 && pos.speed <= 3.0;
+        // 1. 速度需在走路範圍 (0.3m/s ~ 3.5m/s) - 稍微放寬下限以捕捉緩慢起步/停步
+        // 2. 移動距離需大於 2.0 米 (過濾 GPS 漂移，配合新的 distanceFilter)
+        // 3. 高度變化需在合理範圍
+        bool isWalking = distM > 2.0 && pos.speed >= 0.3 && pos.speed <= 3.5;
         
         double altDiff = (pos.altitude - _lastAltitude).abs();
         _lastAltitude = pos.altitude;
@@ -267,7 +259,6 @@ class _ProfileScreenState extends State<ProfileScreen>
           // 步數換算：假設 1 米約 1.3 步
           int addedSteps = (distM * 1.3).round();
           _steps += addedSteps;
-          _gawaXp += addedSteps;
 
           setState(() {
             _routePoints.add(newPoint);

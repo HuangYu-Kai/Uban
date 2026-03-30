@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:pedometer/pedometer.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/game_service.dart';
 
 class LeaderboardScreen extends StatefulWidget {
@@ -20,8 +22,9 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
 
   // Pedometer logic
   int _currentSteps = 0;
-  int _bufferedSteps = 0; // 用於後端同步的緩存
+  int _unsyncedSteps = 0; // Persistent buffer for backend sync
   int _sessionSteps = 0;  // 用於本次行走期間的緩存 (靜止後才更新介面)
+  bool _isFlushing = false; // Lock for database sync
   Timer? _syncTimer;
   String _pedestrianStatus = '靜止';
   late Stream<StepCount> _stepCountStream;
@@ -30,9 +33,23 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   @override
   void initState() {
     super.initState();
+    _loadUnsyncedSteps(); // async non-blocking
     _fetchInitialData();
     _initPedometer();
     _startSyncTimer();
+  }
+
+  Future<void> _loadUnsyncedSteps() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _unsyncedSteps = prefs.getInt('unsynced_steps_${widget.elderId}') ?? 0;
+    });
+    if (_unsyncedSteps > 0) _flushSteps();
+  }
+
+  Future<void> _saveUnsyncedSteps() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('unsynced_steps_${widget.elderId}', _unsyncedSteps);
   }
 
   @override
@@ -49,15 +66,18 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   }
 
   Future<void> _flushSteps() async {
-    if (_bufferedSteps > 0) {
-      final stepsToSync = _bufferedSteps;
-      _bufferedSteps = 0;
+    if (_unsyncedSteps > 0 && !_isFlushing) {
+      _isFlushing = true;
+      final stepsToSync = _unsyncedSteps;
       try {
         await _gameService.updateSteps(widget.elderId, stepsToSync);
         debugPrint('Successfully synced $stepsToSync steps');
+        _unsyncedSteps -= stepsToSync;
+        await _saveUnsyncedSteps();
       } catch (e) {
-        _bufferedSteps += stepsToSync; // Put back if failed
         debugPrint('Failed to sync steps: $e');
+      } finally {
+        _isFlushing = false;
       }
     }
   }
@@ -74,7 +94,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
           if (_elderStatus == null) {
             _elderStatus = statusData;
           } else {
-            // 關鍵修正：避免步數倒退。如果伺服器回傳的步數小於本地已累積的步數，則保留本地數值。
+            // 關鍵修正：避免步數倒退。伺服器步數加上尚未同步的步數，確保介面不倒退
             final int serverSteps = statusData['step_total'] ?? 0;
             final int localSteps = _elderStatus!['step_total'] ?? 0;
             
@@ -84,9 +104,12 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
             _elderStatus!['gawa_name'] = statusData['gawa_name'];
             _elderStatus!['feed_starttime'] = statusData['feed_starttime'];
             
-            if (serverSteps > localSteps) {
-              _elderStatus!['step_total'] = serverSteps;
-              _elderStatus!['level'] = getLevelFromSteps(serverSteps);
+            // 由於 backend 尚未包含在 unsynced 內的步數，我們把伺服器真實步數 + 未同步的本地步數 作為真正總數
+            final int computeSteps = serverSteps + _unsyncedSteps;
+            
+            if (computeSteps >= localSteps) {
+              _elderStatus!['step_total'] = computeSteps;
+              _elderStatus!['level'] = getLevelFromSteps(computeSteps);
             }
           }
           
@@ -129,9 +152,17 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         _pedestrianStatusStream.listen((event) {
           if (mounted) {
             final newStatus = event.status == 'walking' ? '行走中' : '靜止';
-            // 如果從「行走中」變成「靜止」，則把這一段路程的步數更新到介面上
+            // 如果從「行走中」變成「靜止」，則把這一段路程的步數更新到介面上，並強迫寫入資料庫
             if (_pedestrianStatus == '行走中' && newStatus == '靜止') {
               _updateUIFromSession();
+              if (_elderStatus != null && _elderStatus!['step_total'] != null) {
+                // 觸發一次將當前elder_id靜止後的步數寫入elder_profile的step_total欄位 (User direct request)
+                _gameService.setSteps(widget.elderId, _elderStatus!['step_total']).then((_) {
+                  debugPrint('Absolutely overwrote DB step_total upon stopping.');
+                }).catchError((e) {
+                  debugPrint('Failed absolute step write upon stopping: $e');
+                });
+              }
             }
             setState(() => _pedestrianStatus = newStatus);
           }
@@ -145,7 +176,8 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
           if (mounted) {
             int added = event.steps - _currentSteps;
             if (_currentSteps != 0 && added > 0) {
-              _bufferedSteps += added;
+              _unsyncedSteps += added;
+              _saveUnsyncedSteps();
               _sessionSteps += added;
               
               // 行走時即時更新上方進度條數字 (User Request 1)
@@ -157,7 +189,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
               });
 
               // 依然保持背景同步邏輯 (每 50 步上傳一次)
-              if (_bufferedSteps >= 50) {
+              if (_unsyncedSteps >= 50 && !_isFlushing) {
                 _flushSteps();
               }
             }
@@ -175,6 +207,23 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   }
 
   Future<void> _updateUIFromSession() async {
+    // 當狀態變成靜止時，立刻同步更新本地排行榜數字 (樂觀更新)
+    if (mounted) {
+      setState(() {
+        if (_elderStatus != null) {
+          int currentTotal = _elderStatus!['step_total'] ?? 0;
+          for (var i = 0; i < _leaderboard.length; i++) {
+            if (_leaderboard[i]['elder_id'] == widget.elderId) {
+              _leaderboard[i]['step_total'] = currentTotal;
+              break;
+            }
+          }
+          // 重新排序排行榜
+          _leaderboard.sort((a, b) => (b['step_total'] ?? 0).compareTo(a['step_total'] ?? 0));
+        }
+      });
+    }
+
     // 當狀態變成靜止時，同步更新排行榜內容 (User Request 1)
     await _flushSteps();  // 務必等待上傳完成 (User Request 2 - 解決非同步導致的步數倒退與延遲)
     await _fetchInitialData(); // 重新抓取資料，確保排名是更新後的結果
@@ -184,13 +233,14 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   // 模擬走路功能 (僅用於測試或感測器不支援時)
   void _simulateSteps(int amount) {
     setState(() {
-      _bufferedSteps += amount;
+      _unsyncedSteps += amount;
+      _saveUnsyncedSteps();
       if (_elderStatus != null) {
         _elderStatus!['step_total'] = (_elderStatus!['step_total'] ?? 0) + amount;
         _elderStatus!['level'] = getLevelFromSteps(_elderStatus!['step_total']);
       }
     });
-    if (_bufferedSteps >= 50) _flushSteps();
+    if (_unsyncedSteps >= 50 && !_isFlushing) _flushSteps();
   }
 
   // Level Logic (Sync with Backend)
@@ -281,12 +331,14 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
 
   Widget _buildPigFeedingArea(int level, int xp, int nextXp, double progress) {
     return Container(
-      margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.all(20),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.9),
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 15, offset: const Offset(0, 8))],
+        color: Colors.white.withOpacity(0.95),
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: [
+          BoxShadow(color: Colors.pinkAccent.withOpacity(0.15), blurRadius: 25, offset: const Offset(0, 10))
+        ],
       ),
       child: Column(
         children: [
@@ -296,21 +348,68 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Lv.$level', style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Colors.pinkAccent)),
-                  Text('我的狀態: $_pedestrianStatus', style: TextStyle(color: _pedestrianStatus == '行走中' ? Colors.green : Colors.grey)),
+                  Row(
+                    children: [
+                      const Text('等級 ', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey)),
+                      Text('$level', style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w900, color: Colors.pinkAccent)),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: _pedestrianStatus == '行走中' ? Colors.green.shade50 : Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: _pedestrianStatus == '行走中' ? Colors.green.shade200 : Colors.grey.shade300)
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          _pedestrianStatus == '行走中' ? Icons.directions_walk : Icons.accessibility_new, 
+                          size: 16, 
+                          color: _pedestrianStatus == '行走中' ? Colors.green : Colors.grey.shade600
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          '狀態: $_pedestrianStatus', 
+                          style: TextStyle(
+                            color: _pedestrianStatus == '行走中' ? Colors.green.shade700 : Colors.grey.shade700,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13
+                          )
+                        ),
+                      ],
+                    ),
+                  ),
                   if (_pedestrianStatus == '感測器不支援' || _pedestrianStatus == '初始化失敗') 
-                    TextButton.icon(
-                      onPressed: () => _simulateSteps(100),
-                      icon: const Icon(Icons.add_circle_outline, size: 16),
-                      label: const Text('點擊模擬 100 步', style: TextStyle(fontSize: 12)),
-                      style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 30), foregroundColor: Colors.pinkAccent),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: TextButton.icon(
+                        onPressed: () => _simulateSteps(100),
+                        icon: const Icon(Icons.add_circle, size: 18),
+                        label: const Text('點擊模擬 100 步', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), 
+                          backgroundColor: Colors.pink.shade50,
+                          foregroundColor: Colors.pinkAccent,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))
+                        ),
+                      ),
                     ),
                 ],
               ),
-              const Icon(Icons.stars, color: Colors.amber, size: 40),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.amber.shade50,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.stars_rounded, color: Colors.amber, size: 48),
+              ).animate(onPlay: (controller) => controller.repeat(reverse: true)).scaleXY(begin: 0.95, end: 1.05, duration: 1.seconds),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 30),
           
           // 小豬圖片 (根據等級縮放)
           TweenAnimationBuilder<double>(
@@ -323,13 +422,17 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                 child: Image.asset(
                   'assets/images/pig_mascot.png',
                   height: 120,
-                  errorBuilder: (context, error, stackTrace) => const Icon(Icons.pets, size: 80, color: Colors.pink),
+                  errorBuilder: (context, error, stackTrace) => Container(
+                    height: 120, width: 120,
+                    decoration: BoxDecoration(color: Colors.pink.shade50, shape: BoxShape.circle),
+                    child: const Icon(Icons.pets, size: 60, color: Colors.pinkAccent),
+                  ),
                 ),
               );
             },
           ),
           
-          const SizedBox(height: 30),
+          const SizedBox(height: 35),
           
           // 經驗條
           Column(
@@ -337,66 +440,91 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('成長進度', style: TextStyle(fontWeight: FontWeight.bold)),
-                  Text('$xp / $nextXp 步', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                  const Text('成長進度', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                  Row(
+                    children: [
+                      Text('$xp', style: const TextStyle(fontWeight: FontWeight.w900, color: Colors.pinkAccent, fontSize: 18)),
+                      Text(' / $nextXp 步', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey, fontSize: 14)),
+                    ],
+                  ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: LinearProgressIndicator(
-                  value: progress,
-                  minHeight: 12,
-                  backgroundColor: Colors.grey.shade200,
-                  valueColor: const AlwaysStoppedAnimation<Color>(Colors.pinkAccent),
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  height: 16, // Increase height
+                  decoration: const BoxDecoration(
+                    boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))]
+                  ),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    backgroundColor: Colors.grey.shade200,
+                    valueColor: const AlwaysStoppedAnimation<Color>(Colors.pinkAccent),
+                  ),
                 ),
               ),
             ],
           ),
         ],
       ),
-    );
+    ).animate().scale(duration: 400.milliseconds, curve: Curves.easeOutBack);
   }
 
   Widget _buildLeaderboardTile(Map<String, dynamic> entry, int index, bool isMe) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: isMe ? Colors.pink.withOpacity(0.05) : Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: isMe ? Border.all(color: Colors.pinkAccent, width: 2) : null,
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10)],
+        color: isMe ? Colors.pink.shade50 : Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: isMe ? Border.all(color: Colors.pinkAccent.shade200, width: 2) : Border.all(color: Colors.transparent, width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: isMe ? Colors.pink.withOpacity(0.2) : Colors.black.withOpacity(0.04), 
+            blurRadius: 15, 
+            offset: const Offset(0, 5)
+          )
+        ],
       ),
       child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
         leading: _buildRankBadge(index + 1),
-        title: Text(entry['elder_name'] ?? '神秘使用者', style: const TextStyle(fontWeight: FontWeight.bold)),
-        // 將步數縮小變淡放在 Subtitle
-        subtitle: Text('${entry['step_total'] ?? 0} 步', style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+        title: Text(entry['elder_name'] ?? '神秘使用者', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+        subtitle: Row(
+          children: [
+            const Icon(Icons.directions_walk, size: 14, color: Colors.grey),
+            const SizedBox(width: 4),
+            Text('${entry['step_total'] ?? 0} 步', style: TextStyle(color: Colors.grey.shade600, fontSize: 14, fontWeight: FontWeight.w600)),
+          ],
+        ),
         trailing: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            // 將等級換算套用在排行榜列表中
             Text('Lv.${getLevelFromSteps(entry['step_total'] ?? 0)}', 
-              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Colors.orange)),
-            // 造型小圖
-            const Icon(Icons.pets, size: 14, color: Colors.pinkAccent),
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: Colors.deepOrange)),
           ],
         ),
       ),
-    );
+    ).animate().fadeIn(delay: Duration(milliseconds: 50 * index)).slideX(begin: 0.1, end: 0);
   }
 
   Widget _buildRankBadge(int rank) {
-    Color color = Colors.grey;
-    if (rank == 1) color = Colors.amber;
-    if (rank == 2) color = Colors.blueGrey.shade300;
-    if (rank == 3) color = Colors.brown.shade300;
+    Color color;
+    Color iconColor = Colors.white;
+    if (rank == 1) { color = Colors.amber; }
+    else if (rank == 2) { color = Colors.blueGrey.shade300; }
+    else if (rank == 3) { color = Colors.brown.shade300; }
+    else { color = Colors.grey.shade200; iconColor = Colors.grey.shade700; }
 
     return Container(
-      width: 35, height: 35,
-      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-      child: Center(child: Text('$rank', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+      width: 45, height: 45,
+      decoration: BoxDecoration(
+        color: color, 
+        shape: BoxShape.circle,
+        boxShadow: rank <= 3 ? [BoxShadow(color: color.withOpacity(0.4), blurRadius: 8, offset: const Offset(0, 3))] : null,
+      ),
+      child: Center(child: Text('$rank', style: TextStyle(color: iconColor, fontWeight: FontWeight.bold, fontSize: 18))),
     );
   }
 }
