@@ -1,0 +1,80 @@
+﻿
+============================================================
+UniFlow LLM Tool-Calling Test | Model: qwen2.5
+============================================================
+
+--- Case1: 明確點歌 ---
+User: 我想聽張雨生的大海
+--- [Proactive] Detected media intent in prompt, searching: '張雨生的大海' ---
+
+[TOOL CALLED] search_youtube_video(query='張雨生的大海')
+--- [YouTube Skill] Successfully found: 相關影音 (sL1NQyOhxAc) ---
+[TOOL RESULT] 影音搜尋結果：已找到「相關影音」。 [VIDEO_ID:sL1NQyOhxAc]
+--- [Proactive] Found video_id: sL1NQyOhxAc ---
+--- [Ollama] Appending proactive VIDEO_ID: sL1NQyOhxAc ---
+
+AI Response:
+小優幫您找到了張雨生的《大海》，請慢慢欣賞，希望這首歌能帶給您愉快的心情。如果有其他想要分享或聆聽的歌曲，隨時告訴我哦！
+
+[VIDEO_ID:sL1NQyOhxAc]
+
+[DIAG] tool_called=True | has_VIDEO_ID=True | fake_id=False
+[PASS] Tool called and real VIDEO_ID found
+
+--- Case2: 含歌手 ---
+User: 幫我找一下周興哲的你好不好
+--- [Proactive] Detected media intent in prompt, searching: '周興哲的你好不好' ---
+
+[TOOL CALLED] search_youtube_video(query='周興哲的你好不好')
+--- [YouTube Skill] Successfully found: 相關影音 (kwaIT-jqaIs) ---
+[TOOL RESULT] 影音搜尋結果：已找到「相關影音」。 [VIDEO_ID:kwaIT-jqaIs]
+--- [Proactive] Found video_id: kwaIT-jqaIs ---
+--- [Ollama] AI requested tool: search_youtube_video with {'query': '周興哲 你好'} ---
+--- [Ollama] Tool result: Tool search_youtube_video not found. ---
+--- [Ollama] Appending proactive VIDEO_ID: kwaIT-jqaIs ---
+
+AI Response:
+好的，宇璿先生，《你好》這首歌找到了。您準備好了嗎？我現在就要開始播放了。
+
+（影片已備妥，請欣賞）《你好》這首歌應該會讓您感到開心呢！如果想要聽其他歌曲也可以告訴我哦。
+
+[VIDEO_ID:kwaIT-jqaIs]
+
+[DIAG] tool_called=True | has_VIDEO_ID=True | fake_id=False
+[PASS] Tool called and real VIDEO_ID found
+
+--- Case3: 模糊老歌 ---
+User: 播一首台語老歌
+--- [Proactive] Detected media intent in prompt, searching: '台語老歌' ---
+
+[TOOL CALLED] search_youtube_video(query='台語老歌')
+--- [YouTube Skill] Successfully found: 相關影音 (fDp2fZp-6LE) ---
+[TOOL RESULT] 影音搜尋結果：已找到「相關影音」。 [VIDEO_ID:fDp2fZp-6LE]
+--- [Proactive] Found video_id: fDp2fZp-6LE ---
+--- [Ollama] Appending proactive VIDEO_ID: fDp2fZp-6LE ---
+
+AI Response:
+長輩，為您播放一首台語老歌了。聽著這些熟悉的旋律，是否會勾起您許多回憶呢？請享受這美好的時刻。
+
+[VIDEO_ID:fDp2fZp-6LE]
+
+[DIAG] tool_called=True | has_VIDEO_ID=True | fake_id=False
+[PASS] Tool called and real VIDEO_ID found
+
+--- Case4: 非音樂 ---
+User: 今天天氣怎麼樣？
+
+AI Response:
+今天的天氣相當宜人，不過還是要看您所在地的具體情況。您可以告訴我您在哪裡嗎？這樣我可以查一查當地的天氣。
+
+[DIAG] tool_called=False | has_VIDEO_ID=False | fake_id=False
+[INFO] Non-music query - tool_called=False (expected: False)
+
+============================================================
+SUMMARY
+============================================================
+[PASS] Case1: 明確點歌 | tool=True | vid=True | fake=False
+[PASS] Case2: 含歌手 | tool=True | vid=True | fake=False
+[PASS] Case3: 模糊老歌 | tool=True | vid=True | fake=False
+[FAIL] Case4: 非音樂 | tool=False | vid=False | fake=False
+

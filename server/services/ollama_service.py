@@ -1,10 +1,11 @@
 import json
 import ollama
 import os
+import re
 from skills import ALL_SKILLS
 
 class OllamaService:
-    def __init__(self, model_name="qwen2.5"):
+    def __init__(self, model_name="llama3-groq-tool-use:8b"):
         self.model_name = model_name
         # 快取工具的 OpenAI-like Schemas
         self._tool_schemas = self._generate_tool_schemas(ALL_SKILLS)
@@ -21,7 +22,6 @@ class OllamaService:
             required = []
             
             for name, param in sig.parameters.items():
-                # 略過讓系統注入的 user_id
                 if name == 'user_id': continue
                 
                 ptype = "string"
@@ -30,7 +30,6 @@ class OllamaService:
                 elif param.annotation == bool: ptype = "boolean"
                 
                 properties[name] = {"type": ptype}
-                # 如果沒有預設值，視為必要
                 if param.default is inspect.Parameter.empty:
                     required.append(name)
             
@@ -38,7 +37,7 @@ class OllamaService:
                 "type": "function",
                 "function": {
                     "name": func.__name__,
-                    "description": doc.split('\n')[0], # 只取第一行當描述
+                    "description": doc.split('\n')[0],
                     "parameters": {
                         "type": "object",
                         "properties": properties,
@@ -51,19 +50,20 @@ class OllamaService:
     def _load_agent_file(self, filename):
         """讀取 agent 目錄下的 .md 檔案"""
         try:
-            # 取得專案根目錄 (假設在 server/ 下執行或 path 正確)
             base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             file_path = os.path.join(base_dir, 'agent', filename)
             if os.path.exists(file_path):
+                print(f"--- [Agent] 讀取設定檔: {file_path} (成功) ---")
                 with open(file_path, 'r', encoding='utf-8') as f:
                     return f.read()
+            # print(f"--- [Agent] 設定檔不存在: {file_path} (略過) ---")
             return ""
         except Exception as e:
             print(f"Error loading {filename}: {e}")
             return ""
 
     def _to_traditional(self, text):
-        """外科手術式過濾器：將最常見的簡體字轉換為繁體字"""
+        """將常見簡體字轉換為繁體字並處理在地用語轉換"""
         if not text: return text
         mapping = {
             '说': '說', '这': '這', '会': '會', '个': '個', '为': '為', '样': '樣', 
@@ -79,23 +79,84 @@ class OllamaService:
             '义': '義', '与': '與', '业': '業', '严': '嚴', '连': '連', '选': '選', 
             '术': '術', '标': '標', '准': '準', '师': '師', '单': '單', '众': '眾', 
             '爷': '爺', '奶': '奶', '妈': '媽', '爸': '爸', '姐': '姐', '弟': '弟', 
-            '视': '視', '览': '覽', '过': '過', '离': '離', '难': '難', '确': '確',
-            '实': '實', '样': '樣', '内': '內', '容': '容', '总': '總', '统': '統',
-            '经': '經', '济': '濟', '测': '測', '验': '驗', '查': '查', '办': '辦'
+            '视': '視', '览': '覽', '过': '過', '离': '離', '难': '難', 
+            '内': '內', '容': '容', '总': '總', '统': '統', '经': '經', '济': '濟', 
+            '测': '測', '验': '驗', '查': '查', '办': '辦', '频': '頻', '线': '線',
+            '联': '聯', '网': '網', '络': '絡'
         }
+        word_mapping = {
+            '视频': '影片', '服务器': '伺服器', '程序': '程式', '手机': '手機', '软件': '軟體'
+        }
+        for s, t in word_mapping.items():
+            text = text.replace(s, t)
         for s, t in mapping.items():
             text = text.replace(s, t)
         return text
 
     def _clean_response(self, text):
-        """清潔 AI 的回覆：移除可能出現的 Metadata 標籤（如 NIGHT!, MOOD: 等）"""
+        """清潔 AI 的回覆：移除可能出現的 Metadata 標籤與幻覺連結"""
         if not text: return text
-        import re
-        # 移除開頭的大寫英文標籤 (如 NIGHT!, MORNING!, AI:, 甚至是 MOOD: HAPPY)
-        # 過濾規則：匹配字串開頭的一個或多個大寫單字，後面接驚嘆號或冒號
+        
+        # 1. 移除開頭的大寫英文標籤
         text = re.sub(r'^[A-Z\s!:]+\s*(!|:)\s*', '', text.strip())
-        # 再次針對常見拼錯或特定關鍵字進行清理
         text = re.sub(r'(?i)^(NIGHT|MORNING|AFTERNOON|EVENING|HELLO|AI_RESPONSE|MOOD)\s*[!！:：]\s*', '', text).strip()
+        
+        # 2. --- [YouTube URL Interceptor] ---
+        video_id_match = re.search(r'(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})', text)
+        found_video_id = None
+        if video_id_match:
+            found_video_id = video_id_match.group(1)
+            if found_video_id == "example_video_id":
+                found_video_id = None
+        
+        search_query_match = re.search(r'youtube\.com\/results\?search_query=([^&\s\)]+)', text)
+        if search_query_match and not found_video_id:
+            from urllib.parse import unquote
+            query = unquote(search_query_match.group(1).replace('+', ' '))
+            print(f"--- [Fallback] Intercepted youtube search URL: {query} ---")
+            try:
+                from skills.common_skills import search_youtube_video
+                result = search_youtube_video(query)
+                id_in_result = re.search(r'\[VIDEO_ID:([^\]]+)\]', result)
+                if id_in_result:
+                    found_video_id = id_in_result.group(1)
+            except Exception as e:
+                print(f"Fallback search error: {e}")
+
+        # 3. 移除所有已知形式的網址與 Markdown 連結
+        text = re.sub(r'!\[.*?\]\(.*?\)', '', text)
+        text = re.sub(r'\[.*?\]\(.*?\)', '', text)
+        text = re.sub(r'https?:\/\/(?:www\.)?(?:youtube\.com|youtu\.be)\/\S+', '', text)
+        
+        # 4. --- [Skill Call Interceptor] ---
+        youtube_pattern = r'search_youtube_video\s*\(\s*["\']([^"\']+)["\']\s*\)'
+        youtube_match = re.search(youtube_pattern, text)
+        if youtube_match and not found_video_id:
+            query = youtube_match.group(1)
+            try:
+                from skills.common_skills import search_youtube_video
+                result = search_youtube_video(query)
+                id_in_result = re.search(r'\[VIDEO_ID:([^\]]+)\]', result)
+                if id_in_result: found_video_id = id_in_result.group(1)
+            except Exception: pass
+        
+        text = re.sub(r'[`]{1,3}[^`]*?search_youtube_video[^`]*?[`]{1,3}', '', text).strip()
+        text = re.sub(r'(?i)[\w]*?search_youtube_video\s*\([^)]*\)', '', text).strip()
+        
+        text = re.sub(r'請點擊(.*?)(連結|影片|播放)(.*?)聆聽[：:]?', '', text).strip()
+        text = re.sub(r'點擊(.*?)(連結|影片|播放)', '', text).strip()
+        text = re.sub(r'前往\s*YouTube\s*聆聽[：:]', '', text).strip()
+        
+        # 3. 移除 XML 標籤（如 <thinking>, <call> 等）
+        text = re.sub(r'<thought>.*?</thought>', '', text, flags=re.DOTALL).strip()
+        text = re.sub(r'<thinking>.*?</thinking>', '', text, flags=re.DOTALL).strip()
+        text = re.sub(r'<[^>]+>.*?</[^>]+>', '', text, flags=re.DOTALL).strip()
+        text = re.sub(r'<[^>]+>', '', text).strip()
+        
+        if found_video_id and f"[VIDEO_ID:{found_video_id}]" not in text:
+            text += f"\n\n[VIDEO_ID:{found_video_id}]"
+            
+        text = re.sub(r'example_video_id', '', text).strip()
         return self._to_traditional(text)
 
     def _get_personality(self, profile):
@@ -116,58 +177,87 @@ class OllamaService:
             
         return personality
 
+    # ─────────────────────────────────────────────────────────────────────
+
     def _prepare_messages(self, prompt, user_id, history):
         from models import ElderProfile
         profile = ElderProfile.query.filter_by(user_id=user_id).first() if user_id else None
         
-        # 讀取長期記憶與使用者資訊
+        # 1. 讀取各項設定檔
+        soul_content = self._load_agent_file('SOUL.md')
         memory_content = self._load_agent_file('MEMORY.md')
         user_content = self._load_agent_file('USER.md')
+        song_content = self._load_agent_file('KNOWLEDGE_SONGS.md')
         
-        instruction = (
-            "你是一位親切的長輩陪伴助手。\n"
-            "### 【核心指令：語系與格式】\n"
-            "1. **語系限制**：務必全程使用「繁體中文（zh-TW）」，絕對禁止使用簡體字。\n"
-            "2. **字碼檢查**：嚴禁出現簡體字形（如：说、为、会、这、个、鲜、确、实、样、后、听、现、亲、爱）。若輸出簡體字，視為嚴重錯誤。\n"
-            "3. **在地用語**：使用台灣地區慣用語（如：影片、軟體、全家、計程車、捷運）。\n"
-            f"{self._get_personality(profile)}\n"
+        # 2. 建構人格與基本指令 (System Role)
+        personality = self._get_personality(profile)
+        system_instruction = (
+            "你是一位親切、耐心且對長輩極度溫潤的台灣在地陪伴助手。\n"
+            "### 【核心人格與原則】\n"
+            f"{personality}\n\n"
+            "### 【最高優先規則：語言與口吻】\n"
+            "1. **絕對繁體中文**：全程僅限使用「繁體中文（zh-TW）」回覆。嚴禁簡體字，嚴禁英文（除非是專有名詞）。\n"
+            "2. **在地感**：使用台灣慣用語（例：影片、軟體）。\n"
         )
         
-        if memory_content:
-            instruction += f"\n### 長期記憶 (MEMORY.md):\n{memory_content}\n"
+        # 3. 建構核心事實區塊 (稍後注入)
+        fact_context = "### 【核心事實：你必須記住的長輩資訊】\n"
         if user_content:
-            instruction += f"\n### 關於長輩 (USER.md):\n{user_content}\n"
-            
-        instruction += "\n### 【工具使用規範】\n"
-        instruction += "1. 當長輩詢問天氣、時間、健康建議時，請呼叫對應工具。\n"
-        instruction += "2. **重要：當長輩分享新資訊（如家人、回憶、姓名、藥品、愛好）時，請務必使用 `update_agent_memory` 來更新檔案，這是你保持長期記憶的唯一方式。**\n"
-        instruction += "3. 在呼叫工具後，請根據工具回傳的結果，給予長輩溫暖的回應。"
+            fact_context += f"#### 長輩基本資料 (USER.md):\n{user_content}\n"
+        if memory_content:
+            fact_context += f"#### 重要長期記憶 (MEMORY.md):\n{memory_content}\n"
+        if not user_content and not memory_content:
+            fact_context += "（目前尚無特定的長輩記憶資料）\n"
+
+        # 4. 建構影音播放規則
+        media_instruction = (
+            "### 【影音播放工具使用規則】\n"
+            "▶ 觸發：當長輩明確要求「想聽」、「播放」或詢問特定歌手/歌曲時。\n"
+            "▶ 動作：呼叫 `search_youtube_video` 工具。回覆中嚴禁出現任何網址或 [VIDEO_ID] 標籤。\n"
+        )
+
+        messages = [
+            {"role": "system", "content": system_instruction},
+            {"role": "system", "content": fact_context},
+            {"role": "system", "content": media_instruction}
+        ]
         
-        messages = [{"role": "system", "content": instruction}]
-        
-        # 轉換 Gemini history 格式到 Ollama 格式
+        # 5. 注入對話歷史
         if history:
             for h in history:
                 role = "assistant" if h.get("role") == "model" else h.get("role", "user")
                 content = h.get("parts", [""])[0] if isinstance(h.get("parts"), list) else ""
                 messages.append({"role": role, "content": content})
                 
-        # 加入新提問
-        messages.append({"role": "user", "content": prompt})
+        # 6. 當前使用者提問與「最後提醒」
+        messages.append({
+            "role": "user", 
+            "content": f"{prompt}\n\n(注意：請基於上述「核心事實」與「靈魂核心」進行回覆。務必使用台灣繁體中文，絕對不可使用英文。)"
+        })
+        
+        # 輸出日誌：方便使用者在終端機確認內容
+        print(f"--- [Prompt Context Check] ---")
+        print(f"Memory Loaded: {len(memory_content) > 0}, Fact Block Strings: {len(fact_context)} chars")
+        if memory_content:
+            # 擷取記憶中的一部分來確認讀取
+            short_mem = memory_content.replace('\n', ' ')[:50]
+            print(f"Memory Snapshot: {short_mem}...")
+        print(f"--- [Prompt Context Check Done] ---")
+        
         return messages
 
     def get_response(self, prompt, user_id=None, history=None):
         try:
             messages = self._prepare_messages(prompt, user_id, history)
-            
-            # 使用由 _generate_tool_schemas 產生的 JSON schemas
             response = ollama.chat(
                 model=self.model_name,
                 messages=messages,
                 tools=self._tool_schemas
             )
             
-            # 如果 Ollama 決定呼叫 tool
+            # 追蹤所有工具結果，方便最後補上 VIDEO_ID
+            tool_results = []
+            
             while response.get('message', {}).get('tool_calls'):
                 messages.append(response['message'])
                 
@@ -183,102 +273,113 @@ class OllamaService:
                             params = inspect.signature(tool_func).parameters
                             if 'user_id' in params:
                                 tool_args['user_id'] = user_id
-                                
                             tool_result = tool_func(**tool_args)
                         else:
                             tool_result = f"Tool {tool_name} not found."
                     except Exception as e:
                         tool_result = f"Error executing {tool_name}: {e}"
-                        
+                    
+                    print(f"--- [Ollama] Tool result: {str(tool_result)[:100]} ---")
+                    tool_results.append(str(tool_result))
                     messages.append({'role': 'tool', 'content': str(tool_result), 'name': tool_name})
                     
-                # 把 tool_result 送回 Ollama 繼續生成
                 response = ollama.chat(
                     model=self.model_name,
                     messages=messages,
-                    tools=ALL_SKILLS
+                    tools=self._tool_schemas
                 )
 
-            return self._clean_response(response['message']['content'])
+            # 清理 AI 的自然語言回覆
+            final_text = self._clean_response(response['message']['content'])
+            
+            # 【保障機制】若工具結果中有 VIDEO_ID，且最終文字仍未包含，則補上
+            if "[VIDEO_ID:" not in final_text:
+                for result_str in tool_results:
+                    match = re.search(r'\[VIDEO_ID:([^\]]+)\]', result_str)
+                    if match:
+                        video_id = match.group(1)
+                        print(f"--- [Ollama] Appending VIDEO_ID from tool result: {video_id} ---")
+                        final_text += f"\n\n[VIDEO_ID:{video_id}]"
+                        break
+            
+            return final_text
             
         except Exception as e:
             print(f"!!! [Ollama] Error: {e}")
             return f"AI 回應發生錯誤: {str(e)}"
 
+    def _execute_tool(self, name, args, user_id):
+        try:
+            func = next((f for f in ALL_SKILLS if f.__name__ == name), None)
+            if not func:
+                return f"找不到工具 {name}。"
+            
+            import inspect
+            sig = inspect.signature(func)
+            if 'user_id' in sig.parameters:
+                args['user_id'] = user_id
+            
+            return func(**args)
+        except Exception as e:
+            print(f"--- [Tool Execute Error] {name}: {e} ---")
+            return f"執行工具 {name} 時發生錯誤：{str(e)}"
+
     def get_response_stream(self, prompt, user_id=None, history=None):
         try:
             messages = self._prepare_messages(prompt, user_id, history)
-            
             print(f"--- [Ollama Stream] Starting request for user {user_id} ---")
-
-            # 在串流模式下，Ollama 若判定需要 tool call，會一次性返回整個 message 不會串流，
-            # 因此我們先用非 stream 檢查是否有 tool_calls。
-            # 如果確認沒有 toll_calls，再正式串流。
             
+            # 追蹤所有工具結果
+            tool_results = []
+
             while True:
                 res = ollama.chat(
                     model=self.model_name,
                     messages=messages,
-                    tools=self._tool_schemas, 
+                    tools=self._tool_schemas,
                     stream=False
                 )
                 
                 if res.get('message', {}).get('tool_calls'):
-                    messages.append(res['message'])
-                    for tool_call in res['message']['tool_calls']:
+                    msg = res['message']
+                    messages.append(msg)
+                    for tool_call in msg['tool_calls']:
                         tool_name = tool_call['function']['name']
                         tool_args = tool_call['function'].get('arguments', {})
                         print(f"--- [Ollama Stream] AI requested tool: {tool_name} with {tool_args} ---")
                         
-                        try:
-                            tool_func = next((f for f in ALL_SKILLS if f.__name__ == tool_name), None)
-                            if tool_func:
-                                import inspect
-                                params = inspect.signature(tool_func).parameters
-                                if 'user_id' in params:
-                                    tool_args['user_id'] = user_id
-                                tool_result = tool_func(**tool_args)
-                            else:
-                                tool_result = f"Tool {tool_name} not found."
-                        except Exception as te:
-                            tool_result = f"Error: {te}"
-                            print(f"--- [Ollama Stream] Tool error: {te} ---")
-                            
+                        tool_result = self._execute_tool(tool_name, tool_args, user_id)
+                        print(f"--- [Ollama Stream] Tool result: {str(tool_result)[:120]} ---")
+                        tool_results.append(str(tool_result))
                         messages.append({'role': 'tool', 'content': str(tool_result), 'name': tool_name})
-                    
-                    # Tool 執行完後回到 while True 讓 Ollama 用具備 tool response 的 messages 再想一次
-                else:
-                    break # 沒有 tool calls，跳出迴圈正常串流生成
-
-            # 確認沒有 function calls 後，我們執行標準串流返回結果給前端
-            stream_response = ollama.chat(
-                model=self.model_name,
-                messages=messages,
-                stream=True
-            )
-            
-            first_chunk_buffer = ""
-            for chunk in stream_response:
-                text = chunk.get('message', {}).get('content', '')
-                if text:
-                    if first_chunk_buffer is not None:
-                        # 還在積累第一段緩衝區
-                        first_chunk_buffer += text
-                        # 如果積累到足夠長度 (例如 25 字) 或是看到換行/標點，才進行第一次清洗並輸出
-                        if len(first_chunk_buffer) > 25 or any(p in text for p in ["\n", "。", "！", "？", "!", ":", "："]):
-                            cleaned_start = self._clean_response(first_chunk_buffer)
-                            first_chunk_buffer = None # 標記緩衝結束
-                            if cleaned_start.strip():
-                                yield cleaned_start
-                    else:
-                        # 正常輸出後續段落
-                        yield self._to_traditional(text)
-            
-            # 如果結束了但緩衝區還有東西 (通常是極短的回覆)
-            if first_chunk_buffer:
-                cleaned_final = self._clean_response(first_chunk_buffer)
-                if cleaned_final.strip():
-                    yield cleaned_final
+                    continue
+                
+                # 【關鍵修復】先累積完整回應，再做一次性清理，避免 [VIDEO_ID] 被切斷
+                full_response = ""
+                for chunk in ollama.chat(
+                    model=self.model_name,
+                    messages=messages,
+                    stream=True
+                ):
+                    if 'message' in chunk and 'content' in chunk['message']:
+                        full_response += chunk['message']['content']
+                
+                # 對完整回應做一次清理後再 yield
+                cleaned_response = self._clean_response(full_response)
+                
+                # 【保障機制】若工具結果有 VIDEO_ID，確保附加到最終文字
+                if "[VIDEO_ID:" not in cleaned_response:
+                    for result_str in tool_results:
+                        match = re.search(r'\[VIDEO_ID:([^\]]+)\]', result_str)
+                        if match:
+                            video_id = match.group(1)
+                            print(f"--- [Ollama Stream] Appending VIDEO_ID from tool: {video_id} ---")
+                            cleaned_response += f"\n\n[VIDEO_ID:{video_id}]"
+                            break
+                
+                if cleaned_response.strip():
+                    yield cleaned_response
+                break
                     
         except Exception as e:
             print(f"!!! [Ollama Stream] Fatal error: {str(e)}")
