@@ -50,6 +50,7 @@ class Signaling {
 
   String? _currentRoomId;
   String? _peerSocketId;
+  String? _currentCallId; // 追蹤當前通話 ID，確保 hangUp 時能傳給後端
   int? _userId; // 新增：儲存當前使用者的資料庫 ID
   final List<RTCIceCandidate> _candidateQueue = [];
   final List<String> _pendingRooms = [];
@@ -130,6 +131,11 @@ class Signaling {
     socket!.onConnectError((err) => debugPrint('❌ Socket Connect Error: $err (Server: $serverUrl)'));
     socket!.onError((err) => debugPrint('❌ Socket Error: $err'));
 
+    socket!.onDisconnect((reason) {
+      debugPrint('⚠️ [Signaling] Socket disconnected: $reason');
+      if (onConnectionLost != null) onConnectionLost!();
+    });
+
     socket!.onConnect((_) async {
       debugPrint('✅ Socket 連線成功 (SID: ${socket!.id})');
       _asyncJoin(roomId, role, deviceName, deviceMode, fcmToken: fcmToken);
@@ -145,10 +151,10 @@ class Signaling {
       socket?.disconnect();
     });
 
-    socket!.on('elder-devices-list', (data) => onElderDevicesUpdate?.call(data as List<dynamic>));
-    
+    // 統一監聽 elder-devices-update（後端已統一 emit 此事件名）
     // 響鈴監聽
     socket!.on('call-request', (data) {
+      _currentCallId = data['callId'];
       if (onCallRequest != null) onCallRequest!(data['room'], data['senderId'], data['callId']);
     });
 
@@ -165,7 +171,8 @@ class Signaling {
     // 對方接聽監聽
     socket!.on('call-accept', (data) {
       debugPrint("📞 [Signaling] Received call-accept (SenderId: ${data['accepterId']}, CallId: ${data['callId']})");
-      _peerSocketId = data['accepterId'];  
+      _peerSocketId = data['accepterId'];
+      _currentCallId = data['callId'];
       if (onCallAcceptedByRemote != null) onCallAcceptedByRemote!(data['accepterId'], data['callId']);
     });
 
@@ -376,6 +383,7 @@ class Signaling {
   }
 
   void sendCallRequest(String room, {String role = 'family', String? callId}) {
+    _currentCallId = callId;
     socket!.emit('call-request', {
       'room': room, 
       'role': role, 
@@ -415,8 +423,9 @@ class Signaling {
     }
   }
 
-  void sendCancelCall(String room) {
-    socket!.emit('cancel-call', {'room': room});
+  void sendCancelCall(String room, {String role = 'family'}) {
+    socket!.emit('cancel-call', {'room': room, 'role': role, 'callId': _currentCallId});
+    _currentCallId = null;
   }
 
   void sendEmergencyCall(String room) {
@@ -557,6 +566,7 @@ class Signaling {
   void clearSession() {
     stopMedia();
     _closePeerConnection();
+    _currentCallId = null;
     
     // 僅清除與「單次通話連線」相關的介面回調
     onAddRemoteStream = null;
@@ -569,10 +579,11 @@ class Signaling {
   }
 
   void hangUp({bool disconnectSocket = false, bool disposeLocalStream = true}) {
-    debugPrint("📢 [Signaling] Hanging up (disconnectSocket: $disconnectSocket, disposeLocalStream: $disposeLocalStream)...");
+    debugPrint("📢 [Signaling] Hanging up (disconnectSocket: $disconnectSocket, disposeLocalStream: $disposeLocalStream, callId: $_currentCallId)...");
     if (socket != null && _currentRoomId != null) {
-      socket!.emit('end-call', {'room': _currentRoomId, 'targetId': _peerSocketId});
+      socket!.emit('end-call', {'room': _currentRoomId, 'targetId': _peerSocketId, 'callId': _currentCallId});
     }
+    _currentCallId = null;
     
     _closePeerConnection();
     

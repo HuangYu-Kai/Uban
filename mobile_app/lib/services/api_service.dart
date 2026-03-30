@@ -312,4 +312,16 @@ class ApiService {
       return {'status': 'error', 'message': '網路連線失敗: $e'};
     }
   }
+
+  /// 取得特定房間的通話紀錄（對應後端 GET /api/call_history）
+  static Future<Map<String, dynamic>> getCallHistory(String roomId) async {
+    try {
+      final response = await http
+          .get(Uri.parse('${baseUrl.replaceAll('/api', '')}/api/call_history?room_id=$roomId'))
+          .timeout(const Duration(seconds: 10));
+      return _safeDecode(response);
+    } catch (e) {
+      return {'status': 'error', 'message': '網路連線失敗: $e'};
+    }
+  }
 }
