@@ -59,12 +59,13 @@ chmod +x run.sh
 
 ### 1. 通訊埠轉發 (Port Forwarding)
 
-請在路由器將 **Port 5001 (TCP)** 指向您電腦的內部 IP。
-> 目前 API 與 Socket 服務已統一整合在 **5001** 埠口。
+請在路由器將 **Port 8000 (TCP)** 指向您電腦的內部 IP。
+> 正式後端已遷移至 `uban-api` (FastAPI)，API 與 Socket 服務統一在 **8000** 埠口。
+> ⚠️ `server/` 目錄為 Legacy Flask 程式碼，已棄用，請勿再修改。
 
 ### 2. 防火牆規則
 
-確保 Windows 防火牆已開啟 **TCP 5001** 的「輸入規則 (Inbound Rule)」。
+確保 Windows 防火牆已開啟 **TCP 8000** 的「輸入規則 (Inbound Rule)」。
 
 ---
 
