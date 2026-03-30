@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lunar/lunar.dart';
@@ -134,7 +133,6 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     return const SizedBox(height: 20);
   }
 
-
   Widget _buildCalendarCard() {
     return Container(
       padding: const EdgeInsets.all(4),
@@ -247,7 +245,12 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                 image: AssetImage('assets/images/newspaper.png'),
                 fit: BoxFit.cover,
               ),
-              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 10, offset: const Offset(0, 5))],
+              boxShadow: [
+                BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.1),
+                    blurRadius: 10,
+                    offset: const Offset(0, 5))
+              ],
             ),
             child: Stack(
               children: [
@@ -366,8 +369,10 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
           Expanded(
             flex: 2,
             child: ClipRRect(
-              borderRadius: const BorderRadius.horizontal(left: Radius.circular(28)),
-              child: Image.asset('assets/images/pet_garden.png', fit: BoxFit.cover),
+              borderRadius:
+                  const BorderRadius.horizontal(left: Radius.circular(28)),
+              child: Image.asset('assets/images/pet_garden.png',
+                  fit: BoxFit.cover),
             ),
           ),
           // 右半邊遊戲進度
@@ -377,7 +382,8 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
               padding: const EdgeInsets.all(20),
               decoration: const BoxDecoration(
                 color: Color(0xFFF8FAF7),
-                borderRadius: BorderRadius.horizontal(right: Radius.circular(28)),
+                borderRadius:
+                    BorderRadius.horizontal(right: Radius.circular(28)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -385,7 +391,8 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.eco_rounded, size: 28, color: Color(0xFF388E3C)),
+                      const Icon(Icons.eco_rounded,
+                          size: 28, color: Color(0xFF388E3C)),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
@@ -408,7 +415,8 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                       value: 0.7,
                       minHeight: 14,
                       backgroundColor: const Color(0xFFC8E6C9),
-                      valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF43A047)),
+                      valueColor: const AlwaysStoppedAnimation<Color>(
+                          Color(0xFF43A047)),
                     ),
                   ),
                   const SizedBox(height: 10),
@@ -489,7 +497,8 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     );
   }
 
-  Widget _buildContactListItem(BuildContext popupContext, String name, String relation) {
+  Widget _buildContactListItem(
+      BuildContext popupContext, String name, String relation) {
     return InkWell(
       onTap: () {
         Navigator.pop(popupContext); // Close first popup
@@ -508,7 +517,8 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
             CircleAvatar(
               radius: 30,
               backgroundColor: const Color(0xFFCFEADF),
-              child: const Icon(Icons.person, size: 35, color: Color(0xFF59B294)),
+              child:
+                  const Icon(Icons.person, size: 35, color: Color(0xFF59B294)),
             ),
             const SizedBox(width: 16),
             Expanded(
@@ -533,14 +543,16 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                 ],
               ),
             ),
-            const Icon(Icons.arrow_forward_ios_rounded, color: Color(0xFF94A3B8)),
+            const Icon(Icons.arrow_forward_ios_rounded,
+                color: Color(0xFF94A3B8)),
           ],
         ),
       ),
     );
   }
 
-  void _showActionBottomSheet(BuildContext context, String name, String relation) {
+  void _showActionBottomSheet(
+      BuildContext context, String name, String relation) {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -549,7 +561,8 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     );
   }
 
-  Widget _buildActionSheet(BuildContext popupContext, String name, String relation) {
+  Widget _buildActionSheet(
+      BuildContext popupContext, String name, String relation) {
     return Container(
       padding: const EdgeInsets.all(30),
       decoration: const BoxDecoration(
@@ -638,7 +651,10 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                 color: color,
                 shape: BoxShape.circle,
                 boxShadow: [
-                  BoxShadow(color: color.withValues(alpha: 0.3), blurRadius: 10, offset: const Offset(0, 4)),
+                  BoxShadow(
+                      color: color.withValues(alpha: 0.3),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4)),
                 ],
               ),
               child: Icon(icon, size: 32, color: Colors.white),
@@ -670,7 +686,6 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
       ),
     );
   }
-
 
   Widget _buildNewsSection() {
     return Column(
@@ -771,7 +786,8 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                     ),
                   ),
                   const SizedBox(width: 4),
-                  const Icon(Icons.arrow_forward_rounded, color: Color(0xFF59B294), size: 18),
+                  const Icon(Icons.arrow_forward_rounded,
+                      color: Color(0xFF59B294), size: 18),
                 ],
               ),
             ],
