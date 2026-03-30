@@ -75,8 +75,8 @@ def test_oidc():
     uid = data.get('uid', 'N/A')
     token = data.get('token', 'N/A')
 
-    # 取得專案根目錄 (UniFlow)
-    # 目前檔案在 UniFlow/server/routes/auth.py
+    # 取得專案根目錄 (Uban)
+    # 目前檔案在 Uban/server/routes/auth.py
     # 根目錄應為 ../../../ (相對於此檔)
     # 但更簡單的方式是 os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
