@@ -69,12 +69,54 @@ chmod +x run.sh
 
 ---
 
-## � 第四階段：核心功能教學 (Core Tutorial)
+## 📋 第四階段：核心功能教學 (Core Tutorial)
 
 1. **角色選擇**：App 啟動後可選擇長輩端 (Elder) 或家屬端 (Family)。
 2. **配對流程**：長輩端顯示 PIN 碼 -> 家屬端輸入 PIN 碼認領 -> 系統自動完成註冊與綁定。
 3. **AI 互動**：Gemini Agent 會根據長輩的興趣與病史提供個人化對話，並產出健康指標。
 4. **即時監控**：支援 WebRTC 低延遲視訊與單向遠端查看功能。
+
+---
+
+## 🧪 第五階段：視訊通話單機測試 (Video Call Testing with One Device)
+
+本專案提供 `test_call_simulator.py` 腳本，讓開發者**只用一台模擬器**即可測試完整的視訊通話信令流程。腳本模擬「家屬端」撥打電話，模擬器上的 App 作為「長輩端」接收。
+
+### 前置準備
+
+```bash
+# 建立測試用虛擬環境（只需首次執行）
+python3 -m venv /tmp/uban_test_venv
+/tmp/uban_test_venv/bin/pip install "python-socketio[asyncio_client]" websockets
+```
+
+### 測試步驟
+
+1. **確保 `uban-api` 後端已啟動**（遠端容器或本地 `uvicorn main:app --reload`）
+2. **在模擬器上啟動 Flutter App**，以**長輩端**身分登入並進入主畫面（確保 Socket 已連線）
+3. **在另一個 Terminal 執行測試腳本**：
+
+```bash
+/tmp/uban_test_venv/bin/python3 test_call_simulator.py
+```
+
+4. 輸入房間 ID（= 長輩的 `user_id`），即可看到互動選單：
+
+| 選項 | 說明 |
+|------|------|
+| `[1]` 📞 | 發送一般通話 (`call-request`)，長輩端會彈出來電對話框 |
+| `[2]` 🚨 | 發送緊急通話 (`emergency-call`)，測試自動接聽機制 |
+| `[3]` 🔕 | 取消呼叫 (`cancel-call`)，測試全域彈窗自動消失 |
+| `[4]` 📡 | 查詢長輩設備在線狀態 |
+| `[5]` 📴 | 掛斷通話 (`end-call`) |
+
+### 驗證要點
+
+- 按 `[1]` 後，模擬器應彈出來電對話框 → 按「接聽」→ 腳本顯示 `🎉 對方已接聽！`
+- 按 `[3]` 後，模擬器上的來電彈窗應自動消失
+- 按「拒絕」後，腳本應顯示 `🚫 對方拒接或忙線中`
+
+> **注意：** 腳本不會建立真正的 WebRTC 影像連線，僅驗證 Socket.IO 信令層是否正確傳遞。
 
 ---
 
