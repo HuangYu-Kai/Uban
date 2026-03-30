@@ -4,7 +4,10 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart' hide Path;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:intl/intl.dart';
 import 'dart:convert';
+import '../services/game_service.dart';
+import '../globals.dart';
 
 void main() => runApp(const MyApp());
 
@@ -25,7 +28,8 @@ class MyApp extends StatelessWidget {
 }
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  final String? elderId;
+  const ProfileScreen({super.key, this.elderId});
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -44,6 +48,13 @@ class _ProfileScreenState extends State<ProfileScreen>
   late Animation<double> _numScale;
   late Animation<double> _numOpacity;
 
+  // ── 步數與 Gawa 資料 ────────────────────────────────────────
+  int _steps = 8406;
+  late String _elderId;
+  final GameService _gameService = GameService();
+  double _lastAltitude = 0.0;
+  double _gawaScale = 1.0;
+
   // ── GPS 追蹤 ──────────────────────────────────────────────
   bool _isTracking = false;
   final List<LatLng> _routePoints = [];
@@ -57,6 +68,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   @override
   void initState() {
     super.initState();
+    _elderId = widget.elderId ?? '1001';
 
     _ctrl = AnimationController(
       duration: const Duration(milliseconds: 1600),
@@ -94,6 +106,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   // ── 自動啟動追蹤與持久化初始化 ──────────────────────────────
   Future<void> _autoStartTracking() async {
     await _loadPersistedRoute();
+    await _loadElderProfile(); // Load XP and steps
     await _startTracking();
   }
 
@@ -101,10 +114,6 @@ class _ProfileScreenState extends State<ProfileScreen>
   Future<void> _loadPersistedRoute() async {
     final prefs = await SharedPreferences.getInstance();
     
-    // [清除舊資料] 強制清除先前儲存的美國位置以便能顯示最新狀況
-    await prefs.remove('route_points');
-    await prefs.remove('total_distance');
-
     final dateStr = prefs.getString('last_track_date') ?? '';
     final today = DateTime.now().toIso8601String().substring(0, 10);
 
@@ -127,10 +136,6 @@ class _ProfileScreenState extends State<ProfileScreen>
         _totalDistance = prefs.getDouble('total_distance') ?? 0.0;
       });
     }
-
-    // [測試用] 強制載入中正紀念堂到台北商業大學的假路徑（供展示用）
-    // 放於最後確保能夠蓋過所有先前的錯誤歷史紀錄。
-    _loadMockDemoRoute();
   }
 
   // ── 儲存當前點位與里程 ──────────────────────────────────────
@@ -141,6 +146,34 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
     await prefs.setString('route_points', pointsJson);
     await prefs.setDouble('total_distance', _totalDistance);
+    await prefs.setInt('today_steps', _steps);
+  }
+
+  Future<void> _loadElderProfile() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _steps = prefs.getInt('today_steps') ?? 8406;
+      
+      final status = await _gameService.getElderStatus(_elderId);
+      if (status['status'] == 'success') {
+        setState(() {
+          _steps = (status['step_total'] as num?)?.toInt() ?? _steps;
+          _updateGawaScale();
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading elder profile: $e');
+    }
+  }
+
+  void _updateGawaScale() {
+    // 成長公式：每 1000 步增加 5% 大小，最大 3 倍
+    // 使用 _steps (伺服器上的 step_total) 作為成長依據
+    double newScale = 1.0 + (_steps / 1000.0) * 0.05;
+    if (newScale > 3.0) newScale = 3.0;
+    setState(() {
+      _gawaScale = newScale;
+    });
   }
 
   // ── [展示用] 載入中正紀念堂到北商的假路徑 ───────────────────
@@ -192,7 +225,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     _positionStream = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.high,
-        distanceFilter: 10,
+        distanceFilter: 2, // 縮小過濾範圍以捕捉精細動作
       ),
     ).listen((Position pos) {
       final newPoint = LatLng(pos.latitude, pos.longitude);
@@ -205,16 +238,44 @@ class _ProfileScreenState extends State<ProfileScreen>
           newPoint.latitude,
           newPoint.longitude,
         );
-        // 過濾雜訊：若移動距離太小或跳動過大則忽略
-        if (distM > 2.0) {
+        
+        // ── 嚴格走路偵測邏輯 ──────────────────────────────────
+        // 1. 速度需在走路範圍 (0.3m/s ~ 3.5m/s) - 稍微放寬下限以捕捉緩慢起步/停步
+        // 2. 移動距離需大於 2.0 米 (過濾 GPS 漂移，配合新的 distanceFilter)
+        // 3. 高度變化需在合理範圍
+        bool isWalking = distM > 2.0 && pos.speed >= 0.3 && pos.speed <= 3.5;
+        
+        double altDiff = (pos.altitude - _lastAltitude).abs();
+        _lastAltitude = pos.altitude;
+
+        // 如果高度變化太大 (> 5米且非爬樓梯速度)，可能不是走路
+        if (altDiff > 5.0 && pos.speed > 2.0) {
+           isWalking = false;
+        }
+
+        if (isWalking) {
           _totalDistance += distM / 1000.0;
+          
+          // 步數換算：假設 1 米約 1.3 步
+          int addedSteps = (distM * 1.3).round();
+          _steps += addedSteps;
+
           setState(() {
             _routePoints.add(newPoint);
+            _updateGawaScale();
             _persistRoute(); // 持久化
+          });
+          
+          // 同步到後端
+          _gameService.saveSteps(_elderId, addedSteps).catchError((e) {
+            debugPrint('Failed to save steps to backend: $e');
           });
         }
       } else {
-        setState(() => _routePoints.add(newPoint));
+        setState(() {
+          _routePoints.add(newPoint);
+          _lastAltitude = pos.altitude;
+        });
       }
 
       setState(() => _currentPosition = newPoint);
@@ -383,7 +444,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                             Expanded(child: _buildBar('一', 0.4)),
                             Expanded(child: _buildBar('二', 0.5)),
                             Expanded(child: _buildBar('三', 0.8)),
-                            Expanded(child: _buildBarToday('四', 1.0, '8,406')),
+                            Expanded(child: _buildBarToday('四', 1.0, _steps)),
                             Expanded(child: _buildBar('五', 0.3)),
                             Expanded(child: _buildBar('六', 0.2)),
                           ],
@@ -419,8 +480,9 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
   }
 
-  Widget _buildBarToday(String day, double ratio, String steps) {
+  Widget _buildBarToday(String day, double ratio, int steps) {
     const double barH = 90.0;
+    final formatter = NumberFormat('#,###');
     return AnimatedBuilder(
       animation: _ctrl,
       builder: (context, _) {
@@ -454,15 +516,21 @@ class _ProfileScreenState extends State<ProfileScreen>
                             ),
                           ],
                         ),
-                        child: Text(
-                          steps,
-                          softWrap: false,
-                          maxLines: 1,
-                          style: const TextStyle(
-                            color: Colors.black,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
+                        child: TweenAnimationBuilder<int>(
+                          tween: IntTween(begin: 0, end: steps),
+                          duration: const Duration(seconds: 2),
+                          builder: (context, value, child) {
+                            return Text(
+                              formatter.format(value),
+                              softWrap: false,
+                              maxLines: 1,
+                              style: const TextStyle(
+                                color: Colors.black,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            );
+                          },
                         ),
                       ),
                       CustomPaint(
@@ -592,10 +660,10 @@ class _ProfileScreenState extends State<ProfileScreen>
                   markers: [
                     Marker(
                       point: _currentPosition!,
-                      width: 44,
-                      height: 44,
-                      alignment: Alignment.center, // 改為居中對齊
-                      child: const _AvatarPin(),
+                      width: 100, // Make wider for scaled avatar
+                      height: 100,
+                      alignment: Alignment.center,
+                      child: _AvatarPin(scale: _gawaScale),
                     ),
                   ],
                 ),
@@ -719,7 +787,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          kilometers,
+                          '${_totalDistance.toStringAsFixed(2)} 公里',
                           style: const TextStyle(
                             fontSize: 22,
                             fontWeight: FontWeight.bold,
@@ -849,27 +917,32 @@ class _PulsingDotState extends State<_PulsingDot>
 
 // ── 大頭貼位置點（目前位置） ────────────────────────────────
 class _AvatarPin extends StatelessWidget {
-  const _AvatarPin();
+  final double scale;
+  const _AvatarPin({this.scale = 1.0});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 44,
-      height: 44,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: const Color(0xFFE0E0E0),
-        border: Border.all(color: Colors.white, width: 3.5),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.15),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: const ClipOval(
-        child: Icon(Icons.person, size: 28, color: Color(0xFF757575)),
+    return Transform.scale(
+      scale: scale,
+      alignment: Alignment.bottomCenter,
+      child: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: const Color(0xFF67B99A), // Use Gawa Theme color
+          border: Border.all(color: Colors.white, width: 3.5),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.15),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: const ClipOval(
+          child: Icon(Icons.pets, size: 28, color: Colors.white), // Gawa icon
+        ),
       ),
     );
   }
