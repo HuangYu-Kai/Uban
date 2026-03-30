@@ -21,14 +21,16 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   bool _isLoading = true;
 
   // Pedometer logic
-  int _currentSteps = 0;
   int _unsyncedSteps = 0; // Persistent buffer for backend sync
-  int _sessionSteps = 0;  // 用於本次行走期間的緩存 (靜止後才更新介面)
+  int _hardwareBaseSteps = -1; // Ground truth from physical pedometer
+  
   bool _isFlushing = false; // Lock for database sync
   Timer? _syncTimer;
   String _pedestrianStatus = '靜止';
   late Stream<StepCount> _stepCountStream;
-  late Stream<PedestrianStatus> _pedestrianStatusStream;
+  
+  // Timer for walking status inference
+  Timer? _walkingTimer;
 
   @override
   void initState() {
@@ -55,6 +57,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   @override
   void dispose() {
     _syncTimer?.cancel();
+    _walkingTimer?.cancel();
     _flushSteps();
     super.dispose();
   }
@@ -100,8 +103,6 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
             
             // 更新非步數相關欄位
             _elderStatus!['elder_name'] = statusData['elder_name'];
-            _elderStatus!['gawa_id'] = statusData['gawa_id'];
-            _elderStatus!['gawa_name'] = statusData['gawa_name'];
             _elderStatus!['feed_starttime'] = statusData['feed_starttime'];
             
             // 由於 backend 尚未包含在 unsynced 內的步數，我們把伺服器真實步數 + 未同步的本地步數 作為真正總數
@@ -128,81 +129,77 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   void _syncWithLeaderboard() {
     if (_leaderboard.isEmpty || _elderStatus == null) return;
     
-    // 強制同步：從排行榜中找到自己的資料，輔助校正本地數據 (取較大值)
-    final me = _leaderboard.firstWhere(
-      (e) => e['elder_id'] == widget.elderId, 
-      orElse: () => <String, dynamic>{}
-    );
+    // 找出自己在排行榜中的資料
+    final int meIndex = _leaderboard.indexWhere((e) => e['elder_id'] == widget.elderId);
     
-    if (me.isNotEmpty) {
-      final int leaderboardSteps = me['step_total'] ?? 0;
+    if (meIndex != -1) {
+      final int leaderboardSteps = _leaderboard[meIndex]['step_total'] ?? 0;
       final int currentSteps = _elderStatus!['step_total'] ?? 0;
       
-      if (leaderboardSteps > currentSteps) {
-        _elderStatus!['step_total'] = leaderboardSteps;
-        _elderStatus!['level'] = getLevelFromSteps(leaderboardSteps);
-      }
+      // Bi-directional sync: 取較大值，確保兩邊都是最新
+      final int maxSteps = leaderboardSteps > currentSteps ? leaderboardSteps : currentSteps;
+      
+      _elderStatus!['step_total'] = maxSteps;
+      _elderStatus!['level'] = getLevelFromSteps(maxSteps);
+      
+      _leaderboard[meIndex]['step_total'] = maxSteps;
+      _leaderboard[meIndex]['level'] = getLevelFromSteps(maxSteps);
+      
+      // 確保同步後，排行榜順序正確
+      _leaderboard.sort((a, b) => (b['step_total'] ?? 0).compareTo(a['step_total'] ?? 0));
     }
   }
 
   void _initPedometer() async {
     try {
       if (await Permission.activityRecognition.request().isGranted) {
-        _pedestrianStatusStream = Pedometer.pedestrianStatusStream;
-        _pedestrianStatusStream.listen((event) {
-          if (mounted) {
-            final newStatus = event.status == 'walking' ? '行走中' : '靜止';
-            // 如果從「行走中」變成「靜止」，則把這一段路程的步數更新到介面上，並強迫寫入資料庫
-            if (_pedestrianStatus == '行走中' && newStatus == '靜止') {
-              _updateUIFromSession();
-              if (_elderStatus != null && _elderStatus!['step_total'] != null) {
-                // 觸發一次將當前elder_id靜止後的步數寫入elder_profile的step_total欄位 (User direct request)
-                _gameService.setSteps(widget.elderId, _elderStatus!['step_total']).then((_) {
-                  debugPrint('Absolutely overwrote DB step_total upon stopping.');
-                }).catchError((e) {
-                  debugPrint('Failed absolute step write upon stopping: $e');
-                });
-              }
-            }
-            setState(() => _pedestrianStatus = newStatus);
-          }
-        }).onError((error) {
-          debugPrint('Pedestrian Status error: $error');
-          if (mounted) setState(() => _pedestrianStatus = '感測器不支援');
-        });
-
         _stepCountStream = Pedometer.stepCountStream;
         _stepCountStream.listen((event) {
           if (mounted) {
-            int added = event.steps - _currentSteps;
-            if (_currentSteps != 0 && added > 0) {
-              _unsyncedSteps += added;
+            // 初始化邏輯：如果是第一次收到數據，先記錄起始值，但不計入本次增加
+            if (_hardwareBaseSteps == -1) {
+              _hardwareBaseSteps = event.steps;
+              debugPrint('Initial hardware steps: $_hardwareBaseSteps');
+              return;
+            }
+
+            int hwDelta = event.steps - _hardwareBaseSteps;
+            if (hwDelta > 0) {
+              _unsyncedSteps += hwDelta;
               _saveUnsyncedSteps();
-              _sessionSteps += added;
               
-              // 行走時即時更新上方進度條數字 (User Request 1)
               setState(() {
+                _pedestrianStatus = '行走中';
                 if (_elderStatus != null) {
-                  _elderStatus!['step_total'] = (_elderStatus!['step_total'] ?? 0) + added;
-                  _elderStatus!['level'] = getLevelFromSteps(_elderStatus!['step_total']);
+                   _elderStatus!['step_total'] = (_elderStatus!['step_total'] ?? 0) + hwDelta;
+                   _elderStatus!['level'] = getLevelFromSteps(_elderStatus!['step_total']);
                 }
               });
 
-              // 依然保持背景同步邏輯 (每 50 步上傳一次)
+              _hardwareBaseSteps = event.steps;
+              
+              // 每次收到步數，重置判定為靜止的計時器 (3秒)
+              _walkingTimer?.cancel();
+              _walkingTimer = Timer(const Duration(seconds: 3), () {
+                if (mounted) {
+                  setState(() => _pedestrianStatus = '靜止');
+                  _updateUIFromSession();
+                }
+              });
+
+              // 背景靜默同步 (每滿 50 步)
               if (_unsyncedSteps >= 50 && !_isFlushing) {
                 _flushSteps();
               }
             }
-            _currentSteps = event.steps;
           }
         }).onError((error) {
           debugPrint('Step Count error: $error');
-          if (mounted) setState(() => _pedestrianStatus = '感測器不支援');
+          if (mounted) setState(() => _pedestrianStatus = '計步器受限');
         });
       }
     } catch (e) {
       debugPrint('Pedometer init error: $e');
-      if (mounted) setState(() => _pedestrianStatus = '初始化失敗');
     }
   }
 
@@ -224,10 +221,9 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
       });
     }
 
-    // 當狀態變成靜止時，同步更新排行榜內容 (User Request 1)
-    await _flushSteps();  // 務必等待上傳完成 (User Request 2 - 解決非同步導致的步數倒退與延遲)
-    await _fetchInitialData(); // 重新抓取資料，確保排名是更新後的結果
-    _sessionSteps = 0;    // 重置 session 緩存
+    // 當狀態變成靜止時，同步更新排行榜內容
+    await _flushSteps();  // 務必等待上傳完成
+    await _fetchInitialData(); // 重新抓取資料，由於我們實作了 bi-directional 取最大值同步，不再可能倒退
   }
 
   // 模擬走路功能 (僅用於測試或感測器不支援時)
