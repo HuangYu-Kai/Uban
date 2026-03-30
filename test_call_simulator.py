@@ -31,8 +31,8 @@ CALLER_USER_ID = 9999  # 假的 user_id
 
 sio = socketio.AsyncClient(
     reconnection=False,
-    logger=False,
-    engineio_logger=False,
+    logger=True,
+    engineio_logger=True,
     ssl_verify=False,
 )
 
