@@ -2,7 +2,6 @@
 
 # --- 0. Cleanup Previous Sessions ---
 echo "[*] Cleaning up previous sessions..."
-pkill -f "python server/app.py" 2>/dev/null
 pkill -f "flutter run" 2>/dev/null
 sleep 1
 
@@ -11,57 +10,35 @@ clear
 echo "========================================"
 echo "    Uban System Launch Menu (macOS)"
 echo "========================================"
-echo "[1] Local Development (Auto Detect 192.168.*)"
-echo "[2] External Access (Manual Public IP)"
-echo "[3] Remote Tunnel (Auto ngrok)"
+echo "[1] Tailscale Funnel (Remote FastAPI)"
+echo "[2] Custom Server URL"
 echo "========================================"
-read -p "Please select a connection mode [1-3]: " choice
+read -p "Please select a connection mode [1-2]: " choice
 
 if [ "$choice" == "2" ]; then
-    read -p "Enter your Public IP: " localIP
-    echo "[!] Using manual Server IP: $localIP"
-elif [ "$choice" == "3" ]; then
-    echo "[*] Starting ngrok tunnel on port 5001..."
-    ngrok http 5001 > /dev/null &
-    echo "[*] Waiting for ngrok to initialize (5s)..."
-    sleep 5
-    
-    ngrok_url=$(curl -s http://localhost:4040/api/tunnels | grep -o 'https://[^"]*' | head -n 1 | sed 's/https:\/\///')
-    if [ -z "$ngrok_url" ]; then
-        echo "Error: Failed to get ngrok URL. Is ngrok running?"
-        exit 1
-    fi
-    localIP=$ngrok_url
-    echo "Detected ngrok URL: $localIP"
+    read -p "Enter your Server URL: " serverURL
+    echo "[!] Using custom Server URL: $serverURL"
 else
-    echo "[*] Detecting Local IP..."
-    localIP=$(ifconfig | grep "inet " | grep -v 127.0.0.1 | awk '{print $2}' | grep -E '^(192\.168\.|10\.)' | head -n 1)
-    
-    if [ -z "$localIP" ]; then
-        localIP=$(ifconfig | grep "inet " | grep -v 127.0.0.1 | awk '{print $2}' | head -n 1)
-    fi
-    
-    if [ -z "$localIP" ]; then
-        localIP="10.0.2.2"
-    fi
-    echo "Detected Server IP: $localIP"
+    serverURL="localhost-0.tail5abf5e.ts.net"
+    echo "[*] Using Tailscale Funnel: $serverURL"
 fi
 
-# --- 2. Auto Setup Check ---
-if [ ! -d "venv" ]; then
-    echo "[!] Virtual environment (venv) not found. Starting auto-setup..."
-    
+# --- 2. Local Python Environment Setup ---
+echo "[*] Checking local Python environment (for test scripts)..."
+if [ ! -d "venv" ] && [ ! -d ".venv" ]; then
+    echo "[!] Virtual environment not found. Creating venv..."
+
     if ! command -v python3 &> /dev/null; then
         echo "Error: python3 is required but not found. Please install it."
         exit 1
     fi
 
-    echo "Creating venv using python3..."
-    python3 -m venv .venv
-    
-    echo "Installing dependencies..."
+    python3 -m venv venv
+    echo "Installing dependencies from server/requirements.txt..."
     ./venv/bin/pip install -r server/requirements.txt
-    echo "Setup complete!"
+    echo "✅ Virtual environment setup complete!"
+else
+    echo "✅ Virtual environment found (venv or .venv)"
 fi
 
 # --- 3. Flutter Dependencies Check ---
@@ -105,21 +82,13 @@ else
     echo "✅ Emulator already running."
 fi
 
-# --- 5. Start Flask Backend ---
-echo "[1/2] Launching Backend Server (Flask)..."
-oldProc=$(lsof -ti :5001)
-if [ ! -z "$oldProc" ]; then
-    kill -9 $oldProc
-fi
-
-osascript -e "tell application \"Terminal\" to do script \"cd '$(pwd)'; ./venv/bin/python server/app.py\""
-
-echo "[*] Waiting for backend to be ready..."
+# --- 5. Check Remote Backend Connection ---
+echo "[*] Checking remote FastAPI backend connection..."
 retryCount=0
 backendReady=false
-while [ $retryCount -lt 10 ]; do
-    status=$(curl -s http://localhost:5001/api/health)
-    if echo "$status" | grep -q "ok"; then
+while [ $retryCount -lt 5 ]; do
+    status=$(curl -s -k https://$serverURL/)
+    if echo "$status" | grep -q "Uban API"; then
         backendReady=true
         break
     fi
@@ -128,18 +97,24 @@ while [ $retryCount -lt 10 ]; do
 done
 
 if [ "$backendReady" == false ]; then
-    echo "Error: Backend failed to start properly. Please check the backend window."
-    exit 1
+    echo "⚠️  Warning: Cannot reach remote backend at https://$serverURL"
+    echo "    Please ensure Tailscale Funnel is running on the server."
+    read -p "Continue anyway? [y/N]: " continue_choice
+    if [ "$continue_choice" != "y" ] && [ "$continue_choice" != "Y" ]; then
+        exit 1
+    fi
+else
+    echo "✅ Remote backend is reachable at https://$serverURL"
 fi
-echo "✅ Backend is UP and running."
 
 # --- 6. Start Flutter Frontend ---
-echo "[2/2] Launching Frontend App (Flutter) with Server IP: $localIP"
-if [[ $localIP == 169.254.* ]] || [[ $localIP == "127.0.0.1" ]]; then
-    echo "[!] WARNING: Detected IP ($localIP) may not be reachable from mobile devices."
-fi
+echo "[*] Launching Frontend App (Flutter) with Server URL: $serverURL"
 
-osascript -e "tell application \"Terminal\" to do script \"cd '$(pwd)/mobile_app'; flutter run --dart-define=SERVER_IP=$localIP\""
+osascript -e "tell application \"Terminal\" to do script \"cd '$(pwd)/mobile_app'; flutter run --dart-define=SERVER_IP=$serverURL\""
 
-echo "Uban is starting in separate windows!"
+echo ""
+echo "========================================"
+echo "✅ Uban Frontend is launching!"
+echo "📡 Backend: https://$serverURL"
+echo "========================================"
 echo "Happy coding!"
