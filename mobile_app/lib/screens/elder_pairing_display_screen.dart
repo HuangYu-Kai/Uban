@@ -32,12 +32,22 @@ try {
 final result = await ApiService.requestPairingCode();
 if (!mounted) return;
 
+// 從 API Response 的 data 欄位取得配對碼
+final data = result['data'] as Map<String, dynamic>?;
+
 setState(() {
-_pairingCode = result['pairing_code'];
-_secondsLeft = result['expires_in_seconds'] ?? 600;
+_pairingCode = data?['pairing_code'];
+_secondsLeft = data?['expires_in_seconds'] ?? 600;
 _isLoading = false;
 });
-_startStatusPolling();
+
+if (_pairingCode != null) {
+  _startStatusPolling();
+} else {
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(content: Text('無法取得配對碼，請檢查網路連線')),
+  );
+}
 } catch (e) {
 if (!mounted) return;
 setState(() => _isLoading = false);
@@ -52,8 +62,12 @@ _statusTimer?.cancel();
 _statusTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
 if (_pairingCode == null) return;
 try {
-final status = await ApiService.checkPairingStatus(_pairingCode!);
+final result = await ApiService.checkPairingStatus(_pairingCode!);
 if (!mounted) return;
+
+// 從 API Response 的 data 欄位取得配對狀態
+final status = result['data'] as Map<String, dynamic>?;
+if (status == null) return;
 
 if (status['status'] == 'paired') {
 timer.cancel();
