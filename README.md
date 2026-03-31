@@ -150,6 +150,15 @@ python3 -m venv /tmp/uban_test_venv
 
 ## 📝 更新日誌 (Changelog)
 
+### 2026-03-31 (資料庫文檔修正)
+- **[Docs] DATABASE.md 完整重寫**：
+  - 修正欄位名稱不一致問題 (`relationship_id` → `relation_id`, `created_at` → `create_ts`)
+  - 更新 `elder_profile` 完整欄位 (新增 `elder_appellation`, `ai_emotion_tone`, `ai_text_verbosity` 等)
+  - 更新 `gawa_appearance` 結構 (舊版 hat/accessory/background → 新版 gawa_name/gawa_rarity/bonus)
+  - 新增缺少的表格定義：`elder_talk_topics`, `elder_fellowship_data`, `get_appearance_list`, `call_record`, `family_message`
+  - 補充 `family_message.is_read` 欄位
+- **[Fix] relationship API**：`create_relationship` 新增 `create_ts` 欄位
+
 ### 2026-03-31 (安全性與穩定性更新)
 - **[Security] CORS 限制**：後端 CORS 改用環境變數 `ALLOWED_ORIGINS` 配置，不再允許所有來源
 - **[Security] 密碼安全**：長輩帳號自動生成安全隨機密碼，移除硬編碼密碼
