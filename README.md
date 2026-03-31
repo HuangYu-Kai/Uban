@@ -150,6 +150,19 @@ python3 -m venv /tmp/uban_test_venv
 
 ## 📝 更新日誌 (Changelog)
 
+### 2026-03-31 (安全性與穩定性更新)
+- **[Security] CORS 限制**：後端 CORS 改用環境變數 `ALLOWED_ORIGINS` 配置，不再允許所有來源
+- **[Security] 密碼安全**：長輩帳號自動生成安全隨機密碼，移除硬編碼密碼
+- **[Security] JWT 認證**：新增 `auth.py` 模組，登入時返回 JWT token，支援 `get_current_user` 依賴注入
+- **[Performance] N+1 查詢優化**：`get_paired_elders` 改用 JOIN 查詢，避免迴圈查詢資料庫
+- **[Performance] API 分頁**：`/users`, `/elders`, `/logs` 端點支援 `skip` 和 `limit` 參數
+- **[Stability] HTTP 超時**：所有前端 API 請求添加 15 秒超時，防止 UI 卡死
+- **[Stability] JSON 安全解析**：所有 API 回應使用 try-catch 保護，伺服器錯誤不再導致 App 崩潰
+- **[Fix] 依賴版本鎖定**：`requirements.txt` 移除重複項並鎖定版本；`pubspec.yaml` 修復 `firebase_analytics: any`
+- **[API] 新增端點**：`GET /api/user/{user_id}/family` 供長輩查詢配對家屬
+- **[DevOps] GitHub Actions CI**：自動化測試流程，pytest + flutter analyze
+- **[Docs] DATABASE.md**：完整資料庫結構文檔
+
 ### 2026-03-31
 - **[Bug Fix] 登入/註冊 API 回傳格式修正**：修復 `login_screen.dart` 和 `registration_screen.dart` 解析 API 回傳格式的錯誤。後端採用統一的 `{ status, data, error }` 格式，需從 `result['data']` 取得 `user_id` 等資訊。
 - **[Enhancement] run.sh 重構**：全新啟動腳本，支援一鍵啟動、熱重啟、後端檢查等功能。適配 Tailscale Funnel 遠端 FastAPI 架構。
