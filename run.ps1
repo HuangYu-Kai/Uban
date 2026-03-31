@@ -1,126 +1,410 @@
+<# 
+==============================================================================
+Uban 開發啟動腳本 (Windows PowerShell)
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  📌 啟動方式 (How to Run)                                                   │
+│                                                                             │
+│  ═══════════════════════════════════════════════════════════════════════   │
+│  🪟 Windows (PowerShell)                                                    │
+│  ═══════════════════════════════════════════════════════════════════════   │
+│                                                                             │
+│  方法一：在 PowerShell 中 cd 到 Uban 目錄後執行                              │
+│    cd C:\你的路徑\Uban                                                      │
+│    .\run.ps1                                                                │
+│                                                                             │
+│  方法二：若出現權限錯誤，先執行                                              │
+│    Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser     │
+│    .\run.ps1                                                                │
+│                                                                             │
+│  快速啟動參數：                                                             │
+│    .\run.ps1 -Start         # 一鍵啟動                                      │
+│    .\run.ps1 -Check         # 檢查後端                                      │
+│    .\run.ps1 -Clean         # 清理程序                                      │
+│                                                                             │
+│  ═══════════════════════════════════════════════════════════════════════   │
+│  🍎 macOS / 🐧 Linux                                                        │
+│  ═══════════════════════════════════════════════════════════════════════   │
+│                                                                             │
+│  請改用 run.sh：                                                            │
+│    chmod +x run.sh                                                          │
+│    ./run.sh                                                                 │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+架構說明：
+  - FastAPI 後端：部署在遠端伺服器，透過 Tailscale Funnel 暴露
+  - Flutter 前端：本地開發，連接遠端 FastAPI
+
+功能：
+  [1] 一鍵啟動 - 自動檢測模擬器、安裝依賴、啟動 App
+  [2] 熱重啟   - 快速重啟已運行的 Flutter App
+  [3] 僅檢查   - 檢查後端連線狀態
+  [4] 清理程序 - 停止所有 Flutter 進程
+
+最後更新：2026-03-31
+==============================================================================
+#>
+
+param(
+    [switch]$Start,
+    [switch]$Check,
+    [switch]$Clean,
+    [string]$ServerUrl
+)
+
+# --- 配置區 ---
+$DEFAULT_SERVER_URL = "localhost-0.tail5abf5e.ts.net"
 $root = $PSScriptRoot
+$mobileAppDir = "$root\mobile_app"
 
-# --- 0. Cleanup Previous Sessions ---
-Write-Host "[*] Cleaning up previous sessions..." -ForegroundColor Gray
-Stop-Process -Name "python", "ngrok" -Force -ErrorAction SilentlyContinue
-Start-Sleep -Seconds 1
+# --- 輔助函數 ---
+function Write-Success { param($msg) Write-Host "✅ $msg" -ForegroundColor Green }
+function Write-Warning { param($msg) Write-Host "⚠️  $msg" -ForegroundColor Yellow }
+function Write-Error { param($msg) Write-Host "❌ $msg" -ForegroundColor Red }
+function Write-Info { param($msg) Write-Host "ℹ️  $msg" -ForegroundColor Cyan }
 
-# --- 1. Connection Mode Selection ---
-Clear-Host
-Write-Host "========================================" -ForegroundColor Yellow
-Write-Host "    Uban System Launch Menu" -ForegroundColor Yellow
-Write-Host "========================================" -ForegroundColor Yellow
-Write-Host "[1] Local Development (Auto Detect 192.168.*)"
-Write-Host "[2] External Access (Manual Public IP)"
-Write-Host "[3] Remote Tunnel (Auto ngrok)"
-Write-Host "========================================" -ForegroundColor Yellow
-$choice = Read-Host "Please select a connection mode [1-3]"
-
-if ($choice -eq "2") {
-    $localIP = Read-Host "Enter your Public IP"
-    Write-Host "[!] Using manual Server IP: $localIP" -ForegroundColor Yellow
-} 
-elseif ($choice -eq "3") {
-    Write-Host "[*] Starting ngrok tunnel on port 5001..." -ForegroundColor Gray
-    Start-Process ngrok -ArgumentList "http 5001" -WindowStyle Minimized
-    
-    Write-Host "[*] Waiting for ngrok to initialize (5s)..." -ForegroundColor Gray
-    Start-Sleep -Seconds 5
-    
-    # Extract ngrok URL from local API
+function Test-Backend {
+    param($serverUrl)
+    Write-Host "[*] 檢查遠端 FastAPI 連線... " -NoNewline
     try {
-        $ngrokData = Invoke-RestMethod -Uri "http://localhost:4040/api/tunnels"
-        $localIP = $ngrokData.tunnels[0].public_url.Replace("https://", "").Replace("http://", "")
-        Write-Host "Detected ngrok URL: $localIP" -ForegroundColor Cyan
-    }
-    catch {
-        Write-Error "Failed to get ngrok URL. Is ngrok running?"
-        exit
-    }
-}
-else {
-    Write-Host "[*] Detecting Local IP..." -ForegroundColor Gray
-    $allIPs = Get-NetIPAddress -AddressFamily IPv4 | Where-Object { 
-        $_.InterfaceAlias -notlike "*Loopback*" -and 
-        $_.InterfaceAlias -notlike "*VirtualBox*" -and 
-        $_.InterfaceAlias -notlike "*VMware*" -and
-        $_.IPAddress -notlike "169.254.*" -and
-        $_.IPAddress -notlike "26.*" 
-    }
-    
-    $localIP = ($allIPs | Where-Object { $_.IPAddress -like "192.168.*" -or $_.IPAddress -like "10.*" } | Select-Object -ExpandProperty IPAddress -First 1)
-    if (-not $localIP) { $localIP = $allIPs[0].IPAddress }
-    if (-not $localIP) { $localIP = "10.0.2.2" }
-    
-    Write-Host "Detected Server IP: $localIP" -ForegroundColor Cyan
-}
-
-# ------------------------------------
-
-# --- 2. Auto Setup Check ---
-if (-not (Test-Path "$root\venv")) {
-    Write-Host "[!] Virtual environment (venv) not found. Starting auto-setup..." -ForegroundColor Magenta
-    
-    # Check if Python 3.12 is available
-    $pyCheck = py --list | Select-String "3.12"
-    if (-not $pyCheck) {
-        Write-Error "Python 3.12 is required but not found on your system. Please install it first."
-        exit
-    }
-
-    Write-Host "Creating venv using Python 3.12..." -ForegroundColor Gray
-    py -3.12 -m venv venv
-    
-    Write-Host "Installing dependencies from server\requirements.txt..." -ForegroundColor Gray
-    .\venv\Scripts\python.exe -m pip install -r "$root\server\requirements.txt"
-    
-    Write-Host "Setup complete!`n" -ForegroundColor Green
-}
-
-# --- 3. Flutter Dependencies Check ---
-Write-Host "[*] Checking Flutter dependencies (flutter pub get)..." -ForegroundColor Gray
-Set-Location "$root\mobile_app"
-flutter pub get
-Set-Location "$root"
-
-# --- 4. Start Flask Backend ---
-Write-Host "[1/2] Launching Backend Server (Flask)..." -ForegroundColor Cyan
-# Kill any existing process on port 5001 to avoid "Address already in use"
-$oldProc = Get-NetTCPConnection -LocalPort 5001 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -First 1
-if ($oldProc) { Stop-Process -Id $oldProc -Force }
-
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$root'; .\venv\Scripts\python.exe server\app.py"
-
-# Wait for backend to be ready
-Write-Host "[*] Waiting for backend to be ready..." -ForegroundColor Gray
-$retryCount = 0
-$backendReady = $false
-while ($retryCount -lt 10) {
-    try {
-        $resp = Invoke-RestMethod -Uri "http://localhost:5001/api/health" -ErrorAction SilentlyContinue
-        if ($resp.status -eq "ok") {
-            $backendReady = $true
-            break
+        $response = Invoke-WebRequest -Uri "https://$serverUrl/" -TimeoutSec 5 -UseBasicParsing -ErrorAction SilentlyContinue
+        if ($response.Content -like "*Uban API*") {
+            Write-Success "後端在線 (https://$serverUrl)"
+            return $true
         }
     } catch {}
-    Start-Sleep -Seconds 1
-    $retryCount++
+    Write-Warning "無法連線至 https://$serverUrl"
+    return $false
 }
 
-if (-not $backendReady) {
-    Write-Error "Backend failed to start properly. Please check the backend window for errors."
-    exit
+# 取得所有已連接的設備
+function Get-ConnectedDevices {
+    $devices = flutter devices 2>&1 | Out-String
+    $result = @{
+        Physical = @()
+        Emulator = @()
+    }
+    
+    $lines = $devices -split "`n" | Where-Object { $_ -match "•.*•.*•" -and $_ -notmatch "macos|linux|windows|chrome|web" }
+    
+    foreach ($line in $lines) {
+        if ($line -match "•\s*(\S+)\s*•") {
+            $deviceId = $matches[1]
+            if ($line -match "emulator") {
+                $result.Emulator += $deviceId
+            } else {
+                $result.Physical += $deviceId
+            }
+        }
+    }
+    
+    return $result
 }
-Write-Host "✅ Backend is UP and running.`n" -ForegroundColor Green
 
-# --- 5. Start Flutter Frontend ---
-Write-Host "[2/2] Launching Frontend App (Flutter) with Server IP: $localIP" -ForegroundColor Green
-if ($localIP -like "169.254.*" -or $localIP -eq "127.0.0.1") {
-    Write-Host "[!] WARNING: Detected IP ($localIP) may not be reachable from mobile devices." -ForegroundColor Yellow
-    Write-Host "    If you are using a physical phone, please ensure you are on the same WiFi or use [3] ngrok." -ForegroundColor Yellow
+function Start-EmulatorDevice {
+    Write-Info "正在啟動 Android 模擬器..."
+    
+    $emulators = flutter emulators 2>&1 | Out-String
+    $emulatorId = ($emulators -split "`n" | Where-Object { $_ -match "android" } | ForEach-Object { ($_ -split "\s+")[0] } | Select-Object -First 1)
+    
+    if (-not $emulatorId) {
+        Write-Error "找不到任何 Android 模擬器！請先在 Android Studio 中建立模擬器"
+        return $false
+    }
+    
+    Write-Info "啟動模擬器: $emulatorId"
+    Start-Process flutter -ArgumentList "emulators", "--launch", $emulatorId -WindowStyle Hidden
+    
+    Write-Host "    等待模擬器開機 (最多 90 秒)" -NoNewline
+    for ($i = 1; $i -le 45; $i++) {
+        Start-Sleep -Seconds 2
+        $devices = Get-ConnectedDevices
+        if ($devices.Emulator.Count -gt 0) {
+            Write-Host ""
+            Write-Success "模擬器已就緒"
+            Start-Sleep -Seconds 3
+            return $true
+        }
+        Write-Host "." -NoNewline
+    }
+    Write-Host ""
+    Write-Error "模擬器啟動超時"
+    return $false
 }
 
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$root\mobile_app'; flutter run --dart-define=SERVER_IP=$localIP"
+function Install-Dependencies {
+    Write-Info "安裝 Flutter 依賴..."
+    Set-Location $mobileAppDir
+    flutter pub get 2>&1 | Out-Null
+    Set-Location $root
+    Write-Success "依賴已更新"
+}
 
-Write-Host "`nUban is starting in separate windows!" -ForegroundColor Yellow
-Write-Host "Happy coding!" -ForegroundColor Gray
+# --- 核心功能 ---
+
+# 儲存運行中的 Flutter 進程資訊
+$script:FlutterPidsFile = "$env:TEMP\uban_flutter_pids.txt"
+
+function Start-QuickLaunch {
+    param($serverUrl)
+    
+    if (-not $serverUrl) { $serverUrl = $DEFAULT_SERVER_URL }
+    
+    Write-Host ""
+    Write-Host "==========================================" -ForegroundColor Yellow
+    Write-Host "         🚀 一鍵啟動模式" -ForegroundColor Yellow
+    Write-Host "==========================================" -ForegroundColor Yellow
+    Write-Host ""
+    
+    # 1. 檢查後端
+    if (-not (Test-Backend $serverUrl)) {
+        $continue = Read-Host "    是否繼續？[y/N]"
+        if ($continue -ne "y" -and $continue -ne "Y") { exit }
+    }
+    
+    # 2. 檢測設備狀態
+    Write-Host ""
+    Write-Info "檢測連接設備..."
+    
+    $devices = Get-ConnectedDevices
+    $hasPhysical = $devices.Physical.Count -gt 0
+    $hasEmulator = $devices.Emulator.Count -gt 0
+    $physicalId = if ($hasPhysical) { $devices.Physical[0] } else { $null }
+    $emulatorId = if ($hasEmulator) { $devices.Emulator[0] } else { $null }
+    
+    if ($hasPhysical) {
+        Write-Success "偵測到實體設備: $physicalId"
+    }
+    if ($hasEmulator) {
+        Write-Success "偵測到模擬器: $emulatorId"
+    }
+    
+    # 3. 如果沒有模擬器，啟動一個
+    if (-not $hasEmulator) {
+        if (Start-EmulatorDevice) {
+            $devices = Get-ConnectedDevices
+            $hasEmulator = $devices.Emulator.Count -gt 0
+            $emulatorId = if ($hasEmulator) { $devices.Emulator[0] } else { $null }
+        }
+    }
+    
+    # 4. 安裝依賴
+    Install-Dependencies
+    
+    # 5. 決定啟動模式
+    Write-Host ""
+    
+    # 清空舊的 PID 檔案
+    "" | Out-File $script:FlutterPidsFile -Force
+    
+    if ($hasPhysical -and $hasEmulator) {
+        # 雙設備模式
+        Write-Info "🎯 雙設備模式：同時在實體設備和模擬器上啟動"
+        Write-Host ""
+        
+        Write-Info "伺服器: https://$serverUrl"
+        Write-Host ""
+        Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Yellow
+        Write-Host "    雙設備模式熱鍵提示："
+        Write-Host "    模擬器視窗：r/R = 熱重載/熱重啟"
+        Write-Host "    實體設備：使用選單 [6] 熱重啟實體設備"
+        Write-Host "    q = 退出當前視窗"
+        Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Yellow
+        Write-Host ""
+        
+        Set-Location $mobileAppDir
+        
+        # 在新視窗啟動實體設備
+        Write-Info "啟動實體設備 ($physicalId)..."
+        $physicalProcess = Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$mobileAppDir'; flutter run --dart-define=SERVER_IP=$serverUrl -d $physicalId" -PassThru
+        "physical|$($physicalProcess.Id)|$physicalId" | Out-File $script:FlutterPidsFile -Append
+        Start-Sleep -Seconds 3
+        
+        # 在新視窗啟動模擬器
+        Write-Info "啟動模擬器 ($emulatorId)..."
+        $emulatorProcess = Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$mobileAppDir'; flutter run --dart-define=SERVER_IP=$serverUrl -d $emulatorId" -PassThru
+        "emulator|$($emulatorProcess.Id)|$emulatorId" | Out-File $script:FlutterPidsFile -Append
+        
+        Write-Host ""
+        Write-Success "雙設備已啟動！使用 .\run.ps1 選擇 [6] 來熱重啟實體設備"
+        Write-Host ""
+        
+    } else {
+        # 單設備模式
+        $targetDevice = $null
+        $deviceType = ""
+        
+        if ($hasEmulator) {
+            $targetDevice = $emulatorId
+            $deviceType = "模擬器"
+        } elseif ($hasPhysical) {
+            $targetDevice = $physicalId
+            $deviceType = "實體設備"
+        }
+        
+        Write-Info "🎯 單設備模式：在${deviceType}上啟動"
+        Write-Info "伺服器: https://$serverUrl"
+        Write-Host ""
+        Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Yellow
+        Write-Host "    Flutter 熱鍵提示："
+        Write-Host "    r = 熱重載 (Hot Reload)  🔥"
+        Write-Host "    R = 熱重啟 (Hot Restart) 🔄"
+        Write-Host "    q = 退出"
+        Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Yellow
+        Write-Host ""
+        
+        Set-Location $mobileAppDir
+        
+        if ($targetDevice) {
+            flutter run --dart-define=SERVER_IP=$serverUrl -d $targetDevice
+        } else {
+            flutter run --dart-define=SERVER_IP=$serverUrl
+        }
+    }
+}
+
+function Start-HotRestartPhysical {
+    if (-not (Test-Path $script:FlutterPidsFile)) {
+        Write-Error "沒有找到運行中的雙設備進程"
+        Write-Host "    請先使用選項 [1] 啟動 App"
+        return
+    }
+    
+    $physicalLine = Get-Content $script:FlutterPidsFile | Where-Object { $_ -match "^physical\|" } | Select-Object -First 1
+    
+    if (-not $physicalLine) {
+        Write-Error "沒有找到運行中的實體設備進程"
+        return
+    }
+    
+    $parts = $physicalLine -split "\|"
+    $pid = $parts[1]
+    $deviceId = $parts[2]
+    
+    $process = Get-Process -Id $pid -ErrorAction SilentlyContinue
+    if (-not $process) {
+        Write-Error "實體設備進程 (PID: $pid) 已停止"
+        return
+    }
+    
+    Write-Info "正在熱重啟實體設備 ($deviceId)..."
+    
+    Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2
+    
+    Set-Location $mobileAppDir
+    $newProcess = Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$mobileAppDir'; flutter run --dart-define=SERVER_IP=$DEFAULT_SERVER_URL -d $deviceId" -PassThru
+    
+    # 更新 PID 檔案
+    $otherLines = Get-Content $script:FlutterPidsFile | Where-Object { $_ -notmatch "^physical\|" }
+    $otherLines | Out-File $script:FlutterPidsFile -Force
+    "physical|$($newProcess.Id)|$deviceId" | Out-File $script:FlutterPidsFile -Append
+    
+    Write-Success "實體設備已重新啟動 (新 PID: $($newProcess.Id))"
+}
+
+function Start-HealthCheck {
+    param($serverUrl)
+    if (-not $serverUrl) { $serverUrl = $DEFAULT_SERVER_URL }
+    
+    Write-Host ""
+    Write-Host "==========================================" -ForegroundColor Yellow
+    Write-Host "         🔍 後端健康檢查" -ForegroundColor Yellow
+    Write-Host "==========================================" -ForegroundColor Yellow
+    Write-Host ""
+    
+    Write-Host "[*] 測試連線: https://$serverUrl"
+    Write-Host ""
+    
+    try {
+        $response = Invoke-WebRequest -Uri "https://$serverUrl/" -TimeoutSec 10 -UseBasicParsing
+        if ($response.Content -like "*Uban API*") {
+            Write-Success "FastAPI 後端運作正常！"
+            Write-Host ""
+            Write-Host "    回應內容："
+            Write-Host ($response.Content | Select-Object -First 200)
+        }
+    } catch {
+        Write-Error "無法連線至後端"
+        Write-Host ""
+        Write-Host "    可能原因："
+        Write-Host "    1. Server 未運行 (檢查 uvicorn 或 podman)"
+        Write-Host "    2. Tailscale Funnel 未啟用 (執行: tailscale funnel 8000)"
+        Write-Host "    3. 網路問題"
+    }
+}
+
+function Start-Cleanup {
+    Write-Host ""
+    Write-Host "==========================================" -ForegroundColor Yellow
+    Write-Host "         🧹 清理 Flutter 進程" -ForegroundColor Yellow
+    Write-Host "==========================================" -ForegroundColor Yellow
+    Write-Host ""
+    
+    $procs = Get-Process -Name "*flutter*", "*dart*" -ErrorAction SilentlyContinue
+    
+    if (-not $procs) {
+        Write-Info "沒有找到 Flutter 相關進程"
+        return
+    }
+    
+    Write-Host "[*] 找到以下進程："
+    $procs | Format-Table Id, ProcessName, CPU -AutoSize
+    
+    $confirm = Read-Host "    確定要終止這些進程嗎？[y/N]"
+    if ($confirm -eq "y" -or $confirm -eq "Y") {
+        $procs | Stop-Process -Force
+        Write-Success "清理完成"
+    } else {
+        Write-Info "已取消"
+    }
+}
+
+# --- 主選單 ---
+function Show-Menu {
+    Clear-Host
+    Write-Host ""
+    Write-Host "╔═══════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
+    Write-Host "║           🏠 Uban 跨世代感知照護系統 - 開發工具            ║" -ForegroundColor Cyan
+    Write-Host "╚═══════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "  [1] 🚀 一鍵啟動 (自動檢測環境並啟動 App)"
+    Write-Host "  [2] 🔍 檢查後端連線狀態"
+    Write-Host "  [3] 🧹 清理 Flutter 進程"
+    Write-Host "  [4] ⚙️  自訂伺服器網址"
+    Write-Host "  [5] 📱 熱重啟實體設備 (雙設備模式)"
+    Write-Host "  [q] 退出"
+    Write-Host ""
+    Write-Host "  當前後端: https://$DEFAULT_SERVER_URL" -ForegroundColor Cyan
+    Write-Host ""
+    
+    $choice = Read-Host "請選擇 [1-5/q]"
+    
+    switch ($choice) {
+        "1" { Start-QuickLaunch }
+        "2" { Start-HealthCheck }
+        "3" { Start-Cleanup }
+        "4" {
+            $customUrl = Read-Host "輸入伺服器網址"
+            Start-QuickLaunch $customUrl
+        }
+        "5" { Start-HotRestartPhysical }
+        "q" { Write-Host "Bye! 👋"; exit 0 }
+        "Q" { Write-Host "Bye! 👋"; exit 0 }
+        default { Write-Error "無效選項"; Start-Sleep -Seconds 1; Show-Menu }
+    }
+}
+
+# --- 入口點 ---
+# param 部分已在檔案開頭定義
+
+if ($Start) {
+    Start-QuickLaunch $ServerUrl
+} elseif ($Check) {
+    Start-HealthCheck $ServerUrl
+} elseif ($Clean) {
+    Start-Cleanup
+} else {
+    Show-Menu
+}
