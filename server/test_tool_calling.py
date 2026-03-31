@@ -49,7 +49,7 @@ with app.app_context():
     ]
 
     print("\n" + "="*60)
-    print(f"UniFlow LLM Tool-Calling Test | Model: {ollama_service.model_name}")
+    print(f"Uban LLM Tool-Calling Test | Model: {ollama_service.model_name}")
     print("="*60)
 
     results = []

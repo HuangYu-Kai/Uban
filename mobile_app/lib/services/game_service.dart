@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import '../globals.dart';
 
 class GameService {
   // 動態讀取 .env 中的 IP
