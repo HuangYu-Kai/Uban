@@ -93,7 +93,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
     if (savedRole != null && savedId != null) {
       if (savedRole == 'family') {
         appRole = 'family';
-        List<dynamic> elders = await ApiService.getElderData(savedId);
+        List<dynamic> elders = await ApiService.getPairedElders(int.tryParse(savedId) ?? 0);
         if (elders.isNotEmpty && mounted) {
           Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => FamilyDashboardScreen(elders: elders)));
           return;
@@ -136,7 +136,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
 
     if (_selectedRole == 'family') {
       setState(() => _isLoading = true);
-      List<dynamic> elders = await ApiService.getElderData(inputText);
+      List<dynamic> elders = await ApiService.getPairedElders(int.tryParse(inputText) ?? 0);
       setState(() => _isLoading = false);
 
       if (elders.isEmpty) {
