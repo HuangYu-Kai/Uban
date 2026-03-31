@@ -30,7 +30,7 @@ def main():
             user_id = 1 
             
             print("="*50)
-            print(f"UniFlow AI 文字測試終端 (Standalone Mode)")
+            print(f"Uban AI 文字測試終端 (Standalone Mode)")
             print(f"當前使用的模型: {service.model_name}")
             print("輸入 'exit' 或 'quit' 結束對話")
             print("="*50)

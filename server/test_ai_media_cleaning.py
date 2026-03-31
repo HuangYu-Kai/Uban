@@ -20,7 +20,7 @@ with app.app_context():
     from services.ollama_service import ollama_service
 
     def run_tests():
-        print("🚀 [UniFlow Backend] 開始測試多媒體清理與連結轉化邏輯...\n")
+        print("🚀 [Uban Backend] 開始測試多媒體清理與連結轉化邏輯...\n")
         
         test_cases = [
             {
