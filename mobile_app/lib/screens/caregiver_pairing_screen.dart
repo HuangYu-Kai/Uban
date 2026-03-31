@@ -62,7 +62,9 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
 
       if (!mounted) return;
 
-      if (result.containsKey('elder_id')) {
+      // 檢查響應結構：{ status: "success", data: { elder_id, elder_profile_id, ... } }
+      final data = result['data'] as Map<String, dynamic>?;
+      if (result['status'] == 'success' && data != null && data.containsKey('elder_id')) {
         // 配對成功！
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -87,15 +89,16 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
           (route) => false, // 清除所有舊頁面，防止回到配對或引導頁
         );
       } else {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('配對失敗：${result['error']}')));
+        final errorMsg = result['error'] ?? data?['message'] ?? '配對失敗，請檢查配對碼';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('配對失敗：$errorMsg')),
+        );
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('連線錯誤：$e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('連線錯誤：$e')),
+      );
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
