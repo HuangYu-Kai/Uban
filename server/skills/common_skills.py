@@ -37,28 +37,49 @@ def get_weather_info(location: str = "台北"):
     except Exception as e:
         return f"獲取天氣失敗：{str(e)}"
 
-def update_agent_memory(filename: str, content: str):
-    """更新長輩的長期記憶庫 (MEMORY.md) 或使用者基本資料 (USER.md)。
-    當你在對話中得知重要訊息（如：孫子姓名、藥物種類、興趣習慣）時，應主動更新對應檔案。
+def save_elder_memory(fact: str, category: str = "重要事件"):
+    """主動記錄關於長輩的重要生活事實、回憶、家人關係或健康狀況。
+    當你在對話中得知長輩的具體細節（例如：兒子住在美國、以前是老師、喜歡吃紅燒肉、對某藥物過敏）時，
+    請務必使用此工具永久記錄。這能讓你真正「記住」長輩的一生。
     
     Args:
-        filename: 要更新的檔案名稱 (限 'MEMORY.md' 或 'USER.md')
-        content: 更新後的完整 Markdown 內容 (請保留既有資訊並加上新的發現)
+        fact: 要記錄的事實描述 (例如：「長輩以前在大同公司上班，擔任工程師」)
+        category: 資訊分類。可選：'重要事件', '情感偏好與習慣', '家人與關係', '健康與用藥'
     """
-    if filename not in ['MEMORY.md', 'USER.md']:
-        return "錯誤：目前僅支援更新 MEMORY.md 與 USER.md。"
-    
-    try:
-        # 根據目錄結構定位 server/agent/
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        file_path = os.path.join(base_dir, 'agent', filename)
+    valid_categories = ['重要事件', '情感偏好與習慣', '家人與關係', '健康與用藥']
+    if category not in valid_categories:
+        category = '重要事件'
         
-        with open(file_path, 'w', encoding='utf-8') as f:
-            f.write(content)
+    try:
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        file_path = os.path.join(base_dir, 'agent', 'MEMORY.md')
+        
+        content = ""
+        if os.path.exists(file_path):
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+        else:
+            # 建立基本結構
+            content = "# MEMORY.md - 長期記憶庫\n\n這裡記錄了長輩生命中重要的片段。請持續從對話中提煉並更新。\n"
+
+        header = f"## {category}"
+        new_line = f"- {fact} (記錄於 {datetime.now().strftime('%Y-%m-%d')})"
+        
+        if header in content:
+            # 在標題下方插入內容
+            parts = content.split(header, 1)
+            # 在標題後的第一個空行插入
+            updated_content = parts[0] + header + "\n\n" + new_line + parts[1]
+        else:
+            # 標題不存在，直接追加
+            updated_content = content.strip() + f"\n\n{header}\n\n{new_line}\n"
             
-        return f"✅ 已成功更新 {filename}！我現在已經記住這些重要細節了。"
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(updated_content)
+            
+        return f"✅ 我已經把這件事記在心裡了：「{fact}」（已存入 {category}）"
     except Exception as e:
-        return f"❌ 更新記憶失敗：{str(e)}"
+        return f"❌ 儲存記憶失敗：{str(e)}"
 
 def search_youtube_video(query: str):
     """搜尋 YouTube 上的影片或音樂。當長輩想聽歌、看影片或學習新事物時使用。
