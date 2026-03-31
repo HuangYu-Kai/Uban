@@ -5,6 +5,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'dart:async';
 import '../services/api_service.dart';
+import '../widgets/youtube_bubble_player.dart';
 
 class AIChatScreen extends StatefulWidget {
   const AIChatScreen({super.key});
@@ -67,7 +68,6 @@ class _AIChatScreenState extends State<AIChatScreen> {
       _isListening = true;
       _listeningText = "正在聽您說...";
     });
-    // 這裡可以加上震動回饋
   }
 
   void _stopListening() {
@@ -77,7 +77,6 @@ class _AIChatScreenState extends State<AIChatScreen> {
     });
 
     // 模擬辨識到的文字
-    // 在真實 App 中，這裡是 STT 的結果
     _handleUserMessage("今天天氣很好，我想去公園走走");
   }
 
@@ -102,7 +101,10 @@ class _AIChatScreenState extends State<AIChatScreen> {
           _messages.add({'role': 'ai', 'text': response});
         });
         _scrollToBottom();
-        _speak(response);
+        
+        // 播放語音時，先移除 [VIDEO_ID:...] 標籤，避免唸出技術字眼
+        String speakText = response.replaceAll(RegExp(r'\[VIDEO_ID:[^\]]+\]'), '');
+        _speak(speakText);
       } else {
         throw Exception('回傳格式錯誤');
       }
@@ -145,7 +147,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFFFFBF0), // 溫馨米黃
+      backgroundColor: const Color(0xFFFFFBF0),
       appBar: AppBar(
         title: Text(
           '貼心陪聊',
@@ -160,7 +162,6 @@ class _AIChatScreenState extends State<AIChatScreen> {
         elevation: 0,
         toolbarHeight: 80,
         actions: [
-          // 測試按鈕
           IconButton(
             icon: const Icon(Icons.photo_library, color: Colors.deepOrange),
             onPressed: _simulateCaregiverTopic,
@@ -170,7 +171,6 @@ class _AIChatScreenState extends State<AIChatScreen> {
       ),
       body: Column(
         children: [
-          // 1. 聊天訊息列表
           Expanded(
             child: ListView.builder(
               controller: _scrollController,
@@ -189,122 +189,93 @@ class _AIChatScreenState extends State<AIChatScreen> {
               },
             ),
           ),
+          _buildInputArea(),
+        ],
+      ),
+    );
+  }
 
-          // 2. 底部輸入區
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(32),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, -5),
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // 狀態提示字
-                Text(
-                  _isListening ? _listeningText : "按住麥克風說話",
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 24,
-                    color: _isListening ? Colors.deepOrange : Colors.grey[600],
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 24),
-
-                // 大按鈕區
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    // 鍵盤輸入 (次要功能)
-                    CircleAvatar(
-                      radius: 30,
-                      backgroundColor: Colors.grey[200],
-                      child: IconButton(
-                        icon: const Icon(
-                          Icons.keyboard,
-                          color: Colors.grey,
-                          size: 30,
-                        ),
-                        onPressed: () {
-                          _showTextInputDialog();
-                        },
-                      ),
-                    ),
-
-                    // 麥克風 (主要功能 - 超大)
-                    GestureDetector(
-                      onTapDown: (_) => _startListening(), // 按下開始
-                      onTapUp: (_) => _stopListening(), // 放開結束
-                      onTapCancel: _stopListening, // 移開取消
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        width: _isListening ? 140 : 120,
-                        height: _isListening ? 140 : 120,
-                        decoration: BoxDecoration(
-                          color: _isListening
-                              ? Colors.deepOrange
-                              : Colors.orange, // 換成橘色系
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color:
-                                  (_isListening
-                                          ? Colors.tealAccent
-                                          : Colors.teal)
-                                      .withValues(alpha: 0.4),
-                              blurRadius: 20,
-                              spreadRadius: _isListening ? 10 : 2,
-                            ),
-                          ],
-                        ),
-                        child: Icon(
-                          _isListening ? Icons.mic : Icons.mic_none,
-                          size: 60,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-
-                    // 重播 (次要功能)
-                    CircleAvatar(
-                      radius: 30,
-                      backgroundColor: Colors.grey[200],
-                      child: IconButton(
-                        icon: const Icon(
-                          Icons.volume_up,
-                          color: Colors.grey,
-                          size: 30,
-                        ),
-                        onPressed: () {
-                          if (_messages.isNotEmpty && !_isThinking) {
-                            // 找出最後一則 AI 訊息重播
-                            final lastAiMsg = _messages.lastWhere(
-                              (m) => m['role'] == 'ai',
-                              orElse: () => {},
-                            );
-                            if (lastAiMsg.isNotEmpty) {
-                              _speak(lastAiMsg['text']);
-                            }
-                          }
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-              ],
-            ),
+  Widget _buildInputArea() {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, -5),
           ),
         ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            _isListening ? _listeningText : "按住麥克風說話",
+            style: GoogleFonts.notoSansTc(
+              fontSize: 24,
+              color: _isListening ? Colors.deepOrange : Colors.grey[600],
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 24),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _buildSmallIconButton(Icons.keyboard, () => _showTextInputDialog()),
+              _buildMicButton(),
+              _buildSmallIconButton(Icons.volume_up, () {
+                if (_messages.isNotEmpty && !_isThinking) {
+                  final lastAiMsg = _messages.lastWhere((m) => m['role'] == 'ai', orElse: () => {});
+                  if (lastAiMsg.isNotEmpty) _speak(lastAiMsg['text']);
+                }
+              }),
+            ],
+          ),
+          const SizedBox(height: 16),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSmallIconButton(IconData icon, VoidCallback onPressed) {
+    return CircleAvatar(
+      radius: 30,
+      backgroundColor: Colors.grey[200],
+      child: IconButton(
+        icon: Icon(icon, color: Colors.grey, size: 30),
+        onPressed: onPressed,
+      ),
+    );
+  }
+
+  Widget _buildMicButton() {
+    return GestureDetector(
+      onTapDown: (_) => _startListening(),
+      onTapUp: (_) => _stopListening(),
+      onTapCancel: _stopListening,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        width: _isListening ? 140 : 120,
+        height: _isListening ? 140 : 120,
+        decoration: BoxDecoration(
+          color: _isListening ? Colors.deepOrange : Colors.orange,
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: (_isListening ? Colors.tealAccent : Colors.teal).withValues(alpha: 0.4),
+              blurRadius: 20,
+              spreadRadius: _isListening ? 10 : 2,
+            ),
+          ],
+        ),
+        child: Icon(
+          _isListening ? Icons.mic : Icons.mic_none,
+          size: 60,
+          color: Colors.white,
+        ),
       ),
     );
   }
@@ -315,11 +286,9 @@ class _AIChatScreenState extends State<AIChatScreen> {
       child: Container(
         margin: const EdgeInsets.only(bottom: 24),
         padding: const EdgeInsets.all(24),
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.8,
-        ),
+        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.8),
         decoration: BoxDecoration(
-          color: isAi ? Colors.white : const Color(0xFFFFF3E0), // 淡橘色
+          color: isAi ? Colors.white : const Color(0xFFFFF3E0),
           borderRadius: BorderRadius.only(
             topLeft: const Radius.circular(24),
             topRight: const Radius.circular(24),
@@ -334,89 +303,93 @@ class _AIChatScreenState extends State<AIChatScreen> {
             ),
           ],
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (isAi) ...[
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const FaIcon(
-                    FontAwesomeIcons.robot,
-                    size: 24,
-                    color: Colors.deepOrange, // 換成深橘色
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    '貼心小幫手',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 18,
-                      color: Colors.deepOrange, // 換成深橘色
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-            ],
-            // 顯示圖片 (如果有的話)
-            if (imageUrl != null)
-              Container(
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.1),
-                      blurRadius: 5,
-                      offset: const Offset(0, 2),
-                    ),
+        child: Builder(
+          builder: (context) {
+            if (isAi && text.contains('[VIDEO_ID:')) {
+              final regExp = RegExp(r'\[VIDEO_ID:([^\]]+)\]');
+              final match = regExp.firstMatch(text);
+              if (match != null) {
+                final videoId = match.group(1)!;
+                final cleanText = text.replaceAll(regExp, '').trim();
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildAiHeader(),
+                    if (cleanText.isNotEmpty) ...[
+                      _buildTextContent(cleanText),
+                      const SizedBox(height: 12),
+                    ],
+                    YoutubeBubblePlayer(videoId: videoId),
                   ],
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: Image.network(
-                  imageUrl,
-                  fit: BoxFit.cover,
-                  loadingBuilder: (context, child, loadingProgress) {
-                    if (loadingProgress == null) return child;
-                    return const SizedBox(
-                      height: 200,
-                      width: double.infinity,
-                      child: Center(
-                        child: CircularProgressIndicator(
-                          color: Colors.deepOrange,
-                        ),
-                      ),
-                    );
-                  },
-                  errorBuilder: (context, error, stackTrace) {
-                    return Container(
-                      height: 200,
-                      width: double.infinity,
-                      color: Colors.grey[200],
-                      child: const Center(
-                        child: Icon(
-                          Icons.broken_image,
-                          color: Colors.grey,
-                          size: 50,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            Text(
-              text,
-              style: GoogleFonts.notoSansTc(
-                fontSize: 28, // 大字體
-                height: 1.5,
-                color: const Color(0xFF333333),
-              ),
-            ),
-          ],
+                );
+              }
+            }
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (isAi) _buildAiHeader(),
+                if (imageUrl != null) _buildImageContent(imageUrl),
+                _buildTextContent(text),
+              ],
+            );
+          },
         ),
       ),
     ).animate().fadeIn().slideY(begin: 0.2, end: 0);
+  }
+
+  Widget _buildAiHeader() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const FaIcon(FontAwesomeIcons.robot, size: 24, color: Colors.deepOrange),
+          const SizedBox(width: 8),
+          Text(
+            '貼心小幫手',
+            style: GoogleFonts.notoSansTc(
+              fontSize: 18,
+              color: Colors.deepOrange,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTextContent(String text) {
+    return Text(
+      text,
+      style: GoogleFonts.notoSansTc(
+        fontSize: 28,
+        height: 1.5,
+        color: const Color(0xFF333333),
+      ),
+    );
+  }
+
+  Widget _buildImageContent(String imageUrl) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 5, offset: const Offset(0, 2)),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Image.network(
+        imageUrl,
+        fit: BoxFit.cover,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return const SizedBox(height: 200, width: double.infinity, child: Center(child: CircularProgressIndicator(color: Colors.deepOrange)));
+        },
+        errorBuilder: (context, error, stackTrace) => Container(height: 200, width: double.infinity, color: Colors.grey[200], child: const Center(child: Icon(Icons.broken_image, color: Colors.grey, size: 50))),
+      ),
+    );
   }
 
   Widget _buildThinkingBubble() {
@@ -425,26 +398,13 @@ class _AIChatScreenState extends State<AIChatScreen> {
       child: Container(
         margin: const EdgeInsets.only(bottom: 24),
         padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(24),
-        ),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24)),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                strokeWidth: 3,
-                color: Colors.deepOrange, // 換成深橘色
-              ),
-            ),
+            const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 3, color: Colors.deepOrange)),
             const SizedBox(width: 16),
-            Text(
-              '思考中...',
-              style: GoogleFonts.notoSansTc(fontSize: 24, color: Colors.grey),
-            ),
+            Text('思考中...', style: GoogleFonts.notoSansTc(fontSize: 24, color: Colors.grey)),
           ],
         ),
       ),
@@ -455,57 +415,30 @@ class _AIChatScreenState extends State<AIChatScreen> {
     final TextEditingController textController = TextEditingController();
     showDialog(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24),
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Text('輸入訊息', style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold)),
+        content: TextField(
+          controller: textController,
+          style: GoogleFonts.notoSansTc(fontSize: 24),
+          decoration: const InputDecoration(hintText: '請輸入您想說的話...', border: OutlineInputBorder()),
+          maxLines: 3,
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: Text('取消', style: GoogleFonts.notoSansTc(fontSize: 20, color: Colors.grey))),
+          ElevatedButton(
+            onPressed: () {
+              final text = textController.text.trim();
+              if (text.isNotEmpty) _handleUserMessage(text);
+              Navigator.pop(context);
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, foregroundColor: Colors.white),
+            child: Text('發送', style: GoogleFonts.notoSansTc(fontSize: 20, fontWeight: FontWeight.bold)),
           ),
-          title: Text(
-            '輸入訊息',
-            style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold),
-          ),
-          content: TextField(
-            controller: textController,
-            style: GoogleFonts.notoSansTc(fontSize: 24),
-            decoration: const InputDecoration(
-              hintText: '請輸入您想說的話...',
-              border: OutlineInputBorder(),
-            ),
-            maxLines: 3,
-            autofocus: true,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(
-                '取消',
-                style: GoogleFonts.notoSansTc(fontSize: 20, color: Colors.grey),
-              ),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                final text = textController.text.trim();
-                if (text.isNotEmpty) {
-                  _handleUserMessage(text);
-                }
-                Navigator.pop(context);
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.orange,
-                foregroundColor: Colors.white,
-              ),
-              child: Text(
-                '發送',
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ],
-        );
-      },
+        ],
+      ),
     );
   }
 }
