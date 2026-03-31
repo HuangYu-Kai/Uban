@@ -1,120 +1,387 @@
 #!/bin/bash
+# ==============================================================================
+# Uban 開發啟動腳本
+# 
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  📌 啟動方式 (How to Run)                                                   │
+# │                                                                             │
+# │  ═══════════════════════════════════════════════════════════════════════   │
+# │  🍎 macOS / 🐧 Linux                                                        │
+# │  ═══════════════════════════════════════════════════════════════════════   │
+# │                                                                             │
+# │  方法一：在終端機中 cd 到 Uban 目錄後執行                                    │
+# │    cd /你的路徑/Uban                                                        │
+# │    chmod +x run.sh    # 首次需要，賦予執行權限                               │
+# │    ./run.sh                                                                 │
+# │                                                                             │
+# │  方法二：直接用完整路徑執行                                                  │
+# │    bash /你的路徑/Uban/run.sh                                               │
+# │                                                                             │
+# │  方法三：快速啟動 (跳過選單)                                                 │
+# │    ./run.sh -s        # 一鍵啟動                                            │
+# │    ./run.sh -r        # 熱重啟                                              │
+# │    ./run.sh -c        # 檢查後端                                            │
+# │                                                                             │
+# │  ═══════════════════════════════════════════════════════════════════════   │
+# │  🪟 Windows (PowerShell)                                                    │
+# │  ═══════════════════════════════════════════════════════════════════════   │
+# │                                                                             │
+# │  方法一：在 PowerShell 中 cd 到 Uban 目錄後執行                              │
+# │    cd C:\你的路徑\Uban                                                      │
+# │    .\run.ps1                                                                │
+# │                                                                             │
+# │  方法二：若出現權限錯誤，先執行                                              │
+# │    Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser     │
+# │    .\run.ps1                                                                │
+# │                                                                             │
+# └─────────────────────────────────────────────────────────────────────────────┘
+# 
+# 架構說明：
+#   - FastAPI 後端：部署在遠端伺服器，透過 Tailscale Funnel 暴露
+#   - Flutter 前端：本地開發，連接遠端 FastAPI
+#
+# 功能：
+#   [1] 一鍵啟動 - 自動檢測模擬器、安裝依賴、啟動 App
+#   [2] 熱重啟   - 快速重啟已運行的 Flutter App (不重新編譯)
+#   [3] 僅檢查   - 檢查後端連線狀態
+#   [4] 清理程序 - 停止所有 Flutter 進程
+#
+# 最後更新：2026-03-31
+# ==============================================================================
 
-# --- 0. Cleanup Previous Sessions ---
-echo "[*] Cleaning up previous sessions..."
-pkill -f "flutter run" 2>/dev/null
-sleep 1
+set -e  # 遇到錯誤立即停止
 
-# --- 1. Connection Mode Selection ---
-clear
-echo "========================================"
-echo "    Uban System Launch Menu (macOS)"
-echo "========================================"
-echo "[1] Tailscale Funnel (Remote FastAPI)"
-echo "[2] Custom Server URL"
-echo "========================================"
-read -p "Please select a connection mode [1-2]: " choice
+# --- 配置區 ---
+DEFAULT_SERVER_URL="localhost-0.tail5abf5e.ts.net"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+MOBILE_APP_DIR="$SCRIPT_DIR/mobile_app"
 
-if [ "$choice" == "2" ]; then
-    read -p "Enter your Server URL: " serverURL
-    echo "[!] Using custom Server URL: $serverURL"
-else
-    serverURL="localhost-0.tail5abf5e.ts.net"
-    echo "[*] Using Tailscale Funnel: $serverURL"
-fi
+# --- 顏色定義 ---
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
 
-# --- 2. Local Python Environment Setup ---
-echo "[*] Checking local Python environment (for test scripts)..."
-if [ ! -d "venv" ] && [ ! -d ".venv" ]; then
-    echo "[!] Virtual environment not found. Creating venv..."
+# --- 輔助函數 ---
+print_header() {
+    clear
+    echo -e "${BLUE}"
+    echo "╔═══════════════════════════════════════════════════════════╗"
+    echo "║           🏠 Uban 跨世代感知照護系統 - 開發工具            ║"
+    echo "╚═══════════════════════════════════════════════════════════╝"
+    echo -e "${NC}"
+}
 
-    if ! command -v python3 &> /dev/null; then
-        echo "Error: python3 is required but not found. Please install it."
-        exit 1
-    fi
+print_success() { echo -e "${GREEN}✅ $1${NC}"; }
+print_warning() { echo -e "${YELLOW}⚠️  $1${NC}"; }
+print_error()   { echo -e "${RED}❌ $1${NC}"; }
+print_info()    { echo -e "${BLUE}ℹ️  $1${NC}"; }
 
-    python3 -m venv venv
-    echo "Installing dependencies from server/requirements.txt..."
-    ./venv/bin/pip install -r server/requirements.txt
-    echo "✅ Virtual environment setup complete!"
-else
-    echo "✅ Virtual environment found (venv or .venv)"
-fi
-
-# --- 3. Flutter Dependencies Check ---
-echo "[*] Checking Flutter dependencies (flutter pub get)..."
-cd mobile_app
-flutter pub get
-cd ..
-
-# --- 4. Start Android Emulator ---
-echo "[*] Checking Android Emulator..."
-emulator_running=$(flutter devices 2>/dev/null | grep -i "emulator")
-
-if [ -z "$emulator_running" ]; then
-    echo "[*] No Android emulator detected. Starting one..."
-    avd_name=$(emulator -list-avds | head -n 1)
-    if [ -z "$avd_name" ]; then
-        echo "Error: No AVD found. Please create one in Android Studio."
-        exit 1
-    fi
-    echo "[*] Booting emulator: $avd_name"
-    emulator -avd "$avd_name" -no-snapshot-load > /dev/null 2>&1 &
-
-    echo "[*] Waiting for emulator to fully boot..."
-    booted=false
-    for i in $(seq 1 30); do
-        boot_status=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
-        if [ "$boot_status" == "1" ]; then
-            booted=true
-            break
-        fi
-        echo "    ... waiting ($i/30)"
-        sleep 3
-    done
-
-    if [ "$booted" == false ]; then
-        echo "Error: Emulator failed to boot in time."
-        exit 1
-    fi
-    echo "✅ Emulator is ready."
-else
-    echo "✅ Emulator already running."
-fi
-
-# --- 5. Check Remote Backend Connection ---
-echo "[*] Checking remote FastAPI backend connection..."
-retryCount=0
-backendReady=false
-while [ $retryCount -lt 5 ]; do
-    status=$(curl -s -k https://$serverURL/)
+check_backend() {
+    local serverURL="$1"
+    echo -n "[*] 檢查遠端 FastAPI 連線... "
+    local status
+    status=$(curl -s -k --connect-timeout 5 "https://$serverURL/" 2>/dev/null || echo "")
     if echo "$status" | grep -q "Uban API"; then
-        backendReady=true
-        break
+        print_success "後端在線 (https://$serverURL)"
+        return 0
+    else
+        print_warning "無法連線至 https://$serverURL"
+        return 1
     fi
-    sleep 1
-    ((retryCount++))
-done
+}
 
-if [ "$backendReady" == false ]; then
-    echo "⚠️  Warning: Cannot reach remote backend at https://$serverURL"
-    echo "    Please ensure Tailscale Funnel is running on the server."
-    read -p "Continue anyway? [y/N]: " continue_choice
-    if [ "$continue_choice" != "y" ] && [ "$continue_choice" != "Y" ]; then
+check_emulator() {
+    # 使用 flutter devices 檢測已連接的 Android 模擬器
+    local device_line
+    device_line=$(flutter devices --machine 2>/dev/null | grep -i "android" | head -1)
+    
+    if [ -n "$device_line" ]; then
+        # 從 flutter devices 輸出中提取 device id
+        local device_id
+        device_id=$(flutter devices 2>/dev/null | grep -i "emulator\|android" | grep -v "No devices" | awk '{print $3}' | tr -d '•' | xargs | cut -d' ' -f1)
+        if [ -n "$device_id" ] && [ "$device_id" != "No" ]; then
+            echo "$device_id"
+            return 0
+        fi
+    fi
+    return 1
+}
+
+wait_for_device() {
+    # 等待 Flutter 能夠偵測到設備
+    print_info "等待設備連線..."
+    for i in $(seq 1 30); do
+        local device_check
+        device_check=$(flutter devices 2>/dev/null | grep -i "emulator\|android" | grep -v "No devices" | head -1)
+        if [ -n "$device_check" ]; then
+            sleep 2  # 額外等待穩定
+            return 0
+        fi
+        echo -n "."
+        sleep 2
+    done
+    echo ""
+    return 1
+}
+
+start_emulator() {
+    print_info "未偵測到 Android 模擬器，正在啟動..."
+    
+    # 優先使用 flutter emulators 啟動
+    local emulator_id
+    emulator_id=$(flutter emulators 2>/dev/null | grep "android" | awk '{print $1}' | head -1)
+    
+    if [ -z "$emulator_id" ]; then
+        # 備用：使用 Android emulator 命令
+        emulator_id=$(emulator -list-avds 2>/dev/null | head -n 1)
+    fi
+    
+    if [ -z "$emulator_id" ]; then
+        print_error "找不到任何 Android 模擬器！"
+        echo "    請先在 Android Studio 中建立模擬器"
+        echo "    或執行: flutter emulators --create --name my_emulator"
         exit 1
     fi
+    
+    print_info "啟動模擬器: $emulator_id"
+    flutter emulators --launch "$emulator_id" > /dev/null 2>&1 &
+    
+    echo ""
+    echo -n "    等待模擬器開機 (最多 90 秒)"
+    
+    # 等待模擬器完全啟動
+    for i in $(seq 1 45); do
+        # 檢查 Flutter 是否能看到設備
+        local device_check
+        device_check=$(flutter devices 2>/dev/null | grep -i "emulator\|android" | grep -v "No devices" | head -1)
+        if [ -n "$device_check" ]; then
+            echo ""
+            print_success "模擬器已就緒"
+            sleep 3  # 額外等待 UI 完全載入
+            return 0
+        fi
+        echo -n "."
+        sleep 2
+    done
+    
+    echo ""
+    print_error "模擬器啟動超時，請手動檢查"
+    exit 1
+}
+
+flutter_pub_get() {
+    print_info "安裝 Flutter 依賴..."
+    cd "$MOBILE_APP_DIR"
+    flutter pub get > /dev/null 2>&1
+    cd "$SCRIPT_DIR"
+    print_success "依賴已更新"
+}
+
+# --- 核心功能 ---
+
+# 一鍵啟動
+do_quick_start() {
+    local serverURL="${1:-$DEFAULT_SERVER_URL}"
+    
+    echo ""
+    echo "=========================================="
+    echo "         🚀 一鍵啟動模式"
+    echo "=========================================="
+    echo ""
+    
+    # 1. 檢查後端
+    if ! check_backend "$serverURL"; then
+        echo ""
+        read -p "    是否繼續？[y/N]: " continue_choice
+        if [ "$continue_choice" != "y" ] && [ "$continue_choice" != "Y" ]; then
+            exit 1
+        fi
+    fi
+    
+    # 2. 檢查/啟動模擬器
+    local device_id
+    if device_id=$(check_emulator); then
+        print_success "偵測到模擬器: $device_id"
+    else
+        start_emulator
+        # 等待設備完全就緒後再獲取 ID
+        if ! wait_for_device; then
+            print_error "無法偵測到模擬器設備"
+            exit 1
+        fi
+        device_id=$(check_emulator)
+    fi
+    
+    # 確保有有效的 device_id，否則讓 flutter 自動選擇
+    if [ -z "$device_id" ] || [ "$device_id" == "No" ]; then
+        print_warning "無法取得設備 ID，Flutter 將自動選擇設備"
+        device_id=""
+    fi
+    
+    # 3. 安裝依賴
+    flutter_pub_get
+    
+    # 4. 啟動 Flutter
+    echo ""
+    print_info "正在啟動 Flutter App..."
+    print_info "伺服器: https://$serverURL"
+    echo ""
+    echo -e "${YELLOW}═══════════════════════════════════════════════════════════"
+    echo "    Flutter 熱鍵提示："
+    echo "    r = 熱重載 (Hot Reload)  🔥"
+    echo "    R = 熱重啟 (Hot Restart) 🔄"
+    echo "    q = 退出"
+    echo -e "═══════════════════════════════════════════════════════════${NC}"
+    echo ""
+    
+    cd "$MOBILE_APP_DIR"
+    
+    # 如果有 device_id 就指定，否則讓 Flutter 自動選擇
+    if [ -n "$device_id" ]; then
+        exec flutter run --dart-define=SERVER_IP="$serverURL" -d "$device_id"
+    else
+        exec flutter run --dart-define=SERVER_IP="$serverURL"
+    fi
+}
+
+# 熱重啟 (發送 R 到現有 flutter run 進程)
+do_hot_restart() {
+    local flutter_pid
+    flutter_pid=$(pgrep -f "flutter_tools.*run" 2>/dev/null | head -1)
+    
+    if [ -z "$flutter_pid" ]; then
+        print_error "未找到正在運行的 Flutter 進程"
+        echo "    請先使用選項 [1] 啟動 App"
+        return 1
+    fi
+    
+    print_info "正在觸發熱重啟 (PID: $flutter_pid)..."
+    
+    # 嘗試透過 /dev/pts 發送 R
+    local pts
+    pts=$(ls -la /proc/$flutter_pid/fd/0 2>/dev/null | awk '{print $NF}')
+    
+    if [ -n "$pts" ] && [ -e "$pts" ]; then
+        echo "R" > "$pts" 2>/dev/null && print_success "已發送熱重啟指令" && return 0
+    fi
+    
+    # 備用方案：使用 osascript 發送鍵盤事件
+    osascript -e 'tell application "System Events" to keystroke "R"' 2>/dev/null
+    print_success "已發送熱重啟指令 (透過系統事件)"
+}
+
+# 僅檢查後端
+do_health_check() {
+    local serverURL="${1:-$DEFAULT_SERVER_URL}"
+    echo ""
+    echo "=========================================="
+    echo "         🔍 後端健康檢查"
+    echo "=========================================="
+    echo ""
+    
+    echo "[*] 測試連線: https://$serverURL"
+    echo ""
+    
+    local response
+    response=$(curl -s -k --connect-timeout 10 "https://$serverURL/" 2>/dev/null)
+    
+    if echo "$response" | grep -q "Uban API"; then
+        print_success "FastAPI 後端運作正常！"
+        echo ""
+        echo "    回應內容："
+        echo "$response" | head -5
+    else
+        print_error "無法連線至後端"
+        echo ""
+        echo "    可能原因："
+        echo "    1. Server 未運行 (檢查 uvicorn 或 podman)"
+        echo "    2. Tailscale Funnel 未啟用 (執行: tailscale funnel 8000)"
+        echo "    3. 網路問題"
+    fi
+}
+
+# 清理進程
+do_cleanup() {
+    echo ""
+    echo "=========================================="
+    echo "         🧹 清理 Flutter 進程"
+    echo "=========================================="
+    echo ""
+    
+    local pids
+    pids=$(pgrep -f "flutter" 2>/dev/null || echo "")
+    
+    if [ -z "$pids" ]; then
+        print_info "沒有找到 Flutter 相關進程"
+        return 0
+    fi
+    
+    echo "[*] 找到以下進程："
+    ps aux | grep -E "flutter" | grep -v grep
+    echo ""
+    
+    read -p "    確定要終止這些進程嗎？[y/N]: " confirm
+    if [ "$confirm" == "y" ] || [ "$confirm" == "Y" ]; then
+        for pid in $pids; do
+            kill "$pid" 2>/dev/null && echo "    已終止 PID: $pid"
+        done
+        print_success "清理完成"
+    else
+        print_info "已取消"
+    fi
+}
+
+# --- 主選單 ---
+main() {
+    print_header
+    
+    echo "  [1] 🚀 一鍵啟動 (自動檢測環境並啟動 App)"
+    echo "  [2] 🔄 熱重啟 (重啟已運行的 App，不重新編譯)"
+    echo "  [3] 🔍 檢查後端連線狀態"
+    echo "  [4] 🧹 清理 Flutter 進程"
+    echo "  [5] ⚙️  自訂伺服器網址"
+    echo "  [q] 退出"
+    echo ""
+    echo -e "${BLUE}  當前後端: https://$DEFAULT_SERVER_URL${NC}"
+    echo ""
+    
+    read -p "請選擇 [1-5/q]: " choice
+    
+    case $choice in
+        1) do_quick_start ;;
+        2) do_hot_restart ;;
+        3) do_health_check ;;
+        4) do_cleanup ;;
+        5)
+            read -p "輸入伺服器網址: " custom_url
+            do_quick_start "$custom_url"
+            ;;
+        q|Q) echo "Bye! 👋"; exit 0 ;;
+        *) print_error "無效選項"; sleep 1; main ;;
+    esac
+}
+
+# 支援命令行參數直接執行
+if [ "$1" == "--start" ] || [ "$1" == "-s" ]; then
+    do_quick_start "${2:-$DEFAULT_SERVER_URL}"
+elif [ "$1" == "--restart" ] || [ "$1" == "-r" ]; then
+    do_hot_restart
+elif [ "$1" == "--check" ] || [ "$1" == "-c" ]; then
+    do_health_check "${2:-$DEFAULT_SERVER_URL}"
+elif [ "$1" == "--help" ] || [ "$1" == "-h" ]; then
+    echo "Uban 開發腳本"
+    echo ""
+    echo "用法: ./run.sh [選項]"
+    echo ""
+    echo "選項:"
+    echo "  -s, --start [URL]   一鍵啟動 (可選指定伺服器)"
+    echo "  -r, --restart       熱重啟"
+    echo "  -c, --check [URL]   檢查後端連線"
+    echo "  -h, --help          顯示幫助"
+    echo ""
+    echo "無參數時進入互動式選單"
 else
-    echo "✅ Remote backend is reachable at https://$serverURL"
+    main
 fi
-
-# --- 6. Start Flutter Frontend ---
-echo "[*] Launching Frontend App (Flutter) with Server URL: $serverURL"
-
-osascript -e "tell application \"Terminal\" to do script \"cd '$(pwd)/mobile_app'; flutter run --dart-define=SERVER_IP=$serverURL\""
-
-echo ""
-echo "========================================"
-echo "✅ Uban Frontend is launching!"
-echo "📡 Backend: https://$serverURL"
-echo "========================================"
-echo "Happy coding!"

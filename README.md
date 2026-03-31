@@ -32,24 +32,44 @@
 
 ## 🚀 第二階段：一鍵啟動 (Quick Start)
 
-當環境準備就緒，請使用我們提供的智慧型腳本，它會自動處理虛擬環境、套件安裝與 IP 對接：
+本專案採用 **前後端分離架構**：
+- **FastAPI 後端**：部署在遠端伺服器，透過 Tailscale Funnel 暴露公網
+- **Flutter 前端**：本地開發，連接遠端 FastAPI
 
-```powershell
-# 在專案根目錄執行 (Windows PowerShell)
-.\run.ps1
-```
+### macOS 啟動方式
 
 ```bash
-# 在專案根目錄執行 (macOS)
+# 在專案根目錄執行
 chmod +x run.sh
 ./run.sh
 ```
 
 ### 啟動選單說明
 
-- **[1] 區域網路開發 (Auto IP)**：自動偵測 `192.168.*` 位址。適合家屬與長輩在同一個 Wi-Fi 下使用。
-- **[2] 手動輸入 IP (Manual IP)**：直接輸入公網 IP。適合已手動設定 Port Forwarding 的用戶。
-- **[3] 使用 ngrok 隧道 (Auto ngrok)**：**推薦選項**。自動啟動隧道並抓取隨機網址，適合遠端協作。
+| 選項 | 功能 | 說明 |
+|------|------|------|
+| **[1] 一鍵啟動** | 🚀 | 自動檢測模擬器、安裝依賴、連接後端、啟動 App |
+| **[2] 熱重啟** | 🔄 | 快速重啟已運行的 App（不重新編譯 Gradle） |
+| **[3] 檢查後端** | 🔍 | 測試 Tailscale Funnel 連線狀態 |
+| **[4] 清理程序** | 🧹 | 停止所有 Flutter 進程 |
+| **[5] 自訂網址** | ⚙️ | 使用自訂伺服器網址啟動 |
+
+### 命令行快捷參數
+
+```bash
+./run.sh -s              # 直接啟動（跳過選單）
+./run.sh -s my.server.url  # 指定伺服器啟動
+./run.sh -r              # 熱重啟
+./run.sh -c              # 檢查後端連線
+./run.sh -h              # 顯示幫助
+```
+
+### Windows 啟動方式
+
+```powershell
+# 在專案根目錄執行 (Windows PowerShell)
+.\run.ps1
+```
 
 ---
 
@@ -125,3 +145,11 @@ python3 -m venv /tmp/uban_test_venv
 - **連線失敗**：請確認手機與伺服器 IP 匹配，或改用 `.\run.ps1` 選項 [3]。
 - **權限報錯**：若無法執行腳本，請執行：`Set-ExecutionPolicy RemoteSigned`。
 - **WinError 10048**：這代表 Port 被佔用，`run.ps1` 現在會自動清理這些殘留程序。
+
+---
+
+## 📝 更新日誌 (Changelog)
+
+### 2026-03-31
+- **[Enhancement] run.sh 重構**：全新啟動腳本，支援一鍵啟動、熱重啟、後端檢查等功能。適配 Tailscale Funnel 遠端 FastAPI 架構。
+- **[Bug Fix] 長輩配對碼不顯示問題**：修復 `elder_pairing_display_screen.dart` 解析 API 回傳格式的錯誤。後端採用統一的 `{ status, data, error }` 格式，配對碼需從 `result['data']['pairing_code']` 取得。
