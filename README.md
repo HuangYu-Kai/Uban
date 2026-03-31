@@ -151,5 +151,6 @@ python3 -m venv /tmp/uban_test_venv
 ## 📝 更新日誌 (Changelog)
 
 ### 2026-03-31
+- **[Bug Fix] 登入/註冊 API 回傳格式修正**：修復 `login_screen.dart` 和 `registration_screen.dart` 解析 API 回傳格式的錯誤。後端採用統一的 `{ status, data, error }` 格式，需從 `result['data']` 取得 `user_id` 等資訊。
 - **[Enhancement] run.sh 重構**：全新啟動腳本，支援一鍵啟動、熱重啟、後端檢查等功能。適配 Tailscale Funnel 遠端 FastAPI 架構。
 - **[Bug Fix] 長輩配對碼不顯示問題**：修復 `elder_pairing_display_screen.dart` 解析 API 回傳格式的錯誤。後端採用統一的 `{ status, data, error }` 格式，配對碼需從 `result['data']['pairing_code']` 取得。
