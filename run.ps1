@@ -78,8 +78,46 @@ function Test-Backend {
     return $false
 }
 
-# 取得所有已連接的設備
+# ADB 路徑
+$script:AdbPath = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"
+
+# 用 ADB 檢測已連接的設備（更可靠）
+function Get-AdbDevices {
+    if (-not (Test-Path $script:AdbPath)) {
+        return @{ Physical = @(); Emulator = @() }
+    }
+    
+    $result = @{
+        Physical = @()
+        Emulator = @()
+    }
+    
+    $output = & $script:AdbPath devices 2>&1 | Out-String
+    $lines = $output -split "`n" | Where-Object { $_ -match "device$" -and $_ -notmatch "List of devices" }
+    
+    foreach ($line in $lines) {
+        if ($line -match "^(\S+)\s+device") {
+            $deviceId = $matches[1]
+            if ($deviceId -match "emulator") {
+                $result.Emulator += $deviceId
+            } else {
+                $result.Physical += $deviceId
+            }
+        }
+    }
+    
+    return $result
+}
+
+# 取得所有已連接的設備 (結合 flutter devices 和 adb devices)
 function Get-ConnectedDevices {
+    # 優先用 ADB 檢測（更快更可靠）
+    $adbDevices = Get-AdbDevices
+    if ($adbDevices.Physical.Count -gt 0 -or $adbDevices.Emulator.Count -gt 0) {
+        return $adbDevices
+    }
+    
+    # 備用: flutter devices
     $devices = flutter devices 2>&1 | Out-String
     $result = @{
         Physical = @()
@@ -110,6 +148,13 @@ function Get-ConnectedDevices {
     return $result
 }
 
+# 檢查模擬器視窗是否已開啟（透過進程名稱）
+function Test-EmulatorRunning {
+    $qemuProc = Get-Process -Name "qemu-system-x86_64" -ErrorAction SilentlyContinue
+    $emulatorProc = Get-Process -Name "emulator*" -ErrorAction SilentlyContinue
+    return ($null -ne $qemuProc -or $null -ne $emulatorProc)
+}
+
 function Start-EmulatorDevice {
     Write-Info "正在啟動 Android 模擬器..."
     
@@ -124,20 +169,20 @@ function Start-EmulatorDevice {
     Write-Info "啟動模擬器: $emulatorId"
     Start-Process flutter -ArgumentList "emulators", "--launch", $emulatorId -WindowStyle Hidden
     
-    Write-Host "    等待模擬器開機 (最多 90 秒)" -NoNewline
-    for ($i = 1; $i -le 45; $i++) {
+    # 只等 10 秒，讓 flutter run 自己處理等待
+    Write-Host "    等待模擬器... " -NoNewline
+    for ($i = 1; $i -le 5; $i++) {
         Start-Sleep -Seconds 2
         $devices = Get-ConnectedDevices
         if ($devices.Emulator.Count -gt 0) {
             Write-Host ""
             Write-Success "模擬器已就緒"
-            Start-Sleep -Seconds 3
             return $true
         }
         Write-Host "." -NoNewline
     }
     Write-Host ""
-    Write-Error "模擬器啟動超時"
+    Write-Warning "模擬器可能還在啟動中，繼續執行..."
     return $false
 }
 
