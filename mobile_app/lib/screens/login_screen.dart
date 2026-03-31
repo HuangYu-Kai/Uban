@@ -39,12 +39,14 @@ class _LoginScreenState extends State<LoginScreen> {
       final result = await ApiService.login(email, password);
       if (!mounted) return;
 
-      if (result.containsKey('user_id')) {
-// 登入成功
-        final int userId = result['user_id'];
-        final String userName = result['user_name'] ?? '使用者';
+      // API 回傳格式: { status: "success", data: { user_id, ... } }
+      final data = result['data'];
+      if (result['status'] == 'success' && data != null && data['user_id'] != null) {
+        // 登入成功
+        final int userId = data['user_id'];
+        final String userName = data['user_name'] ?? '使用者';
 
-// 持久化儲存登入狀態
+        // 持久化儲存登入狀態
         final prefs = await SharedPreferences.getInstance();
         if (!mounted) return;
 
@@ -55,7 +57,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
         if (!mounted) return; // MUST check again after async setInt/setString
 
-        final bool hasPaired = result['has_paired_elder'] ?? false;
+        final bool hasPaired = data['has_paired_elder'] ?? false;
 
         if (hasPaired) {
           Navigator.pushAndRemoveUntil(
@@ -67,7 +69,7 @@ class _LoginScreenState extends State<LoginScreen> {
             (route) => false,
           );
         } else {
-// 未配對時，引導進入溫馨介紹畫面
+          // 未配對時，引導進入溫馨介紹畫面
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
@@ -77,9 +79,9 @@ class _LoginScreenState extends State<LoginScreen> {
           );
         }
       } else {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(result['error'] ?? '登入失敗')));
+        // 顯示錯誤訊息
+        final errorMsg = result['error'] ?? result['detail'] ?? '登入失敗';
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(errorMsg)));
       }
     } catch (e) {
       if (!mounted) return;

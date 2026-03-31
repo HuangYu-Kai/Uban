@@ -39,15 +39,17 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
       if (!mounted) return;
 
-      if (result.containsKey('user_id')) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('註冊成功，請登入')));
+      // API 回傳格式: { status: "success", data: { user_id, ... } }
+      final data = result['data'];
+      if (result['status'] == 'success' && data != null && data['user_id'] != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('註冊成功，請登入')),
+        );
         Navigator.pop(context); // 回到登入頁
       } else {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(result['error'] ?? '註冊失敗')));
+        // 顯示錯誤訊息
+        final errorMsg = result['error'] ?? result['detail'] ?? '註冊失敗';
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(errorMsg)));
       }
     } catch (e) {
       if (!mounted) return;

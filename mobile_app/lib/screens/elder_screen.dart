@@ -438,6 +438,29 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
                     ],
                   ),
                 ),
+
+              // 5. 測試/登出按鈕 (右下角)
+              Positioned(
+                bottom: 20,
+                right: 20,
+                child: FloatingActionButton(
+                  mini: true,
+                  backgroundColor: Colors.white24,
+                  elevation: 0,
+                  child: const Icon(Icons.logout, color: Colors.white),
+                  onPressed: () async {
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.clear();
+                    if (context.mounted) {
+                      Navigator.pushAndRemoveUntil(
+                        context,
+                        MaterialPageRoute(builder: (context) => const RoleSelectionScreen()),
+                        (route) => false,
+                      );
+                    }
+                  },
+                ),
+              ),
             ],
           );
         },

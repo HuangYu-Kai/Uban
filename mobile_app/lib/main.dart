@@ -48,7 +48,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       id: message.data['callId'] ??
           'call_${DateTime.now().millisecondsSinceEpoch}',
       nameCaller: callerName,
-      appName: 'UniFlow',
+      appName: 'Uban',
       avatar: 'assets/user_avatar.png',
       handle: '緊急呼叫',
       type: 0,
