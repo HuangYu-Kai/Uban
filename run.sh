@@ -92,49 +92,58 @@ check_backend() {
     fi
 }
 
-check_emulator() {
-    # 使用 flutter devices 檢測已連接的 Android 模擬器
-    local device_line
-    device_line=$(flutter devices --machine 2>/dev/null | grep -i "android" | head -1)
-    
-    if [ -n "$device_line" ]; then
-        # 從 flutter devices 輸出中提取 device id
-        local device_id
-        device_id=$(flutter devices 2>/dev/null | grep -i "emulator\|android" | grep -v "No devices" | awk '{print $3}' | tr -d '•' | xargs | cut -d' ' -f1)
-        if [ -n "$device_id" ] && [ "$device_id" != "No" ]; then
-            echo "$device_id"
-            return 0
+# 取得所有已連接的設備 (實體設備 + 模擬器)
+get_connected_devices() {
+    # 返回格式: device_id|device_name|device_type (每行一個)
+    flutter devices 2>/dev/null | grep -E "•.*•.*•" | grep -vi "macos\|linux\|windows\|chrome\|web" | while read -r line; do
+        local name id type
+        name=$(echo "$line" | sed 's/•.*//' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
+        id=$(echo "$line" | awk -F'•' '{print $2}' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
+        if echo "$line" | grep -qi "emulator"; then
+            type="emulator"
+        else
+            type="physical"
         fi
-    fi
-    return 1
+        if [ -n "$id" ]; then
+            echo "$id|$name|$type"
+        fi
+    done
 }
 
-wait_for_device() {
-    # 等待 Flutter 能夠偵測到設備
-    print_info "等待設備連線..."
-    for i in $(seq 1 30); do
-        local device_check
-        device_check=$(flutter devices 2>/dev/null | grep -i "emulator\|android" | grep -v "No devices" | head -1)
-        if [ -n "$device_check" ]; then
-            sleep 2  # 額外等待穩定
-            return 0
-        fi
-        echo -n "."
-        sleep 2
-    done
-    echo ""
-    return 1
+# 檢查是否有實體設備
+check_physical_device() {
+    local devices
+    devices=$(get_connected_devices)
+    echo "$devices" | grep -q "|physical$"
+    return $?
+}
+
+# 檢查是否有模擬器
+check_emulator_running() {
+    local devices
+    devices=$(get_connected_devices)
+    echo "$devices" | grep -q "|emulator$"
+    return $?
+}
+
+# 取得模擬器 ID
+get_emulator_id() {
+    get_connected_devices | grep "|emulator$" | head -1 | cut -d'|' -f1
+}
+
+# 取得實體設備 ID
+get_physical_device_id() {
+    get_connected_devices | grep "|physical$" | head -1 | cut -d'|' -f1
 }
 
 start_emulator() {
-    print_info "未偵測到 Android 模擬器，正在啟動..."
+    print_info "正在啟動 Android 模擬器..."
     
-    # 優先使用 flutter emulators 啟動
+    # 使用 flutter emulators 啟動
     local emulator_id
-    emulator_id=$(flutter emulators 2>/dev/null | grep "android" | awk '{print $1}' | head -1)
+    emulator_id=$(flutter emulators 2>/dev/null | grep -i "android" | awk '{print $1}' | head -1)
     
     if [ -z "$emulator_id" ]; then
-        # 備用：使用 Android emulator 命令
         emulator_id=$(emulator -list-avds 2>/dev/null | head -n 1)
     fi
     
@@ -142,7 +151,7 @@ start_emulator() {
         print_error "找不到任何 Android 模擬器！"
         echo "    請先在 Android Studio 中建立模擬器"
         echo "    或執行: flutter emulators --create --name my_emulator"
-        exit 1
+        return 1
     fi
     
     print_info "啟動模擬器: $emulator_id"
@@ -181,6 +190,9 @@ flutter_pub_get() {
 
 # --- 核心功能 ---
 
+# 儲存運行中的 Flutter 進程資訊
+FLUTTER_PIDS_FILE="/tmp/uban_flutter_pids.txt"
+
 # 一鍵啟動
 do_quick_start() {
     local serverURL="${1:-$DEFAULT_SERVER_URL}"
@@ -200,50 +212,156 @@ do_quick_start() {
         fi
     fi
     
-    # 2. 檢查/啟動模擬器
-    local device_id
-    if device_id=$(check_emulator); then
-        print_success "偵測到模擬器: $device_id"
-    else
+    # 2. 檢測設備狀態
+    echo ""
+    print_info "檢測連接設備..."
+    
+    local has_physical=false
+    local has_emulator=false
+    local physical_id=""
+    local emulator_id=""
+    
+    if check_physical_device; then
+        has_physical=true
+        physical_id=$(get_physical_device_id)
+        print_success "偵測到實體設備: $physical_id"
+    fi
+    
+    if check_emulator_running; then
+        has_emulator=true
+        emulator_id=$(get_emulator_id)
+        print_success "偵測到模擬器: $emulator_id"
+    fi
+    
+    # 3. 如果沒有模擬器，啟動一個
+    if [ "$has_emulator" = false ]; then
         start_emulator
-        # 等待設備完全就緒後再獲取 ID
-        if ! wait_for_device; then
-            print_error "無法偵測到模擬器設備"
-            exit 1
+        if check_emulator_running; then
+            has_emulator=true
+            emulator_id=$(get_emulator_id)
         fi
-        device_id=$(check_emulator)
     fi
     
-    # 確保有有效的 device_id，否則讓 flutter 自動選擇
-    if [ -z "$device_id" ] || [ "$device_id" == "No" ]; then
-        print_warning "無法取得設備 ID，Flutter 將自動選擇設備"
-        device_id=""
-    fi
-    
-    # 3. 安裝依賴
+    # 4. 安裝依賴
     flutter_pub_get
     
-    # 4. 啟動 Flutter
+    # 5. 決定啟動模式
     echo ""
-    print_info "正在啟動 Flutter App..."
-    print_info "伺服器: https://$serverURL"
-    echo ""
-    echo -e "${YELLOW}═══════════════════════════════════════════════════════════"
-    echo "    Flutter 熱鍵提示："
-    echo "    r = 熱重載 (Hot Reload)  🔥"
-    echo "    R = 熱重啟 (Hot Restart) 🔄"
-    echo "    q = 退出"
-    echo -e "═══════════════════════════════════════════════════════════${NC}"
-    echo ""
+    
+    # 清空舊的 PID 檔案
+    > "$FLUTTER_PIDS_FILE"
+    
+    if [ "$has_physical" = true ] && [ "$has_emulator" = true ]; then
+        # 雙設備模式
+        print_info "🎯 雙設備模式：同時在實體設備和模擬器上啟動"
+        echo ""
+        
+        print_info "伺服器: https://$serverURL"
+        echo ""
+        echo -e "${YELLOW}═══════════════════════════════════════════════════════════"
+        echo "    雙設備模式熱鍵提示："
+        echo "    模擬器視窗：r/R = 熱重載/熱重啟"
+        echo "    實體設備：使用選單 [6] 熱重啟實體設備"
+        echo "    q = 退出當前視窗"
+        echo -e "═══════════════════════════════════════════════════════════${NC}"
+        echo ""
+        
+        cd "$MOBILE_APP_DIR"
+        
+        # 在背景啟動實體設備
+        print_info "啟動實體設備 ($physical_id)..."
+        flutter run --dart-define=SERVER_IP="$serverURL" -d "$physical_id" &
+        echo "$!|physical|$physical_id" >> "$FLUTTER_PIDS_FILE"
+        sleep 3
+        
+        # 前台啟動模擬器
+        print_info "啟動模擬器 ($emulator_id)..."
+        flutter run --dart-define=SERVER_IP="$serverURL" -d "$emulator_id" &
+        echo "$!|emulator|$emulator_id" >> "$FLUTTER_PIDS_FILE"
+        
+        echo ""
+        print_success "雙設備已啟動！使用 ./run.sh 選擇 [6] 來熱重啟實體設備"
+        echo ""
+        
+        # 等待任一進程結束
+        wait
+        
+    else
+        # 單設備模式
+        local target_device=""
+        local device_type=""
+        
+        if [ "$has_emulator" = true ]; then
+            target_device="$emulator_id"
+            device_type="模擬器"
+        elif [ "$has_physical" = true ]; then
+            target_device="$physical_id"
+            device_type="實體設備"
+        fi
+        
+        print_info "🎯 單設備模式：在${device_type}上啟動"
+        print_info "伺服器: https://$serverURL"
+        echo ""
+        echo -e "${YELLOW}═══════════════════════════════════════════════════════════"
+        echo "    Flutter 熱鍵提示："
+        echo "    r = 熱重載 (Hot Reload)  🔥"
+        echo "    R = 熱重啟 (Hot Restart) 🔄"
+        echo "    q = 退出"
+        echo -e "═══════════════════════════════════════════════════════════${NC}"
+        echo ""
+        
+        cd "$MOBILE_APP_DIR"
+        
+        if [ -n "$target_device" ]; then
+            exec flutter run --dart-define=SERVER_IP="$serverURL" -d "$target_device"
+        else
+            exec flutter run --dart-define=SERVER_IP="$serverURL"
+        fi
+    fi
+}
+
+# 熱重啟實體設備
+do_hot_restart_physical() {
+    if [ ! -f "$FLUTTER_PIDS_FILE" ]; then
+        print_error "沒有找到運行中的雙設備進程"
+        echo "    請先使用選項 [1] 啟動 App"
+        return 1
+    fi
+    
+    local physical_line
+    physical_line=$(grep "|physical|" "$FLUTTER_PIDS_FILE" 2>/dev/null)
+    
+    if [ -z "$physical_line" ]; then
+        print_error "沒有找到運行中的實體設備進程"
+        return 1
+    fi
+    
+    local pid device_id
+    pid=$(echo "$physical_line" | cut -d'|' -f1)
+    device_id=$(echo "$physical_line" | cut -d'|' -f3)
+    
+    if ! kill -0 "$pid" 2>/dev/null; then
+        print_error "實體設備進程 (PID: $pid) 已停止"
+        return 1
+    fi
+    
+    print_info "正在熱重啟實體設備 ($device_id)..."
+    
+    # 發送 SIGUSR1 或透過 stdin 發送 R
+    # 由於 Flutter 在背景，我們需要重新啟動
+    kill "$pid" 2>/dev/null
+    sleep 2
     
     cd "$MOBILE_APP_DIR"
+    flutter run --dart-define=SERVER_IP="$DEFAULT_SERVER_URL" -d "$device_id" &
+    local new_pid=$!
     
-    # 如果有 device_id 就指定，否則讓 Flutter 自動選擇
-    if [ -n "$device_id" ]; then
-        exec flutter run --dart-define=SERVER_IP="$serverURL" -d "$device_id"
-    else
-        exec flutter run --dart-define=SERVER_IP="$serverURL"
-    fi
+    # 更新 PID 檔案
+    grep -v "|physical|" "$FLUTTER_PIDS_FILE" > "${FLUTTER_PIDS_FILE}.tmp"
+    echo "$new_pid|physical|$device_id" >> "${FLUTTER_PIDS_FILE}.tmp"
+    mv "${FLUTTER_PIDS_FILE}.tmp" "$FLUTTER_PIDS_FILE"
+    
+    print_success "實體設備已重新啟動 (新 PID: $new_pid)"
 }
 
 # 熱重啟 (發送 R 到現有 flutter run 進程)
@@ -342,12 +460,13 @@ main() {
     echo "  [3] 🔍 檢查後端連線狀態"
     echo "  [4] 🧹 清理 Flutter 進程"
     echo "  [5] ⚙️  自訂伺服器網址"
+    echo "  [6] 📱 熱重啟實體設備 (雙設備模式)"
     echo "  [q] 退出"
     echo ""
     echo -e "${BLUE}  當前後端: https://$DEFAULT_SERVER_URL${NC}"
     echo ""
     
-    read -p "請選擇 [1-5/q]: " choice
+    read -p "請選擇 [1-6/q]: " choice
     
     case $choice in
         1) do_quick_start ;;
@@ -358,6 +477,7 @@ main() {
             read -p "輸入伺服器網址: " custom_url
             do_quick_start "$custom_url"
             ;;
+        6) do_hot_restart_physical ;;
         q|Q) echo "Bye! 👋"; exit 0 ;;
         *) print_error "無效選項"; sleep 1; main ;;
     esac
@@ -368,6 +488,8 @@ if [ "$1" == "--start" ] || [ "$1" == "-s" ]; then
     do_quick_start "${2:-$DEFAULT_SERVER_URL}"
 elif [ "$1" == "--restart" ] || [ "$1" == "-r" ]; then
     do_hot_restart
+elif [ "$1" == "--restart-physical" ] || [ "$1" == "-rp" ]; then
+    do_hot_restart_physical
 elif [ "$1" == "--check" ] || [ "$1" == "-c" ]; then
     do_health_check "${2:-$DEFAULT_SERVER_URL}"
 elif [ "$1" == "--help" ] || [ "$1" == "-h" ]; then
@@ -376,10 +498,11 @@ elif [ "$1" == "--help" ] || [ "$1" == "-h" ]; then
     echo "用法: ./run.sh [選項]"
     echo ""
     echo "選項:"
-    echo "  -s, --start [URL]   一鍵啟動 (可選指定伺服器)"
-    echo "  -r, --restart       熱重啟"
-    echo "  -c, --check [URL]   檢查後端連線"
-    echo "  -h, --help          顯示幫助"
+    echo "  -s, --start [URL]       一鍵啟動 (可選指定伺服器)"
+    echo "  -r, --restart           熱重啟"
+    echo "  -rp, --restart-physical 熱重啟實體設備 (雙設備模式)"
+    echo "  -c, --check [URL]       檢查後端連線"
+    echo "  -h, --help              顯示幫助"
     echo ""
     echo "無參數時進入互動式選單"
 else
