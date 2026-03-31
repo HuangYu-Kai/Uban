@@ -86,12 +86,20 @@ function Get-ConnectedDevices {
         Emulator = @()
     }
     
-    $lines = $devices -split "`n" | Where-Object { $_ -match "•.*•.*•" -and $_ -notmatch "macos|linux|windows|chrome|web" }
+    # 匹配格式: "設備名稱 (類型) • 設備ID • 平台 • 版本資訊"
+    # 排除 desktop 和 web 設備
+    $lines = $devices -split "`n" | Where-Object { 
+        $_ -match "•.*•.*•" -and 
+        $_ -notmatch "\(desktop\)" -and 
+        $_ -notmatch "\(web\)" -and
+        $_ -notmatch "windows|chrome|edge|macos|linux"
+    }
     
     foreach ($line in $lines) {
-        if ($line -match "•\s*(\S+)\s*•") {
+        # 提取設備 ID（第一個 • 後面的內容）
+        if ($line -match "•\s*([^\s•]+)\s*•") {
             $deviceId = $matches[1]
-            if ($line -match "emulator") {
+            if ($line -match "\(emulator\)") {
                 $result.Emulator += $deviceId
             } else {
                 $result.Physical += $deviceId
