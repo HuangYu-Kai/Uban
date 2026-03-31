@@ -78,26 +78,39 @@ function Test-Backend {
     return $false
 }
 
-function Get-Emulator {
+# 取得所有已連接的設備
+function Get-ConnectedDevices {
     $devices = flutter devices 2>&1 | Out-String
-    if ($devices -match "emulator|android") {
-        $deviceLine = ($devices -split "`n" | Where-Object { $_ -match "emulator|android" } | Select-Object -First 1)
-        if ($deviceLine -match "•\s*(\S+)\s*•") {
-            return $matches[1]
+    $result = @{
+        Physical = @()
+        Emulator = @()
+    }
+    
+    $lines = $devices -split "`n" | Where-Object { $_ -match "•.*•.*•" -and $_ -notmatch "macos|linux|windows|chrome|web" }
+    
+    foreach ($line in $lines) {
+        if ($line -match "•\s*(\S+)\s*•") {
+            $deviceId = $matches[1]
+            if ($line -match "emulator") {
+                $result.Emulator += $deviceId
+            } else {
+                $result.Physical += $deviceId
+            }
         }
     }
-    return $null
+    
+    return $result
 }
 
-function Start-Emulator {
-    Write-Info "未偵測到 Android 模擬器，正在啟動..."
+function Start-EmulatorDevice {
+    Write-Info "正在啟動 Android 模擬器..."
     
     $emulators = flutter emulators 2>&1 | Out-String
     $emulatorId = ($emulators -split "`n" | Where-Object { $_ -match "android" } | ForEach-Object { ($_ -split "\s+")[0] } | Select-Object -First 1)
     
     if (-not $emulatorId) {
         Write-Error "找不到任何 Android 模擬器！請先在 Android Studio 中建立模擬器"
-        exit 1
+        return $false
     }
     
     Write-Info "啟動模擬器: $emulatorId"
@@ -106,18 +119,18 @@ function Start-Emulator {
     Write-Host "    等待模擬器開機 (最多 90 秒)" -NoNewline
     for ($i = 1; $i -le 45; $i++) {
         Start-Sleep -Seconds 2
-        $device = Get-Emulator
-        if ($device) {
+        $devices = Get-ConnectedDevices
+        if ($devices.Emulator.Count -gt 0) {
             Write-Host ""
             Write-Success "模擬器已就緒"
             Start-Sleep -Seconds 3
-            return
+            return $true
         }
         Write-Host "." -NoNewline
     }
     Write-Host ""
     Write-Error "模擬器啟動超時"
-    exit 1
+    return $false
 }
 
 function Install-Dependencies {
@@ -129,6 +142,9 @@ function Install-Dependencies {
 }
 
 # --- 核心功能 ---
+
+# 儲存運行中的 Flutter 進程資訊
+$script:FlutterPidsFile = "$env:TEMP\uban_flutter_pids.txt"
 
 function Start-QuickLaunch {
     param($serverUrl)
@@ -147,37 +163,145 @@ function Start-QuickLaunch {
         if ($continue -ne "y" -and $continue -ne "Y") { exit }
     }
     
-    # 2. 檢查/啟動模擬器
-    $deviceId = Get-Emulator
-    if ($deviceId) {
-        Write-Success "偵測到模擬器: $deviceId"
-    } else {
-        Start-Emulator
-        $deviceId = Get-Emulator
+    # 2. 檢測設備狀態
+    Write-Host ""
+    Write-Info "檢測連接設備..."
+    
+    $devices = Get-ConnectedDevices
+    $hasPhysical = $devices.Physical.Count -gt 0
+    $hasEmulator = $devices.Emulator.Count -gt 0
+    $physicalId = if ($hasPhysical) { $devices.Physical[0] } else { $null }
+    $emulatorId = if ($hasEmulator) { $devices.Emulator[0] } else { $null }
+    
+    if ($hasPhysical) {
+        Write-Success "偵測到實體設備: $physicalId"
+    }
+    if ($hasEmulator) {
+        Write-Success "偵測到模擬器: $emulatorId"
     }
     
-    # 3. 安裝依賴
+    # 3. 如果沒有模擬器，啟動一個
+    if (-not $hasEmulator) {
+        if (Start-EmulatorDevice) {
+            $devices = Get-ConnectedDevices
+            $hasEmulator = $devices.Emulator.Count -gt 0
+            $emulatorId = if ($hasEmulator) { $devices.Emulator[0] } else { $null }
+        }
+    }
+    
+    # 4. 安裝依賴
     Install-Dependencies
     
-    # 4. 啟動 Flutter
-    Write-Host ""
-    Write-Info "正在啟動 Flutter App..."
-    Write-Info "伺服器: https://$serverUrl"
-    Write-Host ""
-    Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Yellow
-    Write-Host "    Flutter 熱鍵提示："
-    Write-Host "    r = 熱重載 (Hot Reload)  🔥"
-    Write-Host "    R = 熱重啟 (Hot Restart) 🔄"
-    Write-Host "    q = 退出"
-    Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Yellow
+    # 5. 決定啟動模式
     Write-Host ""
     
-    Set-Location $mobileAppDir
-    if ($deviceId) {
-        flutter run --dart-define=SERVER_IP=$serverUrl -d $deviceId
+    # 清空舊的 PID 檔案
+    "" | Out-File $script:FlutterPidsFile -Force
+    
+    if ($hasPhysical -and $hasEmulator) {
+        # 雙設備模式
+        Write-Info "🎯 雙設備模式：同時在實體設備和模擬器上啟動"
+        Write-Host ""
+        
+        Write-Info "伺服器: https://$serverUrl"
+        Write-Host ""
+        Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Yellow
+        Write-Host "    雙設備模式熱鍵提示："
+        Write-Host "    模擬器視窗：r/R = 熱重載/熱重啟"
+        Write-Host "    實體設備：使用選單 [6] 熱重啟實體設備"
+        Write-Host "    q = 退出當前視窗"
+        Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Yellow
+        Write-Host ""
+        
+        Set-Location $mobileAppDir
+        
+        # 在新視窗啟動實體設備
+        Write-Info "啟動實體設備 ($physicalId)..."
+        $physicalProcess = Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$mobileAppDir'; flutter run --dart-define=SERVER_IP=$serverUrl -d $physicalId" -PassThru
+        "physical|$($physicalProcess.Id)|$physicalId" | Out-File $script:FlutterPidsFile -Append
+        Start-Sleep -Seconds 3
+        
+        # 在新視窗啟動模擬器
+        Write-Info "啟動模擬器 ($emulatorId)..."
+        $emulatorProcess = Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$mobileAppDir'; flutter run --dart-define=SERVER_IP=$serverUrl -d $emulatorId" -PassThru
+        "emulator|$($emulatorProcess.Id)|$emulatorId" | Out-File $script:FlutterPidsFile -Append
+        
+        Write-Host ""
+        Write-Success "雙設備已啟動！使用 .\run.ps1 選擇 [6] 來熱重啟實體設備"
+        Write-Host ""
+        
     } else {
-        flutter run --dart-define=SERVER_IP=$serverUrl
+        # 單設備模式
+        $targetDevice = $null
+        $deviceType = ""
+        
+        if ($hasEmulator) {
+            $targetDevice = $emulatorId
+            $deviceType = "模擬器"
+        } elseif ($hasPhysical) {
+            $targetDevice = $physicalId
+            $deviceType = "實體設備"
+        }
+        
+        Write-Info "🎯 單設備模式：在${deviceType}上啟動"
+        Write-Info "伺服器: https://$serverUrl"
+        Write-Host ""
+        Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Yellow
+        Write-Host "    Flutter 熱鍵提示："
+        Write-Host "    r = 熱重載 (Hot Reload)  🔥"
+        Write-Host "    R = 熱重啟 (Hot Restart) 🔄"
+        Write-Host "    q = 退出"
+        Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Yellow
+        Write-Host ""
+        
+        Set-Location $mobileAppDir
+        
+        if ($targetDevice) {
+            flutter run --dart-define=SERVER_IP=$serverUrl -d $targetDevice
+        } else {
+            flutter run --dart-define=SERVER_IP=$serverUrl
+        }
     }
+}
+
+function Start-HotRestartPhysical {
+    if (-not (Test-Path $script:FlutterPidsFile)) {
+        Write-Error "沒有找到運行中的雙設備進程"
+        Write-Host "    請先使用選項 [1] 啟動 App"
+        return
+    }
+    
+    $physicalLine = Get-Content $script:FlutterPidsFile | Where-Object { $_ -match "^physical\|" } | Select-Object -First 1
+    
+    if (-not $physicalLine) {
+        Write-Error "沒有找到運行中的實體設備進程"
+        return
+    }
+    
+    $parts = $physicalLine -split "\|"
+    $pid = $parts[1]
+    $deviceId = $parts[2]
+    
+    $process = Get-Process -Id $pid -ErrorAction SilentlyContinue
+    if (-not $process) {
+        Write-Error "實體設備進程 (PID: $pid) 已停止"
+        return
+    }
+    
+    Write-Info "正在熱重啟實體設備 ($deviceId)..."
+    
+    Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2
+    
+    Set-Location $mobileAppDir
+    $newProcess = Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$mobileAppDir'; flutter run --dart-define=SERVER_IP=$DEFAULT_SERVER_URL -d $deviceId" -PassThru
+    
+    # 更新 PID 檔案
+    $otherLines = Get-Content $script:FlutterPidsFile | Where-Object { $_ -notmatch "^physical\|" }
+    $otherLines | Out-File $script:FlutterPidsFile -Force
+    "physical|$($newProcess.Id)|$deviceId" | Out-File $script:FlutterPidsFile -Append
+    
+    Write-Success "實體設備已重新啟動 (新 PID: $($newProcess.Id))"
 }
 
 function Start-HealthCheck {
@@ -249,12 +373,13 @@ function Show-Menu {
     Write-Host "  [2] 🔍 檢查後端連線狀態"
     Write-Host "  [3] 🧹 清理 Flutter 進程"
     Write-Host "  [4] ⚙️  自訂伺服器網址"
+    Write-Host "  [5] 📱 熱重啟實體設備 (雙設備模式)"
     Write-Host "  [q] 退出"
     Write-Host ""
     Write-Host "  當前後端: https://$DEFAULT_SERVER_URL" -ForegroundColor Cyan
     Write-Host ""
     
-    $choice = Read-Host "請選擇 [1-4/q]"
+    $choice = Read-Host "請選擇 [1-5/q]"
     
     switch ($choice) {
         "1" { Start-QuickLaunch }
@@ -264,6 +389,7 @@ function Show-Menu {
             $customUrl = Read-Host "輸入伺服器網址"
             Start-QuickLaunch $customUrl
         }
+        "5" { Start-HotRestartPhysical }
         "q" { Write-Host "Bye! 👋"; exit 0 }
         "Q" { Write-Host "Bye! 👋"; exit 0 }
         default { Write-Error "無效選項"; Start-Sleep -Seconds 1; Show-Menu }
@@ -271,6 +397,8 @@ function Show-Menu {
 }
 
 # --- 入口點 ---
+# param 部分已在檔案開頭定義
+
 if ($Start) {
     Start-QuickLaunch $ServerUrl
 } elseif ($Check) {
