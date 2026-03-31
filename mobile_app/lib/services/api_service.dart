@@ -181,7 +181,7 @@ class ApiService {
         return jsonDecode(response.body);
       }
     } catch (e) {
-      print('Error fetching paired family: $e');
+      // Error fetching paired family
     }
     return [];
   }
