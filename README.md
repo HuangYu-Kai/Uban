@@ -1,179 +1,231 @@
-# Uban - AI 跨世代感知照護系統：完整安裝指南
+# Uban - AI 跨世代感知照護系統
 
-本文件引導您從環境架設到正式執行 **Uban** 系統。請務必按照順序完成以下三個階段。
+> 🏠 **AI 生成式長照陪伴生態系** - 讓科技成為連結世代的橋樑
 
----
-
-## 🛠️ 第一階段：開發環境準備 (Prerequisites)
-
-在執行任何腳本前，請確保您的開發電腦已完成以下配置。
-
-### 1. Python 3.12 (後端基礎)
->
-> [!IMPORTANT]
-> **必須安裝 Python 3.12**。由於 `eventlet` 套件在 3.13+ 版本有相容性問題，請勿使用更高版本。
-
-1. 前往 [Python 官網](https://www.python.org/downloads/windows/) 下載並安裝。
-2. 安裝時務必勾選 **"Add Python to PATH"**。
-3. 提示：您可以手動在 `server/.env` 填入 `GEMINI_API_KEY`。
-
-### 2. Flutter SDK (前端基礎)
-
-1. 下載並安裝 [Flutter SDK](https://docs.flutter.dev/get-started/install)。
-2. 將 `flutter\bin` 加入系統 **環境變數 (PATH)**。
-3. 執行 `flutter doctor` 並完成所有 Android 憑證與 SDK 安裝。
-
-### 3. ngrok (對外連線支援)
-
-1. 下載 [ngrok](https://ngrok.com/) 並完成安裝。
-2. 執行：`ngrok config add-authtoken <您的Token>`。這能讓您使用啟動腳本中的「自動隧道」功能。
+本文件整合了 Uban 系統的完整說明，包含功能列表、安裝指南與開發文檔。
 
 ---
 
-## 🚀 第二階段：一鍵啟動 (Quick Start)
+## 📖 目錄
 
-本專案採用 **前後端分離架構**：
-- **FastAPI 後端**：部署在遠端伺服器，透過 Tailscale Funnel 暴露公網
-- **Flutter 前端**：本地開發，連接遠端 FastAPI
+- [專案簡介](#專案簡介)
+- [系統架構](#系統架構)
+- [核心功能](#核心功能)
+- [快速開始](#快速開始)
+- [開發指南](#開發指南)
+- [更新日誌](#更新日誌)
 
-### macOS 啟動方式
+---
+
+## 專案簡介
+
+Uban 是一套專為銀髮族設計的 AI 陪伴照護系統，包含：
+
+- **長輩端 App**：語音優先的 AI 對話介面
+- **家屬端 App**：遠端照護管理與視訊通話
+- **AI 後端**：Ollama + Flask 驅動的智慧陪伴引擎
+
+---
+
+## 系統架構
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│   長輩端 App    │────▶│   FastAPI 後端   │◀────│   家屬端 App    │
+│   (Flutter)     │     │   (uban-api)    │     │   (Flutter)     │
+└─────────────────┘     └────────┬────────┘     └─────────────────┘
+                                 │
+                    ┌────────────┴────────────┐
+                    ▼                         ▼
+           ┌───────────────┐         ┌───────────────┐
+           │  Ollama AI    │         │   MySQL DB    │
+           │ (qwen2.5:1.5b)│         │               │
+           └───────────────┘         └───────────────┘
+```
+
+**連線資訊**：
+| 服務 | 地址 |
+|------|------|
+| FastAPI 後端 | `https://localhost-0.tail5abf5e.ts.net` |
+| Ollama AI | `https://boyo-t.tail531c8a.ts.net` |
+
+---
+
+## 核心功能
+
+### 一、AI 核心引擎
+
+#### 1. 雙軌 AI 引擎
+- **Ollama（主要）**：使用 `qwen2.5:1.5b` 模型，支援 Tool Calling
+- **Gemini（備用）**：Google Gemini 2.5 Flash API
+
+#### 2. AI Agent 人格系統 (`server/agent/`)
+
+| 檔案 | 用途 |
+|------|------|
+| **SOUL.md** | 靈魂核心：語言限制（繁體中文）、對話原則、絕對邊界 |
+| **IDENTITY.md** | 角色設定：名稱「小優 (Uni)」、性格、形象 |
+| **MEMORY.md** | 長期記憶庫：自動追加長輩的生活事實 |
+| **USER.md** | 長輩基本資訊：姓名、年齡、喜好、用藥 |
+| **HEARTBEAT.md** | 主動關懷任務：早晨問候、服藥提醒等 |
+| **AGENTS.md** | 運作流程：啟動順序、記憶更新原則 |
+
+#### 3. 記憶機制
+- **短期記憶**：最近 5 輪對話（10筆）
+- **長期記憶**：透過 `save_elder_memory` 永久記錄至 MEMORY.md
+- **自動摘要**：每 10 筆對話自動濃縮為 100 字狀態報告
+
+#### 4. Heartbeat 主動關懷
+- 每 20 分鐘自動檢查在線長輩
+- 觸發條件：早晨問候、服藥提醒、久坐提醒、家屬留言通知
+- 透過 Socket.io `heartbeat-message` 即時推送
+
+### 二、AI 技能系統（共 12 項）
+
+| 技能 | 描述 | 模組 |
+|------|------|------|
+| `get_current_time` | 獲取台灣時間 | common_skills |
+| `get_weather_info` | 天氣查詢與穿衣建議 | common_skills |
+| `save_elder_memory` | 🆕 記錄長輩生活事實 | common_skills |
+| `search_youtube_video` | YouTube 影片/音樂搜尋 | common_skills |
+| `search_web` | 🆕 Google 搜尋 | common_skills |
+| `get_music_recommendations` | 🆕 歌手熱門歌曲 | common_skills |
+| `get_elder_context` | 讀取長輩背景 | elder_skills |
+| `notify_family_SOS` | 緊急通知家屬 | elder_skills |
+| `suggest_activity` | 推薦日常活動 | elder_skills |
+| `get_family_messages` | 讀取家屬留言 | comm_skills |
+| `initiate_video_call` | 發起視訊通話 | comm_skills |
+| `record_elder_activity` | 記錄活動與心情 | health_skills |
+
+### 三、長輩端 App (Flutter)
+
+- **語音對話**：STT/TTS、連續對話、打斷機制
+- **Markdown 渲染**：自動轉換影片/圖片卡片
+- **快捷問題卡片**：一鍵發問常見問題
+
+### 四、家屬端管理
+
+- **配對機制**：PIN 碼 + QR Code 雙軌認領
+- **GPS 快速選址**：一鍵帶入行政區域
+- **陪伴大腦設定**：自訂 AI 人格與長輩資料
+
+### 五、視訊通話
+
+- **WebRTC P2P**：高品質視訊、自動 NAT 穿透
+- **三層備援**：Socket.io + FCM + Cold Start
+- **緊急模式**：CCTV/自動接聽功能
+
+---
+
+## 快速開始
+
+### 環境需求
+
+| 工具 | 版本 | 說明 |
+|------|------|------|
+| Python | 3.12 | ⚠️ 不支援 3.13+（eventlet 相容性） |
+| Flutter | Latest | 執行 `flutter doctor` 確認 |
+| Ollama | - | 遠端已部署，或本地 `ollama pull qwen2.5:1.5b` |
+
+### 一鍵啟動
 
 ```bash
-# 在專案根目錄執行
+# macOS / Linux
 chmod +x run.sh
 ./run.sh
-```
 
-### 啟動選單說明
-
-| 選項 | 功能 | 說明 |
-|------|------|------|
-| **[1] 一鍵啟動** | 🚀 | 自動檢測模擬器、安裝依賴、連接後端、啟動 App |
-| **[2] 熱重啟** | 🔄 | 快速重啟已運行的 App（不重新編譯 Gradle） |
-| **[3] 檢查後端** | 🔍 | 測試 Tailscale Funnel 連線狀態 |
-| **[4] 清理程序** | 🧹 | 停止所有 Flutter 進程 |
-| **[5] 自訂網址** | ⚙️ | 使用自訂伺服器網址啟動 |
-
-### 命令行快捷參數
-
-```bash
-./run.sh -s              # 直接啟動（跳過選單）
-./run.sh -s my.server.url  # 指定伺服器啟動
-./run.sh -r              # 熱重啟
-./run.sh -c              # 檢查後端連線
-./run.sh -h              # 顯示幫助
-```
-
-### Windows 啟動方式
-
-```powershell
-# 在專案根目錄執行 (Windows PowerShell)
+# Windows PowerShell
 .\run.ps1
 ```
 
----
+### 啟動選單
 
-## 🌐 第三階段：外部存取補充 (進階設定)
+| 選項 | 功能 |
+|------|------|
+| **[1] 🚀 一鍵啟動** | 自動檢測模擬器、連接後端 + Ollama、啟動 App |
+| **[2] 🔄 熱重啟** | 快速重啟（不重新編譯） |
+| **[3] 🔍 檢查後端** | 測試 FastAPI + Ollama 連線 |
+| **[4] 🧹 清理程序** | 停止所有 Flutter 進程 |
+| **[5] ⚙️ 自訂網址** | 使用自訂伺服器啟動 |
 
-如果您不使用 ngrok 而想透過實體公網連線：
-
-### 1. 通訊埠轉發 (Port Forwarding)
-
-請在路由器將 **Port 8000 (TCP)** 指向您電腦的內部 IP。
-> 正式後端已遷移至 `uban-api` (FastAPI)，API 與 Socket 服務統一在 **8000** 埠口。
-> ⚠️ `server/` 目錄為 Legacy Flask 程式碼，已棄用，請勿再修改。
-
-### 2. 防火牆規則
-
-確保 Windows 防火牆已開啟 **TCP 8000** 的「輸入規則 (Inbound Rule)」。
-
----
-
-## 📋 第四階段：核心功能教學 (Core Tutorial)
-
-1. **角色選擇**：App 啟動後可選擇長輩端 (Elder) 或家屬端 (Family)。
-2. **配對流程**：長輩端顯示 PIN 碼 -> 家屬端輸入 PIN 碼認領 -> 系統自動完成註冊與綁定。
-3. **AI 互動**：Gemini Agent 會根據長輩的興趣與病史提供個人化對話，並產出健康指標。
-4. **即時監控**：支援 WebRTC 低延遲視訊與單向遠端查看功能。
-
----
-
-## 🧪 第五階段：視訊通話單機測試 (Video Call Testing with One Device)
-
-本專案提供 `test_call_simulator.py` 腳本，讓開發者**只用一台模擬器**即可測試完整的視訊通話信令流程。腳本模擬「家屬端」撥打電話，模擬器上的 App 作為「長輩端」接收。
-
-### 前置準備
+### 命令行參數
 
 ```bash
-# 建立測試用虛擬環境（只需首次執行）
-python3 -m venv /tmp/uban_test_venv
-/tmp/uban_test_venv/bin/pip install "python-socketio[asyncio_client]" websockets
+./run.sh -s              # 直接啟動
+./run.sh -c              # 檢查後端
+./run.sh -r              # 熱重啟
+./run.sh -h              # 顯示幫助
 ```
 
-### 測試步驟
+---
 
-1. **確保 `uban-api` 後端已啟動**（遠端容器或本地 `uvicorn main:app --reload`）
-2. **在模擬器上啟動 Flutter App**，以**長輩端**身分登入並進入主畫面（確保 Socket 已連線）
-3. **在另一個 Terminal 執行測試腳本**：
+## 開發指南
+
+### 專案結構
+
+```
+Uban/
+├── mobile_app/          # Flutter 前端
+│   └── lib/
+│       ├── services/    # API、Signaling
+│       └── screens/     # UI 頁面
+├── server/              # Flask AI 後端
+│   ├── agent/           # AI 人格設定 (*.md)
+│   ├── services/        # ollama_service, heartbeat_manager
+│   ├── skills/          # 12 項 AI 技能
+│   └── routes/          # API 路由
+├── run.sh               # macOS/Linux 啟動腳本
+└── run.ps1              # Windows 啟動腳本
+```
+
+### 關鍵檔案
+
+| 檔案 | 用途 |
+|------|------|
+| `lib/services/signaling.dart` | Socket.IO + WebRTC |
+| `lib/main.dart` | App 入口 + 全域監聽器 |
+| `server/services/ollama_service.py` | Ollama 整合 |
+| `server/services/heartbeat_manager.py` | 主動關懷引擎 |
+| `server/skills/__init__.py` | 12 項技能匯出 |
+
+### 視訊通話測試
 
 ```bash
+# 建立測試環境
+python3 -m venv /tmp/uban_test_venv
+/tmp/uban_test_venv/bin/pip install "python-socketio[asyncio_client]" websockets
+
+# 執行測試腳本
 /tmp/uban_test_venv/bin/python3 test_call_simulator.py
 ```
 
-4. 輸入房間 ID（= 長輩的 `user_id`），即可看到互動選單：
+---
 
-| 選項 | 說明 |
-|------|------|
-| `[1]` 📞 | 發送一般通話 (`call-request`)，長輩端會彈出來電對話框 |
-| `[2]` 🚨 | 發送緊急通話 (`emergency-call`)，測試自動接聽機制 |
-| `[3]` 🔕 | 取消呼叫 (`cancel-call`)，測試全域彈窗自動消失 |
-| `[4]` 📡 | 查詢長輩設備在線狀態 |
-| `[5]` 📴 | 掛斷通話 (`end-call`) |
+## 常見問題
 
-### 驗證要點
-
-- 按 `[1]` 後，模擬器應彈出來電對話框 → 按「接聽」→ 腳本顯示 `🎉 對方已接聽！`
-- 按 `[3]` 後，模擬器上的來電彈窗應自動消失
-- 按「拒絕」後，腳本應顯示 `🚫 對方拒接或忙線中`
-
-> **注意：** 腳本不會建立真正的 WebRTC 影像連線，僅驗證 Socket.IO 信令層是否正確傳遞。
+| 問題 | 解決方案 |
+|------|----------|
+| 連線失敗 | 確認 IP 匹配，使用選項 [3] 檢查 |
+| 權限報錯 | 執行 `Set-ExecutionPolicy RemoteSigned` |
+| Port 被佔用 | `run.ps1` 會自動清理殘留程序 |
 
 ---
 
-## ⚠️ 常見問題 (Troubleshooting)
+## 更新日誌
 
-- **連線失敗**：請確認手機與伺服器 IP 匹配，或改用 `.\run.ps1` 選項 [3]。
-- **權限報錯**：若無法執行腳本，請執行：`Set-ExecutionPolicy RemoteSigned`。
-- **WinError 10048**：這代表 Port 被佔用，`run.ps1` 現在會自動清理這些殘留程序。
-
----
-
-## 📝 更新日誌 (Changelog)
-
-### 2026-03-31 (資料庫文檔修正)
-- **[Docs] DATABASE.md 完整重寫**：
-  - 修正欄位名稱不一致問題 (`relationship_id` → `relation_id`, `created_at` → `create_ts`)
-  - 更新 `elder_profile` 完整欄位 (新增 `elder_appellation`, `ai_emotion_tone`, `ai_text_verbosity` 等)
-  - 更新 `gawa_appearance` 結構 (舊版 hat/accessory/background → 新版 gawa_name/gawa_rarity/bonus)
-  - 新增缺少的表格定義：`elder_talk_topics`, `elder_fellowship_data`, `get_appearance_list`, `call_record`, `family_message`
-  - 補充 `family_message.is_read` 欄位
-- **[Fix] relationship API**：`create_relationship` 新增 `create_ts` 欄位
-
-### 2026-03-31 (安全性與穩定性更新)
-- **[Security] CORS 限制**：後端 CORS 改用環境變數 `ALLOWED_ORIGINS` 配置，不再允許所有來源
-- **[Security] 密碼安全**：長輩帳號自動生成安全隨機密碼，移除硬編碼密碼
-- **[Security] JWT 認證**：新增 `auth.py` 模組，登入時返回 JWT token，支援 `get_current_user` 依賴注入
-- **[Performance] N+1 查詢優化**：`get_paired_elders` 改用 JOIN 查詢，避免迴圈查詢資料庫
-- **[Performance] API 分頁**：`/users`, `/elders`, `/logs` 端點支援 `skip` 和 `limit` 參數
-- **[Stability] HTTP 超時**：所有前端 API 請求添加 15 秒超時，防止 UI 卡死
-- **[Stability] JSON 安全解析**：所有 API 回應使用 try-catch 保護，伺服器錯誤不再導致 App 崩潰
-- **[Fix] 依賴版本鎖定**：`requirements.txt` 移除重複項並鎖定版本；`pubspec.yaml` 修復 `firebase_analytics: any`
-- **[API] 新增端點**：`GET /api/user/{user_id}/family` 供長輩查詢配對家屬
-- **[DevOps] GitHub Actions CI**：自動化測試流程，pytest + flutter analyze
-- **[Docs] DATABASE.md**：完整資料庫結構文檔
+### 2026-04-01
+- **[AI] Ollama 整合**：新增 `qwen2.5:1.5b` 模型支援
+- **[AI] Agent 人格系統**：SOUL.md、IDENTITY.md、MEMORY.md 等 6 個設定檔
+- **[AI] Heartbeat 機制**：每 20 分鐘主動關懷
+- **[AI] 新增技能**：`save_elder_memory`、`search_web`、`get_music_recommendations`
+- **[DevOps] run.sh/run.ps1**：新增 Ollama 連線檢測
+- **[Docs] 文檔整合**：合併 features_list.md 至 README.md
 
 ### 2026-03-31
-- **[Bug Fix] 登入/註冊 API 回傳格式修正**：修復 `login_screen.dart` 和 `registration_screen.dart` 解析 API 回傳格式的錯誤。後端採用統一的 `{ status, data, error }` 格式，需從 `result['data']` 取得 `user_id` 等資訊。
-- **[Enhancement] run.sh 重構**：全新啟動腳本，支援一鍵啟動、熱重啟、後端檢查等功能。適配 Tailscale Funnel 遠端 FastAPI 架構。
-- **[Bug Fix] 長輩配對碼不顯示問題**：修復 `elder_pairing_display_screen.dart` 解析 API 回傳格式的錯誤。後端採用統一的 `{ status, data, error }` 格式，配對碼需從 `result['data']['pairing_code']` 取得。
-# 走路餵蛙蛙已完成
+- **[Security]** CORS 限制、JWT 認證、密碼安全
+- **[Performance]** N+1 查詢優化、API 分頁
+- **[DevOps]** GitHub Actions CI
+
+---
+
+📝 *最後更新：2026/04/01*

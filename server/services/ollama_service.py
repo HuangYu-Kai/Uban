@@ -6,7 +6,7 @@ from datetime import datetime
 from skills import ALL_SKILLS
 
 class OllamaService:
-    def __init__(self, model_name="qwen2.5:14b"):
+    def __init__(self, model_name="qwen2.5:1.5b"):
         self.model_name = model_name
         # 快取工具的 OpenAI-like Schemas
         self._tool_schemas = self._generate_tool_schemas(ALL_SKILLS)

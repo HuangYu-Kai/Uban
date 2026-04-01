@@ -22,7 +22,7 @@ def main():
         with mock.patch('models.ElderProfile') as mock_profile:
             mock_profile.query.filter_by.return_value.first.return_value = MockProfile()
             
-            # 初始化服務 (預設會使用 qwen2.5:14b)
+            # 初始化服務 (預設會使用 qwen2.5:1.5b)
             service = OllamaService()
             
             # 模擬歷史紀錄
@@ -80,7 +80,7 @@ def main():
 
     except Exception as e:
         print(f"啟動失敗: {e}")
-        print("\n請確認是否已下載模型: ollama pull qwen2.5:14b")
+        print("\n請確認是否已下載模型: ollama pull qwen2.5:1.5b")
 
 if __name__ == "__main__":
     main()
