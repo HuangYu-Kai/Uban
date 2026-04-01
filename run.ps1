@@ -55,6 +55,7 @@ param(
 
 # --- 配置區 ---
 $DEFAULT_SERVER_URL = "localhost-0.tail5abf5e.ts.net"
+$DEFAULT_OLLAMA_URL = "boyo-t.tail531c8a.ts.net"
 $root = $PSScriptRoot
 $mobileAppDir = "$root\mobile_app"
 
@@ -75,6 +76,26 @@ function Test-Backend {
         }
     } catch {}
     Write-Warning "無法連線至 https://$serverUrl"
+    return $false
+}
+
+function Test-Ollama {
+    param($ollamaUrl)
+    Write-Host "[*] 檢查遠端 Ollama 連線... " -NoNewline
+    try {
+        $response = Invoke-WebRequest -Uri "https://$ollamaUrl/api/tags" -TimeoutSec 5 -UseBasicParsing -ErrorAction SilentlyContinue
+        if ($response.Content -like "*models*") {
+            Write-Success "Ollama 在線 (https://$ollamaUrl)"
+            # 顯示可用模型
+            $json = $response.Content | ConvertFrom-Json
+            if ($json.models) {
+                $modelNames = ($json.models | Select-Object -First 3 | ForEach-Object { $_.name }) -join ", "
+                Write-Host "    可用模型: $modelNames"
+            }
+            return $true
+        }
+    } catch {}
+    Write-Warning "無法連線至 Ollama (https://$ollamaUrl)"
     return $false
 }
 
@@ -211,7 +232,12 @@ function Start-QuickLaunch {
     Write-Host ""
     
     # 1. 檢查後端
-    if (-not (Test-Backend $serverUrl)) {
+    $backendOk = Test-Backend $serverUrl
+    
+    # 2. 檢查 Ollama
+    $ollamaOk = Test-Ollama $DEFAULT_OLLAMA_URL
+    
+    if (-not $backendOk -or -not $ollamaOk) {
         $continue = Read-Host "    是否繼續？[y/N]"
         if ($continue -ne "y" -and $continue -ne "Y") { exit }
     }
@@ -386,6 +412,9 @@ function Start-HealthCheck {
         Write-Host "    2. Tailscale Funnel 未啟用 (執行: tailscale funnel 8000)"
         Write-Host "    3. 網路問題"
     }
+    
+    Write-Host ""
+    Test-Ollama $DEFAULT_OLLAMA_URL | Out-Null
 }
 
 function Start-Cleanup {
@@ -430,6 +459,7 @@ function Show-Menu {
     Write-Host "  [q] 退出"
     Write-Host ""
     Write-Host "  當前後端: https://$DEFAULT_SERVER_URL" -ForegroundColor Cyan
+    Write-Host "  當前 Ollama: https://$DEFAULT_OLLAMA_URL" -ForegroundColor Cyan
     Write-Host ""
     
     $choice = Read-Host "請選擇 [1-5/q]"

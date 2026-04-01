@@ -53,6 +53,7 @@ set -e  # 遇到錯誤立即停止
 
 # --- 配置區 ---
 DEFAULT_SERVER_URL="localhost-0.tail5abf5e.ts.net"
+DEFAULT_OLLAMA_URL="boyo-t.tail531c8a.ts.net"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 MOBILE_APP_DIR="$SCRIPT_DIR/mobile_app"
 
@@ -88,6 +89,26 @@ check_backend() {
         return 0
     else
         print_warning "無法連線至 https://$serverURL"
+        return 1
+    fi
+}
+
+check_ollama() {
+    local ollamaURL="$1"
+    echo -n "[*] 檢查遠端 Ollama 連線... "
+    local status
+    status=$(curl -s -k --connect-timeout 5 "https://$ollamaURL/api/tags" 2>/dev/null || echo "")
+    if echo "$status" | grep -q "models"; then
+        print_success "Ollama 在線 (https://$ollamaURL)"
+        # 顯示可用模型
+        local models
+        models=$(echo "$status" | grep -o '"name":"[^"]*"' | head -3 | sed 's/"name":"//g' | sed 's/"//g' | tr '\n' ', ' | sed 's/,$//')
+        if [ -n "$models" ]; then
+            echo "    可用模型: $models"
+        fi
+        return 0
+    else
+        print_warning "無法連線至 Ollama (https://$ollamaURL)"
         return 1
     fi
 }
@@ -204,7 +225,20 @@ do_quick_start() {
     echo ""
     
     # 1. 檢查後端
+    local backend_ok=true
+    local ollama_ok=true
+    
     if ! check_backend "$serverURL"; then
+        backend_ok=false
+    fi
+    
+    # 2. 檢查 Ollama
+    if ! check_ollama "$DEFAULT_OLLAMA_URL"; then
+        ollama_ok=false
+    fi
+    
+    # 如果有任一服務無法連線，詢問是否繼續
+    if [ "$backend_ok" = false ] || [ "$ollama_ok" = false ]; then
         echo ""
         read -p "    是否繼續？[y/N]: " continue_choice
         if [ "$continue_choice" != "y" ] && [ "$continue_choice" != "Y" ]; then
@@ -418,6 +452,9 @@ do_health_check() {
         echo "    2. Tailscale Funnel 未啟用 (執行: tailscale funnel 8000)"
         echo "    3. 網路問題"
     fi
+    
+    echo ""
+    check_ollama "$DEFAULT_OLLAMA_URL"
 }
 
 # 清理進程
@@ -464,6 +501,7 @@ main() {
     echo "  [q] 退出"
     echo ""
     echo -e "${BLUE}  當前後端: https://$DEFAULT_SERVER_URL${NC}"
+    echo -e "${BLUE}  當前 Ollama: https://$DEFAULT_OLLAMA_URL${NC}"
     echo ""
     
     read -p "請選擇 [1-6/q]: " choice
