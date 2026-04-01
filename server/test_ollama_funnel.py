@@ -15,7 +15,7 @@ import argparse
 parser = argparse.ArgumentParser(description='測試 Ollama Function Calling')
 parser.add_argument('--local', action='store_true', help='使用 localhost:11434')
 parser.add_argument('--host', type=str, help='自訂 Ollama 地址')
-parser.add_argument('--model', type=str, default='qwen2.5:14b', help='模型名稱 (預設: qwen2.5:14b)')
+parser.add_argument('--model', type=str, default='qwen2.5:1.5b', help='模型名稱 (預設: qwen2.5:1.5b)')
 args = parser.parse_args()
 
 # 設定 Ollama 地址
