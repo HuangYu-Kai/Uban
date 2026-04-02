@@ -32,12 +32,33 @@ try {
 final result = await ApiService.requestPairingCode();
 if (!mounted) return;
 
+// 檢查 API 是否回傳錯誤
+if (result['status'] == 'error') {
+  setState(() => _isLoading = false);
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(content: Text('API 錯誤：${result['message'] ?? result['error'] ?? '未知錯誤'}')),
+  );
+  return;
+}
+
+// 從 API Response 的 data 欄位取得配對碼
+final data = result['data'] as Map<String, dynamic>?;
+
 setState(() {
-_pairingCode = result['pairing_code'];
-_secondsLeft = result['expires_in_seconds'] ?? 600;
+_pairingCode = data?['pairing_code'];
+_secondsLeft = data?['expires_in_seconds'] ?? 600;
 _isLoading = false;
 });
-_startStatusPolling();
+
+if (_pairingCode != null) {
+  _startStatusPolling();
+} else {
+  // 顯示更詳細的錯誤資訊
+  final errorDetail = result.toString();
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(content: Text('無法取得配對碼：$errorDetail')),
+  );
+}
 } catch (e) {
 if (!mounted) return;
 setState(() => _isLoading = false);
@@ -52,8 +73,12 @@ _statusTimer?.cancel();
 _statusTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
 if (_pairingCode == null) return;
 try {
-final status = await ApiService.checkPairingStatus(_pairingCode!);
+final result = await ApiService.checkPairingStatus(_pairingCode!);
 if (!mounted) return;
+
+// 從 API Response 的 data 欄位取得配對狀態
+final status = result['data'] as Map<String, dynamic>?;
+if (status == null) return;
 
 if (status['status'] == 'paired') {
 timer.cancel();

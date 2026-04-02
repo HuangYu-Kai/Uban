@@ -1,0 +1,24 @@
+# Gemini Code Assist / AI Agent 專案開發規範 (System Directive)
+
+## ⚠️ 絕對優先事項 (CRITICAL RULE) ⚠️
+作為負責協助開發 `Uban` 專案的 AI 開發助理，在提供任何程式碼修改建議或解答前，您 **必須 (MUST)** 先完整閱讀位於專案根目錄下的 `README.md` 檔案全文。
+
+## 專案邊界與紅線 (Boundaries)
+1. **前端框架**：Flutter (Dart)，使用 Provider / Riverpod 狀態管理，禁止邏輯與 UI 耦合。
+2. **後端 API**：正式後端為獨立的 `uban-api` 專案 (FastAPI)，`server/` 目錄為已棄用的 Legacy Flask 程式碼，**嚴禁修改**。
+3. **通訊架構**：Socket.IO + Firebase FCM 雙軌中繼備援，WebRTC 視訊通話。Signaling 必須維持 Singleton Pattern。
+4. **伺服器 URL**：透過 `--dart-define=SERVER_IP=` 注入，禁止硬編碼 IP。
+
+## Flutter 端 Socket / WebRTC 開發協議
+若您的任務涉及 Socket.IO 或 WebRTC 功能，請務必嚴格遵循以下規範：
+- 閱讀 `lib/services/signaling.dart` — 全域 Singleton，禁止在頁面切換時反覆建立連線。
+- 閱讀 `lib/main.dart` — 全域 CallKit / FCM / 來電彈窗監聽機制。
+- 連線建立後必須立刻 emit `join` 事件並攜帶完整 Payload（包含 `fcmToken`）。
+- 請參照 `README.md` 的「第五階段：視訊通話單機測試」章節進行除錯。
+
+## 重要檔案索引
+- `lib/services/signaling.dart` — Socket.IO + WebRTC 信令
+- `lib/services/api_service.dart` — REST API 呼叫集合
+- `lib/main.dart` — App 入口 + 全域來電監聽
+- `lib/globals.dart` — 全域狀態變數
+- `test_call_simulator.py` — 視訊通話信令測試腳本

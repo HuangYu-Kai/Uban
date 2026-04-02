@@ -1,4 +1,4 @@
-rootProject.name = "uniflow_mobile_android"
+rootProject.name = "uban_mobile_android"
 
 pluginManagement {
     val flutterSdkPath =

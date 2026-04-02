@@ -53,28 +53,38 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
       text: widget.elderData['age']?.toString() ?? '',
     );
 
-    String location = widget.elderData['location'] ?? '';
+    String location = widget.elderData['location']?.toString() ?? '';
     String initialCity = '';
     String initialDistrict = '';
 
+    // 安全解析位置字串
     if (location.isNotEmpty) {
-      int cityIndex = location.indexOf('市');
-      int countyIndex = location.indexOf('縣');
-      int splitIndex = -1;
+      try {
+        int cityIndex = location.indexOf('市');
+        int countyIndex = location.indexOf('縣');
+        int splitIndex = -1;
 
-      if (cityIndex != -1 && countyIndex != -1) {
-        splitIndex = cityIndex < countyIndex ? cityIndex : countyIndex;
-      } else if (cityIndex != -1) {
-        splitIndex = cityIndex;
-      } else if (countyIndex != -1) {
-        splitIndex = countyIndex;
-      }
+        if (cityIndex != -1 && countyIndex != -1) {
+          splitIndex = cityIndex < countyIndex ? cityIndex : countyIndex;
+        } else if (cityIndex != -1) {
+          splitIndex = cityIndex;
+        } else if (countyIndex != -1) {
+          splitIndex = countyIndex;
+        }
 
-      if (splitIndex != -1 && splitIndex + 1 < location.length) {
-        initialCity = location.substring(0, splitIndex + 1);
-        initialDistrict = location.substring(splitIndex + 1);
-      } else {
-        initialCity = location;
+        if (splitIndex != -1 && splitIndex + 1 < location.length) {
+          initialCity = location.substring(0, splitIndex + 1);
+          initialDistrict = location.substring(splitIndex + 1);
+        } else if (splitIndex != -1) {
+          initialCity = location.substring(0, splitIndex + 1);
+        } else {
+          // 無法解析，直接使用整個字串作為城市
+          initialCity = location;
+        }
+      } catch (e) {
+        // 解析失敗，保持空值
+        initialCity = '';
+        initialDistrict = '';
       }
     }
 

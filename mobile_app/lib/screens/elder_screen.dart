@@ -247,6 +247,28 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       }
       return false; 
     };
+
+    // ★ Natural Heartbeat listener
+    _signaling.onHeartbeatMessage = (message) async {
+      debugPrint("💓 [ElderScreen] Heartbeat: $message");
+      if (mounted && !_isInCall) {
+        setState(() {
+          _status = "AI 傳來了關心...";
+        });
+        FlutterTts flutterTts = FlutterTts();
+        await flutterTts.setLanguage("zh-TW");
+        await flutterTts.setVolume(1.0);
+        await flutterTts.speak(message);
+
+        Future.delayed(const Duration(seconds: 10), () {
+          if (mounted && !_isInCall && _status == "AI 傳來了關心...") {
+            setState(() {
+              _status = "等待連線...";
+            });
+          }
+        });
+      }
+    };
   }
 
   // 主動呼叫 (先響鈴)
@@ -438,6 +460,29 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
                     ],
                   ),
                 ),
+
+              // 5. 測試/登出按鈕 (右下角)
+              Positioned(
+                bottom: 20,
+                right: 20,
+                child: FloatingActionButton(
+                  mini: true,
+                  backgroundColor: Colors.white24,
+                  elevation: 0,
+                  child: const Icon(Icons.logout, color: Colors.white),
+                  onPressed: () async {
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.clear();
+                    if (context.mounted) {
+                      Navigator.pushAndRemoveUntil(
+                        context,
+                        MaterialPageRoute(builder: (context) => const RoleSelectionScreen()),
+                        (route) => false,
+                      );
+                    }
+                  },
+                ),
+              ),
             ],
           );
         },

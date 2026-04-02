@@ -31,65 +31,72 @@ def request_code():
 @pairing_bp.route('/confirm', methods=['POST'])
 def confirm_pairing():
     """家屬端 (手機) 輸入代碼進行配對並初始化長輩帳號與檔案"""
-    data = request.json
-    family_id = data.get('family_id')
-    code = data.get('code')
-    elder_name = data.get('elder_name')
-    gender = data.get('gender', 'M')
-    age = data.get('age', 70)
+    try:
+        data = request.json
+        family_id = data.get('family_id')
+        code = data.get('code')
+        elder_name = data.get('elder_name')
+        gender = data.get('gender', 'M')
+        age = data.get('age', 70)
 
-    if not all([family_id, code, elder_name]):
-        return jsonify({'error': 'Missing required fields'}), 400
+        if not all([family_id, code, elder_name]):
+            return jsonify({'error': 'Missing required fields'}), 400
 
-    pairing = PairingCode.query.filter_by(code=code, is_used=False).first()
-    if not pairing or pairing.expires_at < datetime.utcnow():
-        return jsonify({'error': 'Invalid or expired code'}), 404
+        pairing = PairingCode.query.filter_by(code=code, is_used=False).first()
+        if not pairing or pairing.expires_at < datetime.utcnow():
+            return jsonify({'error': 'Invalid or expired code'}), 404
 
-    # 1. 自動建立長輩帳號
-    # 基於新 ERD：UserAccountData 包含名稱
-    elder_email = f"elder_{generate_random_code(4)}@uban.com"
-    new_account = UserAccountData(
-        user_name=elder_name,
-        user_email=elder_email,
-        password=generate_password_hash("password123"),
-        register_platform='Local'
-    )
-    db.session.add(new_account)
-    db.session.flush()
+        # 1. 自動建立長輩帳號
+        # 基於新 ERD：UserAccountData 包含名稱
+        elder_email = f"elder_{generate_random_code(4)}@uban.com"
+        new_account = UserAccountData(
+            user_name=elder_name,
+            user_email=elder_email,
+            password=generate_password_hash("password123"),
+            register_platform='Local'
+        )
+        db.session.add(new_account)
+        db.session.flush()
 
-    # 2. 初始化長輩專屬檔案 (ElderProfile)
-    # 基於新 ERD：DB 為 varchar(4)，這裡改用隨機 4 碼
-    elder_id_short = generate_random_code(4)
-    new_profile = ElderProfile(
-        elder_id=elder_id_short,
-        user_id=new_account.user_id,
-        elder_name=elder_name,
-        gender=gender,
-        age=age,
-        ai_emotion_tone=50,
-        ai_text_verbosity=50
-    )
-    db.session.add(new_profile)
+        # 2. 初始化長輩專屬檔案 (ElderProfile)
+        # 基於新 ERD：DB 為 varchar(4)，這裡改用隨機 4 碼
+        elder_id_short = generate_random_code(4)
+        new_profile = ElderProfile(
+            elder_id=elder_id_short,
+            user_id=new_account.user_id,
+            elder_name=elder_name,
+            gender=gender,
+            age=age,
+            ai_emotion_tone=50,
+            ai_text_verbosity=50
+        )
+        db.session.add(new_profile)
 
-    # 3. 建立綁定關係
-    # 基於新 ERD：FamilyElderRelationship 使用 elder_id (VARCHAR(4))
-    new_rel = FamilyElderRelationship(
-        elder_id=elder_id_short,
-        family_id=family_id
-    )
-    db.session.add(new_rel)
+        # 3. 建立綁定關係
+        # 基於新 ERD：FamilyElderRelationship 使用 elder_id (VARCHAR(4))
+        new_rel = FamilyElderRelationship(
+            elder_id=elder_id_short,
+            family_id=family_id
+        )
+        db.session.add(new_rel)
 
-    # 4. 更新代碼狀態
-    pairing.is_used = True
-    pairing.creator_id = family_id
-    
-    db.session.commit()
+        # 4. 更新代碼狀態
+        pairing.is_used = True
+        pairing.creator_id = family_id
+        
+        db.session.commit()
 
-    return jsonify({
-        'message': 'Successfully paired and elder profile initialized!',
-        'elder_id': new_account.user_id,
-        'elder_profile_id': elder_id_short
-    })
+        return jsonify({
+            'message': 'Successfully paired and elder profile initialized!',
+            'elder_id': new_account.user_id,
+            'elder_profile_id': elder_id_short
+        })
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
 
 @pairing_bp.route('/check_status/<code>', methods=['GET'])
 def check_status(code):

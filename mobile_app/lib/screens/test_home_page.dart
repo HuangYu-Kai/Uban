@@ -12,8 +12,9 @@ class TestHomePage extends StatefulWidget {
 
 class _TestHomePageState extends State<TestHomePage> {
   final GameService _gameService = GameService();
-  final TextEditingController _idController = TextEditingController(text: 'AAAA');
-  String _status = '等待操作...';
+  final TextEditingController _idController =
+      TextEditingController(text: 'AAAA');
+  final String _status = '等待操作...';
   Map<String, dynamic>? _elderStatus;
 
   Future<void> _fetchElderStatus() async {
@@ -45,7 +46,8 @@ class _TestHomePageState extends State<TestHomePage> {
             ElevatedButton.icon(
               onPressed: () {
                 Navigator.of(context).push(
-                  MaterialPageRoute(builder: (context) => const AdminAppearanceScreen()),
+                  MaterialPageRoute(
+                      builder: (context) => const AdminAppearanceScreen()),
                 );
               },
               icon: const Icon(Icons.admin_panel_settings),
@@ -54,7 +56,8 @@ class _TestHomePageState extends State<TestHomePage> {
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 backgroundColor: Colors.indigo,
                 foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
               ),
             ),
             const SizedBox(height: 24),
@@ -81,7 +84,8 @@ class _TestHomePageState extends State<TestHomePage> {
               onPressed: () {
                 Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (context) => LeaderboardScreen(elderId: _idController.text),
+                    builder: (context) =>
+                        LeaderboardScreen(elderId: _idController.text),
                   ),
                 );
               },
@@ -91,7 +95,8 @@ class _TestHomePageState extends State<TestHomePage> {
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 backgroundColor: Colors.orange.shade700,
                 foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
               ),
             ),
             const SizedBox(height: 40),
@@ -103,7 +108,9 @@ class _TestHomePageState extends State<TestHomePage> {
   }
 
   Widget _buildSectionTitle(String title) {
-    return Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueGrey));
+    return Text(title,
+        style: const TextStyle(
+            fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueGrey));
   }
 
   Widget _buildElderStatusCard() {
@@ -115,7 +122,9 @@ class _TestHomePageState extends State<TestHomePage> {
         child: Column(
           children: [
             ListTile(
-              leading: const CircleAvatar(backgroundColor: Colors.teal, child: Icon(Icons.person, color: Colors.white)),
+              leading: const CircleAvatar(
+                  backgroundColor: Colors.teal,
+                  child: Icon(Icons.person, color: Colors.white)),
               title: Text('長輩: ${_elderStatus!['elder_name']}'),
               subtitle: Text('ID: ${_idController.text}'),
             ),
@@ -138,7 +147,9 @@ class _TestHomePageState extends State<TestHomePage> {
       children: [
         Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
         const SizedBox(height: 4),
-        Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.teal)),
+        Text(value,
+            style: const TextStyle(
+                fontSize: 20, fontWeight: FontWeight.bold, color: Colors.teal)),
       ],
     );
   }
@@ -147,10 +158,11 @@ class _TestHomePageState extends State<TestHomePage> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.05),
+        color: Colors.black.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Text('系統狀態: $_status', style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic)),
+      child: Text('系統狀態: $_status',
+          style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic)),
     );
   }
 }

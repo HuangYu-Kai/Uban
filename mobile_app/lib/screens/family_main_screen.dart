@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'dart:ui';
 import 'family_dashboard_view.dart';
-import 'family_scripts_view.dart';
+import 'family_agent_view.dart';
 import 'family/family_settings_view.dart';
 
 class FamilyMainScreen extends StatefulWidget {
@@ -28,7 +28,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> {
     super.initState();
     _views = [
       FamilyDashboardView(userId: widget.userId, userName: widget.userName),
-      const FamilyScriptsView(),
+      FamilyAgentView(userId: widget.userId),
       FamilySettingsView(userId: widget.userId, userName: widget.userName),
     ];
   }
@@ -74,7 +74,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
                     _buildNavItem(0, Icons.dashboard_rounded, '儀表板'),
-                    _buildNavItem(1, Icons.bolt_rounded, '劇本'),
+                    _buildNavItem(1, Icons.smart_toy_rounded, 'Agent'),
                     _buildNavItem(2, Icons.settings_rounded, '設定'),
                   ],
                 ),
