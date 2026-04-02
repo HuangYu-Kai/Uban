@@ -1,6 +1,33 @@
-# 造型分配與排行榜系統架構 (Feed Gawa Intro)
+# 走路養小豬 — 造型分配與排行榜系統架構 (Feed Gawa Intro)
 
-這份文件標示了「造型分配、專屬排行榜與收集系統」中，所有相關的使用者端 (Flutter App) 與管理者端 (Flask Server) 程式碼位置與負責功能。
+這份文件標示了「走路養小豬」遊戲化模組中，造型分配、計步排行榜與收集系統的所有相關程式碼位置、等級機制與負責功能。
+
+> 📝 *文件最後更新時間：2026/04/02*
+
+---
+
+## 0. 等級與步數門檻對照表
+
+小豬的成長等級由長輩的累積步數 (`step_total`) 決定，前後端邏輯一致（見 `leaderboard_screen.dart` 的 `getLevelFromSteps()` 與 `game_logic.py` 的 `get_level()`）。
+
+| 等級 (Level) | 累積步數門檻 (≤) | 小豬縮放比例 | 說明 |
+|:---:|---:|:---:|------|
+| Lv.1 | 1,000 步 | 1.0x | 🐣 剛孵化的小豬 |
+| Lv.2 | 20,000 步 | 1.2x | 🐷 初來乍到 |
+| Lv.3 | 50,000 步 | 1.4x | 🐷 穩步成長 |
+| Lv.4 | 150,000 步 | 1.6x | 🐷 活力充沛 |
+| Lv.5 | 300,000 步 | 1.8x | 🐷 健步如飛 |
+| Lv.6 | 700,000 步 | 2.0x | 💪 體能達人 |
+| Lv.7 | 1,000,000 步 | 2.2x | 🏆 傳奇行者 |
+| Lv.8 | > 1,000,000 步 | 2.4x | 👑 步行之王 |
+
+> **縮放公式**：`scale = 0.8 + (level × 0.2)`，Lv.1 為 1.0 倍，每升一級增大 0.2 倍至 Lv.8 的 2.4 倍。
+
+### 相關程式碼位置
+- **前端**：[`leaderboard_screen.dart`](file:///e:/114Project/UniFlow/mobile_app/lib/screens/leaderboard_screen.dart) — `getLevelFromSteps()` (L243)、`getLevelSteps()` (L254)、`getLevelScale()` (L267)
+- **後端**：[`game_logic.py`](file:///e:/114Project/UniFlow/server/routes/game_logic.py) — `get_level()` (L28)
+
+---
 
 ## 1. 系統架構與相關檔案總覽
 
@@ -20,61 +47,57 @@
   - **`APScheduler` 排程器**: 每分鐘自動檢查 `schedule_config.json`，若時間到達，則呼叫 `do_distribute_appearances()` 進行全服發放。
 
 ### 使用者端 / 長輩端 (User / Elder side)
-使用者主要查看自己與好友的排行榜排名，以及目前擁有的造型進度與加成。
+使用者主要查看自己的小豬成長、好友排行榜排名，以及目前擁有的造型進度與加成。
 
-- **[前端 UI] `mobile_app/lib/screens/leaderboard_screen.dart` (已升級為專屬儀表板)**
-  - **功能**: 長輩排行榜與收集品介面。
-    1. **我的收集進度區塊**: 呼叫 API 顯示已擁有的不同造型，並計算並顯示總加成倍率 (`bonus`)。
-    2. **好友排行榜**: 顯示包含自己在內的前10名好友排名。若使用者不在前10名，自動將使用者的數據置於清單最下方，方便檢視自身與前段班的差距。顯示長輩真實名稱 (`elder_name`)。
+- **[前端 UI] `mobile_app/lib/screens/leaderboard_screen.dart`**
+  - **功能**: 走路養小豬儀表板與排行榜介面。
+    1. **小豬成長區塊**: 顯示當前等級、小豬圖片（依等級縮放）、成長進度條、行走狀態（行走中/靜止）。
+    2. **計步系統（已實作）**: 整合硬體 `pedometer` 計步感測器，即時追蹤步數，支援：
+       - 硬體基準值 (`_hardwareBaseSteps`) 差值計算，避免重複計數
+       - 本地未同步步數緩衝 (`_unsyncedSteps`)，以 `SharedPreferences` 持久化
+       - 每 50 步或每 1 分鐘自動批量上傳後端 (`_flushSteps`)
+       - 3 秒內無新步數自動判定為靜止，觸發排行榜刷新
+       - 雙向同步（Bi-directional sync）：本地與伺服器取較大值，確保步數不倒退
+    3. **好友排行榜**: 依 `step_total` 降序排列前 10 名好友，顯示長輩名稱與等級。若使用者不在前 10 名，自動附加於清單末尾。
 - **[後端 API] `server/routes/game_logic.py`**
   - **`get_leaderboard`**: 處理「前10名 + 自己」的排名邏輯。
+  - **`update_steps`**: 接收 `elder_id` 與 `delta_steps`，增量累加至 `step_total`。
   - **`get_elder_collection`**: 回傳長輩在歷史紀錄中持有的所有不重複外觀與對應加成。
 
 ### 核心共用元件 (Shared Core Components)
-- **`mobile_app/lib/services/game_service.dart`**: 前端與後端溝通的橋樑，包含所有發送 HTTP Request 的方法。
+- **`mobile_app/lib/services/game_service.dart`**: 前端與後端溝通的橋樑，包含所有發送 HTTP Request 的方法（`getLeaderboard`、`getElderStatus`、`updateSteps` 等）。
 - **`server/models.py`**: 資料庫定義
-  - `GawaAppearance` (造型基本資料，包含新增的 `bonus` 欄位)
+  - `GawaAppearance` (造型基本資料，包含 `bonus` 欄位)
   - `ElderProfile` (長輩當前狀態，包含 `step_total`, `gawa_id`, `feed_starttime`)
-  - `GetAppearanceList` (歷史分配紀錄網，也是判斷「該長輩永久擁有過哪些造型」的依據)
+  - `GetAppearanceList` (歷史分配紀錄，判斷「該長輩永久擁有過哪些造型」的依據)
 
 ---
 
-## 2. 關於「透過實體走路偵測來累積步數」的實作方法
+## 2. 計步器技術實作說明
 
-**這件事絕對有辦法做到！** 在 Flutter 開發中，若希望透過手機內建感測器或是系統級別的健康資料來計算「實體步數」，主要有以下兩種主流方法：
+### 目前採用方案：硬體計步感測器 (`pedometer` 套件) ✅ 已完成
 
-### 方法一：直接讀取硬體計步感測器 (推薦: `pedometer` 套件)
-這是最輕量且即時的方法。現代智慧型手機都內建硬體計步感測器 (Hardware Step Counter Senssor)。
+利用手機內建硬體計步感測器，接收即時步數串流，零延遲反映於 UI。
+
 - **Flutter 套件**: [`pedometer`](https://pub.dev/packages/pedometer)
-- **運作原理**: 程式會在背景監聽硬體感測器的 `StepCount` 事件串流 (Stream)。這能直接取得從手機開機至今的總步數，透過自己記錄每日初始步數相減，即可算出當日累積步數。
-- **設定要求**: 
-  - Android 需要在 `AndroidManifest.xml` 中加入 `ACTIVITY_RECOGNITION` 權限。
-  - iOS 需要在 `Info.plist` 中加入 `NSMotionUsageDescription`。
-- **實作概念**:
-  ```dart
-  import 'package:pedometer/pedometer.dart';
-
-  late Stream<StepCount> _stepCountStream;
-
-  void initPedometer() {
-    _stepCountStream = Pedometer.stepCountStream;
-    _stepCountStream.listen(
-      (StepCount event) {
-        print("目前總步數: ${event.steps}");
-        // 將步數更新到伺服器 (elder_profile.step_total)
-      },
-      onError: (error) => print("計步器錯誤: $error"),
-    );
-  }
+- **運作原理**: 監聽 `Pedometer.stepCountStream`，取得自手機開機起的硬體累計步數，與上次記錄值求差值得出新增步數。
+- **權限需求**:
+  - Android: `ACTIVITY_RECOGNITION` (AndroidManifest.xml)
+  - iOS: `NSMotionUsageDescription` (Info.plist)
+- **同步策略**:
+  ```
+  [硬體感測器] → 差值計算 → _unsyncedSteps (本地緩衝)
+       ↓                              ↓
+  即時更新 UI                每50步 / 每1分鐘 → POST /elder/update_steps → DB
+       ↓                                                    ↓
+  停止行走 (3秒判定) → 強制 flush + 重新 fetch 排行榜 (雙向取 max)
   ```
 
-### 方法二：讀取系統健康資料庫 (較為全面: `health` 套件)
-如果希望資料來源更具公信力 (例如能同步 Apple Watch 或其他智慧手環的步數)，則需向作業系統的健康中心索取資料。
-- **Flutter 套件**: [`health`](https://pub.dev/packages/health)
-- **運作原理**: 直接向 Apple Health (iOS) 或 Google Fit / Health Connect (Android) 發出授權請求，讀取特定日期範圍內的步數(`Steps`)。
-- **優缺點**: 
-  - 優點：步數最精準、能跨裝置同步(如手環)。
-  - 缺點：設定極為繁瑣，需要向 Google / Apple 申請特別權限與驗證，且資料更新可能有幾分鐘的延遲。
+### 備選方案：系統健康資料庫 (`health` 套件) 📋 規劃中
 
-**結論與建議**：
-若只是為了配合這個專案的造型機制與排行榜，強烈建議先採用 **方法一 (`pedometer`)**。設定簡單、即時回饋感強，能快速將實體步行與遊戲化 (Gamification) 特性結合，讓長輩更有動力持續運動。
+若需更高精度或跨穿戴裝置同步（Apple Watch、智慧手環），可改用 OS 健康中心 API。
+
+- **Flutter 套件**: [`health`](https://pub.dev/packages/health)
+- **資料來源**: Apple Health (iOS) / Health Connect (Android)
+- **優點**: 步數最精準、能跨裝置同步
+- **缺點**: 設定繁瑣（需向 Google/Apple 申請權限），資料更新有數分鐘延遲
