@@ -33,12 +33,12 @@ class _AdminAppearanceScreenState extends State<AdminAppearanceScreen> {
       firstDate: DateTime.now(),
       lastDate: DateTime(2030),
     );
-    if (pickedDate != null) {
+    if (pickedDate != null && mounted) {
       final TimeOfDay? pickedTime = await showTimePicker(
         context: context,
         initialTime: TimeOfDay.now(),
       );
-      if (pickedTime != null) {
+      if (pickedTime != null && mounted) {
         setState(() {
           _selectedDate = pickedDate;
           _selectedTime = pickedTime;
