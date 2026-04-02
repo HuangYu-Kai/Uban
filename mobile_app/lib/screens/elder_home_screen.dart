@@ -57,7 +57,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
     await _flutterTts.speak(message);
 
     // 2. 如果目前不在聊天頁，顯示提示
-    if (_selectedIndex != 1) {
+    if (_selectedIndex != 1 && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('小優：$message', style: const TextStyle(fontSize: 18)),

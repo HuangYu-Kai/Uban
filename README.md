@@ -211,7 +211,56 @@ python3 -m venv /tmp/uban_test_venv
 
 ---
 
+## 遊戲化系統 (Feed Gawa)
+
+### 造型分配與排行榜架構
+
+#### 管理者端
+- **UI**: `mobile_app/lib/screens/admin_appearance_screen.dart`
+  - 排程設定：下次全服隨機派發時間
+  - 單獨分配：指定 `elder_id` 與 `gawa_id` 強制覆寫
+  - 長輩查詢：累積步數、造型清單、加成比例
+
+- **API**: `server/routes/game_logic.py`
+  - `set_distribution_time`: 寫入 `schedule_config.json`
+  - `assign_appearance`: 手動指派（備份→重置步數→寫入新造型）
+  - `get_admin_elder_info`: 統整長輩資料
+
+#### 使用者端
+- **UI**: `mobile_app/lib/screens/leaderboard_screen.dart`
+  - 收集進度：顯示已擁有造型與總加成倍率
+  - 好友排行榜：前 10 名 + 自己排名
+
+#### 步數偵測實作建議
+
+**推薦方案：`pedometer` 套件**（輕量、即時）
+```dart
+import 'package:pedometer/pedometer.dart';
+
+late Stream<StepCount> _stepCountStream;
+
+void initPedometer() {
+  _stepCountStream = Pedometer.stepCountStream;
+  _stepCountStream.listen(
+    (StepCount event) {
+      print("目前總步數: ${event.steps}");
+      // 更新到伺服器 elder_profile.step_total
+    },
+    onError: (error) => print("計步器錯誤: $error"),
+  );
+}
+```
+
+**權限設定**：
+- Android: `AndroidManifest.xml` 加入 `ACTIVITY_RECOGNITION`
+- iOS: `Info.plist` 加入 `NSMotionUsageDescription`
+
+---
+
 ## 更新日誌
+
+### 2026-04-02
+- **[Docs]** 文檔整合：合併 CLAUDE.md、feedgawa_intro.md
 
 ### 2026-04-01
 - **[AI] Ollama 整合**：新增 `qwen2.5:1.5b` 模型支援
@@ -219,7 +268,6 @@ python3 -m venv /tmp/uban_test_venv
 - **[AI] Heartbeat 機制**：每 20 分鐘主動關懷
 - **[AI] 新增技能**：`save_elder_memory`、`search_web`、`get_music_recommendations`
 - **[DevOps] run.sh/run.ps1**：新增 Ollama 連線檢測
-- **[Docs] 文檔整合**：合併 features_list.md 至 README.md
 
 ### 2026-03-31
 - **[Security]** CORS 限制、JWT 認證、密碼安全
@@ -228,4 +276,15 @@ python3 -m venv /tmp/uban_test_venv
 
 ---
 
-📝 *最後更新：2026/04/01*
+## AI 助手指引
+
+> 開發本專案前，請確保 AI 已閱讀此 README.md：
+> 
+> 1. **架構**：Flutter + FastAPI (`uban-api` 獨立 Repo)
+> 2. **Legacy**：`server/` 目錄為舊 Flask AI 代碼，勿修改
+> 3. **Socket.IO**：必須使用 Singleton Pattern (`lib/services/signaling.dart`)
+> 4. **Server URL**：透過 `--dart-define=SERVER_IP=` 注入，禁止寫死
+
+---
+
+📝 *最後更新：2026/04/02*

@@ -330,10 +330,10 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.95),
+        color: Colors.white.withValues(alpha: 0.95),
         borderRadius: BorderRadius.circular(28),
         boxShadow: [
-          BoxShadow(color: Colors.pinkAccent.withOpacity(0.15), blurRadius: 25, offset: const Offset(0, 10))
+          BoxShadow(color: Colors.pinkAccent.withValues(alpha: 0.15), blurRadius: 25, offset: const Offset(0, 10))
         ],
       ),
       child: Column(
@@ -476,7 +476,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         border: isMe ? Border.all(color: Colors.pinkAccent.shade200, width: 2) : Border.all(color: Colors.transparent, width: 2),
         boxShadow: [
           BoxShadow(
-            color: isMe ? Colors.pink.withOpacity(0.2) : Colors.black.withOpacity(0.04), 
+            color: isMe ? Colors.pink.withValues(alpha: 0.2) : Colors.black.withValues(alpha: 0.04), 
             blurRadius: 15, 
             offset: const Offset(0, 5)
           )
@@ -518,7 +518,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
       decoration: BoxDecoration(
         color: color, 
         shape: BoxShape.circle,
-        boxShadow: rank <= 3 ? [BoxShadow(color: color.withOpacity(0.4), blurRadius: 8, offset: const Offset(0, 3))] : null,
+        boxShadow: rank <= 3 ? [BoxShadow(color: color.withValues(alpha: 0.4), blurRadius: 8, offset: const Offset(0, 3))] : null,
       ),
       child: Center(child: Text('$rank', style: TextStyle(color: iconColor, fontWeight: FontWeight.bold, fontSize: 18))),
     );
