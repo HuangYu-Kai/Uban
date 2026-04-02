@@ -258,6 +258,9 @@ class ApiService {
     String? chronicDiseases,
     String? medicationNotes,
     String? interests,
+    String? aiPersona,
+    String? lifeStory,
+    int? heartbeatFrequency,
   }) async {
     try {
       final response = await http.post(
@@ -272,8 +275,37 @@ class ApiService {
           if (chronicDiseases != null) 'chronic_diseases': chronicDiseases,
           if (medicationNotes != null) 'medication_notes': medicationNotes,
           if (interests != null) 'interests': interests,
+          if (aiPersona != null) 'ai_persona': aiPersona,
+          if (lifeStory != null) 'life_story': lifeStory,
+          if (heartbeatFrequency != null) 'heartbeat_frequency': heartbeatFrequency,
         }),
       ).timeout(_timeout);
+      return _safeDecode(response);
+    } on TimeoutException {
+      return {'status': 'error', 'message': '連線逾時，請檢查網路'};
+    } catch (e) {
+      return {'status': 'error', 'message': '網路連線失敗: $e'};
+    }
+  }
+
+  static Future<List<dynamic>> getPersonaTemplates() async {
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/ai/persona_templates')).timeout(_timeout);
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        if (decoded['status'] == 'success') {
+          return decoded['data'] as List<dynamic>;
+        }
+      }
+      return [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  static Future<Map<String, dynamic>> getElderAgentProfile(int elderId) async {
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/user/elder/$elderId')).timeout(_timeout);
       return _safeDecode(response);
     } on TimeoutException {
       return {'status': 'error', 'message': '連線逾時，請檢查網路'};
