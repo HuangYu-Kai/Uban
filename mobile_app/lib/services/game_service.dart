@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import '../globals.dart';
 
 class GameService {
   // 動態讀取 .env 中的 IP
@@ -110,13 +109,15 @@ class GameService {
     }
   }
 
-  Future<Map<String, dynamic>> setSteps(String elderId, int totalSteps) async {
+  /// 設置長輩步數（使用 save_steps 端點，累加方式）
+  /// 注意：後端 /save_steps 是累加步數，不是設置總步數
+  Future<Map<String, dynamic>> setSteps(String elderId, int deltaSteps) async {
     final response = await http.post(
-      Uri.parse('$baseUrl/elder/set_steps'),
+      Uri.parse('$baseUrl/save_steps'),
       headers: {'Content-Type': 'application/json'},
       body: json.encode({
         'elder_id': elderId,
-        'total_steps': totalSteps,
+        'steps': deltaSteps,
       }),
     );
     if (response.statusCode == 200) {

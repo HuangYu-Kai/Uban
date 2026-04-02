@@ -48,7 +48,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       id: message.data['callId'] ??
           'call_${DateTime.now().millisecondsSinceEpoch}',
       nameCaller: callerName,
-      appName: 'UniFlow',
+      appName: 'Uban',
       avatar: 'assets/user_avatar.png',
       handle: '緊急呼叫',
       type: 0,
@@ -360,15 +360,17 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       // before bringing up the VideoCallScreen from CallKit.
       navigatorKey.currentState?.popUntil((route) => route.isFirst);
 
-      navigatorKey.currentState?.push(
-        MaterialPageRoute(
-          builder: (context) => VideoCallScreen(
-            roomId: roomId,
-            targetSocketId: senderId,
-            isIncomingCall: true,
+      Future.microtask(() {
+        navigatorKey.currentState?.push(
+          MaterialPageRoute(
+            builder: (context) => VideoCallScreen(
+              roomId: roomId,
+              targetSocketId: senderId,
+              isIncomingCall: true,
+            ),
           ),
-        ),
-      );
+        );
+      });
     } else {
       // App is cold booting or navigator not ready. Save it for Dashboard/Elder screen to pick up.
       pendingAcceptedCall.value = {'roomId': roomId, 'senderId': senderId};

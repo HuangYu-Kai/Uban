@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:youtube_player_flutter/youtube_player_flutter.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:http/http.dart' as http;
@@ -13,6 +14,8 @@ import 'package:flutter_webrtc/flutter_webrtc.dart' show Helper, AndroidAudioCon
 import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../../services/api_service.dart';
+import '../../services/signaling.dart';
+import '../../widgets/youtube_bubble_player.dart';
 
 class ElderChatTab extends StatefulWidget {
   final int userId;
@@ -25,10 +28,10 @@ class ElderChatTab extends StatefulWidget {
   });
 
   @override
-  State<ElderChatTab> createState() => _ElderChatTabState();
+  State<ElderChatTab> createState() => ElderChatTabState();
 }
 
-class _ElderChatTabState extends State<ElderChatTab>
+class ElderChatTabState extends State<ElderChatTab>
     with TickerProviderStateMixin {
   // --- STT ---
   final SpeechToText _speechToText = SpeechToText();
@@ -78,6 +81,16 @@ class _ElderChatTabState extends State<ElderChatTab>
     _initTts();
     _initWaveAnimations();
     _initMicPulseAnimation();
+  }
+
+  // 公開方法：供外部（如 HomeScreen）推波主動訊息進來
+  void addAIMessage(String message) {
+    if (mounted) {
+      setState(() {
+        _messages.add({"role": "ai", "text": message});
+      });
+      _scrollToBottom();
+    }
   }
 
   void _initMicPulseAnimation() {
@@ -611,6 +624,26 @@ class _ElderChatTabState extends State<ElderChatTab>
   }
 
   Widget _buildAIBubble(String text) {
+    // --- [智慧型多層次偵測] ---
+    
+    // 1. 偵測隱藏標籤 [VIDEO_ID:xxxxxx]
+    final tagMatch = RegExp(r'\[VIDEO_ID:([^\]]+)\]').firstMatch(text);
+    
+    // 2. 偵測純網址或 Markdown 連結中的 YouTube ID
+    final urlRegex = RegExp(r'https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/v\/)([\w-]{11})');
+    final urlMatch = urlRegex.firstMatch(text);
+
+    String? videoId;
+    String displayLine = text;
+
+    if (tagMatch != null) {
+      videoId = tagMatch.group(1);
+      displayLine = displayLine.replaceAll(tagMatch.group(0)!, '').trim();
+    } else if (urlMatch != null) {
+      videoId = urlMatch.group(1);
+      // 如果是網址匹配，我們保留文字，但在下方多顯示一個播放器
+    }
+
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
@@ -655,7 +688,7 @@ class _ElderChatTabState extends State<ElderChatTab>
             ),
             const SizedBox(height: 10),
             MarkdownBody(
-              data: text,
+              data: displayLine,
               builders: {'img': CustomImageBuilder()},
               styleSheet: MarkdownStyleSheet(
                 p: GoogleFonts.notoSansTc(
@@ -666,6 +699,8 @@ class _ElderChatTabState extends State<ElderChatTab>
                 ),
               ),
             ),
+            // 如果有影片，顯示播放器
+            if (videoId != null) YoutubeBubblePlayer(videoId: videoId),
           ],
         ),
       ),
@@ -1059,7 +1094,16 @@ class CustomImageBuilder extends MarkdownElementBuilder {
     final alt = element.attributes['alt'] ?? '';
     if (url.isEmpty) return const SizedBox.shrink();
 
-    // 如果 alt 或副檔名符合影片格式，則渲染影片 (利用 Markdown 圖片連結偽裝影片指令)
+    // --- [Smart Detection] ---
+    // 如果這是一個 YouTube 連結 (即使被 AI 誤標記為圖片)
+    if (url.contains('youtube.com') || url.contains('youtu.be')) {
+      final videoId = YoutubePlayer.convertUrlToId(url);
+      if (videoId != null) {
+        return YoutubeBubblePlayer(videoId: videoId);
+      }
+    }
+
+    // 如果 alt 或副檔名符合影片格式，則渲染一般影片
     if (alt == '影片' || url.toLowerCase().endsWith('.mp4')) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 8.0),
@@ -1078,11 +1122,8 @@ class CustomImageBuilder extends MarkdownElementBuilder {
           url,
           fit: BoxFit.cover,
           errorBuilder: (context, error, stackTrace) {
-            return Container(
-              padding: const EdgeInsets.all(16),
-              color: Colors.grey[200],
-              child: const Text("圖片載入失敗", style: TextStyle(color: Colors.red)),
-            );
+            // 避免因為 AI hallucination 導致出現紅色的報錯框
+            return const SizedBox.shrink(); 
           },
         ),
       ),
