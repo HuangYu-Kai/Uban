@@ -247,6 +247,28 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       }
       return false; 
     };
+
+    // ★ Natural Heartbeat listener
+    _signaling.onHeartbeatMessage = (message) async {
+      debugPrint("💓 [ElderScreen] Heartbeat: $message");
+      if (mounted && !_isInCall) {
+        setState(() {
+          _status = "AI 傳來了關心...";
+        });
+        FlutterTts flutterTts = FlutterTts();
+        await flutterTts.setLanguage("zh-TW");
+        await flutterTts.setVolume(1.0);
+        await flutterTts.speak(message);
+
+        Future.delayed(const Duration(seconds: 10), () {
+          if (mounted && !_isInCall && _status == "AI 傳來了關心...") {
+            setState(() {
+              _status = "等待連線...";
+            });
+          }
+        });
+      }
+    };
   }
 
   // 主動呼叫 (先響鈴)

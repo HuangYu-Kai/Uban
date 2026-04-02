@@ -360,15 +360,17 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       // before bringing up the VideoCallScreen from CallKit.
       navigatorKey.currentState?.popUntil((route) => route.isFirst);
 
-      navigatorKey.currentState?.push(
-        MaterialPageRoute(
-          builder: (context) => VideoCallScreen(
-            roomId: roomId,
-            targetSocketId: senderId,
-            isIncomingCall: true,
+      Future.microtask(() {
+        navigatorKey.currentState?.push(
+          MaterialPageRoute(
+            builder: (context) => VideoCallScreen(
+              roomId: roomId,
+              targetSocketId: senderId,
+              isIncomingCall: true,
+            ),
           ),
-        ),
-      );
+        );
+      });
     } else {
       // App is cold booting or navigator not ready. Save it for Dashboard/Elder screen to pick up.
       pendingAcceptedCall.value = {'roomId': roomId, 'senderId': senderId};
