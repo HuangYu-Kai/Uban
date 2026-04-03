@@ -10,6 +10,7 @@ import 'elder_selection_screen.dart';
 import 'elder_profile_edit_screen.dart';
 import '../services/signaling.dart'; // 新增
 import 'video_call_screen.dart'; // 新增
+import '../widgets/health_dashboard_card.dart'; // 新增：健康儀表板
 
 class FamilyDashboardView extends StatefulWidget {
 final int userId;
@@ -96,7 +97,20 @@ children: [
 _buildHeader(),
 const SizedBox(height: 32),
 
-// 2. High-Contrast Hero Actions
+// 2. Health Dashboard Card (新增)
+        HealthDashboardCard(
+          elderName: _elderName,
+          healthData: {
+            'heart_rate': 72,
+            'steps': 4250,
+            'calories': 320,
+            'sleep_quality': 82,
+          },
+          onRefresh: () async => await _loadSelectedElder(),
+        ),
+        const SizedBox(height: 32),
+        
+        // 3. High-Contrast Hero Actions
 _buildHeroActions(context),
 const SizedBox(height: 32),
 
@@ -765,3 +779,5 @@ fontWeight: FontWeight.w500,
 }
 
 }
+
+
