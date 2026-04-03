@@ -73,9 +73,9 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
-                    _buildNavItem(0, Icons.dashboard_rounded, '儀表板'),
-                    _buildNavItem(1, Icons.smart_toy_rounded, 'Agent'),
-                    _buildNavItem(2, Icons.settings_rounded, '設定'),
+                    _buildNavItem(0, Icons.dashboard_rounded, '儀表'),
+                    _buildNavItem(1, Icons.smart_toy_rounded, '對話'),
+                    _buildNavItem(2, Icons.settings_rounded, '設置'),
                   ],
                 ),
               ),
