@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // 添加觸覺反饋
 import 'package:google_fonts/google_fonts.dart';
 import 'dart:ui';
 import 'family_dashboard_view.dart';
-import 'family_agent_view.dart';
+import 'redesigned_family_agent_view.dart';
 import 'family/family_settings_view.dart';
 
 class FamilyMainScreen extends StatefulWidget {
@@ -28,12 +29,13 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> {
     super.initState();
     _views = [
       FamilyDashboardView(userId: widget.userId, userName: widget.userName),
-      FamilyAgentView(userId: widget.userId),
+      RedesignedFamilyAgentView(userId: widget.userId),
       FamilySettingsView(userId: widget.userId, userName: widget.userName),
     ];
   }
 
   void _onItemTapped(int index) {
+    HapticFeedback.lightImpact(); // 添加觸覺反饋
     setState(() {
       _selectedIndex = index;
     });
@@ -73,9 +75,9 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
-                    _buildNavItem(0, Icons.dashboard_rounded, '儀表板'),
-                    _buildNavItem(1, Icons.smart_toy_rounded, 'Agent'),
-                    _buildNavItem(2, Icons.settings_rounded, '設定'),
+                    _buildNavItem(0, Icons.dashboard_rounded, '儀表'),
+                    _buildNavItem(1, Icons.smart_toy_rounded, '對話'),
+                    _buildNavItem(2, Icons.settings_rounded, '設置'),
                   ],
                 ),
               ),
@@ -95,20 +97,29 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> {
     return GestureDetector(
       onTap: () => _onItemTapped(index),
       behavior: HitTestBehavior.opaque,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: color, size: 28),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: GoogleFonts.notoSansTc(
-              color: color,
-              fontSize: 12,
-              fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AnimatedScale(
+              scale: isSelected ? 1.1 : 1.0,
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
+              child: Icon(icon, color: color, size: 28),
             ),
-          ),
-        ],
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: GoogleFonts.notoSansTc(
+                color: color,
+                fontSize: 12,
+                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
