@@ -4,8 +4,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../services/api_service.dart';
 
-/// 🎨 重新設計的 Agent 配置界面 - 高端简约风格
-/// 靈感来自 Figma、Discord、Notion 的現代設計
+/// 🎨 重新設計的 Agent 配置界面 - 高端簡約風格
+/// 靈感來自 Figma、Discord、Notion 的現代設計
 class RedesignedFamilyAgentView extends StatefulWidget {
   final int userId;
   const RedesignedFamilyAgentView({super.key, required this.userId});
@@ -38,7 +38,7 @@ class _RedesignedFamilyAgentViewState extends State<RedesignedFamilyAgentView> {
   double _emotionTone = 50;
   double _textVerbosity = 50;
   int _heartbeatFrequency = 0;
-  String _selectedPersona = 'gentle'; // AI 人格选择
+  String _selectedPersona = 'gentle'; // AI 人格選擇
 
   // AI 人格配置 - 高端設計配置
   final Map<String, Map<String, dynamic>> aiPersonas = {
@@ -222,7 +222,7 @@ class _RedesignedFamilyAgentViewState extends State<RedesignedFamilyAgentView> {
                 _buildElderSelector(),
                 const SizedBox(height: 32),
 
-                // AI Persona Selection - 現代卡片风格
+                // AI Persona Selection - 現代卡片風格
                 _buildPersonaSelector(),
                 const SizedBox(height: 32),
 
@@ -233,16 +233,16 @@ class _RedesignedFamilyAgentViewState extends State<RedesignedFamilyAgentView> {
                   color: const Color(0xFF3B82F6),
                   children: [
                     _buildTextField('姓名', _nameController),
-                    _buildNumberField('年龄', _ageController),
+                    _buildNumberField('年齡', _ageController),
                     _buildGenderSelector(),
-                    _buildTextField('称呼', _appellationController),
+                    _buildTextField('稱呼', _appellationController),
                   ],
                 ),
                 const SizedBox(height: 24),
 
                 // Location Card
                 _buildSectionCard(
-                  title: '居住地区',
+                  title: '居住地區',
                   icon: Icons.location_on,
                   color: const Color(0xFF10B981),
                   children: [
@@ -253,7 +253,7 @@ class _RedesignedFamilyAgentViewState extends State<RedesignedFamilyAgentView> {
                         ),
                         const SizedBox(width: 12),
                         Expanded(
-                          child: _buildTextField('地区', _districtController),
+                          child: _buildTextField('地區', _districtController),
                         ),
                       ],
                     ),
@@ -360,7 +360,7 @@ class _RedesignedFamilyAgentViewState extends State<RedesignedFamilyAgentView> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          '选择长者',
+          '選擇長者',
           style: GoogleFonts.notoSansTc(
             fontSize: 13,
             fontWeight: FontWeight.w600,
@@ -407,7 +407,7 @@ class _RedesignedFamilyAgentViewState extends State<RedesignedFamilyAgentView> {
                   ),
                   child: Center(
                     child: Text(
-                      elder['user_name'] ?? '长者',
+                      elder['user_name'] ?? '長者',
                       style: GoogleFonts.notoSansTc(
                         fontSize: 13,
                         fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
@@ -747,6 +747,20 @@ class _RedesignedFamilyAgentViewState extends State<RedesignedFamilyAgentView> {
     double value,
     ValueChanged<double> onChanged,
   ) {
+    // 實時預覽文本生成
+    String _getPreviewText(String label, double value) {
+      if (label.contains('情感溫度')) {
+        if (value < 30) return '「早安，請記得吃藥。」（簡潔專業）';
+        if (value < 70) return '「早安呀！記得吃藥哦~」（溫暖友善）';
+        return '「寶貝早安！一定要記得吃藥，我會擔心的！💝」（熱情親密）';
+      } else if (label.contains('詞語詳細度')) {
+        if (value < 30) return '「好的」（簡短）';
+        if (value < 70) return '「好的，我明白了」（適中）';
+        return '「好的，我完全明白您的意思了，這真是個很棒的想法！」（詳細）';
+      }
+      return '';
+    }
+    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -796,6 +810,46 @@ class _RedesignedFamilyAgentViewState extends State<RedesignedFamilyAgentView> {
             inactiveColor: const Color(0xFFE5E7EB),
           ),
         ),
+        // 🎯 實時預覽（新增）
+        const SizedBox(height: 8),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF667EEA).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Icon(
+                  Icons.preview_rounded,
+                  color: Color(0xFF667EEA),
+                  size: 14,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  _getPreviewText(label, value),
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 12,
+                    color: const Color(0xFF475569),
+                    height: 1.4,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ).animate(key: ValueKey('$label-$value'))
+          .fadeIn(duration: 200.ms)
+          .slideY(begin: -0.2, end: 0, duration: 200.ms),
       ],
     );
   }
@@ -855,7 +909,7 @@ class _RedesignedFamilyAgentViewState extends State<RedesignedFamilyAgentView> {
           ),
           const SizedBox(height: 20),
           Text(
-            '暂无长者',
+            '暫無長者',
             style: GoogleFonts.notoSansTc(
               fontSize: 18,
               fontWeight: FontWeight.w700,

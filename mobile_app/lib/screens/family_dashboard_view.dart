@@ -1,16 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // 添加觸覺反饋支持
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'family/family_care_journal_view.dart';
-import 'family_ai_chat_screen.dart';
+import 'redesigned_ai_chat_screen.dart';
 import 'family_call_history_screen.dart'; // 新增
 import 'elder_selection_screen.dart';
 import 'elder_profile_edit_screen.dart';
 import '../services/signaling.dart'; // 新增
 import 'video_call_screen.dart'; // 新增
 import '../widgets/health_dashboard_card.dart'; // 新增：健康儀表板
+import '../services/health_anomaly_detector.dart'; // 新增：異常檢測
+import '../widgets/health_anomaly_alert_card.dart'; // 新增：異常警告卡片
 
 class FamilyDashboardView extends StatefulWidget {
 final int userId;
@@ -27,17 +30,56 @@ State<FamilyDashboardView> createState() => _FamilyDashboardViewState();
 }
 
 class _FamilyDashboardViewState extends State<FamilyDashboardView> {
-String _elderName = '長輩';
-  int? _elderId; // 新增
-  String? _elderSocketId; // 新增：用來通話的目標 ID
-  final Signaling _signaling = Signaling(); // 新增
+  String? _elderName; // 改為可空，預設 null
+  int? _elderId;
+  String? _elderSocketId;
+  final Signaling _signaling = Signaling();
+  
+  // 異常檢測相關
+  HealthAnomalyResult? _lastAnomalyResult;
+  bool _showAnomalyAlert = true;
 
-@override
-void initState() {
-super.initState();
-_loadSelectedElder();
-    _initSignaling(); // 新增
-}
+  @override
+  void initState() {
+    super.initState();
+    _loadSelectedElder();
+    _initSignaling();
+    _analyzeHealthAnomaly();
+  }
+
+  /// 異常檢測分析
+  Future<void> _analyzeHealthAnomaly() async {
+    // 模擬當前健康數據
+    final currentData = {
+      'heart_rate': 72,
+      'steps': 4250,
+      'calories': 320,
+      'sleep_quality': 82.0,
+    };
+
+    // 模擬歷史數據（最近7天）
+    final historicalData = [
+      {'heart_rate': 70, 'steps': 8500, 'calories': 2100, 'sleep_quality': 85.0},
+      {'heart_rate': 75, 'steps': 7200, 'calories': 1950, 'sleep_quality': 78.0},
+      {'heart_rate': 68, 'steps': 9100, 'calories': 2200, 'sleep_quality': 82.0},
+      {'heart_rate': 72, 'steps': 500, 'calories': 800, 'sleep_quality': 45.0}, // 異常日期
+      {'heart_rate': 71, 'steps': 8800, 'calories': 2050, 'sleep_quality': 80.0},
+      {'heart_rate': 69, 'steps': 7500, 'calories': 1900, 'sleep_quality': 83.0},
+      {'heart_rate': 73, 'steps': 8900, 'calories': 2150, 'sleep_quality': 84.0},
+    ];
+
+    // 執行異常檢測
+    final result = await HealthAnomalyDetector.analyzeHealthData(
+      currentData,
+      historicalData,
+    );
+
+    if (mounted) {
+      setState(() {
+        _lastAnomalyResult = result;
+      });
+    }
+  }
 
   void _initSignaling() {
     // 監聽長輩裝置更新，找出在線的 Socket ID
@@ -58,16 +100,16 @@ _loadSelectedElder();
   }
 
 Future<void> _loadSelectedElder() async {
-final prefs = await SharedPreferences.getInstance();
-setState(() {
-_elderName = prefs.getString('selected_elder_name') ?? '長輩';
-      _elderId = prefs.getInt('selected_elder_id'); // 讀取 ID
-});
+  final prefs = await SharedPreferences.getInstance();
+  setState(() {
+    _elderName = prefs.getString('selected_elder_name'); // 移除預設值
+    _elderId = prefs.getInt('selected_elder_id');
+  });
 
-    // 讀到 ID 後立刻加入 Signaling 房間監聽
-    if (_elderId != null) {
-      _signaling.connect(_elderId.toString(), 'family', deviceName: '${widget.userName}的儀表板');
-    }
+  // 讀到 ID 後立刻加入 Signaling 房間監聽
+  if (_elderId != null) {
+    _signaling.connect(_elderId.toString(), 'family', deviceName: '${widget.userName}的儀表板');
+  }
 }
 
   @override
@@ -79,67 +121,50 @@ _elderName = prefs.getString('selected_elder_name') ?? '長輩';
 
 @override
 Widget build(BuildContext context) {
-return Scaffold(
-backgroundColor: const Color(0xFFF8FAFC), // Arctic Slate
-body: RefreshIndicator(
-onRefresh: () async => await _loadSelectedElder(),
-color: const Color(0xFF2563EB),
-backgroundColor: Colors.white,
-child: SafeArea(
-bottom: false,
-child: SingleChildScrollView(
-physics: const AlwaysScrollableScrollPhysics(),
-padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-child: Column(
-crossAxisAlignment: CrossAxisAlignment.start,
-children: [
-// 1. Sleek Header
-_buildHeader(),
-const SizedBox(height: 32),
+  // 如果沒有選擇長輩，顯示引導頁面
+  if (_elderName == null || _elderId == null) {
+    return _buildNoElderSelectedView(context);
+  }
 
-// 2. Health Dashboard Card (新增)
-        HealthDashboardCard(
-          elderName: _elderName,
-          healthData: {
-            'heart_rate': 72,
-            'steps': 4250,
-            'calories': 320,
-            'sleep_quality': 82,
-          },
-          onRefresh: () async => await _loadSelectedElder(),
+  return Scaffold(
+    backgroundColor: const Color(0xFFF8FAFC),
+    body: RefreshIndicator(
+      onRefresh: () async => await _loadSelectedElder(),
+      color: const Color(0xFF2563EB),
+      backgroundColor: Colors.white,
+      child: SafeArea(
+        bottom: false,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 1. 簡潔頭部
+              _buildHeader(),
+              const SizedBox(height: 24),
+              
+              // 2. 快速操作卡片（重新設計）
+              _buildQuickActionsCard(context),
+              const SizedBox(height: 20),
+              
+              // 3. AI 每日總結
+              _buildStatusReport(context),
+              const SizedBox(height: 20),
+              
+              // 4. 健康數據概覽（重新設計）
+              _buildHealthOverview(),
+              const SizedBox(height: 20),
+              
+              // 5. 活動趨勢
+              _buildActivityInsight(context),
+              const SizedBox(height: 140),
+            ],
+          ),
         ),
-        const SizedBox(height: 32),
-        
-        // 3. High-Contrast Hero Actions
-_buildHeroActions(context),
-const SizedBox(height: 32),
-
-// 3. Status Report (AI Card)
-_buildStatusReport(context),
-const SizedBox(height: 32),
-
-// 4. Activity Insight
-_buildActivityInsight(context),
-const SizedBox(height: 32),
-
-// 5. Interaction Log (Timeline)
-Text(
-'動態日誌',
-style: GoogleFonts.notoSansTc(
-fontSize: 20,
-fontWeight: FontWeight.w800,
-color: const Color(0xFF0F172A),
-),
-),
-const SizedBox(height: 20),
-_buildInteractionLog(),
-const SizedBox(height: 140), // Space for floating bottom dock
-],
-),
-),
-),
-),
-);
+      ),
+    ),
+  );
 }
 
   Widget _buildHeader() {
@@ -156,8 +181,8 @@ const SizedBox(height: 140), // Space for floating bottom dock
                 fontWeight: FontWeight.w800,
                 color: const Color(0xFF0F172A),
               ),
-            ),
-            const SizedBox(height: 4),
+            ).animate().fadeIn(duration: 400.ms).slideX(begin: -0.2, end: 0),
+            const SizedBox(height: 6),
             Row(
               children: [
                 Text(
@@ -169,15 +194,55 @@ const SizedBox(height: 140), // Space for floating bottom dock
                   ),
                 ),
                 Text(
-                  _elderName,
+                  _elderName ?? '未知',
                   style: GoogleFonts.notoSansTc(
                     fontSize: 14,
                     color: const Color(0xFF2563EB),
                     fontWeight: FontWeight.w800,
                   ),
                 ),
+                const SizedBox(width: 8),
+                // 在線狀態指示器（新增）
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: _elderSocketId != null 
+                        ? const Color(0xFF10B981).withValues(alpha: 0.1)
+                        : const Color(0xFF94A3B8).withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 6,
+                        height: 6,
+                        decoration: BoxDecoration(
+                          color: _elderSocketId != null 
+                              ? const Color(0xFF10B981)
+                              : const Color(0xFF94A3B8),
+                          shape: BoxShape.circle,
+                        ),
+                      ).animate(onPlay: (controller) => controller.repeat())
+                        .fade(duration: 1500.ms, begin: 1.0, end: 0.3)
+                        .then()
+                        .fade(duration: 1500.ms, begin: 0.3, end: 1.0),
+                      const SizedBox(width: 6),
+                      Text(
+                        _elderSocketId != null ? '在線' : '離線',
+                        style: GoogleFonts.notoSansTc(
+                          fontSize: 11,
+                          color: _elderSocketId != null 
+                              ? const Color(0xFF10B981)
+                              : const Color(0xFF94A3B8),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ],
-            ),
+            ).animate().fadeIn(delay: 200.ms),
           ],
         ),
         // 右側操作列
@@ -266,218 +331,107 @@ const SizedBox(height: 140), // Space for floating bottom dock
     );
   }
 
-Widget _buildHeroActions(BuildContext context) {
-return Column(
-children: [
-// 監控英雄卡 (Wide Hero)
-_buildHeroCard(
-context,
-title: '即時影像監控',
-subtitle: '查看家中即時情況',
-icon: Icons.emergency_recording_rounded,
-color: const Color(0xFF0F172A), // Slate 900
-onTap: () {
-  if (_elderId == null) {
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("請先選擇長輩")));
-    return;
-  }
-  Navigator.push(
-    context,
-    MaterialPageRoute(
-      builder: (c) => VideoCallScreen(
-        roomId: _elderId.toString(),
-        targetSocketId: _elderSocketId, // 如果為空則廣播，不要給硬編碼字串
-        autoStart: true,
-        isEmergency: true,
+/// 🎯 快速問候消息對話框
+  void _showQuickMessageDialog(BuildContext context) {
+    HapticFeedback.lightImpact();
+    
+    final messages = [
+      {'text': '🌞 早安！今天過得好嗎？', 'icon': '🌞'},
+      {'text': '💝 想你了，有空聊聊嗎？', 'icon': '💝'},
+      {'text': '🍚 記得吃飯哦！', 'icon': '🍚'},
+      {'text': '😊 今天心情如何？', 'icon': '😊'},
+      {'text': '🌙 晚安，好好休息！', 'icon': '🌙'},
+    ];
+    
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEF4444).withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.favorite, color: Color(0xFFEF4444), size: 24),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              '快速問候',
+              style: GoogleFonts.notoSansTc(
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: messages.map((msg) => 
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(16),
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    Navigator.pop(ctx);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('已發送：${msg['text']}'),
+                        backgroundColor: const Color(0xFF10B981),
+                        behavior: SnackBarBehavior.floating,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    );
+                    // TODO: 實際發送消息到長輩端
+                  },
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                    ),
+                    child: Text(
+                      msg['text']!,
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF1E293B),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ).toList(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(
+              '取消',
+              style: GoogleFonts.notoSansTc(
+                color: const Color(0xFF64748B),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
       ),
-    ),
-  );
-},
-),
-const SizedBox(height: 16),
-Row(
-children: [
-Expanded(
-child: _buildActionBtn(
-context,
-                title: '視訊通話',
-                icon: Icons.videocam_rounded,
-                color: const Color(0xFF2563EB), // Primary Blue
-                onTap: () {
-                  if (_elderId == null) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("請先選擇長輩")));
-                    return;
-                  }
-                  if (_elderSocketId == null) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("長輩目前不在線上，正在嘗試呼叫...")));
-                  }
-                  
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (c) => VideoCallScreen(
-                        roomId: _elderId.toString(),
-                        targetSocketId: _elderSocketId,
-                        autoStart: true,
-                      ),
-                    ),
-                  );
-                },
-),
-),
-const SizedBox(width: 12),
-Expanded(
-child: _buildActionBtn(
-context,
-                title: '通訊紀錄',
-                icon: Icons.history_rounded,
-                color: const Color(0xFF10B981), // Emerald Green
-                onTap: () {
-                  if (_elderId == null) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("請先選擇長輩")));
-                    return;
-                  }
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (c) => FamilyCallHistoryScreen(
-                        roomId: _elderId.toString(),
-                        elderName: _elderName,
-                      ),
-                    ),
-                  );
-                },
-),
-),
-const SizedBox(width: 12),
-Expanded(
-child: _buildActionBtn(
-context,
-title: '關照日誌',
-icon: Icons.assignment_rounded,
-color: const Color(0xFF64748B),
-onTap: () => Navigator.push(
-context,
-MaterialPageRoute(
-builder: (c) => const FamilyCareJournalView(),
-),
-),
-),
-),
-],
-),
-],
-);
-}
+    );
+  }
 
-Widget _buildHeroCard(
-BuildContext context, {
-required String title,
-required String subtitle,
-required IconData icon,
-required Color color,
-required VoidCallback onTap,
-}) {
-return GestureDetector(
-onTap: onTap,
-child: Container(
-padding: const EdgeInsets.all(24),
-decoration: BoxDecoration(
-color: color,
-borderRadius: BorderRadius.circular(24),
-boxShadow: [
-BoxShadow(
-color: color.withValues(alpha: 0.3),
-blurRadius: 20,
-offset: const Offset(0, 10),
-),
-],
-),
-child: Row(
-children: [
-Expanded(
-child: Column(
-crossAxisAlignment: CrossAxisAlignment.start,
-children: [
-Text(
-title,
-style: GoogleFonts.notoSansTc(
-color: Colors.white,
-fontSize: 20,
-fontWeight: FontWeight.w800,
-),
-),
-const SizedBox(height: 4),
-Text(
-subtitle,
-style: GoogleFonts.notoSansTc(
-color: Colors.white.withValues(alpha: 0.7),
-fontSize: 14,
-),
-),
-],
-),
-),
-Container(
-padding: const EdgeInsets.all(12),
-decoration: BoxDecoration(
-color: Colors.white.withValues(alpha: 0.1),
-shape: BoxShape.circle,
-),
-child: Icon(icon, color: Colors.white, size: 32),
-),
-],
-),
-),
-).animate().fadeIn(duration: 600.ms).slideX(begin: 0.1, end: 0);
-}
-
-Widget _buildActionBtn(
-BuildContext context, {
-required String title,
-required IconData icon,
-required Color color,
-required VoidCallback onTap,
-}) {
-return GestureDetector(
-onTap: onTap,
-child: Container(
-padding: const EdgeInsets.symmetric(vertical: 20),
-decoration: BoxDecoration(
-color: Colors.white,
-borderRadius: BorderRadius.circular(24),
-border: Border.all(color: const Color(0xFFE2E8F0)),
-boxShadow: [
-BoxShadow(
-color: Colors.black.withValues(alpha: 0.03),
-blurRadius: 10,
-offset: const Offset(0, 4),
-),
-],
-),
-child: Column(
-children: [
-Icon(icon, color: color, size: 32),
-const SizedBox(height: 12),
-Text(
-title,
-style: GoogleFonts.notoSansTc(
-fontSize: 15,
-fontWeight: FontWeight.w700,
-color: const Color(0xFF1E293B),
-),
-),
-],
-),
-),
-).animate().fadeIn(delay: 200.ms).scale(begin: const Offset(0.9, 0.9));
-}
-
-Widget _buildStatusReport(BuildContext context) {
+  Widget _buildStatusReport(BuildContext context) {
 return GestureDetector(
 onTap: () => Navigator.push(
 context,
-MaterialPageRoute(builder: (c) => const FamilyAiChatScreen()),
+MaterialPageRoute(builder: (c) => const RedesignedAiChatScreen()),
 ),
 child: Container(
 padding: const EdgeInsets.all(24),
@@ -777,6 +731,410 @@ fontWeight: FontWeight.w500,
 ),
 );
 }
+
+  /// 沒有選擇長輩時的引導頁面
+  Widget _buildNoElderSelectedView(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // 圖標
+                Container(
+                  width: 120,
+                  height: 120,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2563EB).withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.person_add_rounded,
+                    size: 60,
+                    color: Color(0xFF2563EB),
+                  ),
+                ).animate()
+                  .scale(duration: 600.ms, curve: Curves.easeOut),
+                
+                const SizedBox(height: 32),
+                
+                // 標題
+                Text(
+                  '尚未選擇長輩',
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF0F172A),
+                  ),
+                ).animate().fadeIn(delay: 200.ms),
+                
+                const SizedBox(height: 12),
+                
+                // 描述
+                Text(
+                  '請先選擇或配對一位長輩\n開始您的關懷之旅',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 16,
+                    color: const Color(0xFF64748B),
+                    height: 1.6,
+                  ),
+                ).animate().fadeIn(delay: 400.ms),
+                
+                const SizedBox(height: 48),
+                
+                // 選擇長輩按鈕
+                SizedBox(
+                  width: double.infinity,
+                  height: 56,
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      HapticFeedback.mediumImpact();
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (c) => ElderSelectionScreen(
+                            userId: widget.userId,
+                            userName: widget.userName,
+                          ),
+                        ),
+                      );
+                      _loadSelectedElder();
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF2563EB),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      elevation: 0,
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.person_search_rounded, size: 24),
+                        const SizedBox(width: 12),
+                        Text(
+                          '選擇長輩',
+                          style: GoogleFonts.notoSansTc(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ).animate().fadeIn(delay: 600.ms).slideY(begin: 0.3, end: 0),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 重新設計的快速操作卡片
+  Widget _buildQuickActionsCard(BuildContext context) {
+    final isOnline = _elderSocketId != null;
+    
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: isOnline 
+              ? [const Color(0xFF2563EB), const Color(0xFF3B82F6)]
+              : [const Color(0xFF64748B), const Color(0xFF94A3B8)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: (isOnline ? const Color(0xFF2563EB) : const Color(0xFF64748B))
+                .withValues(alpha: 0.3),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          // 主要呼叫按鈕
+          GestureDetector(
+            onTap: () {
+              HapticFeedback.heavyImpact();
+              if (_elderId == null) return;
+              
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (c) => VideoCallScreen(
+                    roomId: _elderId.toString(),
+                    targetSocketId: _elderSocketId,
+                    autoStart: true,
+                  ),
+                ),
+              );
+            },
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 20),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                children: [
+                  const Icon(
+                    Icons.videocam_rounded,
+                    color: Colors.white,
+                    size: 40,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    isOnline ? '立即視訊通話' : '嘗試呼叫',
+                    style: GoogleFonts.notoSansTc(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    isOnline ? '$_elderName 在線中' : '$_elderName 目前離線',
+                    style: GoogleFonts.notoSansTc(
+                      color: Colors.white.withValues(alpha: 0.85),
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          
+          const SizedBox(height: 16),
+          
+          // 次要操作按鈕
+          Row(
+            children: [
+              Expanded(
+                child: _buildQuickActionButton(
+                  icon: Icons.favorite_rounded,
+                  label: '快速問候',
+                  onTap: () => _showQuickMessageDialog(context),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildQuickActionButton(
+                  icon: Icons.history_rounded,
+                  label: '通話紀錄',
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    if (_elderId == null) return;
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (c) => FamilyCallHistoryScreen(
+                          roomId: _elderId.toString(),
+                          elderName: _elderName!,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    ).animate()
+      .fadeIn(duration: 500.ms)
+      .scale(begin: const Offset(0.95, 0.95), curve: Curves.easeOut);
+  }
+
+  Widget _buildQuickActionButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.2),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, color: Colors.white, size: 24),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              style: GoogleFonts.notoSansTc(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 重新設計的健康數據概覽
+  Widget _buildHealthOverview() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '健康數據',
+          style: GoogleFonts.notoSansTc(
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+            color: const Color(0xFF0F172A),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              child: _buildHealthMetric(
+                icon: Icons.favorite_rounded,
+                label: '心率',
+                value: '72',
+                unit: 'BPM',
+                color: const Color(0xFFEF4444),
+                status: '正常',
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildHealthMetric(
+                icon: Icons.directions_walk_rounded,
+                label: '步數',
+                value: '4250',
+                unit: '步',
+                color: const Color(0xFF10B981),
+                status: '良好',
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _buildHealthMetric(
+                icon: Icons.local_fire_department_rounded,
+                label: '卡路里',
+                value: '320',
+                unit: 'kcal',
+                color: const Color(0xFFF59E0B),
+                status: '正常',
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildHealthMetric(
+                icon: Icons.nightlight_rounded,
+                label: '睡眠',
+                value: '82',
+                unit: '%',
+                color: const Color(0xFF8B5CF6),
+                status: '優良',
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHealthMetric({
+    required IconData icon,
+    required String label,
+    required String value,
+    required String unit,
+    required Color color,
+    required String status,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: color, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: GoogleFonts.notoSansTc(
+                  fontSize: 13,
+                  color: const Color(0xFF64748B),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  status,
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 10,
+                    color: color,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                value,
+                style: GoogleFonts.inter(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFF0F172A),
+                  height: 1,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text(
+                  unit,
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 12,
+                    color: const Color(0xFF94A3B8),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 
 }
 
