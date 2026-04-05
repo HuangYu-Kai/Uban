@@ -5,6 +5,9 @@ import 'dart:ui';
 import 'family_dashboard_view.dart';
 import 'redesigned_family_agent_view.dart';
 import 'family/family_settings_view.dart';
+import 'family_v2/ai_hub_screen.dart';
+import 'family_v2/health_trends_screen.dart';
+import 'family_v2/family_collaboration_screen.dart';
 
 class FamilyMainScreen extends StatefulWidget {
   final int userId;
@@ -28,8 +31,15 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> {
   void initState() {
     super.initState();
     _views = [
-      FamilyDashboardView(userId: widget.userId, userName: widget.userName),
-      RedesignedFamilyAgentView(userId: widget.userId),
+      AiHubScreen(),
+      HealthTrendsScreen(
+        elderName: '李奶奶', // TODO: 從用戶資料載入
+        elderId: 1,
+      ),
+      FamilyCollaborationScreen(
+        elderName: '李奶奶', // TODO: 從用戶資料載入
+        elderId: 1,
+      ),
       FamilySettingsView(userId: widget.userId, userName: widget.userName),
     ];
   }
@@ -75,9 +85,10 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
-                    _buildNavItem(0, Icons.dashboard_rounded, '儀表'),
-                    _buildNavItem(1, Icons.smart_toy_rounded, '對話'),
-                    _buildNavItem(2, Icons.settings_rounded, '設置'),
+                    _buildNavItem(0, Icons.auto_awesome_rounded, '智能中樞'),
+                    _buildNavItem(1, Icons.show_chart_rounded, '健康趨勢'),
+                    _buildNavItem(2, Icons.people_rounded, '家庭協作'),
+                    _buildNavItem(3, Icons.settings_rounded, '設定'),
                   ],
                 ),
               ),
