@@ -63,7 +63,7 @@ class _RedesignedFamilyAgentViewState extends State<RedesignedFamilyAgentView> {
     'grandson': {
       'label': '活力孫兒',
       'emoji': '👦',
-      'description': '年轻、活泼、充满能量的互动',
+      'description': '年輕、活潑、充滿能量的互動',
       'color': Color(0xFF3B82F6),
     },
   };
@@ -161,7 +161,7 @@ class _RedesignedFamilyAgentViewState extends State<RedesignedFamilyAgentView> {
       setState(() => _isSaving = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('✅ 配置已保存'),
+          content: const Text('✅ 配置已儲存'),
           backgroundColor: const Color(0xFF10B981),
           duration: const Duration(seconds: 2),
         ),
@@ -228,7 +228,7 @@ class _RedesignedFamilyAgentViewState extends State<RedesignedFamilyAgentView> {
 
                 // Basic Info Card
                 _buildSectionCard(
-                  title: '基本资料',
+                  title: '基本資料',
                   icon: Icons.person,
                   color: const Color(0xFF3B82F6),
                   children: [
@@ -339,7 +339,7 @@ class _RedesignedFamilyAgentViewState extends State<RedesignedFamilyAgentView> {
           padding: const EdgeInsets.only(right: 16),
           child: Center(
             child: Text(
-              '保存',
+              '儲存',
               style: GoogleFonts.notoSansTc(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
