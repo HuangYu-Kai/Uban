@@ -8,6 +8,8 @@ import '../family_v2/widgets/vital_signs_widget.dart';
 import '../family_v2/alert_center_screen.dart';
 import '../family_v2/health_trends_screen.dart';
 import '../family_v2/family_collaboration_screen.dart';
+import '../family/family_settings_view.dart';
+import '../video_call_screen.dart';
 
 /// 🎯 AI 智能中樞 - 全新子女端首頁
 /// 
@@ -82,13 +84,12 @@ class _AiHubScreenState extends State<AiHubScreen> {
         );
         break;
       case 'video':
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('視訊功能開發中...'),
-            behavior: SnackBarBehavior.floating,
-          ),
+        // 啟動視訊通話
+        destination = VideoCallScreen(
+          roomId: _elderId?.toString() ?? '1',
+          autoStart: true,
         );
-        return;
+        break;
     }
     
     if (destination != null) {
@@ -171,6 +172,31 @@ class _AiHubScreenState extends State<AiHubScreen> {
       pinned: true,
       backgroundColor: Colors.white,
       elevation: 0,
+      actions: [
+        // 設定按鈕
+        Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: IconButton(
+            icon: Icon(
+              Icons.settings_rounded,
+              color: Color(0xFF64748B),
+              size: 26,
+            ),
+            onPressed: () {
+              HapticFeedback.lightImpact();
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => FamilySettingsView(
+                    userId: 0, // TODO: 從context取得真實userId
+                    userName: _elderName ?? '用戶',
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
       flexibleSpace: FlexibleSpaceBar(
         background: Container(
           decoration: BoxDecoration(
