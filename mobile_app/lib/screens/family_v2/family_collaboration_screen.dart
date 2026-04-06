@@ -301,10 +301,7 @@ class _FamilyCollaborationScreenState extends State<FamilyCollaborationScreen> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF1E293B)),
-          onPressed: () => Navigator.pop(context),
-        ),
+        automaticallyImplyLeading: false, // 移除自動返回按鈕
         title: Text(
           '家庭協作中心',
           style: GoogleFonts.notoSansTc(
