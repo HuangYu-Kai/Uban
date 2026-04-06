@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'elder_pairing_display_screen.dart';
 import 'login_screen.dart';
-import 'video_call_screen.dart'; // 引入 VideoCallScreen 以便測試
-import 'elder_screen.dart'; // 引入 ElderScreen 作為長者端測試
+import 'socketio_test_screen.dart'; // ★ 新增：SocketIO 測試頁面
 
 class IdentificationScreen extends StatelessWidget {
   const IdentificationScreen({super.key});
@@ -93,48 +92,22 @@ class IdentificationScreen extends StatelessWidget {
                         letterSpacing: 1.5,
                       )),
                   const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      ElevatedButton.icon(
-                        icon: const Icon(Icons.videocam, color: Colors.white),
-                        label: const Text("測試發話方",
-                            style: TextStyle(color: Colors.white)),
-                        style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF59B294)),
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const VideoCallScreen(
-                                roomId: 'AAAA', // 配對過之家屬ID與長者ID
-                                autoStart: true,
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                      const SizedBox(width: 16),
-                      ElevatedButton.icon(
-                        icon: const Icon(Icons.call_received,
-                            color: Colors.white),
-                        label: const Text("測試接聽方",
-                            style: TextStyle(color: Colors.white)),
-                        style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFFE28A43)),
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => ElderScreen(
-                                roomId: 'AAAA', // 使用資料庫內已配對的 ID
-                                deviceName: '測試平板接收端',
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ],
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.wifi, color: Colors.white),
+                    label: const Text("SocketIO 通話測試",
+                        style: TextStyle(color: Colors.white)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF59B294),
+                      minimumSize: const Size(220, 50),
+                    ),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const SocketIOTestScreen(),
+                        ),
+                      );
+                    },
                   ),
                   const SizedBox(height: 48),
                 ],
