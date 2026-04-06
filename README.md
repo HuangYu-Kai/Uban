@@ -276,6 +276,134 @@ void initPedometer() {
 
 ---
 
+## 功能與資料路徑對照表
+
+### AI 核心功能
+
+| 功能 | 描述 | 資料路徑 |
+|------|------|----------|
+| Ollama AI 引擎 | 主要 AI，使用 qwen2.5 模型 | `uban-api/services/ollama_service.py` |
+| Gemini 備用引擎 | Google Gemini 2.5 Flash | `uban-api/services/gemini_service.py` |
+| AI 工具服務 | Tool Calling 整合 | `uban-api/services/tools_service.py` |
+| Agent 人格系統 | 6 個設定檔定義 AI 性格 | `server/agent/*.md` |
+| Heartbeat 關懷 | 每分鐘檢查主動推播 | `uban-api/main.py` → `heartbeat_job()` |
+
+### AI 技能（12 項）
+
+| 技能 | 功能 | 資料路徑 |
+|------|------|----------|
+| `get_current_time` | 查詢台灣時間 | `server/skills/common_skills.py` |
+| `get_weather_info` | 天氣查詢 | `server/skills/common_skills.py` |
+| `save_elder_memory` | 記錄長輩記憶 | `server/skills/common_skills.py` |
+| `search_youtube_video` | YouTube 搜尋 | `server/skills/common_skills.py` |
+| `search_web` | Google 搜尋 | `server/skills/common_skills.py` |
+| `get_music_recommendations` | 音樂推薦 | `server/skills/common_skills.py` |
+| `get_elder_context` | 讀取長輩背景 | `server/skills/elder_skills.py` |
+| `notify_family_SOS` | 緊急通知家屬 | `server/skills/elder_skills.py` |
+| `suggest_activity` | 推薦日常活動 | `server/skills/elder_skills.py` |
+| `get_family_messages` | 讀取家屬留言 | `server/skills/comm_skills.py` |
+| `initiate_video_call` | 發起視訊通話 | `server/skills/comm_skills.py` |
+| `record_elder_activity` | 記錄活動心情 | `server/skills/health_skills.py` |
+
+### API 路由模組
+
+| 模組 | 端點前綴 | 資料路徑 |
+|------|----------|----------|
+| 認證 | `/api/auth` | `uban-api/routers/auth.py` |
+| 用戶 | `/api/user` | `uban-api/routers/user.py` |
+| 配對 | `/api/pairing` | `uban-api/routers/pairing.py` |
+| AI | `/api/ai` | `uban-api/routers/ai.py` |
+| 關係 | `/api/relationship` | `uban-api/routers/relationship.py` |
+| 活動 | `/api/activity` | `uban-api/routers/activity.py` |
+| 遊戲 | `/api/game` | `uban-api/routers/game.py` |
+
+### 長輩端 App 頁面
+
+| 頁面 | 功能 | 資料路徑 |
+|------|------|----------|
+| AI 聊天 | 語音對話主介面 | `mobile_app/lib/screens/ai_chat_screen.dart` |
+| 重設計聊天 | 新版 UI 聊天介面 | `mobile_app/lib/screens/redesigned_ai_chat_screen.dart` |
+| 長輩首頁 | 主功能選單 | `mobile_app/lib/screens/elder_home_screen.dart` |
+| 長輩 Tabs | 分頁導航 | `mobile_app/lib/screens/elder_tabs/` |
+| 天氣頁面 | 天氣資訊顯示 | `mobile_app/lib/screens/weather_screen.dart` |
+| 廣播電台 | 音樂播放 | `mobile_app/lib/screens/radio_station_screen.dart` |
+| 聯絡人 | 通訊錄 | `mobile_app/lib/screens/contacts_screen.dart` |
+| 視訊通話 | WebRTC 視訊 | `mobile_app/lib/screens/video_call_screen.dart` |
+| 配對顯示 | PIN 碼展示 | `mobile_app/lib/screens/elder_pairing_display_screen.dart` |
+
+### 家屬端 App 頁面
+
+| 頁面 | 功能 | 資料路徑 |
+|------|------|----------|
+| 家屬儀表板 | 主控制台 | `mobile_app/lib/screens/family_dashboard_screen.dart` |
+| 家屬 AI 聊天 | 代理 AI 對話 | `mobile_app/lib/screens/family_ai_chat_screen.dart` |
+| 增強版聊天 | 進階聊天介面 | `mobile_app/lib/screens/enhanced_family_ai_chat_screen.dart` |
+| 陪伴大腦編輯 | 自訂 AI 腳本 | `mobile_app/lib/screens/family_script_editor_screen.dart` |
+| 腳本管理 | 腳本列表 | `mobile_app/lib/screens/family_scripts_view.dart` |
+| 通話紀錄 | 歷史通話 | `mobile_app/lib/screens/family_call_history_screen.dart` |
+| 新手導引 | 配對流程 | `mobile_app/lib/screens/family_onboarding_screen.dart` |
+| 配對頁面 | 輸入 PIN 碼 | `mobile_app/lib/screens/caregiver_pairing_screen.dart` |
+| QR 掃描 | QR Code 配對 | `mobile_app/lib/screens/qr_scanner_screen.dart` |
+| 長輩選擇 | 多長輩切換 | `mobile_app/lib/screens/elder_selection_screen.dart` |
+| 長輩檔案編輯 | 編輯長輩資料 | `mobile_app/lib/screens/elder_profile_edit_screen.dart` |
+| Agent 檢視 | AI 代理狀態 | `mobile_app/lib/screens/family_agent_view.dart` |
+
+### 遊戲化系統 (Feed Gawa)
+
+| 功能 | 描述 | 資料路徑 |
+|------|------|----------|
+| 排行榜 | 好友步數排名 | `mobile_app/lib/screens/leaderboard_screen.dart` |
+| 管理員造型 | 發放/指派造型 | `mobile_app/lib/screens/admin_appearance_screen.dart` |
+| 步數儲存 | 計步數據同步 | `uban-api/routers/game.py` → `save_steps` |
+| 等級計算 | 1-8 級階梯 | `uban-api/routers/game.py` → `get_level()` |
+| 造型 CRUD | 寵物外觀管理 | `uban-api/routers/game.py` → appearance endpoints |
+| 好友系統 | Fellowship 關係 | `uban-api/routers/game.py` → fellowship endpoints |
+| 遊戲服務 | 前端整合 | `mobile_app/lib/services/game_service.dart` |
+
+### 智慧服務層
+
+| 服務 | 功能 | 資料路徑 |
+|------|------|----------|
+| API 服務 | 後端通訊 | `mobile_app/lib/services/api_service.dart` |
+| 認證服務 | 登入/Token | `mobile_app/lib/services/auth_service.dart` |
+| Signaling | Socket.IO + WebRTC | `mobile_app/lib/services/signaling.dart` |
+| AI 建議 | 智慧推薦 | `mobile_app/lib/services/ai_suggestion_service.dart` |
+| 情緒儲存 | 情緒記錄 | `mobile_app/lib/services/emotion_storage_service.dart` |
+| 語音情緒 ML | 語音情感分析 | `mobile_app/lib/services/voice_emotion_ml_service.dart` |
+| 健康異常 | 異常偵測 | `mobile_app/lib/services/health_anomaly_detector.dart` |
+| 預測警報 | 風險預警 | `mobile_app/lib/services/predictive_alert_service.dart` |
+| 健康報告 | 報告生成 | `mobile_app/lib/services/health_report_service.dart` |
+| 智慧通知 | 推播管理 | `mobile_app/lib/services/smart_notification_service.dart` |
+| 家屬同步 | 資料同步 | `mobile_app/lib/services/family_sync_service.dart` |
+| 貢獻服務 | 數據統計 | `mobile_app/lib/services/contribution_service.dart` |
+| 資料匯出 | 匯出功能 | `mobile_app/lib/services/data_export_service.dart` |
+| 任務板 | 任務管理 | `mobile_app/lib/services/task_board_service.dart` |
+| 腳本資料 | AI 腳本 | `mobile_app/lib/services/script_data_service.dart` |
+
+### Agent 人格設定檔
+
+| 檔案 | 用途 | 資料路徑 |
+|------|------|----------|
+| SOUL.md | 語言限制、對話原則、絕對邊界 | `server/agent/SOUL.md` |
+| IDENTITY.md | 角色名稱「小優」、性格形象 | `server/agent/IDENTITY.md` |
+| MEMORY.md | 長期記憶庫 | `server/agent/MEMORY.md` |
+| USER.md | 長輩基本資訊 | `server/agent/USER.md` |
+| HEARTBEAT.md | 主動關懷任務設定 | `server/agent/HEARTBEAT.md` |
+| AGENTS.md | 運作流程、啟動順序 | `server/agent/AGENTS.md` |
+
+### 資料庫 Schema
+
+| 表格 | 用途 | 文檔位置 |
+|------|------|----------|
+| user_account_data | 用戶帳號 | `uban-api/DATABASE.md` |
+| elder_profile | 長輩檔案 | `uban-api/DATABASE.md` |
+| family_elder_relationship | 配對關係 | `uban-api/DATABASE.md` |
+| pairing_code | 配對碼 | `uban-api/DATABASE.md` |
+| activity_log | 活動日誌 | `uban-api/DATABASE.md` |
+| gawa_appearance | 寵物外觀 | `uban-api/DATABASE.md` |
+
+---
+
 ## AI 助手指引
 
 > 開發本專案前，請確保 AI 已閱讀此 README.md：
@@ -287,4 +415,4 @@ void initPedometer() {
 
 ---
 
-📝 *最後更新：2026/04/02*
+📝 *最後更新：2026/04/06*
