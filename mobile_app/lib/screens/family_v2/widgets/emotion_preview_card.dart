@@ -157,11 +157,43 @@ class _EmotionPreviewCardState extends State<EmotionPreviewCard> {
             
             const SizedBox(height: 20),
             
-            // 簡化情緒曲線（水平時間軸）
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: _emotionData.map((data) {
+            // 簡化情緒曲線（水平時間軸）或空狀態
+            if (_emotionData.isEmpty)
+              // 空狀態
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 20),
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.chat_bubble_outline_rounded,
+                      size: 40,
+                      color: const Color(0xFF94A3B8),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      '今日尚未有對話記錄',
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF64748B),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '與長輩聊天後，AI 將分析情緒狀態',
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: 12,
+                        color: const Color(0xFF94A3B8),
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            else
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: _emotionData.map((data) {
                 final score = data['score'] as double;
                 final emotion = data['emotion'] as String;
                 
