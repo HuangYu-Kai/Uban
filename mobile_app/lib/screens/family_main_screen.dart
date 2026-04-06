@@ -33,7 +33,10 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> {
     _initializeElderManager();
     
     _views = [
-      const AiHubScreen(),
+      AiHubScreen(
+        currentUserId: widget.userId,
+        currentUserName: widget.userName,
+      ),
       HealthTrendsScreen(
         elderName: '長輩', // ElderManager 會在 AiHubScreen 載入真實資料
         elderId: null,
