@@ -19,7 +19,14 @@ import '../../models/elder.dart';
 /// 設計理念：AI 是主動的照護夥伴，而非被動的工具
 /// 三大核心：今日智能建議 + 情緒時間軸預覽 + 實時生命徵象
 class AiHubScreen extends StatefulWidget {
-  const AiHubScreen({super.key});
+  final int? currentUserId;
+  final String? currentUserName;
+  
+  const AiHubScreen({
+    super.key,
+    this.currentUserId,
+    this.currentUserName,
+  });
 
   @override
   State<AiHubScreen> createState() => _AiHubScreenState();
@@ -243,8 +250,8 @@ class _AiHubScreenState extends State<AiHubScreen> {
                 context,
                 MaterialPageRoute(
                   builder: (context) => FamilySettingsView(
-                    userId: _currentElder?.id ?? 0,
-                    userName: _currentElder?.displayName ?? '用戶',
+                    userId: widget.currentUserId ?? 0,
+                    userName: widget.currentUserName ?? '用戶',
                   ),
                 ),
               );
