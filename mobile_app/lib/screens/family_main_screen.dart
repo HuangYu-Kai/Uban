@@ -5,6 +5,7 @@ import 'dart:ui';
 import 'family_v2/ai_hub_screen.dart';
 import 'family_v2/health_trends_screen.dart';
 import 'family_v2/family_collaboration_screen.dart';
+import '../services/elder_manager.dart';
 
 class FamilyMainScreen extends StatefulWidget {
   final int userId;
@@ -27,17 +28,26 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> {
   @override
   void initState() {
     super.initState();
+    
+    // 初始化 ElderManager with 真實 userId
+    _initializeElderManager();
+    
     _views = [
-      AiHubScreen(),
+      const AiHubScreen(),
       HealthTrendsScreen(
-        elderName: '李奶奶', // TODO: 從用戶資料載入
-        elderId: 1,
+        elderName: '長輩', // ElderManager 會在 AiHubScreen 載入真實資料
+        elderId: null,
       ),
       FamilyCollaborationScreen(
-        elderName: '李奶奶', // TODO: 從用戶資料載入
-        elderId: 1,
+        elderName: '長輩', // ElderManager 會在 AiHubScreen 載入真實資料
+        elderId: null,
       ),
     ];
+  }
+  
+  Future<void> _initializeElderManager() async {
+    // 使用從登入系統傳入的真實 userId
+    await ElderManager().initialize(userId: widget.userId);
   }
 
   void _onItemTapped(int index) {

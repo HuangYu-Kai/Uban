@@ -6,6 +6,7 @@ import '../../models/family_member.dart';
 import '../../models/care_task.dart';
 import '../../services/contribution_service.dart';
 import '../../services/task_board_service.dart';
+import '../../services/elder_manager.dart';
 
 /// 👨‍👩‍👧‍👦 家庭協作中心
 /// 
@@ -92,6 +93,7 @@ class _OldCareTask {
 }
 
 class _FamilyCollaborationScreenState extends State<FamilyCollaborationScreen> {
+  final ElderManager _elderManager = ElderManager();
   final _contributionService = ContributionService();
   final _taskBoardService = TaskBoardService();
   
@@ -99,6 +101,10 @@ class _FamilyCollaborationScreenState extends State<FamilyCollaborationScreen> {
   List<CareTask> _tasks = [];
   bool _isLoading = true;
   String _currentUserId = 'user1'; // TODO: 從認證服務獲取
+  
+  // 從 ElderManager 取得真實資料
+  String get _displayElderName => _elderManager.currentElder?.displayName ?? widget.elderName;
+  int? get _displayElderId => _elderManager.currentElder?.id ?? widget.elderId;
 
   @override
   void initState() {
