@@ -179,6 +179,38 @@ class _AiSuggestionCardState extends State<AiSuggestionCard> {
                     child: CircularProgressIndicator(color: Colors.white),
                   ),
                 )
+              else if (_suggestions.isEmpty)
+                // 空狀態
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 20),
+                  child: Column(
+                    children: [
+                      Icon(
+                        Icons.wb_sunny_outlined,
+                        size: 48,
+                        color: Colors.white.withOpacity(0.6),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        '今日一切安好',
+                        style: GoogleFonts.notoSansTc(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'AI 分析後沒有發現需要特別關注的事項',
+                        style: GoogleFonts.notoSansTc(
+                          color: Colors.white.withOpacity(0.8),
+                          fontSize: 13,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                )
               else
                 ..._suggestions.asMap().entries.map((entry) {
                   final index = entry.key;

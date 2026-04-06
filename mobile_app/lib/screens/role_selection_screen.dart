@@ -6,6 +6,7 @@ import '../services/api_service.dart';
 import 'family_dashboard_screen.dart';
 import 'elder_screen.dart';
 import 'video_call_screen.dart'; // 引入 VideoCallScreen 以便測試
+import 'socketio_test_screen.dart'; // ★ 新增：SocketIO 測試頁面
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../globals.dart';
@@ -267,34 +268,17 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   ElevatedButton.icon(
-                    icon: const Icon(Icons.videocam),
-                    label: const Text("測試發話方"),
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
+                    icon: const Icon(Icons.wifi),
+                    label: const Text("SocketIO 測試"),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.teal,
+                      minimumSize: const Size(200, 50),
+                    ),
                     onPressed: () {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => const VideoCallScreen(
-                            roomId: 'test_demo_room',
-                            autoStart: true,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                  const SizedBox(width: 10),
-                  ElevatedButton.icon(
-                    icon: const Icon(Icons.call_received),
-                    label: const Text("測試接聽方"),
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo),
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const VideoCallScreen(
-                            roomId: 'test_demo_room',
-                            autoStart: false,
-                          ),
+                          builder: (context) => const SocketIOTestScreen(),
                         ),
                       );
                     },

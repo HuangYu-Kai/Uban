@@ -8,7 +8,7 @@ Uban 視訊通話模擬撥話腳本 (Fake Caller)
 用法：
     python3 test_call_simulator.py [ROOM_ID]
 
-    ROOM_ID = 長輩的 user_id（配對後的數字 ID）
+    ROOM_ID = 長輩的 id（配對後的數字 ID）
     若不指定，預設為互動式輸入。
 
 環境：
@@ -26,7 +26,7 @@ SERVER_URL = "https://localhost-0.tail5abf5e.ts.net"
 # 模擬的撥話者資訊
 CALLER_ROLE = "family"
 CALLER_DEVICE_NAME = "TestCaller_PC"
-CALLER_USER_ID = 9999  # 假的 user_id
+CALLER_USER_ID = 6  # 家屬的 user_id
 # ========================================================
 
 sio = socketio.AsyncClient(
@@ -95,7 +95,16 @@ async def main():
     if len(sys.argv) > 1:
         room_id = sys.argv[1]
     else:
-        room_id = input("請輸入房間 ID (= 長輩的 user_id): ").strip()
+        print("\n" + "="*60)
+        print("  ⚠️  提醒：房間 ID = 長輩的 user_id（不是 elder_id！）")
+        print("  ")
+        print("  📖 查詢方式：")
+        print("     SELECT ep.user_id, ep.elder_id, ep.elder_name")
+        print("     FROM elder_profile ep")
+        print("     JOIN family_elder_relationship fer ON ep.elder_id = fer.elder_id")
+        print("     WHERE fer.family_id = <你的家屬ID>;")
+        print("="*60)
+        room_id = input("\n請輸入房間 ID (= 長輩的 user_id): ").strip()
         if not room_id:
             print("❌ 需要提供房間 ID")
             return
