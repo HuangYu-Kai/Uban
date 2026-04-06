@@ -2,49 +2,113 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import '../family_v2/widgets/ai_suggestion_card.dart';
-import '../family_v2/widgets/emotion_preview_card.dart';
-import '../family_v2/widgets/vital_signs_widget.dart';
-import '../family_v2/alert_center_screen.dart';
-import '../family_v2/health_trends_screen.dart';
-import '../family_v2/family_collaboration_screen.dart';
+import 'widgets/ai_suggestion_card.dart';
+import 'widgets/emotion_preview_card.dart';
+import 'widgets/vital_signs_widget.dart';
+import 'health_trends_screen.dart';
+import 'family_collaboration_screen.dart';
+import 'placeholder_screens.dart';
+import 'alert_center_screen.dart';
+import '../video_call_screen.dart';
+import '../family/family_settings_view.dart';
+import '../../services/elder_manager.dart';
+import '../../models/elder.dart';
 
 /// 🎯 AI 智能中樞 - 全新子女端首頁
 /// 
 /// 設計理念：AI 是主動的照護夥伴，而非被動的工具
 /// 三大核心：今日智能建議 + 情緒時間軸預覽 + 實時生命徵象
 class AiHubScreen extends StatefulWidget {
-  const AiHubScreen({super.key});
+  final int? currentUserId;
+  final String? currentUserName;
+  
+  const AiHubScreen({
+    super.key,
+    this.currentUserId,
+    this.currentUserName,
+  });
 
   @override
   State<AiHubScreen> createState() => _AiHubScreenState();
 }
 
 class _AiHubScreenState extends State<AiHubScreen> {
-  String? _elderName;
-  int? _elderId;
+  final ElderManager _elderManager = ElderManager();
+  Elder? _currentElder;
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    // 優化：延遲載入，讓 UI 先渲染
+    // 延遲載入，讓 UI 先渲染
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadElderInfo();
     });
   }
 
   Future<void> _loadElderInfo() async {
-    // TODO: 從 SharedPreferences 或 API 加載選定的長輩信息
-    // 優化：減少延遲時間
-    await Future.delayed(const Duration(milliseconds: 100));
+    // 從 ElderManager 載入真實的長輩資料
+    // FamilyMainScreen 已在 initState 時初始化過 ElderManager
+    
+    // 如果還沒初始化，嘗試從快取載入
+    if (_elderManager.currentUserId == null) {
+      await _elderManager.initialize();
+    }
+    
     if (mounted) {
       setState(() {
-        _elderName = '李奶奶'; // 模擬數據
-        _elderId = 1;
+        _currentElder = _elderManager.currentElder;
         _isLoading = false;
       });
+      
+      // 如果沒有配對的長輩，顯示提示
+      if (_currentElder == null) {
+        _showNoPairedElderDialog();
+      }
     }
+  }
+  
+  void _showNoPairedElderDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            const Icon(Icons.family_restroom, color: Color(0xFF3B82F6), size: 28),
+            const SizedBox(width: 12),
+            Text(
+              '尚未配對長輩',
+              style: GoogleFonts.notoSansTc(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF1E293B),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          '您還沒有配對的長輩。\n請先完成配對流程，才能使用照護功能。',
+          style: GoogleFonts.notoSansTc(
+            fontSize: 15,
+            color: const Color(0xFF64748B),
+            height: 1.6,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              '我知道了',
+              style: GoogleFonts.notoSansTc(
+                color: const Color(0xFF3B82F6),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _refreshData() async {
@@ -65,30 +129,29 @@ class _AiHubScreenState extends State<AiHubScreen> {
     switch (route) {
       case 'health_trends':
         destination = HealthTrendsScreen(
-          elderName: _elderName ?? '長輩',
-          elderId: _elderId,
+          elderName: _currentElder?.displayName ?? '長輩',
+          elderId: _currentElder?.id,
         );
         break;
       case 'collaboration':
         destination = FamilyCollaborationScreen(
-          elderName: _elderName ?? '長輩',
-          elderId: _elderId,
+          elderName: _currentElder?.displayName ?? '長輩',
+          elderId: _currentElder?.id,
         );
         break;
       case 'alerts':
         destination = AlertCenterScreen(
-          elderName: _elderName ?? '長輩',
-          elderId: _elderId,
+          elderName: _currentElder?.displayName ?? '長輩',
+          elderId: _currentElder?.id,
         );
         break;
       case 'video':
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('視訊功能開發中...'),
-            behavior: SnackBarBehavior.floating,
-          ),
+        // 啟動視訊通話
+        destination = VideoCallScreen(
+          roomId: _currentElder?.id.toString() ?? '1',
+          autoStart: true,
         );
-        return;
+        break;
     }
     
     if (destination != null) {
@@ -121,8 +184,8 @@ class _AiHubScreenState extends State<AiHubScreen> {
                         delegate: SliverChildListDelegate([
                           // ⭐ 今日智能建議卡
                           AiSuggestionCard(
-                            elderName: _elderName ?? '長輩',
-                            elderId: _elderId,
+                            elderName: _currentElder?.displayName ?? '長輩',
+                            elderId: _currentElder?.id,
                           ).animate()
                             .fadeIn(duration: 400.ms)
                             .slideY(begin: 0.1, end: 0),
@@ -131,8 +194,8 @@ class _AiHubScreenState extends State<AiHubScreen> {
                           
                           // 📊 情緒時間軸預覽
                           EmotionPreviewCard(
-                            elderName: _elderName ?? '長輩',
-                            elderId: _elderId,
+                            elderName: _currentElder?.displayName ?? '長輩',
+                            elderId: _currentElder?.id,
                           ).animate()
                             .fadeIn(delay: 100.ms, duration: 400.ms)
                             .slideY(begin: 0.1, end: 0),
@@ -141,8 +204,8 @@ class _AiHubScreenState extends State<AiHubScreen> {
                           
                           // 💓 實時生命徵象
                           VitalSignsWidget(
-                            elderName: _elderName ?? '長輩',
-                            elderId: _elderId,
+                            elderName: _currentElder?.displayName ?? '長輩',
+                            elderId: _currentElder?.id,
                           ).animate()
                             .fadeIn(delay: 200.ms, duration: 400.ms)
                             .slideY(begin: 0.1, end: 0),
@@ -171,6 +234,31 @@ class _AiHubScreenState extends State<AiHubScreen> {
       pinned: true,
       backgroundColor: Colors.white,
       elevation: 0,
+      actions: [
+        // 設定按鈕
+        Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: IconButton(
+            icon: Icon(
+              Icons.settings_rounded,
+              color: Color(0xFF64748B),
+              size: 26,
+            ),
+            onPressed: () {
+              HapticFeedback.lightImpact();
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => FamilySettingsView(
+                    userId: widget.currentUserId ?? 0,
+                    userName: widget.currentUserName ?? '用戶',
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
       flexibleSpace: FlexibleSpaceBar(
         background: Container(
           decoration: BoxDecoration(
@@ -210,13 +298,25 @@ class _AiHubScreenState extends State<AiHubScreen> {
                           fontWeight: FontWeight.w500,
                         ),
                       ),
-                      Text(
-                        _elderName ?? '未選擇',
-                        style: GoogleFonts.notoSansTc(
-                          fontSize: 14,
-                          color: const Color(0xFF3B82F6),
-                          fontWeight: FontWeight.w700,
-                        ),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (_currentElder != null) ...[
+                            Text(
+                              _currentElder!.genderEmoji,
+                              style: const TextStyle(fontSize: 14),
+                            ),
+                            const SizedBox(width: 4),
+                          ],
+                          Text(
+                            _currentElder?.displayName ?? '未配對',
+                            style: GoogleFonts.notoSansTc(
+                              fontSize: 14,
+                              color: const Color(0xFF3B82F6),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),

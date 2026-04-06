@@ -623,4 +623,108 @@ class Signaling {
       socket = null;
     }
   }
+
+  // ========================================
+  // 新增：子女端遠端陪伴功能
+  // ========================================
+
+  /// 發送主動關心訊息（Heartbeat）給長輩端
+  /// 
+  /// [elderId] 長輩的資料庫 ID
+  /// [message] 關心訊息內容
+  /// [audioPath] 可選：自定義語音檔案路徑
+  /// [playSound] 是否播放提示音
+  /// [musicUrl] 可選：播放背景音樂 URL
+  /// [actionButtons] 可選：互動按鈕列表
+  Future<void> sendHeartbeat(
+    int elderId,
+    String message, {
+    String? audioPath,
+    bool playSound = true,
+    String? musicUrl,
+    List<Map<String, String>>? actionButtons,
+  }) async {
+    if (socket == null || !socket!.connected) {
+      debugPrint("❌ [Signaling] Socket not connected, cannot send heartbeat");
+      return;
+    }
+
+    final payload = {
+      'elderId': elderId,
+      'message': message,
+      'audioPath': audioPath,
+      'playSound': playSound,
+      'musicUrl': musicUrl,
+      'actionButtons': actionButtons,
+      'timestamp': DateTime.now().toIso8601String(),
+    };
+
+    socket!.emit('send-heartbeat', payload);
+    debugPrint("💓 [Signaling] Sent heartbeat to elder $elderId: $message");
+  }
+
+  /// 推送內容給長輩端
+  /// 
+  /// [elderId] 長輩的資料庫 ID
+  /// [type] 內容類型: 'youtube_video', 'article', 'music', 'image'
+  /// [data] 內容數據
+  Future<void> pushContent(
+    int elderId, {
+    required String type,
+    required Map<String, dynamic> data,
+  }) async {
+    if (socket == null || !socket!.connected) {
+      debugPrint("❌ [Signaling] Socket not connected, cannot push content");
+      return;
+    }
+
+    final payload = {
+      'elderId': elderId,
+      'type': type,
+      'data': data,
+      'timestamp': DateTime.now().toIso8601String(),
+    };
+
+    socket!.emit('push-content', payload);
+    debugPrint("📤 [Signaling] Pushed content to elder $elderId: $type");
+  }
+
+  /// 監聽長輩端的對話更新
+  /// 
+  /// [callback] 接收對話歷史的回調函數
+  void listenToElderChat(int elderId, Function(List<Map<String, dynamic>>) callback) {
+    if (socket == null) {
+      debugPrint("❌ [Signaling] Socket not initialized");
+      return;
+    }
+
+    socket!.on('elder-chat-update-$elderId', (data) {
+      debugPrint("💬 [Signaling] Received elder chat update");
+      if (data is List) {
+        final messages = data.map((m) => m as Map<String, dynamic>).toList();
+        callback(messages);
+      }
+    });
+
+    // 請求當前對話歷史
+    socket!.emit('request-elder-chat', {'elderId': elderId});
+  }
+
+  /// 監聽用藥確認回應
+  /// 
+  /// [elderId] 長輩的資料庫 ID
+  /// [callback] 接收確認數據的回調函數
+  void listenToMedicationConfirmation(int elderId, Function(Map<String, dynamic>) callback) {
+    if (socket == null) {
+      debugPrint("❌ [Signaling] Socket not initialized");
+      return;
+    }
+
+    socket!.on('medication-confirmed-$elderId', (data) {
+      debugPrint("💊 [Signaling] Medication confirmed");
+      if (data is Map<String, dynamic>) {
+        callback(data);
+      }
+    });
+  }
 }
