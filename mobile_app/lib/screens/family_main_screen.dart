@@ -2,9 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // 添加觸覺反饋
 import 'package:google_fonts/google_fonts.dart';
 import 'dart:ui';
-import 'family_dashboard_view.dart';
-import 'redesigned_family_agent_view.dart';
-import 'family/family_settings_view.dart';
 import 'family_v2/ai_hub_screen.dart';
 import 'family_v2/health_trends_screen.dart';
 import 'family_v2/family_collaboration_screen.dart';
@@ -40,7 +37,6 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> {
         elderName: '李奶奶', // TODO: 從用戶資料載入
         elderId: 1,
       ),
-      FamilySettingsView(userId: widget.userId, userName: widget.userName),
     ];
   }
 
@@ -85,10 +81,9 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
-                    _buildNavItem(0, Icons.auto_awesome_rounded, '智能中樞'),
+                    _buildNavItem(0, Icons.auto_awesome_rounded, 'AI中樞'),
                     _buildNavItem(1, Icons.show_chart_rounded, '健康趨勢'),
                     _buildNavItem(2, Icons.people_rounded, '家庭協作'),
-                    _buildNavItem(3, Icons.settings_rounded, '設定'),
                   ],
                 ),
               ),
@@ -105,31 +100,37 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> {
         ? const Color(0xFF2563EB) // Primary Blue
         : const Color(0xFF64748B); // Slate Gray
 
-    return GestureDetector(
-      onTap: () => _onItemTapped(index),
-      behavior: HitTestBehavior.opaque,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            AnimatedScale(
-              scale: isSelected ? 1.1 : 1.0,
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeOut,
-              child: Icon(icon, color: color, size: 28),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: GoogleFonts.notoSansTc(
-                color: color,
-                fontSize: 12,
-                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => _onItemTapped(index),
+        behavior: HitTestBehavior.opaque,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedScale(
+                scale: isSelected ? 1.1 : 1.0,
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeOut,
+                child: Icon(icon, color: color, size: 26),
               ),
-            ),
-          ],
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: GoogleFonts.notoSansTc(
+                  color: color,
+                  fontSize: 11,
+                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                  height: 1.1,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
         ),
       ),
     );
