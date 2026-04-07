@@ -76,47 +76,34 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> {
     debugPrint('📡📡📡 [FamilyMainScreen] ===== 開始載入長輩並連線 =====');
     final prefs = await SharedPreferences.getInstance();
     _elderName = prefs.getString('selected_elder_name');
-    _elderRoomId = prefs.getString('selected_elder_room_id');
-    final elderId = prefs.getInt('selected_elder_id');
+    final elderId = prefs.getInt('selected_elder_id'); // user_id，作為房間號
     
     debugPrint('📡 [FamilyMainScreen] SharedPreferences 讀取:');
     debugPrint('   - selected_elder_name: $_elderName');
-    debugPrint('   - selected_elder_room_id: $_elderRoomId');
-    debugPrint('   - selected_elder_id: $elderId');
+    debugPrint('   - selected_elder_id (user_id): $elderId');
     
-    // 如果沒有 elder_room_id，從 API 獲取（即使 elderId 也是 null）
-    if (_elderRoomId == null) {
-      debugPrint('📡 [FamilyMainScreen] 沒有 room_id，從 API 獲取...');
+    // 如果沒有 elderId，從 API 獲取
+    int? roomUserId = elderId;
+    if (roomUserId == null) {
+      debugPrint('📡 [FamilyMainScreen] 沒有已選長輩，從 API 獲取...');
       try {
         final elders = await ApiService.getPairedElders(widget.userId);
         debugPrint('📡 [FamilyMainScreen] API 返回 ${elders.length} 個長輩');
         
         if (elders.isNotEmpty) {
-          // 如果有 elderId，找匹配的；如果沒有，直接用第一個
-          dynamic targetElder;
-          if (elderId != null) {
-            targetElder = elders.firstWhere(
-              (e) => e['id'] == elderId || e['user_id'] == elderId,
-              orElse: () => elders.first,
-            );
-          } else {
-            targetElder = elders.first;
-            debugPrint('📡 [FamilyMainScreen] 沒有已選長輩，使用第一個配對的長輩');
-          }
+          final targetElder = elders.first;
+          debugPrint('📡 [FamilyMainScreen] 使用第一個長輩: id=${targetElder['id']}, name=${targetElder['user_name']}');
           
-          debugPrint('📡 [FamilyMainScreen] 選擇的長輩: id=${targetElder['id']}, elder_id=${targetElder['elder_id']}, name=${targetElder['user_name']}');
-          
-          _elderRoomId = targetElder['elder_id']?.toString();
+          roomUserId = targetElder['id'] as int?;
           _elderName = targetElder['user_name'];
           
           // 儲存以便下次使用
-          if (_elderRoomId != null) {
-            await prefs.setString('selected_elder_room_id', _elderRoomId!);
-            await prefs.setInt('selected_elder_id', targetElder['id']);
+          if (roomUserId != null) {
+            await prefs.setInt('selected_elder_id', roomUserId);
             if (_elderName != null) {
               await prefs.setString('selected_elder_name', _elderName!);
             }
-            debugPrint('📡 [FamilyMainScreen] ✅ 自動獲取並儲存: room=$_elderRoomId, name=$_elderName');
+            debugPrint('📡 [FamilyMainScreen] ✅ 自動儲存: roomUserId=$roomUserId, name=$_elderName');
           }
         } else {
           debugPrint('⚠️ [FamilyMainScreen] API 返回空列表，沒有配對的長輩');
@@ -126,8 +113,9 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> {
       }
     }
     
-    // 使用 elder_id 作為房間號
-    final roomId = _elderRoomId;
+    // ★ 重要：使用 user_id 作為房間號（與長輩端一致）
+    final roomId = roomUserId?.toString();
+    _elderRoomId = roomId;
     
     if (roomId != null) {
       debugPrint('📡📡📡 [FamilyMainScreen] ===== 連線到房間: $roomId =====');
@@ -138,7 +126,6 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> {
       debugPrint('📡 [FamilyMainScreen] ✅ 回調已設置');
     } else {
       debugPrint('⚠️⚠️⚠️ [FamilyMainScreen] 無法連線：未選擇長輩或無法獲取房間號');
-      debugPrint('⚠️ [FamilyMainScreen] _elderRoomId=$_elderRoomId, elderId=$elderId');
     }
   }
 

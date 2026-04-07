@@ -269,8 +269,10 @@ void initPedometer() {
 
 ### 2026-04-07
 - **[Feature]** 視訊通話模擬器支援雙向通話（長輩 → 家屬）
-- **[Fix]** 修正房間號統一使用 `elder_id`（非 `user_id`）
-- **[Feature]** 家屬端 AI 中樞新增來電接聽功能
+- **[Fix]** 修正房間號統一使用 `user_id`（長輩端與家屬端一致）
+- **[Fix]** 修正 `ApiService.getPairedElders()` API 格式解析問題
+- **[Feature]** 家屬端自動獲取配對長輩並連線到正確房間
+- **[Docs]** 更新 `TEST_CALL_SIMULATOR_GUIDE.md` 測試指南
 
 ### 2026-04-02
 - **[Docs]** 文檔整合：合併 CLAUDE.md、feedgawa_intro.md
