@@ -152,20 +152,31 @@ class Signaling {
       socket?.disconnect();
     });
 
-    // 統一監聽 elder-devices-update（後端已統一 emit 此事件名）
+    // 統一監聯 elder-devices-update（後端已統一 emit 此事件名）
     // 響鈴監聽
     socket!.on('call-request', (data) {
+      debugPrint('📞📞📞 [Signaling] ===== 收到 call-request =====');
+      debugPrint('📞 [Signaling] data: $data');
+      debugPrint('📞 [Signaling] room: ${data['room']}, senderId: ${data['senderId']}, callId: ${data['callId']}');
+      debugPrint('📞 [Signaling] onCallRequest callback is ${onCallRequest != null ? "SET" : "NULL"}');
       _currentCallId = data['callId'];
-      if (onCallRequest != null) onCallRequest!(data['room'], data['senderId'], data['callId']);
+      if (onCallRequest != null) {
+        debugPrint('📞 [Signaling] 觸發 onCallRequest 回調...');
+        onCallRequest!(data['room'], data['senderId'], data['callId']);
+      } else {
+        debugPrint('⚠️ [Signaling] onCallRequest 回調未設置！來電將被忽略！');
+      }
     });
 
     // 取消呼叫監聽
     socket!.on('cancel-call', (data) {
+      debugPrint('🔕 [Signaling] 收到 cancel-call: $data');
       if (onCancelCall != null) onCancelCall!(data['room'], data['senderId'], data['callId']);
     });
 
     // 緊急呼叫監聽
     socket!.on('emergency-call', (data) {
+      debugPrint('🚨 [Signaling] 收到 emergency-call: $data');
       if (onEmergencyCall != null) onEmergencyCall!(data['room'], data['senderId'], data['callId']);
     });
 

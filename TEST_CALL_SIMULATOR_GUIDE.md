@@ -209,12 +209,22 @@ python test_call_simulator.py
 ### Q3: 家屬端沒有來電彈窗
 
 **可能原因：**
-1. `selected_elder_room_id` 未儲存（需重新選擇長輩）
-2. 家屬端未在 FamilyDashboardView 頁面
+1. 房間號錯誤（模擬器和 App 使用不同的房間號）
+2. App 未成功連線到 SocketIO
 
 **解決方案：**
-1. 家屬重新登入並選擇長輩
-2. 確認停留在 AI 中樞頁面
+1. 查看 Flutter debug console 的日誌：
+   ```
+   📡📡📡 [FamilyMainScreen] ===== 連線到房間: XXXX =====
+   ```
+   確認 `XXXX` 與模擬器使用的房間號一致
+2. 查看後端 terminal 確認家屬已加入房間：
+   ```
+   📥📥📥 [Join] Room: XXXX, Role: family
+   ```
+3. 重新安裝 App 清除 SharedPreferences 緩存
+
+**注意：** 最新版本已自動修復「未經過長輩選擇步驟」的問題。App 會自動從 API 獲取配對的長輩資訊並連線到正確的房間。
 
 ---
 
@@ -236,7 +246,8 @@ SERVER_URL = "https://你的伺服器地址"
 | `Uban/server/app.py` | Flask SocketIO 伺服器 |
 | `uban-api/services/socket_app.py` | FastAPI SocketIO 伺服器 |
 | `mobile_app/lib/services/signaling.dart` | Flutter 端 SocketIO 客戶端 |
-| `mobile_app/lib/screens/family_dashboard_view.dart` | 家屬 AI 中樞（接收來電） |
+| `mobile_app/lib/screens/family_main_screen.dart` | 家屬主頁面（連線 & 接收來電） |
+| `mobile_app/lib/screens/family_dashboard_view.dart` | 家屬 AI 中樞頁面 |
 | `mobile_app/lib/screens/elder_screen.dart` | 長輩通話畫面 |
 
 ---
