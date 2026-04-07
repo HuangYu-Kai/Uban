@@ -148,6 +148,10 @@ def on_join(data):
     fcm_token = data.get('fcmToken')
     sid = request.sid
 
+    print(f"📥📥📥 [Join] ===== 收到加入請求 =====")
+    print(f"📥 [Join] SID: {sid}")
+    print(f"📥 [Join] Room: {room}, Role: {role}, Device: {device_name}")
+
     if room:
         if role == 'elder' and room in rooms_manager:
             sids_to_remove = []
@@ -182,6 +186,12 @@ def on_join(data):
             }
         
         print(f"✅ User {sid} ({role} - {device_name}) joined room: {room}")
+        
+        # 印出該房間所有成員
+        print(f"📋 [Join] 房間 {room} 目前成員:")
+        for member_sid, member_info in rooms_manager[room].items():
+            print(f"   - {member_sid}: {member_info.get('role')} ({member_info.get('deviceName')})")
+        
         emit('user-joined', {
             'id': sid, 
             'role': role, 
@@ -284,7 +294,19 @@ def on_call_request(data):
     target_id = data.get('targetId')
     call_id = str(uuid.uuid4())
 
-    print(f"📡 [Call Request] From: {sid} In: {room} -> Target: {target_id} (CallId: {call_id})")
+    print(f"📞📞📞 [Call Request] ===== 收到通話請求 =====")
+    print(f"📞 [Call Request] From SID: {sid}")
+    print(f"📞 [Call Request] Room: {room}")
+    print(f"📞 [Call Request] Sender Role: {sender_role} -> Target Role: {target_role}")
+    print(f"📞 [Call Request] CallId: {call_id}")
+    
+    # 印出該房間所有成員
+    if room in rooms_manager:
+        print(f"📋 [Call Request] 房間 {room} 成員列表:")
+        for member_sid, member_info in rooms_manager[room].items():
+            print(f"   - {member_sid}: role={member_info.get('role')}, device={member_info.get('deviceName')}")
+    else:
+        print(f"⚠️ [Call Request] 房間 {room} 不存在或沒有成員！")
     
     # [CRUD] 建立通話紀錄
     try:
@@ -303,10 +325,16 @@ def on_call_request(data):
         print(f"⚠️ Failed to create call record: {e}")
         db.session.rollback()
 
+    targets_found = 0
     if room in rooms_manager:
         for target_sid, info in rooms_manager[room].items():
             if info.get('role') == target_role:
+                targets_found += 1
+                print(f"📤 [Call Request] 發送給 {target_sid} ({info.get('deviceName')})")
                 emit('call-request', {'senderId': sender_id, 'room': room, 'role': sender_role, 'callId': call_id}, to=target_sid)
+    
+    if targets_found == 0:
+        print(f"⚠️⚠️⚠️ [Call Request] 沒有找到 role={target_role} 的設備！來電無法送達！")
 
     if room in room_fcm_tokens:
         for token, info in room_fcm_tokens[room].items():
