@@ -44,6 +44,7 @@ Uban 是一套專為銀髮族設計的 AI 陪伴照護系統，包含：
 ```
 
 **連線資訊**：
+
 | 服務 | 地址 |
 |------|------|
 | FastAPI 後端 | `https://localhost-0.tail5abf5e.ts.net` |
@@ -56,6 +57,7 @@ Uban 是一套專為銀髮族設計的 AI 陪伴照護系統，包含：
 ### 一、AI 核心引擎
 
 #### 1. 雙軌 AI 引擎
+
 - **Ollama（主要）**：使用 `qwen2.5:1.5b` 模型，支援 Tool Calling
 - **Gemini（備用）**：Google Gemini 2.5 Flash API
 
@@ -71,11 +73,13 @@ Uban 是一套專為銀髮族設計的 AI 陪伴照護系統，包含：
 | **AGENTS.md** | 運作流程：啟動順序、記憶更新原則 |
 
 #### 3. 記憶機制
+
 - **短期記憶**：最近 5 輪對話（10筆）
 - **長期記憶**：透過 `save_elder_memory` 永久記錄至 MEMORY.md
 - **自動摘要**：每 10 筆對話自動濃縮為 100 字狀態報告
 
 #### 4. Heartbeat 主動關懷
+
 - 每 20 分鐘自動檢查在線長輩
 - 觸發條件：早晨問候、服藥提醒、久坐提醒、家屬留言通知
 - 透過 Socket.io `heartbeat-message` 即時推送
@@ -224,6 +228,7 @@ python3 -m venv /tmp/uban_test_venv
 ### 造型分配與排行榜架構
 
 #### 管理者端
+
 - **UI**: `mobile_app/lib/screens/admin_appearance_screen.dart`
   - 排程設定：下次全服隨機派發時間
   - 單獨分配：指定 `elder_id` 與 `gawa_id` 強制覆寫
@@ -235,6 +240,7 @@ python3 -m venv /tmp/uban_test_venv
   - `get_admin_elder_info`: 統整長輩資料
 
 #### 使用者端
+
 - **UI**: `mobile_app/lib/screens/leaderboard_screen.dart`
   - 收集進度：顯示已擁有造型與總加成倍率
   - 好友排行榜：前 10 名 + 自己排名
@@ -242,6 +248,7 @@ python3 -m venv /tmp/uban_test_venv
 #### 步數偵測實作建議
 
 **推薦方案：`pedometer` 套件**（輕量、即時）
+
 ```dart
 import 'package:pedometer/pedometer.dart';
 
@@ -260,6 +267,7 @@ void initPedometer() {
 ```
 
 **權限設定**：
+
 - Android: `AndroidManifest.xml` 加入 `ACTIVITY_RECOGNITION`
 - iOS: `Info.plist` 加入 `NSMotionUsageDescription`
 
@@ -268,21 +276,46 @@ void initPedometer() {
 ## 更新日誌
 
 ### 2026-04-07
+
+#### 🎉 今日智能建議功能上線
+- **[Feature]** 家屬端 AI 中樞新增「今日智能建議」功能
+  - ✅ 基於真實對話情緒分析（焦慮、孤單、疼痛關鍵詞）
+  - ✅ 整合運動記錄追蹤（7天活動量統計）
+  - ✅ 整合用藥記錄監控（3天用藥完整性）
+  - ✅ 6 種建議類型：情緒、社交、健康、活動、用藥、鼓勵
+  - ✅ 優先級自動排序（高/中/低）與顏色編碼
+- **[API]** 新增後端端點 `GET /api/ai/daily-suggestions/{elder_id}`
+  - 數據來源：`activity_log` 表（chat/exercise/medication）
+  - 算法：關鍵詞統計 + 頻率閾值判斷
+  - 部署：GitHub Actions 自動部署到生產環境
+- **[Fix]** 修復 API 數據訪問錯誤
+  - 修正 `fetch_as_dict()` 返回列表處理
+  - 修正 `cursor.fetchone()` 字典鍵訪問
+  - 修正 `cursor.fetchall()` 字典列表遍歷
+- **[DevOps]** 建立完整 CI/CD 流程
+  - GitHub Actions + Tailscale + Podman
+  - 自動測試、構建、部署
+  - 提交 commit: `5adb905`
+
+#### 其他更新
 - **[Feature]** 視訊通話模擬器支援雙向通話（長輩 → 家屬）
 - **[Fix]** 修正房間號統一使用 `elder_id`（非 `user_id`）
 - **[Feature]** 家屬端 AI 中樞新增來電接聽功能
 
 ### 2026-04-02
+
 - **[Docs]** 文檔整合：合併 CLAUDE.md、feedgawa_intro.md
 
 ### 2026-04-01
-- **[AI] Ollama 整合**：新增 `qwen2.5:1.5b` 模型支援
+
+- **[AI] Ollama 整合**：新增 `qwen2.5:7b` 模型支援
 - **[AI] Agent 人格系統**：SOUL.md、IDENTITY.md、MEMORY.md 等 6 個設定檔
 - **[AI] Heartbeat 機制**：每 20 分鐘主動關懷
 - **[AI] 新增技能**：`save_elder_memory`、`search_web`、`get_music_recommendations`
 - **[DevOps] run.sh/run.ps1**：新增 Ollama 連線檢測
 
 ### 2026-03-31
+
 - **[Security]** CORS 限制、JWT 認證、密碼安全
 - **[Performance]** N+1 查詢優化、API 分頁
 - **[DevOps]** GitHub Actions CI
@@ -420,7 +453,7 @@ void initPedometer() {
 ## AI 助手指引
 
 > 開發本專案前，請確保 AI 已閱讀此 README.md：
-> 
+>
 > 1. **架構**：Flutter + FastAPI (`uban-api` 獨立 Repo)
 > 2. **Legacy**：`server/` 目錄為舊 Flask AI 代碼，勿修改
 > 3. **Socket.IO**：必須使用 Singleton Pattern (`lib/services/signaling.dart`)
