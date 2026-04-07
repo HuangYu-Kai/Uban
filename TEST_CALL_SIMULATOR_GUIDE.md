@@ -27,52 +27,20 @@ pip install python-socketio[asyncio_client] websockets
 
 ## 重要概念：房間號 (Room ID)
 
-> ⚠️ **房間號 = 長輩的 `elder_id`（如 "1142"），不是 `user_id`！**
+> ⚠️ **房間號 = 長輩的 `user_id`（整數，如 17）**
 
 | 欄位 | 說明 | 範例 |
 |------|------|------|
-| `user_id` | 帳號主鍵（整數），長輩和家屬共用 | 17, 6 |
-| `elder_id` | 長輩檔案 ID（字串） | "1142" |
-| **Room ID** | 使用 `elder_id` | **"1142"** |
+| `user_id` | 帳號主鍵（整數），**作為房間號** | 17, 16 |
+| `elder_id` | 長輩檔案 ID（字串，4碼） | "1142", "4288" |
+| **Room ID** | 使用 **`user_id`** | **"17"** |
 
-### 資料庫結構
+### 測試帳號
 
-```
-user_account_data (所有帳號)
-├── user_id: 6  (家屬 zakevin)
-└── user_id: 17 (長輩帳號)
-
-elder_profile (長輩檔案)
-├── elder_id: "1142" (主鍵，作為房間號)
-├── user_id: 17 (FK → user_account_data)
-└── elder_name: "測試長輩"
-
-family_elder_relationship (配對關係)
-├── elder_id: "1142"
-└── family_id: 6
-```
-
-### 查詢房間號
-
-```sql
--- 查詢指定家屬配對的長輩
-SELECT ep.elder_id AS room_id, ep.user_id, ep.elder_name
-FROM elder_profile ep
-JOIN family_elder_relationship fer ON ep.elder_id = fer.elder_id
-WHERE fer.family_id = 6;  -- 替換為你的家屬 user_id
-```
-
----
-
-## 測試帳號資訊
-
-| 項目 | 值 |
-|------|-----|
-| 家屬 user_id | 6 (zakevin) |
-| 長輩 user_id | 17 |
-| 長輩 elder_id | **1142** |
-| 長輩名稱 | 測試長輩 |
-| **房間號** | **1142** |
+| 長輩名稱 | user_id (房間號) | elder_id |
+|----------|------------------|----------|
+| 測試長輩 | **17** | 1142 |
+| gawafat | **16** | 4288 |
 
 ---
 
@@ -80,160 +48,72 @@ WHERE fer.family_id = 6;  -- 替換為你的家屬 user_id
 
 ### 模式一：家屬 → 長輩
 
-#### 步驟 1：啟動長輩端 App
+1. **啟動長輩端 App**（以長輩身份登入）
+2. **執行測試腳本**：
+   ```bash
+   python test_call_simulator.py
+   # 選擇 [1]
+   # 輸入家屬 user_id: 6
+   # 輸入房間 ID: 17（長輩的 user_id）
+   ```
+3. **輸入 `1` 發送 call-request**，長輩端會收到來電彈窗
 
-1. 以長輩身份登入（輸入 elder_id: 1142）
-2. 確保 App 連線到 SocketIO 伺服器
-3. App 會自動加入房間（房間號 = elder_id）
+### 模式二：長輩 → 家屬 ✅ 已驗證
 
-#### 步驟 2：執行測試腳本
-
-```bash
-cd C:\Users\kevin\Desktop\115207\Uban
-python test_call_simulator.py
-
-# 選擇模式 [1/2]: 1
-# 請輸入你模擬的家屬 user_id [預設 6]: 6
-# 請輸入房間 ID (= 長輩的 elder_id): 1142
-```
-
-#### 步驟 3：發送通話請求
-
-輸入 `1` 發送 call-request，長輩端會收到來電彈窗。
-
----
-
-### 模式二：長輩 → 家屬
-
-#### 步驟 1：啟動家屬端 App
-
-1. 以家屬身份登入
-2. 選擇長輩（會自動加入該長輩的房間）
-3. 進入 AI 中樞頁面（FamilyDashboardView）
-
-#### 步驟 2：執行測試腳本
-
-```bash
-cd C:\Users\kevin\Desktop\115207\Uban
-python test_call_simulator.py
-
-# 選擇模式 [1/2]: 2
-# 請輸入長輩的 elder_id (房間號，如 1142) [預設 1142]: 1142
-# 請輸入長輩的 user_id (帳號ID，如 17) [預設 17]: 17
-```
-
-#### 步驟 3：發送通話請求
-
-輸入 `1` 發送 call-request，家屬端會收到來電彈窗。
+1. **啟動家屬端 App**（以家屬身份登入，如 zakevin）
+2. **執行測試腳本**：
+   ```bash
+   python test_call_simulator.py
+   # 選擇 [2]
+   # 輸入長輩 user_id: 17（這同時是房間號）
+   ```
+3. **輸入 `1` 發送 call-request**，家屬端會收到來電彈窗
 
 ---
 
 ## 操作選單
 
-腳本啟動後會顯示操作選單：
-
 ```
-──────────────────────────────────
-  [1] 📞 發送 call-request（一般通話）
-  [2] 🚨 發送 emergency-call（緊急通話）
-  [3] 🔕 發送 cancel-call（取消呼叫）
-  [4] 📡 查詢設備列表
-  [5] 📴 掛斷 (end-call)
-  [q] 離開
-──────────────────────────────────
-```
-
----
-
-## 信令流程圖
-
-### 家屬 → 長輩
-
-```
-家屬端 (模擬器)                    伺服器                     長輩端 (App)
-     |                              |                            |
-     |--- join (room="1142") ------>|                            |
-     |                              |<--- join (room="1142") ----|
-     |                              |                            |
-     |------ call-request --------->|                            |
-     |                              |------- call-request ------>|
-     |                              |                            |
-     |                              |<------ call-accept --------|
-     |<------- call-accept ---------|                            |
-     |                              |                            |
-     |========= WebRTC 通話中 ====================================|
-```
-
-### 長輩 → 家屬
-
-```
-長輩端 (模擬器)                    伺服器                     家屬端 (App)
-     |                              |                            |
-     |--- join (room="1142") ------>|                            |
-     |                              |<--- join (room="1142") ----|
-     |                              |                            |
-     |------ call-request --------->|                            |
-     |      (role: elder)           |------- call-request ------>|
-     |                              |                            |
-     |                              |<------ call-accept --------|
-     |<------- call-accept ---------|                            |
+[1] 📞 發送 call-request（一般通話）
+[2] 🚨 發送 emergency-call（緊急通話）
+[3] 🔕 發送 cancel-call（取消呼叫）
+[4] 📡 查詢設備列表
+[5] 📴 掛斷 (end-call)
+[q] 離開
 ```
 
 ---
 
 ## 常見問題排解
 
-### Q1: 連線失敗
+### Q1: 對方沒收到來電
 
-```
-❌ 無法連線: ...
-```
+**最常見原因：房間號不一致**
 
-**解決方案：**
+確認步驟：
+1. 查看 Flutter debug console，找 `連線到房間: XX` 的日誌
+2. 模擬器使用相同的房間號
+
+### Q2: 連線失敗
+
 1. 確認後端伺服器運行中
-2. 檢查 `SERVER_URL` 是否正確
-3. 確認 Tailscale VPN 連線正常
-
-### Q2: 對方沒收到來電
-
-**可能原因：**
-1. 房間號錯誤（確認使用 `elder_id` 而非 `user_id`）
-2. App 未連線到同一房間
-3. App 的 SocketIO 連線斷開
-
-**解決方案：**
-1. 確認使用正確的房間號（長輩的 `elder_id`）
-2. 在腳本中輸入 `4` 查詢設備列表
-3. 如果列表為空，表示對方未連線
-
-### Q3: 家屬端沒有來電彈窗
-
-**可能原因：**
-1. 房間號錯誤（模擬器和 App 使用不同的房間號）
-2. App 未成功連線到 SocketIO
-
-**解決方案：**
-1. 查看 Flutter debug console 的日誌：
-   ```
-   📡📡📡 [FamilyMainScreen] ===== 連線到房間: XXXX =====
-   ```
-   確認 `XXXX` 與模擬器使用的房間號一致
-2. 查看後端 terminal 確認家屬已加入房間：
-   ```
-   📥📥📥 [Join] Room: XXXX, Role: family
-   ```
-3. 重新安裝 App 清除 SharedPreferences 緩存
-
-**注意：** 最新版本已自動修復「未經過長輩選擇步驟」的問題。App 會自動從 API 獲取配對的長輩資訊並連線到正確的房間。
+2. 確認 Tailscale VPN 連線正常
 
 ---
 
-## 修改伺服器地址
+## 信令流程圖
 
-編輯 `test_call_simulator.py` 第 24 行：
-
-```python
-SERVER_URL = "https://你的伺服器地址"
+```
+發話端 (模擬器)                    伺服器                     接聽端 (App)
+     |                              |                            |
+     |--- join (room="17") -------->|                            |
+     |                              |<--- join (room="17") ------|
+     |                              |                            |
+     |------ call-request --------->|                            |
+     |                              |------- call-request ------>|
+     |                              |                            |
+     |                              |<------ call-accept --------|
+     |<------- call-accept ---------|                            |
 ```
 
 ---
@@ -242,27 +122,11 @@ SERVER_URL = "https://你的伺服器地址"
 
 | 檔案 | 說明 |
 |------|------|
-| `Uban/test_call_simulator.py` | 測試腳本 |
-| `Uban/server/app.py` | Flask SocketIO 伺服器 |
-| `uban-api/services/socket_app.py` | FastAPI SocketIO 伺服器 |
-| `mobile_app/lib/services/signaling.dart` | Flutter 端 SocketIO 客戶端 |
-| `mobile_app/lib/screens/family_main_screen.dart` | 家屬主頁面（連線 & 接收來電） |
-| `mobile_app/lib/screens/family_dashboard_view.dart` | 家屬 AI 中樞頁面 |
-| `mobile_app/lib/screens/elder_screen.dart` | 長輩通話畫面 |
-
----
-
-## 快速測試指令
-
-```bash
-# 模式一：家屬打給長輩（互動式）
-python test_call_simulator.py
-# → 選 1 → 輸入家屬 ID → 輸入房間號
-
-# 模式二：長輩打給家屬（互動式）  
-python test_call_simulator.py
-# → 選 2 → 輸入 elder_id → 輸入 user_id
-```
+| `test_call_simulator.py` | 測試腳本 |
+| `server/app.py` | Flask SocketIO 伺服器 |
+| `mobile_app/lib/screens/family_main_screen.dart` | 家屬主頁（連線 & 接收來電） |
+| `mobile_app/lib/screens/elder_home_screen.dart` | 長輩首頁（連線 & 接收來電） |
+| `mobile_app/lib/services/signaling.dart` | SocketIO 客戶端 |
 
 ---
 

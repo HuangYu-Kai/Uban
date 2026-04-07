@@ -118,18 +118,16 @@ async def main():
     
     if mode_choice == "2":
         # 長輩模式：模擬長輩撥打給家屬
-        # 房間號是 elder_id（如 "1142"），不是 user_id
+        # ★ 房間號 = 長輩的 user_id（與長輩端 App 一致）
         CALLER_ROLE = "elder"
         CALLER_DEVICE_NAME = ELDER_DEVICE_NAME
         target_desc = "家屬"
         
-        # 詢問長輩的 elder_id（這是房間號）
-        elder_id_input = input("請輸入長輩的 elder_id (房間號，如 1142) [預設 1142]: ").strip()
-        room_id = elder_id_input if elder_id_input else "1142"
-        
-        # 詢問長輩的 user_id（用於 callerUserId）
-        user_id_input = input("請輸入長輩的 user_id (帳號ID，如 17) [預設 17]: ").strip()
+        # 詢問長輩的 user_id（這是房間號，也是 callerUserId）
+        print("\n  ⚠️  房間號 = 長輩的 user_id（不是 elder_id）")
+        user_id_input = input("請輸入長輩的 user_id (如 17) [預設 17]: ").strip()
         CALLER_USER_ID = int(user_id_input) if user_id_input else 17
+        room_id = str(CALLER_USER_ID)  # 房間號 = user_id
     else:
         # 家屬模式（預設）
         CALLER_ROLE = "family"
@@ -147,15 +145,13 @@ async def main():
             room_id = sys.argv[1]
         else:
             print("\n" + "="*60)
-            print("  ⚠️  提醒：房間 ID = 長輩的 elder_id（如 1142）")
+            print("  ⚠️  房間號 = 長輩的 user_id（不是 elder_id）")
             print("  ")
-            print("  📖 查詢方式：")
-            print("     SELECT ep.elder_id, ep.user_id, ep.elder_name")
-            print("     FROM elder_profile ep")
-            print("     JOIN family_elder_relationship fer ON ep.elder_id = fer.elder_id")
-            print("     WHERE fer.family_id = <你的家屬ID>;")
+            print("  📖 常用測試帳號：")
+            print("     user_id=17 → 測試長輩")
+            print("     user_id=16 → gawafat")
             print("="*60)
-            room_id = input("\n請輸入房間 ID (= 長輩的 elder_id): ").strip()
+            room_id = input("\n請輸入房間 ID (= 長輩的 user_id): ").strip()
             if not room_id:
                 print("❌ 需要提供房間 ID")
                 return
