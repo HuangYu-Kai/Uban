@@ -47,6 +47,8 @@ class _ElderSelectionScreenState extends State<ElderSelectionScreen> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('selected_elder_id', elder['id']);
     await prefs.setString('selected_elder_name', elder['user_name']);
+    // ★ 新增：儲存 elder_id 作為房間號（長輩端用 elder_id 加入房間）
+    await prefs.setString('selected_elder_room_id', elder['elder_id']);
 
     if (!mounted) return;
     Navigator.pushReplacement(

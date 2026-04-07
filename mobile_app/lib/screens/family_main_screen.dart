@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // 添加觸覺反饋
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:ui';
 import 'family_v2/ai_hub_screen.dart';
 import 'family_v2/health_trends_screen.dart';
 import 'family_v2/family_collaboration_screen.dart';
 import '../services/elder_manager.dart';
+import '../services/signaling.dart';
+import '../services/api_service.dart';
+import 'video_call_screen.dart';
 
 class FamilyMainScreen extends StatefulWidget {
   final int userId;
@@ -24,6 +28,10 @@ class FamilyMainScreen extends StatefulWidget {
 class _FamilyMainScreenState extends State<FamilyMainScreen> {
   int _selectedIndex = 0;
   late final List<Widget> _views;
+  final Signaling _signaling = Signaling();
+  bool _isIncomingCallDialogOpen = false;
+  String? _elderName;
+  String? _elderRoomId;
 
   @override
   void initState() {
@@ -35,6 +43,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> {
     
     // 初始化 ElderManager with 真實 userId（不需要 await，在背景執行）
     _initializeElderManager();
+    _loadElderAndConnect();
     
     _views = [
       AiHubScreen(
@@ -61,6 +70,154 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> {
     print('🔄 FamilyMainScreen: Starting ElderManager initialization');
     final success = await ElderManager().initialize(userId: widget.userId);
     print('🔄 FamilyMainScreen: ElderManager initialization ${success ? "succeeded" : "failed"}');
+  }
+
+  Future<void> _loadElderAndConnect() async {
+    final prefs = await SharedPreferences.getInstance();
+    _elderName = prefs.getString('selected_elder_name');
+    _elderRoomId = prefs.getString('selected_elder_room_id');
+    final elderId = prefs.getInt('selected_elder_id');
+    
+    // 如果沒有 elder_room_id，從 API 獲取
+    if (_elderRoomId == null && elderId != null) {
+      try {
+        final elders = await ApiService.getPairedElders(widget.userId);
+        for (var elder in elders) {
+          if (elder['id'] == elderId || elder['user_id'] == elderId) {
+            _elderRoomId = elder['elder_id']?.toString();
+            // 儲存以便下次使用
+            if (_elderRoomId != null) {
+              await prefs.setString('selected_elder_room_id', _elderRoomId!);
+              debugPrint('📡 [FamilyMainScreen] 自動獲取房間號: $_elderRoomId');
+            }
+            break;
+          }
+        }
+      } catch (e) {
+        debugPrint('⚠️ [FamilyMainScreen] 獲取長輩資料失敗: $e');
+      }
+    }
+    
+    // 使用 elder_id 作為房間號
+    final roomId = _elderRoomId;
+    
+    if (roomId != null) {
+      debugPrint('📡 [FamilyMainScreen] 連線房間: $roomId (elderName: $_elderName)');
+      _signaling.connect(roomId, 'family', deviceName: '${widget.userName}的App');
+      _setupSignalingCallbacks();
+    } else {
+      debugPrint('⚠️ [FamilyMainScreen] 無法連線：未選擇長輩或無法獲取房間號');
+    }
+  }
+
+  void _setupSignalingCallbacks() {
+    // 監聽來電（長輩打給家屬）
+    _signaling.onCallRequest = (roomId, senderId, callId) {
+      if (!mounted) return;
+      debugPrint('📞 [FamilyMainScreen] 收到來電: room=$roomId, sender=$senderId, callId=$callId');
+      _showIncomingCallDialog(roomId, senderId, callId);
+    };
+
+    // 監聯緊急來電
+    _signaling.onEmergencyCall = (roomId, senderId, callId) {
+      if (!mounted) return;
+      debugPrint('🚨 [FamilyMainScreen] 緊急來電: room=$roomId');
+      _showIncomingCallDialog(roomId, senderId, callId, isEmergency: true);
+    };
+
+    // 監聽取消呼叫
+    _signaling.onCancelCall = (roomId, senderId, callId) {
+      if (!mounted) return;
+      debugPrint('🔕 [FamilyMainScreen] 來電取消: room=$roomId');
+      if (_isIncomingCallDialogOpen && Navigator.canPop(context)) {
+        Navigator.of(context).pop();
+        _isIncomingCallDialogOpen = false;
+      }
+    };
+  }
+
+  void _showIncomingCallDialog(String roomId, String senderId, String? callId, {bool isEmergency = false}) {
+    if (_isIncomingCallDialogOpen) return; // 防止重複彈窗
+    _isIncomingCallDialogOpen = true;
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: isEmergency ? Colors.red.shade100 : Colors.green.shade100,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  isEmergency ? Icons.warning : Icons.phone_callback,
+                  color: isEmergency ? Colors.red : Colors.green,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(isEmergency ? '🚨 緊急來電' : '📞 長輩來電'),
+            ],
+          ),
+          content: Text(
+            '${_elderName ?? "長輩"} 正在呼叫您！',
+            style: const TextStyle(fontSize: 18),
+          ),
+          backgroundColor: isEmergency ? Colors.red.shade50 : Colors.green.shade50,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          actions: [
+            TextButton(
+              onPressed: () {
+                _signaling.sendCallBusy(roomId);
+                Navigator.of(dialogContext).pop();
+                _isIncomingCallDialogOpen = false;
+              },
+              child: const Text('拒接', style: TextStyle(color: Colors.red, fontSize: 16)),
+            ),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+                _isIncomingCallDialogOpen = false;
+                // 先發送接聽信號
+                _signaling.sendCallAccept(senderId, callId: callId);
+                // 跳轉到視訊通話頁面
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => VideoCallScreen(
+                      roomId: roomId,
+                      targetSocketId: senderId,
+                      isIncomingCall: true,
+                    ),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.videocam),
+              label: const Text('接聽', style: TextStyle(fontSize: 16)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              ),
+            ),
+          ],
+        );
+      },
+    ).then((_) {
+      _isIncomingCallDialogOpen = false;
+    });
+  }
+
+  @override
+  void dispose() {
+    _signaling.onCallRequest = null;
+    _signaling.onEmergencyCall = null;
+    _signaling.onCancelCall = null;
+    super.dispose();
   }
 
   void _onItemTapped(int index) {
