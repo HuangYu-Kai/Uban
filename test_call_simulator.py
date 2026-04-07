@@ -2,13 +2,14 @@
 """
 Uban 視訊通話模擬撥話腳本 (Fake Caller)
 ========================================
-用途：模擬「家屬端」撥打視訊電話給模擬器上的 App。
-      App 端會收到來電彈窗，你可以測試接聽/拒接流程。
+用途：模擬視訊電話撥打，支援兩種模式：
+      1. 家屬 -> 長輩：模擬家屬端撥打給長輩端 App
+      2. 長輩 -> 家屬：模擬長輩端撥打給家屬端 App
 
 用法：
     python3 test_call_simulator.py [ROOM_ID]
 
-    ROOM_ID = 長輩的 id（配對後的數字 ID）
+    ROOM_ID = 對方的 user_id（配對後的數字 ID）
     若不指定，預設為互動式輸入。
 
 環境：
@@ -23,10 +24,14 @@ import socketio
 # 後端伺服器 URL（改成你的 uban-api 位址）
 SERVER_URL = "https://localhost-0.tail5abf5e.ts.net"
 
-# 模擬的撥話者資訊
+# 模擬的撥話者資訊（預設為家屬，可在啟動時選擇）
 CALLER_ROLE = "family"
 CALLER_DEVICE_NAME = "TestCaller_PC"
 CALLER_USER_ID = 6  # 家屬的 user_id
+
+# 長輩模式的預設值
+ELDER_USER_ID = 17  # 長輩的 user_id
+ELDER_DEVICE_NAME = "TestElder_PC"
 # ========================================================
 
 sio = socketio.AsyncClient(
@@ -85,35 +90,82 @@ async def on_elder_devices_update(data):
         print(f"    {status} {dev.get('deviceName', 'Unknown')} ({mode}) [id: {dev.get('id', '?')}]")
 
 
+@sio.on("family-devices-update")
+async def on_family_devices_update(data):
+    print(f"\n📡 收到家屬設備列表更新 (共 {len(data)} 台設備):")
+    for dev in data:
+        status = "🟢 在線" if dev.get("isOnline") else "⚪ 離線"
+        print(f"    {status} {dev.get('deviceName', 'Unknown')} [id: {dev.get('id', '?')}]")
+
+
 @sio.on("user-joined")
 async def on_user_joined(data):
     print(f"👤 有人加入房間: {data.get('deviceName')} ({data.get('role')})")
 
 
 async def main():
-    # 取得 Room ID
-    if len(sys.argv) > 1:
-        room_id = sys.argv[1]
+    global CALLER_ROLE, CALLER_DEVICE_NAME, CALLER_USER_ID
+    
+    # 選擇模式
+    print("\n" + "="*60)
+    print("  Uban 視訊通話模擬器 - 選擇撥打模式")
+    print("="*60)
+    print("  [1] 👨‍👩‍👧 家屬 -> 長輩 (模擬家屬端撥打給長輩)")
+    print("  [2] 👴 長輩 -> 家屬 (模擬長輩端撥打給家屬)")
+    print("="*60)
+    
+    mode_choice = input("選擇模式 [1/2]: ").strip()
+    
+    if mode_choice == "2":
+        # 長輩模式：模擬長輩撥打給家屬
+        # 房間號是 elder_id（如 "1142"），不是 user_id
+        CALLER_ROLE = "elder"
+        CALLER_DEVICE_NAME = ELDER_DEVICE_NAME
+        target_desc = "家屬"
+        
+        # 詢問長輩的 elder_id（這是房間號）
+        elder_id_input = input("請輸入長輩的 elder_id (房間號，如 1142) [預設 1142]: ").strip()
+        room_id = elder_id_input if elder_id_input else "1142"
+        
+        # 詢問長輩的 user_id（用於 callerUserId）
+        user_id_input = input("請輸入長輩的 user_id (帳號ID，如 17) [預設 17]: ").strip()
+        CALLER_USER_ID = int(user_id_input) if user_id_input else 17
     else:
-        print("\n" + "="*60)
-        print("  ⚠️  提醒：房間 ID = 長輩的 user_id（不是 elder_id！）")
-        print("  ")
-        print("  📖 查詢方式：")
-        print("     SELECT ep.user_id, ep.elder_id, ep.elder_name")
-        print("     FROM elder_profile ep")
-        print("     JOIN family_elder_relationship fer ON ep.elder_id = fer.elder_id")
-        print("     WHERE fer.family_id = <你的家屬ID>;")
-        print("="*60)
-        room_id = input("\n請輸入房間 ID (= 長輩的 user_id): ").strip()
-        if not room_id:
-            print("❌ 需要提供房間 ID")
-            return
+        # 家屬模式（預設）
+        CALLER_ROLE = "family"
+        CALLER_DEVICE_NAME = "TestCaller_PC"
+        target_desc = "長輩"
+        room_id = None  # 稍後詢問
+        
+        # 詢問家屬的 user_id
+        family_id_input = input("請輸入你模擬的家屬 user_id [預設 6]: ").strip()
+        CALLER_USER_ID = int(family_id_input) if family_id_input else 6
+    
+    # 取得 Room ID（只有家屬模式需要問）
+    if room_id is None:
+        if len(sys.argv) > 1:
+            room_id = sys.argv[1]
+        else:
+            print("\n" + "="*60)
+            print("  ⚠️  提醒：房間 ID = 長輩的 elder_id（如 1142）")
+            print("  ")
+            print("  📖 查詢方式：")
+            print("     SELECT ep.elder_id, ep.user_id, ep.elder_name")
+            print("     FROM elder_profile ep")
+            print("     JOIN family_elder_relationship fer ON ep.elder_id = fer.elder_id")
+            print("     WHERE fer.family_id = <你的家屬ID>;")
+            print("="*60)
+            room_id = input("\n請輸入房間 ID (= 長輩的 elder_id): ").strip()
+            if not room_id:
+                print("❌ 需要提供房間 ID")
+                return
 
     print(f"\n{'='*50}")
     print(f"  Uban 視訊通話模擬器")
     print(f"  伺服器: {SERVER_URL}")
     print(f"  房間: {room_id}")
-    print(f"  角色: {CALLER_ROLE} (模擬家屬)")
+    print(f"  角色: {CALLER_ROLE} (模擬{('家屬' if CALLER_ROLE == 'family' else '長輩')}撥打給{target_desc})")
+    print(f"  模擬者 User ID: {CALLER_USER_ID}")
     print(f"{'='*50}\n")
 
     # 1. 連線
@@ -143,7 +195,10 @@ async def main():
         print("  [1] 📞 發送 call-request（一般通話）")
         print("  [2] 🚨 發送 emergency-call（緊急通話）")
         print("  [3] 🔕 發送 cancel-call（取消呼叫）")
-        print("  [4] 📡 查詢長輩設備列表")
+        if CALLER_ROLE == "family":
+            print("  [4] 📡 查詢長輩設備列表")
+        else:
+            print("  [4] 📡 查詢家屬設備列表")
         print("  [5] 📴 掛斷 (end-call)")
         print("  [q] 離開")
         print("─" * 40)
@@ -181,8 +236,17 @@ async def main():
             print("   ✅ 已取消呼叫")
 
         elif choice == "4":
-            print("📡 查詢設備列表...")
-            await sio.emit("get-elder-devices", room_id)
+            # 不管哪種模式，都使用 get-elder-devices（因為房間是長輩的）
+            # 但根據角色查詢不同的設備
+            if CALLER_ROLE == "family":
+                print("📡 查詢長輩設備列表...")
+                await sio.emit("get-elder-devices", room_id)
+            else:
+                print("📡 查詢長輩設備列表（找在線家屬）...")
+                # 後端目前只有 get-elder-devices，查詢的是房間內 role=elder 的設備
+                # 如果要查 family，需要後端支援
+                await sio.emit("get-elder-devices", room_id)
+                print("   ⚠️ 注意：後端目前只支援查詢長輩設備，家屬是否在線請看 user-joined 事件")
             await asyncio.sleep(1)
 
         elif choice == "5":

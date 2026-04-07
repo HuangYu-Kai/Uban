@@ -32,6 +32,7 @@ State<FamilyDashboardView> createState() => _FamilyDashboardViewState();
 class _FamilyDashboardViewState extends State<FamilyDashboardView> {
   String? _elderName; // 改為可空，預設 null
   int? _elderId;
+  String? _elderRoomId; // ★ 新增：房間號（= elder_id，如 "1142"）
   String? _elderSocketId;
   final Signaling _signaling = Signaling();
   
@@ -97,6 +98,93 @@ class _FamilyDashboardViewState extends State<FamilyDashboardView> {
         });
       }
     };
+
+    // ★ 監聽來電（長輩打給家屬）
+    _signaling.onCallRequest = (roomId, senderId, callId) {
+      if (!mounted) return;
+      debugPrint('📞 [FamilyDashboardView] 收到來電: room=$roomId, sender=$senderId, callId=$callId');
+      _showIncomingCallDialog(roomId, senderId, callId);
+    };
+
+    // 監聽取消呼叫
+    _signaling.onCancelCall = (roomId, senderId, callId) {
+      if (!mounted) return;
+      debugPrint('🔕 [FamilyDashboardView] 來電取消: room=$roomId');
+      // 如果有來電對話框正在顯示，關閉它
+      if (_isIncomingCallDialogOpen && Navigator.canPop(context)) {
+        Navigator.of(context).pop();
+        _isIncomingCallDialogOpen = false;
+      }
+    };
+  }
+
+  bool _isIncomingCallDialogOpen = false;
+
+  void _showIncomingCallDialog(String roomId, String senderId, String? callId) {
+    _isIncomingCallDialogOpen = true;
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade100,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.phone_callback, color: Colors.green, size: 28),
+              ),
+              const SizedBox(width: 12),
+              const Text('📞 長輩來電'),
+            ],
+          ),
+          content: Text(
+            '${_elderName ?? "長輩"} 正在呼叫您！',
+            style: const TextStyle(fontSize: 18),
+          ),
+          backgroundColor: Colors.green.shade50,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          actions: [
+            TextButton(
+              onPressed: () {
+                // 拒接
+                _signaling.sendCallBusy(roomId);
+                Navigator.of(dialogContext).pop();
+                _isIncomingCallDialogOpen = false;
+              },
+              child: const Text('拒接', style: TextStyle(color: Colors.red, fontSize: 16)),
+            ),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+                _isIncomingCallDialogOpen = false;
+                // 接聽 - 跳轉到視訊通話頁面
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => VideoCallScreen(
+                      roomId: roomId,
+                      isIncomingCall: true,
+                    ),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.videocam),
+              label: const Text('接聽', style: TextStyle(fontSize: 16)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 
 Future<void> _loadSelectedElder() async {
@@ -104,11 +192,15 @@ Future<void> _loadSelectedElder() async {
   setState(() {
     _elderName = prefs.getString('selected_elder_name'); // 移除預設值
     _elderId = prefs.getInt('selected_elder_id');
+    _elderRoomId = prefs.getString('selected_elder_room_id'); // ★ 讀取房間號
   });
 
-  // 讀到 ID 後立刻加入 Signaling 房間監聽
-  if (_elderId != null) {
-    _signaling.connect(_elderId.toString(), 'family', deviceName: '${widget.userName}的儀表板');
+  // 讀到房間號後立刻加入 Signaling 房間監聽
+  // ★ 重要：使用 elder_id（如 "1142"）作為房間號，與長輩端一致
+  final roomId = _elderRoomId ?? _elderId?.toString();
+  if (roomId != null) {
+    debugPrint('📡 [FamilyDashboardView] 加入房間: $roomId (elderName: $_elderName)');
+    _signaling.connect(roomId, 'family', deviceName: '${widget.userName}的儀表板');
   }
 }
 
@@ -116,6 +208,8 @@ Future<void> _loadSelectedElder() async {
   void dispose() {
     // _signaling.dispose(); // Singleton 不建議隨便完全 dispose，但可以清掉回撥
     _signaling.onElderDevicesUpdate = null;
+    _signaling.onCallRequest = null;
+    _signaling.onCancelCall = null;
     super.dispose();
   }
 

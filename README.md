@@ -190,6 +190,8 @@ Uban/
 
 ### 視訊通話測試
 
+支援雙向通話測試：家屬 ↔ 長輩
+
 ```bash
 # 建立測試環境
 python3 -m venv /tmp/uban_test_venv
@@ -197,7 +199,13 @@ python3 -m venv /tmp/uban_test_venv
 
 # 執行測試腳本
 /tmp/uban_test_venv/bin/python3 test_call_simulator.py
+
+# 模式選擇：
+# [1] 家屬 → 長輩
+# [2] 長輩 → 家屬
 ```
+
+> 📖 詳細說明請參考 [TEST_CALL_SIMULATOR_GUIDE.md](./TEST_CALL_SIMULATOR_GUIDE.md)
 
 ---
 
@@ -258,6 +266,11 @@ void initPedometer() {
 ---
 
 ## 更新日誌
+
+### 2026-04-07
+- **[Feature]** 視訊通話模擬器支援雙向通話（長輩 → 家屬）
+- **[Fix]** 修正房間號統一使用 `elder_id`（非 `user_id`）
+- **[Feature]** 家屬端 AI 中樞新增來電接聽功能
 
 ### 2026-04-02
 - **[Docs]** 文檔整合：合併 CLAUDE.md、feedgawa_intro.md
@@ -415,4 +428,4 @@ void initPedometer() {
 
 ---
 
-📝 *最後更新：2026/04/06*
+📝 *最後更新：2026/04/07*
