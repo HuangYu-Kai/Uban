@@ -29,7 +29,11 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> {
   void initState() {
     super.initState();
     
-    // 初始化 ElderManager with 真實 userId
+    print('🔍 FamilyMainScreen initialized:');
+    print('   userId: ${widget.userId}');
+    print('   userName: ${widget.userName}');
+    
+    // 初始化 ElderManager with 真實 userId（不需要 await，在背景執行）
     _initializeElderManager();
     
     _views = [
@@ -46,11 +50,17 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> {
         elderId: null,
       ),
     ];
+    
+    print('🔍 Created AiHubScreen with:');
+    print('   currentUserId: ${widget.userId}');
+    print('   currentUserName: ${widget.userName}');
   }
   
   Future<void> _initializeElderManager() async {
     // 使用從登入系統傳入的真實 userId
-    await ElderManager().initialize(userId: widget.userId);
+    print('🔄 FamilyMainScreen: Starting ElderManager initialization');
+    final success = await ElderManager().initialize(userId: widget.userId);
+    print('🔄 FamilyMainScreen: ElderManager initialization ${success ? "succeeded" : "failed"}');
   }
 
   void _onItemTapped(int index) {

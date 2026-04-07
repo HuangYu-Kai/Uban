@@ -22,7 +22,7 @@ class FamilySettingsView extends StatefulWidget {
 }
 
 class _FamilySettingsViewState extends State<FamilySettingsView> {
-  late String _userName;
+  String _userName = '載入中...';  // 初始值改為載入中
   bool _isEmergencyOn = true;
   bool _isDailySummaryOn = true;
   bool _isAiInsightOn = false;
@@ -32,8 +32,32 @@ class _FamilySettingsViewState extends State<FamilySettingsView> {
   @override
   void initState() {
     super.initState();
-    _userName = widget.userName;
+    _loadUserInfo();
     _fetchPairedElders();
+  }
+  
+  Future<void> _loadUserInfo() async {
+    // 從 SharedPreferences 讀取真實的登入用戶資訊
+    final prefs = await SharedPreferences.getInstance();
+    final savedUserId = prefs.getInt('caregiver_id');
+    final savedUserName = prefs.getString('caregiver_name');
+    
+    print('🔍 FamilySettingsView loading from SharedPreferences:');
+    print('   caregiver_id: $savedUserId');
+    print('   caregiver_name: $savedUserName');
+    
+    if (mounted && savedUserName != null) {
+      setState(() {
+        _userName = savedUserName;
+      });
+      print('   ✅ Updated _userName to: $_userName');
+    } else {
+      // 備用方案：使用 widget 參數
+      setState(() {
+        _userName = widget.userName;
+      });
+      print('   ⚠️  Using widget.userName: $_userName');
+    }
   }
 
   Future<void> _fetchPairedElders() async {
@@ -181,10 +205,20 @@ class _FamilySettingsViewState extends State<FamilySettingsView> {
             child: const Text('取消'),
           ),
           TextButton(
-            onPressed: () {
-              setState(() {
-                _userName = controller.text;
-              });
+            onPressed: () async {
+              final newName = controller.text.trim();
+              if (newName.isNotEmpty) {
+                // 保存到 SharedPreferences
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.setString('caregiver_name', newName);
+                
+                setState(() {
+                  _userName = newName;
+                });
+                
+                print('✅ Profile updated: $_userName');
+                print('   Saved to SharedPreferences');
+              }
               Navigator.pop(context);
             },
             child: const Text('儲存'),
