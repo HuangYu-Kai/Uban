@@ -47,12 +47,33 @@ class _AiHubScreenState extends State<AiHubScreen> {
   }
 
   Future<void> _loadElderInfo() async {
-    // 從 ElderManager 載入真實的長輩資料
-    // FamilyMainScreen 已在 initState 時初始化過 ElderManager
+    print('🔍 AiHubScreen._loadElderInfo() started');
+    print('   currentUserId from widget: ${widget.currentUserId}');
+    print('   ElderManager.isInitialized: ${_elderManager.isInitialized}');
+    print('   ElderManager.currentUserId: ${_elderManager.currentUserId}');
     
-    // 如果還沒初始化，嘗試從快取載入
-    if (_elderManager.currentUserId == null) {
-      await _elderManager.initialize();
+    // 確保 ElderManager 已初始化
+    if (!_elderManager.isInitialized) {
+      if (widget.currentUserId != null) {
+        print('   🔄 Initializing ElderManager with userId: ${widget.currentUserId}');
+        await _elderManager.initialize(userId: widget.currentUserId);
+      } else {
+        print('   🔄 Initializing ElderManager without userId (will try SharedPreferences)');
+        await _elderManager.initialize();
+      }
+    }
+    
+    print('   ElderManager after init:');
+    print('     - isInitialized: ${_elderManager.isInitialized}');
+    print('     - currentUserId: ${_elderManager.currentUserId}');
+    print('     - pairedElders count: ${_elderManager.pairedElders.length}');
+    print('     - currentElder: ${_elderManager.currentElder?.displayName}');
+    
+    // 如果有配對長輩但 currentElder 為 null，設置第一個長輩
+    if (_elderManager.currentElder == null && _elderManager.pairedElders.isNotEmpty) {
+      print('   🔧 currentElder is null but pairedElders exist, setting first elder');
+      await _elderManager.setCurrentElder(_elderManager.pairedElders.first);
+      print('   ✅ Set currentElder to: ${_elderManager.currentElder?.displayName}');
     }
     
     if (mounted) {
@@ -61,8 +82,11 @@ class _AiHubScreenState extends State<AiHubScreen> {
         _isLoading = false;
       });
       
-      // 如果沒有配對的長輩，顯示提示
-      if (_currentElder == null) {
+      print('   ✅ State updated: _currentElder = ${_currentElder?.displayName}');
+      
+      // 只在真的沒有配對長輩時才顯示提示
+      if (_elderManager.pairedElders.isEmpty) {
+        print('   ⚠️  No paired elders found, showing dialog');
         _showNoPairedElderDialog();
       }
     }
@@ -246,6 +270,9 @@ class _AiHubScreenState extends State<AiHubScreen> {
             ),
             onPressed: () {
               HapticFeedback.lightImpact();
+              print('🔍 Opening Settings from AiHubScreen:');
+              print('   widget.currentUserId: ${widget.currentUserId}');
+              print('   widget.currentUserName: ${widget.currentUserName}');
               Navigator.push(
                 context,
                 MaterialPageRoute(

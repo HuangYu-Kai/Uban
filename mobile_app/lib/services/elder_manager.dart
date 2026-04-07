@@ -19,6 +19,7 @@ class ElderManager {
   List<Elder> _pairedElders = [];
   Elder? _currentElder;
   int? _currentUserId;
+  bool _isInitialized = false;
   
   /// 獲取當前選中的長輩
   Elder? get currentElder => _currentElder;
@@ -29,8 +30,24 @@ class ElderManager {
   /// 獲取當前用戶 ID
   int? get currentUserId => _currentUserId;
   
+  /// 是否已初始化
+  bool get isInitialized => _isInitialized;
+  
   /// 設定當前用戶 ID
   Future<void> setCurrentUserId(int userId) async {
+    // 如果切換了用戶，清除舊的快取資料
+    if (_currentUserId != null && _currentUserId != userId) {
+      print('   🔄 User changed from $_currentUserId to $userId, clearing old data');
+      _pairedElders = [];
+      _currentElder = null;
+      _isInitialized = false;
+      
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_eldersCacheKey);
+      await prefs.remove(_cacheTimestampKey);
+      await prefs.remove(_currentElderIdKey);
+    }
+    
     _currentUserId = userId;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_currentUserIdKey, userId);
@@ -45,6 +62,8 @@ class ElderManager {
   /// 初始化：載入配對的長輩列表
   Future<bool> initialize({int? userId}) async {
     try {
+      print('🔄 ElderManager.initialize() called with userId: $userId');
+      
       // 載入或設定用戶 ID
       if (userId != null) {
         await setCurrentUserId(userId);
@@ -52,15 +71,22 @@ class ElderManager {
         await loadCurrentUserId();
       }
       
+      print('   ElderManager._currentUserId: $_currentUserId');
+      
       if (_currentUserId == null) {
+        print('   ❌ No userId available, initialization failed');
+        _isInitialized = false;
         return false;
       }
       
       // 嘗試從快取載入
       await _loadFromCache();
+      print('   Loaded from cache: ${_pairedElders.length} elders');
       
       // 從 API 更新
+      print('   Fetching from API...');
       final eldersData = await ApiService.getPairedElders(_currentUserId!);
+      print('   API returned: ${eldersData.length} elders');
       
       if (eldersData.isNotEmpty) {
         _pairedElders = eldersData.map((json) => Elder.fromJson(json)).toList();
@@ -69,14 +95,34 @@ class ElderManager {
         // 載入上次選中的長輩，或選擇第一個
         await _loadCurrentElder();
         
+        _isInitialized = true;
+        print('   ✅ Initialization successful');
+        print('   Current elder: ${_currentElder?.displayName}');
         return true;
       }
       
       // 如果 API 沒有資料，但快取有，就使用快取
-      return _pairedElders.isNotEmpty;
+      if (_pairedElders.isNotEmpty) {
+        await _loadCurrentElder();
+        _isInitialized = true;
+        print('   ✅ Initialization successful (from cache)');
+        print('   Current elder: ${_currentElder?.displayName}');
+        return true;
+      }
+      
+      print('   ⚠️  No paired elders found');
+      _isInitialized = true;
+      return false;
     } catch (e) {
+      print('   ❌ Error during initialization: $e');
       // 網路錯誤時使用快取
-      return _pairedElders.isNotEmpty;
+      if (_pairedElders.isNotEmpty) {
+        await _loadCurrentElder();
+        _isInitialized = true;
+        return true;
+      }
+      _isInitialized = false;
+      return false;
     }
   }
   
@@ -140,18 +186,35 @@ class ElderManager {
   
   /// 載入上次選中的長輩
   Future<void> _loadCurrentElder() async {
+    if (_pairedElders.isEmpty) {
+      _currentElder = null;
+      return;
+    }
+    
     final prefs = await SharedPreferences.getInstance();
     final savedElderId = prefs.getInt(_currentElderIdKey);
     
+    print('   📂 _loadCurrentElder: savedElderId = $savedElderId');
+    
     if (savedElderId != null) {
-      _currentElder = _pairedElders.firstWhere(
-        (e) => e.id == savedElderId,
-        orElse: () => _pairedElders.isNotEmpty ? _pairedElders.first : _createEmptyElder(),
-      );
-    } else if (_pairedElders.isNotEmpty) {
+      // 嘗試找到保存的長輩
+      try {
+        _currentElder = _pairedElders.firstWhere((e) => e.id == savedElderId);
+        print('   ✅ Found saved elder: ${_currentElder?.displayName}');
+      } catch (e) {
+        // 找不到保存的長輩（可能是切換帳號或長輩已解除配對），選擇第一個
+        print('   ⚠️  Saved elder not found, selecting first elder');
+        _currentElder = _pairedElders.first;
+        await prefs.setInt(_currentElderIdKey, _currentElder!.id);
+      }
+    } else {
+      // 沒有保存記錄，選擇第一個
+      print('   📝 No saved elder, selecting first elder');
       _currentElder = _pairedElders.first;
       await prefs.setInt(_currentElderIdKey, _currentElder!.id);
     }
+    
+    print('   ✅ _loadCurrentElder complete: ${_currentElder?.displayName}');
   }
   
   /// 從快取載入
@@ -193,14 +256,5 @@ class ElderManager {
     await prefs.remove(_eldersCacheKey);
     await prefs.remove(_cacheTimestampKey);
     await prefs.remove(_currentUserIdKey);
-  }
-  
-  /// 建立空白長輩（備用）
-  Elder _createEmptyElder() {
-    return Elder(
-      id: 0,
-      name: '未配對長輩',
-      appellation: '未配對長輩',
-    );
   }
 }
