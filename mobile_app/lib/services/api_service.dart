@@ -408,4 +408,18 @@ class ApiService {
       return {'status': 'error', 'message': '網路連線失敗: $e'};
     }
   }
+
+  /// 獲取長輩的今日智能建議
+  static Future<Map<String, dynamic>> getDailySuggestions(int elderId) async {
+    try {
+      final response = await http
+          .get(Uri.parse('$baseUrl/ai/daily-suggestions/$elderId'))
+          .timeout(const Duration(seconds: 15));
+      return _safeDecode(response);
+    } on TimeoutException {
+      return {'status': 'error', 'message': '獲取建議逾時，請稍後再試'};
+    } catch (e) {
+      return {'status': 'error', 'message': '網路連線失敗: $e'};
+    }
+  }
 }

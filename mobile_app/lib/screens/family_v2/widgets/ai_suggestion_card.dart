@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../../services/ai_suggestion_service.dart';
+import '../../../services/api_service.dart';
 
 /// 🤖 AI 智能建議卡片
 /// 
@@ -40,27 +41,35 @@ class _AiSuggestionCardState extends State<AiSuggestionCard> {
     });
 
     try {
-      // 使用 AI 建議服務生成建議
-      // 目前使用 Mock 數據模式，未來可切換為真實數據模式
+      // 如果有 elderId，從 API 獲取真實建議
+      if (widget.elderId != null) {
+        print('🔄 Loading suggestions for elder ID: ${widget.elderId}');
+        final response = await ApiService.getDailySuggestions(widget.elderId!);
+        
+        if (response['status'] == 'success' && response['data'] != null) {
+          final data = response['data'];
+          final suggestionsData = data['suggestions'] as List<dynamic>;
+          
+          setState(() {
+            _suggestions = suggestionsData.map((s) => s as Map<String, dynamic>).toList();
+            _isLoading = false;
+          });
+          
+          print('✅ Loaded ${_suggestions.length} suggestions from API');
+          return;
+        } else {
+          print('⚠️ API returned error: ${response['message']}');
+        }
+      }
+      
+      // 備用：使用 Mock 數據
+      print('📝 Using mock suggestions');
       final suggestions = await AiSuggestionService.generateSuggestions(
         elderData: {
           'elder_name': widget.elderName,
           'user_id': widget.elderId,
         },
-        useMockData: true, // 設置為 false 以使用真實數據
-        // 真實數據模式範例：
-        // healthData: {
-        //   'sleep_quality': 65.0,
-        //   'steps': 450,
-        //   'heart_rate': 85,
-        //   'sleep_history': [...],
-        //   'steps_history': [...],
-        //   'heart_rate_history': [...],
-        // },
-        // emotionData: [
-        //   {'time': '08:00', 'emotion': '開心', 'score': 0.8},
-        //   {'time': '10:00', 'emotion': '焦慮', 'score': 0.3},
-        // ],
+        useMockData: true,
       );
 
       setState(() {
@@ -68,7 +77,7 @@ class _AiSuggestionCardState extends State<AiSuggestionCard> {
         _isLoading = false;
       });
     } catch (e) {
-      debugPrint('載入建議失敗: $e');
+      debugPrint('❌ 載入建議失敗: $e');
       setState(() {
         _isLoading = false;
         _suggestions = [];
@@ -96,6 +105,41 @@ class _AiSuggestionCardState extends State<AiSuggestionCard> {
       default:
         return '提示';
     }
+  }
+
+  Widget _buildIconWidget(Map<String, dynamic> suggestion) {
+    final icon = suggestion['icon'];
+    
+    if (icon is IconData) {
+      // 舊格式：IconData
+      return Icon(
+        icon,
+        color: Colors.white,
+        size: 20,
+      );
+    } else if (icon is String) {
+      // 新格式：emoji 字符串
+      return Text(
+        icon,
+        style: const TextStyle(fontSize: 20),
+      );
+    } else {
+      // 默認圖標
+      return const Icon(
+        Icons.lightbulb_outline_rounded,
+        color: Colors.white,
+        size: 20,
+      );
+    }
+  }
+
+  String _getActionLabel(dynamic action) {
+    if (action is Map) {
+      return action['label'] as String? ?? '執行';
+    } else if (action is String) {
+      return action;
+    }
+    return '執行';
   }
 
   @override
@@ -232,11 +276,8 @@ class _AiSuggestionCardState extends State<AiSuggestionCard> {
                       children: [
                         Row(
                           children: [
-                            Icon(
-                              suggestion['icon'] as IconData,
-                              color: Colors.white,
-                              size: 20,
-                            ),
+                            // 處理圖標（可能是 IconData 或 emoji 字符串）
+                            _buildIconWidget(suggestion),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
@@ -283,10 +324,19 @@ class _AiSuggestionCardState extends State<AiSuggestionCard> {
                         GestureDetector(
                           onTap: () {
                             HapticFeedback.mediumImpact();
-                            // TODO: 執行建議動作
+                            // 執行建議動作（支持新 API 格式）
+                            final action = suggestion['action'];
+                            String actionLabel = '';
+                            
+                            if (action is Map) {
+                              actionLabel = action['label'] as String? ?? '執行';
+                            } else if (action is String) {
+                              actionLabel = action;
+                            }
+                            
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Text('執行：${suggestion['action']}'),
+                                content: Text('執行：$actionLabel'),
                                 backgroundColor: const Color(0xFF10B981),
                               ),
                             );
@@ -307,7 +357,7 @@ class _AiSuggestionCardState extends State<AiSuggestionCard> {
                                 ),
                                 const SizedBox(width: 6),
                                 Text(
-                                  suggestion['action'] as String,
+                                  _getActionLabel(suggestion['action']),
                                   style: GoogleFonts.notoSansTc(
                                     color: _getPriorityColor(suggestion['priority'] as String),
                                     fontSize: 13,
