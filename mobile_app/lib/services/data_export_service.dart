@@ -134,7 +134,7 @@ class DataExportService {
     final emotions = await _emotionService.getEmotionsByDateRange(start, end);
     final tasks = await _taskService.getAllTasks(elderId: elderId);
     final members = await _contributionService.getAllMembers();
-    final emotionStats = await _emotionService.getStatistics(start, end);
+    final emotionStats = await _emotionService.getEmotionStatistics(start, end);
     
     final data = {
       'elderName': elderName,
@@ -251,6 +251,8 @@ class DataExportService {
 
   String _getEmotionLabel(EmotionType type) {
     switch (type) {
+      case EmotionType.angry:
+        return '生氣';
       case EmotionType.happy:
         return '開心';
       case EmotionType.calm:

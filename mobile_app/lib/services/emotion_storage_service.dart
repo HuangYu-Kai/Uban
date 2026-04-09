@@ -18,7 +18,7 @@ import '../models/emotion_data.dart';
 /// - 數據清理：本地保留最近30天，雲端永久保存
 class EmotionStorageService {
   static const String _storageKey = 'emotion_data_storage';
-  static const String _storageKeyPrefix = 'emotion_';
+
   
   /// SharedPreferences實例
   SharedPreferences? _prefs;
@@ -349,7 +349,7 @@ class EmotionStorageService {
   /// - endDate: 結束日期
   /// - elderId: 可選的長者ID過濾
   /// 
-  /// 返回：Map<EmotionType, int> 各情緒類型的數量統計
+  /// 返回：`Map<EmotionType, int>` 各情緒類型的數量統計
   Future<Map<EmotionType, int>> getEmotionStatistics(
     DateTime startDate,
     DateTime endDate, {

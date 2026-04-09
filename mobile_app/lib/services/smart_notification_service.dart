@@ -1,6 +1,6 @@
-import 'package:flutter/foundation.dart';
+
 import '../models/emotion_data.dart';
-import '../services/predictive_alert_service.dart';
+
 import '../services/emotion_storage_service.dart';
 
 /// 🔔 智能通知引擎
@@ -8,7 +8,7 @@ import '../services/emotion_storage_service.dart';
 /// 根據用戶行為、情緒狀態和時間模式智能推送通知
 class SmartNotificationService {
   final EmotionStorageService _emotionService = EmotionStorageService();
-  final PredictiveAlertService _alertService = PredictiveAlertService();
+
   
   /// 檢查是否應該發送通知
   Future<List<SmartNotification>> checkAndGenerateNotifications({

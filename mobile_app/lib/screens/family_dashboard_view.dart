@@ -4,16 +4,12 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'family/family_care_journal_view.dart';
 import 'redesigned_ai_chat_screen.dart';
 import 'family_call_history_screen.dart'; // 新增
 import 'elder_selection_screen.dart';
 import 'elder_profile_edit_screen.dart';
 import '../services/signaling.dart'; // 新增
 import 'video_call_screen.dart'; // 新增
-import '../widgets/health_dashboard_card.dart'; // 新增：健康儀表板
-import '../services/health_anomaly_detector.dart'; // 新增：異常檢測
-import '../widgets/health_anomaly_alert_card.dart'; // 新增：異常警告卡片
 
 class FamilyDashboardView extends StatefulWidget {
 final int userId;
@@ -36,51 +32,16 @@ class _FamilyDashboardViewState extends State<FamilyDashboardView> {
   String? _elderSocketId;
   final Signaling _signaling = Signaling();
   
-  // 異常檢測相關
-  HealthAnomalyResult? _lastAnomalyResult;
-  bool _showAnomalyAlert = true;
+
 
   @override
   void initState() {
     super.initState();
     _loadSelectedElder();
     _initSignaling();
-    _analyzeHealthAnomaly();
   }
 
-  /// 異常檢測分析
-  Future<void> _analyzeHealthAnomaly() async {
-    // 模擬當前健康數據
-    final currentData = {
-      'heart_rate': 72,
-      'steps': 4250,
-      'calories': 320,
-      'sleep_quality': 82.0,
-    };
 
-    // 模擬歷史數據（最近7天）
-    final historicalData = [
-      {'heart_rate': 70, 'steps': 8500, 'calories': 2100, 'sleep_quality': 85.0},
-      {'heart_rate': 75, 'steps': 7200, 'calories': 1950, 'sleep_quality': 78.0},
-      {'heart_rate': 68, 'steps': 9100, 'calories': 2200, 'sleep_quality': 82.0},
-      {'heart_rate': 72, 'steps': 500, 'calories': 800, 'sleep_quality': 45.0}, // 異常日期
-      {'heart_rate': 71, 'steps': 8800, 'calories': 2050, 'sleep_quality': 80.0},
-      {'heart_rate': 69, 'steps': 7500, 'calories': 1900, 'sleep_quality': 83.0},
-      {'heart_rate': 73, 'steps': 8900, 'calories': 2150, 'sleep_quality': 84.0},
-    ];
-
-    // 執行異常檢測
-    final result = await HealthAnomalyDetector.analyzeHealthData(
-      currentData,
-      historicalData,
-    );
-
-    if (mounted) {
-      setState(() {
-        _lastAnomalyResult = result;
-      });
-    }
-  }
 
   void _initSignaling() {
     // 監聽長輩裝置更新，找出在線的 Socket ID
@@ -735,96 +696,7 @@ color: color,
 );
 }
 
-Widget _buildInteractionLog() {
-return Column(
-children: [
-_buildLogItem(
-'14:40',
-'視訊連線',
-'與家屬完成了 15 分鐘的通話',
-Icons.videocam_rounded,
-const Color(0xFF2563EB),
-),
-_buildLogItem(
-'12:15',
-'健康檢測',
-'血壓與心率數值正常',
-Icons.favorite_rounded,
-const Color(0xFFEF4444),
-),
-_buildLogItem(
-'09:00',
-'自動排程',
-'播放了早晨喚醒音樂',
-Icons.music_note_rounded,
-const Color(0xFF8B5CF6),
-),
-],
-);
-}
 
-Widget _buildLogItem(
-String time,
-String title,
-String detail,
-IconData icon,
-Color color,
-) {
-return Padding(
-padding: const EdgeInsets.only(bottom: 16),
-child: Container(
-padding: const EdgeInsets.all(16),
-decoration: BoxDecoration(
-color: Colors.white,
-borderRadius: BorderRadius.circular(16),
-border: Border.all(color: const Color(0xFFE2E8F0)),
-),
-child: Row(
-children: [
-Container(
-padding: const EdgeInsets.all(10),
-decoration: BoxDecoration(
-color: color.withValues(alpha: 0.1),
-shape: BoxShape.circle,
-),
-child: Icon(icon, color: color, size: 18),
-),
-const SizedBox(width: 16),
-Expanded(
-child: Column(
-crossAxisAlignment: CrossAxisAlignment.start,
-children: [
-Text(
-title,
-style: GoogleFonts.notoSansTc(
-fontSize: 15,
-fontWeight: FontWeight.w700,
-color: const Color(0xFF1E293B),
-),
-),
-Text(
-detail,
-style: GoogleFonts.notoSansTc(
-fontSize: 13,
-color: const Color(0xFF64748B),
-),
-),
-],
-),
-),
-Text(
-time,
-style: GoogleFonts.inter(
-fontSize: 12,
-color: const Color(0xFF94A3B8),
-fontWeight: FontWeight.w500,
-),
-),
-],
-),
-),
-);
-}
 
   /// 沒有選擇長輩時的引導頁面
   Widget _buildNoElderSelectedView(BuildContext context) {
