@@ -27,9 +27,10 @@ class TestDataGenerator {
       emotions.add(EmotionData(
         id: 'test_emotion_$i',
         timestamp: start.add(Duration(hours: i * 6)),
-        type: types[i % types.length],
-        confidence: 0.7 + (i % 3) * 0.1,
-        audioReference: 'test_audio_$i.wav',
+        elderId: 1, // 佔位ID
+        emotionType: types[i % types.length],
+        confidenceScore: 0.7 + (i % 3) * 0.1,
+        audioSnippetRef: 'test_audio_$i.wav',
         metadata: {'source': 'test'},
       ));
     }

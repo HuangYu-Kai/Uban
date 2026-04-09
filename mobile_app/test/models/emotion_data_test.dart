@@ -161,7 +161,7 @@ void main() {
         emotionType: EmotionType.anxious,
         confidenceScore: 0.75,
       );
-      expect(anxiousEmotion.isAbnormal(), true);
+      expect(anxiousEmotion.isAbnormal, true);
 
       // 悲傷情緒，高置信度 -> 異常
       final sadEmotion = EmotionData(
@@ -171,7 +171,7 @@ void main() {
         emotionType: EmotionType.sad,
         confidenceScore: 0.80,
       );
-      expect(sadEmotion.isAbnormal(), true);
+      expect(sadEmotion.isAbnormal, true);
 
       // 生氣情緒，高置信度 -> 異常
       final angryEmotion = EmotionData(
@@ -181,7 +181,7 @@ void main() {
         emotionType: EmotionType.angry,
         confidenceScore: 0.70,
       );
-      expect(angryEmotion.isAbnormal(), true);
+      expect(angryEmotion.isAbnormal, true);
 
       // 快樂情緒 -> 正常
       final happyEmotion = EmotionData(
@@ -191,7 +191,7 @@ void main() {
         emotionType: EmotionType.happy,
         confidenceScore: 0.85,
       );
-      expect(happyEmotion.isAbnormal(), false);
+      expect(happyEmotion.isAbnormal, false);
 
       // 平靜情緒 -> 正常
       final calmEmotion = EmotionData(
@@ -201,7 +201,7 @@ void main() {
         emotionType: EmotionType.calm,
         confidenceScore: 0.90,
       );
-      expect(calmEmotion.isAbnormal(), false);
+      expect(calmEmotion.isAbnormal, false);
 
       // 焦慮情緒但低置信度 -> 正常
       final lowConfidenceEmotion = EmotionData(
@@ -211,7 +211,7 @@ void main() {
         emotionType: EmotionType.anxious,
         confidenceScore: 0.50, // 低於默認閾值 0.6
       );
-      expect(lowConfidenceEmotion.isAbnormal(), false);
+      expect(lowConfidenceEmotion.isAbnormal, false);
     });
 
     test('isHighConfidence 應該正確識別高置信度記錄', () {
@@ -222,7 +222,7 @@ void main() {
         emotionType: EmotionType.happy,
         confidenceScore: 0.85,
       );
-      expect(highConfidence.isHighConfidence(), true);
+      expect(highConfidence.isHighConfidence, true);
 
       final lowConfidence = EmotionData(
         id: 'test-015',
@@ -231,10 +231,10 @@ void main() {
         emotionType: EmotionType.happy,
         confidenceScore: 0.65,
       );
-      expect(lowConfidence.isHighConfidence(), false);
+      expect(lowConfidence.isHighConfidence, false);
 
       // 自定義閾值測試
-      expect(lowConfidence.isHighConfidence(threshold: 0.6), true);
+      expect(lowConfidence.isHighConfidenceWithThreshold(threshold: 0.6), true);
     });
 
     test('相等性比較應該正確工作', () {

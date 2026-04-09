@@ -39,9 +39,10 @@ class VoiceEmotionMLService {
     return EmotionData(
       id: 'emotion_${DateTime.now().millisecondsSinceEpoch}',
       timestamp: DateTime.now(),
-      type: prediction.emotionType,
-      confidence: prediction.confidence,
-      audioReference: audioPath,
+      elderId: 0, // 佔位ID，實際應用應傳入正確elderId
+      emotionType: prediction.emotionType,
+      confidenceScore: prediction.confidence,
+      audioSnippetRef: audioPath,
       metadata: {
         'pitch': prediction.pitch,
         'speed': prediction.speed,
@@ -70,8 +71,9 @@ class VoiceEmotionMLService {
       yield EmotionData(
         id: 'stream_emotion_${DateTime.now().millisecondsSinceEpoch}',
         timestamp: DateTime.now(),
-        type: EmotionType.calm,
-        confidence: 0.75,
+        elderId: 0, // 佔位ID，實際應用應傳入正確elderId
+        emotionType: EmotionType.calm,
+        confidenceScore: 0.75,
         metadata: {'source': 'stream'},
       );
     }

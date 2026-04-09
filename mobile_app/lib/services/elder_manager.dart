@@ -2,6 +2,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import '../models/elder.dart';
 import 'api_service.dart';
+import 'package:flutter_application_1/utils/app_logger.dart';
 
 /// 🏠 長輩管理服務
 /// 
@@ -37,7 +38,7 @@ class ElderManager {
   Future<void> setCurrentUserId(int userId) async {
     // 如果切換了用戶，清除舊的快取資料
     if (_currentUserId != null && _currentUserId != userId) {
-      print('   🔄 User changed from $_currentUserId to $userId, clearing old data');
+      appLogger.d('   🔄 User changed from $_currentUserId to $userId, clearing old data');
       _pairedElders = [];
       _currentElder = null;
       _isInitialized = false;
@@ -62,7 +63,7 @@ class ElderManager {
   /// 初始化：載入配對的長輩列表
   Future<bool> initialize({int? userId}) async {
     try {
-      print('🔄 ElderManager.initialize() called with userId: $userId');
+      appLogger.d('🔄 ElderManager.initialize() called with userId: $userId');
       
       // 載入或設定用戶 ID
       if (userId != null) {
@@ -71,22 +72,22 @@ class ElderManager {
         await loadCurrentUserId();
       }
       
-      print('   ElderManager._currentUserId: $_currentUserId');
+      appLogger.d('   ElderManager._currentUserId: $_currentUserId');
       
       if (_currentUserId == null) {
-        print('   ❌ No userId available, initialization failed');
+        appLogger.d('   ❌ No userId available, initialization failed');
         _isInitialized = false;
         return false;
       }
       
       // 嘗試從快取載入
       await _loadFromCache();
-      print('   Loaded from cache: ${_pairedElders.length} elders');
+      appLogger.d('   Loaded from cache: ${_pairedElders.length} elders');
       
       // 從 API 更新
-      print('   Fetching from API...');
+      appLogger.d('   Fetching from API...');
       final eldersData = await ApiService.getPairedElders(_currentUserId!);
-      print('   API returned: ${eldersData.length} elders');
+      appLogger.d('   API returned: ${eldersData.length} elders');
       
       if (eldersData.isNotEmpty) {
         _pairedElders = eldersData.map((json) => Elder.fromJson(json)).toList();
@@ -96,8 +97,8 @@ class ElderManager {
         await _loadCurrentElder();
         
         _isInitialized = true;
-        print('   ✅ Initialization successful');
-        print('   Current elder: ${_currentElder?.displayName}');
+        appLogger.d('   ✅ Initialization successful');
+        appLogger.d('   Current elder: ${_currentElder?.displayName}');
         return true;
       }
       
@@ -105,16 +106,16 @@ class ElderManager {
       if (_pairedElders.isNotEmpty) {
         await _loadCurrentElder();
         _isInitialized = true;
-        print('   ✅ Initialization successful (from cache)');
-        print('   Current elder: ${_currentElder?.displayName}');
+        appLogger.d('   ✅ Initialization successful (from cache)');
+        appLogger.d('   Current elder: ${_currentElder?.displayName}');
         return true;
       }
       
-      print('   ⚠️  No paired elders found');
+      appLogger.d('   ⚠️  No paired elders found');
       _isInitialized = true;
       return false;
     } catch (e) {
-      print('   ❌ Error during initialization: $e');
+      appLogger.d('   ❌ Error during initialization: $e');
       // 網路錯誤時使用快取
       if (_pairedElders.isNotEmpty) {
         await _loadCurrentElder();
@@ -194,27 +195,27 @@ class ElderManager {
     final prefs = await SharedPreferences.getInstance();
     final savedElderId = prefs.getInt(_currentElderIdKey);
     
-    print('   📂 _loadCurrentElder: savedElderId = $savedElderId');
+    appLogger.d('   📂 _loadCurrentElder: savedElderId = $savedElderId');
     
     if (savedElderId != null) {
       // 嘗試找到保存的長輩
       try {
         _currentElder = _pairedElders.firstWhere((e) => e.id == savedElderId);
-        print('   ✅ Found saved elder: ${_currentElder?.displayName}');
+        appLogger.d('   ✅ Found saved elder: ${_currentElder?.displayName}');
       } catch (e) {
         // 找不到保存的長輩（可能是切換帳號或長輩已解除配對），選擇第一個
-        print('   ⚠️  Saved elder not found, selecting first elder');
+        appLogger.d('   ⚠️  Saved elder not found, selecting first elder');
         _currentElder = _pairedElders.first;
         await prefs.setInt(_currentElderIdKey, _currentElder!.id);
       }
     } else {
       // 沒有保存記錄，選擇第一個
-      print('   📝 No saved elder, selecting first elder');
+      appLogger.d('   📝 No saved elder, selecting first elder');
       _currentElder = _pairedElders.first;
       await prefs.setInt(_currentElderIdKey, _currentElder!.id);
     }
     
-    print('   ✅ _loadCurrentElder complete: ${_currentElder?.displayName}');
+    appLogger.d('   ✅ _loadCurrentElder complete: ${_currentElder?.displayName}');
   }
   
   /// 從快取載入
