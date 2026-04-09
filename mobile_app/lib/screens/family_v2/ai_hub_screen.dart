@@ -253,20 +253,28 @@ class _AiHubScreenState extends State<AiHubScreen> {
   /// 頂部 AppBar
   SliverAppBar _buildAppBar() {
     return SliverAppBar(
-      expandedHeight: 120,
+      expandedHeight: 140,
       floating: false,
       pinned: true,
       backgroundColor: Colors.white,
       elevation: 0,
+      surfaceTintColor: Colors.transparent,
       actions: [
         // 設定按鈕
         Padding(
           padding: const EdgeInsets.only(right: 8),
           child: IconButton(
-            icon: Icon(
-              Icons.settings_rounded,
-              color: Color(0xFF64748B),
-              size: 26,
+            icon: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF1F5F9),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                Icons.settings_rounded,
+                color: Color(0xFF64748B),
+                size: 22,
+              ),
             ),
             onPressed: () {
               HapticFeedback.lightImpact();
@@ -293,14 +301,14 @@ class _AiHubScreenState extends State<AiHubScreen> {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                const Color(0xFF3B82F6).withValues(alpha: 0.1),
-                const Color(0xFF8B5CF6).withValues(alpha: 0.1),
+                const Color(0xFF3B82F6).withValues(alpha: 0.08),
+                const Color(0xFF8B5CF6).withValues(alpha: 0.06),
               ],
             ),
           ),
           child: SafeArea(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.end,
@@ -308,44 +316,52 @@ class _AiHubScreenState extends State<AiHubScreen> {
                   Text(
                     'AI 智能中樞',
                     style: GoogleFonts.notoSansTc(
-                      fontSize: 28,
+                      fontSize: 32,
                       fontWeight: FontWeight.w900,
                       color: const Color(0xFF1E293B),
                       letterSpacing: -0.5,
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Text(
-                        '正在關照：',
-                        style: GoogleFonts.notoSansTc(
-                          fontSize: 14,
-                          color: const Color(0xFF64748B),
-                          fontWeight: FontWeight.w500,
-                        ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF3B82F6).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: const Color(0xFF3B82F6).withValues(alpha: 0.2),
+                        width: 1,
                       ),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (_currentElder != null) ...[
-                            Text(
-                              _currentElder!.genderEmoji,
-                              style: const TextStyle(fontSize: 14),
-                            ),
-                            const SizedBox(width: 4),
-                          ],
-                          Text(
-                            _currentElder?.displayName ?? '未配對',
-                            style: GoogleFonts.notoSansTc(
-                              fontSize: 14,
-                              color: const Color(0xFF3B82F6),
-                              fontWeight: FontWeight.w700,
-                            ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '正在關照：',
+                          style: GoogleFonts.notoSansTc(
+                            fontSize: 14,
+                            color: const Color(0xFF64748B),
+                            fontWeight: FontWeight.w500,
                           ),
+                        ),
+                        const SizedBox(width: 6),
+                        if (_currentElder != null) ...[
+                          Text(
+                            _currentElder!.genderEmoji,
+                            style: const TextStyle(fontSize: 14),
+                          ),
+                          const SizedBox(width: 6),
                         ],
-                      ),
-                    ],
+                        Text(
+                          _currentElder?.displayName ?? '未配對',
+                          style: GoogleFonts.notoSansTc(
+                            fontSize: 14,
+                            color: const Color(0xFF3B82F6),
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -415,9 +431,14 @@ class _AiHubScreenState extends State<AiHubScreen> {
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
                     color: const Color(0xFFE2E8F0),
-                    width: 1,
+                    width: 1.5,
                   ),
                   boxShadow: [
+                    BoxShadow(
+                      color: (item['color'] as Color).withValues(alpha: 0.08),
+                      blurRadius: 16,
+                      offset: const Offset(0, 6),
+                    ),
                     BoxShadow(
                       color: Colors.black.withValues(alpha: 0.03),
                       blurRadius: 8,
@@ -429,10 +450,14 @@ class _AiHubScreenState extends State<AiHubScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
-                        color: (item['color'] as Color).withValues(alpha: 0.1),
+                        color: (item['color'] as Color).withValues(alpha: 0.15),
                         shape: BoxShape.circle,
+                        border: Border.all(
+                          color: (item['color'] as Color).withValues(alpha: 0.25),
+                          width: 1,
+                        ),
                       ),
                       child: Icon(
                         item['icon'] as IconData,
@@ -440,13 +465,14 @@ class _AiHubScreenState extends State<AiHubScreen> {
                         size: 28,
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 10),
                     Text(
                       item['label'] as String,
                       style: GoogleFonts.notoSansTc(
                         fontSize: 14,
                         fontWeight: FontWeight.w700,
                         color: const Color(0xFF1E293B),
+                        letterSpacing: -0.2,
                       ),
                     ),
                   ],
