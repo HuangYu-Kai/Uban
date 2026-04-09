@@ -398,7 +398,7 @@ class _RedesignedFamilyAgentViewState extends State<RedesignedFamilyAgentView> {
                         ? [
                             BoxShadow(
                               color:
-                                  const Color(0xFF667EEA).withOpacity(0.2),
+                                  const Color(0xFF667EEA).withValues(alpha: 0.2),
                               blurRadius: 12,
                               offset: const Offset(0, 4),
                             ),
@@ -462,7 +462,7 @@ class _RedesignedFamilyAgentViewState extends State<RedesignedFamilyAgentView> {
                 duration: const Duration(milliseconds: 250),
                 decoration: BoxDecoration(
                   color: isSelected
-                      ? persona['color'].withOpacity(0.1)
+                      ? persona['color'].withValues(alpha: 0.1)
                       : Colors.white,
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
@@ -474,14 +474,14 @@ class _RedesignedFamilyAgentViewState extends State<RedesignedFamilyAgentView> {
                   boxShadow: isSelected
                       ? [
                           BoxShadow(
-                            color: persona['color'].withOpacity(0.15),
+                            color: persona['color'].withValues(alpha: 0.15),
                             blurRadius: 16,
                             offset: const Offset(0, 4),
                           ),
                         ]
                       : [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.03),
+                            color: Colors.black.withValues(alpha: 0.03),
                             blurRadius: 8,
                             offset: const Offset(0, 2),
                           ),
@@ -545,7 +545,7 @@ class _RedesignedFamilyAgentViewState extends State<RedesignedFamilyAgentView> {
         border: Border.all(color: const Color(0xFFF0F1F3), width: 1),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 12,
             offset: const Offset(0, 2),
           ),
@@ -562,7 +562,7 @@ class _RedesignedFamilyAgentViewState extends State<RedesignedFamilyAgentView> {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.1),
+                    color: color.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Icon(icon, color: color, size: 18),
@@ -778,7 +778,7 @@ class _RedesignedFamilyAgentViewState extends State<RedesignedFamilyAgentView> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: const Color(0xFF667EEA).withOpacity(0.1),
+                color: const Color(0xFF667EEA).withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(6),
               ),
               child: Text(
@@ -825,7 +825,7 @@ class _RedesignedFamilyAgentViewState extends State<RedesignedFamilyAgentView> {
               Container(
                 padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF667EEA).withOpacity(0.1),
+                  color: const Color(0xFF667EEA).withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: const Icon(
@@ -874,7 +874,7 @@ class _RedesignedFamilyAgentViewState extends State<RedesignedFamilyAgentView> {
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
                   valueColor:
-                      AlwaysStoppedAnimation<Color>(Colors.white.withOpacity(0.8)),
+                      AlwaysStoppedAnimation<Color>(Colors.white.withValues(alpha: 0.8)),
                 ),
               )
             : Text(
@@ -898,7 +898,7 @@ class _RedesignedFamilyAgentViewState extends State<RedesignedFamilyAgentView> {
             width: 80,
             height: 80,
             decoration: BoxDecoration(
-              color: const Color(0xFF667EEA).withOpacity(0.1),
+              color: const Color(0xFF667EEA).withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(24),
             ),
             child: const Icon(

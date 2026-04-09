@@ -311,7 +311,7 @@ class _EnhancedFamilyAiChatScreenState extends State<EnhancedFamilyAiChatScreen>
                           width: 6,
                           height: 6,
                           decoration: BoxDecoration(
-                            color: _accentColor.withOpacity(
+                            color: _accentColor.withValues(alpha: 
                               0.3 + (0.7 * (1 - (index / 3))),
                             ),
                             shape: BoxShape.circle,

@@ -411,7 +411,7 @@ class _FamilyAgentViewState extends State<FamilyAgentView> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
-          BoxShadow(color: accent.withOpacity(0.07), blurRadius: 20, offset: const Offset(0, 8)),
+          BoxShadow(color: accent.withValues(alpha: 0.07), blurRadius: 20, offset: const Offset(0, 8)),
         ],
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -421,7 +421,7 @@ class _FamilyAgentViewState extends State<FamilyAgentView> {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: accent.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
+                color: accent.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
               child: Icon(icon, color: accent, size: 20),
             ),
             const SizedBox(width: 10),
@@ -515,7 +515,7 @@ class _FamilyAgentViewState extends State<FamilyAgentView> {
               color: active ? Colors.white : Colors.transparent,
               borderRadius: BorderRadius.circular(10),
               boxShadow: active
-                  ? [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4)]
+                  ? [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4)]
                   : [],
             ),
             child: Text(label,
@@ -538,7 +538,7 @@ class _FamilyAgentViewState extends State<FamilyAgentView> {
             ),
             borderRadius: BorderRadius.circular(16),
             boxShadow: [BoxShadow(
-                color: const Color(0xFF10B981).withOpacity(0.3),
+                color: const Color(0xFF10B981).withValues(alpha: 0.3),
                 blurRadius: 10, offset: const Offset(0, 4))],
           ),
           child: Center(child: _isLocating
@@ -580,11 +580,11 @@ class _FamilyAgentViewState extends State<FamilyAgentView> {
                 color: active ? style.$3 : style.$2,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                    color: style.$3.withOpacity(active ? 1 : 0.2),
+                    color: style.$3.withValues(alpha: active ? 1 : 0.2),
                     width: active ? 2 : 1),
                 boxShadow: active
                     ? [BoxShadow(
-                        color: style.$3.withOpacity(0.3),
+                        color: style.$3.withValues(alpha: 0.3),
                         blurRadius: 10, offset: const Offset(0, 4))]
                     : [],
               ),
@@ -631,7 +631,7 @@ class _FamilyAgentViewState extends State<FamilyAgentView> {
               activeTrackColor: Colors.transparent,
               inactiveTrackColor: Colors.transparent,
               thumbColor: Colors.white,
-              overlayColor: Colors.white.withOpacity(0.2),
+              overlayColor: Colors.white.withValues(alpha: 0.2),
               thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 11, elevation: 4),
             ),
             child: Slider(value: value, min: 0, max: 100, onChanged: onChanged),
@@ -687,7 +687,7 @@ class _FamilyAgentViewState extends State<FamilyAgentView> {
           activeTrackColor: const Color(0xFFEF4444),
           inactiveTrackColor: const Color(0xFFE5E7EB),
           thumbColor: const Color(0xFFEF4444),
-          overlayColor: const Color(0xFFEF4444).withOpacity(0.1),
+          overlayColor: const Color(0xFFEF4444).withValues(alpha: 0.1),
         ),
         child: Slider(
           value: idx.toDouble(),
