@@ -601,15 +601,31 @@ class ElderChatTabState extends State<ElderChatTab>
     return Align(
       alignment: Alignment.centerRight,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 15, left: 40),
-        padding: const EdgeInsets.all(16),
+        margin: const EdgeInsets.only(bottom: 18, left: 40),
+        padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          color: const Color(0xFF8DB08B).withValues(alpha: 0.15),
+          color: const Color(0xFF8DB08B).withValues(alpha: 0.2),
           borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(20),
-            topRight: Radius.circular(20),
-            bottomLeft: Radius.circular(20),
+            topLeft: Radius.circular(22),
+            topRight: Radius.circular(22),
+            bottomLeft: Radius.circular(22),
           ),
+          border: Border.all(
+            color: const Color(0xFF8DB08B).withValues(alpha: 0.3),
+            width: 1.5,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF8DB08B).withValues(alpha: 0.15),
+              blurRadius: 20,
+              offset: const Offset(0, 6),
+            ),
+            BoxShadow(
+              color: const Color(0xFF8DB08B).withValues(alpha: 0.05),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
         child: Text(
           text,
@@ -617,6 +633,7 @@ class ElderChatTabState extends State<ElderChatTab>
             fontSize: 22,
             fontWeight: FontWeight.bold,
             color: const Color(0xFF1E293B),
+            height: 1.4,
           ),
         ),
       ),
@@ -647,20 +664,29 @@ class ElderChatTabState extends State<ElderChatTab>
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 20, right: 40),
-        padding: const EdgeInsets.all(20),
+        margin: const EdgeInsets.only(bottom: 22, right: 40),
+        padding: const EdgeInsets.all(22),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(24),
-            topRight: Radius.circular(24),
-            bottomRight: Radius.circular(24),
+            topLeft: Radius.circular(26),
+            topRight: Radius.circular(26),
+            bottomRight: Radius.circular(26),
+          ),
+          border: Border.all(
+            color: const Color(0xFF59B294).withValues(alpha: 0.15),
+            width: 1.5,
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 15,
-              offset: const Offset(0, 5),
+              color: const Color(0xFF59B294).withValues(alpha: 0.12),
+              blurRadius: 28,
+              offset: const Offset(0, 8),
+            ),
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.03),
+              blurRadius: 12,
+              offset: const Offset(0, 3),
             ),
           ],
         ),
@@ -670,23 +696,31 @@ class ElderChatTabState extends State<ElderChatTab>
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(
-                  Icons.auto_awesome,
-                  color: Color(0xFF59B294),
-                  size: 20,
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF59B294).withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.auto_awesome,
+                    color: Color(0xFF59B294),
+                    size: 18,
+                  ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 10),
                 Text(
                   'AI 陪伴',
                   style: GoogleFonts.notoSansTc(
                     fontSize: 14,
                     color: const Color(0xFF59B294),
                     fontWeight: FontWeight.bold,
+                    letterSpacing: -0.3,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
             MarkdownBody(
               data: displayLine,
               builders: {'img': CustomImageBuilder()},
@@ -695,12 +729,15 @@ class ElderChatTabState extends State<ElderChatTab>
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
                   color: const Color(0xFF1E293B),
-                  height: 1.4,
+                  height: 1.5,
                 ),
               ),
             ),
             // 如果有影片，顯示播放器
-            if (videoId != null) YoutubeBubblePlayer(videoId: videoId),
+            if (videoId != null) ...[
+              const SizedBox(height: 12),
+              YoutubeBubblePlayer(videoId: videoId),
+            ],
           ],
         ),
       ),
@@ -711,38 +748,52 @@ class ElderChatTabState extends State<ElderChatTab>
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 25, top: 10),
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+        margin: const EdgeInsets.only(bottom: 28, top: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 22),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: const Color(0xFF59B294).withValues(alpha: 0.2), width: 2),
+          border: Border.all(
+            color: const Color(0xFF59B294).withValues(alpha: 0.25),
+            width: 2,
+          ),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFF59B294).withValues(alpha: 0.08),
-              blurRadius: 20,
-              offset: const Offset(0, 8),
+              color: const Color(0xFF59B294).withValues(alpha: 0.15),
+              blurRadius: 24,
+              offset: const Offset(0, 10),
+            ),
+            BoxShadow(
+              color: const Color(0xFF59B294).withValues(alpha: 0.04),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
             ),
           ],
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const SizedBox(
-              width: 28,
-              height: 28,
-              child: CircularProgressIndicator(
-                strokeWidth: 4,
+            Container(
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF59B294).withValues(alpha: 0.1),
+              ),
+              child: const CircularProgressIndicator(
+                strokeWidth: 4.5,
                 color: Color(0xFF59B294),
+                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF59B294)),
               ),
             ),
-            const SizedBox(width: 20),
+            const SizedBox(width: 18),
             Text(
               '正在為您思考中...',
               style: GoogleFonts.notoSansTc(
                 fontSize: 22,
                 fontWeight: FontWeight.w900,
                 color: const Color(0xFF59B294),
+                letterSpacing: -0.2,
               ),
             ),
           ],
@@ -754,23 +805,43 @@ class ElderChatTabState extends State<ElderChatTab>
   // ─── Header ───────────────────────────────────────────────────────────
   Widget _buildChatHeader() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      decoration: const BoxDecoration(
-        color: Color(0xFF8DB08B),
-        borderRadius: BorderRadius.only(
-          bottomLeft: Radius.circular(20),
-          bottomRight: Radius.circular(20),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            const Color(0xFF8DB08B),
+            const Color(0xFF7AA47A).withValues(alpha: 0.9),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
+        borderRadius: const BorderRadius.only(
+          bottomLeft: Radius.circular(24),
+          bottomRight: Radius.circular(24),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF8DB08B).withValues(alpha: 0.2),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Row(
         children: [
-          IconButton(
-            icon: const Icon(
-              Icons.arrow_back_ios_new_rounded,
-              color: Colors.white,
-              size: 28,
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(12),
             ),
-            onPressed: widget.onBackToHome,
+            child: IconButton(
+              icon: const Icon(
+                Icons.arrow_back_ios_new_rounded,
+                color: Colors.white,
+                size: 28,
+              ),
+              onPressed: widget.onBackToHome,
+            ),
           ),
           const Spacer(),
           // ④ 連續對話模式 Toggle
@@ -780,11 +851,12 @@ class ElderChatTabState extends State<ElderChatTab>
                 '連續對話',
                 style: GoogleFonts.notoSansTc(
                   fontSize: 16,
-                  color: Colors.white.withValues(alpha: 0.9),
+                  color: Colors.white.withValues(alpha: 0.95),
                   fontWeight: FontWeight.bold,
+                  letterSpacing: -0.2,
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
               Transform.scale(
                 scale: 0.85,
                 child: Switch(
@@ -808,7 +880,7 @@ class ElderChatTabState extends State<ElderChatTab>
     // 只在 AI 思考時才鎖定麥克風；如果正在播放 (isSpeaking)，允許長輩按住打斷
     final bool locked = _isAILoading;
     final Color micColor = locked
-        ? Colors.grey
+        ? Colors.grey.withValues(alpha: 0.5)
         : _isRecording
         ? Colors.redAccent
         : const Color(0xFF8DB08B);
@@ -825,7 +897,7 @@ class ElderChatTabState extends State<ElderChatTab>
     }
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -835,7 +907,7 @@ class ElderChatTabState extends State<ElderChatTab>
             child: _isRecording && _waveAnimations.isNotEmpty
                 ? Padding(
                     key: const ValueKey('wave'),
-                    padding: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.only(bottom: 14),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.end,
@@ -844,14 +916,14 @@ class ElderChatTabState extends State<ElderChatTab>
                           animation: _waveAnimations[i],
                           builder: (context, child) {
                             return Container(
-                              width: 8,
+                              width: 10,
                               height: _waveAnimations[i].value,
-                              margin: const EdgeInsets.symmetric(horizontal: 5),
+                              margin: const EdgeInsets.symmetric(horizontal: 6),
                               decoration: BoxDecoration(
                                 color: Colors.redAccent.withValues(
-                                  alpha: 0.7 + i * 0.1,
+                                  alpha: 0.8 + i * 0.1,
                                 ),
-                                borderRadius: BorderRadius.circular(4),
+                                borderRadius: BorderRadius.circular(5),
                               ),
                             );
                           },
@@ -866,15 +938,16 @@ class ElderChatTabState extends State<ElderChatTab>
             children: [
               // 「+」功能按鈕（保留）
               Container(
-                width: 54,
-                height: 54,
+                width: 56,
+                height: 56,
                 decoration: BoxDecoration(
                   color: Colors.white,
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
-                      blurRadius: 10,
+                      color: Colors.black.withValues(alpha: 0.08),
+                      blurRadius: 14,
+                      offset: const Offset(0, 4),
                     ),
                   ],
                 ),
@@ -882,7 +955,7 @@ class ElderChatTabState extends State<ElderChatTab>
                   icon: const Icon(
                     Icons.add_rounded,
                     color: Color(0xFF8DB08B),
-                    size: 30,
+                    size: 32,
                   ),
                   onPressed: () {
                     // TODO: 其他功能
@@ -900,16 +973,22 @@ class ElderChatTabState extends State<ElderChatTab>
                           animation: _micPulseAnimation!,
                           builder: (context, child) {
                             return Container(
-                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              padding: const EdgeInsets.symmetric(vertical: 18),
                               decoration: BoxDecoration(
                                 color: micColor,
-                                borderRadius: BorderRadius.circular(30),
+                                borderRadius: BorderRadius.circular(32),
                                 boxShadow: [
                                   if (_isRecording)
                                     BoxShadow(
-                                      color: Colors.redAccent.withValues(alpha: 0.5),
-                                      blurRadius: _micPulseAnimation!.value + 10,
+                                      color: Colors.redAccent.withValues(alpha: 0.6),
+                                      blurRadius: _micPulseAnimation!.value + 12,
                                       spreadRadius: _micPulseAnimation!.value / 2,
+                                    ),
+                                  if (!_isRecording && !locked)
+                                    BoxShadow(
+                                      color: const Color(0xFF8DB08B).withValues(alpha: 0.15),
+                                      blurRadius: 16,
+                                      offset: const Offset(0, 6),
                                     ),
                                 ],
                               ),
@@ -919,10 +998,18 @@ class ElderChatTabState extends State<ElderChatTab>
                           child: _buildMicButtonContent(statusText),
                         )
                       : Container(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          padding: const EdgeInsets.symmetric(vertical: 18),
                           decoration: BoxDecoration(
                             color: micColor,
-                            borderRadius: BorderRadius.circular(30),
+                            borderRadius: BorderRadius.circular(32),
+                            boxShadow: [
+                              if (!locked)
+                                BoxShadow(
+                                  color: const Color(0xFF8DB08B).withValues(alpha: 0.15),
+                                  blurRadius: 16,
+                                  offset: const Offset(0, 6),
+                                ),
+                            ],
                           ),
                           child: _buildMicButtonContent(statusText),
                         ),
@@ -942,15 +1029,20 @@ class ElderChatTabState extends State<ElderChatTab>
         Icon(
           _isRecording ? Icons.mic_rounded : Icons.mic_none_rounded,
           color: Colors.white,
-          size: 28,
+          size: 30,
         ),
-        const SizedBox(width: 8),
-        Text(
-          statusText,
-          style: GoogleFonts.notoSansTc(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            statusText,
+            style: GoogleFonts.notoSansTc(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+              letterSpacing: -0.2,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ),
       ],
@@ -966,23 +1058,43 @@ class ElderChatTabState extends State<ElderChatTab>
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(
+            color: const Color(0xFF8DB08B).withValues(alpha: 0.15),
+            width: 1.5,
+          ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
+              color: const Color(0xFF8DB08B).withValues(alpha: 0.12),
+              blurRadius: 18,
+              offset: const Offset(0, 6),
+            ),
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.02),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
             ),
           ],
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 40, color: const Color(0xFF8DB08B)),
-            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF8DB08B).withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Icon(
+                icon,
+                size: 42,
+                color: const Color(0xFF8DB08B),
+              ),
+            ),
+            const SizedBox(height: 14),
             Text(
               title,
               textAlign: TextAlign.center,
@@ -990,6 +1102,8 @@ class ElderChatTabState extends State<ElderChatTab>
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
                 color: const Color(0xFF1E293B),
+                letterSpacing: -0.2,
+                height: 1.3,
               ),
             ),
           ],
