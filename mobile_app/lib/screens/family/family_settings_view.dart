@@ -6,6 +6,7 @@ import '../../services/api_service.dart';
 import '../identification_screen.dart';
 import '../caregiver_pairing_screen.dart';
 import '../elder_profile_edit_screen.dart';
+import 'package:flutter_application_1/utils/app_logger.dart';
 
 class FamilySettingsView extends StatefulWidget {
   final int userId;
@@ -42,21 +43,21 @@ class _FamilySettingsViewState extends State<FamilySettingsView> {
     final savedUserId = prefs.getInt('caregiver_id');
     final savedUserName = prefs.getString('caregiver_name');
     
-    print('🔍 FamilySettingsView loading from SharedPreferences:');
-    print('   caregiver_id: $savedUserId');
-    print('   caregiver_name: $savedUserName');
+    appLogger.d('🔍 FamilySettingsView loading from SharedPreferences:');
+    appLogger.d('   caregiver_id: $savedUserId');
+    appLogger.d('   caregiver_name: $savedUserName');
     
     if (mounted && savedUserName != null) {
       setState(() {
         _userName = savedUserName;
       });
-      print('   ✅ Updated _userName to: $_userName');
+      appLogger.d('   ✅ Updated _userName to: $_userName');
     } else {
       // 備用方案：使用 widget 參數
       setState(() {
         _userName = widget.userName;
       });
-      print('   ⚠️  Using widget.userName: $_userName');
+      appLogger.d('   ⚠️  Using widget.userName: $_userName');
     }
   }
 
@@ -216,8 +217,8 @@ class _FamilySettingsViewState extends State<FamilySettingsView> {
                   _userName = newName;
                 });
                 
-                print('✅ Profile updated: $_userName');
-                print('   Saved to SharedPreferences');
+                appLogger.d('✅ Profile updated: $_userName');
+                appLogger.d('   Saved to SharedPreferences');
               }
               Navigator.pop(context);
             },

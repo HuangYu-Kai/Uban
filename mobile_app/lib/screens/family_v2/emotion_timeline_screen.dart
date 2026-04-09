@@ -4,7 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../models/emotion_data.dart';
-import '../../services/emotion_storage_service.dart';
+
 
 /// 😊 情緒時間軸完整頁面
 /// 
@@ -31,7 +31,7 @@ class _EmotionTimelineScreenState extends State<EmotionTimelineScreen> {
   List<EmotionData> _emotionData = [];
   bool _isLoading = true;
   int? _selectedPointIndex;
-  final EmotionStorageService _storageService = EmotionStorageService();
+
 
   @override
   void initState() {
@@ -650,7 +650,7 @@ class _EmotionTimelineScreenState extends State<EmotionTimelineScreen> {
                 ],
               ),
             );
-          }).toList(),
+          }),
         ],
       ),
     ).animate().fadeIn(delay: 200.ms, duration: 400.ms);

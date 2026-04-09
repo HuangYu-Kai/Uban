@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/family_member.dart';
 import '../models/care_task.dart';
@@ -128,6 +127,7 @@ class FamilySyncService {
     Map<String, dynamic>? metadata,
   }) async {
     // TODO: 推送到 Firebase
+    /*
     final activity = {
       'userId': userId,
       'familyId': familyId,
@@ -135,6 +135,7 @@ class FamilySyncService {
       'timestamp': DateTime.now().toIso8601String(),
       'metadata': metadata,
     };
+    */
     
     // 模擬推送
     await Future.delayed(const Duration(milliseconds: 100));

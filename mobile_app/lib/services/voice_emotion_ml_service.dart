@@ -1,6 +1,7 @@
 /// 🎙️ 語音情緒分析服務（準備整合 TensorFlow Lite）
 /// 
 /// 使用機器學習模型分析語音中的情緒特徵
+library;
 
 import '../models/emotion_data.dart';
 
@@ -39,9 +40,10 @@ class VoiceEmotionMLService {
     return EmotionData(
       id: 'emotion_${DateTime.now().millisecondsSinceEpoch}',
       timestamp: DateTime.now(),
-      type: prediction.emotionType,
-      confidence: prediction.confidence,
-      audioReference: audioPath,
+      elderId: 0, // 佔位ID，實際應用應傳入正確elderId
+      emotionType: prediction.emotionType,
+      confidenceScore: prediction.confidence,
+      audioSnippetRef: audioPath,
       metadata: {
         'pitch': prediction.pitch,
         'speed': prediction.speed,
@@ -63,15 +65,16 @@ class VoiceEmotionMLService {
     // 3. 提取特徵並推理
     // 4. 持續輸出情緒結果
     
-    await for (final audioChunk in audioStream) {
+    await for (final _ in audioStream) {
       // 模擬處理
       await Future.delayed(const Duration(milliseconds: 100));
       
       yield EmotionData(
         id: 'stream_emotion_${DateTime.now().millisecondsSinceEpoch}',
         timestamp: DateTime.now(),
-        type: EmotionType.calm,
-        confidence: 0.75,
+        elderId: 0, // 佔位ID，實際應用應傳入正確elderId
+        emotionType: EmotionType.calm,
+        confidenceScore: 0.75,
         metadata: {'source': 'stream'},
       );
     }

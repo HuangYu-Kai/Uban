@@ -167,7 +167,7 @@ class _HealthDashboardCardState extends State<HealthDashboardCard>
                 shape: BoxShape.circle,
                 border: Border.all(
                   color: const Color(0xFFEF4444)
-                      .withOpacity(1 - _pulseController.value),
+                      .withValues(alpha: 1 - _pulseController.value),
                   width: 2,
                 ),
               ),
@@ -180,7 +180,7 @@ class _HealthDashboardCardState extends State<HealthDashboardCard>
                 shape: BoxShape.circle,
                 border: Border.all(
                   color: const Color(0xFFEF4444)
-                      .withOpacity(1 - (_pulseController.value * 0.6)),
+                      .withValues(alpha: 1 - (_pulseController.value * 0.6)),
                   width: 1.5,
                 ),
               ),

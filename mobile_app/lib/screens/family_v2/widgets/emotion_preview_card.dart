@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:flutter_animate/flutter_animate.dart';
+
 import '../emotion_timeline_screen.dart';
 
 /// 😊 情緒時間軸預覽卡片

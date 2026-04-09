@@ -1,5 +1,5 @@
 // lib/services/care_script_service.dart
-import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import '../models/care_script.dart';
 import 'database_helper.dart';
@@ -120,7 +120,7 @@ class CareScriptService {
         // 檢查是否今天已執行過
         final lastExecuted = script.lastExecutedAt;
         if (lastExecuted != null) {
-          final lastDate = DateTime.parse(lastExecuted);
+          final lastDate = lastExecuted;
           if (lastDate.year == now.year &&
               lastDate.month == now.month &&
               lastDate.day == now.day) {

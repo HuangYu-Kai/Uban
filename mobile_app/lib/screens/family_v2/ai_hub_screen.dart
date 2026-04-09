@@ -7,12 +7,13 @@ import 'widgets/emotion_preview_card.dart';
 import 'widgets/vital_signs_widget.dart';
 import 'health_trends_screen.dart';
 import 'family_collaboration_screen.dart';
-import 'placeholder_screens.dart';
+
 import 'alert_center_screen.dart';
 import '../video_call_screen.dart';
 import '../family/family_settings_view.dart';
 import '../../services/elder_manager.dart';
 import '../../models/elder.dart';
+import 'package:flutter_application_1/utils/app_logger.dart';
 
 /// 🎯 AI 智能中樞 - 全新子女端首頁
 /// 
@@ -47,33 +48,33 @@ class _AiHubScreenState extends State<AiHubScreen> {
   }
 
   Future<void> _loadElderInfo() async {
-    print('🔍 AiHubScreen._loadElderInfo() started');
-    print('   currentUserId from widget: ${widget.currentUserId}');
-    print('   ElderManager.isInitialized: ${_elderManager.isInitialized}');
-    print('   ElderManager.currentUserId: ${_elderManager.currentUserId}');
+    appLogger.d('🔍 AiHubScreen._loadElderInfo() started');
+    appLogger.d('   currentUserId from widget: ${widget.currentUserId}');
+    appLogger.d('   ElderManager.isInitialized: ${_elderManager.isInitialized}');
+    appLogger.d('   ElderManager.currentUserId: ${_elderManager.currentUserId}');
     
     // 確保 ElderManager 已初始化
     if (!_elderManager.isInitialized) {
       if (widget.currentUserId != null) {
-        print('   🔄 Initializing ElderManager with userId: ${widget.currentUserId}');
+        appLogger.d('   🔄 Initializing ElderManager with userId: ${widget.currentUserId}');
         await _elderManager.initialize(userId: widget.currentUserId);
       } else {
-        print('   🔄 Initializing ElderManager without userId (will try SharedPreferences)');
+        appLogger.d('   🔄 Initializing ElderManager without userId (will try SharedPreferences)');
         await _elderManager.initialize();
       }
     }
     
-    print('   ElderManager after init:');
-    print('     - isInitialized: ${_elderManager.isInitialized}');
-    print('     - currentUserId: ${_elderManager.currentUserId}');
-    print('     - pairedElders count: ${_elderManager.pairedElders.length}');
-    print('     - currentElder: ${_elderManager.currentElder?.displayName}');
+    appLogger.d('   ElderManager after init:');
+    appLogger.d('     - isInitialized: ${_elderManager.isInitialized}');
+    appLogger.d('     - currentUserId: ${_elderManager.currentUserId}');
+    appLogger.d('     - pairedElders count: ${_elderManager.pairedElders.length}');
+    appLogger.d('     - currentElder: ${_elderManager.currentElder?.displayName}');
     
     // 如果有配對長輩但 currentElder 為 null，設置第一個長輩
     if (_elderManager.currentElder == null && _elderManager.pairedElders.isNotEmpty) {
-      print('   🔧 currentElder is null but pairedElders exist, setting first elder');
+      appLogger.d('   🔧 currentElder is null but pairedElders exist, setting first elder');
       await _elderManager.setCurrentElder(_elderManager.pairedElders.first);
-      print('   ✅ Set currentElder to: ${_elderManager.currentElder?.displayName}');
+      appLogger.d('   ✅ Set currentElder to: ${_elderManager.currentElder?.displayName}');
     }
     
     if (mounted) {
@@ -82,11 +83,11 @@ class _AiHubScreenState extends State<AiHubScreen> {
         _isLoading = false;
       });
       
-      print('   ✅ State updated: _currentElder = ${_currentElder?.displayName}');
+      appLogger.d('   ✅ State updated: _currentElder = ${_currentElder?.displayName}');
       
       // 只在真的沒有配對長輩時才顯示提示
       if (_elderManager.pairedElders.isEmpty) {
-        print('   ⚠️  No paired elders found, showing dialog');
+        appLogger.d('   ⚠️  No paired elders found, showing dialog');
         _showNoPairedElderDialog();
       }
     }
@@ -278,9 +279,9 @@ class _AiHubScreenState extends State<AiHubScreen> {
             ),
             onPressed: () {
               HapticFeedback.lightImpact();
-              print('🔍 Opening Settings from AiHubScreen:');
-              print('   widget.currentUserId: ${widget.currentUserId}');
-              print('   widget.currentUserName: ${widget.currentUserName}');
+              appLogger.d('🔍 Opening Settings from AiHubScreen:');
+              appLogger.d('   widget.currentUserId: ${widget.currentUserId}');
+              appLogger.d('   widget.currentUserName: ${widget.currentUserName}');
               Navigator.push(
                 context,
                 MaterialPageRoute(

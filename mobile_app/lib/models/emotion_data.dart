@@ -169,6 +169,12 @@ class EmotionData {
   /// 便捷屬性：情緒類型別名（為了向後兼容）
   EmotionType get type => emotionType;
 
+  /// 便捷屬性：置信度別名（為了向後兼容）
+  double get confidence => confidenceScore;
+
+  /// 便捷屬性：音頻片段引用別名（為了向後兼容）
+  String? get audioReference => audioSnippetRef;
+
   /// 判斷是否為異常情緒
   /// 
   /// 異常情緒定義：
