@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
@@ -182,10 +183,17 @@ class Signaling {
 
     // 對方接聽監聽
     socket!.on('call-accept', (data) {
-      debugPrint("📞 [Signaling] Received call-accept (SenderId: ${data['accepterId']}, CallId: ${data['callId']})");
+      debugPrint("📞 [Signaling] Received call-accept (AccepterId: ${data['accepterId']}, CallId: ${data['callId']})");
       _peerSocketId = data['accepterId'];
       _currentCallId = data['callId'];
+      
       if (onCallAcceptedByRemote != null) onCallAcceptedByRemote!(data['accepterId'], data['callId']);
+      
+      // ★ 自動啟動 WebRTC 媒體協商：如果當前用戶是發起者（family），立即發送 Offer
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        debugPrint("🔄 [Signaling] Initiator auto-starting createOffer to ${data['accepterId']}");
+        createOffer(targetId: data['accepterId']);
+      });
     });
 
     // 忙線監聽
@@ -466,12 +474,17 @@ class Signaling {
       await _processCandidateQueue();
       var answer = await peerConnection?.createAnswer(_constraints);
       await peerConnection?.setLocalDescription(answer!);
+      
+      // ★ 確保發送 answer 時正確指定發起者的 socketId 作為 targetId
+      final targetSocketId = data['senderId'] ?? _peerSocketId;
+      debugPrint("📤 [Signaling] Emitting answer to $targetSocketId (Call initiated by them)");
+      
       socket!.emit('answer', {
         'room': _currentRoomId,
-        'targetId': _peerSocketId,
+        'targetId': targetSocketId,
         'type': 'answer',
         'sdp': answer!.sdp,
-        'senderId': socket!.id // 告知對方我是誰
+        'senderId': socket!.id
       });
     } catch (e) {
       debugPrint("❌ Accept Error: $e");
@@ -502,14 +515,20 @@ class Signaling {
 
     peerConnection!.onIceCandidate = (candidate) {
       if (socket != null) {
-        debugPrint("🧊 Generated ICE Candidate: ${candidate.candidate?.substring(0, 15)}...");
+        debugPrint("🧊 Generated ICE Candidate: ${candidate.candidate?.substring(0, 15)}... -> targetId: $_peerSocketId");
         var payload = {
           'room': _currentRoomId,
           'candidate': candidate.candidate,
           'sdpMid': candidate.sdpMid,
-          'sdpMLineIndex': candidate.sdpMLineIndex
+          'sdpMLineIndex': candidate.sdpMLineIndex,
+          'senderId': socket!.id
         };
-        if (_peerSocketId != null) payload['targetId'] = _peerSocketId!;
+        // ★ 必須指定 targetId，確保 Candidate 精準轉發給對端
+        if (_peerSocketId != null) {
+          payload['targetId'] = _peerSocketId!;
+        } else {
+          debugPrint("⚠️ [Signaling] Missing targetId for ICE Candidate - falling back to room broadcast");
+        }
         socket!.emit('candidate', payload);
       }
     };
@@ -616,6 +635,10 @@ class Signaling {
 
   Future<void> _closePeerConnection() async {
     if (peerConnection != null) {
+      // ★ 在關閉之前確保所有 track 都被移除和停止
+      for (var sender in await peerConnection!.getSenders()) {
+        await peerConnection!.removeTrack(sender);
+      }
       await peerConnection!.close();
       peerConnection = null;
     }
@@ -623,9 +646,15 @@ class Signaling {
   }
 
   void stopMedia() {
-    localStream?.getTracks().forEach((t) => t.stop());
-    localStream?.dispose();
-    localStream = null;
+    // ★ 確保媒體資源徹底釋放
+    if (localStream != null) {
+      for (var track in localStream!.getTracks()) {
+        track.stop();
+      }
+      localStream?.dispose();
+      localStream = null;
+      debugPrint("✅ [Signaling] Local media stream stopped and disposed");
+    }
   }
 
   void forceDisconnect() {
