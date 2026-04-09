@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import '../widgets/animated_chat_bubble.dart';
 
 /// 增強的家庭 AI 聊天屏幕，支持打字機效果和動態主題
@@ -28,7 +27,6 @@ class _EnhancedFamilyAiChatScreenState extends State<EnhancedFamilyAiChatScreen>
   final List<Map<String, dynamic>> _messages = [];
 
   bool _isThinking = false;
-  bool _isRecording = false;
   String? _aiPersona;
   Color _accentColor = const Color(0xFF667EEA);
 
@@ -145,10 +143,9 @@ class _EnhancedFamilyAiChatScreenState extends State<EnhancedFamilyAiChatScreen>
           ChatInputBar(
             onSendMessage: (String text) => _sendMessage(),
             onVoiceStart: () {
-              setState(() => _isRecording = true);
+              // Handle voice start
             },
             onVoiceEnd: () {
-              setState(() => _isRecording = false);
               // Handle voice input here
             },
             isLoading: _isThinking,

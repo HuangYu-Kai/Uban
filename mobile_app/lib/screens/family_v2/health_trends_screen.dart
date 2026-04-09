@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import '../../services/elder_manager.dart';
+
 
 /// 📊 健康趨勢中心
 /// 
@@ -28,10 +28,10 @@ enum TimeRange { day, week, month, year }
 enum HealthMetric { heartRate, bloodPressure, bloodSugar, weight }
 
 class _HealthTrendsScreenState extends State<HealthTrendsScreen> {
-  final ElderManager _elderManager = ElderManager();
+
   
   TimeRange _selectedTimeRange = TimeRange.week;
-  Set<HealthMetric> _visibleMetrics = {
+  final Set<HealthMetric> _visibleMetrics = {
     HealthMetric.heartRate,
     HealthMetric.bloodPressure,
     HealthMetric.bloodSugar,
@@ -41,9 +41,7 @@ class _HealthTrendsScreenState extends State<HealthTrendsScreen> {
   bool _isLoading = true;
   Map<HealthMetric, List<FlSpot>> _chartData = {};
   
-  // 從 ElderManager 取得真實資料
-  String get _displayElderName => _elderManager.currentElder?.displayName ?? widget.elderName;
-  int? get _displayElderId => _elderManager.currentElder?.id ?? widget.elderId;
+
 
   @override
   void initState() {

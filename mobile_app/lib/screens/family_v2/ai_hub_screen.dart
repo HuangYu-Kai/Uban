@@ -7,7 +7,7 @@ import 'widgets/emotion_preview_card.dart';
 import 'widgets/vital_signs_widget.dart';
 import 'health_trends_screen.dart';
 import 'family_collaboration_screen.dart';
-import 'placeholder_screens.dart';
+
 import 'alert_center_screen.dart';
 import '../video_call_screen.dart';
 import '../family/family_settings_view.dart';
