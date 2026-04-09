@@ -2,6 +2,7 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'dart:async';
+import 'package:flutter_application_1/utils/app_logger.dart';
 
 /// 本地資料庫管理服務
 /// 
@@ -205,12 +206,12 @@ class DatabaseHelper {
       )
     ''');
 
-    print('✅ [DatabaseHelper] Database created successfully');
+    appLogger.d('✅ [DatabaseHelper] Database created successfully');
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     // 未來版本升級邏輯
-    print('📦 [DatabaseHelper] Upgrading database from $oldVersion to $newVersion');
+    appLogger.d('📦 [DatabaseHelper] Upgrading database from $oldVersion to $newVersion');
   }
 
   // ========================================
@@ -400,7 +401,7 @@ class DatabaseHelper {
       whereArgs: [cutoffStr],
     );
 
-    print('🧹 [DatabaseHelper] Cleaned up old execution history');
+    appLogger.d('🧹 [DatabaseHelper] Cleaned up old execution history');
   }
 
   /// 關閉資料庫連接

@@ -197,7 +197,7 @@ class _RedesignedAiChatScreenState extends State<RedesignedAiChatScreen>
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: primaryColor.withOpacity(0.1),
+              color: primaryColor.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Text(
@@ -248,7 +248,7 @@ class _RedesignedAiChatScreenState extends State<RedesignedAiChatScreen>
             width: 100,
             height: 100,
             decoration: BoxDecoration(
-              color: primaryColor.withOpacity(0.1),
+              color: primaryColor.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(30),
             ),
             child: Center(
@@ -299,7 +299,7 @@ class _RedesignedAiChatScreenState extends State<RedesignedAiChatScreen>
               boxShadow: isUser
                   ? [
                       BoxShadow(
-                        color: primaryColor.withOpacity(0.15),
+                        color: primaryColor.withValues(alpha: 0.15),
                         blurRadius: 12,
                         offset: const Offset(0, 4),
                       )
@@ -406,7 +406,7 @@ class _RedesignedAiChatScreenState extends State<RedesignedAiChatScreen>
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: _isRecording
-                      ? primaryColor.withOpacity(0.1)
+                      ? primaryColor.withValues(alpha: 0.1)
                       : const Color(0xFFF1F5F9),
                   border: Border.all(
                     color: _isRecording
@@ -491,7 +491,7 @@ class _RedesignedAiChatScreenState extends State<RedesignedAiChatScreen>
                       _messageController.text.isNotEmpty && !_isTyping
                           ? [
                               BoxShadow(
-                                color: primaryColor.withOpacity(0.3),
+                                color: primaryColor.withValues(alpha: 0.3),
                                 blurRadius: 12,
                                 offset: const Offset(0, 4),
                               )
@@ -505,7 +505,7 @@ class _RedesignedAiChatScreenState extends State<RedesignedAiChatScreen>
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
                           valueColor: AlwaysStoppedAnimation<Color>(
-                            Colors.white.withOpacity(0.8),
+                            Colors.white.withValues(alpha: 0.8),
                           ),
                         ),
                       )
@@ -549,7 +549,7 @@ class _RedesignedAiChatScreenState extends State<RedesignedAiChatScreen>
                   width: 60,
                   height: 60,
                   decoration: BoxDecoration(
-                    color: primaryColor.withOpacity(0.1),
+                    color: primaryColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: Center(

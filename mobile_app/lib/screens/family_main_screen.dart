@@ -10,6 +10,7 @@ import '../services/elder_manager.dart';
 import '../services/signaling.dart';
 import '../services/api_service.dart';
 import 'video_call_screen.dart';
+import 'package:flutter_application_1/utils/app_logger.dart';
 
 class FamilyMainScreen extends StatefulWidget {
   final int userId;
@@ -37,9 +38,9 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> {
   void initState() {
     super.initState();
     
-    print('🔍 FamilyMainScreen initialized:');
-    print('   userId: ${widget.userId}');
-    print('   userName: ${widget.userName}');
+    appLogger.d('🔍 FamilyMainScreen initialized:');
+    appLogger.d('   userId: ${widget.userId}');
+    appLogger.d('   userName: ${widget.userName}');
     
     // 初始化 ElderManager with 真實 userId（不需要 await，在背景執行）
     _initializeElderManager();
@@ -60,16 +61,16 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> {
       ),
     ];
     
-    print('🔍 Created AiHubScreen with:');
-    print('   currentUserId: ${widget.userId}');
-    print('   currentUserName: ${widget.userName}');
+    appLogger.d('🔍 Created AiHubScreen with:');
+    appLogger.d('   currentUserId: ${widget.userId}');
+    appLogger.d('   currentUserName: ${widget.userName}');
   }
   
   Future<void> _initializeElderManager() async {
     // 使用從登入系統傳入的真實 userId
-    print('🔄 FamilyMainScreen: Starting ElderManager initialization');
+    appLogger.d('🔄 FamilyMainScreen: Starting ElderManager initialization');
     final success = await ElderManager().initialize(userId: widget.userId);
-    print('🔄 FamilyMainScreen: ElderManager initialization ${success ? "succeeded" : "failed"}');
+    appLogger.d('🔄 FamilyMainScreen: ElderManager initialization ${success ? "succeeded" : "failed"}');
   }
 
   Future<void> _loadElderAndConnect() async {

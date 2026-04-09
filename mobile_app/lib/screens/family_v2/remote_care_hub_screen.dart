@@ -113,7 +113,7 @@ class _RemoteCareHubScreenState extends State<RemoteCareHubScreen> {
                       style: GoogleFonts.notoSansTc(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
-                        color: Colors.white.withOpacity(0.9),
+                        color: Colors.white.withValues(alpha: 0.9),
                       ),
                     ),
                   ],
@@ -297,7 +297,7 @@ class _RemoteCareHubScreenState extends State<RemoteCareHubScreen> {
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.1),
+              color: Colors.black.withValues(alpha: 0.1),
               blurRadius: 10,
               offset: Offset(0, 5),
             ),
@@ -314,7 +314,7 @@ class _RemoteCareHubScreenState extends State<RemoteCareHubScreen> {
                 child: Icon(
                   icon,
                   size: 120,
-                  color: Colors.white.withOpacity(0.2),
+                  color: Colors.white.withValues(alpha: 0.2),
                 ),
               ),
               
@@ -348,7 +348,7 @@ class _RemoteCareHubScreenState extends State<RemoteCareHubScreen> {
                       style: GoogleFonts.notoSansTc(
                         fontSize: 13,
                         fontWeight: FontWeight.w500,
-                        color: Colors.white.withOpacity(0.9),
+                        color: Colors.white.withValues(alpha: 0.9),
                         height: 1.2,
                       ),
                       maxLines: isWide ? 2 : 1,

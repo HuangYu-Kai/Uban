@@ -1,4 +1,7 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_application_1/utils/app_logger.dart';
 
 /// ⚡ 性能優化工具
 class PerformanceOptimizer {
@@ -120,8 +123,7 @@ class PerformanceOptimizer {
   }
 }
 
-/// 定時器（從 dart:async 導入）
-import 'dart:async';
+
 
 /// 性能監控工具
 class PerformanceMonitor {
@@ -145,7 +147,7 @@ class PerformanceMonitor {
     _metrics[key]!.add(elapsed);
     
     if (kDebugMode) {
-      print('⏱️ $key: ${elapsed}ms');
+      appLogger.d('⏱️ $key: ${elapsed}ms');
     }
   }
 
@@ -181,18 +183,18 @@ class PerformanceMonitor {
   static void printAllMetrics() {
     if (!kDebugMode) return;
     
-    print('\n📊 Performance Metrics:');
+    appLogger.d('\n📊 Performance Metrics:');
     _metrics.forEach((key, values) {
       final stats = getMetrics(key);
       if (stats != null) {
-        print('  $key:');
-        print('    Average: ${stats['average'].toStringAsFixed(2)}ms');
-        print('    Min: ${stats['min']}ms');
-        print('    Max: ${stats['max']}ms');
-        print('    Count: ${stats['count']}');
+        appLogger.d('  $key:');
+        appLogger.d('    Average: ${stats['average'].toStringAsFixed(2)}ms');
+        appLogger.d('    Min: ${stats['min']}ms');
+        appLogger.d('    Max: ${stats['max']}ms');
+        appLogger.d('    Count: ${stats['count']}');
       }
     });
-    print('');
+    appLogger.d('');
   }
 }
 
@@ -232,7 +234,7 @@ class MemoryOptimizer {
 /// Widget 優化工具
 class WidgetOptimizer {
   /// 創建 const Widget（提醒開發者使用 const）
-  static const placeholder = SizedBox.shrink();
+  static const placeholder = const SizedBox.shrink();
 
   /// 是否應該重建 Widget
   static bool shouldRebuild<T>(T oldValue, T newValue) {

@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../../services/ai_suggestion_service.dart';
 import '../../../services/api_service.dart';
+import 'package:flutter_application_1/utils/app_logger.dart';
 
 /// 🤖 AI 智能建議卡片
 /// 
@@ -43,7 +44,7 @@ class _AiSuggestionCardState extends State<AiSuggestionCard> {
     try {
       // 如果有 elderId，從 API 獲取真實建議
       if (widget.elderId != null) {
-        print('🔄 Loading suggestions for elder ID: ${widget.elderId}');
+        appLogger.d('🔄 Loading suggestions for elder ID: ${widget.elderId}');
         final response = await ApiService.getDailySuggestions(widget.elderId!);
         
         if (response['status'] == 'success' && response['data'] != null) {
@@ -55,15 +56,15 @@ class _AiSuggestionCardState extends State<AiSuggestionCard> {
             _isLoading = false;
           });
           
-          print('✅ Loaded ${_suggestions.length} suggestions from API');
+          appLogger.d('✅ Loaded ${_suggestions.length} suggestions from API');
           return;
         } else {
-          print('⚠️ API returned error: ${response['message']}');
+          appLogger.d('⚠️ API returned error: ${response['message']}');
         }
       }
       
       // 備用：使用 Mock 數據
-      print('📝 Using mock suggestions');
+      appLogger.d('📝 Using mock suggestions');
       final suggestions = await AiSuggestionService.generateSuggestions(
         elderData: {
           'elder_name': widget.elderName,
@@ -435,11 +436,13 @@ class _AiSuggestionCardState extends State<AiSuggestionCard> {
                   ).animate()
                     .fadeIn(delay: (index * 100).ms)
                     .slideX(begin: 0.1, end: 0);
-                }).toList(),
+                }),
             ],
           ),
         ),
-      ),
-    );
+      ],
+    ),
+  ),
+);
   }
 }

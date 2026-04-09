@@ -1,14 +1,14 @@
 // 📱 UI 增強功能使用示例
 
 /// 示例 1: 在 Dashboard 中使用健康儀表板
-void example_HealthDashboard() {
+void exampleHealthDashboard() {
   // family_dashboard_view.dart 已自動集成
   // 組件會在首屏自動顯示
   // 顯示長者的實時健康數據
 }
 
 /// 示例 2: 使用增強的聊天屏幕替換原始聊天
-void example_ReplaceChatScreen() {
+void exampleReplaceChatScreen() {
   // 原始代碼：
   // Navigator.push(context, MaterialPageRoute(
   //   builder: (context) => FamilyAiChatScreen(),
@@ -25,7 +25,7 @@ void example_ReplaceChatScreen() {
 }
 
 /// 示例 3: 自定義健康儀表板
-void example_CustomHealthDashboard() {
+void exampleCustomHealthDashboard() {
   /*
   HealthDashboardCard(
     elderName: '李奶奶',
@@ -45,7 +45,7 @@ void example_CustomHealthDashboard() {
 }
 
 /// 示例 4: 集成 AI 聊天消息流
-void example_ChatMessageFlow() {
+void exampleChatMessageFlow() {
   /*
   List<Map<String, dynamic>> messages = [
     {
@@ -73,24 +73,17 @@ void example_ChatMessageFlow() {
 }
 
 /// 示例 5: 自定義 AI 性格
-void example_CustomAiPersona() {
+void exampleCustomAiPersona() {
   // AI 性格會影響：
   // 1. 聊天氣泡的顏色
   // 2. AppBar 中的指示燈顏色
   // 3. 思考指示器的顏色
 
-  // 支持的性格類型：
-  const personas = {
-    '親切的老年陪伴員': 'Color(0xFFF59E0B)', // 暖橙色
-    '嚴謹的健康顧問': 'Color(0xFF3B82F6)', // 專業藍
-    '活潑的小助手': 'Color(0xFFEC4899)', // 粉紅色
-    '溫柔的陪伴者': 'Color(0xFF8B5CF6)', // 紫色
-    '其他任意名稱': 'Color(0xFF667EEA)', // 默認靛藍
-  };
+  // 支持的性格類型包括親切、嚴謹、活潑、溫柔等。
 }
 
 /// 示例 6: 連接真實的 API
-void example_RealApiIntegration() {
+void exampleRealApiIntegration() {
   /*
   // 在 enhanced_family_ai_chat_screen.dart 中修改 _sendMessage()
   
@@ -133,7 +126,7 @@ void example_RealApiIntegration() {
 }
 
 /// 示例 7: 動態主題切換
-void example_DynamicThemeByPersona() {
+void exampleDynamicThemeByPersona() {
   /*
   void _updateAccentColorFromPersona() {
     final persona = _aiPersona?.toLowerCase() ?? '';
@@ -154,7 +147,7 @@ void example_DynamicThemeByPersona() {
 }
 
 /// 示例 8: 語音輸入整合
-void example_VoiceInput() {
+void exampleVoiceInput() {
   /*
   // ChatInputBar 中的語音功能
   
@@ -176,7 +169,7 @@ void example_VoiceInput() {
 }
 
 /// 示例 9: 自定義打字機速度
-void example_TypewriterSpeed() {
+void exampleTypewriterSpeed() {
   /*
   // 快速打字（技術性回應）
   AnimatedChatBubble(
@@ -197,7 +190,7 @@ void example_TypewriterSpeed() {
 }
 
 /// 示例 10: 離線數據快取
-void example_OfflineCache() {
+void exampleOfflineCache() {
   /*
   // 使用 SharedPreferences 快取健康數據
   
@@ -221,7 +214,7 @@ void example_OfflineCache() {
 }
 
 /// 示例 11: 比賽演示建議
-void demo_SuggestionForContest() {
+void demoSuggestionForContest() {
   /*
   在比賽時展示這些特點：
   

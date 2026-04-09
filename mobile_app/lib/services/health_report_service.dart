@@ -144,7 +144,7 @@ class HealthReportService {
           pw.Text(
             '${_formatDate(startDate)} - ${_formatDate(endDate)}',
             style: pw.TextStyle(
-              color: PdfColors.white70,
+              color: const PdfColor.fromInt(0xB3FFFFFF),
               fontSize: 12,
             ),
           ),
@@ -334,15 +334,24 @@ class HealthReportService {
             color: PdfColors.grey200,
             borderRadius: pw.BorderRadius.circular(4),
           ),
-          child: pw.FractionallySizedBox(
-            alignment: pw.Alignment.centerLeft,
-            widthFactor: percentage / 100,
-            child: pw.Container(
-              decoration: pw.BoxDecoration(
-                color: color,
-                borderRadius: pw.BorderRadius.circular(4),
-              ),
-            ),
+          child: pw.Row(
+            children: [
+              if (percentage > 0)
+                pw.Expanded(
+                  flex: (percentage * 10).toInt(),
+                  child: pw.Container(
+                    decoration: pw.BoxDecoration(
+                      color: color,
+                      borderRadius: pw.BorderRadius.circular(4),
+                    ),
+                  ),
+                ),
+              if (percentage < 100)
+                pw.Expanded(
+                  flex: ((100 - percentage) * 10).toInt(),
+                  child: pw.SizedBox(),
+                ),
+            ],
           ),
         ),
       ],

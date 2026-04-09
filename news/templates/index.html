@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CNA News API Demo</title>
+  <style>
+    body {
+      font-family: "Noto Sans TC", "PingFang TC", sans-serif;
+      margin: 0;
+      background: #f3f6fa;
+      color: #1f2937;
+    }
+
+    .wrap {
+      max-width: 980px;
+      margin: 32px auto;
+      padding: 0 16px;
+    }
+
+    h1 {
+      margin: 0 0 20px;
+      color: #0f4c81;
+    }
+
+    .panel {
+      background: #ffffff;
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 6px 24px rgba(17, 24, 39, 0.08);
+      margin-bottom: 20px;
+    }
+
+    .controls {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: end;
+    }
+
+    label {
+      display: block;
+      font-size: 14px;
+      margin-bottom: 6px;
+      color: #334155;
+    }
+
+    select,
+    input,
+    button {
+      height: 38px;
+      border-radius: 8px;
+      border: 1px solid #cbd5e1;
+      padding: 0 10px;
+      font-size: 14px;
+      background: #fff;
+    }
+
+    button {
+      background: #0f4c81;
+      color: #fff;
+      border: none;
+      cursor: pointer;
+      padding: 0 14px;
+    }
+
+    button:hover {
+      background: #0b3b63;
+    }
+
+    .status {
+      font-size: 14px;
+      color: #475569;
+      margin: 12px 0 0;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 10px;
+      padding: 14px;
+      box-shadow: 0 3px 16px rgba(15, 23, 42, 0.06);
+      margin-bottom: 12px;
+    }
+
+    .tag {
+      display: inline-block;
+      background: #e0f2fe;
+      color: #0c4a6e;
+      font-size: 12px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      margin-bottom: 8px;
+    }
+
+    .title {
+      font-size: 18px;
+      margin: 0 0 8px;
+      color: #0f172a;
+    }
+
+    .content {
+      line-height: 1.7;
+      white-space: pre-wrap;
+      margin: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>中央社爬蟲 API Demo</h1>
+
+    <div class="panel">
+      <div class="controls">
+        <div>
+          <label for="category">分類</label>
+          <select id="category"></select>
+        </div>
+
+        <div>
+          <label for="limit">數量 (1-30)</label>
+          <input id="limit" type="number" min="1" max="30" value="5" />
+        </div>
+
+        <div>
+          <button id="loadBtn">載入新聞</button>
+        </div>
+      </div>
+      <p class="status" id="status">準備就緒</p>
+    </div>
+
+    <div id="list"></div>
+  </div>
+
+  <script>
+    const categoryEl = document.getElementById("category");
+    const limitEl = document.getElementById("limit");
+    const loadBtn = document.getElementById("loadBtn");
+    const listEl = document.getElementById("list");
+    const statusEl = document.getElementById("status");
+
+    async function loadCategories() {
+      const resp = await fetch("/api/categories");
+      const data = await resp.json();
+
+      categoryEl.innerHTML = "";
+      data.categories.forEach((c) => {
+        const opt = document.createElement("option");
+        opt.value = c.key;
+        opt.textContent = `${c.label} (${c.key})`;
+        if (c.key === "politics") opt.selected = true;
+        categoryEl.appendChild(opt);
+      });
+    }
+
+    function renderItems(items) {
+      listEl.innerHTML = "";
+
+      if (!items.length) {
+        listEl.innerHTML = "<div class='panel'>查無資料</div>";
+        return;
+      }
+
+      items.forEach((item) => {
+        const card = document.createElement("div");
+        card.className = "card";
+        card.innerHTML = `
+          <span class="tag">${item.category}</span>
+          <h2 class="title">${item.title}</h2>
+          <p class="content">${item.content}</p>
+        `;
+        listEl.appendChild(card);
+      });
+    }
+
+    async function loadNews() {
+      const category = categoryEl.value;
+      const limit = Math.max(1, Math.min(30, Number(limitEl.value) || 5));
+      statusEl.textContent = "載入中...";
+
+      try {
+        const resp = await fetch(`/api/news?category=${encodeURIComponent(category)}&limit=${limit}`);
+        const data = await resp.json();
+
+        if (!resp.ok) {
+          throw new Error(data.error || "API error");
+        }
+
+        renderItems(data.items || []);
+        statusEl.textContent = `完成，共 ${data.count} 篇`;
+      } catch (err) {
+        statusEl.textContent = `錯誤：${err.message}`;
+      }
+    }
+
+    loadBtn.addEventListener("click", loadNews);
+
+    (async () => {
+      await loadCategories();
+      await loadNews();
+    })();
+  </script>
+</body>
+</html>
