@@ -157,35 +157,72 @@ class _AiSuggestionCardState extends State<AiSuggestionCard> {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF3B82F6).withValues(alpha: 0.3),
-            blurRadius: 24,
-            offset: const Offset(0, 12),
+            color: const Color(0xFF3B82F6).withValues(alpha: 0.4),
+            blurRadius: 32,
+            offset: const Offset(0, 16),
+          ),
+          BoxShadow(
+            color: const Color(0xFF8B5CF6).withValues(alpha: 0.2),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(24),
-        child: Container(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // 標題區
+        child: Stack(
+          children: [
+            // 背景裝飾
+            Positioned(
+              top: -80,
+              right: -80,
+              child: Container(
+                width: 200,
+                height: 200,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withValues(alpha: 0.1),
+                ),
+              ),
+            ),
+            Positioned(
+              bottom: -40,
+              left: -40,
+              child: Container(
+                width: 150,
+                height: 150,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withValues(alpha: 0.08),
+                ),
+              ),
+            ),
+            // 主要內容
+            Container(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+              // 標題區 - 增強設計
               Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.all(10),
+                    padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(12),
+                      color: Colors.white.withValues(alpha: 0.25),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.3),
+                        width: 1.5,
+                      ),
                     ),
                     child: const Icon(
                       Icons.auto_awesome_rounded,
                       color: Colors.white,
-                      size: 24,
+                      size: 26,
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 14),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -194,16 +231,17 @@ class _AiSuggestionCardState extends State<AiSuggestionCard> {
                           '今日智能建議',
                           style: GoogleFonts.notoSansTc(
                             color: Colors.white,
-                            fontSize: 20,
+                            fontSize: 22,
                             fontWeight: FontWeight.w900,
-                            letterSpacing: -0.3,
+                            letterSpacing: -0.5,
                           ),
                         ),
+                        const SizedBox(height: 2),
                         Text(
-                          'AI 為您量身打造',
+                          '✨ AI 為您量身打造',
                           style: GoogleFonts.notoSansTc(
-                            color: Colors.white.withValues(alpha: 0.8),
-                            fontSize: 12,
+                            color: Colors.white.withValues(alpha: 0.85),
+                            fontSize: 13,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -213,46 +251,70 @@ class _AiSuggestionCardState extends State<AiSuggestionCard> {
                 ],
               ),
               
-              const SizedBox(height: 20),
+              const SizedBox(height: 24),
               
               // 建議列表
               if (_isLoading)
-                const Center(
+                Center(
                   child: Padding(
-                    padding: EdgeInsets.all(20),
-                    child: CircularProgressIndicator(color: Colors.white),
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      children: [
+                        const CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2.5,
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          '分析中...',
+                          style: GoogleFonts.notoSansTc(
+                            color: Colors.white.withValues(alpha: 0.8),
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 )
               else if (_suggestions.isEmpty)
-                // 空狀態
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 20),
-                  child: Column(
-                    children: [
-                      Icon(
-                        Icons.wb_sunny_outlined,
-                        size: 48,
-                        color: Colors.white.withOpacity(0.6),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        '今日一切安好',
-                        style: GoogleFonts.notoSansTc(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
+                // 空狀態 - 優化設計
+                Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 28),
+                    child: Column(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.15),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.wb_sunny_outlined,
+                            size: 48,
+                            color: Colors.white.withValues(alpha: 0.8),
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'AI 分析後沒有發現需要特別關注的事項',
-                        style: GoogleFonts.notoSansTc(
-                          color: Colors.white.withOpacity(0.8),
-                          fontSize: 13,
+                        const SizedBox(height: 16),
+                        Text(
+                          '今日一切安好 💚',
+                          style: GoogleFonts.notoSansTc(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
+                        const SizedBox(height: 8),
+                        Text(
+                          'AI 分析後沒有發現需要特別關注的事項',
+                          style: GoogleFonts.notoSansTc(
+                            color: Colors.white.withValues(alpha: 0.75),
+                            fontSize: 13,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
                   ),
                 )
               else
