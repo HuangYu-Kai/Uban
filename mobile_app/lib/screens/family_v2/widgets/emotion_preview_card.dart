@@ -97,33 +97,45 @@ class _EmotionPreviewCardState extends State<EmotionPreviewCard> {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: const Color(0xFFE2E8F0)),
+          border: Border.all(
+            color: const Color(0xFFE2E8F0),
+            width: 1.5,
+          ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 16,
-              offset: const Offset(0, 4),
+              color: Colors.black.withValues(alpha: 0.06),
+              blurRadius: 20,
+              offset: const Offset(0, 6),
+            ),
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.02),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
             ),
           ],
         ),
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(10),
+                  padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: _currentColor.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
+                    color: _currentColor.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: _currentColor.withValues(alpha: 0.25),
+                      width: 1.5,
+                    ),
                   ),
                   child: Text(
                     _getEmotionEmoji(_currentEmotion),
-                    style: const TextStyle(fontSize: 24),
+                    style: const TextStyle(fontSize: 28),
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -131,26 +143,42 @@ class _EmotionPreviewCardState extends State<EmotionPreviewCard> {
                       Text(
                         '情緒時間軸',
                         style: GoogleFonts.notoSansTc(
-                          fontSize: 18,
+                          fontSize: 20,
                           fontWeight: FontWeight.w800,
                           color: const Color(0xFF1E293B),
+                          letterSpacing: -0.3,
                         ),
                       ),
-                      Text(
-                        '當前情緒：$_currentEmotion',
-                        style: GoogleFonts.notoSansTc(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                          color: const Color(0xFF64748B),
+                      const SizedBox(height: 2),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: _currentColor.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          '當前：$_currentEmotion',
+                          style: GoogleFonts.notoSansTc(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: _currentColor,
+                          ),
                         ),
                       ),
                     ],
                   ),
                 ),
-                const Icon(
-                  Icons.arrow_forward_ios_rounded,
-                  color: Color(0xFF94A3B8),
-                  size: 18,
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.arrow_forward_ios_rounded,
+                    color: Color(0xFF94A3B8),
+                    size: 16,
+                  ),
                 ),
               ],
             ),
