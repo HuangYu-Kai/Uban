@@ -397,63 +397,63 @@ class ElderChatTabState extends State<ElderChatTab>
       String pendingSentence = ""; // 累積到標點符號就送去念
 
       // 監聽 SSE (Server-Sent Events)
-      await for (var bytes in response.stream.transform(utf8.decoder)) {
+      // 以行緩衝處理，避免 data 行被 TCP 分段切斷時遺失
+      String sseBuffer = "";
+      await for (final bytes in response.stream.transform(utf8.decoder)) {
         if (!mounted) break;
+        sseBuffer += bytes;
+        final lines = sseBuffer.split('\n');
+        sseBuffer = lines.removeLast();
 
-        final lines = bytes.split('\n');
-        for (var line in lines) {
-          if (line.startsWith('data: ')) {
-            final dataStr = line.substring(6).trim();
-            if (dataStr.isEmpty) continue;
+        for (final rawLine in lines) {
+          final line = rawLine.trimRight();
+          if (!line.startsWith('data: ')) continue;
 
-            try {
-              final data = jsonDecode(dataStr);
+          final dataStr = line.substring(6).trim();
+          if (dataStr.isEmpty) continue;
 
-              if (data['done'] == true) {
-                // 串流結束
-                if (pendingSentence.trim().isNotEmpty) {
-                  _sentenceQueue.add(pendingSentence.trim());
+          try {
+            final data = jsonDecode(dataStr);
+
+            if (data['done'] == true) {
+              if (pendingSentence.trim().isNotEmpty) {
+                _sentenceQueue.add(pendingSentence.trim());
+                _processSentenceQueue();
+              }
+              setState(() => _isAILoading = false);
+              break;
+            }
+
+            if (data['chunk'] != null) {
+              // 第一個字進來時，就該消除「思考中」的泡泡
+              if (_isAILoading) {
+                setState(() => _isAILoading = false);
+              }
+
+              final chunk = data['chunk'] as String;
+              currentParagraph += chunk;
+              pendingSentence += chunk;
+
+              // 直接保留原始文字交由 Markdown 渲染。
+              String cleanParagraph = currentParagraph;
+
+              setState(() {
+                _messages[aiMsgIndex]["text"] = cleanParagraph;
+              });
+              _scrollToBottom();
+
+              // 若遇到標點符號，把這句話推進語音佇列
+              if (RegExp(r'[，。！？；,\.!\?]').hasMatch(chunk)) {
+                final cleanSentence = pendingSentence.trim();
+                if (cleanSentence.isNotEmpty) {
+                  _sentenceQueue.add(cleanSentence);
                   _processSentenceQueue();
                 }
-                setState(() => _isAILoading = false);
-                break;
+                pendingSentence = "";
               }
-
-              if (data['chunk'] != null) {
-                // 第一個字進來時，就該消除「思考中」的泡泡
-                if (_isAILoading) {
-                  setState(() => _isAILoading = false);
-                }
-
-                final chunk = data['chunk'] as String;
-                currentParagraph += chunk;
-                pendingSentence += chunk;
-
-                // 直接保留原始文字交由 Markdown 渲染。
-                // (過去用來過濾角色前綴的 Regex 已移除，因會誤砍含有冒號的 url 如 https: 且後端已限制不生成前綴)
-                String cleanParagraph = currentParagraph;
-
-                setState(() {
-                  _messages[aiMsgIndex]["text"] = cleanParagraph;
-                });
-                _scrollToBottom();
-
-                // 若遇到標點符號，把這句話推進語音佇列
-                if (RegExp(r'[，。！？；,\.!\?]').hasMatch(chunk)) {
-                  // 方案二：前端強制過濾 (Regex) 已取消。
-                  // 避免 `https:` 冒號前的內容被誤會是標題而被砍掉。
-                  String cleanSentence = pendingSentence.trim();
-
-                  if (cleanSentence.isNotEmpty) {
-                    _sentenceQueue.add(cleanSentence);
-                    _processSentenceQueue();
-                  }
-                  pendingSentence = "";
-                }
-              }
-            } catch (e) {
-              debugPrint("SSE JSON parse error: $e");
             }
+          } catch (e) {
+            debugPrint("SSE JSON parse error: $e");
           }
         }
       }
