@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
@@ -12,13 +13,16 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 
 typedef StreamStateCallback = void Function(MediaStream stream);
 typedef IncomingCallCallback = Future<bool> Function(String callerId, String callType);
-typedef VoidCallback = void Function();
+// NOTE: 不要重新定義 VoidCallback，Flutter 已內建
 typedef ErrorCallback = void Function(String message);
 typedef CallRequestCallback = void Function(String roomId, String senderId, String? callId);
 typedef CallAcceptedCallback = void Function(String accepterId, String? callId);
 
 class Signaling {
   static const String _serverIp = String.fromEnvironment('SERVER_IP', defaultValue: 'localhost-0.tail5abf5e.ts.net');
+  static const String _turnServer = String.fromEnvironment('TURN_SERVER', defaultValue: 'localhost-0.tail5abf5e.ts.net:3478');
+  static const String _turnUser = String.fromEnvironment('TURN_USER', defaultValue: 'uban');
+  static const String _turnPass = String.fromEnvironment('TURN_PASS', defaultValue: 'uban2026turn');
   
   static String get serverUrl => _serverIp.contains('ngrok') || _serverIp.contains('ts.net')
       ? 'https://$_serverIp' 
@@ -57,7 +61,17 @@ class Signaling {
   final List<String> _pendingRooms = [];
 
   final Map<String, dynamic> _configuration = {
-    'iceServers': [{'urls': 'stun:stun.l.google.com:19302'}]
+    'iceServers': [
+      {'urls': 'stun:stun.l.google.com:19302'},
+      {
+        'urls': [
+          'turn:$_turnServer',
+          'turn:$_turnServer?transport=tcp',
+        ],
+        'username': _turnUser,
+        'credential': _turnPass,
+      },
+    ]
   };
 
   final Map<String, dynamic> _constraints = {
@@ -152,29 +166,49 @@ class Signaling {
       socket?.disconnect();
     });
 
-    // 統一監聽 elder-devices-update（後端已統一 emit 此事件名）
+    // 統一監聯 elder-devices-update（後端已統一 emit 此事件名）
     // 響鈴監聽
     socket!.on('call-request', (data) {
+      debugPrint('📞📞📞 [Signaling] ===== 收到 call-request =====');
+      debugPrint('📞 [Signaling] data: $data');
+      debugPrint('📞 [Signaling] room: ${data['room']}, senderId: ${data['senderId']}, callId: ${data['callId']}');
+      debugPrint('📞 [Signaling] onCallRequest callback is ${onCallRequest != null ? "SET" : "NULL"}');
       _currentCallId = data['callId'];
-      if (onCallRequest != null) onCallRequest!(data['room'], data['senderId'], data['callId']);
+      if (onCallRequest != null) {
+        debugPrint('📞 [Signaling] 觸發 onCallRequest 回調...');
+        onCallRequest!(data['room'], data['senderId'], data['callId']);
+      } else {
+        debugPrint('⚠️ [Signaling] onCallRequest 回調未設置！來電將被忽略！');
+      }
     });
 
     // 取消呼叫監聽
     socket!.on('cancel-call', (data) {
+      debugPrint('🔕 [Signaling] 收到 cancel-call: $data');
       if (onCancelCall != null) onCancelCall!(data['room'], data['senderId'], data['callId']);
     });
 
     // 緊急呼叫監聽
     socket!.on('emergency-call', (data) {
+      debugPrint('🚨 [Signaling] 收到 emergency-call: $data');
       if (onEmergencyCall != null) onEmergencyCall!(data['room'], data['senderId'], data['callId']);
     });
 
     // 對方接聽監聽
     socket!.on('call-accept', (data) {
-      debugPrint("📞 [Signaling] Received call-accept (SenderId: ${data['accepterId']}, CallId: ${data['callId']})");
+      debugPrint("📞 [Signaling] Received call-accept (AccepterId: ${data['accepterId']}, CallId: ${data['callId']})");
       _peerSocketId = data['accepterId'];
       _currentCallId = data['callId'];
-      if (onCallAcceptedByRemote != null) onCallAcceptedByRemote!(data['accepterId'], data['callId']);
+      
+      if (onCallAcceptedByRemote != null) {
+        onCallAcceptedByRemote!(data['accepterId'], data['callId']);
+      } else {
+        // ★ 如果沒有 UI 層處理，才自動發送 Offer（防止重複 Offer）
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          debugPrint("🔄 [Signaling] No UI handler, auto-starting createOffer to ${data['accepterId']}");
+          createOffer(targetId: data['accepterId']);
+        });
+      }
     });
 
     // 忙線監聽
@@ -455,12 +489,17 @@ class Signaling {
       await _processCandidateQueue();
       var answer = await peerConnection?.createAnswer(_constraints);
       await peerConnection?.setLocalDescription(answer!);
+      
+      // ★ 確保發送 answer 時正確指定發起者的 socketId 作為 targetId
+      final targetSocketId = data['senderId'] ?? _peerSocketId;
+      debugPrint("📤 [Signaling] Emitting answer to $targetSocketId (Call initiated by them)");
+      
       socket!.emit('answer', {
         'room': _currentRoomId,
-        'targetId': _peerSocketId,
+        'targetId': targetSocketId,
         'type': 'answer',
         'sdp': answer!.sdp,
-        'senderId': socket!.id // 告知對方我是誰
+        'senderId': socket!.id
       });
     } catch (e) {
       debugPrint("❌ Accept Error: $e");
@@ -491,14 +530,20 @@ class Signaling {
 
     peerConnection!.onIceCandidate = (candidate) {
       if (socket != null) {
-        debugPrint("🧊 Generated ICE Candidate: ${candidate.candidate?.substring(0, 15)}...");
+        debugPrint("🧊 Generated ICE Candidate: ${candidate.candidate?.substring(0, 15)}... -> targetId: $_peerSocketId");
         var payload = {
           'room': _currentRoomId,
           'candidate': candidate.candidate,
           'sdpMid': candidate.sdpMid,
-          'sdpMLineIndex': candidate.sdpMLineIndex
+          'sdpMLineIndex': candidate.sdpMLineIndex,
+          'senderId': socket!.id
         };
-        if (_peerSocketId != null) payload['targetId'] = _peerSocketId!;
+        // ★ 必須指定 targetId，確保 Candidate 精準轉發給對端
+        if (_peerSocketId != null) {
+          payload['targetId'] = _peerSocketId!;
+        } else {
+          debugPrint("⚠️ [Signaling] Missing targetId for ICE Candidate - falling back to room broadcast");
+        }
         socket!.emit('candidate', payload);
       }
     };
@@ -563,8 +608,11 @@ class Signaling {
     });
   }
 
-  Future<void> openUserMedia(RTCVideoRenderer localVideo) async {
-    var stream = await navigator.mediaDevices.getUserMedia({'video': true, 'audio': true});
+  Future<void> openUserMedia(RTCVideoRenderer localVideo, {bool videoEnabled = true}) async {
+    var stream = await navigator.mediaDevices.getUserMedia({
+      'video': videoEnabled,
+      'audio': true,
+    });
     localVideo.srcObject = stream;
     localStream = stream;
     if (onLocalStream != null) onLocalStream!(stream);
@@ -605,6 +653,10 @@ class Signaling {
 
   Future<void> _closePeerConnection() async {
     if (peerConnection != null) {
+      // ★ 在關閉之前確保所有 track 都被移除和停止
+      for (var sender in await peerConnection!.getSenders()) {
+        await peerConnection!.removeTrack(sender);
+      }
       await peerConnection!.close();
       peerConnection = null;
     }
@@ -612,9 +664,15 @@ class Signaling {
   }
 
   void stopMedia() {
-    localStream?.getTracks().forEach((t) => t.stop());
-    localStream?.dispose();
-    localStream = null;
+    // ★ 確保媒體資源徹底釋放
+    if (localStream != null) {
+      for (var track in localStream!.getTracks()) {
+        track.stop();
+      }
+      localStream?.dispose();
+      localStream = null;
+      debugPrint("✅ [Signaling] Local media stream stopped and disposed");
+    }
   }
 
   void forceDisconnect() {
