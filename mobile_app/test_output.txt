@@ -1,7 +1,0 @@
-Analyzing test_share.dart...
-
-  error - test_share.dart:4:34 - The argument type 'List<XFile>' can't be assigned to the parameter type 'ShareParams'.  - argument_type_not_assignable
-   info - test_share.dart:2:8 - The import of 'package:cross_file/cross_file.dart' is unnecessary because all of the used elements are also provided by the import of 'package:share_plus/share_plus.dart'. Try removing the import directive. - unnecessary_import
-   info - test_share.dart:2:8 - The imported package 'cross_file' isn't a dependency of the importing package. Try adding a dependency for 'cross_file' in the 'pubspec.yaml' file. - depend_on_referenced_packages
-
-3 issues found.
