@@ -16,6 +16,23 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
+  static const bool _devBypassLogin = bool.fromEnvironment(
+    'DEV_BYPASS_LOGIN',
+    defaultValue: false,
+  );
+  static const String _devBypassRole = String.fromEnvironment(
+    'DEV_BYPASS_ROLE',
+    defaultValue: '',
+  );
+  static const int _devBypassUserId = int.fromEnvironment(
+    'DEV_BYPASS_USER_ID',
+    defaultValue: 0,
+  );
+  static const String _devBypassUserName = String.fromEnvironment(
+    'DEV_BYPASS_USER_NAME',
+    defaultValue: '測試使用者',
+  );
+
   @override
   void initState() {
     super.initState();
@@ -36,16 +53,29 @@ class _SplashScreenState extends State<SplashScreen> {
 
       final int? userId = prefs.getInt('caregiver_id');
       final String? userName = prefs.getString('caregiver_name');
-      final String? localRole = prefs.getString('user_role');
 
-      if (userId != null && userName != null) {
+      // 開發便捷模式：若本機登入資料遺失，可由 dart-define 自動回填，避免每次重跑都要重新配對
+      if (_devBypassLogin && (userId == null || userName == null)) {
+        if (_devBypassUserId > 0 && _devBypassRole.isNotEmpty) {
+          await prefs.setInt('caregiver_id', _devBypassUserId);
+          await prefs.setString('caregiver_name', _devBypassUserName);
+          await prefs.setString('user_role', _devBypassRole);
+          if (!mounted) return;
+        }
+      }
+
+      final int? effectiveUserId = prefs.getInt('caregiver_id');
+      final String? effectiveUserName = prefs.getString('caregiver_name');
+      final String? effectiveLocalRole = prefs.getString('user_role');
+
+      if (effectiveUserId != null && effectiveUserName != null) {
         // 先嘗試獲取當前使用者資訊，以驗證連線與角色
         try {
-          final userProfile = await ApiService.getStatus(userId);
+          final userProfile = await ApiService.getStatus(effectiveUserId);
           if (!mounted) return;
           
           // 角色優先序：1. 後端最新狀態 2. 本地紀錄 3. 預設子女
-          final role = userProfile['role'] ?? localRole ?? 'family';
+          final role = userProfile['role'] ?? effectiveLocalRole ?? 'family';
           appRole = role; // ★ 新增：同步到全域變數，確保啟動後通話偵聽正常
 
           if (role == 'elder') {
@@ -54,14 +84,17 @@ class _SplashScreenState extends State<SplashScreen> {
               context,
               MaterialPageRoute(
                 builder: (context) =>
-                    ElderHomeScreen(userId: userId, userName: userName),
+                    ElderHomeScreen(
+                      userId: effectiveUserId,
+                      userName: effectiveUserName,
+                    ),
               ),
             );
             return;
           }
 
           // 子女端邏輯：直接進入主要儀表板容器
-          final elders = await ApiService.getPairedElders(userId);
+          final elders = await ApiService.getPairedElders(effectiveUserId);
           if (!mounted) return;
 
           if (elders.isNotEmpty) {
@@ -70,7 +103,10 @@ class _SplashScreenState extends State<SplashScreen> {
               context,
               MaterialPageRoute(
                 builder: (context) =>
-                    FamilyMainScreen(userId: userId, userName: userName),
+                    FamilyMainScreen(
+                      userId: effectiveUserId,
+                      userName: effectiveUserName,
+                    ),
               ),
             );
           } else {
@@ -79,19 +115,25 @@ class _SplashScreenState extends State<SplashScreen> {
               context,
               MaterialPageRoute(
                 builder: (context) =>
-                    FamilyOnboardingScreen(userId: userId, userName: userName),
+                    FamilyOnboardingScreen(
+                      userId: effectiveUserId,
+                      userName: effectiveUserName,
+                    ),
               ),
             );
           }
         } catch (e) {
           // 若 API 失敗，使用本地紀錄決定跳轉
           if (mounted) {
-            if (localRole == 'elder') {
+            if (effectiveLocalRole == 'elder') {
               Navigator.pushReplacement(
                 context,
                 MaterialPageRoute(
                   builder: (context) =>
-                      ElderHomeScreen(userId: userId, userName: userName),
+                      ElderHomeScreen(
+                        userId: effectiveUserId,
+                        userName: effectiveUserName,
+                      ),
                 ),
               );
             } else {
