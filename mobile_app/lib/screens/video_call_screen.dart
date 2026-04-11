@@ -1,5 +1,6 @@
 // lib/screens/video_call_screen.dart
 import 'package:flutter/material.dart';
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -33,6 +34,16 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   final RTCVideoRenderer _remoteRenderer = RTCVideoRenderer();
   bool _inCall = false;
 
+  // ★ 通話控制狀態
+  bool _isMicMuted = false;
+  bool _isCameraOff = false;
+  bool _isSpeakerOn = true;
+  bool _isFrontCamera = true;
+
+  // ★ 通話計時器
+  Timer? _callTimer;
+  int _callDurationSeconds = 0;
+
   @override
   void initState() {
     super.initState();
@@ -53,6 +64,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
           _remoteRenderer.srcObject = stream;
           _inCall = true;
         });
+        _startCallTimer();
       }
     });
     _signaling.onLocalStream = ((stream) {
@@ -67,6 +79,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
 
     _signaling.onCallEnded = () {
       if (mounted) {
+        _stopCallTimer();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("通話已結束")),
         );
@@ -74,6 +87,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       }
     };
 
+    // ★ 接聽回達後由家屬端觸發 createOffer（唯一入口，防止重複 Offer）
     _signaling.onCallAcceptedByRemote = (accepterId, callId) {
       debugPrint("✅ [VideoCallScreen] Target Accepted ($accepterId), sending Offer...");
       _signaling.createOffer(targetId: accepterId, isEmergency: widget.isEmergency);
@@ -93,6 +107,9 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       deviceName: userName
     );
 
+    // ★ 預設開啟揚聲器
+    _signaling.enableSpeakerphone(true);
+
     if (widget.isIncomingCall) {
       _signaling.sendCallAccept(widget.targetSocketId!);
     } else if (widget.autoStart) {
@@ -102,8 +119,76 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     }
   }
 
+  // ★ 通話計時器
+  void _startCallTimer() {
+    _callTimer?.cancel();
+    _callDurationSeconds = 0;
+    _callTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (mounted) {
+        setState(() => _callDurationSeconds++);
+      }
+    });
+  }
+
+  void _stopCallTimer() {
+    _callTimer?.cancel();
+    _callTimer = null;
+  }
+
+  String get _formattedDuration {
+    final minutes = (_callDurationSeconds ~/ 60).toString().padLeft(2, '0');
+    final seconds = (_callDurationSeconds % 60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
+  }
+
+  // ★ 麥克風靜音切換
+  void _toggleMic() {
+    if (_signaling.localStream == null) return;
+    final audioTracks = _signaling.localStream!.getAudioTracks();
+    if (audioTracks.isEmpty) return;
+    setState(() {
+      _isMicMuted = !_isMicMuted;
+      for (var track in audioTracks) {
+        track.enabled = !_isMicMuted;
+      }
+    });
+    debugPrint("🎤 Mic ${_isMicMuted ? 'Muted' : 'Unmuted'}");
+  }
+
+  // ★ 鏡頭開關切換
+  void _toggleCamera() {
+    if (_signaling.localStream == null) return;
+    final videoTracks = _signaling.localStream!.getVideoTracks();
+    if (videoTracks.isEmpty) return;
+    setState(() {
+      _isCameraOff = !_isCameraOff;
+      for (var track in videoTracks) {
+        track.enabled = !_isCameraOff;
+      }
+    });
+    debugPrint("📷 Camera ${_isCameraOff ? 'Off' : 'On'}");
+  }
+
+  // ★ 前後鏡頭切換
+  void _switchCamera() {
+    if (_signaling.localStream == null) return;
+    final videoTracks = _signaling.localStream!.getVideoTracks();
+    if (videoTracks.isEmpty) return;
+    Helper.switchCamera(videoTracks[0]);
+    setState(() => _isFrontCamera = !_isFrontCamera);
+    debugPrint("🔄 Camera switched to ${_isFrontCamera ? 'Front' : 'Back'}");
+  }
+
+  // ★ 揚聲器切換
+  void _toggleSpeaker() {
+    setState(() => _isSpeakerOn = !_isSpeakerOn);
+    _signaling.enableSpeakerphone(_isSpeakerOn);
+    debugPrint("🔊 Speaker ${_isSpeakerOn ? 'On' : 'Off'}");
+  }
+
   @override
   void dispose() {
+    _stopCallTimer();
     _signaling.hangUp();
     _signaling.clearSession();
     
@@ -166,7 +251,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                   ),
           ),
 
-          // 2. 頂部自定義資訊欄 (代替 AppBar)
+          // 2. 頂部資訊欄
           Positioned(
             top: MediaQuery.of(context).padding.top + 10,
             left: 20,
@@ -174,6 +259,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
+                // 通話類型標示
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
@@ -182,7 +268,11 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.shield, color: Colors.greenAccent, size: 16),
+                      Icon(
+                        widget.isEmergency ? Icons.warning : Icons.shield,
+                        color: widget.isEmergency ? Colors.orangeAccent : Colors.greenAccent,
+                        size: 16,
+                      ),
                       const SizedBox(width: 6),
                       Text(
                         widget.isEmergency ? "緊急通話" : "視訊通話",
@@ -191,44 +281,93 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                     ],
                   ),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.info_outline, color: Colors.white70),
-                  onPressed: () {},
-                ),
+                // ★ 通話計時器
+                if (_inCall)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.redAccent.withValues(alpha: 0.8),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.fiber_manual_record, color: Colors.white, size: 10),
+                        const SizedBox(width: 6),
+                        Text(
+                          _formattedDuration,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            fontFeatures: [FontFeature.tabularFigures()],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
               ],
             ),
           ),
 
-          // 3. 本地預覽 (精緻 PIP)
+          // 3. 本地預覽 (PIP) — 鏡頭關閉時顯示圖標
           Positioned(
             right: 20,
-            bottom: 120,
+            bottom: 140,
             width: 110,
             height: 160,
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.5),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-                border: Border.all(color: Colors.white24, width: 1.5),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(14),
-                child: RTCVideoView(_localRenderer, mirror: true, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
+            child: GestureDetector(
+              onTap: _switchCamera,
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.5),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                  border: Border.all(color: Colors.white24, width: 1.5),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: _isCameraOff
+                      ? Container(
+                          color: const Color(0xFF2A2A2A),
+                          child: const Center(
+                            child: Icon(Icons.videocam_off, color: Colors.white38, size: 36),
+                          ),
+                        )
+                      : RTCVideoView(
+                          _localRenderer,
+                          mirror: _isFrontCamera,
+                          objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                        ),
+                ),
               ),
             ),
           ),
 
-          // 4. 底部控制列 (Glassmorphism 磨砂質感)
+          // ★ 鏡頭切換提示 (PIP 右下角小圖標)
+          if (!_isCameraOff)
+            Positioned(
+              right: 24,
+              bottom: 144,
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: Colors.black54,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.cameraswitch, color: Colors.white70, size: 16),
+              ),
+            ),
+
+          // 4. 底部控制列 (Glassmorphism)
           Positioned(
             bottom: 40,
-            left: 30,
-            right: 30,
+            left: 20,
+            right: 20,
             child: ClipRRect(
               borderRadius: BorderRadius.circular(30),
               child: BackdropFilter(
@@ -243,20 +382,37 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
+                      // 揚聲器
                       _buildControlButton(
-                        icon: Icons.mic,
-                        onPressed: () {},
-                        color: Colors.white,
+                        icon: _isSpeakerOn ? Icons.volume_up : Icons.volume_off,
+                        onPressed: _toggleSpeaker,
+                        color: _isSpeakerOn ? Colors.white : Colors.white38,
                       ),
+                      // 麥克風
+                      _buildControlButton(
+                        icon: _isMicMuted ? Icons.mic_off : Icons.mic,
+                        onPressed: _toggleMic,
+                        color: _isMicMuted ? Colors.redAccent : Colors.white,
+                        bgColor: _isMicMuted ? Colors.white24 : null,
+                      ),
+                      // 掛斷
                       _buildControlButton(
                         icon: Icons.call_end,
                         onPressed: () => Navigator.pop(context),
                         isEndCall: true,
                       ),
+                      // 鏡頭
                       _buildControlButton(
-                        icon: Icons.videocam,
-                        onPressed: () {},
-                        color: Colors.white,
+                        icon: _isCameraOff ? Icons.videocam_off : Icons.videocam,
+                        onPressed: _toggleCamera,
+                        color: _isCameraOff ? Colors.redAccent : Colors.white,
+                        bgColor: _isCameraOff ? Colors.white24 : null,
+                      ),
+                      // 翻轉鏡頭
+                      _buildControlButton(
+                        icon: Icons.cameraswitch,
+                        onPressed: _isCameraOff ? null : _switchCamera,
+                        color: _isCameraOff ? Colors.white24 : Colors.white,
                       ),
                     ],
                   ),
@@ -271,19 +427,20 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
 
   Widget _buildControlButton({
     required IconData icon,
-    required VoidCallback onPressed,
+    VoidCallback? onPressed,
     Color color = Colors.white,
+    Color? bgColor,
     bool isEndCall = false,
   }) {
     return Container(
-      width: 56,
-      height: 56,
+      width: 50,
+      height: 50,
       decoration: BoxDecoration(
-        color: isEndCall ? Colors.redAccent : Colors.white12,
+        color: isEndCall ? Colors.redAccent : (bgColor ?? Colors.white12),
         shape: BoxShape.circle,
       ),
       child: IconButton(
-        icon: Icon(icon, color: color, size: 28),
+        icon: Icon(icon, color: color, size: 24),
         onPressed: onPressed,
       ),
     );

@@ -13,13 +13,16 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 
 typedef StreamStateCallback = void Function(MediaStream stream);
 typedef IncomingCallCallback = Future<bool> Function(String callerId, String callType);
-typedef VoidCallback = void Function();
+// NOTE: 不要重新定義 VoidCallback，Flutter 已內建
 typedef ErrorCallback = void Function(String message);
 typedef CallRequestCallback = void Function(String roomId, String senderId, String? callId);
 typedef CallAcceptedCallback = void Function(String accepterId, String? callId);
 
 class Signaling {
   static const String _serverIp = String.fromEnvironment('SERVER_IP', defaultValue: 'localhost-0.tail5abf5e.ts.net');
+  static const String _turnServer = String.fromEnvironment('TURN_SERVER', defaultValue: 'localhost-0.tail5abf5e.ts.net:3478');
+  static const String _turnUser = String.fromEnvironment('TURN_USER', defaultValue: 'uban');
+  static const String _turnPass = String.fromEnvironment('TURN_PASS', defaultValue: 'uban2026turn');
   
   static String get serverUrl => _serverIp.contains('ngrok') || _serverIp.contains('ts.net')
       ? 'https://$_serverIp' 
@@ -58,7 +61,17 @@ class Signaling {
   final List<String> _pendingRooms = [];
 
   final Map<String, dynamic> _configuration = {
-    'iceServers': [{'urls': 'stun:stun.l.google.com:19302'}]
+    'iceServers': [
+      {'urls': 'stun:stun.l.google.com:19302'},
+      {
+        'urls': [
+          'turn:$_turnServer',
+          'turn:$_turnServer?transport=tcp',
+        ],
+        'username': _turnUser,
+        'credential': _turnPass,
+      },
+    ]
   };
 
   final Map<String, dynamic> _constraints = {
@@ -187,13 +200,15 @@ class Signaling {
       _peerSocketId = data['accepterId'];
       _currentCallId = data['callId'];
       
-      if (onCallAcceptedByRemote != null) onCallAcceptedByRemote!(data['accepterId'], data['callId']);
-      
-      // ★ 自動啟動 WebRTC 媒體協商：如果當前用戶是發起者（family），立即發送 Offer
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        debugPrint("🔄 [Signaling] Initiator auto-starting createOffer to ${data['accepterId']}");
-        createOffer(targetId: data['accepterId']);
-      });
+      if (onCallAcceptedByRemote != null) {
+        onCallAcceptedByRemote!(data['accepterId'], data['callId']);
+      } else {
+        // ★ 如果沒有 UI 層處理，才自動發送 Offer（防止重複 Offer）
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          debugPrint("🔄 [Signaling] No UI handler, auto-starting createOffer to ${data['accepterId']}");
+          createOffer(targetId: data['accepterId']);
+        });
+      }
     });
 
     // 忙線監聽
@@ -593,8 +608,11 @@ class Signaling {
     });
   }
 
-  Future<void> openUserMedia(RTCVideoRenderer localVideo) async {
-    var stream = await navigator.mediaDevices.getUserMedia({'video': true, 'audio': true});
+  Future<void> openUserMedia(RTCVideoRenderer localVideo, {bool videoEnabled = true}) async {
+    var stream = await navigator.mediaDevices.getUserMedia({
+      'video': videoEnabled,
+      'audio': true,
+    });
     localVideo.srcObject = stream;
     localStream = stream;
     if (onLocalStream != null) onLocalStream!(stream);
