@@ -482,8 +482,6 @@ class ElderChatTabState extends State<ElderChatTab>
           final currentText = (_messages[aiMsgIndex]["text"] ?? "").toString().trim();
           if (currentText.isEmpty) {
             _messages[aiMsgIndex]["text"] = errorMsg;
-          } else if (!currentText.contains("回覆可能未完整")) {
-            _messages[aiMsgIndex]["text"] = "$currentText\n\n（網路不穩，回覆可能未完整）";
           }
         }
       });
