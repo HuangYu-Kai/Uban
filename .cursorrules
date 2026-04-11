@@ -7,8 +7,26 @@ You are an expert AI Coding Assistant for the Uban project (Flutter + FastAPI).
 - `server/` directory is DEPRECATED Legacy Flask code — DO NOT MODIFY.
 - Socket.IO Signaling MUST use Singleton Pattern (`lib/services/signaling.dart`).
 - Server URL is injected via `--dart-define=SERVER_IP=`, never hardcode.
+- TURN config via `--dart-define=TURN_SERVER=` / `TURN_USER=` / `TURN_PASS=`.
+
+## WebRTC Call Flow (Critical Path)
+1. Caller emit `call-request`
+2. Callee receives → CallKit/Dialog popup
+3. Callee accepts → emit `call-accept` (with own socketId)
+4. Caller receives `call-accept` → `createOffer(targetId: callee_sid)` — ONLY entry point
+5. Callee receives `offer` → `setRemoteDescription` → `createAnswer` → emit `answer`
+6. Both exchange `ice-candidate`
+7. P2P established
+
+## Role Differences
+- Elder calls use `ElderScreen` (NOT VideoCallScreen directly)
+- Family calls use `VideoCallScreen`
+- Elder supports `isVideoCall: false` for audio-only mode
 
 ## For Socket.IO / WebRTC tasks, read first:
 - `lib/services/signaling.dart` — Singleton socket + WebRTC
 - `lib/main.dart` — Global CallKit / FCM listeners
-- `README.md` Section 5 — Video call testing with `test_call_simulator.py`
+- `lib/globals.dart` — `pendingAcceptedCall` state
+- `lib/screens/elder_screen.dart` — Elder call UI
+- `lib/screens/video_call_screen.dart` — Family call UI
+- `webrtc_test.html` — Browser WebRTC test tool

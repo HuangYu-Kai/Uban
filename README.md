@@ -111,9 +111,12 @@ Uban 是一套專為銀髮族設計的 AI 陪伴照護系統，包含：
 
 ### 五、視訊通話
 
-- **WebRTC P2P**：高品質視訊、自動 NAT 穿透
-- **三層備援**：Socket.io + FCM + Cold Start
-- **緊急模式**：CCTV/自動接聽功能
+- **WebRTC P2P**：高品質視訊、STUN + coturn TURN 雙重 NAT 穿透
+- **三層備援**：Socket.IO 即時 → FCM 推播 → Cold Start 冷啟動
+- **緊急模式**：CCTV 監控 / 自動接聽
+- **通話控制**：麥克風靜音、鏡頭開關、前後鏡頭切換、揚聲器、通話計時
+- **語音模式**：支援純語音通話（不啟動攝影機）
+- **TURN 伺服器**：coturn 中繼，支援跨 NAT（4G ↔ WiFi）場景
 
 ---
 
@@ -165,47 +168,86 @@ chmod +x run.sh
 
 ```
 Uban/
-├── mobile_app/          # Flutter 前端
+├── mobile_app/              # Flutter 前端
 │   └── lib/
-│       ├── services/    # API、Signaling
-│       └── screens/     # UI 頁面
-├── server/              # Flask AI 後端
-│   ├── agent/           # AI 人格設定 (*.md)
-│   ├── services/        # ollama_service, heartbeat_manager
-│   ├── skills/          # 12 項 AI 技能
-│   └── routes/          # API 路由
-├── run.sh               # macOS/Linux 啟動腳本
-└── run.ps1              # Windows 啟動腳本
+│       ├── services/        # API、Signaling (WebRTC + Socket.IO)
+│       ├── screens/         # UI 頁面
+│       │   ├── elder_screen.dart        # 長輩端通話
+│       │   ├── video_call_screen.dart   # 家屬端通話
+│       │   ├── family_main_screen.dart  # 家屬主畫面 (來電監聽)
+│       │   └── elder_tabs/             # 長輩端分頁
+│       └── globals.dart     # 全域狀態
+├── server/                  # ⚠️ Legacy Flask (已棄用，勿修改)
+├── webrtc_test.html         # 🆕 瀏覽器版 WebRTC 測試工具
+├── test_call_simulator.py   # Socket.IO 信令測試腳本
+├── run.sh                   # macOS/Linux 啟動腳本
+├── run.ps1                  # Windows 啟動腳本
+├── .geminirules             # Gemini AI 開發規範
+└── CLAUDE.md                # Claude AI 開發規範
+
+uban-api/                    # FastAPI 後端 (獨立 Repo)
+├── main.py                  # FastAPI 入口 + Socket.IO ASGI
+├── services/socket_app.py   # 信令轉發伺服器
+├── services/ollama_service.py # AI 引擎
+└── routers/                 # REST API 路由
 ```
 
 ### 關鍵檔案
 
 | 檔案 | 用途 |
 |------|------|
-| `lib/services/signaling.dart` | Socket.IO + WebRTC |
-| `lib/main.dart` | App 入口 + 全域監聽器 |
-| `server/services/ollama_service.py` | Ollama 整合 |
-| `server/services/heartbeat_manager.py` | 主動關懷引擎 |
-| `server/skills/__init__.py` | 12 項技能匯出 |
+| `lib/services/signaling.dart` | Socket.IO + WebRTC 信令 (Singleton) |
+| `lib/main.dart` | App 入口 + FCM + CallKit 全域監聽 |
+| `lib/globals.dart` | `pendingAcceptedCall` 全域狀態 |
+| `lib/screens/elder_screen.dart` | 長輩端通話 (含 CCTV/緊急/語音模式) |
+| `lib/screens/video_call_screen.dart` | 家屬端通話 (含控制列) |
+| `uban-api/services/socket_app.py` | 後端信令轉發伺服器 |
 
 ### 視訊通話測試
 
-支援雙向通話測試：家屬 ↔ 長輩
+#### 方法 1：瀏覽器測試（推薦，不需 Android 設備）
+
+直接開啟 `webrtc_test.html`，支援：
+- ✅ 連接 Socket.IO 信令伺服器
+- ✅ 模擬 family/elder 雙角色
+- ✅ TURN 伺服器獨立驗證（一鍵測試 relay candidate）
+- ✅ ICE candidate 實時統計
+- ✅ 強制 relay 模式（同網路也能測 TURN）
+
+#### 方法 2：Socket.IO 信令腳本
 
 ```bash
-# 建立測試環境
 python3 -m venv /tmp/uban_test_venv
 /tmp/uban_test_venv/bin/pip install "python-socketio[asyncio_client]" websockets
-
-# 執行測試腳本
 /tmp/uban_test_venv/bin/python3 test_call_simulator.py
-
-# 模式選擇：
-# [1] 家屬 → 長輩
-# [2] 長輩 → 家屬
 ```
 
 > 📖 詳細說明請參考 [TEST_CALL_SIMULATOR_GUIDE.md](./TEST_CALL_SIMULATOR_GUIDE.md)
+
+### TURN 伺服器配置
+
+視訊通話在跨網路環境（4G ↔ WiFi）需要 TURN 伺服器中繼。
+
+```bash
+# 在伺服器安裝 coturn
+sudo apt install coturn
+
+# 設定 /etc/turnserver.conf
+# listening-port=3478
+# realm=uban.turn
+# user=uban:password
+# fingerprint
+# lt-cred-mech
+```
+
+Flutter 端透過 `--dart-define` 注入：
+```bash
+flutter run \
+  --dart-define=SERVER_IP=your-server \
+  --dart-define=TURN_SERVER=your-server:3478 \
+  --dart-define=TURN_USER=uban \
+  --dart-define=TURN_PASS=password
+```
 
 ---
 
@@ -267,50 +309,55 @@ void initPedometer() {
 
 ## 更新日誌
 
+### 2026-04-11 🎥 視訊功能完整實裝 + TURN 配置 + 測試工具
+**7 個檔案修改，補完視訊通話所有缺失功能**
+
+#### 🔧 修改內容
+
+**新增檔案**
+- `webrtc_test.html` — 瀏覽器版 WebRTC 測試工具（含 TURN 驗證）
+- `CLAUDE.md` × 2 — Claude AI 開發指引（前端 + 後端）
+
+**signaling.dart (4 處修改)**
+1. **TURN 伺服器配置** — 新增 coturn ICE server（含 TCP 備援）
+2. **移除 VoidCallback 重定義** — 避免與 Flutter 內建衝突
+3. **openUserMedia 支援純語音** — 新增 `videoEnabled` 參數
+4. **防止重複 Offer** — `call-accept` handler 改為條件觸發
+
+**video_call_screen.dart (完整重寫)**
+- ✅ 麥克風靜音/取消靜音
+- ✅ 鏡頭開關
+- ✅ 前後鏡頭切換
+- ✅ 揚聲器切換
+- ✅ 通話計時器 (mm:ss)
+- ✅ Glassmorphism 底部控制列
+- ✅ 單一 createOffer 入口（防止重複）
+
+**elder_screen.dart** — 新增 `isVideoCall` 參數（語音模式不啟動攝影機）
+**elder_home_tab.dart** — 傳遞 `isVideo` 給 ElderScreen
+**socket_app.py** — 修正 `debugPrint()` → `print()`
+**requirements.txt** — 合併 `python-socketio[asgi,asyncio_client]`
+**.geminirules** × 2 — 全面更新（含通話流程、角色差異、ICE 配置）
+
+---
+
 ### 2026-04-09 🎙️ WebRTC 信令流程完整修復
 **修復內容：自動媒體協商 + 精準信令轉發 + 完整資源釋放**
 
 #### 🔧 修改內容（共 8 處改進）
 
 **signaling.dart (5 處修改)**
-1. **新增 import**：`package:flutter/widgets.dart` (WidgetsBinding 支援)
-2. **call-accept 自動啟動 Offer**（Line 184-196）
-   - 接聽後立即自動觸發 `createOffer`
-   - 消除「卡在接聽介面」問題
-3. **answer 精準指定 targetId**（Line 459-481）
-   - 使用 `data['senderId']` 確保精準指向發起者
-4. **ICE Candidate 完整轉發**（Line 515-533）
-   - 添加 `senderId` 和驗證 `targetId` 非空
-5. **增強媒體資源清理**（Line 629-644）
-   - 主動移除 track，逐一停止資源
+1. **call-accept 自動啟動 Offer** — 接聽後觸發 `createOffer`
+2. **answer 精準指定 targetId** — 確保精準指向發起者
+3. **ICE Candidate 完整轉發** — 添加 `senderId` 和驗證
+4. **增強媒體資源清理** — 主動移除 track
 
 **socket_app.py (3 處改進)**
-1. **offer 精準轉發**（@sio.on('offer')）
-   - 使用 `to=target` 精準轉發而非房間廣播
-2. **answer 精準轉發+日誌**（@sio.on('answer')）
-   - 添加 `senderId` 和完整日誌記錄
-3. **candidate 精準轉發+驗證**（@sio.on('candidate')）
-   - 驗證 targetId，缺失時記錄警告
-
-#### 📊 預期改進
-| 指標 | 修改前 | 修改後 | 改進幅度 |
-|-----|--------|--------|---------|
-| 通話成功率 | 60-70% | 95%+ | ↑ +40% |
-| 建立時間 | 5-8秒 | 2-3秒 | ↓ -60% |
-| Candidate丟失 | 5-10% | <1% | ↓ -90% |
-| 資源洩漏 | 偶發 | 無 | ✅ 100%消除 |
-
-#### 📖 完整文檔
-- 詳細修改說明：`/sessions/.../CHANGES_SUMMARY.md`
-- 核心代碼片段：`/sessions/.../CODE_REFERENCE.md`
-- 修改前後對照：`/sessions/.../BEFORE_AFTER_COMPARISON.md`
-- 快速參考卡：`/sessions/.../QUICK_REFERENCE.txt`
+1. **offer/answer/candidate 精準轉發** — `to=target` 替代廣播
 
 #### 🧪 驗證狀態
-- ✅ Dart 語法檢查：No issues found!
-- ✅ Python 語法檢查：Success
-- ✅ 所有修改已驗證
-- ✅ 無破壞性改動，自動生效
+- ✅ Dart 語法檢查通過
+- ✅ Python 語法檢查通過
 
 ---
 
@@ -469,12 +516,23 @@ void initPedometer() {
 ## AI 助手指引
 
 > 開發本專案前，請確保 AI 已閱讀此 README.md：
-> 
+>
 > 1. **架構**：Flutter + FastAPI (`uban-api` 獨立 Repo)
 > 2. **Legacy**：`server/` 目錄為舊 Flask AI 代碼，勿修改
 > 3. **Socket.IO**：必須使用 Singleton Pattern (`lib/services/signaling.dart`)
 > 4. **Server URL**：透過 `--dart-define=SERVER_IP=` 注入，禁止寫死
+> 5. **TURN 伺服器**：透過 `--dart-define=TURN_SERVER=` / `TURN_USER=` / `TURN_PASS=` 注入
+> 6. **長輩端通話**：入口是 `ElderScreen`，不要直接使用 `VideoCallScreen`
+> 7. **通話流程**：call-request → call-accept → createOffer → answer → ice-candidate → P2P
+
+### AI 規範文件
+
+| 檔案 | 適用 AI | 位置 |
+|------|---------|------|
+| `.geminirules` | Gemini / Google AI | `Uban/` 和 `uban-api/` 各一份 |
+| `CLAUDE.md` | Claude / Anthropic | `Uban/` 和 `uban-api/` 各一份 |
+| `.cursorrules` | Cursor AI | `Uban/` |
 
 ---
 
-📝 *最後更新：2026/04/07*
+📝 *最後更新：2026/04/11*

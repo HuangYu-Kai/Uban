@@ -1,24 +1,89 @@
-# Gemini Code Assist / AI Agent 專案開發規範 (System Directive)
+# Gemini Code Assist / AI Agent 專案開發規範 (Uban Flutter 端)
 
-## ⚠️ 絕對優先事項 (CRITICAL RULE) ⚠️
-作為負責協助開發 `Uban` 專案的 AI 開發助理，在提供任何程式碼修改建議或解答前，您 **必須 (MUST)** 先完整閱讀位於專案根目錄下的 `README.md` 檔案全文。
+## ⚠️ 絕對優先事項 ⚠️
+在提供任何程式碼修改前，**必須先完整閱讀 `README.md`**。
 
-## 專案邊界與紅線 (Boundaries)
-1. **前端框架**：Flutter (Dart)，使用 Provider / Riverpod 狀態管理，禁止邏輯與 UI 耦合。
-2. **後端 API**：正式後端為獨立的 `uban-api` 專案 (FastAPI)，`server/` 目錄為已棄用的 Legacy Flask 程式碼，**嚴禁修改**。
-3. **通訊架構**：Socket.IO + Firebase FCM 雙軌中繼備援，WebRTC 視訊通話。Signaling 必須維持 Singleton Pattern。
-4. **伺服器 URL**：透過 `--dart-define=SERVER_IP=` 注入，禁止硬編碼 IP。
+## 專案邊界與紅線
 
-## Flutter 端 Socket / WebRTC 開發協議
-若您的任務涉及 Socket.IO 或 WebRTC 功能，請務必嚴格遵循以下規範：
-- 閱讀 `lib/services/signaling.dart` — 全域 Singleton，禁止在頁面切換時反覆建立連線。
-- 閱讀 `lib/main.dart` — 全域 CallKit / FCM / 來電彈窗監聽機制。
-- 連線建立後必須立刻 emit `join` 事件並攜帶完整 Payload（包含 `fcmToken`）。
-- 請參照 `README.md` 的「第五階段：視訊通話單機測試」章節進行除錯。
+### 架構
+- **前端**：Flutter (Dart)，使用 Provider 狀態管理
+- **正式後端**：`uban-api/`（FastAPI + python-socketio[asgi]）
+- **棄用後端**：`server/` 為 Legacy Flask，**嚴禁修改**
+- **前端不使用 Flutter Web**，僅支援 Android/iOS 原生
+
+### 通訊架構
+- **信令**：Socket.IO（python-socketio ASGI 模式）
+- **視訊**：WebRTC P2P + STUN + coturn TURN
+- **推播**：Firebase FCM（背景喚醒 + CallKit 來電）
+- **備援**：Socket.IO 即時 → FCM 推播 → Cold Start 三層
+
+### 禁止事項
+- ❌ 在代碼中硬編碼伺服器 IP（使用 `--dart-define`）
+- ❌ 在 Signaling 以外的地方建立 Socket 連線（必須 Singleton）
+- ❌ 修改 `server/` 目錄的任何檔案
+- ❌ 在長輩端直接啟動 `VideoCallScreen`（必須透過 `ElderScreen`）
+- ❌ 在 `openUserMedia` 前呼叫 `createOffer`
+
+## Socket.IO / WebRTC 開發協議
+
+### 通話流程 (Critical Path)
+```
+1. 家屬 emit call-request → 2. 長輩收到 → 彈出 CallKit
+3. 長輩接聽 emit call-accept(帶自己的 sid)
+4. 家屬收到 call-accept → 立刻 createOffer(targetId: 長輩sid)
+5. 長輩收到 offer → setRemoteDescription → createAnswer → emit answer
+6. 雙方交換 ice-candidate
+7. P2P 建立成功
+```
+
+### 必讀檔案
+| 檔案 | 用途 | 讀取優先級 |
+|------|------|-----------|
+| `lib/services/signaling.dart` | Socket.IO + WebRTC 信令（Singleton） | 🔴 最高 |
+| `lib/main.dart` | App 入口 + FCM + CallKit 全域監聽 | 🔴 最高 |
+| `lib/globals.dart` | `pendingAcceptedCall` 全域狀態 | 🟡 中 |
+| `lib/screens/elder_screen.dart` | 長輩端通話（含 CCTV/緊急模式） | 🟡 中 |
+| `lib/screens/video_call_screen.dart` | 家屬端通話 UI | 🟡 中 |
+| `test_call_simulator.py` | 信令自動化測試腳本 | 🟢 低 |
+
+### ICE 伺服器配置
+```dart
+// signaling.dart 中透過 dart-define 注入：
+// --dart-define=TURN_SERVER=your-ip:3478
+// --dart-define=TURN_USER=uban
+// --dart-define=TURN_PASS=password
+```
+
+### 角色差異
+| | 長輩端 | 家屬端 |
+|--|--------|--------|
+| 入口 | `ElderScreen` | `VideoCallScreen` |
+| Socket 角色 | `elder` | `family` |
+| 視訊 UI | 全螢幕沉浸式 + 大按鈕 | 標準控制列 |
+| 語音模式 | `isVideoCall: false` 不啟動攝影機 | 預設視訊 |
+| 來電處理 | CallKit → `pendingAcceptedCall` → `ElderScreen` | Dialog in `FamilyMainScreen` |
 
 ## 重要檔案索引
+
+### 前端核心
 - `lib/services/signaling.dart` — Socket.IO + WebRTC 信令
-- `lib/services/api_service.dart` — REST API 呼叫集合
-- `lib/main.dart` — App 入口 + 全域來電監聽
+- `lib/services/api_service.dart` — REST API 呼叫
+- `lib/services/elder_manager.dart` — 長輩資料管理
+- `lib/main.dart` — App 入口 + FCM + CallKit
 - `lib/globals.dart` — 全域狀態變數
-- `test_call_simulator.py` — 視訊通話信令測試腳本
+
+### 前端畫面
+- `lib/screens/elder_tabs/elder_home_tab.dart` — 長輩首頁（聯絡家人入口）
+- `lib/screens/elder_screen.dart` — 長輩端通話
+- `lib/screens/video_call_screen.dart` — 家屬端通話
+- `lib/screens/family_main_screen.dart` — 家屬主畫面（來電監聯）
+- `lib/screens/device_selection_screen.dart` — 裝置選擇
+
+### 測試工具
+- `test_call_simulator.py` — Socket.IO 信令測試
+- `webrtc_test.html` — 瀏覽器版 WebRTC 測試（含 TURN 驗證）
+
+## 環境注意
+- Python 後端需 3.12（不支援 3.13+，eventlet 相容性）
+- Flutter 使用 `--dart-define=SERVER_IP=` 注入伺服器位址
+- Socket.IO 後端使用 ASGI 模式（`python-socketio[asgi]`）

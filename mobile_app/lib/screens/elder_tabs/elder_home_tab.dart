@@ -682,6 +682,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
           roomId: widget.userId.toString(),
           deviceName: widget.userName,
           autoCall: true,
+          isVideoCall: isVideo, // ★ 傳遞語音/視訊模式
         ),
       ),
     );
