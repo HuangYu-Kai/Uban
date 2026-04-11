@@ -15,6 +15,19 @@ _ElderPairingDisplayScreenState();
 }
 
 class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
+  static const bool _devBypassLogin = bool.fromEnvironment(
+    'DEV_BYPASS_LOGIN',
+    defaultValue: false,
+  );
+  static const int _devBypassUserId = int.fromEnvironment(
+    'DEV_BYPASS_USER_ID',
+    defaultValue: 0,
+  );
+  static const String _devBypassUserName = String.fromEnvironment(
+    'DEV_BYPASS_USER_NAME',
+    defaultValue: '測試長輩',
+  );
+
 String? _pairingCode;
 int _secondsLeft = 0;
 bool _isLoading = true;
@@ -106,6 +119,41 @@ userName: status['elder_name'] ?? '長輩',
 // 靜默處理
 }
 });
+}
+
+Future<void> _quickLoginSameElder() async {
+  final prefs = await SharedPreferences.getInstance();
+  int? elderId = prefs.getInt('caregiver_id');
+  String? elderName = prefs.getString('caregiver_name');
+  String? role = prefs.getString('user_role');
+
+  // 若本機沒有資料，允許開發模式用 dart-define 快速回填
+  if ((elderId == null || elderName == null || role != 'elder') &&
+      _devBypassLogin &&
+      _devBypassUserId > 0) {
+    elderId = _devBypassUserId;
+    elderName = _devBypassUserName;
+    await prefs.setInt('caregiver_id', elderId);
+    await prefs.setString('caregiver_name', elderName);
+    await prefs.setString('user_role', 'elder');
+    role = 'elder';
+  }
+
+  if (!mounted) return;
+
+  if (elderId == null || elderName == null || role != 'elder') {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('尚未找到可快速登入的長輩帳號，請先完成一次配對')),
+    );
+    return;
+  }
+
+  Navigator.pushReplacement(
+    context,
+    MaterialPageRoute(
+      builder: (_) => ElderHomeScreen(userId: elderId!, userName: elderName!),
+    ),
+  );
 }
 
 @override
@@ -201,6 +249,23 @@ super.dispose();
                   TextButton(
                     onPressed: _requestNewCode,
                     child: const Text('更換代碼', style: TextStyle(fontSize: 18)),
+                  ),
+                  const SizedBox(height: 8),
+                  ElevatedButton.icon(
+                    onPressed: _quickLoginSameElder,
+                    icon: const Icon(Icons.login_rounded),
+                    label: const Text('快速登入同一長輩'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF59B294),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 12,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
                   ),
                 ],
               ),
