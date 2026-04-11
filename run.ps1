@@ -58,6 +58,12 @@ $DEFAULT_SERVER_URL = "localhost-0.tail5abf5e.ts.net"
 $DEFAULT_OLLAMA_URL = "boyo-t.tail531c8a.ts.net"
 $root = $PSScriptRoot
 $mobileAppDir = "$root\mobile_app"
+# 開發測試用：當 App 本機登入資料遺失時，自動回填長輩登入狀態
+$DEV_BYPASS_LOGIN = "true"
+$DEV_BYPASS_ROLE = "elder"
+$DEV_BYPASS_USER_ID = "1"
+$DEV_BYPASS_USER_NAME = "TestElder"
+$DEV_DART_DEFINES = "--dart-define=DEV_BYPASS_LOGIN=$DEV_BYPASS_LOGIN --dart-define=DEV_BYPASS_ROLE=$DEV_BYPASS_ROLE --dart-define=DEV_BYPASS_USER_ID=$DEV_BYPASS_USER_ID --dart-define=DEV_BYPASS_USER_NAME=$DEV_BYPASS_USER_NAME"
 
 # --- 輔助函數 ---
 function Write-Success { param($msg) Write-Host "✅ $msg" -ForegroundColor Green }
@@ -296,13 +302,13 @@ function Start-QuickLaunch {
         
         # 在新視窗啟動實體設備
         Write-Info "啟動實體設備 ($physicalId)..."
-        $physicalProcess = Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$mobileAppDir'; flutter run --dart-define=SERVER_IP=$serverUrl -d $physicalId" -PassThru
+        $physicalProcess = Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$mobileAppDir'; flutter run --dart-define=SERVER_IP=$serverUrl $DEV_DART_DEFINES -d $physicalId" -PassThru
         "physical|$($physicalProcess.Id)|$physicalId" | Out-File $script:FlutterPidsFile -Append
         Start-Sleep -Seconds 3
         
         # 在新視窗啟動模擬器
         Write-Info "啟動模擬器 ($emulatorId)..."
-        $emulatorProcess = Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$mobileAppDir'; flutter run --dart-define=SERVER_IP=$serverUrl -d $emulatorId" -PassThru
+        $emulatorProcess = Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$mobileAppDir'; flutter run --dart-define=SERVER_IP=$serverUrl $DEV_DART_DEFINES -d $emulatorId" -PassThru
         "emulator|$($emulatorProcess.Id)|$emulatorId" | Out-File $script:FlutterPidsFile -Append
         
         Write-Host ""
@@ -336,9 +342,9 @@ function Start-QuickLaunch {
         Set-Location $mobileAppDir
         
         if ($targetDevice) {
-            flutter run --dart-define=SERVER_IP=$serverUrl -d $targetDevice
+            flutter run --dart-define=SERVER_IP=$serverUrl $DEV_DART_DEFINES -d $targetDevice
         } else {
-            flutter run --dart-define=SERVER_IP=$serverUrl
+            flutter run --dart-define=SERVER_IP=$serverUrl $DEV_DART_DEFINES
         }
     }
 }
@@ -373,7 +379,7 @@ function Start-HotRestartPhysical {
     Start-Sleep -Seconds 2
     
     Set-Location $mobileAppDir
-    $newProcess = Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$mobileAppDir'; flutter run --dart-define=SERVER_IP=$DEFAULT_SERVER_URL -d $deviceId" -PassThru
+    $newProcess = Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$mobileAppDir'; flutter run --dart-define=SERVER_IP=$DEFAULT_SERVER_URL $DEV_DART_DEFINES -d $deviceId" -PassThru
     
     # 更新 PID 檔案
     $otherLines = Get-Content $script:FlutterPidsFile | Where-Object { $_ -notmatch "^physical\|" }
