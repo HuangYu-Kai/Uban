@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 class ApiService {
@@ -212,12 +213,18 @@ class ApiService {
       final response = await http.get(Uri.parse('$baseUrl/user/$userId/elders')).timeout(_timeout);
       if (response.statusCode == 200) {
         final decoded = jsonDecode(response.body);
-        if (decoded['status'] == 'success') {
+        // 後端直接返回 list，不是 {status, data} 格式
+        if (decoded is List) {
+          return decoded;
+        }
+        // 兼容舊格式
+        if (decoded is Map && decoded['status'] == 'success') {
           return decoded['data'] as List<dynamic>;
         }
       }
       return [];
     } catch (e) {
+      debugPrint('⚠️ getPairedElders error: $e');
       return [];
     }
   }

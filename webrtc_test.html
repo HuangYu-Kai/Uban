@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Uban WebRTC 測試工具</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --surface: #1e293b;
+      --border: #334155;
+      --primary: #59B294;
+      --primary-light: #6ee7b7;
+      --danger: #ef4444;
+      --warn: #f59e0b;
+      --text: #f1f5f9;
+      --text-muted: #94a3b8;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    .header {
+      background: linear-gradient(135deg, var(--primary), #2563eb);
+      padding: 20px 32px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .header h1 { font-size: 22px; font-weight: 700; }
+    .header .badge {
+      background: rgba(255,255,255,0.2);
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 24px;
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      gap: 24px;
+    }
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 20px;
+    }
+    .panel h2 {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .form-group {
+      margin-bottom: 14px;
+    }
+    .form-group label {
+      display: block;
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+    .form-group input, .form-group select {
+      width: 100%;
+      padding: 10px 14px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .form-group input:focus, .form-group select:focus {
+      border-color: var(--primary);
+    }
+    .btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-warn { background: var(--warn); color: #000; }
+    .btn-outline {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+    }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+    .btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+
+    .status-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .status-dot.off { background: #64748b; }
+    .status-dot.connecting { background: var(--warn); animation: pulse 1s infinite; }
+    .status-dot.connected { background: var(--primary-light); }
+    .status-dot.error { background: var(--danger); }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+    .videos {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    .video-box {
+      position: relative;
+      background: #000;
+      border-radius: 16px;
+      overflow: hidden;
+      aspect-ratio: 4/3;
+    }
+    .video-box video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .video-label {
+      position: absolute;
+      bottom: 10px;
+      left: 10px;
+      background: rgba(0,0,0,0.7);
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      color: #fff;
+    }
+
+    .log-area {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      height: 200px;
+      overflow-y: auto;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+    .log-area .info { color: var(--primary-light); }
+    .log-area .warn { color: var(--warn); }
+    .log-area .error { color: var(--danger); }
+    .log-area .ice { color: #a78bfa; }
+
+    .ice-stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .ice-stat {
+      background: var(--bg);
+      border-radius: 10px;
+      padding: 12px;
+      text-align: center;
+    }
+    .ice-stat .num { font-size: 28px; font-weight: 700; }
+    .ice-stat .label { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+    .ice-stat.host .num { color: #60a5fa; }
+    .ice-stat.srflx .num { color: var(--warn); }
+    .ice-stat.relay .num { color: var(--primary-light); }
+
+    .section-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin: 16px 0 8px;
+    }
+
+    @media (max-width: 800px) {
+      .container { grid-template-columns: 1fr; }
+      .videos { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>🎥 Uban WebRTC 測試工具</h1>
+    <span class="badge">v1.0 — 無需 Android 設備</span>
+  </div>
+
+  <div class="container">
+    <!-- Left Panel: Controls -->
+    <div>
+      <div class="panel">
+        <h2>⚙️ 連線設定</h2>
+        <div class="form-group">
+          <label>Socket.IO 伺服器</label>
+          <input type="text" id="serverUrl" value="https://localhost-0.tail5abf5e.ts.net" />
+        </div>
+        <div class="form-group">
+          <label>房間號 (Room ID = 長輩的 user_id)</label>
+          <input type="text" id="roomId" value="1" />
+        </div>
+        <div class="form-group">
+          <label>角色</label>
+          <select id="role">
+            <option value="family">👨‍👩‍👧 家屬端 (Family)</option>
+            <option value="elder">👴 長輩端 (Elder)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>設備名稱</label>
+          <input type="text" id="deviceName" value="Browser_Test" />
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top: 16px;">
+        <h2>🔗 連線狀態</h2>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span class="status-dot off" id="socketStatus"></span>
+          <span id="socketStatusText">未連線</span>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary" id="btnConnect" onclick="connectSocket()">🔌 連線</button>
+          <button class="btn btn-danger" id="btnDisconnect" onclick="disconnectSocket()" disabled>斷線</button>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top: 16px;">
+        <h2>📞 通話控制</h2>
+        <div class="btn-row">
+          <button class="btn btn-primary" id="btnCall" onclick="sendCallRequest()" disabled>📞 發起通話</button>
+          <button class="btn btn-warn" id="btnAccept" onclick="acceptIncoming()" disabled>✅ 接聽</button>
+          <button class="btn btn-danger" id="btnHangup" onclick="hangUp()" disabled>📴 掛斷</button>
+        </div>
+
+        <div class="section-title">TURN 伺服器驗證</div>
+        <div class="form-group">
+          <label>TURN URI</label>
+          <input type="text" id="turnUri" value="turn:localhost-0.tail5abf5e.ts.net:3478" />
+        </div>
+        <div class="form-group">
+          <label>帳號</label>
+          <input type="text" id="turnUser" value="uban" />
+        </div>
+        <div class="form-group">
+          <label>密碼</label>
+          <input type="text" id="turnPass" value="uban2026turn" />
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-outline" onclick="testTurn()">🧪 測試 TURN</button>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-muted);">
+            <input type="checkbox" id="forceRelay" /> 強制 relay (測試 TURN)
+          </label>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top: 16px;">
+        <h2>🧊 ICE Candidates 統計</h2>
+        <div class="ice-stats">
+          <div class="ice-stat host"><div class="num" id="iceHost">0</div><div class="label">host (內網)</div></div>
+          <div class="ice-stat srflx"><div class="num" id="iceSrflx">0</div><div class="label">srflx (STUN)</div></div>
+          <div class="ice-stat relay"><div class="num" id="iceRelay">0</div><div class="label">relay (TURN) ✅</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Panel: Video + Logs -->
+    <div>
+      <div class="videos">
+        <div class="video-box">
+          <video id="localVideo" autoplay muted playsinline></video>
+          <div class="video-label">📷 本地 (Local)</div>
+        </div>
+        <div class="video-box">
+          <video id="remoteVideo" autoplay playsinline></video>
+          <div class="video-label">📺 遠端 (Remote)</div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top: 16px;">
+        <h2>📋 事件日誌</h2>
+        <div class="log-area" id="logArea"></div>
+        <div class="btn-row">
+          <button class="btn btn-outline" onclick="clearLog()">清除日誌</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Socket.IO Client -->
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <script>
+    // === State ===
+    let socket = null;
+    let pc = null;
+    let localStream = null;
+    let peerSocketId = null;
+    let currentCallId = null;
+    let pendingOffer = null; // store incoming offer data
+
+    // ICE stats
+    let iceStats = { host: 0, srflx: 0, relay: 0 };
+
+    // === Logging ===
+    function log(msg, type = 'info') {
+      const area = document.getElementById('logArea');
+      const time = new Date().toLocaleTimeString('zh-TW');
+      area.innerHTML += `<div class="${type}">[${time}] ${msg}</div>`;
+      area.scrollTop = area.scrollHeight;
+      console.log(`[${type}] ${msg}`);
+    }
+    function clearLog() { document.getElementById('logArea').innerHTML = ''; }
+
+    function updateIceStats() {
+      document.getElementById('iceHost').textContent = iceStats.host;
+      document.getElementById('iceSrflx').textContent = iceStats.srflx;
+      document.getElementById('iceRelay').textContent = iceStats.relay;
+    }
+
+    function setSocketStatus(state) {
+      const dot = document.getElementById('socketStatus');
+      const text = document.getElementById('socketStatusText');
+      dot.className = 'status-dot ' + state;
+      const labels = { off: '未連線', connecting: '連線中...', connected: '已連線 ✅', error: '連線失敗' };
+      text.textContent = labels[state] || state;
+    }
+
+    // === ICE Configuration ===
+    function getIceConfig() {
+      const turnUri = document.getElementById('turnUri').value;
+      const turnUser = document.getElementById('turnUser').value;
+      const turnPass = document.getElementById('turnPass').value;
+      const forceRelay = document.getElementById('forceRelay').checked;
+
+      const config = {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+        ],
+      };
+
+      if (turnUri && turnUser && turnPass) {
+        config.iceServers.push({
+          urls: [turnUri, turnUri + '?transport=tcp'],
+          username: turnUser,
+          credential: turnPass,
+        });
+      }
+
+      if (forceRelay) {
+        config.iceTransportPolicy = 'relay';
+        log('⚠️ 強制使用 TURN relay 模式', 'warn');
+      }
+
+      return config;
+    }
+
+    // === TURN Test ===
+    async function testTurn() {
+      log('🧪 開始測試 TURN 伺服器...');
+      iceStats = { host: 0, srflx: 0, relay: 0 };
+      updateIceStats();
+
+      const config = getIceConfig();
+      config.iceTransportPolicy = 'relay'; // Force relay for test
+
+      const testPc = new RTCPeerConnection(config);
+      testPc.createDataChannel('test');
+
+      testPc.onicecandidate = (e) => {
+        if (e.candidate) {
+          const type = e.candidate.type;
+          if (type === 'host') iceStats.host++;
+          else if (type === 'srflx') iceStats.srflx++;
+          else if (type === 'relay') iceStats.relay++;
+          log(`🧊 [TURN Test] ${type}: ${e.candidate.candidate.substring(0, 80)}...`, 'ice');
+          updateIceStats();
+        } else {
+          // Gathering complete
+          if (iceStats.relay > 0) {
+            log(`✅ TURN 伺服器正常！取得 ${iceStats.relay} 個 relay candidate`, 'info');
+          } else {
+            log('❌ TURN 失敗！未取得任何 relay candidate。請檢查 TURN 設定。', 'error');
+          }
+          testPc.close();
+        }
+      };
+
+      testPc.onicegatheringstatechange = () => {
+        log(`📡 ICE Gathering: ${testPc.iceGatheringState}`);
+      };
+
+      try {
+        const offer = await testPc.createOffer();
+        await testPc.setLocalDescription(offer);
+        log('📤 TURN Test Offer created, gathering candidates...');
+      } catch (err) {
+        log(`❌ TURN Test 失敗: ${err.message}`, 'error');
+        testPc.close();
+      }
+    }
+
+    // === Socket.IO ===
+    function connectSocket() {
+      const url = document.getElementById('serverUrl').value;
+      const roomId = document.getElementById('roomId').value;
+      const role = document.getElementById('role').value;
+      const deviceName = document.getElementById('deviceName').value;
+
+      setSocketStatus('connecting');
+      log(`🔌 正在連線到 ${url}...`);
+
+      socket = io(url, { transports: ['websocket', 'polling'] });
+
+      socket.on('connect', () => {
+        setSocketStatus('connected');
+        log(`✅ Socket 連線成功 (SID: ${socket.id})`);
+        socket.emit('join', { room: roomId, role, deviceName, deviceMode: 'comm' });
+        log(`📢 已加入房間 ${roomId} (角色: ${role})`);
+
+        document.getElementById('btnConnect').disabled = true;
+        document.getElementById('btnDisconnect').disabled = false;
+        document.getElementById('btnCall').disabled = false;
+
+        // Start local media
+        startLocalMedia();
+      });
+
+      socket.on('connect_error', (err) => {
+        setSocketStatus('error');
+        log(`❌ 連線失敗: ${err.message}`, 'error');
+      });
+
+      socket.on('disconnect', (reason) => {
+        setSocketStatus('off');
+        log(`⚠️ Socket 斷線: ${reason}`, 'warn');
+        document.getElementById('btnConnect').disabled = false;
+        document.getElementById('btnDisconnect').disabled = true;
+        document.getElementById('btnCall').disabled = true;
+      });
+
+      socket.on('user-joined', (data) => {
+        log(`👋 使用者加入: ${data.deviceName} (${data.role})`);
+      });
+
+      socket.on('user-left', (data) => {
+        log(`👋 使用者離開: ${data.id}`, 'warn');
+      });
+
+      // === Call Signaling ===
+      socket.on('call-request', (data) => {
+        log(`📞📞📞 收到 call-request! senderId=${data.senderId}, callId=${data.callId}`, 'warn');
+        peerSocketId = data.senderId;
+        currentCallId = data.callId;
+        document.getElementById('btnAccept').disabled = false;
+      });
+
+      socket.on('call-accept', (data) => {
+        log(`✅ 對方已接聽 (AccepterId: ${data.accepterId})`);
+        peerSocketId = data.accepterId;
+        currentCallId = data.callId;
+        // Initiator creates offer
+        createOffer(data.accepterId);
+      });
+
+      socket.on('call-busy', (data) => {
+        log('🚫 對方忙線中或已拒絕', 'warn');
+      });
+
+      socket.on('cancel-call', (data) => {
+        log('🔕 對方取消了通話', 'warn');
+        document.getElementById('btnAccept').disabled = true;
+      });
+
+      socket.on('offer', async (data) => {
+        log(`📩 收到 Offer (from: ${data.senderId})`);
+        peerSocketId = data.senderId;
+        pendingOffer = data;
+        await acceptOffer(data);
+      });
+
+      socket.on('answer', async (data) => {
+        log(`📩 收到 Answer (from: ${data.senderId})`);
+        peerSocketId = data.senderId;
+        try {
+          await pc.setRemoteDescription(new RTCSessionDescription({ type: data.type, sdp: data.sdp }));
+          log('✅ Remote description (answer) 已設定');
+        } catch (err) {
+          log(`❌ Answer 處理失敗: ${err.message}`, 'error');
+        }
+      });
+
+      socket.on('candidate', async (data) => {
+        log(`🧊 收到 ICE Candidate (from: ${data.senderId})`, 'ice');
+        try {
+          if (pc) {
+            await pc.addIceCandidate(new RTCIceCandidate({
+              candidate: data.candidate,
+              sdpMid: data.sdpMid,
+              sdpMLineIndex: data.sdpMLineIndex,
+            }));
+          }
+        } catch (err) {
+          log(`❌ ICE Candidate 錯誤: ${err.message}`, 'error');
+        }
+      });
+
+      socket.on('end-call', () => {
+        log('📴 收到掛斷訊號', 'warn');
+        closePeerConnection();
+      });
+
+      socket.on('elder-devices-update', (devices) => {
+        log(`📡 長輩設備列表更新: ${devices.length} 台`);
+        devices.forEach(d => log(`   - ${d.deviceName} (${d.isOnline ? '在線' : '離線'}) [${d.deviceMode}]`));
+      });
+    }
+
+    function disconnectSocket() {
+      if (socket) {
+        socket.disconnect();
+        socket = null;
+      }
+      closePeerConnection();
+      setSocketStatus('off');
+      document.getElementById('btnConnect').disabled = false;
+      document.getElementById('btnDisconnect').disabled = true;
+      document.getElementById('btnCall').disabled = true;
+      document.getElementById('btnAccept').disabled = true;
+      log('🔌 已斷線');
+    }
+
+    // === Media ===
+    async function startLocalMedia() {
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        document.getElementById('localVideo').srcObject = localStream;
+        log('📷 本地攝像頭已啟動');
+      } catch (err) {
+        log(`❌ 無法開啟媒體裝置: ${err.message}`, 'error');
+        // Try audio only
+        try {
+          localStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
+          document.getElementById('localVideo').srcObject = localStream;
+          log('🎤 僅開啟音訊模式');
+        } catch (err2) {
+          log(`❌ 連音訊也開不了: ${err2.message}`, 'error');
+        }
+      }
+    }
+
+    // === WebRTC ===
+    function createPeerConnection() {
+      if (pc) { pc.close(); pc = null; }
+
+      iceStats = { host: 0, srflx: 0, relay: 0 };
+      updateIceStats();
+
+      const config = getIceConfig();
+      pc = new RTCPeerConnection(config);
+      log(`🔧 PeerConnection created (iceServers: ${config.iceServers.length})`);
+
+      pc.onicecandidate = (e) => {
+        if (e.candidate) {
+          const type = e.candidate.type || 'unknown';
+          if (type === 'host') iceStats.host++;
+          else if (type === 'srflx') iceStats.srflx++;
+          else if (type === 'relay') iceStats.relay++;
+          updateIceStats();
+          log(`🧊 Local ICE [${type}]: ${e.candidate.candidate.substring(0, 60)}...`, 'ice');
+
+          if (socket && peerSocketId) {
+            socket.emit('candidate', {
+              room: document.getElementById('roomId').value,
+              targetId: peerSocketId,
+              senderId: socket.id,
+              candidate: e.candidate.candidate,
+              sdpMid: e.candidate.sdpMid,
+              sdpMLineIndex: e.candidate.sdpMLineIndex,
+            });
+          }
+        }
+      };
+
+      pc.oniceconnectionstatechange = () => {
+        log(`❄️ ICE Connection: ${pc.iceConnectionState}`);
+        if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+          log('🎉 P2P 連線建立成功！', 'info');
+          document.getElementById('btnHangup').disabled = false;
+        }
+        if (pc.iceConnectionState === 'failed') {
+          log('❌ ICE 連線失敗！可能需要 TURN 伺服器', 'error');
+        }
+      };
+
+      pc.ontrack = (e) => {
+        log(`🛤️ 收到遠端 Track: ${e.track.kind}`);
+        if (e.streams && e.streams[0]) {
+          document.getElementById('remoteVideo').srcObject = e.streams[0];
+          log('📺 遠端視訊已顯示');
+        }
+      };
+
+      // Add local tracks
+      if (localStream) {
+        localStream.getTracks().forEach(track => {
+          pc.addTrack(track, localStream);
+        });
+        log(`📤 已添加 ${localStream.getTracks().length} 個 local track`);
+      }
+    }
+
+    async function createOffer(targetId) {
+      createPeerConnection();
+      peerSocketId = targetId;
+
+      try {
+        const offer = await pc.createOffer({
+          offerToReceiveAudio: true,
+          offerToReceiveVideo: true,
+        });
+        await pc.setLocalDescription(offer);
+
+        socket.emit('offer', {
+          room: document.getElementById('roomId').value,
+          targetId: targetId,
+          senderId: socket.id,
+          type: 'offer',
+          sdp: offer.sdp,
+          isEmergency: false,
+        });
+        log(`📤 Offer 已發送給 ${targetId}`);
+      } catch (err) {
+        log(`❌ createOffer 失敗: ${err.message}`, 'error');
+      }
+    }
+
+    async function acceptOffer(data) {
+      createPeerConnection();
+      peerSocketId = data.senderId;
+
+      try {
+        await pc.setRemoteDescription(new RTCSessionDescription({ type: data.type, sdp: data.sdp }));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+
+        socket.emit('answer', {
+          room: document.getElementById('roomId').value,
+          targetId: data.senderId,
+          senderId: socket.id,
+          type: 'answer',
+          sdp: answer.sdp,
+        });
+        log(`📤 Answer 已發送給 ${data.senderId}`);
+        document.getElementById('btnHangup').disabled = false;
+      } catch (err) {
+        log(`❌ acceptOffer 失敗: ${err.message}`, 'error');
+      }
+    }
+
+    // === Call Actions ===
+    function sendCallRequest() {
+      const roomId = document.getElementById('roomId').value;
+      const role = document.getElementById('role').value;
+      socket.emit('call-request', { room: roomId, role: role });
+      log(`📞 已發送 call-request 到房間 ${roomId}`);
+    }
+
+    function acceptIncoming() {
+      if (!peerSocketId) { log('⚠️ 沒有待接聽的通話', 'warn'); return; }
+      socket.emit('call-accept', { targetId: peerSocketId, callId: currentCallId });
+      log(`✅ 已發送 call-accept 給 ${peerSocketId}`);
+      document.getElementById('btnAccept').disabled = true;
+    }
+
+    function hangUp() {
+      const roomId = document.getElementById('roomId').value;
+      if (socket) {
+        socket.emit('end-call', { room: roomId, targetId: peerSocketId, callId: currentCallId });
+      }
+      closePeerConnection();
+      log('📴 已掛斷通話');
+    }
+
+    function closePeerConnection() {
+      if (pc) { pc.close(); pc = null; }
+      document.getElementById('remoteVideo').srcObject = null;
+      document.getElementById('btnHangup').disabled = true;
+      document.getElementById('btnAccept').disabled = true;
+      peerSocketId = null;
+      currentCallId = null;
+    }
+
+    // Init
+    log('🚀 Uban WebRTC 測試工具已載入');
+    log('使用方式：');
+    log('  1. 設定伺服器位址與房間號');
+    log('  2. 點擊 "連線" 加入 Socket.IO');
+    log('  3. 開另一個分頁（或用模擬器）以不同角色連線');
+    log('  4. 點擊 "發起通話" → 另一端 "接聽"');
+    log('  5. 觀察 ICE Candidates 是否有 relay (TURN)');
+  </script>
+</body>
+</html>

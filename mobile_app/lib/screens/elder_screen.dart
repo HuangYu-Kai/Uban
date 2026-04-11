@@ -12,7 +12,8 @@ class ElderScreen extends StatefulWidget {
   final String roomId;
   final bool isCCTVMode;
   final String deviceName;
-  final bool autoCall; // 新增參數
+  final bool autoCall;
+  final bool isVideoCall; // ★ 新增：是否為視訊通話（false = 純語音）
 
   const ElderScreen({
     super.key,
@@ -20,6 +21,7 @@ class ElderScreen extends StatefulWidget {
     this.isCCTVMode = false,
     this.deviceName = 'Elder Device',
     this.autoCall = false,
+    this.isVideoCall = true, // 預設視訊通話
   });
 
   @override
@@ -181,7 +183,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       _signaling.createOffer(targetId: accepterId, isEmergency: false);
     };
 
-    await _signaling.openUserMedia(_localRenderer);
+    await _signaling.openUserMedia(_localRenderer, videoEnabled: widget.isVideoCall);
     
     _signaling.connect(
       widget.roomId, 
