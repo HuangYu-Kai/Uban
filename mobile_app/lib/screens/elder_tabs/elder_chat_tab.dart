@@ -367,6 +367,16 @@ class ElderChatTabState extends State<ElderChatTab>
     }
   }
 
+  // 清理模型工具標記，避免 [TOOL_USE:*] / [TOOL_RES:*] 顯示到 UI 或念出來
+  String _stripToolMarkers(String text) {
+    var cleaned = text;
+    cleaned = cleaned.replaceAll(RegExp(r'\[TOOL_USE:[^\]]*\]'), '');
+    cleaned = cleaned.replaceAll(RegExp(r'\[TOOL_RES:[^\]]*\]'), '');
+    // 若串流剛好切在未閉合標記，先隱藏尾端殘片
+    cleaned = cleaned.replaceAll(RegExp(r'\[TOOL_(?:USE|RES):[^\]]*$'), '');
+    return cleaned.trimLeft();
+  }
+
   Future<void> _sendToAIChat(String message) async {
     if (message.trim().isEmpty) return;
 
@@ -417,8 +427,11 @@ class ElderChatTabState extends State<ElderChatTab>
 
             if (data['done'] == true) {
               if (pendingSentence.trim().isNotEmpty) {
-                _sentenceQueue.add(pendingSentence.trim());
-                _processSentenceQueue();
+                final cleanSentence = _stripToolMarkers(pendingSentence.trim());
+                if (cleanSentence.isNotEmpty) {
+                  _sentenceQueue.add(cleanSentence);
+                  _processSentenceQueue();
+                }
               }
               setState(() => _isAILoading = false);
               break;
@@ -434,8 +447,8 @@ class ElderChatTabState extends State<ElderChatTab>
               currentParagraph += chunk;
               pendingSentence += chunk;
 
-              // 直接保留原始文字交由 Markdown 渲染。
-              String cleanParagraph = currentParagraph;
+              // 僅清理工具標記，其餘文字（含網址）保留
+              final cleanParagraph = _stripToolMarkers(currentParagraph);
 
               setState(() {
                 _messages[aiMsgIndex]["text"] = cleanParagraph;
@@ -444,7 +457,7 @@ class ElderChatTabState extends State<ElderChatTab>
 
               // 若遇到標點符號，把這句話推進語音佇列
               if (RegExp(r'[，。！？；,\.!\?]').hasMatch(chunk)) {
-                final cleanSentence = pendingSentence.trim();
+                final cleanSentence = _stripToolMarkers(pendingSentence.trim());
                 if (cleanSentence.isNotEmpty) {
                   _sentenceQueue.add(cleanSentence);
                   _processSentenceQueue();
