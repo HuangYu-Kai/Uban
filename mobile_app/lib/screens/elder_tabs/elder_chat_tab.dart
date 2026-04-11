@@ -14,7 +14,6 @@ import 'package:flutter_webrtc/flutter_webrtc.dart' show Helper, AndroidAudioCon
 import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../../services/api_service.dart';
-import '../../services/signaling.dart';
 import '../../widgets/youtube_bubble_player.dart';
 
 class ElderChatTab extends StatefulWidget {
@@ -380,11 +379,14 @@ class ElderChatTabState extends State<ElderChatTab>
   Future<void> _sendToAIChat(String message) async {
     if (message.trim().isEmpty) return;
 
+    int aiMsgIndex = -1;
+
     setState(() {
       _isAILoading = true;
       _messages.add({"role": "user", "text": message});
       // 預先塞入一個空的 AI 回覆，之後靠串流更新這個 index
       _messages.add({"role": "ai", "text": ""});
+      aiMsgIndex = _messages.length - 1;
     });
 
     _scrollToBottom();
@@ -402,7 +404,6 @@ class ElderChatTabState extends State<ElderChatTab>
         throw Exception('Server error: ${response.statusCode}');
       }
 
-      int aiMsgIndex = _messages.length - 1;
       String currentParagraph = "";
       String pendingSentence = ""; // 累積到標點符號就送去念
 
@@ -475,10 +476,25 @@ class ElderChatTabState extends State<ElderChatTab>
       String errorMsg = 'AI 思考太久了，或是網路不穩，請再試一次喔！';
       setState(() {
         _isAILoading = false;
-        // 把最後一個空白的 AI 訊息換成錯誤訊息
-        _messages.last["text"] = errorMsg;
+
+        // 已有部分回覆時保留內容，避免被錯誤訊息整段覆蓋
+        if (aiMsgIndex >= 0 && aiMsgIndex < _messages.length) {
+          final currentText = (_messages[aiMsgIndex]["text"] ?? "").toString().trim();
+          if (currentText.isEmpty) {
+            _messages[aiMsgIndex]["text"] = errorMsg;
+          } else if (!currentText.contains("回覆可能未完整")) {
+            _messages[aiMsgIndex]["text"] = "$currentText\n\n（網路不穩，回覆可能未完整）";
+          }
+        }
       });
-      _speak(errorMsg);
+
+      // 只有在完全沒有回覆內容時才播報錯誤，避免打斷已生成的內容
+      if (aiMsgIndex >= 0 && aiMsgIndex < _messages.length) {
+        final finalText = (_messages[aiMsgIndex]["text"] ?? "").toString().trim();
+        if (finalText == errorMsg) {
+          _speak(errorMsg);
+        }
+      }
     } finally {
       if (mounted && _isAILoading) {
         setState(() => _isAILoading = false);
