@@ -182,7 +182,7 @@ Uban/
 │       │   └── elder_tabs/             # 長輩端分頁
 │       └── globals.dart     # 全域狀態
 ├── server/                  # ⚠️ Legacy Flask (已棄用，勿修改)
-├── webrtc_test.html         # 🆕 瀏覽器版 WebRTC 測試工具
+├── webrtc_test.html         # 瀏覽器版 WebRTC 測試工具 (v1.1)
 ├── test_call_simulator.py   # Socket.IO 信令測試腳本
 ├── run.sh                   # macOS/Linux 啟動腳本
 ├── run.ps1                  # Windows 啟動腳本
@@ -211,12 +211,14 @@ uban-api/                    # FastAPI 後端 (獨立 Repo)
 
 #### 方法 1：瀏覽器測試（推薦，不需 Android 設備）
 
-直接開啟 `webrtc_test.html`，支援：
+直接開啟 `webrtc_test.html` (v1.1)，支援：
 - ✅ 連接 Socket.IO 信令伺服器
 - ✅ 模擬 family/elder 雙角色
 - ✅ TURN 伺服器獨立驗證（一鍵測試 relay candidate）
 - ✅ ICE candidate 實時統計
 - ✅ 強制 relay 模式（同網路也能測 TURN）
+- ✅ ICE candidate 排隊機制（解決影像黑屏問題）
+- ✅ ontrack fallback（保證遠端影像正確顯示）
 
 #### 方法 2：Socket.IO 信令腳本
 
@@ -316,6 +318,24 @@ void initPedometer() {
 ---
 
 ## 更新日誌
+
+### 2026-04-12 🐛 修復 WebRTC 雙向影像傳輸問題
+**修復 WebRTC 通話時遠端影像顯示黑屏的問題**
+
+#### 🔧 修改內容
+
+**webrtc_test.html (v1.0 → v1.1, 3 處核心修正)**
+1. **ICE Candidate 排隊機制** — 新增 `candidateQueue` 和 `hasRemoteDescription` 狀態追蹤，解決 ICE candidate 在 `setRemoteDescription` 之前到達時被靜默丟棄的問題
+2. **ontrack fallback 處理** — 當 `e.streams` 為空時，使用 fallback `MediaStream` 手動將 track 加入，確保遠端影像正確顯示
+3. **增強診斷日誌** — 新增 track 狀態、SDP 大小、negotiationneeded 事件等詳細日誌，方便排查問題
+
+**根因分析**
+- WebRTC 的 Offer/Answer 和 ICE candidate 交換是異步的
+- 當 ICE candidate 在 `setRemoteDescription()` 完成前到達時，`addIceCandidate()` 會拋出錯誤
+- 原始代碼沒有排隊機制，這些候選項被靜默丟棄
+- 缺少足夠的 ICE candidate 導致 P2P 連線無法建立，遠端影像為黑屏
+
+---
 
 ### 2026-04-11 🎥 視訊功能完整實裝 + TURN 配置 + 測試工具
 **7 個檔案修改，補完視訊通話所有缺失功能**
@@ -458,6 +478,7 @@ void initPedometer() {
 | 關係 | `/api/relationship` | `uban-api/routers/relationship.py` |
 | 活動 | `/api/activity` | `uban-api/routers/activity.py` |
 | 遊戲 | `/api/game` | `uban-api/routers/game.py` |
+| 語音 | `/api/voice` | `uban-api/routers/voice.py` |
 
 ### 長輩端 App 頁面
 
@@ -568,4 +589,4 @@ void initPedometer() {
 
 ---
 
-📝 *最後更新：2026/04/11*
+📝 *最後更新：2026/04/12*
