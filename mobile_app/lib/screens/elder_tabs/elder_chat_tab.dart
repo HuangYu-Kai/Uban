@@ -399,6 +399,7 @@ class ElderChatTabState extends State<ElderChatTab>
 
     String? tempAudioPath;
     try {
+      final watch = Stopwatch()..start();
       await _backendAudioPlayer.stop();
 
       if (!kIsWeb && Platform.isAndroid) {
@@ -411,12 +412,15 @@ class ElderChatTabState extends State<ElderChatTab>
       } else {
         await _backendAudioPlayer.play(BytesSource(bytes));
       }
-
-      _backendAudioPlayedInTurn = true;
       await _backendAudioPlayer.onPlayerComplete.first.timeout(
         const Duration(seconds: 60),
         onTimeout: () {},
       );
+      watch.stop();
+      // 部分裝置解碼失敗時會「瞬間完成」但實際沒聲音，避免誤判為已播報
+      if (watch.elapsedMilliseconds >= 800) {
+        _backendAudioPlayedInTurn = true;
+      }
     } catch (e) {
       debugPrint('Backend audio play error: $e');
     } finally {
@@ -462,7 +466,7 @@ class ElderChatTabState extends State<ElderChatTab>
       _processSentenceQueue();
       return;
     }
-    final fallbackText = _stripToolMarkers(currentParagraph.trim());
+    final fallbackText = _sanitizeAiText(currentParagraph.trim());
     if (fallbackText.isNotEmpty) {
       _sentenceQueue.add(fallbackText);
       _processSentenceQueue();
@@ -518,6 +522,15 @@ class ElderChatTabState extends State<ElderChatTab>
     return cleaned.trimLeft();
   }
 
+  String _sanitizeAiText(String text) {
+    var cleaned = _stripToolMarkers(text);
+    // 過濾「（內心戲）」類型內容，避免顯示/播報模型旁白
+    cleaned = cleaned.replaceAll(RegExp(r'[（(][^（）()\n]{0,200}[）)]'), '');
+    cleaned = cleaned.replaceAll(RegExp(r'[ \t]{2,}'), ' ');
+    cleaned = cleaned.replaceAll(RegExp(r'\n{3,}'), '\n\n');
+    return cleaned.trim();
+  }
+
   Future<void> _sendToAIChat(String message) async {
     if (message.trim().isEmpty) return;
 
@@ -555,90 +568,89 @@ class ElderChatTabState extends State<ElderChatTab>
       final List<String> backupSentences = [];
       _backendAudioPlayedInTurn = false;
 
-      // 監聽 SSE (Server-Sent Events)
-      // 以行緩衝處理，避免 data 行被 TCP 分段切斷時遺失
-      String sseBuffer = "";
-      await for (final bytes in response.stream.transform(utf8.decoder)) {
+      // 監聽 SSE：LineSplitter 會在串流結束時吐出最後一行，避免尾段被截斷
+      bool doneReceived = false;
+      await for (final rawLine in response.stream.transform(utf8.decoder).transform(const LineSplitter())) {
         if (!mounted) break;
-        sseBuffer += bytes;
-        final lines = sseBuffer.split('\n');
-        sseBuffer = lines.removeLast();
+        final line = rawLine.trimRight();
+        if (!line.startsWith('data: ')) continue;
 
-        for (final rawLine in lines) {
-          final line = rawLine.trimRight();
-          if (!line.startsWith('data: ')) continue;
+        final dataStr = line.substring(6).trim();
+        if (dataStr.isEmpty) continue;
 
-          final dataStr = line.substring(6).trim();
-          if (dataStr.isEmpty) continue;
+        try {
+          final data = jsonDecode(dataStr);
 
-          try {
-            final data = jsonDecode(dataStr);
-
-              if (data['done'] == true) {
-                if (!_useBackendXtts && pendingSentence.trim().isNotEmpty) {
-                  final cleanSentence = _stripToolMarkers(pendingSentence.trim());
-                  if (cleanSentence.isNotEmpty) {
-                    _sentenceQueue.add(cleanSentence);
-                    _processSentenceQueue();
-                  }
-                }
-                if (_useBackendXtts && !_backendAudioPlayedInTurn) {
-                  if (_isProcessingAudioQueue || _audioQueue.isNotEmpty) {
-                    _scheduleFallbackAfterBackendAudio(backupSentences, currentParagraph);
-                  } else {
-                    _enqueueLocalFallbackSpeech(backupSentences, currentParagraph);
-                  }
-                }
-                setState(() => _isAILoading = false);
-                break;
-              }
-
-            if (data['audio'] != null && _useBackendXtts) {
-              final payload = data['audio'].toString().trim();
-              if (payload.isNotEmpty) {
-                final audioBytes = _decodeAudioBytes(payload);
-                if (audioBytes != null && audioBytes.isNotEmpty) {
-                  _audioQueue.add(audioBytes);
-                  _processAudioQueue();
-                }
+          if (data['done'] == true) {
+            if (!_useBackendXtts && pendingSentence.trim().isNotEmpty) {
+              final cleanSentence = _sanitizeAiText(pendingSentence.trim());
+              if (cleanSentence.isNotEmpty) {
+                _sentenceQueue.add(cleanSentence);
+                _processSentenceQueue();
               }
             }
-
-            if (data['chunk'] != null) {
-              // 第一個字進來時，就該消除「思考中」的泡泡
-              if (_isAILoading) {
-                setState(() => _isAILoading = false);
-              }
-
-              final chunk = data['chunk'] as String;
-              currentParagraph += chunk;
-              pendingSentence += chunk;
-
-              // 僅清理工具標記，其餘文字（含網址）保留
-              final cleanParagraph = _stripToolMarkers(currentParagraph);
-
-              setState(() {
-                _messages[aiMsgIndex]["text"] = cleanParagraph;
-              });
-              _scrollToBottom();
-
-              // 若遇到標點符號，把這句話推進語音佇列
-              if (RegExp(r'[，。！？；,\.!\?]').hasMatch(chunk)) {
-                final cleanSentence = _stripToolMarkers(pendingSentence.trim());
-                if (cleanSentence.isNotEmpty) {
-                  backupSentences.add(cleanSentence);
-                  if (!_useBackendXtts) {
-                    _sentenceQueue.add(cleanSentence);
-                    _processSentenceQueue();
-                  }
-                }
-                pendingSentence = "";
+            if (_useBackendXtts && !_backendAudioPlayedInTurn) {
+              if (_isProcessingAudioQueue || _audioQueue.isNotEmpty) {
+                _scheduleFallbackAfterBackendAudio(backupSentences, currentParagraph);
+              } else {
+                _enqueueLocalFallbackSpeech(backupSentences, currentParagraph);
               }
             }
-          } catch (e) {
-            debugPrint("SSE JSON parse error: $e");
+            setState(() => _isAILoading = false);
+            doneReceived = true;
+            break;
           }
+
+          if (data['audio'] != null && _useBackendXtts) {
+            final payload = data['audio'].toString().trim();
+            if (payload.isNotEmpty) {
+              final audioBytes = _decodeAudioBytes(payload);
+              if (audioBytes != null && audioBytes.isNotEmpty) {
+                _audioQueue.add(audioBytes);
+                _processAudioQueue();
+              }
+            }
+          }
+
+          if (data['chunk'] != null) {
+            // 第一個字進來時，就該消除「思考中」的泡泡
+            if (_isAILoading) {
+              setState(() => _isAILoading = false);
+            }
+
+            final chunk = data['chunk'] as String;
+            currentParagraph += chunk;
+            pendingSentence += chunk;
+
+            final cleanParagraph = _sanitizeAiText(currentParagraph);
+
+            setState(() {
+              _messages[aiMsgIndex]["text"] = cleanParagraph;
+            });
+            _scrollToBottom();
+
+            // 若遇到標點符號，把這句話推進語音佇列
+            if (RegExp(r'[，。！？；,\.!\?]').hasMatch(chunk)) {
+              final cleanSentence = _sanitizeAiText(pendingSentence.trim());
+              if (cleanSentence.isNotEmpty) {
+                backupSentences.add(cleanSentence);
+                if (!_useBackendXtts) {
+                  _sentenceQueue.add(cleanSentence);
+                  _processSentenceQueue();
+                }
+              }
+              pendingSentence = "";
+            }
+          }
+        } catch (e) {
+          debugPrint("SSE JSON parse error: $e");
         }
+      }
+      if (_useBackendXtts && !doneReceived) {
+        _enqueueLocalFallbackSpeech(backupSentences, currentParagraph);
+      }
+      if (mounted && _isAILoading) {
+        setState(() => _isAILoading = false);
       }
     } catch (e) {
       debugPrint("Streaming error: $e");
