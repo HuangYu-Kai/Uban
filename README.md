@@ -29,26 +29,51 @@ Uban 是一套專為銀髮族設計的 AI 陪伴照護系統，包含：
 
 ## 系統架構
 
+> ⚠️ **雙軌制設計**：信令 (TCP/WSS) 與媒體中繼 (UDP) 分離在不同主機上，**禁止合併**。
+
 ```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   長輩端 App    │────▶│   FastAPI 後端   │◀────│   家屬端 App    │
-│   (Flutter)     │     │   (uban-api)    │     │   (Flutter)     │
-└─────────────────┘     └────────┬────────┘     └─────────────────┘
-                                 │
-                    ┌────────────┴────────────┐
-                    ▼                         ▼
-           ┌───────────────┐         ┌───────────────┐
-           │  Ollama AI    │         │   MySQL DB    │
-           │ (qwen2.5:1.5b)│         │               │
-           └───────────────┘         └───────────────┘
+                        ┌─────────────────────────────────────────────────────┐
+                        │           第一軌：信令伺服器 (Signaling)              │
+                        │  Tailscale Funnel → Fedora 本機 → FastAPI+SocketIO  │
+                        │  https://localhost-0.tail5abf5e.ts.net              │
+                        │  協定：TCP / WSS（僅傳 SDP、ICE Candidate 文字）      │
+                        └────────────────────┬────────────────────────────────┘
+                                             │
+┌─────────────────┐      Socket.IO/WSS       │       Socket.IO/WSS      ┌──────────────────┐
+│   長輩端 App    │◄════════════════════════►│◄═══════════════════════►│   家屬端 App     │
+│   (Flutter)     │                          │                          │   (Flutter/Web)  │
+└────────┬────────┘                          │                          └────────┬─────────┘
+         │                                   │                                   │
+         │          UDP Media Stream          │                                   │
+         │     ┌─────────────────────────────────────────────────────────┐       │
+         └────►│           第二軌：媒體中繼伺服器 (TURN/STUN)              │◄──────┘
+               │  Oracle Cloud (日本大阪) → Coturn                       │
+               │  turn:152.69.196.5:3478  (UDP, Port 49152-65535)       │
+               │  協定：UDP（負責轉發實際影音串流）                        │
+               └───────────────────────────┬───────────────────────────┘
+                                           │
+                              ┌─────────────┴─────────────┐
+                              ▼                           ▼
+                     ┌───────────────┐           ┌───────────────┐
+                     │  Ollama AI    │           │   MySQL DB    │
+                     │ (qwen2.5:1.5b)│           │               │
+                     └───────────────┘           └───────────────┘
 ```
 
-**連線資訊**：
+### 為什麼要「雙軌制」？
 
-| 服務 | 地址 |
-|------|------|
-| FastAPI 後端 | `https://localhost-0.tail5abf5e.ts.net` |
-| Ollama AI | `https://boyo-t.tail531c8a.ts.net` |
+| 需求 | 限制 | 解法 |
+|------|------|------|
+| 開鏡頭需要 HTTPS 憑證 | Tailscale Funnel 免費提供 HTTPS，但**只支援 TCP** | 信令走 Tailscale (TCP/WSS) |
+| 即時影像需走 UDP | TCP 封包檢查會嚴重卡頓 | 媒體走 Oracle 公網 (UDP) |
+
+### 連線資訊
+
+| 服務 | 類型 | 地址 | 協定 |
+|------|------|------|------|
+| 信令伺服器 (FastAPI) | Signaling | `https://localhost-0.tail5abf5e.ts.net` | TCP/WSS |
+| 媒體中繼 (Coturn) | TURN/STUN | `turn:152.69.196.5:3478` | UDP |
+| Ollama AI | AI Engine | `https://boyo-t.tail531c8a.ts.net` | TCP |
 
 ---
 
@@ -113,14 +138,16 @@ Uban 是一套專為銀髮族設計的 AI 陪伴照護系統，包含：
 - **GPS 快速選址**：一鍵帶入行政區域
 - **陪伴大腦設定**：自訂 AI 人格與長輩資料
 
-### 五、視訊通話
+### 五、視訊通話（雙軌制 WebRTC）
 
+- **信令 (第一軌)**：Tailscale Funnel (TCP/WSS) — 交換 SDP Offer/Answer + ICE Candidate
+- **媒體 (第二軌)**：Oracle Cloud Coturn (UDP) — 轉發實際影音串流
 - **WebRTC P2P**：高品質視訊、STUN + coturn TURN 雙重 NAT 穿透
 - **三層備援**：Socket.IO 即時 → FCM 推播 → Cold Start 冷啟動
 - **緊急模式**：CCTV 監控 / 自動接聽
 - **通話控制**：麥克風靜音、鏡頭開關、前後鏡頭切換、揚聲器、通話計時
 - **語音模式**：支援純語音通話（不啟動攝影機）
-- **TURN 伺服器**：coturn 中繼，支援跨 NAT（4G ↔ WiFi）場景
+- **TURN 伺服器**：Oracle Cloud coturn (152.69.196.5)，獨立公網 IP，支援跨 NAT（4G ↔ WiFi）場景
 
 ---
 
@@ -230,29 +257,38 @@ python3 -m venv /tmp/uban_test_venv
 
 > 📖 詳細說明請參考 [TEST_CALL_SIMULATOR_GUIDE.md](./TEST_CALL_SIMULATOR_GUIDE.md)
 
-### TURN 伺服器配置
+### TURN 伺服器配置（Oracle Cloud）
 
-視訊通話在跨網路環境（4G ↔ WiFi）需要 TURN 伺服器中繼。
+> ⚠️ TURN 伺服器部署在 Oracle Cloud (日本大阪)，與信令伺服器 (Tailscale) **分離**。
+> Tailscale Funnel 不支援 UDP，因此媒體中繼必須使用獨立的公網 IP。
+
+| 項目 | 值 |
+|------|----|
+| 主機 | Oracle Cloud Ubuntu 22.04 (日本大阪) |
+| TURN URI | `turn:152.69.196.5:3478` |
+| 帳號 | `uban` |
+| 密碼 | `115207` |
+| UDP Port Range | 49152-65535 |
+| 防火牆 | iptables + VCN 安全清單已開放 |
 
 ```bash
-# 在伺服器安裝 coturn
-sudo apt install coturn
-
-# 設定 /etc/turnserver.conf
-# listening-port=3478
-# realm=uban.turn
-# user=uban:password
-# fingerprint
-# lt-cred-mech
+# Oracle Cloud 主機上的 coturn 設定 (/etc/turnserver.conf)
+listening-port=3478
+realm=uban.turn
+user=uban:115207
+fingerprint
+lt-cred-mech
+min-port=49152
+max-port=65535
 ```
 
-Flutter 端透過 `--dart-define` 注入：
+Flutter 端已內建 Oracle TURN 作為預設值，也可透過 `--dart-define` 覆蓋：
 ```bash
 flutter run \
-  --dart-define=SERVER_IP=your-server \
-  --dart-define=TURN_SERVER=your-server:3478 \
+  --dart-define=SERVER_IP=localhost-0.tail5abf5e.ts.net \
+  --dart-define=TURN_SERVER=152.69.196.5:3478 \
   --dart-define=TURN_USER=uban \
-  --dart-define=TURN_PASS=password
+  --dart-define=TURN_PASS=115207
 ```
 
 ---
@@ -319,21 +355,29 @@ void initPedometer() {
 
 ## 更新日誌
 
-### 2026-04-12 🐛 修復 WebRTC 雙向影像傳輸問題
-**修復 WebRTC 通話時遠端影像顯示黑屏的問題**
+### 2026-04-12 🏗️ 雙軌制架構遷移 + WebRTC 影像修復
+**TURN 伺服器從 Tailscale 遷移至 Oracle Cloud + 修復遠端影像黑屏**
 
-#### 🔧 修改內容
+#### 🏗️ 架構變更：雙軌制 (Dual-Track)
 
-**webrtc_test.html (v1.0 → v1.1, 3 處核心修正)**
-1. **ICE Candidate 排隊機制** — 新增 `candidateQueue` 和 `hasRemoteDescription` 狀態追蹤，解決 ICE candidate 在 `setRemoteDescription` 之前到達時被靜默丟棄的問題
-2. **ontrack fallback 處理** — 當 `e.streams` 為空時，使用 fallback `MediaStream` 手動將 track 加入，確保遠端影像正確顯示
-3. **增強診斷日誌** — 新增 track 狀態、SDP 大小、negotiationneeded 事件等詳細日誌，方便排查問題
+| | 舊架構 | 新架構 |
+|--|--------|--------|
+| 信令 | Tailscale (TCP) | Tailscale (TCP) — 不變 |
+| TURN/媒體 | Tailscale 內網 `100.73.39.14` | Oracle Cloud `152.69.196.5` (UDP) |
+| 原因 | Tailscale Funnel 不支援 UDP，TURN 走 TCP 會卡頓 | Oracle 有獨立公網 IP，直接走 UDP |
 
-**根因分析**
-- WebRTC 的 Offer/Answer 和 ICE candidate 交換是異步的
-- 當 ICE candidate 在 `setRemoteDescription()` 完成前到達時，`addIceCandidate()` 會拋出錯誤
-- 原始代碼沒有排隊機制，這些候選項被靜默丟棄
-- 缺少足夠的 ICE candidate 導致 P2P 連線無法建立，遠端影像為黑屏
+**修改檔案**
+- `signaling.dart` — TURN 預設值 `100.73.39.14` → `152.69.196.5`
+- `webrtc_test.html` — TURN URI 預設值更新
+- `README.md` — 完整重寫架構圖、連線資訊表、TURN 配置段落
+- `CLAUDE.md` × 2 — 更新架構說明與 TURN 配置
+- `.geminirules` × 2 — 更新架構約束
+- `.cursorrules` — 更新 TURN 說明
+
+#### 🐛 WebRTC 影像修復 (webrtc_test.html v1.1)
+1. **ICE Candidate 排隊機制** — 解決 candidate 在 `setRemoteDescription` 之前到達時被丟棄
+2. **ontrack fallback 處理** — 當 `e.streams` 為空時使用 fallback MediaStream
+3. **增強診斷日誌** — track 狀態、SDP 大小等詳細日誌
 
 ---
 
@@ -573,11 +617,12 @@ void initPedometer() {
 >
 > 1. **架構**：Flutter + FastAPI (`uban-api` 獨立 Repo)
 > 2. **Legacy**：`server/` 目錄為舊 Flask AI 代碼，勿修改
-> 3. **Socket.IO**：必須使用 Singleton Pattern (`lib/services/signaling.dart`)
-> 4. **Server URL**：透過 `--dart-define=SERVER_IP=` 注入，禁止寫死
-> 5. **TURN 伺服器**：透過 `--dart-define=TURN_SERVER=` / `TURN_USER=` / `TURN_PASS=` 注入
-> 6. **長輩端通話**：入口是 `ElderScreen`，不要直接使用 `VideoCallScreen`
-> 7. **通話流程**：call-request → call-accept → createOffer → answer → ice-candidate → P2P
+> 4. **Socket.IO**：必須使用 Singleton Pattern (`lib/services/signaling.dart`)
+> 5. **Server URL**：透過 `--dart-define=SERVER_IP=` 注入，禁止寫死
+> 6. **雙軌制**：信令 (Tailscale TCP) 與媒體 (Oracle UDP) 分離，**禁止合併**
+> 7. **TURN 伺服器**：Oracle Cloud `152.69.196.5`，可透過 `--dart-define=TURN_SERVER=` 覆蓋
+> 8. **長輩端通話**：入口是 `ElderScreen`，不要直接使用 `VideoCallScreen`
+> 9. **通話流程**：call-request → call-accept → createOffer → answer → ice-candidate → P2P
 
 ### AI 規範文件
 
