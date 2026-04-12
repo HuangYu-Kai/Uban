@@ -195,7 +195,7 @@
 <body>
   <div class="header">
     <h1>🎥 Uban WebRTC 測試工具</h1>
-    <span class="badge">v1.0 — 無需 Android 設備</span>
+    <span class="badge">v1.1 — 無需 Android 設備</span>
   </div>
 
   <div class="container">
@@ -307,7 +307,14 @@
     let localStream = null;
     let peerSocketId = null;
     let currentCallId = null;
-    let pendingOffer = null; // store incoming offer data
+    let pendingOffer = null;
+
+    // ★ ICE Candidate Queue — 解決 candidate 在 setRemoteDescription 之前到達的問題
+    let candidateQueue = [];
+    let hasRemoteDescription = false;
+
+    // ★ Remote stream fallback — 當 ontrack 的 e.streams 為空時使用
+    let remoteStream = null;
 
     // ICE stats
     let iceStats = { host: 0, srflx: 0, relay: 0 };
@@ -410,6 +417,21 @@
       }
     }
 
+    // ★ 處理排隊的 ICE candidates — 在 setRemoteDescription 成功後調用
+    async function processCandidateQueue() {
+      if (candidateQueue.length > 0) {
+        log(`🧊 處理排隊的 ${candidateQueue.length} 個 ICE candidates...`, 'ice');
+        for (const candidate of candidateQueue) {
+          try {
+            await pc.addIceCandidate(candidate);
+          } catch (err) {
+            log(`⚠️ 排隊 Candidate 添加失敗: ${err.message}`, 'warn');
+          }
+        }
+        candidateQueue = [];
+      }
+    }
+
     // === Socket.IO ===
     function connectSocket() {
       const url = document.getElementById('serverUrl').value;
@@ -469,7 +491,7 @@
         log(`✅ 對方已接聽 (AccepterId: ${data.accepterId})`);
         peerSocketId = data.accepterId;
         currentCallId = data.callId;
-        // Initiator creates offer
+        // 發起方收到接聽確認 → 建立 Offer
         createOffer(data.accepterId);
       });
 
@@ -494,21 +516,31 @@
         peerSocketId = data.senderId;
         try {
           await pc.setRemoteDescription(new RTCSessionDescription({ type: data.type, sdp: data.sdp }));
+          hasRemoteDescription = true;
           log('✅ Remote description (answer) 已設定');
+          // ★ 處理在 answer 到達前已排隊的 ICE candidates
+          await processCandidateQueue();
         } catch (err) {
           log(`❌ Answer 處理失敗: ${err.message}`, 'error');
         }
       });
 
+      // ★ ICE Candidate 處理 — 加入排隊機制
       socket.on('candidate', async (data) => {
         log(`🧊 收到 ICE Candidate (from: ${data.senderId})`, 'ice');
+        const candidate = new RTCIceCandidate({
+          candidate: data.candidate,
+          sdpMid: data.sdpMid,
+          sdpMLineIndex: data.sdpMLineIndex,
+        });
         try {
-          if (pc) {
-            await pc.addIceCandidate(new RTCIceCandidate({
-              candidate: data.candidate,
-              sdpMid: data.sdpMid,
-              sdpMLineIndex: data.sdpMLineIndex,
-            }));
+          if (pc && hasRemoteDescription) {
+            // ★ 已有 remote description，直接添加
+            await pc.addIceCandidate(candidate);
+          } else {
+            // ★ 尚未設定 remote description，先排隊
+            candidateQueue.push(candidate);
+            log(`📦 ICE Candidate 已排隊 (等待 remote description)`, 'ice');
           }
         } catch (err) {
           log(`❌ ICE Candidate 錯誤: ${err.message}`, 'error');
@@ -545,7 +577,7 @@
       try {
         localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         document.getElementById('localVideo').srcObject = localStream;
-        log('📷 本地攝像頭已啟動');
+        log(`📷 本地攝像頭已啟動 (tracks: ${localStream.getTracks().length})`);
       } catch (err) {
         log(`❌ 無法開啟媒體裝置: ${err.message}`, 'error');
         // Try audio only
@@ -563,8 +595,12 @@
     function createPeerConnection() {
       if (pc) { pc.close(); pc = null; }
 
+      // ★ 重置狀態
       iceStats = { host: 0, srflx: 0, relay: 0 };
       updateIceStats();
+      candidateQueue = [];
+      hasRemoteDescription = false;
+      remoteStream = new MediaStream();
 
       const config = getIceConfig();
       pc = new RTCPeerConnection(config);
@@ -588,11 +624,14 @@
               sdpMid: e.candidate.sdpMid,
               sdpMLineIndex: e.candidate.sdpMLineIndex,
             });
+          } else {
+            log('⚠️ 無法發送 ICE Candidate: 缺少 socket 或 peerSocketId', 'warn');
           }
         }
       };
 
       pc.oniceconnectionstatechange = () => {
+        if (!pc) return;
         log(`❄️ ICE Connection: ${pc.iceConnectionState}`);
         if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
           log('🎉 P2P 連線建立成功！', 'info');
@@ -601,22 +640,41 @@
         if (pc.iceConnectionState === 'failed') {
           log('❌ ICE 連線失敗！可能需要 TURN 伺服器', 'error');
         }
+        if (pc.iceConnectionState === 'disconnected') {
+          log('⚠️ ICE 連線已斷開', 'warn');
+        }
       };
 
+      // ★ 修正 ontrack：增加 fallback 處理空 streams 的情況
       pc.ontrack = (e) => {
-        log(`🛤️ 收到遠端 Track: ${e.track.kind}`);
+        log(`🛤️ 收到遠端 Track: ${e.track.kind} (streams: ${e.streams.length})`);
         if (e.streams && e.streams[0]) {
+          // 正常情況：直接使用 stream
           document.getElementById('remoteVideo').srcObject = e.streams[0];
-          log('📺 遠端視訊已顯示');
+          log('📺 遠端視訊已顯示 (via stream)');
+        } else {
+          // ★ Fallback：手動將 track 加入 remoteStream
+          log('⚠️ ontrack streams 為空，使用 fallback MediaStream', 'warn');
+          remoteStream.addTrack(e.track);
+          document.getElementById('remoteVideo').srcObject = remoteStream;
+          log(`📺 Fallback: 已添加 ${e.track.kind} track 到 remoteStream`);
         }
+      };
+
+      // ★ 額外監聯 negotiationneeded，診斷用
+      pc.onnegotiationneeded = () => {
+        log('🔄 Negotiation needed 事件觸發');
       };
 
       // Add local tracks
       if (localStream) {
         localStream.getTracks().forEach(track => {
           pc.addTrack(track, localStream);
+          log(`📤 已添加 local track: ${track.kind} (enabled: ${track.enabled}, readyState: ${track.readyState})`);
         });
-        log(`📤 已添加 ${localStream.getTracks().length} 個 local track`);
+        log(`📤 共添加 ${localStream.getTracks().length} 個 local track`);
+      } else {
+        log('⚠️ 警告：localStream 為 null，無法添加 local track！', 'warn');
       }
     }
 
@@ -630,6 +688,7 @@
           offerToReceiveVideo: true,
         });
         await pc.setLocalDescription(offer);
+        log(`📋 Offer SDP 類型: ${offer.type}, 長度: ${offer.sdp.length} bytes`);
 
         socket.emit('offer', {
           room: document.getElementById('roomId').value,
@@ -651,8 +710,15 @@
 
       try {
         await pc.setRemoteDescription(new RTCSessionDescription({ type: data.type, sdp: data.sdp }));
+        hasRemoteDescription = true;
+        log('✅ Remote description (offer) 已設定');
+
+        // ★ 處理在 setRemoteDescription 之前到達的排隊 candidates
+        await processCandidateQueue();
+
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
+        log(`📋 Answer SDP 類型: ${answer.type}, 長度: ${answer.sdp.length} bytes`);
 
         socket.emit('answer', {
           room: document.getElementById('roomId').value,
@@ -699,16 +765,21 @@
       document.getElementById('btnAccept').disabled = true;
       peerSocketId = null;
       currentCallId = null;
+      candidateQueue = [];
+      hasRemoteDescription = false;
+      remoteStream = null;
     }
 
     // Init
-    log('🚀 Uban WebRTC 測試工具已載入');
+    log('🚀 Uban WebRTC 測試工具 v1.1 已載入');
     log('使用方式：');
     log('  1. 設定伺服器位址與房間號');
     log('  2. 點擊 "連線" 加入 Socket.IO');
     log('  3. 開另一個分頁（或用模擬器）以不同角色連線');
     log('  4. 點擊 "發起通話" → 另一端 "接聽"');
     log('  5. 觀察 ICE Candidates 是否有 relay (TURN)');
+    log('');
+    log('ℹ️ v1.1 修正：ICE candidate 排隊機制 + ontrack fallback', 'info');
   </script>
 </body>
 </html>

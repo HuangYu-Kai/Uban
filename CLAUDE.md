@@ -37,6 +37,7 @@ FastAPI 後端 (uban-api/ 獨立 Repo)
 3. **不要修改 `server/` 目錄** — 那是 Legacy Flask
 4. **長輩端不直接用 VideoCallScreen** — 長輩端通話入口是 `ElderScreen`
 5. **不要在 openUserMedia 之前 createOffer** — 必須先拿到 localStream
+6. **ICE Candidate 必須排隊** — 在 `setRemoteDescription` 完成前收到的 candidate 必須排隊，完成後再 flush
 
 ## WebRTC 通話流程 (Critical)
 
@@ -46,9 +47,10 @@ FastAPI 後端 (uban-api/ 獨立 Repo)
   2. 長輩收到 → CallKit 彈出來電
   3. 長輩接聽 → emit('call-accept', {accepterId: 自己的socketId})
   4. 家屬收到 call-accept → createOffer(targetId: 長輩的socketId)  ← 唯一 Offer 入口
-  5. 長輩收到 offer → setRemoteDescription → createAnswer → emit('answer')
-  6. 雙方交換 ice-candidate
-  7. P2P 建立
+  5. 長輩收到 offer → setRemoteDescription → 立即 flush 排隊的 ICE candidates → createAnswer → emit('answer')
+  6. 雙方交換 ice-candidate（尚未 setRemoteDescription 的一方需排隊）
+  7. 家屬收到 answer → setRemoteDescription → flush 排隊的 ICE candidates
+  8. P2P 建立
 
 長輩發起通話:
   1. 長輩 emit('call-request', {role: 'elder'})
@@ -56,6 +58,9 @@ FastAPI 後端 (uban-api/ 獨立 Repo)
   3. 家屬接聽 → emit('call-accept')
   4. 長輩收到 call-accept → createOffer(targetId: 家屬的socketId)
   5. 後續同上
+
+⚠️ 重要：ICE candidate 是異步產生的，可能在 setRemoteDescription 之前到達。
+   必須用 queue 機制暫存，否則 addIceCandidate 會失敗導致遠端影像黑屏。
 ```
 
 ## ICE 伺服器配置
@@ -93,7 +98,7 @@ String? appRole                                            // 當前角色 (elde
 | 工具 | 用途 |
 |------|------|
 | `test_call_simulator.py` | Socket.IO 信令自動化測試 |
-| `webrtc_test.html` | 瀏覽器版 WebRTC 測試 + TURN 驗證 |
+| `webrtc_test.html` | 瀏覽器版 WebRTC 測試 v1.1（含 TURN 驗證 + ICE 排隊修正） |
 | `flutter analyze` | Dart 靜態分析 |
 
 ## 環境要求
