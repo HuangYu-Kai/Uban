@@ -23,6 +23,7 @@
 - ❌ 修改 `server/` 目錄的任何檔案
 - ❌ 在長輩端直接啟動 `VideoCallScreen`（必須透過 `ElderScreen`）
 - ❌ 在 `openUserMedia` 前呼叫 `createOffer`
+- ❌ 在 `setRemoteDescription` 前直接 `addIceCandidate`（必須排隊暫存）
 
 ## Socket.IO / WebRTC 開發協議
 

@@ -20,9 +20,9 @@ typedef CallAcceptedCallback = void Function(String accepterId, String? callId);
 
 class Signaling {
   static const String _serverIp = String.fromEnvironment('SERVER_IP', defaultValue: 'localhost-0.tail5abf5e.ts.net');
-  static const String _turnServer = String.fromEnvironment('TURN_SERVER', defaultValue: 'localhost-0.tail5abf5e.ts.net:3478');
+  static const String _turnServer = String.fromEnvironment('TURN_SERVER', defaultValue: '100.73.39.14:3478');
   static const String _turnUser = String.fromEnvironment('TURN_USER', defaultValue: 'uban');
-  static const String _turnPass = String.fromEnvironment('TURN_PASS', defaultValue: 'uban2026turn');
+  static const String _turnPass = String.fromEnvironment('TURN_PASS', defaultValue: '115207');
   
   static String get serverUrl => _serverIp.contains('ngrok') || _serverIp.contains('ts.net')
       ? 'https://$_serverIp' 
