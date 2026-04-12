@@ -3,7 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:youtube_player_flutter/youtube_player_flutter.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:flutter_tts/flutter_tts.dart';
-import 'package:audioplayers/audioplayers.dart' show AudioPlayer, BytesSource;
+import 'package:audioplayers/audioplayers.dart' show AudioPlayer, BytesSource, DeviceFileSource, ReleaseMode, PlayerMode;
 import 'package:http/http.dart' as http;
 import 'dart:async';
 import 'dart:convert';
@@ -13,7 +13,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:video_player/video_player.dart';
 import 'package:markdown/markdown.dart' as md;
 import 'package:flutter_webrtc/flutter_webrtc.dart' show Helper, AndroidAudioConfiguration, AndroidAudioMode, AndroidAudioFocusMode, AndroidAudioStreamType, AndroidAudioAttributesUsageType, AndroidAudioAttributesContentType;
-import 'dart:io' show Platform;
+import 'dart:io' show Platform, File, Directory;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../../services/api_service.dart';
 import '../../widgets/youtube_bubble_player.dart';
@@ -84,9 +84,19 @@ class ElderChatTabState extends State<ElderChatTab>
     }
     _initSpeech();
     _initTts();
-    _backendAudioPlayer.setVolume(1.0);
+    _initBackendAudioPlayer();
     _initWaveAnimations();
     _initMicPulseAnimation();
+  }
+
+  Future<void> _initBackendAudioPlayer() async {
+    try {
+      await _backendAudioPlayer.setVolume(1.0);
+      await _backendAudioPlayer.setReleaseMode(ReleaseMode.stop);
+      await _backendAudioPlayer.setPlayerMode(PlayerMode.mediaPlayer);
+    } catch (e) {
+      debugPrint('Backend audio player init error: $e');
+    }
   }
 
   // 公開方法：供外部（如 HomeScreen）推波主動訊息進來
@@ -387,9 +397,21 @@ class ElderChatTabState extends State<ElderChatTab>
     if (bytes.isEmpty) return;
     if (mounted) setState(() => _isSpeaking = true);
 
+    String? tempAudioPath;
     try {
       await _backendAudioPlayer.stop();
-      await _backendAudioPlayer.play(BytesSource(bytes));
+
+      if (!kIsWeb && Platform.isAndroid) {
+        final tempFile = File(
+          '${Directory.systemTemp.path}${Platform.pathSeparator}uban_tts_${DateTime.now().microsecondsSinceEpoch}.wav',
+        );
+        await tempFile.writeAsBytes(bytes, flush: true);
+        tempAudioPath = tempFile.path;
+        await _backendAudioPlayer.play(DeviceFileSource(tempAudioPath));
+      } else {
+        await _backendAudioPlayer.play(BytesSource(bytes));
+      }
+
       _backendAudioPlayedInTurn = true;
       await _backendAudioPlayer.onPlayerComplete.first.timeout(
         const Duration(seconds: 60),
@@ -397,6 +419,15 @@ class ElderChatTabState extends State<ElderChatTab>
       );
     } catch (e) {
       debugPrint('Backend audio play error: $e');
+    } finally {
+      if (tempAudioPath != null) {
+        try {
+          final f = File(tempAudioPath);
+          if (await f.exists()) {
+            await f.delete();
+          }
+        } catch (_) {}
+      }
     }
   }
 
