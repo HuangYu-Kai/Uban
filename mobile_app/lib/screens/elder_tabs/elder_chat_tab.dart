@@ -3,9 +3,11 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:youtube_player_flutter/youtube_player_flutter.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:audioplayers/audioplayers.dart' show AudioPlayer, BytesSource;
 import 'package:http/http.dart' as http;
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:video_player/video_player.dart';
@@ -35,13 +37,17 @@ class ElderChatTabState extends State<ElderChatTab>
   // --- STT ---
   final SpeechToText _speechToText = SpeechToText();
   bool _speechEnabled = false;
+  bool _isSpeechInitializing = false;
   bool _isRecording = false;
   String _lastWords = '';
   String? _sttLocaleToUse; // 緩存語系，避免每次按下麥克風都要搜尋
 
   // --- TTS ---
   final FlutterTts _flutterTts = FlutterTts();
+  final AudioPlayer _backendAudioPlayer = AudioPlayer();
+  final bool _useBackendXtts = true;
   bool _isSpeaking = false; // ① TTS 播放中鎖定麥克風
+  bool _backendAudioPlayedInTurn = false;
 
   // --- AI ---
   bool _isAILoading = false;
@@ -78,6 +84,7 @@ class ElderChatTabState extends State<ElderChatTab>
     }
     _initSpeech();
     _initTts();
+    _backendAudioPlayer.setVolume(1.0);
     _initWaveAnimations();
     _initMicPulseAnimation();
   }
@@ -174,67 +181,73 @@ class ElderChatTabState extends State<ElderChatTab>
   }
 
   // 申請麥克風權限並初始化 STT
-  void _initSpeech() async {
-    final status = await Permission.microphone.request();
-    debugPrint('Microphone permission: $status');
+  Future<void> _initSpeech() async {
+    if (_isSpeechInitializing) return;
+    _isSpeechInitializing = true;
+    try {
+      final status = await Permission.microphone.request();
+      debugPrint('Microphone permission: $status');
 
-    if (status.isGranted) {
-      try {
-        _speechEnabled = await _speechToText.initialize(
-          onStatus: (sttStatus) {
-            debugPrint('STT status: $sttStatus');
-            // 當 STT 自動停止聆聽時 (done/notListening)
-            if ((sttStatus == 'done' || sttStatus == 'notListening') &&
-                _isRecording) {
-              // 給 onResult 一點時間處理最後的文字，然後才觸發停止
-              Future.delayed(const Duration(milliseconds: 600), () {
-                if (mounted && _isRecording) {
-                  _stopListening();
-                }
-              });
-            }
-          },
-          onError: (err) => debugPrint('STT error: $err'),
-        );
-
-        // 初始化時順便找好支援的繁體語系並存起來
-        if (_speechEnabled) {
-          _speechToText.locales().then((locales) {
-            // 診斷：印出所有可用語系
-            debugPrint('--- [STT Diagnostic: Available Locales] ---');
-            for (var l in locales) {
-              debugPrint('Locale Name: ${l.name}, ID: ${l.localeId}');
-            }
-            debugPrint('-------------------------------------------');
-
-            final zhTw = locales.where(
-              (l) => l.localeId.toLowerCase() == 'zh_tw' || l.localeId.toLowerCase() == 'zh-tw',
-            );
-            
-            if (zhTw.isNotEmpty) {
-              _sttLocaleToUse = zhTw.first.localeId;
-              debugPrint('STT Diagnostic: Picked Exact zh_TW -> $_sttLocaleToUse');
-            } else {
-              // 退而求其次找任何中文
-              final anyZh = locales.where((l) => l.localeId.contains('zh') || l.localeId.contains('cmn'));
-              if (anyZh.isNotEmpty) {
-                _sttLocaleToUse = anyZh.first.localeId;
-                debugPrint('STT Diagnostic: Fallback to any Chinese -> $_sttLocaleToUse');
-              } else {
-                _sttLocaleToUse = null;
-                debugPrint('STT Diagnostic: No Chinese found, using system default');
+      if (status.isGranted) {
+        try {
+          _speechEnabled = await _speechToText.initialize(
+            onStatus: (sttStatus) {
+              debugPrint('STT status: $sttStatus');
+              // 當 STT 自動停止聆聽時 (done/notListening)
+              if ((sttStatus == 'done' || sttStatus == 'notListening') &&
+                  _isRecording) {
+                // 給 onResult 一點時間處理最後的文字，然後才觸發停止
+                Future.delayed(const Duration(milliseconds: 600), () {
+                  if (mounted && _isRecording) {
+                    _stopListening();
+                  }
+                });
               }
-            }
-          });
+            },
+            onError: (err) => debugPrint('STT error: $err'),
+          );
+
+          // 初始化時順便找好支援的繁體語系並存起來
+          if (_speechEnabled) {
+            _speechToText.locales().then((locales) {
+              // 診斷：印出所有可用語系
+              debugPrint('--- [STT Diagnostic: Available Locales] ---');
+              for (var l in locales) {
+                debugPrint('Locale Name: ${l.name}, ID: ${l.localeId}');
+              }
+              debugPrint('-------------------------------------------');
+
+              final zhTw = locales.where(
+                (l) => l.localeId.toLowerCase() == 'zh_tw' || l.localeId.toLowerCase() == 'zh-tw',
+              );
+              
+              if (zhTw.isNotEmpty) {
+                _sttLocaleToUse = zhTw.first.localeId;
+                debugPrint('STT Diagnostic: Picked Exact zh_TW -> $_sttLocaleToUse');
+              } else {
+                // 退而求其次找任何中文
+                final anyZh = locales.where((l) => l.localeId.contains('zh') || l.localeId.contains('cmn'));
+                if (anyZh.isNotEmpty) {
+                  _sttLocaleToUse = anyZh.first.localeId;
+                  debugPrint('STT Diagnostic: Fallback to any Chinese -> $_sttLocaleToUse');
+                } else {
+                  _sttLocaleToUse = null;
+                  debugPrint('STT Diagnostic: No Chinese found, using system default');
+                }
+              }
+            });
+          }
+        } catch (e) {
+          debugPrint('STT init failed: $e');
+          _speechEnabled = false;
         }
-      } catch (e) {
-        debugPrint('STT init failed: $e');
+      } else {
         _speechEnabled = false;
       }
-    } else {
-      _speechEnabled = false;
+    } finally {
+      _isSpeechInitializing = false;
+      if (mounted) setState(() {});
     }
-    if (mounted) setState(() {});
   }
 
   // ① 長按開始錄音
@@ -244,18 +257,29 @@ class ElderChatTabState extends State<ElderChatTab>
 
     // 清空語音佇列，避免打斷後上一句又突然開播
     _sentenceQueue.clear();
+    _audioQueue.clear();
 
     // 如果正在說話，立即停止 TTS
     if (_isSpeaking) {
+      await _backendAudioPlayer.stop();
       await _flutterTts.stop();
       if (mounted) setState(() => _isSpeaking = false);
     }
 
-    // 若 STT 未初始化，顯示提示
+    // 若 STT 未初始化，先嘗試重新初始化一次
     if (!_speechEnabled) {
+      await _initSpeech();
+    }
+
+    if (!_speechEnabled) {
+      const notReadyMsg = "麥克風還沒準備好，請稍等一下再試 🎙️";
       if (mounted) {
         setState(() {
-          _messages.add({"role": "ai", "text": "麥克風還沒準備好，請稍等一下再試 🎙️"});
+          final lastText =
+              _messages.isEmpty ? "" : (_messages.last["text"] ?? "").toString();
+          if (lastText != notReadyMsg) {
+            _messages.add({"role": "ai", "text": notReadyMsg});
+          }
         });
         _scrollToBottom();
       }
@@ -341,6 +365,93 @@ class ElderChatTabState extends State<ElderChatTab>
   // 接收到句子後的語音佇列
   final List<String> _sentenceQueue = [];
   bool _isProcessingQueue = false;
+  final List<Uint8List> _audioQueue = [];
+  bool _isProcessingAudioQueue = false;
+
+  Uint8List? _decodeAudioBytes(String audioPayload) {
+    try {
+      var encoded = audioPayload.trim();
+      if (encoded.startsWith('data:')) {
+        final commaIndex = encoded.indexOf(',');
+        if (commaIndex < 0) return null;
+        encoded = encoded.substring(commaIndex + 1);
+      }
+      return base64Decode(encoded);
+    } catch (e) {
+      debugPrint('Audio decode error: $e');
+      return null;
+    }
+  }
+
+  Future<void> _playBackendAudio(Uint8List bytes) async {
+    if (bytes.isEmpty) return;
+    if (mounted) setState(() => _isSpeaking = true);
+
+    try {
+      await _backendAudioPlayer.stop();
+      await _backendAudioPlayer.play(BytesSource(bytes));
+      _backendAudioPlayedInTurn = true;
+      await _backendAudioPlayer.onPlayerComplete.first.timeout(
+        const Duration(seconds: 60),
+        onTimeout: () {},
+      );
+    } catch (e) {
+      debugPrint('Backend audio play error: $e');
+    }
+  }
+
+  Future<void> _processAudioQueue() async {
+    if (_isProcessingAudioQueue) return;
+    _isProcessingAudioQueue = true;
+
+    try {
+      while (_audioQueue.isNotEmpty) {
+        if (!mounted) break;
+        final bytes = _audioQueue.removeAt(0);
+        await _playBackendAudio(bytes);
+      }
+    } finally {
+      _isProcessingAudioQueue = false;
+      if (mounted && _audioQueue.isEmpty && !_isAILoading) {
+        setState(() => _isSpeaking = false);
+        if (_voiceLoopEnabled) {
+          await Future.delayed(const Duration(milliseconds: 800));
+          if (mounted && !_isRecording) {
+            _startListening();
+          }
+        }
+      }
+    }
+  }
+
+  void _enqueueLocalFallbackSpeech(List<String> backupSentences, String currentParagraph) {
+    if (_backendAudioPlayedInTurn || !_useBackendXtts) return;
+    if (backupSentences.isNotEmpty) {
+      _sentenceQueue.addAll(backupSentences);
+      _processSentenceQueue();
+      return;
+    }
+    final fallbackText = _stripToolMarkers(currentParagraph.trim());
+    if (fallbackText.isNotEmpty) {
+      _sentenceQueue.add(fallbackText);
+      _processSentenceQueue();
+    }
+  }
+
+  void _scheduleFallbackAfterBackendAudio(
+    List<String> backupSentences,
+    String currentParagraph,
+  ) {
+    Future<void>(() async {
+      for (int i = 0; i < 24; i++) {
+        await Future.delayed(const Duration(milliseconds: 250));
+        if (!mounted) return;
+        if (!_isProcessingAudioQueue && _audioQueue.isEmpty) break;
+      }
+      if (!mounted) return;
+      _enqueueLocalFallbackSpeech(backupSentences, currentParagraph);
+    });
+  }
 
   Future<void> _processSentenceQueue() async {
     if (_isProcessingQueue) return;
@@ -396,7 +507,11 @@ class ElderChatTabState extends State<ElderChatTab>
 
       final request = http.Request('POST', Uri.parse(apiUrl))
         ..headers['Content-Type'] = 'application/json'
-        ..body = jsonEncode({"user_id": widget.userId, "message": message});
+        ..body = jsonEncode({
+          "user_id": widget.userId,
+          "message": message,
+          "enable_audio_tts": _useBackendXtts,
+        });
 
       final response = await http.Client().send(request);
 
@@ -406,6 +521,8 @@ class ElderChatTabState extends State<ElderChatTab>
 
       String currentParagraph = "";
       String pendingSentence = ""; // 累積到標點符號就送去念
+      final List<String> backupSentences = [];
+      _backendAudioPlayedInTurn = false;
 
       // 監聽 SSE (Server-Sent Events)
       // 以行緩衝處理，避免 data 行被 TCP 分段切斷時遺失
@@ -426,16 +543,34 @@ class ElderChatTabState extends State<ElderChatTab>
           try {
             final data = jsonDecode(dataStr);
 
-            if (data['done'] == true) {
-              if (pendingSentence.trim().isNotEmpty) {
-                final cleanSentence = _stripToolMarkers(pendingSentence.trim());
-                if (cleanSentence.isNotEmpty) {
-                  _sentenceQueue.add(cleanSentence);
-                  _processSentenceQueue();
+              if (data['done'] == true) {
+                if (!_useBackendXtts && pendingSentence.trim().isNotEmpty) {
+                  final cleanSentence = _stripToolMarkers(pendingSentence.trim());
+                  if (cleanSentence.isNotEmpty) {
+                    _sentenceQueue.add(cleanSentence);
+                    _processSentenceQueue();
+                  }
+                }
+                if (_useBackendXtts && !_backendAudioPlayedInTurn) {
+                  if (_isProcessingAudioQueue || _audioQueue.isNotEmpty) {
+                    _scheduleFallbackAfterBackendAudio(backupSentences, currentParagraph);
+                  } else {
+                    _enqueueLocalFallbackSpeech(backupSentences, currentParagraph);
+                  }
+                }
+                setState(() => _isAILoading = false);
+                break;
+              }
+
+            if (data['audio'] != null && _useBackendXtts) {
+              final payload = data['audio'].toString().trim();
+              if (payload.isNotEmpty) {
+                final audioBytes = _decodeAudioBytes(payload);
+                if (audioBytes != null && audioBytes.isNotEmpty) {
+                  _audioQueue.add(audioBytes);
+                  _processAudioQueue();
                 }
               }
-              setState(() => _isAILoading = false);
-              break;
             }
 
             if (data['chunk'] != null) {
@@ -460,8 +595,11 @@ class ElderChatTabState extends State<ElderChatTab>
               if (RegExp(r'[，。！？；,\.!\?]').hasMatch(chunk)) {
                 final cleanSentence = _stripToolMarkers(pendingSentence.trim());
                 if (cleanSentence.isNotEmpty) {
-                  _sentenceQueue.add(cleanSentence);
-                  _processSentenceQueue();
+                  backupSentences.add(cleanSentence);
+                  if (!_useBackendXtts) {
+                    _sentenceQueue.add(cleanSentence);
+                    _processSentenceQueue();
+                  }
                 }
                 pendingSentence = "";
               }
@@ -520,6 +658,7 @@ class ElderChatTabState extends State<ElderChatTab>
     }
     _micPulseController?.dispose();
     _scrollController.dispose();
+    _backendAudioPlayer.dispose();
     _flutterTts.stop();
     super.dispose();
   }
