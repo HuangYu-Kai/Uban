@@ -20,7 +20,7 @@ typedef CallAcceptedCallback = void Function(String accepterId, String? callId);
 
 class Signaling {
   static const String _serverIp = String.fromEnvironment('SERVER_IP', defaultValue: 'localhost-0.tail5abf5e.ts.net');
-  static const String _turnServer = String.fromEnvironment('TURN_SERVER', defaultValue: '100.73.39.14:3478');
+  static const String _turnServer = String.fromEnvironment('TURN_SERVER', defaultValue: '152.69.196.5:3478');
   static const String _turnUser = String.fromEnvironment('TURN_USER', defaultValue: 'uban');
   static const String _turnPass = String.fromEnvironment('TURN_PASS', defaultValue: '115207');
   
