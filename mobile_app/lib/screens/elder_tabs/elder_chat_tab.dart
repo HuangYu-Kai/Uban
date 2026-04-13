@@ -192,7 +192,7 @@ class ElderChatTabState extends State<ElderChatTab>
         }
       };
 
-      final offer = await pc.createOffer({'offerToReceiveAudio': true, 'offerToReceiveVideo': false});
+      final offer = await pc.createOffer({});
       await pc.setLocalDescription(offer);
       await _waitIceGatheringComplete(pc);
       final local = await pc.getLocalDescription();
@@ -215,11 +215,21 @@ class ElderChatTabState extends State<ElderChatTab>
       }
       final data = jsonDecode(offerRes.body) as Map<String, dynamic>;
       final payload = (data['data'] ?? <String, dynamic>{}) as Map<String, dynamic>;
+      final enabled = payload['enabled'] != false;
+      if (!enabled) {
+        debugPrint('Chat WebRTC unavailable from server, fallback to local TTS.');
+        await pc.close();
+        _chatPeerConnection = null;
+        return;
+      }
       final answerSdp = (payload['sdp'] ?? '').toString();
       final answerType = (payload['type'] ?? 'answer').toString();
       final sessionId = (payload['session_id'] ?? '').toString();
       if (answerSdp.isEmpty || sessionId.isEmpty) {
-        throw Exception('WebRTC answer/session missing');
+        debugPrint('Chat WebRTC answer/session missing, fallback to local TTS.');
+        await pc.close();
+        _chatPeerConnection = null;
+        return;
       }
       await pc.setRemoteDescription(RTCSessionDescription(answerSdp, answerType));
       if (mounted) {
