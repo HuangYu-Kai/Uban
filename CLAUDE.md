@@ -63,14 +63,29 @@ FastAPI 後端 (uban-api/ 獨立 Repo)
    必須用 queue 機制暫存，否則 addIceCandidate 會失敗導致遠端影像黑屏。
 ```
 
+## 雙軌制架構 (Critical)
+
+> ⚠️ 信令與媒體伺服器在不同主機上，**禁止合併**。
+
+| 軌道 | 用途 | 主機 | 協定 |
+|------|------|------|------|
+| 第一軌：信令 | SDP/ICE 文字交換 | Tailscale Funnel → 本地 Fedora | TCP/WSS |
+| 第二軌：媒體 | 影音串流中繼 | Oracle Cloud (日本大阪) | UDP |
+
+**原因**：Tailscale Funnel 免費提供 HTTPS（開鏡頭必須），但不支援 UDP（影像需要）。
+
 ## ICE 伺服器配置
 
 ```dart
-// signaling.dart 使用 dart-define 注入 TURN 設定
-// --dart-define=TURN_SERVER=ip:3478
+// signaling.dart 內建預設值（Oracle Cloud TURN）
+// TURN URI: turn:152.69.196.5:3478 (UDP)
+// TURN User: uban
+// TURN Pass: 115207
+// 也可透過 --dart-define 覆蓋：
+// --dart-define=TURN_SERVER=152.69.196.5:3478
 // --dart-define=TURN_USER=uban
-// --dart-define=TURN_PASS=password
-// 已內建 Google STUN + coturn TURN (含 TCP 備援)
+// --dart-define=TURN_PASS=115207
+// 已內建 Google STUN + Oracle coturn TURN (含 TCP 備援)
 ```
 
 ## 角色差異對照表

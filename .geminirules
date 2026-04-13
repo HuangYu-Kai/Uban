@@ -11,9 +11,14 @@
 - **棄用後端**：`server/` 為 Legacy Flask，**嚴禁修改**
 - **前端不使用 Flutter Web**，僅支援 Android/iOS 原生
 
+### 雙軌制網路架構 (禁止合併!)
+- **信令 (第一軌)**：Tailscale Funnel (TCP/WSS) → `https://localhost-0.tail5abf5e.ts.net`
+- **媒體中繼 (第二軌)**：Oracle Cloud Coturn (UDP) → `turn:152.69.196.5:3478`
+- **原因**：Tailscale 免費提供 HTTPS (開鏡頭必須)，但不支援 UDP (影像需要)
+
 ### 通訊架構
-- **信令**：Socket.IO（python-socketio ASGI 模式）
-- **視訊**：WebRTC P2P + STUN + coturn TURN
+- **信令**：Socket.IO（python-socketio ASGI 模式）← 走 Tailscale (TCP/WSS)
+- **視訊**：WebRTC P2P + STUN + Oracle coturn TURN ← 走 Oracle Cloud (UDP)
 - **推播**：Firebase FCM（背景喚醒 + CallKit 來電）
 - **備援**：Socket.IO 即時 → FCM 推播 → Cold Start 三層
 
@@ -24,6 +29,7 @@
 - ❌ 在長輩端直接啟動 `VideoCallScreen`（必須透過 `ElderScreen`）
 - ❌ 在 `openUserMedia` 前呼叫 `createOffer`
 - ❌ 在 `setRemoteDescription` 前直接 `addIceCandidate`（必須排隊暫存）
+- ❌ 將信令伺服器與 TURN 伺服器合併（雙軌制，禁止合併）
 
 ## Socket.IO / WebRTC 開發協議
 
@@ -47,12 +53,15 @@
 | `lib/screens/video_call_screen.dart` | 家屬端通話 UI | 🟡 中 |
 | `test_call_simulator.py` | 信令自動化測試腳本 | 🟢 低 |
 
-### ICE 伺服器配置
+### ICE 伺服器配置 (雙軌制)
 ```dart
-// signaling.dart 中透過 dart-define 注入：
-// --dart-define=TURN_SERVER=your-ip:3478
+// signaling.dart 內建 Oracle Cloud TURN 預設值：
+// TURN URI: turn:152.69.196.5:3478 (Oracle Cloud, 日本大阪)
+// TURN User: uban / TURN Pass: 115207
+// 也可透過 --dart-define 覆蓋：
+// --dart-define=TURN_SERVER=152.69.196.5:3478
 // --dart-define=TURN_USER=uban
-// --dart-define=TURN_PASS=password
+// --dart-define=TURN_PASS=115207
 ```
 
 ### 角色差異
