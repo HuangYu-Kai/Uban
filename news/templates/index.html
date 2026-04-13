@@ -103,6 +103,16 @@
       white-space: pre-wrap;
       margin: 0;
     }
+
+    .thumb {
+      width: 100%;
+      max-height: 280px;
+      object-fit: cover;
+      border-radius: 8px;
+      margin: 4px 0 10px;
+      border: 1px solid #e2e8f0;
+      background: #f8fafc;
+    }
   </style>
 </head>
 <body>
@@ -166,6 +176,7 @@
         card.innerHTML = `
           <span class="tag">${item.category}</span>
           <h2 class="title">${item.title}</h2>
+          ${item.image ? `<img class="thumb" src="${item.image}" alt="${item.title}">` : ""}
           <p class="content">${item.content}</p>
         `;
         listEl.appendChild(card);
@@ -186,7 +197,7 @@
         }
 
         renderItems(data.items || []);
-        statusEl.textContent = `完成，共 ${data.count} 篇`;
+        statusEl.textContent = `完成，共 ${data.count} 篇（資料日期：${data.data_date || "-"}，產生時間：${data.generated_at || "-"}）`;
       } catch (err) {
         statusEl.textContent = `錯誤：${err.message}`;
       }
