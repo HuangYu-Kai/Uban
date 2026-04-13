@@ -11,13 +11,6 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:video_player/video_player.dart';
 import 'package:markdown/markdown.dart' as md;
 import 'package:flutter_webrtc/flutter_webrtc.dart' show
-  Helper,
-  AndroidAudioConfiguration,
-  AndroidAudioMode,
-  AndroidAudioFocusMode,
-  AndroidAudioStreamType,
-  AndroidAudioAttributesUsageType,
-  AndroidAudioAttributesContentType,
   RTCPeerConnection,
   RTCSessionDescription,
   RTCIceConnectionState,
@@ -30,8 +23,6 @@ import 'package:flutter_webrtc/flutter_webrtc.dart' show
   RTCRtpTransceiverInit,
   TransceiverDirection,
   createPeerConnection;
-import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart' show kIsWeb;
 import '../../services/api_service.dart';
 import '../../widgets/youtube_bubble_player.dart';
 
@@ -55,6 +46,7 @@ class ElderChatTabState extends State<ElderChatTab>
   final SpeechToText _speechToText = SpeechToText();
   bool _speechEnabled = false;
   bool _isSpeechInitializing = false;
+  bool _isStoppingListening = false;
   bool _isRecording = false;
   String _lastWords = '';
   String? _sttLocaleToUse; // 緩存語系，避免每次按下麥克風都要搜尋
@@ -79,6 +71,7 @@ class ElderChatTabState extends State<ElderChatTab>
 
   // --- ④ 連續對話模式 ---
   bool _voiceLoopEnabled = false;
+  bool _autoListenScheduled = false;
 
   // --- 聲波動畫控制器 ---
   final List<AnimationController> _waveControllers = [];
@@ -91,21 +84,8 @@ class ElderChatTabState extends State<ElderChatTab>
   @override
   void initState() {
     super.initState();
-    // 解決 Android WebRTC 與 STT 麥克風音訊焦點衝突問題
-    if (!kIsWeb && Platform.isAndroid) {
-      Helper.setAndroidAudioConfiguration(AndroidAudioConfiguration(
-        manageAudioFocus: false,
-        androidAudioMode: AndroidAudioMode.normal,
-        androidAudioFocusMode: AndroidAudioFocusMode.gain,
-        androidAudioStreamType: AndroidAudioStreamType.music,
-        androidAudioAttributesUsageType: AndroidAudioAttributesUsageType.media,
-        androidAudioAttributesContentType: AndroidAudioAttributesContentType.unknown,
-      ));
-      Helper.clearAndroidCommunicationDevice();
-    }
     _initSpeech();
     _initTts();
-    _initChatWebRtc();
     _initWaveAnimations();
     _initMicPulseAnimation();
   }
@@ -288,10 +268,7 @@ class ElderChatTabState extends State<ElderChatTab>
 
   // ③ TTS 播放（用 Completer 確保 Android 也能可靠偵測播放完畢）
   Future<void> _speak(String text, {bool isStreaming = false}) async {
-    final plainText = text
-        .replaceAll(RegExp(r'\*+'), '')
-        .replaceAll(RegExp(r'#+\s*'), '')
-        .replaceAll(RegExp(r'\n+'), '，');
+    final plainText = _normalizeTextForSpeech(text);
     if (plainText.isEmpty) return;
 
     final completer = Completer<void>();
@@ -318,12 +295,7 @@ class ElderChatTabState extends State<ElderChatTab>
     if (mounted && !isStreaming) {
       setState(() => _isSpeaking = false);
       // ④ 連續對話模式：TTS 播完後自動開始聆聽
-      if (_voiceLoopEnabled && !_isAILoading) {
-        await Future.delayed(const Duration(milliseconds: 800));
-        if (mounted && !_isAILoading && !_isSpeaking && !_isRecording) {
-          _startListening();
-        }
-      }
+      if (_voiceLoopEnabled && !_isAILoading) _scheduleAutoListen();
     }
   }
 
@@ -399,6 +371,7 @@ class ElderChatTabState extends State<ElderChatTab>
 
   // ① 長按開始錄音
   void _startListening() async {
+    if (_isRecording || _isStoppingListening || _speechToText.isListening) return;
     // 思考中禁止錄音，但如果 AI 正在說話則允許打斷 (Barge-in)
     if (_isAILoading) return;
 
@@ -445,7 +418,8 @@ class ElderChatTabState extends State<ElderChatTab>
         },
         listenFor: const Duration(seconds: 30),
         pauseFor: const Duration(seconds: 4),
-        localeId: _sttLocaleToUse, // 直接使用已經挑好的語系
+        // 先改用系統預設語系，避免部分裝置在指定 zh-TW 時回傳空辨識。
+        localeId: null,
         listenOptions: SpeechListenOptions(
           partialResults: true,
           cancelOnError: true,
@@ -466,45 +440,67 @@ class ElderChatTabState extends State<ElderChatTab>
 
   // ① 放開停止並發送
   void _stopListening({bool shouldSend = true}) async {
+    if (_isStoppingListening) return;
     if (!_isRecording && shouldSend) return; // 避免重複呼叫
+    _isStoppingListening = true;
 
-    // 如果想要發送但目前字是空的，稍微等一下最後一批 result
-    if (shouldSend && _lastWords.trim().isEmpty) {
-      await Future.delayed(const Duration(milliseconds: 400));
-    }
-
-    await _speechToText.stop();
-    final words = _lastWords.trim();
-    if (mounted) {
-      setState(() {
-        _isRecording = false;
-        _lastWords = '';
-        _micPulseController?.stop();
-        _micPulseController?.reset();
-      });
-    }
-
-    if (shouldSend) {
-      if (_isAILoading) return; // 避免同時發送兩次
-
-      if (words.isNotEmpty) {
-        _sendToAIChat(words);
-      } else {
-        // ⑤ 空結果友善提示 (避免太常觸發，加上一點延遲判斷)
-        Future.delayed(const Duration(seconds: 1), () {
-          if (mounted &&
-              !_isAILoading &&
-              !_isRecording &&
-              _messages.isNotEmpty &&
-              _messages.last["text"] != "我好像沒聽清楚，再說一次好嗎？😊") {
-            setState(() {
-              _messages.add({"role": "ai", "text": "我好像沒聽清楚，再說一次好嗎？😊"});
-            });
-            _scrollToBottom();
-          }
+    try {
+      // 如果想要發送但目前字是空的，稍微等一下最後一批 result
+      if (shouldSend && _lastWords.trim().isEmpty) {
+        await Future.delayed(const Duration(milliseconds: 400));
+      }
+      await _speechToText.stop();
+      final words = _lastWords.trim();
+      if (mounted) {
+        setState(() {
+          _isRecording = false;
+          _lastWords = '';
+          _micPulseController?.stop();
+          _micPulseController?.reset();
         });
       }
+
+      if (shouldSend) {
+        if (_isAILoading) return; // 避免同時發送兩次
+
+        if (words.isNotEmpty) {
+          _sendToAIChat(words);
+        } else {
+          // ⑤ 空結果友善提示 (避免太常觸發，加上一點延遲判斷)
+          Future.delayed(const Duration(seconds: 1), () {
+            if (mounted &&
+                !_isAILoading &&
+                !_isRecording &&
+                _messages.isNotEmpty &&
+                _messages.last["text"] != "我好像沒聽清楚，再說一次好嗎？😊") {
+              setState(() {
+                _messages.add({"role": "ai", "text": "我好像沒聽清楚，再說一次好嗎？😊"});
+              });
+              _scrollToBottom();
+            }
+          });
+        }
+      }
+    } finally {
+      _isStoppingListening = false;
     }
+  }
+
+  void _scheduleAutoListen() {
+    if (!_voiceLoopEnabled || _autoListenScheduled) return;
+    _autoListenScheduled = true;
+    Future.delayed(const Duration(milliseconds: 800), () {
+      _autoListenScheduled = false;
+      if (!mounted) return;
+      if (_isAILoading ||
+          _isSpeaking ||
+          _isRecording ||
+          _isStoppingListening ||
+          _speechToText.isListening) {
+        return;
+      }
+      _startListening();
+    });
   }
 
   // 接收到句子後的語音佇列
@@ -555,12 +551,7 @@ class ElderChatTabState extends State<ElderChatTab>
     if (mounted && _sentenceQueue.isEmpty && !_isAILoading) {
       setState(() => _isSpeaking = false);
       // ④ 連續對話模式：TTS 播完後自動開始聆聽
-      if (_voiceLoopEnabled) {
-        await Future.delayed(const Duration(milliseconds: 800));
-        if (mounted && !_isRecording) {
-          _startListening();
-        }
-      }
+      if (_voiceLoopEnabled) _scheduleAutoListen();
     }
   }
 
@@ -583,10 +574,53 @@ class ElderChatTabState extends State<ElderChatTab>
     return cleaned.trim();
   }
 
+  String _normalizeTextForSpeech(String text) {
+    var cleaned = _sanitizeAiText(text);
+    cleaned = cleaned.replaceAllMapped(
+      RegExp(r'!\[([^\]]*)\]\(([^)]+)\)'),
+      (m) => m.group(1)?.trim() ?? '',
+    );
+    cleaned = cleaned.replaceAllMapped(
+      RegExp(r'\[([^\]]+)\]\(([^)]+)\)'),
+      (m) => m.group(1)?.trim() ?? '',
+    );
+    cleaned = cleaned.replaceAll(RegExp(r'https?:\/\/[^\s]+'), '');
+    cleaned = cleaned.replaceAll(RegExp(r'`{1,3}[^`]*`{1,3}'), '');
+    cleaned = cleaned.replaceAll(RegExp(r'(^|\n)\s*[-*+]\s+', multiLine: true), '\n');
+    cleaned = cleaned.replaceAll(RegExp(r'(^|\n)\s*\d+\.\s+', multiLine: true), '\n');
+    cleaned = cleaned.replaceAll(RegExp(r'[*_~#>|]+'), '');
+    cleaned = cleaned.replaceAll(RegExp(r'[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]', unicode: true), '');
+    cleaned = cleaned.replaceAll(RegExp(r'[ \t]{2,}'), ' ');
+    cleaned = cleaned.replaceAll(RegExp(r'\n+'), '，');
+    return cleaned.trim();
+  }
+
+  Future<String?> _fetchAiChatFallback(String message) async {
+    try {
+      final fallbackRes = await http.post(
+        Uri.parse('${ApiService.baseUrl}/ai/chat'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          "user_id": widget.userId,
+          "message": message,
+        }),
+      );
+      if (fallbackRes.statusCode != 200) return null;
+      final body = jsonDecode(fallbackRes.body) as Map<String, dynamic>;
+      final data = (body["data"] ?? const <String, dynamic>{}) as Map<String, dynamic>;
+      final reply = _sanitizeAiText((data["reply"] ?? "").toString().trim());
+      if (reply.isEmpty) return null;
+      return reply;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> _sendToAIChat(String message) async {
     if (message.trim().isEmpty) return;
 
     int aiMsgIndex = -1;
+    http.Client? streamClient;
 
     setState(() {
       _isAILoading = true;
@@ -615,9 +649,20 @@ class ElderChatTabState extends State<ElderChatTab>
           "webrtc_session_id": useBackendAudioThisTurn ? _chatWebRtcSessionId : null,
         });
 
-      final response = await http.Client().send(request);
+      streamClient = http.Client();
+      final response = await streamClient.send(request);
 
       if (response.statusCode != 200) {
+        final fallbackReply = await _fetchAiChatFallback(message);
+        if (fallbackReply != null && fallbackReply.isNotEmpty) {
+          setState(() {
+            _messages[aiMsgIndex]["text"] = fallbackReply;
+            _isAILoading = false;
+          });
+          _sentenceQueue.add(fallbackReply);
+          _processSentenceQueue();
+          return;
+        }
         throw Exception('Server error: ${response.statusCode}');
       }
 
@@ -700,6 +745,16 @@ class ElderChatTabState extends State<ElderChatTab>
       if (useBackendAudioThisTurn && !doneReceived) {
         _enqueueLocalFallbackSpeech(backupSentences, currentParagraph);
       }
+      if (!doneReceived && currentParagraph.trim().isEmpty) {
+        final fallbackReply = await _fetchAiChatFallback(message);
+        if (fallbackReply != null && fallbackReply.isNotEmpty) {
+          setState(() {
+            _messages[aiMsgIndex]["text"] = fallbackReply;
+          });
+          _sentenceQueue.add(fallbackReply);
+          _processSentenceQueue();
+        }
+      }
       if (mounted && _isAILoading) {
         setState(() => _isAILoading = false);
       }
@@ -726,6 +781,7 @@ class ElderChatTabState extends State<ElderChatTab>
         }
       }
     } finally {
+      streamClient?.close();
       if (mounted && _isAILoading) {
         setState(() => _isAILoading = false);
         _scrollToBottom();
