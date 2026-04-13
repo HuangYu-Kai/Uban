@@ -584,6 +584,8 @@ class ElderChatTabState extends State<ElderChatTab>
       if (_useBackendXtts && (_chatWebRtcSessionId == null || !_chatWebRtcConnected)) {
         await _initChatWebRtc();
       }
+      final hasWebRtcSession = (_chatWebRtcSessionId ?? '').isNotEmpty && _chatWebRtcConnected;
+      final useBackendAudioThisTurn = _useBackendXtts && hasWebRtcSession;
       final String apiUrl = "${ApiService.baseUrl}/ai/chat_stream";
 
       final request = http.Request('POST', Uri.parse(apiUrl))
@@ -591,8 +593,8 @@ class ElderChatTabState extends State<ElderChatTab>
         ..body = jsonEncode({
           "user_id": widget.userId,
           "message": message,
-          "enable_audio_tts": _useBackendXtts,
-          "webrtc_session_id": _chatWebRtcSessionId,
+          "enable_audio_tts": useBackendAudioThisTurn,
+          "webrtc_session_id": useBackendAudioThisTurn ? _chatWebRtcSessionId : null,
         });
 
       final response = await http.Client().send(request);
@@ -620,14 +622,14 @@ class ElderChatTabState extends State<ElderChatTab>
           final data = jsonDecode(dataStr);
 
           if (data['done'] == true) {
-            if (!_useBackendXtts && pendingSentence.trim().isNotEmpty) {
+            if (!useBackendAudioThisTurn && pendingSentence.trim().isNotEmpty) {
               final cleanSentence = _sanitizeAiText(pendingSentence.trim());
               if (cleanSentence.isNotEmpty) {
                 _sentenceQueue.add(cleanSentence);
                 _processSentenceQueue();
               }
             }
-            if (_useBackendXtts && !_webrtcAudioReadyInTurn) {
+            if (useBackendAudioThisTurn && !_webrtcAudioReadyInTurn) {
               if (!_chatWebRtcConnected) {
                 _enqueueLocalFallbackSpeech(backupSentences, currentParagraph);
               } else {
@@ -639,7 +641,7 @@ class ElderChatTabState extends State<ElderChatTab>
             break;
           }
 
-          if (data['audio_ready'] == true && _useBackendXtts) {
+          if (data['audio_ready'] == true && useBackendAudioThisTurn) {
             _webrtcAudioReadyInTurn = true;
           }
 
@@ -665,7 +667,7 @@ class ElderChatTabState extends State<ElderChatTab>
               final cleanSentence = _sanitizeAiText(pendingSentence.trim());
               if (cleanSentence.isNotEmpty) {
                 backupSentences.add(cleanSentence);
-                if (!_useBackendXtts) {
+                if (!useBackendAudioThisTurn) {
                   _sentenceQueue.add(cleanSentence);
                   _processSentenceQueue();
                 }
@@ -677,7 +679,7 @@ class ElderChatTabState extends State<ElderChatTab>
           debugPrint("SSE JSON parse error: $e");
         }
       }
-      if (_useBackendXtts && !doneReceived) {
+      if (useBackendAudioThisTurn && !doneReceived) {
         _enqueueLocalFallbackSpeech(backupSentences, currentParagraph);
       }
       if (mounted && _isAILoading) {
