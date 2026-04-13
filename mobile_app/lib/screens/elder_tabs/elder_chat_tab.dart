@@ -26,6 +26,9 @@ import 'package:flutter_webrtc/flutter_webrtc.dart' show
   RTCTrackEvent,
   RTCVideoView,
   RTCVideoViewObjectFit,
+  RTCRtpMediaType,
+  RTCRtpTransceiverInit,
+  TransceiverDirection,
   createPeerConnection;
 import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -192,7 +195,12 @@ class ElderChatTabState extends State<ElderChatTab>
         }
       };
 
-      final offer = await pc.createOffer({});
+      await pc.addTransceiver(
+        kind: RTCRtpMediaType.RTCRtpMediaTypeAudio,
+        init: RTCRtpTransceiverInit(direction: TransceiverDirection.RecvOnly),
+      );
+
+      final offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       await _waitIceGatheringComplete(pc);
       final local = await pc.getLocalDescription();
