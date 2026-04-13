@@ -59,6 +59,7 @@ dependencies:
   video_player: ^2.11.1
   markdown: ^7.3.0
   youtube_player_flutter: ^9.0.1
+  audioplayers: ^6.1.0
   flutter_callkit_incoming: ^3.0.0
   volume_controller: ^3.4.1
   uuid: ^4.5.3
