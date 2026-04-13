@@ -3,17 +3,31 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:youtube_player_flutter/youtube_player_flutter.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:flutter_tts/flutter_tts.dart';
-import 'package:audioplayers/audioplayers.dart' show AudioPlayer, BytesSource, DeviceFileSource, ReleaseMode, PlayerMode;
 import 'package:http/http.dart' as http;
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:video_player/video_player.dart';
 import 'package:markdown/markdown.dart' as md;
-import 'package:flutter_webrtc/flutter_webrtc.dart' show Helper, AndroidAudioConfiguration, AndroidAudioMode, AndroidAudioFocusMode, AndroidAudioStreamType, AndroidAudioAttributesUsageType, AndroidAudioAttributesContentType;
-import 'dart:io' show Platform, File, Directory;
+import 'package:flutter_webrtc/flutter_webrtc.dart' show
+  Helper,
+  AndroidAudioConfiguration,
+  AndroidAudioMode,
+  AndroidAudioFocusMode,
+  AndroidAudioStreamType,
+  AndroidAudioAttributesUsageType,
+  AndroidAudioAttributesContentType,
+  RTCPeerConnection,
+  RTCSessionDescription,
+  RTCIceConnectionState,
+  RTCIceGatheringState,
+  RTCVideoRenderer,
+  RTCTrackEvent,
+  RTCVideoView,
+  RTCVideoViewObjectFit,
+  createPeerConnection;
+import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../../services/api_service.dart';
 import '../../widgets/youtube_bubble_player.dart';
@@ -44,10 +58,14 @@ class ElderChatTabState extends State<ElderChatTab>
 
   // --- TTS ---
   final FlutterTts _flutterTts = FlutterTts();
-  final AudioPlayer _backendAudioPlayer = AudioPlayer();
   final bool _useBackendXtts = true;
   bool _isSpeaking = false; // ① TTS 播放中鎖定麥克風
-  bool _backendAudioPlayedInTurn = false;
+  bool _webrtcAudioReadyInTurn = false;
+  bool _isInitializingChatWebRtc = false;
+  bool _chatWebRtcConnected = false;
+  String? _chatWebRtcSessionId;
+  RTCPeerConnection? _chatPeerConnection;
+  final RTCVideoRenderer _chatAudioRenderer = RTCVideoRenderer();
 
   // --- AI ---
   bool _isAILoading = false;
@@ -84,19 +102,9 @@ class ElderChatTabState extends State<ElderChatTab>
     }
     _initSpeech();
     _initTts();
-    _initBackendAudioPlayer();
+    _initChatWebRtc();
     _initWaveAnimations();
     _initMicPulseAnimation();
-  }
-
-  Future<void> _initBackendAudioPlayer() async {
-    try {
-      await _backendAudioPlayer.setVolume(1.0);
-      await _backendAudioPlayer.setReleaseMode(ReleaseMode.stop);
-      await _backendAudioPlayer.setPlayerMode(PlayerMode.mediaPlayer);
-    } catch (e) {
-      debugPrint('Backend audio player init error: $e');
-    }
   }
 
   // 公開方法：供外部（如 HomeScreen）推波主動訊息進來
@@ -147,6 +155,117 @@ class ElderChatTabState extends State<ElderChatTab>
     await _flutterTts.setSpeechRate(0.5);
     await _flutterTts.setVolume(1.0);
     await _flutterTts.setPitch(1.0);
+  }
+
+  Future<void> _initChatWebRtc() async {
+    if (!_useBackendXtts || _isInitializingChatWebRtc || _chatWebRtcConnected) return;
+    _isInitializingChatWebRtc = true;
+    try {
+      await _chatAudioRenderer.initialize();
+      final pc = await createPeerConnection({
+        'iceServers': [
+          {'urls': 'stun:stun.l.google.com:19302'}
+        ]
+      });
+      _chatPeerConnection = pc;
+
+      pc.onIceConnectionState = (RTCIceConnectionState state) {
+        if (!mounted) return;
+        final connected = state == RTCIceConnectionState.RTCIceConnectionStateConnected ||
+            state == RTCIceConnectionState.RTCIceConnectionStateCompleted;
+        setState(() {
+          _chatWebRtcConnected = connected;
+        });
+      };
+      pc.onConnectionState = (state) {
+        if (!mounted) return;
+        final connected = state.toString().toLowerCase().contains('connected');
+        setState(() {
+          _chatWebRtcConnected = connected;
+        });
+      };
+      pc.onTrack = (RTCTrackEvent event) {
+        if (event.track.kind == 'audio') {
+          if (event.streams.isNotEmpty) {
+            _chatAudioRenderer.srcObject = event.streams.first;
+          }
+        }
+      };
+
+      final offer = await pc.createOffer({'offerToReceiveAudio': true, 'offerToReceiveVideo': false});
+      await pc.setLocalDescription(offer);
+      await _waitIceGatheringComplete(pc);
+      final local = await pc.getLocalDescription();
+      if (local == null || local.sdp == null) {
+        throw Exception('WebRTC local SDP is empty');
+      }
+
+      final uri = Uri.parse('${ApiService.baseUrl}/ai/webrtc/offer');
+      final offerRes = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'user_id': widget.userId,
+          'sdp': local.sdp,
+          'type': local.type,
+        }),
+      );
+      if (offerRes.statusCode != 200) {
+        throw Exception('WebRTC offer failed: ${offerRes.statusCode}');
+      }
+      final data = jsonDecode(offerRes.body) as Map<String, dynamic>;
+      final payload = (data['data'] ?? <String, dynamic>{}) as Map<String, dynamic>;
+      final answerSdp = (payload['sdp'] ?? '').toString();
+      final answerType = (payload['type'] ?? 'answer').toString();
+      final sessionId = (payload['session_id'] ?? '').toString();
+      if (answerSdp.isEmpty || sessionId.isEmpty) {
+        throw Exception('WebRTC answer/session missing');
+      }
+      await pc.setRemoteDescription(RTCSessionDescription(answerSdp, answerType));
+      if (mounted) {
+        setState(() {
+          _chatWebRtcSessionId = sessionId;
+          _chatWebRtcConnected = true;
+        });
+      }
+    } catch (e) {
+      debugPrint('Chat WebRTC init error: $e');
+      _chatWebRtcConnected = false;
+      _chatWebRtcSessionId = null;
+    } finally {
+      _isInitializingChatWebRtc = false;
+    }
+  }
+
+  Future<void> _waitIceGatheringComplete(RTCPeerConnection pc) async {
+    for (int i = 0; i < 20; i++) {
+      if (pc.iceGatheringState == RTCIceGatheringState.RTCIceGatheringStateComplete) {
+        return;
+      }
+      await Future.delayed(const Duration(milliseconds: 150));
+    }
+  }
+
+  Future<void> _closeChatWebRtc() async {
+    final sessionId = _chatWebRtcSessionId;
+    _chatWebRtcSessionId = null;
+    _chatWebRtcConnected = false;
+    try {
+      if (sessionId != null && sessionId.isNotEmpty) {
+        await http.post(
+          Uri.parse('${ApiService.baseUrl}/ai/webrtc/close'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'session_id': sessionId}),
+        );
+      }
+    } catch (_) {}
+    try {
+      await _chatPeerConnection?.close();
+    } catch (_) {}
+    _chatPeerConnection = null;
+    try {
+      await _chatAudioRenderer.dispose();
+    } catch (_) {}
   }
 
   // ③ TTS 播放（用 Completer 確保 Android 也能可靠偵測播放完畢）
@@ -267,11 +386,9 @@ class ElderChatTabState extends State<ElderChatTab>
 
     // 清空語音佇列，避免打斷後上一句又突然開播
     _sentenceQueue.clear();
-    _audioQueue.clear();
 
     // 如果正在說話，立即停止 TTS
     if (_isSpeaking) {
-      await _backendAudioPlayer.stop();
       await _flutterTts.stop();
       if (mounted) setState(() => _isSpeaking = false);
     }
@@ -375,92 +492,9 @@ class ElderChatTabState extends State<ElderChatTab>
   // 接收到句子後的語音佇列
   final List<String> _sentenceQueue = [];
   bool _isProcessingQueue = false;
-  final List<Uint8List> _audioQueue = [];
-  bool _isProcessingAudioQueue = false;
-
-  Uint8List? _decodeAudioBytes(String audioPayload) {
-    try {
-      var encoded = audioPayload.trim();
-      if (encoded.startsWith('data:')) {
-        final commaIndex = encoded.indexOf(',');
-        if (commaIndex < 0) return null;
-        encoded = encoded.substring(commaIndex + 1);
-      }
-      return base64Decode(encoded);
-    } catch (e) {
-      debugPrint('Audio decode error: $e');
-      return null;
-    }
-  }
-
-  Future<void> _playBackendAudio(Uint8List bytes) async {
-    if (bytes.isEmpty) return;
-    if (mounted) setState(() => _isSpeaking = true);
-
-    String? tempAudioPath;
-    try {
-      final watch = Stopwatch()..start();
-      await _backendAudioPlayer.stop();
-
-      if (!kIsWeb && Platform.isAndroid) {
-        final tempFile = File(
-          '${Directory.systemTemp.path}${Platform.pathSeparator}uban_tts_${DateTime.now().microsecondsSinceEpoch}.wav',
-        );
-        await tempFile.writeAsBytes(bytes, flush: true);
-        tempAudioPath = tempFile.path;
-        await _backendAudioPlayer.play(DeviceFileSource(tempAudioPath));
-      } else {
-        await _backendAudioPlayer.play(BytesSource(bytes));
-      }
-      await _backendAudioPlayer.onPlayerComplete.first.timeout(
-        const Duration(seconds: 60),
-        onTimeout: () {},
-      );
-      watch.stop();
-      // 部分裝置解碼失敗時會「瞬間完成」但實際沒聲音，避免誤判為已播報
-      if (watch.elapsedMilliseconds >= 800) {
-        _backendAudioPlayedInTurn = true;
-      }
-    } catch (e) {
-      debugPrint('Backend audio play error: $e');
-    } finally {
-      if (tempAudioPath != null) {
-        try {
-          final f = File(tempAudioPath);
-          if (await f.exists()) {
-            await f.delete();
-          }
-        } catch (_) {}
-      }
-    }
-  }
-
-  Future<void> _processAudioQueue() async {
-    if (_isProcessingAudioQueue) return;
-    _isProcessingAudioQueue = true;
-
-    try {
-      while (_audioQueue.isNotEmpty) {
-        if (!mounted) break;
-        final bytes = _audioQueue.removeAt(0);
-        await _playBackendAudio(bytes);
-      }
-    } finally {
-      _isProcessingAudioQueue = false;
-      if (mounted && _audioQueue.isEmpty && !_isAILoading) {
-        setState(() => _isSpeaking = false);
-        if (_voiceLoopEnabled) {
-          await Future.delayed(const Duration(milliseconds: 800));
-          if (mounted && !_isRecording) {
-            _startListening();
-          }
-        }
-      }
-    }
-  }
 
   void _enqueueLocalFallbackSpeech(List<String> backupSentences, String currentParagraph) {
-    if (_backendAudioPlayedInTurn || !_useBackendXtts) return;
+    if (_webrtcAudioReadyInTurn || !_useBackendXtts) return;
     if (backupSentences.isNotEmpty) {
       _sentenceQueue.addAll(backupSentences);
       _processSentenceQueue();
@@ -473,15 +507,15 @@ class ElderChatTabState extends State<ElderChatTab>
     }
   }
 
-  void _scheduleFallbackAfterBackendAudio(
+  void _scheduleFallbackAfterWebRtc(
     List<String> backupSentences,
     String currentParagraph,
   ) {
     Future<void>(() async {
-      for (int i = 0; i < 24; i++) {
+      for (int i = 0; i < 8; i++) {
         await Future.delayed(const Duration(milliseconds: 250));
         if (!mounted) return;
-        if (!_isProcessingAudioQueue && _audioQueue.isEmpty) break;
+        if (_webrtcAudioReadyInTurn) return;
       }
       if (!mounted) return;
       _enqueueLocalFallbackSpeech(backupSentences, currentParagraph);
@@ -547,6 +581,9 @@ class ElderChatTabState extends State<ElderChatTab>
     _scrollToBottom();
 
     try {
+      if (_useBackendXtts && (_chatWebRtcSessionId == null || !_chatWebRtcConnected)) {
+        await _initChatWebRtc();
+      }
       final String apiUrl = "${ApiService.baseUrl}/ai/chat_stream";
 
       final request = http.Request('POST', Uri.parse(apiUrl))
@@ -555,6 +592,7 @@ class ElderChatTabState extends State<ElderChatTab>
           "user_id": widget.userId,
           "message": message,
           "enable_audio_tts": _useBackendXtts,
+          "webrtc_session_id": _chatWebRtcSessionId,
         });
 
       final response = await http.Client().send(request);
@@ -566,7 +604,7 @@ class ElderChatTabState extends State<ElderChatTab>
       String currentParagraph = "";
       String pendingSentence = ""; // 累積到標點符號就送去念
       final List<String> backupSentences = [];
-      _backendAudioPlayedInTurn = false;
+      _webrtcAudioReadyInTurn = false;
 
       // 監聽 SSE：LineSplitter 會在串流結束時吐出最後一行，避免尾段被截斷
       bool doneReceived = false;
@@ -589,11 +627,11 @@ class ElderChatTabState extends State<ElderChatTab>
                 _processSentenceQueue();
               }
             }
-            if (_useBackendXtts && !_backendAudioPlayedInTurn) {
-              if (_isProcessingAudioQueue || _audioQueue.isNotEmpty) {
-                _scheduleFallbackAfterBackendAudio(backupSentences, currentParagraph);
-              } else {
+            if (_useBackendXtts && !_webrtcAudioReadyInTurn) {
+              if (!_chatWebRtcConnected) {
                 _enqueueLocalFallbackSpeech(backupSentences, currentParagraph);
+              } else {
+                _scheduleFallbackAfterWebRtc(backupSentences, currentParagraph);
               }
             }
             setState(() => _isAILoading = false);
@@ -601,15 +639,8 @@ class ElderChatTabState extends State<ElderChatTab>
             break;
           }
 
-          if (data['audio'] != null && _useBackendXtts) {
-            final payload = data['audio'].toString().trim();
-            if (payload.isNotEmpty) {
-              final audioBytes = _decodeAudioBytes(payload);
-              if (audioBytes != null && audioBytes.isNotEmpty) {
-                _audioQueue.add(audioBytes);
-                _processAudioQueue();
-              }
-            }
+          if (data['audio_ready'] == true && _useBackendXtts) {
+            _webrtcAudioReadyInTurn = true;
           }
 
           if (data['chunk'] != null) {
@@ -701,7 +732,7 @@ class ElderChatTabState extends State<ElderChatTab>
     }
     _micPulseController?.dispose();
     _scrollController.dispose();
-    _backendAudioPlayer.dispose();
+    unawaited(_closeChatWebRtc());
     _flutterTts.stop();
     super.dispose();
   }
@@ -735,6 +766,14 @@ class ElderChatTabState extends State<ElderChatTab>
               ),
             ),
             _buildChatInputArea(),
+            SizedBox(
+              width: 1,
+              height: 1,
+              child: RTCVideoView(
+                _chatAudioRenderer,
+                objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitContain,
+              ),
+            ),
             const SizedBox(height: 100),
           ],
         ),
