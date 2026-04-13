@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart'
+    show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
@@ -28,6 +29,12 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 final StreamController<String> callKitDeclineStream =
     StreamController<String>.broadcast();
 
+bool _supportsCallKit() {
+  return !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS);
+}
+
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   try {
@@ -38,6 +45,10 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     return;
   }
   debugPrint("📩 Background message received: ${message.data}");
+
+  if (!_supportsCallKit()) {
+    return;
+  }
 
   if (message.data['type'] == 'call-request') {
     final roomId = message.data['roomId'];
@@ -143,9 +154,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     isAppReady = true; // ★ 標記 APP 已就緒，允許導航
     if (!kIsWeb) {
-      _setupCallKitListener();
       _setupForegroundMessaging(); // ★ 新增：背景推播之外，前景也要監聽
-      _checkInitialCall(); // ★ 冷啟動檢查：是否有正在進行的 CallKit
+      if (_supportsCallKit()) {
+        _setupCallKitListener();
+        _checkInitialCall(); // ★ 冷啟動檢查：是否有正在進行的 CallKit
+      }
     }
     _setupSignalingListener();
   }
