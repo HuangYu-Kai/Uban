@@ -306,6 +306,15 @@ class Signaling {
     if (kIsWeb) return false;
     final uuid = const Uuid().v4();
     
+    // ★ 新增：通知時手機振動（系統級振動）
+    HapticFeedback.heavyImpact();
+    Future.delayed(const Duration(milliseconds: 200), () {
+      HapticFeedback.mediumImpact();
+    });
+    Future.delayed(const Duration(milliseconds: 400), () {
+      HapticFeedback.heavyImpact();
+    });
+    
     // ★ 美化通知 UI 的參數配置
     final params = CallKitParams(
       id: uuid,

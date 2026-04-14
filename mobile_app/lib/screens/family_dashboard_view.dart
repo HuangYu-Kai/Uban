@@ -84,6 +84,12 @@ class _FamilyDashboardViewState extends State<FamilyDashboardView> {
   void _showIncomingCallDialog(String roomId, String senderId, String? callId) {
     _isIncomingCallDialogOpen = true;
     
+    // ★ 新增：通知時手機振動（長振動 + 中振動）
+    HapticFeedback.heavyImpact();
+    Future.delayed(const Duration(milliseconds: 200), () {
+      HapticFeedback.mediumImpact();
+    });
+    
     showDialog(
       context: context,
       barrierDismissible: false,

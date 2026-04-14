@@ -1,6 +1,7 @@
 // lib/screens/family_dashboard_screen.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart' show kIsWeb; // 新增
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
@@ -156,6 +157,15 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> with Widg
       // Define a dialog identifier or key if possible, but for now we'll rely on a boolean flag
       bool isDialogOpen = true;
       _currentDialogRoomId = roomId;
+
+      // ★ 新增：通知時手機振動（長振動 + 中振動 + 短振動）
+      HapticFeedback.heavyImpact();
+      Future.delayed(const Duration(milliseconds: 300), () {
+        HapticFeedback.mediumImpact();
+      });
+      Future.delayed(const Duration(milliseconds: 500), () {
+        HapticFeedback.lightImpact();
+      });
 
       showDialog(
         context: context,
