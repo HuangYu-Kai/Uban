@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'elder_pairing_display_screen.dart';
 import 'login_screen.dart';
-import 'socketio_test_screen.dart'; // ★ 新增：SocketIO 測試頁面
-
 class IdentificationScreen extends StatelessWidget {
   const IdentificationScreen({super.key});
 
@@ -79,35 +77,6 @@ class IdentificationScreen extends StatelessWidget {
                         ],
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 48),
-
-                  // --- 測試專用按鈕 ---
-                  const Divider(indent: 40, endIndent: 40),
-                  const SizedBox(height: 20),
-                  Text("開發測試專區",
-                      style: GoogleFonts.notoSansTc(
-                        color: Colors.grey.shade400,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 1.5,
-                      )),
-                  const SizedBox(height: 16),
-                  ElevatedButton.icon(
-                    icon: const Icon(Icons.wifi, color: Colors.white),
-                    label: const Text("SocketIO 通話測試",
-                        style: TextStyle(color: Colors.white)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF59B294),
-                      minimumSize: const Size(220, 50),
-                    ),
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const SocketIOTestScreen(),
-                        ),
-                      );
-                    },
                   ),
                   const SizedBox(height: 48),
                 ],

@@ -6,7 +6,6 @@ import '../services/api_service.dart';
 import 'family_dashboard_screen.dart';
 import 'elder_screen.dart';
 
-import 'socketio_test_screen.dart'; // ★ 新增：SocketIO 測試頁面
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../globals.dart';
@@ -258,33 +257,6 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                 if (_isLoading) const CircularProgressIndicator() else ElevatedButton(onPressed: _handleSubmit, child: const Text("下一步")),
               ],
 
-              const SizedBox(height: 40),
-              // --- 測試專用按鈕 ---
-              const Divider(),
-              const SizedBox(height: 10),
-              Text("開發測試專區", style: TextStyle(color: Colors.grey.shade600, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 10),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  ElevatedButton.icon(
-                    icon: const Icon(Icons.wifi),
-                    label: const Text("SocketIO 測試"),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.teal,
-                      minimumSize: const Size(200, 50),
-                    ),
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const SocketIOTestScreen(),
-                        ),
-                      );
-                    },
-                  ),
-                ],
-              ),
             ],
           ),
         ),
