@@ -138,7 +138,7 @@ Uban 是一套專為銀髮族設計的 AI 陪伴照護系統，包含：
 - **GPS 快速選址**：一鍵帶入行政區域
 - **陪伴大腦設定**：自訂 AI 人格與長輩資料
 
-### 五、視訊通話（雙軌制 WebRTC）
+### 五、視訊通話（雙軌制 WebRTC + 完整優化）
 
 - **信令 (第一軌)**：Tailscale Funnel (TCP/WSS) — 交換 SDP Offer/Answer + ICE Candidate
 - **媒體 (第二軌)**：Oracle Cloud Coturn (UDP) — 轉發實際影音串流
@@ -148,6 +148,9 @@ Uban 是一套專為銀髮族設計的 AI 陪伴照護系統，包含：
 - **通話控制**：麥克風靜音、鏡頭開關、前後鏡頭切換、揚聲器、通話計時
 - **語音模式**：支援純語音通話（不啟動攝影機）
 - **TURN 伺服器**：Oracle Cloud coturn (152.69.196.5)，獨立公網 IP，支援跨 NAT（4G ↔ WiFi）場景
+- **媒體懶加載**：進入通話頁面不自動請求權限，用戶點擊時才初始化
+- **攝像頭預設關閉**：隱私優先，用戶主動開啟才傳輸影像
+- **通話計時**：MM:SS 格式顯示，遠端連接時啟動
 
 ---
 
@@ -410,6 +413,99 @@ void initPedometer() {
 **socket_app.py** — 修正 `debugPrint()` → `print()`
 **requirements.txt** — 合併 `python-socketio[asgi,asyncio_client]`
 **.geminirules** × 2 — 全面更新（含通話流程、角色差異、ICE 配置）
+
+---
+
+### 2026-04-14 📞 長輩端視訊通話全面優化 + 家屬通知美化
+
+#### ✨ 核心改進（7 大功能）
+
+**1. WebRTC Oracle Cloud TURN 連接驗證** ✅
+- 位置：`elder_chat_tab.dart` (L29-32, L155-166)、`signaling.dart` (L23-25, L64-74)、`elder_screen.dart` (L29-32)
+- 配置：`turn:152.69.196.5:3478` (UDP + TCP fallback)
+- 狀態：已正確整合到所有視訊通話流程
+
+**2. 媒體懶加載機制** ✅
+- 修改：`elder_screen.dart` L144-195
+- 改進：進入頁面不再立即請求攝像頭權限，而是在用戶點擊時才初始化
+- 資源節省：避免不必要的頻寬消耗
+- 狀態：已實現 (`_mediaInitialized` 標誌)
+
+**3. 攝像頭控制** ✅
+- 新增方法：`_toggleCamera()` - 開/關攝像頭
+- 預設狀態：攝像頭關閉 (`_isCameraOff = true`)
+- 按鈕反饋：藍色=開啟、灰色=關閉
+- 狀態：已實現
+
+**4. 靜音控制** ✅
+- 新增方法：`_toggleMute()` - 靜音/取消靜音
+- 按鈕反饋：藍色=麥克風啟用、紅色=已靜音
+- 邏輯：直接操作音頻軌道狀態
+- 狀態：已實現
+
+**5. 通話計時器** ✅
+- 新增方法：`_startCallTimer()` 和 `_formatDuration()`
+- 顯示：MM:SS 格式，放在控制按鈕上方
+- 樣式：黑色半透明背景 + 白色邊框，14px 白色字體
+- 生命週期：遠端媒體連接時啟動，通話結束時停止
+- 狀態：已實現
+
+**6. 界面美化（長輩端）** ✅
+- 通話控制列：三個浮動按鈕 (攝像頭、靜音、掛斷)
+- 掛斷按鈕：紅色圓形，帶陰影和脈搏效果
+- PIP 位置優化：右上角 110×160，圓角邊框
+- 狀態：已完成
+
+**7. 家屬通知美化** ✅
+- `family_dashboard_view.dart` (L83-211)：
+  - 自訂 Dialog (非 AlertDialog)
+  - 漸層背景 (綠→藍)
+  - 大圓形頭像 (80×80)
+  - 脈搏動畫狀態指示器 "正在來電..."
+  - 並排按鈕設計 (拒接/接聽) + 陰影
+
+- `family_dashboard_screen.dart` (L176-379)：
+  - 緊急求助主題
+  - 紅色 SOS 圖標，強調緊急
+  - 頂部紅色裝飾條
+  - 一致的視覺風格
+
+#### 🔍 邏輯驗證
+
+- [x] Oracle TURN 配置已正確應用到所有 WebRTC 連接
+- [x] 媒體初始化延遲到 `_initElderMode()` 中的條件檢查
+- [x] 攝像頭預設關閉，可手動切換
+- [x] 靜音功能正確停用/啟用音頻軌道
+- [x] 通話計時器在 `onAddRemoteStream` 時啟動
+- [x] `dispose()` 中正確清理 Timer
+- [x] 所有新增方法均有 `mounted` 檢查
+- [x] 無重複通知（Firebase 層已移除 CallKit 邏輯）
+
+#### 📋 修改檔案
+
+| 檔案 | 修改行號 | 內容 |
+|------|--------|------|
+| `elder_screen.dart` | 7 | 添加 `import 'dart:async'` |
+| `elder_screen.dart` | 37-41 | 新增狀態變數 |
+| `elder_screen.dart` | 144-195 | 媒體懶加載邏輯 |
+| `elder_screen.dart` | 197-370 | 新增 4 個方法 |
+| `elder_screen.dart` | 338-344 | `dispose()` 加入 Timer 清理 |
+| `elder_screen.dart` | 476-577 | 重設計控制列 |
+| `family_dashboard_view.dart` | 83-211 | 完整 Dialog 重設計 |
+| `family_dashboard_screen.dart` | 176-379 | 同步美化實現 |
+
+#### 🧪 測試清單
+
+```
+✅ flutter analyze - 無 error（僅 info 提示）
+✅ 進入長輩端 → 攝像頭預設關閉
+✅ 點擊攝像頭按鈕 → 請求權限 + 初始化媒體
+✅ 家屬接聽 → 計時器開始計時
+✅ 攝像頭/靜音按鈕 → 按鈕顏色反饋正確
+✅ 掛斷通話 → Timer 停止，無資源洩漏
+✅ 家屬收到通知 → Dialog 美化展示
+✅ 接聽/拒接 → 按鈕邏輯正確
+```
 
 ---
 

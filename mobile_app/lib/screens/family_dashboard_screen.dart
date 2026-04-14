@@ -173,56 +173,235 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> with Widg
                 }
             };
 
-            return AlertDialog(
-          title: const Text('📞 求助電話'),
-          content: Text('${caller['elder_name']} (ID: $roomId) 正在呼叫！'),
-          backgroundColor: Colors.red[50],
-          actions: [
-            TextButton(
-              onPressed: () {
-                isDialogOpen = false;
-                _currentDialogRoomId = null;
-                _dialogContext = null;
-                _signaling.sendCallBusy(senderId, callId: callId); // explicitly inform elder someone declined
-                Navigator.pop(dialogContext);
-              }, 
-              child: const Text('忽略')
-            ),
-            ElevatedButton.icon(
-              icon: const Icon(Icons.call),
-              label: const Text('接聽'),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-              onPressed: () {
-                isDialogOpen = false;
-                _currentDialogRoomId = null;
-                _dialogContext = null;
-                Navigator.pop(dialogContext); // 關閉彈窗
-
-                // ★ 先回到儀表板層（關閉任何正在通話中的 VideoCallScreen）
-                //    確保舊的通話結束並釋放攝影機權限
-                if (thisRoute != null) {
-                  Navigator.of(context).popUntil((route) => route == thisRoute);
-                }
-
-                // ★ 使用 microtask 確保 popUntil dispose() 完成後再推入新頁面
-                Future.microtask(() {
-                  if (mounted) {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => VideoCallScreen(
-                          roomId: roomId,
-                          targetSocketId: senderId,
-                          isIncomingCall: true,
+            return Dialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              elevation: 16,
+              backgroundColor: Colors.white,
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(24),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Colors.red.shade50, Colors.orange.shade50],
+                  ),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // ★ 頂部裝飾條（紅色，表示緊急）
+                    Container(
+                      height: 4,
+                      decoration: BoxDecoration(
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(24),
+                          topRight: Radius.circular(24),
+                        ),
+                        gradient: LinearGradient(
+                          colors: [Colors.red.shade400, Colors.red.shade600],
                         ),
                       ),
-                    );
-                  }
-                });
-              },
-            ),
-          ],
-        );
+                    ),
+                    
+                    const SizedBox(height: 32),
+                    
+                    // ★ 警告圖標（緊急狀態）
+                    Container(
+                      width: 80,
+                      height: 80,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.red.shade400.withValues(alpha: 0.4),
+                            blurRadius: 16,
+                            spreadRadius: 2,
+                          ),
+                        ],
+                      ),
+                      child: CircleAvatar(
+                        backgroundColor: Colors.red.shade400,
+                        child: const Icon(
+                          Icons.sos,
+                          color: Colors.white,
+                          size: 40,
+                        ),
+                      ),
+                    ),
+                    
+                    const SizedBox(height: 20),
+                    
+                    // ★ 標題
+                    Text(
+                      '緊急求助來電',
+                      style: TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.red.shade700,
+                      ),
+                    ),
+                    
+                    const SizedBox(height: 12),
+                    
+                    // ★ 來電者信息
+                    Text(
+                      '${caller['elder_name'] ?? "未知長輩"} 正在求助',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.black87,
+                      ),
+                    ),
+                    
+                    const SizedBox(height: 8),
+                    
+                    // ★ ID（灰色較小字體）
+                    Text(
+                      'ID: $roomId',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                    
+                    const SizedBox(height: 12),
+                    
+                    // ★ 來電狀態（脈搏動畫效果）
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.red,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.red.withValues(alpha: 0.8),
+                                blurRadius: 4,
+                                spreadRadius: 2,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '正在來電...',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.red.shade600,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                    
+                    const SizedBox(height: 36),
+                    
+                    // ★ 按鈕區域
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Row(
+                        children: [
+                          // 忽略按鈕
+                          Expanded(
+                            child: Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.grey.shade300,
+                                    blurRadius: 8,
+                                    spreadRadius: 1,
+                                  ),
+                                ],
+                              ),
+                              child: ElevatedButton(
+                                onPressed: () {
+                                  isDialogOpen = false;
+                                  _currentDialogRoomId = null;
+                                  _dialogContext = null;
+                                  _signaling.sendCallBusy(senderId, callId: callId);
+                                  Navigator.pop(dialogContext);
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.grey.shade300,
+                                  foregroundColor: Colors.grey.shade700,
+                                  padding: const EdgeInsets.symmetric(vertical: 14),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                ),
+                                child: const Text('忽略'),
+                              ),
+                            ),
+                          ),
+                          
+                          const SizedBox(width: 12),
+                          
+                          // 接聽按鈕（強調紅色）
+                          Expanded(
+                            child: Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.red.shade300,
+                                    blurRadius: 8,
+                                    spreadRadius: 1,
+                                  ),
+                                ],
+                              ),
+                              child: ElevatedButton.icon(
+                                onPressed: () {
+                                  isDialogOpen = false;
+                                  _currentDialogRoomId = null;
+                                  _dialogContext = null;
+                                  Navigator.pop(dialogContext);
+
+                                  if (thisRoute != null) {
+                                    Navigator.of(context).popUntil((route) => route == thisRoute);
+                                  }
+
+                                  Future.microtask(() {
+                                    if (mounted) {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) => VideoCallScreen(
+                                            roomId: roomId,
+                                            targetSocketId: senderId,
+                                            isIncomingCall: true,
+                                            isEmergency: true,
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                  });
+                                },
+                                icon: const Icon(Icons.call, size: 20),
+                                label: const Text('接聽'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.red.shade500,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(vertical: 14),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    
+                    const SizedBox(height: 24),
+                  ],
+                ),
+              ),
+            );
       },
       );
     };
