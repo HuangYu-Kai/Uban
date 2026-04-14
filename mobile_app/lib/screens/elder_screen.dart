@@ -171,6 +171,10 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
 
     _signaling.onJoinFailed = (errorMessage) {
       if (mounted) {
+        HapticFeedback.heavyImpact();
+        Future.delayed(const Duration(milliseconds: 200), () {
+          HapticFeedback.mediumImpact();
+        });
         showDialog(
           context: context,
           barrierDismissible: false,
