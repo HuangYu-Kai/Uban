@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:ui' as ui; 
+import 'dart:math' as math; // 新增數學函式給光點散播使用
 import '../services/api_service.dart';
 import 'identification_screen.dart';
 import 'family_onboarding_screen.dart';
@@ -33,16 +34,27 @@ class _SplashScreenState extends State<SplashScreen> {
     defaultValue: '測試使用者',
   );
 
+  bool _fadedOut = false;
+
   @override
   void initState() {
     super.initState();
+    _playAnimations();
     _navigateToNext();
+  }
+
+  Future<void> _playAnimations() async {
+    // 整個演繹動畫加上 Logo 停留總共 2.8s
+    await Future.delayed(const Duration(milliseconds: 2800));
+    
+    // 2.8s 開始全局淡出 (歷時 0.7s)
+    if (mounted) setState(() => _fadedOut = true);
   }
 
   Future<void> _navigateToNext() async {
     try {
-      // 延遲 3 秒展示 Splash
-      await Future.delayed(const Duration(seconds: 3));
+      // 3.5s 正好銜接淡出的結束點，無縫載入主介面
+      await Future.delayed(const Duration(milliseconds: 3500));
       if (!mounted) return;
 
       // 嘗試獲取登入狀態，設置 2 秒超時以防掛起
@@ -162,80 +174,236 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFF59B294), // Tealish green
-              Color(0xFFD4F5E9), // Very light teal
-            ],
+      backgroundColor: const Color(0xFFF5F5F5), // 介面的預設淺色底
+      body: AnimatedOpacity(
+        opacity: _fadedOut ? 0.0 : 1.0,
+        duration: const Duration(milliseconds: 1000), // 圖標和背景平滑淡出的歷時
+        child: Container(
+          width: double.infinity,
+          height: double.infinity,
+          decoration: const BoxDecoration(
+            color: Color(0xFF59B294), // 柔和薄荷綠全螢幕背景
           ),
-        ),
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+          child: Center(
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0.0, end: 1.0),
+              duration: const Duration(milliseconds: 2500),
+              curve: Curves.linear,
+              builder: (context, time, child) {
+                // 階段 1: 0~0.5s (time 0~0.2) 人頭冒出
+                double headAnim = (time / 0.2).clamp(0.0, 1.0);
+                
+                // 階段 2: 0.5s~1.5s (time 0.2~0.6) 手臂環抱與光點迸發
+                double embraceRaw = ((time - 0.2) / 0.4).clamp(0.0, 1.0);
+                double embraceAnim = Curves.easeInOut.transform(embraceRaw);
+                
+                // 階段 3: 1.5s~ (time > 0.6) 手繪轉化為官方 Icon
+                bool showIcon = time > 0.6;
+                double fadeOutDraw = 1.0 - ((time - 0.6) / 0.1).clamp(0.0, 1.0);
+                
+                return Stack(
+                  alignment: Alignment.center,
                   children: [
-                    Container(
-                      width: 80,
-                      height: 80,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF59B294).withValues(alpha: 0.8),
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.1),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: const Center(
-                        child: Icon(
-                          Icons.favorite_rounded,
-                          color: Colors.white,
-                          size: 48,
+                    // 原本的手繪區
+                    Opacity(
+                      opacity: fadeOutDraw,
+                      child: CustomPaint(
+                        size: const Size(240, 240),
+                        painter: EmbracePainter(
+                          headAnim: headAnim,
+                          embraceAnim: embraceAnim,
                         ),
                       ),
                     ),
-                    const SizedBox(width: 16),
-                    Text(
-                      'UBan',
-                      style: GoogleFonts.outfit(
-                        fontSize: 48,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                        shadows: [
-                          Shadow(
-                            color: Colors.black.withValues(alpha: 0.2),
-                            blurRadius: 4,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
+
+                    // 官方 Logo 躍出轉化
+                    if (showIcon)
+                      TweenAnimationBuilder<double>(
+                        tween: Tween(begin: 0.0, end: 1.0),
+                        duration: const Duration(milliseconds: 800),
+                        curve: Curves.elasticOut,
+                        builder: (context, iconScale, child) {
+                          return Transform.scale(
+                            scale: iconScale,
+                            child: Opacity(
+                              opacity: iconScale.clamp(0.0, 1.0),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 86,
+                                    height: 86,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      shape: BoxShape.circle,
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withValues(alpha: 0.1),
+                                          blurRadius: 15,
+                                          offset: const Offset(0, 6),
+                                        ),
+                                      ],
+                                    ),
+                                    child: const Center(
+                                      child: Icon(
+                                        Icons.volunteer_activism_rounded, // 無縫過渡成官方愛心圖標
+                                        color: Color(0xFF59B294),
+                                        size: 48,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  const Text(
+                                    'UBan',
+                                    style: TextStyle(
+                                      fontSize: 44,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                      letterSpacing: 4.0,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }
                       ),
-                    ),
                   ],
-                ),
-              ],
+                );
+              }
             ),
-            Positioned(
-              bottom: 40,
-              child: Text(
-                'v 1.0.0',
-                style: GoogleFonts.inter(color: Colors.black54, fontSize: 12),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
+  }
+}
+
+class EmbracePainter extends CustomPainter {
+  final double headAnim;
+  final double embraceAnim;
+
+  EmbracePainter({required this.headAnim, required this.embraceAnim});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (headAnim <= 0) return;
+
+    double cx = size.width / 2;
+    double cy = size.height / 2;
+
+    // 1.繪製發光「人頭」 (初始狀態)
+    final headRadius = 22.0 * headAnim;
+    final headCenter = Offset(cx, cy - 45); // 位於中心偏上
+    
+    // 人頭光暈
+    final glowPaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.6 * headAnim)
+      ..style = PaintingStyle.fill
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12);
+    canvas.drawCircle(headCenter, headRadius * 1.5, glowPaint);
+
+    // 人頭本體
+    final headPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(headCenter, headRadius, headPaint);
+
+    // 2.繪製環抱動畫 (擁抱動作)
+    if (embraceAnim > 0) {
+      // 內心的被擁抱者 (柔和米粉色心形)
+      final innerCenter = Offset(cx, cy + 25);
+      final innerHeartPaint = Paint()
+        ..color = const Color(0xFFFDF0ED).withValues(alpha: embraceAnim * 0.9) // 淡淡偏暖米色
+        ..style = PaintingStyle.fill;
+      
+      // 內心的大小隨著手臂伸展浮現
+      final innerPath = _createHeartPath(innerCenter, 22 * embraceAnim);
+      canvas.drawPath(innerPath, innerHeartPaint);
+
+      // 外圍環抱的手臂 (心形的下半部與向上包圍)
+      final armPaint = Paint()
+        ..color = Colors.white
+        ..strokeWidth = 6.0
+        ..strokeCap = StrokeCap.round
+        ..style = PaintingStyle.stroke;
+
+      // 左手和右手伸展軌跡
+      final leftArm = _createArmPath(innerCenter, 48, true);
+      final rightArm = _createArmPath(innerCenter, 48, false);
+
+      for (var path in [leftArm, rightArm]) {
+        for (ui.PathMetric metric in path.computeMetrics()) {
+          canvas.drawPath(
+            metric.extractPath(0, metric.length * embraceAnim), 
+            armPaint
+          );
+        }
+      }
+
+      // 愛心小光點散發
+      if (embraceAnim > 0.3) {
+        // 從 0.3 開始往外擴散
+        final particleProgress = ((embraceAnim - 0.3) / 0.7).clamp(0.0, 1.0);
+        final particlePaint = Paint()
+          ..color = Colors.white.withValues(alpha: 1.0 - particleProgress) // 擴散至頂點時淡出
+          ..style = PaintingStyle.fill;
+
+        double radiusOffset = 30 + (45 * particleProgress);
+        
+        final angles = [135.0, 225.0, 45.0, 315.0];
+        for (var angle in angles) {
+          final rad = angle * math.pi / 180;
+          final px = innerCenter.dx + math.cos(rad) * radiusOffset;
+          final py = innerCenter.dy + math.sin(rad) * radiusOffset;
+          
+          final dotPath = _createHeartPath(Offset(px, py), 5.0 * (1.0 - particleProgress * 0.3)); 
+          canvas.drawPath(dotPath, particlePaint);
+        }
+      }
+    }
+  }
+
+  Path _createHeartPath(Offset center, double size) {
+    Path path = Path();
+    path.moveTo(center.dx, center.dy - size * 0.2); // 頂部心窩
+    // 左半心
+    path.cubicTo(
+      center.dx - size * 1.2, center.dy - size * 1.4, 
+      center.dx - size * 1.8, center.dy + size * 0.4, 
+      center.dx, center.dy + size * 1.2               // 底部尖端
+    );
+    // 右半心
+    path.moveTo(center.dx, center.dy - size * 0.2);
+    path.cubicTo(
+      center.dx + size * 1.2, center.dy - size * 1.4, 
+      center.dx + size * 1.8, center.dy + size * 0.4, 
+      center.dx, center.dy + size * 1.2
+    );
+    return path;
+  }
+
+  Path _createArmPath(Offset center, double size, bool isLeft) {
+    Path path = Path();
+    path.moveTo(center.dx, center.dy + size * 1.2); // 從被擁抱者的底部尖端稍下方開始
+    if (isLeft) {
+      path.cubicTo(
+        center.dx - size * 1.8, center.dy + size * 1.0,  
+        center.dx - size * 2.2, center.dy - size * 0.5,  
+        center.dx - size * 0.5, center.dy - size * 1.0   // 彎向肩膀上方
+      );
+    } else {
+      path.cubicTo(
+        center.dx + size * 1.8, center.dy + size * 1.0, 
+        center.dx + size * 2.2, center.dy - size * 0.5, 
+        center.dx + size * 0.5, center.dy - size * 1.0
+      );
+    }
+    return path;
+  }
+
+  @override
+  bool shouldRepaint(covariant EmbracePainter oldDelegate) {
+    return oldDelegate.headAnim != headAnim || oldDelegate.embraceAnim != embraceAnim;
   }
 }
