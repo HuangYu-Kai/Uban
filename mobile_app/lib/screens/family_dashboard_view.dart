@@ -88,61 +88,200 @@ class _FamilyDashboardViewState extends State<FamilyDashboardView> {
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) {
-        return AlertDialog(
-          title: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.green.shade100,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(Icons.phone_callback, color: Colors.green, size: 28),
+        return Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          elevation: 16,
+          backgroundColor: Colors.white,
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(24),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Colors.green.shade50, Colors.blue.shade50],
               ),
-              const SizedBox(width: 12),
-              const Text('📞 長輩來電'),
-            ],
-          ),
-          content: Text(
-            '${_elderName ?? "長輩"} 正在呼叫您！',
-            style: const TextStyle(fontSize: 18),
-          ),
-          backgroundColor: Colors.green.shade50,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          actions: [
-            TextButton(
-              onPressed: () {
-                // 拒接
-                _signaling.sendCallBusy(roomId);
-                Navigator.of(dialogContext).pop();
-                _isIncomingCallDialogOpen = false;
-              },
-              child: const Text('拒接', style: TextStyle(color: Colors.red, fontSize: 16)),
             ),
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.of(dialogContext).pop();
-                _isIncomingCallDialogOpen = false;
-                // 接聽 - 跳轉到視訊通話頁面
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => VideoCallScreen(
-                      roomId: roomId,
-                      isIncomingCall: true,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // ★ 頂部裝飾條
+                Container(
+                  height: 4,
+                  decoration: BoxDecoration(
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(24),
+                      topRight: Radius.circular(24),
+                    ),
+                    gradient: LinearGradient(
+                      colors: [Colors.green.shade400, Colors.green.shade600],
                     ),
                   ),
-                );
-              },
-              icon: const Icon(Icons.videocam),
-              label: const Text('接聽', style: TextStyle(fontSize: 16)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              ),
+                ),
+                
+                SizedBox(height: 32),
+                
+                // ★ 大頭貼
+                Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.green.shade400.withValues(alpha: 0.4),
+                        blurRadius: 16,
+                        spreadRadius: 2,
+                      ),
+                    ],
+                  ),
+                  child: CircleAvatar(
+                    backgroundColor: Colors.green.shade400,
+                    child: Text(
+                      (_elderName ?? "長輩").characters.first.toUpperCase(),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 36,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+                
+                SizedBox(height: 20),
+                
+                // ★ 來電者名稱
+                Text(
+                  _elderName ?? "長輩",
+                  style: const TextStyle(
+                    fontSize: 26,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black87,
+                  ),
+                ),
+                
+                SizedBox(height: 12),
+                
+                // ★ 來電狀態
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.green,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.green.withValues(alpha: 0.6),
+                            blurRadius: 4,
+                            spreadRadius: 2,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '正在來電...',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey.shade700,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+                
+                SizedBox(height: 36),
+                
+                // ★ 按鈕區域
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Row(
+                    children: [
+                      // 拒接按鈕
+                      Expanded(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.red.shade200,
+                                blurRadius: 8,
+                                spreadRadius: 1,
+                              ),
+                            ],
+                          ),
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              _signaling.sendCallBusy(roomId);
+                              Navigator.of(dialogContext).pop();
+                              _isIncomingCallDialogOpen = false;
+                            },
+                            icon: const Icon(Icons.call_end, size: 20),
+                            label: const Text('拒接'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.red.shade400,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      
+                      const SizedBox(width: 12),
+                      
+                      // 接聽按鈕
+                      Expanded(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.green.shade300,
+                                blurRadius: 8,
+                                spreadRadius: 1,
+                              ),
+                            ],
+                          ),
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              Navigator.of(dialogContext).pop();
+                              _isIncomingCallDialogOpen = false;
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => VideoCallScreen(
+                                    roomId: roomId,
+                                    isIncomingCall: true,
+                                  ),
+                                ),
+                              );
+                            },
+                            icon: const Icon(Icons.videocam, size: 20),
+                            label: const Text('接聽'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green.shade500,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                
+                SizedBox(height: 24),
+              ],
             ),
-          ],
+          ),
         );
       },
     );
