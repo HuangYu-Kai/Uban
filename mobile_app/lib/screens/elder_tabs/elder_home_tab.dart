@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lunar/lunar.dart';
@@ -29,12 +32,21 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
 
   List<dynamic> _familyList = [];
   bool _isLoadingFamily = true;
+  final PageController _stageController = PageController();
+  List<Map<String, dynamic>> _newsItems = [];
+  bool _isLoadingNews = true;
+  String? _newsError;
+  final Random _random = Random();
+  int _topNewsIndex = 0;
+  Timer? _topNewsRotateTimer;
+  bool _isStageSwitching = false;
 
   @override
   void initState() {
     super.initState();
     _updateTime();
     _fetchFamily();
+    _fetchNews();
   }
 
   Future<void> _fetchFamily() async {
@@ -51,6 +63,102 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
         setState(() => _isLoadingFamily = false);
       }
     }
+  }
+
+  Future<void> _fetchNews() async {
+    try {
+      final response = await ApiService.getNews(category: 'politics', limit: 8);
+      final isSuccess = response['status'] == 'success';
+      if (!isSuccess) {
+        throw Exception(response['message'] ?? '新聞讀取失敗');
+      }
+
+      final data = response['data'];
+      final items = (data is Map ? data['items'] : null);
+      final parsed = <Map<String, dynamic>>[];
+      if (items is List) {
+        for (final item in items) {
+          if (item is Map<String, dynamic>) {
+            parsed.add(item);
+          } else if (item is Map) {
+            parsed
+                .add(item.map((key, value) => MapEntry(key.toString(), value)));
+          }
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _newsItems = parsed;
+          _isLoadingNews = false;
+          _newsError = null;
+          if (_newsItems.isNotEmpty) {
+            _topNewsIndex = _random.nextInt(_newsItems.length);
+          } else {
+            _topNewsIndex = 0;
+          }
+        });
+        _startTopNewsRotation();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingNews = false;
+          _newsError = '新聞暫時讀取失敗，稍後再試。';
+        });
+      }
+      _topNewsRotateTimer?.cancel();
+    }
+  }
+
+  void _startTopNewsRotation() {
+    _topNewsRotateTimer?.cancel();
+    if (_newsItems.length <= 1) {
+      return;
+    }
+    _topNewsRotateTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (!mounted || _newsItems.length <= 1) return;
+      setState(() {
+        var next = _random.nextInt(_newsItems.length);
+        if (next == _topNewsIndex) {
+          next = (next + 1) % _newsItems.length;
+        }
+        _topNewsIndex = next;
+      });
+    });
+  }
+
+  Future<void> _goToTopStage() async {
+    if (_isStageSwitching || !_stageController.hasClients) return;
+    final current =
+        _stageController.page ?? _stageController.initialPage.toDouble();
+    if (current < 0.5) return;
+    _isStageSwitching = true;
+    try {
+      await _stageController.animateToPage(
+        0,
+        duration: const Duration(milliseconds: 240),
+        curve: Curves.easeOutCubic,
+      );
+    } finally {
+      _isStageSwitching = false;
+    }
+  }
+
+  bool _handleNewsStageScroll(ScrollNotification notification) {
+    if (notification.metrics.axis != Axis.vertical) return false;
+
+    final isPullDownAtTop = notification.metrics.pixels <= 0 &&
+        ((notification is OverscrollNotification &&
+                notification.overscroll < -6) ||
+            (notification is ScrollUpdateNotification &&
+                (notification.scrollDelta ?? 0) < -10));
+
+    if (isPullDownAtTop) {
+      _goToTopStage();
+      return true;
+    }
+    return false;
   }
 
   void _updateTime() {
@@ -80,6 +188,13 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
   }
 
   @override
+  void dispose() {
+    _topNewsRotateTimer?.cancel();
+    _stageController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Container(
       decoration: const BoxDecoration(
@@ -105,21 +220,52 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                     topRight: Radius.circular(32),
                   ),
                 ),
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    children: [
-                      _buildCalendarCard(),
-                      const SizedBox(height: 20),
-                      _buildMainFeaturesRow(),
-                      const SizedBox(height: 20),
-                      // ✨ 新增小遊戲插件
-                      _buildPetMiniGame(),
-                      const SizedBox(height: 30),
-                      _buildNewsSection(),
-                      const SizedBox(height: 120), // 留白給浮動底部
-                    ],
-                  ),
+                child: PageView(
+                  controller: _stageController,
+                  scrollDirection: Axis.vertical,
+                  physics:
+                      const PageScrollPhysics(parent: ClampingScrollPhysics()),
+                  children: [
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        return Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 20, 20, 110),
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(
+                                minHeight: constraints.maxHeight),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                _buildCalendarCard(),
+                                const SizedBox(height: 20),
+                                _buildMainFeaturesRow(),
+                                const SizedBox(height: 16),
+                                _buildTopRotatingNewsCard(),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        return NotificationListener<ScrollNotification>(
+                          onNotification: _handleNewsStageScroll,
+                          child: SingleChildScrollView(
+                            physics: const BouncingScrollPhysics(
+                              parent: AlwaysScrollableScrollPhysics(),
+                            ),
+                            padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
+                            child: ConstrainedBox(
+                              constraints: BoxConstraints(
+                                  minHeight: constraints.maxHeight),
+                              child: _buildNewsSection(),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -285,150 +431,213 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
           ),
         ),
         const SizedBox(width: 16),
-        // 聯絡親友大按鈕
+        // 好友捷徑區
         Expanded(
           flex: 2,
-          child: GestureDetector(
-            onTap: () => _showFriendsBottomSheet(context),
-            child: Container(
-              height: 220,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: const Color(0xFFCFEADF),
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF59B294).withValues(alpha: 0.2),
-                    blurRadius: 15,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.diversity_1_rounded,
-                      size: 48,
-                      color: Color(0xFF59B294),
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    '聯絡家人',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w900,
-                      color: const Color(0xFF1E293B),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '點擊可通話',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: const Color(0xFF59B294),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+          child: _buildFriendsQuickPanel(),
         ),
       ],
     );
   }
 
-  Widget _buildPetMiniGame() {
-    return Container(
-      margin: const EdgeInsets.only(top: 20),
-      height: 180,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(28),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.green.withValues(alpha: 0.1),
-            blurRadius: 15,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // 左半邊溫馨圖片
-          Expanded(
-            flex: 2,
-            child: ClipRRect(
-              borderRadius:
-                  const BorderRadius.horizontal(left: Radius.circular(28)),
-              child: Image.asset('assets/images/pet_garden.png',
-                  fit: BoxFit.cover),
-            ),
-          ),
-          // 右半邊遊戲進度
-          Expanded(
-            flex: 3,
-            child: Container(
-              padding: const EdgeInsets.all(20),
-              decoration: const BoxDecoration(
-                color: Color(0xFFF8FAF7),
-                borderRadius:
-                    BorderRadius.horizontal(right: Radius.circular(28)),
+  Widget _buildFriendsQuickPanel() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final narrowPanel = constraints.maxWidth < 130;
+        final topFamilies = _familyList.take(narrowPanel ? 1 : 2).toList();
+        return Container(
+          height: 220,
+          padding: EdgeInsets.all(narrowPanel ? 10 : 14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.08),
+                blurRadius: 12,
+                offset: const Offset(0, 6),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
                 children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.eco_rounded,
-                          size: 28, color: Color(0xFF388E3C)),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          '小花 正在等您...',
-                          style: GoogleFonts.notoSansTc(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: const Color(0xFF1B5E20),
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
-                    child: LinearProgressIndicator(
-                      value: 0.7,
-                      minHeight: 14,
-                      backgroundColor: const Color(0xFFC8E6C9),
-                      valueColor: const AlwaysStoppedAnimation<Color>(
-                          Color(0xFF43A047)),
+                  Text(
+                    '朋友',
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: narrowPanel ? 22 : 28,
+                      fontWeight: FontWeight.w900,
+                      color: const Color(0xFF0F172A),
                     ),
                   ),
-                  const SizedBox(height: 10),
-                  Text(
-                    '再走 500 步就能升級囉！🌱',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 14,
-                      color: const Color(0xFF2E7D32),
-                      fontWeight: FontWeight.w700,
+                  const Spacer(),
+                  InkWell(
+                    onTap: () => _showFriendsBottomSheet(context),
+                    borderRadius: BorderRadius.circular(999),
+                    child: CircleAvatar(
+                      radius: narrowPanel ? 14 : 16,
+                      backgroundColor: const Color(0xFF59B294),
+                      child: Icon(
+                        Icons.arrow_forward_rounded,
+                        color: Colors.white,
+                        size: narrowPanel ? 16 : 18,
+                      ),
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                '已配對子女',
+                style: GoogleFonts.notoSansTc(
+                  fontSize: narrowPanel ? 12 : 13,
+                  color: const Color(0xFF64748B),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 6),
+              if (_isLoadingFamily)
+                const Expanded(
+                  child: Center(
+                      child: CircularProgressIndicator(strokeWidth: 2.5)),
+                )
+              else if (topFamilies.isEmpty)
+                Expanded(
+                  child: Center(
+                    child: Text(
+                      '尚無已配對子女',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: narrowPanel ? 12 : 13,
+                        color: const Color(0xFF94A3B8),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                )
+              else
+                Expanded(
+                  child: ListView(
+                    padding: EdgeInsets.zero,
+                    children: [
+                      for (final family in topFamilies) ...[
+                        _buildPairedFamilyRow(family),
+                        const SizedBox(height: 8),
+                      ],
+                      _buildSocialPlaceholder(compact: narrowPanel),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildPairedFamilyRow(dynamic family) {
+    final map = family is Map ? family : <String, dynamic>{};
+    final name = (map['user_name'] ?? '家人').toString();
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 130;
+        final ultraCompact = constraints.maxWidth < 105;
+        return Container(
+          padding: EdgeInsets.symmetric(
+            horizontal: ultraCompact ? 6 : (compact ? 8 : 10),
+            vertical: ultraCompact ? 5 : (compact ? 6 : 8),
+          ),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+          ),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: ultraCompact ? 11 : (compact ? 13 : 16),
+                backgroundColor: const Color(0xFFCFEADF),
+                child: Text(
+                  name.isNotEmpty ? name.substring(0, 1) : '家',
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: ultraCompact ? 10 : (compact ? 11 : 13),
+                    fontWeight: FontWeight.w900,
+                    color: const Color(0xFF0F766E),
+                  ),
+                ),
+              ),
+              SizedBox(width: ultraCompact ? 4 : (compact ? 5 : 8)),
+              if (!ultraCompact)
+                Expanded(
+                  child: Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: compact ? 12 : 14,
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFF1E293B),
+                    ),
+                  ),
+                )
+              else
+                const Spacer(),
+              SizedBox(width: ultraCompact ? 2 : 4),
+              InkWell(
+                onTap: () => _handleCall(name, isVideo: true),
+                borderRadius: BorderRadius.circular(999),
+                child: Container(
+                  width: ultraCompact ? 22 : (compact ? 24 : 28),
+                  height: ultraCompact ? 22 : (compact ? 24 : 28),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF10B981),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.videocam_rounded,
+                    color: Colors.white,
+                    size: ultraCompact ? 12 : 14,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildSocialPlaceholder({bool compact = false}) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.symmetric(
+          horizontal: compact ? 8 : 10, vertical: compact ? 6 : 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+              radius: compact ? 9 : 11,
+              backgroundColor: const Color(0xFFD1D5DB)),
+          SizedBox(width: compact ? 4 : 6),
+          CircleAvatar(
+              radius: compact ? 9 : 11,
+              backgroundColor: const Color(0xFFD1D5DB)),
+          SizedBox(width: compact ? 6 : 8),
+          Expanded(
+            child: Text(
+              compact ? '推薦好友' : '推薦好友（即將推出）',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.notoSansTc(
+                fontSize: compact ? 11 : 12,
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF64748B),
               ),
             ),
           ),
@@ -692,109 +901,500 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Row(
+        if (_isLoadingNews)
+          Container(
+            height: 220,
+            decoration: BoxDecoration(
+                color: Colors.white, borderRadius: BorderRadius.circular(24)),
+            child: const Center(child: CircularProgressIndicator()),
+          )
+        else if (_newsError != null)
+          Container(
+            height: 220,
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+                color: Colors.white, borderRadius: BorderRadius.circular(24)),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Text(
-                  '最新',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                ),
-                Container(
-                  margin: const EdgeInsets.only(left: 4),
-                  width: 6,
-                  height: 6,
-                  decoration: const BoxDecoration(
-                    color: Colors.red,
-                    shape: BoxShape.circle,
+                Text(
+                  _newsError!,
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.notoSansTc(
+                    color: const Color(0xFF64748B),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
-                const SizedBox(width: 20),
+                const SizedBox(height: 12),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      _isLoadingNews = true;
+                      _newsError = null;
+                    });
+                    _fetchNews();
+                  },
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('重新整理'),
+                ),
+              ],
+            ),
+          )
+        else if (_newsItems.isEmpty)
+          Container(
+            height: 220,
+            decoration: BoxDecoration(
+                color: Colors.white, borderRadius: BorderRadius.circular(24)),
+            child: Center(
+              child: Text(
+                '目前沒有新聞資料',
+                style: GoogleFonts.notoSansTc(
+                  color: const Color(0xFF64748B),
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          )
+        else
+          Column(
+            children: [
+              for (final item in _orderedNewsItemsWithTopFirst().take(3)) ...[
+                _buildNewsListCard(item),
+                const SizedBox(height: 14),
+              ],
+            ],
+          ),
+      ],
+    );
+  }
+
+  Widget _buildTopRotatingNewsCard() {
+    if (_isLoadingNews) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildNewsHeader(),
+          Container(
+            height: 220,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: const Center(child: CircularProgressIndicator()),
+          ),
+        ],
+      );
+    }
+
+    if (_newsItems.isEmpty || _newsError != null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildNewsHeader(),
+          Container(
+            height: 220,
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 Text(
-                  '賽金豬',
+                  _newsError ?? '暫無新聞資料',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                   style: GoogleFonts.notoSansTc(
-                    color: Colors.grey,
-                    fontSize: 18,
+                    fontSize: 15,
+                    color: const Color(0xFF64748B),
+                    height: 1.45,
+                  ),
+                ),
+                const Spacer(),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    onPressed: () {
+                      setState(() {
+                        _isLoadingNews = true;
+                        _newsError = null;
+                      });
+                      _fetchNews();
+                    },
+                    icon: const Icon(Icons.refresh_rounded, size: 16),
+                    label: const Text('重試'),
                   ),
                 ),
               ],
             ),
+          ),
+        ],
+      );
+    }
+
+    final item = _newsItems[_topNewsIndex % _newsItems.length];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildNewsHeader(),
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 350),
+          child: Container(
+            key: ValueKey<String>(
+                'top-news-${item['source_url'] ?? _topNewsIndex}'),
+            child: _buildNewsListCard(item),
+          ),
+        ),
+      ],
+    );
+  }
+
+  List<Map<String, dynamic>> _orderedNewsItemsWithTopFirst() {
+    if (_newsItems.isEmpty) return const [];
+    final topIndex = _topNewsIndex % _newsItems.length;
+    final topItem = _newsItems[topIndex];
+    final others = <Map<String, dynamic>>[];
+    for (var i = 0; i < _newsItems.length; i++) {
+      if (i == topIndex) continue;
+      others.add(_newsItems[i]);
+    }
+    return [topItem, ...others];
+  }
+
+  Widget _buildNewsHeader() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Text(
+              '最新',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 17),
+            ),
+            Container(
+              margin: const EdgeInsets.only(left: 4),
+              width: 6,
+              height: 6,
+              decoration: const BoxDecoration(
+                color: Colors.red,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 20),
+            Text(
+              '新聞',
+              style: GoogleFonts.notoSansTc(
+                color: Colors.grey,
+                fontSize: 17,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ],
         ),
-        const SizedBox(height: 12),
-        Text(
+        const SizedBox(height: 8),
+        const Text(
           '頭條早知道',
           style: TextStyle(
             fontFamily: 'StarPanda',
             fontSize: 40,
-            color: const Color(0xFF59B294),
+            color: Color(0xFF59B294),
           ),
         ),
-        const SizedBox(height: 8),
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(24),
+        const SizedBox(height: 10),
+      ],
+    );
+  }
+
+  Widget _buildNewsListCard(Map<String, dynamic> item) {
+    final imageUrl = (item['image_url'] ?? '').toString().trim();
+    final hasImage =
+        imageUrl.startsWith('http://') || imageUrl.startsWith('https://');
+    if (hasImage) {
+      return _buildNewsImageCard(item, imageUrl);
+    }
+    return _buildNewsTextCard(item);
+  }
+
+  Widget _buildNewsTextCard(Map<String, dynamic> item) {
+    final source = (item['category'] ?? '中央社').toString();
+    final title = (item['title'] ?? '無標題').toString();
+    final publishedAtRaw = (item['published_at_raw'] ?? '').toString();
+    final publishedAt = (item['published_at'] ?? '').toString();
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.newspaper,
-                        color: Colors.orange,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        '聯合新聞網',
-                        style: GoogleFonts.notoSansTc(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.grey[700],
-                        ),
-                      ),
-                    ],
-                  ),
-                  Text('02-05', style: GoogleFonts.inter(color: Colors.grey)),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Text(
-                '過半台灣人想「微退休」！滙豐揭關鍵門檻：先存到 730 萬元',
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                  height: 1.4,
-                  color: const Color(0xFF1E293B),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
+                  const Icon(Icons.newspaper_rounded,
+                      color: Colors.orange, size: 20),
+                  const SizedBox(width: 8),
                   Text(
-                    '繼續閱讀',
+                    source,
                     style: GoogleFonts.notoSansTc(
-                      color: const Color(0xFF59B294),
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.grey[700],
                     ),
                   ),
-                  const SizedBox(width: 4),
-                  const Icon(Icons.arrow_forward_rounded,
-                      color: Color(0xFF59B294), size: 18),
                 ],
+              ),
+              Text(
+                _formatNewsDate(publishedAtRaw, publishedAt),
+                style: GoogleFonts.inter(color: Colors.grey),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            title,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.notoSansTc(
+              fontSize: 19,
+              fontWeight: FontWeight.w700,
+              height: 1.3,
+              color: const Color(0xFF1E293B),
+            ),
+          ),
+          const SizedBox(height: 6),
+          InkWell(
+            onTap: () => _showNewsDetail(item),
+            borderRadius: BorderRadius.circular(999),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Text(
+                  '繼續閱讀',
+                  style: GoogleFonts.notoSansTc(
+                    color: const Color(0xFF59B294),
+                    fontWeight: FontWeight.w600,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                const Icon(Icons.arrow_forward_rounded,
+                    color: Color(0xFF59B294), size: 18),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNewsImageCard(Map<String, dynamic> item, String imageUrl) {
+    final source = (item['category'] ?? '中央社').toString();
+    final title = (item['title'] ?? '無標題').toString();
+    final publishedAtRaw = (item['published_at_raw'] ?? '').toString();
+    final publishedAt = (item['published_at'] ?? '').toString();
+
+    return Container(
+      height: 220,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: InkWell(
+          onTap: () => _showNewsDetail(item),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Image.network(
+                imageUrl,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Container(
+                  color: Colors.white,
+                  alignment: Alignment.center,
+                  child: const Icon(Icons.image_not_supported_rounded,
+                      color: Color(0xFF94A3B8), size: 32),
+                ),
+              ),
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withValues(alpha: 0.15),
+                      Colors.black.withValues(alpha: 0.62),
+                    ],
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.newspaper_rounded,
+                            color: Colors.white, size: 18),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            source,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.notoSansTc(
+                              color: Colors.white.withValues(alpha: 0.95),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          _formatNewsDate(publishedAtRaw, publishedAt),
+                          style: GoogleFonts.inter(
+                            color: Colors.white.withValues(alpha: 0.9),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Spacer(),
+                    Text(
+                      title,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: 29,
+                        fontWeight: FontWeight.w700,
+                        height: 1.25,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        Text(
+                          '繼續閱讀',
+                          style: GoogleFonts.notoSansTc(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 16,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.arrow_forward_rounded,
+                            color: Colors.white, size: 18),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
         ),
-      ],
+      ),
+    );
+  }
+
+  String _formatNewsDate(String raw, String parsed) {
+    if (raw.isNotEmpty) {
+      if (raw.length >= 10) return raw.substring(0, 10);
+      return raw;
+    }
+    if (parsed.isNotEmpty) {
+      if (parsed.length >= 10) return parsed.substring(0, 10);
+      return parsed;
+    }
+    return '--';
+  }
+
+  void _showNewsDetail(Map<String, dynamic> item) {
+    final title = (item['title'] ?? '').toString();
+    final content = (item['content'] ?? '').toString();
+    final sourceUrl = (item['source_url'] ?? '').toString();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(20),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                    color: const Color(0xFF1E293B),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  content,
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 16,
+                    height: 1.55,
+                    color: const Color(0xFF334155),
+                  ),
+                ),
+                if (sourceUrl.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    '來源：$sourceUrl',
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 13,
+                      color: const Color(0xFF64748B),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

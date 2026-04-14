@@ -7,11 +7,11 @@ import 'elder_home_screen.dart';
 import 'dart:async';
 
 class ElderPairingDisplayScreen extends StatefulWidget {
-const ElderPairingDisplayScreen({super.key});
+  const ElderPairingDisplayScreen({super.key});
 
-@override
-State<ElderPairingDisplayScreen> createState() =>
-_ElderPairingDisplayScreenState();
+  @override
+  State<ElderPairingDisplayScreen> createState() =>
+      _ElderPairingDisplayScreenState();
 }
 
 class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
@@ -21,80 +21,82 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
   );
   static const int _devBypassUserId = int.fromEnvironment(
     'DEV_BYPASS_USER_ID',
-    defaultValue: 0,
+    defaultValue: 1,
   );
   static const String _devBypassUserName = String.fromEnvironment(
     'DEV_BYPASS_USER_NAME',
-    defaultValue: '測試長輩',
+    defaultValue: 'TestElder',
   );
 
-String? _pairingCode;
-int _secondsLeft = 0;
-bool _isLoading = true;
-Timer? _statusTimer;
+  String? _pairingCode;
+  int _secondsLeft = 0;
+  bool _isLoading = true;
+  Timer? _statusTimer;
 
-@override
-void initState() {
-super.initState();
-_requestNewCode();
-}
+  @override
+  void initState() {
+    super.initState();
+    _requestNewCode();
+  }
 
-Future<void> _requestNewCode() async {
-setState(() => _isLoading = true);
-try {
-final result = await ApiService.requestPairingCode();
-if (!mounted) return;
+  Future<void> _requestNewCode() async {
+    setState(() => _isLoading = true);
+    try {
+      final result = await ApiService.requestPairingCode();
+      if (!mounted) return;
 
 // 檢查 API 是否回傳錯誤
-if (result['status'] == 'error') {
-  setState(() => _isLoading = false);
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(content: Text('API 錯誤：${result['message'] ?? result['error'] ?? '未知錯誤'}')),
-  );
-  return;
-}
+      if (result['status'] == 'error') {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text(
+                  'API 錯誤：${result['message'] ?? result['error'] ?? '未知錯誤'}')),
+        );
+        return;
+      }
 
 // 從 API Response 的 data 欄位取得配對碼
-final data = result['data'] as Map<String, dynamic>?;
+      final data = result['data'] as Map<String, dynamic>?;
 
-setState(() {
-_pairingCode = data?['pairing_code'];
-_secondsLeft = data?['expires_in_seconds'] ?? 600;
-_isLoading = false;
-});
+      setState(() {
+        _pairingCode = data?['pairing_code'];
+        _secondsLeft = data?['expires_in_seconds'] ?? 600;
+        _isLoading = false;
+      });
 
-if (_pairingCode != null) {
-  _startStatusPolling();
-} else {
-  // 顯示更詳細的錯誤資訊
-  final errorDetail = result.toString();
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(content: Text('無法取得配對碼：$errorDetail')),
-  );
-}
-} catch (e) {
-if (!mounted) return;
-setState(() => _isLoading = false);
-ScaffoldMessenger.of(
-context,
-).showSnackBar(SnackBar(content: Text('申請代碼失敗：$e')));
-}
-}
+      if (_pairingCode != null) {
+        _startStatusPolling();
+      } else {
+        // 顯示更詳細的錯誤資訊
+        final errorDetail = result.toString();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('無法取得配對碼：$errorDetail')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('申請代碼失敗：$e')));
+    }
+  }
 
-void _startStatusPolling() {
-_statusTimer?.cancel();
-_statusTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
-if (_pairingCode == null) return;
-try {
-final result = await ApiService.checkPairingStatus(_pairingCode!);
-if (!mounted) return;
+  void _startStatusPolling() {
+    _statusTimer?.cancel();
+    _statusTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
+      if (_pairingCode == null) return;
+      try {
+        final result = await ApiService.checkPairingStatus(_pairingCode!);
+        if (!mounted) return;
 
 // 從 API Response 的 data 欄位取得配對狀態
-final status = result['data'] as Map<String, dynamic>?;
-if (status == null) return;
+        final status = result['data'] as Map<String, dynamic>?;
+        if (status == null) return;
 
-if (status['status'] == 'paired') {
-timer.cancel();
+        if (status['status'] == 'paired') {
+          timer.cancel();
 
           // 核心修復：持久化儲存長輩 ID、姓名與角色
           final prefs = await SharedPreferences.getInstance();
@@ -102,65 +104,114 @@ timer.cancel();
           await prefs.setString('caregiver_name', status['elder_name'] ?? '長輩');
           await prefs.setString('user_role', 'elder');
 
-if (!mounted) return;
+          if (!mounted) return;
 
 // 跳轉至長輩首頁
-Navigator.pushReplacement(
-context,
-MaterialPageRoute(
-builder: (c) => ElderHomeScreen(
-userId: status['elder_id'],
-userName: status['elder_name'] ?? '長輩',
-),
-),
-);
-}
-} catch (e) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (c) => ElderHomeScreen(
+                userId: status['elder_id'],
+                userName: status['elder_name'] ?? '長輩',
+              ),
+            ),
+          );
+        }
+      } catch (e) {
 // 靜默處理
-}
-});
-}
-
-Future<void> _quickLoginSameElder() async {
-  final prefs = await SharedPreferences.getInstance();
-  int? elderId = prefs.getInt('caregiver_id');
-  String? elderName = prefs.getString('caregiver_name');
-  String? role = prefs.getString('user_role');
-
-  // 若本機沒有資料，允許開發模式用 dart-define 快速回填
-  if ((elderId == null || elderName == null || role != 'elder') &&
-      _devBypassLogin &&
-      _devBypassUserId > 0) {
-    elderId = _devBypassUserId;
-    elderName = _devBypassUserName;
-    await prefs.setInt('caregiver_id', elderId);
-    await prefs.setString('caregiver_name', elderName);
-    await prefs.setString('user_role', 'elder');
-    role = 'elder';
+      }
+    });
   }
 
-  if (!mounted) return;
+  Future<void> _quickLoginSameElder() async {
+    final prefs = await SharedPreferences.getInstance();
+    int? elderId;
+    String? elderName;
+    String? role;
 
-  if (elderId == null || elderName == null || role != 'elder') {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('尚未找到可快速登入的長輩帳號，請先完成一次配對')),
+    // 開發模式：固定使用同一個測試長輩帳號（不依賴 SharedPreferences 是否被清空）
+    if (_devBypassLogin) {
+      elderId = _devBypassUserId > 0 ? _devBypassUserId : 1;
+      elderName =
+          _devBypassUserName.isNotEmpty ? _devBypassUserName : 'TestElder';
+      await prefs.setInt('caregiver_id', elderId);
+      await prefs.setString('caregiver_name', elderName);
+      await prefs.setString('user_role', 'elder');
+      role = 'elder';
+    } else {
+      elderId = prefs.getInt('caregiver_id');
+      elderName = prefs.getString('caregiver_name');
+      role = prefs.getString('user_role');
+    }
+
+    if (!mounted) return;
+
+    if (elderId == null || elderName == null || role != 'elder') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('尚未找到可快速登入的長輩帳號，請先完成一次配對')),
+      );
+      return;
+    }
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ElderHomeScreen(userId: elderId!, userName: elderName!),
+      ),
     );
-    return;
   }
 
-  Navigator.pushReplacement(
-    context,
-    MaterialPageRoute(
-      builder: (_) => ElderHomeScreen(userId: elderId!, userName: elderName!),
-    ),
-  );
-}
+  Future<void> _quickLoginYuxuanDemo() async {
+    try {
+      final result = await ApiService.ensureYuxuanDemoElder();
+      if (!mounted) return;
 
-@override
-void dispose() {
-_statusTimer?.cancel();
-super.dispose();
-}
+      if (result['status'] == 'error') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content:
+                  Text(result['message'] ?? result['error'] ?? '宇璿帳號建立失敗')),
+        );
+        return;
+      }
+
+      final data = result['data'] as Map<String, dynamic>?;
+      final rawElderId = data?['elder_user_id'];
+      final elderId =
+          rawElderId is int ? rawElderId : int.tryParse('${rawElderId ?? ''}');
+      final elderName = (data?['elder_name'] ?? '宇璿').toString();
+      if (elderId == null || elderId <= 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('宇璿帳號建立成功，但登入資料不完整')),
+        );
+        return;
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('caregiver_id', elderId);
+      await prefs.setString('caregiver_name', elderName);
+      await prefs.setString('user_role', 'elder');
+      if (!mounted) return;
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ElderHomeScreen(userId: elderId, userName: elderName),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('登入宇璿失敗：$e')),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _statusTimer?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -254,9 +305,26 @@ super.dispose();
                   ElevatedButton.icon(
                     onPressed: _quickLoginSameElder,
                     icon: const Icon(Icons.login_rounded),
-                    label: const Text('快速登入同一長輩'),
+                    label: Text(_devBypassLogin ? '快速登入固定測試長輩' : '快速登入同一長輩'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF59B294),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 12,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  ElevatedButton.icon(
+                    onPressed: _quickLoginYuxuanDemo,
+                    icon: const Icon(Icons.elderly_rounded),
+                    label: const Text('登入宇璿（64歲）'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF2E7D78),
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(
                         horizontal: 18,

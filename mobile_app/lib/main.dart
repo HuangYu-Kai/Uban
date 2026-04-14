@@ -16,6 +16,8 @@ import 'package:android_intent_plus/android_intent.dart';
 import 'package:android_intent_plus/flag.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_line_sdk/flutter_line_sdk.dart';
+import 'network/http_overrides_stub.dart'
+    if (dart.library.io) 'network/http_overrides_io.dart';
 
 // Screens
 import 'screens/video_call_screen.dart';
@@ -95,6 +97,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  configureHttpOverrides();
 
   try {
     // Initialize date formatting

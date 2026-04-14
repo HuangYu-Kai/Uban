@@ -5,13 +5,14 @@ import 'package:http/http.dart' as http;
 
 class ApiService {
   // --- 動態伺服器 IP 設置 ---
-  static const String _serverIp =
-      String.fromEnvironment('SERVER_IP', defaultValue: 'localhost-0.tail5abf5e.ts.net');
+  static const String _serverIp = String.fromEnvironment('SERVER_IP',
+      defaultValue: 'localhost-0.tail5abf5e.ts.net');
 
   // 依據是否為 ngrok 自動切換 http/https 與 埠號
-  static final String baseUrl = _serverIp.contains('ngrok') || _serverIp.contains('ts.net')
-      ? 'https://$_serverIp/api'
-      : 'http://$_serverIp:8000/api';
+  static final String baseUrl =
+      _serverIp.contains('ngrok') || _serverIp.contains('ts.net')
+          ? 'https://$_serverIp/api'
+          : 'http://$_serverIp:8000/api';
 
   // 統一超時時間
   static const Duration _timeout = Duration(seconds: 15);
@@ -23,16 +24,18 @@ class ApiService {
     required String role,
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/auth/register'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'username': username,
-          'email': email,
-          'password': password,
-          'role': role,
-        }),
-      ).timeout(_timeout);
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/auth/register'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'username': username,
+              'email': email,
+              'password': password,
+              'role': role,
+            }),
+          )
+          .timeout(_timeout);
       return _safeDecode(response);
     } on TimeoutException {
       return {'status': 'error', 'message': '連線逾時，請檢查網路'};
@@ -46,11 +49,13 @@ class ApiService {
     String password,
   ) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/auth/login'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'email': email, 'password': password}),
-      ).timeout(_timeout);
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/auth/login'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'email': email, 'password': password}),
+          )
+          .timeout(_timeout);
       return _safeDecode(response);
     } on TimeoutException {
       return {'status': 'error', 'message': '連線逾時，請檢查網路'};
@@ -106,16 +111,32 @@ class ApiService {
     required int age,
   }) async {
     try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/pairing/confirm'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'family_id': familyId,
+              'code': code,
+              'elder_name': elderName,
+              'gender': gender,
+              'age': age,
+            }),
+          )
+          .timeout(_timeout);
+      return _safeDecode(response);
+    } on TimeoutException {
+      return {'status': 'error', 'message': '連線逾時，請檢查網路'};
+    } catch (e) {
+      return {'status': 'error', 'message': '網路連線失敗: $e'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> ensureYuxuanDemoElder() async {
+    try {
       final response = await http.post(
-        Uri.parse('$baseUrl/pairing/confirm'),
+        Uri.parse('$baseUrl/pairing/dev/ensure-yuxuan-demo'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'family_id': familyId,
-          'code': code,
-          'elder_name': elderName,
-          'gender': gender,
-          'age': age,
-        }),
       ).timeout(_timeout);
       return _safeDecode(response);
     } on TimeoutException {
@@ -133,15 +154,17 @@ class ApiService {
     String? gender,
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/user/profile/$elderId'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          if (userName != null) 'user_name': userName,
-          if (age != null) 'age': age,
-          if (gender != null) 'gender': gender,
-        }),
-      ).timeout(_timeout);
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/user/profile/$elderId'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              if (userName != null) 'user_name': userName,
+              if (age != null) 'age': age,
+              if (gender != null) 'gender': gender,
+            }),
+          )
+          .timeout(_timeout);
       return _safeDecode(response);
     } on TimeoutException {
       return {'status': 'error', 'message': '連線逾時，請檢查網路'};
@@ -152,7 +175,9 @@ class ApiService {
 
   static Future<Map<String, dynamic>> getStatus(int userId) async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/user/status/$userId')).timeout(_timeout);
+      final response = await http
+          .get(Uri.parse('$baseUrl/user/status/$userId'))
+          .timeout(_timeout);
       return _safeDecode(response);
     } on TimeoutException {
       return {'status': 'error', 'message': '連線逾時，請檢查網路'};
@@ -164,11 +189,13 @@ class ApiService {
   // AI 相關功能
   static Future<Map<String, dynamic>> aiChat(int userId, String message) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/ai/chat'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'user_id': userId, 'message': message}),
-      ).timeout(const Duration(seconds: 30)); // AI 回應需要更長時間
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/ai/chat'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'user_id': userId, 'message': message}),
+          )
+          .timeout(const Duration(seconds: 30)); // AI 回應需要更長時間
       return _safeDecode(response);
     } on TimeoutException {
       return {'status': 'error', 'message': 'AI 回應逾時，請稍後再試'};
@@ -184,16 +211,18 @@ class ApiService {
     Map<String, dynamic>? extraData,
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/ai/log_activity'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'user_id': userId,
-          'event_type': type,
-          'content': content,
-          'extra_data': extraData != null ? jsonEncode(extraData) : null,
-        }),
-      ).timeout(_timeout);
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/ai/log_activity'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'user_id': userId,
+              'event_type': type,
+              'content': content,
+              'extra_data': extraData != null ? jsonEncode(extraData) : null,
+            }),
+          )
+          .timeout(_timeout);
       return _safeDecode(response);
     } on TimeoutException {
       return {'status': 'error', 'message': '連線逾時，請檢查網路'};
@@ -210,7 +239,9 @@ class ApiService {
 
   static Future<List<dynamic>> getPairedElders(int userId) async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/user/$userId/elders')).timeout(_timeout);
+      final response = await http
+          .get(Uri.parse('$baseUrl/user/$userId/elders'))
+          .timeout(_timeout);
       if (response.statusCode == 200) {
         final decoded = jsonDecode(response.body);
         // 後端直接返回 list，不是 {status, data} 格式
@@ -231,7 +262,9 @@ class ApiService {
 
   static Future<List<dynamic>> getPairedFamily(int userId) async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/user/$userId/family')).timeout(_timeout);
+      final response = await http
+          .get(Uri.parse('$baseUrl/user/$userId/family'))
+          .timeout(_timeout);
       if (response.statusCode == 200) {
         final decoded = jsonDecode(response.body);
         if (decoded['status'] == 'success') {
@@ -246,7 +279,9 @@ class ApiService {
 
   static Future<Map<String, dynamic>> getElderProfile(int userId) async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/user/profile/$userId')).timeout(_timeout);
+      final response = await http
+          .get(Uri.parse('$baseUrl/user/profile/$userId'))
+          .timeout(_timeout);
       return _safeDecode(response);
     } on TimeoutException {
       return {'status': 'error', 'message': '連線逾時，請檢查網路'};
@@ -270,23 +305,26 @@ class ApiService {
     int? heartbeatFrequency,
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/user/profile/$userId'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          if (phone != null) 'phone': phone,
-          if (location != null) 'location': location,
-          if (appellation != null) 'appellation': appellation,
-          if (aiEmotionTone != null) 'ai_emotion_tone': aiEmotionTone,
-          if (aiTextVerbosity != null) 'ai_text_verbosity': aiTextVerbosity,
-          if (chronicDiseases != null) 'chronic_diseases': chronicDiseases,
-          if (medicationNotes != null) 'medication_notes': medicationNotes,
-          if (interests != null) 'interests': interests,
-          if (aiPersona != null) 'ai_persona': aiPersona,
-          if (lifeStory != null) 'life_story': lifeStory,
-          if (heartbeatFrequency != null) 'heartbeat_frequency': heartbeatFrequency,
-        }),
-      ).timeout(_timeout);
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/user/profile/$userId'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              if (phone != null) 'phone': phone,
+              if (location != null) 'location': location,
+              if (appellation != null) 'appellation': appellation,
+              if (aiEmotionTone != null) 'ai_emotion_tone': aiEmotionTone,
+              if (aiTextVerbosity != null) 'ai_text_verbosity': aiTextVerbosity,
+              if (chronicDiseases != null) 'chronic_diseases': chronicDiseases,
+              if (medicationNotes != null) 'medication_notes': medicationNotes,
+              if (interests != null) 'interests': interests,
+              if (aiPersona != null) 'ai_persona': aiPersona,
+              if (lifeStory != null) 'life_story': lifeStory,
+              if (heartbeatFrequency != null)
+                'heartbeat_frequency': heartbeatFrequency,
+            }),
+          )
+          .timeout(_timeout);
       return _safeDecode(response);
     } on TimeoutException {
       return {'status': 'error', 'message': '連線逾時，請檢查網路'};
@@ -297,7 +335,9 @@ class ApiService {
 
   static Future<List<dynamic>> getPersonaTemplates() async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/ai/persona_templates')).timeout(_timeout);
+      final response = await http
+          .get(Uri.parse('$baseUrl/ai/persona_templates'))
+          .timeout(_timeout);
       if (response.statusCode == 200) {
         final decoded = jsonDecode(response.body);
         if (decoded['status'] == 'success') {
@@ -312,7 +352,9 @@ class ApiService {
 
   static Future<Map<String, dynamic>> getElderAgentProfile(int elderId) async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/user/elder/$elderId')).timeout(_timeout);
+      final response = await http
+          .get(Uri.parse('$baseUrl/user/elder/$elderId'))
+          .timeout(_timeout);
       return _safeDecode(response);
     } on TimeoutException {
       return {'status': 'error', 'message': '連線逾時，請檢查網路'};
@@ -408,7 +450,8 @@ class ApiService {
   static Future<Map<String, dynamic>> getCallHistory(String roomId) async {
     try {
       final response = await http
-          .get(Uri.parse('${baseUrl.replaceAll('/api', '')}/api/call_history?room_id=$roomId'))
+          .get(Uri.parse(
+              '${baseUrl.replaceAll('/api', '')}/api/call_history?room_id=$roomId'))
           .timeout(const Duration(seconds: 10));
       return _safeDecode(response);
     } catch (e) {
@@ -425,6 +468,31 @@ class ApiService {
       return _safeDecode(response);
     } on TimeoutException {
       return {'status': 'error', 'message': '獲取建議逾時，請稍後再試'};
+    } catch (e) {
+      return {'status': 'error', 'message': '網路連線失敗: $e'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> getNews({
+    String category = 'politics',
+    int limit = 3,
+    String? dataDate,
+  }) async {
+    try {
+      final queryParameters = <String, String>{
+        'category': category,
+        'limit': limit.toString(),
+      };
+      if (dataDate != null && dataDate.isNotEmpty) {
+        queryParameters['data_date'] = dataDate;
+      }
+
+      final uri =
+          Uri.parse('$baseUrl/news').replace(queryParameters: queryParameters);
+      final response = await http.get(uri).timeout(_timeout);
+      return _safeDecode(response);
+    } on TimeoutException {
+      return {'status': 'error', 'message': '新聞讀取逾時，請稍後再試'};
     } catch (e) {
       return {'status': 'error', 'message': '網路連線失敗: $e'};
     }
