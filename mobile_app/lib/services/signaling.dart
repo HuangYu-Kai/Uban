@@ -305,16 +305,27 @@ class Signaling {
   Future<bool> _showCallkitIncoming(String callerName) async {
     if (kIsWeb) return false;
     final uuid = const Uuid().v4();
+    
+    // ★ 新增：通知時手機振動（系統級振動）
+    HapticFeedback.heavyImpact();
+    Future.delayed(const Duration(milliseconds: 200), () {
+      HapticFeedback.mediumImpact();
+    });
+    Future.delayed(const Duration(milliseconds: 400), () {
+      HapticFeedback.heavyImpact();
+    });
+    
+    // ★ 美化通知 UI 的參數配置
     final params = CallKitParams(
       id: uuid,
-      nameCaller: callerName,
+      nameCaller: callerName,  // 來電者名稱（例如「李奶奶」）
       appName: 'Uban',
-      avatar: 'https://i.pravatar.cc/100',
-      handle: '長輩呼叫',
-      type: 0,
+      avatar: 'https://i.pravatar.cc/150?name=$callerName',  // ★ 動態頭貼，基於名稱生成
+      handle: '📞 視訊通話',  // ★ 改進提示文字
+      type: 0,  // 0 = audio, 1 = video
       duration: 30000,
-      textAccept: '接聽',
-      textDecline: '拒絕',
+      textAccept: '✓ 接聽',  // ★ 加入emoji
+      textDecline: '✕ 拒絕',  // ★ 加入emoji
       missedCallNotification: const NotificationParams(
         showNotification: true,
         isShowCallback: true,
@@ -326,9 +337,12 @@ class Signaling {
         isCustomNotification: true,
         isShowLogo: false,
         ringtonePath: 'system_ringtone_default',
-        backgroundColor: '#0955fa',
+        backgroundColor: '#1a472a',  // ★ 深綠色背景，更沉靜專業
         backgroundUrl: 'https://i.pravatar.cc/500',
-        actionColor: '#4CAF50',
+        actionColor: '#4CAF50',  // ★ 綠色按鈕（接聽）
+        textColor: '#ffffff',  // ★ 白色文字
+        incomingCallNotificationChannelName: 'Uban_Incoming_Call',
+        isShowFullLockedScreen: true,  // ★ 鎖定屏幕時顯示全屏
       ),
       ios: const IOSParams(
         iconName: 'CallKitLogo',
