@@ -4,6 +4,7 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'dart:async';
 import '../services/signaling.dart';
 import 'role_selection_screen.dart';
 import '../globals.dart';
@@ -34,6 +35,11 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   final RTCVideoRenderer _remoteRenderer = RTCVideoRenderer();
   String _status = "等待連線...";
   bool _isInCall = false;
+  bool _isCameraOff = true; // ★ 攝像頭預設關閉
+  bool _isMuted = false;
+  bool _mediaInitialized = false;
+  late Timer _callTimer;
+  int _callDuration = 0; // 秒數
 
   @override
   void initState() {
@@ -152,11 +158,23 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
 
     _signaling.onAddRemoteStream = ((stream) {
       debugPrint("📺 [ElderScreen] Remote stream added! Tracks: ${stream.getTracks().length}");
-      if (mounted) setState(() { _remoteRenderer.srcObject = stream; _status = "通話中"; _isInCall = true; });
+      if (mounted) {
+        setState(() { 
+          _remoteRenderer.srcObject = stream; 
+          _status = "通話中"; 
+          _isInCall = true;
+          _callDuration = 0;
+        });
+        _startCallTimer();
+      }
     });
 
     _signaling.onJoinFailed = (errorMessage) {
       if (mounted) {
+        HapticFeedback.heavyImpact();
+        Future.delayed(const Duration(milliseconds: 200), () {
+          HapticFeedback.mediumImpact();
+        });
         showDialog(
           context: context,
           barrierDismissible: false,
@@ -166,8 +184,8 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
             actions: [
               ElevatedButton(
                 onPressed: () { 
-                  Navigator.pop(context); // 關閉 Dialog
-                  Navigator.pop(context); // 退出頁面
+                  Navigator.pop(context);
+                  Navigator.pop(context);
                 }, 
                 child: const Text('確定')
               )
@@ -183,7 +201,10 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       _signaling.createOffer(targetId: accepterId, isEmergency: false);
     };
 
-    await _signaling.openUserMedia(_localRenderer, videoEnabled: widget.isVideoCall);
+    // ★ 改為懶加載：只在需要時初始化媒體
+    if (widget.isVideoCall && !_mediaInitialized) {
+      await _initializeMedia();
+    }
     
     _signaling.connect(
       widget.roomId, 
@@ -199,6 +220,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     });
 
     _signaling.onCallEnded = () {
+      _callTimer.cancel();
       if (mounted) {
         setState(() { 
           _remoteRenderer.srcObject = null; 
@@ -250,7 +272,6 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       return false; 
     };
 
-    // ★ Natural Heartbeat listener
     _signaling.onHeartbeatMessage = (message) async {
       debugPrint("💓 [ElderScreen] Heartbeat: $message");
       if (mounted && !_isInCall) {
@@ -271,6 +292,66 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
         });
       }
     };
+  }
+
+  // ★ 新增：懶加載媒體初始化
+  Future<void> _initializeMedia() async {
+    if (_mediaInitialized) return;
+    try {
+      await _signaling.openUserMedia(_localRenderer, videoEnabled: !_isCameraOff);
+      if (mounted) {
+        setState(() => _mediaInitialized = true);
+      }
+    } catch (e) {
+      debugPrint("❌ Media initialization failed: $e");
+    }
+  }
+
+  // ★ 新增：切換攝像頭
+  Future<void> _toggleCamera() async {
+    if (!_mediaInitialized && !_isCameraOff) {
+      await _initializeMedia();
+    }
+    
+    if (!_mediaInitialized) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('攝像頭初始化失敗')),
+      );
+      return;
+    }
+
+    if (mounted) {
+      setState(() => _isCameraOff = !_isCameraOff);
+      
+      if (_isCameraOff) {
+        _signaling.localStream?.getVideoTracks().forEach((track) => track.enabled = false);
+      } else {
+        _signaling.localStream?.getVideoTracks().forEach((track) => track.enabled = true);
+      }
+    }
+  }
+
+  // ★ 新增：切換靜音
+  void _toggleMute() {
+    if (mounted) {
+      setState(() => _isMuted = !_isMuted);
+      _signaling.localStream?.getAudioTracks().forEach((track) => track.enabled = !_isMuted);
+    }
+  }
+
+  // ★ 新增：通話計時器
+  void _startCallTimer() {
+    _callTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) {
+        setState(() => _callDuration++);
+      }
+    });
+  }
+
+  String _formatDuration(int seconds) {
+    final mins = seconds ~/ 60;
+    final secs = seconds % 60;
+    return '${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
   }
 
   // 主動呼叫 (先響鈴)
@@ -303,6 +384,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _callTimer.cancel();
     pendingAcceptedCall.removeListener(_onPendingCallChanged);
     _localRenderer.dispose();
     _remoteRenderer.dispose();
@@ -396,16 +478,115 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
                   ),
                 ),
 
-              // 4. 底部控制列 (大按鈕，便於操作)
+                            // 4. 底部控制列 (大按鈕，便於操作)
               if (!widget.isCCTVMode)
                 Positioned(
                   bottom: 60,
                   left: 0,
                   right: 0,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      if (!_isInCall)
+                      // ★ 通話時長顯示（僅在通話中顯示）
+                      if (_isInCall)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 20),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: Colors.black38,
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: Colors.white24, width: 1),
+                            ),
+                            child: Text(
+                              '通話時間: ${_formatDuration(_callDuration)}',
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ),
+                      
+                      // ★ 通話控制按鈕（水平排列）
+                      if (_isInCall)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: [
+                              // 攝像頭開關
+                              Container(
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black26,
+                                      blurRadius: 8,
+                                    ),
+                                  ],
+                                ),
+                                child: FloatingActionButton(
+                                  onPressed: _toggleCamera,
+                                  heroTag: 'camera',
+                                  mini: true,
+                                  backgroundColor: _isCameraOff ? Colors.grey.shade600 : Colors.blue.shade500,
+                                  child: Icon(
+                                    _isCameraOff ? Icons.videocam_off : Icons.videocam,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                              
+                              // 靜音按鈕
+                              Container(
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black26,
+                                      blurRadius: 8,
+                                    ),
+                                  ],
+                                ),
+                                child: FloatingActionButton(
+                                  onPressed: _toggleMute,
+                                  heroTag: 'mute',
+                                  mini: true,
+                                  backgroundColor: _isMuted ? Colors.red.shade600 : Colors.blue.shade500,
+                                  child: Icon(
+                                    _isMuted ? Icons.mic_off : Icons.mic,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                              
+                              // 掛斷按鈕（紅色、較大）
+                              GestureDetector(
+                                onTap: _hangUp,
+                                child: Container(
+                                  width: 90,
+                                  height: 90,
+                                  decoration: BoxDecoration(
+                                    color: Colors.redAccent,
+                                    shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.red.shade300.withValues(alpha: 0.5),
+                                        blurRadius: 12,
+                                        spreadRadius: 2,
+                                      ),
+                                    ],
+                                  ),
+                                  child: const Icon(Icons.call_end, color: Colors.white, size: 48),
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      else
+                        // 呼叫按鈕（未在通話中時）
                         GestureDetector(
                           onTap: _makeCall,
                           child: Container(
@@ -424,6 +605,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
                               ],
                             ),
                             child: const Row(
+                              mainAxisSize: MainAxisSize.min,
                               children: [
                                 Icon(Icons.call, color: Colors.white, size: 28),
                                 SizedBox(width: 12),
@@ -437,26 +619,6 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
                                 ),
                               ],
                             ),
-                          ),
-                        ),
-                      if (_isInCall)
-                        GestureDetector(
-                          onTap: _hangUp,
-                          child: Container(
-                            width: 90,
-                            height: 90,
-                            decoration: const BoxDecoration(
-                              color: Colors.redAccent,
-                              shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black26,
-                                  blurRadius: 10,
-                                  offset: Offset(0, 4),
-                                ),
-                              ],
-                            ),
-                            child: const Icon(Icons.call_end, color: Colors.white, size: 48),
                           ),
                         ),
                     ],
