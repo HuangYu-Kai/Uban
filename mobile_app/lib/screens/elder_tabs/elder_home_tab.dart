@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:lunar/lunar.dart';
 import 'package:intl/intl.dart';
 import '../elder_screen.dart';
+import '../news_listen_player_screen.dart';
 import '../../services/api_service.dart';
 
 class ElderHomeTab extends StatefulWidget {
@@ -40,6 +41,9 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
   int _topNewsIndex = 0;
   Timer? _topNewsRotateTimer;
   bool _isStageSwitching = false;
+  static const Duration _topNewsRotationDuration = Duration(seconds: 15);
+  DateTime _topNewsCycleStartedAt = DateTime.now();
+  int _topNewsCycleToken = 0;
 
   @override
   void initState() {
@@ -67,33 +71,30 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
 
   Future<void> _fetchNews() async {
     try {
-      final response = await ApiService.getNews(category: 'politics', limit: 8);
-      final isSuccess = response['status'] == 'success';
-      if (!isSuccess) {
-        throw Exception(response['message'] ?? '新聞讀取失敗');
+      var parsed = <Map<String, dynamic>>[];
+      final allResponse = await ApiService.getNews(category: 'all', limit: 12);
+      final allSuccess = allResponse['status'] == 'success';
+      if (allSuccess) {
+        parsed = _parseNewsItems(allResponse);
       }
-
-      final data = response['data'];
-      final items = (data is Map ? data['items'] : null);
-      final parsed = <Map<String, dynamic>>[];
-      if (items is List) {
-        for (final item in items) {
-          if (item is Map<String, dynamic>) {
-            parsed.add(item);
-          } else if (item is Map) {
-            parsed
-                .add(item.map((key, value) => MapEntry(key.toString(), value)));
-          }
-        }
+      if (parsed.isEmpty) {
+        parsed = await _fetchNewsByMultipleCategories();
       }
+      if (parsed.isEmpty) {
+        final fallback =
+            await ApiService.getNews(category: 'politics', limit: 12);
+        parsed = _parseNewsItems(fallback);
+      }
+      final deduped = _dedupeNewsItems(parsed).take(12).toList();
 
       if (mounted) {
         setState(() {
-          _newsItems = parsed;
+          _newsItems = deduped;
           _isLoadingNews = false;
           _newsError = null;
           if (_newsItems.isNotEmpty) {
             _topNewsIndex = _random.nextInt(_newsItems.length);
+            _resetTopNewsCycle();
           } else {
             _topNewsIndex = 0;
           }
@@ -111,12 +112,55 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     }
   }
 
+  List<Map<String, dynamic>> _parseNewsItems(Map<String, dynamic> response) {
+    final data = response['data'];
+    final items = (data is Map ? data['items'] : null);
+    final parsed = <Map<String, dynamic>>[];
+    if (items is List) {
+      for (final item in items) {
+        if (item is Map<String, dynamic>) {
+          parsed.add(item);
+        } else if (item is Map) {
+          parsed.add(item.map((key, value) => MapEntry(key.toString(), value)));
+        }
+      }
+    }
+    return parsed;
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchNewsByMultipleCategories() async {
+    final categories = <String>[
+      'politics',
+      'international',
+      'finance',
+      'technology',
+      'life',
+      'society',
+      'sports',
+      'entertainment',
+      'culture',
+      'local',
+      'china',
+    ];
+    final responses = await Future.wait(
+      categories.map((c) => ApiService.getNews(category: c, limit: 2)),
+    );
+    final merged = <Map<String, dynamic>>[];
+    for (final response in responses) {
+      if (response['status'] == 'success') {
+        merged.addAll(_parseNewsItems(response));
+      }
+    }
+    return merged;
+  }
+
   void _startTopNewsRotation() {
     _topNewsRotateTimer?.cancel();
+    _resetTopNewsCycle();
     if (_newsItems.length <= 1) {
       return;
     }
-    _topNewsRotateTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+    _topNewsRotateTimer = Timer.periodic(_topNewsRotationDuration, (_) {
       if (!mounted || _newsItems.length <= 1) return;
       setState(() {
         var next = _random.nextInt(_newsItems.length);
@@ -124,8 +168,14 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
           next = (next + 1) % _newsItems.length;
         }
         _topNewsIndex = next;
+        _resetTopNewsCycle();
       });
     });
+  }
+
+  void _resetTopNewsCycle() {
+    _topNewsCycleStartedAt = DateTime.now();
+    _topNewsCycleToken++;
   }
 
   Future<void> _goToTopStage() async {
@@ -910,12 +960,12 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
           )
         else if (_newsError != null)
           Container(
-            height: 220,
+            constraints: const BoxConstraints(minHeight: 220),
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
                 color: Colors.white, borderRadius: BorderRadius.circular(24)),
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
                   _newsError!,
@@ -960,7 +1010,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
         else
           Column(
             children: [
-              for (final item in _orderedNewsItemsWithTopFirst().take(3)) ...[
+              for (final item in _orderedNewsItemsWithTopFirst().take(12)) ...[
                 _buildNewsListCard(item),
                 const SizedBox(height: 14),
               ],
@@ -1001,7 +1051,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
         children: [
           _buildNewsHeader(),
           Container(
-            height: 220,
+            constraints: const BoxConstraints(minHeight: 220),
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
               color: Colors.white,
@@ -1016,18 +1066,17 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
                   _newsError ?? '暫無新聞資料',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
                   style: GoogleFonts.notoSansTc(
                     fontSize: 15,
                     color: const Color(0xFF64748B),
                     height: 1.45,
                   ),
                 ),
-                const Spacer(),
+                const SizedBox(height: 12),
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton.icon(
@@ -1054,8 +1103,62 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildNewsHeader(),
+        Row(
+          children: [
+            Expanded(
+              child: _newsItems.length > 1
+                  ? TweenAnimationBuilder<double>(
+                      key: ValueKey<int>(_topNewsCycleToken),
+                      tween: Tween(begin: 0, end: 1),
+                      duration: _topNewsProgressRemaining(),
+                      curve: Curves.linear,
+                      builder: (context, value, _) => ClipRRect(
+                        borderRadius: BorderRadius.circular(999),
+                        child: LinearProgressIndicator(
+                          value: value,
+                          minHeight: 5,
+                          backgroundColor: const Color(0xFFD8E8E2),
+                          color: const Color(0xFF59B294),
+                        ),
+                      ),
+                    )
+                  : ClipRRect(
+                      borderRadius: BorderRadius.circular(999),
+                      child: const LinearProgressIndicator(
+                        value: 1,
+                        minHeight: 5,
+                        backgroundColor: Color(0xFFD8E8E2),
+                        color: Color(0xFF59B294),
+                      ),
+                    ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              _formatTopNewsTimeLabel(item),
+              style: GoogleFonts.notoSansTc(
+                fontSize: 12,
+                color: const Color(0xFF64748B),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
         AnimatedSwitcher(
-          duration: const Duration(milliseconds: 350),
+          duration: const Duration(milliseconds: 420),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeInCubic,
+          transitionBuilder: (child, animation) {
+            final offset = Tween<Offset>(
+              begin: const Offset(0, 0.035),
+              end: Offset.zero,
+            ).animate(
+                CurvedAnimation(parent: animation, curve: Curves.easeOut));
+            return FadeTransition(
+              opacity: animation,
+              child: SlideTransition(position: offset, child: child),
+            );
+          },
           child: Container(
             key: ValueKey<String>(
                 'top-news-${item['source_url'] ?? _topNewsIndex}'),
@@ -1070,12 +1173,91 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     if (_newsItems.isEmpty) return const [];
     final topIndex = _topNewsIndex % _newsItems.length;
     final topItem = _newsItems[topIndex];
+    final seenKeys = <String>{_newsIdentityKey(topItem)};
     final others = <Map<String, dynamic>>[];
     for (var i = 0; i < _newsItems.length; i++) {
       if (i == topIndex) continue;
-      others.add(_newsItems[i]);
+      final item = _newsItems[i];
+      final key = _newsIdentityKey(item);
+      if (seenKeys.contains(key)) continue;
+      seenKeys.add(key);
+      others.add(item);
     }
+    others.sort((a, b) => _newsSortScore(b).compareTo(_newsSortScore(a)));
     return [topItem, ...others];
+  }
+
+  List<Map<String, dynamic>> _dedupeNewsItems(
+      List<Map<String, dynamic>> items) {
+    final seen = <String>{};
+    final deduped = <Map<String, dynamic>>[];
+    for (final item in items) {
+      final key = _newsIdentityKey(item);
+      if (seen.contains(key)) continue;
+      seen.add(key);
+      deduped.add(item);
+    }
+    deduped.sort((a, b) => _newsSortScore(b).compareTo(_newsSortScore(a)));
+    return deduped;
+  }
+
+  String _newsIdentityKey(Map<String, dynamic> item) {
+    final sourceUrl = (item['source_url'] ?? '').toString().trim();
+    final title = (item['title'] ?? '').toString().trim();
+    if (sourceUrl.isNotEmpty) return sourceUrl;
+    return title;
+  }
+
+  int _newsSortScore(Map<String, dynamic> item) {
+    final published =
+        DateTime.tryParse((item['published_at'] ?? '').toString());
+    if (published != null) return published.millisecondsSinceEpoch;
+    final raw = (item['published_at_raw'] ?? '').toString();
+    final rawDate =
+        DateTime.tryParse(raw.length >= 10 ? raw.substring(0, 10) : raw);
+    if (rawDate != null) return rawDate.millisecondsSinceEpoch;
+    final updated = DateTime.tryParse((item['updated_at'] ?? '').toString());
+    if (updated != null) return updated.millisecondsSinceEpoch;
+    return 0;
+  }
+
+  Duration _topNewsProgressRemaining() {
+    final elapsed = DateTime.now().difference(_topNewsCycleStartedAt);
+    var remaining = _topNewsRotationDuration - elapsed;
+    if (remaining <= const Duration(milliseconds: 180)) {
+      remaining = const Duration(milliseconds: 180);
+    }
+    if (remaining > _topNewsRotationDuration) {
+      remaining = _topNewsRotationDuration;
+    }
+    return remaining;
+  }
+
+  DateTime? _extractNewsDateTime(Map<String, dynamic> item) {
+    final published =
+        DateTime.tryParse((item['published_at'] ?? '').toString());
+    if (published != null) return published;
+    final raw = (item['published_at_raw'] ?? '').toString().trim();
+    if (raw.isEmpty) return null;
+    final direct = DateTime.tryParse(raw);
+    if (direct != null) return direct;
+    if (raw.length >= 10) {
+      return DateTime.tryParse(raw.substring(0, 10));
+    }
+    return null;
+  }
+
+  String _formatTopNewsTimeLabel(Map<String, dynamic> item) {
+    final ts = _extractNewsDateTime(item);
+    if (ts == null) return '剛剛更新';
+    final now = DateTime.now();
+    final diff = now.difference(ts);
+    if (diff.inMinutes < 5) return '剛剛更新';
+    if (diff.inMinutes < 60) return '${diff.inMinutes} 分鐘前';
+    if (now.year == ts.year && now.month == ts.month && now.day == ts.day) {
+      return '更新於 ${DateFormat('HH:mm').format(ts)}';
+    }
+    return '更新於 ${DateFormat('MM/dd HH:mm').format(ts)}';
   }
 
   Widget _buildNewsHeader() {
@@ -1123,7 +1305,8 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
   }
 
   Widget _buildNewsListCard(Map<String, dynamic> item) {
-    final imageUrl = (item['image_url'] ?? '').toString().trim();
+    final imageUrl =
+        ((item['image_url'] ?? item['image']) ?? '').toString().trim();
     final hasImage =
         imageUrl.startsWith('http://') || imageUrl.startsWith('https://');
     if (hasImage) {
@@ -1133,6 +1316,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
   }
 
   Widget _buildNewsTextCard(Map<String, dynamic> item) {
+    final categoryKey = (item['category_key'] ?? '').toString().trim();
     final source = (item['category'] ?? '中央社').toString();
     final title = (item['title'] ?? '無標題').toString();
     final publishedAtRaw = (item['published_at_raw'] ?? '').toString();
@@ -1159,16 +1343,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
             children: [
               Row(
                 children: [
-                  const Icon(Icons.newspaper_rounded,
-                      color: Colors.orange, size: 20),
-                  const SizedBox(width: 8),
-                  Text(
-                    source,
-                    style: GoogleFonts.notoSansTc(
-                      fontWeight: FontWeight.w500,
-                      color: Colors.grey[700],
-                    ),
-                  ),
+                  _buildCategoryTag(source, categoryKey),
                 ],
               ),
               Text(
@@ -1191,13 +1366,13 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
           ),
           const SizedBox(height: 6),
           InkWell(
-            onTap: () => _showNewsDetail(item),
+            onTap: () => _openNewsListenPlayer(item),
             borderRadius: BorderRadius.circular(999),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 Text(
-                  '繼續閱讀',
+                  '聆聽',
                   style: GoogleFonts.notoSansTc(
                     color: const Color(0xFF59B294),
                     fontWeight: FontWeight.w600,
@@ -1216,6 +1391,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
   }
 
   Widget _buildNewsImageCard(Map<String, dynamic> item, String imageUrl) {
+    final categoryKey = (item['category_key'] ?? '').toString().trim();
     final source = (item['category'] ?? '中央社').toString();
     final title = (item['title'] ?? '無標題').toString();
     final publishedAtRaw = (item['published_at_raw'] ?? '').toString();
@@ -1236,7 +1412,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(24),
         child: InkWell(
-          onTap: () => _showNewsDetail(item),
+          onTap: () => _openNewsListenPlayer(item),
           child: Stack(
             fit: StackFit.expand,
             children: [
@@ -1269,20 +1445,10 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                   children: [
                     Row(
                       children: [
-                        const Icon(Icons.newspaper_rounded,
-                            color: Colors.white, size: 18),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            source,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.notoSansTc(
-                              color: Colors.white.withValues(alpha: 0.95),
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
+                        _buildCategoryTag(source, categoryKey,
+                            darkSurface: true),
+                        const SizedBox(width: 8),
+                        const Spacer(),
                         Text(
                           _formatNewsDate(publishedAtRaw, publishedAt),
                           style: GoogleFonts.inter(
@@ -1309,7 +1475,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
                         Text(
-                          '繼續閱讀',
+                          '聆聽',
                           style: GoogleFonts.notoSansTc(
                             color: Colors.white,
                             fontWeight: FontWeight.w600,
@@ -1331,6 +1497,93 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     );
   }
 
+  Widget _buildCategoryTag(String label, String categoryKey,
+      {bool darkSurface = false}) {
+    final color = _categoryColor(categoryKey);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: darkSurface
+            ? color.withValues(alpha: 0.28)
+            : color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: darkSurface
+              ? color.withValues(alpha: 0.6)
+              : color.withValues(alpha: 0.35),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.newspaper_rounded,
+            size: 14,
+            color: darkSurface ? Colors.white : color,
+          ),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.notoSansTc(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: darkSurface ? Colors.white : color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _categoryColor(String categoryKey) {
+    switch (categoryKey) {
+      case 'politics':
+        return const Color(0xFFF97316);
+      case 'international':
+        return const Color(0xFF0EA5E9);
+      case 'china':
+        return const Color(0xFFE11D48);
+      case 'finance':
+        return const Color(0xFF22C55E);
+      case 'technology':
+        return const Color(0xFF6366F1);
+      case 'life':
+        return const Color(0xFF14B8A6);
+      case 'society':
+        return const Color(0xFF64748B);
+      case 'local':
+        return const Color(0xFF84CC16);
+      case 'culture':
+        return const Color(0xFFA855F7);
+      case 'sports':
+        return const Color(0xFFEF4444);
+      case 'entertainment':
+        return const Color(0xFFEC4899);
+      default:
+        return const Color(0xFF0F766E);
+    }
+  }
+
+  void _openNewsListenPlayer(Map<String, dynamic> currentItem) {
+    final playlist = _orderedNewsItemsWithTopFirst().take(12).toList();
+    if (playlist.isEmpty) return;
+    final currentKey = _newsIdentityKey(currentItem);
+    final initialIndex =
+        playlist.indexWhere((item) => _newsIdentityKey(item) == currentKey);
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => NewsListenPlayerScreen(
+          newsItems: playlist,
+          initialIndex: initialIndex >= 0 ? initialIndex : 0,
+        ),
+      ),
+    );
+  }
+
   String _formatNewsDate(String raw, String parsed) {
     if (raw.isNotEmpty) {
       if (raw.length >= 10) return raw.substring(0, 10);
@@ -1341,60 +1594,5 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
       return parsed;
     }
     return '--';
-  }
-
-  void _showNewsDetail(Map<String, dynamic> item) {
-    final title = (item['title'] ?? '').toString();
-    final content = (item['content'] ?? '').toString();
-    final sourceUrl = (item['source_url'] ?? '').toString();
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        padding: const EdgeInsets.all(20),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-        ),
-        child: SafeArea(
-          top: false,
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                    color: const Color(0xFF1E293B),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  content,
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 16,
-                    height: 1.55,
-                    color: const Color(0xFF334155),
-                  ),
-                ),
-                if (sourceUrl.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    '來源：$sourceUrl',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 13,
-                      color: const Color(0xFF64748B),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
   }
 }
