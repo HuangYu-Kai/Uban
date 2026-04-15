@@ -497,4 +497,28 @@ class ApiService {
       return {'status': 'error', 'message': '網路連線失敗: $e'};
     }
   }
+
+  static Future<Map<String, dynamic>> synthesizeEdgeTts({
+    required String text,
+    String? emotion,
+  }) async {
+    try {
+      final queryParameters = <String, String>{
+        'text': text,
+        'engine': 'edge',
+      };
+      if (emotion != null && emotion.isNotEmpty) {
+        queryParameters['emotion'] = emotion;
+      }
+      final uri = Uri.parse('$baseUrl/voice/tts/test')
+          .replace(queryParameters: queryParameters);
+      final response =
+          await http.post(uri).timeout(const Duration(seconds: 30));
+      return _safeDecode(response);
+    } on TimeoutException {
+      return {'status': 'error', 'message': '語音合成逾時，請稍後再試'};
+    } catch (e) {
+      return {'status': 'error', 'message': '網路連線失敗: $e'};
+    }
+  }
 }
