@@ -36,9 +36,10 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
 
   // ★ 通話控制狀態
   bool _isMicMuted = false;
-  bool _isCameraOff = false;
+  bool _isCameraOff = true;  // ★ 預設關閉攝像頭，減少資源消耗和隱私風險
   bool _isSpeakerOn = true;
   bool _isFrontCamera = true;
+  bool _mediaInitialized = false;  // ★ 追蹤媒體是否已初始化
 
   // ★ 通話計時器
   Timer? _callTimer;
@@ -93,7 +94,9 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       _signaling.createOffer(targetId: accepterId, isEmergency: widget.isEmergency);
     };
 
-    await _signaling.openUserMedia(_localRenderer);
+    // ★ 延遲初始化媒體：只在用戶點擊「開啟鏡頭」時才開啟
+    // 避免一進通話就消耗資源和洩露隱私
+    // await _signaling.openUserMedia(_localRenderer);  // 已移除
 
     // ★ 自動讀取使用者 ID 與名稱
     final prefs = await SharedPreferences.getInstance();
@@ -155,8 +158,13 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     debugPrint("🎤 Mic ${_isMicMuted ? 'Muted' : 'Unmuted'}");
   }
 
-  // ★ 鏡頭開關切換
+  // ★ 鏡頭開關切換 — 同時初始化媒體（如果還未初始化）
   void _toggleCamera() {
+    if (!_mediaInitialized) {
+      _initializeAndToggleCamera();
+      return;
+    }
+    
     if (_signaling.localStream == null) return;
     final videoTracks = _signaling.localStream!.getVideoTracks();
     if (videoTracks.isEmpty) return;
@@ -169,9 +177,36 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     debugPrint("📷 Camera ${_isCameraOff ? 'Off' : 'On'}");
   }
 
-  // ★ 前後鏡頭切換
+  // ★ 初始化媒體並打開攝像頭
+  Future<void> _initializeAndToggleCamera() async {
+    try {
+      debugPrint("🎬 Initializing media stream...");
+      await _signaling.openUserMedia(_localRenderer);
+      setState(() => _mediaInitialized = true);
+      
+      if (_signaling.localStream != null) {
+        final videoTracks = _signaling.localStream!.getVideoTracks();
+        if (videoTracks.isNotEmpty) {
+          setState(() {
+            _isCameraOff = false;  // 開啟攝像頭
+            for (var track in videoTracks) {
+              track.enabled = true;
+            }
+          });
+          debugPrint("📷 Camera initialized and turned On");
+        }
+      }
+    } catch (e) {
+      debugPrint("❌ Failed to initialize media: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("無法開啟攝像頭: $e")),
+      );
+    }
+  }
+
+  // ★ 前後鏡頭切換 — 必須先初始化媒體
   void _switchCamera() {
-    if (_signaling.localStream == null) return;
+    if (!_mediaInitialized || _signaling.localStream == null) return;
     final videoTracks = _signaling.localStream!.getVideoTracks();
     if (videoTracks.isEmpty) return;
     Helper.switchCamera(videoTracks[0]);
@@ -312,11 +347,11 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
           // 3. 本地預覽 (PIP) — 鏡頭關閉時顯示圖標
           Positioned(
             right: 20,
-            bottom: 140,
+            bottom: 220,  // ★ 從 140 改為 220，避免與按鈕重疊
             width: 110,
             height: 160,
             child: GestureDetector(
-              onTap: _switchCamera,
+              onTap: (_mediaInitialized && !_isCameraOff) ? _switchCamera : null,
               child: Container(
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(16),
@@ -327,15 +362,33 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                       offset: const Offset(0, 4),
                     ),
                   ],
-                  border: Border.all(color: Colors.white24, width: 1.5),
+                  border: Border.all(
+                    color: _isCameraOff ? Colors.white12 : Colors.white24,
+                    width: 1.5,
+                  ),
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(14),
                   child: _isCameraOff
                       ? Container(
                           color: const Color(0xFF2A2A2A),
-                          child: const Center(
-                            child: Icon(Icons.videocam_off, color: Colors.white38, size: 36),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.videocam_off,
+                                color: Colors.white38,
+                                size: 36,
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                '鏡頭已關閉',
+                                style: TextStyle(
+                                  color: Colors.white54,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
                           ),
                         )
                       : RTCVideoView(
@@ -349,10 +402,10 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
           ),
 
           // ★ 鏡頭切換提示 (PIP 右下角小圖標)
-          if (!_isCameraOff)
+          if (_mediaInitialized && !_isCameraOff)
             Positioned(
               right: 24,
-              bottom: 144,
+              bottom: 224,  // ★ 與 PIP 位置同步（220 + 4）
               child: Container(
                 padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
@@ -411,8 +464,9 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                       // 翻轉鏡頭
                       _buildControlButton(
                         icon: Icons.cameraswitch,
-                        onPressed: _isCameraOff ? null : _switchCamera,
-                        color: _isCameraOff ? Colors.white24 : Colors.white,
+                        onPressed: (_mediaInitialized && !_isCameraOff) ? _switchCamera : null,
+                        color: (_mediaInitialized && !_isCameraOff) ? Colors.white : Colors.white24,
+                        bgColor: (_mediaInitialized && !_isCameraOff) ? null : Colors.white.withValues(alpha: 0.1),
                       ),
                     ],
                   ),
@@ -432,12 +486,16 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     Color? bgColor,
     bool isEndCall = false,
   }) {
+    final isDisabled = onPressed == null;
     return Container(
       width: 50,
       height: 50,
       decoration: BoxDecoration(
-        color: isEndCall ? Colors.redAccent : (bgColor ?? Colors.white12),
+        color: isEndCall 
+          ? Colors.redAccent 
+          : (bgColor ?? (isDisabled ? Colors.white.withValues(alpha: 0.05) : Colors.white12)),
         shape: BoxShape.circle,
+        border: isDisabled ? Border.all(color: Colors.white12, width: 1) : null,
       ),
       child: IconButton(
         icon: Icon(icon, color: color, size: 24),

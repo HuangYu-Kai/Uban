@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'dart:math' as math;
 import '../services/api_service.dart';
 import 'identification_screen.dart';
 import 'family_onboarding_screen.dart';
@@ -33,16 +34,27 @@ class _SplashScreenState extends State<SplashScreen> {
     defaultValue: '測試使用者',
   );
 
+  bool _fadedOut = false;
+
   @override
   void initState() {
     super.initState();
+    _playAnimations();
     _navigateToNext();
+  }
+
+  Future<void> _playAnimations() async {
+    // 整個液態擴散動畫放慢至 3.2s
+    await Future.delayed(const Duration(milliseconds: 3200));
+    
+    // 3.2s 開始全局淡出 (歷時 0.8s)
+    if (mounted) setState(() => _fadedOut = true);
   }
 
   Future<void> _navigateToNext() async {
     try {
-      // 延遲 3 秒展示 Splash
-      await Future.delayed(const Duration(seconds: 3));
+      // 4.0s (3.2s + 0.8s) 正好銜接淡出的結束點，無縫載入主介面
+      await Future.delayed(const Duration(milliseconds: 4000));
       if (!mounted) return;
 
       // 嘗試獲取登入狀態，設置 2 秒超時以防掛起
@@ -162,80 +174,117 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFF59B294), // Tealish green
-              Color(0xFFD4F5E9), // Very light teal
-            ],
-          ),
-        ),
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+      backgroundColor: const Color(0xFFF5F5F5), // 介面的預設淺色底
+      body: AnimatedOpacity(
+        opacity: _fadedOut ? 0.0 : 1.0,
+        duration: const Duration(milliseconds: 1000), // 圖標和背景平滑淡出的歷時
+        child: TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0.0, end: 1.0),
+          duration: const Duration(milliseconds: 3200), // 總時長放慢
+          curve: Curves.linear,
+          builder: (context, time, child) {
+            // 前 800 毫秒(約 time 0.0~0.25)安靜停頓，隨後開啟 2.4 秒的極柔和緩慢擴散
+            double fillProgress = ((time - 0.25) / 0.75).clamp(0.0, 1.0);
+            
+            // 使用 easeOutQuart 讓一開始有平滑的加速推力，然後悠長地滑行至邊界，不會有瞬間爆炸的急促感
+            double easedProgress = Curves.easeOutQuart.transform(fillProgress);
+
+            final textStyle = GoogleFonts.poppins(
+              fontSize: 78,
+              fontWeight: FontWeight.w600, // 溫潤、乾淨的科技新創字體
+              letterSpacing: 2.0,
+            );
+
+            return Stack(
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      width: 80,
-                      height: 80,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF59B294).withValues(alpha: 0.8),
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.1),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: const Center(
-                        child: Icon(
-                          Icons.favorite_rounded,
-                          color: Colors.white,
-                          size: 48,
-                        ),
+                // 底層：原本的白底綠字 (靜止狀態等待水花漫過)
+                Container(
+                  width: double.infinity,
+                  height: double.infinity,
+                  color: Colors.white,
+                  child: Center(
+                    child: Text(
+                      'Uban',
+                      style: textStyle.copyWith(color: const Color(0xFF59B294)),
+                    ),
+                  ),
+                ),
+                
+                // 頂層：水花漫過的有機擴散綠底白字
+                ClipPath(
+                  clipper: BlobRevealClipper(easedProgress),
+                  child: Container(
+                    width: double.infinity,
+                    height: double.infinity,
+                    color: const Color(0xFF59B294),
+                    child: Center(
+                      child: Text(
+                        'Uban',
+                        style: textStyle.copyWith(color: Colors.white),
                       ),
                     ),
-                    const SizedBox(width: 16),
-                    Text(
-                      'UBan',
-                      style: GoogleFonts.outfit(
-                        fontSize: 48,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                        shadows: [
-                          Shadow(
-                            color: Colors.black.withValues(alpha: 0.2),
-                            blurRadius: 4,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ],
-            ),
-            Positioned(
-              bottom: 40,
-              child: Text(
-                'v 1.0.0',
-                style: GoogleFonts.inter(color: Colors.black54, fontSize: 12),
-              ),
-            ),
-          ],
+            );
+          }
         ),
       ),
     );
   }
 }
+
+// 產生「水滴擴散」帶有非對稱、有機流體邊緣的自定義波紋
+class BlobRevealClipper extends CustomClipper<Path> {
+  final double progress; // 0.0 到 1.0 的液體擴散進度
+  BlobRevealClipper(this.progress);
+
+  @override
+  Path getClip(Size size) {
+    if (progress <= 0) return Path();
+
+    final center = Offset(size.width / 2, size.height / 2);
+    // 預設最大半徑為對角線長度
+    final maxRadius = math.sqrt(size.width * size.width + size.height * size.height);
+    // 放大擴散圈倍率 (1.2)，確保算上不規則波動的「波谷」時，也能完全覆蓋到長方形螢幕的最角落
+    final currentRadius = maxRadius * progress * 1.2;
+    
+    Path path = Path();
+    int points = 180; // 高密度描點確保液態邊緣極其圓滑
+    
+    // 波動振幅：擴散越大，水波的起伏感越自然，但適度收斂
+    double amplitude = maxRadius * 0.08 * progress; 
+
+    for (int i = 0; i <= points; i++) {
+      double angle = (i / points) * 2 * math.pi;
+      
+      // 使用三層傅立葉干涉 (Sin/Cos) 創造有機、隨機的液滴邊緣
+      // 其中動態加入 progress 的相位偏移，讓「水波在向外推的過程中，邊緣形狀也在流動改變」
+      double noise = math.sin(angle * 3) * amplitude * 0.7 +
+                     math.cos(angle * 5 - progress * 6.0) * amplitude * 0.5 +
+                     math.sin(angle * 7 + progress * 4.0) * amplitude * 0.3;
+                     
+      double r = currentRadius + noise;
+      if (r < 0) r = 0; // 防呆
+      
+      double x = center.dx + r * math.cos(angle);
+      double y = center.dy + r * math.sin(angle);
+      
+      if (i == 0) {
+        path.moveTo(x, y);
+      } else {
+        path.lineTo(x, y);
+      }
+    }
+    path.close();
+    
+    return path;
+  }
+
+  @override
+  bool shouldReclip(covariant BlobRevealClipper oldClipper) {
+    return oldClipper.progress != progress;
+  }
+}
+
+
