@@ -39,60 +39,15 @@ bool _supportsCallKit() {
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  try {
-    // ⚠ 重要：背景 Isolate 不要執行複雜的 SDK 初始化 (如 LineSDK)，避免導致崩潰
-    await Firebase.initializeApp();
-  } catch (e) {
-    debugPrint("⚠️ Background Firebase initialization failed: $e");
-    return;
-  }
+  // ⚠️ 移除重複的 CallKit 通知邏輯
+  // Firebase 在背景時只用來觸發 Socket.IO 訊號，
+  // 真正的來電通知由信令層 (signaling.dart) 統一發送，
+  // 避免重複顯示兩個通知
+  
   debugPrint("📩 Background message received: ${message.data}");
-
-  if (!_supportsCallKit()) {
-    return;
-  }
-
-  if (message.data['type'] == 'call-request') {
-    final roomId = message.data['roomId'];
-    final senderId = message.data['senderId'];
-    final callerName = message.data['callerName'] ?? '家屬來通話';
-
-    final params = CallKitParams(
-      id: message.data['callId'] ??
-          'call_${DateTime.now().millisecondsSinceEpoch}',
-      nameCaller: callerName,
-      appName: 'Uban',
-      avatar: 'assets/user_avatar.png',
-      handle: '緊急呼叫',
-      type: 0,
-      duration: 30000,
-      textAccept: '接聽',
-      textDecline: '拒絕',
-      extra: <String, dynamic>{
-        'senderId': senderId,
-        'roomId': roomId,
-        'callId': message.data['callId']
-      },
-      android: const AndroidParams(
-        isCustomNotification: true,
-        isShowLogo: false,
-        ringtonePath: 'system_ringtone_default',
-        backgroundColor: '#0955fa',
-        actionColor: '#4CAF50',
-        textColor: '#ffffff',
-        incomingCallNotificationChannelName: 'Call_Ring_Channel',
-        isShowFullLockedScreen: true,
-      ),
-      ios: const IOSParams(
-        supportsVideo: true,
-        audioSessionMode: 'default',
-        audioSessionActive: true,
-      ),
-    );
-    await FlutterCallkitIncoming.showCallkitIncoming(params);
-  } else if (message.data['type'] == 'cancel-call') {
-    await FlutterCallkitIncoming.endAllCalls();
-  }
+  
+  // 該訊息將由信令層通過 Socket.IO 的 'call' event 處理
+  // 詳見 lib/services/signaling.dart 的 'call' 事件監聽
 }
 
 void main() async {

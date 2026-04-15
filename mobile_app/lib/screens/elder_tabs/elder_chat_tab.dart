@@ -26,6 +26,11 @@ import 'package:flutter_webrtc/flutter_webrtc.dart' show
 import '../../services/api_service.dart';
 import '../../widgets/youtube_bubble_player.dart';
 
+// Oracle Cloud TURN 伺服器配置 (與 signaling.dart 同步)
+const String _turnServer = String.fromEnvironment('TURN_SERVER', defaultValue: '152.69.196.5:3478');
+const String _turnUser = String.fromEnvironment('TURN_USER', defaultValue: 'uban');
+const String _turnPass = String.fromEnvironment('TURN_PASS', defaultValue: '115207');
+
 class ElderChatTab extends StatefulWidget {
   final int userId;
   final VoidCallback onBackToHome;
@@ -141,13 +146,23 @@ class ElderChatTabState extends State<ElderChatTab>
   }
 
   Future<void> _initChatWebRtc() async {
+    // ★ 懶加載：只在後端 TTS 啟用且 WebRTC 未連接時才初始化
+    // 避免 AI chat 中隨時連接到 Oracle Cloud TURN 伺服器消耗資源
     if (!_useBackendXtts || _isInitializingChatWebRtc || _chatWebRtcConnected) return;
     _isInitializingChatWebRtc = true;
     try {
       await _chatAudioRenderer.initialize();
       final pc = await createPeerConnection({
         'iceServers': [
-          {'urls': 'stun:stun.l.google.com:19302'}
+          {'urls': 'stun:stun.l.google.com:19302'},
+          {
+            'urls': [
+              'turn:$_turnServer',
+              'turn:$_turnServer?transport=tcp',
+            ],
+            'username': _turnUser,
+            'credential': _turnPass,
+          },
         ]
       });
       _chatPeerConnection = pc;
