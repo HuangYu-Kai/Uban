@@ -7,8 +7,7 @@
 
 ### 架構
 - **前端**：Flutter (Dart)，使用 Provider 狀態管理
-- **正式後端**：`uban-api/`（FastAPI + python-socketio[asgi]）
-- **棄用後端**：`server/` 為 Legacy Flask，**嚴禁修改**
+- **正式後端**：`uban-api/` (FastAPI + python-socketio[asgi])
 - **前端不使用 Flutter Web**，僅支援 Android/iOS 原生
 
 ### 雙軌制網路架構 (禁止合併!)
@@ -25,7 +24,6 @@
 ### 禁止事項
 - ❌ 在代碼中硬編碼伺服器 IP（使用 `--dart-define`）
 - ❌ 在 Signaling 以外的地方建立 Socket 連線（必須 Singleton）
-- ❌ 修改 `server/` 目錄的任何檔案
 - ❌ 在長輩端直接啟動 `VideoCallScreen`（必須透過 `ElderScreen`）
 - ❌ 在 `openUserMedia` 前呼叫 `createOffer`
 - ❌ 在 `setRemoteDescription` 前直接 `addIceCandidate`（必須排隊暫存）
@@ -93,7 +91,22 @@
 - `test_call_simulator.py` — Socket.IO 信令測試
 - `webrtc_test.html` — 瀏覽器版 WebRTC 測試（含 TURN 驗證）
 
-## 環境注意
-- Python 後端需 3.12（不支援 3.13+，eventlet 相容性）
-- Flutter 使用 `--dart-define=SERVER_IP=` 注入伺服器位址
-- Socket.IO 後端使用 ASGI 模式（`python-socketio[asgi]`）
+## 長輩友善 UI 開發規範 (Elder-Friendly UX)
+
+### 色彩與對比
+- **高對比度**：背影與文字必須符合 WCAG AAA 標準或至少 AA。
+- **色彩意義**：不要僅依靠色彩來傳達資訊（例如：不要只用紅色標示錯誤，應加上圖示或文字）。
+
+### 字體與排版
+- **最小字體**：主要內容不得小於 24pt，次要資訊不得小於 18pt。
+- **行距/字距**：適度加大（至少 1.2 倍行高），方便閱讀。
+- **加重重點**：重要關鍵字使用 `FontWeight.bold`。
+
+### 互動與觸控
+- **點擊區域**：所有按鈕或互動元素的 Hit Test 區域至少為 60x60dp。
+- **操作回饋**：所有點擊必須有視覺（如亮起）與觸覺（震動）回饋。
+- **單一路徑**：盡量減少多層嵌套選單，保持單一、線性的操作流程。
+
+### AI 呈現
+- **大頭照與身分**：AI 的身分是動態的（由資料庫 `ai_persona` 提供），UI 應能適配不同角色的頭像。
+- **語音同步**：AI 說話時，畫面上應有明顯的波形或波紋視覺特效，代表「我正在聽」或「我正在說」。

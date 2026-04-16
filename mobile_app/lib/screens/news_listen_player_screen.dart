@@ -30,6 +30,12 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
   String? _error;
   Timer? _waveTimer;
   List<double> _waveHeights = List<double>.filled(11, 40);
+  bool _showTranscript = false;
+  
+  // 字幕相關
+  List<dynamic> _subtitles = [];
+  String _currentSubtitle = "";
+  StreamSubscription? _positionSubscription;
 
   @override
   void initState() {
@@ -48,8 +54,35 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
     });
     _audioPlayer.onPlayerComplete.listen((_) {
       if (!mounted) return;
-      setState(() => _isPlaying = false);
+      setState(() {
+        _isPlaying = false;
+        _currentSubtitle = "";
+      });
       _stopWaveAnimation();
+    });
+
+    // 監聽播放進度以同步字幕
+    _positionSubscription = _audioPlayer.onPositionChanged.listen((position) {
+      if (!mounted || _subtitles.isEmpty) return;
+      
+      final ms = position.inMilliseconds;
+      String? matchedText;
+      
+      // 尋找當前毫秒對應的字幕
+      for (var sub in _subtitles) {
+        final start = sub['start_ms'] as int;
+        final duration = sub['duration_ms'] as int;
+        if (ms >= start && ms < (start + duration)) {
+          matchedText = sub['text'] as String;
+          break;
+        }
+      }
+      
+      if (matchedText != null && matchedText != _currentSubtitle) {
+        setState(() {
+          _currentSubtitle = matchedText!;
+        });
+      }
     });
     if (widget.newsItems.isNotEmpty) {
       _playCurrentNews();
@@ -59,6 +92,7 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
   @override
   void dispose() {
     _waveTimer?.cancel();
+    _positionSubscription?.cancel();
     _audioPlayer.dispose();
     super.dispose();
   }
@@ -82,12 +116,18 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
       if (audioBase64.isEmpty) {
         throw Exception('語音資料為空');
       }
+      
+      // 更新字幕清單
+      final subs = response['subtitles'];
+      
       final audioPayload = _extractBase64Payload(audioBase64);
       final audioBytes = base64Decode(audioPayload);
       await _audioPlayer.stop();
       await _audioPlayer.play(BytesSource(audioBytes));
       if (!mounted) return;
       setState(() {
+        _subtitles = (subs is List) ? subs : [];
+        _currentSubtitle = "";
         _isLoadingAudio = false;
         _isPlaying = true;
       });
@@ -133,6 +173,9 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
     setState(() {
       _currentIndex = nextIndex;
       _error = null;
+      _showTranscript = false;
+      _subtitles = [];
+      _currentSubtitle = "";
     });
     await _playCurrentNews();
   }
@@ -170,12 +213,35 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
     return '$header。$clipped';
   }
 
+  String _formatNewsDate(Map<String, dynamic> item) {
+    final raw = (item['published_at_raw'] ?? '').toString().trim();
+    if (raw.isNotEmpty) {
+      return raw.length >= 10 ? raw.substring(0, 10) : raw;
+    }
+    final parsed = (item['published_at'] ?? '').toString().trim();
+    if (parsed.isNotEmpty) {
+      return parsed.length >= 10 ? parsed.substring(0, 10) : parsed;
+    }
+    return '--';
+  }
+
+  String _transcriptText(Map<String, dynamic> item) {
+    final content = (item['content'] ?? '').toString().trim();
+    if (content.isNotEmpty) return content;
+    return (item['title'] ?? '').toString().trim();
+  }
+
   @override
   Widget build(BuildContext context) {
     final item = widget.newsItems.isEmpty
         ? const <String, dynamic>{}
         : widget.newsItems[_currentIndex];
     final title = (item['title'] ?? '新聞朗讀').toString();
+    final source = (item['category'] ?? '新聞').toString();
+    final publishedDate = _formatNewsDate(item);
+    final transcript = _transcriptText(item);
+    final totalCount = max(widget.newsItems.length, 1);
+    final currentCount = widget.newsItems.isEmpty ? 0 : (_currentIndex + 1);
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(
@@ -228,6 +294,17 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
                       ),
                       const SizedBox(height: 6),
                       Text(
+                        '第 $currentCount / $totalCount 則 · $source · $publishedDate',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
                         title,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
@@ -240,8 +317,33 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
                         ),
                       ),
                       const SizedBox(height: 18),
+                      // 方案 B：動態大字字幕
+                      Container(
+                        width: double.infinity,
+                        constraints: const BoxConstraints(minHeight: 80),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.25),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Center(
+                          child: Text(
+                            _currentSubtitle.isEmpty ? (title.length > 10 ? "${title.substring(0, 10)}..." : title) : _currentSubtitle,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 34, // 超大字體，符合長輩需求
+                              fontWeight: FontWeight.bold,
+                              shadows: [
+                                Shadow(blurRadius: 4, color: Colors.black54, offset: Offset(2, 2)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
                       SizedBox(
-                        height: 145,
+                        height: 120,
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           crossAxisAlignment: CrossAxisAlignment.center,
@@ -302,6 +404,71 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
                       onTap: () => _changeTrack(1),
                     ),
                   ],
+                ),
+                const SizedBox(height: 18),
+                Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: Column(
+                    children: [
+                      InkWell(
+                        onTap: () =>
+                            setState(() => _showTranscript = !_showTranscript),
+                        borderRadius: BorderRadius.circular(18),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 12),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.subject_rounded,
+                                  color: Colors.white, size: 18),
+                              const SizedBox(width: 8),
+                              Text(
+                                _showTranscript ? '收起文字稿' : '顯示文字稿',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const Spacer(),
+                              Icon(
+                                _showTranscript
+                                    ? Icons.expand_less_rounded
+                                    : Icons.expand_more_rounded,
+                                color: Colors.white,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      AnimatedCrossFade(
+                        duration: const Duration(milliseconds: 220),
+                        crossFadeState: _showTranscript
+                            ? CrossFadeState.showFirst
+                            : CrossFadeState.showSecond,
+                        firstChild: Container(
+                          constraints: const BoxConstraints(maxHeight: 130),
+                          width: double.infinity,
+                          padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+                          child: SingleChildScrollView(
+                            child: Text(
+                              transcript.isEmpty ? '沒有可顯示的文字稿' : transcript,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                                height: 1.45,
+                              ),
+                            ),
+                          ),
+                        ),
+                        secondChild: const SizedBox.shrink(),
+                      ),
+                    ],
+                  ),
                 ),
                 const Spacer(),
                 const Text(
