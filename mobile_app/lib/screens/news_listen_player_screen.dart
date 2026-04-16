@@ -317,31 +317,6 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
                         ),
                       ),
                       const SizedBox(height: 18),
-                      // 方案 B：動態大字字幕
-                      Container(
-                        width: double.infinity,
-                        constraints: const BoxConstraints(minHeight: 80),
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.25),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Center(
-                          child: Text(
-                            _currentSubtitle.isEmpty ? (title.length > 10 ? "${title.substring(0, 10)}..." : title) : _currentSubtitle,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 34, // 超大字體，符合長輩需求
-                              fontWeight: FontWeight.bold,
-                              shadows: [
-                                Shadow(blurRadius: 4, color: Colors.black54, offset: Offset(2, 2)),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
                       SizedBox(
                         height: 120,
                         child: Row(
@@ -404,6 +379,31 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
                       onTap: () => _changeTrack(1),
                     ),
                   ],
+                ),
+                const SizedBox(height: 18),
+                // 方案 B：動態大字字幕 (移至下方)
+                Container(
+                  width: double.infinity,
+                  constraints: const BoxConstraints(minHeight: 80),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.25),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Center(
+                    child: Text(
+                      _currentSubtitle.isEmpty ? (title.length > 10 ? "${title.substring(0, 10)}..." : title) : _currentSubtitle,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 34, // 超大字體，符合長輩需求
+                        fontWeight: FontWeight.bold,
+                        shadows: [
+                          Shadow(blurRadius: 4, color: Colors.black54, offset: Offset(2, 2)),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 18),
                 Container(
