@@ -40,7 +40,10 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
   final Random _random = Random();
   int _topNewsIndex = 0;
   Timer? _topNewsRotateTimer;
+  Timer? _topNewsAutoResumeTimer;
   bool _isStageSwitching = false;
+  bool _topNewsAutoPaused = false;
+  bool _isRefreshingNews = false;
   static const Duration _topNewsRotationDuration = Duration(seconds: 15);
   DateTime _topNewsCycleStartedAt = DateTime.now();
   int _topNewsCycleToken = 0;
@@ -92,6 +95,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
           _newsItems = deduped;
           _isLoadingNews = false;
           _newsError = null;
+          _topNewsAutoPaused = false;
           if (_newsItems.isNotEmpty) {
             _topNewsIndex = _random.nextInt(_newsItems.length);
             _resetTopNewsCycle();
@@ -156,12 +160,17 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
 
   void _startTopNewsRotation() {
     _topNewsRotateTimer?.cancel();
+    _topNewsAutoResumeTimer?.cancel();
     _resetTopNewsCycle();
     if (_newsItems.length <= 1) {
       return;
     }
     _topNewsRotateTimer = Timer.periodic(_topNewsRotationDuration, (_) {
       if (!mounted || _newsItems.length <= 1) return;
+      if (_topNewsAutoPaused) {
+        setState(_resetTopNewsCycle);
+        return;
+      }
       setState(() {
         var next = _random.nextInt(_newsItems.length);
         if (next == _topNewsIndex) {
@@ -197,12 +206,13 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
 
   bool _handleNewsStageScroll(ScrollNotification notification) {
     if (notification.metrics.axis != Axis.vertical) return false;
+    if (_isRefreshingNews) return false;
 
     final isPullDownAtTop = notification.metrics.pixels <= 0 &&
         ((notification is OverscrollNotification &&
-                notification.overscroll < -6) ||
+                notification.overscroll < -140) ||
             (notification is ScrollUpdateNotification &&
-                (notification.scrollDelta ?? 0) < -10));
+                (notification.scrollDelta ?? 0) < -110));
 
     if (isPullDownAtTop) {
       _goToTopStage();
@@ -240,6 +250,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
   @override
   void dispose() {
     _topNewsRotateTimer?.cancel();
+    _topNewsAutoResumeTimer?.cancel();
     _stageController.dispose();
     super.dispose();
   }
@@ -278,19 +289,21 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                   children: [
                     LayoutBuilder(
                       builder: (context, constraints) {
-                        return Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 20, 20, 110),
-                          child: ConstrainedBox(
-                            constraints: BoxConstraints(
-                                minHeight: constraints.maxHeight),
+                        final compactTopLayout = constraints.maxHeight < 700;
+                        return SingleChildScrollView(
+                          physics: const BouncingScrollPhysics(),
+                          child: Padding(
+                            padding: EdgeInsets.fromLTRB(
+                                20, 20, 20, compactTopLayout ? 20 : 92),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                _buildCalendarCard(),
-                                const SizedBox(height: 20),
-                                _buildMainFeaturesRow(),
-                                const SizedBox(height: 16),
-                                _buildTopRotatingNewsCard(),
+                                _buildCalendarCard(compact: compactTopLayout),
+                                SizedBox(height: compactTopLayout ? 12 : 20),
+                                _buildMainFeaturesRow(compact: compactTopLayout),
+                                SizedBox(height: compactTopLayout ? 10 : 16),
+                                _buildTopRotatingNewsCard(
+                                    compact: compactTopLayout),
                               ],
                             ),
                           ),
@@ -299,17 +312,21 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                     ),
                     LayoutBuilder(
                       builder: (context, constraints) {
-                        return NotificationListener<ScrollNotification>(
-                          onNotification: _handleNewsStageScroll,
-                          child: SingleChildScrollView(
-                            physics: const BouncingScrollPhysics(
-                              parent: AlwaysScrollableScrollPhysics(),
-                            ),
-                            padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
-                            child: ConstrainedBox(
-                              constraints: BoxConstraints(
-                                  minHeight: constraints.maxHeight),
-                              child: _buildNewsSection(),
+                        return RefreshIndicator(
+                          onRefresh: _handleNewsRefresh,
+                          child: NotificationListener<ScrollNotification>(
+                            onNotification: _handleNewsStageScroll,
+                            child: SingleChildScrollView(
+                              physics: const BouncingScrollPhysics(
+                                parent: AlwaysScrollableScrollPhysics(),
+                              ),
+                              padding:
+                                  const EdgeInsets.fromLTRB(20, 20, 20, 120),
+                              child: ConstrainedBox(
+                                constraints: BoxConstraints(
+                                    minHeight: constraints.maxHeight),
+                                child: _buildNewsSection(),
+                              ),
                             ),
                           ),
                         );
@@ -329,9 +346,9 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     return const SizedBox(height: 20);
   }
 
-  Widget _buildCalendarCard() {
+  Widget _buildCalendarCard({bool compact = false}) {
     return Container(
-      padding: const EdgeInsets.all(4),
+      padding: EdgeInsets.all(compact ? 3 : 4),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.6),
         borderRadius: BorderRadius.circular(28),
@@ -341,7 +358,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
         children: [
           // 左側西曆方塊
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: EdgeInsets.all(compact ? 9 : 12),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(24),
@@ -359,12 +376,14 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
             child: Column(
               children: [
                 Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
                       _monthStr,
                       style: GoogleFonts.notoSansTc(
                         color: const Color(0xFF59B294),
                         fontWeight: FontWeight.bold,
+                        fontSize: compact ? 18 : 22,
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -373,6 +392,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                       style: GoogleFonts.inter(
                         color: const Color(0xFF59B294),
                         fontWeight: FontWeight.bold,
+                        fontSize: compact ? 18 : 22,
                       ),
                     ),
                   ],
@@ -380,7 +400,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                 Text(
                   _dateStr,
                   style: GoogleFonts.inter(
-                    fontSize: 64,
+                    fontSize: compact ? 60 : 72,
                     fontWeight: FontWeight.w800,
                     color: const Color(0xFF59B294),
                   ),
@@ -388,7 +408,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                 Text(
                   _dayName,
                   style: GoogleFonts.notoSansTc(
-                    fontSize: 14,
+                    fontSize: compact ? 18 : 20,
                     color: const Color(0xFF59B294),
                     fontWeight: FontWeight.w600,
                   ),
@@ -396,7 +416,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
               ],
             ),
           ),
-          const SizedBox(width: 20),
+          SizedBox(width: compact ? 14 : 20),
           // 右側農曆標註
           Expanded(
             child: Column(
@@ -405,7 +425,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                 Text(
                   _lunarDate,
                   style: GoogleFonts.notoSansTc(
-                    fontSize: 28,
+                    fontSize: compact ? 24 : 28,
                     fontWeight: FontWeight.w800,
                     color: const Color(0xFF59B294),
                   ),
@@ -413,7 +433,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                 Text(
                   _solarTerm,
                   style: GoogleFonts.notoSansTc(
-                    fontSize: 28,
+                    fontSize: compact ? 24 : 28,
                     fontWeight: FontWeight.w800,
                     color: const Color(0xFF59B294),
                   ),
@@ -426,78 +446,83 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     );
   }
 
-  Widget _buildMainFeaturesRow() {
+  Widget _buildMainFeaturesRow({bool compact = false}) {
+    final featureHeight = compact ? 220.0 : 260.0; // Increased to fit 64dp buttons
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // 代誌報給你知
         Expanded(
-          flex: 3,
-          child: Container(
-            height: 220,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(24),
-              image: const DecorationImage(
-                image: AssetImage('assets/images/newspaper.png'),
-                fit: BoxFit.cover,
-              ),
-              boxShadow: [
-                BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.1),
-                    blurRadius: 10,
-                    offset: const Offset(0, 5))
-              ],
-            ),
-            child: Stack(
-              children: [
-                Positioned(
-                  top: 20,
-                  left: 20,
-                  right: 20,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '代誌',
-                        style: TextStyle(
-                          fontFamily: 'StarPanda',
-                          fontSize: 32,
-                          color: const Color(0xFF334155),
-                        ),
-                      ),
-                      Text(
-                        '報給你知',
-                        style: TextStyle(
-                          fontFamily: 'StarPanda',
-                          fontSize: 32,
-                          color: const Color(0xFF334155),
-                        ),
-                      ),
-                    ],
-                  ),
+          flex: 4, // Changed from 3 to 4 to give more balance if needed, wait, I need MORE for friends
+          child: InkWell(
+            onTap: _openNewsListFromTopEntry,
+            borderRadius: BorderRadius.circular(24),
+            child: Container(
+              height: featureHeight,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(24),
+                image: const DecorationImage(
+                  image: AssetImage('assets/images/newspaper.png'),
+                  fit: BoxFit.cover,
                 ),
-              ],
+                boxShadow: [
+                  BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.1),
+                      blurRadius: 10,
+                      offset: const Offset(0, 5))
+                ],
+              ),
+              child: Stack(
+                children: [
+                  Positioned(
+                    top: 20,
+                    left: 20,
+                    right: 20,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '代誌',
+                          style: TextStyle(
+                            fontFamily: 'StarPanda',
+                            fontSize: compact ? 28 : 32,
+                            color: const Color(0xFF334155),
+                          ),
+                        ),
+                        Text(
+                          '報給你知',
+                          style: TextStyle(
+                            fontFamily: 'StarPanda',
+                            fontSize: compact ? 28 : 32,
+                            color: const Color(0xFF334155),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
-        const SizedBox(width: 16),
+        SizedBox(width: compact ? 12 : 16),
         // 好友捷徑區
         Expanded(
-          flex: 2,
-          child: _buildFriendsQuickPanel(),
+          flex: 3, // Increased from 2 to 3 to handle the 60dp+ buttons
+          child: _buildFriendsQuickPanel(panelHeight: featureHeight),
         ),
       ],
     );
   }
 
-  Widget _buildFriendsQuickPanel() {
+  Widget _buildFriendsQuickPanel({double panelHeight = 220}) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final narrowPanel = constraints.maxWidth < 130;
         final topFamilies = _familyList.take(narrowPanel ? 1 : 2).toList();
         return Container(
-          height: 220,
-          padding: EdgeInsets.all(narrowPanel ? 10 : 14),
+          height: panelHeight,
+          padding: EdgeInsets.all(narrowPanel ? 8 : 12), // Slightly reduced padding
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(24),
@@ -527,12 +552,12 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                     onTap: () => _showFriendsBottomSheet(context),
                     borderRadius: BorderRadius.circular(999),
                     child: CircleAvatar(
-                      radius: narrowPanel ? 14 : 16,
+                      radius: narrowPanel ? 28 : 32, // Increase for touch target
                       backgroundColor: const Color(0xFF59B294),
                       child: Icon(
                         Icons.arrow_forward_rounded,
                         color: Colors.white,
-                        size: narrowPanel ? 16 : 18,
+                        size: narrowPanel ? 28 : 32,
                       ),
                     ),
                   ),
@@ -542,7 +567,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
               Text(
                 '已配對子女',
                 style: GoogleFonts.notoSansTc(
-                  fontSize: narrowPanel ? 12 : 13,
+                  fontSize: narrowPanel ? 16 : 18,
                   color: const Color(0xFF64748B),
                   fontWeight: FontWeight.w700,
                 ),
@@ -607,12 +632,12 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
           child: Row(
             children: [
               CircleAvatar(
-                radius: ultraCompact ? 11 : (compact ? 13 : 16),
+                radius: ultraCompact ? 18 : (compact ? 20 : 24),
                 backgroundColor: const Color(0xFFCFEADF),
                 child: Text(
                   name.isNotEmpty ? name.substring(0, 1) : '家',
                   style: GoogleFonts.notoSansTc(
-                    fontSize: ultraCompact ? 10 : (compact ? 11 : 13),
+                    fontSize: ultraCompact ? 14 : (compact ? 16 : 18),
                     fontWeight: FontWeight.w900,
                     color: const Color(0xFF0F766E),
                   ),
@@ -626,7 +651,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.notoSansTc(
-                      fontSize: compact ? 12 : 14,
+                      fontSize: compact ? 22 : 24,
                       fontWeight: FontWeight.w800,
                       color: const Color(0xFF1E293B),
                     ),
@@ -634,21 +659,23 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                 )
               else
                 const Spacer(),
-              SizedBox(width: ultraCompact ? 2 : 4),
-              InkWell(
-                onTap: () => _handleCall(name, isVideo: true),
-                borderRadius: BorderRadius.circular(999),
-                child: Container(
-                  width: ultraCompact ? 22 : (compact ? 24 : 28),
-                  height: ultraCompact ? 22 : (compact ? 24 : 28),
-                  decoration: const BoxDecoration(
-                    color: Color(0xFF10B981),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    Icons.videocam_rounded,
-                    color: Colors.white,
-                    size: ultraCompact ? 12 : 14,
+              const SizedBox(width: 4),
+              Flexible( // Use Flexible instead of InkWell directly to ensure it doesn't push Row
+                child: InkWell(
+                  onTap: () => _handleCall(name, isVideo: true),
+                  borderRadius: BorderRadius.circular(999),
+                  child: Container(
+                    width: ultraCompact ? 50 : (compact ? 56 : 60), // Slightly reduced to fit (still ~60dp)
+                    height: ultraCompact ? 50 : (compact ? 56 : 60),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF10B981),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.videocam_rounded,
+                      color: Colors.white,
+                      size: ultraCompact ? 28 : 32,
+                    ),
                   ),
                 ),
               ),
@@ -787,7 +814,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                   Text(
                     name,
                     style: GoogleFonts.notoSansTc(
-                      fontSize: 22,
+                      fontSize: 24,
                       fontWeight: FontWeight.bold,
                       color: const Color(0xFF1E293B),
                     ),
@@ -795,7 +822,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                   Text(
                     relation,
                     style: GoogleFonts.notoSansTc(
-                      fontSize: 16,
+                      fontSize: 18,
                       color: const Color(0xFF64748B),
                     ),
                   ),
@@ -922,7 +949,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
             Text(
               label,
               style: GoogleFonts.notoSansTc(
-                fontSize: 18,
+                fontSize: 22,
                 fontWeight: FontWeight.bold,
                 color: color,
               ),
@@ -951,6 +978,22 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton.icon(
+            onPressed: _isLoadingNews
+                ? null
+                : () {
+                    setState(() {
+                      _isLoadingNews = true;
+                      _newsError = null;
+                    });
+                    _fetchNews();
+                  },
+            icon: const Icon(Icons.refresh_rounded, size: 16),
+            label: const Text('更新新聞'),
+          ),
+        ),
         if (_isLoadingNews)
           Container(
             height: 220,
@@ -1020,14 +1063,14 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     );
   }
 
-  Widget _buildTopRotatingNewsCard() {
+  Widget _buildTopRotatingNewsCard({bool compact = false}) {
     if (_isLoadingNews) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildNewsHeader(),
+          _buildNewsHeader(compact: compact),
           Container(
-            height: 220,
+            height: compact ? 160 : 220,
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(24),
@@ -1049,9 +1092,9 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildNewsHeader(),
+          _buildNewsHeader(compact: compact),
           Container(
-            constraints: const BoxConstraints(minHeight: 220),
+            constraints: BoxConstraints(minHeight: compact ? 160 : 220),
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
               color: Colors.white,
@@ -1102,7 +1145,8 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildNewsHeader(),
+        _buildNewsHeader(compact: compact),
+        const SizedBox(height: 12), // Added explicit spacing after header
         Row(
           children: [
             Expanded(
@@ -1116,7 +1160,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                         borderRadius: BorderRadius.circular(999),
                         child: LinearProgressIndicator(
                           value: value,
-                          minHeight: 5,
+                          minHeight: 8, // Increased from 5 to 8 for better visibility
                           backgroundColor: const Color(0xFFD8E8E2),
                           color: const Color(0xFF59B294),
                         ),
@@ -1126,31 +1170,81 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                       borderRadius: BorderRadius.circular(999),
                       child: const LinearProgressIndicator(
                         value: 1,
-                        minHeight: 5,
+                        minHeight: 8,
                         backgroundColor: Color(0xFFD8E8E2),
                         color: Color(0xFF59B294),
                       ),
                     ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 14),
             Text(
-              _formatTopNewsTimeLabel(item),
+              _topNewsAutoPaused ? '已暫停輪播' : _formatTopNewsTimeLabel(item),
               style: GoogleFonts.notoSansTc(
-                fontSize: 12,
+                fontSize: 14, // Increased from 12 to 14
                 color: const Color(0xFF64748B),
-                fontWeight: FontWeight.w500,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ],
         ),
-        const SizedBox(height: 8),
+        if (_newsItems.length > 1) ...[
+          const SizedBox(height: 16), // Increased spacing
+          Row(
+            children: [
+              InkWell(
+                onTap: () => _switchTopNewsBy(-1),
+                borderRadius: BorderRadius.circular(999),
+                child: Padding(
+                  padding: EdgeInsets.all(compact ? 6 : 8),
+                  child: Icon(Icons.chevron_left_rounded,
+                      color: const Color(0xFF59B294), size: compact ? 24 : 28),
+                ),
+              ),
+              Expanded(
+                child: Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: compact ? 6 : 8,
+                  runSpacing: compact ? 6 : 8,
+                  children: List.generate(_newsItems.length, (index) {
+                    return GestureDetector(
+                      onTap: () => _jumpToTopNewsByRealIndex(index),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        width: index == _topNewsIndex
+                            ? (compact ? 16 : 20)
+                            : (compact ? 8 : 10),
+                        height: compact ? 8 : 10,
+                        decoration: BoxDecoration(
+                          color: index == _topNewsIndex
+                              ? const Color(0xFF59B294)
+                              : const Color(0xFFC8D7D1),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+              ),
+              InkWell(
+                onTap: () => _switchTopNewsBy(1),
+                borderRadius: BorderRadius.circular(999),
+                child: Padding(
+                  padding: EdgeInsets.all(compact ? 6 : 8),
+                  child: Icon(Icons.chevron_right_rounded,
+                      color: const Color(0xFF59B294), size: compact ? 24 : 28),
+                ),
+              ),
+            ],
+          ),
+        ],
+        const SizedBox(height: 20), // Increased spacing before news card
         AnimatedSwitcher(
           duration: const Duration(milliseconds: 420),
           switchInCurve: Curves.easeOutCubic,
           switchOutCurve: Curves.easeInCubic,
           transitionBuilder: (child, animation) {
             final offset = Tween<Offset>(
-              begin: const Offset(0, 0.035),
+              begin: const Offset(0, 0.05), // Slightly increased offset
               end: Offset.zero,
             ).animate(
                 CurvedAnimation(parent: animation, curve: Curves.easeOut));
@@ -1162,7 +1256,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
           child: Container(
             key: ValueKey<String>(
                 'top-news-${item['source_url'] ?? _topNewsIndex}'),
-            child: _buildNewsListCard(item),
+            child: _buildNewsListCard(item, compact: true, tight: compact),
           ),
         ),
       ],
@@ -1260,20 +1354,21 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     return '更新於 ${DateFormat('MM/dd HH:mm').format(ts)}';
   }
 
-  Widget _buildNewsHeader() {
+  Widget _buildNewsHeader({bool compact = false}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            const Text(
+            Text(
               '最新',
-              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 17),
+              style: TextStyle(
+                  fontWeight: FontWeight.w600, fontSize: compact ? 18 : 22),
             ),
             Container(
               margin: const EdgeInsets.only(left: 4),
-              width: 6,
-              height: 6,
+              width: 8,
+              height: 8,
               decoration: const BoxDecoration(
                 color: Colors.red,
                 shape: BoxShape.circle,
@@ -1284,38 +1379,41 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
               '新聞',
               style: GoogleFonts.notoSansTc(
                 color: Colors.grey,
-                fontSize: 17,
+                fontSize: compact ? 18 : 22,
                 fontWeight: FontWeight.w500,
               ),
             ),
           ],
         ),
-        const SizedBox(height: 8),
-        const Text(
+        SizedBox(height: compact ? 6 : 8),
+        Text(
           '頭條早知道',
           style: TextStyle(
             fontFamily: 'StarPanda',
-            fontSize: 40,
-            color: Color(0xFF59B294),
+            fontSize: compact ? 32 : 40,
+            color: const Color(0xFF59B294),
           ),
         ),
-        const SizedBox(height: 10),
+        SizedBox(height: compact ? 6 : 10),
       ],
     );
   }
 
-  Widget _buildNewsListCard(Map<String, dynamic> item) {
+  Widget _buildNewsListCard(Map<String, dynamic> item,
+      {bool compact = false, bool tight = false}) {
     final imageUrl =
         ((item['image_url'] ?? item['image']) ?? '').toString().trim();
     final hasImage =
         imageUrl.startsWith('http://') || imageUrl.startsWith('https://');
     if (hasImage) {
-      return _buildNewsImageCard(item, imageUrl);
+      return _buildNewsImageCard(item, imageUrl,
+          compact: compact, tight: tight);
     }
-    return _buildNewsTextCard(item);
+    return _buildNewsTextCard(item, compact: compact, tight: tight);
   }
 
-  Widget _buildNewsTextCard(Map<String, dynamic> item) {
+  Widget _buildNewsTextCard(Map<String, dynamic> item,
+      {bool compact = false, bool tight = false}) {
     final categoryKey = (item['category_key'] ?? '').toString().trim();
     final source = (item['category'] ?? '中央社').toString();
     final title = (item['title'] ?? '無標題').toString();
@@ -1323,7 +1421,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     final publishedAt = (item['published_at'] ?? '').toString();
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(tight ? 12 : (compact ? 14 : 16)),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
@@ -1348,23 +1446,26 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
               ),
               Text(
                 _formatNewsDate(publishedAtRaw, publishedAt),
-                style: GoogleFonts.inter(color: Colors.grey),
+                style: GoogleFonts.inter(
+                  color: Colors.grey,
+                  fontSize: compact ? 16 : 18,
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          SizedBox(height: tight ? 6 : (compact ? 8 : 10)),
           Text(
             title,
-            maxLines: 3,
+            maxLines: tight ? 2 : (compact ? 3 : 4),
             overflow: TextOverflow.ellipsis,
             style: GoogleFonts.notoSansTc(
-              fontSize: 19,
+              fontSize: tight ? 22 : (compact ? 24 : 26),
               fontWeight: FontWeight.w700,
               height: 1.3,
               color: const Color(0xFF1E293B),
             ),
           ),
-          const SizedBox(height: 6),
+          SizedBox(height: tight ? 2 : (compact ? 4 : 6)),
           InkWell(
             onTap: () => _openNewsListenPlayer(item),
             borderRadius: BorderRadius.circular(999),
@@ -1376,7 +1477,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                   style: GoogleFonts.notoSansTc(
                     color: const Color(0xFF59B294),
                     fontWeight: FontWeight.w600,
-                    fontSize: 16,
+                    fontSize: tight ? 18 : (compact ? 20 : 22),
                   ),
                 ),
                 const SizedBox(width: 4),
@@ -1390,7 +1491,8 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     );
   }
 
-  Widget _buildNewsImageCard(Map<String, dynamic> item, String imageUrl) {
+  Widget _buildNewsImageCard(Map<String, dynamic> item, String imageUrl,
+      {bool compact = false, bool tight = false}) {
     final categoryKey = (item['category_key'] ?? '').toString().trim();
     final source = (item['category'] ?? '中央社').toString();
     final title = (item['title'] ?? '無標題').toString();
@@ -1398,7 +1500,9 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     final publishedAt = (item['published_at'] ?? '').toString();
 
     return Container(
-      height: 220,
+      constraints: BoxConstraints(
+        minHeight: tight ? 140 : (compact ? 180 : 240),
+      ),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
@@ -1419,6 +1523,26 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
               Image.network(
                 imageUrl,
                 fit: BoxFit.cover,
+                loadingBuilder: (context, child, progress) {
+                  if (progress == null) return child;
+                  return Container(
+                    color: const Color(0xFFE2E8F0),
+                    alignment: Alignment.center,
+                    child: SizedBox(
+                      width: 26,
+                      height: 26,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.4,
+                        valueColor: const AlwaysStoppedAnimation<Color>(
+                            Color(0xFF59B294)),
+                        value: progress.expectedTotalBytes != null
+                            ? progress.cumulativeBytesLoaded /
+                                progress.expectedTotalBytes!
+                            : null,
+                      ),
+                    ),
+                  );
+                },
                 errorBuilder: (_, __, ___) => Container(
                   color: Colors.white,
                   alignment: Alignment.center,
@@ -1439,7 +1563,12 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                padding: EdgeInsets.fromLTRB(
+                  tight ? 10 : (compact ? 12 : 14),
+                  tight ? 8 : (compact ? 10 : 12),
+                  tight ? 10 : (compact ? 12 : 14),
+                  tight ? 8 : 10,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1453,7 +1582,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                           _formatNewsDate(publishedAtRaw, publishedAt),
                           style: GoogleFonts.inter(
                             color: Colors.white.withValues(alpha: 0.9),
-                            fontSize: 12,
+                            fontSize: tight ? 16 : (compact ? 18 : 20),
                           ),
                         ),
                       ],
@@ -1461,16 +1590,16 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                     const Spacer(),
                     Text(
                       title,
-                      maxLines: 3,
+                      maxLines: tight ? 1 : (compact ? 1 : 2),
                       overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.notoSansTc(
-                        fontSize: 29,
+                        fontSize: tight ? 22 : (compact ? 24 : 26),
                         fontWeight: FontWeight.w700,
-                        height: 1.25,
+                        height: tight ? 1.15 : (compact ? 1.2 : 1.25),
                         color: Colors.white,
                       ),
                     ),
-                    const SizedBox(height: 6),
+                    SizedBox(height: tight ? 2 : (compact ? 4 : 6)),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
@@ -1479,7 +1608,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                           style: GoogleFonts.notoSansTc(
                             color: Colors.white,
                             fontWeight: FontWeight.w600,
-                            fontSize: 16,
+                            fontSize: tight ? 12 : (compact ? 14 : 16),
                           ),
                         ),
                         const SizedBox(width: 4),
@@ -1567,7 +1696,19 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     }
   }
 
+  void _openNewsListFromTopEntry() {
+    if (_newsItems.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('目前沒有可瀏覽的新聞')),
+      );
+      return;
+    }
+    final currentTop = _newsItems[_topNewsIndex % _newsItems.length];
+    _openNewsListenPlayer(currentTop);
+  }
+
   void _openNewsListenPlayer(Map<String, dynamic> currentItem) {
+    _pauseTopNewsAutoRotate();
     final playlist = _orderedNewsItemsWithTopFirst().take(12).toList();
     if (playlist.isEmpty) return;
     final currentKey = _newsIdentityKey(currentItem);
@@ -1594,5 +1735,57 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
       return parsed;
     }
     return '--';
+  }
+
+  Future<void> _handleNewsRefresh() async {
+    if (_isRefreshingNews) return;
+    setState(() {
+      _isRefreshingNews = true;
+      _isLoadingNews = true;
+      _newsError = null;
+    });
+    try {
+      await _fetchNews();
+    } finally {
+      if (mounted) {
+        setState(() => _isRefreshingNews = false);
+      }
+    }
+  }
+
+  void _pauseTopNewsAutoRotate(
+      [Duration duration = const Duration(seconds: 10)]) {
+    _topNewsAutoResumeTimer?.cancel();
+    setState(() {
+      _topNewsAutoPaused = true;
+      _resetTopNewsCycle();
+    });
+    _topNewsAutoResumeTimer = Timer(duration, () {
+      if (!mounted) return;
+      setState(() {
+        _topNewsAutoPaused = false;
+        _resetTopNewsCycle();
+      });
+    });
+  }
+
+  void _switchTopNewsBy(int delta) {
+    if (_newsItems.length <= 1) return;
+    setState(() {
+      _topNewsIndex =
+          (_topNewsIndex + delta + _newsItems.length) % _newsItems.length;
+      _resetTopNewsCycle();
+    });
+    _pauseTopNewsAutoRotate();
+  }
+
+  void _jumpToTopNewsByRealIndex(int index) {
+    if (_newsItems.length <= 1) return;
+    if (index < 0 || index >= _newsItems.length) return;
+    setState(() {
+      _topNewsIndex = index;
+      _resetTopNewsCycle();
+    });
+    _pauseTopNewsAutoRotate();
   }
 }
