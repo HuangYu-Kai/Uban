@@ -381,93 +381,30 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
                   ],
                 ),
                 const SizedBox(height: 18),
-                // 方案 B：動態大字字幕 (移至下方)
+                // 方案 B：動態大字字幕 (取代文字稿區域)
                 Container(
                   width: double.infinity,
-                  constraints: const BoxConstraints(minHeight: 80),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  constraints: const BoxConstraints(minHeight: 100),
+                  padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.25),
-                    borderRadius: BorderRadius.circular(16),
+                    color: Colors.black.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.1), width: 1),
                   ),
                   child: Center(
                     child: Text(
-                      _currentSubtitle.isEmpty ? (title.length > 10 ? "${title.substring(0, 10)}..." : title) : _currentSubtitle,
+                      _currentSubtitle.isEmpty ? '準備播放中...' : _currentSubtitle,
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 34, // 超大字體，符合長輩需求
+                        fontSize: 34,
                         fontWeight: FontWeight.bold,
+                        letterSpacing: 1.2,
                         shadows: [
-                          Shadow(blurRadius: 4, color: Colors.black54, offset: Offset(2, 2)),
+                          Shadow(blurRadius: 8, color: Colors.black, offset: Offset(2, 2)),
                         ],
                       ),
                     ),
-                  ),
-                ),
-                const SizedBox(height: 18),
-                Container(
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.18),
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                  child: Column(
-                    children: [
-                      InkWell(
-                        onTap: () =>
-                            setState(() => _showTranscript = !_showTranscript),
-                        borderRadius: BorderRadius.circular(18),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 12),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.subject_rounded,
-                                  color: Colors.white, size: 18),
-                              const SizedBox(width: 8),
-                              Text(
-                                _showTranscript ? '收起文字稿' : '顯示文字稿',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const Spacer(),
-                              Icon(
-                                _showTranscript
-                                    ? Icons.expand_less_rounded
-                                    : Icons.expand_more_rounded,
-                                color: Colors.white,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      AnimatedCrossFade(
-                        duration: const Duration(milliseconds: 220),
-                        crossFadeState: _showTranscript
-                            ? CrossFadeState.showFirst
-                            : CrossFadeState.showSecond,
-                        firstChild: Container(
-                          constraints: const BoxConstraints(maxHeight: 130),
-                          width: double.infinity,
-                          padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
-                          child: SingleChildScrollView(
-                            child: Text(
-                              transcript.isEmpty ? '沒有可顯示的文字稿' : transcript,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 14,
-                                height: 1.45,
-                              ),
-                            ),
-                          ),
-                        ),
-                        secondChild: const SizedBox.shrink(),
-                      ),
-                    ],
                   ),
                 ),
                 const Spacer(),
