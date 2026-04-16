@@ -23,21 +23,18 @@ Flutter App (本 Repo)
 └── lib/screens/family_main_screen.dart ← 家屬主畫面
 
 FastAPI 後端 (uban-api/ 獨立 Repo)
-├── main.py                       ← FastAPI + Socket.IO ASGI
+├── main.py                       ← FastAPI 入口 + Socket.IO ASGI
 ├── services/socket_app.py        ← 信令轉發伺服器
-└── services/ollama_service.py    ← AI 引擎
-
-⚠️ server/ 目錄 = 已棄用的 Legacy Flask，絕對不要修改
+└── services/ollama_service.py    ← AI 引擎 (Gemma 4)
 ```
 
 ## 絕對禁止 (Hard Rules)
 
 1. **不要硬編碼 IP** — 使用 `--dart-define=SERVER_IP=`
 2. **Signaling 必須 Singleton** — 不要 `Signaling()` 多次初始化
-3. **不要修改 `server/` 目錄** — 那是 Legacy Flask
-4. **長輩端不直接用 VideoCallScreen** — 長輩端通話入口是 `ElderScreen`
-5. **不要在 openUserMedia 之前 createOffer** — 必須先拿到 localStream
-6. **ICE Candidate 必須排隊** — 在 `setRemoteDescription` 完成前收到的 candidate 必須排隊，完成後再 flush
+3. **長輩端不直接用 VideoCallScreen** — 長輩端通話入口是 `ElderScreen`
+4. **不要在 openUserMedia 之前 createOffer** — 必須先拿到 localStream
+5. **ICE Candidate 必須排隊** — 在 `setRemoteDescription` 完成前收到的 candidate 必須排隊，完成後再 flush
 
 ## WebRTC 通話流程 (Critical)
 

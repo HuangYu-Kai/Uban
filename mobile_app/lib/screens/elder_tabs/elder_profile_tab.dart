@@ -280,7 +280,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                           '步數',
                           style: GoogleFonts.notoSansTc(
                             color: Colors.white,
-                            fontSize: 16,
+                            fontSize: 20, // Compliant
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -327,7 +327,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
           ),
         ),
         const SizedBox(height: 6),
-        Text(day, style: GoogleFonts.notoSansTc(color: Colors.grey.shade500, fontSize: 11)),
+        Text(day, style: GoogleFonts.notoSansTc(color: Colors.grey.shade500, fontSize: 16)),
       ],
     );
   }
@@ -373,7 +373,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                           maxLines: 1,
                           style: GoogleFonts.notoSansTc(
                             color: Colors.black,
-                            fontSize: 12,
+                            fontSize: 18, // Bigger pop up text
                             fontWeight: FontWeight.bold,
                           ),
                         ),
@@ -402,7 +402,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                 const SizedBox(height: 6),
                 Text(
                   day,
-                  style: GoogleFonts.notoSansTc(color: Colors.grey.shade500, fontSize: 11),
+                  style: GoogleFonts.notoSansTc(color: Colors.grey.shade500, fontSize: 16),
                 ),
               ],
             ),
@@ -521,7 +521,8 @@ class _ElderProfileTabState extends State<ElderProfileTab>
               backgroundColor: Colors.white,
               foregroundColor: const Color(0xFF59B294),
               elevation: 4,
-              child: const Icon(Icons.my_location_rounded),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              child: const Icon(Icons.my_location_rounded, size: 32),
             ),
           ),
           Positioned(
@@ -650,7 +651,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                           Text(
                             '飯後記得出門散散步有助於消化喔',
                             style: GoogleFonts.notoSansTc(
-                              fontSize: 12,
+                              fontSize: 18, // Compliant helper text
                               color: const Color(0xFF64748B),
                             ),
                           ),
@@ -700,7 +701,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                                   Text(
                                     greetingText,
                                     style: GoogleFonts.notoSansTc(
-                                      fontSize: 14,
+                                      fontSize: 18,
                                       color: const Color(0xFF64748B),
                                       fontWeight: FontWeight.w500,
                                     ),
@@ -708,7 +709,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                                   Text(
                                     '${DateFormat('HH:mm').format(_lastUpdateTime)} 已更新',
                                     style: GoogleFonts.notoSansTc(
-                                      fontSize: 12,
+                                      fontSize: 16,
                                       color: const Color(0xFF94A3B8),
                                     ),
                                   ),
@@ -731,7 +732,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                                 Text(
                                   '公里',
                                   style: GoogleFonts.notoSansTc(
-                                    fontSize: 16,
+                                    fontSize: 20,
                                     fontWeight: FontWeight.bold,
                                     color: const Color(0xFF64748B),
                                   ),
@@ -746,7 +747,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                                   child: Text(
                                     '≈ ${(_totalDistance * 1450).toInt()} 步',
                                     style: GoogleFonts.notoSansTc(
-                                      fontSize: 14,
+                                      fontSize: 18,
                                       fontWeight: FontWeight.w900,
                                       color: const Color(0xFFEF4444),
                                     ),
@@ -788,7 +789,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                     label: Text(
                       '登出系統',
                       style: GoogleFonts.notoSansTc(
-                        fontSize: 20,
+                        fontSize: 24, // Bigger logout font
                         fontWeight: FontWeight.bold,
                       ),
                     ),
