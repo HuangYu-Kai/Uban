@@ -884,7 +884,11 @@ class ElderChatTabState extends State<ElderChatTab>
         const SizedBox(height: 12),
         Text(
           '有什麼想問我的嗎？',
-          style: GoogleFonts.notoSansTc(fontSize: 20, color: Colors.grey),
+          style: GoogleFonts.notoSansTc(
+            fontSize: 26, 
+            fontWeight: FontWeight.bold,
+            color: Colors.grey[700]
+          ),
         ),
         const SizedBox(height: 30),
         GridView.count(
@@ -1051,7 +1055,7 @@ class ElderChatTabState extends State<ElderChatTab>
                 Text(
                   'AI 陪伴',
                   style: GoogleFonts.notoSansTc(
-                    fontSize: 14,
+                    fontSize: 18, // Compliant
                     color: const Color(0xFF59B294),
                     fontWeight: FontWeight.bold,
                     letterSpacing: -0.3,
@@ -1129,7 +1133,7 @@ class ElderChatTabState extends State<ElderChatTab>
             Text(
               '正在為您思考中...',
               style: GoogleFonts.notoSansTc(
-                fontSize: 22,
+                fontSize: 26, // Make it very clear
                 fontWeight: FontWeight.w900,
                 color: const Color(0xFF59B294),
                 letterSpacing: -0.2,
@@ -1169,15 +1173,17 @@ class ElderChatTabState extends State<ElderChatTab>
       child: Row(
         children: [
           Container(
+            width: 64, // Bigger hit area
+            height: 64,
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(16),
             ),
             child: IconButton(
               icon: const Icon(
                 Icons.arrow_back_ios_new_rounded,
                 color: Colors.white,
-                size: 28,
+                size: 32, // Bigger icon
               ),
               onPressed: widget.onBackToHome,
             ),
@@ -1189,7 +1195,7 @@ class ElderChatTabState extends State<ElderChatTab>
               Text(
                 '連續對話',
                 style: GoogleFonts.notoSansTc(
-                  fontSize: 16,
+                  fontSize: 20, // Compliant secondary
                   color: Colors.white.withValues(alpha: 0.95),
                   fontWeight: FontWeight.bold,
                   letterSpacing: -0.2,
@@ -1197,7 +1203,7 @@ class ElderChatTabState extends State<ElderChatTab>
               ),
               const SizedBox(width: 10),
               Transform.scale(
-                scale: 0.85,
+                scale: 1.2, // Bigger switch for better touch
                 child: Switch(
                   value: _voiceLoopEnabled,
                   onChanged: (v) => setState(() => _voiceLoopEnabled = v),
@@ -1277,8 +1283,8 @@ class ElderChatTabState extends State<ElderChatTab>
             children: [
               // 「+」功能按鈕（保留）
               Container(
-                width: 56,
-                height: 56,
+                width: 64, // 60dp+ touch target
+                height: 64,
                 decoration: BoxDecoration(
                   color: Colors.white,
                   shape: BoxShape.circle,
@@ -1375,8 +1381,8 @@ class ElderChatTabState extends State<ElderChatTab>
           child: Text(
             statusText,
             style: GoogleFonts.notoSansTc(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
+              fontSize: 24, // Bigger font for the main action
+              fontWeight: FontWeight.w900,
               color: Colors.white,
               letterSpacing: -0.2,
             ),
@@ -1438,8 +1444,8 @@ class ElderChatTabState extends State<ElderChatTab>
               title,
               textAlign: TextAlign.center,
               style: GoogleFonts.notoSansTc(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
+                fontSize: 22, // Bigger quick action font
+                fontWeight: FontWeight.w900,
                 color: const Color(0xFF1E293B),
                 letterSpacing: -0.2,
                 height: 1.3,

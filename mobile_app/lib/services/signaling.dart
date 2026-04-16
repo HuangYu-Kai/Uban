@@ -85,6 +85,7 @@ class Signaling {
   StreamSubscription<String>? _tokenRefreshSubscription;
 
   void _setupTokenMonitor() {
+    if (kIsWeb) return; // Firebase Messaging not initialized for web
     _tokenRefreshSubscription?.cancel();
     _tokenRefreshSubscription = FirebaseMessaging.instance.onTokenRefresh.listen((newToken) {
       debugPrint("🆕 [Signaling] FCM Token Refreshed: ${newToken.substring(0, 10)}...");

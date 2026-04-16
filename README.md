@@ -23,7 +23,7 @@ Uban 是一套專為銀髮族設計的 AI 陪伴照護系統，包含：
 
 - **長輩端 App**：語音優先的 AI 對話介面
 - **家屬端 App**：遠端照護管理與視訊通話
-- **AI 後端**：Ollama + Flask 驅動的智慧陪伴引擎
+- **AI 后端**：Ollama + FastAPI 驅動的智慧陪伴引擎
 
 ---
 
@@ -83,8 +83,8 @@ Uban 是一套專為銀髮族設計的 AI 陪伴照護系統，包含：
 
 #### 1. 雙軌 AI 引擎
 
-- **Ollama（主要）**：使用 `qwen2.5:1.5b` 模型，支援 Tool Calling
-- **Gemini（備用）**：Google Gemini 2.5 Flash API
+- **Ollama（主要）**：使用 `gemma4:e4b-it-q4_K_M` 模型，支援 Tool Calling
+- **Gemini（備用）**：Google Gemini 2.0 Flash API (及 1.5 系列)
 
 #### 2. AI Agent 人格系統 (`server/agent/`)
 
@@ -128,7 +128,7 @@ Uban 是一套專為銀髮族設計的 AI 陪伴照護系統，包含：
 
 ### 三、長輩端 App (Flutter)
 
-- **語音對話**：STT/TTS、連續對話、打斷機制
+- **語音對話**：STT / EdgeTTS、連續對話、打斷機制（CosyVoice 測試中）
 - **Markdown 渲染**：自動轉換影片/圖片卡片
 - **快捷問題卡片**：一鍵發問常見問題
 
@@ -211,7 +211,6 @@ Uban/
 │       │   ├── family_main_screen.dart  # 家屬主畫面 (來電監聽)
 │       │   └── elder_tabs/             # 長輩端分頁
 │       └── globals.dart     # 全域狀態
-├── server/                  # ⚠️ Legacy Flask (已棄用，勿修改)
 ├── webrtc_test.html         # 瀏覽器版 WebRTC 測試工具 (v1.1)
 ├── test_call_simulator.py   # Socket.IO 信令測試腳本
 ├── run.sh                   # macOS/Linux 啟動腳本
@@ -357,6 +356,24 @@ void initPedometer() {
 ---
 
 ## 更新日誌
+
+### 2026-04-16 🧹 專案大掃除 + 模型同步
+**完全移除 Legacy 代碼，同步生產環境模型資訊**
+
+#### 🚀 核心更新
+- **LLM 遷移**：全線遷移至 `gemma4:e4b-it-q4_K_M`，優化 Tool Calling 穩定性。
+- **TTS 升級**：預設使用 `EdgeTTS` (Neural)，並開始 A/B 測試 `CosyVoice` 離線引擎。
+- **專案瘦身**：
+    - 徹底刪除 `server/` (Legacy Flask) 目錄。
+    - 清理 redundant 的測試腳本（Bark、gTTS 舊版測試等）。
+    - 移除所有 `scratch_` 開頭的暫存開發檔案。
+
+#### 🔧 代碼修正
+- `ollama_service.py` 預設模型更新為 `gemma4:e4b-it-q4_K_M`。
+- `test_ollama.py` 與 `diagnose_ollama.py` 同步更新。
+- 修正 `README.md` 中的架構圖與功能對照表。
+
+---
 
 ### 2026-04-12 🏗️ 雙軌制架構遷移 + WebRTC 影像修復
 **TURN 伺服器從 Tailscale 遷移至 Oracle Cloud + 修復遠端影像黑屏**
@@ -584,10 +601,10 @@ void initPedometer() {
 
 | 功能 | 描述 | 資料路徑 |
 |------|------|----------|
-| Ollama AI 引擎 | 主要 AI，使用 qwen2.5 模型 | `uban-api/services/ollama_service.py` |
-| Gemini 備用引擎 | Google Gemini 2.5 Flash | `uban-api/services/gemini_service.py` |
+| Ollama AI 引擎 | 主要 AI，使用 gemma4 模型 | `uban-api/services/ollama_service.py` |
+| Gemini 備用引擎 | Google Gemini 2.0 Flash | `uban-api/services/gemini_service.py` |
 | AI 工具服務 | Tool Calling 整合 | `uban-api/services/tools_service.py` |
-| Agent 人格系統 | 6 個設定檔定義 AI 性格 | `server/agent/*.md` |
+| Agent 人格系統 | 6 個設定檔定義 AI 性格 | `uban-api/server/agent/*.md` |
 | Heartbeat 關懷 | 每分鐘檢查主動推播 | `uban-api/main.py` → `heartbeat_job()` |
 
 ### AI 技能（12 項）
@@ -687,12 +704,12 @@ void initPedometer() {
 
 | 檔案 | 用途 | 資料路徑 |
 |------|------|----------|
-| SOUL.md | 語言限制、對話原則、絕對邊界 | `server/agent/SOUL.md` |
-| IDENTITY.md | 角色名稱「小優」、性格形象 | `server/agent/IDENTITY.md` |
-| MEMORY.md | 長期記憶庫 | `server/agent/MEMORY.md` |
-| USER.md | 長輩基本資訊 | `server/agent/USER.md` |
-| HEARTBEAT.md | 主動關懷任務設定 | `server/agent/HEARTBEAT.md` |
-| AGENTS.md | 運作流程、啟動順序 | `server/agent/AGENTS.md` |
+| SOUL.md | 語言限制、對話原則、絕對邊界 | `uban-api/server/agent/SOUL.md` |
+| IDENTITY.md | 角色名稱「小優」、性格形象 | `uban-api/server/agent/IDENTITY.md` |
+| MEMORY.md | 長期記憶庫 | `uban-api/server/agent/MEMORY.md` |
+| USER.md | 長輩基本資訊 | `uban-api/server/agent/USER.md` |
+| HEARTBEAT.md | 主動關懷任務設定 | `uban-api/server/agent/HEARTBEAT.md` |
+| AGENTS.md | 運作流程、啟動順序 | `uban-api/server/agent/AGENTS.md` |
 
 ### 資料庫 Schema
 
@@ -712,7 +729,7 @@ void initPedometer() {
 > 開發本專案前，請確保 AI 已閱讀此 README.md：
 >
 > 1. **架構**：Flutter + FastAPI (`uban-api` 獨立 Repo)
-> 2. **Legacy**：`server/` 目錄為舊 Flask AI 代碼，勿修改
+> 2. **Ollama**：預設模型為 `gemma4:e4b-it-q4_K_M`
 > 4. **Socket.IO**：必須使用 Singleton Pattern (`lib/services/signaling.dart`)
 > 5. **Server URL**：透過 `--dart-define=SERVER_IP=` 注入，禁止寫死
 > 6. **雙軌制**：信令 (Tailscale TCP) 與媒體 (Oracle UDP) 分離，**禁止合併**
