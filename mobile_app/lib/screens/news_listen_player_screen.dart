@@ -35,6 +35,7 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
   // 字幕相關
   List<dynamic> _subtitles = [];
   String _currentSubtitle = "";
+  double _subtitleProgress = 0.0; // 0.0 to 1.0 within the current chunk
   StreamSubscription? _positionSubscription;
 
   @override
@@ -66,21 +67,23 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
       if (!mounted || _subtitles.isEmpty) return;
       
       final ms = position.inMilliseconds;
-      String? matchedText;
-      
-      // 尋找當前毫秒對應的字幕
+      String matchedText = "";
+      double progress = 0.0;
+
       for (var sub in _subtitles) {
         final start = sub['start_ms'] as int;
         final duration = sub['duration_ms'] as int;
         if (ms >= start && ms < (start + duration)) {
           matchedText = sub['text'] as String;
+          progress = (ms - start) / (duration > 0 ? duration : 1);
           break;
         }
       }
-      
-      if (matchedText != null && matchedText != _currentSubtitle) {
+
+      if (matchedText != _currentSubtitle || (progress - _subtitleProgress).abs() > 0.05) {
         setState(() {
-          _currentSubtitle = matchedText!;
+          _currentSubtitle = matchedText;
+          _subtitleProgress = progress.clamp(0.0, 1.0);
         });
       }
     });
@@ -392,19 +395,39 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
                     border: Border.all(color: Colors.white.withValues(alpha: 0.1), width: 1),
                   ),
                   child: Center(
-                    child: Text(
-                      _currentSubtitle.isEmpty ? '準備播放中...' : _currentSubtitle,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 34,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 1.2,
-                        shadows: [
-                          Shadow(blurRadius: 8, color: Colors.black, offset: Offset(2, 2)),
-                        ],
-                      ),
-                    ),
+                    child: _currentSubtitle.isEmpty
+                        ? Text(
+                            '準備播放中...',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 34,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          )
+                        : RichText(
+                            textAlign: TextAlign.center,
+                            text: TextSpan(
+                              style: const TextStyle(
+                                fontSize: 34,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 1.2,
+                                shadows: [
+                                  Shadow(blurRadius: 8, color: Colors.black, offset: Offset(2, 2)),
+                                ],
+                              ),
+                              children: [
+                                TextSpan(
+                                  text: _currentSubtitle.substring(0, (_currentSubtitle.length * _subtitleProgress).round().clamp(0, _currentSubtitle.length)),
+                                  style: const TextStyle(color: Color(0xFFFFD700)), // 亮金色 (Golden Yellow)
+                                ),
+                                TextSpan(
+                                  text: _currentSubtitle.substring((_currentSubtitle.length * _subtitleProgress).round().clamp(0, _currentSubtitle.length)),
+                                  style: const TextStyle(color: Colors.white),
+                                ),
+                              ],
+                            ),
+                          ),
                   ),
                 ),
                 const Spacer(),
