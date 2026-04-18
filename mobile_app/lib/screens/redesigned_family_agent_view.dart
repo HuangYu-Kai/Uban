@@ -142,7 +142,9 @@ class _RedesignedFamilyAgentViewState extends State<RedesignedFamilyAgentView> {
     HapticFeedback.lightImpact();
 
     try {
-      final userId = int.parse((_selectedElder['user_id'] ?? _selectedElder['id'] ?? widget.userId).toString());
+      final userId = int.parse(
+          (_selectedElder['user_id'] ?? _selectedElder['id'] ?? widget.userId)
+              .toString());
       await ApiService.updateElderProfile(
         userId: userId,
         appellation: _appellationController.text,
@@ -192,8 +194,7 @@ class _RedesignedFamilyAgentViewState extends State<RedesignedFamilyAgentView> {
                 height: 50,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  valueColor:
-                      AlwaysStoppedAnimation<Color>(Color(0xFF667EEA)),
+                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF667EEA)),
                 ),
               ),
               const SizedBox(height: 16),
@@ -269,12 +270,9 @@ class _RedesignedFamilyAgentViewState extends State<RedesignedFamilyAgentView> {
                   icon: Icons.favorite,
                   color: const Color(0xFFEF4444),
                   children: [
-                    _buildTextField('慢性疾病', _chronicController,
-                        maxLines: 2),
-                    _buildTextField('用藥備註', _medicationController,
-                        maxLines: 2),
-                    _buildTextField('興趣愛好', _interestsController,
-                        maxLines: 2),
+                    _buildTextField('慢性疾病', _chronicController, maxLines: 2),
+                    _buildTextField('用藥備註', _medicationController, maxLines: 2),
+                    _buildTextField('興趣愛好', _interestsController, maxLines: 2),
                   ],
                 ),
                 const SizedBox(height: 24),
@@ -304,8 +302,7 @@ class _RedesignedFamilyAgentViewState extends State<RedesignedFamilyAgentView> {
                   icon: Icons.book,
                   color: const Color(0xFFF59E0B),
                   children: [
-                    _buildTextField('個人介紹', _lifeStoryController,
-                        maxLines: 4),
+                    _buildTextField('個人介紹', _lifeStoryController, maxLines: 4),
                   ],
                 ),
                 const SizedBox(height: 32),
@@ -384,9 +381,7 @@ class _RedesignedFamilyAgentViewState extends State<RedesignedFamilyAgentView> {
                   duration: const Duration(milliseconds: 200),
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   decoration: BoxDecoration(
-                    color: isSelected
-                        ? const Color(0xFF667EEA)
-                        : Colors.white,
+                    color: isSelected ? const Color(0xFF667EEA) : Colors.white,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
                       color: isSelected
@@ -397,8 +392,8 @@ class _RedesignedFamilyAgentViewState extends State<RedesignedFamilyAgentView> {
                     boxShadow: isSelected
                         ? [
                             BoxShadow(
-                              color:
-                                  const Color(0xFF667EEA).withValues(alpha: 0.2),
+                              color: const Color(0xFF667EEA)
+                                  .withValues(alpha: 0.2),
                               blurRadius: 12,
                               offset: const Offset(0, 4),
                             ),
@@ -410,10 +405,10 @@ class _RedesignedFamilyAgentViewState extends State<RedesignedFamilyAgentView> {
                       elder['user_name'] ?? '長者',
                       style: GoogleFonts.notoSansTc(
                         fontSize: 13,
-                        fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
-                        color: isSelected
-                            ? Colors.white
-                            : const Color(0xFF0F172A),
+                        fontWeight:
+                            isSelected ? FontWeight.w700 : FontWeight.w600,
+                        color:
+                            isSelected ? Colors.white : const Color(0xFF0F172A),
                       ),
                     ),
                   ),
@@ -466,9 +461,8 @@ class _RedesignedFamilyAgentViewState extends State<RedesignedFamilyAgentView> {
                       : Colors.white,
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: isSelected
-                        ? persona['color']
-                        : const Color(0xFFE5E7EB),
+                    color:
+                        isSelected ? persona['color'] : const Color(0xFFE5E7EB),
                     width: isSelected ? 2 : 1,
                   ),
                   boxShadow: isSelected
@@ -626,18 +620,15 @@ class _RedesignedFamilyAgentViewState extends State<RedesignedFamilyAgentView> {
             ),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide:
-                  const BorderSide(color: Color(0xFFE5E7EB), width: 1),
+              borderSide: const BorderSide(color: Color(0xFFE5E7EB), width: 1),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide:
-                  const BorderSide(color: Color(0xFFE5E7EB), width: 1),
+              borderSide: const BorderSide(color: Color(0xFFE5E7EB), width: 1),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide:
-                  const BorderSide(color: Color(0xFF667EEA), width: 2),
+              borderSide: const BorderSide(color: Color(0xFF667EEA), width: 2),
             ),
             contentPadding:
                 const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -727,7 +718,8 @@ class _RedesignedFamilyAgentViewState extends State<RedesignedFamilyAgentView> {
           backgroundColor: const Color(0xFF10B981),
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(vertical: 12),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           elevation: 0,
         ),
         icon: const Icon(Icons.location_on, size: 18),
@@ -748,7 +740,7 @@ class _RedesignedFamilyAgentViewState extends State<RedesignedFamilyAgentView> {
     ValueChanged<double> onChanged,
   ) {
     // 實時預覽文本生成
-    String _getPreviewText(String label, double value) {
+    String getPreviewText(String label, double value) {
       if (label.contains('情感溫度')) {
         if (value < 30) return '「早安，請記得吃藥。」（簡潔專業）';
         if (value < 70) return '「早安呀！記得吃藥哦~」（溫暖友善）';
@@ -760,7 +752,7 @@ class _RedesignedFamilyAgentViewState extends State<RedesignedFamilyAgentView> {
       }
       return '';
     }
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -837,7 +829,7 @@ class _RedesignedFamilyAgentViewState extends State<RedesignedFamilyAgentView> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  _getPreviewText(label, value),
+                  getPreviewText(label, value),
                   style: GoogleFonts.notoSansTc(
                     fontSize: 12,
                     color: const Color(0xFF475569),
@@ -847,9 +839,10 @@ class _RedesignedFamilyAgentViewState extends State<RedesignedFamilyAgentView> {
               ),
             ],
           ),
-        ).animate(key: ValueKey('$label-$value'))
-          .fadeIn(duration: 200.ms)
-          .slideY(begin: -0.2, end: 0, duration: 200.ms),
+        )
+            .animate(key: ValueKey('$label-$value'))
+            .fadeIn(duration: 200.ms)
+            .slideY(begin: -0.2, end: 0, duration: 200.ms),
       ],
     );
   }
@@ -863,7 +856,8 @@ class _RedesignedFamilyAgentViewState extends State<RedesignedFamilyAgentView> {
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFF16A34A),
           foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           elevation: 0,
           disabledBackgroundColor: const Color(0xFFCBD5E1),
         ),
@@ -873,8 +867,8 @@ class _RedesignedFamilyAgentViewState extends State<RedesignedFamilyAgentView> {
                 height: 20,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  valueColor:
-                      AlwaysStoppedAnimation<Color>(Colors.white.withValues(alpha: 0.8)),
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                      Colors.white.withValues(alpha: 0.8)),
                 ),
               )
             : Text(

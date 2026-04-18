@@ -12,7 +12,7 @@ class PerformanceOptimizer {
     Duration delay = const Duration(milliseconds: 300),
   }) {
     Timer? timer;
-    
+
     return () {
       timer?.cancel();
       timer = Timer(delay, () => func());
@@ -26,13 +26,13 @@ class PerformanceOptimizer {
     Duration duration = const Duration(milliseconds: 300),
   }) {
     bool isThrottled = false;
-    
+
     return () {
       if (isThrottled) return;
-      
+
       isThrottled = true;
       func();
-      
+
       Timer(duration, () {
         isThrottled = false;
       });
@@ -48,23 +48,23 @@ class PerformanceOptimizer {
     Duration batchDelay = const Duration(milliseconds: 10),
   }) async {
     final results = <T>[];
-    
+
     for (var i = 0; i < items.length; i += batchSize) {
       final end = (i + batchSize < items.length) ? i + batchSize : items.length;
       final batch = items.sublist(i, end);
-      
+
       final batchResults = await Future.wait(
         batch.map((item) => processor(item)),
       );
-      
+
       results.addAll(batchResults);
-      
+
       // 給 UI 線程喘息的機會
       if (i + batchSize < items.length) {
         await Future.delayed(batchDelay);
       }
     }
-    
+
     return results;
   }
 
@@ -93,12 +93,12 @@ class PerformanceOptimizer {
   /// 緩存函數結果，避免重複計算
   static T Function(A) memoize<A, T>(T Function(A) func) {
     final cache = <A, T>{};
-    
+
     return (A arg) {
       if (cache.containsKey(arg)) {
-        return cache[arg]!;
+        return cache[arg] as T;
       }
-      
+
       final result = func(arg);
       cache[arg] = result;
       return result;
@@ -114,16 +114,15 @@ class PerformanceOptimizer {
     int bufferItems = 5,
   }) {
     final firstVisible = (scrollOffset / itemHeight).floor() - bufferItems;
-    final lastVisible = ((scrollOffset + viewportHeight) / itemHeight).ceil() + bufferItems;
-    
+    final lastVisible =
+        ((scrollOffset + viewportHeight) / itemHeight).ceil() + bufferItems;
+
     return (
       firstVisibleIndex: firstVisible.clamp(0, totalItems - 1),
       lastVisibleIndex: lastVisible.clamp(0, totalItems - 1),
     );
   }
 }
-
-
 
 /// 性能監控工具
 class PerformanceMonitor {
@@ -139,13 +138,13 @@ class PerformanceMonitor {
   static void stopTimer(String key) {
     final stopwatch = _stopwatches[key];
     if (stopwatch == null) return;
-    
+
     stopwatch.stop();
     final elapsed = stopwatch.elapsedMilliseconds;
-    
+
     _metrics[key] ??= [];
     _metrics[key]!.add(elapsed);
-    
+
     if (kDebugMode) {
       appLogger.d('⏱️ $key: ${elapsed}ms');
     }
@@ -155,11 +154,11 @@ class PerformanceMonitor {
   static Map<String, dynamic>? getMetrics(String key) {
     final values = _metrics[key];
     if (values == null || values.isEmpty) return null;
-    
+
     final avg = values.reduce((a, b) => a + b) / values.length;
     final min = values.reduce((a, b) => a < b ? a : b);
     final max = values.reduce((a, b) => a > b ? a : b);
-    
+
     return {
       'average': avg,
       'min': min,
@@ -182,7 +181,7 @@ class PerformanceMonitor {
   /// 打印所有指標
   static void printAllMetrics() {
     if (!kDebugMode) return;
-    
+
     appLogger.d('\n📊 Performance Metrics:');
     _metrics.forEach((key, values) {
       final stats = getMetrics(key);
@@ -219,7 +218,7 @@ class MemoryOptimizer {
   /// 獲取當前內存使用情況
   static Map<String, dynamic> getMemoryInfo() {
     final imageCache = PaintingBinding.instance.imageCache;
-    
+
     return {
       'currentSize': imageCache.currentSize,
       'currentSizeBytes': imageCache.currentSizeBytes,
@@ -234,7 +233,7 @@ class MemoryOptimizer {
 /// Widget 優化工具
 class WidgetOptimizer {
   /// 創建 const Widget（提醒開發者使用 const）
-  static const placeholder = const SizedBox.shrink();
+  static const placeholder = SizedBox.shrink();
 
   /// 是否應該重建 Widget
   static bool shouldRebuild<T>(T oldValue, T newValue) {
@@ -258,20 +257,21 @@ class CacheManager<K, V> {
   CacheManager({
     Duration ttl = const Duration(minutes: 5),
     int maxSize = 100,
-  }) : _ttl = ttl, _maxSize = maxSize;
+  })  : _ttl = ttl,
+        _maxSize = maxSize;
 
   /// 獲取緩存
   V? get(K key) {
     final entry = _cache[key];
-    
+
     if (entry == null) return null;
-    
+
     // 檢查是否過期
     if (DateTime.now().difference(entry.timestamp) > _ttl) {
       _cache.remove(key);
       return null;
     }
-    
+
     return entry.value;
   }
 
@@ -280,11 +280,12 @@ class CacheManager<K, V> {
     // 如果超過最大大小，移除最舊的
     if (_cache.length >= _maxSize) {
       final oldestKey = _cache.entries
-        .reduce((a, b) => a.value.timestamp.isBefore(b.value.timestamp) ? a : b)
-        .key;
+          .reduce(
+              (a, b) => a.value.timestamp.isBefore(b.value.timestamp) ? a : b)
+          .key;
       _cache.remove(oldestKey);
     }
-    
+
     _cache[key] = _CacheEntry(value, DateTime.now());
   }
 
@@ -296,9 +297,7 @@ class CacheManager<K, V> {
   /// 清除過期緩存
   void clearExpired() {
     final now = DateTime.now();
-    _cache.removeWhere((key, entry) => 
-      now.difference(entry.timestamp) > _ttl
-    );
+    _cache.removeWhere((key, entry) => now.difference(entry.timestamp) > _ttl);
   }
 
   /// 獲取緩存大小

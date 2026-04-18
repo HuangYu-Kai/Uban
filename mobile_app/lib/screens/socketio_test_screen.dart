@@ -15,13 +15,14 @@ class SocketIOTestScreen extends StatefulWidget {
 
 class _SocketIOTestScreenState extends State<SocketIOTestScreen> {
   final Signaling _signaling = Signaling();
-  final TextEditingController _roomIdController = TextEditingController(text: '17');
-  
+  final TextEditingController _roomIdController =
+      TextEditingController(text: '17');
+
   bool _isConnected = false;
   bool _isConnecting = false;
   String _statusMessage = '尚未連線';
   String _selectedRole = 'elder'; // elder 或 family
-  List<Map<String, dynamic>> _logs = [];
+  final List<Map<String, dynamic>> _logs = [];
 
   @override
   void initState() {
@@ -63,14 +64,16 @@ class _SocketIOTestScreenState extends State<SocketIOTestScreen> {
 
   void _addLog(String message) {
     final now = DateTime.now();
-    final timeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
+    final timeStr =
+        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
     setState(() {
       _logs.insert(0, {'time': timeStr, 'message': message});
       if (_logs.length > 50) _logs.removeLast();
     });
   }
 
-  void _showIncomingCallDialog(String roomId, String senderId, String? callId, {bool isEmergency = false}) {
+  void _showIncomingCallDialog(String roomId, String senderId, String? callId,
+      {bool isEmergency = false}) {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -109,7 +112,7 @@ class _SocketIOTestScreenState extends State<SocketIOTestScreen> {
               Navigator.pop(context);
               _signaling.sendCallAccept(senderId, callId: callId);
               _addLog('✅ 已接聽，準備進入視訊...');
-              
+
               // 進入視訊通話畫面
               Navigator.push(
                 context,
@@ -149,7 +152,7 @@ class _SocketIOTestScreenState extends State<SocketIOTestScreen> {
       _signaling.connect(
         roomId,
         _selectedRole,
-        deviceName: 'TestDevice_${_selectedRole}',
+        deviceName: 'TestDevice_$_selectedRole',
         deviceMode: 'comm',
       );
 
@@ -300,7 +303,9 @@ class _SocketIOTestScreenState extends State<SocketIOTestScreen> {
                     const SizedBox(height: 16),
 
                     // 角色選擇
-                    Text('角色', style: GoogleFonts.notoSansTc(fontWeight: FontWeight.w500)),
+                    Text('角色',
+                        style: GoogleFonts.notoSansTc(
+                            fontWeight: FontWeight.w500)),
                     const SizedBox(height: 8),
                     Row(
                       children: [
@@ -309,7 +314,9 @@ class _SocketIOTestScreenState extends State<SocketIOTestScreen> {
                             title: const Text('長輩'),
                             value: 'elder',
                             groupValue: _selectedRole,
-                            onChanged: _isConnected ? null : (v) => setState(() => _selectedRole = v!),
+                            onChanged: _isConnected
+                                ? null
+                                : (v) => setState(() => _selectedRole = v!),
                           ),
                         ),
                         Expanded(
@@ -317,7 +324,9 @@ class _SocketIOTestScreenState extends State<SocketIOTestScreen> {
                             title: const Text('家屬'),
                             value: 'family',
                             groupValue: _selectedRole,
-                            onChanged: _isConnected ? null : (v) => setState(() => _selectedRole = v!),
+                            onChanged: _isConnected
+                                ? null
+                                : (v) => setState(() => _selectedRole = v!),
                           ),
                         ),
                       ],
@@ -330,10 +339,12 @@ class _SocketIOTestScreenState extends State<SocketIOTestScreen> {
                       children: [
                         Expanded(
                           child: ElevatedButton.icon(
-                            icon: Icon(_isConnected ? Icons.link_off : Icons.link),
+                            icon: Icon(
+                                _isConnected ? Icons.link_off : Icons.link),
                             label: Text(_isConnected ? '斷線' : '連線'),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: _isConnected ? Colors.red : Colors.teal,
+                              backgroundColor:
+                                  _isConnected ? Colors.red : Colors.teal,
                               foregroundColor: Colors.white,
                               padding: const EdgeInsets.symmetric(vertical: 12),
                             ),
@@ -350,7 +361,8 @@ class _SocketIOTestScreenState extends State<SocketIOTestScreen> {
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.orange,
                               foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                              padding: const EdgeInsets.symmetric(
+                                  vertical: 12, horizontal: 16),
                             ),
                             onPressed: _sendTestCall,
                           ),
@@ -407,7 +419,8 @@ class _SocketIOTestScreenState extends State<SocketIOTestScreen> {
                               itemBuilder: (context, index) {
                                 final log = _logs[index];
                                 return Padding(
-                                  padding: const EdgeInsets.symmetric(vertical: 2),
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 2),
                                   child: Text(
                                     '[${log['time']}] ${log['message']}',
                                     style: GoogleFonts.notoSansTc(fontSize: 12),
@@ -437,7 +450,8 @@ class _SocketIOTestScreenState extends State<SocketIOTestScreen> {
                         const SizedBox(width: 8),
                         Text(
                           '測試步驟',
-                          style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold),
+                          style: GoogleFonts.notoSansTc(
+                              fontWeight: FontWeight.bold),
                         ),
                       ],
                     ),
