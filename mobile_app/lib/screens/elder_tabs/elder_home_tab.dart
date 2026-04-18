@@ -75,7 +75,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
   Future<void> _fetchNews() async {
     try {
       var parsed = <Map<String, dynamic>>[];
-      final allResponse = await ApiService.getNews(category: 'all', limit: 12);
+      final allResponse = await ApiService.getNews(category: 'all', limit: 30);
       final allSuccess = allResponse['status'] == 'success';
       if (allSuccess) {
         parsed = _parseNewsItems(allResponse);
@@ -85,10 +85,10 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
       }
       if (parsed.isEmpty) {
         final fallback =
-            await ApiService.getNews(category: 'politics', limit: 12);
+            await ApiService.getNews(category: 'politics', limit: 30);
         parsed = _parseNewsItems(fallback);
       }
-      final deduped = _dedupeNewsItems(parsed).take(12).toList();
+      final deduped = _dedupeNewsItems(parsed).take(30).toList();
 
       if (mounted) {
         setState(() {
@@ -1053,7 +1053,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
         else
           Column(
             children: [
-              for (final item in _orderedNewsItemsWithTopFirst().take(12)) ...[
+              for (final item in _orderedNewsItemsWithTopFirst().take(30)) ...[
                 _buildNewsListCard(item),
                 const SizedBox(height: 14),
               ],
@@ -1146,49 +1146,41 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildNewsHeader(compact: compact),
-        const SizedBox(height: 12), // Added explicit spacing after header
+        // Progress bar Row
         Row(
           children: [
             Expanded(
-              child: _newsItems.length > 1
-                  ? TweenAnimationBuilder<double>(
-                      key: ValueKey<int>(_topNewsCycleToken),
-                      tween: Tween(begin: 0, end: 1),
-                      duration: _topNewsProgressRemaining(),
-                      curve: Curves.linear,
-                      builder: (context, value, _) => ClipRRect(
-                        borderRadius: BorderRadius.circular(999),
-                        child: LinearProgressIndicator(
-                          value: value,
-                          minHeight: 8, // Increased from 5 to 8 for better visibility
-                          backgroundColor: const Color(0xFFD8E8E2),
-                          color: const Color(0xFF59B294),
-                        ),
-                      ),
-                    )
-                  : ClipRRect(
-                      borderRadius: BorderRadius.circular(999),
-                      child: const LinearProgressIndicator(
-                        value: 1,
-                        minHeight: 8,
-                        backgroundColor: Color(0xFFD8E8E2),
-                        color: Color(0xFF59B294),
-                      ),
-                    ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: const LinearProgressIndicator(
+                  value: 0.5, // Static value for stability during debugging
+                  minHeight: 6,
+                  backgroundColor: Color(0xFFD8E8E2),
+                  color: Color(0xFF59B294),
+                ),
+              ),
             ),
             const SizedBox(width: 14),
             Text(
               _topNewsAutoPaused ? '已暫停輪播' : _formatTopNewsTimeLabel(item),
               style: GoogleFonts.notoSansTc(
-                fontSize: 14, // Increased from 12 to 14
+                fontSize: 14,
                 color: const Color(0xFF64748B),
                 fontWeight: FontWeight.w600,
               ),
             ),
           ],
         ),
+        const SizedBox(height: 12),
+        // Temporarily using direct card instead of AnimatedSwitcher to fix layout recursion
+        Container(
+          key: ValueKey<String>(
+              'top-news-${item['source_url'] ?? _topNewsIndex}'),
+          child: _buildNewsListCard(item, compact: true, tight: compact),
+        ),
+        // Moved pagination dots to be BELOW the card to prevent header clashing
         if (_newsItems.length > 1) ...[
-          const SizedBox(height: 16), // Increased spacing
+          const SizedBox(height: 14),
           Row(
             children: [
               InkWell(
@@ -1237,28 +1229,6 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
             ],
           ),
         ],
-        const SizedBox(height: 20), // Increased spacing before news card
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 420),
-          switchInCurve: Curves.easeOutCubic,
-          switchOutCurve: Curves.easeInCubic,
-          transitionBuilder: (child, animation) {
-            final offset = Tween<Offset>(
-              begin: const Offset(0, 0.05), // Slightly increased offset
-              end: Offset.zero,
-            ).animate(
-                CurvedAnimation(parent: animation, curve: Curves.easeOut));
-            return FadeTransition(
-              opacity: animation,
-              child: SlideTransition(position: offset, child: child),
-            );
-          },
-          child: Container(
-            key: ValueKey<String>(
-                'top-news-${item['source_url'] ?? _topNewsIndex}'),
-            child: _buildNewsListCard(item, compact: true, tight: compact),
-          ),
-        ),
       ],
     );
   }
@@ -1518,47 +1488,51 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
         child: InkWell(
           onTap: () => _openNewsListenPlayer(item),
           child: Stack(
-            fit: StackFit.expand,
+            fit: StackFit.loose, // Loose fit prevents circular height dependency
             children: [
-              Image.network(
-                imageUrl,
-                fit: BoxFit.cover,
-                loadingBuilder: (context, child, progress) {
-                  if (progress == null) return child;
-                  return Container(
-                    color: const Color(0xFFE2E8F0),
-                    alignment: Alignment.center,
-                    child: SizedBox(
-                      width: 26,
-                      height: 26,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.4,
-                        valueColor: const AlwaysStoppedAnimation<Color>(
-                            Color(0xFF59B294)),
-                        value: progress.expectedTotalBytes != null
-                            ? progress.cumulativeBytesLoaded /
-                                progress.expectedTotalBytes!
-                            : null,
+              Positioned.fill(
+                child: Image.network(
+                  imageUrl,
+                  fit: BoxFit.cover,
+                  loadingBuilder: (context, child, progress) {
+                    if (progress == null) return child;
+                    return Container(
+                      color: const Color(0xFFE2E8F0),
+                      alignment: Alignment.center,
+                      child: SizedBox(
+                        width: 26,
+                        height: 26,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.4,
+                          valueColor: const AlwaysStoppedAnimation<Color>(
+                              Color(0xFF59B294)),
+                          value: progress.expectedTotalBytes != null
+                              ? progress.cumulativeBytesLoaded /
+                                  progress.expectedTotalBytes!
+                              : null,
+                        ),
                       ),
-                    ),
-                  );
-                },
-                errorBuilder: (_, __, ___) => Container(
-                  color: Colors.white,
-                  alignment: Alignment.center,
-                  child: const Icon(Icons.image_not_supported_rounded,
-                      color: Color(0xFF94A3B8), size: 32),
+                    );
+                  },
+                  errorBuilder: (_, __, ___) => Container(
+                    color: Colors.white,
+                    alignment: Alignment.center,
+                    child: const Icon(Icons.image_not_supported_rounded,
+                        color: Color(0xFF94A3B8), size: 32),
+                  ),
                 ),
               ),
-              Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.black.withValues(alpha: 0.15),
-                      Colors.black.withValues(alpha: 0.62),
-                    ],
+              Positioned.fill(
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.black.withValues(alpha: 0.15),
+                        Colors.black.withValues(alpha: 0.62),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -1571,6 +1545,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min, // Essential for Fit.loose
                   children: [
                     Row(
                       children: [
@@ -1587,7 +1562,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                         ),
                       ],
                     ),
-                    const Spacer(),
+                    const SizedBox(height: 60), // Fixed gap to ensure title is on background
                     Text(
                       title,
                       maxLines: tight ? 1 : (compact ? 1 : 2),
@@ -1709,7 +1684,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
 
   void _openNewsListenPlayer(Map<String, dynamic> currentItem) {
     _pauseTopNewsAutoRotate();
-    final playlist = _orderedNewsItemsWithTopFirst().take(12).toList();
+    final playlist = _orderedNewsItemsWithTopFirst().take(30).toList();
     if (playlist.isEmpty) return;
     final currentKey = _newsIdentityKey(currentItem);
     final initialIndex =
