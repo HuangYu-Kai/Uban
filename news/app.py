@@ -9,10 +9,11 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+import base64
 
 import requests
 from bs4 import BeautifulSoup
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, send_from_directory
 
 app = Flask(__name__)
 
@@ -34,11 +35,12 @@ DEFAULT_CATEGORY = "politics"
 REQUEST_TIMEOUT = 15
 MAX_LIMIT = 30
 CRAWL_LIMIT_PER_CATEGORY = 30
-DAILY_CRAWL_HOUR = 0
+DAILY_CRAWL_HOUR = 5
 DAILY_CRAWL_MINUTE = 0
 
 TAIPEI_TZ = timezone(timedelta(hours=8))
 DATA_FILE = Path(__file__).resolve().parent / "data" / "daily_news.json"
+AUDIO_DIR = Path(__file__).resolve().parent / "data" / "audio"
 
 HEADERS = {
     "User-Agent": (
@@ -377,6 +379,46 @@ def crawl_all_categories() -> None:
         global _daily_news
         _daily_news = payload
         save_daily_payload_to_disk(payload)
+        
+    def pre_generate_audio():
+        AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+        today = today_str()
+        for category_key, items in crawled.items():
+            cat_label = FEEDS[category_key]["label"]
+            for i, item in enumerate(items):
+                if item.get("audio_url"):
+                    continue
+                speech_text = f"以下為您播報{cat_label}新聞：{item['title']}。{item['content']}。新聞播報完畢。"
+                try:
+                    res = requests.post(
+                        "https://localhost-0.tail5abf5e.ts.net/api/voice/tts/test",
+                        params={"text": speech_text, "engine": "cosyvoice"},
+                        timeout=180
+                    )
+                    res.raise_for_status()
+                    data = res.json()
+                    if data.get("status") == "success" and data.get("audio_base64"):
+                        audio_b64 = data["audio_base64"]
+                        audio_b64 = ''.join(audio_b64.split())
+                        missing_padding = len(audio_b64) % 4
+                        if missing_padding:
+                            audio_b64 += '='* (4 - missing_padding)
+                        audio_bytes = base64.b64decode(audio_b64)
+                        
+                        filename = f"{today}_{category_key}_{i}.wav"
+                        file_path = AUDIO_DIR / filename
+                        file_path.write_bytes(audio_bytes)
+                        item["audio_url"] = f"/api/news/audio/{filename}"
+                except Exception as e:
+                    app.logger.exception(f"Failed to pre-generate audio for {category_key} index {i}: {e}")
+        
+        # Save again after audio processing
+        with _daily_news_lock:
+            payload["news"] = crawled
+            _daily_news = payload
+            save_daily_payload_to_disk(payload)
+            
+    threading.Thread(target=pre_generate_audio, daemon=True).start()
 
 
 def seconds_until_next_daily_run() -> float:
@@ -444,6 +486,11 @@ def bootstrap_scheduler() -> None:
 @app.route("/")
 def index() -> str:
     return render_template("index.html")
+
+
+@app.route("/api/news/audio/<path:filename>")
+def serve_audio(filename) -> Any:
+    return send_from_directory(str(AUDIO_DIR), filename)
 
 
 @app.route("/api/categories")
