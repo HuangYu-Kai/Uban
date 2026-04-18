@@ -513,7 +513,7 @@ class ApiService {
       final uri = Uri.parse('$baseUrl/voice/tts/test')
           .replace(queryParameters: queryParameters);
       final response =
-          await http.post(uri).timeout(const Duration(seconds: 30));
+          await http.post(uri).timeout(const Duration(seconds: 120));
       return _safeDecode(response);
     } on TimeoutException {
       return {'status': 'error', 'message': '語音合成逾時，請稍後再試'};

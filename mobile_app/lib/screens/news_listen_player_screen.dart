@@ -103,30 +103,51 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
   Future<void> _playCurrentNews() async {
     if (widget.newsItems.isEmpty) return;
     final item = widget.newsItems[_currentIndex];
-    final speechText = _composeSpeechText(item);
+    
     setState(() {
       _isLoadingAudio = true;
       _error = null;
     });
+    
     try {
+      final String? audioUrl = item['audio_url'];
+      if (audioUrl != null && audioUrl.isNotEmpty) {
+        // Direct stream from pre-generated URL
+        final String fullUrl = "https://localhost-0.tail5abf5e.ts.net$audioUrl";
+        await _audioPlayer.stop();
+        await _audioPlayer.play(UrlSource(fullUrl));
+        
+        if (!mounted) return;
+        setState(() {
+          _subtitles = [];
+          _currentSubtitle = "";
+          _isLoadingAudio = false;
+          _isPlaying = true;
+        });
+        return;
+      }
+
+      // Fallback: Live Synthesis
+      final speechText = _composeSpeechText(item);
       final response = await ApiService.synthesizeTts(text: speechText);
-      if (response['success'] != true) {
+      if (response['status'] != 'success') {
         final detail =
             response['detail'] ?? response['message'] ?? response['error'];
-        throw Exception(detail ?? 'Edge TTS 合成失敗');
+        throw Exception(detail ?? 'TTS 合成失敗');
       }
-      final audioBase64 = (response['audio'] ?? '').toString();
+      final audioBase64 = (response['audio_base64'] ?? '').toString();
       if (audioBase64.isEmpty) {
         throw Exception('語音資料為空');
       }
       
-      // 更新字幕清單
       final subs = response['subtitles'];
       
-      final audioPayload = _extractBase64Payload(audioBase64);
-      final audioBytes = base64Decode(audioPayload);
+      String payload = _extractBase64Payload(audioBase64);
+      final audioBytes = base64Decode(payload);
+      
       await _audioPlayer.stop();
       await _audioPlayer.play(BytesSource(audioBytes));
+      
       if (!mounted) return;
       setState(() {
         _subtitles = (subs is List) ? subs : [];
@@ -146,12 +167,18 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
   }
 
   String _extractBase64Payload(String raw) {
-    final text = raw.trim();
+    String text = raw.trim();
     if (text.startsWith('data:')) {
       final commaIndex = text.indexOf(',');
       if (commaIndex >= 0 && commaIndex < text.length - 1) {
-        return text.substring(commaIndex + 1);
+        text = text.substring(commaIndex + 1);
       }
+    }
+    // Safe Base64 decoding
+    text = text.replaceAll(RegExp(r'\s+'), '');
+    final missingPadding = text.length % 4;
+    if (missingPadding > 0) {
+      text += '=' * (4 - missingPadding);
     }
     return text;
   }
