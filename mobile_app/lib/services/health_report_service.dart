@@ -6,7 +6,7 @@ import '../models/emotion_data.dart';
 import 'emotion_storage_service.dart';
 
 /// 📊 AI 健康報告生成器
-/// 
+///
 /// 每週自動生成 PDF 健康報告
 class HealthReportService {
   final EmotionStorageService _emotionService = EmotionStorageService();
@@ -55,7 +55,8 @@ class HealthReportService {
 
     // 保存檔案
     final directory = await getApplicationDocumentsDirectory();
-    final file = File('${directory.path}/health_report_${DateTime.now().millisecondsSinceEpoch}.pdf');
+    final file = File(
+        '${directory.path}/health_report_${DateTime.now().millisecondsSinceEpoch}.pdf');
     await file.writeAsBytes(await pdf.save());
 
     return file;
@@ -104,7 +105,8 @@ class HealthReportService {
     );
 
     final directory = await getApplicationDocumentsDirectory();
-    final file = File('${directory.path}/health_report_monthly_${DateTime.now().millisecondsSinceEpoch}.pdf');
+    final file = File(
+        '${directory.path}/health_report_monthly_${DateTime.now().millisecondsSinceEpoch}.pdf');
     await file.writeAsBytes(await pdf.save());
 
     return file;
@@ -112,7 +114,8 @@ class HealthReportService {
 
   // ==================== 頁面構建方法 ====================
 
-  pw.Widget _buildHeader(String elderName, DateTime startDate, DateTime endDate) {
+  pw.Widget _buildHeader(
+      String elderName, DateTime startDate, DateTime endDate) {
     return pw.Container(
       padding: const pw.EdgeInsets.all(20),
       decoration: pw.BoxDecoration(
@@ -266,7 +269,8 @@ class HealthReportService {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
-        pw.Text(label, style: const pw.TextStyle(fontSize: 12, color: PdfColors.grey)),
+        pw.Text(label,
+            style: const pw.TextStyle(fontSize: 12, color: PdfColors.grey)),
         pw.SizedBox(height: 4),
         pw.Row(
           children: [
@@ -308,7 +312,8 @@ class HealthReportService {
           pw.SizedBox(height: 8),
           _buildEmotionBar('平靜', emotionStats['calm'] ?? 0, PdfColors.blue),
           pw.SizedBox(height: 8),
-          _buildEmotionBar('焦慮', emotionStats['anxious'] ?? 0, PdfColors.orange),
+          _buildEmotionBar(
+              '焦慮', emotionStats['anxious'] ?? 0, PdfColors.orange),
           pw.SizedBox(height: 8),
           _buildEmotionBar('悲傷', emotionStats['sad'] ?? 0, PdfColors.purple),
         ],
@@ -316,7 +321,8 @@ class HealthReportService {
     );
   }
 
-  pw.Widget _buildEmotionBar(String emotion, double percentage, PdfColor color) {
+  pw.Widget _buildEmotionBar(
+      String emotion, double percentage, PdfColor color) {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
@@ -324,7 +330,8 @@ class HealthReportService {
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
           children: [
             pw.Text(emotion, style: const pw.TextStyle(fontSize: 14)),
-            pw.Text('${percentage.toStringAsFixed(1)}%', style: const pw.TextStyle(fontSize: 14)),
+            pw.Text('${percentage.toStringAsFixed(1)}%',
+                style: const pw.TextStyle(fontSize: 14)),
           ],
         ),
         pw.SizedBox(height: 4),
@@ -379,17 +386,18 @@ class HealthReportService {
           ),
           pw.SizedBox(height: 12),
           ...recommendations.map((rec) => pw.Padding(
-            padding: const pw.EdgeInsets.only(bottom: 8),
-            child: pw.Row(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Text('• ', style: const pw.TextStyle(fontSize: 14)),
-                pw.Expanded(
-                  child: pw.Text(rec, style: const pw.TextStyle(fontSize: 14)),
+                padding: const pw.EdgeInsets.only(bottom: 8),
+                child: pw.Row(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text('• ', style: const pw.TextStyle(fontSize: 14)),
+                    pw.Expanded(
+                      child:
+                          pw.Text(rec, style: const pw.TextStyle(fontSize: 14)),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          )),
+              )),
         ],
       ),
     );
@@ -411,15 +419,17 @@ class HealthReportService {
           ),
           pw.SizedBox(height: 12),
           ...trends.entries.map((entry) => pw.Padding(
-            padding: const pw.EdgeInsets.only(bottom: 6),
-            child: pw.Row(
-              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-              children: [
-                pw.Text(entry.key, style: const pw.TextStyle(fontSize: 14)),
-                pw.Text(entry.value, style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
-              ],
-            ),
-          )),
+                padding: const pw.EdgeInsets.only(bottom: 6),
+                child: pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text(entry.key, style: const pw.TextStyle(fontSize: 14)),
+                    pw.Text(entry.value,
+                        style: pw.TextStyle(
+                            fontSize: 14, fontWeight: pw.FontWeight.bold)),
+                  ],
+                ),
+              )),
         ],
       ),
     );
@@ -430,7 +440,8 @@ class HealthReportService {
     Map<String, dynamic> emotionStats,
     Map<String, String> trends,
   ) {
-    final recommendations = _generateDetailedRecommendations(healthData, emotionStats, trends);
+    final recommendations =
+        _generateDetailedRecommendations(healthData, emotionStats, trends);
 
     return pw.Container(
       padding: const pw.EdgeInsets.all(20),
@@ -447,22 +458,24 @@ class HealthReportService {
           ),
           pw.SizedBox(height: 12),
           ...recommendations.map((rec) => pw.Padding(
-            padding: const pw.EdgeInsets.only(bottom: 10),
-            child: pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Text(
-                  rec['title'] as String,
-                  style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
+                padding: const pw.EdgeInsets.only(bottom: 10),
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      rec['title'] as String,
+                      style: pw.TextStyle(
+                          fontSize: 14, fontWeight: pw.FontWeight.bold),
+                    ),
+                    pw.SizedBox(height: 4),
+                    pw.Text(
+                      rec['description'] as String,
+                      style: const pw.TextStyle(
+                          fontSize: 12, color: PdfColors.grey700),
+                    ),
+                  ],
                 ),
-                pw.SizedBox(height: 4),
-                pw.Text(
-                  rec['description'] as String,
-                  style: const pw.TextStyle(fontSize: 12, color: PdfColors.grey700),
-                ),
-              ],
-            ),
-          )),
+              )),
         ],
       ),
     );
@@ -514,26 +527,30 @@ class HealthReportService {
     };
   }
 
-  int _calculateHealthScore(Map<String, dynamic> healthData, Map<String, dynamic> emotionStats) {
+  int _calculateHealthScore(
+      Map<String, dynamic> healthData, Map<String, dynamic> emotionStats) {
     int score = 100;
 
     // 心率評分
     final heartRate = healthData['heartRate'] ?? 72;
-    if (heartRate < 50 || heartRate > 120) score -= 15;
-    else if (heartRate < 60 || heartRate > 100) score -= 5;
+    if (heartRate < 50 || heartRate > 120) {
+      score -= 15;
+    } else if (heartRate < 60 || heartRate > 100) score -= 5;
 
     // 血壓評分
     // (簡化處理)
 
     // 血糖評分
     final bloodSugar = healthData['bloodSugar'] ?? 95;
-    if (bloodSugar < 70 || bloodSugar > 140) score -= 15;
-    else if (bloodSugar < 80 || bloodSugar > 120) score -= 5;
+    if (bloodSugar < 70 || bloodSugar > 140) {
+      score -= 15;
+    } else if (bloodSugar < 80 || bloodSugar > 120) score -= 5;
 
     // 活動量評分
     final steps = healthData['dailySteps'] ?? 5000;
-    if (steps < 2000) score -= 10;
-    else if (steps < 3000) score -= 5;
+    if (steps < 2000) {
+      score -= 10;
+    } else if (steps < 3000) score -= 5;
 
     // 情緒評分
     if ((emotionStats['anxious'] ?? 0) > 30) score -= 10;

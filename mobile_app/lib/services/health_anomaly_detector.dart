@@ -70,7 +70,7 @@ class HealthAnomalyDetector {
       return HealthAnomaly(
         type: 'heart_rate_low',
         title: '心率過低',
-        description: '心率 ${currentHR} BPM（低於 50）',
+        description: '心率 $currentHR BPM（低於 50）',
         severity: 'high',
         recommendation: '如有頭暈症狀，請立即就醫',
       );
@@ -80,7 +80,7 @@ class HealthAnomalyDetector {
       return HealthAnomaly(
         type: 'heart_rate_high',
         title: '心率過高',
-        description: '心率 ${currentHR} BPM（高於 120）',
+        description: '心率 $currentHR BPM（高於 120）',
         severity: 'high',
         recommendation: '保持冷靜，避免劇烈活動',
       );
