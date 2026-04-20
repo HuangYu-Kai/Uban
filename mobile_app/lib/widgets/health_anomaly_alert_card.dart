@@ -40,7 +40,8 @@ class HealthAnomalyAlertCard extends StatelessWidget {
         child: Stack(
           children: [
             // 背景脈衝動畫
-            if (result.overallStatus == 'critical' || result.overallStatus == 'warning')
+            if (result.overallStatus == 'critical' ||
+                result.overallStatus == 'warning')
               Positioned.fill(
                 child: Container(
                   decoration: BoxDecoration(

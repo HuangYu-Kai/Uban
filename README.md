@@ -56,7 +56,7 @@ Uban 是一套專為銀髮族設計的 AI 陪伴照護系統，包含：
                               ▼                           ▼
                      ┌───────────────┐           ┌───────────────┐
                      │  Ollama AI    │           │   MySQL DB    │
-                     │ (qwen2.5:1.5b)│           │               │
+                     │(gemma4:e4b..) │           │               │
                      └───────────────┘           └───────────────┘
 ```
 
@@ -91,7 +91,7 @@ Uban 是一套專為銀髮族設計的 AI 陪伴照護系統，包含：
 | 檔案 | 用途 |
 |------|------|
 | **SOUL.md** | 靈魂核心：語言限制（繁體中文）、對話原則、絕對邊界 |
-| **IDENTITY.md** | 角色設定：名稱「小優 (Uni)」、性格、形象 |
+| **IDENTITY.md** | 角色設定：動態名稱與稱呼設定、性格、形象 |
 | **MEMORY.md** | 長期記憶庫：自動追加長輩的生活事實 |
 | **USER.md** | 長輩基本資訊：姓名、年齡、喜好、用藥 |
 | **HEARTBEAT.md** | 主動關懷任務：早晨問候、服藥提醒等 |
@@ -162,7 +162,7 @@ Uban 是一套專為銀髮族設計的 AI 陪伴照護系統，包含：
 |------|------|------|
 | Python | 3.12 | ⚠️ 不支援 3.13+（eventlet 相容性） |
 | Flutter | Latest | 執行 `flutter doctor` 確認 |
-| Ollama | - | 遠端已部署，或本地 `ollama pull qwen2.5:1.5b` |
+| Ollama | - | 遠端已部署，或本地 `ollama pull gemma4:e4b-it-q4_K_M` |
 
 ### 一鍵啟動
 
@@ -581,7 +581,7 @@ void initPedometer() {
 
 ### 2026-04-01
 
-- **[AI] Ollama 整合**：新增 `qwen2.5:7b` 模型支援
+- **[AI] Ollama 整合**：新增 `gemma4:e4b-it-q4_K_M` 模型支援
 - **[AI] Agent 人格系統**：SOUL.md、IDENTITY.md、MEMORY.md 等 6 個設定檔
 - **[AI] Heartbeat 機制**：每 20 分鐘主動關懷
 - **[AI] 新增技能**：`save_elder_memory`、`search_web`、`get_music_recommendations`
@@ -705,7 +705,7 @@ void initPedometer() {
 | 檔案 | 用途 | 資料路徑 |
 |------|------|----------|
 | SOUL.md | 語言限制、對話原則、絕對邊界 | `uban-api/server/agent/SOUL.md` |
-| IDENTITY.md | 角色名稱「小優」、性格形象 | `uban-api/server/agent/IDENTITY.md` |
+| IDENTITY.md | 角色名稱設定(動態)、性格形象 | `uban-api/server/agent/IDENTITY.md` |
 | MEMORY.md | 長期記憶庫 | `uban-api/server/agent/MEMORY.md` |
 | USER.md | 長輩基本資訊 | `uban-api/server/agent/USER.md` |
 | HEARTBEAT.md | 主動關懷任務設定 | `uban-api/server/agent/HEARTBEAT.md` |
