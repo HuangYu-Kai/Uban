@@ -47,6 +47,23 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
   static const Duration _topNewsRotationDuration = Duration(seconds: 15);
   DateTime _topNewsCycleStartedAt = DateTime.now();
   int _topNewsCycleToken = 0;
+  String _selectedCategory = 'all';
+
+  // 類別對照表 (對齊後端 FEEDS)
+  final List<Map<String, String>> _categories = [
+    {'key': 'all', 'label': '綜合新聞', 'emoji': '🏠'},
+    {'key': 'politics', 'label': '政治', 'emoji': '🏛️'},
+    {'key': 'international', 'label': '國際', 'emoji': '🌍'},
+    {'key': 'finance', 'label': '財經', 'emoji': '💰'},
+    {'key': 'technology', 'label': '科技', 'emoji': '💻'},
+    {'key': 'life', 'label': '生活健康', 'emoji': '🍎'},
+    {'key': 'society', 'label': '社會時事', 'emoji': '👥'},
+    {'key': 'local', 'label': '地方新聞', 'emoji': '📍'},
+    {'key': 'culture', 'label': '文化藝術', 'emoji': '🎨'},
+    {'key': 'sports', 'label': '運動競技', 'emoji': '🏆'},
+    {'key': 'entertainment', 'label': '影視娛樂', 'emoji': '🎬'},
+    {'key': 'china', 'label': '兩岸新聞', 'emoji': '🌏'},
+  ];
 
   @override
   void initState() {
@@ -72,22 +89,33 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     }
   }
 
-  Future<void> _fetchNews() async {
+  Future<void> _fetchNews({String? category}) async {
+    final targetCategory = category ?? _selectedCategory;
     try {
       var parsed = <Map<String, dynamic>>[];
-      final allResponse = await ApiService.getNews(category: 'all', limit: 30);
+      
+      // 動態抓取指定類別 (limit 為 30 符合目前前端設計)
+      final allResponse = await ApiService.getNews(
+        category: targetCategory, 
+        limit: 30
+      );
+      
       final allSuccess = allResponse['status'] == 'success';
       if (allSuccess) {
         parsed = _parseNewsItems(allResponse);
       }
-      if (parsed.isEmpty) {
+      
+      // 如果 'all' 為空，嘗試手動匯總 (Fallback)
+      if (parsed.isEmpty && targetCategory == 'all') {
         parsed = await _fetchNewsByMultipleCategories();
       }
+      
+      // 仍然為空則抓 politics 作為保底
       if (parsed.isEmpty) {
-        final fallback =
-            await ApiService.getNews(category: 'politics', limit: 30);
+        final fallback = await ApiService.getNews(category: 'politics', limit: 30);
         parsed = _parseNewsItems(fallback);
       }
+      
       final deduped = _dedupeNewsItems(parsed).take(30).toList();
 
       if (mounted) {
@@ -978,22 +1006,38 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Align(
-          alignment: Alignment.centerRight,
-          child: TextButton.icon(
-            onPressed: _isLoadingNews
-                ? null
-                : () {
-                    setState(() {
-                      _isLoadingNews = true;
-                      _newsError = null;
-                    });
-                    _fetchNews();
-                  },
-            icon: const Icon(Icons.refresh_rounded, size: 16),
-            label: const Text('更新新聞'),
-          ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              '分類瀏覽',
+              style: GoogleFonts.notoSansTc(
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFF64748B),
+              ),
+            ),
+            TextButton.icon(
+              onPressed: _isLoadingNews
+                  ? null
+                  : () {
+                      setState(() {
+                        _isLoadingNews = true;
+                        _newsError = null;
+                      });
+                      _fetchNews();
+                    },
+              icon: const Icon(Icons.refresh_rounded, size: 20),
+              label: Text(
+                '更新',
+                style: GoogleFonts.notoSansTc(fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
         ),
+        const SizedBox(height: 10),
+        _buildCategorySelector(),
+        const SizedBox(height: 20),
         if (_isLoadingNews)
           Container(
             height: 220,
@@ -1041,7 +1085,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                 color: Colors.white, borderRadius: BorderRadius.circular(24)),
             child: Center(
               child: Text(
-                '目前沒有新聞資料',
+                '此分類目前沒有新聞',
                 style: GoogleFonts.notoSansTc(
                   color: const Color(0xFF64748B),
                   fontSize: 18,
@@ -1060,6 +1104,77 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
             ],
           ),
       ],
+    );
+  }
+
+  Widget _buildCategorySelector() {
+    return SizedBox(
+      height: 60,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        itemCount: _categories.length,
+        separatorBuilder: (context, index) => const SizedBox(width: 12),
+        itemBuilder: (context, index) {
+          final cat = _categories[index];
+          final isSelected = _selectedCategory == cat['key'];
+          return InkWell(
+            onTap: () {
+              if (isSelected || _isLoadingNews) return;
+              setState(() {
+                _selectedCategory = cat['key']!;
+                _isLoadingNews = true;
+                _newsError = null;
+              });
+              _fetchNews(category: cat['key']);
+            },
+            borderRadius: BorderRadius.circular(999),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              decoration: BoxDecoration(
+                color: isSelected ? const Color(0xFF59B294) : Colors.white,
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(
+                  color: isSelected
+                      ? const Color(0xFF59B294)
+                      : const Color(0xFFE2E8F0),
+                  width: 2,
+                ),
+                boxShadow: isSelected
+                    ? [
+                        BoxShadow(
+                          color: const Color(0xFF59B294).withValues(alpha: 0.3),
+                          blurRadius: 8,
+                          offset: const Offset(0, 4),
+                        )
+                      ]
+                    : null,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    cat['emoji']!,
+                    style: const TextStyle(fontSize: 20),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    cat['label']!,
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 18,
+                      fontWeight:
+                          isSelected ? FontWeight.bold : FontWeight.w600,
+                      color: isSelected ? Colors.white : const Color(0xFF475569),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 
