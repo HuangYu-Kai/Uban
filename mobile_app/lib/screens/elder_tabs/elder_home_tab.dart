@@ -7,7 +7,6 @@ import 'package:lunar/lunar.dart';
 import 'package:intl/intl.dart';
 import '../elder_screen.dart';
 import '../news_listen_player_screen.dart';
-import '../leaderboard_screen.dart';
 import '../../services/api_service.dart';
 
 class ElderHomeTab extends StatefulWidget {
@@ -41,29 +40,10 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
   int _topNewsIndex = 0;
   Timer? _topNewsRotateTimer;
   Timer? _topNewsAutoResumeTimer;
-  bool _isStageSwitching = false;
   bool _topNewsAutoPaused = false;
-  bool _isRefreshingNews = false;
   static const Duration _topNewsRotationDuration = Duration(seconds: 15);
   DateTime _topNewsCycleStartedAt = DateTime.now();
   int _topNewsCycleToken = 0;
-  String _selectedCategory = 'all';
-
-  // 類別對照表 (對齊後端 FEEDS)
-  final List<Map<String, String>> _categories = [
-    {'key': 'all', 'label': '綜合新聞', 'emoji': '🏠'},
-    {'key': 'politics', 'label': '政治', 'emoji': '🏛️'},
-    {'key': 'international', 'label': '國際', 'emoji': '🌍'},
-    {'key': 'finance', 'label': '財經', 'emoji': '💰'},
-    {'key': 'technology', 'label': '科技', 'emoji': '💻'},
-    {'key': 'life', 'label': '生活健康', 'emoji': '🍎'},
-    {'key': 'society', 'label': '社會時事', 'emoji': '👥'},
-    {'key': 'local', 'label': '地方新聞', 'emoji': '📍'},
-    {'key': 'culture', 'label': '文化藝術', 'emoji': '🎨'},
-    {'key': 'sports', 'label': '運動競技', 'emoji': '🏆'},
-    {'key': 'entertainment', 'label': '影視娛樂', 'emoji': '🎬'},
-    {'key': 'china', 'label': '兩岸新聞', 'emoji': '🌏'},
-  ];
 
   @override
   void initState() {
@@ -90,7 +70,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
   }
 
   Future<void> _fetchNews({String? category}) async {
-    final targetCategory = category ?? _selectedCategory;
+    final targetCategory = category ?? 'all';
     try {
       var parsed = <Map<String, dynamic>>[];
 
@@ -957,182 +937,6 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     );
   }
 
-  Widget _buildNewsSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              '分類瀏覽',
-              style: GoogleFonts.notoSansTc(
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
-                color: const Color(0xFF64748B),
-              ),
-            ),
-            TextButton.icon(
-              onPressed: _isLoadingNews
-                  ? null
-                  : () {
-                      setState(() {
-                        _isLoadingNews = true;
-                        _newsError = null;
-                      });
-                      _fetchNews();
-                    },
-              icon: const Icon(Icons.refresh_rounded, size: 20),
-              label: Text(
-                '更新',
-                style: GoogleFonts.notoSansTc(fontWeight: FontWeight.w600),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        _buildCategorySelector(),
-        const SizedBox(height: 20),
-        if (_isLoadingNews)
-          Container(
-            height: 220,
-            decoration: BoxDecoration(
-                color: Colors.white, borderRadius: BorderRadius.circular(24)),
-            child: const Center(child: CircularProgressIndicator()),
-          )
-        else if (_newsError != null)
-          Container(
-            constraints: const BoxConstraints(minHeight: 220),
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-                color: Colors.white, borderRadius: BorderRadius.circular(24)),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  _newsError!,
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.notoSansTc(
-                    color: const Color(0xFF64748B),
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                ElevatedButton.icon(
-                  onPressed: () {
-                    setState(() {
-                      _isLoadingNews = true;
-                      _newsError = null;
-                    });
-                    _fetchNews();
-                  },
-                  icon: const Icon(Icons.refresh_rounded),
-                  label: const Text('重新整理'),
-                ),
-              ],
-            ),
-          )
-        else if (_newsItems.isEmpty)
-          Container(
-            height: 220,
-            decoration: BoxDecoration(
-                color: Colors.white, borderRadius: BorderRadius.circular(24)),
-            child: Center(
-              child: Text(
-                '此分類目前沒有新聞',
-                style: GoogleFonts.notoSansTc(
-                  color: const Color(0xFF64748B),
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          )
-        else
-          Column(
-            children: [
-              for (final item in _orderedNewsItemsWithTopFirst().take(30)) ...[
-                _buildNewsListCard(item),
-                const SizedBox(height: 14),
-              ],
-            ],
-          ),
-      ],
-    );
-  }
-
-  Widget _buildCategorySelector() {
-    return SizedBox(
-      height: 60,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-        itemCount: _categories.length,
-        separatorBuilder: (context, index) => const SizedBox(width: 12),
-        itemBuilder: (context, index) {
-          final cat = _categories[index];
-          final isSelected = _selectedCategory == cat['key'];
-          return InkWell(
-            onTap: () {
-              if (isSelected || _isLoadingNews) return;
-              setState(() {
-                _selectedCategory = cat['key']!;
-                _isLoadingNews = true;
-                _newsError = null;
-              });
-              _fetchNews(category: cat['key']);
-            },
-            borderRadius: BorderRadius.circular(999),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              decoration: BoxDecoration(
-                color: isSelected ? const Color(0xFF59B294) : Colors.white,
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(
-                  color: isSelected
-                      ? const Color(0xFF59B294)
-                      : const Color(0xFFE2E8F0),
-                  width: 2,
-                ),
-                boxShadow: isSelected
-                    ? [
-                        BoxShadow(
-                          color: const Color(0xFF59B294).withValues(alpha: 0.3),
-                          blurRadius: 8,
-                          offset: const Offset(0, 4),
-                        )
-                      ]
-                    : null,
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    cat['emoji']!,
-                    style: const TextStyle(fontSize: 20),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    cat['label']!,
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 18,
-                      fontWeight:
-                          isSelected ? FontWeight.bold : FontWeight.w600,
-                      color:
-                          isSelected ? Colors.white : const Color(0xFF475569),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
 
   Widget _buildTopRotatingNewsCard({bool compact = false}) {
     if (_isLoadingNews) {
@@ -1216,7 +1020,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildNewsHeader(compact: compact),
+        _buildNewsHeaderContent(compact: compact),
         const SizedBox(height: 12), // Added explicit spacing after header
         Row(
           children: [
@@ -1470,44 +1274,6 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildNavArrow(IconData icon, VoidCallback onTap, bool compact) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(999),
-      child: Padding(
-        padding: EdgeInsets.all(compact ? 12 : 16),
-        child:
-            Icon(icon, color: const Color(0xFF59B294), size: compact ? 42 : 48),
-      ),
-    );
-  }
-
-  Widget _buildNewsPageDots(bool compact) {
-    return Wrap(
-      alignment: WrapAlignment.center,
-      spacing: compact ? 6 : 8,
-      runSpacing: compact ? 6 : 8,
-      children: List.generate(_newsItems.length, (index) {
-        return GestureDetector(
-          onTap: () => _jumpToTopNewsByRealIndex(index),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            width: index == _topNewsIndex
-                ? (compact ? 16 : 20)
-                : (compact ? 8 : 10),
-            height: compact ? 8 : 10,
-            decoration: BoxDecoration(
-              color: index == _topNewsIndex
-                  ? const Color(0xFF59B294)
-                  : const Color(0xFFC8D7D1),
-              borderRadius: BorderRadius.circular(999),
-            ),
-          ),
-        );
-      }),
     );
   }
 
@@ -1855,22 +1621,6 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
       return parsed;
     }
     return '--';
-  }
-
-  Future<void> _handleNewsRefresh() async {
-    if (_isRefreshingNews) return;
-    setState(() {
-      _isRefreshingNews = true;
-      _isLoadingNews = true;
-      _newsError = null;
-    });
-    try {
-      await _fetchNews();
-    } finally {
-      if (mounted) {
-        setState(() => _isRefreshingNews = false);
-      }
-    }
   }
 
   void _pauseTopNewsAutoRotate(
