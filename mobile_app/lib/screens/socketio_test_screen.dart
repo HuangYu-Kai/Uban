@@ -21,7 +21,7 @@ class _SocketIOTestScreenState extends State<SocketIOTestScreen> {
   bool _isConnecting = false;
   String _statusMessage = '尚未連線';
   String _selectedRole = 'elder'; // elder 或 family
-  List<Map<String, dynamic>> _logs = [];
+  final List<Map<String, dynamic>> _logs = [];
 
   @override
   void initState() {
@@ -149,7 +149,7 @@ class _SocketIOTestScreenState extends State<SocketIOTestScreen> {
       _signaling.connect(
         roomId,
         _selectedRole,
-        deviceName: 'TestDevice_${_selectedRole}',
+        deviceName: 'TestDevice_$_selectedRole',
         deviceMode: 'comm',
       );
 

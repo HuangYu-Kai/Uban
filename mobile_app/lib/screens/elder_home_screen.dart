@@ -60,7 +60,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
     if (_selectedIndex != 1 && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('小優：$message', style: const TextStyle(fontSize: 18)),
+          content: Text('AI 助理：$message', style: const TextStyle(fontSize: 18)),
           backgroundColor: const Color(0xFF59B294),
           duration: const Duration(seconds: 5),
           action: SnackBarAction(

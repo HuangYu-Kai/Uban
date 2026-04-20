@@ -96,7 +96,7 @@ class PerformanceOptimizer {
     
     return (A arg) {
       if (cache.containsKey(arg)) {
-        return cache[arg]!;
+        return cache[arg] as T;
       }
       
       final result = func(arg);
@@ -234,7 +234,7 @@ class MemoryOptimizer {
 /// Widget 優化工具
 class WidgetOptimizer {
   /// 創建 const Widget（提醒開發者使用 const）
-  static const placeholder = const SizedBox.shrink();
+  static const placeholder = SizedBox.shrink();
 
   /// 是否應該重建 Widget
   static bool shouldRebuild<T>(T oldValue, T newValue) {

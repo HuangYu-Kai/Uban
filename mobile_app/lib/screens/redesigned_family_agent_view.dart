@@ -748,7 +748,7 @@ class _RedesignedFamilyAgentViewState extends State<RedesignedFamilyAgentView> {
     ValueChanged<double> onChanged,
   ) {
     // 實時預覽文本生成
-    String _getPreviewText(String label, double value) {
+    String getPreviewText(String label, double value) {
       if (label.contains('情感溫度')) {
         if (value < 30) return '「早安，請記得吃藥。」（簡潔專業）';
         if (value < 70) return '「早安呀！記得吃藥哦~」（溫暖友善）';
@@ -837,7 +837,7 @@ class _RedesignedFamilyAgentViewState extends State<RedesignedFamilyAgentView> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  _getPreviewText(label, value),
+                  getPreviewText(label, value),
                   style: GoogleFonts.notoSansTc(
                     fontSize: 12,
                     color: const Color(0xFF475569),

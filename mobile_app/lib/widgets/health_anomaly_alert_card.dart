@@ -188,7 +188,7 @@ class HealthAnomalyAlertCard extends StatelessWidget {
 
   /// 將十六進制顏色字符串轉換為 Color
   Color _parseColor(String hexColor) {
-    return Color(int.parse('0xFF' + hexColor.replaceFirst('#', '')));
+    return Color(int.parse('0xFF${hexColor.replaceFirst('#', '')}'));
   }
 
   /// 顯示詳細警告對話
@@ -324,6 +324,6 @@ class HealthStatusIndicator extends StatelessWidget {
   }
 
   Color _parseColor(String hexColor) {
-    return Color(int.parse('0xFF' + hexColor.replaceFirst('#', '')));
+    return Color(int.parse('0xFF${hexColor.replaceFirst('#', '')}'));
   }
 }
