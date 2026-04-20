@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
+import 'dart:ui';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
@@ -30,7 +31,6 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
   String? _error;
   Timer? _waveTimer;
   List<double> _waveHeights = List<double>.filled(11, 40);
-  bool _showTranscript = false;
   
   // 字幕相關
   List<dynamic> _subtitles = [];
@@ -103,30 +103,51 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
   Future<void> _playCurrentNews() async {
     if (widget.newsItems.isEmpty) return;
     final item = widget.newsItems[_currentIndex];
-    final speechText = _composeSpeechText(item);
+    
     setState(() {
       _isLoadingAudio = true;
       _error = null;
     });
+    
     try {
-      final response = await ApiService.synthesizeEdgeTts(text: speechText);
-      if (response['success'] != true) {
+      final String? audioUrl = item['audio_url'];
+      if (audioUrl != null && audioUrl.isNotEmpty) {
+        // Direct stream from pre-generated URL
+        final String fullUrl = "https://localhost-0.tail5abf5e.ts.net$audioUrl";
+        await _audioPlayer.stop();
+        await _audioPlayer.play(UrlSource(fullUrl));
+        
+        if (!mounted) return;
+        setState(() {
+          _subtitles = [];
+          _currentSubtitle = "";
+          _isLoadingAudio = false;
+          _isPlaying = true;
+        });
+        return;
+      }
+
+      // Fallback: Live Synthesis
+      final speechText = _composeSpeechText(item);
+      final response = await ApiService.synthesizeTts(text: speechText);
+      if (response['status'] != 'success') {
         final detail =
             response['detail'] ?? response['message'] ?? response['error'];
-        throw Exception(detail ?? 'Edge TTS 合成失敗');
+        throw Exception(detail ?? 'TTS 合成失敗');
       }
-      final audioBase64 = (response['audio'] ?? '').toString();
+      final audioBase64 = (response['audio_base64'] ?? '').toString();
       if (audioBase64.isEmpty) {
         throw Exception('語音資料為空');
       }
       
-      // 更新字幕清單
       final subs = response['subtitles'];
       
-      final audioPayload = _extractBase64Payload(audioBase64);
-      final audioBytes = base64Decode(audioPayload);
+      String payload = _extractBase64Payload(audioBase64);
+      final audioBytes = base64Decode(payload);
+      
       await _audioPlayer.stop();
       await _audioPlayer.play(BytesSource(audioBytes));
+      
       if (!mounted) return;
       setState(() {
         _subtitles = (subs is List) ? subs : [];
@@ -146,12 +167,18 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
   }
 
   String _extractBase64Payload(String raw) {
-    final text = raw.trim();
+    String text = raw.trim();
     if (text.startsWith('data:')) {
       final commaIndex = text.indexOf(',');
       if (commaIndex >= 0 && commaIndex < text.length - 1) {
-        return text.substring(commaIndex + 1);
+        text = text.substring(commaIndex + 1);
       }
+    }
+    // Safe Base64 decoding
+    text = text.replaceAll(RegExp(r'\s+'), '');
+    final missingPadding = text.length % 4;
+    if (missingPadding > 0) {
+      text += '=' * (4 - missingPadding);
     }
     return text;
   }
@@ -173,10 +200,14 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
     if (widget.newsItems.isEmpty) return;
     final len = widget.newsItems.length;
     final nextIndex = (_currentIndex + delta + len) % len;
+    _selectTrack(nextIndex);
+  }
+
+  Future<void> _selectTrack(int index) async {
+    if (widget.newsItems.isEmpty) return;
     setState(() {
-      _currentIndex = nextIndex;
+      _currentIndex = index;
       _error = null;
-      _showTranscript = false;
       _subtitles = [];
       _currentSubtitle = "";
     });
@@ -228,12 +259,6 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
     return '--';
   }
 
-  String _transcriptText(Map<String, dynamic> item) {
-    final content = (item['content'] ?? '').toString().trim();
-    if (content.isNotEmpty) return content;
-    return (item['title'] ?? '').toString().trim();
-  }
-
   @override
   Widget build(BuildContext context) {
     final item = widget.newsItems.isEmpty
@@ -242,7 +267,6 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
     final title = (item['title'] ?? '新聞朗讀').toString();
     final source = (item['category'] ?? '新聞').toString();
     final publishedDate = _formatNewsDate(item);
-    final transcript = _transcriptText(item);
     final totalCount = max(widget.newsItems.length, 1);
     final currentCount = widget.newsItems.isEmpty ? 0 : (_currentIndex + 1);
     return Scaffold(
@@ -255,27 +279,30 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
           ),
         ),
         child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
-            child: Column(
-              children: [
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.arrow_back_ios_new_rounded,
-                        color: Colors.white, size: 26),
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+              child: Column(
+                children: [
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.arrow_back_ios_new_rounded,
+                          color: Colors.white, size: 26),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  '代誌\n報給你知',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontFamily: 'StarPanda',
-                    fontSize: 58,
-                    height: 1.15,
-                    color: Colors.white,
+                  const SizedBox(height: 4),
+                  const Text(
+                    '代誌\n報給你知',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontFamily: 'StarPanda',
+                      fontSize: 48, // Reduced from 58 to fit better
+                      height: 1.1,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -453,6 +480,142 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildNewsSelectionList() {
+    return Column(
+      children: List.generate(widget.newsItems.length, (index) {
+        final item = widget.newsItems[index];
+        final isCurrent = index == _currentIndex;
+        final title = (item['title'] ?? '').toString();
+        final source = (item['category'] ?? '新聞').toString();
+        final date = _formatNewsDate(item);
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 20),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: isCurrent
+                  ? [
+                      BoxShadow(
+                        color: const Color(0xFFFFD700).withValues(alpha: 0.35),
+                        blurRadius: 20,
+                        spreadRadius: 2,
+                      ),
+                      BoxShadow(
+                        color: const Color(0xFFFFD700).withValues(alpha: 0.15),
+                        blurRadius: 40,
+                        spreadRadius: 8,
+                      ),
+                    ]
+                  : [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.08),
+                        blurRadius: 15,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                child: Material(
+                  color: isCurrent
+                      ? Colors.white.withValues(alpha: 0.25)
+                      : Colors.white.withValues(alpha: 0.1),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(24),
+                    side: BorderSide(
+                      color: isCurrent
+                          ? const Color(0xFFFFE066)
+                          : Colors.white.withValues(alpha: 0.25),
+                      width: isCurrent ? 2.5 : 1.5,
+                    ),
+                  ),
+                  child: InkWell(
+                    onTap: () => _selectTrack(index),
+                    splashColor: Colors.white.withValues(alpha: 0.3),
+                    highlightColor: Colors.white.withValues(alpha: 0.2),
+                    child: Padding(
+                      padding: const EdgeInsets.all(22),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 12, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: isCurrent
+                                            ? const Color(0xFFFFD700)
+                                            : Colors.white.withValues(alpha: 0.2),
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: Text(
+                                        source,
+                                        style: TextStyle(
+                                          color: isCurrent
+                                              ? const Color(0xFF1E293B)
+                                              : Colors.white,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Text(
+                                      date,
+                                      style: TextStyle(
+                                        color: Colors.white.withValues(alpha: 0.85),
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                Text(
+                                  title,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: isCurrent ? 26 : 24,
+                                    fontWeight: isCurrent
+                                        ? FontWeight.w900
+                                        : FontWeight.w700,
+                                    height: 1.35,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          if (isCurrent)
+                            const Icon(Icons.equalizer_rounded,
+                                color: Color(0xFFFFD700), size: 38)
+                          else
+                            Icon(Icons.play_circle_outline_rounded,
+                                color: Colors.white.withValues(alpha: 0.8),
+                                size: 38),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      }),
     );
   }
 
