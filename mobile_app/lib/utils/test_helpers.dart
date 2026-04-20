@@ -1,6 +1,7 @@
 /// 🧪 測試工具和輔助函數
 /// 
 /// 提供測試數據生成、驗證等功能
+library;
 
 import '../models/emotion_data.dart';
 import '../models/care_task.dart';

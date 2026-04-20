@@ -262,7 +262,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                             _buildCalendarCard(compact: compactTopLayout),
                             SizedBox(height: compactTopLayout ? 12 : 20),
                             _buildMainFeaturesRow(compact: compactTopLayout),
-                            SizedBox(height: compactTopLayout ? 10 : 16),
+                            const SizedBox(height: 32), // Increased from 16 to 32 to prevent overlap
                             _buildTopRotatingNewsCard(
                                 compact: compactTopLayout),
                           ],
@@ -488,13 +488,23 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                   InkWell(
                     onTap: () => _showFriendsBottomSheet(context),
                     borderRadius: BorderRadius.circular(999),
-                    child: CircleAvatar(
-                      radius: narrowPanel ? 28 : 32, // Increase for touch target
-                      backgroundColor: const Color(0xFF59B294),
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF59B294),
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF59B294).withValues(alpha: 0.3),
+                            blurRadius: 8,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
                       child: Icon(
                         Icons.arrow_forward_rounded,
                         color: Colors.white,
-                        size: narrowPanel ? 28 : 32,
+                        size: narrowPanel ? 36 : 42,
                       ),
                     ),
                   ),
@@ -1005,7 +1015,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildNewsHeader(compact: compact),
+          _buildNewsHeaderContent(compact: compact),
           Container(
             height: compact ? 160 : 220,
             decoration: BoxDecoration(
@@ -1029,7 +1039,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildNewsHeader(compact: compact),
+          _buildNewsHeaderContent(compact: compact),
           Container(
             constraints: BoxConstraints(minHeight: compact ? 160 : 220),
             padding: const EdgeInsets.all(18),
@@ -1082,106 +1092,69 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildNewsHeader(compact: compact),
-        const SizedBox(height: 12), // Added explicit spacing after header
-        Row(
-          children: [
-            Expanded(
-              child: _newsItems.length > 1
-                  ? TweenAnimationBuilder<double>(
+        // 1. Header Section with explicit bottom padding
+        Padding(
+          padding: const EdgeInsets.only(bottom: 56), // Forced gap
+          child: _buildNewsHeaderContent(compact: compact),
+        ),
+        
+        // 2. Control Section (Progress + Arrows)
+        if (_newsItems.length > 1)
+          Column(
+            children: [
+              // Progress Bar Row
+              Row(
+                children: [
+                  Expanded(
+                    child: TweenAnimationBuilder<double>(
                       key: ValueKey<int>(_topNewsCycleToken),
                       tween: Tween(begin: 0, end: 1),
-                      duration: _topNewsProgressRemaining(),
+                      duration: _topNewsRotationDuration,
                       curve: Curves.linear,
                       builder: (context, value, _) => ClipRRect(
                         borderRadius: BorderRadius.circular(999),
                         child: LinearProgressIndicator(
                           value: value,
-                          minHeight: 8, // Increased from 5 to 8 for better visibility
-                          backgroundColor: const Color(0xFFD8E8E2),
+                          minHeight: 12,
+                          backgroundColor: const Color(0xFFE2E8F0),
                           color: const Color(0xFF59B294),
                         ),
                       ),
-                    )
-                  : ClipRRect(
-                      borderRadius: BorderRadius.circular(999),
-                      child: const LinearProgressIndicator(
-                        value: 1,
-                        minHeight: 8,
-                        backgroundColor: Color(0xFFD8E8E2),
-                        color: Color(0xFF59B294),
-                      ),
                     ),
-            ),
-            const SizedBox(width: 14),
-            Text(
-              _topNewsAutoPaused ? '已暫停輪播' : _formatTopNewsTimeLabel(item),
-              style: GoogleFonts.notoSansTc(
-                fontSize: 14, // Increased from 12 to 14
-                color: const Color(0xFF64748B),
-                fontWeight: FontWeight.w600,
+                  ),
+                  const SizedBox(width: 16),
+                  Text(
+                    _topNewsAutoPaused ? '已暫停' : _formatTopNewsTimeLabel(item),
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 16,
+                      color: const Color(0xFF64748B),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ),
-            ),
-          ],
-        ),
-        if (_newsItems.length > 1) ...[
-          const SizedBox(height: 16), // Increased spacing
-          Row(
-            children: [
-              InkWell(
-                onTap: () => _switchTopNewsBy(-1),
-                borderRadius: BorderRadius.circular(999),
-                child: Padding(
-                  padding: EdgeInsets.all(compact ? 6 : 8),
-                  child: Icon(Icons.chevron_left_rounded,
-                      color: const Color(0xFF59B294), size: compact ? 24 : 28),
-                ),
-              ),
-              Expanded(
-                child: Wrap(
-                  alignment: WrapAlignment.center,
-                  spacing: compact ? 6 : 8,
-                  runSpacing: compact ? 6 : 8,
-                  children: List.generate(_newsItems.length, (index) {
-                    return GestureDetector(
-                      onTap: () => _jumpToTopNewsByRealIndex(index),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        width: index == _topNewsIndex
-                            ? (compact ? 16 : 20)
-                            : (compact ? 8 : 10),
-                        height: compact ? 8 : 10,
-                        decoration: BoxDecoration(
-                          color: index == _topNewsIndex
-                              ? const Color(0xFF59B294)
-                              : const Color(0xFFC8D7D1),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                      ),
-                    );
-                  }),
-                ),
-              ),
-              InkWell(
-                onTap: () => _switchTopNewsBy(1),
-                borderRadius: BorderRadius.circular(999),
-                child: Padding(
-                  padding: EdgeInsets.all(compact ? 6 : 8),
-                  child: Icon(Icons.chevron_right_rounded,
-                      color: const Color(0xFF59B294), size: compact ? 24 : 28),
-                ),
+              const SizedBox(height: 32),
+              // Arrows Row
+              Row(
+                children: [
+                  _buildNavArrow(Icons.chevron_left_rounded, () => _switchTopNewsBy(-1), compact),
+                  Expanded(child: _buildNewsPageDots(compact)),
+                  _buildNavArrow(Icons.chevron_right_rounded, () => _switchTopNewsBy(1), compact),
+                ],
               ),
             ],
           ),
-        ],
-        const SizedBox(height: 20), // Increased spacing before news card
+          
+        const SizedBox(height: 36), // Final spacing before news card
+
+
         AnimatedSwitcher(
           duration: const Duration(milliseconds: 420),
           switchInCurve: Curves.easeOutCubic,
           switchOutCurve: Curves.easeInCubic,
           transitionBuilder: (child, animation) {
             final offset = Tween<Offset>(
-              begin: const Offset(0, 0.05), // Slightly increased offset
+              begin: const Offset(0, 0.05),
               end: Offset.zero,
             ).animate(
                 CurvedAnimation(parent: animation, curve: Curves.easeOut));
@@ -1291,7 +1264,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     return '更新於 ${DateFormat('MM/dd HH:mm').format(ts)}';
   }
 
-  Widget _buildNewsHeader({bool compact = false}) {
+  Widget _buildNewsHeaderContent({bool compact = false}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1299,40 +1272,75 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
           children: [
             Text(
               '最新',
-              style: TextStyle(
-                  fontWeight: FontWeight.w600, fontSize: compact ? 18 : 22),
+              style: GoogleFonts.notoSansTc(
+                color: const Color(0xFF334155),
+                fontWeight: FontWeight.w900,
+                fontSize: compact ? 22 : 26,
+              ),
             ),
+            const SizedBox(width: 10),
             Container(
-              margin: const EdgeInsets.only(left: 4),
-              width: 8,
-              height: 8,
+              width: 12,
+              height: 12,
               decoration: const BoxDecoration(
-                color: Colors.red,
+                color: Colors.redAccent,
                 shape: BoxShape.circle,
               ),
             ),
-            const SizedBox(width: 20),
+            const Spacer(),
             Text(
               '新聞',
               style: GoogleFonts.notoSansTc(
-                color: Colors.grey,
-                fontSize: compact ? 18 : 22,
-                fontWeight: FontWeight.w500,
+                color: const Color(0xFF59B294),
+                fontWeight: FontWeight.bold,
+                fontSize: compact ? 22 : 26,
               ),
             ),
           ],
         ),
-        SizedBox(height: compact ? 6 : 8),
+        const SizedBox(height: 12),
         Text(
           '頭條早知道',
-          style: TextStyle(
-            fontFamily: 'StarPanda',
-            fontSize: compact ? 32 : 40,
-            color: const Color(0xFF59B294),
+          style: GoogleFonts.notoSansTc(
+            fontSize: compact ? 36 : 44,
+            fontWeight: FontWeight.w900,
+            color: const Color(0xFF1E293B),
           ),
         ),
-        SizedBox(height: compact ? 6 : 10),
       ],
+    );
+  }
+
+  Widget _buildNavArrow(IconData icon, VoidCallback onTap, bool compact) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: Padding(
+        padding: EdgeInsets.all(compact ? 12 : 16),
+        child: Icon(icon, color: const Color(0xFF59B294), size: compact ? 42 : 48),
+      ),
+    );
+  }
+
+  Widget _buildNewsPageDots(bool compact) {
+    return Wrap(
+      alignment: WrapAlignment.center,
+      spacing: compact ? 6 : 8,
+      runSpacing: compact ? 6 : 8,
+      children: List.generate(_newsItems.length, (index) {
+        return GestureDetector(
+          onTap: () => _jumpToTopNewsByRealIndex(index),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            width: index == _topNewsIndex ? (compact ? 16 : 20) : (compact ? 8 : 10),
+            height: compact ? 8 : 10,
+            decoration: BoxDecoration(
+              color: index == _topNewsIndex ? const Color(0xFF59B294) : const Color(0xFFC8D7D1),
+              borderRadius: BorderRadius.circular(999),
+            ),
+          ),
+        );
+      }),
     );
   }
 

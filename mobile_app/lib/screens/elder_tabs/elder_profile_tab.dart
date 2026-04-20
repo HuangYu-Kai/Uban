@@ -26,9 +26,10 @@ class ElderProfileTab extends StatefulWidget {
 
 class _ElderProfileTabState extends State<ElderProfileTab>
     with TickerProviderStateMixin {
-  // ── Mock data ───────────────────────────────────────────────
-  final String greetingText = '今天一共走了';
-  final String kilometers = '3.5 公里';
+  // ── 數據 ───────────────────────────────────────────────
+  final int dailyStepGoal = 8000;
+  int currentSteps = 0; // Will be calculated from distance or fetched
+
 
   // ── 步數動畫 ──────────────────────────────────────────────
   late AnimationController _ctrl;
@@ -223,94 +224,104 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     });
   }
 
-  // ── 步數動畫卡片 ────────────────────────────────────────────
-  Widget _buildAnimatedStepCard() {
-    const double darkCardH = 200.0;
-    const double greenPeek = 32.0;
-    const double greenCardH = 56.0;
-
-    return AnimatedBuilder(
-      animation: _ctrl,
-      builder: (context, _) {
-        final slide = _greenSlide.value;
-        final totalH = darkCardH + greenPeek * slide;
-
-        return SizedBox(
-          height: totalH,
-          child: Stack(
-            clipBehavior: Clip.none,
+  // ── 🆕 今日目標圓環 (取代舊的週報表) ──────────────────────
+  Widget _buildDailyGoalRing() {
+    final double progress = (currentSteps / dailyStepGoal).clamp(0.0, 1.0);
+    
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(32),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF59B294).withValues(alpha: 0.1),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Stack(
+            alignment: Alignment.center,
             children: [
-              // ① 綠卡
-              Positioned(
-                bottom: 0,
-                left: 0,
-                right: 0,
-                child: Transform.rotate(
-                  angle: -0.0611,
-                  alignment: Alignment.centerLeft,
-                  child: Container(
-                    height: greenCardH,
-                    margin: const EdgeInsets.symmetric(horizontal: 4),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF59B294),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                  ),
+              SizedBox(
+                width: 200,
+                height: 200,
+                child: CircularProgressIndicator(
+                  value: progress,
+                  strokeWidth: 16,
+                  backgroundColor: const Color(0xFFF1F5F9),
+                  valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF59B294)),
+                  strokeCap: StrokeCap.round,
                 ),
               ),
-              // ② 黑卡
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: Container(
-                  height: darkCardH,
-                  clipBehavior: Clip.hardEdge,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1E1E1E),
-                    borderRadius: BorderRadius.circular(20),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '今日步數',
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 22, // Increased from 18
+                      color: const Color(0xFF64748B),
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-                  child: Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      Positioned(
-                        top: 0,
-                        left: 0,
-                        child: Text(
-                          '步數',
-                          style: GoogleFonts.notoSansTc(
-                            color: Colors.white,
-                            fontSize: 20, // Compliant
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        bottom: 0,
-                        left: 0,
-                        right: 0,
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Expanded(child: _buildBar('日', 0.6)),
-                            Expanded(child: _buildBar('一', 0.4)),
-                            Expanded(child: _buildBar('二', 0.5)),
-                            Expanded(child: _buildBar('三', 0.8)),
-                            Expanded(child: _buildBarToday('四', 1.0, '8,406')),
-                            Expanded(child: _buildBar('五', 0.3)),
-                            Expanded(child: _buildBar('六', 0.2)),
-                          ],
-                        ),
-                      ),
-                    ],
+                  Text(
+                    NumberFormat('#,###').format(currentSteps),
+                    style: GoogleFonts.inter(
+                      fontSize: 48,
+                      fontWeight: FontWeight.w900,
+                      color: const Color(0xFF1E293B),
+                    ),
                   ),
-                ),
+                  Text(
+                    '目標 $dailyStepGoal 步',
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 20, // Increased from 16
+                      color: const Color(0xFF94A3B8),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
-        );
-      },
+          const SizedBox(height: 24),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildSimpleStat('步行距離', '${_totalDistance.toStringAsFixed(2)} 公里'),
+              _buildSimpleStat('消耗熱量', '${(_totalDistance * 60).toInt()} 千卡'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSimpleStat(String label, String value) {
+    return Column(
+      children: [
+        Text(
+          label,
+          style: GoogleFonts.notoSansTc(
+            fontSize: 20, // Increased from 16
+            color: const Color(0xFF94A3B8),
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: GoogleFonts.notoSansTc(
+            fontSize: 24, // Increased from 20
+            fontWeight: FontWeight.bold,
+            color: const Color(0xFF334155),
+          ),
+        ),
+      ],
     );
   }
 
@@ -593,220 +604,152 @@ class _ElderProfileTabState extends State<ElderProfileTab>
 
   @override
   Widget build(BuildContext context) {
+    currentSteps = (_totalDistance * 1450).toInt();
+    final hour = DateTime.now().hour;
+    String greetingTitle = '早安';
+    if (hour >= 12 && hour < 18) greetingTitle = '午安';
+    if (hour >= 18 || hour < 5) greetingTitle = '晚安';
+
     return Container(
-      color: const Color(0xFFF7F7F7),
+      color: const Color(0xFFFDFCF9),
       width: double.infinity,
       child: SafeArea(
-        child: ScrollConfiguration(
-          behavior: const ScrollBehavior().copyWith(overscroll: false),
-          child: SingleChildScrollView(
-            physics: const ClampingScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(20, 30, 20, 20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // ── 標頭 (Header) ───────────────────────────────────
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Container(
-                      width: 70,
-                      height: 70,
-                      decoration: const BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Color(0xFFE2E8F0),
-                      ),
-                      child: const Icon(
-                        Icons.person_rounded,
-                        size: 45,
-                        color: Color(0xFF59B294),
+        child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(24, 30, 24, 40),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // ── 溫馨標頭 (Header) ───────────────────────────
+              Row(
+                children: [
+                  Container(
+                    width: 72,
+                    height: 72,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: const Color(0xFF59B294).withValues(alpha: 0.1),
+                      border: Border.all(color: const Color(0xFF59B294), width: 2),
+                    ),
+                    child: const Icon(Icons.person_rounded, size: 40, color: Color(0xFF59B294)),
+                  ),
+                  const SizedBox(width: 20),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '$greetingTitle，${widget.userName}',
+                          style: GoogleFonts.notoSansTc(
+                            fontSize: 28,
+                            fontWeight: FontWeight.w900,
+                            color: const Color(0xFF1E293B),
+                          ),
+                        ),
+                        Text(
+                          '今天也要開心地活動身體喔！',
+                          style: GoogleFonts.notoSansTc(
+                            fontSize: 18,
+                            color: const Color(0xFF64748B),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 32),
+
+              // ── 今日成就圓環 ───────────────────────────
+              _buildDailyGoalRing(),
+              const SizedBox(height: 24),
+
+              // ── 冒險護照 (遊戲入口) ───────────────────────────
+              _buildGameEntryCard(),
+              const SizedBox(height: 24),
+
+              // ── 移動軌跡地圖 ───────────────────────────
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(left: 8, bottom: 12),
+                    child: Text(
+                      '今日步行軌跡',
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: const Color(0xFF334155),
                       ),
                     ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          RichText(
-                            text: TextSpan(
-                              children: [
-                                TextSpan(
-                                  text: widget.userName,
-                                  style: GoogleFonts.notoSansTc(
-                                    fontSize: 24,
-                                    fontWeight: FontWeight.bold,
-                                    color: const Color(0xFF1E293B),
-                                  ),
-                                ),
-                                TextSpan(
-                                  text: ' 您好！',
-                                  style: GoogleFonts.notoSansTc(
-                                    fontSize: 22,
-                                    color: const Color(0xFF1E293B),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '飯後記得出門散散步有助於消化喔',
-                            style: GoogleFonts.notoSansTc(
-                              fontSize: 18, // Compliant helper text
-                              color: const Color(0xFF64748B),
-                            ),
-                          ),
-                        ],
-                      ),
+                  ),
+                  _buildRealMap(),
+                ],
+              ),
+              const SizedBox(height: 40),
+
+              // ── 系統設定選單 ───────────────────────────
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.03),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
                     ),
                   ],
                 ),
-                const SizedBox(height: 30),
-
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.03),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF1F5F9),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Icon(
-                          Icons.directions_walk_rounded,
-                          size: 32,
-                          color: Color(0xFF59B294),
-                        ),
-                      ),
-                      const SizedBox(width: 20),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    greetingText,
-                                    style: GoogleFonts.notoSansTc(
-                                      fontSize: 18,
-                                      color: const Color(0xFF64748B),
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                  Text(
-                                    '${DateFormat('HH:mm').format(_lastUpdateTime)} 已更新',
-                                    style: GoogleFonts.notoSansTc(
-                                      fontSize: 16,
-                                      color: const Color(0xFF94A3B8),
-                                    ),
-                                  ),
-                                ],
-                            ),
-                            const SizedBox(height: 6),
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.baseline,
-                              textBaseline: TextBaseline.alphabetic,
-                              children: [
-                                Text(
-                                  _totalDistance.toStringAsFixed(2),
-                                  style: GoogleFonts.notoSansTc(
-                                    fontSize: 32,
-                                    fontWeight: FontWeight.w900,
-                                    color: const Color(0xFF1E293B),
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  '公里',
-                                  style: GoogleFonts.notoSansTc(
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.bold,
-                                    color: const Color(0xFF64748B),
-                                  ),
-                                ),
-                                const Spacer(),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFFDF2F2),
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: Text(
-                                    '≈ ${(_totalDistance * 1450).toInt()} 步',
-                                    style: GoogleFonts.notoSansTc(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.w900,
-                                      color: const Color(0xFFEF4444),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 20),
-
-                // ── 步數動畫卡片 (Weekly Chart) ──────────────────────
-                _buildAnimatedStepCard(),
-                const SizedBox(height: 20),
-                _buildGameEntryCard(),
-                const SizedBox(height: 20),
-
-                // ── 移動軌跡地圖 (GPS Map) ───────────────────────────
-                _buildRealMap(),
-                const SizedBox(height: 30),
-
-                // ── 功能按鈕區 (Action Buttons) ───────────────────────
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  height: 60,
-                  child: OutlinedButton.icon(
-                    onPressed: _handleLogout,
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.redAccent,
-                      side: const BorderSide(color: Colors.redAccent, width: 1.5),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
+                child: Column(
+                  children: [
+                    _buildSettingsTile(
+                      icon: Icons.logout_rounded,
+                      title: '切換身分 / 登出',
+                      color: Colors.redAccent,
+                      onTap: _handleLogout,
                     ),
-                    icon: const Icon(Icons.logout_rounded, size: 24),
-                    label: Text(
-                      '登出系統',
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 24, // Bigger logout font
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
+                  ],
                 ),
-                const SizedBox(height: 100),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 
+  Widget _buildSettingsTile({
+    required IconData icon,
+    required String title,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(24),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+        child: Row(
+          children: [
+            Icon(icon, color: color, size: 28),
+            const SizedBox(width: 20),
+            Text(
+              title,
+              style: GoogleFonts.notoSansTc(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
+            ),
+            const Spacer(),
+            Icon(Icons.arrow_forward_ios_rounded, color: Colors.grey.shade300, size: 18),
+          ],
+        ),
+      ),
+    );
+  }
   Widget _buildGameEntryCard() {
     return InkWell(
       onTap: () {
@@ -818,62 +761,81 @@ class _ElderProfileTabState extends State<ElderProfileTab>
           ),
         );
       },
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(32),
       child: Container(
-        padding: const EdgeInsets.all(20),
+        height: 140,
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: const Color(0xFFE2E8F0)),
+          gradient: const LinearGradient(
+            colors: [Color(0xFFFFF1F2), Color(0xFFFFE4E6)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(32),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.03),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
+              color: Colors.pink.withValues(alpha: 0.1),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
             ),
           ],
         ),
-        child: Row(
+        child: Stack(
           children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFF59B294).withValues(alpha: 0.1),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.pets_rounded,
-                color: Color(0xFF59B294),
-                size: 28,
+            Positioned(
+              right: -20,
+              bottom: -20,
+              child: Opacity(
+                opacity: 0.2,
+                child: Image.asset(
+                  'assets/images/pig_mascot.png',
+                  width: 150,
+                  errorBuilder: (context, _, __) => const Icon(Icons.pets, size: 100),
+                ),
               ),
             ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Row(
                 children: [
-                  Text(
-                    '走路養小豬遊戲',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: const Color(0xFF1E293B),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.stars_rounded,
+                      color: Colors.pinkAccent,
+                      size: 40,
                     ),
                   ),
-                  Text(
-                    '查看您的等級與小豬成長狀況',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 16,
-                      color: const Color(0xFF64748B),
+                  const SizedBox(width: 20),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '我的冒險護照',
+                          style: GoogleFonts.notoSansTc(
+                            fontSize: 26,
+                            fontWeight: FontWeight.w900,
+                            color: const Color(0xFFE11D48),
+                          ),
+                        ),
+                        Text(
+                          '點擊進入小豬遊戲',
+                          style: GoogleFonts.notoSansTc(
+                            fontSize: 22, // Increased from 18
+                            color: const Color(0xFFF43F5E),
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ),
-            ),
-            const Icon(
-              Icons.arrow_forward_ios_rounded,
-              color: Color(0xFF94A3B8),
-              size: 20,
             ),
           ],
         ),

@@ -944,39 +944,30 @@ class ElderChatTabState extends State<ElderChatTab>
     return Align(
       alignment: Alignment.centerRight,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 18, left: 40),
-        padding: const EdgeInsets.all(18),
+        margin: const EdgeInsets.only(bottom: 24, left: 60),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
         decoration: BoxDecoration(
-          color: const Color(0xFF8DB08B).withValues(alpha: 0.2),
+          color: const Color(0xFF59B294),
           borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(22),
-            topRight: Radius.circular(22),
-            bottomLeft: Radius.circular(22),
-          ),
-          border: Border.all(
-            color: const Color(0xFF8DB08B).withValues(alpha: 0.3),
-            width: 1.5,
+            topLeft: Radius.circular(28),
+            topRight: Radius.circular(28),
+            bottomLeft: Radius.circular(28),
           ),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFF8DB08B).withValues(alpha: 0.15),
-              blurRadius: 20,
+              color: const Color(0xFF59B294).withValues(alpha: 0.2),
+              blurRadius: 18,
               offset: const Offset(0, 6),
-            ),
-            BoxShadow(
-              color: const Color(0xFF8DB08B).withValues(alpha: 0.05),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
             ),
           ],
         ),
         child: Text(
           text,
           style: GoogleFonts.notoSansTc(
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-            color: const Color(0xFF1E293B),
-            height: 1.4,
+            fontSize: 26,
+            fontWeight: FontWeight.w900,
+            color: Colors.white,
+            height: 1.5,
           ),
         ),
       ),
@@ -1007,29 +998,25 @@ class ElderChatTabState extends State<ElderChatTab>
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 22, right: 40),
-        padding: const EdgeInsets.all(22),
+        margin: const EdgeInsets.only(bottom: 28, right: 60),
+        padding: const EdgeInsets.all(26),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(26),
-            topRight: Radius.circular(26),
-            bottomRight: Radius.circular(26),
-          ),
-          border: Border.all(
-            color: const Color(0xFF59B294).withValues(alpha: 0.15),
-            width: 1.5,
+            topLeft: Radius.circular(32),
+            topRight: Radius.circular(32),
+            bottomRight: Radius.circular(32),
           ),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFF59B294).withValues(alpha: 0.12),
-              blurRadius: 28,
-              offset: const Offset(0, 8),
+              color: Colors.black.withValues(alpha: 0.06),
+              blurRadius: 24,
+              offset: const Offset(0, 10),
             ),
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.03),
-              blurRadius: 12,
-              offset: const Offset(0, 3),
+              color: const Color(0xFF59B294).withValues(alpha: 0.04),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
             ),
           ],
         ),
@@ -1040,39 +1027,44 @@ class ElderChatTabState extends State<ElderChatTab>
               mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
-                  padding: const EdgeInsets.all(6),
+                  padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
                     color: const Color(0xFF59B294).withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Icon(
                     Icons.auto_awesome,
                     color: Color(0xFF59B294),
-                    size: 18,
+                    size: 24,
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 14),
                 Text(
-                  'AI 陪伴',
+                  'AI 助理',
                   style: GoogleFonts.notoSansTc(
-                    fontSize: 18, // Compliant
+                    fontSize: 22,
                     color: const Color(0xFF59B294),
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: -0.3,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.5,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             MarkdownBody(
               data: displayLine,
               builders: {'img': CustomImageBuilder()},
               styleSheet: MarkdownStyleSheet(
                 p: GoogleFonts.notoSansTc(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
+                  fontSize: 28, // Significant increase
+                  fontWeight: FontWeight.w800,
                   color: const Color(0xFF1E293B),
-                  height: 1.5,
+                  height: 1.6,
+                ),
+                strong: GoogleFonts.notoSansTc(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w900,
+                  color: const Color(0xFF0F172A),
                 ),
               ),
             ),
@@ -1116,27 +1108,21 @@ class ElderChatTabState extends State<ElderChatTab>
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 30,
-              height: 30,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: const Color(0xFF59B294).withValues(alpha: 0.1),
-              ),
-              child: const CircularProgressIndicator(
-                strokeWidth: 4.5,
+            const SizedBox(
+              width: 36,
+              height: 36,
+              child: CircularProgressIndicator(
+                strokeWidth: 5,
                 color: Color(0xFF59B294),
-                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF59B294)),
               ),
             ),
-            const SizedBox(width: 18),
+            const SizedBox(width: 22),
             Text(
-              '正在為您思考中...',
+              '正在為您想辦法...',
               style: GoogleFonts.notoSansTc(
-                fontSize: 26, // Make it very clear
+                fontSize: 28,
                 fontWeight: FontWeight.w900,
                 color: const Color(0xFF59B294),
-                letterSpacing: -0.2,
               ),
             ),
           ],
@@ -1148,69 +1134,83 @@ class ElderChatTabState extends State<ElderChatTab>
   // ─── Header ───────────────────────────────────────────────────────────
   Widget _buildChatHeader() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            const Color(0xFF8DB08B),
-            const Color(0xFF7AA47A).withValues(alpha: 0.9),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: const BorderRadius.only(
-          bottomLeft: Radius.circular(24),
-          bottomRight: Radius.circular(24),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF8DB08B).withValues(alpha: 0.2),
-            blurRadius: 16,
-            offset: const Offset(0, 8),
+        color: const Color(0xFFFDFCF9),
+        border: Border(
+          bottom: BorderSide(
+            color: const Color(0xFF59B294).withValues(alpha: 0.1),
+            width: 1.5,
           ),
-        ],
+        ),
       ),
       child: Row(
         children: [
-          Container(
-            width: 64, // Bigger hit area
-            height: 64,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: IconButton(
-              icon: const Icon(
-                Icons.arrow_back_ios_new_rounded,
-                color: Colors.white,
-                size: 32, // Bigger icon
+          InkWell(
+            onTap: widget.onBackToHome,
+            borderRadius: BorderRadius.circular(24),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              decoration: BoxDecoration(
+                color: const Color(0xFF59B294).withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: const Color(0xFF59B294).withValues(alpha: 0.2)),
               ),
-              onPressed: widget.onBackToHome,
+              child: Row(
+                children: [
+                  const Icon(Icons.arrow_back_ios_new_rounded,
+                      color: Color(0xFF59B294), size: 28),
+                  const SizedBox(width: 12),
+                  Text(
+                    '回首頁',
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w900,
+                      color: const Color(0xFF59B294),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
           const Spacer(),
-          // ④ 連續對話模式 Toggle
-          Row(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text(
-                '連續對話',
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 20, // Compliant secondary
-                  color: Colors.white.withValues(alpha: 0.95),
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: -0.2,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Transform.scale(
-                scale: 1.2, // Bigger switch for better touch
-                child: Switch(
-                  value: _voiceLoopEnabled,
-                  onChanged: (v) => setState(() => _voiceLoopEnabled = v),
-                  thumbColor: WidgetStateProperty.all(Colors.white),
-                  activeTrackColor: const Color(0xFF3D7A60),
-                  inactiveTrackColor: Colors.white.withValues(alpha: 0.3),
-                ),
+              Row(
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        '語音接聽',
+                        style: GoogleFonts.notoSansTc(
+                          fontSize: 18,
+                          color: const Color(0xFF1E293B),
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      Text(
+                        _voiceLoopEnabled ? '目前：開啟' : '目前：關閉',
+                        style: GoogleFonts.notoSansTc(
+                          fontSize: 14,
+                          color: _voiceLoopEnabled ? const Color(0xFF59B294) : Colors.redAccent,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(width: 10),
+                  Transform.scale(
+                    scale: 1.5,
+                    child: Switch(
+                      value: _voiceLoopEnabled,
+                      onChanged: (v) => setState(() => _voiceLoopEnabled = v),
+                      activeColor: const Color(0xFF59B294),
+                      activeTrackColor: const Color(0xFF59B294).withValues(alpha: 0.2),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -1374,17 +1374,17 @@ class ElderChatTabState extends State<ElderChatTab>
         Icon(
           _isRecording ? Icons.mic_rounded : Icons.mic_none_rounded,
           color: Colors.white,
-          size: 30,
+          size: 36, // Enlarge
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: 14),
         Expanded(
           child: Text(
-            statusText,
+            _isRecording ? '正在聽您說話...' : statusText,
             style: GoogleFonts.notoSansTc(
-              fontSize: 24, // Bigger font for the main action
+              fontSize: 26, // Even bigger
               fontWeight: FontWeight.w900,
               color: Colors.white,
-              letterSpacing: -0.2,
+              letterSpacing: -0.5,
             ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,

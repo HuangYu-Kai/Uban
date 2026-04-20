@@ -161,7 +161,7 @@ class _RemoteCareHubScreenState extends State<RemoteCareHubScreen> {
             Expanded(
               child: _buildFeatureCard(
                 title: 'AI 人格調教',
-                subtitle: '自定義小優風格',
+                subtitle: '自定義助理風格',
                 icon: Icons.psychology,
                 gradient: LinearGradient(
                   colors: [Color(0xFFEC4899), Color(0xFFF472B6)],
