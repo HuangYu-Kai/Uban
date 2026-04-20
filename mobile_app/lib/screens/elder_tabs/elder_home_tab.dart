@@ -260,16 +260,14 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                       physics: const BouncingScrollPhysics(),
                       child: Padding(
                         padding: EdgeInsets.fromLTRB(
-                            20, 20, 20, compactTopLayout ? 20 : 92),
+                            20, 16, 20, compactTopLayout ? 16 : 80), // Reduced paddings
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             _buildCalendarCard(compact: compactTopLayout),
-                            SizedBox(height: compactTopLayout ? 12 : 20),
+                            SizedBox(height: compactTopLayout ? 8 : 16), // Reduced from 12/20
                             _buildMainFeaturesRow(compact: compactTopLayout),
-                            const SizedBox(
-                                height:
-                                    32), // Increased from 16 to 32 to prevent overlap
+                            SizedBox(height: compactTopLayout ? 16 : 24),
                             _buildTopRotatingNewsCard(
                                 compact: compactTopLayout),
                           ],
@@ -302,7 +300,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
         children: [
           // 左側西曆方塊
           Container(
-            padding: EdgeInsets.all(compact ? 9 : 12),
+            padding: EdgeInsets.all(compact ? 6 : 9), // Reduced padding
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(24),
@@ -344,7 +342,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                 Text(
                   _dateStr,
                   style: GoogleFonts.inter(
-                    fontSize: compact ? 60 : 72,
+                    fontSize: compact ? 52 : 64, // Reduced from 60/72
                     fontWeight: FontWeight.w800,
                     color: const Color(0xFF59B294),
                   ),
@@ -352,7 +350,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                 Text(
                   _dayName,
                   style: GoogleFonts.notoSansTc(
-                    fontSize: compact ? 18 : 20,
+                    fontSize: compact ? 16 : 18, // Reduced from 18/20
                     color: const Color(0xFF59B294),
                     fontWeight: FontWeight.w600,
                   ),
@@ -369,7 +367,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                 Text(
                   _lunarDate,
                   style: GoogleFonts.notoSansTc(
-                    fontSize: compact ? 24 : 28,
+                    fontSize: compact ? 20 : 24, // Reduced from 24/28
                     fontWeight: FontWeight.w800,
                     color: const Color(0xFF59B294),
                   ),
@@ -377,7 +375,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                 Text(
                   _solarTerm,
                   style: GoogleFonts.notoSansTc(
-                    fontSize: compact ? 24 : 28,
+                    fontSize: compact ? 20 : 24, // Reduced from 24/28
                     fontWeight: FontWeight.w800,
                     color: const Color(0xFF59B294),
                   ),
@@ -392,7 +390,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
 
   Widget _buildMainFeaturesRow({bool compact = false}) {
     final featureHeight =
-        compact ? 220.0 : 260.0; // Increased to fit 64dp buttons
+        compact ? 175.0 : 215.0; // Reduced from 220/260 to show more news
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -431,7 +429,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                           '代誌',
                           style: TextStyle(
                             fontFamily: 'StarPanda',
-                            fontSize: compact ? 28 : 32,
+                            fontSize: compact ? 22 : 26, // Reduced from 28/32
                             color: const Color(0xFF334155),
                           ),
                         ),
@@ -439,7 +437,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                           '報給你知',
                           style: TextStyle(
                             fontFamily: 'StarPanda',
-                            fontSize: compact ? 28 : 32,
+                            fontSize: compact ? 22 : 26, // Reduced from 28/32
                             color: const Color(0xFF334155),
                           ),
                         ),
@@ -521,16 +519,16 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                   ),
                 ],
               ),
-              const SizedBox(height: 6),
+              SizedBox(height: narrowPanel ? 2 : 4),
               Text(
                 '已配對子女',
                 style: GoogleFonts.notoSansTc(
-                  fontSize: narrowPanel ? 16 : 18,
+                  fontSize: narrowPanel ? 14 : 16,
                   color: const Color(0xFF64748B),
                   fontWeight: FontWeight.w700,
                 ),
               ),
-              const SizedBox(height: 6),
+              SizedBox(height: narrowPanel ? 2 : 4),
               if (_isLoadingFamily)
                 const Expanded(
                   child: Center(
@@ -1021,7 +1019,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildNewsHeaderContent(compact: compact),
-        const SizedBox(height: 12), // Added explicit spacing after header
+        SizedBox(height: compact ? 6 : 10), // Reduced from 12
         Row(
           children: [
             Expanded(
@@ -1064,7 +1062,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
           ],
         ),
         if (_newsItems.length > 1) ...[
-          const SizedBox(height: 16), // Increased spacing
+          SizedBox(height: compact ? 8 : 12), // Reduced from 16
           Row(
             children: [
               InkWell(
@@ -1113,7 +1111,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
             ],
           ),
         ],
-        const SizedBox(height: 20), // Increased spacing before news card
+        SizedBox(height: compact ? 12 : 16), // Reduced from 20
         AnimatedSwitcher(
           duration: const Duration(milliseconds: 420),
           switchInCurve: Curves.easeOutCubic,
@@ -1241,13 +1239,13 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
               style: GoogleFonts.notoSansTc(
                 color: const Color(0xFF334155),
                 fontWeight: FontWeight.w900,
-                fontSize: compact ? 22 : 26,
+                fontSize: compact ? 20 : 24, // Reduced from 22/26
               ),
             ),
             const SizedBox(width: 10),
             Container(
-              width: 12,
-              height: 12,
+              width: 10, // Reduced from 12
+              height: 10, // Reduced from 12
               decoration: const BoxDecoration(
                 color: Colors.redAccent,
                 shape: BoxShape.circle,
@@ -1259,17 +1257,17 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
               style: GoogleFonts.notoSansTc(
                 color: const Color(0xFF59B294),
                 fontWeight: FontWeight.bold,
-                fontSize: compact ? 22 : 26,
+                fontSize: compact ? 20 : 24, // Reduced from 22/26
               ),
             ),
           ],
         ),
-        const SizedBox(height: 12),
+        SizedBox(height: compact ? 4 : 8), // Reduced from 12
         Text(
           '頭條早知道',
-          style: GoogleFonts.notoSansTc(
-            fontSize: compact ? 36 : 44,
-            fontWeight: FontWeight.w900,
+          style: TextStyle(
+            fontFamily: 'StarPanda',
+            fontSize: compact ? 28 : 34,
             color: const Color(0xFF1E293B),
           ),
         ),

@@ -119,7 +119,7 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
         
         if (!mounted) return;
         setState(() {
-          _subtitles = [];
+          _subtitles = (item['subtitles'] is List) ? item['subtitles'] : [];
           _currentSubtitle = "";
           _isLoadingAudio = false;
           _isPlaying = true;
