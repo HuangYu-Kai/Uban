@@ -18,6 +18,8 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   final GameService _gameService = GameService();
   List<Map<String, dynamic>> _leaderboard = [];
   Map<String, dynamic>? _elderStatus;
+  List<dynamic> _collection = [];
+  double _totalBonus = 0.0;
   bool _isLoading = true;
 
   // Pedometer logic
@@ -89,10 +91,13 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     try {
       final leaderboardData = await _gameService.getLeaderboard(widget.elderId);
       final statusData = await _gameService.getElderStatus(widget.elderId);
+      final collectionData = await _gameService.getElderCollection(widget.elderId);
       
       if (mounted) {
         setState(() {
           _leaderboard = leaderboardData;
+          _collection = collectionData['collection'] ?? [];
+          _totalBonus = (collectionData['total_bonus'] ?? 0.0).toDouble();
           
           if (_elderStatus == null) {
             _elderStatus = statusData;
@@ -104,6 +109,8 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
             // 更新非步數相關欄位
             _elderStatus!['elder_name'] = statusData['elder_name'];
             _elderStatus!['feed_starttime'] = statusData['feed_starttime'];
+            _elderStatus!['gawa_id'] = statusData['gawa_id'];
+            _elderStatus!['gawa_name'] = statusData['gawa_name'];
             
             // 由於 backend 尚未包含在 unsynced 內的步數，我們把伺服器真實步數 + 未同步的本地步數 作為真正總數
             final int computeSteps = serverSteps + _unsyncedSteps;
@@ -301,6 +308,9 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                   // --- 養小豬重點區域 ---
                   _buildPigFeedingArea(level, totalSteps, nextSteps, progress),
                   
+                  // --- 我的圖鑑與加成區塊 ---
+                  if (!_isLoading) _buildCollectionArea(),
+                  
                   // --- 排行榜部分 ---
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 10),
@@ -465,6 +475,83 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         ],
       ),
     ).animate().scale(duration: 400.milliseconds, curve: Curves.easeOutBack);
+  }
+
+  Widget _buildCollectionArea() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.8),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.teal.withValues(alpha: 0.1)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('我的造型圖鑑', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.teal)),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.orange.shade200),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.bolt, size: 16, color: Colors.orange),
+                    Text(' 步數加成: +${(_totalBonus * 100).toInt()}%', 
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.orange)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _collection.isEmpty
+              ? const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 10),
+                  child: Center(child: Text('尚未獲得任何特殊造型', style: TextStyle(color: Colors.grey))),
+                )
+              : SizedBox(
+                  height: 80,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: _collection.length,
+                    itemBuilder: (context, index) {
+                      final gawa = _collection[index];
+                      return Container(
+                        width: 70,
+                        margin: const EdgeInsets.only(right: 12),
+                        child: Column(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.pink.shade100, width: 2),
+                                boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4)],
+                              ),
+                              child: const Icon(Icons.pets, color: Colors.pinkAccent, size: 24),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(gawa['gawa_name'] ?? '造型', 
+                              maxLines: 1, 
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+        ],
+      ),
+    ).animate().fadeIn(delay: 200.milliseconds);
   }
 
   Widget _buildLeaderboardTile(Map<String, dynamic> entry, int index, bool isMe) {
