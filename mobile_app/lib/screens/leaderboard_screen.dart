@@ -426,7 +426,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
               return Transform.scale(
                 scale: scale,
                 child: Image.asset(
-                  'assets/images/pig_mascot.png',
+                  'assets/images/pig_2d_idle_v4.png',
                   height: 120,
                   errorBuilder: (context, error, stackTrace) => Container(
                     height: 120, width: 120,

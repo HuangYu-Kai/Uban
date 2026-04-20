@@ -6,6 +6,7 @@ import '../globals.dart';
 import 'elder_screen.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import '../services/signaling.dart'; // ★ 新增
+import '../widgets/desktop_pet.dart';
 
 class ElderHomeScreen extends StatefulWidget {
   final int userId;
@@ -131,6 +132,9 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
               ),
             ],
           ),
+          // 小豬桌寵 (僅在首頁顯示，擁有全螢幕的定位權)
+          if (_selectedIndex == 0)
+            DesktopPet(userId: widget.userId, bottomBarHeight: 110),
           // 自定義浮動導覽列
           Positioned(
             left: 0,

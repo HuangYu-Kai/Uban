@@ -664,7 +664,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
               child: Opacity(
                 opacity: 0.2,
                 child: Image.asset(
-                  'assets/images/pig_mascot.png',
+                  'assets/images/pig_2d_idle_v4.png',
                   width: 150,
                   errorBuilder: (context, _, __) => const Icon(Icons.pets, size: 100),
                 ),
