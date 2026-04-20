@@ -8,6 +8,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:intl/intl.dart';
 import '../identification_screen.dart';
+import '../leaderboard_screen.dart';
 
 class ElderProfileTab extends StatefulWidget {
   final int userId;
@@ -766,6 +767,8 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                 // ── 步數動畫卡片 (Weekly Chart) ──────────────────────
                 _buildAnimatedStepCard(),
                 const SizedBox(height: 20),
+                _buildGameEntryCard(),
+                const SizedBox(height: 20),
 
                 // ── 移動軌跡地圖 (GPS Map) ───────────────────────────
                 _buildRealMap(),
@@ -799,6 +802,80 @@ class _ElderProfileTabState extends State<ElderProfileTab>
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGameEntryCard() {
+    return InkWell(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) =>
+                LeaderboardScreen(elderId: widget.userId.toString()),
+          ),
+        );
+      },
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.03),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF59B294).withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.pets_rounded,
+                color: Color(0xFF59B294),
+                size: 28,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '走路養小豬遊戲',
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: const Color(0xFF1E293B),
+                    ),
+                  ),
+                  Text(
+                    '查看您的等級與小豬成長狀況',
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 16,
+                      color: const Color(0xFF64748B),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(
+              Icons.arrow_forward_ios_rounded,
+              color: Color(0xFF94A3B8),
+              size: 20,
+            ),
+          ],
         ),
       ),
     );

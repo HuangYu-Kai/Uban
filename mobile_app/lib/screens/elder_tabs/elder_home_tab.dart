@@ -7,6 +7,7 @@ import 'package:lunar/lunar.dart';
 import 'package:intl/intl.dart';
 import '../elder_screen.dart';
 import '../news_listen_player_screen.dart';
+import '../leaderboard_screen.dart';
 import '../../services/api_service.dart';
 
 class ElderHomeTab extends StatefulWidget {
@@ -33,7 +34,6 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
 
   List<dynamic> _familyList = [];
   bool _isLoadingFamily = true;
-  final PageController _stageController = PageController();
   List<Map<String, dynamic>> _newsItems = [];
   bool _isLoadingNews = true;
   String? _newsError;
@@ -187,39 +187,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     _topNewsCycleToken++;
   }
 
-  Future<void> _goToTopStage() async {
-    if (_isStageSwitching || !_stageController.hasClients) return;
-    final current =
-        _stageController.page ?? _stageController.initialPage.toDouble();
-    if (current < 0.5) return;
-    _isStageSwitching = true;
-    try {
-      await _stageController.animateToPage(
-        0,
-        duration: const Duration(milliseconds: 240),
-        curve: Curves.easeOutCubic,
-      );
-    } finally {
-      _isStageSwitching = false;
-    }
-  }
 
-  bool _handleNewsStageScroll(ScrollNotification notification) {
-    if (notification.metrics.axis != Axis.vertical) return false;
-    if (_isRefreshingNews) return false;
-
-    final isPullDownAtTop = notification.metrics.pixels <= 0 &&
-        ((notification is OverscrollNotification &&
-                notification.overscroll < -140) ||
-            (notification is ScrollUpdateNotification &&
-                (notification.scrollDelta ?? 0) < -110));
-
-    if (isPullDownAtTop) {
-      _goToTopStage();
-      return true;
-    }
-    return false;
-  }
 
   void _updateTime() {
     final now = DateTime.now();
@@ -251,7 +219,6 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
   void dispose() {
     _topNewsRotateTimer?.cancel();
     _topNewsAutoResumeTimer?.cancel();
-    _stageController.dispose();
     super.dispose();
   }
 
@@ -281,58 +248,28 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                     topRight: Radius.circular(32),
                   ),
                 ),
-                child: PageView(
-                  controller: _stageController,
-                  scrollDirection: Axis.vertical,
-                  physics:
-                      const PageScrollPhysics(parent: ClampingScrollPhysics()),
-                  children: [
-                    LayoutBuilder(
-                      builder: (context, constraints) {
-                        final compactTopLayout = constraints.maxHeight < 700;
-                        return SingleChildScrollView(
-                          physics: const BouncingScrollPhysics(),
-                          child: Padding(
-                            padding: EdgeInsets.fromLTRB(
-                                20, 20, 20, compactTopLayout ? 20 : 92),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                _buildCalendarCard(compact: compactTopLayout),
-                                SizedBox(height: compactTopLayout ? 12 : 20),
-                                _buildMainFeaturesRow(compact: compactTopLayout),
-                                SizedBox(height: compactTopLayout ? 10 : 16),
-                                _buildTopRotatingNewsCard(
-                                    compact: compactTopLayout),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                    LayoutBuilder(
-                      builder: (context, constraints) {
-                        return RefreshIndicator(
-                          onRefresh: _handleNewsRefresh,
-                          child: NotificationListener<ScrollNotification>(
-                            onNotification: _handleNewsStageScroll,
-                            child: SingleChildScrollView(
-                              physics: const BouncingScrollPhysics(
-                                parent: AlwaysScrollableScrollPhysics(),
-                              ),
-                              padding:
-                                  const EdgeInsets.fromLTRB(20, 20, 20, 120),
-                              child: ConstrainedBox(
-                                constraints: BoxConstraints(
-                                    minHeight: constraints.maxHeight),
-                                child: _buildNewsSection(),
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ],
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final compactTopLayout = constraints.maxHeight < 700;
+                    return SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(
+                            20, 20, 20, compactTopLayout ? 20 : 92),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _buildCalendarCard(compact: compactTopLayout),
+                            SizedBox(height: compactTopLayout ? 12 : 20),
+                            _buildMainFeaturesRow(compact: compactTopLayout),
+                            SizedBox(height: compactTopLayout ? 10 : 16),
+                            _buildTopRotatingNewsCard(
+                                compact: compactTopLayout),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
             ),
