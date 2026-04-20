@@ -33,9 +33,6 @@ class _ElderProfileTabState extends State<ElderProfileTab>
 
   // ── 步數動畫 ──────────────────────────────────────────────
   late AnimationController _ctrl;
-  late Animation<double> _greenSlide;
-  late Animation<double> _numScale;
-  late Animation<double> _numOpacity;
 
   // ── GPS 追蹤 ──────────────────────────────────────────────
   bool _isTracking = false;
@@ -44,7 +41,6 @@ class _ElderProfileTabState extends State<ElderProfileTab>
   final MapController _mapController = MapController();
   double _totalDistance = 0.0; // 公里
   LatLng? _currentPosition;
-  DateTime _lastUpdateTime = DateTime.now();
   // 台北 101 作為預設中心點
   static const LatLng _defaultCenter = LatLng(25.0339, 121.5645);
   @override
@@ -56,26 +52,6 @@ class _ElderProfileTabState extends State<ElderProfileTab>
       vsync: this,
     );
 
-    _greenSlide = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _ctrl,
-        curve: const Interval(0.10, 0.62, curve: Curves.elasticOut),
-      ),
-    );
-
-    _numScale = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _ctrl,
-        curve: const Interval(0.60, 1.0, curve: Curves.elasticOut),
-      ),
-    );
-
-    _numOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _ctrl,
-        curve: const Interval(0.60, 0.75, curve: Curves.easeIn),
-      ),
-    );
 
     Future.delayed(const Duration(milliseconds: 200), () {
       if (mounted) _ctrl.forward();
@@ -200,7 +176,6 @@ class _ElderProfileTabState extends State<ElderProfileTab>
       }
       setState(() {
         _currentPosition = newPoint;
-        _lastUpdateTime = DateTime.now();
       });
       if (_routePoints.length > 1) {
         final bounds = LatLngBounds.fromPoints(_routePoints);
@@ -325,104 +300,6 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     );
   }
 
-  Widget _buildBar(String day, double ratio) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Container(
-          width: 6,
-          height: 90 * ratio,
-          decoration: BoxDecoration(
-            color: Colors.grey.shade600,
-            borderRadius: BorderRadius.circular(3),
-          ),
-        ),
-        const SizedBox(height: 6),
-        Text(day, style: GoogleFonts.notoSansTc(color: Colors.grey.shade500, fontSize: 16)),
-      ],
-    );
-  }
-
-  Widget _buildBarToday(String day, double ratio, String steps) {
-    const double barH = 90.0;
-    return AnimatedBuilder(
-      animation: _ctrl,
-      builder: (context, _) {
-        return Stack(
-          clipBehavior: Clip.none,
-          alignment: Alignment.bottomCenter,
-          children: [
-            Positioned(
-              bottom: barH + 6 + 15 + 8,
-              child: Opacity(
-                opacity: _numOpacity.value,
-                child: Transform.scale(
-                  scale: _numScale.value,
-                  alignment: Alignment.bottomCenter,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(8),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.15),
-                              blurRadius: 6,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Text(
-                          steps,
-                          softWrap: false,
-                          maxLines: 1,
-                          style: GoogleFonts.notoSansTc(
-                            color: Colors.black,
-                            fontSize: 18, // Bigger pop up text
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                      CustomPaint(
-                        size: const Size(10, 5),
-                        painter: TrianglePainter(),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Container(
-                  width: 6,
-                  height: barH,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(3),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  day,
-                  style: GoogleFonts.notoSansTc(color: Colors.grey.shade500, fontSize: 16),
-                ),
-              ],
-            ),
-          ],
-        );
-      },
-    );
-  }
 
   // ── ✨ 真實 OpenStreetMap 地圖 + GPS 追蹤 ────────────────────
   Widget _buildRealMap() {

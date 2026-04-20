@@ -304,15 +304,12 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
                       color: Colors.white,
                     ),
                   ),
-                ),
-                const SizedBox(height: 20),
-                Expanded(
-                  child: SingleChildScrollView(
-                    child: Column(
-                      children: [
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+                  const SizedBox(height: 20),
+                  Column(
+                    children: [
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
                           decoration: BoxDecoration(
                             color: Colors.white.withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(24),
@@ -470,12 +467,12 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
                         ),
                         const Icon(Icons.keyboard_arrow_down_rounded,
                             color: Colors.white, size: 32),
-                        const SizedBox(height: 20),
-                      ],
-                    ),
+                      const SizedBox(height: 20),
+                      _buildNewsSelectionList(),
+                    ],
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
