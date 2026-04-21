@@ -9,10 +9,13 @@ class ApiService {
       defaultValue: 'localhost-0.tail5abf5e.ts.net');
 
   // 依據是否為 ngrok 自動切換 http/https 與 埠號
-  static final String baseUrl =
-      _serverIp.contains('ngrok') || _serverIp.contains('ts.net')
-          ? 'https://$_serverIp/api'
-          : 'http://$_serverIp:8000/api';
+  static String get baseUrl {
+    debugPrint('🔍 Current _serverIp: "$_serverIp"');
+    final url = _serverIp.contains('ngrok') || _serverIp.contains('ts.net')
+        ? 'https://$_serverIp/api'
+        : 'http://$_serverIp:8000/api';
+    return url;
+  }
 
   // 統一超時時間
   static const Duration _timeout = Duration(seconds: 15);

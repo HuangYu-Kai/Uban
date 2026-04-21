@@ -97,9 +97,11 @@ class _DesktopPetState extends State<DesktopPet> {
         
         // Start walk frame animation
         _walkFrameTimer = Timer.periodic(const Duration(milliseconds: 250), (timer) {
-          setState(() {
-            _walkFrame = _walkFrame == 1 ? 2 : 1;
-          });
+          if (mounted) {
+            setState(() {
+              _walkFrame = _walkFrame == 1 ? 2 : 1;
+            });
+          }
         });
       } else if (newState == PetState.sleeping) {
         _isFacingLeft = true;
@@ -114,6 +116,7 @@ class _DesktopPetState extends State<DesktopPet> {
   }
 
   void _showRandomDialog() {
+    if (!mounted) return;
     setState(() {
       _currentDialog = _idleDialogs[_random.nextInt(_idleDialogs.length)];
     });
@@ -189,7 +192,7 @@ class _DesktopPetState extends State<DesktopPet> {
   String _getPetAsset() {
     switch (_currentState) {
       case PetState.walking:
-        return 'assets/images/pig_2d_walk_$_walkFrame_v4.png';
+        return 'assets/images/pig_2d_walk_${_walkFrame}_v4.png';
       case PetState.sleeping:
         return 'assets/images/pig_2d_sleep_v4.png';
       case PetState.happy:
