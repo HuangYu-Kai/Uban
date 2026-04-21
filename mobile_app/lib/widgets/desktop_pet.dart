@@ -16,10 +16,10 @@ class DesktopPet extends StatefulWidget {
   const DesktopPet({super.key, required this.userId, required this.bottomBarHeight});
 
   @override
-  State<DesktopPet> createState() => _DesktopPetState();
+  DesktopPetState createState() => DesktopPetState();
 }
 
-class _DesktopPetState extends State<DesktopPet> {
+class DesktopPetState extends State<DesktopPet> {
   final GameService _gameService = GameService();
   final Random _random = Random();
   
@@ -125,6 +125,33 @@ class _DesktopPetState extends State<DesktopPet> {
       if (mounted && _currentState != PetState.sleeping) setState(() => _currentDialog = null);
     });
   }
+
+  /// ★ 新增：讓外部（如 Heartbeat）控制小豬說話
+  void say(String text, {PetState state = PetState.happy}) {
+    if (!mounted) return;
+    _stateTimer?.cancel();
+    _dialogTimer?.cancel();
+    _walkFrameTimer?.cancel();
+
+    setState(() {
+      _currentState = state;
+      _currentDialog = text;
+      _positionY = (state == PetState.happy) ? 20.0 : 0.0;
+    });
+
+    // 10 秒後恢復閒置
+    _dialogTimer = Timer(const Duration(seconds: 10), () {
+      if (mounted) {
+        setState(() {
+          _currentDialog = null;
+          _positionY = 0.0;
+        });
+        _changeState(PetState.idle);
+        _startStateMachine();
+      }
+    });
+  }
+
 
   Future<void> _fetchPetStatus() async {
     try {

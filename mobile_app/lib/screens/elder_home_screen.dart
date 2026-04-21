@@ -5,8 +5,10 @@ import 'elder_tabs/elder_profile_tab.dart';
 import '../globals.dart';
 import 'elder_screen.dart';
 import 'package:flutter_tts/flutter_tts.dart';
-import '../services/signaling.dart'; // ★ 新增
+import 'dart:convert';
+import '../services/signaling.dart';
 import '../widgets/desktop_pet.dart';
+import '../widgets/heartbeat_overlay.dart';
 
 class ElderHomeScreen extends StatefulWidget {
   final int userId;
@@ -25,6 +27,8 @@ class ElderHomeScreen extends StatefulWidget {
 class _ElderHomeScreenState extends State<ElderHomeScreen> {
   int _selectedIndex = 0; // 0: Home/Calendar, 1: Chat, 2: Profile/Settings
   final GlobalKey<ElderChatTabState> _chatTabKey = GlobalKey<ElderChatTabState>();
+  // ★ 新增：用於控制小豬
+  final GlobalKey<DesktopPetState> _petKey = GlobalKey<DesktopPetState>();
 
   @override
   void initState() {
@@ -52,29 +56,67 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
   final FlutterTts _flutterTts = FlutterTts();
 
   Future<void> _handleProactiveMessage(String message) async {
+    String displayText = message;
+    String type = 'chat';
+    String emotion = 'caring';
+    bool isJson = false;
+
+    try {
+      final data = jsonDecode(message);
+      if (data is Map && data.containsKey('reply')) {
+        displayText = data['reply'];
+        type = data['type'] ?? 'chat';
+        emotion = data['emotion'] ?? 'caring';
+        isJson = true;
+      }
+    } catch (e) {
+      debugPrint("Home Heartbeat is plain text.");
+    }
+
     // 1. 播放語音 (TTS)
     await _flutterTts.setLanguage("zh-TW");
     await _flutterTts.setSpeechRate(0.5);
-    await _flutterTts.speak(message);
+    await _flutterTts.speak(displayText);
 
-    // 2. 如果目前不在聊天頁，顯示提示
-    if (_selectedIndex != 1 && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('AI 助理：$message', style: const TextStyle(fontSize: 18)),
-          backgroundColor: const Color(0xFF59B294),
-          duration: const Duration(seconds: 5),
-          action: SnackBarAction(
-            label: '回覆部',
-            textColor: Colors.white,
-            onPressed: () => setState(() => _selectedIndex = 1),
+    if (mounted) {
+      // 2. 如果有 JSON，顯示精美對話框
+      if (isJson) {
+        showDialog(
+          context: context,
+          barrierColor: Colors.black54,
+          builder: (context) => HeartbeatOverlay(
+            message: displayText,
+            type: type,
+            emotion: emotion,
+            onDismiss: () => Navigator.pop(context),
           ),
-        ),
-      );
+        );
+        
+        // 3. 讓小豬連動 (僅在首頁且顯示小豬時)
+        if (_selectedIndex == 0) {
+          _petKey.currentState?.say(displayText);
+        }
+      } else {
+        // 舊版 SnackBar 提示
+        if (_selectedIndex != 1) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('AI 助理：$displayText', style: const TextStyle(fontSize: 18)),
+              backgroundColor: const Color(0xFF59B294),
+              duration: const Duration(seconds: 5),
+              action: SnackBarAction(
+                label: '回覆',
+                textColor: Colors.white,
+                onPressed: () => setState(() => _selectedIndex = 1),
+              ),
+            ),
+          );
+        }
+      }
     }
     
-    // 3. 通知 ChatTab 更新
-    _chatTabKey.currentState?.addAIMessage(message);
+    // 4. 通知 ChatTab 更新
+    _chatTabKey.currentState?.addAIMessage(displayText);
   }
 
   @override
@@ -134,7 +176,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
           ),
           // 小豬桌寵 (僅在首頁顯示，擁有全螢幕的定位權)
           if (_selectedIndex == 0)
-            DesktopPet(userId: widget.userId, bottomBarHeight: 110),
+            DesktopPet(key: _petKey, userId: widget.userId, bottomBarHeight: 110),
           // 自定義浮動導覽列
           Positioned(
             left: 0,
@@ -146,6 +188,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
       ),
     );
   }
+
 
   Widget _buildFloatingNavBar() {
     return Container(

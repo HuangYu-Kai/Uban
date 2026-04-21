@@ -5,7 +5,9 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'dart:async';
+import 'dart:convert';
 import '../services/signaling.dart';
+import '../widgets/heartbeat_overlay.dart';
 import 'role_selection_screen.dart';
 import '../globals.dart';
 
@@ -275,23 +277,57 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     _signaling.onHeartbeatMessage = (message) async {
       debugPrint("💓 [ElderScreen] Heartbeat: $message");
       if (mounted && !_isInCall) {
-        setState(() {
-          _status = "AI 傳來了關心...";
-        });
+        String displayText = message;
+        String type = 'chat';
+        String emotion = 'caring';
+        bool isJson = false;
+
+        try {
+          final data = jsonDecode(message);
+          if (data is Map && data.containsKey('reply')) {
+            displayText = data['reply'];
+            type = data['type'] ?? 'chat';
+            emotion = data['emotion'] ?? 'caring';
+            isJson = true;
+          }
+        } catch (e) {
+          debugPrint("Heartbeat is plain text or malformed JSON.");
+        }
+
+        if (isJson) {
+          // 顯示精美的毛玻璃對話框
+          showDialog(
+            context: context,
+            barrierColor: Colors.black54,
+            builder: (context) => HeartbeatOverlay(
+              message: displayText,
+              type: type,
+              emotion: emotion,
+              onDismiss: () => Navigator.pop(context),
+            ),
+          );
+        } else {
+          setState(() {
+            _status = "AI 傳來了關心...";
+          });
+          
+          Future.delayed(const Duration(seconds: 10), () {
+            if (mounted && !_isInCall && _status == "AI 傳來了關心...") {
+              setState(() {
+                _status = "等待連線...";
+              });
+            }
+          });
+        }
+
+        // 語音播放
         FlutterTts flutterTts = FlutterTts();
         await flutterTts.setLanguage("zh-TW");
         await flutterTts.setVolume(1.0);
-        await flutterTts.speak(message);
-
-        Future.delayed(const Duration(seconds: 10), () {
-          if (mounted && !_isInCall && _status == "AI 傳來了關心...") {
-            setState(() {
-              _status = "等待連線...";
-            });
-          }
-        });
+        await flutterTts.speak(displayText);
       }
     };
+
   }
 
   // ★ 新增：懶加載媒體初始化
