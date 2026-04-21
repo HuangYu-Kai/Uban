@@ -72,6 +72,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
   Future<void> _fetchNews({String? category}) async {
     final targetCategory = category ?? 'all';
     try {
+      debugPrint('📡 正在抓取新聞... 類別: $targetCategory, 網址: ${ApiService.baseUrl}/news');
       var parsed = <Map<String, dynamic>>[];
 
       // 動態抓取指定類別 (limit 為 30 符合目前前端設計)
@@ -81,6 +82,9 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
       final allSuccess = allResponse['status'] == 'success';
       if (allSuccess) {
         parsed = _parseNewsItems(allResponse);
+        debugPrint('✅ 抓取成功，取得 ${parsed.length} 則新聞');
+      } else {
+        debugPrint('❌ 抓取失敗: ${allResponse['message']}');
       }
 
       // 如果 'all' 為空，嘗試手動匯總 (Fallback)
@@ -260,14 +264,14 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                       physics: const BouncingScrollPhysics(),
                       child: Padding(
                         padding: EdgeInsets.fromLTRB(
-                            20, 16, 20, compactTopLayout ? 16 : 80), // Reduced paddings
+                            20, 8, 20, compactTopLayout ? 8 : 40), // Extreme reduction
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             _buildCalendarCard(compact: compactTopLayout),
-                            SizedBox(height: compactTopLayout ? 8 : 16), // Reduced from 12/20
+                            SizedBox(height: compactTopLayout ? 2 : 4), // Minimized
                             _buildMainFeaturesRow(compact: compactTopLayout),
-                            SizedBox(height: compactTopLayout ? 16 : 24),
+                            SizedBox(height: compactTopLayout ? 8 : 12), // Minimized
                             _buildTopRotatingNewsCard(
                                 compact: compactTopLayout),
                           ],
@@ -300,7 +304,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
         children: [
           // 左側西曆方塊
           Container(
-            padding: EdgeInsets.all(compact ? 6 : 9), // Reduced padding
+            padding: EdgeInsets.all(compact ? 4 : 6), // Further reduced padding
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(24),
@@ -342,7 +346,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                 Text(
                   _dateStr,
                   style: GoogleFonts.inter(
-                    fontSize: compact ? 52 : 64, // Reduced from 60/72
+                    fontSize: compact ? 48 : 60, // Further reduced
                     fontWeight: FontWeight.w800,
                     color: const Color(0xFF59B294),
                   ),
@@ -390,7 +394,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
 
   Widget _buildMainFeaturesRow({bool compact = false}) {
     final featureHeight =
-        compact ? 175.0 : 215.0; // Reduced from 220/260 to show more news
+        compact ? 150.0 : 190.0; // Extreme reduction
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1062,41 +1066,52 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
           ],
         ),
         if (_newsItems.length > 1) ...[
-          SizedBox(height: compact ? 8 : 12), // Reduced from 16
+          SizedBox(height: compact ? 6 : 8),
           Row(
             children: [
               InkWell(
                 onTap: () => _switchTopNewsBy(-1),
                 borderRadius: BorderRadius.circular(999),
                 child: Padding(
-                  padding: EdgeInsets.all(compact ? 6 : 8),
+                  padding: EdgeInsets.all(compact ? 4 : 6),
                   child: Icon(Icons.chevron_left_rounded,
-                      color: const Color(0xFF59B294), size: compact ? 24 : 28),
+                      color: const Color(0xFF59B294), size: compact ? 20 : 24),
                 ),
               ),
               Expanded(
-                child: Wrap(
-                  alignment: WrapAlignment.center,
-                  spacing: compact ? 6 : 8,
-                  runSpacing: compact ? 6 : 8,
-                  children: List.generate(_newsItems.length, (index) {
-                    return GestureDetector(
-                      onTap: () => _jumpToTopNewsByRealIndex(index),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        width: index == _topNewsIndex
-                            ? (compact ? 16 : 20)
-                            : (compact ? 8 : 10),
-                        height: compact ? 8 : 10,
-                        decoration: BoxDecoration(
-                          color: index == _topNewsIndex
-                              ? const Color(0xFF59B294)
-                              : const Color(0xFFC8D7D1),
-                          borderRadius: BorderRadius.circular(999),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: () {
+                    // 永遠只顯示固定 5 個點，用比例來映射進度
+                    const int totalDots = 5;
+                    return List.generate(totalDots, (i) {
+                      // 計算目前進度在哪個點上
+                      double progress = _topNewsIndex / (_newsItems.length > 1 ? _newsItems.length - 1 : 1);
+                      int activeDotIndex = (progress * (totalDots - 1)).round();
+                      
+                      bool isCurrent = i == activeDotIndex;
+
+                      return GestureDetector(
+                        onTap: () {
+                          // 點擊點點時，跳轉到對應比例的新聞
+                          int targetIndex = (i * (_newsItems.length - 1) / (totalDots - 1)).round();
+                          _jumpToTopNewsByRealIndex(targetIndex);
+                        },
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          margin: const EdgeInsets.symmetric(horizontal: 4),
+                          width: isCurrent ? (compact ? 16 : 20) : (compact ? 8 : 10),
+                          height: compact ? 8 : 10,
+                          decoration: BoxDecoration(
+                            color: isCurrent
+                                ? const Color(0xFF59B294)
+                                : const Color(0xFFC8D7D1),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
                         ),
-                      ),
-                    );
-                  }),
+                      );
+                    });
+                  }(),
                 ),
               ),
               InkWell(
@@ -1111,26 +1126,38 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
             ],
           ),
         ],
-        SizedBox(height: compact ? 12 : 16), // Reduced from 20
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 420),
-          switchInCurve: Curves.easeOutCubic,
-          switchOutCurve: Curves.easeInCubic,
-          transitionBuilder: (child, animation) {
-            final offset = Tween<Offset>(
-              begin: const Offset(0, 0.05), // Slightly increased offset
-              end: Offset.zero,
-            ).animate(
-                CurvedAnimation(parent: animation, curve: Curves.easeOut));
-            return FadeTransition(
-              opacity: animation,
-              child: SlideTransition(position: offset, child: child),
-            );
+        SizedBox(height: compact ? 8 : 10), // Further reduced
+        GestureDetector(
+          onHorizontalDragEnd: (details) {
+            if (details.primaryVelocity == null) return;
+            if (details.primaryVelocity! < 0) {
+              // Swipe Left -> Next
+              _switchTopNewsBy(1);
+            } else if (details.primaryVelocity! > 0) {
+              // Swipe Right -> Prev
+              _switchTopNewsBy(-1);
+            }
           },
-          child: Container(
-            key: ValueKey<String>(
-                'top-news-${item['source_url'] ?? _topNewsIndex}'),
-            child: _buildNewsListCard(item, compact: true, tight: compact),
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 420),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            transitionBuilder: (child, animation) {
+              final offset = Tween<Offset>(
+                begin: const Offset(0, 0.05), // Slightly increased offset
+                end: Offset.zero,
+              ).animate(
+                  CurvedAnimation(parent: animation, curve: Curves.easeOut));
+              return FadeTransition(
+                opacity: animation,
+                child: SlideTransition(position: offset, child: child),
+              );
+            },
+            child: Container(
+              key: ValueKey<String>(
+                  'top-news-${item['source_url'] ?? _topNewsIndex}'),
+              child: _buildNewsListCard(item, compact: true, tight: compact),
+            ),
           ),
         ),
       ],
