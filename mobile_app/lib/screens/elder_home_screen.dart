@@ -73,50 +73,26 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
       debugPrint("Home Heartbeat is plain text.");
     }
 
-    // 1. 播放語音 (TTS)
+    // 1. 發出「豬叫」音效 (oink!) - 暫時用 TTS 模擬高頻短促音
     await _flutterTts.setLanguage("zh-TW");
-    await _flutterTts.setSpeechRate(0.5);
-    await _flutterTts.speak(displayText);
+    await _flutterTts.setPitch(2.0); // 極高音
+    await _flutterTts.setSpeechRate(0.8);
+    await _flutterTts.speak("喔！"); 
 
     if (mounted) {
-      // 2. 如果有 JSON，顯示精美對話框
-      if (isJson) {
-        showDialog(
-          context: context,
-          barrierColor: Colors.black54,
-          builder: (context) => HeartbeatOverlay(
-            message: displayText,
-            type: type,
-            emotion: emotion,
-            onDismiss: () => Navigator.pop(context),
-          ),
-        );
-        
-        // 3. 讓小豬連動 (僅在首頁且顯示小豬時)
-        if (_selectedIndex == 0) {
-          _petKey.currentState?.say(displayText);
-        }
-      } else {
-        // 舊版 SnackBar 提示
-        if (_selectedIndex != 1) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('AI 助理：$displayText', style: const TextStyle(fontSize: 18)),
-              backgroundColor: const Color(0xFF59B294),
-              duration: const Duration(seconds: 5),
-              action: SnackBarAction(
-                label: '回覆',
-                textColor: Colors.white,
-                onPressed: () => setState(() => _selectedIndex = 1),
-              ),
-            ),
-          );
-        }
+      // 2. 讓小豬頭上的氣泡顯示內容，並進入開心狀態 (取代原本的大對話框)
+      if (_selectedIndex == 0) {
+        _petKey.currentState?.say(displayText, state: PetState.happy);
       }
     }
     
     // 4. 通知 ChatTab 更新
     _chatTabKey.currentState?.addAIMessage(displayText);
+
+    // 5. 正式的語音朗讀
+    await _flutterTts.setPitch(1.0); // 恢復正常音調
+    await _flutterTts.setSpeechRate(0.5);
+    await _flutterTts.speak(displayText);
   }
 
   @override

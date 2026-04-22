@@ -59,7 +59,7 @@ class HeartbeatOverlay extends StatelessWidget {
           child: ClipRRect(
             borderRadius: BorderRadius.circular(30),
             child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+              filter: ImageFilter.blur(sigmaX: 3, sigmaY: 3),
               child: Container(
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
