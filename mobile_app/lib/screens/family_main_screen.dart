@@ -32,7 +32,6 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> {
   final Signaling _signaling = Signaling();
   bool _isIncomingCallDialogOpen = false;
   String? _elderName;
-  String? _elderRoomId;
 
   @override
   void initState() {
@@ -116,7 +115,6 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> {
     
     // ★ 重要：使用 user_id 作為房間號（與長輩端一致）
     final roomId = roomUserId?.toString();
-    _elderRoomId = roomId;
     
     if (roomId != null) {
       debugPrint('📡📡📡 [FamilyMainScreen] ===== 連線到房間: $roomId =====');

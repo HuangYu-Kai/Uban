@@ -25,7 +25,7 @@ class NewsListenPlayerScreen extends StatefulWidget {
 class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
   final AudioPlayer _audioPlayer = AudioPlayer();
   final Random _random = Random();
-  int _currentIndex = 0;
+  late int _currentIndex;
   bool _isLoadingAudio = false;
   bool _isPlaying = false;
   String? _error;
@@ -35,14 +35,34 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
   // 字幕相關
   List<dynamic> _subtitles = [];
   String _currentSubtitle = "";
-  double _subtitleProgress = 0.0; // 0.0 to 1.0 within the current chunk
+  int _currentSubtitleIndex = -1;
+  double _subtitleProgress = 0.0;
   StreamSubscription? _positionSubscription;
+  final ScrollController _subtitleScrollController = ScrollController();
+  List<GlobalKey> _subtitleKeys = []; // 為每一句字幕準備身分證
+  
+  late List<Map<String, dynamic>> _localNewsItems;
+  String _selectedCategory = '全部';
+  final ScrollController _scrollController = ScrollController();
+  bool _isLoadingMore = false;
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    _subtitleScrollController.dispose();
+    _audioPlayer.dispose();
+    _waveTimer?.cancel();
+    _positionSubscription?.cancel();
+    super.dispose();
+  }
 
   @override
   void initState() {
     super.initState();
-    _currentIndex =
-        widget.initialIndex.clamp(0, max(widget.newsItems.length - 1, 0));
+    _localNewsItems = List.from(widget.newsItems);
+    _currentIndex = widget.initialIndex.clamp(0, max(_localNewsItems.length - 1, 0));
+    _scrollController.addListener(_onScroll);
+    
     _audioPlayer.onPlayerStateChanged.listen((state) {
       if (!mounted) return;
       final playing = state == PlayerState.playing;
@@ -67,22 +87,30 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
       if (!mounted || _subtitles.isEmpty) return;
       
       final ms = position.inMilliseconds;
-      String matchedText = "";
+      int matchedIndex = -1;
       double progress = 0.0;
 
-      for (var sub in _subtitles) {
+      for (int i = 0; i < _subtitles.length; i++) {
+        final sub = _subtitles[i];
         final start = sub['start_ms'] as int;
         final duration = sub['duration_ms'] as int;
         if (ms >= start && ms < (start + duration)) {
-          matchedText = sub['text'] as String;
+          matchedIndex = i;
           progress = (ms - start) / (duration > 0 ? duration : 1);
           break;
         }
       }
 
-      if (matchedText != _currentSubtitle || (progress - _subtitleProgress).abs() > 0.05) {
+      if (matchedIndex != -1 && matchedIndex != _currentSubtitleIndex) {
+        debugPrint('🎯 切換字幕至第 $matchedIndex 句: ${_subtitles[matchedIndex]['text']}');
         setState(() {
-          _currentSubtitle = matchedText;
+          _currentSubtitleIndex = matchedIndex;
+          _currentSubtitle = _subtitles[matchedIndex]['text'] as String;
+          _subtitleProgress = progress.clamp(0.0, 1.0);
+        });
+        _scrollToSubtitle(matchedIndex);
+      } else if (matchedIndex != -1) {
+        setState(() {
           _subtitleProgress = progress.clamp(0.0, 1.0);
         });
       }
@@ -92,17 +120,77 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
     }
   }
 
-  @override
-  void dispose() {
-    _waveTimer?.cancel();
-    _positionSubscription?.cancel();
-    _audioPlayer.dispose();
-    super.dispose();
+  void _scrollToSubtitle(int index) {
+    if (index < 0 || index >= _subtitleKeys.length) return;
+    final key = _subtitleKeys[index];
+
+    // 延遲一下下，確保 UI 已經畫好
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (key.currentContext != null && _subtitleScrollController.hasClients) {
+        try {
+          final RenderBox box = key.currentContext!.findRenderObject() as RenderBox;
+          final RenderBox container = _subtitleScrollController.position.context.storageContext.findRenderObject() as RenderBox;
+          final Offset relativeOffset = box.localToGlobal(Offset.zero, ancestor: container);
+          
+          // 計算目標位置：讓該 Widget 的頂部 + 自身高度的一半 = 容器的一半
+          final double targetOffset = _subtitleScrollController.offset + 
+                                     relativeOffset.dy - 
+                                     (container.size.height / 2) + 
+                                     (box.size.height / 2);
+          
+          // 使用 jumpTo 瞬間跳轉，不產生任何動畫，也不會干擾外層 PageView
+          _subtitleScrollController.jumpTo(
+            targetOffset.clamp(0.0, _subtitleScrollController.position.maxScrollExtent),
+          );
+        } catch (e) {
+          debugPrint('❌ 瞬間捲動失敗: $e');
+        }
+      }
+    });
+  }
+
+  void _onScroll() {
+    if (!mounted) return;
+    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200 &&
+        !_isLoadingMore) {
+      _loadMoreNews();
+    }
+  }
+
+  Future<void> _loadMoreNews() async {
+    if (_isLoadingMore) return;
+    setState(() => _isLoadingMore = true);
+
+    try {
+      debugPrint('🔄 正在載入更多新聞... 類別: $_selectedCategory');
+      // 依據目前選中的類別抓取更多，'全部' 則不帶類別過濾
+      final apiCategory = _selectedCategory == '全部' ? '' : _selectedCategory;
+      final response = await ApiService.getNews(category: apiCategory, limit: 10);
+
+      if (response['status'] == 'success') {
+        final newItems = List<Map<String, dynamic>>.from(response['data'] ?? []);
+        if (newItems.isNotEmpty) {
+          setState(() {
+            // 避免加入重複標題的新聞
+            final existingTitles = _localNewsItems.map((i) => i['title'] as String).toSet();
+            final uniqueNewItems = newItems.where((i) => !existingTitles.contains(i['title'])).toList();
+            _localNewsItems.addAll(uniqueNewItems);
+            debugPrint('✅ 載入完成，新增了 ${uniqueNewItems.length} 則新聞');
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ 載入更多失敗: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingMore = false);
+      }
+    }
   }
 
   Future<void> _playCurrentNews() async {
-    if (widget.newsItems.isEmpty) return;
-    final item = widget.newsItems[_currentIndex];
+    if (_localNewsItems.isEmpty) return;
+    final item = _localNewsItems[_currentIndex];
     
     setState(() {
       _isLoadingAudio = true;
@@ -118,9 +206,12 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
         await _audioPlayer.play(UrlSource(fullUrl));
         
         if (!mounted) return;
+        if (!mounted) return;
         setState(() {
-          _subtitles = [];
+          _subtitles = (item['subtitles'] is List) ? item['subtitles'] : [];
+          _subtitleKeys = List.generate(_subtitles.length, (index) => GlobalKey());
           _currentSubtitle = "";
+          _currentSubtitleIndex = -1;
           _isLoadingAudio = false;
           _isPlaying = true;
         });
@@ -149,9 +240,12 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
       await _audioPlayer.play(BytesSource(audioBytes));
       
       if (!mounted) return;
+      if (!mounted) return;
       setState(() {
         _subtitles = (subs is List) ? subs : [];
+        _subtitleKeys = List.generate(_subtitles.length, (index) => GlobalKey());
         _currentSubtitle = "";
+        _currentSubtitleIndex = -1;
         _isLoadingAudio = false;
         _isPlaying = true;
       });
@@ -259,16 +353,26 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
     return '--';
   }
 
+  List<String> get _categories {
+    final Set<String> categories = {'全部'};
+    for (var item in _localNewsItems) {
+      final cat = (item['category'] ?? '').toString().trim();
+      if (cat.isNotEmpty) categories.add(cat);
+    }
+    return categories.toList();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final item = widget.newsItems.isEmpty
+    final item = _localNewsItems.isEmpty
         ? const <String, dynamic>{}
-        : widget.newsItems[_currentIndex];
+        : _localNewsItems[_currentIndex];
     final title = (item['title'] ?? '新聞朗讀').toString();
     final source = (item['category'] ?? '新聞').toString();
     final publishedDate = _formatNewsDate(item);
-    final totalCount = max(widget.newsItems.length, 1);
-    final currentCount = widget.newsItems.isEmpty ? 0 : (_currentIndex + 1);
+    final totalCount = max(_localNewsItems.length, 1);
+    final currentCount = _localNewsItems.isEmpty ? 0 : (_currentIndex + 1);
+
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(
@@ -279,332 +383,433 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
           ),
         ),
         child: SafeArea(
-          child: SingleChildScrollView(
-            physics: const BouncingScrollPhysics(),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
-              child: Column(
-                children: [
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: IconButton(
-                      onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.arrow_back_ios_new_rounded,
-                          color: Colors.white, size: 26),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  const Text(
-                    '代誌\n報給你知',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontFamily: 'StarPanda',
-                      fontSize: 48, // Reduced from 58 to fit better
-                      height: 1.1,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                    child: Column(
-                      children: [
-                        const Text(
-                          '正在播放：',
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 30, // Slightly reduced
-                              fontWeight: FontWeight.w700),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          '第 $currentCount / $totalCount 則 · $source · $publishedDate',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          title,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 23,
-                            fontWeight: FontWeight.w600,
-                            height: 1.3,
-                          ),
-                        ),
-                        const SizedBox(height: 18),
-                        SizedBox(
-                          height: 110, // Slightly reduced from 120
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: List.generate(_waveHeights.length, (i) {
-                              return AnimatedContainer(
-                                duration: const Duration(milliseconds: 240),
-                                width: 8,
-                                height: _waveHeights[i],
-                                margin: const EdgeInsets.symmetric(horizontal: 5),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withValues(alpha: 0.95),
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                              );
-                            }),
-                          ),
-                        ),
-                        if (_error != null) ...[
-                          const SizedBox(height: 8),
-                          Text(
-                            _error!,
-                            textAlign: TextAlign.center,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                                color: Colors.white, fontSize: 14),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _buildRoundControl(
-                        icon: Icons.fast_rewind_rounded,
-                        onTap: () => _changeTrack(-1),
+          child: PageView(
+            scrollDirection: Axis.vertical,
+            children: [
+              // 第一頁：播放器與字幕 (專注播放)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+                child: Column(
+                  children: [
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: IconButton(
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(Icons.arrow_back_ios_new_rounded,
+                            color: Colors.white, size: 26),
                       ),
-                      const SizedBox(width: 42),
-                      _isLoadingAudio
-                          ? const SizedBox(
-                              width: 58,
-                              height: 58,
-                              child: CircularProgressIndicator(
-                                  color: Colors.white, strokeWidth: 3),
-                            )
-                          : _buildRoundControl(
-                              icon: _isPlaying
-                                  ? Icons.pause_rounded
-                                  : Icons.play_arrow_rounded,
-                              onTap: _togglePlayPause,
-                              big: true,
-                            ),
-                      const SizedBox(width: 42),
-                      _buildRoundControl(
-                        icon: Icons.fast_forward_rounded,
-                        onTap: () => _changeTrack(1),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  // 方案 B：動態大字字幕
-                  Container(
-                    width: double.infinity,
-                    constraints: const BoxConstraints(minHeight: 100),
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.3),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.1), width: 1),
                     ),
-                    child: Center(
-                      child: _currentSubtitle.isEmpty
-                          ? Text(
-                              '準備播放中...',
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 32, // Slightly reduced
-                                fontWeight: FontWeight.bold,
-                              ),
-                            )
-                          : RichText(
-                              textAlign: TextAlign.center,
-                              text: TextSpan(
-                                style: const TextStyle(
-                                  fontSize: 32, // Slightly reduced
-                                  fontWeight: FontWeight.bold,
-                                  letterSpacing: 1.2,
-                                  shadows: [
-                                    Shadow(blurRadius: 8, color: Colors.black, offset: Offset(2, 2)),
-                                  ],
-                                ),
-                                children: [
-                                  TextSpan(
-                                    text: _currentSubtitle.substring(0, (_currentSubtitle.length * _subtitleProgress).round().clamp(0, _currentSubtitle.length)),
-                                    style: const TextStyle(color: Color(0xFFFFD700)),
-                                  ),
-                                  TextSpan(
-                                    text: _currentSubtitle.substring((_currentSubtitle.length * _subtitleProgress).round().clamp(0, _currentSubtitle.length)),
-                                    style: const TextStyle(color: Colors.white),
-                                  ),
-                                ],
-                              ),
-                            ),
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-                  const Text(
-                    '往下滑查看更多',
-                    style: TextStyle(
+                    const SizedBox(height: 4),
+                    const Text(
+                      '代誌\n報給你知',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontFamily: 'StarPanda',
+                        fontSize: 48,
+                        height: 1.1,
                         color: Colors.white,
-                        fontSize: 28, // Reduced from 40
-                        fontWeight: FontWeight.w700),
-                  ),
-                  const Icon(Icons.keyboard_arrow_down_rounded,
-                      color: Colors.white, size: 48),
-                  const SizedBox(height: 16),
-                  _buildNewsSelectionList(),
-                  const SizedBox(height: 40),
-                ],
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    _buildPlayerHeader(),
+                    const SizedBox(height: 15),
+                    // 字幕顯示區域 (全文本動態捲動)
+                    Expanded(
+                      child: Container(
+                        width: double.infinity,
+                        margin: const EdgeInsets.symmetric(vertical: 10),
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.3),
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(color: Colors.white.withValues(alpha: 0.1), width: 1),
+                        ),
+                        child: _subtitles.isEmpty
+                            ? const Center(
+                                child: Text(
+                                  '準備播放中...',
+                                  style: TextStyle(color: Colors.white70, fontSize: 30, fontWeight: FontWeight.bold),
+                                ),
+                              )
+                            : SingleChildScrollView(
+                                controller: _subtitleScrollController,
+                                physics: const BouncingScrollPhysics(),
+                                padding: const EdgeInsets.symmetric(vertical: 100),
+                                child: Column(
+                                  children: List.generate(_subtitles.length, (index) {
+                                    final isCurrent = index == _currentSubtitleIndex;
+                                    final text = _subtitles[index]['text'] as String;
+                                    
+                                    return AnimatedOpacity(
+                                      key: _subtitleKeys[index], // 給予身分證
+                                      duration: const Duration(milliseconds: 200),
+                                      opacity: isCurrent ? 1.0 : 0.4,
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(vertical: 4),
+                                        child: RichText(
+                                          textAlign: TextAlign.center,
+                                          text: TextSpan(
+                                            style: TextStyle(
+                                              fontSize: isCurrent ? 30 : 22, // 稍微調大一點點，平衡置中感
+                                              fontWeight: isCurrent ? FontWeight.w900 : FontWeight.w600,
+                                              height: 1.4,
+                                            ),
+                                            children: [
+                                              if (isCurrent) ...[
+                                                TextSpan(
+                                                  text: text.substring(0, (text.length * _subtitleProgress).round().clamp(0, text.length)),
+                                                  style: const TextStyle(color: Color(0xFFFFD700)),
+                                                ),
+                                                TextSpan(
+                                                  text: text.substring((text.length * _subtitleProgress).round().clamp(0, text.length)),
+                                                  style: const TextStyle(color: Colors.white),
+                                                ),
+                                              ] else ...[
+                                                TextSpan(text: text, style: TextStyle(color: Colors.white.withValues(alpha: 0.4))),
+                                              ],
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  }),
+                                ),
+                              ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    const Text('向上滑查看更多新聞', style: TextStyle(color: Colors.white70, fontSize: 18, fontWeight: FontWeight.w600)),
+                    const Icon(Icons.keyboard_arrow_up_rounded, color: Colors.white70, size: 32),
+                    const SizedBox(height: 10),
+                  ],
+                ),
               ),
-            ),
+              // 第二頁：新聞清單 (瀏覽模式)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+                child: Column(
+                  children: [
+                    const SizedBox(height: 10),
+                    Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.white54, borderRadius: BorderRadius.circular(10))),
+                    const SizedBox(height: 20),
+                    const Text('新聞清單', style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 20),
+                    _buildCategorySelector(),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        controller: _scrollController,
+                        physics: const BouncingScrollPhysics(),
+                        child: Column(
+                          children: [
+                            _buildNewsSelectionList(),
+                            if (_isLoadingMore)
+                              const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 30),
+                                child: CircularProgressIndicator(color: Color(0xFFFFD700)),
+                              ),
+                            const SizedBox(height: 100),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 
-  Widget _buildNewsSelectionList() {
+  Widget _buildPlayerHeader() {
+    final item = _localNewsItems.isEmpty
+        ? const <String, dynamic>{}
+        : _localNewsItems[_currentIndex];
+    final title = (item['title'] ?? '新聞朗讀').toString();
+    final source = (item['category'] ?? '新聞').toString();
+    final publishedDate = _formatNewsDate(item);
+    final totalCount = max(_localNewsItems.length, 1);
+    final currentCount = _localNewsItems.isEmpty ? 0 : (_currentIndex + 1);
+
     return Column(
-      children: List.generate(widget.newsItems.length, (index) {
-        final item = widget.newsItems[index];
-        final isCurrent = index == _currentIndex;
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.2),
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Column(
+            children: [
+              const Text(
+                '正在播放：',
+                style: TextStyle(color: Colors.white, fontSize: 33, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                '第 $currentCount / $totalCount 則 · $source · $publishedDate',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white, fontSize: 23, fontWeight: FontWeight.w600, height: 1.3),
+              ),
+              const SizedBox(height: 18),
+              SizedBox(
+                height: 60, // 縮小高度
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: List.generate(_waveHeights.length, (i) {
+                    return AnimatedContainer(
+                      duration: const Duration(milliseconds: 240),
+                      width: 8,
+                      height: _waveHeights[i] * 0.6, // 同步縮小波形
+                      margin: const EdgeInsets.symmetric(horizontal: 5),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.95),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                    );
+                  }),
+                ),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  _error!,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 28),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _buildRoundControl(
+              icon: Icons.fast_rewind_rounded,
+              onTap: () => _changeTrack(-1),
+            ),
+            const SizedBox(width: 42),
+            _isLoadingAudio
+                ? const SizedBox(
+                    width: 58,
+                    height: 58,
+                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
+                  )
+                : _buildRoundControl(
+                    icon: _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                    onTap: _togglePlayPause,
+                    big: true,
+                  ),
+            const SizedBox(width: 42),
+            _buildRoundControl(
+              icon: Icons.fast_forward_rounded,
+              onTap: () => _changeTrack(1),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCategorySelector() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 24),
+      height: 60, // 加高到 60 確保大字體不溢位
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: Row(
+          children: _categories.map((category) {
+            final isSelected = _selectedCategory == category;
+            return Padding(
+              padding: const EdgeInsets.only(right: 10),
+              child: InkWell(
+                onTap: () {
+                  setState(() {
+                    _selectedCategory = category;
+                  });
+                },
+                borderRadius: BorderRadius.circular(12),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 250),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: isSelected ? const Color(0xFFFFD700).withValues(alpha: 0.95) : Colors.white.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: isSelected ? const Color(0xFFFFD700) : Colors.white.withValues(alpha: 0.2),
+                      width: 1.5,
+                    ),
+                    boxShadow: isSelected
+                        ? [BoxShadow(color: const Color(0xFFFFD700).withValues(alpha: 0.25), blurRadius: 12, spreadRadius: 1)]
+                        : [],
+                  ),
+                  child: Text(
+                    category,
+                    style: TextStyle(
+                      color: isSelected ? const Color(0xFF1E293B) : Colors.white.withValues(alpha: 0.9),
+                      fontSize: 17,
+                      fontWeight: isSelected ? FontWeight.w900 : FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNewsSelectionList() {
+    final filteredItems = _selectedCategory == '全部'
+        ? widget.newsItems
+        : widget.newsItems.where((item) => (item['category'] ?? '') == _selectedCategory).toList();
+
+    if (filteredItems.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 40),
+        child: Center(
+          child: Text('目前沒有此分類的新聞', style: TextStyle(color: Colors.white70, fontSize: 18)),
+        ),
+      );
+    }
+
+    return Column(
+      children: List.generate(filteredItems.length, (index) {
+        final item = filteredItems[index];
+        final originalIndex = widget.newsItems.indexOf(item);
+        final isCurrent = originalIndex == _currentIndex;
         final title = (item['title'] ?? '').toString();
         final source = (item['category'] ?? '新聞').toString();
         final date = _formatNewsDate(item);
+        final imageUrl = ((item['image_url'] ?? item['image']) ?? '').toString().trim();
+        final hasImage = imageUrl.startsWith('http');
 
         return Padding(
-          padding: const EdgeInsets.only(bottom: 20),
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(24),
-              boxShadow: isCurrent
-                  ? [
-                      BoxShadow(
-                        color: const Color(0xFFFFD700).withValues(alpha: 0.35),
-                        blurRadius: 20,
-                        spreadRadius: 2,
-                      ),
-                      BoxShadow(
-                        color: const Color(0xFFFFD700).withValues(alpha: 0.15),
-                        blurRadius: 40,
-                        spreadRadius: 8,
-                      ),
-                    ]
-                  : [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.08),
-                        blurRadius: 15,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(24),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                child: Material(
-                  color: isCurrent
-                      ? Colors.white.withValues(alpha: 0.25)
-                      : Colors.white.withValues(alpha: 0.1),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(24),
-                    side: BorderSide(
-                      color: isCurrent
-                          ? const Color(0xFFFFE066)
-                          : Colors.white.withValues(alpha: 0.25),
-                      width: isCurrent ? 2.5 : 1.5,
+          padding: const EdgeInsets.only(bottom: 22),
+          child: GestureDetector(
+            onTap: () => _selectTrack(originalIndex),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              height: 220, // 增加到 220，確保萬無一失
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(
+                  color: isCurrent ? const Color(0xFFFFD700) : Colors.white.withValues(alpha: 0.15),
+                  width: isCurrent ? 3.5 : 1,
+                ),
+                boxShadow: isCurrent
+                    ? [
+                        BoxShadow(
+                          color: const Color(0xFFFFD700).withValues(alpha: 0.3),
+                          blurRadius: 20,
+                          spreadRadius: 2,
+                        )
+                      ]
+                    : [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.1),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        )
+                      ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(21),
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: hasImage
+                          ? Image.network(
+                              imageUrl,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => Container(color: const Color(0xFF2D3748)),
+                            )
+                          : Container(color: const Color(0xFF2D3748)),
                     ),
-                  ),
-                  child: InkWell(
-                    onTap: () => _selectTrack(index),
-                    splashColor: Colors.white.withValues(alpha: 0.3),
-                    highlightColor: Colors.white.withValues(alpha: 0.2),
-                    child: Padding(
-                      padding: const EdgeInsets.all(22),
-                      child: Row(
+                    Positioned.fill(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.black.withValues(alpha: 0.2),
+                              Colors.black.withValues(alpha: 0.8),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.all(18),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 12, vertical: 4),
-                                      decoration: BoxDecoration(
-                                        color: isCurrent
-                                            ? const Color(0xFFFFD700)
-                                            : Colors.white.withValues(alpha: 0.2),
-                                        borderRadius: BorderRadius.circular(10),
-                                      ),
-                                      child: Text(
-                                        source,
-                                        style: TextStyle(
-                                          color: isCurrent
-                                              ? const Color(0xFF1E293B)
-                                              : Colors.white,
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Text(
-                                      date,
-                                      style: TextStyle(
-                                        color: Colors.white.withValues(alpha: 0.85),
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: isCurrent ? const Color(0xFFFFD700) : Colors.white24,
+                                  borderRadius: BorderRadius.circular(8),
                                 ),
-                                const SizedBox(height: 12),
-                                Text(
-                                  title,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
+                                child: Text(
+                                  source,
                                   style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: isCurrent ? 26 : 24,
-                                    fontWeight: isCurrent
-                                        ? FontWeight.w900
-                                        : FontWeight.w700,
-                                    height: 1.35,
-                                    letterSpacing: 0.5,
+                                    color: isCurrent ? const Color(0xFF1E293B) : Colors.white,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w800,
                                   ),
                                 ),
-                              ],
+                              ),
+                              if (isCurrent)
+                                const Icon(Icons.volume_up, color: Color(0xFFFFD700), size: 20),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                              height: 1.3,
                             ),
                           ),
-                          const SizedBox(width: 16),
-                          if (isCurrent)
-                            const Icon(Icons.equalizer_rounded,
-                                color: Color(0xFFFFD700), size: 38)
-                          else
-                            Icon(Icons.play_circle_outline_rounded,
-                                color: Colors.white.withValues(alpha: 0.8),
-                                size: 38),
+                          const Spacer(),
+                          Text(
+                            date,
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.6),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
                         ],
                       ),
                     ),
-                  ),
+                  ],
                 ),
               ),
             ),
