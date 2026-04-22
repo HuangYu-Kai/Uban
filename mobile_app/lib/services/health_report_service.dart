@@ -535,7 +535,9 @@ class HealthReportService {
     final heartRate = healthData['heartRate'] ?? 72;
     if (heartRate < 50 || heartRate > 120) {
       score -= 15;
-    } else if (heartRate < 60 || heartRate > 100) score -= 5;
+    } else if (heartRate < 60 || heartRate > 100) {
+      score -= 5;
+    }
 
     // 血壓評分
     // (簡化處理)
@@ -544,17 +546,25 @@ class HealthReportService {
     final bloodSugar = healthData['bloodSugar'] ?? 95;
     if (bloodSugar < 70 || bloodSugar > 140) {
       score -= 15;
-    } else if (bloodSugar < 80 || bloodSugar > 120) score -= 5;
+    } else if (bloodSugar < 80 || bloodSugar > 120) {
+      score -= 5;
+    }
 
     // 活動量評分
     final steps = healthData['dailySteps'] ?? 5000;
     if (steps < 2000) {
       score -= 10;
-    } else if (steps < 3000) score -= 5;
+    } else if (steps < 3000) {
+      score -= 5;
+    }
 
     // 情緒評分
-    if ((emotionStats['anxious'] ?? 0) > 30) score -= 10;
-    if ((emotionStats['sad'] ?? 0) > 30) score -= 10;
+    if ((emotionStats['anxious'] ?? 0) > 30) {
+      score -= 10;
+    }
+    if ((emotionStats['sad'] ?? 0) > 30) {
+      score -= 10;
+    }
 
     return score.clamp(0, 100);
   }

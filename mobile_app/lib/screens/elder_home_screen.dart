@@ -8,7 +8,6 @@ import 'package:flutter_tts/flutter_tts.dart';
 import 'dart:convert';
 import '../services/signaling.dart';
 import '../widgets/desktop_pet.dart';
-import '../widgets/heartbeat_overlay.dart';
 
 class ElderHomeScreen extends StatefulWidget {
   final int userId;
@@ -26,7 +25,8 @@ class ElderHomeScreen extends StatefulWidget {
 
 class _ElderHomeScreenState extends State<ElderHomeScreen> {
   int _selectedIndex = 0; // 0: Home/Calendar, 1: Chat, 2: Profile/Settings
-  final GlobalKey<ElderChatTabState> _chatTabKey = GlobalKey<ElderChatTabState>();
+  final GlobalKey<ElderChatTabState> _chatTabKey =
+      GlobalKey<ElderChatTabState>();
   // ★ 新增：用於控制小豬
   final GlobalKey<DesktopPetState> _petKey = GlobalKey<DesktopPetState>();
 
@@ -36,12 +36,8 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
     isAppReady = true;
 
     // ★ 長輩端進入主畫面後，自動連入信號伺服器 (上線)
-    Signaling().connect(
-      widget.userId.toString(), 
-      'elder', 
-      userId: widget.userId, 
-      deviceName: widget.userName
-    );
+    Signaling().connect(widget.userId.toString(), 'elder',
+        userId: widget.userId, deviceName: widget.userName);
 
     pendingAcceptedCall.addListener(_onPendingCallChanged);
 
@@ -57,17 +53,10 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
 
   Future<void> _handleProactiveMessage(String message) async {
     String displayText = message;
-    String type = 'chat';
-    String emotion = 'caring';
-    bool isJson = false;
-
     try {
       final data = jsonDecode(message);
       if (data is Map && data.containsKey('reply')) {
         displayText = data['reply'];
-        type = data['type'] ?? 'chat';
-        emotion = data['emotion'] ?? 'caring';
-        isJson = true;
       }
     } catch (e) {
       debugPrint("Home Heartbeat is plain text.");
@@ -77,7 +66,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
     await _flutterTts.setLanguage("zh-TW");
     await _flutterTts.setPitch(2.0); // 極高音
     await _flutterTts.setSpeechRate(0.8);
-    await _flutterTts.speak("喔！"); 
+    await _flutterTts.speak("喔！");
 
     if (mounted) {
       // 2. 讓小豬頭上的氣泡顯示內容，並進入開心狀態 (取代原本的大對話框)
@@ -85,7 +74,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
         _petKey.currentState?.say(displayText, state: PetState.happy);
       }
     }
-    
+
     // 4. 通知 ChatTab 更新
     _chatTabKey.currentState?.addAIMessage(displayText);
 
@@ -105,12 +94,13 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
   void _onPendingCallChanged() {
     final call = pendingAcceptedCall.value;
     if (call != null) {
-      debugPrint("📱 ElderHomeScreen: Incoming call detected! Navigating to ElderScreen...");
+      debugPrint(
+          "📱 ElderHomeScreen: Incoming call detected! Navigating to ElderScreen...");
       // 一定要清空，否則之後返回主頁會再次觸發
       pendingAcceptedCall.value = null;
 
       if (!mounted) return;
-      
+
       final currentContext = context;
       Navigator.push(
         currentContext,
@@ -152,7 +142,8 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
           ),
           // 小豬桌寵 (僅在首頁顯示，擁有全螢幕的定位權)
           if (_selectedIndex == 0)
-            DesktopPet(key: _petKey, userId: widget.userId, bottomBarHeight: 110),
+            DesktopPet(
+                key: _petKey, userId: widget.userId, bottomBarHeight: 110),
           // 自定義浮動導覽列
           Positioned(
             left: 0,
@@ -164,7 +155,6 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
       ),
     );
   }
-
 
   Widget _buildFloatingNavBar() {
     return Container(
