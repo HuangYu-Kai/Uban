@@ -294,31 +294,17 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
           debugPrint("Heartbeat is plain text or malformed JSON.");
         }
 
-        if (isJson) {
-          // 顯示精美的毛玻璃對話框
-          showDialog(
-            context: context,
-            barrierColor: Colors.black54,
-            builder: (context) => HeartbeatOverlay(
-              message: displayText,
-              type: type,
-              emotion: emotion,
-              onDismiss: () => Navigator.pop(context),
-            ),
-          );
-        } else {
-          setState(() {
-            _status = "AI 傳來了關心...";
-          });
-          
-          Future.delayed(const Duration(seconds: 10), () {
-            if (mounted && !_isInCall && _status == "AI 傳來了關心...") {
-              setState(() {
-                _status = "等待連線...";
-              });
-            }
-          });
-        }
+        // 統一顯示精美的毛玻璃對話框
+        showDialog(
+          context: context,
+          barrierColor: Colors.black54,
+          builder: (context) => HeartbeatOverlay(
+            message: displayText,
+            type: type,
+            emotion: emotion,
+            onDismiss: () => Navigator.pop(context),
+          ),
+        );
 
         // 語音播放
         FlutterTts flutterTts = FlutterTts();
