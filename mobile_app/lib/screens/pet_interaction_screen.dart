@@ -7,6 +7,7 @@ import 'dart:math';
 import 'dart:async';
 import '../widgets/flying_food.dart';
 import '../widgets/desktop_pet.dart';
+import '../services/api_service.dart';
 
 class PetInteractionScreen extends StatefulWidget {
   final int userId;
@@ -41,12 +42,14 @@ class _PetInteractionScreenState extends State<PetInteractionScreen> {
   String _currentDialog = "嘎挖！我在這裡！快轉動手機找找我～🐷";
   PetState _interactionState = PetState.idle;
   DateTime _lastShakeTime = DateTime.now();
+  bool _isAILoading = false;
 
   // 小豬在房間內的座標 (相對於 3200x2400 的畫布)
-  Offset _petRoomPos = const Offset(1600, 1500); // 初始在地毯中心
-  final Offset _sofaPos = const Offset(600, 1400);
-  final Offset _tablePos = const Offset(2600, 1500);
-  final Offset _rugPos = const Offset(1600, 1500);
+  Offset _petRoomPos = const Offset(1600, 1600); 
+  final Offset _sofaPos = const Offset(1100, 1550);   // 沙發中心
+  final Offset _tablePos = const Offset(2600, 1600);  // 右側餐桌/窗邊
+  final Offset _rugPos = const Offset(1600, 1900);    // 沙發前的地毯
+  final Offset _radioPos = const Offset(500, 1500);   // 左側收音機/新聞
 
   @override
   void initState() {
@@ -141,6 +144,77 @@ class _PetInteractionScreenState extends State<PetInteractionScreen> {
     });
   }
 
+  Future<void> _fetchAIGreeting() async {
+    if (_isAILoading) return;
+    
+    setState(() {
+      _isAILoading = true;
+      _currentDialog = "嘎挖... (思考中...)";
+      _interactionState = PetState.idle;
+    });
+
+    try {
+      final contextStr = "現在時間是 ${DateTime.now().hour}:${DateTime.now().minute}，長輩今天走了 ${widget.steps} 步。";
+      final res = await ApiService.petGreeting(widget.userId, contextStr);
+
+      if (res['status'] == 'success') {
+        String aiText = res['data']['reply'].toString().trim();
+        if (mounted) {
+          setState(() {
+            _currentDialog = aiText; // 後端已帶有「嘎挖！」
+            _interactionState = PetState.happy;
+            _isAILoading = false;
+          });
+        }
+      } else {
+        throw Exception("Backend error");
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _currentDialog = "嘎挖！看到你真開心！🐷";
+          _interactionState = PetState.happy;
+          _isAILoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _playNews() async {
+    setState(() {
+      _currentDialog = "嘎挖！正在幫你找最新的新聞喔... 📻";
+      _isAILoading = true;
+    });
+    
+    try {
+      final res = await ApiService.getNews(limit: 1);
+      if (res['status'] == 'success' && res['data'] != null && (res['data'] as List).isNotEmpty) {
+        final newsTitle = res['data'][0]['title'];
+        if (mounted) {
+          setState(() {
+            _currentDialog = "嘎挖！今天的新聞是：$newsTitle";
+            _isAILoading = false;
+            _interactionState = PetState.happy;
+          });
+        }
+      } else {
+        if (mounted) {
+          setState(() {
+            _currentDialog = "嘎挖！收音機好像訊號不太好，晚點再試試吧～😅";
+            _isAILoading = false;
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _currentDialog = "嘎挖！網路斷掉了，聽不到新聞。";
+          _isAILoading = false;
+        });
+      }
+    }
+  }
+
   String _getPetAsset() {
     switch (_interactionState) {
       case PetState.happy: return 'assets/images/pig_2d_happy_v4.png';
@@ -195,18 +269,22 @@ class _PetInteractionScreenState extends State<PetInteractionScreen> {
                                   filterQuality: FilterQuality.high,
                                 ),
 
-                                // 家具互動區域 (修正座標)
+                                // 家具互動區域 (完全透明，擴大範圍)
                                 Positioned(
-                                  left: 400, top: 1300,
-                                  child: _buildHotspot("沙發", _sofaPos),
+                                  left: 200, top: 1200,
+                                  child: _buildHotspot("新聞", _radioPos, width: 600, height: 600),
                                 ),
                                 Positioned(
-                                  left: 2400, top: 1400,
-                                  child: _buildHotspot("餐桌", _tablePos),
+                                  left: 600, top: 1200,
+                                  child: _buildHotspot("沙發", _sofaPos, width: 800, height: 600),
                                 ),
                                 Positioned(
-                                  left: 1500, top: 1600,
-                                  child: _buildHotspot("地毯", _rugPos),
+                                  left: 2200, top: 1300,
+                                  child: _buildHotspot("餐桌", _tablePos, width: 800, height: 600),
+                                ),
+                                Positioned(
+                                  left: 1000, top: 1800,
+                                  child: _buildHotspot("地毯", _rugPos, width: 1200, height: 400),
                                 ),
 
                                 // 會跟著背景移動的小豬
@@ -216,18 +294,27 @@ class _PetInteractionScreenState extends State<PetInteractionScreen> {
                                   left: _petRoomPos.dx - 110,
                                   top: _petRoomPos.dy - 110,
                                   child: GestureDetector(
-                                    onTap: () {
-                                      setState(() {
-                                        _interactionState = PetState.happy;
-                                        _currentDialog = "嘎挖！找到我了！好舒服～🐷";
-                                      });
-                                    },
+                                    onTap: _fetchAIGreeting,
                                     child: Container(
                                       key: _pigKey,
-                                      child: Image.asset(
-                                        _getPetAsset(),
-                                        width: 220,
-                                        height: 220,
+                                      child: Stack(
+                                        alignment: Alignment.center,
+                                        children: [
+                                          Image.asset(
+                                            _getPetAsset(),
+                                            width: 220,
+                                            height: 220,
+                                          ),
+                                          if (_isAILoading)
+                                            Positioned(
+                                              top: 0,
+                                              child: Container(
+                                                padding: const EdgeInsets.all(4),
+                                                decoration: const BoxDecoration(color: Colors.white70, shape: BoxShape.circle),
+                                                child: const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                                              ),
+                                            ),
+                                        ],
                                       ),
                                     ),
                                   ),
@@ -318,29 +405,39 @@ class _PetInteractionScreenState extends State<PetInteractionScreen> {
     );
   }
 
-  Widget _buildHotspot(String label, Offset target) {
+  Widget _buildHotspot(String label, Offset target, {double width = 200, double height = 200}) {
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: () {
         setState(() {
           _petRoomPos = target;
           _interactionState = PetState.happy;
-          _currentDialog = "嘎挖！我要去$label那邊玩！💨";
+          
+          // 根據目標位置給予不同對話
+          if (label == "沙發") {
+            _currentDialog = "嘎挖！這沙發好軟喔，我想在這裡睡午覺～😴";
+          } else if (label == "餐桌") {
+            _currentDialog = "嘎挖！這裡可以看到風景耶！是不是要開飯了？😋";
+          } else if (label == "新聞") {
+            _playNews();
+          } else {
+            _currentDialog = "嘎挖！在寬敞的地毯上滾來滾去最開心了！🌀";
+          }
         });
-        HapticFeedback.heavyImpact();
+        HapticFeedback.mediumImpact();
+        
+        // 5秒後恢復閒置狀態
+        Future.delayed(const Duration(seconds: 5), () {
+          if (mounted) setState(() => _interactionState = PetState.idle);
+        });
       },
       child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: Colors.white10,
-          borderRadius: BorderRadius.circular(50),
-          border: Border.all(color: Colors.white24, width: 2),
-        ),
-        child: Column(
-          children: [
-            const Icon(Icons.touch_app, color: Colors.white, size: 30),
-            Text(label, style: const TextStyle(color: Colors.white, fontSize: 12)),
-          ],
-        ),
+        width: width,
+        height: height,
+        color: Colors.transparent, // 完全透明但可點擊
+        alignment: Alignment.center,
+        // 開發調試時可以取消註釋下面這行來查看感應區
+        // child: Container(decoration: BoxDecoration(border: Border.all(color: Colors.red.withOpacity(0.3)))),
       ),
     );
   }

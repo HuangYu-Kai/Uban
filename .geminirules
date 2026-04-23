@@ -87,9 +87,22 @@
 - `lib/screens/family_main_screen.dart` — 家屬主畫面（來電監聯）
 - `lib/screens/device_selection_screen.dart` — 裝置選擇
 
-### 測試工具
+### 測試與工具
 - `test_call_simulator.py` — Socket.IO 信令測試
 - `webrtc_test.html` — 瀏覽器版 WebRTC 測試（含 TURN 驗證）
+- `scratch/remove_bg.py` — 自動去背工具 (基於 PIL floodfill)
+
+## 吉祥物素材管理 (Mascot Asset Management)
+
+### 素材規範
+- **格式**：必須為透明背景 PNG。
+- **路徑**：`mobile_app/assets/images/pig_*.png`
+- **形象**：粉紅小豬 + 藍項圈金名牌。
+- **詳見文件**：[docs/mascot_guide.md](file:///c:/Users/tung0/Desktop/Uban/Uban/docs/mascot_guide.md)
+
+### 常用去背指令
+當生成新圖片後，若帶有背景，可使用以下腳本處理（需修改腳本內 path）：
+`python "C:\Users\tung0\.gemini\antigravity\brain\fd9baf46-4fd3-40a3-aab1-752d5ebeaf0c\scratch\remove_bg.py"`
 
 ## 長輩友善 UI 開發規範 (Elder-Friendly UX)
 

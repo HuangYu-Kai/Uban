@@ -4,17 +4,21 @@ import 'dart:math';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import '../services/api_service.dart';
 
 class NewsListenPlayerScreen extends StatefulWidget {
   final List<Map<String, dynamic>> newsItems;
   final int initialIndex;
+  final int userId; // 新增 userId
 
   const NewsListenPlayerScreen({
     super.key,
     required this.newsItems,
     required this.initialIndex,
+    required this.userId,
   });
 
   @override
@@ -30,6 +34,12 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
   String? _error;
   Timer? _waveTimer;
   List<double> _waveHeights = List<double>.filled(11, 40);
+
+  // AI 總結相關
+  bool _isSummarizing = false;
+  String _summaryText = "";
+  bool _isAiThinking = false;
+  final AudioPlayer _aiAudioPlayer = AudioPlayer();
 
   // 字幕相關
   List<dynamic> _subtitles = [];
@@ -50,6 +60,7 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
     _scrollController.dispose();
     _subtitleScrollController.dispose();
     _audioPlayer.dispose();
+    _aiAudioPlayer.dispose();
     _waveTimer?.cancel();
     _positionSubscription?.cancel();
     super.dispose();
@@ -75,11 +86,7 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
     });
     _audioPlayer.onPlayerComplete.listen((_) {
       if (!mounted) return;
-      setState(() {
-        _isPlaying = false;
-        _currentSubtitle = "";
-      });
-      _stopWaveAnimation();
+      _handleNewsComplete();
     });
 
     // 監聽播放進度以同步字幕
@@ -322,6 +329,150 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
     await _playCurrentNews();
   }
 
+  Future<void> _handleNewsComplete() async {
+    debugPrint('DEBUG: _handleNewsComplete called (index: $_currentIndex)');
+    if (!mounted) return;
+    setState(() {
+      _isPlaying = false;
+      _currentSubtitle = "";
+    });
+    _stopWaveAnimation();
+    
+    // 播放結束後不自動觸發任何行為，等待使用者操作或點擊小豬總結
+  }
+
+  Future<void> _showNewsSummary() async {
+    if (_isAiThinking) return;
+
+    // 暫停新聞播放
+    if (_isPlaying) {
+      _togglePlayPause();
+    }
+
+    setState(() {
+      _isAiThinking = true;
+      _summaryText = "小豬正在幫您整理重點...";
+    });
+
+    try {
+      final currentNews = _localNewsItems[_currentIndex];
+      final title = currentNews['title'] ?? "這則新聞";
+      final content = currentNews['content'] ?? "";
+
+      // 呼叫 AI 獲取新聞總結
+      final response = await ApiService.petGreeting(
+        widget.userId,
+        "請針對這則新聞：『$title』\n內容：$content\n請以貼心小豬的身分，用『簡單白話』為長輩整理 3 個最重要的重點，總字數請控制在 60 字以內。"
+      );
+
+      if (!mounted) return;
+
+      if (response['status'] == 'success') {
+        final reply = response['reply'] ?? "抱歉，小豬沒辦法總結這則新聞。";
+        
+        setState(() {
+          _summaryText = reply;
+          _isAiThinking = false;
+        });
+
+        // 呼叫 TTS
+        final ttsResponse = await ApiService.synthesizeTts(text: reply);
+        if (ttsResponse['status'] == 'success' && ttsResponse['data'] != null) {
+          final audioUrl = ttsResponse['data']['url'];
+          if (audioUrl != null) {
+            await _aiAudioPlayer.play(UrlSource(audioUrl));
+          }
+        }
+
+        _showSummaryDialog();
+      } else {
+        throw Exception(response['message'] ?? "Unknown error");
+      }
+    } catch (e) {
+      debugPrint('DEBUG: Summary error: $e');
+      setState(() => _isAiThinking = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('小豬現在有點累，請稍後再試')),
+        );
+      }
+    }
+  }
+
+  void _showSummaryDialog() {
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: "Summary",
+      barrierColor: Colors.black.withValues(alpha: 0.5),
+      transitionDuration: const Duration(milliseconds: 400),
+      pageBuilder: (context, anim1, anim2) => const SizedBox(),
+      transitionBuilder: (context, anim1, anim2, child) {
+        return Transform.scale(
+          scale: anim1.value,
+          child: Opacity(
+            opacity: anim1.value,
+            child: AlertDialog(
+              backgroundColor: Colors.white.withValues(alpha: 0.95),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Image.asset(
+                        'assets/images/pig_summary_expert.png',
+                        width: 70,
+                        height: 70,
+                      ).animate(onPlay: (controller) => controller.repeat())
+                       .shimmer(duration: 2.seconds)
+                       .scale(begin: const Offset(1, 1), end: const Offset(1.1, 1.1), duration: 1.seconds, curve: Curves.easeInOut),
+                      const SizedBox(width: 15),
+                      Expanded(
+                        child: Text(
+                          '總結專家小豬',
+                          style: GoogleFonts.notoSansTc(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: const Color(0xFF59B294),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Divider(height: 30),
+                  Text(
+                    _summaryText,
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 22,
+                      height: 1.6,
+                      color: Colors.black87,
+                    ),
+                  ).animate().fadeIn(duration: 600.ms).slideY(begin: 0.2, end: 0),
+                  const SizedBox(height: 25),
+                  ElevatedButton(
+                    onPressed: () {
+                      _aiAudioPlayer.stop();
+                      Navigator.of(context).pop();
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF59B294),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      elevation: 0,
+                    ),
+                    child: const Text('我知道了', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   void _startWaveAnimation() {
     _waveTimer?.cancel();
     _waveTimer = Timer.periodic(const Duration(milliseconds: 280), (_) {
@@ -391,141 +542,163 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
           child: PageView(
             scrollDirection: Axis.vertical,
             children: [
-              // 第一頁：播放器與字幕 (專注播放)
-              Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
-                child: Column(
-                  children: [
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: IconButton(
-                        onPressed: () => Navigator.pop(context),
-                        icon: const Icon(Icons.arrow_back_ios_new_rounded,
-                            color: Colors.white, size: 26),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      '代誌\n報給你知',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontFamily: 'StarPanda',
-                        fontSize: 48,
-                        height: 1.1,
-                        color: Colors.white,
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    _buildPlayerHeader(),
-                    const SizedBox(height: 15),
-                    // 字幕顯示區域 (全文本動態捲動)
-                    Expanded(
-                      child: Container(
-                        width: double.infinity,
-                        margin: const EdgeInsets.symmetric(vertical: 10),
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.3),
-                          borderRadius: BorderRadius.circular(24),
-                          border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.1),
-                              width: 1),
+              Stack(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+                    child: Column(
+                      children: [
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: IconButton(
+                            onPressed: () => Navigator.pop(context),
+                            icon: const Icon(Icons.arrow_back_ios_new_rounded,
+                                color: Colors.white, size: 26),
+                          ),
                         ),
-                        child: _subtitles.isEmpty
-                            ? const Center(
-                                child: Text(
-                                  '準備播放中...',
-                                  style: TextStyle(
-                                      color: Colors.white70,
-                                      fontSize: 30,
-                                      fontWeight: FontWeight.bold),
-                                ),
-                              )
-                            : SingleChildScrollView(
-                                controller: _subtitleScrollController,
-                                physics: const BouncingScrollPhysics(),
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 100),
-                                child: Column(
-                                  children:
-                                      List.generate(_subtitles.length, (index) {
-                                    final isCurrent =
-                                        index == _currentSubtitleIndex;
-                                    final text =
-                                        _subtitles[index]['text'] as String;
+                        const SizedBox(height: 4),
+                        const Text(
+                          '代誌\n報給你知',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontFamily: 'StarPanda',
+                            fontSize: 48,
+                            height: 1.1,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        _buildPlayerHeader(),
+                        const SizedBox(height: 15),
+                        // 字幕顯示區域 (全文本動態捲動)
+                        Expanded(
+                          child: Container(
+                            width: double.infinity,
+                            margin: const EdgeInsets.symmetric(vertical: 10),
+                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.3),
+                              borderRadius: BorderRadius.circular(24),
+                              border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.1),
+                                  width: 1),
+                            ),
+                            child: _subtitles.isEmpty
+                                ? const Center(
+                                    child: Text(
+                                      '準備播放中...',
+                                      style: TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: 30,
+                                          fontWeight: FontWeight.bold),
+                                    ),
+                                  )
+                                : SingleChildScrollView(
+                                    controller: _subtitleScrollController,
+                                    physics: const BouncingScrollPhysics(),
+                                    padding:
+                                        const EdgeInsets.symmetric(vertical: 100),
+                                    child: Column(
+                                      children:
+                                          List.generate(_subtitles.length, (index) {
+                                        final isCurrent =
+                                            index == _currentSubtitleIndex;
+                                        final text =
+                                            _subtitles[index]['text'] as String;
 
-                                    return AnimatedOpacity(
-                                      key: _subtitleKeys[index], // 給予身分證
-                                      duration:
-                                          const Duration(milliseconds: 200),
-                                      opacity: isCurrent ? 1.0 : 0.4,
-                                      child: Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                            vertical: 4),
-                                        child: RichText(
-                                          textAlign: TextAlign.center,
-                                          text: TextSpan(
-                                            style: TextStyle(
-                                              fontSize: isCurrent
-                                                  ? 30
-                                                  : 22, // 稍微調大一點點，平衡置中感
-                                              fontWeight: isCurrent
-                                                  ? FontWeight.w900
-                                                  : FontWeight.w600,
-                                              height: 1.4,
-                                            ),
-                                            children: [
-                                              if (isCurrent) ...[
-                                                TextSpan(
-                                                  text: text.substring(
-                                                      0,
-                                                      (text.length *
+                                        return AnimatedOpacity(
+                                          key: _subtitleKeys[index], // 給予身分證
+                                          duration:
+                                              const Duration(milliseconds: 200),
+                                          opacity: isCurrent ? 1.0 : 0.4,
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                                vertical: 4),
+                                            child: RichText(
+                                              textAlign: TextAlign.center,
+                                              text: TextSpan(
+                                                style: TextStyle(
+                                                  fontSize: isCurrent
+                                                      ? 30
+                                                      : 22, // 稍微調大一點點，平衡置中感
+                                                  fontWeight: isCurrent
+                                                      ? FontWeight.w900
+                                                      : FontWeight.w600,
+                                                  height: 1.4,
+                                                ),
+                                                children: [
+                                                  if (isCurrent) ...[
+                                                    TextSpan(
+                                                      text: text.substring(
+                                                          0,
+                                                          (text.length *
+                                                                  _subtitleProgress)
+                                                              .round()
+                                                              .clamp(
+                                                                  0, text.length)),
+                                                      style: const TextStyle(
+                                                          color: Color(0xFFFFD700)),
+                                                    ),
+                                                    TextSpan(
+                                                      text: text.substring((text
+                                                                  .length *
                                                               _subtitleProgress)
                                                           .round()
-                                                          .clamp(
-                                                              0, text.length)),
-                                                  style: const TextStyle(
-                                                      color: Color(0xFFFFD700)),
-                                                ),
-                                                TextSpan(
-                                                  text: text.substring((text
-                                                              .length *
-                                                          _subtitleProgress)
-                                                      .round()
-                                                      .clamp(0, text.length)),
-                                                  style: const TextStyle(
-                                                      color: Colors.white),
-                                                ),
-                                              ] else ...[
-                                                TextSpan(
-                                                    text: text,
-                                                    style: TextStyle(
-                                                        color: Colors.white
-                                                            .withValues(
-                                                                alpha: 0.4))),
-                                              ],
-                                            ],
+                                                          .clamp(0, text.length)),
+                                                      style: const TextStyle(
+                                                          color: Colors.white),
+                                                    ),
+                                                  ] else ...[
+                                                    TextSpan(
+                                                        text: text,
+                                                        style: TextStyle(
+                                                            color: Colors.white
+                                                                .withValues(
+                                                                    alpha: 0.4))),
+                                                  ],
+                                                ],
+                                              ),
+                                            ),
                                           ),
-                                        ),
-                                      ),
-                                    );
-                                  }),
-                                ),
-                              ),
-                      ),
+                                        );
+                                      }),
+                                    ),
+                                  ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        const Text('向上滑查看更多新聞',
+                            style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600)),
+                        const Icon(Icons.keyboard_arrow_up_rounded,
+                            color: Colors.white70, size: 32),
+                        const SizedBox(height: 10),
+                      ],
                     ),
-                    const SizedBox(height: 10),
-                    const Text('向上滑查看更多新聞',
-                        style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600)),
-                    const Icon(Icons.keyboard_arrow_up_rounded,
-                        color: Colors.white70, size: 32),
-                    const SizedBox(height: 10),
-                  ],
-                ),
+                  ),
+                  // 右下角的小豬總結按鈕
+                  Positioned(
+                    right: 10,
+                    top: 100,
+                    child: GestureDetector(
+                      onTap: _showNewsSummary,
+                      child: Hero(
+                        tag: 'pig_mascot',
+                        child: Image.asset(
+                          'assets/images/pig_summary_expert.png',
+                          width: 80,
+                          height: 80,
+                        ),
+                      ).animate(
+                        target: _isAiThinking ? 1 : 0,
+                        onPlay: (controller) => controller.repeat(),
+                      ).shake(hz: 3, curve: Curves.easeInOut)
+                       .scale(begin: const Offset(1, 1), end: const Offset(1.1, 1.1), duration: 1.seconds),
+                    ),
+                  ),
+                ],
               ),
               // 第二頁：新聞清單 (瀏覽模式)
               Padding(
@@ -660,10 +833,13 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
           ),
         ),
         const SizedBox(height: 28),
+        const SizedBox(height: 10),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             _buildRoundControl(
+              key: const ValueKey('prev_button'),
+              tooltip: '上一則',
               icon: Icons.fast_rewind_rounded,
               onTap: () => _changeTrack(-1),
             ),
@@ -676,6 +852,8 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
                         color: Colors.white, strokeWidth: 3),
                   )
                 : _buildRoundControl(
+                    key: const ValueKey('play_pause_button'),
+                    tooltip: _isPlaying ? '暫停' : '播放',
                     icon: _isPlaying
                         ? Icons.pause_rounded
                         : Icons.play_arrow_rounded,
@@ -684,6 +862,8 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
                   ),
             const SizedBox(width: 42),
             _buildRoundControl(
+              key: const ValueKey('next_button'),
+              tooltip: '下一則',
               icon: Icons.fast_forward_rounded,
               onTap: () => _changeTrack(1),
             ),
@@ -917,31 +1097,38 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
     required IconData icon,
     required VoidCallback onTap,
     bool big = false,
+    Key? key,
+    String? tooltip,
   }) {
     final size = big ? 74.0 : 60.0;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(999),
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.95),
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.18),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Icon(
-          icon,
-          color: const Color(0xFF59B294),
-          size: big ? 42 : 30,
+    return Tooltip(
+      message: tooltip ?? '',
+      child: InkWell(
+        key: key,
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.95),
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.18),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Icon(
+            icon,
+            color: const Color(0xFF59B294),
+            size: big ? 42 : 30,
+          ),
         ),
       ),
     );
   }
+
 }

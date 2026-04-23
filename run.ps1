@@ -55,7 +55,7 @@ param(
 
 # --- 配置區 ---
 $DEFAULT_SERVER_URL = "localhost-0.tail5abf5e.ts.net"
-$DEFAULT_OLLAMA_URL = "boyo-t.tail531c8a.ts.net"
+$DEFAULT_OLLAMA_URL = "boyo-desktop.tail531c8a.ts.net"
 $root = $PSScriptRoot
 $mobileAppDir = "$root\mobile_app"
 # 開發測試用：當 App 本機登入資料遺失時，自動回填長輩登入狀態

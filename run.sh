@@ -53,7 +53,7 @@ set -e  # 遇到錯誤立即停止
 
 # --- 配置區 ---
 DEFAULT_SERVER_URL="localhost-0.tail5abf5e.ts.net"
-DEFAULT_OLLAMA_URL="boyo-t.tail531c8a.ts.net"
+DEFAULT_OLLAMA_URL="boyo-desktop.tail531c8a.ts.net"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 MOBILE_APP_DIR="$SCRIPT_DIR/mobile_app"
 

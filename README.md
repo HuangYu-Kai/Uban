@@ -74,7 +74,7 @@ Uban 是一套專為銀髮族設計的 AI 陪伴照護系統，包含：
 |------|------|------|------|
 | 信令伺服器 (FastAPI) | Signaling | `https://localhost-0.tail5abf5e.ts.net` | TCP/WSS |
 | 媒體中繼 (Coturn) | TURN/STUN | `turn:152.69.196.5:3478` | UDP |
-| Ollama AI | AI Engine | `https://boyo-t.tail531c8a.ts.net` | TCP |
+| Ollama AI | AI Engine | `https://boyo-desktop.tail531c8a.ts.net` | TCP |
 
 ---
 
