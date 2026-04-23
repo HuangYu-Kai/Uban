@@ -198,9 +198,11 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       }
     } catch (e) {
       debugPrint("❌ Failed to initialize media: $e");
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("無法開啟攝像頭: $e")),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("無法開啟攝像頭: $e")),
+        );
+      }
     }
   }
 

@@ -8,6 +8,9 @@ import 'package:flutter_tts/flutter_tts.dart';
 import 'dart:convert';
 import '../services/signaling.dart';
 import '../widgets/desktop_pet.dart';
+import '../widgets/flying_food.dart';
+import 'dart:async';
+import 'package:flutter/services.dart';
 
 class ElderHomeScreen extends StatefulWidget {
   final int userId;
@@ -29,6 +32,12 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
       GlobalKey<ElderChatTabState>();
   // ★ 新增：用於控制小豬
   final GlobalKey<DesktopPetState> _petKey = GlobalKey<DesktopPetState>();
+
+  // ★ 新增：投餵動畫列表
+  final List<Widget> _foodAnimations = [];
+  
+  // ★ 新增：遠征系統步數監控
+  int _lastDiscoveredSteps = 0;
 
   @override
   void initState() {
@@ -57,6 +66,10 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
       final data = jsonDecode(message);
       if (data is Map && data.containsKey('reply')) {
         displayText = data['reply'];
+        // 檢查是否為禮物
+        if (data['type'] == 'family_gift') {
+          displayText = "嘎挖！大驚喜！🎁 子女給您送禮物來了：\n$displayText";
+        }
       }
     } catch (e) {
       debugPrint("Home Heartbeat is plain text.");
@@ -143,7 +156,11 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
           // 小豬桌寵 (僅在首頁顯示，擁有全螢幕的定位權)
           if (_selectedIndex == 0)
             DesktopPet(
-                key: _petKey, userId: widget.userId, bottomBarHeight: 110),
+              key: _petKey,
+              userId: widget.userId,
+              bottomBarHeight: 110,
+              onStepsChanged: (steps) => checkExpeditionDiscovery(steps),
+            ),
           // 自定義浮動導覽列
           Positioned(
             left: 0,
@@ -214,5 +231,23 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
         ),
       ),
     );
+  }
+
+  // --- 遠征系統核心邏輯 ---
+
+  // 遠征系統：檢查是否撿到東西
+  void checkExpeditionDiscovery(int currentSteps) {
+    // 每 500 步有機率撿到東西
+    if (currentSteps - _lastDiscoveredSteps >= 500) {
+      _lastDiscoveredSteps = currentSteps;
+      final items = ["神秘種子", "閃亮石頭", "古老硬幣", "小紅花"];
+      final foundItem = items[DateTime.now().second % items.length];
+      
+      Timer(const Duration(seconds: 3), () {
+        if (mounted && _selectedIndex == 0) {
+          _petKey.currentState?.say("嘎挖！我在路邊撿到了【$foundItem】！送給您！🎁", state: PetState.happy);
+        }
+      });
+    }
   }
 }

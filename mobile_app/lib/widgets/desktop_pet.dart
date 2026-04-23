@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/game_service.dart';
-import '../screens/pet_profile_screen.dart';
+import '../screens/pet_interaction_screen.dart';
 
 enum PetState { idle, walking, sleeping, happy, pickedUp }
 
@@ -14,11 +14,13 @@ enum PetMood { normal, energetic, lazy, tired }
 class DesktopPet extends StatefulWidget {
   final int userId;
   final double bottomBarHeight;
+  final Function(int)? onStepsChanged;
 
   const DesktopPet({
     super.key,
     required this.userId,
     this.bottomBarHeight = 100,
+    this.onStepsChanged,
   });
 
   @override
@@ -52,12 +54,13 @@ class DesktopPetState extends State<DesktopPet> {
   String? _currentDialog;
 
   final List<String> _idleDialogs = [
-    '阿公阿嬤，\n今天天氣真好！',
-    '要不要出去走走呀？',
-    '多走路我才會長大喔！',
-    '點我可以看目前等級！',
-    '記得多喝水喔！',
-    '我是小豬，\n我們一起變健康！',
+    '阿公阿嬤，\n今天天氣真好！嘎挖！',
+    '要不要出去走走呀？嘎挖嘎挖～',
+    '多走路我才會變強壯喔！嘎挖！',
+    '點我可以看我的收藏！嘎挖～',
+    '記得多喝水喔！嘎挖嘎挖！',
+    '我是小豬，\n我們一起變健康！嘎挖！',
+    '肚子有點餓了...嘎挖！',
   ];
 
 
@@ -224,6 +227,7 @@ class DesktopPetState extends State<DesktopPet> {
         setState(() {
           _steps = statusData['step_total'] ?? 0;
           _level = _getLevelFromSteps(_steps);
+          widget.onStepsChanged?.call(_steps);
 
           // 計算心情
           final hour = DateTime.now().hour;
@@ -258,6 +262,17 @@ class DesktopPetState extends State<DesktopPet> {
 
   double _getLevelScale(int level) => 0.8 + (level * 0.1);
 
+  Offset getPetCenter() {
+    // 獲取 RenderBox 來精確定位中心點
+    final RenderBox? renderBox = context.findRenderObject() as RenderBox?;
+    if (renderBox != null) {
+      final size = renderBox.size;
+      final position = renderBox.localToGlobal(Offset.zero);
+      return Offset(position.dx + size.width / 2, position.dy + size.height / 2);
+    }
+    return Offset.zero;
+  }
+
   @override
   void dispose() {
     _fetchTimer?.cancel();
@@ -278,7 +293,7 @@ class DesktopPetState extends State<DesktopPet> {
 
     setState(() {
       _currentState = PetState.happy;
-      _currentDialog = "噗嚕噗嚕！😆";
+      _currentDialog = "嘎挖！嘎挖嘎挖！😆";
     });
 
     Future.delayed(const Duration(milliseconds: 800), () {
@@ -286,7 +301,7 @@ class DesktopPetState extends State<DesktopPet> {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => PetProfileScreen(
+          builder: (context) => PetInteractionScreen(
             userId: widget.userId,
             steps: _steps,
             level: _level,
@@ -433,10 +448,12 @@ class DesktopPetState extends State<DesktopPet> {
             Transform(
               alignment: Alignment.center,
               transform: Matrix4.identity()
-                ..scale(_getLevelScale(_level) *
-                    (_currentState == PetState.pickedUp ? 1.2 : 1.0),
+                ..scaleByDouble(
                     _getLevelScale(_level) *
-                    (_currentState == PetState.pickedUp ? 1.2 : 1.0),
+                        (_currentState == PetState.pickedUp ? 1.2 : 1.0),
+                    _getLevelScale(_level) *
+                        (_currentState == PetState.pickedUp ? 1.2 : 1.0),
+                    1.0,
                     1.0)
                 ..rotateY(_isFacingLeft ? 0 : pi)
                 ..rotateZ(_currentState == PetState.pickedUp ? 0.15 : 0),

@@ -33,6 +33,7 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
 
   // 字幕相關
   List<dynamic> _subtitles = [];
+  String _currentSubtitle = '';
   int _currentSubtitleIndex = -1;
   double _subtitleProgress = 0.0;
   StreamSubscription? _positionSubscription;
@@ -377,10 +378,6 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final item = _localNewsItems.isEmpty
-        ? const <String, dynamic>{}
-        : _localNewsItems[_currentIndex];
-
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(
