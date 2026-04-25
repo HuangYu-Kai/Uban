@@ -962,6 +962,7 @@ class ElderChatTabState extends State<ElderChatTab>
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           crossAxisCount: 2,
+          childAspectRatio: 0.85, // ★ 增加高度比例，避免溢出
           mainAxisSpacing: 24,
           crossAxisSpacing: 24,
           children: [
@@ -1503,29 +1504,30 @@ class ElderChatTabState extends State<ElderChatTab>
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(10), // Reduced from 12
               decoration: BoxDecoration(
                 color: const Color(0xFF8DB08B).withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Icon(
                 icon,
-                size: 42,
+                size: 38, // Slightly reduced from 42
                 color: const Color(0xFF8DB08B),
               ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 10), // Reduced from 14
             Text(
               title,
               textAlign: TextAlign.center,
               style: GoogleFonts.notoSansTc(
-                fontSize: 22, // Bigger quick action font
+                fontSize: 20, // Slightly reduced from 22
                 fontWeight: FontWeight.w900,
                 color: const Color(0xFF1E293B),
                 letterSpacing: -0.2,
-                height: 1.3,
+                height: 1.2,
               ),
             ),
           ],

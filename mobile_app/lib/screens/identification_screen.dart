@@ -17,27 +17,28 @@ class IdentificationScreen extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 16),
                   // "誰在使用？" Title
                   Text(
                     '誰在使用？',
                     style: GoogleFonts.notoSansTc(
-                      fontSize: 40, // Slightly smaller for better fit
+                      fontSize: 32, // Reduced from 40 to prevent overflow
                       fontWeight: FontWeight.bold,
                       color: const Color(0xFF59B294),
                       letterSpacing: 2,
                     ),
                   ),
-                  const SizedBox(height: 48),
+                  const SizedBox(height: 32), // Reduced from 48
                   // Cards Row
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 24),
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(
                         maxWidth: 800,
-                      ), // Limit max width for tablets
+                      ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start, // Align to top
                         children: [
                           // Elder Card
                           Expanded(
@@ -56,7 +57,7 @@ class IdentificationScreen extends StatelessWidget {
                               },
                             ),
                           ),
-                          const SizedBox(width: 24),
+                          const SizedBox(width: 16), // Reduced from 24
                           // Caregiver Card
                           Expanded(
                             child: _buildRoleCard(
@@ -78,7 +79,7 @@ class IdentificationScreen extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 48),
+                  const SizedBox(height: 32), // Reduced from 48
                 ],
               ),
             ),
@@ -97,6 +98,7 @@ class IdentificationScreen extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           AspectRatio(
             aspectRatio: 1,
@@ -117,12 +119,14 @@ class IdentificationScreen extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           Text(
             label,
             textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
             style: GoogleFonts.notoSansTc(
-              fontSize: 16,
+              fontSize: 14, // Reduced from 16
               fontWeight: FontWeight.w700,
               color: const Color(0xFF4A4A4A),
             ),
