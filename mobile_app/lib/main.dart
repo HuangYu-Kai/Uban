@@ -16,6 +16,7 @@ import 'package:android_intent_plus/android_intent.dart';
 import 'package:android_intent_plus/flag.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_line_sdk/flutter_line_sdk.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'network/http_overrides_stub.dart'
     if (dart.library.io) 'network/http_overrides_io.dart';
 
@@ -43,9 +44,9 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   // Firebase 在背景時只用來觸發 Socket.IO 訊號，
   // 真正的來電通知由信令層 (signaling.dart) 統一發送，
   // 避免重複顯示兩個通知
-  
+
   debugPrint("📩 Background message received: ${message.data}");
-  
+
   // 該訊息將由信令層通過 Socket.IO 的 'call' event 處理
   // 詳見 lib/services/signaling.dart 的 'call' 事件監聽
 }
@@ -53,6 +54,9 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   configureHttpOverrides();
+  try {
+    await dotenv.load(fileName: '.env');
+  } catch (_) {}
 
   try {
     // Initialize date formatting
@@ -82,7 +86,7 @@ void main() async {
       } catch (e) {
         debugPrint("⚠️ Firebase Analytics initialization failed: $e");
       }
-      
+
       // Initialize LINE SDK
       await LineSDK.instance.setup("2009500424").then((_) {
         debugPrint("🟢 LineSDK Initialized in main()");
@@ -130,7 +134,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      debugPrint("☀️ [Main] App Resumed. Triggering self-healing reconnection...");
+      debugPrint(
+          "☀️ [Main] App Resumed. Triggering self-healing reconnection...");
       sig.Signaling().reconnect();
     }
   }
@@ -161,8 +166,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         final roomId = message.data['roomId'];
         final senderId = message.data['senderId'];
         final callId = message.data['callId'];
-        
-        debugPrint("🔔 [FCM-Backup] Call Request from $senderId in room $roomId (ID: $callId)");
+
+        debugPrint(
+            "🔔 [FCM-Backup] Call Request from $senderId in room $roomId (ID: $callId)");
         // 備援：如果 Socket 沒連接，或是剛好斷線，這裡同樣調用彈窗邏輯。
         // 但為了避免重複彈窗，我們由 _setupSignalingListener 內的 _showIncomingCallDialog 統一控管。
         _showIncomingCallDialog(roomId, senderId, callId: callId);
@@ -172,7 +178,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   void _setupSignalingListener() {
     final s = sig.Signaling();
-    
+
     // 響鈴彈窗
     s.onCallRequest = (roomId, senderId, callId) {
       _showIncomingCallDialog(roomId, senderId, callId: callId);
@@ -181,7 +187,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     // 對方取消來電
     s.onCancelCall = (roomId, senderId, callId) {
       if (_activeCallDialogContext != null) {
-        debugPrint("🔕 [Main] Remote canceled call. Dismissing global dialog...");
+        debugPrint(
+            "🔕 [Main] Remote canceled call. Dismissing global dialog...");
         if (Navigator.canPop(_activeCallDialogContext!)) {
           Navigator.pop(_activeCallDialogContext!);
         }
@@ -191,12 +198,14 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
     // WebRTC Offer 自動答應 (因為已經在 CallRequest 階段按過接聽了)
     s.onIncomingCall = (callerId, callType) async {
-      debugPrint("📞 [Main] Global Incoming Offer from $callerId (Type: $callType). Auto-accepting...");
-      return true; 
+      debugPrint(
+          "📞 [Main] Global Incoming Offer from $callerId (Type: $callType). Auto-accepting...");
+      return true;
     };
   }
 
-  void _showIncomingCallDialog(String roomId, String senderId, {String? callId}) {
+  void _showIncomingCallDialog(String roomId, String senderId,
+      {String? callId}) {
     if (_activeCallDialogContext != null) {
       debugPrint("🚫 [Main] Dialog already showing, skipping...");
       return;
@@ -204,7 +213,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
     final context = navigatorKey.currentContext;
     if (context == null) {
-      debugPrint("⚠️ [Main] Cannot show dialog: navigatorKey.currentContext is NULL!");
+      debugPrint(
+          "⚠️ [Main] Cannot show dialog: navigatorKey.currentContext is NULL!");
       return;
     }
 

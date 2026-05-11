@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart' hide Path;
+import 'package:pedometer/pedometer.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:intl/intl.dart';
 import '../identification_screen.dart';
 import '../leaderboard_screen.dart';
@@ -26,10 +30,21 @@ class ElderProfileTab extends StatefulWidget {
 
 class _ElderProfileTabState extends State<ElderProfileTab>
     with TickerProviderStateMixin {
+  static const bool _useMockRoute = true;
+  static const double _maxAccuracyMeters = 35.0;
+  static const double _minPointDistanceMeters = 2.0;
+  static const double _maxReasonableJumpMeters = 120.0;
+  static const double _maxWalkingSpeedMps = 3.2;
+  static const double _vehicleSpeedMps = 7.0;
+  static const double _simplifyToleranceMeters = 4.0;
+  static const Duration _minSampleInterval = Duration(seconds: 1);
+  static const double _cleanCoordThresholdMeters = 1.0;
+  static const bool _enableSplineSmoothing = true;
+  static const Color _routeAccentColor = Color(0xFF59B294);
+
   // ── 數據 ───────────────────────────────────────────────
   final int dailyStepGoal = 8000;
   int currentSteps = 0; // Will be calculated from distance or fetched
-
 
   // ── 步數動畫 ──────────────────────────────────────────────
   late AnimationController _ctrl;
@@ -39,10 +54,22 @@ class _ElderProfileTabState extends State<ElderProfileTab>
   final List<LatLng> _routePoints = [];
   StreamSubscription<Position>? _positionStream;
   final MapController _mapController = MapController();
+  final Distance _distance = const Distance();
+  List<LatLng> _displayRouteCache = [];
+  DateTime? _lastAcceptedTime;
   double _totalDistance = 0.0; // 公里
   LatLng? _currentPosition;
+  StreamSubscription<StepCount>? _stepCountStream;
+  int _hardwareBaseSteps = -1;
+  int _sessionPedometerSteps = 0;
+  double _estimatedStrideMeters = 0.72;
+  bool _stepCounterUnavailable = false;
+  _MovementState _movementState = _MovementState.stationary;
+  _CoordinateKalmanFilter? _latFilter;
+  _CoordinateKalmanFilter? _lngFilter;
   // 台北 101 作為預設中心點
   static const LatLng _defaultCenter = LatLng(25.0339, 121.5645);
+
   @override
   void initState() {
     super.initState();
@@ -52,34 +79,36 @@ class _ElderProfileTabState extends State<ElderProfileTab>
       vsync: this,
     );
 
-
     Future.delayed(const Duration(milliseconds: 200), () {
       if (mounted) _ctrl.forward();
     });
 
     _autoStartTracking();
+    _startStepTracking();
   }
 
   @override
   void dispose() {
     _ctrl.dispose();
     _positionStream?.cancel();
+    _stepCountStream?.cancel();
     super.dispose();
   }
 
   // ── 自動啟動追蹤與持久化初始化 ──────────────────────────────
   Future<void> _autoStartTracking() async {
-    await _loadPersistedRoute();
+    if (_useMockRoute) {
+      _loadMockDemoRoute();
+      await _persistRoute();
+    } else {
+      await _loadPersistedRoute();
+    }
     await _startTracking();
   }
 
   // ── 載入持久化路徑 ──────────────────────────────────────────
   Future<void> _loadPersistedRoute() async {
     final prefs = await SharedPreferences.getInstance();
-    
-    // [清除舊資料] 強制清除先前儲存的美國位置以便能顯示最新狀況
-    await prefs.remove('route_points');
-    await prefs.remove('total_distance');
 
     final dateStr = prefs.getString('last_track_date') ?? '';
     final today = DateTime.now().toIso8601String().substring(0, 10);
@@ -87,7 +116,12 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     if (dateStr != today) {
       await prefs.remove('route_points');
       await prefs.setDouble('total_distance', 0.0);
+      await prefs.setInt('session_pedometer_steps', 0);
       await prefs.setString('last_track_date', today);
+      if (_useMockRoute) {
+        _loadMockDemoRoute();
+        await _persistRoute();
+      }
       return;
     }
 
@@ -99,9 +133,13 @@ class _ElderProfileTabState extends State<ElderProfileTab>
           decoded.map((p) => LatLng(p['lat'], p['lng'])).toList(),
         );
         _totalDistance = prefs.getDouble('total_distance') ?? 0.0;
+        _sessionPedometerSteps = prefs.getInt('session_pedometer_steps') ?? 0;
+        _recomputeDisplayRoute();
       });
     }
-    _loadMockDemoRoute();
+    if (_useMockRoute && _routePoints.isEmpty) {
+      _loadMockDemoRoute();
+    }
   }
 
   // ── 儲存當前點位與里程 ──────────────────────────────────────
@@ -112,25 +150,54 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     );
     await prefs.setString('route_points', pointsJson);
     await prefs.setDouble('total_distance', _totalDistance);
+    await prefs.setInt('session_pedometer_steps', _sessionPedometerSteps);
+  }
+
+  List<LatLng> get _displayRoutePoints {
+    if (_displayRouteCache.isEmpty && _routePoints.isNotEmpty) {
+      _recomputeDisplayRoute();
+    }
+    return _displayRouteCache;
   }
 
   // ── [展示用] 載入中正紀念堂到北商的假路徑 ───────────────────
   void _loadMockDemoRoute() {
     final mockPoints = [
-      const LatLng(25.0346, 121.5218), // 中正紀念堂
-      const LatLng(25.0355, 121.5218),
-      const LatLng(25.0368, 121.5219),
-      const LatLng(25.0375, 121.5222),
-      const LatLng(25.0390, 121.5225),
-      const LatLng(25.0405, 121.5230),
-      const LatLng(25.0423, 121.5249), // 抵達北商
+      // 中正紀念堂園區繞行一圈
+      const LatLng(25.0346, 121.5218),
+      const LatLng(25.0350, 121.5231),
+      const LatLng(25.0340, 121.5238),
+      const LatLng(25.0328, 121.5231),
+      const LatLng(25.0329, 121.5215),
+      const LatLng(25.0338, 121.5207),
+      const LatLng(25.0351, 121.5210),
+      const LatLng(25.0354, 121.5224),
+      // 沿著可步行主幹道往北商方向
+      const LatLng(25.0362, 121.5225),
+      const LatLng(25.0372, 121.5226),
+      const LatLng(25.0382, 121.5228),
+      const LatLng(25.0391, 121.5231),
+      const LatLng(25.0400, 121.5234),
+      const LatLng(25.0410, 121.5239),
+      const LatLng(25.0418, 121.5245),
+      const LatLng(25.0423, 121.5249), // 抵達北商附近
     ];
     setState(() {
       _routePoints.clear();
       _routePoints.addAll(mockPoints);
       _currentPosition = mockPoints.last;
-      _totalDistance = 1.25; 
+      _totalDistance = _calculateRouteDistanceKm(mockPoints);
+      _recomputeDisplayRoute();
     });
+  }
+
+  double _calculateRouteDistanceKm(List<LatLng> points) {
+    if (points.length < 2) return 0;
+    double meters = 0;
+    for (var i = 1; i < points.length; i++) {
+      meters += _distance(points[i - 1], points[i]);
+    }
+    return meters / 1000.0;
   }
 
   // ── 請求位置權限 ────────────────────────────────────────
@@ -139,8 +206,94 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     if (perm == LocationPermission.denied) {
       perm = await Geolocator.requestPermission();
     }
+    if (perm == LocationPermission.whileInUse) {
+      perm = await Geolocator.requestPermission();
+    }
     return perm == LocationPermission.always ||
         perm == LocationPermission.whileInUse;
+  }
+
+  Future<void> _startStepTracking() async {
+    try {
+      final permission = await Permission.activityRecognition.request();
+      if (!permission.isGranted) return;
+
+      _stepCountStream = Pedometer.stepCountStream.listen(
+        (event) {
+          if (!mounted) return;
+          if (_hardwareBaseSteps == -1) {
+            _hardwareBaseSteps = event.steps;
+            return;
+          }
+
+          final delta = event.steps - _hardwareBaseSteps;
+          if (delta <= 0) return;
+
+          _hardwareBaseSteps = event.steps;
+          _sessionPedometerSteps += delta;
+          _refreshStrideEstimate();
+          setState(() {});
+          unawaited(_persistRoute());
+        },
+        onError: (_) {
+          if (!mounted) return;
+          setState(() {
+            _stepCounterUnavailable = true;
+          });
+        },
+        cancelOnError: false,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _stepCounterUnavailable = true;
+      });
+    }
+  }
+
+  void _refreshStrideEstimate() {
+    final meters = _totalDistance * 1000.0;
+    if (meters < 100 || _sessionPedometerSteps < 150) return;
+    final stride = meters / _sessionPedometerSteps;
+    _estimatedStrideMeters = stride.clamp(0.55, 0.9);
+  }
+
+  int _computeFusedSteps() {
+    final gpsSteps = (_totalDistance * 1000.0 / _estimatedStrideMeters).round();
+    if (_stepCounterUnavailable) return gpsSteps;
+    return math.max(_sessionPedometerSteps, gpsSteps);
+  }
+
+  LocationSettings _buildLocationSettings() {
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      return AndroidSettings(
+        accuracy: LocationAccuracy.bestForNavigation,
+        distanceFilter: 6,
+        intervalDuration: const Duration(seconds: 2),
+        foregroundNotificationConfig: const ForegroundNotificationConfig(
+          notificationTitle: 'Uban 背景軌跡記錄中',
+          notificationText: '正在持續追蹤今日步行路線',
+          enableWakeLock: true,
+        ),
+      );
+    }
+
+    if (defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.macOS) {
+      return AppleSettings(
+        accuracy: LocationAccuracy.bestForNavigation,
+        distanceFilter: 6,
+        activityType: ActivityType.fitness,
+        pauseLocationUpdatesAutomatically: true,
+        allowBackgroundLocationUpdates: true,
+        showBackgroundLocationIndicator: true,
+      );
+    }
+
+    return const LocationSettings(
+      accuracy: LocationAccuracy.high,
+      distanceFilter: 6,
+    );
   }
 
   // ── 開始 GPS 追蹤 ───────────────────────────
@@ -150,59 +303,265 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     if (!granted) return;
 
     _positionStream = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 10,
-      ),
-    ).listen((Position pos) {
-      final newPoint = LatLng(pos.latitude, pos.longitude);
-      if (_routePoints.isNotEmpty) {
-        final lastPoint = _routePoints.last;
-        final distM = Geolocator.distanceBetween(
-          lastPoint.latitude,
-          lastPoint.longitude,
-          newPoint.latitude,
-          newPoint.longitude,
-        );
-        if (distM > 2.0) {
-          _totalDistance += distM / 1000.0;
-          setState(() {
-            _routePoints.add(newPoint);
-            _persistRoute();
-          });
-        }
-      } else {
-        setState(() => _routePoints.add(newPoint));
-      }
-      setState(() {
-        _currentPosition = newPoint;
-      });
-      if (_routePoints.length > 1) {
-        final bounds = LatLngBounds.fromPoints(_routePoints);
-        try {
-          _mapController.fitCamera(
-            CameraFit.bounds(
-              bounds: bounds,
-              padding: const EdgeInsets.all(40.0),
-            ),
-          );
-        } catch (_) {}
-      } else {
-        if (_mapController.camera.zoom != 0) {
-          _mapController.move(newPoint, 18.0);
-        }
-      }
-    });
+      locationSettings: _buildLocationSettings(),
+    ).listen(_onPosition);
 
     setState(() {
       _isTracking = true;
     });
   }
 
+  void _onPosition(Position pos) {
+    if (!mounted) return;
+    if (pos.accuracy <= 0 || pos.accuracy > _maxAccuracyMeters) return;
+    if (_isTooFrequent(pos.timestamp)) return;
+
+    final filteredPoint = _applyKalman(pos);
+
+    if (_routePoints.isEmpty) {
+      setState(() {
+        _routePoints.add(filteredPoint);
+        _currentPosition = filteredPoint;
+        _movementState = _MovementState.stationary;
+        _recomputeDisplayRoute();
+      });
+      _lastAcceptedTime = pos.timestamp;
+      unawaited(_persistRoute());
+      _focusCamera();
+      return;
+    }
+
+    final lastPoint = _routePoints.last;
+    final distanceMeters = _distance(lastPoint, filteredPoint);
+    if (distanceMeters < _minPointDistanceMeters) {
+      _updateMovementState(pos.speed);
+      setState(() {
+        _currentPosition = filteredPoint;
+      });
+      return;
+    }
+    if (distanceMeters > _maxReasonableJumpMeters) {
+      _movementState = _MovementState.fastTransit;
+      setState(() {});
+      return;
+    }
+
+    final now = pos.timestamp;
+    final previous = _lastAcceptedTime ?? now;
+    final elapsedSeconds = now.difference(previous).inMilliseconds / 1000.0;
+    final computedSpeed =
+        elapsedSeconds <= 0 ? 0.0 : distanceMeters / elapsedSeconds;
+    final speedMps = pos.speed > 0 ? pos.speed : computedSpeed;
+    _updateMovementState(speedMps);
+
+    if (_movementState == _MovementState.fastTransit ||
+        speedMps > _maxWalkingSpeedMps) {
+      setState(() {});
+      return;
+    }
+
+    _lastAcceptedTime = now;
+    _totalDistance += distanceMeters / 1000.0;
+    _refreshStrideEstimate();
+
+    setState(() {
+      _routePoints.add(filteredPoint);
+      _currentPosition = filteredPoint;
+      _recomputeDisplayRoute();
+    });
+    unawaited(_persistRoute());
+    _focusCamera();
+  }
+
+  bool _isTooFrequent(DateTime? timestamp) {
+    if (timestamp == null || _lastAcceptedTime == null) return false;
+    return timestamp.difference(_lastAcceptedTime!).abs() < _minSampleInterval;
+  }
+
+  LatLng _applyKalman(Position pos) {
+    final measurementNoise = math.max(3.0, pos.accuracy);
+    _latFilter ??= _CoordinateKalmanFilter(pos.latitude,
+        measurementNoise: measurementNoise);
+    _lngFilter ??= _CoordinateKalmanFilter(pos.longitude,
+        measurementNoise: measurementNoise);
+
+    return LatLng(
+      _latFilter!.update(pos.latitude, measurementNoise: measurementNoise),
+      _lngFilter!.update(pos.longitude, measurementNoise: measurementNoise),
+    );
+  }
+
+  void _updateMovementState(double rawSpeed) {
+    final speed = rawSpeed.isFinite ? rawSpeed : 0.0;
+    if (speed >= _vehicleSpeedMps) {
+      _movementState = _MovementState.fastTransit;
+      return;
+    }
+    if (speed >= 0.5 && speed <= _maxWalkingSpeedMps) {
+      _movementState = _MovementState.walking;
+      return;
+    }
+    _movementState = _MovementState.stationary;
+  }
+
+  void _focusCamera() {
+    final displayPoints = _displayRoutePoints;
+    if (displayPoints.length > 1) {
+      final bounds = LatLngBounds.fromPoints(displayPoints);
+      try {
+        _mapController.fitCamera(
+          CameraFit.bounds(
+            bounds: bounds,
+            padding: const EdgeInsets.all(40.0),
+          ),
+        );
+      } catch (_) {}
+      return;
+    }
+    if (_currentPosition != null && _mapController.camera.zoom != 0) {
+      _mapController.move(_currentPosition!, 18.0);
+    }
+  }
+
+  List<LatLng> _simplifyRoute(List<LatLng> points, double epsilonMeters) {
+    if (points.length < 3) return List<LatLng>.from(points);
+    final keep = List<bool>.filled(points.length, false);
+    keep[0] = true;
+    keep[points.length - 1] = true;
+    _markDouglasPeucker(points, 0, points.length - 1, epsilonMeters, keep);
+    return [
+      for (var i = 0; i < points.length; i++)
+        if (keep[i]) points[i],
+    ];
+  }
+
+  void _recomputeDisplayRoute() {
+    final cleaned = _cleanCoords(_routePoints);
+    final simplified = cleaned.length < 3
+        ? List<LatLng>.from(cleaned)
+        : _simplifyRoute(cleaned, _simplifyToleranceMeters);
+    _displayRouteCache =
+        _enableSplineSmoothing ? _bezierLikeSpline(simplified) : simplified;
+  }
+
+  List<LatLng> _cleanCoords(List<LatLng> points) {
+    if (points.length < 2) return List<LatLng>.from(points);
+    final cleaned = <LatLng>[points.first];
+    for (var i = 1; i < points.length; i++) {
+      final previous = cleaned.last;
+      final current = points[i];
+      final d = _distance(previous, current);
+      if (d >= _cleanCoordThresholdMeters) {
+        cleaned.add(current);
+      }
+    }
+    return cleaned;
+  }
+
+  List<LatLng> _bezierLikeSpline(List<LatLng> points) {
+    if (points.length < 4) return points;
+    final smoothed = <LatLng>[points.first];
+    for (var i = 0; i < points.length - 1; i++) {
+      final p0 = points[i == 0 ? i : i - 1];
+      final p1 = points[i];
+      final p2 = points[i + 1];
+      final p3 = points[(i + 2) < points.length ? (i + 2) : i + 1];
+
+      for (var j = 1; j <= 3; j++) {
+        final t = j / 4.0;
+        final tt = t * t;
+        final ttt = tt * t;
+        final lat = 0.5 *
+            ((2 * p1.latitude) +
+                (-p0.latitude + p2.latitude) * t +
+                (2 * p0.latitude -
+                        5 * p1.latitude +
+                        4 * p2.latitude -
+                        p3.latitude) *
+                    tt +
+                (-p0.latitude +
+                        3 * p1.latitude -
+                        3 * p2.latitude +
+                        p3.latitude) *
+                    ttt);
+        final lng = 0.5 *
+            ((2 * p1.longitude) +
+                (-p0.longitude + p2.longitude) * t +
+                (2 * p0.longitude -
+                        5 * p1.longitude +
+                        4 * p2.longitude -
+                        p3.longitude) *
+                    tt +
+                (-p0.longitude +
+                        3 * p1.longitude -
+                        3 * p2.longitude +
+                        p3.longitude) *
+                    ttt);
+        smoothed.add(LatLng(lat, lng));
+      }
+      smoothed.add(p2);
+    }
+    return smoothed;
+  }
+
+  void _markDouglasPeucker(
+    List<LatLng> points,
+    int start,
+    int end,
+    double epsilonMeters,
+    List<bool> keep,
+  ) {
+    if (end - start < 2) return;
+
+    double maxDistance = 0.0;
+    int index = -1;
+    for (var i = start + 1; i < end; i++) {
+      final distance =
+          _distancePointToSegmentMeters(points[i], points[start], points[end]);
+      if (distance > maxDistance) {
+        maxDistance = distance;
+        index = i;
+      }
+    }
+
+    if (index != -1 && maxDistance > epsilonMeters) {
+      keep[index] = true;
+      _markDouglasPeucker(points, start, index, epsilonMeters, keep);
+      _markDouglasPeucker(points, index, end, epsilonMeters, keep);
+    }
+  }
+
+  double _distancePointToSegmentMeters(LatLng point, LatLng start, LatLng end) {
+    final meanLatRad =
+        ((start.latitude + end.latitude) / 2.0) * math.pi / 180.0;
+    final metersPerDegLat = 111320.0;
+    final metersPerDegLng = 111320.0 * math.cos(meanLatRad);
+
+    final sx = start.longitude * metersPerDegLng;
+    final sy = start.latitude * metersPerDegLat;
+    final ex = end.longitude * metersPerDegLng;
+    final ey = end.latitude * metersPerDegLat;
+    final px = point.longitude * metersPerDegLng;
+    final py = point.latitude * metersPerDegLat;
+
+    final dx = ex - sx;
+    final dy = ey - sy;
+    final lenSq = dx * dx + dy * dy;
+    if (lenSq == 0) {
+      return math.sqrt((px - sx) * (px - sx) + (py - sy) * (py - sy));
+    }
+
+    final t = (((px - sx) * dx) + ((py - sy) * dy)) / lenSq;
+    final clampedT = t.clamp(0.0, 1.0);
+    final projX = sx + clampedT * dx;
+    final projY = sy + clampedT * dy;
+    return math.sqrt((px - projX) * (px - projX) + (py - projY) * (py - projY));
+  }
+
   // ── 🆕 今日目標圓環 (取代舊的週報表) ──────────────────────
   Widget _buildDailyGoalRing() {
     final double progress = (currentSteps / dailyStepGoal).clamp(0.0, 1.0);
-    
+
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -228,7 +587,8 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                   value: progress,
                   strokeWidth: 16,
                   backgroundColor: const Color(0xFFF1F5F9),
-                  valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF59B294)),
+                  valueColor:
+                      const AlwaysStoppedAnimation<Color>(Color(0xFF59B294)),
                   strokeCap: StrokeCap.round,
                 ),
               ),
@@ -267,7 +627,8 @@ class _ElderProfileTabState extends State<ElderProfileTab>
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _buildSimpleStat('步行距離', '${_totalDistance.toStringAsFixed(2)} 公里'),
+              _buildSimpleStat(
+                  '步行距離', '${_totalDistance.toStringAsFixed(2)} 公里'),
               _buildSimpleStat('消耗熱量', '${(_totalDistance * 60).toInt()} 千卡'),
             ],
           ),
@@ -300,9 +661,11 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     );
   }
 
-
   // ── ✨ 真實 OpenStreetMap 地圖 + GPS 追蹤 ────────────────────
   Widget _buildRealMap() {
+    final displayPoints = _displayRoutePoints;
+    final avatarPoint = _currentPosition ??
+        (displayPoints.isNotEmpty ? displayPoints.last : _defaultCenter);
     return Container(
       height: 380,
       decoration: BoxDecoration(
@@ -321,13 +684,13 @@ class _ElderProfileTabState extends State<ElderProfileTab>
           FlutterMap(
             mapController: _mapController,
             options: MapOptions(
-              initialCenter: _routePoints.isNotEmpty
-                  ? _routePoints.last
+              initialCenter: displayPoints.isNotEmpty
+                  ? displayPoints.last
                   : (_currentPosition ?? _defaultCenter),
               initialZoom: 18.0,
-              initialCameraFit: _routePoints.length > 1
+              initialCameraFit: displayPoints.length > 1
                   ? CameraFit.bounds(
-                      bounds: LatLngBounds.fromPoints(_routePoints),
+                      bounds: LatLngBounds.fromPoints(displayPoints),
                       padding: const EdgeInsets.all(40.0),
                     )
                   : null,
@@ -344,25 +707,25 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                 userAgentPackageName: 'com.uban.app',
                 maxZoom: 20,
               ),
-              if (_routePoints.length >= 2)
+              if (displayPoints.length >= 2)
                 PolylineLayer(
                   polylines: [
                     Polyline(
-                      points: _routePoints,
-                      strokeWidth: 5.5,
-                      color: const Color(0xFF111111),
-                      borderStrokeWidth: 1.5,
-                      borderColor: const Color(0xFF444444),
+                      points: displayPoints,
+                      strokeWidth: 6.0,
+                      color: _routeAccentColor,
+                      borderStrokeWidth: 1.2,
+                      borderColor: const Color(0xFFFFFFFF),
                       strokeJoin: StrokeJoin.round,
                       strokeCap: StrokeCap.round,
                     ),
                   ],
                 ),
-              if (_routePoints.isNotEmpty)
+              if (displayPoints.isNotEmpty)
                 MarkerLayer(
                   markers: [
                     Marker(
-                      point: _routePoints.first,
+                      point: displayPoints.first,
                       width: 22,
                       height: 22,
                       child: Container(
@@ -384,19 +747,23 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                     ),
                   ],
                 ),
-              if (_currentPosition != null)
-                MarkerLayer(
-                  markers: [
-                    Marker(
-                      point: _currentPosition!,
-                      width: 44,
-                      height: 44,
-                      alignment: Alignment.center,
-                      child: const _AvatarPin(),
-                    ),
-                  ],
-                ),
+              MarkerLayer(
+                markers: [
+                  Marker(
+                    point: avatarPoint,
+                    width: 44,
+                    height: 44,
+                    alignment: Alignment.center,
+                    child: const _AvatarPin(),
+                  ),
+                ],
+              ),
             ],
+          ),
+          Positioned(
+            top: 16,
+            left: 16,
+            child: _TrackingStateChip(state: _movementState),
           ),
           Positioned(
             top: 16,
@@ -410,7 +777,8 @@ class _ElderProfileTabState extends State<ElderProfileTab>
               backgroundColor: Colors.white,
               foregroundColor: const Color(0xFF59B294),
               elevation: 4,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
               child: const Icon(Icons.my_location_rounded, size: 32),
             ),
           ),
@@ -433,7 +801,6 @@ class _ElderProfileTabState extends State<ElderProfileTab>
       ),
     );
   }
-
 
   void _handleLogout() {
     showDialog(
@@ -481,7 +848,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
 
   @override
   Widget build(BuildContext context) {
-    currentSteps = (_totalDistance * 1450).toInt();
+    currentSteps = _computeFusedSteps();
     final hour = DateTime.now().hour;
     String greetingTitle = '早安';
     if (hour >= 12 && hour < 18) greetingTitle = '午安';
@@ -506,9 +873,11 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: const Color(0xFF59B294).withValues(alpha: 0.1),
-                      border: Border.all(color: const Color(0xFF59B294), width: 2),
+                      border:
+                          Border.all(color: const Color(0xFF59B294), width: 2),
                     ),
-                    child: const Icon(Icons.person_rounded, size: 40, color: Color(0xFF59B294)),
+                    child: const Icon(Icons.person_rounded,
+                        size: 40, color: Color(0xFF59B294)),
                   ),
                   const SizedBox(width: 20),
                   Expanded(
@@ -621,12 +990,14 @@ class _ElderProfileTabState extends State<ElderProfileTab>
               ),
             ),
             const Spacer(),
-            Icon(Icons.arrow_forward_ios_rounded, color: Colors.grey.shade300, size: 18),
+            Icon(Icons.arrow_forward_ios_rounded,
+                color: Colors.grey.shade300, size: 18),
           ],
         ),
       ),
     );
   }
+
   Widget _buildGameEntryCard() {
     return InkWell(
       onTap: () {
@@ -666,7 +1037,8 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                 child: Image.asset(
                   'assets/images/pig_2d_idle_v4.png',
                   width: 150,
-                  errorBuilder: (context, _, __) => const Icon(Icons.pets, size: 100),
+                  errorBuilder: (context, _, __) =>
+                      const Icon(Icons.pets, size: 100),
                 ),
               ),
             ),
@@ -763,4 +1135,58 @@ class TrianglePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(CustomPainter oldDelegate) => false;
+}
+
+enum _MovementState { stationary, walking, fastTransit }
+
+class _TrackingStateChip extends StatelessWidget {
+  final _MovementState state;
+  const _TrackingStateChip({required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final (label, color) = switch (state) {
+      _MovementState.walking => ('步行中', const Color(0xFF16A34A)),
+      _MovementState.fastTransit => ('高速移動，暫停記錄', const Color(0xFFB91C1C)),
+      _ => ('靜止中', const Color(0xFF64748B)),
+    };
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Text(
+        label,
+        style: GoogleFonts.notoSansTc(
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          color: color,
+        ),
+      ),
+    );
+  }
+}
+
+class _CoordinateKalmanFilter {
+  double _estimate;
+  double _errorCovariance;
+  final double _processNoise;
+
+  _CoordinateKalmanFilter(
+    this._estimate, {
+    double processNoise = 1e-6,
+    double measurementNoise = 5.0,
+  })  : _processNoise = processNoise,
+        _errorCovariance = measurementNoise;
+
+  double update(double measurement, {required double measurementNoise}) {
+    _errorCovariance += _processNoise;
+    final kalmanGain = _errorCovariance / (_errorCovariance + measurementNoise);
+    _estimate += kalmanGain * (measurement - _estimate);
+    _errorCovariance *= (1.0 - kalmanGain);
+    return _estimate;
+  }
 }
