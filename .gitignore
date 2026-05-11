@@ -89,3 +89,6 @@ mobile_app/android/app/google-services.json
 
 .vscode/
 oidc_test_results.txt
+# Ignore all large 3D models
+*.glb
+*.gltf
