@@ -1,459 +1,298 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+import 'package:model_viewer_plus/model_viewer_plus.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:sensors_plus/sensors_plus.dart';
-import 'dart:math';
-import 'dart:async';
-import '../widgets/flying_food.dart';
-import '../widgets/desktop_pet.dart';
-import '../services/api_service.dart';
+import '../controllers/pet_controller.dart';
 
-class PetInteractionScreen extends StatefulWidget {
+/// 寵物互動室畫面 (入口)
+/// 使用 Provider 注入 PetController，並構建包含 3D 背景與玻璃擬態 UI 的介面
+class PetInteractionScreen extends StatelessWidget {
   final int userId;
   final int steps;
   final int level;
-  final PetMood mood;
-  final String assetPath;
 
   const PetInteractionScreen({
     super.key,
     required this.userId,
     required this.steps,
     required this.level,
-    required this.mood,
-    required this.assetPath,
   });
 
   @override
-  State<PetInteractionScreen> createState() => _PetInteractionScreenState();
+  Widget build(BuildContext context) {
+    return ChangeNotifierProvider(
+      create: (_) => PetController(),
+      child: const Scaffold(
+        backgroundColor: Colors.black, // 背景設為黑色以突顯 3D 模型
+        body: _PetRoomView(),
+      ),
+    );
+  }
 }
 
-class _PetInteractionScreenState extends State<PetInteractionScreen> {
-  final List<Widget> _foodAnimations = [];
-  final GlobalKey _pigKey = GlobalKey();
-  final Random _random = Random();
-  
-  StreamSubscription? _gyroSubscription;
-  StreamSubscription? _userAccelSubscription;
-  
-  final ValueNotifier<Offset> _viewOffset = ValueNotifier(Offset.zero);
-
-  String _currentDialog = "嘎挖！我在這裡！快轉動手機找找我～🐷";
-  PetState _interactionState = PetState.idle;
-  DateTime _lastShakeTime = DateTime.now();
-  bool _isAILoading = false;
-
-  // 小豬在房間內的座標 (相對於 3200x2400 的畫布)
-  Offset _petRoomPos = const Offset(1600, 1600); 
-  final Offset _sofaPos = const Offset(1100, 1550);   // 沙發中心
-  final Offset _tablePos = const Offset(2600, 1600);  // 右側餐桌/窗邊
-  final Offset _rugPos = const Offset(1600, 1900);    // 沙發前的地毯
-  final Offset _radioPos = const Offset(500, 1500);   // 左側收音機/新聞
-
-  @override
-  void initState() {
-    super.initState();
-    
-    // 設定感應器頻率為 UI 等級 (約 60Hz)
-    // 注意：sensors_plus 7.0+ 建議設定間隔
-
-    // 1. 搖一搖 (設定 50Hz 頻率)
-    _userAccelSubscription = userAccelerometerEventStream(samplingPeriod: const Duration(milliseconds: 20)).listen((UserAccelerometerEvent event) {
-      if (!mounted) return;
-      double acceleration = sqrt(event.x * event.x + event.y * event.y + event.z * event.z);
-      if (acceleration > 15 && DateTime.now().difference(_lastShakeTime).inMilliseconds > 1000) {
-        _lastShakeTime = DateTime.now();
-        _onShake();
-      }
-    });
-
-    // 2. 陀螺儀 (設定 50Hz 頻率)
-    _gyroSubscription = gyroscopeEventStream(samplingPeriod: const Duration(milliseconds: 20)).listen((GyroscopeEvent event) {
-      if (!mounted) return;
-      
-      // 解封 Y 軸 (上下) 移動範圍
-      double newX = (_viewOffset.value.dx - event.y * 20).clamp(-1500.0, 1500.0);
-      double newY = (_viewOffset.value.dy - event.x * 15).clamp(-1000.0, 1000.0);
-      
-      _viewOffset.value = Offset(newX, newY);
-    });
-  }
-
-  @override
-  void dispose() {
-    _gyroSubscription?.cancel();
-    _userAccelSubscription?.cancel();
-    _viewOffset.dispose();
-    super.dispose();
-  }
-
-  void _onShake() {
-    for (int i = 0; i < 5; i++) {
-      Future.delayed(Duration(milliseconds: i * 200), () => _spawnFood(isShower: true));
-    }
-    setState(() {
-      _currentDialog = "嘎挖！搖一搖好多好吃的！🤩";
-      _interactionState = PetState.happy;
-    });
-  }
-
-  void _onFlick(DragEndDetails details) {
-    if (details.primaryVelocity != null && details.primaryVelocity! < -500) {
-      _spawnFood();
-    }
-  }
-
-  void _spawnFood({bool isShower = false}) {
-    HapticFeedback.mediumImpact();
-    final RenderBox? renderBox = _pigKey.currentContext?.findRenderObject() as RenderBox?;
-    if (renderBox == null) return;
-    
-    final pigSize = renderBox.size;
-    final pigPos = renderBox.localToGlobal(Offset.zero);
-    final targetPos = Offset(pigPos.dx + pigSize.width / 2, pigPos.dy + pigSize.height / 2);
-
-    final startPos = isShower 
-      ? Offset(_random.nextDouble() * MediaQuery.of(context).size.width, -50)
-      : Offset(MediaQuery.of(context).size.width / 2, MediaQuery.of(context).size.height - 100);
-    
-    final animationId = DateTime.now().millisecondsSinceEpoch + _random.nextInt(1000);
-    final foods = ['🍎', '🍌', '🍙', '🍪', '🍵', '🍊'];
-    final selectedFood = foods[_random.nextInt(foods.length)];
-
-    setState(() {
-      _foodAnimations.add(
-        FlyingFood(
-          key: ValueKey(animationId),
-          startPos: startPos,
-          endPos: targetPos,
-          foodEmoji: selectedFood,
-          onComplete: () {
-            setState(() {
-              _foodAnimations.removeWhere((w) => w.key == ValueKey(animationId));
-              _interactionState = PetState.happy;
-              _currentDialog = isShower ? "嘎挖！接到了！😋" : "嘎挖！謝謝招待！🐷";
-            });
-            HapticFeedback.lightImpact();
-            Future.delayed(const Duration(seconds: 3), () {
-              if (mounted) setState(() => _interactionState = PetState.idle);
-            });
-          },
-        ),
-      );
-    });
-  }
-
-  Future<void> _fetchAIGreeting() async {
-    if (_isAILoading) return;
-    
-    setState(() {
-      _isAILoading = true;
-      _currentDialog = "嘎挖... (思考中...)";
-      _interactionState = PetState.idle;
-    });
-
-    try {
-      final contextStr = "現在時間是 ${DateTime.now().hour}:${DateTime.now().minute}，長輩今天走了 ${widget.steps} 步。";
-      final res = await ApiService.petGreeting(widget.userId, contextStr);
-
-      if (res['status'] == 'success') {
-        String aiText = res['data']['reply'].toString().trim();
-        if (mounted) {
-          setState(() {
-            _currentDialog = aiText; // 後端已帶有「嘎挖！」
-            _interactionState = PetState.happy;
-            _isAILoading = false;
-          });
-        }
-      } else {
-        throw Exception("Backend error");
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _currentDialog = "嘎挖！看到你真開心！🐷";
-          _interactionState = PetState.happy;
-          _isAILoading = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _playNews() async {
-    setState(() {
-      _currentDialog = "嘎挖！正在幫你找最新的新聞喔... 📻";
-      _isAILoading = true;
-    });
-    
-    try {
-      final res = await ApiService.getNews(limit: 1);
-      if (res['status'] == 'success' && res['data'] != null && (res['data'] as List).isNotEmpty) {
-        final newsTitle = res['data'][0]['title'];
-        if (mounted) {
-          setState(() {
-            _currentDialog = "嘎挖！今天的新聞是：$newsTitle";
-            _isAILoading = false;
-            _interactionState = PetState.happy;
-          });
-        }
-      } else {
-        if (mounted) {
-          setState(() {
-            _currentDialog = "嘎挖！收音機好像訊號不太好，晚點再試試吧～😅";
-            _isAILoading = false;
-          });
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _currentDialog = "嘎挖！網路斷掉了，聽不到新聞。";
-          _isAILoading = false;
-        });
-      }
-    }
-  }
-
-  String _getPetAsset() {
-    switch (_interactionState) {
-      case PetState.happy: return 'assets/images/pig_2d_happy_v4.png';
-      case PetState.pickedUp: return 'assets/images/pig_2d_picked_v5.png';
-      default: return 'assets/images/pig_2d_idle_v4.png';
-    }
-  }
+/// 寵物互動室視圖 (View)
+/// 負責渲染 3D 模型層與上方的互動 UI 層
+class _PetRoomView extends StatelessWidget {
+  const _PetRoomView();
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          ValueListenableBuilder<Offset>(
-            valueListenable: _viewOffset,
-            builder: (context, offset, child) {
-              return Stack(
-                children: [
-                  Positioned.fill(
-                    child: LayoutBuilder(
-                      builder: (context, constraints) {
-                        final screenW = constraints.maxWidth;
-                        final screenH = constraints.maxHeight;
-                        
-                        // 設定更大比例的畫布 (3200x2400) 以支援更多上下位移
-                        const canvasW = 3200.0;
-                        const canvasH = 2400.0;
-                        
-                        final maxDx = (canvasW - screenW) / 2;
-                        final maxDy = (canvasH - screenH) / 2;
-                        
-                        return Transform.translate(
-                          offset: Offset(
-                            -maxDx - offset.dx.clamp(-maxDx, maxDx), 
-                            -maxDy - offset.dy.clamp(-maxDy, maxDy)
-                          ),
-                          child: OverflowBox(
-                            minWidth: canvasW,
-                            maxWidth: canvasW,
-                            minHeight: canvasH,
-                            maxHeight: canvasH,
-                            alignment: Alignment.topLeft,
-                            child: Stack(
-                              children: [
-                                // 背景圖
-                                Image.asset(
-                                  'assets/images/pet_room_panorama.png',
-                                  width: canvasW,
-                                  height: canvasH,
-                                  fit: BoxFit.cover,
-                                  filterQuality: FilterQuality.high,
-                                ),
+    final controller = context.watch<PetController>();
 
-                                // 家具互動區域 (完全透明，擴大範圍)
-                                Positioned(
-                                  left: 200, top: 1200,
-                                  child: _buildHotspot("新聞", _radioPos, width: 600, height: 600),
-                                ),
-                                Positioned(
-                                  left: 600, top: 1200,
-                                  child: _buildHotspot("沙發", _sofaPos, width: 800, height: 600),
-                                ),
-                                Positioned(
-                                  left: 2200, top: 1300,
-                                  child: _buildHotspot("餐桌", _tablePos, width: 800, height: 600),
-                                ),
-                                Positioned(
-                                  left: 1000, top: 1800,
-                                  child: _buildHotspot("地毯", _rugPos, width: 1200, height: 400),
-                                ),
-
-                                // 會跟著背景移動的小豬
-                                AnimatedPositioned(
-                                  duration: 1500.ms,
-                                  curve: Curves.easeInOutCubic,
-                                  left: _petRoomPos.dx - 110,
-                                  top: _petRoomPos.dy - 110,
-                                  child: GestureDetector(
-                                    onTap: _fetchAIGreeting,
-                                    child: Container(
-                                      key: _pigKey,
-                                      child: Stack(
-                                        alignment: Alignment.center,
-                                        children: [
-                                          Image.asset(
-                                            _getPetAsset(),
-                                            width: 220,
-                                            height: 220,
-                                          ),
-                                          if (_isAILoading)
-                                            Positioned(
-                                              top: 0,
-                                              child: Container(
-                                                padding: const EdgeInsets.all(4),
-                                                decoration: const BoxDecoration(color: Colors.white70, shape: BoxShape.circle),
-                                                child: const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
-                                              ),
-                                            ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      }
-                    ),
-                  ),
-                ],
-              );
+    return Stack(
+      children: [
+        // 1. 底層：3D 渲染區域 (model_viewer_plus)
+        Positioned.fill(
+          child: ModelViewer(
+            src: 'assets/models/modern_apartment_interior.glb',
+            alt: 'A premium 3D interior room',
+            ar: true,
+            autoRotate: false,
+            cameraControls: true,
+            cameraOrbit: '0deg 75deg 0.5m',
+            cameraTarget: '0m 1.2m 0m',
+            fieldOfView: '90deg',
+            interpolationDecay: 200,
+            animationName: controller.currentAnimation,
+            javascriptChannels: {
+              JavascriptChannel(
+                'ModelClickChannel',
+                onMessageReceived: (message) {
+                  // 接收 JS 傳回的點擊物件名稱
+                  controller.handleModelClick(message.message);
+                },
+              )
             },
+            // 進階 JS：偵測點擊的節點名稱
+            relatedJs: '''
+              const modelViewer = document.querySelector('model-viewer');
+              modelViewer.addEventListener('click', (event) => {
+                const hit = modelViewer.sample(event.clientX, event.clientY);
+                if (hit) {
+                  // 如果點擊到物件，嘗試獲取該物件的名稱
+                  ModelClickChannel.postMessage(hit.nodeName || 'object');
+                } else {
+                  ModelClickChannel.postMessage('floor');
+                }
+              });
+            ''',
           ),
+        ),
 
-          Positioned(
-            top: 50,
-            left: 20,
+        // 2. 中層：2D 寵物角色疊加 (帶有動畫效果)
+        Positioned(
+          bottom: 180,
+          left: 0,
+          right: 0,
+          child: IgnorePointer(
+            child: Align(
+              alignment: Alignment.bottomCenter,
+              child: Image.asset(
+                controller.petAssetPath,
+                width: 280,
+                height: 280,
+              )
+              .animate(target: controller.isAnimating ? 1 : 0)
+              .shake(duration: 600.ms, hz: 4)
+              .scale(begin: const Offset(1, 1), end: const Offset(1.1, 1.1)),
+            ),
+          ),
+        ),
+
+        // 3. 上層：Premium UI - 返回按鈕
+        Positioned(
+          top: 60,
+          left: 20,
+          child: _GlassContainer(
+            padding: const EdgeInsets.all(8),
+            borderRadius: BorderRadius.circular(50),
             child: IconButton(
-              icon: const CircleAvatar(
-                backgroundColor: Colors.white54,
-                child: Icon(Icons.arrow_back_ios_new_rounded, color: Colors.black),
-              ),
+              icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 20),
               onPressed: () => Navigator.pop(context),
             ),
-          ),
+          ).animate().fadeIn(duration: 600.ms).slideX(begin: -0.2),
+        ),
 
-          Positioned(
-            top: 100,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                margin: const EdgeInsets.symmetric(horizontal: 40),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.9),
-                  borderRadius: BorderRadius.circular(30),
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 20)],
-                ),
-                child: Text(
-                  _currentDialog,
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.notoSansTc(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-              ).animate().fadeIn().scale(),
-            ),
-          ),
-
-          Positioned.fill(
-            child: GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onVerticalDragEnd: _onFlick,
-            ),
-          ),
-
-          ..._foodAnimations,
-
-          Positioned(
-            bottom: 40,
-            left: 0,
-            right: 0,
+        // 4. 上層：Premium UI - 狀態控制面板 (右上角)
+        Positioned(
+          top: 60,
+          right: 20,
+          child: _GlassContainer(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    _buildStatCard("等級", "Lv.${widget.level}"),
-                    const SizedBox(width: 20),
-                    _buildStatCard("今日步數", "${widget.steps}"),
-                  ],
-                ),
-                const SizedBox(height: 20),
-                Text(
-                  "📱 轉動手機觀察房間 | 📳 搖晃降美食",
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 15, 
-                    color: Colors.white, 
-                    shadows: [const Shadow(blurRadius: 10, color: Colors.black)]
-                  ),
-                ).animate(onPlay: (c) => c.repeat(reverse: true)).fadeOut(duration: 2.seconds),
+                _buildStatusRow('飽食', controller.status.hunger, Colors.orangeAccent),
+                const SizedBox(height: 10),
+                _buildStatusRow('活力', controller.status.energy, Colors.lightBlueAccent),
+                const SizedBox(height: 10),
+                _buildStatusRow('心情', controller.status.happiness, Colors.pinkAccent),
               ],
             ),
+          ).animate().fadeIn(duration: 600.ms).slideX(begin: 0.2),
+        ),
+
+        // 5. 上層：Premium UI - 寵物對話框 (中間偏上)
+        Positioned(
+          top: 150,
+          left: 30,
+          right: 30,
+          child: Center(
+            child: _GlassContainer(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              borderRadius: BorderRadius.circular(30),
+              child: Text(
+                controller.currentDialog,
+                textAlign: TextAlign.center,
+                style: GoogleFonts.outfit(
+                  fontSize: 17, 
+                  fontWeight: FontWeight.w600, 
+                  color: Colors.white,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ).animate(key: ValueKey(controller.currentDialog))
+             .fadeIn(duration: 400.ms)
+             .scale(duration: 400.ms, curve: Curves.backOut),
           ),
-        ],
-      ),
+        ),
+
+        // 6. 下層：Premium UI - 互動動作按鈕 (底部)
+        Positioned(
+          bottom: 50,
+          left: 20,
+          right: 20,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _buildInteractionBtn(
+                icon: Icons.auto_awesome, 
+                label: '玩耍', 
+                color: Colors.purpleAccent,
+                onPressed: () => controller.play(),
+              ),
+              _buildInteractionBtn(
+                icon: Icons.fastfood_rounded, 
+                label: '餵食', 
+                color: Colors.orangeAccent,
+                onPressed: () => controller.feed(),
+              ),
+              _buildInteractionBtn(
+                icon: Icons.nightlight_round, 
+                label: '休息', 
+                color: Colors.indigoAccent,
+                onPressed: () => controller.sleep(),
+              ),
+            ],
+          ).animate().fadeIn(duration: 800.ms).slideY(begin: 0.2),
+        ),
+      ],
     );
   }
 
-  Widget _buildHotspot(String label, Offset target, {double width = 200, double height = 200}) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () {
-        setState(() {
-          _petRoomPos = target;
-          _interactionState = PetState.happy;
-          
-          // 根據目標位置給予不同對話
-          if (label == "沙發") {
-            _currentDialog = "嘎挖！這沙發好軟喔，我想在這裡睡午覺～😴";
-          } else if (label == "餐桌") {
-            _currentDialog = "嘎挖！這裡可以看到風景耶！是不是要開飯了？😋";
-          } else if (label == "新聞") {
-            _playNews();
-          } else {
-            _currentDialog = "嘎挖！在寬敞的地毯上滾來滾去最開心了！🌀";
-          }
-        });
-        HapticFeedback.mediumImpact();
-        
-        // 5秒後恢復閒置狀態
-        Future.delayed(const Duration(seconds: 5), () {
-          if (mounted) setState(() => _interactionState = PetState.idle);
-        });
-      },
-      child: Container(
-        width: width,
-        height: height,
-        color: Colors.transparent, // 完全透明但可點擊
-        alignment: Alignment.center,
-        // 開發調試時可以取消註釋下面這行來查看感應區
-        // child: Container(decoration: BoxDecoration(border: Border.all(color: Colors.red.withOpacity(0.3)))),
-      ),
+  /// 建立狀態列的輔助元件
+  Widget _buildStatusRow(String label, int value, Color color) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          label, 
+          style: GoogleFonts.outfit(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w500)
+        ),
+        const SizedBox(width: 8),
+        Container(
+          width: 80,
+          height: 8,
+          decoration: BoxDecoration(
+            color: Colors.white10,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: FractionallySizedBox(
+            alignment: Alignment.centerLeft,
+            widthFactor: value / 100,
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(colors: [color.withOpacity(0.6), color]),
+                borderRadius: BorderRadius.circular(4),
+                boxShadow: [BoxShadow(color: color.withOpacity(0.4), blurRadius: 4)],
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
-  Widget _buildStatCard(String label, String value) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.8),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Column(
-        children: [
-          Text(label, style: GoogleFonts.notoSansTc(fontSize: 14, color: Colors.grey[700])),
-          Text(value, style: GoogleFonts.notoSansTc(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.pinkAccent)),
-        ],
+  /// 建立互動按鈕的輔助元件
+  Widget _buildInteractionBtn({
+    required IconData icon, 
+    required String label, 
+    required Color color, 
+    required VoidCallback onPressed
+  }) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        GestureDetector(
+          onTap: onPressed,
+          child: _GlassContainer(
+            padding: const EdgeInsets.all(16),
+            borderRadius: BorderRadius.circular(20),
+            borderColor: color.withOpacity(0.5),
+            child: Icon(icon, color: color, size: 28),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          label, 
+          style: GoogleFonts.outfit(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500)
+        ),
+      ],
+    );
+  }
+}
+
+/// 玻璃擬態容器組件 (Glassmorphism)
+class _GlassContainer extends StatelessWidget {
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+  final BorderRadius borderRadius;
+  final Color? borderColor;
+
+  const _GlassContainer({
+    required this.child,
+    this.padding = const EdgeInsets.all(0),
+    this.borderRadius = const BorderRadius.all(Radius.circular(20)),
+    this.borderColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: borderRadius,
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+        child: Container(
+          padding: padding,
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.12),
+            borderRadius: borderRadius,
+            border: Border.all(
+              color: borderColor ?? Colors.white.withOpacity(0.2),
+              width: 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 10,
+                spreadRadius: 2,
+              )
+            ],
+          ),
+          child: child,
+        ),
       ),
     );
   }

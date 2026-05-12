@@ -52,7 +52,6 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 }
 
 void main() async {
-  enableFlutterDriverExtension();
   WidgetsFlutterBinding.ensureInitialized();
   configureHttpOverrides();
 
