@@ -166,8 +166,6 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
       final result = await ApiService.ensureGawaDemoElder();
       if (!mounted) return;
 
-      print('🔍 Gawa API Response: $result');
-
       if (result['status'] == 'error') {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -178,12 +176,9 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
       }
 
       final data = result['data'] as Map<String, dynamic>?;
-      print('🔍 Gawa Data: $data');
       final rawElderId = data?['elder_user_id'];
-      print('🔍 rawElderId: $rawElderId (type: ${rawElderId.runtimeType})');
       final elderId =
           rawElderId is int ? rawElderId : int.tryParse('${rawElderId ?? ''}');
-      print('🔍 elderId after parse: $elderId');
       final elderName = (data?['elder_name'] ?? 'gawa').toString();
       if (elderId == null || elderId <= 0) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -325,9 +320,9 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
                   ),
                   const SizedBox(height: 10),
                   ElevatedButton.icon(
-                    onPressed: _quickLoginGawaDemo,
+                    onPressed: _quickLoginYuxuanDemo,
                     icon: const Icon(Icons.elderly_rounded),
-                    label: const Text('登入gawa'),
+                    label: const Text('登入宇璿（64歲）'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF2E7D78),
                       foregroundColor: Colors.white,
