@@ -8,9 +8,7 @@ import 'package:flutter_tts/flutter_tts.dart';
 import 'dart:convert';
 import '../services/signaling.dart';
 import '../widgets/desktop_pet.dart';
-import '../widgets/flying_food.dart';
 import 'dart:async';
-import 'package:flutter/services.dart';
 
 class ElderHomeScreen extends StatefulWidget {
   final int userId;
@@ -34,7 +32,6 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
   final GlobalKey<DesktopPetState> _petKey = GlobalKey<DesktopPetState>();
 
   // ★ 新增：投餵動畫列表
-  final List<Widget> _foodAnimations = [];
   
   // ★ 新增：遠征系統步數監控
   int _lastDiscoveredSteps = 0;

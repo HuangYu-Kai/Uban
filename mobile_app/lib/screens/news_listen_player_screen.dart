@@ -36,14 +36,12 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
   List<double> _waveHeights = List<double>.filled(11, 40);
 
   // AI 總結相關
-  bool _isSummarizing = false;
   String _summaryText = "";
   bool _isAiThinking = false;
   final AudioPlayer _aiAudioPlayer = AudioPlayer();
 
   // 字幕相關
   List<dynamic> _subtitles = [];
-  String _currentSubtitle = '';
   int _currentSubtitleIndex = -1;
   double _subtitleProgress = 0.0;
   StreamSubscription? _positionSubscription;
@@ -113,7 +111,6 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
             '🎯 切換字幕至第 $matchedIndex 句: ${_subtitles[matchedIndex]['text']}');
         setState(() {
           _currentSubtitleIndex = matchedIndex;
-          _currentSubtitle = _subtitles[matchedIndex]['text'] as String;
           _subtitleProgress = progress.clamp(0.0, 1.0);
         });
         _scrollToSubtitle(matchedIndex);
@@ -230,7 +227,6 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
           _subtitles = (item['subtitles'] is List) ? item['subtitles'] : [];
           _subtitleKeys =
               List.generate(_subtitles.length, (index) => GlobalKey());
-          _currentSubtitle = "";
           _currentSubtitleIndex = -1;
           _isLoadingAudio = false;
           _isPlaying = true;
@@ -265,7 +261,6 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
         _subtitles = (subs is List) ? subs : [];
         _subtitleKeys =
             List.generate(_subtitles.length, (index) => GlobalKey());
-        _currentSubtitle = "";
         _currentSubtitleIndex = -1;
         _isLoadingAudio = false;
         _isPlaying = true;
@@ -323,8 +318,7 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
     setState(() {
       _currentIndex = index;
       _error = null;
-      _subtitles = [];
-      _currentSubtitle = "";
+      _currentSubtitleIndex = -1;
     });
     await _playCurrentNews();
   }
@@ -334,7 +328,6 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
     if (!mounted) return;
     setState(() {
       _isPlaying = false;
-      _currentSubtitle = "";
     });
     _stopWaveAnimation();
     

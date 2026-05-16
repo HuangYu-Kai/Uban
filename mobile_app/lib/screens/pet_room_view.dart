@@ -331,24 +331,6 @@ class _PetRoomViewState extends State<PetRoomView> {
   );
 }
 
-  Widget _buildPigImageWidget(String state) {
-    final walkFrame = context.read<PetController>().pigWalkFrame;
-    String imagePath = 'assets/images/pig_2d_idle_v4.png';
-    switch (state) {
-      case 'walk':
-        imagePath = walkFrame == 0 
-            ? 'assets/images/pig_2d_walk_1_v4.png' 
-            : 'assets/images/pig_2d_walk_2_v4.png';
-        break;
-      case 'happy':
-        imagePath = 'assets/images/pig_2d_happy_v4.png';
-        break;
-      case 'sleep':
-        imagePath = 'assets/images/pig_2d_sleep_v4.png';
-        break;
-    }
-    return Image.asset(imagePath, fit: BoxFit.contain);
-  }
 }
 
 class _OverlayPanel extends StatelessWidget {

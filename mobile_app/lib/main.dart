@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter_driver/driver_extension.dart';
 import 'package:flutter/foundation.dart'
     show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:firebase_core/firebase_core.dart';
@@ -22,7 +21,6 @@ import 'network/http_overrides_stub.dart'
 
 // Screens
 import 'screens/video_call_screen.dart';
-import 'screens/splash_screen.dart';
 import 'screens/pet_interaction_screen.dart';
 
 // Utils & Globals

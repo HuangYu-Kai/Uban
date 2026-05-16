@@ -207,6 +207,7 @@ class _FamilySettingsViewState extends State<FamilySettingsView> {
           ),
           TextButton(
             onPressed: () async {
+              final navigator = Navigator.of(context);
               final newName = controller.text.trim();
               if (newName.isNotEmpty) {
                 // 保存到 SharedPreferences
@@ -220,9 +221,8 @@ class _FamilySettingsViewState extends State<FamilySettingsView> {
                 appLogger.d('✅ Profile updated: $_userName');
                 appLogger.d('   Saved to SharedPreferences');
               }
-              if (mounted) {
-                Navigator.pop(context);
-              }
+              if (!mounted) return;
+              navigator.pop();
             },
             child: const Text('儲存'),
           ),
