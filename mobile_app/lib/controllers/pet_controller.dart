@@ -1,110 +1,223 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'dart:convert';
 import '../models/pet_status.dart';
 
+/// 3D 場景中的目標位置
+class PetTargetPosition {
+  final double x;
+  final double y;
+  final double z;
+  final double confidence;
+
+  const PetTargetPosition({
+    required this.x,
+    required this.y,
+    required this.z,
+    this.confidence = 0,
+  });
+}
+
 /// 寵物邏輯與狀態控制器 (ChangeNotifier)
-/// 負責管理寵物的互動行為、3D 動畫狀態與對話內容
+/// 負責管理寵物狀態、互動訊息與場景點擊事件
 class PetController extends ChangeNotifier {
-  /// 寵物數值狀態
   final PetStatus status = PetStatus();
-  
-  /// 當前 3D 模型的動畫名稱
+
+  String currentDialog = '嘎挖！我在這裡，點一下房間裡的物件看看～🐷';
+  String targetArea = '客廳中央';
+  PetTargetPosition targetPosition = const PetTargetPosition(x: 0, y: 0, z: 0);
   String currentAnimation = 'idle';
-  
-  /// 當前顯示的對話內容
-  String currentDialog = '嘎挖！我在這裡！快轉動房間找找我～🐷';
-  
-  /// 2D 寵物圖片路徑 (作為備援或特定 UI 顯示)
-  String petAssetPath = 'assets/images/pig_2d_idle_v4.png';
-  
-  /// 是否正在執行互動動畫 (防止重複觸發)
-  bool isAnimating = false;
+  String currentGoal = '在大廳閒逛';
+  int pigWalkFrame = 0;
+  bool isAiEnabled = true;
 
-  /// 執行「玩耍」互動
+  Timer? _dialogResetTimer;
+  Timer? _aiTimer;
+  Timer? _animationTimer;
+  Timer? _walkFrameTimer;
+
+  final Map<String, Map<String, double>> _zones = {
+    'table': {'x': -1.2, 'z': -0.8, 'y': 0.05},
+    'sofa': {'x': 0.4, 'z': 0.4, 'y': 0.05},
+    'tv': {'x': 1.2, 'z': -0.6, 'y': 0.05},
+    'center': {'x': 0.0, 'z': 0.0, 'y': 0.05},
+  };
+
+  // 用於通知 UI 呼叫 JS 的回呼
+  void Function(double x, double z, double y, String state)? onMoveRequested;
+
   void play() {
-    if (isAnimating) return;
     status.update(happinessDelta: 12, energyDelta: -8);
-    _triggerInteraction(
-      animationName: 'play', 
-      dialog: '嘎挖！太好玩了！我們要一直玩下去喔！😆', 
-      assetPath: 'assets/images/pig_2d_happy_v4.png',
-      duration: const Duration(seconds: 4),
-    );
+    _setDialog('嘎挖！太好玩了！😆');
+    playAnimation('play', const Duration(seconds: 3));
   }
 
-  /// 執行「餵食」互動
   void feed() {
-    if (isAnimating) return;
     status.update(hungerDelta: 15, happinessDelta: 5);
-    _triggerInteraction(
-      animationName: 'eating', 
-      dialog: '嘎挖！這真的超好吃的！謝謝你～😋', 
-      assetPath: 'assets/images/pig_2d_happy_v4.png',
-      duration: const Duration(seconds: 3),
-    );
+    _setDialog('嘎挖！好吃！謝謝你餵我～😋');
+    playAnimation('eating', const Duration(seconds: 3));
   }
 
-  /// 執行「休息」互動
-  void sleep() {
-    if (isAnimating) return;
-    status.update(energyDelta: 20, hungerDelta: -5);
-    _triggerInteraction(
-      animationName: 'sleep', 
-      dialog: 'Zzz... 嘎挖想睡了... 晚安～😴', 
-      assetPath: 'assets/images/pig_2d_idle_v4.png',
-      duration: const Duration(seconds: 5),
-    );
+  void rest() {
+    status.update(energyDelta: 20, hungerDelta: -6);
+    _setDialog('Zzz... 我先休息一下～😴');
+    playAnimation('sleep', const Duration(seconds: 3));
   }
 
-  /// 處理 3D 場景中的點擊事件
-  /// [nodeName] 來自 JavaScript Channel 傳回的點擊物件名稱
-  void handleModelClick(String nodeName) {
-    String message = '嘎挖！你點擊了房間的：$nodeName！';
-    
-    // 根據點擊的物件名稱提供差異化反應
-    final lowerNode = nodeName.toLowerCase();
-    if (lowerNode.contains('sofa')) {
-      message = '嘎挖！這沙發好軟喔，好想在那裡滾來滾去～🛋️';
-    } else if (lowerNode.contains('table') || lowerNode.contains('desk')) {
-      message = '嘎挖！這裡是吃飯的地方嗎？我肚子餓了！😋';
-    } else if (lowerNode.contains('bed')) {
-      message = '嘎挖！那是你的床嗎？看起來好舒服～💤';
-    } else if (lowerNode.contains('window')) {
-      message = '嘎挖！外面的天氣看起來不錯耶！☀️';
-    }
-    
-    currentDialog = message;
-    notifyListeners();
-    
-    // 5 秒後自動恢復預設對話
-    Timer(const Duration(seconds: 5), () {
-      if (!isAnimating) {
-        currentDialog = '嘎挖！隨時可以跟我互動喔！🐷';
-        notifyListeners();
-      }
-    });
-  }
-
-  /// 觸發互動流程：切換動畫 -> 顯示對話 -> 延時恢復
-  void _triggerInteraction({
-    required String animationName,
-    required String dialog,
-    required String assetPath,
-    required Duration duration,
-  }) {
-    isAnimating = true;
-    currentAnimation = animationName;
-    currentDialog = dialog;
-    petAssetPath = assetPath;
+  void playAnimation(String name, Duration duration) {
+    _animationTimer?.cancel();
+    currentAnimation = name;
     notifyListeners();
 
-    // 在指定時間後恢復為閒置狀態
-    Timer(duration, () {
+    _animationTimer = Timer(duration, () {
       currentAnimation = 'idle';
-      currentDialog = '嘎挖！隨時可以跟我互動喔！🐷';
-      petAssetPath = 'assets/images/pig_2d_idle_v4.png';
-      isAnimating = false;
       notifyListeners();
     });
+  }
+
+  void startAiLoop() {
+    _aiTimer?.cancel();
+    _aiTimer = Timer.periodic(const Duration(seconds: 15), (timer) {
+      if (isAiEnabled) _decideNextAction();
+    });
+  }
+
+  void stopAiLoop() {
+    _aiTimer?.cancel();
+  }
+
+  String _resolveTargetAreaName(String key) {
+    switch (key) {
+      case 'table': return '餐桌';
+      case 'sofa': return '沙發';
+      case 'tv': return '電視';
+      case 'center': return '客廳中央';
+      default: return '未知區域';
+    }
+  }
+
+  void _decideNextAction() {
+    final random = DateTime.now().millisecond % 4;
+    String zoneKey;
+    String state;
+    
+    switch (random) {
+      case 0:
+        zoneKey = 'table';
+        state = 'happy';
+        currentGoal = '去餐桌等飯';
+        break;
+      case 1:
+        zoneKey = 'sofa';
+        state = 'sleep';
+        currentGoal = '去沙發睡覺';
+        break;
+      case 2:
+        zoneKey = 'tv';
+        state = 'idle';
+        currentGoal = '去電視前發呆';
+        break;
+      default:
+        zoneKey = 'center';
+        state = 'idle';
+        currentGoal = '在大廳閒逛';
+        break;
+    }
+
+    final zone = _zones[zoneKey]!;
+    targetArea = _resolveTargetAreaName(zoneKey);
+    onMoveRequested?.call(zone['x']!, zone['z']!, zone['y']!, state);
+    
+    // 啟動步行動畫計時器
+    _walkFrameTimer?.cancel();
+    _walkFrameTimer = Timer.periodic(const Duration(milliseconds: 500), (t) {
+      pigWalkFrame = (pigWalkFrame == 0) ? 1 : 0;
+      notifyListeners();
+      // 如果停止走路了，關閉計時器 (暫定10秒)
+      if (t.tick > 20) t.cancel();
+    });
+
+    notifyListeners();
+  }
+
+  /// 接收 ModelViewer JavaScriptChannel 回傳的 JSON
+  /// 預期資料：
+  /// {"x":0,"y":0,"z":0,"zone":"sofa","name":"sofa_mat","hit":true,"confidence":0.9}
+  void handleModelTapPayload(String payload) {
+    Map<String, dynamic> data;
+    try {
+      data = jsonDecode(payload) as Map<String, dynamic>;
+    } on FormatException {
+      _setDialog('我剛剛沒看清楚你點到哪裡，再點一次試試看～');
+      return;
+    }
+
+    final double x = (data['x'] as num?)?.toDouble() ?? 0;
+    final double y = (data['y'] as num?)?.toDouble() ?? 0;
+    final double z = (data['z'] as num?)?.toDouble() ?? 0;
+    final bool hit = data['hit'] as bool? ?? false;
+    final double confidence = (data['confidence'] as num?)?.toDouble() ?? 0;
+    final String zone = (data['zone'] as String? ?? 'living_room').toLowerCase();
+    final String name = (data['name'] as String? ?? 'object').toLowerCase();
+
+    if (!hit) {
+      _setDialog('這次沒有點到可互動區域，試著點沙發或食盆附近～');
+      return;
+    }
+
+    targetPosition = PetTargetPosition(x: x, y: y, z: z, confidence: confidence);
+    targetArea = _resolveTargetArea(
+      zone: zone,
+      name: name,
+      x: x,
+      z: z,
+    );
+    _setDialog('收到！我要前往「$targetArea」(x:${x.toStringAsFixed(2)}, z:${z.toStringAsFixed(2)})');
+  }
+
+  String _resolveTargetArea({
+    required String zone,
+    required String name,
+    required double x,
+    required double z,
+  }) {
+    if (zone.contains('sofa') || name.contains('sofa')) {
+      return '沙發';
+    }
+    if (zone.contains('bowl') ||
+        zone.contains('food') ||
+        name.contains('bowl') ||
+        name.contains('food')) {
+      return '食盆';
+    }
+
+    // 當模型材質名稱不足時，退回以 3D 座標做區域判斷，提升命中穩定度
+    if (x >= -1.8 && x <= -0.3 && z >= -1.6 && z <= -0.2) {
+      return '沙發';
+    }
+    if (x >= 0.2 && x <= 1.6 && z >= -0.9 && z <= 0.5) {
+      return '食盆';
+    }
+    return '客廳區域';
+  }
+
+  void _setDialog(String message) {
+    _dialogResetTimer?.cancel();
+    currentDialog = message;
+    notifyListeners();
+
+    _dialogResetTimer = Timer(const Duration(seconds: 4), () {
+      currentDialog = '嘎挖！隨時可以跟我互動喔！🐷';
+      notifyListeners();
+    });
+  }
+
+  @override
+  void dispose() {
+    _dialogResetTimer?.cancel();
+    _aiTimer?.cancel();
+    _animationTimer?.cancel();
+    _walkFrameTimer?.cancel();
+    super.dispose();
   }
 }
