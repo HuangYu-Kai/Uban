@@ -207,6 +207,21 @@ class ApiService {
     }
   }
 
+  static Future<Map<String, dynamic>> petGreeting(int userId, String context) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/ai/pet_greeting'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'user_id': userId, 'message': context}),
+          )
+          .timeout(const Duration(seconds: 15));
+      return _safeDecode(response);
+    } catch (e) {
+      return {'status': 'error', 'message': '網路連線失敗: $e'};
+    }
+  }
+
   static Future<Map<String, dynamic>> logActivity(
     int userId,
     String type,
@@ -508,7 +523,7 @@ class ApiService {
     try {
       final queryParameters = <String, String>{
         'text': text,
-        'engine': 'cosyvoice',
+        'engine': 'edge',
       };
       if (emotion != null && emotion.isNotEmpty) {
         queryParameters['emotion'] = emotion;

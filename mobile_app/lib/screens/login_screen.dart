@@ -181,14 +181,14 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SizedBox(height: 40),
+              const SizedBox(height: 24), // Reduced from 40
 
 // 標題: 歡迎回來
               Center(
                 child: Text(
                   '歡迎回來',
                   style: GoogleFonts.notoSansTc(
-                    fontSize: 32,
+                    fontSize: 28, // Reduced from 32
                     fontWeight: FontWeight.bold,
                     color: const Color(0xFF333333),
                   ),
@@ -201,13 +201,13 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: Text(
                   '登入以管理家人的陪伴計畫',
                   style: GoogleFonts.notoSansTc(
-                    fontSize: 16,
+                    fontSize: 14, // Reduced from 16
                     color: Colors.grey[600],
                   ),
                 ),
               ),
 
-              const SizedBox(height: 48),
+              const SizedBox(height: 32), // Reduced from 48
 
 // Email / 手機號碼 輸入框
               _buildTextField(
@@ -215,7 +215,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 hintText: 'Email / 手機號碼',
               ),
 
-              const SizedBox(height: 16),
+              const SizedBox(height: 12), // Reduced from 16
 
 // 密碼 輸入框
               _buildTextField(
@@ -230,7 +230,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 },
               ),
 
-              const SizedBox(height: 16),
+              const SizedBox(height: 8), // Reduced from 16
 
 // 忘記密碼?
               Align(
@@ -252,7 +252,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
 
-              const SizedBox(height: 24),
+              const SizedBox(height: 16), // Reduced from 24
 
 // 登入按鈕
               SizedBox(

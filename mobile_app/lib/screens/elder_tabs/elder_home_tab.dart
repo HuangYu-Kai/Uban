@@ -1631,6 +1631,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
         builder: (_) => NewsListenPlayerScreen(
           newsItems: playlist,
           initialIndex: initialIndex >= 0 ? initialIndex : 0,
+          userId: widget.userId,
         ),
       ),
     );

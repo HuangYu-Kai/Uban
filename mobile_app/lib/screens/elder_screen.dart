@@ -280,7 +280,6 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
         String displayText = message;
         String type = 'chat';
         String emotion = 'caring';
-        bool isJson = false;
 
         try {
           final data = jsonDecode(message);
@@ -288,7 +287,6 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
             displayText = data['reply'];
             type = data['type'] ?? 'chat';
             emotion = data['emotion'] ?? 'caring';
-            isJson = true;
           }
         } catch (e) {
           debugPrint("Heartbeat is plain text or malformed JSON.");
@@ -336,9 +334,11 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     }
     
     if (!_mediaInitialized) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('攝像頭初始化失敗')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('攝像頭初始化失敗')),
+        );
+      }
       return;
     }
 

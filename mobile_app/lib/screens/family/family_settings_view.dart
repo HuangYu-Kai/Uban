@@ -220,7 +220,9 @@ class _FamilySettingsViewState extends State<FamilySettingsView> {
                 appLogger.d('✅ Profile updated: $_userName');
                 appLogger.d('   Saved to SharedPreferences');
               }
-              Navigator.pop(context);
+              if (mounted) {
+                Navigator.pop(context);
+              }
             },
             child: const Text('儲存'),
           ),

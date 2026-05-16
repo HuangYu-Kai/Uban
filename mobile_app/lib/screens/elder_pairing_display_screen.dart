@@ -162,23 +162,59 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
   }
 
   Future<void> _quickLoginYuxuanDemo() async {
+    Future<void> loginAndPersist({
+      required int elderId,
+      required String elderName,
+    }) async {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('caregiver_id', elderId);
+      await prefs.setString('caregiver_name', elderName);
+      await prefs.setString('user_role', 'elder');
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ElderHomeScreen(userId: elderId, userName: elderName),
+        ),
+      );
+    }
+
+    int? parseElderId(Map<String, dynamic>? data) {
+      if (data == null) return null;
+      final dynamic raw = data['elder_user_id'] ??
+          data['elder_id'] ??
+          data['user_id'] ??
+          data['id'];
+      return raw is int ? raw : int.tryParse('${raw ?? ''}');
+    }
+
     try {
       final result = await ApiService.ensureYuxuanDemoElder();
       if (!mounted) return;
 
       if (result['status'] == 'error') {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content:
-                  Text(result['message'] ?? result['error'] ?? '宇璿帳號建立失敗')),
+        final prefs = await SharedPreferences.getInstance();
+        final cachedId = prefs.getInt('caregiver_id');
+        final cachedName = prefs.getString('caregiver_name');
+        final cachedRole = prefs.getString('user_role');
+        if (cachedId != null && cachedRole == 'elder') {
+          await loginAndPersist(
+            elderId: cachedId,
+            elderName: cachedName ?? '宇璿',
+          );
+          return;
+        }
+
+        final fallbackId = _devBypassLogin ? _devBypassUserId : 1;
+        await loginAndPersist(
+          elderId: fallbackId > 0 ? fallbackId : 1,
+          elderName: _devBypassLogin ? _devBypassUserName : '宇璿',
         );
         return;
       }
 
       final data = result['data'] as Map<String, dynamic>?;
-      final rawElderId = data?['elder_user_id'];
-      final elderId =
-          rawElderId is int ? rawElderId : int.tryParse('${rawElderId ?? ''}');
+      final elderId = parseElderId(data);
       final elderName = (data?['elder_name'] ?? '宇璿').toString();
       if (elderId == null || elderId <= 0) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -187,22 +223,13 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
         return;
       }
 
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt('caregiver_id', elderId);
-      await prefs.setString('caregiver_name', elderName);
-      await prefs.setString('user_role', 'elder');
-      if (!mounted) return;
-
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => ElderHomeScreen(userId: elderId, userName: elderName),
-        ),
-      );
+      await loginAndPersist(elderId: elderId, elderName: elderName);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('登入宇璿失敗：$e')),
+      final fallbackId = _devBypassLogin ? _devBypassUserId : 1;
+      await loginAndPersist(
+        elderId: fallbackId > 0 ? fallbackId : 1,
+        elderName: _devBypassLogin ? _devBypassUserName : '宇璿',
       );
     }
   }

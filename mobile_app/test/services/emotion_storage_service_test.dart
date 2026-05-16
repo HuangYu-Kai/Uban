@@ -367,17 +367,6 @@ void main() {
 
     test('應該成功從 JSON 導入數據', () async {
       final now = DateTime.now();
-      final emotion = EmotionData(
-        id: 'import-001',
-        elderId: 1,
-        timestamp: now,
-        emotionType: EmotionType.happy,
-        confidenceScore: 0.8,
-      );
-
-      final jsonString = '[${emotion.toJson()}]'.replaceAll('(', '{').replaceAll(')', '}');
-      
-      // 構建正確的 JSON
       final correctJsonString = '''
       [{
         "id": "import-001",
