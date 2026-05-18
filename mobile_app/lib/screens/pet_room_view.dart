@@ -5,6 +5,7 @@ import 'package:model_viewer_plus/model_viewer_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:flutter/services.dart';
 import '../controllers/pet_controller.dart';
 
 /// 寵物互動室主視圖
@@ -70,9 +71,11 @@ class _PetRoomViewState extends State<PetRoomView> {
       _pitchDeg = (_pitchDeg + pitchDelta).clamp(35.0, 115.0);
 
       if (!mounted) return;
+      final newOrbit = '${_yawDeg.toStringAsFixed(1)}deg ${_pitchDeg.toStringAsFixed(1)}deg 1m';
       setState(() {
-        _cameraOrbit = '${_yawDeg.toStringAsFixed(1)}deg ${_pitchDeg.toStringAsFixed(1)}deg 1m';
+        _cameraOrbit = newOrbit;
       });
+      _webViewController?.runJavaScript('var mv = document.querySelector("model-viewer"); if(mv) mv.cameraOrbit = "$newOrbit";');
     });
 
     setState(() {});
@@ -107,6 +110,7 @@ class _PetRoomViewState extends State<PetRoomView> {
     setState(() {
       _cameraOrbit = _defaultCameraOrbit;
     });
+    _webViewController?.runJavaScript('var mv = document.querySelector("model-viewer"); if(mv) mv.cameraOrbit = "$_defaultCameraOrbit";');
   }
 
   void _moveToZone(double x, double z, double y, String state) {
@@ -185,7 +189,7 @@ class _PetRoomViewState extends State<PetRoomView> {
               },
               relatedJs: '''
                 (function() {
-                  document.body.style.background = 'green';
+                  document.body.style.background = 'transparent';
                   const init = () => {
                     const mv = document.querySelector('model-viewer');
                     if (!mv) { setTimeout(init, 500); return; }
@@ -275,15 +279,7 @@ class _PetRoomViewState extends State<PetRoomView> {
           ),
         ),
         Positioned(
-          top: 56,
-          left: 12,
-          child: IconButton(
-            onPressed: () => Navigator.of(context).maybePop(),
-            icon: const Icon(Icons.arrow_back, color: Colors.white),
-          ),
-        ),
-        Positioned(
-          top: 56,
+          top: 110,
           left: 24,
           right: 24,
           child: Consumer<PetController>(
@@ -326,6 +322,27 @@ class _PetRoomViewState extends State<PetRoomView> {
             ),
           ),
 
+        Positioned(
+          top: 56,
+          left: 16,
+          child: Container(
+            decoration: const BoxDecoration(
+              color: Colors.black45,
+              shape: BoxShape.circle,
+            ),
+            child: IconButton(
+              onPressed: () {
+                if (Navigator.canPop(context)) {
+                  Navigator.pop(context);
+                } else {
+                  // 如果是作為 main.dart 的 home 直接啟動 (沒有上一頁)，則關閉 App
+                  SystemChannels.platform.invokeMethod('SystemNavigator.pop');
+                }
+              },
+              icon: const Icon(Icons.arrow_back, color: Colors.white),
+            ),
+          ),
+        ),
       ],
     ),
   );

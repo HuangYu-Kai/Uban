@@ -21,6 +21,7 @@ import 'network/http_overrides_stub.dart'
 
 // Screens
 import 'screens/video_call_screen.dart';
+import 'screens/splash_screen.dart';
 import 'screens/pet_interaction_screen.dart';
 
 // Utils & Globals
@@ -360,7 +361,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         textTheme: GoogleFonts.notoSansTcTextTheme(Theme.of(context).textTheme),
       ),
       // ★★★ 還原為原始入口：SplashScreen ★★★
-      home: PetInteractionScreen(userId: 1, steps: 1000, level: 1),
+      home: const SplashScreen(),
       /*
       onGenerateRoute: (settings) {
         if (settings.name == '/family_home') {
