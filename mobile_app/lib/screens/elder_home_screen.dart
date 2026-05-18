@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'elder_tabs/elder_home_tab.dart';
-import 'elder_tabs/elder_chat_tab.dart';
+import 'zen_pond/zen_pond_screen.dart';
 import 'elder_tabs/elder_profile_tab.dart';
 import '../globals.dart';
 import 'elder_screen.dart';
@@ -26,8 +26,7 @@ class ElderHomeScreen extends StatefulWidget {
 
 class _ElderHomeScreenState extends State<ElderHomeScreen> {
   int _selectedIndex = 0; // 0: Home/Calendar, 1: Chat, 2: Profile/Settings
-  final GlobalKey<ElderChatTabState> _chatTabKey =
-      GlobalKey<ElderChatTabState>();
+  final GlobalKey<ZenPondScreenState> _zenPondKey = GlobalKey<ZenPondScreenState>();
   // ★ 新增：用於控制小豬
   final GlobalKey<DesktopPetState> _petKey = GlobalKey<DesktopPetState>();
 
@@ -85,8 +84,8 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
       }
     }
 
-    // 4. 通知 ChatTab 更新
-    _chatTabKey.currentState?.addAIMessage(displayText);
+    // 4. 通知 ZenPond 更新，觸發錦鯉游入動畫
+    _zenPondKey.currentState?.addNotification(displayText);
 
     // 5. 正式的語音朗讀
     await _flutterTts.setPitch(1.0); // 恢復正常音調
@@ -139,11 +138,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
                 userId: widget.userId,
                 userName: widget.userName,
               ),
-              ElderChatTab(
-                key: _chatTabKey,
-                userId: widget.userId,
-                onBackToHome: () => setState(() => _selectedIndex = 0),
-              ),
+              ZenPondScreen(key: _zenPondKey),
               ElderProfileTab(
                 userId: widget.userId,
                 userName: widget.userName,
