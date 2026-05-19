@@ -5,12 +5,14 @@ class InteractiveRipples extends StatefulWidget {
   final Widget child;
   final VoidCallback onTap;
   final bool isSOSMode;
+  final bool isEnabled;
 
   const InteractiveRipples({
     super.key, 
     required this.child, 
     required this.onTap, 
     this.isSOSMode = false,
+    this.isEnabled = true,
   });
 
   @override
@@ -50,6 +52,7 @@ class _InteractiveRipplesState extends State<InteractiveRipples> with SingleTick
   }
 
   void _addRipple(PointerDownEvent event) {
+    if (!widget.isEnabled) return;
     setState(() {
       _ripples.add(RippleInfo(position: event.localPosition));
     });

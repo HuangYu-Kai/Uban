@@ -9,42 +9,59 @@ class WaterWavePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()..style = PaintingStyle.fill;
+    // 使用原本的青石綠與水藍綠作為波浪顏色，確保在淺底色上可見
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 8.0 // 加粗波紋讓它更顯眼
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4.0); // 加上柔和模糊，模擬水面質感
+
+    // 在水面上繪製多個不同位置、不同時間差的「擴散漣漪」
     
-    // 繪製兩層波浪
-    _drawWave(canvas, size, paint, 
-        color: const Color(0xFFD4E9DF).withOpacity(0.5), 
-        amplitude: 15.0, 
-        frequency: 0.015, 
-        phaseShift: animationValue * 2 * math.pi, 
-        verticalShift: size.height * 0.4);
+    // 漣漪 1 (左上)
+    _drawExpandingRipple(canvas, size, paint, 
+        center: Offset(size.width * 0.3, size.height * 0.2), 
+        progress: animationValue, 
+        color: const Color(0xFFBCE0D1));
         
-    _drawWave(canvas, size, paint, 
-        color: const Color(0xFFBCE0D1).withOpacity(0.4), 
-        amplitude: 20.0, 
-        frequency: 0.01, 
-        phaseShift: animationValue * 2 * math.pi + math.pi, 
-        verticalShift: size.height * 0.6);
+    // 漣漪 2 (右下)
+    _drawExpandingRipple(canvas, size, paint, 
+        center: Offset(size.width * 0.75, size.height * 0.65), 
+        progress: (animationValue + 0.33) % 1.0, // 錯開動畫時間
+        color: const Color(0xFFD4E9DF));
+        
+    // 漣漪 3 (中下)
+    _drawExpandingRipple(canvas, size, paint, 
+        center: Offset(size.width * 0.4, size.height * 0.85), 
+        progress: (animationValue + 0.66) % 1.0, 
+        color: const Color(0xFFBCE0D1));
+        
+    // 漣漪 4 (右上，較大)
+    _drawExpandingRipple(canvas, size, paint, 
+        center: Offset(size.width * 0.8, size.height * 0.1), 
+        progress: (animationValue + 0.5) % 1.0, 
+        color: const Color(0xFFD4E9DF),
+        scale: 1.5);
   }
 
-  void _drawWave(Canvas canvas, Size size, Paint paint, 
-      {required Color color, required double amplitude, required double frequency, required double phaseShift, required double verticalShift}) {
-    paint.color = color;
-    final path = Path();
-    path.moveTo(0, size.height);
+  // 繪製單個緩慢擴散並漸隱的漣漪
+  void _drawExpandingRipple(Canvas canvas, Size size, Paint paint, 
+      {required Offset center, required double progress, required Color color, double scale = 1.0}) {
     
-    for (double i = 0; i <= size.width; i++) {
-      double y = math.sin((i * frequency) + phaseShift) * amplitude + verticalShift;
-      if (i == 0) {
-        path.lineTo(0, y);
-      } else {
-        path.lineTo(i, y);
-      }
+    // 漣漪半徑隨進度擴大 (最大半徑)
+    double maxRadius = size.width * 0.6 * scale;
+    double radius = progress * maxRadius;
+    
+    // 漣漪的不透明度 (開始時淡，中間最清楚，擴散到最大時消失)
+    double opacity = math.sin(progress * math.pi) * 0.7; // 最高 70% 不透明度
+    
+    paint.color = color.withOpacity(opacity);
+    canvas.drawCircle(center, radius, paint);
+    
+    // 畫第二圈內圈漣漪 (增添層次感)
+    if (radius > 40) {
+      paint.color = color.withOpacity(opacity * 0.4); // 內圈更淡
+      canvas.drawCircle(center, radius - 30, paint);
     }
-    
-    path.lineTo(size.width, size.height);
-    path.close();
-    canvas.drawPath(path, paint);
   }
 
   @override

@@ -30,6 +30,9 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
   // ★ 新增：用於控制小豬
   final GlobalKey<DesktopPetState> _petKey = GlobalKey<DesktopPetState>();
 
+  // ★ 新增：對話 Overlay 顯示狀態，用以動態隱藏導覽列防止重合
+  bool _isZenPondOverlayVisible = false;
+
   // ★ 新增：投餵動畫列表
   
   // ★ 新增：遠征系統步數監控
@@ -138,7 +141,14 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
                 userId: widget.userId,
                 userName: widget.userName,
               ),
-              ZenPondScreen(key: _zenPondKey),
+              ZenPondScreen(
+                key: _zenPondKey,
+                onOverlayStateChanged: (isVisible) {
+                  setState(() {
+                    _isZenPondOverlayVisible = isVisible;
+                  });
+                },
+              ),
               ElderProfileTab(
                 userId: widget.userId,
                 userName: widget.userName,
@@ -153,11 +163,13 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
               bottomBarHeight: 110,
               onStepsChanged: (steps) => checkExpeditionDiscovery(steps),
             ),
-          // 自定義浮動導覽列
-          Positioned(
+          // 自定義浮動導覽列 (長輩對話與落葉木牌開啟時，平滑滑落隱藏以防遮擋)
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
             left: 0,
             right: 0,
-            bottom: 0,
+            bottom: _isZenPondOverlayVisible ? -100 : 0,
             child: _buildFloatingNavBar(),
           ),
         ],

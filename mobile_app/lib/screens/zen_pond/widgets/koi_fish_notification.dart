@@ -1,18 +1,20 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'dart:math' as math;
+import '../controllers/zen_pond_controller.dart'; // 引入 KoiStyle 與 KoiPattern
 
-// 真正會「扭動身軀」且具備豐富細節的漂亮錦鯉
+// 真正會「扭動身軀」且具備豐富細節的漂亮錦鯉 CustomPainter (已支援隨機品種花色)
 class PremiumKoiPainter extends CustomPainter {
   final double animationValue; // 0.0 到 1.0 的週期值
+  final KoiStyle style;        // 錦鯉品種樣式資料
 
-  PremiumKoiPainter({required this.animationValue});
+  PremiumKoiPainter({required this.animationValue, required this.style});
 
   @override
   void paint(Canvas canvas, Size size) {
-    // 魚身長度稍微縮短，留空間給尾鰭
     final length = size.height * 0.8; 
-    final maxWiggle = size.width * 0.25; // 扭動幅度
+    
+    // 【使用者回饋調整】將扭動幅度減小，使擺尾動作更為溫和、自然
+    final maxWiggle = size.width * 0.11; 
 
     // 1. 計算魚骨架 (脊椎)
     List<Offset> spine = [];
@@ -23,7 +25,6 @@ class PremiumKoiPainter extends CustomPainter {
       // 扭動公式：頭部(t=0)幾乎不動，尾部(t=1)擺動最大
       double wiggle = math.sin(t * math.pi * 2 - animationValue * math.pi * 2) * maxWiggle * math.pow(t, 1.8);
       
-      // 往下偏移一點留給頭部空間
       spine.add(Offset(size.width * 0.5 + wiggle, t * length + size.height * 0.1));
     }
 
@@ -36,7 +37,6 @@ class PremiumKoiPainter extends CustomPainter {
       double t = i / segments;
       Offset p = spine[i];
       
-      // 計算魚身寬度分佈 (流線型，頭部圓潤，身體至尾部漸細)
       double width;
       if (t < 0.15) {
         width = math.sin(t / 0.15 * math.pi * 0.5) * (size.width * 0.28); 
@@ -74,8 +74,9 @@ class PremiumKoiPainter extends CustomPainter {
       rightSide.add(Offset(p.dx - dx * width, p.dy - dy * width));
     }
 
+    // 使用專屬魚鰭顏色
     final finPaint = Paint()
-      ..color = const Color(0xDDFF7043) // 半透明的亮橘色鰭
+      ..color = style.finColor
       ..style = PaintingStyle.fill;
 
     // 2. 畫胸鰭 (Pectoral Fins)
@@ -83,7 +84,7 @@ class PremiumKoiPainter extends CustomPainter {
     int finEnd = 8;
     
     // 左胸鰭
-    double leftFinAngle = angles[finBase] + math.pi * 0.35 + math.sin(animationValue * math.pi * 2) * 0.2;
+    double leftFinAngle = angles[finBase] + math.pi * 0.35 + math.sin(animationValue * math.pi * 2) * 0.1;
     Path leftFin = Path()
       ..moveTo(leftSide[finBase].dx, leftSide[finBase].dy)
       ..quadraticBezierTo(
@@ -94,7 +95,7 @@ class PremiumKoiPainter extends CustomPainter {
     canvas.drawPath(leftFin, finPaint);
 
     // 右胸鰭
-    double rightFinAngle = angles[finBase] - math.pi * 0.35 - math.sin(animationValue * math.pi * 2) * 0.2;
+    double rightFinAngle = angles[finBase] - math.pi * 0.35 - math.sin(animationValue * math.pi * 2) * 0.1;
     Path rightFin = Path()
       ..moveTo(rightSide[finBase].dx, rightSide[finBase].dy)
       ..quadraticBezierTo(
@@ -115,17 +116,17 @@ class PremiumKoiPainter extends CustomPainter {
     }
     bodyPath.close();
 
-    // 給魚身加上漂亮的漸層色
+    // 使用專屬魚身顏色漸層
     final Rect bounds = bodyPath.getBounds();
     final Paint bodyPaint = Paint()
-      ..shader = const LinearGradient(
-        colors: [Color(0xFFE64A19), Color(0xFFFF8A65)],
+      ..shader = LinearGradient(
+        colors: style.bodyColors,
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
       ).createShader(bounds)
       ..style = PaintingStyle.fill;
     
-    canvas.drawShadow(bodyPath, Colors.black26, 6.0, false);
+    canvas.drawShadow(bodyPath, Colors.black12, 4.0, false);
     canvas.drawPath(bodyPath, bodyPaint);
 
     // 4. 畫尾鰭 (Tail Fin)
@@ -142,36 +143,74 @@ class PremiumKoiPainter extends CustomPainter {
     canvas.drawPath(tailFin, finPaint);
     canvas.restore();
 
-    // 5. 畫有機形狀的白斑 (Markings)
-    final spotPaint = Paint()..color = Colors.white.withOpacity(0.9);
-    
-    // 頭部白斑
-    Path spot1 = Path()
-      ..moveTo(spine[2].dx, spine[2].dy)
-      ..quadraticBezierTo(leftSide[2].dx, leftSide[2].dy, leftSide[5].dx, leftSide[5].dy)
-      ..quadraticBezierTo(spine[6].dx, spine[6].dy, rightSide[3].dx, rightSide[3].dy)
-      ..close();
-    canvas.drawPath(spot1, spotPaint);
-    
-    // 背部大白斑
-    Path spot2 = Path()
-      ..moveTo(spine[9].dx, spine[9].dy)
-      ..quadraticBezierTo(leftSide[8].dx, leftSide[8].dy, leftSide[12].dx, leftSide[12].dy)
-      ..quadraticBezierTo(spine[14].dx, spine[14].dy, rightSide[13].dx, rightSide[13].dy)
-      ..quadraticBezierTo(rightSide[10].dx, rightSide[10].dy, spine[9].dx, spine[9].dy)
-      ..close();
-    canvas.drawPath(spot2, spotPaint);
+    // 5. 繪製花紋 (Markings) - 依據品種模式繪製各異的精細斑紋
+    if (style.pattern == KoiPattern.benigoi) {
+      // 紅鯉：深紅身軀，背部點綴低調奢華的金沙波光
+      final Paint goldSpotPaint = Paint()..color = style.spotColors[0].withOpacity(0.5);
+      canvas.drawCircle(spine[3], size.width * 0.15, goldSpotPaint);
+      canvas.drawCircle(spine[10], size.width * 0.12, goldSpotPaint);
+    } 
+    else if (style.pattern == KoiPattern.yamabuki) {
+      // 山吹黃金：通體黃金，背部繪製輕微的亮金波光點綴
+      final Paint goldSpotPaint = Paint()..color = style.spotColors[0].withOpacity(0.4);
+      canvas.drawCircle(spine[3], size.width * 0.15, goldSpotPaint);
+      canvas.drawCircle(spine[10], size.width * 0.12, goldSpotPaint);
+    } 
+    else if (style.pattern == KoiPattern.showa) {
+      // 昭和三色：深邃黑底上，點綴交織的大塊純白斑與亮紅斑 (對比極強、霸氣十足)
+      final Paint redPaint = Paint()..color = style.spotColors[0].withOpacity(0.95);
+      final Paint whitePaint = Paint()..color = style.spotColors[1].withOpacity(0.9);
+      
+      // 白斑 1
+      Path whiteSpot = Path()
+        ..moveTo(spine[3].dx, spine[3].dy)
+        ..quadraticBezierTo(leftSide[3].dx, leftSide[3].dy, leftSide[6].dx, leftSide[6].dy)
+        ..quadraticBezierTo(spine[7].dx, spine[7].dy, rightSide[5].dx, rightSide[5].dy)
+        ..close();
+      canvas.drawPath(whiteSpot, whitePaint);
+
+      // 紅斑 1
+      Path redSpot = Path()
+        ..moveTo(spine[11].dx, spine[11].dy)
+        ..quadraticBezierTo(leftSide[10].dx, leftSide[10].dy, leftSide[14].dx, leftSide[14].dy)
+        ..quadraticBezierTo(spine[15].dx, spine[15].dy, rightSide[13].dx, rightSide[13].dy)
+        ..close();
+      canvas.drawPath(redSpot, redPaint);
+
+      // 追加白斑 2 (點綴在尾部)
+      canvas.drawCircle(Offset(spine[16].dx - 2, spine[16].dy), size.width * 0.08, whitePaint);
+    } 
+    else {
+      // 經典紅白：紅橘底色，搭配大塊流線型雪白塊斑
+      final spotPaint = Paint()..color = style.spotColors[0].withOpacity(0.9);
+      
+      // 頭部白斑
+      Path spot1 = Path()
+        ..moveTo(spine[2].dx, spine[2].dy)
+        ..quadraticBezierTo(leftSide[2].dx, leftSide[2].dy, leftSide[5].dx, leftSide[5].dy)
+        ..quadraticBezierTo(spine[6].dx, spine[6].dy, rightSide[3].dx, rightSide[3].dy)
+        ..close();
+      canvas.drawPath(spot1, spotPaint);
+      
+      // 背部大白斑
+      Path spot2 = Path()
+        ..moveTo(spine[9].dx, spine[9].dy)
+        ..quadraticBezierTo(leftSide[8].dx, leftSide[8].dy, leftSide[12].dx, leftSide[12].dy)
+        ..quadraticBezierTo(spine[14].dx, spine[14].dy, rightSide[13].dx, rightSide[13].dy)
+        ..quadraticBezierTo(rightSide[10].dx, rightSide[10].dy, spine[9].dx, spine[9].dy)
+        ..close();
+      canvas.drawPath(spot2, spotPaint);
+    }
 
     // 6. 畫眼睛 (Eyes)
     final Paint eyePaint = Paint()..color = Colors.black87;
     final Paint eyeWhite = Paint()..color = Colors.white;
     
-    // 眼睛稍微往兩側邊緣靠
     Offset leftEye = Offset(leftSide[2].dx * 0.7 + spine[2].dx * 0.3, leftSide[2].dy * 0.7 + spine[2].dy * 0.3);
     Offset rightEye = Offset(rightSide[2].dx * 0.7 + spine[2].dx * 0.3, rightSide[2].dy * 0.7 + spine[2].dy * 0.3);
     
     canvas.drawCircle(leftEye, 3.0, eyePaint);
-    canvas.drawCircle(leftEye, 1.0, eyeWhite); // 眼神光
+    canvas.drawCircle(leftEye, 1.0, eyeWhite);
     
     canvas.drawCircle(rightEye, 3.0, eyePaint);
     canvas.drawCircle(rightEye, 1.0, eyeWhite);
@@ -179,14 +218,19 @@ class PremiumKoiPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant PremiumKoiPainter oldDelegate) {
-    return oldDelegate.animationValue != animationValue;
+    return oldDelegate.animationValue != animationValue || oldDelegate.style != style;
   }
 }
 
 class KoiFishNotification extends StatefulWidget {
   final VoidCallback onTap;
+  final KoiStyle koiStyle; // 外部傳入該錦鯉專屬的樣式
 
-  const KoiFishNotification({super.key, required this.onTap});
+  const KoiFishNotification({
+    super.key,
+    required this.onTap,
+    required this.koiStyle,
+  });
 
   @override
   State<KoiFishNotification> createState() => _KoiFishNotificationState();
@@ -195,66 +239,147 @@ class KoiFishNotification extends StatefulWidget {
 class _KoiFishNotificationState extends State<KoiFishNotification> with SingleTickerProviderStateMixin {
   late AnimationController _swimController;
 
+  // 魚在二維空間中的運動狀態
+  late double posX;
+  late double posY;
+  late double targetX;
+  late double targetY;
+  late double currentAngle; // 當前游動朝向弧度
+
+  double _screenWidth = 400.0;
+  double _screenHeight = 800.0;
+  bool _initialized = false;
+
   @override
   void initState() {
     super.initState();
+    
+    // 將擺尾的週期拉長到 1500ms，配合調小的扭動幅度，使運動極其悠閒沉靜
     _swimController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1000), // 擺尾速度
-    )..repeat(); 
+      duration: const Duration(milliseconds: 1500),
+    )..repeat();
+
+    // 初始朝向設為左上角
+    currentAngle = -math.pi / 4;
+
+    // 監聽動畫幀，執行每幀物理算圖
+    _swimController.addListener(_updatePhysics);
+  }
+
+  // 隨機選取下一個池塘中的目標點
+  void _chooseNewTarget(double width, double height) {
+    final random = math.Random();
+    double padding = 80.0;
+    targetX = padding + random.nextDouble() * (width - 2 * padding);
+    targetY = padding + random.nextDouble() * (height - 2 * padding);
+  }
+
+  // 每幀物理運算邏輯
+  void _updatePhysics() {
+    if (!mounted || !_initialized) return;
+
+    final double width = _screenWidth;
+    final double height = _screenHeight;
+
+    // 1. 計算與目標點的距離
+    double dx = targetX - posX;
+    double dy = targetY - posY;
+    double distance = math.sqrt(dx * dx + dy * dy);
+
+    // 2. 距離夠近時，選取下一個新隨機目標
+    if (distance < 50.0) {
+      _chooseNewTarget(width, height);
+      return;
+    }
+
+    // 3. 計算目標轉向角度
+    double targetAngle = math.atan2(dy, dx);
+
+    // 4. 尋求最短旋轉路徑進行平滑轉向 (Steering)
+    double angleDifference = targetAngle - currentAngle;
+    while (angleDifference < -math.pi) angleDifference += 2 * math.pi;
+    while (angleDifference > math.pi) angleDifference -= 2 * math.pi;
+
+    // 設定非常緩慢且優雅的最大轉彎角速度，使轉向呈滑動圓弧狀
+    double maxTurnSpeed = 0.012; 
+    double turn = angleDifference.clamp(-maxTurnSpeed, maxTurnSpeed);
+    currentAngle += turn;
+
+    // 5. 優雅的速度變化邏輯 (轉向大時稍微減速，直線前進時輕微加速)
+    double baseSpeed = 0.85; // 悠閒緩慢的基礎速度
+    double currentSpeed = baseSpeed;
+    if (angleDifference.abs() > 0.4) {
+      currentSpeed = baseSpeed * 0.65; // 轉向時慢速
+    } else {
+      // 直線時給予一個極為緩慢的餘弦呼吸速度波動，模擬真實魚類一下一下划水前進的動態
+      currentSpeed = baseSpeed * (1.0 + 0.3 * math.cos(DateTime.now().millisecondsSinceEpoch / 1200));
+    }
+
+    // 6. 更新位置並限制於邊界內
+    posX += math.cos(currentAngle) * currentSpeed;
+    posY += math.sin(currentAngle) * currentSpeed;
+
+    double margin = 40.0;
+    posX = posX.clamp(margin, width - margin);
+    posY = posY.clamp(margin, height - margin);
+
+    setState(() {});
   }
 
   @override
   void dispose() {
+    _swimController.removeListener(_updatePhysics);
     _swimController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+    _screenWidth = size.width > 0 ? size.width : 400.0;
+    _screenHeight = size.height > 0 ? size.height : 800.0;
+
+    // 首幀在此處進行安全初始化
+    if (!_initialized) {
+      posX = _screenWidth * 0.8;  // 起始於右下偏上
+      posY = _screenHeight * 0.7;
+      _chooseNewTarget(_screenWidth, _screenHeight);
+      _initialized = true;
+    }
+
+    // 依據魚的縮放比例計算尺寸 (基礎大小為 50x100，支援隨機體型變化)
+    final double fishWidth = 50 * widget.koiStyle.scale;
+    final double fishHeight = 100 * widget.koiStyle.scale;
+
     return Positioned(
-      bottom: 120,
-      right: 40,
+      // posX, posY 代表魚的物理中心，偏移使其置中於座標點 (並考量縮放尺寸)
+      left: posX - (fishWidth * 0.9), 
+      top: posY - (fishHeight * 0.75),  
       child: GestureDetector(
         onTap: widget.onTap,
+        behavior: HitTestBehavior.opaque,
         child: AnimatedBuilder(
           animation: _swimController,
           builder: (context, child) {
             return Transform.rotate(
-              angle: -math.pi / 4, // 魚頭朝向左上角(游動路徑)
-              child: CustomPaint(
-                size: const Size(60, 120), // 魚的空間範圍
-                painter: PremiumKoiPainter(
-                  animationValue: _swimController.value,
+              angle: currentAngle + math.pi / 2,
+              child: Container(
+                // 【長輩友善無障礙點擊區】透明的 Padding，大幅擴張觸控面積
+                padding: const EdgeInsets.all(20.0),
+                color: Colors.transparent,
+                child: CustomPaint(
+                  size: Size(fishWidth, fishHeight), 
+                  painter: PremiumKoiPainter(
+                    animationValue: _swimController.value,
+                    style: widget.koiStyle,
+                  ),
                 ),
               ),
             );
           },
         ),
       ),
-    )
-    .animate()
-    .fadeIn(duration: 800.ms)
-    // 對角線斜向游進來
-    .move(
-      begin: const Offset(150, 150),
-      end: Offset.zero,
-      duration: 3500.ms,
-      curve: Curves.easeOutCubic,
-    )
-    .moveX(
-      begin: 50,
-      end: 0,
-      duration: 2000.ms,
-      curve: Curves.easeInOutSine,
-    )
-    .then()
-    // 原地輕微浮動
-    .moveY(
-      begin: 0,
-      end: -10,
-      duration: 2500.ms,
-      curve: Curves.easeInOutSine,
-    ).animate(onPlay: (c) => c.repeat(reverse: true));
+    );
   }
 }
