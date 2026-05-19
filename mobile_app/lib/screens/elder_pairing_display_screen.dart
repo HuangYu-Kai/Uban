@@ -161,6 +161,22 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
     );
   }
 
+  Future<void> loginAndPersist({required int elderId, required String elderName}) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('caregiver_id', elderId);
+    await prefs.setString('caregiver_name', elderName);
+    await prefs.setString('user_role', 'elder');
+
+    if (!mounted) return;
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ElderHomeScreen(userId: elderId, userName: elderName),
+      ),
+    );
+  }
+
   Future<void> _quickLoginGawaDemo() async {
     try {
       final result = await ApiService.ensureGawaDemoElder();
