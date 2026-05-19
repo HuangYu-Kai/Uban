@@ -149,6 +149,20 @@ class ApiService {
     }
   }
 
+  static Future<Map<String, dynamic>> ensureGawaDemoElder() async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/pairing/dev/ensure-gawa-demo'),
+        headers: {'Content-Type': 'application/json'},
+      ).timeout(_timeout);
+      return _safeDecode(response);
+    } on TimeoutException {
+      return {'status': 'error', 'message': '連線逾時，請檢查網路'};
+    } catch (e) {
+      return {'status': 'error', 'message': '網路連線失敗: $e'};
+    }
+  }
+
   static Future<Map<String, dynamic>> updateElderInfo({
     required int familyId,
     required int elderId,
