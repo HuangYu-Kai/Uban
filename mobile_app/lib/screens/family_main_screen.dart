@@ -1,14 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // 添加觸覺反饋
 import 'package:google_fonts/google_fonts.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:ui';
 import 'family_v2/ai_hub_screen.dart';
 import 'family_v2/health_trends_screen.dart';
 import 'family_v2/family_collaboration_screen.dart';
 import '../services/elder_manager.dart';
 import '../services/signaling.dart';
-import '../services/api_service.dart';
 import 'video_call_screen.dart';
 import 'package:flutter_application_1/utils/app_logger.dart';
 
@@ -79,15 +77,17 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> {
     final currentElder = ElderManager().currentElder;
     
     if (currentElder != null) {
-      // ★ 核心修復：強制使用長輩的數字 user_id 作為房間號碼，確保兩端絕對一致
-      final roomId = currentElder.id.toString();
+      // ★ 修復：使用正確的房間格式 comm_elder_{elder_id}
+      //    elderId 是 elder_profile.elder_id（如 '0343'），而非數字 id
+      final elderIdStr = currentElder.elderId ?? currentElder.id.toString();
+      final roomId = 'comm_elder_$elderIdStr';
       _elderName = currentElder.name;
       
       debugPrint('📡📡📡 [FamilyMainScreen] ===== 連線到房間: $roomId =====');
       debugPrint('📡 [FamilyMainScreen] elderName: $_elderName');
       debugPrint('📡 [FamilyMainScreen] deviceName: ${widget.userName}的App');
       
-      _signaling.connect(roomId, 'family', deviceName: '${widget.userName}的App');
+      _signaling.connect(roomId, 'family', userId: widget.userId, deviceName: '${widget.userName}的App');
       _setupSignalingCallbacks();
       debugPrint('📡 [FamilyMainScreen] ✅ 回調已設置');
     } else {

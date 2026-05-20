@@ -217,7 +217,9 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
       final String? audioUrl = item['audio_url'];
       if (audioUrl != null && audioUrl.isNotEmpty) {
         // Direct stream from pre-generated URL
-        final String fullUrl = "https://localhost-0.tail5abf5e.ts.net$audioUrl";
+        // ★ 修復：從 ApiService.baseUrl 動態取得伺服器位址，移除硬編碼 URL
+        final String serverBase = ApiService.baseUrl.replaceAll('/api', '');
+        final String fullUrl = "$serverBase$audioUrl";
         await _audioPlayer.stop();
         await _audioPlayer.play(UrlSource(fullUrl));
 

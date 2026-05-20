@@ -228,12 +228,18 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       await _initializeMedia();
     }
     
+    // ★ 修復：從 SharedPreferences 讀取真正的 user_id（caregiver_id），
+    //    而不是誤用 elder_id 當作 userId。
+    //    elder_id（widget.roomId，如 '0343'）≠ user_id（資料庫帳號整數 ID）
+    final prefs = await SharedPreferences.getInstance();
+    final int? actualUserId = prefs.getInt('caregiver_id');
+    
     _signaling.connect(
       _formattedRoomId,  // ★ 使用格式化的房間ID，而不是原始的 roomId
       'elder', 
-      userId: int.tryParse(widget.roomId),
+      userId: actualUserId,  // ★ 修復：使用真正的 user_id（caregiver_id）
       deviceName: widget.deviceName,
-      deviceMode: widget.isCCTVMode ? 'monitor' : 'comm'  // ★ 也修改 deviceMode 以匹配房間模式
+      deviceMode: widget.isCCTVMode ? 'monitor' : 'comm'
     );
 
     Future.delayed(const Duration(milliseconds: 1500), () {

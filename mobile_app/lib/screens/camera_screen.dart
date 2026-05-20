@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
-import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import '../services/signaling.dart';
 
@@ -75,8 +75,17 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Future<void> _initCameraAndConnect() async {
+    // ★ 修復：讀取真正的 user_id（caregiver_id），用於後端驗證身份
+    final prefs = await SharedPreferences.getInstance();
+    final int? actualUserId = prefs.getInt('caregiver_id');
+    
     // 單向觀看，不需要要求相機麥克風權限
-    _signaling.connect(widget.roomId, 'family-monitor', deviceName: '家屬監控端');
+    _signaling.connect(
+      widget.roomId, 
+      'family-monitor', 
+      userId: actualUserId,  // ★ 修復：傳入真正的 user_id 供後端驗證
+      deviceName: '家屬監控端'
+    );
     
     // 等待連線成功後，要求更新設備列表
     Future.delayed(const Duration(seconds: 1), () {

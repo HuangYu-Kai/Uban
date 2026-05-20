@@ -319,7 +319,7 @@ Future<void> _loadSelectedElder() async {
   if (elderId != null) {
     final roomId = _getCommRoomId(); // ★ 使用輔助方法
     debugPrint('📡 [FamilyDashboardView] 加入房間: $roomId (elderName: $_elderName)');
-    _signaling.connect(roomId, 'family', deviceName: '${widget.userName}的儀表板');
+    _signaling.connect(roomId, 'family', userId: widget.userId, deviceName: '${widget.userName}的儀表板');
   }
 }
 

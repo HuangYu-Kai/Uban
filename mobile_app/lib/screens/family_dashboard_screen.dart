@@ -126,16 +126,20 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> with Widg
     }
   }
 
-  void _connectAndListenAll() {
+  Future<void> _connectAndListenAll() async {
     if (widget.elders.isEmpty) {
       debugPrint("ℹ️ [Dashboard] No paired elders. Skipping signaling connection.");
       return;
     }
 
+    // ★ 修復：從 SharedPreferences 讀取真正的 user_id（caregiver_id）
+    final prefs = await SharedPreferences.getInstance();
+    final int? actualUserId = prefs.getInt('caregiver_id');
+
     // 1. 連線第一個長輩的房間 (以 'comm_elder_' 為前綴)
     final String firstRoomRaw = widget.elders[0]['elder_id'].toString();
     final String firstRoom = 'comm_elder_$firstRoomRaw';
-    _signaling.connect(firstRoom, 'family', deviceName: 'Dashboard');
+    _signaling.connect(firstRoom, 'family', userId: actualUserId, deviceName: 'Dashboard');
 
     // 2. 加入其他長輩房間
     for (var elder in widget.elders) {
