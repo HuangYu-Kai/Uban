@@ -554,7 +554,7 @@ class _AiHubScreenState extends State<AiHubScreen> {
                     context,
                     MaterialPageRoute(
                       builder: (context) => VideoCallScreen(
-                        roomId: _currentElder!.id.toString(),
+                        roomId: _currentElder!.elderId ?? _currentElder!.id.toString(),
                         autoStart: true,
                         isEmergency: false,
                       ),
@@ -575,7 +575,7 @@ class _AiHubScreenState extends State<AiHubScreen> {
                     context,
                     MaterialPageRoute(
                       builder: (context) => VideoCallScreen(
-                        roomId: _currentElder!.id.toString(),
+                        roomId: _currentElder!.elderId ?? _currentElder!.id.toString(),
                         autoStart: true,
                         isEmergency: true,
                       ),
@@ -596,7 +596,7 @@ class _AiHubScreenState extends State<AiHubScreen> {
                     context,
                     MaterialPageRoute(
                       builder: (context) => CameraScreen(
-                        roomId: _currentElder!.id.toString(),
+                        roomId: _currentElder!.elderId ?? _currentElder!.id.toString(),
                       ),
                     ),
                   );

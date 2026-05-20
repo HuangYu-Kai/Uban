@@ -39,7 +39,9 @@ class _DeviceSelectionScreenState extends State<DeviceSelectionScreen> {
   }
 
   void _connect() {
-    _signaling.connect(widget.elderId, 'family', deviceName: 'FamilySelector');
+    // ★ 使用新的房間命名格式進行設備監聽
+    final roomId = 'comm_elder_${widget.elderId}';
+    _signaling.connect(roomId, 'family', deviceName: 'FamilySelector');
     _signaling.onElderDevicesUpdate = (devices) {
       if (mounted) {
         setState(() {
@@ -140,11 +142,11 @@ class _DeviceSelectionScreenState extends State<DeviceSelectionScreen> {
                                   if (mode == 'comm')
                                     IconButton(
                                       icon: Icon(Icons.call, color: isOnline ? Colors.green : Colors.grey),
-                                      onPressed: () => _showCallTypeDialog(widget.elderId, socketId, isOnline: isOnline),
+                                      onPressed: () => _showCallTypeDialog('comm_elder_${widget.elderId}', socketId, isOnline: isOnline),
                                     ),
                                   IconButton(
                                     icon: const Icon(Icons.delete, color: Colors.red),
-                                    onPressed: () => _confirmDeleteDevice(widget.elderId, socketId, name),
+                                    onPressed: () => _confirmDeleteDevice('comm_elder_${widget.elderId}', socketId, name),
                                   )
                                 ],
                               ),

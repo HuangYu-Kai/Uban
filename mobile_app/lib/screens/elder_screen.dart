@@ -42,6 +42,18 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   bool _mediaInitialized = false;
   late Timer _callTimer;
   int _callDuration = 0; // 秒數
+  
+  // ★ 新增：用於生成新格式的房間ID
+  late String _formattedRoomId;
+  
+  // ★ 輔助方法：根據通訊模式生成房間ID
+  String _getFormattedRoomId(String elderId) {
+    if (widget.isCCTVMode) {
+      return 'monitor_elder_$elderId';  // 監控/CCTV 模式
+    } else {
+      return 'comm_elder_$elderId';  // 雙向通訊模式
+    }
+  }
 
   @override
   void initState() {
@@ -49,6 +61,9 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     isAppReady = true;
     _checkPermissions();
+    
+    // ★ 初始化格式化的房間ID
+    _formattedRoomId = _getFormattedRoomId(widget.roomId);
     
     // ★ Bug 16 解決方案：監聽從系統層 (main.dart) 傳進來的 CallKit 接聽動作
     pendingAcceptedCall.addListener(_onPendingCallChanged);
@@ -89,10 +104,15 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     final pendingRoom = prefs.getString('pending_emergency_room');
     final pendingSender = prefs.getString('pending_emergency_sender');
 
-    if (pendingRoom != null && pendingRoom == widget.roomId && pendingSender != null) {
-      await prefs.remove('pending_emergency_room');
-      await prefs.remove('pending_emergency_sender');
-      _handleEmergencyAccept(pendingSender);
+    // ★ 支持新的房間ID格式以及舊的 elder_id 格式（向後兼容）
+    if (pendingRoom != null && pendingSender != null) {
+      bool isMatching = pendingRoom == _formattedRoomId || 
+                        pendingRoom == widget.roomId;  // 舊格式相容性
+      if (isMatching) {
+        await prefs.remove('pending_emergency_room');
+        await prefs.remove('pending_emergency_sender');
+        _handleEmergencyAccept(pendingSender);
+      }
     }
   }
 
@@ -209,11 +229,11 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     }
     
     _signaling.connect(
-      widget.roomId, 
+      _formattedRoomId,  // ★ 使用格式化的房間ID，而不是原始的 roomId
       'elder', 
       userId: int.tryParse(widget.roomId),
       deviceName: widget.deviceName,
-      deviceMode: widget.isCCTVMode ? 'cctv' : 'comm'
+      deviceMode: widget.isCCTVMode ? 'monitor' : 'comm'  // ★ 也修改 deviceMode 以匹配房間模式
     );
 
     Future.delayed(const Duration(milliseconds: 1500), () {
@@ -386,7 +406,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   // 主動呼叫 (先響鈴)
   void _makeCall() {
     setState(() { _status = "正在呼叫家人..."; _isInCall = true; });
-    _signaling.sendCallRequest(widget.roomId, role: 'elder');
+    _signaling.sendCallRequest(_formattedRoomId, role: 'elder');  // ★ 使用格式化的房間ID
   }
 
   void _hangUp() {
@@ -394,7 +414,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     // it means the family hasn't answered yet. We should send a cancel-call so 
     // the family's CallKit dismisses.
     if (_status == "正在呼叫家人...") {
-      _signaling.sendCancelCall(widget.roomId);
+      _signaling.sendCancelCall(_formattedRoomId);  // ★ 使用格式化的房間ID
     }
     _signaling.hangUp(disconnectSocket: false, disposeLocalStream: false);
     setState(() { 
