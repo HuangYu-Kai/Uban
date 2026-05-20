@@ -127,14 +127,21 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> with Widg
   }
 
   void _connectAndListenAll() {
-    // 1. 連線 Lobby (隨意選一個 ID 或固定字串)
-    String firstRoom = widget.elders.isNotEmpty ? widget.elders[0]['elder_id'] : 'family_lobby';
+    if (widget.elders.isEmpty) {
+      debugPrint("ℹ️ [Dashboard] No paired elders. Skipping signaling connection.");
+      return;
+    }
+
+    // 1. 連線第一個長輩的房間 (以 'comm_elder_' 為前綴)
+    final String firstRoomRaw = widget.elders[0]['elder_id'].toString();
+    final String firstRoom = 'comm_elder_$firstRoomRaw';
     _signaling.connect(firstRoom, 'family', deviceName: 'Dashboard');
 
     // 2. 加入其他長輩房間
     for (var elder in widget.elders) {
-      if (elder['elder_id'] != firstRoom) {
-        _signaling.joinRoom(elder['elder_id']);
+      final String room = 'comm_elder_${elder['elder_id']}';
+      if (room != firstRoom) {
+        _signaling.joinRoom(room);
       }
     }
 
@@ -148,7 +155,10 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> with Widg
         // It's safer to use a named route or track the dialog state, but let's try pop first.
       }
       
-      var caller = widget.elders.firstWhere((e) => e['elder_id'] == roomId, orElse: () => {'elder_name': '未知長輩'});
+      var caller = widget.elders.firstWhere(
+        (e) => 'comm_elder_${e['elder_id']}' == roomId || e['elder_id'] == roomId, 
+        orElse: () => {'elder_name': '未知長輩'}
+      );
 
       // ★ 在顯示 Dialog 前先記錄 Dashboard 自己的 Route，
       //    之後可以用 popUntil 回到這層並清除上層的通話頁面

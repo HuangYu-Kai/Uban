@@ -33,7 +33,7 @@ class _DeviceSelectionScreenState extends State<DeviceSelectionScreen> {
       if (mounted && _signaling.socket != null && _signaling.socket!.connected) {
         debugPrint("🔄 Periodic Refresh: Requesting device list update...");
         setState(() => _isSyncing = true);
-        _signaling.sendGetElderDevices(widget.elderId);
+        _signaling.sendGetElderDevices('comm_elder_${widget.elderId}');
       }
     });
   }
@@ -129,7 +129,7 @@ class _DeviceSelectionScreenState extends State<DeviceSelectionScreen> {
                                       onPressed: () {
                                         if (isOnline) {
                                             Navigator.push(context, MaterialPageRoute(builder: (_) => VideoCallScreen(
-                                              roomId: widget.elderId, 
+                                              roomId: 'monitor_elder_${widget.elderId}', 
                                               targetSocketId: socketId,
                                               isEmergency: true,
                                               autoStart: true,

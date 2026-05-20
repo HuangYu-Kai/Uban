@@ -167,6 +167,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         final roomId = message.data['roomId'];
         final senderId = message.data['senderId'];
         final callId = message.data['callId'];
+        final senderRole = message.data['role'];
+
+        if (senderRole != null && appRole == senderRole) {
+          debugPrint("📞 [FCM-Backup] Ignoring call-request: sender role ($senderRole) matches our appRole ($appRole)");
+          return;
+        }
 
         debugPrint(
             "🔔 [FCM-Backup] Call Request from $senderId in room $roomId (ID: $callId)");

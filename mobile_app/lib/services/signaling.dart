@@ -57,6 +57,7 @@ class Signaling {
   String? _peerSocketId;
   String? _currentCallId; // 追蹤當前通話 ID，確保 hangUp 時能傳給後端
   int? _userId; // 新增：儲存當前使用者的資料庫 ID
+  String? _role; // 新增：儲存當前連線的角色
   final List<RTCIceCandidate> _candidateQueue = [];
   final List<String> _pendingRooms = [];
 
@@ -101,6 +102,7 @@ class Signaling {
   void connect(String roomId, String role, {int? userId, String deviceName = 'Unknown', String deviceMode = 'comm', String? fcmToken}) {
     _currentRoomId = roomId;
     _userId = userId;
+    _role = role;
 
     if (socket != null && socket!.connected) {
       debugPrint("♻️ Reusing existing socket connection. Joining room $roomId...");
@@ -167,11 +169,15 @@ class Signaling {
       socket?.disconnect();
     });
 
-    // 統一監聯 elder-devices-update（後端已統一 emit 此事件名）
     // 響鈴監聽
     socket!.on('call-request', (data) {
       if (data['senderId'] == socket!.id) {
         debugPrint('📞 [Signaling] 忽略自己發出的 call-request (SenderId: ${data['senderId']})');
+        return;
+      }
+      final String? senderRole = data['role']?.toString();
+      if (senderRole != null && _role == senderRole) {
+        debugPrint('📞 [Signaling] 忽略相同角色發出的 call-request (SenderRole: $senderRole)');
         return;
       }
       debugPrint('📞📞📞 [Signaling] ===== 收到 call-request =====');
@@ -193,6 +199,11 @@ class Signaling {
         debugPrint('🔕 [Signaling] 忽略自己發出的 cancel-call (SenderId: ${data['senderId']})');
         return;
       }
+      final String? senderRole = data['role']?.toString();
+      if (senderRole != null && _role == senderRole) {
+        debugPrint('🔕 [Signaling] 忽略相同角色發出的 cancel-call (SenderRole: $senderRole)');
+        return;
+      }
       debugPrint('🔕 [Signaling] 收到 cancel-call: $data');
       if (onCancelCall != null) onCancelCall!(data['room'], data['senderId'], data['callId']);
     });
@@ -200,8 +211,18 @@ class Signaling {
     // 緊急呼叫監聽
     socket!.on('emergency-call', (data) {
       debugPrint('🚨 [Signaling] 收到 emergency-call: $data');
+      if (data['senderId'] == socket!.id) {
+        debugPrint('🚨 [Signaling] 忽略自己發出的 emergency-call');
+        return;
+      }
+      final String? senderRole = data['role']?.toString();
+      if (senderRole != null && _role == senderRole) {
+        debugPrint('🚨 [Signaling] 忽略相同角色發出的 emergency-call (SenderRole: $senderRole)');
+        return;
+      }
       if (onEmergencyCall != null) onEmergencyCall!(data['room'], data['senderId'], data['callId']);
     });
+
 
     // 對方接聽監聽
     socket!.on('call-accept', (data) {

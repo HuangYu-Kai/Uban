@@ -87,14 +87,20 @@ class _SplashScreenState extends State<SplashScreen> {
           final userProfile = await ApiService.getStatus(effectiveUserId);
           if (!mounted) return;
           
-          // 角色優先序：1. 後端最新狀態 2. 本地紀錄 3. 預設子女
-          final role = userProfile['role'] ?? effectiveLocalRole ?? 'family';
+          final profileData = userProfile['data'] as Map<String, dynamic>? ?? {};
+          final role = profileData['role'] ?? effectiveLocalRole ?? 'family';
           appRole = role; // ★ 新增：同步到全域變數，確保啟動後通話偵聽正常
 
           if (role == 'elder') {
+            final String? apiElderId = profileData['elder_id']?.toString();
+            if (apiElderId != null) {
+              await prefs.setString('elder_room_id', apiElderId);
+              if (!mounted) return;
+            }
+
             final bool isCCTV = prefs.getBool('saved_is_cctv') ?? false;
             final String deviceName = prefs.getString('saved_device_name') ?? effectiveUserName;
-            final String elderRoomId = prefs.getString('elder_room_id') ?? effectiveUserId.toString();
+            final String elderRoomId = apiElderId ?? prefs.getString('elder_room_id') ?? effectiveUserId.toString();
             
             if (isCCTV) {
               Navigator.pushReplacement(

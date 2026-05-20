@@ -550,11 +550,12 @@ class _AiHubScreenState extends State<AiHubScreen> {
                 color: const Color(0xFF3B82F6),
                 onTap: () {
                   Navigator.pop(context);
+                  final String rawId = _currentElder!.elderId ?? _currentElder!.id.toString();
                   Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (context) => VideoCallScreen(
-                        roomId: _currentElder!.elderId ?? _currentElder!.id.toString(),
+                        roomId: 'comm_elder_$rawId',
                         autoStart: true,
                         isEmergency: false,
                       ),
@@ -571,11 +572,12 @@ class _AiHubScreenState extends State<AiHubScreen> {
                 color: const Color(0xFFEF4444),
                 onTap: () {
                   Navigator.pop(context);
+                  final String rawId = _currentElder!.elderId ?? _currentElder!.id.toString();
                   Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (context) => VideoCallScreen(
-                        roomId: _currentElder!.elderId ?? _currentElder!.id.toString(),
+                        roomId: 'comm_elder_$rawId',
                         autoStart: true,
                         isEmergency: true,
                       ),
@@ -592,16 +594,18 @@ class _AiHubScreenState extends State<AiHubScreen> {
                 color: const Color(0xFF8B5CF6),
                 onTap: () {
                   Navigator.pop(context);
+                  final String rawId = _currentElder!.elderId ?? _currentElder!.id.toString();
                   Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (context) => CameraScreen(
-                        roomId: _currentElder!.elderId ?? _currentElder!.id.toString(),
+                        roomId: 'monitor_elder_$rawId',
                       ),
                     ),
                   );
                 },
               ),
+
             ],
           ),
         );

@@ -43,8 +43,11 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
     super.initState();
     isAppReady = true;
 
-    // ★ 核心修復：強制使用長輩的專屬配對房間號 (elder_id)，確保兩端絕對一致
-    final roomToJoin = widget.roomId ?? widget.userId.toString();
+    // ★ 核心修復：強制使用長輩的專屬配對房間號 (elder_id)，且帶有 comm_elder_ 字首，確保與後端格式及權限匹配
+    final String rawRoomId = widget.roomId ?? widget.userId.toString();
+    final String roomToJoin = rawRoomId.startsWith('comm_elder_') || rawRoomId.startsWith('monitor_elder_')
+        ? rawRoomId
+        : 'comm_elder_$rawRoomId';
     Signaling().connect(roomToJoin, 'elder',
         userId: widget.userId, deviceName: widget.userName);
 
