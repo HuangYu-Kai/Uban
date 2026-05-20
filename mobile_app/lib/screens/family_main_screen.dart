@@ -41,9 +41,8 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> {
     appLogger.d('   userId: ${widget.userId}');
     appLogger.d('   userName: ${widget.userName}');
     
-    // 初始化 ElderManager with 真實 userId（不需要 await，在背景執行）
+    // 初始化 ElderManager with 真實 userId
     _initializeElderManager();
-    _loadElderAndConnect();
     
     _views = [
       AiHubScreen(
@@ -70,56 +69,24 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> {
     appLogger.d('🔄 FamilyMainScreen: Starting ElderManager initialization');
     final success = await ElderManager().initialize(userId: widget.userId);
     appLogger.d('🔄 FamilyMainScreen: ElderManager initialization ${success ? "succeeded" : "failed"}');
+    
+    // 初始化完成後，連線到當前長輩的房間
+    await _loadElderAndConnect();
   }
 
   Future<void> _loadElderAndConnect() async {
     debugPrint('📡📡📡 [FamilyMainScreen] ===== 開始載入長輩並連線 =====');
-    final prefs = await SharedPreferences.getInstance();
-    _elderName = prefs.getString('selected_elder_name');
-    final elderId = prefs.getInt('selected_elder_id'); // user_id，作為房間號
+    final currentElder = ElderManager().currentElder;
     
-    debugPrint('📡 [FamilyMainScreen] SharedPreferences 讀取:');
-    debugPrint('   - selected_elder_name: $_elderName');
-    debugPrint('   - selected_elder_id (user_id): $elderId');
-    
-    // 如果沒有 elderId，從 API 獲取
-    int? roomUserId = elderId;
-    if (roomUserId == null) {
-      debugPrint('📡 [FamilyMainScreen] 沒有已選長輩，從 API 獲取...');
-      try {
-        final elders = await ApiService.getPairedElders(widget.userId);
-        debugPrint('📡 [FamilyMainScreen] API 返回 ${elders.length} 個長輩');
-        
-        if (elders.isNotEmpty) {
-          final targetElder = elders.first;
-          debugPrint('📡 [FamilyMainScreen] 使用第一個長輩: id=${targetElder['id']}, name=${targetElder['user_name']}');
-          
-          roomUserId = targetElder['id'] as int?;
-          _elderName = targetElder['user_name'];
-          
-          // 儲存以便下次使用
-          if (roomUserId != null) {
-            await prefs.setInt('selected_elder_id', roomUserId);
-            if (_elderName != null) {
-              await prefs.setString('selected_elder_name', _elderName!);
-            }
-            debugPrint('📡 [FamilyMainScreen] ✅ 自動儲存: roomUserId=$roomUserId, name=$_elderName');
-          }
-        } else {
-          debugPrint('⚠️ [FamilyMainScreen] API 返回空列表，沒有配對的長輩');
-        }
-      } catch (e) {
-        debugPrint('⚠️ [FamilyMainScreen] 獲取長輩資料失敗: $e');
-      }
-    }
-    
-    // ★ 重要：使用 user_id 作為房間號（與長輩端一致）
-    final roomId = roomUserId?.toString();
-    
-    if (roomId != null) {
+    if (currentElder != null) {
+      // ★ 核心修復：強制使用長輩的數字 user_id 作為房間號碼，確保兩端絕對一致
+      final roomId = currentElder.id.toString();
+      _elderName = currentElder.name;
+      
       debugPrint('📡📡📡 [FamilyMainScreen] ===== 連線到房間: $roomId =====');
       debugPrint('📡 [FamilyMainScreen] elderName: $_elderName');
       debugPrint('📡 [FamilyMainScreen] deviceName: ${widget.userName}的App');
+      
       _signaling.connect(roomId, 'family', deviceName: '${widget.userName}的App');
       _setupSignalingCallbacks();
       debugPrint('📡 [FamilyMainScreen] ✅ 回調已設置');

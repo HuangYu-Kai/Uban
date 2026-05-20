@@ -8,7 +8,7 @@ import 'dart:async';
 import 'dart:convert';
 import '../services/signaling.dart';
 import '../widgets/heartbeat_overlay.dart';
-import 'role_selection_screen.dart';
+import 'identification_screen.dart';
 import '../globals.dart';
 
 class ElderScreen extends StatefulWidget {
@@ -230,11 +230,14 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
           _isInCall = false; 
         });
         
-        Future.delayed(const Duration(seconds: 2), () {
-          if (mounted) {
-            Navigator.of(context).pop();
-          }
-        });
+        // ★ 只有非 CCTV 模式才退出畫面
+        if (!widget.isCCTVMode) {
+          Future.delayed(const Duration(seconds: 2), () {
+            if (mounted) {
+              Navigator.of(context).pop();
+            }
+          });
+        }
       }
     };
 
@@ -259,7 +262,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       if (mounted) {
          Navigator.pushAndRemoveUntil(
           context,
-          MaterialPageRoute(builder: (context) => const RoleSelectionScreen()),
+          MaterialPageRoute(builder: (context) => const IdentificationScreen()),
           (route) => false,
         );
       }
@@ -267,11 +270,9 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
 
     _signaling.onIncomingCall = (callerId, callType) async {
       debugPrint("📞 [ElderScreen] Incoming Offer from $callerId (Type: $callType)");
-      if (_isInCall || callType == 'emergency' || widget.isCCTVMode) {
-        if (mounted) setState(() => _isInCall = true);
-        return true; 
-      }
-      return false; 
+      // ★ 只要是在 ElderScreen，就代表已經進入通話準備狀態，一律接聽！
+      if (mounted) setState(() => _isInCall = true);
+      return true;
     };
 
     _signaling.onHeartbeatMessage = (message) async {
@@ -318,7 +319,13 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   Future<void> _initializeMedia() async {
     if (_mediaInitialized) return;
     try {
-      await _signaling.openUserMedia(_localRenderer, videoEnabled: !_isCameraOff);
+      await _signaling.openUserMedia(_localRenderer); // 永遠要求影像軌道
+      if (_signaling.localStream != null) {
+        final videoTracks = _signaling.localStream!.getVideoTracks();
+        for (var track in videoTracks) {
+          track.enabled = !_isCameraOff; // 預設關閉，保護隱私
+        }
+      }
       if (mounted) {
         setState(() => _mediaInitialized = true);
       }
@@ -396,12 +403,14 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       _isInCall = false; 
     });
 
-    // ★ 延遲 1.5 秒後自動回到首頁
-    Future.delayed(const Duration(milliseconds: 1500), () {
-      if (mounted) {
-        Navigator.of(context).pop();
-      }
-    });
+    // ★ 只有非 CCTV 模式才自動回到首頁
+    if (!widget.isCCTVMode) {
+      Future.delayed(const Duration(milliseconds: 1500), () {
+        if (mounted) {
+          Navigator.of(context).pop();
+        }
+      });
+    }
   }
 
   @override
@@ -647,28 +656,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
                   ),
                 ),
 
-              // 5. 測試/登出按鈕 (右下角)
-              Positioned(
-                bottom: 20,
-                right: 20,
-                child: FloatingActionButton(
-                  mini: true,
-                  backgroundColor: Colors.white24,
-                  elevation: 0,
-                  child: const Icon(Icons.logout, color: Colors.white),
-                  onPressed: () async {
-                    final prefs = await SharedPreferences.getInstance();
-                    await prefs.clear();
-                    if (context.mounted) {
-                      Navigator.pushAndRemoveUntil(
-                        context,
-                        MaterialPageRoute(builder: (context) => const RoleSelectionScreen()),
-                        (route) => false,
-                      );
-                    }
-                  },
-                ),
-              ),
+              // 5. 測試/登出按鈕 (已移除，避免長輩誤觸登出)
             ],
           );
         },

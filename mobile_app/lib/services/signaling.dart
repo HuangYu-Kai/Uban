@@ -170,6 +170,10 @@ class Signaling {
     // 統一監聯 elder-devices-update（後端已統一 emit 此事件名）
     // 響鈴監聽
     socket!.on('call-request', (data) {
+      if (data['senderId'] == socket!.id) {
+        debugPrint('📞 [Signaling] 忽略自己發出的 call-request (SenderId: ${data['senderId']})');
+        return;
+      }
       debugPrint('📞📞📞 [Signaling] ===== 收到 call-request =====');
       debugPrint('📞 [Signaling] data: $data');
       debugPrint('📞 [Signaling] room: ${data['room']}, senderId: ${data['senderId']}, callId: ${data['callId']}');
@@ -185,6 +189,10 @@ class Signaling {
 
     // 取消呼叫監聽
     socket!.on('cancel-call', (data) {
+      if (data['senderId'] == socket!.id) {
+        debugPrint('🔕 [Signaling] 忽略自己發出的 cancel-call (SenderId: ${data['senderId']})');
+        return;
+      }
       debugPrint('🔕 [Signaling] 收到 cancel-call: $data');
       if (onCancelCall != null) onCancelCall!(data['room'], data['senderId'], data['callId']);
     });
@@ -574,19 +582,23 @@ class Signaling {
     }
   }
 
-  Future<void> createOffer({String? targetId, bool isEmergency = false}) async {
+  Future<void> createOffer({String? targetId, bool isEmergency = false, bool useLocalStream = true}) async {
     // ★ 先關閉舊連線，避免通訊通道疊加
     if (peerConnection != null) {
       await peerConnection!.close();
       peerConnection = null;
     }
     _candidateQueue.clear();
-    debugPrint("🚀 [Signaling] Creating WebRTC Offer...");
+    debugPrint("🚀 [Signaling] Creating WebRTC Offer... (useLocalStream: $useLocalStream)");
     _peerSocketId = targetId;
-    await _createPeerConnection(useLocalStream: true);
+    await _createPeerConnection(useLocalStream: useLocalStream);
     
-    // 建立 Offer 時帶入 constraints，確保雙向通訊
-    RTCSessionDescription offer = await peerConnection!.createOffer(_constraints);
+    // 建立 Offer 時帶入 constraints，確保雙向或單向通訊
+    final constraints = useLocalStream 
+        ? _constraints 
+        : {'mandatory': {'OfferToReceiveAudio': true, 'OfferToReceiveVideo': true}};
+    
+    RTCSessionDescription offer = await peerConnection!.createOffer(constraints);
     await peerConnection!.setLocalDescription(offer);
     
     debugPrint("📤 [Signaling] Emitting offer to $targetId");

@@ -12,11 +12,13 @@ import '../../services/api_service.dart';
 class ElderHomeTab extends StatefulWidget {
   final int userId;
   final String userName;
+  final String? roomId;
 
   const ElderHomeTab({
     super.key,
     required this.userId,
     required this.userName,
+    this.roomId,
   });
 
   @override
@@ -930,7 +932,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
       context,
       MaterialPageRoute(
         builder: (context) => ElderScreen(
-          roomId: widget.userId.toString(),
+          roomId: widget.roomId ?? widget.userId.toString(), // ★ 使用正確的房間號
           deviceName: widget.userName,
           autoCall: true,
           isVideoCall: isVideo, // ★ 傳遞語音/視訊模式

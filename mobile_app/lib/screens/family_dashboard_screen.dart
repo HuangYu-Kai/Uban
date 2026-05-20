@@ -5,11 +5,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart' show kIsWeb; // 新增
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
+import 'identification_screen.dart'; // ★ 將原本的 role_selection_screen.dart 改為新的系統入口
 import '../main.dart'; // import callKitDeclineStream
 import '../services/signaling.dart'; 
 import 'device_selection_screen.dart';
 import 'video_call_screen.dart'; 
-import 'role_selection_screen.dart';
 import '../globals.dart';
 
 class FamilyDashboardScreen extends StatefulWidget {
@@ -439,7 +439,7 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> with Widg
               final prefs = await SharedPreferences.getInstance();
               await prefs.clear();
               navigator.pushAndRemoveUntil(
-                MaterialPageRoute(builder: (context) => const RoleSelectionScreen()),
+                MaterialPageRoute(builder: (context) => const IdentificationScreen()),
                 (route) => false,
               );
             },

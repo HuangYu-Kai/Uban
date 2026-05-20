@@ -13,11 +13,13 @@ import 'dart:async';
 class ElderHomeScreen extends StatefulWidget {
   final int userId;
   final String userName;
+  final String? roomId;
 
   const ElderHomeScreen({
     super.key,
     required this.userId,
     required this.userName,
+    this.roomId,
   });
 
   @override
@@ -41,11 +43,18 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
     super.initState();
     isAppReady = true;
 
-    // ★ 長輩端進入主畫面後，自動連入信號伺服器 (上線)
-    Signaling().connect(widget.userId.toString(), 'elder',
+    // ★ 核心修復：強制使用長輩的專屬配對房間號 (elder_id)，確保兩端絕對一致
+    final roomToJoin = widget.roomId ?? widget.userId.toString();
+    Signaling().connect(roomToJoin, 'elder',
         userId: widget.userId, deviceName: widget.userName);
 
     pendingAcceptedCall.addListener(_onPendingCallChanged);
+
+    // ★ 核心：監聽一般來電請求 (由家屬端主動發起)
+    Signaling().onCallRequest = (roomId, senderId, callId) {
+      if (!mounted) return;
+      _showIncomingCallDialog(roomId, senderId, callId);
+    };
 
     // ★ 核心：監聽主動式心跳 (Heartbeat)
     Signaling().onHeartbeatMessage = (message) {
@@ -53,6 +62,66 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
         _handleProactiveMessage(message);
       }
     };
+  }
+
+  bool _isIncomingCallDialogOpen = false;
+
+  void _showIncomingCallDialog(String roomId, String senderId, String? callId) {
+    if (_isIncomingCallDialogOpen) return;
+    _isIncomingCallDialogOpen = true;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.phone_in_talk, color: Colors.green, size: 28),
+              SizedBox(width: 12),
+              Text('家屬來電'),
+            ],
+          ),
+          content: const Text('您的家人正在呼叫您！', style: TextStyle(fontSize: 18)),
+          backgroundColor: Colors.green.shade50,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Signaling().sendCallBusy(roomId);
+                Navigator.of(dialogContext).pop();
+                _isIncomingCallDialogOpen = false;
+              },
+              child: const Text('拒接', style: TextStyle(color: Colors.red, fontSize: 16)),
+            ),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+                _isIncomingCallDialogOpen = false;
+                
+                // 接聽後跳轉到通話畫面
+                Signaling().sendCallAccept(senderId, callId: callId);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => ElderScreen(
+                      roomId: widget.roomId ?? widget.userId.toString(),
+                      deviceName: widget.userName,
+                    ),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.videocam),
+              label: const Text('接聽', style: TextStyle(fontSize: 16)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
+        );
+      },
+    ).then((_) => _isIncomingCallDialogOpen = false);
   }
 
   final FlutterTts _flutterTts = FlutterTts();
@@ -98,6 +167,8 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
   void dispose() {
     isAppReady = false;
     pendingAcceptedCall.removeListener(_onPendingCallChanged);
+    Signaling().onHeartbeatMessage = null;
+    Signaling().onCallRequest = null;
     super.dispose();
   }
 
@@ -138,6 +209,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
               ElderHomeTab(
                 userId: widget.userId,
                 userName: widget.userName,
+                roomId: widget.roomId, // ★ 新增傳遞 roomId
               ),
               ElderChatTab(
                 key: _chatTabKey,

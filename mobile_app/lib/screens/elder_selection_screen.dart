@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
+import '../services/elder_manager.dart';
 import 'family_main_screen.dart';
 import 'caregiver_pairing_screen.dart';
 
@@ -50,14 +51,31 @@ class _ElderSelectionScreenState extends State<ElderSelectionScreen> {
     // ★ 新增：儲存 elder_id 作為房間號（長輩端用 elder_id 加入房間）
     await prefs.setString('selected_elder_room_id', elder['elder_id']);
 
+    // 同步更新 ElderManager
+    try {
+      final elderManager = ElderManager();
+      if (!elderManager.isInitialized) {
+        await elderManager.initialize(userId: widget.userId);
+      }
+      final elderObj = elderManager.pairedElders.firstWhere((e) => e.id == elder['id']);
+      await elderManager.setCurrentElder(elderObj);
+    } catch (e) {
+      debugPrint('ElderManager sync failed: $e');
+    }
+
     if (!mounted) return;
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (context) =>
-            FamilyMainScreen(userId: widget.userId, userName: widget.userName),
-      ),
-    );
+    
+    if (Navigator.canPop(context)) {
+      Navigator.pop(context, true);
+    } else {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) =>
+              FamilyMainScreen(userId: widget.userId, userName: widget.userName),
+        ),
+      );
+    }
   }
 
   @override

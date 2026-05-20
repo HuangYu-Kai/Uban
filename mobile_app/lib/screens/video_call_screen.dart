@@ -94,9 +94,20 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       _signaling.createOffer(targetId: accepterId, isEmergency: widget.isEmergency);
     };
 
-    // ★ 延遲初始化媒體：只在用戶點擊「開啟鏡頭」時才開啟
-    // 避免一進通話就消耗資源和洩露隱私
-    // await _signaling.openUserMedia(_localRenderer);  // 已移除
+    // ★ 初始化媒體：通話必須有音軌才能建立 WebRTC 連線
+    // 我們先開啟媒體，但預設將鏡頭的軌道設為停用 (黑屏)，保護隱私
+    try {
+      await _signaling.openUserMedia(_localRenderer);
+      _mediaInitialized = true;
+      if (_signaling.localStream != null) {
+        final videoTracks = _signaling.localStream!.getVideoTracks();
+        for (var track in videoTracks) {
+          track.enabled = !_isCameraOff;
+        }
+      }
+    } catch (e) {
+      debugPrint("❌ Failed to initialize media: $e");
+    }
 
     // ★ 自動讀取使用者 ID 與名稱
     final prefs = await SharedPreferences.getInstance();
@@ -116,9 +127,22 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     if (widget.isIncomingCall) {
       _signaling.sendCallAccept(widget.targetSocketId!);
     } else if (widget.autoStart) {
-      // 如果是主動呼叫，先發送 Request 給對方點擊接聽
-      // 等待 onCallAcceptedByRemote 被觸發後才會執行 createOffer
-      _signaling.sendCallRequest(widget.roomId, role: 'family');
+      Future.microtask(() async {
+        int retries = 50; // 最多等待 5 秒
+        while (_signaling.socket?.connected != true && retries > 0) {
+          await Future.delayed(const Duration(milliseconds: 100));
+          retries--;
+        }
+        if (!mounted) return;
+
+        if (widget.isEmergency) {
+          // ★ 緊急通話：直接發送 Offer，對方 APP 將強制喚醒並接聽
+          _signaling.createOffer(isEmergency: true);
+        } else {
+          // 如果是主動呼叫，先發送 Request 給對方點擊接聽
+          _signaling.sendCallRequest(widget.roomId, role: 'family');
+        }
+      });
     }
   }
 
