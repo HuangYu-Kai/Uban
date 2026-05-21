@@ -56,7 +56,7 @@ class Signaling {
   String? _currentRoomId;
   String? _peerSocketId;
   String? _currentCallId; // 追蹤當前通話 ID，確保 hangUp 時能傳給後端
-  int? _userId; // 新增：儲存當前使用者的資料庫 ID
+  dynamic _userId; // 新增：儲存當前使用者的資料庫 ID
   String? _role; // 新增：儲存當前連線的角色
   bool _isCreatingOffer = false; // ⭐ 防重複呼叫 createOffer
   final List<RTCIceCandidate> _candidateQueue = [];
@@ -100,7 +100,7 @@ class Signaling {
     });
   }
 
-  void connect(String roomId, String role, {int? userId, String deviceName = 'Unknown', String deviceMode = 'comm', String? fcmToken}) {
+  void connect(String roomId, String role, {dynamic userId, String deviceName = 'Unknown', String deviceMode = 'comm', String? fcmToken}) {
     _currentRoomId = roomId;
     _userId = userId;
     _role = role;
@@ -134,7 +134,7 @@ class Signaling {
     }
   }
 
-  Future<void> _asyncJoin(String roomId, String role, String deviceName, String deviceMode, {int? userId, String? fcmToken}) async {
+  Future<void> _asyncJoin(String roomId, String role, String deviceName, String deviceMode, {dynamic userId, String? fcmToken}) async {
     String? effectiveToken = fcmToken;
     if (effectiveToken == null && !kIsWeb) {
       try {
@@ -414,7 +414,7 @@ class Signaling {
     return accepted;
   }
 
-  void _emitJoin(String room, String role, String name, String mode, {int? userId, String? fcmToken}) async {
+  void _emitJoin(String room, String role, String name, String mode, {dynamic userId, String? fcmToken}) async {
     debugPrint("📢 [Signaling] Emitting join: $room ($role) as $name (UID: $userId)");
     
     // ★ 先加入房間，不要被 FCM token 阻塞（避免卡住 join）
@@ -445,9 +445,9 @@ class Signaling {
     });
   }
 
-  void joinRoom(String roomId) {
+  void joinRoom(String roomId, {dynamic userId}) {
     if (socket != null && socket!.connected) {
-      _emitJoin(roomId, 'family', 'Dashboard_Listener', 'listener');
+      _emitJoin(roomId, 'family', 'Dashboard_Listener', 'listener', userId: userId ?? _userId);
     } else {
       _pendingRooms.add(roomId);
     }

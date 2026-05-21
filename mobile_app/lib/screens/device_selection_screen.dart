@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/signaling.dart';
 import 'video_call_screen.dart';
 
@@ -38,10 +39,12 @@ class _DeviceSelectionScreenState extends State<DeviceSelectionScreen> {
     });
   }
 
-  void _connect() {
+  void _connect() async {
+    final prefs = await SharedPreferences.getInstance();
+    final int? actualUserId = prefs.getInt('caregiver_id');
     // ★ 使用新的房間命名格式進行設備監聽
     final roomId = 'comm_elder_${widget.elderId}';
-    _signaling.connect(roomId, 'family', deviceName: 'FamilySelector');
+    _signaling.connect(roomId, 'family', userId: actualUserId, deviceName: 'FamilySelector');
     _signaling.onElderDevicesUpdate = (devices) {
       if (mounted) {
         setState(() {

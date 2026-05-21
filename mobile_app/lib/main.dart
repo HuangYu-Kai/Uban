@@ -280,14 +280,19 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         if (navigatorKey.currentState != null) {
           navigatorKey.currentState?.popUntil((route) => route.isFirst);
         }
-        _sendDeclineEvent(roomId, senderId);
+        _sendDeclineEvent(roomId, senderId, callId: callId);
       }
     });
   }
 
-  void _sendDeclineEvent(String roomId, String senderId) {
+  void _sendDeclineEvent(String roomId, String senderId, {String? callId}) async {
     debugPrint(
-        "❌ Call Declined from CallKit, sending call-busy to $senderId...");
+        "❌ Call Declined from CallKit, sending call-busy to $senderId (callId: $callId)...");
+    
+    final prefs = await SharedPreferences.getInstance();
+    final int? userId = prefs.getInt('caregiver_id');
+    final String? role = prefs.getString('user_role') ?? 'family';
+    
     final io.Socket socket = io.io(
         sig.Signaling.serverUrl,
         io.OptionBuilder()
@@ -299,9 +304,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     socket.connect();
     socket.onConnect((_) {
       debugPrint('✅ Socket 連線成功 (Main-Decline Handler)');
-      socket.emit('join',
-          {'room': roomId, 'role': 'family', 'deviceName': 'Decline_Handler'});
-      socket.emit('call-busy', {'targetId': senderId});
+      socket.emit('join', {
+        'room': roomId,
+        'role': role,
+        'deviceName': 'Decline_Handler',
+        'userId': userId,
+      });
+      socket.emit('call-busy', {'targetId': senderId, 'callId': callId});
 
       // Delay to ensure the event is fired, then disconnect to clean up
       Future.delayed(const Duration(milliseconds: 500), () {
