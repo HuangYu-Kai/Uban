@@ -32,33 +32,52 @@ Uban 是一套專為銀髮族設計的 AI 陪伴照護系統，包含：
 
 > ⚠️ **雙軌制設計**：信令 (TCP/WSS) 與媒體中繼 (UDP) 分離在不同主機上，**禁止合併**。
 
-```
-                        ┌─────────────────────────────────────────────────────┐
-                        │           第一軌：信令伺服器 (Signaling)              │
-                        │  Tailscale Funnel → Fedora 本機 → FastAPI+SocketIO  │
-                        │  https://localhost-0.tail5abf5e.ts.net              │
-                        │  協定：TCP / WSS（僅傳 SDP、ICE Candidate 文字）      │
-                        └────────────────────┬────────────────────────────────┘
-                                             │
-┌─────────────────┐      Socket.IO/WSS       │       Socket.IO/WSS      ┌──────────────────┐
-│   長輩端 App    │◄════════════════════════►│◄═══════════════════════►│   家屬端 App     │
-│   (Flutter)     │                          │                          │   (Flutter/Web)  │
-└────────┬────────┘                          │                          └────────┬─────────┘
-         │                                   │                                   │
-         │          UDP Media Stream          │                                   │
-         │     ┌─────────────────────────────────────────────────────────┐       │
-         └────►│           第二軌：媒體中繼伺服器 (TURN/STUN)              │◄──────┘
-               │  Oracle Cloud (日本大阪) → Coturn                       │
-               │  turn:152.69.196.5:3478  (UDP, Port 49152-65535)       │
-               │  協定：UDP（負責轉發實際影音串流）                        │
-               └───────────────────────────┬───────────────────────────┘
-                                           │
-                              ┌─────────────┴─────────────┐
-                              ▼                           ▼
-                     ┌───────────────┐           ┌───────────────┐
-                     │  Ollama AI    │           │   MySQL DB    │
-                     │(gemma4:e4b..) │           │               │
-                     └───────────────┘           └───────────────┘
+```mermaid
+flowchart TD
+    %% Define Styles & Classes
+    classDef client fill:#e8f4fd,stroke:#2196f3,stroke-width:2px,color:#0d47a1
+    classDef signal fill:#e8f5e9,stroke:#4caf50,stroke-width:2px,color:#1b5e20
+    classDef media fill:#fff3e0,stroke:#ff9800,stroke-width:2px,color:#e65100
+    classDef backend fill:#f3e5f5,stroke:#9c27b0,stroke-width:2px,color:#4a148c
+
+    %% Subgraphs
+    subgraph Clients ["📱 客戶端 App"]
+        Elder["長輩端 App<br/>(Flutter)"]:::client
+        Family["家屬端 App<br/>(Flutter / Web)"]:::client
+    end
+
+    subgraph Track1 ["🟢 第一軌：信令伺服器 (Signaling)"]
+        SignalingServer["FastAPI + Socket.IO Server<br/>(Fedora 本機 + Tailscale Funnel)<br/>https://localhost-0.tail5abf5e.ts.net<br/>協定：TCP / WSS<br/>(僅交換 SDP 與 ICE Candidate 文字)"]:::signal
+    end
+
+    subgraph Track2 ["🟠 第二軌：媒體中繼伺服器 (TURN/STUN)"]
+        TurnServer["Coturn TURN/STUN Server<br/>(Oracle Cloud 日本大阪)<br/>turn:152.69.196.5:3478<br/>協定：UDP (Port 49152-65535)<br/>(負責轉發實際影音媒體串流)"]:::media
+    end
+
+    subgraph BackendServices ["⚡ 後端支援服務"]
+        Ollama["Ollama AI 引擎<br/>(gemma4:e4b-it-q4_K_M)"]:::backend
+        MySQL["MySQL 資料庫<br/>(uban)"]:::backend
+        Pinecone["Pinecone 向量庫<br/>(長期記憶)"]:::backend
+    end
+
+    %% Connections
+    %% Track 1: Signaling
+    Elder <-->|WSS / Socket.IO| SignalingServer
+    Family <-->|WSS / Socket.IO| SignalingServer
+
+    %% Track 2: Media
+    Elder <-->|UDP WebRTC Media Stream| TurnServer
+    Family <-->|UDP WebRTC Media Stream| TurnServer
+
+    %% Backend dependencies (Connected from Signaling Server only)
+    SignalingServer -->|LLM & Tool Calling| Ollama
+    SignalingServer -->|CRUD 讀寫| MySQL
+    SignalingServer -->|長期記憶檢索/儲存| Pinecone
+
+    %% Link styles
+    linkStyle 0,1 stroke:#4caf50,stroke-width:2px;
+    linkStyle 2,3 stroke:#ff9800,stroke-width:2px;
+    linkStyle 4,5,6 stroke:#9c27b0,stroke-width:2px;
 ```
 
 ### 為什麼要「雙軌制」？
@@ -75,6 +94,7 @@ Uban 是一套專為銀髮族設計的 AI 陪伴照護系統，包含：
 | 信令伺服器 (FastAPI) | Signaling | `https://localhost-0.tail5abf5e.ts.net` | TCP/WSS |
 | 媒體中繼 (Coturn) | TURN/STUN | `turn:152.69.196.5:3478` | UDP |
 | Ollama AI | AI Engine | `https://boyo-desktop.tail531c8a.ts.net` | TCP |
+| Pinecone Index | Vector DB | `uban` (768 dim, cosine) | TCP |
 
 ---
 
@@ -143,6 +163,7 @@ Uban 是一套專為銀髮族設計的 AI 陪伴照護系統，包含：
 
 ### 三、長輩端 App (Flutter)
 
+- **魚你聊聊 (原禪意池塘)**：非壓力型 AI 互動與溫馨通知池塘。長輩可透過點擊游動的錦鯉讀取訊息，並可連續點擊 5 次空白處觸發 SOS 連擊求救，支援基於 Pinecone RAG 長期記憶的「落葉話題機制」。
 - **語音對話**：STT / EdgeTTS、連續對話、打斷機制（CosyVoice 測試中）
 - **沉浸式新聞播放器 2.0**：支援兩段式垂直翻頁、卡拉 OK 式「瞬移置中」同步字幕、與長輩友善的大字體排版
 - **2D 賽博桌寵皮皮**：具備「拎起掙扎」體感互動、全螢幕自由行走、及與步數連動的「活力/慵懶/疲勞」心情系統。支援 Hero 動畫轉場至專屬個人屋。
@@ -226,7 +247,8 @@ Uban/
 │       │   ├── elder_screen.dart        # 長輩端通話
 │       │   ├── video_call_screen.dart   # 家屬端通話
 │       │   ├── family_main_screen.dart  # 家屬主畫面 (來電監聽)
-│       │   └── elder_tabs/             # 長輩端分頁
+│       │   ├── elder_tabs/             # 長輩端分頁
+│       │   └── zen_pond/               # 魚你聊聊 UI (原禪意池塘)
 │       └── globals.dart     # 全域狀態
 ├── webrtc_test.html         # 瀏覽器版 WebRTC 測試工具 (v1.1)
 ├── test_call_simulator.py   # Socket.IO 信令測試腳本
@@ -373,6 +395,13 @@ void initPedometer() {
 ---
 
 ## 更新日誌
+### 2026-05-21 🐟 「魚你聊聊」正式更名與後端測試碼大掃除
+**將長輩端陪伴池塘命名為「魚你聊聊」，並清理 uban-api 中所有多餘的測試程式碼與臨時腳本**
+
+#### 🚀 核心更新
+- **正式更名為「魚你聊聊」**：使用好記親切的諧音梗「魚你聊聊」 (Yuni Chat) 替換原本文謅謅的「禪意池塘 (Zen Pond)」，並重構與更新所有前端說明手冊 (`docs/YUNI_CHAT_MANUAL.md`)、系統架構圖及相關開發文件。
+- **後端冗餘測試清理**：精簡後端 `uban-api/tests` 與 `scratch` 目錄，刪除 30 多個 Legacy 和臨時測試腳本，僅保留 6 個核心維護測試檔案，並同步更新 CLAUDE.md 中的測試套件清單。
+- **語音與推播鏈路整合**：優化 Socket.IO `new-pond-leaf` 事件監聽與語音播報機制，確保長輩在「魚你聊聊」中能即時接收由 Pinecone 檢索生成的長期記憶黃色落葉話題。
 
 ### 2026-05-19 📍 高速移動背景判斷 (Silent Mode)
 **GPS 追蹤增強：自動偵測高速移動，背景靜默暫停記錄無需通知用戶**
@@ -397,7 +426,6 @@ void initPedometer() {
 - `mobile_app/lib/screens/elder_tabs/elder_profile_tab.dart`：修改 `_TrackingStateChip.build()` 邏輯
 
 ---
-
 ### 2026-04-21 🐖 小豬互動與心情系統全面升級
 **將桌面小豬轉化為具備「體感」與「健康感應」的數位伴侶**
 
@@ -706,6 +734,7 @@ void initPedometer() {
 |------|------|----------|
 | AI 聊天 | 語音對話主介面 | `mobile_app/lib/screens/ai_chat_screen.dart` |
 | 重設計聊天 | 新版 UI 聊天介面 | `mobile_app/lib/screens/redesigned_ai_chat_screen.dart` |
+| 魚你聊聊 | 🐟 非壓力型 AI 互動與通知池塘 | `mobile_app/lib/screens/zen_pond/zen_pond_screen.dart` |
 | 長輩首頁 | 主功能選單 | `mobile_app/lib/screens/elder_home_screen.dart` |
 | 長輩 Tabs | 分頁導航 | `mobile_app/lib/screens/elder_tabs/` |
 | 天氣頁面 | 天氣資訊顯示 | `mobile_app/lib/screens/weather_screen.dart` |

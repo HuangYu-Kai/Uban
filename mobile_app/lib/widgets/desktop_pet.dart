@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/game_service.dart';
-import '../screens/pet_interaction_screen.dart';
+import '../screens/pet_profile_screen.dart';
 
 enum PetState { idle, walking, sleeping, happy, pickedUp }
 
@@ -301,7 +301,7 @@ class DesktopPetState extends State<DesktopPet> {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => PetInteractionScreen(
+          builder: (context) => PetProfileScreen(
             userId: widget.userId,
             steps: _steps,
             level: _level,

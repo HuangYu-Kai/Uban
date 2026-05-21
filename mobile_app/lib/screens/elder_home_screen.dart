@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'elder_tabs/elder_home_tab.dart';
-import 'elder_tabs/elder_chat_tab.dart';
+import 'zen_pond/zen_pond_screen.dart';
 import 'elder_tabs/elder_profile_tab.dart';
 import '../globals.dart';
 import 'elder_screen.dart';
@@ -26,10 +26,12 @@ class ElderHomeScreen extends StatefulWidget {
 
 class _ElderHomeScreenState extends State<ElderHomeScreen> {
   int _selectedIndex = 0; // 0: Home/Calendar, 1: Chat, 2: Profile/Settings
-  final GlobalKey<ElderChatTabState> _chatTabKey =
-      GlobalKey<ElderChatTabState>();
+  final GlobalKey<ZenPondScreenState> _zenPondKey = GlobalKey<ZenPondScreenState>();
   // ★ 新增：用於控制小豬
   final GlobalKey<DesktopPetState> _petKey = GlobalKey<DesktopPetState>();
+
+  // ★ 新增：對話 Overlay 顯示狀態，用以動態隱藏導覽列防止重合
+  bool _isZenPondOverlayVisible = false;
 
   // ★ 新增：投餵動畫列表
   
@@ -85,8 +87,8 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
       }
     }
 
-    // 4. 通知 ChatTab 更新
-    _chatTabKey.currentState?.addAIMessage(displayText);
+    // 4. 通知 ZenPond 更新，觸發錦鯉游入動畫
+    _zenPondKey.currentState?.addNotification(displayText);
 
     // 5. 正式的語音朗讀
     await _flutterTts.setPitch(1.0); // 恢復正常音調
@@ -139,10 +141,13 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
                 userId: widget.userId,
                 userName: widget.userName,
               ),
-              ElderChatTab(
-                key: _chatTabKey,
-                userId: widget.userId,
-                onBackToHome: () => setState(() => _selectedIndex = 0),
+              ZenPondScreen(
+                key: _zenPondKey,
+                onOverlayStateChanged: (isVisible) {
+                  setState(() {
+                    _isZenPondOverlayVisible = isVisible;
+                  });
+                },
               ),
               ElderProfileTab(
                 userId: widget.userId,
@@ -158,11 +163,13 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
               bottomBarHeight: 110,
               onStepsChanged: (steps) => checkExpeditionDiscovery(steps),
             ),
-          // 自定義浮動導覽列
-          Positioned(
+          // 自定義浮動導覽列 (長輩對話與落葉木牌開啟時，平滑滑落隱藏以防遮擋)
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
             left: 0,
             right: 0,
-            bottom: 0,
+            bottom: _isZenPondOverlayVisible ? -100 : 0,
             child: _buildFloatingNavBar(),
           ),
         ],

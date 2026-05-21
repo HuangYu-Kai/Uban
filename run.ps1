@@ -50,6 +50,7 @@ param(
     [switch]$Start,
     [switch]$Check,
     [switch]$Clean,
+    [switch]$Repair,
     [string]$ServerUrl
 )
 
@@ -59,7 +60,7 @@ $DEFAULT_OLLAMA_URL = "boyo-desktop.tail531c8a.ts.net"
 $root = $PSScriptRoot
 $mobileAppDir = "$root\mobile_app"
 # 開發測試用：當 App 本機登入資料遺失時，自動回填長輩登入狀態
-$DEV_BYPASS_LOGIN = "false"
+$DEV_BYPASS_LOGIN = "true"
 $DEV_BYPASS_ROLE = "elder"
 $DEV_BYPASS_USER_ID = "1"
 $DEV_BYPASS_USER_NAME = "TestElder"
@@ -244,8 +245,7 @@ function Start-QuickLaunch {
     $ollamaOk = Test-Ollama $DEFAULT_OLLAMA_URL
     
     if (-not $backendOk -or -not $ollamaOk) {
-        $continue = Read-Host "    是否繼續？[y/N]"
-        if ($continue -ne "y" -and $continue -ne "Y") { exit }
+        Write-Warning "連線檢查未通過，但將繼續啟動前端..."
     }
     
     # 2. 檢測設備狀態
@@ -449,6 +449,49 @@ function Start-Cleanup {
     }
 }
 
+function Repair-WorkspaceHistory {
+    Write-Host ""
+    Write-Host "==========================================" -ForegroundColor Yellow
+    Write-Host "         🧹 修復左側歷史欄 (清理大檔案)" -ForegroundColor Yellow
+    Write-Host "==========================================" -ForegroundColor Yellow
+    Write-Host ""
+    
+    $conversationsDir = "$env:USERPROFILE\.gemini\antigravity\conversations"
+    $backupDir = "$env:USERPROFILE\.gemini\antigravity\conversations_backup"
+    
+    if (-not (Test-Path $conversationsDir)) {
+        Write-Error "找不到對話紀錄目錄: $conversationsDir"
+        return
+    }
+    
+    # 建立備份資料夾
+    if (-not (Test-Path $backupDir)) {
+        New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
+    }
+    
+    # 尋找大於 1MB 且最近 10 分鐘內未被修改的 .pb 檔案（避免移到當前對話）
+    $largeFiles = Get-ChildItem -Path $conversationsDir -Filter "*.pb" | Where-Object { $_.Length -gt 1MB -and $_.LastWriteTime -lt (Get-Date).AddMinutes(-10) }
+    
+    if (-not $largeFiles) {
+        Write-Success "未偵測到大於 1MB 的歷史紀錄檔，目前狀態正常！"
+        return
+    }
+    
+    Write-Warning "偵測到以下可能導致左側欄崩潰的大檔案（大於 1MB）："
+    $largeFiles | Format-Table Name, @{Name="Size(MB)";Expression={[Math]::Round($_.Length/1MB, 2)}} -AutoSize
+    
+    $confirm = Read-Host "    是否將這些大檔案移動到備份目錄以修復左側欄？[y/N]"
+    if ($confirm -eq "y" -or $confirm -eq "Y") {
+        foreach ($file in $largeFiles) {
+            Move-Item -Path $file.FullName -Destination $backupDir -Force
+            Write-Success "已備份並移出: $($file.Name)"
+        }
+        Write-Success "修復完成！請重新啟動 Antigravity 編輯器。"
+    } else {
+        Write-Info "已取消操作。"
+    }
+}
+
 # --- 主選單 ---
 function Show-Menu {
     Clear-Host
@@ -462,13 +505,14 @@ function Show-Menu {
     Write-Host "  [3] 🧹 清理 Flutter 進程"
     Write-Host "  [4] ⚙️  自訂伺服器網址"
     Write-Host "  [5] 📱 熱重啟實體設備 (雙設備模式)"
+    Write-Host "  [6] 🧹 修復左側歷史欄 (清理過大歷史對話檔)"
     Write-Host "  [q] 退出"
     Write-Host ""
     Write-Host "  當前後端: https://$DEFAULT_SERVER_URL" -ForegroundColor Cyan
     Write-Host "  當前 Ollama: https://$DEFAULT_OLLAMA_URL" -ForegroundColor Cyan
     Write-Host ""
     
-    $choice = Read-Host "請選擇 [1-5/q]"
+    $choice = Read-Host "請選擇 [1-6/q]"
     
     switch ($choice) {
         "1" { Start-QuickLaunch }
@@ -479,6 +523,7 @@ function Show-Menu {
             Start-QuickLaunch $customUrl
         }
         "5" { Start-HotRestartPhysical }
+        "6" { Repair-WorkspaceHistory; Read-Host "按任意鍵返回選單..." }
         "q" { Write-Host "Bye! 👋"; exit 0 }
         "Q" { Write-Host "Bye! 👋"; exit 0 }
         default { Write-Error "無效選項"; Start-Sleep -Seconds 1; Show-Menu }
@@ -494,6 +539,8 @@ if ($Start) {
     Start-HealthCheck $ServerUrl
 } elseif ($Clean) {
     Start-Cleanup
+} elseif ($Repair) {
+    Repair-WorkspaceHistory
 } else {
     Show-Menu
 }

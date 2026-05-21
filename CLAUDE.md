@@ -28,6 +28,54 @@ FastAPI 後端 (uban-api/ 獨立 Repo)
 └── services/ollama_service.py    ← AI 引擎 (Gemma 4)
 ```
 
+## 系統架構
+
+> ⚠️ **雙軌制設計**：信令 (TCP/WSS) 與媒體中繼 (UDP) 分離在不同主機上，**禁止合併**。
+
+```
+                        ┌─────────────────────────────────────────────────────┐
+                        │           第一軌：信令伺服器 (Signaling)              │
+                        │  Tailscale Funnel → Fedora 本機 → FastAPI+SocketIO  │
+                        │  https://localhost-0.tail5abf5e.ts.net              │
+                        │  協定：TCP / WSS（僅傳 SDP、ICE Candidate 文字）      │
+                        └────────────────────┬────────────────────────────────┘
+                                             │
+┌─────────────────┐      Socket.IO/WSS       │       Socket.IO/WSS      ┌──────────────────┐
+│   長輩端 App    │◄════════════════════════►│◄═══════════════════════►│   家屬端 App     │
+│   (Flutter)     │                          │                          │   (Flutter/Web)  │
+└────────┬────────┘                          │                          └────────┬─────────┘
+         │                                   │                                   │
+         │          UDP Media Stream          │                                   │
+         │     ┌─────────────────────────────────────────────────────────┐       │
+         └────►│           第二軌：媒體中繼伺服器 (TURN/STUN)              │◄──────┘
+               │  Oracle Cloud (日本大阪) → Coturn                       │
+               │  turn:152.69.196.5:3478  (UDP, Port 49152-65535)       │
+               │  協定：UDP（負責轉發實際影音串流）                        │
+               └───────────────────────────┬───────────────────────────┘
+                                           │
+                              ┌─────────────┴─────────────┐
+                              ▼                           ▼
+                     ┌───────────────┐           ┌───────────────┐
+                     │  Ollama AI    │           │   MySQL DB    │
+                     │(gemma4:e4b..) │           │               │
+                     └───────────────┘           └───────────────┘
+```
+
+### 為什麼要「雙軌制」？
+
+| 需求 | 限制 | 解法 |
+|------|------|------|
+| 開鏡頭需要 HTTPS 憑證 | Tailscale Funnel 免費提供 HTTPS，但**只支援 TCP** | 信令走 Tailscale (TCP/WSS) |
+| 即時影像需走 UDP | TCP 封包檢查會嚴重卡頓 | 媒體走 Oracle 公網 (UDP) |
+
+### 連線資訊
+
+| 服務 | 類型 | 地址 | 協定 |
+|------|------|------|------|
+| 信令伺服器 (FastAPI) | Signaling | `https://localhost-0.tail5abf5e.ts.net` | TCP/WSS |
+| 媒體中繼 (Coturn) | TURN/STUN | `turn:152.69.196.5:3478` | UDP |
+| Ollama AI | AI Engine | `https://boyo-desktop.tail531c8a.ts.net` | TCP |
+
 ## 絕對禁止 (Hard Rules)
 
 1. **不要硬編碼 IP** — 使用 `--dart-define=SERVER_IP=`

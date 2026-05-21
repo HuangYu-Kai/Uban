@@ -139,4 +139,21 @@ class GameService {
       throw Exception('Failed to save steps: ${response.body}');
     }
   }
+
+  Future<Map<String, dynamic>> updatePetStatus(String elderId, int hunger, int intimacy) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/update_pet_status'),
+      headers: {'Content-Type': 'application/json'},
+      body: json.encode({
+        'elder_id': elderId,
+        'hunger': hunger,
+        'intimacy': intimacy,
+      }),
+    );
+    if (response.statusCode == 200) {
+      return json.decode(response.body);
+    } else {
+      throw Exception('Failed to update pet status: ${response.body}');
+    }
+  }
 }

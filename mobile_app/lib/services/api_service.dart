@@ -212,7 +212,7 @@ class ApiService {
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({'user_id': userId, 'message': message}),
           )
-          .timeout(const Duration(seconds: 30)); // AI 回應需要更長時間
+          .timeout(const Duration(seconds: 60)); // AI 回應需要更長時間，設為 60 秒
       return _safeDecode(response);
     } on TimeoutException {
       return {'status': 'error', 'message': 'AI 回應逾時，請稍後再試'};
@@ -229,7 +229,7 @@ class ApiService {
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({'user_id': userId, 'message': context}),
           )
-          .timeout(const Duration(seconds: 15));
+          .timeout(const Duration(seconds: 60)); // 設為 60 秒以容納模型生成時間
       return _safeDecode(response);
     } catch (e) {
       return {'status': 'error', 'message': '網路連線失敗: $e'};
@@ -496,7 +496,7 @@ class ApiService {
     try {
       final response = await http
           .get(Uri.parse('$baseUrl/ai/daily-suggestions/$elderId'))
-          .timeout(const Duration(seconds: 15));
+          .timeout(const Duration(seconds: 60)); // 設為 60 秒以容納模型生成時間
       return _safeDecode(response);
     } on TimeoutException {
       return {'status': 'error', 'message': '獲取建議逾時，請稍後再試'};
