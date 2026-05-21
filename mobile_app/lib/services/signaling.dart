@@ -417,41 +417,31 @@ class Signaling {
   void _emitJoin(String room, String role, String name, String mode, {int? userId, String? fcmToken}) async {
     debugPrint("📢 [Signaling] Emitting join: $room ($role) as $name (UID: $userId)");
     
-    // ★ Bug: Web 版不支援 FirebaseMessaging.instance.getToken() 若未正確設定 VAPID
-    // 且 Web 版通訊多在前景，暫不需要 FCM 推播。
-    if (kIsWeb) {
-      socket!.emit('join', {
-        'room': room, 
-        'role': role, 
-        'deviceName': name, 
-        'deviceMode': mode,
-        'userId': userId,
-        'fcmToken': fcmToken
-      });
-      return;
-    }
+    // ★ 先加入房間，不要被 FCM token 阻塞（避免卡住 join）
+    socket!.emit('join', {
+      'room': room, 
+      'role': role, 
+      'deviceName': name, 
+      'deviceMode': mode,
+      'userId': userId,
+      'fcmToken': fcmToken
+    });
+
+    // Web 端不需要 FCM token 更新
+    if (kIsWeb) return;
 
     // Non-blocking FCM token retrieval (Mobile Only)
     FirebaseMessaging.instance.getToken().then((token) {
-      if (token != null) debugPrint("🔔 [Signaling] FCM Token retrieved: ${token.substring(0, 8)}...");
-      socket!.emit('join', {
-        'room': room, 
-        'role': role, 
-        'deviceName': name, 
-        'deviceMode': mode,
-        'userId': userId,
-        'fcmToken': token ?? fcmToken
-      });
+      if (token == null) return;
+      debugPrint("🔔 [Signaling] FCM Token retrieved: ${token.substring(0, 8)}...");
+      if (socket != null && socket!.connected) {
+        socket!.emit('update-fcm-token', {
+          'room': room,
+          'token': token
+        });
+      }
     }).catchError((e) {
-      debugPrint("⚠️ [Signaling] FCM Token failed: $e, joining without token.");
-      socket!.emit('join', {
-        'room': room, 
-        'role': role, 
-        'deviceName': name, 
-        'deviceMode': mode,
-        'userId': userId,
-        'fcmToken': fcmToken
-      });
+      debugPrint("⚠️ [Signaling] FCM Token failed: $e");
     });
   }
 
