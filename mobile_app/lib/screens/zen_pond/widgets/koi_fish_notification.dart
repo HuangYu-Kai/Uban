@@ -358,6 +358,7 @@ class _KoiFishNotificationState extends State<KoiFishNotification> with SingleTi
       top: posY - (fishHeight * 0.75),  
       child: GestureDetector(
         onTap: widget.onTap,
+        onTapDown: (_) {}, // 攔截並消耗 tap down 事件，防止觸發背景漣漪與語音對話
         behavior: HitTestBehavior.opaque,
         child: AnimatedBuilder(
           animation: _swimController,

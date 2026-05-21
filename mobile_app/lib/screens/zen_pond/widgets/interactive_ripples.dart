@@ -51,19 +51,19 @@ class _InteractiveRipplesState extends State<InteractiveRipples> with SingleTick
     super.dispose();
   }
 
-  void _addRipple(PointerDownEvent event) {
+  void _addRippleAt(Offset localPosition) {
     if (!widget.isEnabled) return;
     setState(() {
-      _ripples.add(RippleInfo(position: event.localPosition));
+      _ripples.add(RippleInfo(position: localPosition));
     });
     widget.onTap(); // 觸發 controller 的邏輯 (例如 SOS 計數)
   }
 
   @override
   Widget build(BuildContext context) {
-    return Listener(
+    return GestureDetector(
       behavior: HitTestBehavior.translucent,
-      onPointerDown: _addRipple,
+      onTapDown: (details) => _addRippleAt(details.localPosition),
       child: Stack(
         children: [
           widget.child,

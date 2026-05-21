@@ -15,6 +15,7 @@ import 'widgets/lotus_leaf_card.dart';
 import 'widgets/falling_leaf_message.dart';
 import 'widgets/leaf_message_card.dart';
 import '../../services/api_service.dart';
+import '../../services/signaling.dart';
 
 // 【主螢幕元件】禪意池塘 - 整合落葉對話、原生 STT 語音 Overlay 與極致莫蘭迪背景
 
@@ -35,6 +36,17 @@ class ZenPondScreenState extends State<ZenPondScreen> {
     // 進入時非同步載入本地持久化歷史落葉，若無則啟動首次迎賓排程
     _controller.loadLeaves();
     _controller.addListener(_onControllerChanged);
+
+    // 掛載 Socket.IO 記憶落葉接收回調
+    // 當後端排程或 API 推送 'new-pond-leaf' 事件時，自動加入黃色記憶葉並 TTS 播報
+    Signaling().onNewPondLeaf = (String text, String type) {
+      if (!mounted) return;
+      _controller.addLeaf(
+        text: text,
+        colorType: LeafColorType.yellow, // 黃色 = 長期記憶葉
+        playTts: true,
+      );
+    };
   }
 
   void _onControllerChanged() {
@@ -49,6 +61,8 @@ class ZenPondScreenState extends State<ZenPondScreen> {
   void dispose() {
     _controller.removeListener(_onControllerChanged);
     _controller.dispose();
+    // 離開頁面時清除落葉回調，避免記憶體洩漏
+    Signaling().onNewPondLeaf = null;
     super.dispose();
   }
 
@@ -234,6 +248,7 @@ class _ZenPondContentState extends State<_ZenPondContent>
             text: reply,
             colorType: LeafColorType.green,
             playTts: true,
+            isCardVisible: true,
           );
 
           // 2. 成功後，自動平滑收起對話 Overlay
@@ -426,7 +441,6 @@ class _ZenPondContentState extends State<_ZenPondContent>
                   onDismiss: () => controller.dismissLeaf(leaf),
                 ),
 
-            // 第六層：時間切換測試面板
             Positioned(
               left: 20,
               top: 50,
@@ -467,6 +481,19 @@ class _ZenPondContentState extends State<_ZenPondContent>
                           ),
                         );
                       }).toList(),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      controller.showNotification('爺爺！今天天氣很好，下午記得去公園散步走走喔！\n愛您的女兒 秀珠 ❤️');
+                    },
+                    icon: const Icon(Icons.notifications_active),
+                    label: const Text('模擬家人傳訊息'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white.withOpacity(0.8),
+                      foregroundColor: Colors.teal,
+                      elevation: 4,
                     ),
                   ),
                 ],

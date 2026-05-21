@@ -52,6 +52,7 @@ class Signaling {
   CallAcceptedCallback? onCallBusy; 
   VoidCallback? onConnectionLost; 
   Function(String message)? onHeartbeatMessage; // 新增：主動式心跳消息回傳
+  Function(String text, String type)? onNewPondLeaf; // 新增：記憶落葉話題推播
 
   String? _currentRoomId;
   String? _peerSocketId;
@@ -300,6 +301,16 @@ class Signaling {
     socket!.on('heartbeat-message', (data) {
        debugPrint("💓 [Signaling] Received heartbeat-message: ${data['reply']}");
        if (onHeartbeatMessage != null) onHeartbeatMessage!(data['reply']);
+    });
+
+    // 記憶落葉話題推播（由後端排程或 API 觸發）
+    socket!.on('new-pond-leaf', (data) {
+      final text = (data['text'] ?? '').toString();
+      final type = (data['type'] ?? 'memory').toString();
+      debugPrint("🍂 [Signaling] Received new-pond-leaf: $text");
+      if (text.isNotEmpty && onNewPondLeaf != null) {
+        onNewPondLeaf!(text, type);
+      }
     });
   }
 

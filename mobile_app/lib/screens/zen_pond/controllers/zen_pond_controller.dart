@@ -211,6 +211,7 @@ class ZenPondController extends ChangeNotifier {
     required LeafColorType colorType,
     String? imageUrl,
     bool playTts = false,
+    bool isCardVisible = false,
   }) {
     final random = math.Random();
     // X 範圍在 0.15 到 0.85 之間，Y 範圍在 0.2 到 0.7 之間，避免太靠近邊緣石頭
@@ -225,7 +226,15 @@ class ZenPondController extends ChangeNotifier {
       restingX: rx,
       restingY: ry,
       createdAt: DateTime.now().millisecondsSinceEpoch,
+      isCardVisible: isCardVisible,
     );
+
+    // 如果把當前卡片設為開啟，則先關閉其他卡片
+    if (isCardVisible) {
+      for (var l in leaves) {
+        l.isCardVisible = false;
+      }
+    }
 
     leaves.add(newLeaf);
     saveLeaves();
@@ -238,6 +247,8 @@ class ZenPondController extends ChangeNotifier {
 
   // 點擊落葉展開卡片
   void tapLeaf(LeafMessageItem item) {
+    _singleTapTimer?.cancel();
+    _singleTapTimer = null;
     // 先收起其他所有落葉卡片
     for (var l in leaves) {
       l.isCardVisible = false;
@@ -267,7 +278,7 @@ class ZenPondController extends ChangeNotifier {
       addLeaf(
         text: '爺爺，秀珠傳了一張照片來。她說這是上次去陽明山看花鐘拍的，您還記得嗎？',
         colorType: LeafColorType.red,
-        imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/a3/Yangmingshan_Flower_Clock.jpg/1200px-Yangmingshan_Flower_Clock.jpg',
+        imageUrl: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?q=80&w=2070&auto=format&fit=crop',
         playTts: true,
       );
     });
@@ -324,6 +335,12 @@ class ZenPondController extends ChangeNotifier {
   }
 
   void tapKoi(KoiNotificationItem item) {
+    _singleTapTimer?.cancel();
+    _singleTapTimer = null;
+    // 收起其他所有蓮花卡
+    for (var n in notifications) {
+      n.isLotusVisible = false;
+    }
     item.isLotusVisible = true;
     notifyListeners();
   }

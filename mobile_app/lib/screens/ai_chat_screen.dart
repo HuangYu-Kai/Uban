@@ -137,7 +137,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
         'role': 'ai',
         'text': '爺爺，秀珠傳了一張照片來。\n她說這是上次去陽明山看花鐘拍的，您還記得嗎？',
         'image':
-            'https://upload.wikimedia.org/wikipedia/commons/thumb/a/a3/Yangmingshan_Flower_Clock.jpg/1200px-Yangmingshan_Flower_Clock.jpg', // 範例圖片
+            'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?q=80&w=2070&auto=format&fit=crop', // 範例圖片
       });
     });
     _scrollToBottom();
