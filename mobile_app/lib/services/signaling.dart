@@ -58,6 +58,7 @@ class Signaling {
   String? _currentCallId; // 追蹤當前通話 ID，確保 hangUp 時能傳給後端
   dynamic _userId; // 新增：儲存當前使用者的資料庫 ID
   String? _role; // 新增：儲存當前連線的角色
+  bool _isCreatingOffer = false; // ⭐ 防重複呼叫 createOffer
   final List<RTCIceCandidate> _candidateQueue = [];
   final List<String> _pendingRooms = [];
 
@@ -558,14 +559,21 @@ class Signaling {
   }
 
   Future<void> _createPeerConnection({required bool useLocalStream}) async {
+    debugPrint("📍 [WebRTC] Creating PeerConnection with config: $_configuration");
     peerConnection = await createPeerConnection(_configuration);
     
+    var iceGatheringCount = 0;
     peerConnection!.onIceConnectionState = (state) {
       debugPrint("❄️ ICE Connection State: $state");
     };
 
     peerConnection!.onConnectionState = (state) {
       debugPrint("🔌 [Signaling] Connection State: $state");
+      if (state == 'connected') {
+        debugPrint("✅ [Signaling] P2P Connection Established!");
+      } else if (state == 'failed') {
+        debugPrint("❌ [Signaling] P2P Connection Failed!");
+      }
     };
     
     peerConnection!.onIceConnectionState = (state) {
@@ -573,8 +581,12 @@ class Signaling {
     };
 
     peerConnection!.onIceCandidate = (candidate) {
+      iceGatheringCount++;
+      final candidateStr = candidate.candidate ?? 'NULL';
+      final displayStr = candidateStr.length > 25 ? candidateStr.substring(0, 25) : candidateStr;
+      debugPrint("🧊 ICE Candidate #$iceGatheringCount: $displayStr...");
+      
       if (socket != null) {
-        debugPrint("🧊 Generated ICE Candidate: ${candidate.candidate?.substring(0, 15)}... -> targetId: $_peerSocketId");
         var payload = {
           'room': _currentRoomId,
           'candidate': candidate.candidate,
@@ -585,52 +597,90 @@ class Signaling {
         // ★ 必須指定 targetId，確保 Candidate 精準轉發給對端
         if (_peerSocketId != null) {
           payload['targetId'] = _peerSocketId!;
+          socket!.emit('candidate', payload);
         } else {
-          debugPrint("⚠️ [Signaling] Missing targetId for ICE Candidate - falling back to room broadcast");
+          debugPrint("⚠️ [Signaling] Missing targetId for ICE Candidate #$iceGatheringCount - falling back to room broadcast");
+          socket!.emit('candidate', payload);
         }
-        socket!.emit('candidate', payload);
+      } else {
+        debugPrint("⚠️ [Signaling] Socket not connected, cannot emit ICE candidate");
       }
     };
     
     peerConnection!.onTrack = (event) {
-      debugPrint("🛤️ Received Remote Track: ${event.track.kind}");
+      debugPrint("🛤️ [Signaling] Received Remote Track: kind=${event.track.kind}, enabled=${event.track.enabled}");
       if (event.streams.isNotEmpty && onAddRemoteStream != null) {
+        debugPrint("✅ [Signaling] Adding remote stream with ${event.streams.length} stream(s)");
         onAddRemoteStream!(event.streams[0]);
+      } else {
+        debugPrint("⚠️ [Signaling] Remote track received but no onAddRemoteStream callback or streams empty");
       }
     };
+    
     if (useLocalStream && localStream != null) {
-      localStream!.getTracks().forEach((track) => peerConnection?.addTrack(track, localStream!));
+      final tracks = localStream!.getTracks();
+      debugPrint("📍 [Signaling] Adding ${tracks.length} local tracks to PeerConnection:");
+      for (var i = 0; i < tracks.length; i++) {
+        final track = tracks[i];
+        debugPrint("  ├─ Track #$i: kind=${track.kind}, enabled=${track.enabled}");
+        peerConnection?.addTrack(track, localStream!);
+      }
+      if (tracks.isEmpty) {
+        debugPrint("⚠️ [Signaling] No local tracks found! Check media permissions.");
+      }
+    } else if (useLocalStream) {
+      debugPrint("⚠️ [Signaling] useLocalStream=true but localStream is null");
+    } else {
+      debugPrint("📍 [Signaling] useLocalStream=false, not adding local tracks (receive-only mode)");
     }
   }
 
   Future<void> createOffer({String? targetId, bool isEmergency = false, bool useLocalStream = true}) async {
-    // ★ 先關閉舊連線，避免通訊通道疊加
-    if (peerConnection != null) {
-      await peerConnection!.close();
-      peerConnection = null;
+    // ⭐ 防止重複調用 createOffer
+    if (_isCreatingOffer) {
+      debugPrint("⚠️ [Signaling] createOffer already in progress, skipping");
+      return;
     }
-    _candidateQueue.clear();
-    debugPrint("🚀 [Signaling] Creating WebRTC Offer... (useLocalStream: $useLocalStream)");
-    _peerSocketId = targetId;
-    await _createPeerConnection(useLocalStream: useLocalStream);
     
-    // 建立 Offer 時帶入 constraints，確保雙向或單向通訊
-    final constraints = useLocalStream 
-        ? _constraints 
-        : {'mandatory': {'OfferToReceiveAudio': true, 'OfferToReceiveVideo': true}};
-    
-    RTCSessionDescription offer = await peerConnection!.createOffer(constraints);
-    await peerConnection!.setLocalDescription(offer);
-    
-    debugPrint("📤 [Signaling] Emitting offer to $targetId");
-    socket!.emit('offer', {
-        'room': _currentRoomId,
-        'targetId': targetId,
-        'senderId': socket!.id,
-        'type': 'offer',
-        'sdp': offer.sdp,
-        'isEmergency': isEmergency
-    });
+    try {
+      _isCreatingOffer = true;
+      // ★ 先關閉舊連線，避免通訊通道疊加
+      if (peerConnection != null) {
+        await peerConnection!.close();
+        peerConnection = null;
+      }
+      _candidateQueue.clear();
+      debugPrint("🚀 [Signaling] Creating WebRTC Offer... (useLocalStream: $useLocalStream)");
+      _peerSocketId = targetId;
+      await _createPeerConnection(useLocalStream: useLocalStream);
+      
+      // ⏳ 等待 DTLS 材料生成（CRITICAL: 防止 fingerprint 不匹配）
+      // 增加到 1000ms 以確保 DTLS 證書完全初始化
+      await Future.delayed(Duration(milliseconds: 1000));
+      
+      // 建立 Offer 時帶入 constraints，確保雙向或單向通訊
+      final constraints = useLocalStream 
+          ? _constraints 
+          : {'mandatory': {'OfferToReceiveAudio': true, 'OfferToReceiveVideo': true}};
+      
+      RTCSessionDescription offer = await peerConnection!.createOffer(constraints);
+      await peerConnection!.setLocalDescription(offer);
+      
+      debugPrint("📤 [Signaling] Emitting offer to $targetId");
+      socket!.emit('offer', {
+          'room': _currentRoomId,
+          'targetId': targetId,
+          'senderId': socket!.id,
+          'type': 'offer',
+          'sdp': offer.sdp,
+          'isEmergency': isEmergency
+      });
+    } catch (e) {
+      debugPrint("❌ [Signaling] createOffer failed: $e");
+      rethrow;
+    } finally {
+      _isCreatingOffer = false;
+    }
   }
 
   Future<void> startMonitoring(String targetId) async {
@@ -670,6 +720,7 @@ class Signaling {
     stopMedia();
     _closePeerConnection();
     _currentCallId = null;
+    _isCreatingOffer = false; // ⭐ 重置 createOffer flag
     
     // 僅清除與「單次通話連線」相關的介面回調
     onAddRemoteStream = null;
@@ -687,6 +738,7 @@ class Signaling {
       socket!.emit('end-call', {'room': _currentRoomId, 'targetId': _peerSocketId, 'callId': _currentCallId});
     }
     _currentCallId = null;
+    _isCreatingOffer = false; // ⭐ 重置 createOffer flag
     
     _closePeerConnection();
     
