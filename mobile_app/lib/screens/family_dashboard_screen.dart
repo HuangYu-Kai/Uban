@@ -145,7 +145,7 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> with Widg
     for (var elder in widget.elders) {
       final String room = 'comm_elder_${elder['elder_id']}';
       if (room != firstRoom) {
-        _signaling.joinRoom(room);
+        _signaling.joinRoom(room, userId: actualUserId);
       }
     }
 

@@ -232,7 +232,7 @@ class _FamilyDashboardViewState extends State<FamilyDashboardView> {
                           ),
                           child: ElevatedButton.icon(
                             onPressed: () {
-                              _signaling.sendCallBusy(roomId);
+                              _signaling.sendCallBusy(senderId, callId: callId);
                               Navigator.of(dialogContext).pop();
                               _isIncomingCallDialogOpen = false;
                             },

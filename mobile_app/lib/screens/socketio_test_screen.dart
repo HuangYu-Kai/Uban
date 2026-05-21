@@ -101,7 +101,7 @@ class _SocketIOTestScreenState extends State<SocketIOTestScreen> {
           TextButton(
             onPressed: () {
               Navigator.pop(context);
-              _signaling.sendCallBusy(senderId);
+              _signaling.sendCallBusy(senderId, callId: callId);
               _addLog('❌ 已拒接');
             },
             child: const Text('拒接', style: TextStyle(color: Colors.red)),

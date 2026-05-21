@@ -91,7 +91,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
           actions: [
             TextButton(
               onPressed: () {
-                Signaling().sendCallBusy(roomId);
+                Signaling().sendCallBusy(senderId, callId: callId);
                 Navigator.of(dialogContext).pop();
                 _isIncomingCallDialogOpen = false;
               },
