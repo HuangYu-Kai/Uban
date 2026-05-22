@@ -97,6 +97,9 @@ class ElderChatTabState extends State<ElderChatTab>
     _initTts();
     _initWaveAnimations();
     _initMicPulseAnimation();
+    if (_useBackendXtts) {
+      _initChatWebRtc();
+    }
   }
 
   // 公開方法：供外部（如 HomeScreen）推波主動訊息進來
@@ -708,7 +711,7 @@ class ElderChatTabState extends State<ElderChatTab>
     try {
       if (_useBackendXtts &&
           (_chatWebRtcSessionId == null || !_chatWebRtcConnected)) {
-        await _initChatWebRtc();
+        unawaited(_initChatWebRtc());
       }
       final hasWebRtcSession =
           (_chatWebRtcSessionId ?? '').isNotEmpty && _chatWebRtcConnected;
