@@ -292,3 +292,10 @@ $$wiggle_i = \sin\left(\frac{i}{20} \cdot 2\pi - \theta_{anim} \cdot 2\pi\right)
       child: ...
     )
   ```
+
+---
+
+## 6. 相關效能與延遲報告
+關於本對話模組（地端 Ollama 引擎）的優化手段與實測反應時間（TTFT、工具呼叫耗時等數據），請參閱：
+* [Ollama 地端對話服務延遲與效能實測報告 (OLLAMA_LATENCY_REPORT.md)](file:///c:/Users/tung0/Desktop/Uban/Uban/docs/OLLAMA_LATENCY_REPORT.md)
+
