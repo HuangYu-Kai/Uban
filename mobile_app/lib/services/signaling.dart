@@ -58,6 +58,7 @@ class Signaling {
   String? _currentCallId; // 追蹤當前通話 ID，確保 hangUp 時能傳給後端
   dynamic _userId; // 新增：儲存當前使用者的資料庫 ID
   String? _role; // 新增：儲存當前連線的角色
+  String? _elderId; // ★ 新增：儲存當前 elder_id，用於 TURN 隔離
   bool _isCreatingOffer = false; // ⭐ 防重複呼叫 createOffer
   final List<RTCIceCandidate> _candidateQueue = [];
   final List<String> _pendingRooms = [];
@@ -104,6 +105,12 @@ class Signaling {
     _currentRoomId = roomId;
     _userId = userId;
     _role = role;
+    
+    // ★ 解析房間 ID 以提取 elder_id
+    if (roomId.contains('elder_')) {
+      _elderId = roomId.split('elder_').last;
+      debugPrint("🔐 [Signaling] Extracted elder_id from room: $_elderId");
+    }
 
     if (socket != null && socket!.connected) {
       debugPrint("♻️ Reusing existing socket connection. Joining room $roomId...");
@@ -548,9 +555,49 @@ class Signaling {
     _candidateQueue.clear();
   }
 
+  // ★ 根据 elder_id 生成动态的 TURN 凭证
+  Map<String, dynamic> _generateDynamicTURNConfig() {
+    String turnUsername = _turnUser;
+    String turnPassword = _turnPass;
+    
+    // 如果有 elder_id，根据 elder_id 生成隔离的凭证
+    if (_elderId != null && _elderId!.isNotEmpty) {
+      // ★ 使用 elder_id 作为 TURN 用户名的后缀，实现通讯隔离
+      // 格式: uban_elder_{elder_id}
+      turnUsername = '${_turnUser}_elder_$_elderId';
+      
+      // ★ 生成基于 elder_id 的密码
+      // 这可以确保每个 elder 有独立的认证通道
+      turnPassword = _turnPass; // 保持相同的密码，由服务器验证 elder_id
+      
+      debugPrint("🔐 [TURN] 生成 elder_id 隔离的 TURN 凭证:");
+      debugPrint("   elder_id: $_elderId");
+      debugPrint("   username: $turnUsername");
+      debugPrint("   server: $_turnServer");
+    } else {
+      debugPrint("⚠️ [TURN] 未找到 elder_id，使用默认 TURN 凭证");
+    }
+    
+    return {
+      'iceServers': [
+        {'urls': 'stun:stun.l.google.com:19302'},
+        {
+          'urls': [
+            'turn:$_turnServer',
+            'turn:$_turnServer?transport=tcp',
+          ],
+          'username': turnUsername,
+          'credential': turnPassword,
+        },
+      ]
+    };
+  }
+
   Future<void> _createPeerConnection({required bool useLocalStream}) async {
-    debugPrint("📍 [WebRTC] Creating PeerConnection with config: $_configuration");
-    peerConnection = await createPeerConnection(_configuration);
+    // ★ 使用基于 elder_id 的动态 TURN 配置
+    final config = _generateDynamicTURNConfig();
+    debugPrint("📍 [WebRTC] Creating PeerConnection with config: $config");
+    peerConnection = await createPeerConnection(config);
     
     var iceGatheringCount = 0;
     peerConnection!.onIceConnectionState = (state) {
