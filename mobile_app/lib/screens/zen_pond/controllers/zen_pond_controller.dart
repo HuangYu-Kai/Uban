@@ -101,6 +101,7 @@ class LeafMessageItem {
   final String text;
   final LeafColorType colorType;
   final String? imageUrl;
+  final String? videoId; // 支援影片 ID 播放
   final double restingX; // 水面隨機 X 座標比例 (0.15 ~ 0.85)
   final double restingY; // 水面隨機 Y 座標比例 (0.20 ~ 0.70)
   final int createdAt;   // 生成微秒時間戳
@@ -111,6 +112,7 @@ class LeafMessageItem {
     required this.text,
     required this.colorType,
     this.imageUrl,
+    this.videoId,
     required this.restingX,
     required this.restingY,
     required this.createdAt,
@@ -123,6 +125,7 @@ class LeafMessageItem {
       'text': text,
       'colorType': colorType.name,
       'imageUrl': imageUrl,
+      'videoId': videoId,
       'restingX': restingX,
       'restingY': restingY,
       'createdAt': createdAt,
@@ -136,6 +139,7 @@ class LeafMessageItem {
       text: json['text'] as String,
       colorType: LeafColorType.values.byName(json['colorType'] as String),
       imageUrl: json['imageUrl'] as String?,
+      videoId: json['videoId'] as String?,
       restingX: (json['restingX'] as num).toDouble(),
       restingY: (json['restingY'] as num).toDouble(),
       createdAt: json['createdAt'] as int,
@@ -145,6 +149,19 @@ class LeafMessageItem {
 }
 
 class ZenPondController extends ChangeNotifier {
+  // 時光日記對話歷史紀錄
+  List<Map<String, dynamic>> history = [];
+
+  // TTS 播放狀態 (存在 Controller 讓日記 Dialog 的 Consumer 能同步刷新)
+  String? ttsPlayingId;
+  bool ttsLoading = false;
+
+  void setTtsState({String? playingId, bool loading = false}) {
+    ttsPlayingId = playingId;
+    ttsLoading = loading;
+    notifyListeners();
+  }
+
   // 測試用：模擬當前小時 (null 表示使用真實時間)
   int? mockHour;
 
@@ -173,6 +190,71 @@ class ZenPondController extends ChangeNotifier {
   // 落葉對話清單 (第三階段新功能)
   final List<LeafMessageItem> leaves = [];
   final AudioPlayer _controllerAudioPlayer = AudioPlayer();
+
+  // 讀取時光日記歷史紀錄
+  Future<void> loadHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList('zen_pond_history');
+      if (list != null) {
+        history = list.map((str) => jsonDecode(str) as Map<String, dynamic>).toList();
+      } else {
+        // 初始歷史：加入一個迎賓訊息
+        history = [
+          {
+            'sender': 'ai',
+            'text': '爺爺午安！我是您的貼心小幫手。今天感覺怎麼樣？需要我為您放首音樂，或者聊聊天嗎？',
+            'timestamp': DateTime.now().millisecondsSinceEpoch,
+          }
+        ];
+      }
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error loading history: $e');
+    }
+  }
+
+  // 儲存時光日記歷史紀錄
+  Future<void> saveHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = history.map((h) => jsonEncode(h)).toList();
+      await prefs.setStringList('zen_pond_history', list);
+    } catch (e) {
+      debugPrint('Error saving history: $e');
+    }
+  }
+
+  // 新增時光日記歷史紀錄
+  void addHistory({
+    required String sender,
+    required String text,
+    String? imageUrl,
+    String? videoId,
+  }) {
+    history.add({
+      'sender': sender,
+      'text': text,
+      'imageUrl': imageUrl,
+      'videoId': videoId,
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+    });
+    saveHistory();
+    notifyListeners();
+  }
+
+  // 清空時光日記歷史紀錄
+  void clearHistory() {
+    history = [
+      {
+        'sender': 'ai',
+        'text': '時光日記已清空，開始我們新的對話吧 😊',
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+      }
+    ];
+    saveHistory();
+    notifyListeners();
+  }
 
   // 初始化並讀取本地歷史落葉
   Future<void> loadLeaves() async {
@@ -210,6 +292,7 @@ class ZenPondController extends ChangeNotifier {
     required String text,
     required LeafColorType colorType,
     String? imageUrl,
+    String? videoId,
     bool playTts = false,
     bool isCardVisible = false,
   }) {
@@ -223,6 +306,7 @@ class ZenPondController extends ChangeNotifier {
       text: text,
       colorType: colorType,
       imageUrl: imageUrl,
+      videoId: videoId,
       restingX: rx,
       restingY: ry,
       createdAt: DateTime.now().millisecondsSinceEpoch,
@@ -272,6 +356,10 @@ class ZenPondController extends ChangeNotifier {
         colorType: LeafColorType.yellow,
         playTts: true,
       );
+      addHistory(
+        sender: 'ai',
+        text: '爺爺午安！我是您的貼心小幫手。今天感覺怎麼樣？需要我為您放首音樂，或者聊聊天嗎？',
+      );
     });
 
     Timer(const Duration(seconds: 5), () {
@@ -280,6 +368,11 @@ class ZenPondController extends ChangeNotifier {
         colorType: LeafColorType.red,
         imageUrl: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?q=80&w=2070&auto=format&fit=crop',
         playTts: true,
+      );
+      addHistory(
+        sender: 'ai',
+        text: '爺爺，秀珠傳了一張照片來。她說這是上次去陽明山看花鐘拍的，您還記得嗎？',
+        imageUrl: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?q=80&w=2070&auto=format&fit=crop',
       );
     });
   }
@@ -407,4 +500,7 @@ class ZenPondController extends ChangeNotifier {
     _controllerAudioPlayer.dispose();
     super.dispose();
   }
+
+  // 供外部呼叫的 notifyListeners (用於非 controller 狀態需強制刷新 Dialog 時)
+  void forceRefresh() => notifyListeners();
 }
