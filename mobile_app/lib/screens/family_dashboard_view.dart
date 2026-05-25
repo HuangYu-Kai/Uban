@@ -35,12 +35,18 @@ class _FamilyDashboardViewState extends State<FamilyDashboardView> {
   // ★ 輔助方法：生成雙向通訊房間ID
   String _getCommRoomId() {
     final elderId = _elderRoomId ?? _elderId?.toString();
+    if (elderId != null && (elderId.startsWith('comm_elder_') || elderId.startsWith('monitor_elder_'))) {
+        return elderId;
+    }
     return 'comm_elder_$elderId';
   }
   
   // ★ 輔助方法：生成監控房間ID
   String _getMonitorRoomId() {
     final elderId = _elderRoomId ?? _elderId?.toString();
+    if (elderId != null && (elderId.startsWith('comm_elder_') || elderId.startsWith('monitor_elder_'))) {
+        return elderId.replaceFirst('comm_elder_', 'monitor_elder_');
+    }
     return 'monitor_elder_$elderId';
   }
   

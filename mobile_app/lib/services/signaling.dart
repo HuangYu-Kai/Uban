@@ -56,6 +56,8 @@ class Signaling {
   String? _currentRoomId;
   String? _peerSocketId;
   String? _currentCallId; // 追蹤當前通話 ID，確保 hangUp 時能傳給後端
+  String? _lastProcessedCallId; // ★ 問題4修復：記錄最後一個已處理的來電 ID，防止重複
+  int _lastProcessedCallTime = 0; // ★ 問題4修復：記錄最後一個已處理來電的時間戳，用於去重檢查
   dynamic _userId; // 新增：儲存當前使用者的資料庫 ID
   String? _role; // 新增：儲存當前連線的角色
   String? _elderId; // ★ 新增：儲存當前 elder_id，用於 TURN 隔離
@@ -188,6 +190,20 @@ class Signaling {
         debugPrint('📞 [Signaling] 忽略相同角色發出的 call-request (SenderRole: $senderRole)');
         return;
       }
+      
+      // ★ 問題4修復：檢查是否已在短時間內處理過此 callId（防止重複）
+      final String callId = data['callId'] ?? '';
+      final int currentTime = DateTime.now().millisecondsSinceEpoch;
+      if (callId.isNotEmpty && callId == _lastProcessedCallId && 
+          (currentTime - _lastProcessedCallTime) < 2000) { // 2秒去重窗口
+        debugPrint('⚠️ [Signaling] 忽略重複的 call-request（CallId 已在 2 秒內處理: $callId）');
+        return;
+      }
+      
+      // ★ 更新最後處理的來電 ID 和時間戳
+      _lastProcessedCallId = callId;
+      _lastProcessedCallTime = currentTime;
+      
       debugPrint('📞📞📞 [Signaling] ===== 收到 call-request =====');
       debugPrint('📞 [Signaling] data: $data');
       debugPrint('📞 [Signaling] room: ${data['room']}, senderId: ${data['senderId']}, callId: ${data['callId']}');
@@ -263,6 +279,21 @@ class Signaling {
       final senderId = data['senderId'];
       final callId = data['callId'];
       debugPrint('📩 [Signaling] RECEIVED OFFER from $senderId (CallId: $callId)');
+      
+      // ★ 問題4修復：檢查是否已在短時間內處理過此 callId（防止重複）
+      final int currentTime = DateTime.now().millisecondsSinceEpoch;
+      if (callId != null && callId == _lastProcessedCallId && 
+          (currentTime - _lastProcessedCallTime) < 2000) { // 2秒去重窗口
+        debugPrint('⚠️ [Signaling] 忽略重複的 offer（CallId 已在 2 秒內處理: $callId）');
+        return;
+      }
+      
+      // ★ 更新最後處理的來電 ID 和時間戳
+      if (callId != null) {
+        _lastProcessedCallId = callId;
+        _lastProcessedCallTime = currentTime;
+      }
+      
       _peerSocketId = senderId;
       _candidateQueue.clear();
 

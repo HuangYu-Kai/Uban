@@ -40,7 +40,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   bool _isCameraOff = true; // ★ 攝像頭預設關閉
   bool _isMuted = false;
   bool _mediaInitialized = false;
-  late Timer _callTimer;
+  Timer? _callTimer;
   int _callDuration = 0; // 秒數
   
   // ★ 新增：用於生成新格式的房間ID
@@ -249,7 +249,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     });
 
     _signaling.onCallEnded = () {
-      _callTimer.cancel();
+      _callTimer?.cancel();
       if (mounted) {
         setState(() { 
           _remoteRenderer.srcObject = null; 
@@ -397,6 +397,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
 
   // ★ 新增：通話計時器
   void _startCallTimer() {
+    _callTimer?.cancel();
     _callTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) {
         setState(() => _callDuration++);
@@ -442,7 +443,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
 
   @override
   void dispose() {
-    _callTimer.cancel();
+    _callTimer?.cancel();
     pendingAcceptedCall.removeListener(_onPendingCallChanged);
     _localRenderer.dispose();
     _remoteRenderer.dispose();

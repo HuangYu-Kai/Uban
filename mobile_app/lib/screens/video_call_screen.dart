@@ -111,8 +111,13 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
 
     // ★ 自動讀取使用者 ID 與名稱
     final prefs = await SharedPreferences.getInstance();
-    final int? userId = prefs.getInt('caregiver_id');
-    final String userName = prefs.getString('caregiver_name') ?? '家屬端';
+    final String role = prefs.getString('user_role') ?? 'family';
+    final int? userId = (role == 'elder') 
+        ? prefs.getInt('caregiver_id') 
+        : (prefs.getInt('user_id') ?? prefs.getInt('caregiver_id'));
+    final String userName = (role == 'elder')
+        ? (prefs.getString('caregiver_name') ?? '長輩')
+        : (prefs.getString('user_name') ?? prefs.getString('caregiver_name') ?? '家屬端');
 
     _signaling.connect(
       widget.roomId, 
