@@ -169,7 +169,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
             curve: Curves.easeInOut,
             left: 0,
             right: 0,
-            bottom: _isZenPondOverlayVisible ? -100 : 0,
+            bottom: (_selectedIndex == 1 && _isZenPondOverlayVisible) ? -100 : 0,
             child: _buildFloatingNavBar(),
           ),
         ],
