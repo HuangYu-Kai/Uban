@@ -117,8 +117,14 @@ flowchart TD
 
 ### ❶ 涉及代碼變動
 
-* `[MODIFY] [news_listen_player_screen.dart](file:///c:/Users/tung0/Desktop/Uban/Uban/mobile_app/lib/screens/news_listen_player_screen.dart)`：前端核心播放器 UI、字詞級卡拉 OK 字幕渲染及置中定位運算、小豬總結對話框。
-* `[MODIFY] [api_service.dart](file:///c:/Users/tung0/Desktop/Uban/Uban/mobile_app/lib/services/api_service.dart)`：新增對應的後端 API 連接方法（如 `ApiService.getNews`、`ApiService.petGreeting`、`ApiService.synthesizeTts` 等）。
+* `[NEW] [news_listen_player_screen.dart](file:///c:/Users/tung0/Desktop/Uban/Uban/mobile_app/lib/screens/news_listen_player/news_listen_player_screen.dart)`：前端控制主畫面（原 `lib/screens/news_listen_player_screen.dart` 已刪除並搬移至此），調用與重組模組化元件。
+* `[NEW] [news_sound_wave_indicator.dart](file:///c:/Users/tung0/Desktop/Uban/Uban/mobile_app/lib/screens/news_listen_player/widgets/news_sound_wave_indicator.dart)`：前端音波條動畫元件，自我管理跳動定時器與波形高度狀態。
+* `[NEW] [news_subtitle_viewer.dart](file:///c:/Users/tung0/Desktop/Uban/Uban/mobile_app/lib/screens/news_listen_player/widgets/news_subtitle_viewer.dart)`：前端卡拉 OK 字幕滾動與置中定位運算元件，自我管理 `ScrollController` 與 `GlobalKey` 串列。
+* `[NEW] [news_category_selector.dart](file:///c:/Users/tung0/Desktop/Uban/Uban/mobile_app/lib/screens/news_listen_player/widgets/news_category_selector.dart)`：前端分類標籤水平滾動選擇元件。
+* `[NEW] [news_selection_list.dart](file:///c:/Users/tung0/Desktop/Uban/Uban/mobile_app/lib/screens/news_listen_player/widgets/news_selection_list.dart)`：前端新聞大卡片清單列表元件。
+* `[NEW] [news_summary_dialog.dart](file:///c:/Users/tung0/Desktop/Uban/Uban/mobile_app/lib/screens/news_listen_player/widgets/news_summary_dialog.dart)`：前端小豬 AI 總結對話框樣式與動畫元件。
+* `[MODIFY] [elder_home_tab.dart](file:///c:/Users/tung0/Desktop/Uban/Uban/mobile_app/lib/screens/elder_tabs/elder_home_tab.dart)`：更新 `NewsListenPlayerScreen` 的引進路徑。
+* `[MODIFY] [api_service.dart](file:///c:/Users/tung0/Desktop/Uban/Uban/mobile_app/lib/services/api_service.dart)`：後端 API 連接方法（如 `ApiService.getNews`、`ApiService.petGreeting`、`ApiService.synthesizeTts` 等）。
 * `[MODIFY] [news.py](file:///c:/Users/tung0/Desktop/Uban/Uban-api/routers/news.py)`：後端 REST API 路由，暴露獲取新聞列表、語音生成進度、崩潰日誌及手動觸發爬蟲等端點。
 * `[MODIFY] [news_crawler_service.py](file:///c:/Users/tung0/Desktop/Uban/Uban-api/services/news_crawler_service.py)`：後端爬蟲擷取（CNA JSON-LD 擷取）、資料庫 MySQL 讀寫隔離、多線程背景語音音檔與字幕對齊生成。
 

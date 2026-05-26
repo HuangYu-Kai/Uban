@@ -6,7 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:lunar/lunar.dart';
 import 'package:intl/intl.dart';
 import '../elder_screen.dart';
-import '../news_listen_player_screen.dart';
+import '../news_listen_player/news_listen_player_screen.dart';
 import '../../services/api_service.dart';
 
 class ElderHomeTab extends StatefulWidget {
