@@ -28,6 +28,17 @@ class LeafMessageCard extends StatefulWidget {
 }
 
 class _LeafMessageCardState extends State<LeafMessageCard> {
+  /// 正規化圖片 URL，修正常見的錯誤格式
+  String _normalizeImageUrl(String url) {
+    // 修正 fastly.picsum.photos → picsum.photos（fastly CDN URL 回傳 400）
+    String normalized = url.replaceAll('fastly.picsum.photos', 'picsum.photos');
+    // 移除 picsum URL 尾端的 .jpg（picsum.photos 不需要副檔名）
+    if (normalized.contains('picsum.photos') && normalized.endsWith('.jpg')) {
+      normalized = normalized.substring(0, normalized.length - 4);
+    }
+    return normalized;
+  }
+
   @override
   Widget build(BuildContext context) {
     // 右滑 (startToEnd) 捨棄背景 - 莫蘭迪紅
@@ -197,10 +208,7 @@ class _LeafMessageCardState extends State<LeafMessageCard> {
                         ClipRRect(
                           borderRadius: BorderRadius.circular(4),
                           child: Image.network(
-                            widget.imageUrl!,
-                            headers: const {
-                              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-                            },
+                            _normalizeImageUrl(widget.imageUrl!),
                             fit: BoxFit.cover,
                             height: 180,
                             width: double.infinity,
@@ -216,17 +224,28 @@ class _LeafMessageCardState extends State<LeafMessageCard> {
                                 ),
                               );
                             },
-                            errorBuilder: (context, error, stackTrace) => Container(
-                              height: 180,
-                              color: const Color(0xFFF5F2EB),
-                              child: const Center(
-                                child: Icon(
-                                  Icons.broken_image_rounded,
-                                  color: Color(0xFFBCAAA4),
-                                  size: 48,
+                            errorBuilder: (context, error, stackTrace) {
+                              debugPrint('LeafMessageCard image load error: $error | url: ${widget.imageUrl}');
+                              return Container(
+                                height: 180,
+                                color: const Color(0xFFF5F2EB),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    const Icon(
+                                      Icons.broken_image_rounded,
+                                      color: Color(0xFFBCAAA4),
+                                      size: 48,
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      '圖片載入失敗',
+                                      style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                                    ),
+                                  ],
                                 ),
-                              ),
-                            ),
+                              );
+                            },
                           ),
                         ),
                       ],

@@ -263,8 +263,47 @@ class ZenPondController extends ChangeNotifier {
       final list = prefs.getStringList('zen_pond_leaves');
       if (list != null && list.isNotEmpty) {
         leaves.clear();
+        final imgRegExp = RegExp(r'!\[.*?\]\((.*?)\)');
+        final videoRegExp = RegExp(r'\[VIDEO_ID:([^\]]+)\]');
         for (var str in list) {
-          leaves.add(LeafMessageItem.fromJson(jsonDecode(str)));
+          final leaf = LeafMessageItem.fromJson(jsonDecode(str));
+          // 修復舊快取資料中未解析的 Markdown 圖片語法
+          final rawText = leaf.text;
+          if (imgRegExp.hasMatch(rawText) || videoRegExp.hasMatch(rawText)) {
+            String? imageUrl = leaf.imageUrl;
+            String? videoId = leaf.videoId;
+            // 若 imageUrl 欄位為空但 text 含 Markdown 圖片，解析出來
+            if (imageUrl == null) {
+              final imgMatch = imgRegExp.firstMatch(rawText);
+              if (imgMatch != null) imageUrl = imgMatch.group(1);
+            }
+            if (videoId == null) {
+              final videoMatch = videoRegExp.firstMatch(rawText);
+              if (videoMatch != null) videoId = videoMatch.group(1);
+            }
+            String cleanText = rawText
+                .replaceAll(imgRegExp, '')
+                .replaceAll(videoRegExp, '')
+                .trim();
+            if (cleanText.isEmpty) {
+              cleanText = videoId != null
+                  ? '這是為您推薦的影片'
+                  : (imageUrl != null ? '為您分享了一張照片' : rawText);
+            }
+            leaves.add(LeafMessageItem(
+              id: leaf.id,
+              text: cleanText,
+              colorType: leaf.colorType,
+              imageUrl: imageUrl,
+              videoId: videoId,
+              restingX: leaf.restingX,
+              restingY: leaf.restingY,
+              createdAt: leaf.createdAt,
+              isCardVisible: leaf.isCardVisible,
+            ));
+          } else {
+            leaves.add(leaf);
+          }
         }
         notifyListeners();
       } else {
@@ -275,6 +314,7 @@ class ZenPondController extends ChangeNotifier {
       debugPrint('Error loading leaves: $e');
     }
   }
+
 
   // 寫入本地歷史持久化
   Future<void> saveLeaves() async {

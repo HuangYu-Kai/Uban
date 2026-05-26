@@ -631,7 +631,18 @@ class _ZenPondContentState extends State<_ZenPondContent>
                   onSwipeLeft: () {
                     // 左滑：開始聊天 -> 將話題送給 AI 並開啟時光日記
                     final topicText = leaf.text;
+                    final leafImageUrl = leaf.imageUrl; // 先儲存，dismissLeaf 後就無法取得
+                    final leafVideoId = leaf.videoId;
                     controller.dismissLeaf(leaf); // 消耗並移去落葉
+                    // 若落葉有圖片，先把圖片加入對話歷史讓長輩看到
+                    if (leafImageUrl != null) {
+                      controller.addHistory(
+                        sender: 'ai',
+                        text: topicText,
+                        imageUrl: leafImageUrl,
+                        videoId: leafVideoId,
+                      );
+                    }
                     _showHistoryDialog(); // 立即展開對話日記，向長輩呈現連貫感
                     _sendToAiChat('我想聊聊這個話題：$topicText');
                   },
