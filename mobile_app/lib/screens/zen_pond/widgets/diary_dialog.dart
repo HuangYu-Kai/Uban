@@ -65,12 +65,53 @@ class _DiaryDialogContentState extends State<DiaryDialogContent> {
     final yesterdayStr = "${yesterday.year}年${yesterday.month}月${yesterday.day}日";
     
     if (dateStr == todayStr) {
-      return "今天 的溫馨對話";
+      return "今天";
     } else if (dateStr == yesterdayStr) {
-      return "昨天 的對話回憶";
+      return "昨天";
     } else {
-      return "$dateStr 的紀錄";
+      final regExp = RegExp(r'(\d+)年(\d+)月(\d+)日');
+      final match = regExp.firstMatch(dateStr);
+      if (match != null) {
+        final year = match.group(1);
+        final month = match.group(2);
+        final day = match.group(3);
+        if (year == now.year.toString()) {
+          return "$month/$day";
+        }
+        return "$year/$month/$day";
+      }
+      return dateStr;
     }
+  }
+
+  String _generateTopic(List<Map<String, dynamic>> messages) {
+    if (messages.isEmpty) return "開始對話";
+    
+    final allText = messages.map((m) => (m['text'] ?? '').toString()).join(' ').toLowerCase();
+
+    if (allText.contains('家人') || allText.contains('秀珠') || allText.contains('配對') || allText.contains('兒子') || allText.contains('女兒') || allText.contains('孫子') || allText.contains('老伴')) {
+      return "一起討論家人";
+    }
+    if (allText.contains('旅遊') || allText.contains('陽明山') || allText.contains('花鐘') || allText.contains('台南') || allText.contains('出去玩') || allText.contains('景點') || allText.contains('研究')) {
+      return "對旅遊地點研究";
+    }
+    if (allText.contains('音樂') || allText.contains('聽歌') || allText.contains('點歌') || allText.contains('播歌') || allText.contains('放音樂')) {
+      return "點歌聽音樂放鬆";
+    }
+    if (allText.contains('天氣') || allText.contains('氣溫') || allText.contains('下雨') || allText.contains('颱風') || allText.contains('大陽') || allText.contains('晴天')) {
+      return "討論天氣狀況";
+    }
+    if (allText.contains('健康') || allText.contains('吃藥') || allText.contains('醫生') || allText.contains('醫院') || allText.contains('不舒服') || allText.contains('血壓')) {
+      return "討論生活與健康";
+    }
+    if (allText.contains('回憶') || allText.contains('以前') || allText.contains('落葉') || allText.contains('記得') || allText.contains('小時候')) {
+      return "回想過去的回憶";
+    }
+    if (allText.contains('步數') || allText.contains('運動') || allText.contains('散步') || allText.contains('走路')) {
+      return "討論日常活動與計步";
+    }
+    
+    return "日常溫馨閒聊";
   }
 
   void _showClearConfirmDialog() {
@@ -176,7 +217,9 @@ class _DiaryDialogContentState extends State<DiaryDialogContent> {
                             ),
                             const SizedBox(width: 12),
                             Text(
-                              isShowingContent ? _getFriendlyDateLabel(_selectedDate!) : '時光日記目錄',
+                              isShowingContent
+                                  ? "${_getFriendlyDateLabel(_selectedDate!)} ${_generateTopic(groups[_selectedDate!] ?? [])}"
+                                  : '目錄',
                               style: GoogleFonts.notoSansTc(
                                 fontSize: 26,
                                 fontWeight: FontWeight.bold,
@@ -338,7 +381,8 @@ class _DiaryDialogContentState extends State<DiaryDialogContent> {
                   itemBuilder: (context, index) {
                     final dateStr = sortedDates[index];
                     final messages = groups[dateStr] ?? [];
-                    final friendlyLabel = _getFriendlyDateLabel(dateStr);
+                    final friendlyDate = _getFriendlyDateLabel(dateStr);
+                    final topic = _generateTopic(messages);
                     
                     String preview = "";
                     if (messages.isNotEmpty) {
@@ -386,7 +430,7 @@ class _DiaryDialogContentState extends State<DiaryDialogContent> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      friendlyLabel,
+                                      "$friendlyDate $topic",
                                       style: GoogleFonts.notoSansTc(
                                         fontSize: 22,
                                         fontWeight: FontWeight.bold,
