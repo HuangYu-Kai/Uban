@@ -56,6 +56,7 @@ DEFAULT_SERVER_URL="localhost-0.tail5abf5e.ts.net"
 DEFAULT_OLLAMA_URL="boyo-desktop.tail531c8a.ts.net"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 MOBILE_APP_DIR="$SCRIPT_DIR/mobile_app"
+FLUTTER_DEVICE_TIMEOUT=120
 
 # --- 顏色定義 ---
 RED='\033[0;31m'
@@ -84,20 +85,42 @@ is_macos() {
 }
 
 ADB_BIN=""
+EMULATOR_BIN=""
+
+# 自動設定 ANDROID_HOME（如果未設定）
+if [ -z "$ANDROID_HOME" ]; then
+    if [ -d ~/Library/Android/sdk ]; then
+        export ANDROID_HOME=~/Library/Android/sdk
+    elif [ -d ~/.android ]; then
+        export ANDROID_HOME=~/.android
+    fi
+fi
 
 resolve_adb() {
-    if [ -n "$ANDROID_SDK_ROOT" ] && [ -x "$ANDROID_SDK_ROOT/platform-tools/adb" ]; then
-        echo "$ANDROID_SDK_ROOT/platform-tools/adb"
-        return 0
-    fi
+    # 優先使用 SDK 版本
     if [ -n "$ANDROID_HOME" ] && [ -x "$ANDROID_HOME/platform-tools/adb" ]; then
         echo "$ANDROID_HOME/platform-tools/adb"
         return 0
     fi
-    if command -v adb >/dev/null 2>&1; then
-        command -v adb
+    if [ -n "$ANDROID_SDK_ROOT" ] && [ -x "$ANDROID_SDK_ROOT/platform-tools/adb" ]; then
+        echo "$ANDROID_SDK_ROOT/platform-tools/adb"
         return 0
     fi
+    # 不要用 PATH 的版本，避免混用不同 adb
+    return 1
+}
+
+resolve_emulator() {
+    # 優先使用 SDK 版本
+    if [ -n "$ANDROID_HOME" ] && [ -x "$ANDROID_HOME/emulator/emulator" ]; then
+        echo "$ANDROID_HOME/emulator/emulator"
+        return 0
+    fi
+    if [ -n "$ANDROID_SDK_ROOT" ] && [ -x "$ANDROID_SDK_ROOT/emulator/emulator" ]; then
+        echo "$ANDROID_SDK_ROOT/emulator/emulator"
+        return 0
+    fi
+    # 不要用 PATH 的版本
     return 1
 }
 
@@ -107,9 +130,20 @@ init_adb() {
     fi
 }
 
+init_emulator() {
+    if [ -z "$EMULATOR_BIN" ]; then
+        EMULATOR_BIN="$(resolve_emulator || true)"
+    fi
+}
+
 has_adb() {
     init_adb
     [ -n "$ADB_BIN" ]
+}
+
+has_emulator() {
+    init_emulator
+    [ -n "$EMULATOR_BIN" ]
 }
 
 get_android_emulator_any_id() {
@@ -290,9 +324,17 @@ start_emulator() {
     local launched=false
     local android_launched=false
     local emulator_id=""
+    local emulator_adb_id=""
+    
+    # 先確保 adb daemon 已啟動（模擬器需要它）
+    if has_adb; then
+        "$ADB_BIN" start-server > /dev/null 2>&1 || true
+        sleep 1
+    fi
+    
     emulator_id=$(flutter emulators 2>/dev/null | grep -i "android" | awk '{print $1}' | head -1)
-    if [ -z "$emulator_id" ] && command -v emulator >/dev/null 2>&1; then
-        emulator_id=$(emulator -list-avds 2>/dev/null | head -n 1)
+    if [ -z "$emulator_id" ] && has_emulator; then
+        emulator_id=$("$EMULATOR_BIN" -list-avds 2>/dev/null | head -n 1)
     fi
 
     if [ -n "$emulator_id" ]; then
@@ -332,39 +374,28 @@ start_emulator() {
     fi
 
     echo ""
-    echo -n "    等待模擬器開機 (最多 10 秒)"
+    echo -n "    等待模擬器開機 (最多 30 秒)"
 
-    if [ "$android_launched" = true ] && has_adb; then
-        if wait_for_android_emulator_boot 10; then
-            echo ""
-            print_success "模擬器已就緒"
-            sleep 3  # 額外等待 UI 完全載入
-            return 0
-        fi
-    else
-        for i in $(seq 1 5); do
-            if check_emulator_running; then
+    # 等待 adb 能偵測到設備並且 online
+    for i in $(seq 1 30); do
+        if has_adb; then
+            local device_state
+            device_state=$("$ADB_BIN" devices -l 2>/dev/null | grep "emulator-5554" | awk '{print $2}')
+            if [ "$device_state" = "device" ]; then
                 echo ""
-                print_success "模擬器已就緒"
-                sleep 3
+                print_success "模擬器已就緒 (online)"
                 return 0
             fi
-            echo -n "."
-            sleep 2
-        done
-    fi
+        fi
+        echo -n "."
+        sleep 1
+    done
 
     echo ""
-    print_warning "模擬器尚未就緒，先繼續後續流程"
-    if [ "$android_launched" = true ] && has_adb; then
-        local adb_state
-        adb_state=$(get_android_emulator_state)
-        if [ "$adb_state" = "offline" ]; then
-            echo "    adb 顯示 emulator offline，建議："
-            echo "    adb kill-server && adb start-server"
-            echo "    或重開模擬器 / AVD Wipe Data"
-        fi
-    fi
+    print_warning "模擬器已啟動但尚未就緒，flutter 會繼續等待..."
+    
+    # 寫入 adb ID 供後續使用
+    echo "emulator-5554" > /tmp/uban_emulator_id.txt
     return 0
 }
 
@@ -437,19 +468,11 @@ do_quick_start() {
     # 3. 如果沒有模擬器，啟動一個
     if [ "$has_emulator" = false ]; then
         start_emulator
-        if check_emulator_running; then
+        # start_emulator 會把 adb ID 寫到 /tmp/uban_emulator_id.txt
+        if [ -f /tmp/uban_emulator_id.txt ]; then
+            emulator_id=$(cat /tmp/uban_emulator_id.txt)
             has_emulator=true
-            emulator_id=$(get_emulator_id)
-        else
-            if has_adb; then
-                local any_emulator_id
-                any_emulator_id=$(get_android_emulator_any_id)
-                if [ -n "$any_emulator_id" ]; then
-                    has_emulator=true
-                    emulator_id="$any_emulator_id"
-                    print_warning "模擬器尚未就緒，先以 $emulator_id 繼續"
-                fi
-            fi
+            print_warning "模擬器已啟動: $emulator_id"
         fi
     fi
     
@@ -481,13 +504,13 @@ do_quick_start() {
         
         # 在背景啟動實體設備
         print_info "啟動實體設備 ($physical_id)..."
-        flutter run --dart-define=SERVER_IP="$serverURL" -d "$physical_id" &
+        flutter run --dart-define=SERVER_IP="$serverURL" --device-timeout="$FLUTTER_DEVICE_TIMEOUT" -d "$physical_id" &
         echo "$!|physical|$physical_id" >> "$FLUTTER_PIDS_FILE"
         sleep 3
         
         # 前台啟動模擬器
         print_info "啟動模擬器 ($emulator_id)..."
-        flutter run --dart-define=SERVER_IP="$serverURL" -d "$emulator_id" &
+        flutter run --dart-define=SERVER_IP="$serverURL" --device-timeout="$FLUTTER_DEVICE_TIMEOUT" -d "$emulator_id" &
         echo "$!|emulator|$emulator_id" >> "$FLUTTER_PIDS_FILE"
         
         echo ""
@@ -524,9 +547,9 @@ do_quick_start() {
         cd "$MOBILE_APP_DIR"
         
         if [ -n "$target_device" ]; then
-            exec flutter run --dart-define=SERVER_IP="$serverURL" -d "$target_device"
+            flutter run --dart-define=SERVER_IP="$serverURL" --device-timeout="$FLUTTER_DEVICE_TIMEOUT" -d "$target_device"
         else
-            exec flutter run --dart-define=SERVER_IP="$serverURL"
+            flutter run --dart-define=SERVER_IP="$serverURL"
         fi
     fi
 }
@@ -564,7 +587,7 @@ do_hot_restart_physical() {
     sleep 2
     
     cd "$MOBILE_APP_DIR"
-    flutter run --dart-define=SERVER_IP="$DEFAULT_SERVER_URL" -d "$device_id" &
+    flutter run --dart-define=SERVER_IP="$DEFAULT_SERVER_URL" --device-timeout="$FLUTTER_DEVICE_TIMEOUT" -d "$device_id" &
     local new_pid=$!
     
     # 更新 PID 檔案
