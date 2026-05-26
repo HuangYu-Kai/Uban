@@ -377,6 +377,33 @@ class ZenPondController extends ChangeNotifier {
     });
   }
 
+  // 從後端 RAG (Pinecone) 接口生成並推播一片話題落葉
+  Future<bool> generateAndAddRagLeaf(int userId) async {
+    try {
+      final res = await ApiService.generatePondLeaf(userId);
+      final isSuccess = res['status'] == 'success' || res['success'] == true;
+      if (isSuccess && res['data'] != null) {
+        final leafText = res['data']['leaf_text'] as String?;
+        if (leafText != null && leafText.isNotEmpty) {
+          addLeaf(
+            text: leafText,
+            colorType: LeafColorType.yellow, // 黃色：長期記憶/回憶落葉
+            playTts: true,
+          );
+          // 同時也加入時光日記
+          addHistory(
+            sender: 'ai',
+            text: leafText,
+          );
+          return true;
+        }
+      }
+    } catch (e) {
+      debugPrint('ZenPondController generateAndAddRagLeaf error: $e');
+    }
+    return false;
+  }
+
   // 自動 edge-tts 播報合成器
   Future<void> _speakTtsAuto(String messageText) async {
     try {
