@@ -385,15 +385,46 @@ class ZenPondController extends ChangeNotifier {
       if (isSuccess && res['data'] != null) {
         final leafText = res['data']['leaf_text'] as String?;
         if (leafText != null && leafText.isNotEmpty) {
+          // 解析 Markdown 圖片: ![alt](url)
+          String? imageUrl;
+          final imgRegExp = RegExp(r'!\[.*?\]\((.*?)\)');
+          final imgMatch = imgRegExp.firstMatch(leafText);
+          if (imgMatch != null) {
+            imageUrl = imgMatch.group(1);
+          }
+
+          // 解析影片 ID: [VIDEO_ID:xxxx]
+          String? videoId;
+          final videoRegExp = RegExp(r'\[VIDEO_ID:([^\]]+)\]');
+          final videoMatch = videoRegExp.firstMatch(leafText);
+          if (videoMatch != null) {
+            videoId = videoMatch.group(1);
+          }
+
+          // 移除 Markdown 語法標記，只留乾淨對話文字
+          String cleanText = leafText
+              .replaceAll(imgRegExp, '')
+              .replaceAll(videoRegExp, '')
+              .trim();
+          if (cleanText.isEmpty) {
+            cleanText = videoId != null
+                ? '這是為您推薦的影片'
+                : (imageUrl != null ? '為您分享了一張照片' : leafText);
+          }
+
           addLeaf(
-            text: leafText,
+            text: cleanText,
             colorType: LeafColorType.yellow, // 黃色：長期記憶/回憶落葉
+            imageUrl: imageUrl,
+            videoId: videoId,
             playTts: true,
           );
           // 同時也加入時光日記
           addHistory(
             sender: 'ai',
-            text: leafText,
+            text: cleanText,
+            imageUrl: imageUrl,
+            videoId: videoId,
           );
           return true;
         }
