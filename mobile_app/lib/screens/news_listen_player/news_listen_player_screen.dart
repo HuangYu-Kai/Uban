@@ -7,8 +7,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../services/api_service.dart';
+import 'widgets/news_card_list.dart';
 import 'widgets/news_category_selector.dart';
-import 'widgets/news_selection_list.dart';
 import 'widgets/news_sound_wave_indicator.dart';
 import 'widgets/news_subtitle_viewer.dart';
 import 'widgets/news_summary_dialog.dart';
@@ -29,7 +29,8 @@ class NewsListenPlayerScreen extends StatefulWidget {
   State<NewsListenPlayerScreen> createState() => _NewsListenPlayerScreenState();
 }
 
-class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
+class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
+    with TickerProviderStateMixin {
   final AudioPlayer _audioPlayer = AudioPlayer();
   late int _currentIndex;
   bool _isLoadingAudio = false;
@@ -49,15 +50,26 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
 
   late List<Map<String, dynamic>> _localNewsItems;
   String _selectedCategory = '全部';
-  final ScrollController _scrollController = ScrollController();
+  final ScrollController _newsScrollController = ScrollController();
   bool _isLoadingMore = false;
+
+  // DraggableScrollableSheet 相關
+  final DraggableScrollableController _sheetController =
+      DraggableScrollableController();
+  bool _isSheetExpanded = false;
+
+  // 小豬對話框動畫
+  late AnimationController _pigAnimController;
+  late Animation<double> _pigScaleAnim;
 
   @override
   void dispose() {
-    _scrollController.dispose();
+    _newsScrollController.dispose();
     _audioPlayer.dispose();
     _aiAudioPlayer.dispose();
     _positionSubscription?.cancel();
+    _sheetController.dispose();
+    _pigAnimController.dispose();
     super.dispose();
   }
 
@@ -65,8 +77,22 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
   void initState() {
     super.initState();
     _localNewsItems = List.from(widget.newsItems);
-    _currentIndex = widget.initialIndex.clamp(0, max(_localNewsItems.length - 1, 0));
-    _scrollController.addListener(_onScroll);
+    _currentIndex =
+        widget.initialIndex.clamp(0, max(_localNewsItems.length - 1, 0));
+    _newsScrollController.addListener(_onNewsScroll);
+
+    // 小豬動畫控制器
+    _pigAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
+    _pigScaleAnim = CurvedAnimation(
+      parent: _pigAnimController,
+      curve: Curves.elasticOut,
+    );
+
+    // 監聽 sheet 狀態
+    _sheetController.addListener(_onSheetChanged);
 
     _audioPlayer.onPlayerStateChanged.listen((state) {
       if (!mounted) return;
@@ -99,7 +125,8 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
       }
 
       if (matchedIndex != -1 && matchedIndex != _currentSubtitleIndex) {
-        debugPrint('🎯 切換字幕至第 $matchedIndex 句: ${_subtitles[matchedIndex]['text']}');
+        debugPrint(
+            '🎯 切換字幕至第 $matchedIndex 句: ${_subtitles[matchedIndex]['text']}');
         setState(() {
           _currentSubtitleIndex = matchedIndex;
           _subtitleProgress = progress.clamp(0.0, 1.0);
@@ -116,10 +143,26 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
     }
   }
 
-  void _onScroll() {
+  void _onSheetChanged() {
     if (!mounted) return;
-    if (_scrollController.position.pixels >=
-            _scrollController.position.maxScrollExtent - 200 &&
+    final size = _sheetController.size;
+    final expanded = size > 0.2;
+    if (expanded != _isSheetExpanded) {
+      setState(() {
+        _isSheetExpanded = expanded;
+      });
+      if (expanded) {
+        _pigAnimController.forward();
+      } else {
+        _pigAnimController.reverse();
+      }
+    }
+  }
+
+  void _onNewsScroll() {
+    if (!mounted) return;
+    if (_newsScrollController.position.pixels >=
+            _newsScrollController.position.maxScrollExtent - 200 &&
         !_isLoadingMore) {
       _loadMoreNews();
     }
@@ -132,13 +175,16 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
     try {
       debugPrint('🔄 正在載入更多新聞... 類別: $_selectedCategory');
       final apiCategory = _selectedCategory == '全部' ? '' : _selectedCategory;
-      final response = await ApiService.getNews(category: apiCategory, limit: 10);
+      final response =
+          await ApiService.getNews(category: apiCategory, limit: 10);
 
       if (response['status'] == 'success') {
-        final newItems = List<Map<String, dynamic>>.from(response['data'] ?? []);
+        final newItems =
+            List<Map<String, dynamic>>.from(response['data'] ?? []);
         if (newItems.isNotEmpty) {
           setState(() {
-            final existingTitles = _localNewsItems.map((i) => i['title'] as String).toSet();
+            final existingTitles =
+                _localNewsItems.map((i) => i['title'] as String).toSet();
             final uniqueNewItems = newItems
                 .where((i) => !existingTitles.contains(i['title']))
                 .toList();
@@ -168,7 +214,8 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
     try {
       final String? audioUrl = item['audio_url'];
       if (audioUrl != null && audioUrl.isNotEmpty) {
-        final String fullUrl = "https://localhost-0.tail5abf5e.ts.net$audioUrl";
+        final String fullUrl =
+            "https://localhost-0.tail5abf5e.ts.net$audioUrl";
         await _audioPlayer.stop();
         await _audioPlayer.play(UrlSource(fullUrl));
 
@@ -186,7 +233,8 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
       final speechText = _composeSpeechText(item);
       final response = await ApiService.synthesizeTts(text: speechText);
       if (response['status'] != 'success') {
-        final detail = response['detail'] ?? response['message'] ?? response['error'];
+        final detail =
+            response['detail'] ?? response['message'] ?? response['error'];
         throw Exception(detail ?? 'TTS 合成失敗');
       }
       final audioBase64 = (response['audio_base64'] ?? '').toString();
@@ -290,16 +338,14 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
       final title = currentNews['title'] ?? "這則新聞";
       final content = currentNews['content'] ?? "";
 
-      final response = await ApiService.petGreeting(
-        widget.userId,
-        "請針對這則新聞：『$title』\n內容：$content\n請以貼心小豬的身分，用『簡單白話』為長輩整理 3 個最重要的重點，總字數請控制在 60 字以內。"
-      );
+      final response = await ApiService.petGreeting(widget.userId,
+          "請針對這則新聞：『$title』\n內容：$content\n請以貼心小豬的身分，用『簡單白話』為長輩整理 3 個最重要的重點，總字數請控制在 60 字以內。");
 
       if (!mounted) return;
 
       if (response['status'] == 'success') {
         final reply = response['reply'] ?? "抱歉，小豬沒辦法總結這則新聞。";
-        
+
         setState(() {
           _summaryText = reply;
           _isAiThinking = false;
@@ -307,7 +353,8 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
 
         // 呼叫 TTS
         final ttsResponse = await ApiService.synthesizeTts(text: reply);
-        if (ttsResponse['status'] == 'success' && ttsResponse['data'] != null) {
+        if (ttsResponse['status'] == 'success' &&
+            ttsResponse['data'] != null) {
           final audioUrl = ttsResponse['data']['url'];
           if (audioUrl != null) {
             await _aiAudioPlayer.play(UrlSource(audioUrl));
@@ -361,7 +408,8 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
     final content = (item['content'] ?? '').toString().trim();
     final header = category.isNotEmpty ? '[$category] $title' : title;
     if (content.isEmpty) return header;
-    final clipped = content.length > 180 ? '${content.substring(0, 180)}。' : content;
+    final clipped =
+        content.length > 180 ? '${content.substring(0, 180)}。' : content;
     return '$header。$clipped';
   }
 
@@ -386,6 +434,13 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
     return categories.toList();
   }
 
+  /// 取得當前新聞標題（給小豬對話框用）
+  String get _currentNewsTitle {
+    if (_localNewsItems.isEmpty) return '';
+    final item = _localNewsItems[_currentIndex];
+    return (item['title'] ?? '').toString();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -398,137 +453,277 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen> {
           ),
         ),
         child: SafeArea(
-          child: PageView(
-            scrollDirection: Axis.vertical,
+          child: Stack(
             children: [
-              Stack(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
-                    child: Column(
-                      children: [
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: IconButton(
-                            onPressed: () => Navigator.pop(context),
-                            icon: const Icon(Icons.arrow_back_ios_new_rounded,
-                                color: Colors.white, size: 26),
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        const Text(
-                          '代誌\n報給你知',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontFamily: 'StarPanda',
-                            fontSize: 48,
-                            height: 1.1,
-                            color: Colors.white,
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-                        _buildPlayerHeader(),
-                        const SizedBox(height: 15),
-                        // 字幕顯示區域 (全文本動態捲動，已模組化)
-                        Expanded(
-                          child: NewsSubtitleViewer(
-                            subtitles: _subtitles,
-                            currentSubtitleIndex: _currentSubtitleIndex,
-                            subtitleProgress: _subtitleProgress,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        const Text('向上滑查看更多新聞',
-                            style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 18,
-                                fontWeight: FontWeight.w600)),
-                        const Icon(Icons.keyboard_arrow_up_rounded,
-                            color: Colors.white70, size: 32),
-                        const SizedBox(height: 10),
-                      ],
+              // 底層：聆聽介面
+              _buildListeningView(),
+
+              // 上層：白色面板（可拖動）
+              DraggableScrollableSheet(
+                controller: _sheetController,
+                initialChildSize: 0.08,
+                minChildSize: 0.08,
+                maxChildSize: 0.70,
+                snap: true,
+                snapSizes: const [0.08, 0.70],
+                builder: (context, scrollController) {
+                  return _buildWhitePanel(scrollController);
+                },
+              ),
+
+              // 小豬 + 對話框（新聞面板展開時出現）
+              if (_isSheetExpanded) _buildPigMascot(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 聆聽介面（底層）
+  Widget _buildListeningView() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+      child: Column(
+        children: [
+          // 返回 + 小豬總結按鈕（聆聽模式下）
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              IconButton(
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(Icons.arrow_back_ios_new_rounded,
+                    color: Colors.white, size: 26),
+              ),
+              if (!_isSheetExpanded)
+                GestureDetector(
+                  onTap: _showNewsSummary,
+                  child: Hero(
+                    tag: 'pig_mascot',
+                    child: Image.asset(
+                      'assets/images/pig_summary_expert.png',
+                      width: 65,
+                      height: 65,
                     ),
-                  ),
-                  // 右下角的小豬總結按鈕
-                  Positioned(
-                    right: 10,
-                    top: 100,
-                    child: GestureDetector(
-                      onTap: _showNewsSummary,
-                      child: Hero(
-                        tag: 'pig_mascot',
-                        child: Image.asset(
-                          'assets/images/pig_summary_expert.png',
-                          width: 80,
-                          height: 80,
-                        ),
-                      ).animate(
+                  )
+                      .animate(
                         target: _isAiThinking ? 1 : 0,
                         onPlay: (controller) => controller.repeat(),
-                      ).shake(hz: 3, curve: Curves.easeInOut)
-                       .scale(begin: const Offset(1, 1), end: const Offset(1.1, 1.1), duration: 1.seconds),
+                      )
+                      .shake(hz: 3, curve: Curves.easeInOut)
+                      .scale(
+                          begin: const Offset(1, 1),
+                          end: const Offset(1.1, 1.1),
+                          duration: 1.seconds),
+                ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            '代誌\n報給你知',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontFamily: 'StarPanda',
+              fontSize: 48,
+              height: 1.1,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 20),
+          _buildPlayerHeader(),
+          const SizedBox(height: 15),
+          // 字幕顯示區域
+          Expanded(
+            child: NewsSubtitleViewer(
+              subtitles: _subtitles,
+              currentSubtitleIndex: _currentSubtitleIndex,
+              subtitleProgress: _subtitleProgress,
+            ),
+          ),
+          const SizedBox(height: 10),
+          // 提示文字
+          AnimatedOpacity(
+            opacity: _isSheetExpanded ? 0.0 : 1.0,
+            duration: const Duration(milliseconds: 200),
+            child: const Column(
+              children: [
+                Text('往下滑查看更多新聞',
+                    style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600)),
+                Icon(Icons.keyboard_arrow_up_rounded,
+                    color: Colors.white70, size: 32),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+        ],
+      ),
+    );
+  }
+
+  /// 白色面板
+  Widget _buildWhitePanel(ScrollController scrollController) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        boxShadow: [
+          BoxShadow(
+            color: Color(0x30000000),
+            blurRadius: 20,
+            offset: Offset(0, -4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          // 拖拽指示條
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onVerticalDragUpdate: (details) {
+              // 在手柄區域向下拖 → 收回面板
+              if (details.primaryDelta != null && details.primaryDelta! > 8) {
+                _sheetController.animateTo(
+                  0.08,
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOut,
+                );
+              }
+            },
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.only(top: 14, bottom: 10),
+              child: Center(
+                child: Container(
+                  width: 44,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFD1D5DB),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          // 分類選擇器
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+            child: NewsCategorySelector(
+              categories: _categories,
+              selectedCategory: _selectedCategory,
+              onWhiteBackground: true,
+              onCategorySelected: (category) {
+                setState(() {
+                  _selectedCategory = category;
+                });
+              },
+            ),
+          ),
+          // 新聞列表
+          Expanded(
+            child: ListView(
+              controller: scrollController,
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              children: [
+                NewsCardList(
+                  newsItems: _localNewsItems,
+                  currentIndex: _currentIndex,
+                  selectedCategory: _selectedCategory,
+                  userId: widget.userId,
+                  onSelectTrack: _selectTrack,
+                ),
+                if (_isLoadingMore)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 30),
+                    child: Center(
+                      child: CircularProgressIndicator(
+                        color: Color(0xFF59B294),
+                      ),
                     ),
                   ),
-                ],
-              ),
-              // 第二頁：新聞清單 (瀏覽模式)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
-                child: Column(
-                  children: [
-                    const SizedBox(height: 10),
-                    Container(
-                        width: 40,
-                        height: 5,
-                        decoration: BoxDecoration(
-                            color: Colors.white54,
-                            borderRadius: BorderRadius.circular(10))),
-                    const SizedBox(height: 20),
-                    const Text('新聞清單',
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 28,
-                            fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 20),
-                    // 分類選擇器 (已模組化)
-                    NewsCategorySelector(
-                      categories: _categories,
-                      selectedCategory: _selectedCategory,
-                      onCategorySelected: (category) {
-                        setState(() {
-                          _selectedCategory = category;
-                        });
-                      },
+                const SizedBox(height: 100),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 小豬吉祥物 + 對話框（右下角，面板展開時出現）
+  Widget _buildPigMascot() {
+    final currentTitle = _currentNewsTitle;
+    final displayText =
+        currentTitle.length > 20 ? '${currentTitle.substring(0, 20)}...' : currentTitle;
+
+    return Positioned(
+      right: 10,
+      bottom: MediaQuery.of(context).size.height * 0.72,
+      child: ScaleTransition(
+        scale: _pigScaleAnim,
+        alignment: Alignment.bottomRight,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            // 對話框
+            if (currentTitle.isNotEmpty)
+              Container(
+                constraints: const BoxConstraints(maxWidth: 180),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.12),
+                      blurRadius: 12,
+                      offset: const Offset(0, 3),
                     ),
-                    Expanded(
-                      child: SingleChildScrollView(
-                        controller: _scrollController,
-                        physics: const BouncingScrollPhysics(),
-                        child: Column(
-                          children: [
-                            // 新聞清單列表 (已模組化)
-                            NewsSelectionList(
-                              newsItems: _localNewsItems,
-                              currentIndex: _currentIndex,
-                              selectedCategory: _selectedCategory,
-                              onSelectTrack: _selectTrack,
-                            ),
-                            if (_isLoadingMore)
-                              const Padding(
-                                padding: EdgeInsets.symmetric(vertical: 30),
-                                child: CircularProgressIndicator(
-                                    color: Color(0xFFFFD700)),
-                              ),
-                            const SizedBox(height: 100),
-                          ],
-                        ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      '正在唸：',
+                      style: TextStyle(
+                        color: Color(0xFF9CA3AF),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      displayText,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF1E293B),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        height: 1.3,
                       ),
                     ),
                   ],
                 ),
               ),
-            ],
-          ),
+            const SizedBox(width: 6),
+            // 小豬圖片
+            GestureDetector(
+              onTap: _showNewsSummary,
+              child: Image.asset(
+                'assets/images/pig_summary_expert.png',
+                width: 60,
+                height: 60,
+              ),
+            ),
+          ],
         ),
       ),
     );
