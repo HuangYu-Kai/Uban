@@ -199,42 +199,51 @@ class _DiaryDialogContentState extends State<DiaryDialogContent> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Row(
-                          children: [
-                            if (isShowingContent)
-                              IconButton(
-                                icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Color(0xFF8C6D58), size: 24),
-                                onPressed: () {
-                                  setState(() {
-                                    _selectedDate = null;
-                                  });
-                                },
+                        Expanded(
+                          child: Row(
+                            children: [
+                              if (isShowingContent)
+                                IconButton(
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                  icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Color(0xFF8C6D58), size: 22),
+                                  onPressed: () {
+                                    setState(() {
+                                      _selectedDate = null;
+                                    });
+                                  },
+                                ),
+                              if (isShowingContent) const SizedBox(width: 4),
+                              const Icon(
+                                Icons.history_edu_rounded,
+                                color: Color(0xFF8C6D58),
+                                size: 28,
                               ),
-                            const Icon(
-                              Icons.history_edu_rounded,
-                              color: Color(0xFF8C6D58),
-                              size: 32,
-                            ),
-                            const SizedBox(width: 12),
-                            Text(
-                              isShowingContent
-                                  ? "${_getFriendlyDateLabel(_selectedDate!)} ${_generateTopic(groups[_selectedDate!] ?? [])}"
-                                  : '目錄',
-                              style: GoogleFonts.notoSansTc(
-                                fontSize: 26,
-                                fontWeight: FontWeight.bold,
-                                color: const Color(0xFF3E2723),
+                              const SizedBox(width: 10),
+                              Flexible(
+                                child: Text(
+                                  isShowingContent
+                                      ? "${_getFriendlyDateLabel(_selectedDate!)} ${_generateTopic(groups[_selectedDate!] ?? [])}"
+                                      : '目錄',
+                                  style: GoogleFonts.notoSansTc(
+                                    fontSize: isShowingContent ? 20 : 26,
+                                    fontWeight: FontWeight.bold,
+                                    color: const Color(0xFF3E2723),
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                         // 清空歷史按鈕
                         TextButton.icon(
                           onPressed: _showClearConfirmDialog,
-                          icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 22),
+                          icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 20),
                           label: Text(
                             '清空日記',
-                            style: GoogleFonts.notoSansTc(color: Colors.redAccent, fontSize: 16),
+                            style: GoogleFonts.notoSansTc(color: Colors.redAccent, fontSize: 14),
                           ),
                         ),
                       ],
