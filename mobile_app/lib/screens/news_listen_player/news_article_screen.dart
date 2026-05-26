@@ -38,8 +38,11 @@ class NewsArticleScreen extends StatelessWidget {
     final content = (newsItem['content'] ?? '').toString();
     final source = (newsItem['category'] ?? '新聞').toString();
     final date = _formatNewsDate(newsItem);
-    final imageUrl =
+    final rawImageUrl =
         ((newsItem['image_url'] ?? newsItem['image']) ?? '').toString().trim();
+    final imageUrl = rawImageUrl.startsWith('/')
+        ? "https://localhost-0.tail5abf5e.ts.net$rawImageUrl"
+        : rawImageUrl;
     final hasImage = imageUrl.startsWith('http');
 
     return Scaffold(
@@ -49,7 +52,7 @@ class NewsArticleScreen extends StatelessWidget {
         slivers: [
           // 頂部圖片 + 返回按鈕
           SliverAppBar(
-            expandedHeight: hasImage ? 280 : 0,
+            expandedHeight: 240,
             pinned: true,
             backgroundColor: Colors.white,
             surfaceTintColor: Colors.transparent,
@@ -80,24 +83,22 @@ class NewsArticleScreen extends StatelessWidget {
               ),
             ),
             title: const Text(
-              '← 返回',
+              '返回',
               style: TextStyle(
                 color: Color(0xFF1E293B),
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
               ),
             ),
-            flexibleSpace: hasImage
-                ? FlexibleSpaceBar(
-                    background: Image.network(
+            flexibleSpace: FlexibleSpaceBar(
+              background: hasImage
+                  ? Image.network(
                       imageUrl,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(
-                        color: const Color(0xFFF3F4F6),
-                      ),
-                    ),
-                  )
-                : null,
+                      errorBuilder: (_, __, ___) => _buildGradientPlaceholder(source),
+                    )
+                  : _buildGradientPlaceholder(source),
+            ),
           ),
 
           // 文章內容
@@ -145,7 +146,7 @@ class NewsArticleScreen extends StatelessWidget {
 
                     // 日期
                     Text(
-                      '$date',
+                      date,
                       style: const TextStyle(
                         color: Color(0xFF9CA3AF),
                         fontSize: 16,
@@ -228,6 +229,55 @@ class NewsArticleScreen extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildGradientPlaceholder(String category) {
+    final List<Color> colors;
+    final IconData icon;
+
+    switch (category) {
+      case '國際':
+        colors = [const Color(0xFF2C3E50), const Color(0xFF3498DB)];
+        icon = Icons.public_rounded;
+        break;
+      case '財經':
+        colors = [const Color(0xFF11998E), const Color(0xFF38EF7D)];
+        icon = Icons.trending_up_rounded;
+        break;
+      case '運動':
+        colors = [const Color(0xFFF12711), const Color(0xFFF5AF19)];
+        icon = Icons.sports_basketball_rounded;
+        break;
+      case '生活':
+      case '健康':
+        colors = [const Color(0xFF833AB4), const Color(0xFFFD1D1D)];
+        icon = Icons.favorite_rounded;
+        break;
+      case '科技':
+        colors = [const Color(0xFF00C6FF), const Color(0xFF0072FF)];
+        icon = Icons.biotech_rounded;
+        break;
+      default:
+        colors = [const Color(0xFF8BAF88), const Color(0xFF59B294)]; // Theme Green
+        icon = Icons.newspaper_rounded;
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: colors,
+        ),
+      ),
+      child: Center(
+        child: Icon(
+          icon,
+          size: 72,
+          color: Colors.white.withValues(alpha: 0.85),
+        ),
       ),
     );
   }

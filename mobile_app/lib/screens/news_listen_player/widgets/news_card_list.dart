@@ -62,8 +62,11 @@ class NewsCardList extends StatelessWidget {
         final title = (item['title'] ?? '').toString();
         final source = (item['category'] ?? '新聞').toString();
         final date = _formatNewsDate(item);
-        final imageUrl =
+        final rawImageUrl =
             ((item['image_url'] ?? item['image']) ?? '').toString().trim();
+        final imageUrl = rawImageUrl.startsWith('/')
+            ? "https://localhost-0.tail5abf5e.ts.net$rawImageUrl"
+            : rawImageUrl;
         final hasImage = imageUrl.startsWith('http');
 
         return Padding(
@@ -126,27 +129,9 @@ class NewsCardList extends StatelessWidget {
                               ? Image.network(
                                   imageUrl,
                                   fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => Container(
-                                    color: const Color(0xFFF3F4F6),
-                                    child: const Center(
-                                      child: Icon(
-                                        Icons.article_rounded,
-                                        size: 48,
-                                        color: Color(0xFFD1D5DB),
-                                      ),
-                                    ),
-                                  ),
+                                  errorBuilder: (_, __, ___) => _buildGradientPlaceholder(source),
                                 )
-                              : Container(
-                                  color: const Color(0xFFF3F4F6),
-                                  child: const Center(
-                                    child: Icon(
-                                      Icons.article_rounded,
-                                      size: 48,
-                                      color: Color(0xFFD1D5DB),
-                                    ),
-                                  ),
-                                ),
+                              : _buildGradientPlaceholder(source),
                           // 分類標籤
                           Positioned(
                             top: 12,
@@ -247,6 +232,55 @@ class NewsCardList extends StatelessWidget {
           ),
         );
       }),
+    );
+  }
+
+  Widget _buildGradientPlaceholder(String category) {
+    final List<Color> colors;
+    final IconData icon;
+
+    switch (category) {
+      case '國際':
+        colors = [const Color(0xFF2C3E50), const Color(0xFF3498DB)];
+        icon = Icons.public_rounded;
+        break;
+      case '財經':
+        colors = [const Color(0xFF11998E), const Color(0xFF38EF7D)];
+        icon = Icons.trending_up_rounded;
+        break;
+      case '運動':
+        colors = [const Color(0xFFF12711), const Color(0xFFF5AF19)];
+        icon = Icons.sports_basketball_rounded;
+        break;
+      case '生活':
+      case '健康':
+        colors = [const Color(0xFF833AB4), const Color(0xFFFD1D1D)];
+        icon = Icons.favorite_rounded;
+        break;
+      case '科技':
+        colors = [const Color(0xFF00C6FF), const Color(0xFF0072FF)];
+        icon = Icons.biotech_rounded;
+        break;
+      default:
+        colors = [const Color(0xFF8BAF88), const Color(0xFF59B294)]; // Theme Green
+        icon = Icons.newspaper_rounded;
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: colors,
+        ),
+      ),
+      child: Center(
+        child: Icon(
+          icon,
+          size: 64,
+          color: Colors.white.withValues(alpha: 0.85),
+        ),
+      ),
     );
   }
 }

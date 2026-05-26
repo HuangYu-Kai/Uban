@@ -97,15 +97,12 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
       curve: const Interval(0.65, 1.0, curve: Curves.elasticOut),
     );
 
-    // 監聽面板狀態變更
+    // 監聽面板狀態變更，調用 setState 確保 Positioned 與動畫數值更新同步
     _panelController.addListener(() {
       if (!mounted) return;
-      final expanded = _panelController.value > 0.5;
-      if (expanded != _isSheetExpanded) {
-        setState(() {
-          _isSheetExpanded = expanded;
-        });
-      }
+      setState(() {
+        _isSheetExpanded = _panelController.value > 0.5;
+      });
     });
 
     _audioPlayer.onPlayerStateChanged.listen((state) {
@@ -450,10 +447,12 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
   @override
   Widget build(BuildContext context) {
     final double screenHeight = MediaQuery.of(context).size.height;
-    final double panelHeight = screenHeight * 0.72;
+    final double panelHeight = screenHeight * 0.88; // 提高白色面板展開比例至 88%，完全蓋過「正在播放」部分
 
     return Scaffold(
       body: Container(
+        width: double.infinity,
+        height: double.infinity,
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
@@ -461,11 +460,12 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
             colors: [Color(0xFF8BAF88), Color(0xFF56B59F)],
           ),
         ),
-        child: SafeArea(
-          child: Stack(
-            children: [
-              // 底層：聆聽介面，支持手勢交互
-              GestureDetector(
+        child: Stack(
+          children: [
+            // 底層：聆聽介面，加頂部 SafeArea 以保護狀態欄，但底部不加，讓面板延伸至最底部
+            SafeArea(
+              bottom: false,
+              child: GestureDetector(
                 behavior: HitTestBehavior.translucent,
                 onVerticalDragUpdate: (details) {
                   final delta = details.primaryDelta;
@@ -502,14 +502,14 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
                 },
                 child: _buildListeningView(),
               ),
+            ),
 
-              // 上層：白色面板（自定義 Positioned）
-              _buildCustomWhitePanel(panelHeight),
+            // 上層：白色面板（自定義 Positioned，延伸至螢幕最底部）
+            _buildCustomWhitePanel(panelHeight),
 
-              // 小豬 + 對話框（跟隨面板同步升降與彈性縮放）
-              _buildPigMascot(panelHeight),
-            ],
-          ),
+            // 小豬 + 對話框（當白色面板展開時，以彈性動畫出現在右下角）
+            _buildPigMascot(panelHeight),
+          ],
         ),
       ),
     );
@@ -521,49 +521,83 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
       padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
       child: Column(
         children: [
-          // 返回 + 小豬總結按鈕（聆聽模式下）
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          // 返回 + 重點整理按鈕（聆聽模式下，改用精緻的玻璃卡片按鈕，並在中間加入隨面板上滑漸顯的導航欄標題）
+          Stack(
+            alignment: Alignment.center,
             children: [
-              IconButton(
-                onPressed: () => Navigator.pop(context),
-                icon: const Icon(Icons.arrow_back_ios_new_rounded,
-                    color: Colors.white, size: 26),
-              ),
-              if (!_isSheetExpanded)
-                GestureDetector(
-                  onTap: _showNewsSummary,
-                  child: Hero(
-                    tag: 'pig_mascot',
-                    child: Image.asset(
-                      'assets/images/pig_summary_expert.png',
-                      width: 65,
-                      height: 65,
-                    ),
-                  )
-                      .animate(
-                        target: _isAiThinking ? 1 : 0,
-                        onPlay: (controller) => controller.repeat(),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.arrow_back_ios_new_rounded,
+                        color: Colors.white, size: 26),
+                  ),
+                  if (!_isSheetExpanded)
+                    GestureDetector(
+                      onTap: _showNewsSummary,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.05),
+                              blurRadius: 10,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.auto_awesome, color: Colors.white, size: 16),
+                            SizedBox(width: 6),
+                            Text(
+                              '重點整理',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
                       )
-                      .shake(hz: 3, curve: Curves.easeInOut)
-                      .scale(
-                          begin: const Offset(1, 1),
-                          end: const Offset(1.1, 1.1),
-                          duration: 1.seconds),
+                          .animate(
+                            target: _isAiThinking ? 1 : 0,
+                            onPlay: (controller) => controller.repeat(),
+                          )
+                          .shake(hz: 3, curve: Curves.easeInOut)
+                          .scale(
+                              begin: const Offset(1, 1),
+                              end: const Offset(1.05, 1.05),
+                              duration: 1.seconds),
+                    ),
+                ],
+              ),
+              // 中間的導航欄標題：當面板滑上來時漸顯，滑下去時漸隱，字體清晰大氣
+              IgnorePointer(
+                child: Opacity(
+                  opacity: _panelAnimation.value,
+                  child: const Text(
+                    '代誌報給你知',
+                    style: TextStyle(
+                      fontFamily: 'StarPanda',
+                      color: Colors.white,
+                      fontSize: 30,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
+              ),
             ],
           ),
           const SizedBox(height: 4),
-          const Text(
-            '代誌\n報給你知',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontFamily: 'StarPanda',
-              fontSize: 48,
-              height: 1.1,
-              color: Colors.white,
-            ),
-          ),
+          // 動態高度與縮放的標題：邊往上擠邊把文字縮小以符合寬度
+          _buildAnimatedTitle(),
           const SizedBox(height: 20),
           _buildPlayerHeader(),
           const SizedBox(height: 15),
@@ -605,20 +639,43 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
     );
   }
 
-  /// 自定義白色面板（動畫包裹定位，高度固定 72% 防止溢出）
+  /// 動態縮放與佈局擠壓的標題文字
+  Widget _buildAnimatedTitle() {
+    // 當面板滑上來時，大標題逐漸淡出至完全隱形
+    final opacity = (1.0 - _panelAnimation.value).clamp(0.0, 1.0);
+    // 佈局高度隨之收縮，把下方內容往上推擠
+    final containerHeight = 110.0 * opacity;
+    
+    return Opacity(
+      opacity: opacity,
+      child: Container(
+        height: containerHeight,
+        alignment: Alignment.center,
+        clipBehavior: Clip.hardEdge,
+        decoration: const BoxDecoration(),
+        child: const Text(
+          '代誌\n報給你知',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontFamily: 'StarPanda',
+            fontSize: 48,
+            height: 1.0,
+            color: Colors.white,
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 自定義白色面板（動畫包裹定位，高度固定以防止溢出，直接返回 Positioned 作為 Stack 子組件）
   Widget _buildCustomWhitePanel(double panelHeight) {
-    return AnimatedBuilder(
-      animation: _panelAnimation,
-      builder: (context, child) {
-        final bottomOffset = -panelHeight + (panelHeight * _panelAnimation.value);
-        return Positioned(
-          left: 0,
-          right: 0,
-          bottom: bottomOffset,
-          height: panelHeight,
-          child: child!,
-        );
-      },
+    final bottomOffset = -panelHeight + (panelHeight * _panelAnimation.value);
+    
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: bottomOffset,
+      height: panelHeight,
       child: Container(
         decoration: const BoxDecoration(
           color: Colors.white,
@@ -723,90 +780,93 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
     );
   }
 
-  /// 小豬吉祥物 + 對話框（跟隨面板同步升降與彈性縮放）
+  /// 小豬吉祥物 + 對話框（當白色面板展開時，在右下角以彈性效果縮放出現，直接返回 Positioned 作為 Stack 子組件）
   Widget _buildPigMascot(double panelHeight) {
+    if (_panelAnimation.value < 0.1) {
+      return const Positioned(
+        right: 0,
+        bottom: 0,
+        child: SizedBox.shrink(),
+      );
+    }
+
     final currentTitle = _currentNewsTitle;
     final displayText = currentTitle.length > 20
         ? '${currentTitle.substring(0, 20)}...'
         : currentTitle;
 
-    return AnimatedBuilder(
-      animation: _panelAnimation,
-      builder: (context, child) {
-        if (_panelAnimation.value < 0.1) return const SizedBox.shrink();
+    // 豬置於螢幕右下角 (當白色面板展開時顯示在右下角角落)
+    // 為了避免擋住系統的底部返回條，將 bottom 設在離底部約 30 像素的位置
+    const double bottomPosition = 30.0;
+    const double rightPosition = 15.0;
 
-        // 精準跟隨白色面板的頂部邊緣升降
-        final bottomPosition = panelHeight * _panelAnimation.value - 10.0;
-
-        return Positioned(
-          right: 10,
-          bottom: bottomPosition,
-          child: ScaleTransition(
-            scale: _pigScaleAnim,
-            alignment: Alignment.bottomRight,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                // 對話框
-                if (currentTitle.isNotEmpty)
-                  Container(
-                    constraints: const BoxConstraints(maxWidth: 180),
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.12),
-                          blurRadius: 12,
-                          offset: const Offset(0, 3),
-                        ),
-                      ],
+    return Positioned(
+      right: rightPosition,
+      bottom: bottomPosition,
+      child: ScaleTransition(
+        scale: _pigScaleAnim,
+        alignment: Alignment.bottomRight,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            // 對話框
+            if (currentTitle.isNotEmpty)
+              Container(
+                constraints: const BoxConstraints(maxWidth: 180),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.12),
+                      blurRadius: 12,
+                      offset: const Offset(0, 3),
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text(
-                          '正在唸：',
-                          style: TextStyle(
-                            color: Color(0xFF9CA3AF),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          displayText,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Color(0xFF1E293B),
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            height: 1.3,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                const SizedBox(width: 6),
-                // 小豬圖片
-                GestureDetector(
-                  onTap: _showNewsSummary,
-                  child: Image.asset(
-                    'assets/images/pig_summary_expert.png',
-                    width: 60,
-                    height: 60,
-                  ),
+                  ],
                 ),
-              ],
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      '正在唸：',
+                      style: TextStyle(
+                        color: Color(0xFF9CA3AF),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      displayText,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF1E293B),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            const SizedBox(width: 6),
+            // 小豬圖片
+            GestureDetector(
+              onTap: _showNewsSummary,
+              child: Image.asset(
+                'assets/images/pig_summary_expert.png',
+                width: 60,
+                height: 60,
+              ),
             ),
-          ),
-        );
-      },
+          ],
+        ),
+      ),
     );
   }
 
