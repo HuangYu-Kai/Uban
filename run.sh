@@ -79,6 +79,118 @@ print_warning() { echo -e "${YELLOW}⚠️  $1${NC}"; }
 print_error()   { echo -e "${RED}❌ $1${NC}"; }
 print_info()    { echo -e "${BLUE}ℹ️  $1${NC}"; }
 
+is_macos() {
+    [ "$(uname -s)" = "Darwin" ]
+}
+
+ADB_BIN=""
+
+resolve_adb() {
+    if [ -n "$ANDROID_SDK_ROOT" ] && [ -x "$ANDROID_SDK_ROOT/platform-tools/adb" ]; then
+        echo "$ANDROID_SDK_ROOT/platform-tools/adb"
+        return 0
+    fi
+    if [ -n "$ANDROID_HOME" ] && [ -x "$ANDROID_HOME/platform-tools/adb" ]; then
+        echo "$ANDROID_HOME/platform-tools/adb"
+        return 0
+    fi
+    if command -v adb >/dev/null 2>&1; then
+        command -v adb
+        return 0
+    fi
+    return 1
+}
+
+init_adb() {
+    if [ -z "$ADB_BIN" ]; then
+        ADB_BIN="$(resolve_adb || true)"
+    fi
+}
+
+has_adb() {
+    init_adb
+    [ -n "$ADB_BIN" ]
+}
+
+get_android_emulator_any_id() {
+    if ! has_adb; then
+        return 1
+    fi
+    "$ADB_BIN" devices 2>/dev/null | awk 'NR>1 && $1 ~ /^emulator-/' | head -1 | awk '{print $1}'
+}
+
+get_android_emulator_state() {
+    if ! has_adb; then
+        return 1
+    fi
+    "$ADB_BIN" devices 2>/dev/null | awk 'NR>1 && $1 ~ /^emulator-/' | head -1 | awk '{print $2}'
+}
+
+print_android_tooling_error() {
+    print_error "找不到 adb (Android SDK Platform-Tools)"
+    echo "    請先安裝並加入 PATH"
+    echo "    macOS (Homebrew): brew install android-platform-tools"
+    echo "    或設定 ANDROID_HOME/ANDROID_SDK_ROOT，並將 \$ANDROID_HOME/platform-tools 加入 PATH"
+}
+
+get_android_emulator_id() {
+    if ! has_adb; then
+        return 1
+    fi
+    "$ADB_BIN" devices 2>/dev/null | awk 'NR>1 && $2=="device" && $1 ~ /^emulator-/' | head -1
+}
+
+is_android_emulator_booted() {
+    local device_id="$1"
+    if [ -z "$device_id" ] || ! has_adb; then
+        return 1
+    fi
+    local boot_completed
+    boot_completed=$("$ADB_BIN" -s "$device_id" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+    [ "$boot_completed" = "1" ]
+}
+
+wait_for_android_emulator_boot() {
+    local timeout_seconds="${1:-120}"
+    local elapsed=0
+    local warned_offline=false
+    local warned_no_device=false
+
+    while [ "$elapsed" -lt "$timeout_seconds" ]; do
+        local emulator_id state
+        emulator_id=$(get_android_emulator_any_id)
+        state=$(get_android_emulator_state)
+
+        if [ -z "$emulator_id" ]; then
+            if [ "$warned_no_device" = false ]; then
+                print_warning "adb 尚未偵測到模擬器，等待中..."
+                warned_no_device=true
+            fi
+        else
+            if [ "$state" = "device" ]; then
+                if is_android_emulator_booted "$emulator_id"; then
+                    return 0
+                fi
+            elif [ "$state" = "offline" ]; then
+                if [ "$warned_offline" = false ]; then
+                    print_warning "Android 模擬器處於 offline，嘗試重啟 adb..."
+                    warned_offline=true
+                fi
+                "$ADB_BIN" kill-server >/dev/null 2>&1
+                "$ADB_BIN" start-server >/dev/null 2>&1
+            elif [ "$state" = "unauthorized" ]; then
+                print_error "Android 模擬器未授權 (unauthorized)"
+                return 1
+            fi
+        fi
+
+        echo -n "."
+        sleep 2
+        elapsed=$((elapsed + 2))
+    done
+    return 1
+}
+
 check_backend() {
     local serverURL="$1"
     echo -n "[*] 檢查遠端 FastAPI 連線... "
@@ -120,7 +232,7 @@ get_connected_devices() {
         local name id type
         name=$(echo "$line" | sed 's/•.*//' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
         id=$(echo "$line" | awk -F'•' '{print $2}' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
-        if echo "$line" | grep -qi "emulator"; then
+        if echo "$line" | grep -qi "emulator\|simulator"; then
             type="emulator"
         else
             type="physical"
@@ -143,12 +255,28 @@ check_physical_device() {
 check_emulator_running() {
     local devices
     devices=$(get_connected_devices)
-    echo "$devices" | grep -q "|emulator$"
-    return $?
+    if echo "$devices" | grep -q "|emulator$"; then
+        return 0
+    fi
+    local adb_emulator_id
+    adb_emulator_id=$(get_android_emulator_id)
+    if [ -z "$adb_emulator_id" ]; then
+        return 1
+    fi
+    if is_android_emulator_booted "$adb_emulator_id"; then
+        return 0
+    fi
+    return 1
 }
 
 # 取得模擬器 ID
 get_emulator_id() {
+    local adb_emulator_id
+    adb_emulator_id=$(get_android_emulator_id)
+    if [ -n "$adb_emulator_id" ]; then
+        echo "$adb_emulator_id"
+        return 0
+    fi
     get_connected_devices | grep "|emulator$" | head -1 | cut -d'|' -f1
 }
 
@@ -158,47 +286,86 @@ get_physical_device_id() {
 }
 
 start_emulator() {
-    print_info "正在啟動 Android 模擬器..."
-    
-    # 使用 flutter emulators 啟動
-    local emulator_id
+    print_info "正在啟動模擬器..."
+    local launched=false
+    local android_launched=false
+    local emulator_id=""
     emulator_id=$(flutter emulators 2>/dev/null | grep -i "android" | awk '{print $1}' | head -1)
-    
-    if [ -z "$emulator_id" ]; then
+    if [ -z "$emulator_id" ] && command -v emulator >/dev/null 2>&1; then
         emulator_id=$(emulator -list-avds 2>/dev/null | head -n 1)
     fi
-    
-    if [ -z "$emulator_id" ]; then
-        print_error "找不到任何 Android 模擬器！"
-        echo "    請先在 Android Studio 中建立模擬器"
+
+    if [ -n "$emulator_id" ]; then
+        print_info "啟動 Android 模擬器: $emulator_id"
+        flutter emulators --launch "$emulator_id" > /dev/null 2>&1 &
+        launched=true
+        android_launched=true
+    fi
+
+    if [ "$launched" = false ] && is_macos; then
+        local ios_emulator_id
+        ios_emulator_id=$(flutter emulators 2>/dev/null | awk -F'•' '{print $1}' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//' | grep -i "ios" | head -1)
+        if [ -n "$ios_emulator_id" ]; then
+            print_info "啟動 iOS 模擬器: $ios_emulator_id"
+            flutter emulators --launch "$ios_emulator_id" > /dev/null 2>&1 &
+            launched=true
+        else
+            if command -v open >/dev/null 2>&1; then
+                print_info "啟動 iOS Simulator..."
+                open -a Simulator > /dev/null 2>&1 &
+                launched=true
+            fi
+        fi
+    fi
+
+    if [ "$android_launched" = true ] && ! has_adb; then
+        print_android_tooling_error
+        return 1
+    fi
+
+    if [ "$launched" = false ]; then
+        print_error "找不到任何可用的模擬器！"
+        echo "    macOS: 請先安裝 Xcode 並啟動 iOS Simulator"
+        echo "    Android: 請先在 Android Studio 中建立模擬器"
         echo "    或執行: flutter emulators --create --name my_emulator"
         return 1
     fi
-    
-    print_info "啟動模擬器: $emulator_id"
-    flutter emulators --launch "$emulator_id" > /dev/null 2>&1 &
-    
+
     echo ""
-    echo -n "    等待模擬器開機 (最多 90 秒)"
-    
-    # 等待模擬器完全啟動
-    for i in $(seq 1 45); do
-        # 檢查 Flutter 是否能看到設備
-        local device_check
-        device_check=$(flutter devices 2>/dev/null | grep -i "emulator\|android" | grep -v "No devices" | head -1)
-        if [ -n "$device_check" ]; then
+    echo -n "    等待模擬器開機 (最多 10 秒)"
+
+    if [ "$android_launched" = true ] && has_adb; then
+        if wait_for_android_emulator_boot 10; then
             echo ""
             print_success "模擬器已就緒"
             sleep 3  # 額外等待 UI 完全載入
             return 0
         fi
-        echo -n "."
-        sleep 2
-    done
-    
+    else
+        for i in $(seq 1 5); do
+            if check_emulator_running; then
+                echo ""
+                print_success "模擬器已就緒"
+                sleep 3
+                return 0
+            fi
+            echo -n "."
+            sleep 2
+        done
+    fi
+
     echo ""
-    print_error "模擬器啟動超時，請手動檢查"
-    exit 1
+    print_warning "模擬器尚未就緒，先繼續後續流程"
+    if [ "$android_launched" = true ] && has_adb; then
+        local adb_state
+        adb_state=$(get_android_emulator_state)
+        if [ "$adb_state" = "offline" ]; then
+            echo "    adb 顯示 emulator offline，建議："
+            echo "    adb kill-server && adb start-server"
+            echo "    或重開模擬器 / AVD Wipe Data"
+        fi
+    fi
+    return 0
 }
 
 flutter_pub_get() {
@@ -273,6 +440,16 @@ do_quick_start() {
         if check_emulator_running; then
             has_emulator=true
             emulator_id=$(get_emulator_id)
+        else
+            if has_adb; then
+                local any_emulator_id
+                any_emulator_id=$(get_android_emulator_any_id)
+                if [ -n "$any_emulator_id" ]; then
+                    has_emulator=true
+                    emulator_id="$any_emulator_id"
+                    print_warning "模擬器尚未就緒，先以 $emulator_id 繼續"
+                fi
+            fi
         fi
     fi
     
