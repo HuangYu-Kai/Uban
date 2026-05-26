@@ -53,13 +53,12 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
   final ScrollController _newsScrollController = ScrollController();
   bool _isLoadingMore = false;
 
-  // DraggableScrollableSheet 相關
-  final DraggableScrollableController _sheetController =
-      DraggableScrollableController();
+  // 自定義滑動面板相關
+  late AnimationController _panelController;
+  late Animation<double> _panelAnimation;
   bool _isSheetExpanded = false;
 
-  // 小豬對話框動畫
-  late AnimationController _pigAnimController;
+  // 小豬對話框縮放動畫
   late Animation<double> _pigScaleAnim;
 
   @override
@@ -68,8 +67,7 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
     _audioPlayer.dispose();
     _aiAudioPlayer.dispose();
     _positionSubscription?.cancel();
-    _sheetController.dispose();
-    _pigAnimController.dispose();
+    _panelController.dispose();
     super.dispose();
   }
 
@@ -81,18 +79,34 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
         widget.initialIndex.clamp(0, max(_localNewsItems.length - 1, 0));
     _newsScrollController.addListener(_onNewsScroll);
 
-    // 小豬動畫控制器
-    _pigAnimController = AnimationController(
+    // 面板動畫控制器
+    _panelController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 400),
-    );
-    _pigScaleAnim = CurvedAnimation(
-      parent: _pigAnimController,
-      curve: Curves.elasticOut,
+      duration: const Duration(milliseconds: 350),
     );
 
-    // 監聽 sheet 狀態
-    _sheetController.addListener(_onSheetChanged);
+    _panelAnimation = CurvedAnimation(
+      parent: _panelController,
+      curve: Curves.easeOut,
+      reverseCurve: Curves.easeIn,
+    );
+
+    // 小豬在面板接近展開時（最後 35% 行程）以彈性效果縮放出現
+    _pigScaleAnim = CurvedAnimation(
+      parent: _panelController,
+      curve: const Interval(0.65, 1.0, curve: Curves.elasticOut),
+    );
+
+    // 監聽面板狀態變更
+    _panelController.addListener(() {
+      if (!mounted) return;
+      final expanded = _panelController.value > 0.5;
+      if (expanded != _isSheetExpanded) {
+        setState(() {
+          _isSheetExpanded = expanded;
+        });
+      }
+    });
 
     _audioPlayer.onPlayerStateChanged.listen((state) {
       if (!mounted) return;
@@ -143,20 +157,12 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
     }
   }
 
-  void _onSheetChanged() {
-    if (!mounted) return;
-    final size = _sheetController.size;
-    final expanded = size > 0.2;
-    if (expanded != _isSheetExpanded) {
-      setState(() {
-        _isSheetExpanded = expanded;
-      });
-      if (expanded) {
-        _pigAnimController.forward();
-      } else {
-        _pigAnimController.reverse();
-      }
-    }
+  void _expandPanel() {
+    _panelController.forward();
+  }
+
+  void _collapsePanel() {
+    _panelController.animateTo(0.0, curve: Curves.easeOut);
   }
 
   void _onNewsScroll() {
@@ -443,6 +449,9 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
 
   @override
   Widget build(BuildContext context) {
+    final double screenHeight = MediaQuery.of(context).size.height;
+    final double panelHeight = screenHeight * 0.72;
+
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(
@@ -455,24 +464,50 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
         child: SafeArea(
           child: Stack(
             children: [
-              // 底層：聆聽介面
-              _buildListeningView(),
-
-              // 上層：白色面板（可拖動）
-              DraggableScrollableSheet(
-                controller: _sheetController,
-                initialChildSize: 0.08,
-                minChildSize: 0.08,
-                maxChildSize: 0.70,
-                snap: true,
-                snapSizes: const [0.08, 0.70],
-                builder: (context, scrollController) {
-                  return _buildWhitePanel(scrollController);
+              // 底層：聆聽介面，支持手勢交互
+              GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onVerticalDragUpdate: (details) {
+                  final delta = details.primaryDelta;
+                  if (delta == null) return;
+                  
+                  // Dragging UP (negative delta) pulls panel UP (increases animation value)
+                  // Dragging DOWN (positive delta) pulls panel DOWN (decreases animation value)
+                  _panelController.value =
+                      (_panelController.value - delta / panelHeight).clamp(0.0, 1.0);
                 },
+                onVerticalDragEnd: (details) {
+                  final velocity = details.primaryVelocity;
+                  if (!_isSheetExpanded) {
+                    if (velocity != null && velocity < -300) {
+                      _expandPanel();
+                      return;
+                    }
+                    if (_panelController.value > 0.2) {
+                      _expandPanel();
+                    } else {
+                      _collapsePanel();
+                    }
+                  } else {
+                    if (velocity != null && velocity > 300) {
+                      _collapsePanel();
+                      return;
+                    }
+                    if (_panelController.value < 0.8) {
+                      _collapsePanel();
+                    } else {
+                      _expandPanel();
+                    }
+                  }
+                },
+                child: _buildListeningView(),
               ),
 
-              // 小豬 + 對話框（新聞面板展開時出現）
-              if (_isSheetExpanded) _buildPigMascot(),
+              // 上層：白色面板（自定義 Positioned）
+              _buildCustomWhitePanel(panelHeight),
+
+              // 小豬 + 對話框（跟隨面板同步升降與彈性縮放）
+              _buildPigMascot(panelHeight),
             ],
           ),
         ),
@@ -541,20 +576,27 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
             ),
           ),
           const SizedBox(height: 10),
-          // 提示文字
+          // 提示文字（與第二張圖一致：往下滑查看更多 + 向下箭頭 V）
           AnimatedOpacity(
             opacity: _isSheetExpanded ? 0.0 : 1.0,
             duration: const Duration(milliseconds: 200),
-            child: const Column(
-              children: [
-                Text('往下滑查看更多新聞',
-                    style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600)),
-                Icon(Icons.keyboard_arrow_up_rounded,
-                    color: Colors.white70, size: 32),
-              ],
+            child: IgnorePointer(
+              ignoring: _isSheetExpanded,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _expandPanel,
+                child: const Column(
+                  children: [
+                    Text('往下滑查看更多新聞',
+                        style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600)),
+                    Icon(Icons.keyboard_arrow_down_rounded,
+                        color: Colors.white70, size: 32),
+                  ],
+                ),
+              ),
             ),
           ),
           const SizedBox(height: 10),
@@ -563,169 +605,208 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
     );
   }
 
-  /// 白色面板
-  Widget _buildWhitePanel(ScrollController scrollController) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-        boxShadow: [
-          BoxShadow(
-            color: Color(0x30000000),
-            blurRadius: 20,
-            offset: Offset(0, -4),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          // 拖拽指示條
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onVerticalDragUpdate: (details) {
-              // 在手柄區域向下拖 → 收回面板
-              if (details.primaryDelta != null && details.primaryDelta! > 8) {
-                _sheetController.animateTo(
-                  0.08,
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeOut,
-                );
-              }
-            },
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.only(top: 14, bottom: 10),
-              child: Center(
-                child: Container(
-                  width: 44,
-                  height: 5,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFD1D5DB),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-              ),
+  /// 自定義白色面板（動畫包裹定位，高度固定 72% 防止溢出）
+  Widget _buildCustomWhitePanel(double panelHeight) {
+    return AnimatedBuilder(
+      animation: _panelAnimation,
+      builder: (context, child) {
+        final bottomOffset = -panelHeight + (panelHeight * _panelAnimation.value);
+        return Positioned(
+          left: 0,
+          right: 0,
+          bottom: bottomOffset,
+          height: panelHeight,
+          child: child!,
+        );
+      },
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          boxShadow: [
+            BoxShadow(
+              color: Color(0x30000000),
+              blurRadius: 20,
+              offset: Offset(0, -4),
             ),
-          ),
-          // 分類選擇器
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 18),
-            child: NewsCategorySelector(
-              categories: _categories,
-              selectedCategory: _selectedCategory,
-              onWhiteBackground: true,
-              onCategorySelected: (category) {
-                setState(() {
-                  _selectedCategory = category;
-                });
-              },
-            ),
-          ),
-          // 新聞列表
-          Expanded(
-            child: ListView(
-              controller: scrollController,
-              physics: const BouncingScrollPhysics(),
-              padding: const EdgeInsets.symmetric(horizontal: 18),
-              children: [
-                NewsCardList(
-                  newsItems: _localNewsItems,
-                  currentIndex: _currentIndex,
-                  selectedCategory: _selectedCategory,
-                  userId: widget.userId,
-                  onSelectTrack: _selectTrack,
-                ),
-                if (_isLoadingMore)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 30),
-                    child: Center(
-                      child: CircularProgressIndicator(
-                        color: Color(0xFF59B294),
-                      ),
-                    ),
-                  ),
-                const SizedBox(height: 100),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// 小豬吉祥物 + 對話框（右下角，面板展開時出現）
-  Widget _buildPigMascot() {
-    final currentTitle = _currentNewsTitle;
-    final displayText =
-        currentTitle.length > 20 ? '${currentTitle.substring(0, 20)}...' : currentTitle;
-
-    return Positioned(
-      right: 10,
-      bottom: MediaQuery.of(context).size.height * 0.72,
-      child: ScaleTransition(
-        scale: _pigScaleAnim,
-        alignment: Alignment.bottomRight,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.end,
+          ],
+        ),
+        child: Column(
           children: [
-            // 對話框
-            if (currentTitle.isNotEmpty)
-              Container(
-                constraints: const BoxConstraints(maxWidth: 180),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.12),
-                      blurRadius: 12,
-                      offset: const Offset(0, 3),
+            // 拖拽指示條/交界處手柄 (點擊或拖動皆可收回)
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onVerticalDragUpdate: (details) {
+                final delta = details.primaryDelta;
+                if (delta == null) return;
+                _panelController.value =
+                    (_panelController.value - delta / panelHeight).clamp(0.0, 1.0);
+              },
+              onVerticalDragEnd: (details) {
+                final velocity = details.primaryVelocity;
+                if (velocity != null) {
+                  if (velocity > 300) {
+                    _collapsePanel();
+                    return;
+                  } else if (velocity < -300) {
+                    _expandPanel();
+                    return;
+                  }
+                }
+                if (_panelController.value > 0.4) {
+                  _expandPanel();
+                } else {
+                  _collapsePanel();
+                }
+              },
+              onTap: _collapsePanel,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.only(top: 14, bottom: 14),
+                color: Colors.transparent,
+                child: Center(
+                  child: Container(
+                    width: 44,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFD1D5DB),
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text(
-                      '正在唸：',
-                      style: TextStyle(
-                        color: Color(0xFF9CA3AF),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      displayText,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Color(0xFF1E293B),
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        height: 1.3,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
-            const SizedBox(width: 6),
-            // 小豬圖片
-            GestureDetector(
-              onTap: _showNewsSummary,
-              child: Image.asset(
-                'assets/images/pig_summary_expert.png',
-                width: 60,
-                height: 60,
+            ),
+            // 分類選擇器
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              child: NewsCategorySelector(
+                categories: _categories,
+                selectedCategory: _selectedCategory,
+                onWhiteBackground: true,
+                onCategorySelected: (category) {
+                  setState(() {
+                    _selectedCategory = category;
+                  });
+                },
+              ),
+            ),
+            // 新聞列表 (使用 BouncingScrollPhysics 帶來更流暢的滑動感受)
+            Expanded(
+              child: ListView(
+                controller: _newsScrollController,
+                physics: const BouncingScrollPhysics(),
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+                children: [
+                  NewsCardList(
+                    newsItems: _localNewsItems,
+                    currentIndex: _currentIndex,
+                    selectedCategory: _selectedCategory,
+                    userId: widget.userId,
+                    onSelectTrack: _selectTrack,
+                  ),
+                  if (_isLoadingMore)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 30),
+                      child: Center(
+                        child: CircularProgressIndicator(
+                          color: Color(0xFF59B294),
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 100),
+                ],
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  /// 小豬吉祥物 + 對話框（跟隨面板同步升降與彈性縮放）
+  Widget _buildPigMascot(double panelHeight) {
+    final currentTitle = _currentNewsTitle;
+    final displayText = currentTitle.length > 20
+        ? '${currentTitle.substring(0, 20)}...'
+        : currentTitle;
+
+    return AnimatedBuilder(
+      animation: _panelAnimation,
+      builder: (context, child) {
+        if (_panelAnimation.value < 0.1) return const SizedBox.shrink();
+
+        // 精準跟隨白色面板的頂部邊緣升降
+        final bottomPosition = panelHeight * _panelAnimation.value - 10.0;
+
+        return Positioned(
+          right: 10,
+          bottom: bottomPosition,
+          child: ScaleTransition(
+            scale: _pigScaleAnim,
+            alignment: Alignment.bottomRight,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                // 對話框
+                if (currentTitle.isNotEmpty)
+                  Container(
+                    constraints: const BoxConstraints(maxWidth: 180),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.12),
+                          blurRadius: 12,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text(
+                          '正在唸：',
+                          style: TextStyle(
+                            color: Color(0xFF9CA3AF),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          displayText,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Color(0xFF1E293B),
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            height: 1.3,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                const SizedBox(width: 6),
+                // 小豬圖片
+                GestureDetector(
+                  onTap: _showNewsSummary,
+                  child: Image.asset(
+                    'assets/images/pig_summary_expert.png',
+                    width: 60,
+                    height: 60,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
