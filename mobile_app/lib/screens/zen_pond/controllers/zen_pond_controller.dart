@@ -101,6 +101,7 @@ class LeafMessageItem {
   final String text;
   final LeafColorType colorType;
   final String? imageUrl;
+  final String? videoId; // 支援影片 ID 播放
   final double restingX; // 水面隨機 X 座標比例 (0.15 ~ 0.85)
   final double restingY; // 水面隨機 Y 座標比例 (0.20 ~ 0.70)
   final int createdAt;   // 生成微秒時間戳
@@ -111,6 +112,7 @@ class LeafMessageItem {
     required this.text,
     required this.colorType,
     this.imageUrl,
+    this.videoId,
     required this.restingX,
     required this.restingY,
     required this.createdAt,
@@ -123,6 +125,7 @@ class LeafMessageItem {
       'text': text,
       'colorType': colorType.name,
       'imageUrl': imageUrl,
+      'videoId': videoId,
       'restingX': restingX,
       'restingY': restingY,
       'createdAt': createdAt,
@@ -136,6 +139,7 @@ class LeafMessageItem {
       text: json['text'] as String,
       colorType: LeafColorType.values.byName(json['colorType'] as String),
       imageUrl: json['imageUrl'] as String?,
+      videoId: json['videoId'] as String?,
       restingX: (json['restingX'] as num).toDouble(),
       restingY: (json['restingY'] as num).toDouble(),
       createdAt: json['createdAt'] as int,
@@ -145,6 +149,19 @@ class LeafMessageItem {
 }
 
 class ZenPondController extends ChangeNotifier {
+  // 時光日記對話歷史紀錄
+  List<Map<String, dynamic>> history = [];
+
+  // TTS 播放狀態 (存在 Controller 讓日記 Dialog 的 Consumer 能同步刷新)
+  String? ttsPlayingId;
+  bool ttsLoading = false;
+
+  void setTtsState({String? playingId, bool loading = false}) {
+    ttsPlayingId = playingId;
+    ttsLoading = loading;
+    notifyListeners();
+  }
+
   // 測試用：模擬當前小時 (null 表示使用真實時間)
   int? mockHour;
 
@@ -174,6 +191,71 @@ class ZenPondController extends ChangeNotifier {
   final List<LeafMessageItem> leaves = [];
   final AudioPlayer _controllerAudioPlayer = AudioPlayer();
 
+  // 讀取時光日記歷史紀錄
+  Future<void> loadHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList('zen_pond_history');
+      if (list != null) {
+        history = list.map((str) => jsonDecode(str) as Map<String, dynamic>).toList();
+      } else {
+        // 初始歷史：加入一個迎賓訊息
+        history = [
+          {
+            'sender': 'ai',
+            'text': '爺爺午安！我是您的貼心小幫手。今天感覺怎麼樣？需要我為您放首音樂，或者聊聊天嗎？',
+            'timestamp': DateTime.now().millisecondsSinceEpoch,
+          }
+        ];
+      }
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error loading history: $e');
+    }
+  }
+
+  // 儲存時光日記歷史紀錄
+  Future<void> saveHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = history.map((h) => jsonEncode(h)).toList();
+      await prefs.setStringList('zen_pond_history', list);
+    } catch (e) {
+      debugPrint('Error saving history: $e');
+    }
+  }
+
+  // 新增時光日記歷史紀錄
+  void addHistory({
+    required String sender,
+    required String text,
+    String? imageUrl,
+    String? videoId,
+  }) {
+    history.add({
+      'sender': sender,
+      'text': text,
+      'imageUrl': imageUrl,
+      'videoId': videoId,
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+    });
+    saveHistory();
+    notifyListeners();
+  }
+
+  // 清空時光日記歷史紀錄
+  void clearHistory() {
+    history = [
+      {
+        'sender': 'ai',
+        'text': '時光日記已清空，開始我們新的對話吧 😊',
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+      }
+    ];
+    saveHistory();
+    notifyListeners();
+  }
+
   // 初始化並讀取本地歷史落葉
   Future<void> loadLeaves() async {
     try {
@@ -181,8 +263,47 @@ class ZenPondController extends ChangeNotifier {
       final list = prefs.getStringList('zen_pond_leaves');
       if (list != null && list.isNotEmpty) {
         leaves.clear();
+        final imgRegExp = RegExp(r'!\[.*?\]\((.*?)\)');
+        final videoRegExp = RegExp(r'\[VIDEO_ID:([^\]]+)\]');
         for (var str in list) {
-          leaves.add(LeafMessageItem.fromJson(jsonDecode(str)));
+          final leaf = LeafMessageItem.fromJson(jsonDecode(str));
+          // 修復舊快取資料中未解析的 Markdown 圖片語法
+          final rawText = leaf.text;
+          if (imgRegExp.hasMatch(rawText) || videoRegExp.hasMatch(rawText)) {
+            String? imageUrl = leaf.imageUrl;
+            String? videoId = leaf.videoId;
+            // 若 imageUrl 欄位為空但 text 含 Markdown 圖片，解析出來
+            if (imageUrl == null) {
+              final imgMatch = imgRegExp.firstMatch(rawText);
+              if (imgMatch != null) imageUrl = imgMatch.group(1);
+            }
+            if (videoId == null) {
+              final videoMatch = videoRegExp.firstMatch(rawText);
+              if (videoMatch != null) videoId = videoMatch.group(1);
+            }
+            String cleanText = rawText
+                .replaceAll(imgRegExp, '')
+                .replaceAll(videoRegExp, '')
+                .trim();
+            if (cleanText.isEmpty) {
+              cleanText = videoId != null
+                  ? '這是為您推薦的影片'
+                  : (imageUrl != null ? '為您分享了一張照片' : rawText);
+            }
+            leaves.add(LeafMessageItem(
+              id: leaf.id,
+              text: cleanText,
+              colorType: leaf.colorType,
+              imageUrl: imageUrl,
+              videoId: videoId,
+              restingX: leaf.restingX,
+              restingY: leaf.restingY,
+              createdAt: leaf.createdAt,
+              isCardVisible: leaf.isCardVisible,
+            ));
+          } else {
+            leaves.add(leaf);
+          }
         }
         notifyListeners();
       } else {
@@ -193,6 +314,7 @@ class ZenPondController extends ChangeNotifier {
       debugPrint('Error loading leaves: $e');
     }
   }
+
 
   // 寫入本地歷史持久化
   Future<void> saveLeaves() async {
@@ -210,6 +332,7 @@ class ZenPondController extends ChangeNotifier {
     required String text,
     required LeafColorType colorType,
     String? imageUrl,
+    String? videoId,
     bool playTts = false,
     bool isCardVisible = false,
   }) {
@@ -223,6 +346,7 @@ class ZenPondController extends ChangeNotifier {
       text: text,
       colorType: colorType,
       imageUrl: imageUrl,
+      videoId: videoId,
       restingX: rx,
       restingY: ry,
       createdAt: DateTime.now().millisecondsSinceEpoch,
@@ -272,6 +396,10 @@ class ZenPondController extends ChangeNotifier {
         colorType: LeafColorType.yellow,
         playTts: true,
       );
+      addHistory(
+        sender: 'ai',
+        text: '爺爺午安！我是您的貼心小幫手。今天感覺怎麼樣？需要我為您放首音樂，或者聊聊天嗎？',
+      );
     });
 
     Timer(const Duration(seconds: 5), () {
@@ -281,7 +409,70 @@ class ZenPondController extends ChangeNotifier {
         imageUrl: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?q=80&w=2070&auto=format&fit=crop',
         playTts: true,
       );
+      addHistory(
+        sender: 'ai',
+        text: '爺爺，秀珠傳了一張照片來。她說這是上次去陽明山看花鐘拍的，您還記得嗎？',
+        imageUrl: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?q=80&w=2070&auto=format&fit=crop',
+      );
     });
+  }
+
+  // 從後端 RAG (Pinecone) 接口生成並推播一片話題落葉
+  Future<bool> generateAndAddRagLeaf(int userId) async {
+    try {
+      final res = await ApiService.generatePondLeaf(userId);
+      final isSuccess = res['status'] == 'success' || res['success'] == true;
+      if (isSuccess && res['data'] != null) {
+        final leafText = res['data']['leaf_text'] as String?;
+        if (leafText != null && leafText.isNotEmpty) {
+          // 解析 Markdown 圖片: ![alt](url)
+          String? imageUrl;
+          final imgRegExp = RegExp(r'!\[.*?\]\((.*?)\)');
+          final imgMatch = imgRegExp.firstMatch(leafText);
+          if (imgMatch != null) {
+            imageUrl = imgMatch.group(1);
+          }
+
+          // 解析影片 ID: [VIDEO_ID:xxxx]
+          String? videoId;
+          final videoRegExp = RegExp(r'\[VIDEO_ID:([^\]]+)\]');
+          final videoMatch = videoRegExp.firstMatch(leafText);
+          if (videoMatch != null) {
+            videoId = videoMatch.group(1);
+          }
+
+          // 移除 Markdown 語法標記，只留乾淨對話文字
+          String cleanText = leafText
+              .replaceAll(imgRegExp, '')
+              .replaceAll(videoRegExp, '')
+              .trim();
+          if (cleanText.isEmpty) {
+            cleanText = videoId != null
+                ? '這是為您推薦的影片'
+                : (imageUrl != null ? '為您分享了一張照片' : leafText);
+          }
+
+          addLeaf(
+            text: cleanText,
+            colorType: LeafColorType.yellow, // 黃色：長期記憶/回憶落葉
+            imageUrl: imageUrl,
+            videoId: videoId,
+            playTts: true,
+          );
+          // 同時也加入時光日記
+          addHistory(
+            sender: 'ai',
+            text: cleanText,
+            imageUrl: imageUrl,
+            videoId: videoId,
+          );
+          return true;
+        }
+      }
+    } catch (e) {
+      debugPrint('ZenPondController generateAndAddRagLeaf error: $e');
+    }
+    return false;
   }
 
   // 自動 edge-tts 播報合成器
@@ -407,4 +598,7 @@ class ZenPondController extends ChangeNotifier {
     _controllerAudioPlayer.dispose();
     super.dispose();
   }
+
+  // 供外部呼叫的 notifyListeners (用於非 controller 狀態需強制刷新 Dialog 時)
+  void forceRefresh() => notifyListeners();
 }

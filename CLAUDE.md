@@ -84,6 +84,13 @@ FastAPI 後端 (uban-api/ 獨立 Repo)
 4. **不要在 openUserMedia 之前 createOffer** — 必須先拿到 localStream
 5. **ICE Candidate 必須排隊** — 在 `setRemoteDescription` 完成前收到的 candidate 必須排隊，完成後再 flush
 
+## 開發程序要求 (Development Process Requirements)
+
+1. **功能完成紀錄與分區** — 每項功能完成時，必須在 `c:\Users\tung0\Desktop\Uban\Uban\docs` 目錄下建立/更新完整紀錄。
+   - 詳細技術設計、演算法、API 等文件必須放置於 `docs/technical/` 目錄下，且**必須嚴格遵循並參照** [DOCUMENTATION_GUIDELINE.md](file:///c:/Users/tung0/Desktop/Uban/Uban/docs/technical/DOCUMENTATION_GUIDELINE.md) 規範撰寫。（已完成文件：[DIARY_DIRECTORY_AND_RAG_LEAF.md](file:///c:/Users/tung0/Desktop/Uban/Uban/docs/technical/DIARY_DIRECTORY_AND_RAG_LEAF.md)、[NEWS_LISTEN_PLAYER.md](file:///c:/Users/tung0/Desktop/Uban/Uban/docs/technical/NEWS_LISTEN_PLAYER.md)、[OLLAMA_LATENCY_REPORT.md](file:///c:/Users/tung0/Desktop/Uban/Uban/docs/technical/OLLAMA_LATENCY_REPORT.md)）
+   - 一般提案、使用手冊、測試指南等非技術文檔放置於 `docs/general/` 目錄下。（如 [YUNI_CHAT_MANUAL.md](file:///c:/Users/tung0/Desktop/Uban/Uban/docs/technical/YUNI_CHAT_MANUAL.md)）
+2. **README 概述與日誌更新** — 每次完成功能，必須更新根目錄的 `README.md`，內容需包含該功能的概述與更新日誌，並導向 `docs/technical/` 或 `docs/general/` 內對應的詳細紀錄/說明。
+
 ## WebRTC 通話流程 (Critical)
 
 ```
