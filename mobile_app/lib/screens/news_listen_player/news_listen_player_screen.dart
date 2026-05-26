@@ -205,6 +205,45 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
     }
   }
 
+  Future<void> _refreshNews() async {
+    try {
+      debugPrint('🔄 正在重新整理最新新聞... 類別: $_selectedCategory');
+      final apiCategory = _selectedCategory == '全部' ? '' : _selectedCategory;
+      final response =
+          await ApiService.getNews(category: apiCategory, limit: 15); // 載入最新的 15 則
+
+      if (response['status'] == 'success') {
+        final newItems =
+            List<Map<String, dynamic>>.from(response['data'] ?? []);
+        if (newItems.isNotEmpty) {
+          setState(() {
+            // 用最新載入的新聞更新/取代，以確保最新新聞排在最前，並過濾掉重複項
+            final existingTitles = newItems.map((i) => i['title'] as String).toSet();
+            final oldUniqueItems = _localNewsItems
+                .where((i) => !existingTitles.contains(i['title']))
+                .toList();
+            
+            // 重新組裝：最新新聞放在最前
+            _localNewsItems = [...newItems, ...oldUniqueItems];
+            
+            // 為了不讓當前正在播放的索引錯亂，需要重新定位當前正在播放新聞的索引
+            if (widget.newsItems.isNotEmpty && _currentIndex >= 0 && _currentIndex < widget.newsItems.length) {
+              final currentNews = widget.newsItems[_currentIndex];
+              final currentTitle = currentNews['title'] as String;
+              final newIndex = _localNewsItems.indexWhere((i) => (i['title'] as String) == currentTitle);
+              if (newIndex >= 0) {
+                _currentIndex = newIndex;
+              }
+            }
+            debugPrint('✅ 整理完成，目前共有 ${_localNewsItems.length} 則新聞');
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ 重新整理失敗: $e');
+    }
+  }
+
   Future<void> _playCurrentNews() async {
     if (_localNewsItems.isEmpty) return;
     final item = _localNewsItems[_currentIndex];
@@ -744,34 +783,44 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
                   setState(() {
                     _selectedCategory = category;
                   });
+                  if (_newsScrollController.hasClients) {
+                    _newsScrollController.jumpTo(0.0);
+                  }
                 },
               ),
             ),
             // 新聞列表 (使用 BouncingScrollPhysics 帶來更流暢的滑動感受)
             Expanded(
-              child: ListView(
-                controller: _newsScrollController,
-                physics: const BouncingScrollPhysics(),
-                padding: const EdgeInsets.symmetric(horizontal: 18),
-                children: [
-                  NewsCardList(
-                    newsItems: _localNewsItems,
-                    currentIndex: _currentIndex,
-                    selectedCategory: _selectedCategory,
-                    userId: widget.userId,
-                    onSelectTrack: _selectTrack,
+              child: RefreshIndicator(
+                color: const Color(0xFF59B294),
+                backgroundColor: Colors.white,
+                onRefresh: _refreshNews,
+                child: ListView(
+                  controller: _newsScrollController,
+                  physics: const BouncingScrollPhysics(
+                    parent: AlwaysScrollableScrollPhysics(),
                   ),
-                  if (_isLoadingMore)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 30),
-                      child: Center(
-                        child: CircularProgressIndicator(
-                          color: Color(0xFF59B294),
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
+                  children: [
+                    NewsCardList(
+                      newsItems: _localNewsItems,
+                      currentIndex: _currentIndex,
+                      selectedCategory: _selectedCategory,
+                      userId: widget.userId,
+                      onSelectTrack: _selectTrack,
+                    ),
+                    if (_isLoadingMore)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 30),
+                        child: Center(
+                          child: CircularProgressIndicator(
+                            color: Color(0xFF59B294),
+                          ),
                         ),
                       ),
-                    ),
-                  const SizedBox(height: 100),
-                ],
+                    const SizedBox(height: 100),
+                  ],
+                ),
               ),
             ),
           ],

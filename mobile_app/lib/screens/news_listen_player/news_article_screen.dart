@@ -47,47 +47,54 @@ class NewsArticleScreen extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: const Color(0xFFFAFAFA),
-      body: CustomScrollView(
-        physics: const BouncingScrollPhysics(),
-        slivers: [
+      body: ScrollConfiguration(
+        behavior: const NoOverscrollBehavior(),
+        child: CustomScrollView(
+          physics: const ClampingScrollPhysics(),
+          slivers: [
           // 頂部圖片 + 返回按鈕
           SliverAppBar(
             expandedHeight: 240,
             pinned: true,
             backgroundColor: Colors.white,
             surfaceTintColor: Colors.transparent,
+            leadingWidth: 120,
             leading: Padding(
-              padding: const EdgeInsets.all(6),
+              padding: const EdgeInsets.only(left: 12, top: 8, bottom: 8),
               child: GestureDetector(
                 onTap: () => Navigator.pop(context),
                 child: Container(
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.9),
-                    shape: BoxShape.circle,
+                    color: Colors.white.withValues(alpha: 0.95),
+                    borderRadius: BorderRadius.circular(24),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.1),
+                        color: Colors.black.withValues(alpha: 0.15),
                         blurRadius: 8,
                         offset: const Offset(0, 2),
                       ),
                     ],
                   ),
-                  child: const Center(
-                    child: Icon(
-                      Icons.arrow_back_rounded,
-                      color: Color(0xFF1E293B),
-                      size: 24,
-                    ),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.arrow_back_rounded,
+                        color: Color(0xFF1E293B),
+                        size: 20,
+                      ),
+                      SizedBox(width: 4),
+                      Text(
+                        '返回',
+                        style: TextStyle(
+                          color: Color(0xFF1E293B),
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ),
-            ),
-            title: const Text(
-              '返回',
-              style: TextStyle(
-                color: Color(0xFF1E293B),
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
               ),
             ),
             flexibleSpace: FlexibleSpaceBar(
@@ -230,8 +237,9 @@ class NewsArticleScreen extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildGradientPlaceholder(String category) {
     final List<Color> colors;
@@ -280,5 +288,15 @@ class NewsArticleScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class NoOverscrollBehavior extends ScrollBehavior {
+  const NoOverscrollBehavior();
+
+  @override
+  Widget buildOverscrollIndicator(
+      BuildContext context, Widget child, ScrollableDetails details) {
+    return child; // Completely disables the stretch/glow overscroll indicator
   }
 }
