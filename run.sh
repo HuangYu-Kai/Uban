@@ -56,7 +56,7 @@ DEFAULT_SERVER_URL="localhost-0.tail5abf5e.ts.net"
 DEFAULT_OLLAMA_URL="boyo-desktop.tail531c8a.ts.net"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 MOBILE_APP_DIR="$SCRIPT_DIR/mobile_app"
-FLUTTER_DEVICE_TIMEOUT=120
+FLUTTER_DEVICE_TIMEOUT=10
 
 # --- 顏色定義 ---
 RED='\033[0;31m'
@@ -532,13 +532,13 @@ do_quick_start() {
         
         # 在背景啟動實體設備
         print_info "啟動實體設備 ($physical_id)..."
-        flutter run --dart-define=SERVER_IP="$serverURL" --device-timeout="$FLUTTER_DEVICE_TIMEOUT" -d "$physical_id" &
+        flutter run --dart-define=SERVER_IP="$serverURL" --device-timeout="$FLUTTER_DEVICE_TIMEOUT" --no-wireless-devices -d "$physical_id" &
         echo "$!|physical|$physical_id" >> "$FLUTTER_PIDS_FILE"
         sleep 3
         
         # 前台啟動模擬器
         print_info "啟動模擬器 ($emulator_id)..."
-        flutter run --dart-define=SERVER_IP="$serverURL" --device-timeout="$FLUTTER_DEVICE_TIMEOUT" -d "$emulator_id" &
+        flutter run --dart-define=SERVER_IP="$serverURL" --device-timeout="$FLUTTER_DEVICE_TIMEOUT" --no-wireless-devices -d "$emulator_id" &
         echo "$!|emulator|$emulator_id" >> "$FLUTTER_PIDS_FILE"
         
         echo ""
@@ -575,7 +575,7 @@ do_quick_start() {
         cd "$MOBILE_APP_DIR"
         
         if [ -n "$target_device" ]; then
-            flutter run --dart-define=SERVER_IP="$serverURL" --device-timeout="$FLUTTER_DEVICE_TIMEOUT" -d "$target_device"
+            flutter run --dart-define=SERVER_IP="$serverURL" --device-timeout="$FLUTTER_DEVICE_TIMEOUT" --no-wireless-devices -d "$target_device"
         else
             flutter run --dart-define=SERVER_IP="$serverURL"
         fi
@@ -615,7 +615,7 @@ do_hot_restart_physical() {
     sleep 2
     
     cd "$MOBILE_APP_DIR"
-    flutter run --dart-define=SERVER_IP="$DEFAULT_SERVER_URL" --device-timeout="$FLUTTER_DEVICE_TIMEOUT" -d "$device_id" &
+    flutter run --dart-define=SERVER_IP="$DEFAULT_SERVER_URL" --device-timeout="$FLUTTER_DEVICE_TIMEOUT" --no-wireless-devices -d "$device_id" &
     local new_pid=$!
     
     # 更新 PID 檔案
