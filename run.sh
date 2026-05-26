@@ -171,7 +171,7 @@ get_android_emulator_id() {
     if ! has_adb; then
         return 1
     fi
-    "$ADB_BIN" devices 2>/dev/null | awk 'NR>1 && $2=="device" && $1 ~ /^emulator-/' | head -1
+    "$ADB_BIN" devices 2>/dev/null | awk 'NR>1 && $2=="device" && $1 ~ /^emulator-/ {print $1}' | head -1
 }
 
 is_android_emulator_booted() {
@@ -326,10 +326,20 @@ start_emulator() {
     local emulator_id=""
     local emulator_adb_id=""
     
-    # 先確保 adb daemon 已啟動（模擬器需要它）
+    # 先確保 adb daemon 已啟動（模擬器需要它才能 online）
     if has_adb; then
+        # 確認 adb server 正在運行
         "$ADB_BIN" start-server > /dev/null 2>&1 || true
-        sleep 1
+        sleep 2
+        # 驗證 adb server 確實啟動
+        if ! "$ADB_BIN" devices > /dev/null 2>&1; then
+            print_warning "adb server 啟動可能有問題，嘗試重啟..."
+            "$ADB_BIN" kill-server > /dev/null 2>&1 || true
+            sleep 1
+            "$ADB_BIN" start-server > /dev/null 2>&1 || true
+            sleep 2
+        fi
+        print_success "adb server 已就緒"
     fi
     
     emulator_id=$(flutter emulators 2>/dev/null | grep -i "android" | awk '{print $1}' | head -1)
@@ -374,17 +384,30 @@ start_emulator() {
     fi
 
     echo ""
-    echo -n "    等待模擬器開機 (最多 30 秒)"
+    echo -n "    等待模擬器開機 (最多 90 秒)"
 
-    # 等待 adb 能偵測到設備並且 online
-    for i in $(seq 1 30); do
+    # 等待 adb 能偵測到設備並且 online + 完成開機
+    local boot_timeout=90
+    for i in $(seq 1 $boot_timeout); do
         if has_adb; then
-            local device_state
-            device_state=$("$ADB_BIN" devices -l 2>/dev/null | grep "emulator-5554" | awk '{print $2}')
-            if [ "$device_state" = "device" ]; then
-                echo ""
-                print_success "模擬器已就緒 (online)"
-                return 0
+            # 動態偵測模擬器 ID，不硬編碼 emulator-5554
+            local detected_id detected_state
+            detected_id=$(get_android_emulator_any_id)
+            detected_state=$(get_android_emulator_state)
+
+            if [ "$detected_state" = "device" ] && [ -n "$detected_id" ]; then
+                if is_android_emulator_booted "$detected_id"; then
+                    echo ""
+                    print_success "模擬器已就緒 (online): $detected_id"
+                    echo "$detected_id" > /tmp/uban_emulator_id.txt
+                    return 0
+                fi
+            elif [ "$detected_state" = "offline" ] && [ $((i % 10)) -eq 0 ]; then
+                # 每 10 秒嘗試重啟 adb 來解救 offline 狀態
+                print_warning "模擬器 offline，嘗試重啟 adb..."
+                "$ADB_BIN" kill-server > /dev/null 2>&1 || true
+                sleep 1
+                "$ADB_BIN" start-server > /dev/null 2>&1 || true
             fi
         fi
         echo -n "."
@@ -392,10 +415,15 @@ start_emulator() {
     done
 
     echo ""
-    print_warning "模擬器已啟動但尚未就緒，flutter 會繼續等待..."
-    
-    # 寫入 adb ID 供後續使用
-    echo "emulator-5554" > /tmp/uban_emulator_id.txt
+    # 最後嘗試取得 ID
+    local final_id
+    final_id=$(get_android_emulator_any_id)
+    if [ -n "$final_id" ]; then
+        echo "$final_id" > /tmp/uban_emulator_id.txt
+        print_warning "模擬器已啟動 ($final_id) 但尚未完全就緒，flutter 會繼續等待..."
+    else
+        print_warning "模擬器已啟動但 adb 尚未偵測到，flutter 會繼續等待..."
+    fi
     return 0
 }
 
