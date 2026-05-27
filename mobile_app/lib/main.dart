@@ -177,6 +177,152 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     }
   }
 
+  Widget _buildIllustration(String elderName, String familyName) {
+    final elderInit = elderName.isNotEmpty ? elderName[0] : '長';
+    final familyInit = familyName.isNotEmpty ? familyName[0] : '家';
+
+    return Container(
+      height: 120,
+      width: double.infinity,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // 裝飾性 bezier 連接點線
+          Positioned.fill(
+            child: CustomPaint(
+              painter: ConnectionLinePainter(),
+            ),
+          ),
+          
+          // 裝飾用圓圈背景 (長輩側)
+          Positioned(
+            left: 50,
+            child: Container(
+              width: 90,
+              height: 90,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF59B294).withValues(alpha: 0.08),
+              ),
+            ),
+          ),
+          
+          // 裝飾用圓圈背景 (家屬側)
+          Positioned(
+            right: 50,
+            child: Container(
+              width: 70,
+              height: 70,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFFFF7043).withValues(alpha: 0.08),
+              ),
+            ),
+          ),
+          
+          // 長輩頭貼 (左)
+          Positioned(
+            left: 70,
+            child: Container(
+              width: 76,
+              height: 76,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF59B294), Color(0xFF2E7D78)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF2E7D78).withValues(alpha: 0.25),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+                border: Border.all(color: Colors.white, width: 3),
+              ),
+              child: Center(
+                child: Text(
+                  elderInit,
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          // 子女頭貼 (右)
+          Positioned(
+            right: 70,
+            child: Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFFF8A65), Color(0xFFFF7043)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFFF7043).withValues(alpha: 0.25),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+                border: Border.all(color: Colors.white, width: 3),
+              ),
+              child: Center(
+                child: Text(
+                  familyInit,
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          // 自訂黃金鑰匙圖示 (中間偏上)
+          Positioned(
+            top: 20,
+            child: Container(
+              width: 36,
+              height: 36,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black12,
+                    blurRadius: 6,
+                    offset: Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Center(
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CustomPaint(
+                    painter: GoldenKeyPainter(),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showRecoveryConfirmationDialog(String code) {
     final context = navigatorKey.currentContext;
     if (context == null) {
@@ -190,152 +336,253 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) {
-        bool isLoading = false;
+        bool isLoading = true;
+        bool isVerified = false;
         String? errorMsg;
+        String elderName = '';
+        String familyName = '';
+        Map<String, dynamic>? verifiedData;
 
         return StatefulBuilder(
           builder: (context, setDialogState) {
-            return AlertDialog(
-              backgroundColor: const Color(0xFFFFFBF0), // 溫馨米黃
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(28),
-                side: const BorderSide(color: Color(0xFFFF7043), width: 1.5),
-              ),
-              title: Center(
-                child: Text(
-                  '💡 Uban 帳號登入助手',
-                  style: GoogleFonts.notoSansTc(
-                    fontWeight: FontWeight.w900,
-                    color: const Color(0xFF2E7D78),
-                    fontSize: 22,
-                  ),
-                ),
-              ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text(
-                    '👵👴',
-                    style: TextStyle(fontSize: 48),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    '偵測到快速登入請求。\n請問您要登入原本的長輩帳號嗎？',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 16,
-                      color: const Color(0xFF4A4A4A),
-                      height: 1.6,
-                    ),
-                  ),
-                  if (errorMsg != null) ...[
-                    const SizedBox(height: 12),
-                    Text(
-                      errorMsg!,
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.notoSansTc(
-                        color: Colors.redAccent,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                  if (isLoading) ...[
-                    const SizedBox(height: 16),
-                    const CircularProgressIndicator(color: Color(0xFFFF7043)),
-                  ],
-                ],
-              ),
-              actionsPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              actions: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: isLoading
-                            ? null
-                            : () => Navigator.pop(dialogContext),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          side: BorderSide(color: Colors.grey[400]!),
-                        ),
-                        child: Text(
-                          '取消',
-                          style: TextStyle(color: Colors.grey[600], fontSize: 16),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: isLoading
-                            ? null
-                            : () async {
-                                setDialogState(() {
-                                  isLoading = true;
-                                  errorMsg = null;
-                                });
+            void runVerification() async {
+              try {
+                final result = await ApiService.verifyRecoveryCode(code);
+                if (!dialogContext.mounted) return;
+                
+                if (result['status'] == 'success' && result['data'] != null) {
+                  setDialogState(() {
+                    isLoading = false;
+                    isVerified = true;
+                    verifiedData = result['data'];
+                    elderName = verifiedData!['elder_name'] ?? '長輩';
+                    familyName = verifiedData!['family_name'] ?? '家人';
+                  });
+                } else {
+                  setDialogState(() {
+                    isLoading = false;
+                    isVerified = false;
+                    errorMsg = result['message'] ?? result['error'] ?? result['detail'] ?? '驗證失敗';
+                  });
+                }
+              } catch (e) {
+                if (!dialogContext.mounted) return;
+                setDialogState(() {
+                  isLoading = false;
+                  isVerified = false;
+                  errorMsg = '網路連線失敗: $e';
+                });
+              }
+            }
 
-                                try {
-                                  final result = await ApiService.verifyRecoveryCode(code);
+            if (isLoading && errorMsg == null && !isVerified) {
+              Future.microtask(() => runVerification());
+            }
+
+            return Dialog(
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(32),
+              ),
+              elevation: 10,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(32),
+                child: Container(
+                  color: const Color(0xFFFFFDF9), // 溫馨象牙白
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (isLoading) ...[
+                        const SizedBox(height: 20),
+                        const SizedBox(
+                          width: 50,
+                          height: 50,
+                          child: CircularProgressIndicator(
+                            color: Color(0xFFFF7043),
+                            strokeWidth: 4,
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        Text(
+                          '正在安全地驗證登入金鑰...',
+                          style: GoogleFonts.notoSansTc(
+                            fontSize: 16,
+                            color: const Color(0xFF555555),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                      ] else if (errorMsg != null) ...[
+                        Container(
+                          width: 80,
+                          height: 80,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFEE2E2),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Center(
+                            child: SizedBox(
+                              width: 32,
+                              height: 32,
+                              child: CustomPaint(
+                                painter: CozyErrorPainter(),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        Text(
+                          '金鑰驗證失敗',
+                          style: GoogleFonts.notoSansTc(
+                            fontWeight: FontWeight.w900,
+                            color: const Color(0xFF991B1B),
+                            fontSize: 22,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          errorMsg!,
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.notoSansTc(
+                            fontSize: 15,
+                            color: const Color(0xFF555555),
+                            height: 1.6,
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 50,
+                          child: ElevatedButton(
+                            onPressed: () => Navigator.pop(dialogContext),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFFF7043),
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                            ),
+                            child: Text(
+                              '關閉',
+                              style: GoogleFonts.notoSansTc(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ] else if (isVerified) ...[
+                        _buildIllustration(elderName, familyName),
+                        const SizedBox(height: 24),
+                        Text(
+                          '👵 「您好，請問是 $elderName 嗎？」',
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.notoSansTc(
+                            fontWeight: FontWeight.w900,
+                            color: const Color(0xFF2E7D78),
+                            fontSize: 30,
+                            height: 1.4,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          '「家人 $familyName 正在幫您登入 Uban 系統。」',
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.notoSansTc(
+                            fontSize: 22,
+                            color: const Color(0xFF4A4A4A),
+                            height: 1.5,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 28),
+                        Column(
+                          children: [
+                            SizedBox(
+                              width: double.infinity,
+                              height: 64,
+                              child: ElevatedButton(
+                                onPressed: () async {
+                                  setDialogState(() {
+                                    isLoading = true;
+                                  });
                                   
-                                  if (result['status'] == 'success' && result['data'] != null) {
-                                    final data = result['data'];
-                                    final int elderUserId = data['user_id'];
-                                    final String elderName = data['elder_name'] ?? '長輩';
+                                  try {
+                                    final int elderUserId = verifiedData!['user_id'];
+                                    final String name = verifiedData!['elder_name'] ?? '長輩';
                                     
-                                    // 寫入登入狀態
                                     final prefs = await SharedPreferences.getInstance();
                                     await prefs.setInt('caregiver_id', elderUserId);
-                                    await prefs.setString('caregiver_name', elderName);
+                                    await prefs.setString('caregiver_name', name);
                                     await prefs.setString('user_role', 'elder');
-                                    appRole = 'elder'; // 更新全域變數
+                                    appRole = 'elder';
 
-                                    // 關閉 Dialog 并跳轉至長輩首頁
                                     if (navigatorKey.currentState != null) {
                                       navigatorKey.currentState!.pop();
                                       navigatorKey.currentState!.pushAndRemoveUntil(
                                         MaterialPageRoute(
                                           builder: (_) => ElderHomeScreen(
                                             userId: elderUserId,
-                                            userName: elderName,
+                                            userName: name,
                                           ),
                                         ),
                                         (route) => false,
                                       );
                                     }
-                                  } else {
+                                  } catch (e) {
                                     setDialogState(() {
                                       isLoading = false;
-                                      errorMsg = result['message'] ?? result['error'] ?? result['detail'] ?? '登入驗證失敗';
+                                      errorMsg = '寫入登入狀態失敗: $e';
                                     });
                                   }
-                                } catch (e) {
-                                  setDialogState(() {
-                                    isLoading = false;
-                                    errorMsg = '網路連線失敗: $e';
-                                  });
-                                }
-                              },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFFF7043),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF59B294),
+                                  foregroundColor: Colors.white,
+                                  shadowColor: const Color(0xFF59B294).withValues(alpha: 0.3),
+                                  elevation: 4,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                ),
+                                child: Text(
+                                  '是的，這是我',
+                                  style: GoogleFonts.notoSansTc(
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 22,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+                            SizedBox(
+                              width: double.infinity,
+                              height: 52,
+                              child: TextButton(
+                                onPressed: () => Navigator.pop(dialogContext),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: const Color(0xFF888888),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                ),
+                                child: Text(
+                                  '不是我',
+                                  style: GoogleFonts.notoSansTc(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 18,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                        child: const Text(
-                          '是的，登入',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                        ),
-                      ),
-                    ),
-                  ],
+                      ],
+                    ],
+                  ),
                 ),
-              ],
+              ),
             );
           },
         );
@@ -603,4 +850,88 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       */
     );
   }
+}
+
+class GoldenKeyPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = const Color(0xFFFF7043)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.5
+      ..strokeCap = StrokeCap.round;
+
+    final center = Offset(size.width * 0.5, size.height * 0.35);
+
+    canvas.drawCircle(center, size.width * 0.22, paint);
+
+    canvas.drawLine(
+      center + Offset(0, size.width * 0.22),
+      Offset(size.width * 0.5, size.height * 0.9),
+      paint,
+    );
+
+    canvas.drawLine(
+      Offset(size.width * 0.5, size.height * 0.7),
+      Offset(size.width * 0.75, size.height * 0.7),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(size.width * 0.5, size.height * 0.85),
+      Offset(size.width * 0.7, size.height * 0.85),
+      paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class ConnectionLinePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = const Color(0xFF59B294).withValues(alpha: 0.25)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3
+      ..strokeCap = StrokeCap.round;
+
+    final p0 = Offset(size.width * 0.32, size.height * 0.55);
+    final p1 = Offset(size.width * 0.5, size.height * 0.15);
+    final p2 = Offset(size.width * 0.68, size.height * 0.55);
+
+    for (double t = 0; t <= 1.0; t += 0.05) {
+      final x = (1 - t) * (1 - t) * p0.dx + 2 * (1 - t) * t * p1.dx + t * t * p2.dx;
+      final y = (1 - t) * (1 - t) * p0.dy + 2 * (1 - t) * t * p1.dy + t * t * p2.dy;
+      canvas.drawCircle(Offset(x, y), 2.5, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class CozyErrorPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.redAccent
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 4.0
+      ..strokeCap = StrokeCap.round;
+
+    canvas.drawLine(
+      Offset(size.width * 0.3, size.height * 0.3),
+      Offset(size.width * 0.7, size.height * 0.7),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(size.width * 0.7, size.height * 0.3),
+      Offset(size.width * 0.3, size.height * 0.7),
+      paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
