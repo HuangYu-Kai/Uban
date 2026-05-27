@@ -98,5 +98,18 @@
 	<string>我們將與 HealthKit 整合，為您記錄實體步數並獲取加成獎勵。</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>我們將與 HealthKit 整合，為您記錄實體步數並獲取加成獎勵。</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.example.flutterApplication1</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>uban</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>
