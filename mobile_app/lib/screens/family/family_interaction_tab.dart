@@ -5,6 +5,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../../models/elder.dart';
 import '../../services/signaling.dart';
 import '../video_call_screen.dart';
+import '../camera_screen.dart';
 
 class FamilyInteractionTab extends StatefulWidget {
   final Elder? currentElder;
@@ -48,17 +49,164 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
     }
 
     HapticFeedback.mediumImpact();
-    // 取得長輩 ID 作為房間號
-    final roomId = widget.currentElder!.id.toString();
+    
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        final String rawId = widget.currentElder!.elderId ?? widget.currentElder!.id.toString();
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  '選擇通話方式',
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: const Color(0xFF1E293B),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                // 一般通話按鈕
+                _buildCallOptionButton(
+                  title: '一般視訊通話',
+                  subtitle: '長輩需手動接聽後建立連線',
+                  icon: Icons.video_call_rounded,
+                  color: const Color(0xFF3B82F6),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => VideoCallScreen(
+                          roomId: 'comm_elder_$rawId',
+                          autoStart: true,
+                          isEmergency: false,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 16),
+                // 緊急強制通話按鈕
+                _buildCallOptionButton(
+                  title: '緊急強制通話',
+                  subtitle: '強制喚醒長輩設備並自動接聽',
+                  icon: Icons.warning_rounded,
+                  color: const Color(0xFFEF4444),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => VideoCallScreen(
+                          roomId: 'comm_elder_$rawId',
+                          autoStart: true,
+                          isEmergency: true,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 16),
+                // 單向視訊監控
+                _buildCallOptionButton(
+                  title: '單向視訊監控',
+                  subtitle: '不打擾長輩，靜音查看即時畫面',
+                  icon: Icons.visibility_rounded,
+                  color: const Color(0xFF8B5CF6),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => CameraScreen(
+                          roomId: 'monitor_elder_$rawId',
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 
-    // 取得在線設備的 Socket ID (若有的話，會由 Signaling 保存或在 _FamilyMainScreenState 裡更新)
-    // 這裡我們直接傳送呼叫
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (c) => VideoCallScreen(
-          roomId: roomId,
-          autoStart: true,
+  Widget _buildCallOptionButton({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: () {
+        HapticFeedback.lightImpact();
+        onTap();
+      },
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: color.withValues(alpha: 0.15)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: color,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: Colors.white, size: 24),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: color,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 12,
+                      color: const Color(0xFF64748B),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right_rounded, color: color.withValues(alpha: 0.7)),
+          ],
         ),
       ),
     );
