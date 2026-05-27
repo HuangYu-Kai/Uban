@@ -17,17 +17,19 @@ import 'package:android_intent_plus/flag.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_line_sdk/flutter_line_sdk.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:app_links/app_links.dart';
 import 'network/http_overrides_stub.dart'
     if (dart.library.io) 'network/http_overrides_io.dart';
 
 // Screens
 import 'screens/video_call_screen.dart';
 import 'screens/splash_screen.dart';
-import 'screens/pet_interaction_screen.dart';
+import 'screens/elder_home_screen.dart';
 
 // Utils & Globals
 import 'globals.dart';
 import 'services/signaling.dart' as sig;
+import 'services/api_service.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 final StreamController<String> callKitDeclineStream =
@@ -111,6 +113,9 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
+  final _appLinks = AppLinks();
+  StreamSubscription<Uri>? _linkSubscription;
+
   @override
   void initState() {
     super.initState();
@@ -124,12 +129,213 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       }
     }
     _setupSignalingListener();
+    
+    // 延遲初始化 Deep Link，確保 Navigator 已就緒
+    Future.delayed(const Duration(milliseconds: 1500), () {
+      _initDeepLinks();
+    });
   }
 
   @override
   void dispose() {
+    _linkSubscription?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  void _initDeepLinks() async {
+    // 檢查冷啟動傳入的連結
+    try {
+      final initialUri = await _appLinks.getInitialLink();
+      if (initialUri != null) {
+        _handleDeepLink(initialUri);
+      }
+    } catch (e) {
+      debugPrint('Deep Link initialization failed: $e');
+    }
+
+    // 監聽熱啟動傳入的連結
+    _linkSubscription = _appLinks.uriLinkStream.listen((uri) {
+      _handleDeepLink(uri);
+    }, onError: (err) {
+      debugPrint('Deep Link Stream error: $err');
+    });
+  }
+
+  void _handleDeepLink(Uri uri) {
+    debugPrint('🔗 Caught Deep Link: $uri');
+    // 支援 uban://recovery?code=xxx 或 HTTP(S) url
+    if (uri.path == '/recovery' || uri.scheme == 'uban' && uri.host == 'recovery' || uri.path.contains('recovery')) {
+      final code = uri.queryParameters['code'];
+      if (code != null) {
+        debugPrint('🔑 Extracted recovery code: $code');
+        _showRecoveryConfirmationDialog(code);
+      }
+    }
+  }
+
+  void _showRecoveryConfirmationDialog(String code) {
+    final context = navigatorKey.currentContext;
+    if (context == null) {
+      debugPrint('⚠️ Cannot show recovery dialog: navigatorKey.currentContext is null');
+      return;
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        bool isLoading = false;
+        String? errorMsg;
+
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: const Color(0xFFFFFBF0), // 溫馨米黃
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(28),
+                side: const BorderSide(color: Color(0xFFFF7043), width: 1.5),
+              ),
+              title: Center(
+                child: Text(
+                  '💡 Uban 帳號登入助手',
+                  style: GoogleFonts.notoSansTc(
+                    fontWeight: FontWeight.w900,
+                    color: const Color(0xFF2E7D78),
+                    fontSize: 22,
+                  ),
+                ),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    '👵👴',
+                    style: TextStyle(fontSize: 48),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    '偵測到快速登入請求。\n請問您要登入原本的長輩帳號嗎？',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 16,
+                      color: const Color(0xFF4A4A4A),
+                      height: 1.6,
+                    ),
+                  ),
+                  if (errorMsg != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      errorMsg!,
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.notoSansTc(
+                        color: Colors.redAccent,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                  if (isLoading) ...[
+                    const SizedBox(height: 16),
+                    const CircularProgressIndicator(color: Color(0xFFFF7043)),
+                  ],
+                ],
+              ),
+              actionsPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              actions: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: isLoading
+                            ? null
+                            : () => Navigator.pop(dialogContext),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          side: BorderSide(color: Colors.grey[400]!),
+                        ),
+                        child: Text(
+                          '取消',
+                          style: TextStyle(color: Colors.grey[600], fontSize: 16),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: isLoading
+                            ? null
+                            : () async {
+                                setDialogState(() {
+                                  isLoading = true;
+                                  errorMsg = null;
+                                });
+
+                                try {
+                                  final result = await ApiService.verifyRecoveryCode(code);
+                                  
+                                  if (result['status'] == 'success' && result['data'] != null) {
+                                    final data = result['data'];
+                                    final int elderUserId = data['user_id'];
+                                    final String elderName = data['elder_name'] ?? '長輩';
+                                    
+                                    // 寫入登入狀態
+                                    final prefs = await SharedPreferences.getInstance();
+                                    await prefs.setInt('caregiver_id', elderUserId);
+                                    await prefs.setString('caregiver_name', elderName);
+                                    await prefs.setString('user_role', 'elder');
+                                    appRole = 'elder'; // 更新全域變數
+
+                                    // 關閉 Dialog 并跳轉至長輩首頁
+                                    if (navigatorKey.currentState != null) {
+                                      navigatorKey.currentState!.pop();
+                                      navigatorKey.currentState!.pushAndRemoveUntil(
+                                        MaterialPageRoute(
+                                          builder: (_) => ElderHomeScreen(
+                                            userId: elderUserId,
+                                            userName: elderName,
+                                          ),
+                                        ),
+                                        (route) => false,
+                                      );
+                                    }
+                                  } else {
+                                    setDialogState(() {
+                                      isLoading = false;
+                                      errorMsg = result['message'] ?? result['error'] ?? result['detail'] ?? '登入驗證失敗';
+                                    });
+                                  }
+                                } catch (e) {
+                                  setDialogState(() {
+                                    isLoading = false;
+                                    errorMsg = '網路連線失敗: $e';
+                                  });
+                                }
+                              },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFFF7043),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                        child: const Text(
+                          '是的，登入',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   @override

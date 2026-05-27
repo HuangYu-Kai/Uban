@@ -595,4 +595,46 @@ class ApiService {
       return {'status': 'error', 'message': '網路連線失敗: $e'};
     }
   }
+
+  static Future<Map<String, dynamic>> generateRecoveryLink({
+    required int familyId,
+    required String elderId,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/pairing/generate_recovery'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'family_id': familyId,
+              'elder_id': elderId,
+            }),
+          )
+          .timeout(_timeout);
+      return _safeDecode(response);
+    } on TimeoutException {
+      return {'status': 'error', 'message': '連線逾時，請檢查網路'};
+    } catch (e) {
+      return {'status': 'error', 'message': '網路連線失敗: $e'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> verifyRecoveryCode(String code) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/pairing/verify_recovery'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'code': code,
+            }),
+          )
+          .timeout(_timeout);
+      return _safeDecode(response);
+    } on TimeoutException {
+      return {'status': 'error', 'message': '連線逾時，請檢查網路'};
+    } catch (e) {
+      return {'status': 'error', 'message': '網路連線失敗: $e'};
+    }
+  }
 }
