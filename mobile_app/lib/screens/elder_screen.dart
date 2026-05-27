@@ -8,7 +8,7 @@ import 'dart:async';
 import 'dart:convert';
 import '../services/signaling.dart';
 import '../widgets/heartbeat_overlay.dart';
-import 'role_selection_screen.dart';
+import 'identification_screen.dart';
 import '../globals.dart';
 
 class ElderScreen extends StatefulWidget {
@@ -40,8 +40,20 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   bool _isCameraOff = true; // ★ 攝像頭預設關閉
   bool _isMuted = false;
   bool _mediaInitialized = false;
-  late Timer _callTimer;
+  Timer? _callTimer;
   int _callDuration = 0; // 秒數
+  
+  // ★ 新增：用於生成新格式的房間ID
+  late String _formattedRoomId;
+  
+  // ★ 輔助方法：根據通訊模式生成房間ID
+  String _getFormattedRoomId(String elderId) {
+    if (widget.isCCTVMode) {
+      return 'monitor_elder_$elderId';  // 監控/CCTV 模式
+    } else {
+      return 'comm_elder_$elderId';  // 雙向通訊模式
+    }
+  }
 
   @override
   void initState() {
@@ -49,6 +61,9 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     isAppReady = true;
     _checkPermissions();
+    
+    // ★ 初始化格式化的房間ID
+    _formattedRoomId = _getFormattedRoomId(widget.roomId);
     
     // ★ Bug 16 解決方案：監聽從系統層 (main.dart) 傳進來的 CallKit 接聽動作
     pendingAcceptedCall.addListener(_onPendingCallChanged);
@@ -89,10 +104,15 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     final pendingRoom = prefs.getString('pending_emergency_room');
     final pendingSender = prefs.getString('pending_emergency_sender');
 
-    if (pendingRoom != null && pendingRoom == widget.roomId && pendingSender != null) {
-      await prefs.remove('pending_emergency_room');
-      await prefs.remove('pending_emergency_sender');
-      _handleEmergencyAccept(pendingSender);
+    // ★ 支持新的房間ID格式以及舊的 elder_id 格式（向後兼容）
+    if (pendingRoom != null && pendingSender != null) {
+      bool isMatching = pendingRoom == _formattedRoomId || 
+                        pendingRoom == widget.roomId;  // 舊格式相容性
+      if (isMatching) {
+        await prefs.remove('pending_emergency_room');
+        await prefs.remove('pending_emergency_sender');
+        _handleEmergencyAccept(pendingSender);
+      }
     }
   }
 
@@ -208,12 +228,19 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       await _initializeMedia();
     }
     
+    // ★ 修復：從 SharedPreferences 讀取真正的 user_id（caregiver_id），
+    //    而不是誤用 elder_id 當作 userId。
+    //    elder_id（widget.roomId，如 '0343'）≠ user_id（資料庫帳號整數 ID）
+    final prefs = await SharedPreferences.getInstance();
+    final int? actualUserId = prefs.getInt('caregiver_id');
+    final dynamic resolvedUserId = actualUserId ?? widget.roomId;
+    
     _signaling.connect(
-      widget.roomId, 
+      _formattedRoomId,  // ★ 使用格式化的房間ID，而不是原始的 roomId
       'elder', 
-      userId: int.tryParse(widget.roomId),
+      userId: resolvedUserId,  // ★ 修復：使用真正的 user_id（caregiver_id）或 elder_id 作為備用
       deviceName: widget.deviceName,
-      deviceMode: widget.isCCTVMode ? 'cctv' : 'comm'
+      deviceMode: widget.isCCTVMode ? 'monitor' : 'comm'
     );
 
     Future.delayed(const Duration(milliseconds: 1500), () {
@@ -222,7 +249,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     });
 
     _signaling.onCallEnded = () {
-      _callTimer.cancel();
+      _callTimer?.cancel();
       if (mounted) {
         setState(() { 
           _remoteRenderer.srcObject = null; 
@@ -230,11 +257,14 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
           _isInCall = false; 
         });
         
-        Future.delayed(const Duration(seconds: 2), () {
-          if (mounted) {
-            Navigator.of(context).pop();
-          }
-        });
+        // ★ 只有非 CCTV 模式才退出畫面
+        if (!widget.isCCTVMode) {
+          Future.delayed(const Duration(seconds: 2), () {
+            if (mounted) {
+              Navigator.of(context).pop();
+            }
+          });
+        }
       }
     };
 
@@ -259,7 +289,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       if (mounted) {
          Navigator.pushAndRemoveUntil(
           context,
-          MaterialPageRoute(builder: (context) => const RoleSelectionScreen()),
+          MaterialPageRoute(builder: (context) => const IdentificationScreen()),
           (route) => false,
         );
       }
@@ -267,11 +297,9 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
 
     _signaling.onIncomingCall = (callerId, callType) async {
       debugPrint("📞 [ElderScreen] Incoming Offer from $callerId (Type: $callType)");
-      if (_isInCall || callType == 'emergency' || widget.isCCTVMode) {
-        if (mounted) setState(() => _isInCall = true);
-        return true; 
-      }
-      return false; 
+      // ★ 只要是在 ElderScreen，就代表已經進入通話準備狀態，一律接聽！
+      if (mounted) setState(() => _isInCall = true);
+      return true;
     };
 
     _signaling.onHeartbeatMessage = (message) async {
@@ -318,7 +346,13 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   Future<void> _initializeMedia() async {
     if (_mediaInitialized) return;
     try {
-      await _signaling.openUserMedia(_localRenderer, videoEnabled: !_isCameraOff);
+      await _signaling.openUserMedia(_localRenderer); // 永遠要求影像軌道
+      if (_signaling.localStream != null) {
+        final videoTracks = _signaling.localStream!.getVideoTracks();
+        for (var track in videoTracks) {
+          track.enabled = !_isCameraOff; // 預設關閉，保護隱私
+        }
+      }
       if (mounted) {
         setState(() => _mediaInitialized = true);
       }
@@ -363,6 +397,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
 
   // ★ 新增：通話計時器
   void _startCallTimer() {
+    _callTimer?.cancel();
     _callTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) {
         setState(() => _callDuration++);
@@ -379,7 +414,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   // 主動呼叫 (先響鈴)
   void _makeCall() {
     setState(() { _status = "正在呼叫家人..."; _isInCall = true; });
-    _signaling.sendCallRequest(widget.roomId, role: 'elder');
+    _signaling.sendCallRequest(_formattedRoomId, role: 'elder');  // ★ 使用格式化的房間ID
   }
 
   void _hangUp() {
@@ -387,7 +422,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     // it means the family hasn't answered yet. We should send a cancel-call so 
     // the family's CallKit dismisses.
     if (_status == "正在呼叫家人...") {
-      _signaling.sendCancelCall(widget.roomId);
+      _signaling.sendCancelCall(_formattedRoomId);  // ★ 使用格式化的房間ID
     }
     _signaling.hangUp(disconnectSocket: false, disposeLocalStream: false);
     setState(() { 
@@ -396,17 +431,19 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       _isInCall = false; 
     });
 
-    // ★ 延遲 1.5 秒後自動回到首頁
-    Future.delayed(const Duration(milliseconds: 1500), () {
-      if (mounted) {
-        Navigator.of(context).pop();
-      }
-    });
+    // ★ 只有非 CCTV 模式才自動回到首頁
+    if (!widget.isCCTVMode) {
+      Future.delayed(const Duration(milliseconds: 1500), () {
+        if (mounted) {
+          Navigator.of(context).pop();
+        }
+      });
+    }
   }
 
   @override
   void dispose() {
-    _callTimer.cancel();
+    _callTimer?.cancel();
     pendingAcceptedCall.removeListener(_onPendingCallChanged);
     _localRenderer.dispose();
     _remoteRenderer.dispose();
@@ -647,28 +684,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
                   ),
                 ),
 
-              // 5. 測試/登出按鈕 (右下角)
-              Positioned(
-                bottom: 20,
-                right: 20,
-                child: FloatingActionButton(
-                  mini: true,
-                  backgroundColor: Colors.white24,
-                  elevation: 0,
-                  child: const Icon(Icons.logout, color: Colors.white),
-                  onPressed: () async {
-                    final prefs = await SharedPreferences.getInstance();
-                    await prefs.clear();
-                    if (context.mounted) {
-                      Navigator.pushAndRemoveUntil(
-                        context,
-                        MaterialPageRoute(builder: (context) => const RoleSelectionScreen()),
-                        (route) => false,
-                      );
-                    }
-                  },
-                ),
-              ),
+              // 5. 測試/登出按鈕 (已移除，避免長輩誤觸登出)
             ],
           );
         },

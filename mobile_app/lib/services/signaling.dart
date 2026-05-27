@@ -57,7 +57,12 @@ class Signaling {
   String? _currentRoomId;
   String? _peerSocketId;
   String? _currentCallId; // 追蹤當前通話 ID，確保 hangUp 時能傳給後端
-  int? _userId; // 新增：儲存當前使用者的資料庫 ID
+  String? _lastProcessedCallId; // ★ 問題4修復：記錄最後一個已處理的來電 ID，防止重複
+  int _lastProcessedCallTime = 0; // ★ 問題4修復：記錄最後一個已處理來電的時間戳，用於去重檢查
+  dynamic _userId; // 新增：儲存當前使用者的資料庫 ID
+  String? _role; // 新增：儲存當前連線的角色
+  String? _elderId; // ★ 新增：儲存當前 elder_id，用於 TURN 隔離
+  bool _isCreatingOffer = false; // ⭐ 防重複呼叫 createOffer
   final List<RTCIceCandidate> _candidateQueue = [];
   final List<String> _pendingRooms = [];
 
@@ -99,9 +104,16 @@ class Signaling {
     });
   }
 
-  void connect(String roomId, String role, {int? userId, String deviceName = 'Unknown', String deviceMode = 'comm', String? fcmToken}) {
+  void connect(String roomId, String role, {dynamic userId, String deviceName = 'Unknown', String deviceMode = 'comm', String? fcmToken}) {
     _currentRoomId = roomId;
     _userId = userId;
+    _role = role;
+    
+    // ★ 解析房間 ID 以提取 elder_id
+    if (roomId.contains('elder_')) {
+      _elderId = roomId.split('elder_').last;
+      debugPrint("🔐 [Signaling] Extracted elder_id from room: $_elderId");
+    }
 
     if (socket != null && socket!.connected) {
       debugPrint("♻️ Reusing existing socket connection. Joining room $roomId...");
@@ -132,7 +144,7 @@ class Signaling {
     }
   }
 
-  Future<void> _asyncJoin(String roomId, String role, String deviceName, String deviceMode, {int? userId, String? fcmToken}) async {
+  Future<void> _asyncJoin(String roomId, String role, String deviceName, String deviceMode, {dynamic userId, String? fcmToken}) async {
     String? effectiveToken = fcmToken;
     if (effectiveToken == null && !kIsWeb) {
       try {
@@ -168,9 +180,31 @@ class Signaling {
       socket?.disconnect();
     });
 
-    // 統一監聯 elder-devices-update（後端已統一 emit 此事件名）
     // 響鈴監聽
     socket!.on('call-request', (data) {
+      if (data['senderId'] == socket!.id) {
+        debugPrint('📞 [Signaling] 忽略自己發出的 call-request (SenderId: ${data['senderId']})');
+        return;
+      }
+      final String? senderRole = data['role']?.toString();
+      if (senderRole != null && _role == senderRole) {
+        debugPrint('📞 [Signaling] 忽略相同角色發出的 call-request (SenderRole: $senderRole)');
+        return;
+      }
+      
+      // ★ 問題4修復：檢查是否已在短時間內處理過此 callId（防止重複）
+      final String callId = data['callId'] ?? '';
+      final int currentTime = DateTime.now().millisecondsSinceEpoch;
+      if (callId.isNotEmpty && callId == _lastProcessedCallId && 
+          (currentTime - _lastProcessedCallTime) < 2000) { // 2秒去重窗口
+        debugPrint('⚠️ [Signaling] 忽略重複的 call-request（CallId 已在 2 秒內處理: $callId）');
+        return;
+      }
+      
+      // ★ 更新最後處理的來電 ID 和時間戳
+      _lastProcessedCallId = callId;
+      _lastProcessedCallTime = currentTime;
+      
       debugPrint('📞📞📞 [Signaling] ===== 收到 call-request =====');
       debugPrint('📞 [Signaling] data: $data');
       debugPrint('📞 [Signaling] room: ${data['room']}, senderId: ${data['senderId']}, callId: ${data['callId']}');
@@ -186,6 +220,15 @@ class Signaling {
 
     // 取消呼叫監聽
     socket!.on('cancel-call', (data) {
+      if (data['senderId'] == socket!.id) {
+        debugPrint('🔕 [Signaling] 忽略自己發出的 cancel-call (SenderId: ${data['senderId']})');
+        return;
+      }
+      final String? senderRole = data['role']?.toString();
+      if (senderRole != null && _role == senderRole) {
+        debugPrint('🔕 [Signaling] 忽略相同角色發出的 cancel-call (SenderRole: $senderRole)');
+        return;
+      }
       debugPrint('🔕 [Signaling] 收到 cancel-call: $data');
       if (onCancelCall != null) onCancelCall!(data['room'], data['senderId'], data['callId']);
     });
@@ -193,8 +236,18 @@ class Signaling {
     // 緊急呼叫監聽
     socket!.on('emergency-call', (data) {
       debugPrint('🚨 [Signaling] 收到 emergency-call: $data');
+      if (data['senderId'] == socket!.id) {
+        debugPrint('🚨 [Signaling] 忽略自己發出的 emergency-call');
+        return;
+      }
+      final String? senderRole = data['role']?.toString();
+      if (senderRole != null && _role == senderRole) {
+        debugPrint('🚨 [Signaling] 忽略相同角色發出的 emergency-call (SenderRole: $senderRole)');
+        return;
+      }
       if (onEmergencyCall != null) onEmergencyCall!(data['room'], data['senderId'], data['callId']);
     });
+
 
     // 對方接聽監聽
     socket!.on('call-accept', (data) {
@@ -227,6 +280,21 @@ class Signaling {
       final senderId = data['senderId'];
       final callId = data['callId'];
       debugPrint('📩 [Signaling] RECEIVED OFFER from $senderId (CallId: $callId)');
+      
+      // ★ 問題4修復：檢查是否已在短時間內處理過此 callId（防止重複）
+      final int currentTime = DateTime.now().millisecondsSinceEpoch;
+      if (callId != null && callId == _lastProcessedCallId && 
+          (currentTime - _lastProcessedCallTime) < 2000) { // 2秒去重窗口
+        debugPrint('⚠️ [Signaling] 忽略重複的 offer（CallId 已在 2 秒內處理: $callId）');
+        return;
+      }
+      
+      // ★ 更新最後處理的來電 ID 和時間戳
+      if (callId != null) {
+        _lastProcessedCallId = callId;
+        _lastProcessedCallTime = currentTime;
+      }
+      
       _peerSocketId = senderId;
       _candidateQueue.clear();
 
@@ -395,50 +463,40 @@ class Signaling {
     return accepted;
   }
 
-  void _emitJoin(String room, String role, String name, String mode, {int? userId, String? fcmToken}) async {
+  void _emitJoin(String room, String role, String name, String mode, {dynamic userId, String? fcmToken}) async {
     debugPrint("📢 [Signaling] Emitting join: $room ($role) as $name (UID: $userId)");
     
-    // ★ Bug: Web 版不支援 FirebaseMessaging.instance.getToken() 若未正確設定 VAPID
-    // 且 Web 版通訊多在前景，暫不需要 FCM 推播。
-    if (kIsWeb) {
-      socket!.emit('join', {
-        'room': room, 
-        'role': role, 
-        'deviceName': name, 
-        'deviceMode': mode,
-        'userId': userId,
-        'fcmToken': fcmToken
-      });
-      return;
-    }
+    // ★ 先加入房間，不要被 FCM token 阻塞（避免卡住 join）
+    socket!.emit('join', {
+      'room': room, 
+      'role': role, 
+      'deviceName': name, 
+      'deviceMode': mode,
+      'userId': userId,
+      'fcmToken': fcmToken
+    });
+
+    // Web 端不需要 FCM token 更新
+    if (kIsWeb) return;
 
     // Non-blocking FCM token retrieval (Mobile Only)
     FirebaseMessaging.instance.getToken().then((token) {
-      if (token != null) debugPrint("🔔 [Signaling] FCM Token retrieved: ${token.substring(0, 8)}...");
-      socket!.emit('join', {
-        'room': room, 
-        'role': role, 
-        'deviceName': name, 
-        'deviceMode': mode,
-        'userId': userId,
-        'fcmToken': token ?? fcmToken
-      });
+      if (token == null) return;
+      debugPrint("🔔 [Signaling] FCM Token retrieved: ${token.substring(0, 8)}...");
+      if (socket != null && socket!.connected) {
+        socket!.emit('update-fcm-token', {
+          'room': room,
+          'token': token
+        });
+      }
     }).catchError((e) {
-      debugPrint("⚠️ [Signaling] FCM Token failed: $e, joining without token.");
-      socket!.emit('join', {
-        'room': room, 
-        'role': role, 
-        'deviceName': name, 
-        'deviceMode': mode,
-        'userId': userId,
-        'fcmToken': fcmToken
-      });
+      debugPrint("⚠️ [Signaling] FCM Token failed: $e");
     });
   }
 
-  void joinRoom(String roomId) {
+  void joinRoom(String roomId, {dynamic userId}) {
     if (socket != null && socket!.connected) {
-      _emitJoin(roomId, 'family', 'Dashboard_Listener', 'listener');
+      _emitJoin(roomId, 'family', 'Dashboard_Listener', 'listener', userId: userId ?? _userId);
     } else {
       _pendingRooms.add(roomId);
     }
@@ -539,15 +597,62 @@ class Signaling {
     _candidateQueue.clear();
   }
 
-  Future<void> _createPeerConnection({required bool useLocalStream}) async {
-    peerConnection = await createPeerConnection(_configuration);
+  // ★ 根据 elder_id 生成动态的 TURN 凭证
+  Map<String, dynamic> _generateDynamicTURNConfig() {
+    String turnUsername = _turnUser;
+    String turnPassword = _turnPass;
     
+    // 如果有 elder_id，根据 elder_id 生成隔离的凭证
+    if (_elderId != null && _elderId!.isNotEmpty) {
+      // ★ 使用 elder_id 作为 TURN 用户名的后缀，实现通讯隔离
+      // 格式: uban_elder_{elder_id}
+      turnUsername = '${_turnUser}_elder_$_elderId';
+      
+      // ★ 生成基于 elder_id 的密码
+      // 这可以确保每个 elder 有独立的认证通道
+      turnPassword = _turnPass; // 保持相同的密码，由服务器验证 elder_id
+      
+      debugPrint("🔐 [TURN] 生成 elder_id 隔离的 TURN 凭证:");
+      debugPrint("   elder_id: $_elderId");
+      debugPrint("   username: $turnUsername");
+      debugPrint("   server: $_turnServer");
+    } else {
+      debugPrint("⚠️ [TURN] 未找到 elder_id，使用默认 TURN 凭证");
+    }
+    
+    return {
+      'iceServers': [
+        {'urls': 'stun:stun.l.google.com:19302'},
+        {
+          'urls': [
+            'turn:$_turnServer',
+            'turn:$_turnServer?transport=tcp',
+          ],
+          'username': turnUsername,
+          'credential': turnPassword,
+        },
+      ]
+    };
+  }
+
+  Future<void> _createPeerConnection({required bool useLocalStream}) async {
+    // ★ 使用基于 elder_id 的动态 TURN 配置
+    final config = _generateDynamicTURNConfig();
+    debugPrint("📍 [WebRTC] Creating PeerConnection with config: $config");
+    peerConnection = await createPeerConnection(config);
+    
+    var iceGatheringCount = 0;
     peerConnection!.onIceConnectionState = (state) {
       debugPrint("❄️ ICE Connection State: $state");
     };
 
     peerConnection!.onConnectionState = (state) {
       debugPrint("🔌 [Signaling] Connection State: $state");
+      if (state == 'connected') {
+        debugPrint("✅ [Signaling] P2P Connection Established!");
+      } else if (state == 'failed') {
+        debugPrint("❌ [Signaling] P2P Connection Failed!");
+      }
     };
     
     peerConnection!.onIceConnectionState = (state) {
@@ -555,8 +660,12 @@ class Signaling {
     };
 
     peerConnection!.onIceCandidate = (candidate) {
+      iceGatheringCount++;
+      final candidateStr = candidate.candidate ?? 'NULL';
+      final displayStr = candidateStr.length > 25 ? candidateStr.substring(0, 25) : candidateStr;
+      debugPrint("🧊 ICE Candidate #$iceGatheringCount: $displayStr...");
+      
       if (socket != null) {
-        debugPrint("🧊 Generated ICE Candidate: ${candidate.candidate?.substring(0, 15)}... -> targetId: $_peerSocketId");
         var payload = {
           'room': _currentRoomId,
           'candidate': candidate.candidate,
@@ -567,48 +676,90 @@ class Signaling {
         // ★ 必須指定 targetId，確保 Candidate 精準轉發給對端
         if (_peerSocketId != null) {
           payload['targetId'] = _peerSocketId!;
+          socket!.emit('candidate', payload);
         } else {
-          debugPrint("⚠️ [Signaling] Missing targetId for ICE Candidate - falling back to room broadcast");
+          debugPrint("⚠️ [Signaling] Missing targetId for ICE Candidate #$iceGatheringCount - falling back to room broadcast");
+          socket!.emit('candidate', payload);
         }
-        socket!.emit('candidate', payload);
+      } else {
+        debugPrint("⚠️ [Signaling] Socket not connected, cannot emit ICE candidate");
       }
     };
     
     peerConnection!.onTrack = (event) {
-      debugPrint("🛤️ Received Remote Track: ${event.track.kind}");
+      debugPrint("🛤️ [Signaling] Received Remote Track: kind=${event.track.kind}, enabled=${event.track.enabled}");
       if (event.streams.isNotEmpty && onAddRemoteStream != null) {
+        debugPrint("✅ [Signaling] Adding remote stream with ${event.streams.length} stream(s)");
         onAddRemoteStream!(event.streams[0]);
+      } else {
+        debugPrint("⚠️ [Signaling] Remote track received but no onAddRemoteStream callback or streams empty");
       }
     };
+    
     if (useLocalStream && localStream != null) {
-      localStream!.getTracks().forEach((track) => peerConnection?.addTrack(track, localStream!));
+      final tracks = localStream!.getTracks();
+      debugPrint("📍 [Signaling] Adding ${tracks.length} local tracks to PeerConnection:");
+      for (var i = 0; i < tracks.length; i++) {
+        final track = tracks[i];
+        debugPrint("  ├─ Track #$i: kind=${track.kind}, enabled=${track.enabled}");
+        peerConnection?.addTrack(track, localStream!);
+      }
+      if (tracks.isEmpty) {
+        debugPrint("⚠️ [Signaling] No local tracks found! Check media permissions.");
+      }
+    } else if (useLocalStream) {
+      debugPrint("⚠️ [Signaling] useLocalStream=true but localStream is null");
+    } else {
+      debugPrint("📍 [Signaling] useLocalStream=false, not adding local tracks (receive-only mode)");
     }
   }
 
-  Future<void> createOffer({String? targetId, bool isEmergency = false}) async {
-    // ★ 先關閉舊連線，避免通訊通道疊加
-    if (peerConnection != null) {
-      await peerConnection!.close();
-      peerConnection = null;
+  Future<void> createOffer({String? targetId, bool isEmergency = false, bool useLocalStream = true}) async {
+    // ⭐ 防止重複調用 createOffer
+    if (_isCreatingOffer) {
+      debugPrint("⚠️ [Signaling] createOffer already in progress, skipping");
+      return;
     }
-    _candidateQueue.clear();
-    debugPrint("🚀 [Signaling] Creating WebRTC Offer...");
-    _peerSocketId = targetId;
-    await _createPeerConnection(useLocalStream: true);
     
-    // 建立 Offer 時帶入 constraints，確保雙向通訊
-    RTCSessionDescription offer = await peerConnection!.createOffer(_constraints);
-    await peerConnection!.setLocalDescription(offer);
-    
-    debugPrint("📤 [Signaling] Emitting offer to $targetId");
-    socket!.emit('offer', {
-        'room': _currentRoomId,
-        'targetId': targetId,
-        'senderId': socket!.id,
-        'type': 'offer',
-        'sdp': offer.sdp,
-        'isEmergency': isEmergency
-    });
+    try {
+      _isCreatingOffer = true;
+      // ★ 先關閉舊連線，避免通訊通道疊加
+      if (peerConnection != null) {
+        await peerConnection!.close();
+        peerConnection = null;
+      }
+      _candidateQueue.clear();
+      debugPrint("🚀 [Signaling] Creating WebRTC Offer... (useLocalStream: $useLocalStream)");
+      _peerSocketId = targetId;
+      await _createPeerConnection(useLocalStream: useLocalStream);
+      
+      // ⏳ 等待 DTLS 材料生成（CRITICAL: 防止 fingerprint 不匹配）
+      // 增加到 1000ms 以確保 DTLS 證書完全初始化
+      await Future.delayed(Duration(milliseconds: 1000));
+      
+      // 建立 Offer 時帶入 constraints，確保雙向或單向通訊
+      final constraints = useLocalStream 
+          ? _constraints 
+          : {'mandatory': {'OfferToReceiveAudio': true, 'OfferToReceiveVideo': true}};
+      
+      RTCSessionDescription offer = await peerConnection!.createOffer(constraints);
+      await peerConnection!.setLocalDescription(offer);
+      
+      debugPrint("📤 [Signaling] Emitting offer to $targetId");
+      socket!.emit('offer', {
+          'room': _currentRoomId,
+          'targetId': targetId,
+          'senderId': socket!.id,
+          'type': 'offer',
+          'sdp': offer.sdp,
+          'isEmergency': isEmergency
+      });
+    } catch (e) {
+      debugPrint("❌ [Signaling] createOffer failed: $e");
+      rethrow;
+    } finally {
+      _isCreatingOffer = false;
+    }
   }
 
   Future<void> startMonitoring(String targetId) async {
@@ -648,6 +799,7 @@ class Signaling {
     stopMedia();
     _closePeerConnection();
     _currentCallId = null;
+    _isCreatingOffer = false; // ⭐ 重置 createOffer flag
     
     // 僅清除與「單次通話連線」相關的介面回調
     onAddRemoteStream = null;
@@ -665,6 +817,7 @@ class Signaling {
       socket!.emit('end-call', {'room': _currentRoomId, 'targetId': _peerSocketId, 'callId': _currentCallId});
     }
     _currentCallId = null;
+    _isCreatingOffer = false; // ⭐ 重置 createOffer flag
     
     _closePeerConnection();
     

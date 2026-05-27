@@ -1,14 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // 添加觸覺反饋
 import 'package:google_fonts/google_fonts.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:ui';
 import 'family_v2/ai_hub_screen.dart';
 import 'family_v2/health_trends_screen.dart';
 import 'family_v2/family_collaboration_screen.dart';
 import '../services/elder_manager.dart';
 import '../services/signaling.dart';
-import '../services/api_service.dart';
 import 'video_call_screen.dart';
 import 'package:flutter_application_1/utils/app_logger.dart';
 
@@ -41,9 +39,8 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> {
     appLogger.d('   userId: ${widget.userId}');
     appLogger.d('   userName: ${widget.userName}');
     
-    // 初始化 ElderManager with 真實 userId（不需要 await，在背景執行）
+    // 初始化 ElderManager with 真實 userId
     _initializeElderManager();
-    _loadElderAndConnect();
     
     _views = [
       AiHubScreen(
@@ -70,57 +67,27 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> {
     appLogger.d('🔄 FamilyMainScreen: Starting ElderManager initialization');
     final success = await ElderManager().initialize(userId: widget.userId);
     appLogger.d('🔄 FamilyMainScreen: ElderManager initialization ${success ? "succeeded" : "failed"}');
+    
+    // 初始化完成後，連線到當前長輩的房間
+    await _loadElderAndConnect();
   }
 
   Future<void> _loadElderAndConnect() async {
     debugPrint('📡📡📡 [FamilyMainScreen] ===== 開始載入長輩並連線 =====');
-    final prefs = await SharedPreferences.getInstance();
-    _elderName = prefs.getString('selected_elder_name');
-    final elderId = prefs.getInt('selected_elder_id'); // user_id，作為房間號
+    final currentElder = ElderManager().currentElder;
     
-    debugPrint('📡 [FamilyMainScreen] SharedPreferences 讀取:');
-    debugPrint('   - selected_elder_name: $_elderName');
-    debugPrint('   - selected_elder_id (user_id): $elderId');
-    
-    // 如果沒有 elderId，從 API 獲取
-    int? roomUserId = elderId;
-    if (roomUserId == null) {
-      debugPrint('📡 [FamilyMainScreen] 沒有已選長輩，從 API 獲取...');
-      try {
-        final elders = await ApiService.getPairedElders(widget.userId);
-        debugPrint('📡 [FamilyMainScreen] API 返回 ${elders.length} 個長輩');
-        
-        if (elders.isNotEmpty) {
-          final targetElder = elders.first;
-          debugPrint('📡 [FamilyMainScreen] 使用第一個長輩: id=${targetElder['id']}, name=${targetElder['user_name']}');
-          
-          roomUserId = targetElder['id'] as int?;
-          _elderName = targetElder['user_name'];
-          
-          // 儲存以便下次使用
-          if (roomUserId != null) {
-            await prefs.setInt('selected_elder_id', roomUserId);
-            if (_elderName != null) {
-              await prefs.setString('selected_elder_name', _elderName!);
-            }
-            debugPrint('📡 [FamilyMainScreen] ✅ 自動儲存: roomUserId=$roomUserId, name=$_elderName');
-          }
-        } else {
-          debugPrint('⚠️ [FamilyMainScreen] API 返回空列表，沒有配對的長輩');
-        }
-      } catch (e) {
-        debugPrint('⚠️ [FamilyMainScreen] 獲取長輩資料失敗: $e');
-      }
-    }
-    
-    // ★ 重要：使用 user_id 作為房間號（與長輩端一致）
-    final roomId = roomUserId?.toString();
-    
-    if (roomId != null) {
+    if (currentElder != null) {
+      // ★ 修復：使用正確的房間格式 comm_elder_{elder_id}
+      //    elderId 是 elder_profile.elder_id（如 '0343'），而非數字 id
+      final elderIdStr = currentElder.elderId ?? currentElder.id.toString();
+      final roomId = 'comm_elder_$elderIdStr';
+      _elderName = currentElder.name;
+      
       debugPrint('📡📡📡 [FamilyMainScreen] ===== 連線到房間: $roomId =====');
       debugPrint('📡 [FamilyMainScreen] elderName: $_elderName');
       debugPrint('📡 [FamilyMainScreen] deviceName: ${widget.userName}的App');
-      _signaling.connect(roomId, 'family', deviceName: '${widget.userName}的App');
+      
+      _signaling.connect(roomId, 'family', userId: widget.userId, deviceName: '${widget.userName}的App');
       _setupSignalingCallbacks();
       debugPrint('📡 [FamilyMainScreen] ✅ 回調已設置');
     } else {
@@ -190,7 +157,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> {
           actions: [
             TextButton(
               onPressed: () {
-                _signaling.sendCallBusy(roomId);
+                _signaling.sendCallBusy(senderId, callId: callId);
                 Navigator.of(dialogContext).pop();
                 _isIncomingCallDialogOpen = false;
               },

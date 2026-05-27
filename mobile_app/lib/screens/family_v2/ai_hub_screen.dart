@@ -10,7 +10,9 @@ import 'family_collaboration_screen.dart';
 
 import 'alert_center_screen.dart';
 import '../video_call_screen.dart';
+import '../camera_screen.dart';
 import '../family/family_settings_view.dart';
+import '../elder_selection_screen.dart';
 import '../../services/elder_manager.dart';
 import '../../models/elder.dart';
 import 'package:flutter_application_1/utils/app_logger.dart';
@@ -171,12 +173,8 @@ class _AiHubScreenState extends State<AiHubScreen> {
         );
         break;
       case 'video':
-        // 啟動視訊通話
-        destination = VideoCallScreen(
-          roomId: _currentElder?.id.toString() ?? '1',
-          autoStart: true,
-        );
-        break;
+        _showVideoCallOptions();
+        return; // 使用 BottomSheet 處理導航，這裡直接 return
     }
     
     if (destination != null) {
@@ -324,44 +322,62 @@ class _AiHubScreenState extends State<AiHubScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF3B82F6).withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: const Color(0xFF3B82F6).withValues(alpha: 0.2),
-                        width: 1,
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          '正在關照：',
-                          style: GoogleFonts.notoSansTc(
-                            fontSize: 14,
-                            color: const Color(0xFF64748B),
-                            fontWeight: FontWeight.w500,
+                  GestureDetector(
+                    onTap: () async {
+                      HapticFeedback.lightImpact();
+                      final result = await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => ElderSelectionScreen(
+                            userId: widget.currentUserId ?? _elderManager.currentUserId ?? 0,
+                            userName: widget.currentUserName ?? '用戶',
                           ),
                         ),
-                        const SizedBox(width: 6),
-                        if (_currentElder != null) ...[
+                      );
+                      if (result == true) {
+                        await _elderManager.refresh();
+                        _loadElderInfo();
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF3B82F6).withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: const Color(0xFF3B82F6).withValues(alpha: 0.2),
+                          width: 1,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
                           Text(
-                            _currentElder!.genderEmoji,
-                            style: const TextStyle(fontSize: 14),
+                            '正在關照：',
+                            style: GoogleFonts.notoSansTc(
+                              fontSize: 14,
+                              color: const Color(0xFF64748B),
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
                           const SizedBox(width: 6),
-                        ],
-                        Text(
-                          _currentElder?.displayName ?? '未配對',
-                          style: GoogleFonts.notoSansTc(
-                            fontSize: 14,
-                            color: const Color(0xFF3B82F6),
-                            fontWeight: FontWeight.w700,
+                          if (_currentElder != null) ...[
+                            Text(
+                              _currentElder!.genderEmoji,
+                              style: const TextStyle(fontSize: 14),
+                            ),
+                            const SizedBox(width: 6),
+                          ],
+                          Text(
+                            _currentElder?.displayName ?? '未配對',
+                            style: GoogleFonts.notoSansTc(
+                              fontSize: 14,
+                              color: const Color(0xFF3B82F6),
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ],
@@ -485,6 +501,171 @@ class _AiHubScreenState extends State<AiHubScreen> {
           }).toList(),
         ),
       ],
+    );
+  }
+
+  void _showVideoCallOptions() {
+    if (_currentElder == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('請先選擇一位關照對象')),
+      );
+      return;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                '選擇通話方式',
+                style: GoogleFonts.notoSansTc(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: const Color(0xFF1E293B),
+                ),
+              ),
+              const SizedBox(height: 24),
+              // 一般通話按鈕
+              _buildCallOptionButton(
+                title: '一般視訊通話',
+                subtitle: '長輩需手動接聽後才能建立連線',
+                icon: Icons.video_call_rounded,
+                color: const Color(0xFF3B82F6),
+                onTap: () {
+                  Navigator.pop(context);
+                  final String rawId = _currentElder!.elderId ?? _currentElder!.id.toString();
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => VideoCallScreen(
+                        roomId: 'comm_elder_$rawId',
+                        autoStart: true,
+                        isEmergency: false,
+                      ),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 16),
+              // 緊急強制通話按鈕
+              _buildCallOptionButton(
+                title: '緊急強制通話',
+                subtitle: '強制喚醒長輩設備並自動接聽視訊',
+                icon: Icons.warning_rounded,
+                color: const Color(0xFFEF4444),
+                onTap: () {
+                  Navigator.pop(context);
+                  final String rawId = _currentElder!.elderId ?? _currentElder!.id.toString();
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => VideoCallScreen(
+                        roomId: 'comm_elder_$rawId',
+                        autoStart: true,
+                        isEmergency: true,
+                      ),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 16),
+              // 單向視訊監控
+              _buildCallOptionButton(
+                title: '單向視訊監控',
+                subtitle: '不打擾長輩，靜音查看長輩即時狀況',
+                icon: Icons.visibility_rounded,
+                color: const Color(0xFF8B5CF6),
+                onTap: () {
+                  Navigator.pop(context);
+                  final String rawId = _currentElder!.elderId ?? _currentElder!.id.toString();
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => CameraScreen(
+                        roomId: 'monitor_elder_$rawId',
+                      ),
+                    ),
+                  );
+                },
+              ),
+
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildCallOptionButton({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: color.withValues(alpha: 0.2)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: color,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: Colors.white, size: 28),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: color,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 13,
+                      color: Colors.grey.shade700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

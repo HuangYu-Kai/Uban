@@ -8,6 +8,7 @@ import 'family_onboarding_screen.dart';
 import 'elder_home_screen.dart';
 import 'family_main_screen.dart';
 import '../globals.dart'; // ★ 新增
+import 'elder_screen.dart'; // ★ 新增
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -86,22 +87,44 @@ class _SplashScreenState extends State<SplashScreen> {
           final userProfile = await ApiService.getStatus(effectiveUserId);
           if (!mounted) return;
           
-          // 角色優先序：1. 後端最新狀態 2. 本地紀錄 3. 預設子女
-          final role = userProfile['role'] ?? effectiveLocalRole ?? 'family';
+          final profileData = userProfile['data'] as Map<String, dynamic>? ?? {};
+          final role = profileData['role'] ?? effectiveLocalRole ?? 'family';
           appRole = role; // ★ 新增：同步到全域變數，確保啟動後通話偵聽正常
 
           if (role == 'elder') {
-            // 長輩端：直接進入長輩首頁
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(
-                builder: (context) =>
-                    ElderHomeScreen(
-                      userId: effectiveUserId,
-                      userName: effectiveUserName,
-                    ),
-              ),
-            );
+            final String? apiElderId = profileData['elder_id']?.toString();
+            if (apiElderId != null) {
+              await prefs.setString('elder_room_id', apiElderId);
+              if (!mounted) return;
+            }
+
+            final bool isCCTV = prefs.getBool('saved_is_cctv') ?? false;
+            final String deviceName = prefs.getString('saved_device_name') ?? effectiveUserName;
+            final String elderRoomId = apiElderId ?? prefs.getString('elder_room_id') ?? effectiveUserId.toString();
+            
+            if (isCCTV) {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => ElderScreen(
+                    roomId: elderRoomId,
+                    isCCTVMode: true,
+                    deviceName: deviceName,
+                  ),
+                ),
+              );
+            } else {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => ElderHomeScreen(
+                    userId: effectiveUserId,
+                    userName: effectiveUserName,
+                    roomId: elderRoomId,
+                  ),
+                ),
+              );
+            }
             return;
           }
 
@@ -138,16 +161,33 @@ class _SplashScreenState extends State<SplashScreen> {
           // 若 API 失敗，使用本地紀錄決定跳轉
           if (mounted) {
             if (effectiveLocalRole == 'elder') {
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                  builder: (context) =>
-                      ElderHomeScreen(
-                        userId: effectiveUserId,
-                        userName: effectiveUserName,
-                      ),
-                ),
-              );
+              final bool isCCTV = prefs.getBool('saved_is_cctv') ?? false;
+              final String deviceName = prefs.getString('saved_device_name') ?? effectiveUserName;
+              final String elderRoomId = prefs.getString('elder_room_id') ?? effectiveUserId.toString();
+              
+              if (isCCTV) {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => ElderScreen(
+                      roomId: elderRoomId,
+                      isCCTVMode: true,
+                      deviceName: deviceName,
+                    ),
+                  ),
+                );
+              } else {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => ElderHomeScreen(
+                      userId: effectiveUserId,
+                      userName: effectiveUserName,
+                      roomId: elderRoomId,
+                    ),
+                  ),
+                );
+              }
             } else {
               _goNext();
             }

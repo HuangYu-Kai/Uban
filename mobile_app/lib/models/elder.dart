@@ -1,6 +1,7 @@
 /// 👴👵 長輩資料模型
 class Elder {
   final int id;
+  final String? elderId; // elder_profile 的 elder_id，做為通訊通道(Room ID)
   final String name;
   final String? gender;
   final int? age;
@@ -12,6 +13,7 @@ class Elder {
   
   Elder({
     required this.id,
+    this.elderId,
     required this.name,
     this.gender,
     this.age,
@@ -26,6 +28,7 @@ class Elder {
   factory Elder.fromJson(Map<String, dynamic> json) {
     return Elder(
       id: json['id'] ?? json['user_id'] ?? 0,
+      elderId: json['elder_id']?.toString(), // 取出 elder_id
       name: json['name'] ?? json['user_name'] ?? '長輩',
       gender: json['gender'],
       age: json['age'],
@@ -42,6 +45,7 @@ class Elder {
   Map<String, dynamic> toJson() {
     return {
       'id': id,
+      'elder_id': elderId,
       'name': name,
       'gender': gender,
       'age': age,
@@ -66,6 +70,7 @@ class Elder {
   
   Elder copyWith({
     int? id,
+    String? elderId,
     String? name,
     String? gender,
     int? age,
@@ -77,6 +82,7 @@ class Elder {
   }) {
     return Elder(
       id: id ?? this.id,
+      elderId: elderId ?? this.elderId,
       name: name ?? this.name,
       gender: gender ?? this.gender,
       age: age ?? this.age,

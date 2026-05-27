@@ -43,15 +43,26 @@ bool _supportsCallKit() {
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  // ⚠️ 移除重複的 CallKit 通知邏輯
-  // Firebase 在背景時只用來觸發 Socket.IO 訊號，
-  // 真正的來電通知由信令層 (signaling.dart) 統一發送，
-  // 避免重複顯示兩個通知
-
   debugPrint("📩 Background message received: ${message.data}");
 
-  // 該訊息將由信令層通過 Socket.IO 的 'call' event 處理
-  // 詳見 lib/services/signaling.dart 的 'call' 事件監聽
+  // ★ 緊急通話喚醒：如果收到緊急通話，強制喚醒螢幕並啟動 APP
+  if (message.data['type'] == 'emergency-call') {
+    debugPrint("🚨 Emergency Call Received in Background. Waking up device...");
+    try {
+      final intent = const AndroidIntent(
+        action: 'android.intent.action.MAIN',
+        flags: [
+          Flag.FLAG_ACTIVITY_NEW_TASK,
+          Flag.FLAG_ACTIVITY_REORDER_TO_FRONT,
+        ],
+        package: 'com.example.flutter_application_1', // MainActivity package
+        componentName: 'com.example.flutter_application_1.MainActivity',
+      );
+      await intent.launch();
+    } catch (e) {
+      debugPrint("❌ Failed to launch MainActivity from background: $e");
+    }
+  }
 }
 
 void main() async {
@@ -113,9 +124,8 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
-  final _appLinks = AppLinks();
-  StreamSubscription<Uri>? _linkSubscription;
-
+  // ★ 問題4修復：FCM 消息去重，防止 Socket.IO + FCM 重複通知
+  final Map<String, int> _fcmCallIdCache = {}; // 記錄已處理的 callId 和時間戳
   @override
   void initState() {
     super.initState();
@@ -621,16 +631,39 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   void _setupForegroundMessaging() {
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       debugPrint("📩 [Main] Foreground message received: ${message.data}");
-      if (message.data['type'] == 'call-request') {
+      if (message.data['type'] == 'call-request' || message.data['type'] == 'emergency-call') {
         final roomId = message.data['roomId'];
         final senderId = message.data['senderId'];
         final callId = message.data['callId'];
+        final senderRole = message.data['role'];
+        final isEmergency = message.data['type'] == 'emergency-call';
+
+        if (senderRole != null && appRole == senderRole) {
+          debugPrint("📞 [FCM-Backup] Ignoring call-request: sender role ($senderRole) matches our appRole ($appRole)");
+          return;
+        }
+
+        // ★ 問題4修復：檢查此 callId 是否最近已被處理（防止 Socket.IO + FCM 重複通知）
+        final int currentTime = DateTime.now().millisecondsSinceEpoch;
+        if (callId != null) {
+          if (_fcmCallIdCache.containsKey(callId)) {
+            final lastProcessedTime = _fcmCallIdCache[callId] ?? 0;
+            if ((currentTime - lastProcessedTime) < 3000) { // 3秒去重窗口
+              debugPrint("⚠️ [FCM-Backup] 忽略重複的 ${isEmergency ? '緊急' : ''}來電（CallId 已在 3 秒內處理: $callId）");
+              return;
+            }
+          }
+          // 更新緩存
+          _fcmCallIdCache[callId] = currentTime;
+          // ★ 清理舊的快取（超過5秒的記錄）
+          _fcmCallIdCache.removeWhere((key, value) => (currentTime - value) > 5000);
+        }
 
         debugPrint(
-            "🔔 [FCM-Backup] Call Request from $senderId in room $roomId (ID: $callId)");
-        // 備援：如果 Socket 沒連接，或是剛好斷線，這裡同樣調用彈窗邏輯。
-        // 但為了避免重複彈窗，我們由 _setupSignalingListener 內的 _showIncomingCallDialog 統一控管。
-        _showIncomingCallDialog(roomId, senderId, callId: callId);
+            "🔔 [FCM-Backup] ${isEmergency ? '緊急' : ''}Call Request from $senderId in room $roomId (ID: $callId)");
+        // ★ 備援：FCM 用作備份，以防 Socket 連接不穩定時收不到來電
+        // 由於 Socket 優先級更高，FCM 的去重機制確保不會重複彈窗
+        _showIncomingCallDialog(roomId, senderId, callId: callId, isEmergency: isEmergency);
       }
     });
   }
@@ -640,7 +673,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
     // 響鈴彈窗
     s.onCallRequest = (roomId, senderId, callId) {
-      _showIncomingCallDialog(roomId, senderId, callId: callId);
+      _showIncomingCallDialog(roomId, senderId, callId: callId, isEmergency: false);
+    };
+    
+    // ★ 緊急呼叫處理
+    s.onEmergencyCall = (roomId, senderId, callId) {
+      _showIncomingCallDialog(roomId, senderId, callId: callId, isEmergency: true);
     };
 
     // 對方取消來電
@@ -664,7 +702,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   }
 
   void _showIncomingCallDialog(String roomId, String senderId,
-      {String? callId}) {
+      {String? callId, bool isEmergency = false}) {
     if (_activeCallDialogContext != null) {
       debugPrint("🚫 [Main] Dialog already showing, skipping...");
       return;
@@ -732,14 +770,19 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         if (navigatorKey.currentState != null) {
           navigatorKey.currentState?.popUntil((route) => route.isFirst);
         }
-        _sendDeclineEvent(roomId, senderId);
+        _sendDeclineEvent(roomId, senderId, callId: callId);
       }
     });
   }
 
-  void _sendDeclineEvent(String roomId, String senderId) {
+  void _sendDeclineEvent(String roomId, String senderId, {String? callId}) async {
     debugPrint(
-        "❌ Call Declined from CallKit, sending call-busy to $senderId...");
+        "❌ Call Declined from CallKit, sending call-busy to $senderId (callId: $callId)...");
+    
+    final prefs = await SharedPreferences.getInstance();
+    final int? userId = prefs.getInt('caregiver_id');
+    final String? role = prefs.getString('user_role') ?? 'family';
+    
     final io.Socket socket = io.io(
         sig.Signaling.serverUrl,
         io.OptionBuilder()
@@ -751,9 +794,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     socket.connect();
     socket.onConnect((_) {
       debugPrint('✅ Socket 連線成功 (Main-Decline Handler)');
-      socket.emit('join',
-          {'room': roomId, 'role': 'family', 'deviceName': 'Decline_Handler'});
-      socket.emit('call-busy', {'targetId': senderId});
+      socket.emit('join', {
+        'room': roomId,
+        'role': role,
+        'deviceName': 'Decline_Handler',
+        'userId': userId,
+      });
+      socket.emit('call-busy', {'targetId': senderId, 'callId': callId});
 
       // Delay to ensure the event is fired, then disconnect to clean up
       Future.delayed(const Duration(milliseconds: 500), () {
