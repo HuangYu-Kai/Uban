@@ -169,7 +169,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       final code = uri.queryParameters['code'];
       if (code != null) {
         debugPrint('🔑 Extracted recovery code: $code');
-        _showRecoveryConfirmationDialog(code);
+        // 延遲 300ms 確保 App 已完全回到前景並穩定渲染，再彈出 Dialog
+        Future.delayed(const Duration(milliseconds: 300), () {
+          _showRecoveryConfirmationDialog(code);
+        });
       }
     }
   }
@@ -180,6 +183,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       debugPrint('⚠️ Cannot show recovery dialog: navigatorKey.currentContext is null');
       return;
     }
+
+    debugPrint('💬 Showing recovery dialog for code: $code');
 
     showDialog(
       context: context,
