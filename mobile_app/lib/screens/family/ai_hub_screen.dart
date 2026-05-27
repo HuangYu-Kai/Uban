@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -10,7 +10,7 @@ import 'family_collaboration_screen.dart';
 
 import 'alert_center_screen.dart';
 import '../video_call_screen.dart';
-import '../family/family_settings_view.dart';
+import 'family_settings_view.dart';
 import '../../services/elder_manager.dart';
 import '../../models/elder.dart';
 import 'package:flutter_application_1/utils/app_logger.dart';
