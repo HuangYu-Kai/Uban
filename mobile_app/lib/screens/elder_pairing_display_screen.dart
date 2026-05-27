@@ -4,6 +4,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import 'elder_home_screen.dart';
+import 'elder_screen.dart'; // ★ 新增
 import 'dart:async';
 
 class ElderPairingDisplayScreen extends StatefulWidget {
@@ -38,6 +39,67 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
     super.initState();
     _requestNewCode();
   }
+
+  // ★ 新增：提示選擇模式，並根據選擇導航
+  Future<void> _promptModeAndNavigate(int elderId, String elderName, String? elderRoomId) async {
+    bool? isCCTV = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('選擇模式'),
+        content: const Text('請選擇此設備的運作模式：\n\n「視訊通訊機」：可使用完整功能（對話、查看照片等）\n「CCTV 監控機」：專用於被動視訊監控'),
+        actions: [
+          TextButton.icon(
+            icon: const Icon(Icons.phone_in_talk),
+            label: const Text('視訊通訊機'),
+            onPressed: () => Navigator.pop(context, false),
+          ),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.videocam),
+            label: const Text('CCTV 監控機'),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
+            onPressed: () => Navigator.pop(context, true),
+          ),
+        ],
+      ),
+    );
+
+    if (isCCTV == null) isCCTV = false; // 預設通訊機
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('saved_is_cctv', isCCTV);
+    
+    // 自動產生裝置名稱，免除中文輸入問題
+    final deviceName = '$elderName的設備';
+    await prefs.setString('saved_device_name', deviceName);
+
+    if (!mounted) return;
+
+    if (isCCTV) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ElderScreen(
+            roomId: elderRoomId ?? elderId.toString(),
+            isCCTVMode: true,
+            deviceName: deviceName,
+          ),
+        ),
+      );
+    } else {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ElderHomeScreen(
+            userId: elderId,
+            userName: elderName,
+            roomId: elderRoomId ?? elderId.toString(),
+          ),
+        ),
+      );
+    }
+  }
+
 
   Future<void> _requestNewCode() async {
     setState(() => _isLoading = true);
@@ -103,19 +165,16 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
           await prefs.setInt('caregiver_id', status['elder_id']);
           await prefs.setString('caregiver_name', status['elder_name'] ?? '長輩');
           await prefs.setString('user_role', 'elder');
+          
+          final String? elderRoomId = status['room_id']?.toString() ?? status['elder_profile_id']?.toString() ?? status['elder_id']?.toString();
+          if (elderRoomId != null) {
+            await prefs.setString('elder_room_id', elderRoomId);
+          }
 
           if (!mounted) return;
 
-// 跳轉至長輩首頁
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (c) => ElderHomeScreen(
-                userId: status['elder_id'],
-                userName: status['elder_name'] ?? '長輩',
-              ),
-            ),
-          );
+          // ★ 呼叫提示選擇模式
+          await _promptModeAndNavigate(status['elder_id'], status['elder_name'] ?? '長輩', elderRoomId);
         }
       } catch (e) {
 // 靜默處理
@@ -153,28 +212,24 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
       return;
     }
 
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ElderHomeScreen(userId: elderId!, userName: elderName!),
-      ),
-    );
+    final String? elderRoomId = prefs.getString('elder_room_id');
+    // ★ 呼叫提示選擇模式
+    await _promptModeAndNavigate(elderId!, elderName!, elderRoomId);
   }
 
-  Future<void> loginAndPersist({required int elderId, required String elderName}) async {
+  Future<void> loginAndPersist({required int elderId, required String elderName, String? elderRoomId}) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('caregiver_id', elderId);
     await prefs.setString('caregiver_name', elderName);
     await prefs.setString('user_role', 'elder');
+    if (elderRoomId != null) {
+      await prefs.setString('elder_room_id', elderRoomId);
+    }
 
     if (!mounted) return;
 
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ElderHomeScreen(userId: elderId, userName: elderName),
-      ),
-    );
+    // ★ 呼叫提示選擇模式
+    await _promptModeAndNavigate(elderId, elderName, elderRoomId);
   }
 
   Future<void> _quickLoginGawaDemo() async {
@@ -201,6 +256,7 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
           rawElderId is int ? rawElderId : int.tryParse('${rawElderId ?? ''}');
       print('🔍 elderId after parse: $elderId');
       final elderName = (data?['elder_name'] ?? 'gawa').toString();
+      final elderRoomId = data?['elder_id']?.toString();
       if (elderId == null || elderId <= 0) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('gawa帳號建立成功，但登入資料不完整')),
@@ -208,7 +264,7 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
         return;
       }
 
-      await loginAndPersist(elderId: elderId, elderName: elderName);
+      await loginAndPersist(elderId: elderId, elderName: elderName, elderRoomId: elderRoomId);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

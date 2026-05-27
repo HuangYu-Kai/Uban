@@ -32,6 +32,24 @@ class _FamilyDashboardViewState extends State<FamilyDashboardView> {
   String? _elderSocketId;
   final Signaling _signaling = Signaling();
   
+  // ★ 輔助方法：生成雙向通訊房間ID
+  String _getCommRoomId() {
+    final elderId = _elderRoomId ?? _elderId?.toString();
+    if (elderId != null && (elderId.startsWith('comm_elder_') || elderId.startsWith('monitor_elder_'))) {
+        return elderId;
+    }
+    return 'comm_elder_$elderId';
+  }
+  
+  // ★ 輔助方法：生成監控房間ID
+  String _getMonitorRoomId() {
+    final elderId = _elderRoomId ?? _elderId?.toString();
+    if (elderId != null && (elderId.startsWith('comm_elder_') || elderId.startsWith('monitor_elder_'))) {
+        return elderId.replaceFirst('comm_elder_', 'monitor_elder_');
+    }
+    return 'monitor_elder_$elderId';
+  }
+  
 
 
   @override
@@ -220,7 +238,7 @@ class _FamilyDashboardViewState extends State<FamilyDashboardView> {
                           ),
                           child: ElevatedButton.icon(
                             onPressed: () {
-                              _signaling.sendCallBusy(roomId);
+                              _signaling.sendCallBusy(senderId, callId: callId);
                               Navigator.of(dialogContext).pop();
                               _isIncomingCallDialogOpen = false;
                             },
@@ -301,12 +319,13 @@ Future<void> _loadSelectedElder() async {
     _elderRoomId = prefs.getString('selected_elder_room_id'); // ★ 讀取房間號
   });
 
-  // 讀到房間號後立刻加入 Signaling 房間監聽
-  // ★ 重要：使用 elder_id（如 "1142"）作為房間號，與長輩端一致
-  final roomId = _elderRoomId ?? _elderId?.toString();
-  if (roomId != null) {
+  // ★ 重要：使用新的房間命名格式，以 elder_id 為基礎
+  // 格式：comm_elder_{elder_id} 用於雙向通訊
+  final elderId = _elderRoomId ?? _elderId?.toString();
+  if (elderId != null) {
+    final roomId = _getCommRoomId(); // ★ 使用輔助方法
     debugPrint('📡 [FamilyDashboardView] 加入房間: $roomId (elderName: $_elderName)');
-    _signaling.connect(roomId, 'family', deviceName: '${widget.userName}的儀表板');
+    _signaling.connect(roomId, 'family', userId: widget.userId, deviceName: '${widget.userName}的儀表板');
   }
 }
 
@@ -983,7 +1002,7 @@ color: color,
                 context,
                 MaterialPageRoute(
                   builder: (c) => VideoCallScreen(
-                    roomId: _elderId.toString(),
+                    roomId: _getCommRoomId(),  // ★ 使用輔助方法生成房間ID
                     targetSocketId: _elderSocketId,
                     autoStart: true,
                   ),
@@ -1050,7 +1069,7 @@ color: color,
                       context,
                       MaterialPageRoute(
                         builder: (c) => FamilyCallHistoryScreen(
-                          roomId: _elderId.toString(),
+                          roomId: _elderRoomId ?? _elderId.toString(),  // ★ 保持使用 elder_id 字符串，不是完整的房間ID
                           elderName: _elderName!,
                         ),
                       ),

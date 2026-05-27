@@ -5,11 +5,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart' show kIsWeb; // 新增
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
+import 'identification_screen.dart'; // ★ 將原本的 role_selection_screen.dart 改為新的系統入口
 import '../main.dart'; // import callKitDeclineStream
 import '../services/signaling.dart'; 
 import 'device_selection_screen.dart';
 import 'video_call_screen.dart'; 
-import 'role_selection_screen.dart';
 import '../globals.dart';
 
 class FamilyDashboardScreen extends StatefulWidget {
@@ -126,15 +126,26 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> with Widg
     }
   }
 
-  void _connectAndListenAll() {
-    // 1. 連線 Lobby (隨意選一個 ID 或固定字串)
-    String firstRoom = widget.elders.isNotEmpty ? widget.elders[0]['elder_id'] : 'family_lobby';
-    _signaling.connect(firstRoom, 'family', deviceName: 'Dashboard');
+  Future<void> _connectAndListenAll() async {
+    if (widget.elders.isEmpty) {
+      debugPrint("ℹ️ [Dashboard] No paired elders. Skipping signaling connection.");
+      return;
+    }
+
+    // ★ 修復：從 SharedPreferences 讀取真正的 user_id（caregiver_id）
+    final prefs = await SharedPreferences.getInstance();
+    final int? actualUserId = prefs.getInt('caregiver_id');
+
+    // 1. 連線第一個長輩的房間 (以 'comm_elder_' 為前綴)
+    final String firstRoomRaw = widget.elders[0]['elder_id'].toString();
+    final String firstRoom = 'comm_elder_$firstRoomRaw';
+    _signaling.connect(firstRoom, 'family', userId: actualUserId, deviceName: 'Dashboard');
 
     // 2. 加入其他長輩房間
     for (var elder in widget.elders) {
-      if (elder['elder_id'] != firstRoom) {
-        _signaling.joinRoom(elder['elder_id']);
+      final String room = 'comm_elder_${elder['elder_id']}';
+      if (room != firstRoom) {
+        _signaling.joinRoom(room, userId: actualUserId);
       }
     }
 
@@ -148,7 +159,10 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> with Widg
         // It's safer to use a named route or track the dialog state, but let's try pop first.
       }
       
-      var caller = widget.elders.firstWhere((e) => e['elder_id'] == roomId, orElse: () => {'elder_name': '未知長輩'});
+      var caller = widget.elders.firstWhere(
+        (e) => 'comm_elder_${e['elder_id']}' == roomId || e['elder_id'] == roomId, 
+        orElse: () => {'elder_name': '未知長輩'}
+      );
 
       // ★ 在顯示 Dialog 前先記錄 Dashboard 自己的 Route，
       //    之後可以用 popUntil 回到這層並清除上層的通話頁面
@@ -439,7 +453,7 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> with Widg
               final prefs = await SharedPreferences.getInstance();
               await prefs.clear();
               navigator.pushAndRemoveUntil(
-                MaterialPageRoute(builder: (context) => const RoleSelectionScreen()),
+                MaterialPageRoute(builder: (context) => const IdentificationScreen()),
                 (route) => false,
               );
             },

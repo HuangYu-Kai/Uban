@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // 添加觸覺反饋
 import 'package:google_fonts/google_fonts.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:ui';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'family/family_home_tab.dart';
@@ -11,7 +10,6 @@ import 'family/alert_center_screen.dart';
 import '../models/elder.dart';
 import '../services/elder_manager.dart';
 import '../services/signaling.dart';
-import '../services/api_service.dart';
 import 'video_call_screen.dart';
 import 'caregiver_pairing_screen.dart';
 import 'package:flutter_application_1/utils/app_logger.dart';
@@ -73,7 +71,11 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> {
       return;
     }
     
-    final roomId = _currentElder!.id.toString();
+    // ★ 修復：使用正確的房間格式 comm_elder_{elder_id}
+    //    elderId 是 elder_profile.elder_id（如 '0343'），而非數字 id
+    final elderIdStr = _currentElder!.elderId ?? _currentElder!.id.toString();
+    final roomId = 'comm_elder_$elderIdStr';
+    
     debugPrint('📡📡📡 [FamilyMainScreen] ===== 連線到房間: $roomId =====');
     
     _signaling.connect(
@@ -197,7 +199,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> {
           actions: [
             TextButton(
               onPressed: () {
-                _signaling.sendCallBusy(roomId);
+                _signaling.sendCallBusy(senderId, callId: callId);
                 Navigator.of(dialogContext).pop();
                 _isIncomingCallDialogOpen = false;
               },

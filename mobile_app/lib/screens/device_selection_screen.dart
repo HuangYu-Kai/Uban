@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/signaling.dart';
 import 'video_call_screen.dart';
 
@@ -33,13 +34,17 @@ class _DeviceSelectionScreenState extends State<DeviceSelectionScreen> {
       if (mounted && _signaling.socket != null && _signaling.socket!.connected) {
         debugPrint("🔄 Periodic Refresh: Requesting device list update...");
         setState(() => _isSyncing = true);
-        _signaling.sendGetElderDevices(widget.elderId);
+        _signaling.sendGetElderDevices('comm_elder_${widget.elderId}');
       }
     });
   }
 
-  void _connect() {
-    _signaling.connect(widget.elderId, 'family', deviceName: 'FamilySelector');
+  void _connect() async {
+    final prefs = await SharedPreferences.getInstance();
+    final int? actualUserId = prefs.getInt('caregiver_id');
+    // ★ 使用新的房間命名格式進行設備監聽
+    final roomId = 'comm_elder_${widget.elderId}';
+    _signaling.connect(roomId, 'family', userId: actualUserId, deviceName: 'FamilySelector');
     _signaling.onElderDevicesUpdate = (devices) {
       if (mounted) {
         setState(() {
@@ -127,7 +132,7 @@ class _DeviceSelectionScreenState extends State<DeviceSelectionScreen> {
                                       onPressed: () {
                                         if (isOnline) {
                                             Navigator.push(context, MaterialPageRoute(builder: (_) => VideoCallScreen(
-                                              roomId: widget.elderId, 
+                                              roomId: 'monitor_elder_${widget.elderId}', 
                                               targetSocketId: socketId,
                                               isEmergency: true,
                                               autoStart: true,
@@ -140,11 +145,11 @@ class _DeviceSelectionScreenState extends State<DeviceSelectionScreen> {
                                   if (mode == 'comm')
                                     IconButton(
                                       icon: Icon(Icons.call, color: isOnline ? Colors.green : Colors.grey),
-                                      onPressed: () => _showCallTypeDialog(widget.elderId, socketId, isOnline: isOnline),
+                                      onPressed: () => _showCallTypeDialog('comm_elder_${widget.elderId}', socketId, isOnline: isOnline),
                                     ),
                                   IconButton(
                                     icon: const Icon(Icons.delete, color: Colors.red),
-                                    onPressed: () => _confirmDeleteDevice(widget.elderId, socketId, name),
+                                    onPressed: () => _confirmDeleteDevice('comm_elder_${widget.elderId}', socketId, name),
                                   )
                                 ],
                               ),
