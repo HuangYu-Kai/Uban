@@ -155,10 +155,16 @@ class ZenPondController extends ChangeNotifier {
   // TTS 播放狀態 (存在 Controller 讓日記 Dialog 的 Consumer 能同步刷新)
   String? ttsPlayingId;
   bool ttsLoading = false;
+  bool isAiThinking = false;
 
   void setTtsState({String? playingId, bool loading = false}) {
     ttsPlayingId = playingId;
     ttsLoading = loading;
+    notifyListeners();
+  }
+
+  void setAiThinking(bool thinking) {
+    isAiThinking = thinking;
     notifyListeners();
   }
 
@@ -252,6 +258,28 @@ class ZenPondController extends ChangeNotifier {
         'timestamp': DateTime.now().millisecondsSinceEpoch,
       }
     ];
+    saveHistory();
+    notifyListeners();
+  }
+
+  // 刪除特定日期的歷史紀錄
+  void deleteHistoryByDate(String dateStr) {
+    history.removeWhere((item) {
+      final int timestamp = item['timestamp'] ?? 0;
+      if (timestamp == 0) return false;
+      final dt = DateTime.fromMillisecondsSinceEpoch(timestamp);
+      final dStr = "${dt.year}年${dt.month}月${dt.day}日";
+      return dStr == dateStr;
+    });
+
+    if (history.isEmpty) {
+      history.add({
+        'sender': 'ai',
+        'text': '時光日記已清空，開始我們新的對話吧 😊',
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+      });
+    }
+
     saveHistory();
     notifyListeners();
   }
@@ -541,7 +569,7 @@ class ZenPondController extends ChangeNotifier {
     notifyListeners();
   }
 
-  // --- 手勢點擊分流防線 (350ms 單擊 vs 5擊 SOS) ---
+  // --- 手勢點擊分流防線 (350ms 雙擊/多擊 vs 5擊 SOS) ---
   void handleTap() {
     _tapCount++;
     _tapTimer?.cancel();
@@ -559,15 +587,16 @@ class ZenPondController extends ChangeNotifier {
       _tapCount = 0;
     });
     
-    // 如果是第一次點擊，啟動 350ms 單擊延遲防線
+    // 如果是第一次點擊，啟動 350ms 雙擊延遲防線
     if (_tapCount == 1) {
       _singleTapTimer = Timer(const Duration(milliseconds: 350), () {
-        if (_tapCount < 5 && !isSOSMode) {
-          // 單擊水面，成功防護！打開 AI 對話 Overlay
+        if (_tapCount >= 2 && _tapCount < 5 && !isSOSMode) {
+          // 雙擊（或3-4擊）水面，打開 AI 對話 Overlay
           isAiOverlayVisible = true;
           notifyListeners();
         }
         _singleTapTimer = null;
+        _tapCount = 0;
       });
     }
 

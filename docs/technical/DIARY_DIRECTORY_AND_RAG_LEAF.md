@@ -1,9 +1,9 @@
 # 時光日記目錄與 RAG 自動回憶落葉功能設計與技術紀錄
 
 * 建立日期：2026-05-25
-* 最近更新：2026-05-26
+* 最近更新：2026-05-27
 * 適用版本：v1.2.0
-* 負責組件：前端 App (Flutter)、後端 API (FastAPI)、AI 記憶檢索 (Pinecone)
+* 負責組件：前端 App (Flutter)、後端 API (FastAPI)、AI 記憶檢索 (Pinecone)、關懷話題分析 (MySQL + LLM)
 
 ---
 
@@ -21,7 +21,12 @@
 * 將回憶碎片合成為一句充滿關懷的「話題開場白」，並在前端以**金黃色（回憶色）落葉**形式飄落於池塘。
 * 在時光日記目錄頁底部增設**「🍂 喚起腦海中的回憶落葉」**大型功能按鈕，長輩主動點擊即可手動向後端觸發話題生成，讓金黃色的回憶葉飄落並播放 TTS，喚起過去的溫暖回憶。
 
+### 1.3 動態興趣特徵分析 (Dynamic Interest Profiling - 方案 B)
+在原有的 RAG 機制中，話題生成僅能簡單地將歷史對話紀錄片段重新拼湊。若長輩對話次數過少，或是對話紀錄中充斥著無意義的寒暄（如「你好」、「在嗎」），直接進行 RAG 檢索容易生成重複、品質低落且不符合語境的話題。
+為解決此問題，我們實作了**「非同步動態興趣分析」**。系統不直接生硬地複製長輩講過的對話，而是在每次對話後，由背景執行緒分析長輩最近的語意，從中抽取出高層次的興趣特徵（如愛吃的食物、想念的人、感興趣的活動），存入 `elder_profile` 表中的 `interests` 欄位。話題落葉生成器（Leaf Generator）在生成話題時，便能將這些興趣與長期記憶融合，提供更富變化、富有一貫性的話題開場白。
+
 ---
+
 
 ## 2. 系統架構與資料流向 (Architecture & Data Flow)
 
@@ -29,7 +34,7 @@
 ```mermaid
 graph TD
     subgraph Client [Flutter Front-end]
-        UI[時光日記 UI - _DiaryDialogContent]
+        UI[時光日記 UI / 魚你聊聊池塘]
         Ctrl[狀態控制器 - ZenPondController]
         TTS[語音合成播報 - EdgeTTS]
     end
@@ -37,21 +42,32 @@ graph TD
     subgraph API_Gateway [FastAPI Backend]
         Router[AI 路由器 - routers/ai.py]
         PC_Service[Pinecone 服務 - pinecone_service.py]
+        Tool_Service[工具服務 - tools_service.py]
     end
 
-    subgraph VectorDB [Cloud DB]
+    subgraph DB [Data Storage]
         Pinecone[(Pinecone Vector DB)]
+        MySQL[(MySQL DB - elder_profile / logs)]
     end
 
-    UI -->|1. 點擊喚起回憶| UI
-    UI -->|2. 觸發 API 請求| Ctrl
-    Ctrl -->|3. POST /api/ai/generate_pond_leaf| Router
-    Router -->|4. Query Memories| PC_Service
-    PC_Service <-->|5. 餘弦計算| Pinecone
-    Router -->|6. 生成話題文本| Router
-    Router -->|7. 回傳 JSON 數據| Ctrl
-    Ctrl -->|8. 新增黃色落葉 & 歷史紀錄| UI
-    Ctrl -->|9. 合成語音播放| TTS
+    UI -->|1. 點擊喚起回憶 / 定時觸發| Ctrl
+    Ctrl -->|2. POST /api/ai/generate_pond_leaf| Router
+    Router -->|3. Query Memories| PC_Service
+    PC_Service <-->|4. 餘弦計算| Pinecone
+    Router -->|5. 讀取背景與動態興趣| Tool_Service
+    Tool_Service <-->|6. 獲取 interests 欄位| MySQL
+    Router -->|7. 生成話題文本| Router
+    Router -->|8. 回傳 JSON 數據 / Socket.IO 推播| Ctrl
+    Ctrl -->|9. 新增黃色落葉 & 歷史紀錄| UI
+    Ctrl -->|10. 合成語音播放| TTS
+
+    %% 背景異步分析流
+    Client -->|對話請求 /api/ai/chat| Router
+    Router -->|觸發背景執行緒| BG[背景興趣提取 run_interest_extraction]
+    BG -->|1. 獲取最近 20 筆對話| MySQL
+    BG -->|2. 過濾 AI 回覆 & 檢查對話數| BG
+    BG -->|3. 呼叫 LLM 提取興趣| BG
+    BG -->|4. 若有效則寫入 interests 欄位| MySQL
 ```
 
 ### 2.2 RAG 話題生成介面規格
@@ -73,12 +89,27 @@ graph TD
   ```
 * **錯誤處理與防線**：若連線逾時或後端拋出 500 異常，API 服務會捕捉錯誤並回傳本地預設關懷句：`"您今天過得如何？有什麼想聊聊的嗎？"`，確保前端體驗不中斷。
 
+### 2.3 背景動態興趣提取流程與技術規格
+每次長輩端與 AI 完成對答（ `/api/ai/chat` 或 `/api/ai/chat_stream` 請求成功完成後），後端會自動調用 FastAPI 的 `BackgroundTasks` 啟動背景分析程序：
+1. **日誌拉取**：背景分析執行緒 `run_interest_extraction(elder_id)` 首先向 MySQL 查詢該長輩最近的 20 筆聊天紀錄。
+2. **語意過濾與對話長度門檻**：
+   - 僅篩選並格式化長輩的發言（格式為：`長輩：[內容]`），將 AI 助手自己的發言完全濾除，防止 AI 提取自身言論導致語意退化（AI Self-Feedback Loop）。
+   - 若對話長度少於 3 句，或聊天內容僅為簡單的寒暄問候，則直接提前終止提取，不修改資料庫。
+3. **大模型興趣歸納**：
+   - 將格式化後的長輩對話內容輸入至 AI 模型。系統會優先使用本地運行的 Ollama (gemma4:e4b)，並在本地服務異常時，自動回退至 Google Gemini 2.0 Flash 備援。
+   - LLM 根據專用 Prompt 提取出長輩長期關注的事物，如「喜愛甜食(紅豆湯)、關心孫子阿明、想念陽明山花鐘」。
+4. **防噪保護與資料寫入**：
+   - 如果 LLM 無法從最新對話中歸納出任何具體的長效興趣，則必須回傳 `[NO_VALID_INTEREST]`。
+   - 系統若檢測到回傳值為 `[NO_VALID_INTEREST]`，會**跳過**對 MySQL 資料庫的更新，以此保護長輩的興趣特徵表不被噪音（如問候語、符號、亂碼）污染。
+   - 若有有效提取結果，則覆寫 `elder_profile` 表中的 `interests` 欄位，作為該長輩的長期畫像標籤。
+
 ---
 
 ## 3. 代碼修改與路徑定義
 
 在本次升級中，主要影響了以下檔案：
 
+### 前端 App (Flutter)
 1. **[MODIFY]** [api_service.dart](file:///c:/Users/tung0/Desktop/Uban/Uban/mobile_app/lib/services/api_service.dart)
    * 負責聲明 `generatePondLeaf(int userId)` 靜態 REST API 方法，設定 45 秒超時上限，處理 JSON 解碼與例外捕獲。
 2. **[MODIFY]** [zen_pond_controller.dart](file:///c:/Users/tung0/Desktop/Uban/Uban/mobile_app/lib/screens/zen_pond/controllers/zen_pond_controller.dart)
@@ -89,6 +120,15 @@ graph TD
    * 將日記對話 Dialog 的邏輯與 UI 完整抽離為獨立組件（約 600 行），使主畫面程式碼架構更清晰。
 5. **[MODIFY]** [zen_pond_screen.dart](file:///c:/Users/tung0/Desktop/Uban/Uban/mobile_app/lib/screens/zen_pond/zen_pond_screen.dart)
    * 移除了冗長的 `_DiaryDialogContent` 和 `SoundWaveIndicator` 程式碼，直接匯入外部組件，程式碼大幅瘦身。
+
+### 後端 API (FastAPI)
+1. **[MODIFY]** [routers/ai.py](file:///c:/Users/tung0/Desktop/Uban/Uban-api/routers/ai.py)
+   * `/chat` 與 `/chat_stream` 路由增加非同步背景任務，執行長輩興趣特徵分析。
+   * 實作背景執行緒核心處理器 `run_interest_extraction(db_cursor_func, elder_id)`，用以從最近日誌提取興趣特徵，並更新至資料庫。
+2. **[MODIFY]** [services/tools_service.py](file:///c:/Users/tung0/Desktop/Uban/Uban-api/services/tools_service.py)
+   * 修改 `get_elder_context` 內部的 SQL 查詢語句，拉取並整合 `elder_profile` 表中的 `interests` 欄位，傳遞給 LLM 對話模型。
+3. **[NEW]** [tests/test_ai_fallback.py](file:///c:/Users/tung0/Desktop/Uban/Uban-api/tests/test_ai_fallback.py)
+   * 實作背景興趣提取的測試套件，包含對話太短跳過測試、`[NO_VALID_INTEREST]` 拒絕寫入資料庫測試、以及成功寫入更新測試，並妥善模擬 (mock) 避免外部網路及 Pinecone 調用。
 
 ---
 
@@ -133,6 +173,9 @@ graph TD
   在呼叫 Pinecone 查詢時，後端會強行帶入 metadata 篩選器：
   $$\text{Filter} = \{ \text{"user\_id"}: \{ \text{"\$eq"}: \text{user\_id} \} \}$$
   這保證了在多用戶高併發環境下，AI 絕對不會混淆不同長輩的長期回憶。
+* **防髒數據與興趣分析污染保護**：
+  - **對話發言人過濾**：在進行興趣提取時，系統僅擷取對話日誌中 `event_type='chat'` 且發言人為長輩的發言（`長輩：...`），完全排除 AI 的話語，避免 AI 產生「自我增強的興趣幻覺」（Feedback Loop）。
+  - **防髒數據門檻**：設有「最少 3 條對話」的基本門檻，且 LLM 必須明確輸出或以 `[NO_VALID_INTEREST]` 作為退回標記，確保資料庫 `elder_profile.interests` 不會被寫入「打招呼」、「無意義字符」或幻覺數據。
 
 ---
 
@@ -140,8 +183,13 @@ graph TD
 
 在將代碼合併或發佈時，必須進行以下測試：
 
+### 前端功能驗驗
 * [x] **靜態代碼分析**：在 `mobile_app/` 底下執行 `flutter analyze`，確認無 static error 且 `SoundWaveIndicator` 及 `_DiaryDialogContent` 無 Context 安全警告。
 * [x] **空對話狀態測試**：清空本地對話歷史，確認日記顯示：「目前還沒有對話日記喔，快與小幫手聊聊天吧 😊」提示。
 * [x] **RAG話題飄落測試**：點擊「喚起回憶」，等待 API 回傳，確認畫面彈出「已為您在池塘中落下新的回憶話題 🍂」Snackbar，且畫面跳轉至今日對話。
 * [x] **水面金黃落葉測試**：確認 RAG 觸發後，池塘中會新增一片金黃色落葉，且點擊落葉後會播放 TTS。
 * [x] **分群歸納測試**：發送多條不同日期的模擬訊息，確認目錄頁會按天正確分組（例如今天、昨天、某月某日分別歸類）。
+
+### 後端功能與單元測試
+* [x] **背景興趣提取單元測試**：在 `Uban-api` 執行 `py -3.12 -m pytest tests/test_ai_fallback.py`，確認 3 項關於動態興趣分析的單元測試順利通過。
+* [x] **系統整合回歸測試**：在 `Uban-api` 執行 `py -3.12 -m pytest tests/`，確保全部 24 個單元測試均 100% 通過，無破壞性回歸。

@@ -1,9 +1,12 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../../widgets/youtube_bubble_player.dart';
+import '../../../services/api_service.dart';
 
 import 'sound_wave_indicator.dart';
 import '../controllers/zen_pond_controller.dart';
@@ -12,7 +15,7 @@ class DiaryDialogContent extends StatefulWidget {
   final ZenPondController controller;
   final SpeechToText speechToText;
   final String? currentLocaleId;
-  final Function(String) sendToAiChat;
+  final Function(String, {String? imageUrl}) sendToAiChat;
   final AudioPlayer historyAudioPlayer;
   final Function(String, String, ZenPondController) playHistoryTts;
   final bool speechEnabled;
@@ -45,6 +48,31 @@ class _DiaryDialogContentState extends State<DiaryDialogContent> {
   bool _isDialogRecording = false;
   String _dialogRecognizedWords = '聆聽中，請說話...';
   bool _isGeneratingRag = false;
+  bool _isUploadingImage = false;
+  bool _isDeleteMode = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // 預先選擇今天的日期（若今天有歷史紀錄），直接進入今天對話頁面
+    final groups = _groupHistoryByDate(widget.controller.history);
+    final now = DateTime.now();
+    final todayStr = "${now.year}年${now.month}月${now.day}日";
+    if (groups.containsKey(todayStr)) {
+      _selectedDate = todayStr;
+    }
+  }
+
+  String _normalizeImageUrl(String url) {
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      final base = ApiService.baseUrl.replaceAll('/api', '');
+      if (url.startsWith('/')) {
+        return '$base$url';
+      }
+      return '$base/$url';
+    }
+    return url;
+  }
 
   Map<String, List<Map<String, dynamic>>> _groupHistoryByDate(List<Map<String, dynamic>> history) {
     final Map<String, List<Map<String, dynamic>>> groups = {};
@@ -114,14 +142,15 @@ class _DiaryDialogContentState extends State<DiaryDialogContent> {
     return "日常溫馨閒聊";
   }
 
-  void _showClearConfirmDialog() {
+  void _showSingleDeleteConfirmDialog(String dateStr) {
+    final friendlyDate = _getFriendlyDateLabel(dateStr);
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: Colors.white,
+        backgroundColor: const Color(0xFFFCFBF7),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         title: Text(
-          '確定要清空日記嗎？',
+          '確定要刪除這天的日記嗎？',
           style: GoogleFonts.notoSansTc(
             fontWeight: FontWeight.bold,
             fontSize: 22,
@@ -129,24 +158,24 @@ class _DiaryDialogContentState extends State<DiaryDialogContent> {
           ),
         ),
         content: Text(
-          '清空後將無法復原與小幫手的溫馨對話紀錄喔。',
+          '將會永久刪除 $friendlyDate 的對話紀錄喔。',
           style: GoogleFonts.notoSansTc(fontSize: 18, color: Colors.grey[700]),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: Text(
-              '留著日記',
+              '取消',
               style: GoogleFonts.notoSansTc(fontSize: 18, color: Colors.grey),
             ),
           ),
           ElevatedButton(
             onPressed: () {
-              widget.controller.clearHistory();
-              setState(() {
-                _selectedDate = null;
-              });
+              widget.controller.deleteHistoryByDate(dateStr);
               Navigator.pop(context);
+              setState(() {
+                _isDeleteMode = false;
+              });
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.redAccent,
@@ -156,12 +185,147 @@ class _DiaryDialogContentState extends State<DiaryDialogContent> {
               ),
             ),
             child: Text(
-              '確定清空',
+              '確定刪除',
               style: GoogleFonts.notoSansTc(fontSize: 18, fontWeight: FontWeight.bold),
             ),
           ),
         ],
       ),
+    );
+  }
+
+  void _showImagePreviewAndSendDialog(XFile pickedFile) {
+    final TextEditingController textController = TextEditingController(text: "我分享了一張照片");
+    bool isSending = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: const Color(0xFFFCFBF7),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              title: Text(
+                '分享照片與對話',
+                style: GoogleFonts.notoSansTc(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 22,
+                  color: const Color(0xFF3E2723),
+                ),
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // 圖片預覽
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: Container(
+                        constraints: const BoxConstraints(maxHeight: 200),
+                        child: Image.file(
+                          File(pickedFile.path),
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    // 文字輸入欄
+                    TextField(
+                      controller: textController,
+                      style: GoogleFonts.notoSansTc(fontSize: 20),
+                      decoration: const InputDecoration(
+                        hintText: '想對這張照片說些什麼...',
+                        border: OutlineInputBorder(),
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      ),
+                      maxLines: 2,
+                      enabled: !isSending,
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSending ? null : () => Navigator.pop(context),
+                  child: Text(
+                    '取消',
+                    style: GoogleFonts.notoSansTc(fontSize: 18, color: Colors.grey),
+                  ),
+                ),
+                ElevatedButton(
+                  onPressed: isSending
+                      ? null
+                      : () async {
+                          setDialogState(() {
+                            isSending = true;
+                          });
+                          
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('正在傳送照片中，請稍候...')),
+                            );
+                          }
+                          
+                          try {
+                            final uploadRes = await ApiService.uploadImage(pickedFile.path);
+                            if (uploadRes['status'] == 'success' && uploadRes['data'] != null) {
+                              final imageUrl = uploadRes['data']['image_url'] as String;
+                              final userText = textController.text.trim();
+                              final finalSendText = userText.isNotEmpty ? userText : "我分享了一張照片";
+                              
+                              // 發送給 AI
+                              widget.sendToAiChat(finalSendText, imageUrl: imageUrl);
+                              Navigator.pop(dialogContext); // 關閉圖片對話框
+                            } else {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('照片傳送失敗: ${uploadRes['error'] ?? '請稍後再試'}')),
+                                );
+                              }
+                              setDialogState(() {
+                                isSending = false;
+                              });
+                            }
+                          } catch (e) {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('照片傳送錯誤: $e')),
+                              );
+                            }
+                            setDialogState(() {
+                              isSending = false;
+                            });
+                          }
+                        },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF8C6D58),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  child: isSending
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        )
+                      : Text(
+                          '傳送',
+                          style: GoogleFonts.notoSansTc(fontSize: 18, fontWeight: FontWeight.bold),
+                        ),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
@@ -237,14 +401,33 @@ class _DiaryDialogContentState extends State<DiaryDialogContent> {
                             ],
                           ),
                         ),
-                        // 清空歷史按鈕
-                        TextButton.icon(
-                          onPressed: _showClearConfirmDialog,
-                          icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 20),
-                          label: Text(
-                            '清空日記',
-                            style: GoogleFonts.notoSansTc(color: Colors.redAccent, fontSize: 14),
-                          ),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (!isShowingContent) ...[
+                              TextButton.icon(
+                                onPressed: () {
+                                  setState(() {
+                                    _isDeleteMode = !_isDeleteMode;
+                                  });
+                                },
+                                icon: Icon(
+                                  _isDeleteMode ? Icons.cancel_outlined : Icons.delete_outline_rounded,
+                                  color: Colors.redAccent,
+                                  size: 20,
+                                ),
+                                label: Text(
+                                  _isDeleteMode ? '取消' : '清空日記',
+                                  style: GoogleFonts.notoSansTc(color: Colors.redAccent, fontSize: 14),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                            ],
+                            IconButton(
+                              icon: const Icon(Icons.close_rounded, color: Color(0xFF8C6D58), size: 28),
+                              onPressed: () => Navigator.pop(context),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -327,34 +510,27 @@ class _DiaryDialogContentState extends State<DiaryDialogContent> {
                               foregroundColor: Colors.white,
                               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(20),
+                                  borderRadius: BorderRadius.circular(20),
                               ),
                               elevation: 2,
                             ),
                           ),
-                          // 3. 關閉日記
+                          // 3. 插入圖片
                           CircleAvatar(
                             radius: 28,
-                            backgroundColor: const Color(0xFFEFEBE9),
+                            backgroundColor: const Color(0xFFF5EBE6),
                             child: IconButton(
-                              icon: const Icon(Icons.close, color: Color(0xFF8C6D58), size: 28),
-                              onPressed: () => Navigator.pop(context),
+                              icon: const Icon(Icons.add_photo_alternate_rounded, color: Color(0xFF8C6D58), size: 28),
+                              onPressed: () async {
+                                final picker = ImagePicker();
+                                final XFile? pickedFile = await picker.pickImage(source: ImageSource.gallery);
+                                if (pickedFile != null) {
+                                  _showImagePreviewAndSendDialog(pickedFile);
+                                }
+                              },
                             ),
                           ),
                         ],
-                      ),
-                    ),
-                  ] else ...[
-                    // 目錄頁底部：點擊關閉
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 20),
-                      child: CircleAvatar(
-                        radius: 28,
-                        backgroundColor: const Color(0xFFEFEBE9),
-                        child: IconButton(
-                          icon: const Icon(Icons.close, color: Color(0xFF8C6D58), size: 28),
-                          onPressed: () => Navigator.pop(context),
-                        ),
                       ),
                     ),
                   ],
@@ -418,11 +594,13 @@ class _DiaryDialogContentState extends State<DiaryDialogContent> {
                         ],
                       ),
                       child: InkWell(
-                        onTap: () {
-                          setState(() {
-                            _selectedDate = dateStr;
-                          });
-                        },
+                        onTap: _isDeleteMode
+                            ? () => _showSingleDeleteConfirmDialog(dateStr)
+                            : () {
+                                setState(() {
+                                  _selectedDate = dateStr;
+                                });
+                              },
                         borderRadius: BorderRadius.circular(20),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
@@ -460,16 +638,59 @@ class _DiaryDialogContentState extends State<DiaryDialogContent> {
                                 ),
                               ),
                               const SizedBox(width: 8),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  const Icon(Icons.arrow_forward_ios_rounded, size: 18, color: Colors.grey),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    '${messages.length} 則',
-                                    style: GoogleFonts.notoSansTc(fontSize: 14, color: Colors.grey[500]),
-                                  ),
-                                ],
+                              AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 250),
+                                transitionBuilder: (Widget child, Animation<double> animation) {
+                                  return ScaleTransition(
+                                    scale: animation,
+                                    child: FadeTransition(opacity: animation, child: child),
+                                  );
+                                },
+                                child: _isDeleteMode
+                                    ? KeyedSubtree(
+                                        key: const ValueKey('delete_btn'),
+                                        child: Padding(
+                                          padding: const EdgeInsets.only(right: 4),
+                                          child: GestureDetector(
+                                            onTap: () => _showSingleDeleteConfirmDialog(dateStr),
+                                            child: Container(
+                                              width: 36,
+                                              height: 36,
+                                              decoration: BoxDecoration(
+                                                color: Colors.redAccent,
+                                                shape: BoxShape.circle,
+                                                boxShadow: [
+                                                  BoxShadow(
+                                                    color: Colors.redAccent.withOpacity(0.3),
+                                                    blurRadius: 6,
+                                                    offset: const Offset(0, 3),
+                                                  ),
+                                                ],
+                                              ),
+                                              child: const Icon(
+                                                Icons.close_rounded,
+                                                color: Colors.white,
+                                                size: 20,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      )
+                                    : KeyedSubtree(
+                                        key: const ValueKey('arrow_indicator'),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.end,
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const Icon(Icons.arrow_forward_ios_rounded, size: 18, color: Colors.grey),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              '${messages.length} 則',
+                                              style: GoogleFonts.notoSansTc(fontSize: 14, color: Colors.grey[500]),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
                               ),
                             ],
                           ),
@@ -549,7 +770,7 @@ class _DiaryDialogContentState extends State<DiaryDialogContent> {
       }
     });
 
-    final showThinking = widget.isAiThinking && (_selectedDate == "${DateTime.now().year}年${DateTime.now().month}月${DateTime.now().day}日");
+    final showThinking = widget.controller.isAiThinking && (_selectedDate == "${DateTime.now().year}年${DateTime.now().month}月${DateTime.now().day}日");
 
     return ListView.builder(
       controller: widget.historyScrollController,
@@ -692,8 +913,10 @@ class _DiaryDialogContentState extends State<DiaryDialogContent> {
                           ClipRRect(
                             borderRadius: BorderRadius.circular(8),
                             child: Image.network(
-                              imageUrl,
+                              _normalizeImageUrl(imageUrl),
                               fit: BoxFit.cover,
+                              height: 180,
+                              width: double.infinity,
                               errorBuilder: (context, error, stackTrace) =>
                                   const Icon(Icons.broken_image, size: 60, color: Colors.grey),
                             ),

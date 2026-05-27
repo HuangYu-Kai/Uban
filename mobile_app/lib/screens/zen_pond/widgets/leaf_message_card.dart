@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../widgets/youtube_bubble_player.dart';
+import '../../../services/api_service.dart';
 
 // 【全新升級】長輩專屬落葉話題卡片 (支援左滑開始聊天、右滑捨棄話題)
 
@@ -28,8 +29,15 @@ class LeafMessageCard extends StatefulWidget {
 }
 
 class _LeafMessageCardState extends State<LeafMessageCard> {
-  /// 正規化圖片 URL，修正常見的錯誤格式
+  /// 正規化圖片 URL，修修正對比、相對路徑或 Picsum 格式等問題
   String _normalizeImageUrl(String url) {
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      final base = ApiService.baseUrl.replaceAll('/api', '');
+      if (url.startsWith('/')) {
+        return '$base$url';
+      }
+      return '$base/$url';
+    }
     // 修正 fastly.picsum.photos → picsum.photos（fastly CDN URL 回傳 400）
     String normalized = url.replaceAll('fastly.picsum.photos', 'picsum.photos');
     // 移除 picsum URL 尾端的 .jpg（picsum.photos 不需要副檔名）

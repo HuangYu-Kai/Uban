@@ -204,13 +204,17 @@ class ApiService {
   }
 
   // AI 相關功能
-  static Future<Map<String, dynamic>> aiChat(int userId, String message) async {
+  static Future<Map<String, dynamic>> aiChat(int userId, String message, {String? imageUrl}) async {
     try {
       final response = await http
           .post(
             Uri.parse('$baseUrl/ai/chat'),
             headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'user_id': userId, 'message': message}),
+            body: jsonEncode({
+              'user_id': userId,
+              'message': message,
+              if (imageUrl != null) 'image_url': imageUrl,
+            }),
           )
           .timeout(const Duration(seconds: 60)); // AI 回應需要更長時間，設為 60 秒
       return _safeDecode(response);
@@ -432,6 +436,27 @@ class ApiService {
         return jsonDecode(response.body);
       } else {
         return {'error': 'Failed to upload avatar: ${response.statusCode}'};
+      }
+    } catch (e) {
+      return {'error': e.toString()};
+    }
+  }
+
+  static Future<Map<String, dynamic>> uploadImage(String filePath) async {
+    try {
+      var request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/ai/upload_image'),
+      );
+      request.files.add(await http.MultipartFile.fromPath('file', filePath));
+
+      var streamedResponse = await request.send();
+      var response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        return {'error': 'Failed to upload image: ${response.statusCode}'};
       }
     } catch (e) {
       return {'error': e.toString()};
