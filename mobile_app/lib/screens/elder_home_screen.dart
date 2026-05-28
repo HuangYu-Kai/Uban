@@ -27,7 +27,7 @@ class ElderHomeScreen extends StatefulWidget {
 }
 
 class _ElderHomeScreenState extends State<ElderHomeScreen> {
-  int _selectedIndex = 1; // 0: Home/Calendar, 1: Chat, 2: Profile/Settings
+  int _selectedIndex = 0; // 0: Home/Calendar, 1: Chat, 2: Profile/Settings
   final GlobalKey<ZenPondScreenState> _zenPondKey = GlobalKey<ZenPondScreenState>();
   // ★ 新增：用於控制小豬
   final GlobalKey<DesktopPetState> _petKey = GlobalKey<DesktopPetState>();
