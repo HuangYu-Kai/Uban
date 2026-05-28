@@ -387,43 +387,43 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> {
               style: GoogleFonts.notoSansTc(
                 color: const Color(0xFF0F172A),
                 fontWeight: FontWeight.w900,
-                fontSize: 20,
+                fontSize: 24,
               ),
             )
           : InkWell(
               onTap: _showElderSelector,
               borderRadius: BorderRadius.circular(12),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     CircleAvatar(
-                      radius: 16,
+                      radius: 20,
                       backgroundColor: _currentElder!.gender == 'F'
                           ? const Color(0xFFFDF2F8)
                           : const Color(0xFFF0FDF4),
                       child: Text(
                         _currentElder!.genderEmoji,
-                        style: const TextStyle(fontSize: 16),
+                        style: const TextStyle(fontSize: 20),
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 10),
                     Text(
                       _currentElder!.displayName,
                       style: GoogleFonts.notoSansTc(
                         color: const Color(0xFF0F172A),
                         fontWeight: FontWeight.w900,
-                        fontSize: 18,
+                        fontSize: 22,
                       ),
                     ),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: 6),
                     const Icon(
                       Icons.keyboard_arrow_down_rounded,
                       color: Color(0xFF64748B),
-                      size: 20,
+                      size: 24,
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 10),
                     _PulseDot(
                       color: _isElderOnline
                           ? const Color(0xFF10B981)
@@ -433,7 +433,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> {
                     Text(
                       _isElderOnline ? '在線' : '離線',
                       style: GoogleFonts.notoSansTc(
-                        fontSize: 12,
+                        fontSize: 14,
                         color: _isElderOnline
                             ? const Color(0xFF065F46)
                             : const Color(0xFF64748B),
@@ -446,7 +446,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> {
             ),
       actions: [
         IconButton(
-          icon: const Icon(Icons.person_add_alt_1_rounded, color: Color(0xFF3B82F6)),
+          icon: const Icon(Icons.person_add_alt_1_rounded, color: Color(0xFF3B82F6), size: 28),
           tooltip: '配對新長輩',
           onPressed: () {
             Navigator.push(
@@ -513,8 +513,8 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> {
       ),
       bottomNavigationBar: SafeArea(
         child: Container(
-          margin: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-          height: 72,
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          height: 82,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(32),
             boxShadow: [
@@ -573,14 +573,14 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> {
                 scale: isSelected ? 1.1 : 1.0,
                 duration: const Duration(milliseconds: 200),
                 curve: Curves.easeOut,
-                child: Icon(icon, color: color, size: 26),
+                child: Icon(icon, color: color, size: 29),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 5),
               Text(
                 label,
                 style: GoogleFonts.notoSansTc(
                   color: color,
-                  fontSize: 11,
+                  fontSize: 13,
                   fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
                   height: 1.1,
                 ),
@@ -603,8 +603,8 @@ class _PulseDot extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 8,
-      height: 8,
+      width: 10,
+      height: 10,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: color,

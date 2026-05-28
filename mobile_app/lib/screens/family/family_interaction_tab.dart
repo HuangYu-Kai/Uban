@@ -76,7 +76,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                 Text(
                   '選擇通話方式',
                   style: GoogleFonts.notoSansTc(
-                    fontSize: 20,
+                    fontSize: 22,
                     fontWeight: FontWeight.bold,
                     color: const Color(0xFF1E293B),
                   ),
@@ -164,7 +164,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
       },
       borderRadius: BorderRadius.circular(16),
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(16),
@@ -173,12 +173,12 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
         child: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(10),
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: color,
                 shape: BoxShape.circle,
               ),
-              child: Icon(icon, color: Colors.white, size: 24),
+              child: Icon(icon, color: Colors.white, size: 28),
             ),
             const SizedBox(width: 16),
             Expanded(
@@ -188,16 +188,16 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                   Text(
                     title,
                     style: GoogleFonts.notoSansTc(
-                      fontSize: 16,
+                      fontSize: 18,
                       fontWeight: FontWeight.bold,
                       color: color,
                     ),
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 4),
                   Text(
                     subtitle,
                     style: GoogleFonts.notoSansTc(
-                      fontSize: 12,
+                      fontSize: 14,
                       color: const Color(0xFF64748B),
                       fontWeight: FontWeight.w500,
                     ),
@@ -205,7 +205,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                 ],
               ),
             ),
-            Icon(Icons.chevron_right_rounded, color: color.withValues(alpha: 0.7)),
+            Icon(Icons.chevron_right_rounded, color: color.withValues(alpha: 0.7), size: 24),
           ],
         ),
       ),
@@ -350,11 +350,11 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
           onTap: _makeVideoCall,
           borderRadius: BorderRadius.circular(24),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
             child: Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(18),
                   decoration: BoxDecoration(
                     color: Colors.white.withValues(alpha: 0.15),
                     shape: BoxShape.circle,
@@ -362,7 +362,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                   child: const Icon(
                     Icons.videocam_rounded,
                     color: Colors.white,
-                    size: 32,
+                    size: 36,
                   ),
                 ),
                 const SizedBox(width: 20),
@@ -373,7 +373,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                       Text(
                         '視訊通話',
                         style: GoogleFonts.notoSansTc(
-                          fontSize: 22,
+                          fontSize: 26,
                           fontWeight: FontWeight.w900,
                           color: Colors.white,
                         ),
@@ -382,7 +382,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                       Text(
                         '與長輩開啟雙向視訊與音訊對話',
                         style: GoogleFonts.notoSansTc(
-                          fontSize: 13,
+                          fontSize: 15,
                           fontWeight: FontWeight.w500,
                           color: Colors.white.withValues(alpha: 0.8),
                         ),
@@ -393,7 +393,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                 const Icon(
                   Icons.arrow_forward_ios_rounded,
                   color: Colors.white,
-                  size: 20,
+                  size: 24,
                 ),
               ],
             ),
@@ -423,7 +423,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
                   color: const Color(0xFFFEF3C7),
                   borderRadius: BorderRadius.circular(10),
@@ -431,14 +431,14 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                 child: const Icon(
                   Icons.chat_bubble_rounded,
                   color: Color(0xFFF59E0B),
-                  size: 18,
+                  size: 22,
                 ),
               ),
               const SizedBox(width: 12),
               Text(
                 '留言給長輩',
                 style: GoogleFonts.notoSansTc(
-                  fontSize: 16,
+                  fontSize: 18,
                   fontWeight: FontWeight.w800,
                   color: const Color(0xFF0F172A),
                 ),
@@ -455,7 +455,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                 label: Text(
                   msg,
                   style: GoogleFonts.notoSansTc(
-                    fontSize: 12,
+                    fontSize: 14,
                     fontWeight: FontWeight.w600,
                     color: const Color(0xFF475569),
                   ),
@@ -465,6 +465,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(20),
                 ),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 onPressed: () => _sendMessage(msg),
               );
             }).toList(),
@@ -483,16 +484,20 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                   child: TextField(
                     controller: _messageController,
                     maxLines: null,
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 16,
+                      color: const Color(0xFF0F172A),
+                    ),
                     decoration: InputDecoration(
                       hintText: '輸入自訂溫馨小留言...',
                       hintStyle: GoogleFonts.notoSansTc(
-                        fontSize: 14,
+                        fontSize: 16,
                         color: const Color(0xFF94A3B8),
                       ),
                       border: InputBorder.none,
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 16,
-                        vertical: 12,
+                        vertical: 14,
                       ),
                     ),
                   ),
@@ -505,24 +510,24 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                     : () => _sendMessage(_messageController.text),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
                     color: _isSending ? const Color(0xFF94A3B8) : const Color(0xFF3B82F6),
                     shape: BoxShape.circle,
                   ),
                   child: _isSending
                       ? const SizedBox(
-                          width: 20,
-                          height: 20,
+                          width: 24,
+                          height: 24,
                           child: CircularProgressIndicator(
-                            strokeWidth: 2,
+                            strokeWidth: 2.5,
                             color: Colors.white,
                           ),
                         )
                       : const Icon(
                           Icons.send_rounded,
                           color: Colors.white,
-                          size: 20,
+                          size: 24,
                         ),
                 ),
               ),
@@ -556,7 +561,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
               child: Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.all(8),
+                    padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
                       color: const Color(0xFFECFDF5),
                       borderRadius: BorderRadius.circular(10),
@@ -564,14 +569,14 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                     child: const Icon(
                       Icons.videocam_off_rounded,
                       color: Color(0xFF10B981),
-                      size: 18,
+                      size: 22,
                     ),
                   ),
                   const SizedBox(width: 12),
                   Text(
                     '遠端視訊監控',
                     style: GoogleFonts.notoSansTc(
-                      fontSize: 16,
+                      fontSize: 18,
                       fontWeight: FontWeight.w800,
                       color: const Color(0xFF0F172A),
                     ),
@@ -586,7 +591,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                     child: Text(
                       '預留方案B',
                       style: GoogleFonts.notoSansTc(
-                        fontSize: 10,
+                        fontSize: 12,
                         fontWeight: FontWeight.bold,
                         color: const Color(0xFF64748B),
                       ),
@@ -597,7 +602,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
             ),
             // 仿真監控鏡頭畫面佔位符
             Container(
-              height: 180,
+              height: 220,
               width: double.infinity,
               color: const Color(0xFF0F172A),
               child: Stack(
@@ -616,24 +621,24 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                   ),
                   // REC 圖示
                   Positioned(
-                    top: 12,
-                    left: 16,
+                    top: 14,
+                    left: 18,
                     child: Row(
                       children: [
                         Container(
-                          width: 8,
-                          height: 8,
+                          width: 10,
+                          height: 10,
                           decoration: const BoxDecoration(
                             color: Color(0xFFEF4444),
                             shape: BoxShape.circle,
                           ),
                         ),
-                        const SizedBox(width: 6),
+                        const SizedBox(width: 8),
                         Text(
                           'STANDBY',
                           style: GoogleFonts.inter(
                             color: Colors.white,
-                            fontSize: 11,
+                            fontSize: 12,
                             fontWeight: FontWeight.w700,
                             letterSpacing: 1.0,
                           ),
@@ -648,14 +653,14 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                       Icon(
                         Icons.videocam_off_rounded,
                         color: Colors.white.withValues(alpha: 0.4),
-                        size: 44,
+                        size: 50,
                       ),
                       const SizedBox(height: 12),
                       Text(
                         '尚未連接獨立攝影機設備',
                         style: GoogleFonts.notoSansTc(
                           color: Colors.white.withValues(alpha: 0.7),
-                          fontSize: 14,
+                          fontSize: 16,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
@@ -664,7 +669,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                         '請至「設定」配對家庭監控裝置',
                         style: GoogleFonts.notoSansTc(
                           color: Colors.white.withValues(alpha: 0.4),
-                          fontSize: 12,
+                          fontSize: 14,
                         ),
                       ),
                     ],
@@ -673,7 +678,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(18),
               child: SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
@@ -683,13 +688,17 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                       const SnackBar(content: Text('尚未有可連接之家庭攝影機')),
                     );
                   },
-                  icon: const Icon(Icons.add_a_photo_rounded, size: 18),
+                  icon: const Icon(Icons.add_a_photo_rounded, size: 20),
                   label: const Text('新增並連接監控設備'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFF1F5F9),
                     foregroundColor: const Color(0xFF475569),
                     elevation: 0,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    textStyle: GoogleFonts.notoSansTc(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),

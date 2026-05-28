@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -57,7 +57,7 @@ class FamilyHomeTab extends StatelessWidget {
   Widget _buildStatusBanner(BuildContext context) {
     final online = isElderOnline;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       decoration: BoxDecoration(
         color: online
             ? const Color(0xFFECFDF5)
@@ -73,7 +73,7 @@ class FamilyHomeTab extends StatelessWidget {
         children: [
           // 脈衝燈
           _PulseDot(color: online ? const Color(0xFF10B981) : const Color(0xFF94A3B8)),
-          const SizedBox(width: 10),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -81,7 +81,7 @@ class FamilyHomeTab extends StatelessWidget {
                 Text(
                   online ? '長輩裝置在線' : '長輩裝置離線',
                   style: GoogleFonts.notoSansTc(
-                    fontSize: 14,
+                    fontSize: 16,
                     fontWeight: FontWeight.w700,
                     color: online
                         ? const Color(0xFF065F46)
@@ -93,7 +93,7 @@ class FamilyHomeTab extends StatelessWidget {
                       ? '可即時通話、傳送訊息'
                       : '訊息將在長輩上線後送達',
                   style: GoogleFonts.notoSansTc(
-                    fontSize: 12,
+                    fontSize: 14,
                     color: online
                         ? const Color(0xFF047857)
                         : const Color(0xFF94A3B8),
@@ -107,7 +107,7 @@ class FamilyHomeTab extends StatelessWidget {
           Text(
             '10:30 更新',
             style: GoogleFonts.inter(
-              fontSize: 11,
+              fontSize: 13,
               color: const Color(0xFFCBD5E1),
               fontWeight: FontWeight.w500,
             ),
@@ -195,7 +195,7 @@ class FamilyHomeTab extends StatelessWidget {
 
   Widget _buildAlertPreview(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
@@ -217,7 +217,7 @@ class FamilyHomeTab extends StatelessWidget {
               Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.all(8),
+                    padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
                       color: const Color(0xFFFEF3C7),
                       borderRadius: BorderRadius.circular(10),
@@ -225,14 +225,14 @@ class FamilyHomeTab extends StatelessWidget {
                     child: const Icon(
                       Icons.notifications_active_rounded,
                       color: Color(0xFFF59E0B),
-                      size: 18,
+                      size: 22,
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 12),
                   Text(
                     '最新警示',
                     style: GoogleFonts.notoSansTc(
-                      fontSize: 16,
+                      fontSize: 18,
                       fontWeight: FontWeight.w800,
                       color: const Color(0xFF0F172A),
                     ),
@@ -240,7 +240,7 @@ class FamilyHomeTab extends StatelessWidget {
                   const SizedBox(width: 8),
                   Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 7, vertical: 2),
+                        horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
                       color: const Color(0xFFEF4444),
                       borderRadius: BorderRadius.circular(10),
@@ -249,7 +249,7 @@ class FamilyHomeTab extends StatelessWidget {
                       '${_mockAlerts.length}',
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 11,
+                        fontSize: 13,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
@@ -276,7 +276,7 @@ class FamilyHomeTab extends StatelessWidget {
                 child: Text(
                   '查看全部 →',
                   style: GoogleFonts.notoSansTc(
-                    fontSize: 13,
+                    fontSize: 15,
                     fontWeight: FontWeight.w700,
                     color: const Color(0xFF3B82F6),
                   ),
@@ -307,8 +307,8 @@ class _PulseDot extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 10,
-      height: 10,
+      width: 12,
+      height: 12,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: color,
@@ -354,7 +354,7 @@ class _AlertItem extends StatelessWidget {
     }
 
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: bgColor,
         borderRadius: BorderRadius.circular(14),
@@ -363,7 +363,7 @@ class _AlertItem extends StatelessWidget {
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
               color: levelColor.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(10),
@@ -371,10 +371,10 @@ class _AlertItem extends StatelessWidget {
             child: Icon(
               data['icon'] as IconData,
               color: levelColor,
-              size: 18,
+              size: 22,
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -382,7 +382,7 @@ class _AlertItem extends StatelessWidget {
                 Text(
                   data['title'] as String,
                   style: GoogleFonts.notoSansTc(
-                    fontSize: 14,
+                    fontSize: 16,
                     fontWeight: FontWeight.w800,
                     color: const Color(0xFF0F172A),
                   ),
@@ -391,7 +391,7 @@ class _AlertItem extends StatelessWidget {
                 Text(
                   data['desc'] as String,
                   style: GoogleFonts.notoSansTc(
-                    fontSize: 12,
+                    fontSize: 14,
                     color: const Color(0xFF64748B),
                     fontWeight: FontWeight.w500,
                     height: 1.3,
@@ -403,7 +403,7 @@ class _AlertItem extends StatelessWidget {
           const Icon(
             Icons.chevron_right_rounded,
             color: Color(0xFFCBD5E1),
-            size: 20,
+            size: 24,
           ),
         ],
       ),

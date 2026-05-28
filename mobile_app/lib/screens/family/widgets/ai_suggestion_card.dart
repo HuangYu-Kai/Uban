@@ -116,20 +116,20 @@ class _AiSuggestionCardState extends State<AiSuggestionCard> {
       return Icon(
         icon,
         color: Colors.white,
-        size: 20,
+        size: 24,
       );
     } else if (icon is String) {
       // 新格式：emoji 字符串
       return Text(
         icon,
-        style: const TextStyle(fontSize: 20),
+        style: const TextStyle(fontSize: 24),
       );
     } else {
       // 默認圖標
       return const Icon(
         Icons.lightbulb_outline_rounded,
         color: Colors.white,
-        size: 20,
+        size: 24,
       );
     }
   }
@@ -208,7 +208,7 @@ class _AiSuggestionCardState extends State<AiSuggestionCard> {
               Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.all(12),
+                    padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.25),
                       borderRadius: BorderRadius.circular(14),
@@ -220,7 +220,7 @@ class _AiSuggestionCardState extends State<AiSuggestionCard> {
                     child: const Icon(
                       Icons.auto_awesome_rounded,
                       color: Colors.white,
-                      size: 26,
+                      size: 30,
                     ),
                   ),
                   const SizedBox(width: 14),
@@ -232,7 +232,7 @@ class _AiSuggestionCardState extends State<AiSuggestionCard> {
                           '今日智能建議',
                           style: GoogleFonts.notoSansTc(
                             color: Colors.white,
-                            fontSize: 22,
+                            fontSize: 24,
                             fontWeight: FontWeight.w900,
                             letterSpacing: -0.5,
                           ),
@@ -242,7 +242,7 @@ class _AiSuggestionCardState extends State<AiSuggestionCard> {
                           '✨ AI 為您量身打造',
                           style: GoogleFonts.notoSansTc(
                             color: Colors.white.withValues(alpha: 0.85),
-                            fontSize: 13,
+                            fontSize: 15,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -341,19 +341,19 @@ class _AiSuggestionCardState extends State<AiSuggestionCard> {
                           children: [
                             // 處理圖標（可能是 IconData 或 emoji 字符串）
                             _buildIconWidget(suggestion),
-                            const SizedBox(width: 8),
+                            const SizedBox(width: 10),
                             Expanded(
                               child: Text(
                                 suggestion['title'] as String,
                                 style: GoogleFonts.notoSansTc(
                                   color: Colors.white,
-                                  fontSize: 15,
+                                  fontSize: 17,
                                   fontWeight: FontWeight.w800,
                                 ),
                               ),
                             ),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                               decoration: BoxDecoration(
                                 color: _getPriorityColor(suggestion['priority'] as String).withValues(alpha: 0.3),
                                 borderRadius: BorderRadius.circular(8),
@@ -366,7 +366,7 @@ class _AiSuggestionCardState extends State<AiSuggestionCard> {
                                 _getPriorityLabel(suggestion['priority'] as String),
                                 style: GoogleFonts.notoSansTc(
                                   color: Colors.white,
-                                  fontSize: 11,
+                                  fontSize: 13,
                                   fontWeight: FontWeight.w700,
                                 ),
                               ),
@@ -378,7 +378,7 @@ class _AiSuggestionCardState extends State<AiSuggestionCard> {
                           suggestion['description'] as String,
                           style: GoogleFonts.notoSansTc(
                             color: Colors.white.withValues(alpha: 0.9),
-                            fontSize: 13,
+                            fontSize: 15,
                             fontWeight: FontWeight.w500,
                             height: 1.4,
                           ),
@@ -405,7 +405,7 @@ class _AiSuggestionCardState extends State<AiSuggestionCard> {
                             );
                           },
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
                             decoration: BoxDecoration(
                               color: Colors.white,
                               borderRadius: BorderRadius.circular(12),
@@ -415,15 +415,15 @@ class _AiSuggestionCardState extends State<AiSuggestionCard> {
                               children: [
                                 Icon(
                                   Icons.touch_app_rounded,
-                                  size: 16,
+                                  size: 20,
                                   color: _getPriorityColor(suggestion['priority'] as String),
                                 ),
-                                const SizedBox(width: 6),
+                                const SizedBox(width: 8),
                                 Text(
                                   _getActionLabel(suggestion['action']),
                                   style: GoogleFonts.notoSansTc(
                                     color: _getPriorityColor(suggestion['priority'] as String),
-                                    fontSize: 13,
+                                    fontSize: 16,
                                     fontWeight: FontWeight.w700,
                                   ),
                                 ),
