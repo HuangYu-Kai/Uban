@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../models/elder.dart';
 import '../../services/api_service.dart';
 import '../elder_profile_edit_screen.dart';
@@ -32,6 +33,7 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
   bool _isEmergencyOn = true;
   bool _isDailySummaryOn = true;
   bool _isAiInsightOn = true;
+  bool _isGeneratingRecovery = false;
   
   // AI assistant profile summary (loaded from API if currentElder is available)
   bool _isLoadingAiProfile = false;
@@ -196,6 +198,189 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
     });
   }
 
+  void _showRecoveryAssistantDialog() {
+    if (widget.currentElder == null) return;
+    
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              title: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFFFF0EB),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.phonelink_setup_rounded,
+                      color: Color(0xFFFF7043),
+                      size: 26,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      '長輩移機與重裝助手',
+                      style: GoogleFonts.notoSansTc(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 20,
+                        color: const Color(0xFF0F172A),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '如果長輩（${widget.currentElder!.displayName}）更換了新手機，或是不小心解除安裝了 Uban App，您可以在這裡為長輩產生一個具有時效性（15分鐘內有效）的快速登入連結，並傳送給長輩。',
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 15,
+                      color: const Color(0xFF475569),
+                      height: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    '⚠️ 注意：連結僅於 15 分鐘內有效，點擊後長輩設備即可自動登入回原本的帳號。',
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: const Color(0xFFEF4444),
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
+              actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+              actions: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: _isGeneratingRecovery ? null : () => Navigator.pop(dialogContext),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.5),
+                        ),
+                        child: Text(
+                          '取消',
+                          style: GoogleFonts.notoSansTc(
+                            color: const Color(0xFF64748B),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: _isGeneratingRecovery
+                            ? null
+                            : () async {
+                                final shortId = _elderProfileData?['elder_id'] ?? widget.currentElder?.elderId;
+                                final familyId = widget.userId;
+
+                                if (shortId == null) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('無法產生連結：缺少長輩的配對身分資訊')),
+                                  );
+                                  return;
+                                }
+
+                                setDialogState(() => _isGeneratingRecovery = true);
+                                setState(() => _isGeneratingRecovery = true);
+
+                                try {
+                                  final result = await ApiService.generateRecoveryLink(
+                                    familyId: familyId,
+                                    elderId: shortId.toString(),
+                                  );
+
+                                  if (result['status'] == 'success' && result['data'] != null) {
+                                    final recoveryUrl = result['data']['recovery_url'];
+                                    final shareText = '【Uban 長輩快速登入】\n'
+                                        '哈囉，這是您的專屬登入連結。請在新手機點擊此連結，即可自動登入回原本的帳號喔！\n\n'
+                                        '$recoveryUrl\n\n'
+                                        '⚠️ 注意：連結僅於 15 分鐘內有效。';
+
+                                    await SharePlus.instance.share(
+                                      ShareParams(
+                                        text: shareText,
+                                        subject: 'Uban 快速移機連結',
+                                      ),
+                                    );
+                                    if (mounted) Navigator.pop(dialogContext);
+                                  } else {
+                                    final errorMsg = result['error'] ?? result['message'] ?? result['detail'] ?? '產生連結失敗';
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(content: Text(errorMsg)),
+                                      );
+                                    }
+                                  }
+                                } catch (e) {
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text('連線失敗: $e')),
+                                    );
+                                  }
+                                } finally {
+                                  setDialogState(() => _isGeneratingRecovery = false);
+                                  if (mounted) {
+                                    setState(() => _isGeneratingRecovery = false);
+                                  }
+                                }
+                              },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFFF7043),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: _isGeneratingRecovery
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : Text(
+                                '產生並分享',
+                                style: GoogleFonts.notoSansTc(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15,
+                                ),
+                              ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return CustomScrollView(
@@ -250,7 +435,7 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
               ]),
               const SizedBox(height: 20),
 
-              // 5. 配對設定
+              // 5. 配對與移機設定
               _buildSettingsGroup('裝置與配對', [
                 _buildActionItem(
                   Icons.add_circle_outline_rounded,
@@ -273,6 +458,18 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
                   },
                   const Color(0xFF3B82F6),
                 ),
+                if (widget.currentElder != null) ...[
+                  const Divider(height: 16, color: Color(0xFFF1F5F9)),
+                  _buildActionItem(
+                    Icons.phonelink_setup_rounded,
+                    '長輩移機與重裝助手',
+                    '產生時效性登入連結，協助長輩在更換手機或重裝時快速登入',
+                    () {
+                      _showRecoveryAssistantDialog();
+                    },
+                    const Color(0xFFFF7043),
+                  ),
+                ],
               ]),
               const SizedBox(height: 32),
 

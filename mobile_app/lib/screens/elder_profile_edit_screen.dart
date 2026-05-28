@@ -43,7 +43,6 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
   bool _isLoading = true;
   bool _isSaving = false;
   bool _isLocating = false;
-  bool _isGeneratingRecovery = false;
   String? _elderProfileId;
 
   @override
@@ -262,60 +261,7 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
     }
   }
 
-  Future<void> _handleGenerateRecoveryLink() async {
-    final elderId = widget.elderData['user_id'] ?? widget.elderData['id'];
-    final shortId = _elderProfileId ?? widget.elderData['elder_id'];
-    final familyId = widget.familyId;
 
-    if (elderId == null || shortId == null || familyId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('無法產生連結：缺少必要的身分資訊')),
-      );
-      return;
-    }
-
-    setState(() => _isGeneratingRecovery = true);
-
-    try {
-      final result = await ApiService.generateRecoveryLink(
-        familyId: familyId,
-        elderId: shortId.toString(),
-      );
-
-      if (!mounted) return;
-
-      if (result['status'] == 'success' && result['data'] != null) {
-        final recoveryUrl = result['data']['recovery_url'];
-        
-        final shareText = '【Uban 長輩快速登入】\n'
-            '哈囉，這是您的專屬登入連結。請在新手機點擊此連結，即可自動登入回原本的帳號喔！\n\n'
-            '$recoveryUrl\n\n'
-            '⚠️ 注意：連結僅於 15 分鐘內有效。';
-            
-        await SharePlus.instance.share(
-          ShareParams(
-            text: shareText,
-            subject: 'Uban 快速移機連結',
-          ),
-        );
-      } else {
-        final errorMsg = result['error'] ?? result['message'] ?? result['detail'] ?? '產生連結失敗';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(errorMsg)),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('連線失敗: $e')),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isGeneratingRecovery = false);
-      }
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -525,52 +471,7 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
             ],
           ),
 
-          const SizedBox(height: 24),
-          _buildInfoCard(
-            title: '長輩移機與重裝登入助手',
-            icon: Icons.phonelink_setup_rounded,
-            color: const Color(0xFFFF7043),
-            children: [
-              Text(
-                '如果長輩更換了新手機，或是不小心解除安裝了 Uban App，您可以在這裡為長輩產生一個具有時效性（15分鐘內有效）的登入連結，並傳送給長輩。',
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 14,
-                  color: const Color(0xFF6B7280),
-                  height: 1.5,
-                ),
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: _isGeneratingRecovery ? null : _handleGenerateRecoveryLink,
-                  icon: _isGeneratingRecovery
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                        )
-                      : const Icon(Icons.share_rounded),
-                  label: Text(
-                    _isGeneratingRecovery ? '正在產生連結...' : '產生並分享登入連結',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFFF7043),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    elevation: 1,
-                  ),
-                ),
-              ),
-            ],
-          ),
+
 
           if (widget.onUnbind != null) ...[
             const SizedBox(height: 40),
