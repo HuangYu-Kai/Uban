@@ -126,6 +126,9 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   // ★ 問題4修復：FCM 消息去重，防止 Socket.IO + FCM 重複通知
   final Map<String, int> _fcmCallIdCache = {}; // 記錄已處理的 callId 和時間戳
+  final _appLinks = AppLinks();
+  StreamSubscription<Uri>? _linkSubscription;
+
   @override
   void initState() {
     super.initState();
