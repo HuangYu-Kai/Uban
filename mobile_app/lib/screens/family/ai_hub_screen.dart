@@ -11,7 +11,7 @@ import 'family_collaboration_screen.dart';
 import 'alert_center_screen.dart';
 import '../video_call_screen.dart';
 import '../camera_screen.dart';
-import '../family/family_settings_view.dart';
+import 'family_settings_view.dart';
 import '../elder_selection_screen.dart';
 import '../../services/elder_manager.dart';
 import '../../models/elder.dart';

@@ -223,8 +223,8 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       _signaling.createOffer(targetId: accepterId, isEmergency: false);
     };
 
-    // ★ 改為懶加載：只在需要時初始化媒體
-    if (widget.isVideoCall && !_mediaInitialized) {
+    // ★ 只要是通話（無論是語音還是視訊），在連線前都必須初始化媒體以取得音訊軌道
+    if (!_mediaInitialized) {
       await _initializeMedia();
     }
     
