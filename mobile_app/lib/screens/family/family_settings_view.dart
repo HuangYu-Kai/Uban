@@ -6,6 +6,7 @@ import '../../services/api_service.dart';
 import '../identification_screen.dart';
 import '../caregiver_pairing_screen.dart';
 import '../elder_profile_edit_screen.dart';
+import '../device_selection_screen.dart';
 import 'package:flutter_application_1/utils/app_logger.dart';
 
 class FamilySettingsView extends StatefulWidget {
@@ -367,6 +368,52 @@ class _FamilySettingsViewState extends State<FamilySettingsView> {
     );
   }
 
+  // ★ 新增：選擇要新增監控機的長輩，並開啟其設備管理頁
+  void _showSelectElderForMonitor() {
+    if (_pairedElders.isEmpty) return;
+    if (_pairedElders.length == 1) {
+      _openMonitorDeviceManager(_pairedElders.first);
+      return;
+    }
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('選擇要新增監控機的長輩',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            ),
+            ..._pairedElders.map((elder) => ListTile(
+                  leading: const Icon(Icons.elderly),
+                  title: Text(elder['user_name'] ?? '未知長輩'),
+                  subtitle: Text('ID: ${elder['elder_id']}'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _openMonitorDeviceManager(elder);
+                  },
+                )),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _openMonitorDeviceManager(dynamic elder) {
+    // ★ 注意：房間以 elder_id 為準（comm_elder_/monitor_elder_），不可用 user_id(elder['id'])
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => DeviceSelectionScreen(
+          elderId: (elder['elder_id'] ?? elder['id']).toString(),
+          elderName: elder['user_name'] ?? '長輩',
+        ),
+      ),
+    );
+  }
+
   void _showUnbindConfirmDialog(dynamic elder) {
     showDialog(
       context: context,
@@ -489,6 +536,13 @@ class _FamilySettingsViewState extends State<FamilySettingsView> {
                 )
               else
                 ..._pairedElders.map((elder) => _buildElderTile(elder)),
+              if (_pairedElders.isNotEmpty)
+                ListTile(
+                  leading: const Icon(Icons.videocam_outlined, color: Colors.deepPurple),
+                  title: const Text('監控設備', style: TextStyle(color: Colors.deepPurple)),
+                  subtitle: const Text('查看監控畫面／管理設備。新增監控機：用另一台裝置以同一位長輩登入即可自動成為監控機', style: TextStyle(fontSize: 12)),
+                  onTap: _showSelectElderForMonitor,
+                ),
               if (_pairedElders.isNotEmpty)
                 ListTile(
                   leading: const Icon(Icons.add_circle_outline, color: Colors.blueAccent),

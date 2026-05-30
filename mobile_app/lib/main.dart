@@ -45,24 +45,76 @@ bool _supportsCallKit() {
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   debugPrint("📩 Background message received: ${message.data}");
 
-  // ★ 緊急通話喚醒：如果收到緊急通話，強制喚醒螢幕並啟動 APP
-  if (message.data['type'] == 'emergency-call') {
-    debugPrint("🚨 Emergency Call Received in Background. Waking up device...");
-    try {
-      final intent = const AndroidIntent(
-        action: 'android.intent.action.MAIN',
-        flags: [
-          Flag.FLAG_ACTIVITY_NEW_TASK,
-          Flag.FLAG_ACTIVITY_REORDER_TO_FRONT,
-        ],
-        package: 'com.example.flutter_application_1', // MainActivity package
-        componentName: 'com.example.flutter_application_1.MainActivity',
-      );
-      await intent.launch();
-    } catch (e) {
-      debugPrint("❌ Failed to launch MainActivity from background: $e");
+  final type = message.data['type'];
+  if (type != 'call-request' && type != 'emergency-call') return;
+
+  // ★ issue 1：過濾「自己發起的來電」。綁定後初次通話時，自己的設備也可能收到由自己觸發的推播。
+  //   比對推播帶來的 callerUserId 與本機登入的 caregiver_id，一致即代表是自己發起，直接忽略。
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final myId = prefs.getInt('caregiver_id');
+    final callerUserId = int.tryParse('${message.data['callerUserId'] ?? ''}');
+    if (myId != null && callerUserId != null && myId == callerUserId) {
+      debugPrint("🙅 [BG] 略過自己發起的來電 (callerUserId=$callerUserId == me=$myId)");
+      return;
     }
-  }
+  } catch (_) {}
+
+  // ★ issue 2 & 3：App 在背景／被殺死／螢幕關閉時，必須在背景 isolate 主動彈出 CallKit 全螢幕來電，
+  //   否則純 data 推播不會有任何畫面。isShowFullLockedScreen + 原生 showWhenLocked/turnScreenOn
+  //   會讓來電畫面蓋滿鎖定畫面並覆蓋於所有 App 之上。
+  await _showFullScreenCallkit(message.data);
+}
+
+/// ★ 在背景/鎖屏顯示全螢幕 CallKit 來電（issue 2 & 3 的核心修復）。
+///   接聽/拒絕事件由 [_MyAppState._setupCallKitListener] 透過 extra 內的 roomId/senderId/callId 接手。
+Future<void> _showFullScreenCallkit(Map<String, dynamic> data) async {
+  if (kIsWeb) return;
+  final callerName =
+      (data['callerName'] ?? data['senderName'] ?? '有人來電').toString();
+  final roomId = (data['roomId'] ?? '').toString();
+  final senderId = (data['senderId'] ?? '').toString();
+  final callId = (data['callId'] ??
+          DateTime.now().millisecondsSinceEpoch.toString())
+      .toString();
+  final isEmergency = data['type'] == 'emergency-call';
+
+  final params = CallKitParams(
+    id: callId,
+    nameCaller: callerName,
+    appName: 'Uban',
+    handle: isEmergency ? '🚨 緊急視訊通話' : '📞 視訊通話',
+    type: 0,
+    duration: 45000,
+    textAccept: '✓ 接聽',
+    textDecline: '✕ 拒絕',
+    missedCallNotification: const NotificationParams(
+      showNotification: true,
+      isShowCallback: false,
+      subtitle: '未接來電',
+    ),
+    extra: <String, dynamic>{
+      'roomId': roomId,
+      'senderId': senderId,
+      'callId': callId,
+    },
+    android: const AndroidParams(
+      isCustomNotification: true,
+      isShowLogo: false,
+      ringtonePath: 'system_ringtone_default',
+      backgroundColor: '#1a472a',
+      actionColor: '#4CAF50',
+      textColor: '#ffffff',
+      incomingCallNotificationChannelName: 'Uban_Incoming_Call',
+      isShowFullLockedScreen: true, // ★ 鎖定畫面全螢幕顯示
+    ),
+    ios: const IOSParams(
+      handleType: 'generic',
+      supportsVideo: true,
+    ),
+  );
+
+  await FlutterCallkitIncoming.showCallkitIncoming(params);
 }
 
 void main() async {
@@ -632,7 +684,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   BuildContext? _activeCallDialogContext;
 
   void _setupForegroundMessaging() {
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
       debugPrint("📩 [Main] Foreground message received: ${message.data}");
       if (message.data['type'] == 'call-request' || message.data['type'] == 'emergency-call') {
         final roomId = message.data['roomId'];
@@ -645,6 +697,17 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           debugPrint("📞 [FCM-Backup] Ignoring call-request: sender role ($senderRole) matches our appRole ($appRole)");
           return;
         }
+
+        // ★ issue 1：過濾「自己發起的來電」（callerUserId == 本機 caregiver_id）
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          final myId = prefs.getInt('caregiver_id');
+          final callerUserId = int.tryParse('${message.data['callerUserId'] ?? ''}');
+          if (myId != null && callerUserId != null && myId == callerUserId) {
+            debugPrint("🙅 [FCM-Backup] 略過自己發起的來電 (callerUserId=$callerUserId == me=$myId)");
+            return;
+          }
+        } catch (_) {}
 
         // ★ 問題4修復：檢查此 callId 是否最近已被處理（防止 Socket.IO + FCM 重複通知）
         final int currentTime = DateTime.now().millisecondsSinceEpoch;

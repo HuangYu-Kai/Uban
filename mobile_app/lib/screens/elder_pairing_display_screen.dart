@@ -4,7 +4,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import 'elder_home_screen.dart';
-import 'elder_screen.dart'; // ★ 新增
+import 'elder_screen.dart'; // ★ 監控機模式導向
 import 'dart:async';
 
 class ElderPairingDisplayScreen extends StatefulWidget {
@@ -40,47 +40,30 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
     _requestNewCode();
   }
 
-  // ★ 新增：提示選擇模式，並根據選擇導航
+  // ★ 自動決定設備角色（不需資料庫欄位、不需手動選擇）：
+  //   詢問後端該長輩是否已存在「通話機」。
+  //   - 尚無通話機 → 本設備成為「通話機」(comm)，進入長輩首頁。
+  //   - 已有通話機 → 本設備自動成為「監控機」(monitor / CCTV 守護)。
+  //   角色會存進 SharedPreferences，之後重開機沿用，不會角色互換。
   Future<void> _promptModeAndNavigate(int elderId, String elderName, String? elderRoomId) async {
-    bool? isCCTV = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text('選擇模式'),
-        content: const Text('請選擇此設備的運作模式：\n\n「視訊通訊機」：可使用完整功能（對話、查看照片等）\n「CCTV 監控機」：專用於被動視訊監控'),
-        actions: [
-          TextButton.icon(
-            icon: const Icon(Icons.phone_in_talk),
-            label: const Text('視訊通訊機'),
-            onPressed: () => Navigator.pop(context, false),
-          ),
-          ElevatedButton.icon(
-            icon: const Icon(Icons.videocam),
-            label: const Text('CCTV 監控機'),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
-            onPressed: () => Navigator.pop(context, true),
-          ),
-        ],
-      ),
-    );
-
-    if (isCCTV == null) isCCTV = false; // 預設通訊機
+    final String elderRoom = elderRoomId ?? elderId.toString();
+    final bool isMonitor = await ApiService.hasCommDevice(elderRoom);
 
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('saved_is_cctv', isCCTV);
-    
-    // 自動產生裝置名稱，免除中文輸入問題
-    final deviceName = '$elderName的設備';
+    await prefs.setBool('saved_is_cctv', isMonitor);
+
+    // 自動產生裝置名稱，免除中文輸入問題；監控機用不同名稱避免與通話機衝突
+    final deviceName = isMonitor ? '$elderName的監控機' : '$elderName的設備';
     await prefs.setString('saved_device_name', deviceName);
 
     if (!mounted) return;
 
-    if (isCCTV) {
+    if (isMonitor) {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
           builder: (context) => ElderScreen(
-            roomId: elderRoomId ?? elderId.toString(),
+            roomId: elderRoom,
             isCCTVMode: true,
             deviceName: deviceName,
           ),
@@ -93,7 +76,7 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
           builder: (context) => ElderHomeScreen(
             userId: elderId,
             userName: elderName,
-            roomId: elderRoomId ?? elderId.toString(),
+            roomId: elderRoom,
           ),
         ),
       );

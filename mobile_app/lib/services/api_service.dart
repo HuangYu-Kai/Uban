@@ -296,6 +296,28 @@ class ApiService {
     }
   }
 
+  /// 查詢某長輩是否已存在「通話機」設備。
+  /// 用於長輩設備首次登入時自動決定角色：
+  /// 已有通話機 → 新設備自動成為監控機（不需資料庫欄位）。
+  /// 查詢失敗時保守回傳 false（讓設備預設為通話機）。
+  static Future<bool> hasCommDevice(String elderId) async {
+    try {
+      final response = await http
+          .get(Uri.parse('$baseUrl/user/elder/$elderId/has-comm-device'))
+          .timeout(_timeout);
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map && decoded['has_comm_device'] == true) {
+          return true;
+        }
+      }
+      return false;
+    } catch (e) {
+      debugPrint('⚠️ hasCommDevice error: $e');
+      return false;
+    }
+  }
+
   static Future<List<dynamic>> getPairedFamily(int userId) async {
     try {
       final response = await http

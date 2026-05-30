@@ -112,27 +112,29 @@ class _DeviceSelectionScreenState extends State<DeviceSelectionScreen> {
                           final device = _onlineDevices[index];
                           final String name = device['deviceName'] ?? 'Unknown';
                           final String socketId = device['id'];
-                          final String mode = device['deviceMode'] ?? 'comm'; 
+                          // ★ 修正：長輩端註冊的 deviceMode 是 'monitor'，舊版誤判為 'cctv' 導致監控機被當成通訊機
+                          final String mode = device['deviceMode'] ?? 'comm';
                           final bool isOnline = device['isOnline'] ?? true;
 
                           return Card(
                             child: ListTile(
                               leading: Icon(
-                                mode == 'cctv' ? Icons.videocam : Icons.phone_in_talk, 
-                                color: isOnline ? (mode == 'cctv' ? Colors.red : Colors.green) : Colors.grey
+                                mode == 'monitor' ? Icons.videocam : Icons.phone_in_talk,
+                                color: isOnline ? (mode == 'monitor' ? Colors.red : Colors.green) : Colors.grey
                               ),
                               title: Text(isOnline ? name : "(離線) $name", style: TextStyle(color: isOnline ? Colors.black : Colors.grey)),
-                              subtitle: Text(mode == 'cctv' ? "監控模式" : "通訊模式"),
+                              subtitle: Text(mode == 'monitor' ? "監控模式" : "通訊模式"),
                               trailing: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  if (mode == 'cctv')
+                                  if (mode == 'monitor')
                                     IconButton(
                                       icon: Icon(Icons.videocam, color: isOnline ? Colors.blue : Colors.grey),
+                                      tooltip: '觀看監控畫面',
                                       onPressed: () {
                                         if (isOnline) {
                                             Navigator.push(context, MaterialPageRoute(builder: (_) => VideoCallScreen(
-                                              roomId: 'monitor_elder_${widget.elderId}', 
+                                              roomId: 'monitor_elder_${widget.elderId}',
                                               targetSocketId: socketId,
                                               isEmergency: true,
                                               autoStart: true,
@@ -145,6 +147,7 @@ class _DeviceSelectionScreenState extends State<DeviceSelectionScreen> {
                                   if (mode == 'comm')
                                     IconButton(
                                       icon: Icon(Icons.call, color: isOnline ? Colors.green : Colors.grey),
+                                      tooltip: '通話',
                                       onPressed: () => _showCallTypeDialog('comm_elder_${widget.elderId}', socketId, isOnline: isOnline),
                                     ),
                                   IconButton(

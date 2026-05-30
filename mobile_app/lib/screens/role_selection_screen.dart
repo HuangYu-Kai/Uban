@@ -179,35 +179,16 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
       );
 
       if (!mounted) return;
-      bool? isCCTV = await showDialog<bool>(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => AlertDialog(
-          title: const Text('選擇模式'),
-          actions: [
-            TextButton.icon(
-              icon: const Icon(Icons.phone_in_talk),
-              label: const Text('視訊通訊機'),
-              onPressed: () => Navigator.pop(context, false),
-            ),
-            ElevatedButton.icon(
-              icon: const Icon(Icons.videocam),
-              label: const Text('CCTV 監控機'),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
-              onPressed: () => Navigator.pop(context, true),
-            ),
-          ],
-        ),
-      );
 
-      if (isCCTV == null) return;
+      // ★ 自動決定設備角色（不需資料庫欄位、不需手動選擇）：
+      //   詢問後端該長輩是否已存在「通話機」。已有 → 本設備自動成為「監控機」。
+      final bool isMonitor = await ApiService.hasCommDevice(inputText);
 
-      // ★ 登入成功，儲存狀態
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('saved_role', 'elder');
       await prefs.setString('saved_id', inputText);
       await prefs.setString('saved_device_name', deviceName);
-      await prefs.setBool('saved_is_cctv', isCCTV);
+      await prefs.setBool('saved_is_cctv', isMonitor);
       appRole = 'elder';
 
       if (mounted) {
@@ -216,7 +197,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
           MaterialPageRoute(
             builder: (context) => ElderScreen(
               roomId: inputText,
-              isCCTVMode: isCCTV,
+              isCCTVMode: isMonitor,
               deviceName: deviceName,
             ),
           ),

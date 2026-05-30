@@ -144,7 +144,11 @@ flowchart TD
 - 觸發條件：早晨問候、服藥提醒、久坐提醒、家屬留言通知
 - 透過 Socket.io `heartbeat-message` 即時推送
 
-### 二、AI 技能系統（共 12 項）
+### 二、AI 技能系統
+
+> ⚠️ **校正（2026-05-30）**：實際註冊於 Tool Calling 的技能共 **8 項**，全部定義在 `uban-api/uban-api/services/tools_service.py`：
+> `get_elder_context`、`get_current_time`、`notify_family_SOS`、`get_weather_info`、`suggest_activity`、`record_elder_activity`、`get_family_messages`、`initiate_video_call`。
+> 下表中其餘項目（`save_elder_memory`、`search_web`、`search_youtube_video`、`get_music_recommendations`）及 `server/skills/*.py` 路徑為**舊版規劃，尚未實裝**。
 
 | 技能 | 描述 | 模組 |
 |------|------|------|
