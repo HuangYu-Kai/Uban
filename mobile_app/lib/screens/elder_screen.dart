@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import '../services/signaling.dart';
 import '../widgets/heartbeat_overlay.dart';
 import 'identification_screen.dart';
@@ -17,6 +18,7 @@ class ElderScreen extends StatefulWidget {
   final String deviceName;
   final bool autoCall;
   final bool isVideoCall; // ★ 新增：是否為視訊通話（false = 純語音）
+  final Map<String, dynamic>? initialCallData; // ★ 新增：初始化通話參數，避免與 global 變數競爭
 
   const ElderScreen({
     super.key,
@@ -25,6 +27,7 @@ class ElderScreen extends StatefulWidget {
     this.deviceName = 'Elder Device',
     this.autoCall = false,
     this.isVideoCall = true, // 預設視訊通話
+    this.initialCallData,
   });
 
   @override
@@ -139,6 +142,13 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
         _status = "通話建立中...";
       });
       
+      // Clear CallKit ringing
+      try {
+        await FlutterCallkitIncoming.endAllCalls();
+      } catch (e) {
+        debugPrint("Failed to end CallKit calls: $e");
+      }
+      
       // 確保畫面被喚醒到最上層 (針對 Android 14+)
       try {
         final platform = MethodChannel('com.example.app/bring_to_front');
@@ -158,6 +168,13 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
         _isInCall = true;
         _status = "緊急通話自動接聽中...";
       });
+      
+      // Clear CallKit ringing
+      try {
+        await FlutterCallkitIncoming.endAllCalls();
+      } catch (e) {
+        debugPrint("Failed to end CallKit calls: $e");
+      }
       
       FlutterTts flutterTts = FlutterTts();
       await flutterTts.setLanguage("zh-TW");
@@ -235,17 +252,37 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     final int? actualUserId = prefs.getInt('caregiver_id');
     final dynamic resolvedUserId = actualUserId ?? widget.roomId;
     
-    _signaling.connect(
-      _formattedRoomId,  // ★ 使用格式化的房間ID，而不是原始的 roomId
-      'elder', 
-      userId: resolvedUserId,  // ★ 修復：使用真正的 user_id（caregiver_id）或 elder_id 作為備用
-      deviceName: widget.deviceName,
-      deviceMode: widget.isCCTVMode ? 'monitor' : 'comm'
-    );
+    // ★ 修復：若 Socket 已經連線（從 ElderHomeScreen 傳承下來），則不要重新連線，
+    //   否則會導致原本的 callbacks 被覆寫。若是從 CCTV 模式直接進入，則會在此處連線。
+    if (_signaling.socket?.connected != true) {
+      debugPrint("🔌 [ElderScreen] Socket 未連線，開始連線 (room: $_formattedRoomId)...");
+      _signaling.connect(
+        _formattedRoomId,  // ★ 使用格式化的房間ID，而不是原始的 roomId
+        'elder', 
+        userId: resolvedUserId,  // ★ 修復：使用真正的 user_id（caregiver_id）或 elder_id 作為備用
+        deviceName: widget.deviceName,
+        deviceMode: widget.isCCTVMode ? 'monitor' : 'comm'
+      );
+    } else {
+      debugPrint("🔌 [ElderScreen] Socket 已連線，重用現有連線 (room: $_formattedRoomId)");
+    }
 
-    Future.delayed(const Duration(milliseconds: 1500), () {
+    Future.delayed(const Duration(milliseconds: 100), () {
       _checkPendingEmergency();
       _checkPendingAcceptedCall();
+      if (widget.initialCallData != null) {
+        final senderId = widget.initialCallData!['senderId']?.toString();
+        final callId = widget.initialCallData!['callId']?.toString();
+        final isEmergency = widget.initialCallData!['isEmergency'] == 'true' || widget.initialCallData!['isEmergency'] == true;
+        if (senderId != null) {
+          debugPrint("📞 [ElderScreen] Handling initialCallData: senderId=$senderId, isEmergency=$isEmergency");
+          if (isEmergency) {
+            _handleEmergencyAccept(senderId, callId: callId);
+          } else {
+            _handleAcceptedCallFromBackground(senderId, callId: callId);
+          }
+        }
+      }
     });
 
     _signaling.onCallEnded = () {
@@ -259,11 +296,9 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
         
         // ★ 只有非 CCTV 模式才退出畫面
         if (!widget.isCCTVMode) {
-          Future.delayed(const Duration(seconds: 2), () {
-            if (mounted) {
-              Navigator.of(context).pop();
-            }
-          });
+          if (mounted) {
+            Navigator.of(context).pop();
+          }
         }
       }
     };
@@ -433,11 +468,9 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
 
     // ★ 只有非 CCTV 模式才自動回到首頁
     if (!widget.isCCTVMode) {
-      Future.delayed(const Duration(milliseconds: 1500), () {
-        if (mounted) {
-          Navigator.of(context).pop();
-        }
-      });
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
     }
   }
 
@@ -447,7 +480,20 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     pendingAcceptedCall.removeListener(_onPendingCallChanged);
     _localRenderer.dispose();
     _remoteRenderer.dispose();
-    _signaling.clearSession();
+    
+    // ★ 修復：只結束 WebRTC，不要斷開 Socket，這樣回到 ElderHomeScreen 時才能繼續接收推播
+    _signaling.hangUp(disconnectSocket: false, disposeLocalStream: false);
+    
+    // ★ 清空 UI 相關的 callbacks，讓全域的 callbacks 重拾控制權
+    _signaling.onCallAcceptedByRemote = null;
+    _signaling.onCallBusy = null;
+    _signaling.onCallEnded = null;
+    _signaling.onAddRemoteStream = null;
+    _signaling.onLocalStream = null;
+    _signaling.onJoinFailed = null;
+    _signaling.onIncomingCall = null;
+    _signaling.onHeartbeatMessage = null;
+    
     super.dispose();
   }
 

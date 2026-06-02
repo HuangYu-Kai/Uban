@@ -9,6 +9,8 @@ import 'dart:convert';
 import '../services/signaling.dart';
 import '../widgets/desktop_pet.dart';
 import 'dart:async';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class ElderHomeScreen extends StatefulWidget {
   final int userId;
@@ -40,20 +42,34 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
   // ★ 新增：遠征系統步數監控
   int _lastDiscoveredSteps = 0;
 
+  Future<void> _requestPermissions() async {
+    try {
+      await [
+        Permission.systemAlertWindow,
+        Permission.notification,
+      ].request();
+    } catch (_) {}
+  }
+
   @override
   void initState() {
     super.initState();
     isAppReady = true;
+    _requestPermissions();
 
     // ★ 核心修復：強制使用長輩的專屬配對房間號 (elder_id)，且帶有 comm_elder_ 字首，確保與後端格式及權限匹配
     final String rawRoomId = widget.roomId ?? widget.userId.toString();
     final String roomToJoin = rawRoomId.startsWith('comm_elder_') || rawRoomId.startsWith('monitor_elder_')
         ? rawRoomId
         : 'comm_elder_$rawRoomId';
-    Signaling().connect(roomToJoin, 'elder',
-        userId: widget.userId, deviceName: widget.userName);
+    _connectSocket(roomToJoin);
 
     pendingAcceptedCall.addListener(_onPendingCallChanged);
+    
+    // 檢查是否有在背景接聽的通話初始化前就傳入的待接聽電話
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (mounted) _onPendingCallChanged();
+    });
 
     // ★ 核心：監聽一般來電請求 (由家屬端主動發起)
     Signaling().onCallRequest = (roomId, senderId, callId) {
@@ -70,6 +86,23 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
   }
 
   bool _isIncomingCallDialogOpen = false;
+
+  Future<void> _connectSocket(String roomToJoin) async {
+    String? fcmToken;
+    try {
+      fcmToken = await FirebaseMessaging.instance.getToken();
+    } catch (e) {
+      debugPrint("Error getting FCM token: $e");
+    }
+    
+    Signaling().connect(
+      roomToJoin, 
+      'elder',
+      userId: widget.userId, 
+      deviceName: widget.userName,
+      fcmToken: fcmToken,
+    );
+  }
 
   void _showIncomingCallDialog(String roomId, String senderId, String? callId) {
     if (_isIncomingCallDialogOpen) return;
@@ -194,7 +227,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
           builder: (context) => ElderScreen(
             roomId: call['roomId']!,
             deviceName: widget.userName,
-            // isIncoming: true, // 如果有的話
+            initialCallData: call, // ★ 傳遞通話資料
           ),
         ),
       );

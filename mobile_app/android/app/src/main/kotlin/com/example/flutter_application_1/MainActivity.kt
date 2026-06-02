@@ -14,20 +14,52 @@ class MainActivity : FlutterActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
             setTurnScreenOn(true)
-        } else {
-            @Suppress("DEPRECATION")
-            window.addFlags(
-                android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                    android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
-                    android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
-                    android.view.WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
-            )
         }
+        @Suppress("DEPRECATION")
+        window.addFlags(
+            android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+                android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+                android.view.WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
+        )
+        try {
+            val powerManager = getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager
+            val wakeLock = powerManager.newWakeLock(
+                android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK or android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP,
+                "Uban:EmergencyWakeLock"
+            )
+            wakeLock.acquire(10000L)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        try {
+            val keyguardManager = getSystemService(android.content.Context.KEYGUARD_SERVICE) as android.app.KeyguardManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                keyguardManager.requestDismissKeyguard(this, null)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun forceBringToFront() {
+        showOverLockScreen()
+        val intent = android.content.Intent(context, MainActivity::class.java)
+        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        context.startActivity(intent)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         showOverLockScreen()
         super.onCreate(savedInstanceState)
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        // ★ 當 APP 已在背景，被 AndroidIntent 喚醒時，重新觸發鎖屏覆蓋
+        showOverLockScreen()
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -38,7 +70,7 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "bringToFront" -> {
-                        showOverLockScreen()
+                        forceBringToFront()
                         result.success(true)
                     }
                     else -> result.notImplemented()

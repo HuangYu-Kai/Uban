@@ -13,6 +13,7 @@ import '../services/signaling.dart';
 import 'video_call_screen.dart';
 import 'caregiver_pairing_screen.dart';
 import 'package:flutter_application_1/utils/app_logger.dart';
+import '../globals.dart';
 
 class FamilyMainScreen extends StatefulWidget {
   final int userId;
@@ -28,7 +29,7 @@ class FamilyMainScreen extends StatefulWidget {
   State<FamilyMainScreen> createState() => _FamilyMainScreenState();
 }
 
-class _FamilyMainScreenState extends State<FamilyMainScreen> {
+class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBindingObserver {
   int _selectedIndex = 0;
   final Signaling _signaling = Signaling();
   bool _isIncomingCallDialogOpen = false;
@@ -41,6 +42,8 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    pendingAcceptedCall.addListener(_onPendingCallChanged);
     
     appLogger.d('🔍 FamilyMainScreen initialized:');
     appLogger.d('   userId: ${widget.userId}');
@@ -60,6 +63,11 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> {
       });
       _setupSignalingCallbacks();
       await _loadElderAndConnect();
+      
+      // 在初始化連線後，檢查是否有從背景進來的待處理來電
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) _checkPendingAcceptedCall();
+      });
     }
   }
 
@@ -160,6 +168,51 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> {
         _currentElder = ElderManager().currentElder;
       });
       await _loadElderAndConnect();
+    }
+  }
+
+  void _onPendingCallChanged() {
+    _checkPendingAcceptedCall();
+  }
+
+  void _checkPendingAcceptedCall() {
+    if (pendingAcceptedCall.value != null) {
+      final args = pendingAcceptedCall.value!;
+      pendingAcceptedCall.value = null; // 處理後清空
+      
+      final senderId = args['senderId']!;
+      final roomId = args['roomId']!;
+      final callId = args['callId'];
+      
+      debugPrint("🔔 [FamilyMainScreen] 偵測到背景 CallKit 接聽 (Sender: $senderId, Room: $roomId)");
+      
+      // 確保視窗已關閉
+      if (_isIncomingCallDialogOpen && Navigator.canPop(context)) {
+        Navigator.pop(context);
+        _isIncomingCallDialogOpen = false;
+      }
+      
+      // 發送接聽信號
+      _signaling.sendCallAccept(senderId, callId: callId);
+      
+      // 跳轉通話畫面
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => VideoCallScreen(
+            roomId: roomId,
+            targetSocketId: senderId,
+            isIncomingCall: true,
+          ),
+        ),
+      );
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkPendingAcceptedCall();
     }
   }
 
@@ -361,6 +414,8 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    pendingAcceptedCall.removeListener(_onPendingCallChanged);
     _signaling.onCallRequest = null;
     _signaling.onEmergencyCall = null;
     _signaling.onCancelCall = null;

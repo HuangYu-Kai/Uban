@@ -88,6 +88,16 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       }
     };
 
+    _signaling.onCallBusy = (targetId, callId) {
+      if (mounted) {
+        _stopCallTimer();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('對方目前無法接聽通話')),
+        );
+        Navigator.of(context).pop();
+      }
+    };
+
     // ★ 接聽回達後由家屬端觸發 createOffer（唯一入口，防止重複 Offer）
     _signaling.onCallAcceptedByRemote = (accepterId, callId) {
       debugPrint("✅ [VideoCallScreen] Target Accepted ($accepterId), sending Offer...");
@@ -119,12 +129,19 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
         ? (prefs.getString('caregiver_name') ?? '長輩')
         : (prefs.getString('user_name') ?? prefs.getString('caregiver_name') ?? '家屬端');
 
-    _signaling.connect(
-      widget.roomId, 
-      'family', 
-      userId: userId, 
-      deviceName: userName
-    );
+    // ★ 修復：若 Socket 已經連線（從 FamilyMainScreen 傳承下來），則不要重新連線，
+    //   否則會導致原本的 callbacks 被覆寫且 SocketId 改變。
+    if (_signaling.socket?.connected != true) {
+      debugPrint("🔌 [VideoCallScreen] Socket 未連線，開始連線...");
+      _signaling.connect(
+        widget.roomId, 
+        'family', 
+        userId: userId, 
+        deviceName: userName
+      );
+    } else {
+      debugPrint("🔌 [VideoCallScreen] Socket 已連線，重用現有連線 (room: ${widget.roomId})");
+    }
 
     // ★ 預設開啟揚聲器
     _signaling.enableSpeakerphone(true);
@@ -255,8 +272,16 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   @override
   void dispose() {
     _stopCallTimer();
-    _signaling.hangUp();
-    _signaling.clearSession();
+    // ★ 修復：只結束 WebRTC，不要斷開 Socket，這樣回到 FamilyMainScreen 時才能繼續接收推播
+    _signaling.hangUp(disconnectSocket: false, disposeLocalStream: false);
+    
+    // ★ 清空 UI 相關的 callbacks，讓全域的 callbacks 重拾控制權
+    _signaling.onCallAcceptedByRemote = null;
+    _signaling.onAddRemoteStream = null;
+    _signaling.onLocalStream = null;
+    _signaling.onIncomingCall = null;
+    _signaling.onCallEnded = null;
+    _signaling.onCallBusy = null;
     
     _localRenderer.dispose();
     _remoteRenderer.dispose();

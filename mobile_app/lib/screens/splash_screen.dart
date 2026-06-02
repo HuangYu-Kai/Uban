@@ -54,8 +54,14 @@ class _SplashScreenState extends State<SplashScreen> {
 
   Future<void> _navigateToNext() async {
     try {
-      // 4.0s (3.2s + 0.8s) 正好銜接淡出的結束點，無縫載入主介面
-      await Future.delayed(const Duration(milliseconds: 4000));
+      // 若有待接聽的緊急通話，直接跳過開機動畫以加速進入視訊房間
+      if (pendingAcceptedCall.value == null) {
+        await Future.delayed(const Duration(milliseconds: 4000));
+      } else {
+        debugPrint("🚨 [Splash] 檢測到待接聽來電，跳過開機動畫延遲");
+        // 強制淡出
+        if (mounted) setState(() => _fadedOut = true);
+      }
       if (!mounted) return;
 
       // 嘗試獲取登入狀態，設置 2 秒超時以防掛起

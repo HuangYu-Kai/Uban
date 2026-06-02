@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart'
     show kIsWeb, defaultTargetPlatform, TargetPlatform;
@@ -43,13 +44,17 @@ bool _supportsCallKit() {
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  // ★ 背景 handler 在獨立 isolate 運行，必須先初始化 Firebase
+  try {
+    await Firebase.initializeApp();
+  } catch (_) {}
+  
   debugPrint("📩 Background message received: ${message.data}");
 
   final type = message.data['type'];
   if (type != 'call-request' && type != 'emergency-call') return;
 
-  // ★ issue 1：過濾「自己發起的來電」。綁定後初次通話時，自己的設備也可能收到由自己觸發的推播。
-  //   比對推播帶來的 callerUserId 與本機登入的 caregiver_id，一致即代表是自己發起，直接忽略。
+  // ★ issue 1：過濾「自己發起的來電」。
   try {
     final prefs = await SharedPreferences.getInstance();
     final myId = prefs.getInt('caregiver_id');
@@ -58,11 +63,52 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       debugPrint("🙅 [BG] 略過自己發起的來電 (callerUserId=$callerUserId == me=$myId)");
       return;
     }
+
+    final role = prefs.getString('user_role') ?? prefs.getString('saved_role');
+    if (role == 'elder' && type == 'emergency-call') {
+      debugPrint("🚨 [BG] Emergency call for elder, saving pending call and waking app");
+      
+      final roomId = (message.data['roomId'] ?? '').toString();
+      final senderId = (message.data['senderId'] ?? '').toString();
+      final callId = (message.data['callId'] ?? '').toString();
+      
+      final pendingCall = jsonEncode({
+        'roomId': roomId,
+        'senderId': senderId,
+        'callId': callId,
+        'isEmergency': true,
+      });
+      await prefs.setString('pendingAcceptedCall', pendingCall);
+      
+      // ★ 關鍵修復：同時使用 CallKit 來喚醒設備
+      await _showFullScreenCallkit(message.data);
+      
+      // 延遲 1.5 秒讓 CallKit 喚醒螢幕，再以 AndroidIntent 啟動 MainActivity 以繞過背景啟動限制
+      await Future.delayed(const Duration(milliseconds: 1500));
+      
+      try {
+        if (defaultTargetPlatform == TargetPlatform.android) {
+          const intent = AndroidIntent(
+            action: 'android.intent.action.MAIN',
+            category: 'android.intent.category.LAUNCHER',
+            package: 'com.example.flutter_application_1',
+            componentName: 'com.example.flutter_application_1.MainActivity',
+            flags: <int>[
+              Flag.FLAG_ACTIVITY_NEW_TASK,
+              Flag.FLAG_ACTIVITY_SINGLE_TOP,
+              Flag.FLAG_ACTIVITY_REORDER_TO_FRONT,
+            ],
+          );
+          await intent.launch();
+        }
+      } catch (e) {
+        debugPrint('AndroidIntent launch error: $e');
+      }
+      return;
+    }
   } catch (_) {}
 
-  // ★ issue 2 & 3：App 在背景／被殺死／螢幕關閉時，必須在背景 isolate 主動彈出 CallKit 全螢幕來電，
-  //   否則純 data 推播不會有任何畫面。isShowFullLockedScreen + 原生 showWhenLocked/turnScreenOn
-  //   會讓來電畫面蓋滿鎖定畫面並覆蓋於所有 App 之上。
+  // ★ issue 2 & 3：App 在背景／被殺死／螢幕關閉時，彈出 CallKit 全螢幕來電
   await _showFullScreenCallkit(message.data);
 }
 
@@ -139,7 +185,19 @@ void main() async {
     // Bug 16: Ensure role is loaded at boot (Check both common keys)
     final prefs = await SharedPreferences.getInstance();
     appRole = prefs.getString('user_role') ?? prefs.getString('saved_role');
-    debugPrint("🛠️ App Booting. Detected Role: $appRole");
+    debugPrint("🚀 App Booting. Detected Role: $appRole");
+
+    final pendingCallStr = prefs.getString('pendingAcceptedCall');
+    if (pendingCallStr != null) {
+      try {
+        final Map<String, dynamic> decoded = jsonDecode(pendingCallStr);
+        pendingAcceptedCall.value = decoded.map((key, value) => MapEntry(key, value?.toString()));
+        await prefs.remove('pendingAcceptedCall');
+        debugPrint("🚨 [Main] Loaded pendingAcceptedCall from SharedPreferences: $pendingCallStr");
+      } catch (e) {
+        debugPrint("Error parsing pendingAcceptedCall: $e");
+      }
+    }
 
     if (kIsWeb) {
       // On Web, skip initialization if FirebaseOptions is missing to prevent crash
@@ -576,11 +634,15 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                                   try {
                                     final int elderUserId = verifiedData!['user_id'];
                                     final String name = verifiedData!['elder_name'] ?? '長輩';
+                                    final String? elderIdUuid = verifiedData!['elder_id'];
                                     
                                     final prefs = await SharedPreferences.getInstance();
                                     await prefs.setInt('caregiver_id', elderUserId);
                                     await prefs.setString('caregiver_name', name);
                                     await prefs.setString('user_role', 'elder');
+                                    if (elderIdUuid != null) {
+                                      await prefs.setString('elder_room_id', elderIdUuid);
+                                    }
                                     appRole = 'elder';
 
                                     if (navigatorKey.currentState != null) {
@@ -590,6 +652,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                                           builder: (_) => ElderHomeScreen(
                                             userId: elderUserId,
                                             userName: name,
+                                            roomId: elderIdUuid,
                                           ),
                                         ),
                                         (route) => false,
@@ -655,12 +718,30 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     );
   }
 
+  Future<void> _checkPendingCallFromSharedPreferences() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final pendingCallStr = prefs.getString('pendingAcceptedCall');
+      if (pendingCallStr != null) {
+        final Map<String, dynamic> decoded = jsonDecode(pendingCallStr);
+        debugPrint("🚨 [Main] Found pendingAcceptedCall in SharedPreferences on Resume: $pendingCallStr");
+        await prefs.remove('pendingAcceptedCall');
+        
+        // 更新 ValueNotifier，讓首頁 listener 接手
+        pendingAcceptedCall.value = decoded.map((key, value) => MapEntry(key, value?.toString()));
+      }
+    } catch (e) {
+      debugPrint("Error checking pending call on resume: $e");
+    }
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       debugPrint(
           "☀️ [Main] App Resumed. Triggering self-healing reconnection...");
       sig.Signaling().reconnect();
+      _checkPendingCallFromSharedPreferences();
     }
   }
 
@@ -737,12 +818,16 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   void _setupSignalingListener() {
     final s = sig.Signaling();
 
-    // 響鈴彈窗
-    s.onCallRequest = (roomId, senderId, callId) {
-      _showIncomingCallDialog(roomId, senderId, callId: callId, isEmergency: false);
-    };
+    // ★ 關鍵修復：只有家屬端才在這裡設定 onCallRequest / onEmergencyCall
+    //   長輩端的 onCallRequest 由 ElderHomeScreen.initState() 負責設定，
+    //   如果在這裡也設定，會覆蓋掉 ElderHomeScreen 的回調，導致長輩端收不到來電。
+    if (appRole != 'elder') {
+      s.onCallRequest = (roomId, senderId, callId) {
+        _showIncomingCallDialog(roomId, senderId, callId: callId, isEmergency: false);
+      };
+    }
     
-    // ★ 緊急呼叫處理
+    // ★ 緊急呼叫處理（家屬端與長輩端都需要）
     s.onEmergencyCall = (roomId, senderId, callId) {
       _showIncomingCallDialog(roomId, senderId, callId: callId, isEmergency: true);
     };
@@ -769,8 +854,18 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   void _showIncomingCallDialog(String roomId, String senderId,
       {String? callId, bool isEmergency = false}) {
+    if (appRole == 'elder') {
+      if (isEmergency) {
+        debugPrint("🚨 [Main] 緊急通話，長輩端直接接聽");
+        _navigateToVideoCall(roomId, senderId, callId: callId);
+      } else {
+        debugPrint("📞 [Main] 長輩端忽略 FCM 備用來電彈窗，交由 Socket.IO 綠色彈窗處理");
+      }
+      return;
+    }
+
     if (_activeCallDialogContext != null) {
-      debugPrint("🚫 [Main] Dialog already showing, skipping...");
+      debugPrint("⚠️ [Main] Dialog already showing, skipping...");
       return;
     }
 
@@ -889,17 +984,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
       // ★ 喚醒長輩 APP 並帶到最前台，這會觸發 ElderScreen 的 _checkPendingAcceptedCall
       try {
-        final intent = const AndroidIntent(
-          action: 'android.intent.action.MAIN',
-          flags: [
-            Flag.FLAG_ACTIVITY_NEW_TASK,
-            Flag.FLAG_ACTIVITY_REORDER_TO_FRONT
-          ],
-          package: 'com.example.flutter_application_1',
-          componentName: 'com.example.flutter_application_1.MainActivity',
-        );
-        intent.launch();
-
         const platform = MethodChannel('com.example.app/bring_to_front');
         platform.invokeMethod('bringToFront');
       } catch (e) {

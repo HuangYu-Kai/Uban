@@ -443,6 +443,7 @@ class _FamilySettingsViewState extends State<FamilySettingsView> {
               if (!mounted) return;
               if (result.containsKey('message')) {
                 navigator.pop();
+                await ElderManager().refresh();
                 _fetchPairedElders();
                 messenger.showSnackBar(
                   const SnackBar(
