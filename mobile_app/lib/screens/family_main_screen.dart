@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // 添加觸覺反饋
 import 'package:google_fonts/google_fonts.dart';
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'family/family_home_tab.dart';
@@ -38,6 +39,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   List<Elder> _elders = [];
   bool _isElderOnline = false;
   String? _elderSocketId;
+  Timer? _deviceRefreshTimer;
 
   @override
   void initState() {
@@ -63,12 +65,23 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
       });
       _setupSignalingCallbacks();
       await _loadElderAndConnect();
+      _startDeviceRefreshTimer();
       
       // 在初始化連線後，檢查是否有從背景進來的待處理來電
       Future.delayed(const Duration(milliseconds: 500), () {
         if (mounted) _checkPendingAcceptedCall();
       });
     }
+  }
+
+  void _startDeviceRefreshTimer() {
+    _deviceRefreshTimer?.cancel();
+    _deviceRefreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      final elder = _currentElder;
+      if (elder == null || _signaling.socket?.connected != true) return;
+      final elderIdStr = elder.elderId ?? elder.id.toString();
+      _signaling.sendGetElderDevices('comm_elder_$elderIdStr');
+    });
   }
 
   Future<void> _loadElderAndConnect() async {
@@ -203,6 +216,8 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
             roomId: roomId,
             targetSocketId: senderId,
             isIncomingCall: true,
+            callId: callId,
+            sendAcceptOnOpen: false,
           ),
         ),
       );
@@ -272,6 +287,8 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                       roomId: roomId,
                       targetSocketId: senderId,
                       isIncomingCall: true,
+                      callId: callId,
+                      sendAcceptOnOpen: false,
                     ),
                   ),
                 );
@@ -415,6 +432,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _deviceRefreshTimer?.cancel();
     pendingAcceptedCall.removeListener(_onPendingCallChanged);
     _signaling.onCallRequest = null;
     _signaling.onEmergencyCall = null;

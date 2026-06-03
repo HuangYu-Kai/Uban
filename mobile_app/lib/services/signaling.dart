@@ -63,6 +63,7 @@ class Signaling {
   String? _role; // 新增：儲存當前連線的角色
   String? _elderId; // ★ 新增：儲存當前 elder_id，用於 TURN 隔離
   bool _isCreatingOffer = false; // ⭐ 防重複呼叫 createOffer
+  bool _isAppForeground = true;
   final List<RTCIceCandidate> _candidateQueue = [];
   final List<String> _pendingRooms = [];
 
@@ -473,7 +474,8 @@ class Signaling {
       'deviceName': name, 
       'deviceMode': mode,
       'userId': userId,
-      'fcmToken': fcmToken
+      'fcmToken': fcmToken,
+      'appState': _isAppForeground ? 'foreground' : 'background',
     });
 
     // Web 端不需要 FCM token 更新
@@ -502,17 +504,27 @@ class Signaling {
     }
   }
 
+  void updateAppForeground(bool isForeground) {
+    _isAppForeground = isForeground;
+    if (socket != null && socket!.connected) {
+      socket!.emit('client-state', {
+        'appState': isForeground ? 'foreground' : 'background',
+      });
+    }
+  }
+
   void enableSpeakerphone(bool enable) {
     if (kIsWeb) return;
     Helper.setSpeakerphoneOn(enable);
   }
 
-  void sendCallRequest(String room, {String role = 'family', String? callId}) {
+  void sendCallRequest(String room, {String role = 'family', String? callId, String? targetId}) {
     _currentCallId = callId;
     socket!.emit('call-request', {
       'room': room, 
       'role': role, 
       'callId': callId,
+      if (targetId != null) 'targetId': targetId,
       'callerUserId': _userId // 新增：主動發送發起者的資料庫 ID
     });
   }
@@ -553,8 +565,11 @@ class Signaling {
     _currentCallId = null;
   }
 
-  void sendEmergencyCall(String room) {
-    socket!.emit('emergency-call', {'room': room});
+  void sendEmergencyCall(String room, {String? targetId}) {
+    socket!.emit('emergency-call', {
+      'room': room,
+      if (targetId != null) 'targetId': targetId,
+    });
   }
 
   void sendDeleteDevice(String room, String targetId) {

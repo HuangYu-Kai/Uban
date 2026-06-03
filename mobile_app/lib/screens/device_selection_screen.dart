@@ -30,7 +30,7 @@ class _DeviceSelectionScreenState extends State<DeviceSelectionScreen> {
   }
 
   void _startPeriodicRefresh() {
-    _refreshTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
+    _refreshTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
       if (mounted && _signaling.socket != null && _signaling.socket!.connected) {
         debugPrint("🔄 Periodic Refresh: Requesting device list update...");
         setState(() => _isSyncing = true);
@@ -95,7 +95,7 @@ class _DeviceSelectionScreenState extends State<DeviceSelectionScreen> {
                     ],
                   )
                 else
-                  const Text("每 10 秒自動刷新", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  const Text("每 5 秒自動刷新", style: TextStyle(fontSize: 12, color: Colors.grey)),
               ],
             ),
           ),
@@ -257,7 +257,7 @@ class _DeviceSelectionScreenState extends State<DeviceSelectionScreen> {
       }
     };
 
-    _signaling.sendCallRequest(roomId);
+    _signaling.sendCallRequest(roomId, targetId: targetId);
   }
 
   void _initiateEmergencyCall(String roomId, String targetId) {
@@ -299,6 +299,6 @@ class _DeviceSelectionScreenState extends State<DeviceSelectionScreen> {
       }
     };
 
-    _signaling.sendEmergencyCall(roomId);
+    _signaling.sendEmergencyCall(roomId, targetId: targetId);
   }
 }

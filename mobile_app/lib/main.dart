@@ -13,8 +13,6 @@ import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
-import 'package:android_intent_plus/android_intent.dart';
-import 'package:android_intent_plus/flag.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_line_sdk/flutter_line_sdk.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -31,6 +29,7 @@ import 'screens/elder_home_screen.dart';
 import 'globals.dart';
 import 'services/signaling.dart' as sig;
 import 'services/api_service.dart';
+import 'services/video_call_permission_service.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 final StreamController<String> callKitDeclineStream =
@@ -44,6 +43,7 @@ bool _supportsCallKit() {
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  WidgetsFlutterBinding.ensureInitialized();
   // ★ 背景 handler 在獨立 isolate 運行，必須先初始化 Firebase
   try {
     await Firebase.initializeApp();
@@ -83,26 +83,16 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       // ★ 關鍵修復：同時使用 CallKit 來喚醒設備
       await _showFullScreenCallkit(message.data);
       
-      // 延遲 1.5 秒讓 CallKit 喚醒螢幕，再以 AndroidIntent 啟動 MainActivity 以繞過背景啟動限制
+      // 延遲讓 CallKit 喚醒螢幕，再把既有 Activity 帶回前景。
       await Future.delayed(const Duration(milliseconds: 1500));
       
       try {
         if (defaultTargetPlatform == TargetPlatform.android) {
-          const intent = AndroidIntent(
-            action: 'android.intent.action.MAIN',
-            category: 'android.intent.category.LAUNCHER',
-            package: 'com.example.flutter_application_1',
-            componentName: 'com.example.flutter_application_1.MainActivity',
-            flags: <int>[
-              Flag.FLAG_ACTIVITY_NEW_TASK,
-              Flag.FLAG_ACTIVITY_SINGLE_TOP,
-              Flag.FLAG_ACTIVITY_REORDER_TO_FRONT,
-            ],
-          );
-          await intent.launch();
+          const platform = MethodChannel('com.example.app/bring_to_front');
+          await platform.invokeMethod('bringToFront');
         }
       } catch (e) {
-        debugPrint('AndroidIntent launch error: $e');
+        debugPrint('bringToFront error: $e');
       }
       return;
     }
@@ -130,7 +120,7 @@ Future<void> _showFullScreenCallkit(Map<String, dynamic> data) async {
     nameCaller: callerName,
     appName: 'Uban',
     handle: isEmergency ? '🚨 緊急視訊通話' : '📞 視訊通話',
-    type: 0,
+    type: 1,
     duration: 45000,
     textAccept: '✓ 接聽',
     textDecline: '✕ 拒絕',
@@ -252,6 +242,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       }
     }
     _setupSignalingListener();
+    sig.Signaling().updateAppForeground(true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final context = navigatorKey.currentContext;
+      if (context != null) {
+        VideoCallPermissionService.requestOnFirstUse(context);
+      }
+    });
     
     // 延遲初始化 Deep Link，確保 Navigator 已就緒
     Future.delayed(const Duration(milliseconds: 1500), () {
@@ -740,8 +737,14 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       debugPrint(
           "☀️ [Main] App Resumed. Triggering self-healing reconnection...");
+      sig.Signaling().updateAppForeground(true);
       sig.Signaling().reconnect();
       _checkPendingCallFromSharedPreferences();
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.detached ||
+        state == AppLifecycleState.hidden) {
+      sig.Signaling().updateAppForeground(false);
     }
   }
 
@@ -1004,13 +1007,14 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
               roomId: roomId,
               targetSocketId: senderId,
               isIncomingCall: true,
+              callId: callId,
             ),
           ),
         );
       });
     } else {
       // App is cold booting or navigator not ready. Save it for Dashboard/Elder screen to pick up.
-      pendingAcceptedCall.value = {'roomId': roomId, 'senderId': senderId};
+      pendingAcceptedCall.value = {'roomId': roomId, 'senderId': senderId, 'callId': callId};
     }
   }
 

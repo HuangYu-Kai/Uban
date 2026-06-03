@@ -14,6 +14,8 @@ class VideoCallScreen extends StatefulWidget {
   final bool isIncomingCall;
   final bool autoStart;
   final bool isEmergency;
+  final String? callId;
+  final bool sendAcceptOnOpen;
 
   const VideoCallScreen({
     super.key,
@@ -22,6 +24,8 @@ class VideoCallScreen extends StatefulWidget {
     this.isIncomingCall = false,
     this.autoStart = false,
     this.isEmergency = false,
+    this.callId,
+    this.sendAcceptOnOpen = true,
   });
 
   @override
@@ -146,8 +150,8 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     // ★ 預設開啟揚聲器
     _signaling.enableSpeakerphone(true);
 
-    if (widget.isIncomingCall) {
-      _signaling.sendCallAccept(widget.targetSocketId!);
+    if (widget.isIncomingCall && widget.sendAcceptOnOpen) {
+      _signaling.sendCallAccept(widget.targetSocketId!, callId: widget.callId);
     } else if (widget.autoStart) {
       Future.microtask(() async {
         int retries = 50; // 最多等待 5 秒
@@ -157,9 +161,13 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
         }
         if (!mounted) return;
 
-        if (widget.isEmergency) {
-          // ★ 緊急通話：直接發送 Offer，對方 APP 將強制喚醒並接聽
-          _signaling.createOffer(isEmergency: true);
+        if (widget.targetSocketId != null) {
+          _signaling.createOffer(
+            targetId: widget.targetSocketId,
+            isEmergency: widget.isEmergency,
+          );
+        } else if (widget.isEmergency) {
+          _signaling.sendEmergencyCall(widget.roomId);
         } else {
           // 如果是主動呼叫，先發送 Request 給對方點擊接聽
           _signaling.sendCallRequest(widget.roomId, role: 'family');

@@ -48,6 +48,7 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> with Widg
               roomId: args['roomId']!,
               targetSocketId: args['senderId']!,
               isIncomingCall: true,
+              callId: args['callId'],
             ),
           ));
         }
@@ -115,6 +116,7 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> with Widg
                   roomId: roomId.toString(),
                   targetSocketId: senderId.toString(),
                   isIncomingCall: true, // 這會讓視訊房自動送出接聽通知給長輩
+                  callId: extra['callId']?.toString(),
                 ),
               ));
             }
@@ -398,6 +400,8 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> with Widg
                                             targetSocketId: senderId,
                                             isIncomingCall: true,
                                             isEmergency: true,
+                                            callId: callId,
+                                            sendAcceptOnOpen: false,
                                           ),
                                         ),
                                       );
