@@ -57,10 +57,12 @@ class Signaling {
   String? _currentRoomId;
   String? _peerSocketId;
   String? _currentCallId; // 追蹤當前通話 ID，確保 hangUp 時能傳給後端
-  String? _lastProcessedCallId; // ★ 問題4修復：記錄最後一個已處理的來電 ID，防止重複
-  int _lastProcessedCallTime = 0; // ★ 問題4修復：記錄最後一個已處理來電的時間戳，用於去重檢查
+  String? lastProcessedCallId; // ★ 問題4修復：記錄最後一個已處理的來電 ID，防止重複
+  int lastProcessedCallTime = 0; // ★ 問題4修復：記錄最後一個已處理來電的時間戳，用於去重檢查
   dynamic _userId; // 新增：儲存當前使用者的資料庫 ID
   String? _role; // 新增：儲存當前連線的角色
+  String? _deviceName;
+  String? _deviceMode;
   String? _elderId; // ★ 新增：儲存當前 elder_id，用於 TURN 隔離
   bool _isCreatingOffer = false; // ⭐ 防重複呼叫 createOffer
   bool _isAppForeground = true;
@@ -109,6 +111,8 @@ class Signaling {
     _currentRoomId = roomId;
     _userId = userId;
     _role = role;
+    _deviceName = deviceName;
+    _deviceMode = deviceMode;
     
     // ★ 解析房間 ID 以提取 elder_id
     if (roomId.contains('elder_')) {
@@ -141,7 +145,7 @@ class Signaling {
       socket!.connect();
     } else {
       // 如果已經連著，也要重新 emit join 確保伺服器狀態正確
-      _asyncJoin(_currentRoomId!, 'family', 'Reconnected_Device', 'comm'); 
+      _asyncJoin(_currentRoomId!, _role ?? 'family', _deviceName ?? 'Reconnected_Device', _deviceMode ?? 'comm'); 
     }
   }
 
@@ -196,15 +200,15 @@ class Signaling {
       // ★ 問題4修復：檢查是否已在短時間內處理過此 callId（防止重複）
       final String callId = data['callId'] ?? '';
       final int currentTime = DateTime.now().millisecondsSinceEpoch;
-      if (callId.isNotEmpty && callId == _lastProcessedCallId && 
-          (currentTime - _lastProcessedCallTime) < 2000) { // 2秒去重窗口
+      if (callId.isNotEmpty && callId == lastProcessedCallId && 
+          (currentTime - lastProcessedCallTime) < 2000) { // 2秒去重窗口
         debugPrint('⚠️ [Signaling] 忽略重複的 call-request（CallId 已在 2 秒內處理: $callId）');
         return;
       }
       
       // ★ 更新最後處理的來電 ID 和時間戳
-      _lastProcessedCallId = callId;
-      _lastProcessedCallTime = currentTime;
+      lastProcessedCallId = callId;
+      lastProcessedCallTime = currentTime;
       
       debugPrint('📞📞📞 [Signaling] ===== 收到 call-request =====');
       debugPrint('📞 [Signaling] data: $data');
@@ -284,16 +288,16 @@ class Signaling {
       
       // ★ 問題4修復：檢查是否已在短時間內處理過此 callId（防止重複）
       final int currentTime = DateTime.now().millisecondsSinceEpoch;
-      if (callId != null && callId == _lastProcessedCallId && 
-          (currentTime - _lastProcessedCallTime) < 2000) { // 2秒去重窗口
+      if (callId != null && callId == lastProcessedCallId && 
+          (currentTime - lastProcessedCallTime) < 2000) { // 2秒去重窗口
         debugPrint('⚠️ [Signaling] 忽略重複的 offer（CallId 已在 2 秒內處理: $callId）');
         return;
       }
       
       // ★ 更新最後處理的來電 ID 和時間戳
       if (callId != null) {
-        _lastProcessedCallId = callId;
-        _lastProcessedCallTime = currentTime;
+        lastProcessedCallId = callId;
+        lastProcessedCallTime = currentTime;
       }
       
       _peerSocketId = senderId;

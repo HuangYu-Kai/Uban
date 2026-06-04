@@ -793,9 +793,15 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           }
         } catch (_) {}
 
-        // ★ 問題4修復：檢查此 callId 是否最近已被處理（防止 Socket.IO + FCM 重複通知）
+        // ★ 問題4修復：與 Socket.IO 共享去重邏輯，防止 Socket.IO + FCM 重複通知
         final int currentTime = DateTime.now().millisecondsSinceEpoch;
         if (callId != null) {
+          // 與 Signaling 共享相同的去重判斷
+          if (callId == sig.Signaling().lastProcessedCallId && 
+              (currentTime - sig.Signaling().lastProcessedCallTime) < 3000) {
+            debugPrint("⚠️ [FCM-Backup] 忽略重複的 ${isEmergency ? '緊急' : ''}來電（CallId 已由 Socket 處理: $callId）");
+            return;
+          }
           if (_fcmCallIdCache.containsKey(callId)) {
             final lastProcessedTime = _fcmCallIdCache[callId] ?? 0;
             if ((currentTime - lastProcessedTime) < 3000) { // 3秒去重窗口
@@ -805,6 +811,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           }
           // 更新緩存
           _fcmCallIdCache[callId] = currentTime;
+          sig.Signaling().lastProcessedCallId = callId;
+          sig.Signaling().lastProcessedCallTime = currentTime;
           // ★ 清理舊的快取（超過5秒的記錄）
           _fcmCallIdCache.removeWhere((key, value) => (currentTime - value) > 5000);
         }
@@ -832,7 +840,21 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     
     // ★ 緊急呼叫處理（家屬端與長輩端都需要）
     s.onEmergencyCall = (roomId, senderId, callId) {
-      _showIncomingCallDialog(roomId, senderId, callId: callId, isEmergency: true);
+      if (appRole == 'elder') {
+        debugPrint("🚨 [Main] 收到緊急通話 Socket 事件，自動接聽！");
+        final pendingCallData = {
+          'roomId': roomId,
+          'senderId': senderId,
+          'callId': callId,
+          'isEmergency': true,
+        };
+        SharedPreferences.getInstance().then((prefs) {
+          prefs.setString('pendingAcceptedCall', jsonEncode(pendingCallData));
+        });
+        pendingAcceptedCall.value = pendingCallData.map((key, value) => MapEntry(key, value?.toString()));
+      } else {
+        _showIncomingCallDialog(roomId, senderId, callId: callId, isEmergency: true);
+      }
     };
 
     // 對方取消來電

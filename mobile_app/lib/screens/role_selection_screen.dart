@@ -134,7 +134,40 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
       return;
     }
 
-    if (_selectedRole == 'family') {
+    if (_selectedRole == 'monitor') {
+      setState(() => _isLoading = true);
+      try {
+        final result = await ApiService.resolveMonitorSetup(inputText);
+        setState(() => _isLoading = false);
+        if (result != null) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('saved_role', 'elder'); // Monitor 屬於長輩端角色
+          await prefs.setString('saved_id', result['elder_id'].toString());
+          await prefs.setString('saved_device_name', result['device_name']);
+          await prefs.setBool('saved_is_cctv', true);
+          await prefs.setString('access_token', result['access_token']);
+          appRole = 'elder';
+          
+          if (mounted) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) => ElderScreen(
+                  roomId: result['elder_id'].toString(),
+                  isCCTVMode: true,
+                  deviceName: result['device_name'],
+                ),
+              ),
+            );
+          }
+        } else {
+          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('綁定碼無效或已過期')));
+        }
+      } catch (e) {
+        setState(() => _isLoading = false);
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('錯誤: $e')));
+      }
+    } else if (_selectedRole == 'family') {
       setState(() => _isLoading = true);
       List<dynamic> elders = await ApiService.getPairedElders(int.tryParse(inputText) ?? 0);
       setState(() => _isLoading = false);
@@ -228,10 +261,12 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                 ElevatedButton.icon(icon: const Icon(Icons.visibility), label: const Text("我是家屬"), onPressed: () => setState(() => _selectedRole = 'family'), style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(60))),
                 const SizedBox(height: 20),
                 ElevatedButton.icon(icon: const Icon(Icons.elderly), label: const Text("我是長輩"), style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, minimumSize: const Size.fromHeight(60)), onPressed: () => setState(() => _selectedRole = 'elder')),
+                const SizedBox(height: 20),
+                ElevatedButton.icon(icon: const Icon(Icons.videocam), label: const Text("我是監控設備"), style: ElevatedButton.styleFrom(backgroundColor: Colors.grey, minimumSize: const Size.fromHeight(60)), onPressed: () => setState(() => _selectedRole = 'monitor')),
               ],
 
               if (isRoleSelected) ...[
-                Text(_selectedRole == 'family' ? "請輸入 User ID" : "請輸入 Elder ID"),
+                Text(_selectedRole == 'family' ? "請輸入 User ID" : _selectedRole == 'monitor' ? "請輸入 6 位數綁定碼" : "請輸入 Elder ID"),
                 const SizedBox(height: 20),
                 TextField(controller: _inputController, decoration: const InputDecoration(border: OutlineInputBorder())),
                 const SizedBox(height: 20),

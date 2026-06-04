@@ -659,4 +659,27 @@ class ApiService {
       return {'status': 'error', 'message': '網路連線失敗: $e'};
     }
   }
+
+  static Future<Map<String, dynamic>?> resolveMonitorSetup(String code) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/monitor_setup/resolve'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'pairing_code': code,
+            }),
+          )
+          .timeout(_timeout);
+      
+      final data = _safeDecode(response);
+      if (data['status'] == 'success') {
+        return data['data'];
+      }
+      return null;
+    } catch (e) {
+      debugPrint('⚠️ resolveMonitorSetup error: $e');
+      return null;
+    }
+  }
 }
