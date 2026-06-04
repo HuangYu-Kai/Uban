@@ -83,12 +83,14 @@ class KoiNotificationItem {
   final String message;
   final KoiStyle koiStyle;
   bool isLotusVisible;
+  final String? imageUrl;
 
   KoiNotificationItem({
     required this.id,
     required this.message,
     required this.koiStyle,
     this.isLotusVisible = false,
+    this.imageUrl,
   });
 }
 
@@ -203,7 +205,13 @@ class ZenPondController extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final list = prefs.getStringList('zen_pond_history');
       if (list != null) {
-        history = list.map((str) => jsonDecode(str) as Map<String, dynamic>).toList();
+        history = list.map((str) {
+          final item = jsonDecode(str) as Map<String, dynamic>;
+          if (item['imageUrl'] == 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?q=80&w=2070&auto=format&fit=crop') {
+            item['imageUrl'] = 'https://upload.wikimedia.org/wikipedia/commons/8/86/Flower_Clock,_Yangmingshan.jpg';
+          }
+          return item;
+        }).toList();
       } else {
         // 初始歷史：加入一個迎賓訊息
         history = [
@@ -295,15 +303,22 @@ class ZenPondController extends ChangeNotifier {
         final videoRegExp = RegExp(r'\[VIDEO_ID:([^\]]+)\]');
         for (var str in list) {
           final leaf = LeafMessageItem.fromJson(jsonDecode(str));
+          String? imageUrl = leaf.imageUrl;
+          if (imageUrl == 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?q=80&w=2070&auto=format&fit=crop') {
+            imageUrl = 'https://upload.wikimedia.org/wikipedia/commons/8/86/Flower_Clock,_Yangmingshan.jpg';
+          }
           // 修復舊快取資料中未解析的 Markdown 圖片語法
           final rawText = leaf.text;
           if (imgRegExp.hasMatch(rawText) || videoRegExp.hasMatch(rawText)) {
-            String? imageUrl = leaf.imageUrl;
+            String? parsedImageUrl = imageUrl;
             String? videoId = leaf.videoId;
             // 若 imageUrl 欄位為空但 text 含 Markdown 圖片，解析出來
-            if (imageUrl == null) {
+            if (parsedImageUrl == null) {
               final imgMatch = imgRegExp.firstMatch(rawText);
-              if (imgMatch != null) imageUrl = imgMatch.group(1);
+              if (imgMatch != null) parsedImageUrl = imgMatch.group(1);
+            }
+            if (parsedImageUrl == 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?q=80&w=2070&auto=format&fit=crop') {
+              parsedImageUrl = 'https://upload.wikimedia.org/wikipedia/commons/8/86/Flower_Clock,_Yangmingshan.jpg';
             }
             if (videoId == null) {
               final videoMatch = videoRegExp.firstMatch(rawText);
@@ -316,13 +331,13 @@ class ZenPondController extends ChangeNotifier {
             if (cleanText.isEmpty) {
               cleanText = videoId != null
                   ? '這是為您推薦的影片'
-                  : (imageUrl != null ? '為您分享了一張照片' : rawText);
+                  : (parsedImageUrl != null ? '為您分享了一張照片' : rawText);
             }
             leaves.add(LeafMessageItem(
               id: leaf.id,
               text: cleanText,
               colorType: leaf.colorType,
-              imageUrl: imageUrl,
+              imageUrl: parsedImageUrl,
               videoId: videoId,
               restingX: leaf.restingX,
               restingY: leaf.restingY,
@@ -330,7 +345,17 @@ class ZenPondController extends ChangeNotifier {
               isCardVisible: leaf.isCardVisible,
             ));
           } else {
-            leaves.add(leaf);
+            leaves.add(LeafMessageItem(
+              id: leaf.id,
+              text: leaf.text,
+              colorType: leaf.colorType,
+              imageUrl: imageUrl,
+              videoId: leaf.videoId,
+              restingX: leaf.restingX,
+              restingY: leaf.restingY,
+              createdAt: leaf.createdAt,
+              isCardVisible: leaf.isCardVisible,
+            ));
           }
         }
         notifyListeners();
@@ -407,13 +432,20 @@ class ZenPondController extends ChangeNotifier {
     }
     item.isCardVisible = true;
     notifyListeners();
+    _speakTtsAuto(item.text); // 點開落葉時播放語音
   }
 
   // 收起落葉卡片 (從池塘中溶解移除)
   void dismissLeaf(LeafMessageItem item) {
     leaves.remove(item);
+    _controllerAudioPlayer.stop(); // 捨棄或聊天時停止播放落葉語音
     saveLeaves();
     notifyListeners();
+  }
+
+  // 停止落葉語音播報
+  void stopLeafTts() {
+    _controllerAudioPlayer.stop();
   }
 
   // 首次進入池塘事件排程 (1秒飄落金黃歡迎葉，5秒飄落秀珠紅葉並自動 edge-tts 朗讀)
@@ -422,7 +454,7 @@ class ZenPondController extends ChangeNotifier {
       addLeaf(
         text: '爺爺午安！我是您的貼心小幫手。今天感覺怎麼樣？需要我為您放首音樂，或者聊聊天嗎？點擊我可以再聽一次喔！',
         colorType: LeafColorType.yellow,
-        playTts: true,
+        playTts: false,
       );
       addHistory(
         sender: 'ai',
@@ -431,16 +463,14 @@ class ZenPondController extends ChangeNotifier {
     });
 
     Timer(const Duration(seconds: 5), () {
-      addLeaf(
-        text: '爺爺，秀珠傳了一張照片來。她說這是上次去陽明山看花鐘拍的，您還記得嗎？',
-        colorType: LeafColorType.red,
-        imageUrl: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?q=80&w=2070&auto=format&fit=crop',
-        playTts: true,
+      showNotification(
+        '爺爺，秀珠傳了一張照片來。她說這是上次去陽明山看花鐘拍的，您還記得嗎？',
+        imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/8/86/Flower_Clock,_Yangmingshan.jpg',
       );
       addHistory(
         sender: 'ai',
         text: '爺爺，秀珠傳了一張照片來。她說這是上次去陽明山看花鐘拍的，您還記得嗎？',
-        imageUrl: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?q=80&w=2070&auto=format&fit=crop',
+        imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/8/86/Flower_Clock,_Yangmingshan.jpg',
       );
     });
   }
@@ -485,7 +515,7 @@ class ZenPondController extends ChangeNotifier {
             colorType: LeafColorType.yellow, // 黃色：長期記憶/回憶落葉
             imageUrl: imageUrl,
             videoId: videoId,
-            playTts: true,
+            playTts: false,
           );
           // 同時也加入時光日記
           addHistory(
@@ -538,7 +568,7 @@ class ZenPondController extends ChangeNotifier {
   }
 
   // --- 錦鯉通知功能 (保留 Phase 2 完整度) ---
-  void showNotification(String message) {
+  void showNotification(String message, {String? imageUrl}) {
     _notificationCounter++;
     final id = '${DateTime.now().millisecondsSinceEpoch}_$_notificationCounter';
     final koiStyle = KoiStyle.random(DateTime.now().microsecondsSinceEpoch);
@@ -547,6 +577,7 @@ class ZenPondController extends ChangeNotifier {
       id: id,
       message: message,
       koiStyle: koiStyle,
+      imageUrl: imageUrl,
     );
     
     notifications.add(newItem);

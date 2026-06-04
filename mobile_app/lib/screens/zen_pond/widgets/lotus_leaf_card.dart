@@ -1,14 +1,37 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../../services/api_service.dart';
 
 // 【全新升級】暖心水燈禪意木牌面板 (取代荷葉，提供頂級字體對比與長輩輔助按鈕)
 
 class LotusLeafCard extends StatelessWidget {
   final String message;
   final VoidCallback onDismiss;
+  final String? imageUrl;
 
-  const LotusLeafCard({super.key, required this.message, required this.onDismiss});
+  const LotusLeafCard({
+    super.key,
+    required this.message,
+    required this.onDismiss,
+    this.imageUrl,
+  });
+
+  /// 正規化圖片 URL
+  String _normalizeImageUrl(String url) {
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      final base = ApiService.baseUrl.replaceAll('/api', '');
+      if (url.startsWith('/')) {
+        return '$base$url';
+      }
+      return '$base/$url';
+    }
+    String normalized = url.replaceAll('fastly.picsum.photos', 'picsum.photos');
+    if (normalized.contains('picsum.photos') && normalized.endsWith('.jpg')) {
+      normalized = normalized.substring(0, normalized.length - 4);
+    }
+    return normalized;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -88,6 +111,73 @@ class LotusLeafCard extends StatelessWidget {
                 color: const Color(0xFFD7CCC8),
               ),
               const SizedBox(height: 24),
+              // 2. 拍立得紙框家人照片 (若有圖片則展示)
+              if (imageUrl != null) ...[
+                Container(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+                  margin: const EdgeInsets.only(bottom: 24),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border.all(color: const Color(0xFFE0DCD3), width: 1),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.06),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: Image.network(
+                          _normalizeImageUrl(imageUrl!),
+                          fit: BoxFit.cover,
+                          height: 180,
+                          width: double.infinity,
+                          loadingBuilder: (context, child, loadingProgress) {
+                            if (loadingProgress == null) return child;
+                            return Container(
+                              height: 180,
+                              color: const Color(0xFFF5F2EB),
+                              child: const Center(
+                                child: CircularProgressIndicator(
+                                  color: Color(0xFF8C6D58),
+                                ),
+                              ),
+                            );
+                          },
+                          errorBuilder: (context, error, stackTrace) {
+                            debugPrint('LotusLeafCard image load error: $error | url: $imageUrl');
+                            return Container(
+                              height: 180,
+                              color: const Color(0xFFF5F2EB),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(
+                                    Icons.broken_image_rounded,
+                                    color: Color(0xFFBCAAA4),
+                                    size: 48,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    '圖片載入失敗',
+                                    style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ).animate().scale(duration: 400.ms, curve: Curves.easeOutBack),
+              ],
+
               // 訊息主體 (超大高對比黑體字，極度體貼長輩)
               Text(
                 message,

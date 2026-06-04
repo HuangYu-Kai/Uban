@@ -77,7 +77,7 @@ class ZenPondScreenState extends State<ZenPondScreen> {
         colorType: LeafColorType.yellow, // 黃色 = 長期記憶葉
         imageUrl: imageUrl,
         videoId: videoId,
-        playTts: true,
+        playTts: false,
       );
 
       // 將推播的新記憶落葉加入時光日記
@@ -617,6 +617,7 @@ class _ZenPondContentState extends State<_ZenPondContent>
                 LotusLeafCard(
                   key: ValueKey(item.id),
                   message: item.message,
+                  imageUrl: item.imageUrl,
                   onDismiss: () => controller.dismissLotus(item),
                 ),
 
@@ -1183,6 +1184,7 @@ class _ZenPondContentState extends State<_ZenPondContent>
     _isDiaryDialogOpen = true;
 
     final controllerInstance = Provider.of<ZenPondController>(context, listen: false);
+    controllerInstance.stopLeafTts(); // 開啟日記時，停止朗讀落葉
 
     showDialog(
       context: context,
