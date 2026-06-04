@@ -7,6 +7,8 @@ import 'package:flutter_tts/flutter_tts.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
+import 'dart:io' show Platform;
+import 'package:firebase_messaging/firebase_messaging.dart';
 import '../services/signaling.dart';
 import '../widgets/heartbeat_overlay.dart';
 import 'identification_screen.dart';
@@ -256,12 +258,14 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     //   否則會導致原本的 callbacks 被覆寫。若是從 CCTV 模式直接進入，則會在此處連線。
     if (_signaling.socket?.connected != true) {
       debugPrint("🔌 [ElderScreen] Socket 未連線，開始連線 (room: $_formattedRoomId)...");
+      final String? fcmToken = await FirebaseMessaging.instance.getToken();
       _signaling.connect(
         _formattedRoomId,  // ★ 使用格式化的房間ID，而不是原始的 roomId
         'elder', 
         userId: resolvedUserId,  // ★ 修復：使用真正的 user_id（caregiver_id）或 elder_id 作為備用
         deviceName: widget.deviceName,
-        deviceMode: widget.isCCTVMode ? 'monitor' : 'comm'
+        deviceMode: widget.isCCTVMode ? 'monitor' : 'comm',
+        fcmToken: fcmToken,
       );
     } else {
       debugPrint("🔌 [ElderScreen] Socket 已連線，重用現有連線 (room: $_formattedRoomId)");
@@ -285,6 +289,17 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       }
     });
 
+    // ★ Issue 1：緊急通話強制開啟攝像頭
+    final bool isEmergencyCall = widget.initialCallData?['isEmergency'] == 'true' ||
+                                  widget.initialCallData?['isEmergency'] == true;
+    if (isEmergencyCall && _signaling.localStream != null) {
+      debugPrint("🚨 [ElderScreen] 緊急通話：強制開啟攝像頭");
+      for (var track in _signaling.localStream!.getVideoTracks()) {
+        track.enabled = true;
+      }
+      if (mounted) setState(() => _isCameraOff = false);
+    }
+
     _signaling.onCallEnded = () {
       _callTimer?.cancel();
       if (mounted) {
@@ -305,16 +320,10 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
 
     _signaling.onCallBusy = (targetId, callId) {
       if (mounted) {
-        setState(() {
-          _status = "家人通話中，請稍後再撥";
-          _isInCall = false;
-        });
-        
-        Future.delayed(const Duration(seconds: 3), () {
-          if (mounted && !_isInCall) {
-            setState(() => _status = "等待連線...");
-          }
-        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("家人目前無法接聽通話")),
+        );
+        Navigator.of(context).pop();
       }
     };
 

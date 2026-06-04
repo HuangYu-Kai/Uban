@@ -41,6 +41,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
   
   // ★ 新增：遠征系統步數監控
   int _lastDiscoveredSteps = 0;
+  bool _isNavigatingToCall = false;
 
   Future<void> _requestPermissions() async {
     try {
@@ -71,13 +72,19 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
       if (mounted) _onPendingCallChanged();
     });
 
-    // ★ 核心：監聽一般來電請求 (由家屬端主動發起)
+    // 監聽來自親人的呼叫與推播留言
+    _restoreSignalingCallbacks();
+  }
+
+  void _restoreSignalingCallbacks() {
+    debugPrint("🔄 [ElderHomeScreen] 重新綁定 Signaling Callbacks");
+    // 監聽來自家屬的來電請求
     Signaling().onCallRequest = (roomId, senderId, callId) {
       if (!mounted) return;
       _showIncomingCallDialog(roomId, senderId, callId);
     };
 
-    // ★ 核心：監聽主動式心跳 (Heartbeat)
+    // 監聽家屬發送的主動關心留言 (Heartbeat)
     Signaling().onHeartbeatMessage = (message) {
       if (mounted) {
         _handleProactiveMessage(message);
@@ -147,7 +154,12 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
                       deviceName: widget.userName,
                     ),
                   ),
-                );
+                ).then((_) {
+                  // ★ 從 ElderScreen 退出時重新綁定 callbacks
+                  if (mounted) {
+                    _restoreSignalingCallbacks();
+                  }
+                });
               },
               icon: const Icon(Icons.videocam),
               label: const Text('接聽', style: TextStyle(fontSize: 16)),
@@ -212,13 +224,17 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
 
   void _onPendingCallChanged() {
     final call = pendingAcceptedCall.value;
-    if (call != null) {
+    if (call != null && !_isNavigatingToCall) {
+      _isNavigatingToCall = true; // ★ Issue 3：防止重複導航
       debugPrint(
           "📱 ElderHomeScreen: Incoming call detected! Navigating to ElderScreen...");
       // 一定要清空，否則之後返回主頁會再次觸發
       pendingAcceptedCall.value = null;
 
-      if (!mounted) return;
+      if (!mounted) {
+        _isNavigatingToCall = false;
+        return;
+      }
 
       final currentContext = context;
       Navigator.push(
@@ -230,7 +246,13 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
             initialCallData: call, // ★ 傳遞通話資料
           ),
         ),
-      );
+      ).then((_) {
+        _isNavigatingToCall = false; // ★ 導航結束，允許下次
+        // ★ 當從 ElderScreen 退出時，重新綁定首頁的 callbacks
+        if (mounted) {
+          _restoreSignalingCallbacks();
+        }
+      });
     }
   }
 

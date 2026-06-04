@@ -17,6 +17,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_line_sdk/flutter_line_sdk.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:app_links/app_links.dart';
+import 'package:android_intent_plus/android_intent.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'network/http_overrides_stub.dart'
     if (dart.library.io) 'network/http_overrides_io.dart';
 
@@ -80,19 +82,23 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       });
       await prefs.setString('pendingAcceptedCall', pendingCall);
       
-      // ★ 關鍵修復：同時使用 CallKit 來喚醒設備
-      await _showFullScreenCallkit(message.data);
-      
-      // 延遲讓 CallKit 喚醒螢幕，再把既有 Activity 帶回前景。
-      await Future.delayed(const Duration(milliseconds: 1500));
-      
+      // ★ 直接發送 Intent 啟動應用程式，喚醒裝置並進入視訊房間
       try {
         if (defaultTargetPlatform == TargetPlatform.android) {
-          const platform = MethodChannel('com.example.app/bring_to_front');
-          await platform.invokeMethod('bringToFront');
+          final AndroidIntent intent = AndroidIntent(
+            action: 'android.intent.action.MAIN',
+            package: 'com.example.flutter_application_1',
+            componentName: 'com.example.flutter_application_1.MainActivity',
+            flags: <int>[
+              0x10000000, // FLAG_ACTIVITY_NEW_TASK
+              0x00020000, // FLAG_ACTIVITY_REORDER_TO_FRONT
+              0x20000000, // FLAG_ACTIVITY_SINGLE_TOP
+            ],
+          );
+          await intent.launch();
         }
       } catch (e) {
-        debugPrint('bringToFront error: $e');
+        debugPrint('AndroidIntent error: $e');
       }
       return;
     }
@@ -247,6 +253,16 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       final context = navigatorKey.currentContext;
       if (context != null) {
         VideoCallPermissionService.requestOnFirstUse(context);
+      }
+      
+      // ★ Issue 8：請求懸浮視窗權限（讓來電通知覆蓋其他 APP）
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+        Permission.systemAlertWindow.status.then((status) {
+          if (!status.isGranted) {
+            debugPrint("🔔 [Main] 請求懸浮視窗權限...");
+            Permission.systemAlertWindow.request();
+          }
+        });
       }
     });
     
@@ -766,6 +782,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   }
 
   BuildContext? _activeCallDialogContext;
+  String? _lastHandledEmergencyCallId;
 
   void _setupForegroundMessaging() {
     FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
@@ -841,6 +858,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     // ★ 緊急呼叫處理（家屬端與長輩端都需要）
     s.onEmergencyCall = (roomId, senderId, callId) {
       if (appRole == 'elder') {
+        // ★ Issue 3 修復：去重，防止 Socket.IO + FCM 雙重觸發
+        if (callId != null && callId == _lastHandledEmergencyCallId) {
+          debugPrint("⚠️ [Main] Socket 忽略重複的緊急通話 (callId=$callId)");
+          return;
+        }
+        _lastHandledEmergencyCallId = callId;
         debugPrint("🚨 [Main] 收到緊急通話 Socket 事件，自動接聽！");
         final pendingCallData = {
           'roomId': roomId,
@@ -881,8 +904,14 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       {String? callId, bool isEmergency = false}) {
     if (appRole == 'elder') {
       if (isEmergency) {
+        // ★ Issue 3 修復：去重
+        if (callId != null && callId == _lastHandledEmergencyCallId) {
+          debugPrint("⚠️ [Main] 忽略重複的緊急通話 (callId=$callId 已處理)");
+          return;
+        }
+        _lastHandledEmergencyCallId = callId;
         debugPrint("🚨 [Main] 緊急通話，長輩端直接接聽");
-        _navigateToVideoCall(roomId, senderId, callId: callId);
+        _navigateToVideoCall(roomId, senderId, callId: callId, isEmergency: true);
       } else {
         debugPrint("📞 [Main] 長輩端忽略 FCM 備用來電彈窗，交由 Socket.IO 綠色彈窗處理");
       }
@@ -952,6 +981,18 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         // Broadcast the decline event so that active dialogs in the app can close themselves
         callKitDeclineStream.add(roomId);
 
+        // ★ Issue 4：通知對方已拒絕（只在 socket 已連線時發送，不重新連線避免破壞 Singleton）
+        try {
+          if (sig.Signaling().socket?.connected == true) {
+            sig.Signaling().sendCallBusy(senderId, callId: callId);
+            debugPrint("✅ [CallKit Decline] 已透過 Socket 發送 call-busy");
+          } else {
+            debugPrint("⚠️ [CallKit Decline] Socket 未連線，無法發送 call-busy");
+          }
+        } catch (e) {
+          debugPrint("❌ Failed to notify caller of decline: $e");
+        }
+
         // Remove any active incoming call dialog if the app is open
         if (navigatorKey.currentState != null) {
           navigatorKey.currentState?.popUntil((route) => route.isFirst);
@@ -995,7 +1036,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     });
   }
 
-  void _navigateToVideoCall(String roomId, String senderId, {String? callId}) {
+  void _navigateToVideoCall(String roomId, String senderId, {String? callId, bool isEmergency = false}) {
     // ★ Bug 16 解決方案：如果身分是長輩，絕對不可啟動 VideoCallScreen (那是給家屬用的)。
     // 我們僅儲存 pendingAcceptedCall，讓長輩主畫面 (ElderScreen) 啟動後去接手。
     if (appRole == 'elder') {
@@ -1004,7 +1045,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       pendingAcceptedCall.value = <String, String?>{
         'roomId': roomId,
         'senderId': senderId,
-        'callId': callId
+        'callId': callId,
+        'isEmergency': isEmergency.toString(),
       };
 
       // ★ 喚醒長輩 APP 並帶到最前台，這會觸發 ElderScreen 的 _checkPendingAcceptedCall
@@ -1036,7 +1078,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       });
     } else {
       // App is cold booting or navigator not ready. Save it for Dashboard/Elder screen to pick up.
-      pendingAcceptedCall.value = {'roomId': roomId, 'senderId': senderId, 'callId': callId};
+      pendingAcceptedCall.value = {'roomId': roomId, 'senderId': senderId, 'callId': callId, 'isEmergency': isEmergency.toString()};
     }
   }
 

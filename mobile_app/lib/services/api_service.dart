@@ -660,6 +660,35 @@ class ApiService {
     }
   }
 
+  // ==========================================
+  // Monitor Setup
+  // ==========================================
+
+  static Future<Map<String, dynamic>?> createMonitorSetup(int familyId, String elderId, String deviceName) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/monitor_setup'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'family_id': familyId,
+              'elder_id': elderId,
+              'device_name': deviceName,
+            }),
+          )
+          .timeout(_timeout);
+      
+      final data = _safeDecode(response);
+      if (data['status'] == 'success') {
+        return data['data']; // should contain 'code'
+      }
+      return null;
+    } catch (e) {
+      debugPrint('📞 createMonitorSetup error: $e');
+      return null;
+    }
+  }
+
   static Future<Map<String, dynamic>?> resolveMonitorSetup(String code) async {
     try {
       final response = await http

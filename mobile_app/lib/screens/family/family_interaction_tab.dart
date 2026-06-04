@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/elder.dart';
 import '../../services/signaling.dart';
+import '../../services/api_service.dart';
 import '../video_call_screen.dart';
 import '../camera_screen.dart';
 
@@ -38,6 +40,113 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
   void dispose() {
     _messageController.dispose();
     super.dispose();
+  }
+
+  Future<void> _showAddMonitorDialog() async {
+    if (widget.currentElder == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    final familyId = prefs.getInt('caregiver_id');
+    if (familyId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('無法取得您的帳號 ID')));
+      return;
+    }
+
+    final String rawId = widget.currentElder!.elderId ?? widget.currentElder!.id.toString();
+    final TextEditingController nameCtrl = TextEditingController(text: '客廳攝影機');
+    
+    if (!mounted) return;
+    
+    final bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('新增監控設備'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('請輸入此監控設備的名稱：'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: nameCtrl,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                hintText: '例如: 客廳、臥室',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('產生代碼'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true || !mounted) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(child: CircularProgressIndicator()),
+    );
+
+    final data = await ApiService.createMonitorSetup(familyId, rawId, nameCtrl.text);
+    if (!mounted) return;
+    Navigator.pop(context); // close loading
+
+    if (data != null && data['pairing_code'] != null) {
+      final code = data['pairing_code'];
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('設備配對碼已產生'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              const Text('請在要作為攝影機的備用手機上，安裝 Uban 長輩版並選擇「作為監控設備登入」，然後輸入以下 6 位數代碼：'),
+              const SizedBox(height: 20),
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade200,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  code,
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 8,
+                    color: Colors.blue.shade700,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                '此代碼將在 15 分鐘後失效。',
+                style: TextStyle(color: Colors.red.shade400, fontSize: 12),
+              ),
+            ],
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('完成'),
+            ),
+          ],
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('產生配對碼失敗，請稍後再試')),
+      );
+    }
   }
 
   void _makeVideoCall() {
@@ -684,9 +793,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                 child: ElevatedButton.icon(
                   onPressed: () {
                     HapticFeedback.lightImpact();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('尚未有可連接之家庭攝影機')),
-                    );
+                    _showAddMonitorDialog();
                   },
                   icon: const Icon(Icons.add_a_photo_rounded, size: 20),
                   label: const Text('新增並連接監控設備'),

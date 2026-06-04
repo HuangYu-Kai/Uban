@@ -15,6 +15,7 @@ import 'video_call_screen.dart';
 import 'caregiver_pairing_screen.dart';
 import 'package:flutter_application_1/utils/app_logger.dart';
 import '../globals.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 class FamilyMainScreen extends StatefulWidget {
   final int userId;
@@ -99,11 +100,14 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     
     debugPrint('📡📡📡 [FamilyMainScreen] ===== 連線到房間: $roomId =====');
     
+    final String? fcmToken = await FirebaseMessaging.instance.getToken();
+    
     _signaling.connect(
       roomId,
       'family',
       deviceName: '${widget.userName}的App',
       userId: widget.userId,
+      fcmToken: fcmToken,
     );
     
     // 請求取得長輩設備在線狀態
@@ -220,7 +224,9 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
             sendAcceptOnOpen: false,
           ),
         ),
-      );
+      ).then((_) {
+        if (mounted) _setupSignalingCallbacks();
+      });
     }
   }
 
@@ -291,7 +297,9 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                       sendAcceptOnOpen: false,
                     ),
                   ),
-                );
+                ).then((_) {
+                  if (mounted) _setupSignalingCallbacks();
+                });
               },
               icon: const Icon(Icons.videocam),
               label: const Text('接聽', style: TextStyle(fontSize: 16)),

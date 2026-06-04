@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../services/signaling.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 class VideoCallScreen extends StatefulWidget {
   final String roomId;
@@ -137,11 +138,13 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     //   否則會導致原本的 callbacks 被覆寫且 SocketId 改變。
     if (_signaling.socket?.connected != true) {
       debugPrint("🔌 [VideoCallScreen] Socket 未連線，開始連線...");
+      final String? fcmToken = await FirebaseMessaging.instance.getToken();
       _signaling.connect(
         widget.roomId, 
         'family', 
         userId: userId, 
-        deviceName: userName
+        deviceName: userName,
+        fcmToken: fcmToken,
       );
     } else {
       debugPrint("🔌 [VideoCallScreen] Socket 已連線，重用現有連線 (room: ${widget.roomId})");
@@ -290,6 +293,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     _signaling.onIncomingCall = null;
     _signaling.onCallEnded = null;
     _signaling.onCallBusy = null;
+    _signaling.onJoinFailed = null;
     
     _localRenderer.dispose();
     _remoteRenderer.dispose();
