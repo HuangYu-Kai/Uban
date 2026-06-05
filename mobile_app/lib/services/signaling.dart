@@ -182,7 +182,12 @@ class Signaling {
 
     socket!.on('join-failed', (data) {
       if (onJoinFailed != null) onJoinFailed!(data['message']);
-      socket?.disconnect();
+      // 僅在尚未建立有效連線時才斷開 socket，避免通話中因競態 join-failed 斷線
+      if (peerConnection == null) {
+        socket?.disconnect();
+      } else {
+        debugPrint('⚠️ [Signaling] Join-failed during call, keeping connection');
+      }
     });
 
     // 響鈴監聽
@@ -585,6 +590,14 @@ class Signaling {
   Future<void> _acceptCall(Map<String, dynamic> data, {required bool useLocalStream}) async {
     if (peerConnection != null) await peerConnection!.close();
     await _createPeerConnection(useLocalStream: useLocalStream);
+
+    // ★ Fix: 緊急通話強制啟用本機視訊軌道
+    if (data['isEmergency'] == true && localStream != null) {
+      debugPrint("🚨 [Signaling] Emergency call: enabling local video tracks before answer");
+      for (var track in localStream!.getVideoTracks()) {
+        track.enabled = true;
+      }
+    }
 
     try {
       var description = RTCSessionDescription(data['sdp'], data['type']);

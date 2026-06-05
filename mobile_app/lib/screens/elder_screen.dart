@@ -51,8 +51,12 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   // ★ 新增：用於生成新格式的房間ID
   late String _formattedRoomId;
   
-  // ★ 輔助方法：根據通訊模式生成房間ID
+  // ★ 輔助方法：根據通訊模式生成房間ID（冪等保護）
   String _getFormattedRoomId(String elderId) {
+    // 冪等保護：若已是完整格式，直接使用（防止 FCM 冷啟動時重複添加前綴）
+    if (elderId.startsWith('comm_elder_') || elderId.startsWith('monitor_elder_')) {
+      return elderId;
+    }
     if (widget.isCCTVMode) {
       return 'monitor_elder_$elderId';  // 監控/CCTV 模式
     } else {

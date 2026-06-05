@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../services/api_service.dart';
+import '../../services/elder_manager.dart';
 import '../identification_screen.dart';
 import '../caregiver_pairing_screen.dart';
 import '../elder_profile_edit_screen.dart';
@@ -441,7 +442,7 @@ class _FamilySettingsViewState extends State<FamilySettingsView> {
                 elder['id'],
               );
               if (!mounted) return;
-              if (result.containsKey('message')) {
+              if (result['status'] == 'success') {
                 navigator.pop();
                 await ElderManager().refresh();
                 _fetchPairedElders();

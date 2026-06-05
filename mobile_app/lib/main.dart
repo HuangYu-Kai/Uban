@@ -104,7 +104,26 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     }
   } catch (_) {}
 
-  // ★ issue 2 & 3：App 在背景／被殺死／螢幕關閉時，彈出 CallKit 全螢幕來電
+  // ★ issue 2 & 3 & 6：App 在背景／被殺死／螢幕關閉時，彈出 CallKit 全螢幕來電
+  // 同時強制將 App 帶到前台，確保解鎖使用中的裝置也能覆蓋全螢幕
+  try {
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      final AndroidIntent intent = AndroidIntent(
+        action: 'android.intent.action.MAIN',
+        package: 'com.example.flutter_application_1',
+        componentName: 'com.example.flutter_application_1.MainActivity',
+        flags: <int>[
+          0x10000000, // FLAG_ACTIVITY_NEW_TASK
+          0x00020000, // FLAG_ACTIVITY_REORDER_TO_FRONT
+          0x20000000, // FLAG_ACTIVITY_SINGLE_TOP
+        ],
+      );
+      await intent.launch();
+    }
+  } catch (e) {
+    debugPrint('AndroidIntent error (call-request bringToFront): $e');
+  }
+
   await _showFullScreenCallkit(message.data);
 }
 
