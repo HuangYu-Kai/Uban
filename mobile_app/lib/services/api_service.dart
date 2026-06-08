@@ -71,12 +71,13 @@ class ApiService {
     try {
       return jsonDecode(response.body);
     } catch (e) {
+      final String snippet = response.body.length > 100
+          ? response.body.substring(0, 100)
+          : response.body;
       return {
         'status': 'error',
-        'message': '伺服器回傳格式錯誤 (可能已離線)',
-        'details': response.body.length > 50
-            ? response.body.substring(0, 50)
-            : response.body
+        'message': '伺服器回傳格式錯誤 [HTTP ${response.statusCode}]: $snippet',
+        'details': response.body
       };
     }
   }
