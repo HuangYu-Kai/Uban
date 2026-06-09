@@ -189,7 +189,12 @@ class _ZenPondContentState extends State<_ZenPondContent>
           onStatus: (sttStatus) {
             debugPrint('ZenPond STT status: $sttStatus');
             if ((sttStatus == 'done' || sttStatus == 'notListening') && _isRecording) {
-              _stopListening();
+              // 延遲 600 毫秒執行，給 finalResult 優先發送的機會
+              Future.delayed(const Duration(milliseconds: 600), () {
+                if (mounted && _isRecording) {
+                  _stopListening();
+                }
+              });
             }
           },
           onError: (err) {
@@ -275,6 +280,10 @@ class _ZenPondContentState extends State<_ZenPondContent>
                     ? result.recognizedWords 
                     : '聆聽中，請說話...';
               });
+              // 當識別出最終結果且還在錄音時，立即觸發停止並發送，避免競態問題
+              if (result.finalResult && _isRecording) {
+                _stopListening();
+              }
             }
           },
           listenFor: const Duration(seconds: 25),
