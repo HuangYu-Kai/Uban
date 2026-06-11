@@ -37,61 +37,73 @@ class IdentificationScreen extends StatelessWidget {
                       constraints: const BoxConstraints(
                         maxWidth: 800,
                       ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start, // Align to top
+                      child: Column(
                         children: [
-                          // Elder Card
-                          Expanded(
-                            child: _buildRoleCard(
-                              context: context,
-                              label: '我是長者',
-                              imagePath: 'assets/images/elder_illustration.png',
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) =>
-                                        const ElderPairingDisplayScreen(),
-                                  ),
-                                );
-                              },
-                            ),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start, // Align to top
+                            children: [
+                              // Elder Card
+                              Expanded(
+                                child: _buildRoleCard(
+                                  context: context,
+                                  label: '我是長者',
+                                  imagePath: 'assets/images/elder_illustration.png',
+                                  onTap: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) =>
+                                            const ElderPairingDisplayScreen(),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 16), // Reduced from 24
+                              // Caregiver Card
+                              Expanded(
+                                child: _buildRoleCard(
+                                  context: context,
+                                  label: '我是家屬 / 照護者',
+                                  imagePath:
+                                      'assets/images/family_illustration.png',
+                                  onTap: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => const LoginScreen(),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 16), // Reduced from 24
-                          // Caregiver Card
-                          Expanded(
-                            child: _buildRoleCard(
-                              context: context,
-                              label: '我是家屬 / 照護者',
-                              imagePath:
-                                  'assets/images/family_illustration.png',
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => const LoginScreen(),
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          // ★ issue 7：監視器設備卡片
-                          Expanded(
-                            child: _buildRoleCard(
-                              context: context,
-                              label: '我是監控設備',
-                              icon: Icons.videocam_rounded,
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) =>
-                                        const MonitorPairingScreen(),
-                                  ),
-                                );
-                              },
+                          const SizedBox(height: 16),
+                          // ★ issue 7：監視器設備文字（移除圖示，居中放置）
+                          GestureDetector(
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      const MonitorPairingScreen(),
+                                ),
+                              );
+                            },
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(horizontal: 24),
+                              child: Text(
+                                '我是監控設備',
+                                textAlign: TextAlign.center,
+                                style: GoogleFonts.notoSansTc(
+                                  fontSize: 14, // Reduced from 16
+                                  fontWeight: FontWeight.w700,
+                                  color: const Color(0xFF4A4A4A),
+                                ),
+                              ),
                             ),
                           ),
                         ],

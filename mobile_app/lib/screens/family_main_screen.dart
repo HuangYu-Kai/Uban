@@ -87,21 +87,21 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
 
   Future<void> _loadElderAndConnect() async {
     debugPrint('📡📡📡 [FamilyMainScreen] ===== 開始載入長輩並連線 =====');
-    
+
     if (_currentElder == null) {
       debugPrint('⚠️ [FamilyMainScreen] 沒有已選長輩，嘗試重新整理...');
       return;
     }
-    
+
     // ★ 修復：使用正確的房間格式 comm_elder_{elder_id}
     //    elderId 是 elder_profile.elder_id（如 '0343'），而非數字 id
     final elderIdStr = _currentElder!.elderId ?? _currentElder!.id.toString();
     final roomId = 'comm_elder_$elderIdStr';
-    
+
     debugPrint('📡📡📡 [FamilyMainScreen] ===== 連線到房間: $roomId =====');
-    
+
     final String? fcmToken = await FirebaseMessaging.instance.getToken();
-    
+
     _signaling.connect(
       roomId,
       'family',
@@ -109,7 +109,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
       userId: widget.userId,
       fcmToken: fcmToken,
     );
-    
+
     // 請求取得長輩設備在線狀態
     _signaling.sendGetElderDevices(roomId);
   }
@@ -147,8 +147,12 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
       setState(() {
         _isElderOnline = online;
         if (online) {
-          final onlineDevice = devices.firstWhere((d) => d['isOnline'] == true);
-          _elderSocketId = onlineDevice['id'];
+          final onlineDevice = devices.firstWhere((d) => d['isOnline'] == true, orElse: () => {});
+          if (onlineDevice.isNotEmpty) {
+            _elderSocketId = onlineDevice['id'];
+          } else {
+            _elderSocketId = null;
+          }
         } else {
           _elderSocketId = null;
         }
@@ -483,17 +487,17 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                   children: [
                     CircleAvatar(
                       radius: 20,
-                      backgroundColor: _currentElder!.gender == 'F'
+                      backgroundColor: _currentElder?.gender == 'F'
                           ? const Color(0xFFFDF2F8)
                           : const Color(0xFFF0FDF4),
                       child: Text(
-                        _currentElder!.genderEmoji,
+                        _currentElder?.genderEmoji ?? '',
                         style: const TextStyle(fontSize: 20),
                       ),
                     ),
                     const SizedBox(width: 10),
                     Text(
-                      _currentElder!.displayName,
+                      _currentElder?.displayName ?? '',
                       style: GoogleFonts.notoSansTc(
                         color: const Color(0xFF0F172A),
                         fontWeight: FontWeight.w900,

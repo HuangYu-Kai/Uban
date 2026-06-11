@@ -164,7 +164,7 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
 
   void _navigateToElderEdit() {
     if (widget.currentElder == null) return;
-    
+
     // Construct elderData map compatible with ElderProfileEditScreen
     final elderData = {
       'id': widget.currentElder!.id,
@@ -445,10 +445,80 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
               if (widget.currentElder != null) ...[
                 _buildElderSummaryCard(),
                 const SizedBox(height: 20),
-                
+
                 // 3. AI 輔助資料概覽 (長輩喜好、習慣、健康注意事項)
                 _buildAiHelperCard(),
                 const SizedBox(height: 20),
+              ] else ...[
+                // 當未選擇長輩時顯示引導訊息
+                Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.person_outline,
+                        size: 48,
+                        color: Colors.grey[400],
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        '尚未選擇長輩',
+                        style: GoogleFonts.notoSansTc(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFF0F172A),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '請在「首頁」或「互動」分頁選擇要關照的長輩，或點擊下方按鈕配對新的長輩裝置',
+                        style: GoogleFonts.notoSansTc(
+                          fontSize: 14,
+                          color: const Color(0xFF64748B),
+                          height: 1.5,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 24),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            // 跳轉到配對頁面
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => CaregiverPairingScreen(
+                                  familyId: widget.userId,
+                                  familyName: _caregiverName,
+                                ),
+                              ),
+                            ).then((_) {
+                              if (widget.onElderUpdated != null) {
+                                widget.onElderUpdated!();
+                              }
+                            });
+                          },
+                          icon: const Icon(Icons.add_circle_outline_rounded, size: 20),
+                          label: const Text('配對新長輩裝置'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF3B82F6),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ).animate().fadeIn(duration: 400.ms),
               ],
 
               // 4. 設定項目 (開關)
@@ -472,7 +542,7 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
                 _buildSwitchItem(
                   Icons.psychology_rounded,
                   'AI 平安智能防護',
-                  '異常生活作息或情緒警示的主動通知',
+                  '異常生活作業或情緒警示的主動通知',
                   _isAiInsightOn,
                   (val) => setState(() => _isAiInsightOn = val),
                   const Color(0xFF8B5CF6),
@@ -608,6 +678,7 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
   }
 
   Widget _buildElderSummaryCard() {
+    if (widget.currentElder == null) return const SizedBox.shrink();
     final elder = widget.currentElder!;
     return Container(
       padding: const EdgeInsets.all(20),
@@ -712,6 +783,7 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
   }
 
   Widget _buildAiHelperCard() {
+    if (widget.currentElder == null) return const SizedBox.shrink();
     if (_isLoadingAiProfile) {
       return Container(
         height: 120,

@@ -48,106 +48,136 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   WidgetsFlutterBinding.ensureInitialized();
   // ★ 背景 handler 在獨立 isolate 運行，必須先初始化 Firebase
   try {
-    await Firebase.initializeApp();
-  } catch (_) {}
-  
-  debugPrint("📩 Background message received: ${message.data}");
-
-  final type = message.data['type'];
-  if (type != 'call-request' && type != 'emergency-call') return;
-
-  // ★ issue 1：過濾「自己發起的來電」。
-  try {
-    final prefs = await SharedPreferences.getInstance();
-    final myId = prefs.getInt('caregiver_id');
-    final callerUserId = int.tryParse('${message.data['callerUserId'] ?? ''}');
-    if (myId != null && callerUserId != null && myId == callerUserId) {
-      debugPrint("🙅 [BG] 略過自己發起的來電 (callerUserId=$callerUserId == me=$myId)");
-      return;
+    // Check if Firebase is already initialized to avoid conflicts
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp();
+      debugPrint('🔥 [BG] Firebase initialized in background handler');
+    } else {
+      debugPrint('🔥 [BG] Using existing Firebase app in background handler');
     }
-
-    final role = prefs.getString('user_role') ?? prefs.getString('saved_role');
-    final roomId = (message.data['roomId'] ?? '').toString();
-    final senderId = (message.data['senderId'] ?? '').toString();
-    final callId = (message.data['callId'] ?? '').toString();
-
-    if (role == 'elder' && type == 'emergency-call') {
-      debugPrint("🚨 [BG] Emergency call for elder, saving pending call and waking app");
-
-      final pendingCall = jsonEncode({
-        'roomId': roomId,
-        'senderId': senderId,
-        'callId': callId,
-        'isEmergency': true,
-        'timestamp': DateTime.now().millisecondsSinceEpoch,
-      });
-      await prefs.setString('pendingAcceptedCall', pendingCall);
-
-      // ★ 直接發送 Intent 啟動應用程式，喚醒裝置並進入視訊房間
-      try {
-        if (defaultTargetPlatform == TargetPlatform.android) {
-          final AndroidIntent intent = AndroidIntent(
-            action: 'android.intent.action.MAIN',
-            package: 'com.example.flutter_application_1',
-            componentName: 'com.example.flutter_application_1.MainActivity',
-            flags: <int>[
-              0x10000000, // FLAG_ACTIVITY_NEW_TASK
-              0x00020000, // FLAG_ACTIVITY_REORDER_TO_FRONT
-              0x20000000, // FLAG_ACTIVITY_SINGLE_TOP
-            ],
-          );
-          await intent.launch();
-        }
-      } catch (e) {
-        debugPrint('AndroidIntent error: $e');
-      }
-      return;
-    }
-
-    // ★ issue 2：長輩端收到「一般」來電時，預先記錄 pendingAcceptedCall（含時間戳），
-    //   讓使用者點擊 CallKit 接聽、App 冷啟動後可直接跳過開機動畫進入視訊房間，
-    //   不再強制喚醒 App，避免與 CallKit 接聽各自啟動 Activity 造成雙實例（issue 1）。
-    if (role == 'elder' && type == 'call-request') {
-      final pendingCall = jsonEncode({
-        'roomId': roomId,
-        'senderId': senderId,
-        'callId': callId,
-        'isEmergency': false,
-        'timestamp': DateTime.now().millisecondsSinceEpoch,
-      });
-      await prefs.setString('pendingAcceptedCall', pendingCall);
-      await _showFullScreenCallkit(message.data);
-      return;
-    }
-
-    // ★ issue 14：家屬端在背景／螢幕關閉時收到長輩的「一般」來電，
-    //   不應強制把 App 帶到前景，只顯示來電通知，由使用者主動點擊接聽。
-    if (role != 'elder' && type == 'call-request') {
-      await _showFullScreenCallkit(message.data);
-      return;
-    }
-  } catch (_) {}
-
-  // 其餘情況（例如家屬端收到緊急來電）：彈出全螢幕 CallKit 並強制將 App 帶到前台
-  try {
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      final AndroidIntent intent = AndroidIntent(
-        action: 'android.intent.action.MAIN',
-        package: 'com.example.flutter_application_1',
-        componentName: 'com.example.flutter_application_1.MainActivity',
-        flags: <int>[
-          0x10000000, // FLAG_ACTIVITY_NEW_TASK
-          0x00020000, // FLAG_ACTIVITY_REORDER_TO_FRONT
-          0x20000000, // FLAG_ACTIVITY_SINGLE_TOP
-        ],
-      );
-      await intent.launch();
-    }
-  } catch (e) {
-    debugPrint('AndroidIntent error (call-request bringToFront): $e');
+  } catch (e, stackTrace) {
+    debugPrint('❌ [BG] Firebase initialization failed: $e');
+    debugPrint('📍 Stack trace: $stackTrace');
+    // Continue processing even if Firebase init fails - we might still be able to show notifications
   }
 
-  await _showFullScreenCallkit(message.data);
+  try {
+    debugPrint("📩 Background message received: ${message.data}");
+
+    final type = message.data['type'];
+    if (type != 'call-request' && type != 'emergency-call') {
+      debugPrint('⚠️ [BG] Ignoring message of type: $type');
+      return;
+    }
+
+    // ★ issue 1：過濾「自己發起的來電」。
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final myId = prefs.getInt('caregiver_id');
+      final callerUserId = int.tryParse('${message.data['callerUserId'] ?? ''}');
+      if (myId != null && callerUserId != null && myId == callerUserId) {
+        debugPrint("🙅 [BG] 略過自己發起的來電 (callerUserId=$callerUserId == me=$myId)");
+        return;
+      }
+
+      final role = prefs.getString('user_role') ?? prefs.getString('saved_role');
+      final roomId = (message.data['roomId'] ?? '').toString();
+      final senderId = (message.data['senderId'] ?? '').toString();
+      final callId = (message.data['callId'] ?? '').toString();
+
+      if (role == 'elder' && type == 'emergency-call') {
+        debugPrint("🚨 [BG] Emergency call for elder, saving pending call and waking app");
+
+        final pendingCall = jsonEncode({
+          'roomId': roomId,
+          'senderId': senderId,
+          'callId': callId,
+          'isEmergency': true,
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
+        });
+        await prefs.setString('pendingAcceptedCall', pendingCall);
+
+        // ★ 直接發送 Intent 啟動應用程式，喚醒裝置並進入視訊房間
+        try {
+          if (defaultTargetPlatform == TargetPlatform.android) {
+            final AndroidIntent intent = AndroidIntent(
+              action: 'android.intent.action.MAIN',
+              package: 'com.example.flutter_application_1',
+              componentName: 'com.example.flutter_application_1.MainActivity',
+              flags: <int>[
+                0x10000000, // FLAG_ACTIVITY_NEW_TASK
+                0x00020000, // FLAG_ACTIVITY_REORDER_TO_FRONT
+                0x20000000, // FLAG_ACTIVITY_SINGLE_TOP
+              ],
+            );
+            await intent.launch();
+          }
+        } catch (e, stackTrace) {
+          debugPrint('❌ [BG] AndroidIntent error: $e');
+          debugPrint('📍 Stack trace: $stackTrace');
+        }
+        return;
+      }
+
+      // ★ issue 2：長輩端收到「一般」來電時，預先記錄 pendingAcceptedCall（含時間戳），
+      //   讓使用者點擊 CallKit 接聽、App 冷啟動後可直接跳過開機動畫進入視訊房間，
+      //   不再強制喚醒 App，避免與 CallKit 接聽各自啟動 Activity 造成雙實例（issue 1）。
+      if (role == 'elder' && type == 'call-request') {
+        final pendingCall = jsonEncode({
+          'roomId': roomId,
+          'senderId': senderId,
+          'callId': callId,
+          'isEmergency': false,
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
+        });
+        await prefs.setString('pendingAcceptedCall', pendingCall);
+        await _showFullScreenCallkit(message.data);
+        return;
+      }
+
+      // ★ issue 14：家屬端在背景／螢幕關閉時收到長輩的「一般」來電，
+      //   不應強制把 App 帶到前景，只顯示來電通知，由使用者主動點擊接聽。
+      if (role != 'elder' && type == 'call-request') {
+        await _showFullScreenCallkit(message.data);
+        return;
+      }
+    } catch (e, stackTrace) {
+      debugPrint('❌ [BG] Error in SharedPreferences processing: $e');
+      debugPrint('📍 Stack trace: $stackTrace');
+      // Continue to show notification even if prefs processing fails
+    }
+
+    // 其餘情況（例如家屬端收到緊急來電）：彈出全螢 céu CallKit 並強制將 App 帶到前台
+    try {
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        final AndroidIntent intent = AndroidIntent(
+          action: 'android.intent.action.MAIN',
+          package: 'com.example.flutter_application_1',
+          componentName: 'com.example.flutter_application_1.MainActivity',
+          flags: <int>[
+            0x10000000, // FLAG_ACTIVITY_NEW_TASK
+            0x00020000, // FLAG_ACTIVITY_REORDER_TO_FRONT
+            0x20000000, // FLAG_ACTIVITY_SINGLE_TOP
+          ],
+        );
+        await intent.launch();
+      }
+    } catch (e, stackTrace) {
+      debugPrint('❌ [BG] AndroidIntent error (call-request bringToFront): $e');
+      debugPrint('📍 Stack trace: $stackTrace');
+    }
+
+    await _showFullScreenCallkit(message.data);
+  } catch (e, stackTrace) {
+    debugPrint('❌ [BG] Unexpected error in firebaseMessagingBackgroundHandler: $e');
+    debugPrint('📍 Stack trace: $stackTrace');
+    // Ensure we don't silently fail - still try to show a basic notification if possible
+    try {
+      await _showFullScreenCallkit(message.data);
+    } catch (e2) {
+      debugPrint('❌ [BG] Failed to show CallKit notification: $e2');
+    }
+  }
 }
 
 /// ★ 在背景/鎖屏顯示全螢幕 CallKit 來電（issue 2 & 3 的核心修復）。

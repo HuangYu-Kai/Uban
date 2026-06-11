@@ -45,10 +45,17 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   bool _isSpeakerOn = true;
   bool _isFrontCamera = true;
   bool _mediaInitialized = false;  // ★ 追蹤媒體是否已初始化
+  bool _callConnecting = true;   // ★ 追蹤通話是否正在連線中
+  bool _callConnected = false;   // ★ 追蹤通話是否已成功連線
+  bool _callFailed = false;      // ★ 追蹤通話是否連線失敗
+  String _callErrorMessage = ''; // ★ 通話失敗時的錯誤訊息
 
   // ★ 通話計時器
   Timer? _callTimer;
   int _callDurationSeconds = 0;
+
+  // ★ 通話逾時計時器
+  Timer? _callTimeoutTimer;
 
   @override
   void initState() {
@@ -57,6 +64,13 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       Helper.setAndroidAudioConfiguration(AndroidAudioConfiguration.communication);
     }
     _initCall();
+    // 設定通話逾時（30秒）
+    _callTimeoutTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (_callConnecting && !_callConnected && !_callFailed) {
+        // 如果已經連線中超過30秒且仍未連線，則視為失敗
+        // 這裡其實是每5秒檢查一次，但實際逾時時間在 _initCall 中控制
+      }
+    });
   }
 
   Future<void> _initCall() async {
@@ -69,6 +83,9 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
         setState(() {
           _remoteRenderer.srcObject = stream;
           _inCall = true;
+          _callConnecting = false;
+          _callConnected = true;
+          _callFailed = false;
         });
         _startCallTimer();
       }
@@ -133,13 +150,20 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       }
     } catch (e) {
       debugPrint("❌ Failed to initialize media: $e");
+      if (mounted) {
+        setState(() {
+          _callConnecting = false;
+          _callFailed = true;
+          _callErrorMessage = '無法開啟攝像頭或麥克風: $e';
+        });
+      }
     }
 
     // ★ 自動讀取使用者 ID 與名稱
     final prefs = await SharedPreferences.getInstance();
     final String role = prefs.getString('user_role') ?? 'family';
-    final int? userId = (role == 'elder') 
-        ? prefs.getInt('caregiver_id') 
+    final int? userId = (role == 'elder')
+        ? prefs.getInt('caregiver_id')
         : (prefs.getInt('user_id') ?? prefs.getInt('caregiver_id'));
     final String userName = (role == 'elder')
         ? (prefs.getString('caregiver_name') ?? '長輩')
@@ -151,9 +175,9 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       debugPrint("🔌 [VideoCallScreen] Socket 未連線，開始連線...");
       final String? fcmToken = await FirebaseMessaging.instance.getToken();
       _signaling.connect(
-        widget.roomId, 
-        'family', 
-        userId: userId, 
+        widget.roomId,
+        'family',
+        userId: userId,
         deviceName: userName,
         fcmToken: fcmToken,
       );
@@ -188,6 +212,17 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
         }
       });
     }
+
+    // 設定通話逾時（30秒後如果仍未連線，則視為失敗）
+    Future.delayed(const Duration(seconds: 30), () {
+      if (mounted && _callConnecting && !_callConnected) {
+        setState(() {
+          _callConnecting = false;
+          _callFailed = true;
+          _callErrorMessage = '連線逾時，請檢查網路連接或稍後再試';
+        });
+      }
+    });
   }
 
   // ★ 通話計時器
@@ -294,9 +329,10 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   @override
   void dispose() {
     _stopCallTimer();
+    _callTimeoutTimer?.cancel();
     // ★ 修復：只結束 WebRTC，不要斷開 Socket，這樣回到 FamilyMainScreen 時才能繼續接收推播
     _signaling.hangUp(disconnectSocket: false, disposeLocalStream: false);
-    
+
     // ★ 清空 UI 相關的 callbacks，讓全域的 callbacks 重拾控制權
     _signaling.onCallAcceptedByRemote = null;
     _signaling.onAddRemoteStream = null;
@@ -306,10 +342,10 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     _signaling.onCallBusy = null;
     _signaling.onJoinFailed = null;
     _signaling.onConnectionLost = null;
-    
+
     _localRenderer.dispose();
     _remoteRenderer.dispose();
-    
+
     if (!kIsWeb && Platform.isAndroid) {
       Helper.setAndroidAudioConfiguration(AndroidAudioConfiguration(
         manageAudioFocus: false,
@@ -321,7 +357,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       ));
       Helper.clearAndroidCommunicationDevice();
     }
-    
+
     super.dispose();
   }
 
@@ -350,16 +386,61 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const CircularProgressIndicator(color: Colors.white70),
-                          const SizedBox(height: 24),
-                          Text(
-                            "正在連線中...",
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.8),
-                              fontSize: 18,
-                              letterSpacing: 1.2,
+                          if (_callFailed)
+                            Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.wifi_off,
+                                  color: Colors.redAccent,
+                                  size: 48,
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  _callErrorMessage.isNotEmpty
+                                      ? _callErrorMessage
+                                      : '通話連線失敗',
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.8),
+                                    fontSize: 16,
+                                  ),
+                                ),
+                                const SizedBox(height: 24),
+                                ElevatedButton.icon(
+                                  onPressed: () {
+                                    // 重試連線
+                                    setState(() {
+                                      _callConnecting = true;
+                                      _callFailed = false;
+                                      _callErrorMessage = '';
+                                      _callConnected = false;
+                                    });
+                                    _initCall(); // 重新初始化通話
+                                  },
+                                  icon: const Icon(Icons.refresh),
+                                  label: const Text('重試連線'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.blueAccent,
+                                  ),
+                                ),
+                              ],
+                            )
+                          else
+                            Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const CircularProgressIndicator(color: Colors.white70),
+                                const SizedBox(height: 24),
+                                Text(
+                                  "正在連線中...",
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.8),
+                                    fontSize: 18,
+                                    letterSpacing: 1.2,
+                                  ),
+                                ),
+                              ],
                             ),
-                          ),
                         ],
                       ),
                     ),
