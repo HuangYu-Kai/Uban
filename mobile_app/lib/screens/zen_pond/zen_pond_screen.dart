@@ -77,7 +77,7 @@ class ZenPondScreenState extends State<ZenPondScreen> {
         colorType: LeafColorType.yellow, // 黃色 = 長期記憶葉
         imageUrl: imageUrl,
         videoId: videoId,
-        playTts: true,
+        playTts: false,
       );
 
       // 將推播的新記憶落葉加入時光日記
@@ -189,7 +189,12 @@ class _ZenPondContentState extends State<_ZenPondContent>
           onStatus: (sttStatus) {
             debugPrint('ZenPond STT status: $sttStatus');
             if ((sttStatus == 'done' || sttStatus == 'notListening') && _isRecording) {
-              _stopListening();
+              // 延遲 600 毫秒執行，給 finalResult 優先發送的機會
+              Future.delayed(const Duration(milliseconds: 600), () {
+                if (mounted && _isRecording) {
+                  _stopListening();
+                }
+              });
             }
           },
           onError: (err) {
@@ -275,6 +280,10 @@ class _ZenPondContentState extends State<_ZenPondContent>
                     ? result.recognizedWords 
                     : '聆聽中，請說話...';
               });
+              // 當識別出最終結果且還在錄音時，立即觸發停止並發送，避免競態問題
+              if (result.finalResult && _isRecording) {
+                _stopListening();
+              }
             }
           },
           listenFor: const Duration(seconds: 25),
@@ -617,6 +626,7 @@ class _ZenPondContentState extends State<_ZenPondContent>
                 LotusLeafCard(
                   key: ValueKey(item.id),
                   message: item.message,
+                  imageUrl: item.imageUrl,
                   onDismiss: () => controller.dismissLotus(item),
                 ),
 
@@ -1183,6 +1193,7 @@ class _ZenPondContentState extends State<_ZenPondContent>
     _isDiaryDialogOpen = true;
 
     final controllerInstance = Provider.of<ZenPondController>(context, listen: false);
+    controllerInstance.stopLeafTts(); // 開啟日記時，停止朗讀落葉
 
     showDialog(
       context: context,

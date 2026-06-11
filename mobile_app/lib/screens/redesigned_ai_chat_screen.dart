@@ -387,13 +387,28 @@ class _RedesignedAiChatScreenState extends State<RedesignedAiChatScreen>
           top: BorderSide(color: const Color(0xFFF0F1F3), width: 1),
         ),
       ),
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
+      padding: const EdgeInsets.fromLTRB(12, 6, 12, 16),
       child: SafeArea(
         top: false,
-        child: Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            // Voice button
-            GestureDetector(
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8.0),
+              child: Text(
+                '＊AI 回覆僅供生活陪伴，不構成任何醫療診斷或建議。＊',
+                style: GoogleFonts.notoSansTc(
+                  fontSize: 10,
+                  color: Colors.grey[500],
+                  fontWeight: FontWeight.w500,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+            Row(
+              children: [
+                // Voice button
+                GestureDetector(
               onLongPress: () {
                 setState(() => _isRecording = true);
               },
@@ -516,6 +531,8 @@ class _RedesignedAiChatScreenState extends State<RedesignedAiChatScreen>
                       ),
               ),
             ),
+          ],
+        ),
           ],
         ),
       ),
