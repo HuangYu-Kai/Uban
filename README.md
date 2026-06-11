@@ -400,6 +400,62 @@ void initPedometer() {
 
 ## 更新日誌
 
+### 2026-06-11 📞 通話/監視器/綁定 15 項問題修復
+
+**修復來電與視訊通話流程、新增「監視器」角色、修正監控配對與一鍵監看、修復解除綁定按鈕，並補強多處黑/白屏的安全導航。**
+
+> ⚠️ **前提限制**：本次修復**不涉及伺服器與資料庫連線設定**（`.env`、`database.py` 連線邏輯、Tailscale Funnel、TURN IP/帳密、Port 8000/3306/3478 等均未變動）。`socket_app.py`、`pairing.py` 僅做事件處理/查詢邏輯調整，未動連線層。
+
+#### 🅰️ 原生層與背景喚醒
+
+1. **重複 App 實例**：`AndroidManifest.xml` 的主 Activity 設定 `android:launchMode="singleTask"`，避免 CallKit 接聽來電時從背景再啟動第二個 Activity 實例。
+2. **接聽後直接進入視訊房間（含緊急通話）**：
+   - `main.dart` 的 `_firebaseMessagingBackgroundHandler` 針對長輩端的一般來電與緊急來電，皆會先寫入全域 `pendingAcceptedCall`，緊急來電另外透過 AndroidIntent 強制喚醒 App；家屬端一般來電僅顯示 CallKit、不強制喚醒（對應第 14 項）。
+   - `splash_screen.dart` 新增 `_resolveElderDestination()`：在「導航當下」重新檢查 `pendingAcceptedCall`，若有待接聽來電則直接導向 `ElderScreen(initialCallData: ...)`，略過長輩主畫面，模擬「像緊急來電一樣直接進房」。
+   - `main.dart` 的 `_navigateToVideoCall()` 新增以 `Signaling().lastProcessedCallId` 比對的去重判斷，避免冷啟動時 `_checkInitialCall()` 對已處理過的來電重複寫入 `pendingAcceptedCall`，導致通話結束後被誤判為新來電。
+
+#### 🅱️ 視訊通話流程
+
+3. **緊急通話掛斷後黑屏**：`elder_screen.dart` 的掛斷流程在非 CCTV 模式下改用新增的 `safeNavigateBack(context, fallbackScreen)`（定義於 `globals.dart`）——若導航堆疊可 `pop` 則返回上一頁，否則 `pushAndRemoveUntil` 到 `ElderHomeScreen`，避免「無上一頁可回」造成黑屏。
+4. **一般／緊急通話房間互斥**：後端 `socket_app.py` 以 `comm_elder_{elder_id}` / `monitor_elder_{elder_id}` 區分雙向通話與單向監控房間，並透過 `has_comm_elder_device()` 等輔助函式判斷裝置應歸屬的房間與角色，避免一般通話與緊急通話互相干擾。
+5. **家屬端 WebRTC 連線後斷線**：`video_call_screen.dart` 的 `onConnectionLost` 在偵測到無法復原的中斷（超過 `signaling.dart` 內建 2 秒重連寬限期）後，提示「連線中斷，通話已結束」並安全結束畫面。
+9. **長輩端前後鏡頭切換**：`elder_screen.dart` 新增切換鏡頭按鈕，呼叫 `Helper.switchCamera(track)`（flutter_webrtc）切換前/後鏡頭。
+10. **黑/白屏安全導航回首頁**：新增 `globals.dart` 的 `safeNavigateBack(context, fallbackScreen)` 通用導航輔助函式，套用於 `elder_screen.dart` 共 5 處（通話被拒接、連線中斷、一般掛斷、緊急掛斷等），canPop 時返回上一頁，否則安全導向 `ElderHomeScreen`／`ElderScreen`，避免卡在無回應的黑/白畫面。`video_call_screen.dart`／`camera_screen.dart` 皆固定由既有畫面 `Navigator.push` 進入，`canPop()` 恆為真，故無需額外處理。
+11. **切換關照長輩後來電顯示錯誤名稱**：後端 `socket_app.py` 於轉發 `call-request` / `emergency-call` 時一併帶上 `senderName`；前端 `signaling.dart` 的 `CallRequestCallback` typedef 新增可選參數 `[String? senderName]`。本次一併修正先前未同步更新型別簽名、導致 `flutter analyze` 報錯的 9 處 callback（`main.dart`×3、`elder_home_screen.dart`、`family_dashboard_screen.dart`×2、`family_dashboard_view.dart`×2、`family_main_screen.dart`、`socketio_test_screen.dart`×3）。
+15. **通話拒接/忙線時呼叫端正確收尾**：`elder_screen.dart`（長輩為呼叫端）與 `video_call_screen.dart`（家屬為呼叫端）的 `onCallBusy` 回呼皆會停止通話計時器、提示「對方目前無法接聽通話」並安全結束等待畫面。
+
+#### 🅲 監視器角色與配對
+
+6. **監視器配對碼產生失敗／白屏**：根因為兩個獨立 bug——
+   - `api_service.dart` 的 `createMonitorSetup` / `resolveMonitorSetup` 呼叫的 URL 缺少 `/pairing` 前綴（`/api/monitor_setup` → 應為 `/api/pairing/monitor_setup`），導致 404。
+   - 後端回傳欄位為 `code`，但前端 `resolveMonitorSetup` 送出的請求欄位是 `pairing_code`、`family_interaction_tab.dart` 讀取回應時也讀取 `data['pairing_code']`（恆為 null）。三處欄位/路徑已全部修正為 `code` 與正確路徑。
+7. **新增「監視器」角色**：原本 `role_selection_screen.dart` 已有完整的監視器配對流程，但從未被導航使用（孤兒畫面）。新增 `monitor_pairing_screen.dart`，在 `identification_screen.dart` 的角色選擇頁新增第三張「我是監控設備」卡片導向此頁。輸入家屬產生的 6 位數綁定碼後，呼叫 `ApiService.resolveMonitorSetup`，並寫入與一般長輩端**相同**的 SharedPreferences 欄位（`caregiver_id`、`caregiver_name`、`user_role`、`elder_room_id`、`saved_device_name`、`saved_is_cctv`、`access_token`），確保 App 重啟後 `splash_screen.dart` 能正確還原為監控機模式並進入 CCTV 版 `ElderScreen`。
+8. **單向視訊監控畫面**：`camera_screen.dart` 的 `onElderDevicesUpdate` 原先讀取不存在的 `monitors.first['socketId']`（恆為 null，導致 `createOffer` 從未被呼叫）。後端 `socket_app.py` 的 `elder-devices-update` 實際以 `id` 作為裝置 socket id 欄位，已修正為 `monitors.first['id']`。
+12.（同上方第 9 項，前後鏡頭切換亦適用於監視器設備的長輩端 `ElderScreen`）
+13.（見下方「🅳」）— 移除「預留方案B」徽章：刪除 `family_interaction_tab.dart` 中「遠端視訊監控」旁多餘的「預留方案B」灰色徽章。
+
+#### 🅳 解除綁定
+
+13. **「解除與此長輩的綁定關係」按鈕無作用**：`family_data_tab.dart` 的 `_navigateToElderEdit()` 中 `onUnbind` 回呼原本只是 `Navigator.pop` 後刷新，未呼叫任何 API。已比照 `family_settings_view.dart` 既有的 `_showUnbindConfirmDialog` 寫法，新增確認對話框（顯示長輩姓名與「永久刪除、無法復原」警語），確認後呼叫 `ApiService.unbindElder(widget.userId, widget.currentElder!.id)`，成功後顯示提示並呼叫 `widget.onElderUpdated!()`（觸發 `FamilyMainScreen._refreshElders()` 重新整理長輩列表與目前選中的長輩）。
+   - 後端 `routers/pairing.py` 的 `unbind_elder` **維持原有完整刪除邏輯**（級聯刪除 `call_record`／`activity_log`／`elder_fellowship_data`／`elder_talk_topics`／`family_message`／`family_elder_relationship`／`get_appearance_list`／`pairing_code`／`elder_profile`／`user_account_data` 及 Pinecone 記憶，並對相關 socket 房間發送 `force-logout` / `elder-unbound`），此為使用者明確指示保留的行為，**未修改**。
+
+#### 🧪 驗證結果
+
+```
+✅ flutter analyze  — 0 errors（124 項為既有 info/warning，如 withOpacity deprecated 等，非本次範圍）
+✅ python3 -m compileall uban-api — 全部通過
+```
+
+#### ⚠️ 可能發生的問題與後續注意事項
+
+- **解除綁定為不可逆操作**：前端已加二次確認對話框，但後端為「完整刪除」（含對話紀錄、Pinecone 記憶），目前無備份/復原機制。若未來需要「軟刪除」或保留歷史紀錄，需另行設計 schema（會牽涉資料庫結構變更，請另行評估）。
+- **`role_selection_screen.dart` 與 `monitor_pairing_screen.dart` 重複**：前者為孤兒畫面（未被任何導航引用），後者為本次新增、實際使用的監視器配對畫面。兩者邏輯相近但持久化的 SharedPreferences 欄位不同，建議後續清理 `role_selection_screen.dart` 以免日後誤用。
+- **`pendingAcceptedCall` 競態條件**：issue 2/10 的修正集中在「導航當下」重新檢查待接聽來電與 `lastProcessedCallId` 去重，邏輯路徑較多（冷啟動 / 背景喚醒 / 前景 Socket 事件三種來源），建議實機分別測試「App 完全關閉時收到一般來電」「App 在背景時收到緊急來電」「通話中切換 App 後返回」三種情境。
+- **`CallRequestCallback` 型別簽名**：`signaling.dart` 的 `onCallRequest` / `onEmergencyCall` / `onCancelCall` typedef 已含 `[String? senderName]` 可選參數，未來新增此類 callback 時需保持簽名一致，否則 `flutter analyze` 會回報 `invalid_assignment` 錯誤（本次已一併修正既有 9 處遺漏）。
+- **監視器角色尚未涵蓋的場景**：`monitor_pairing_screen.dart` 綁定後即視為長輩端裝置（`isCCTVMode: true`），若該綁定碼已過期或被重複使用，僅以 SnackBar 提示「綁定碼無效或已過期」，未提供重新產生綁定碼的捷徑（需返回家屬端操作）。
+
+---
+
 ### 2026-05-26 📰 代誌報給你知（沉浸式新聞播放器）技術文件補完
 **補齊代誌報給你知（新聞朗讀播放器）的完整系統設計與底層同步定位技術文檔**
 

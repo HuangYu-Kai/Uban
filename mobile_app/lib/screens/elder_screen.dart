@@ -12,6 +12,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import '../services/signaling.dart';
 import '../widgets/heartbeat_overlay.dart';
 import 'identification_screen.dart';
+import 'elder_home_screen.dart';
 import '../globals.dart';
 
 class ElderScreen extends StatefulWidget {
@@ -44,10 +45,12 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   bool _isInCall = false;
   bool _isCameraOff = true; // ★ 攝像頭預設關閉
   bool _isMuted = false;
+  bool _isFrontCamera = true; // ★ issue 12：前/後鏡頭狀態
   bool _mediaInitialized = false;
   Timer? _callTimer;
   int _callDuration = 0; // 秒數
-  
+  int? _userId; // ★ issue 3/10：用於安全導航回主畫面時建構 ElderHomeScreen
+
   // ★ 新增：用於生成新格式的房間ID
   late String _formattedRoomId;
   
@@ -73,7 +76,12 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     
     // ★ 初始化格式化的房間ID
     _formattedRoomId = _getFormattedRoomId(widget.roomId);
-    
+
+    // ★ issue 8：CCTV/監控模式下，鏡頭必須預設開啟，否則監視器端只會看到黑畫面
+    if (widget.isCCTVMode) {
+      _isCameraOff = false;
+    }
+
     // ★ Bug 16 解決方案：監聽從系統層 (main.dart) 傳進來的 CallKit 接聽動作
     pendingAcceptedCall.addListener(_onPendingCallChanged);
 
@@ -130,14 +138,45 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     if (pendingAcceptedCall.value != null) {
       final args = pendingAcceptedCall.value!;
       pendingAcceptedCall.value = null; // Consume the event
-      
+
       final senderId = args['senderId']!;
       final roomId = args['roomId']!;
       final callId = args['callId'];
-      
-      debugPrint("📞 Detected Accepted Call from $senderId (Room: $roomId, CallId: $callId). Bridging...");
-      
-      _handleAcceptedCallFromBackground(senderId, callId: callId);
+      final isEmergency = args['isEmergency'] == 'true';
+
+      debugPrint("📞 Detected Accepted Call from $senderId (Room: $roomId, CallId: $callId, Emergency: $isEmergency). Bridging...");
+
+      // ★ issue 5：CallKit 接聽與背景 FCM 路徑可能對「同一通」來電各自寫入一次
+      //   pendingAcceptedCall。若 callId 與目前正在處理/已建立的通話相同，視為重複觸發，
+      //   不可結束已建立好的通話（否則會造成 issue 5 的「連線後立刻斷線」）。
+      final bool isSameOngoingCall = _isInCall &&
+          callId != null &&
+          callId == _signaling.lastProcessedCallId;
+
+      if (isSameOngoingCall) {
+        debugPrint("ℹ️ [ElderScreen] 略過重複的 pendingAcceptedCall（與目前通話 callId 相同: $callId）");
+        return;
+      }
+
+      // ★ issue 4：一般通話房與緊急通話房不可並存。
+      //   若目前已有「不同」通話進行中，先結束舊連線，再接聽新來電。
+      if (_isInCall) {
+        debugPrint("⚠️ [ElderScreen] 已有通話進行中，先結束舊通話以接聽新來電");
+        _callTimer?.cancel();
+        _signaling.hangUp(disconnectSocket: false, disposeLocalStream: false);
+        if (mounted) {
+          setState(() {
+            _remoteRenderer.srcObject = null;
+            _isInCall = false;
+          });
+        }
+      }
+
+      if (isEmergency) {
+        _handleEmergencyAccept(senderId, callId: callId);
+      } else {
+        _handleAcceptedCallFromBackground(senderId, callId: callId);
+      }
     }
   }
 
@@ -215,6 +254,13 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     });
 
     _signaling.onJoinFailed = (errorMessage) {
+      // ★ issue 5：通話已建立時，忽略遲到的 join-failed（例如重新 join 房間時的競態），
+      //   避免誤把進行中的通話導向「連線失敗」對話框，間接觸發 dispose -> hangUp ->
+      //   end-call，導致家屬端被彈回主畫面、長輩端畫面變黑。
+      if (_isInCall || _signaling.peerConnection != null) {
+        debugPrint("⚠️ [ElderScreen] 忽略通話進行中收到的 join-failed: $errorMessage");
+        return;
+      }
       if (mounted) {
         HapticFeedback.heavyImpact();
         Future.delayed(const Duration(milliseconds: 200), () {
@@ -228,10 +274,11 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
             content: Text(errorMessage),
             actions: [
               ElevatedButton(
-                onPressed: () { 
-                  Navigator.pop(context);
-                  Navigator.pop(context);
-                }, 
+                onPressed: () {
+                  Navigator.pop(context); // 關閉對話框
+                  // ★ issue 10：安全返回主畫面，避免 pop 後無上一頁造成黑屏
+                  safeNavigateBack(context, _buildFallbackHome());
+                },
                 child: const Text('確定')
               )
             ],
@@ -257,6 +304,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     final prefs = await SharedPreferences.getInstance();
     final int? actualUserId = prefs.getInt('caregiver_id');
     final dynamic resolvedUserId = actualUserId ?? widget.roomId;
+    _userId = actualUserId;
     
     // ★ 修復：若 Socket 已經連線（從 ElderHomeScreen 傳承下來），則不要重新連線，
     //   否則會導致原本的 callbacks 被覆寫。若是從 CCTV 模式直接進入，則會在此處連線。
@@ -307,17 +355,16 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     _signaling.onCallEnded = () {
       _callTimer?.cancel();
       if (mounted) {
-        setState(() { 
-          _remoteRenderer.srcObject = null; 
-          _status = "通話結束"; 
-          _isInCall = false; 
+        setState(() {
+          _remoteRenderer.srcObject = null;
+          _status = "通話結束";
+          _isInCall = false;
         });
-        
+
         // ★ 只有非 CCTV 模式才退出畫面
         if (!widget.isCCTVMode) {
-          if (mounted) {
-            Navigator.of(context).pop();
-          }
+          // ★ issue 3/10：通話結束後安全返回，若無上一頁則回到長輩主畫面，避免黑屏
+          safeNavigateBack(context, _buildFallbackHome());
         }
       }
     };
@@ -327,7 +374,31 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("家人目前無法接聽通話")),
         );
-        Navigator.of(context).pop();
+        // ★ issue 15：對方拒接/忙線時，呼叫端結束「等待連線」狀態並安全返回
+        _callTimer?.cancel();
+        setState(() {
+          _remoteRenderer.srcObject = null;
+          _status = "通話結束";
+          _isInCall = false;
+        });
+        if (!widget.isCCTVMode) {
+          safeNavigateBack(context, _buildFallbackHome());
+        }
+      }
+    };
+
+    // ★ issue 5：通話中發生無法復原的連線中斷（已超過 signaling.dart 的 2 秒重連寬限期）
+    _signaling.onConnectionLost = () {
+      _callTimer?.cancel();
+      if (mounted) {
+        setState(() {
+          _remoteRenderer.srcObject = null;
+          _status = "連線中斷";
+          _isInCall = false;
+        });
+        if (!widget.isCCTVMode) {
+          safeNavigateBack(context, _buildFallbackHome());
+        }
       }
     };
 
@@ -435,6 +506,16 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     }
   }
 
+  // ★ issue 12：切換前後鏡頭
+  Future<void> _switchCamera() async {
+    final videoTracks = _signaling.localStream?.getVideoTracks();
+    if (videoTracks == null || videoTracks.isEmpty) return;
+    await Helper.switchCamera(videoTracks.first);
+    if (mounted) {
+      setState(() => _isFrontCamera = !_isFrontCamera);
+    }
+  }
+
   // ★ 新增：切換靜音
   void _toggleMute() {
     if (mounted) {
@@ -473,18 +554,26 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       _signaling.sendCancelCall(_formattedRoomId);  // ★ 使用格式化的房間ID
     }
     _signaling.hangUp(disconnectSocket: false, disposeLocalStream: false);
-    setState(() { 
-      _remoteRenderer.srcObject = null; 
-      _status = "通話結束"; 
-      _isInCall = false; 
+    setState(() {
+      _remoteRenderer.srcObject = null;
+      _status = "通話結束";
+      _isInCall = false;
     });
 
     // ★ 只有非 CCTV 模式才自動回到首頁
     if (!widget.isCCTVMode) {
-      if (mounted) {
-        Navigator.of(context).pop();
-      }
+      // ★ issue 3/10：安全返回，若無上一頁則回到長輩主畫面，避免黑屏
+      safeNavigateBack(context, _buildFallbackHome());
     }
+  }
+
+  // ★ issue 3/10：安全導航用的長輩主畫面（在無法 pop 時作為退路）
+  Widget _buildFallbackHome() {
+    return ElderHomeScreen(
+      userId: _userId ?? 0,
+      userName: widget.deviceName,
+      roomId: widget.roomId,
+    );
   }
 
   @override
@@ -501,6 +590,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     _signaling.onCallAcceptedByRemote = null;
     _signaling.onCallBusy = null;
     _signaling.onCallEnded = null;
+    _signaling.onConnectionLost = null;
     _signaling.onAddRemoteStream = null;
     _signaling.onLocalStream = null;
     _signaling.onJoinFailed = null;
@@ -657,6 +747,29 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
                                 ),
                               ),
                               
+                              // ★ issue 12：前後鏡頭切換按鈕
+                              Container(
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black26,
+                                      blurRadius: 8,
+                                    ),
+                                  ],
+                                ),
+                                child: FloatingActionButton(
+                                  onPressed: _isCameraOff ? null : _switchCamera,
+                                  heroTag: 'switchCamera',
+                                  mini: true,
+                                  backgroundColor: _isCameraOff ? Colors.grey.shade400 : Colors.blue.shade500,
+                                  child: Icon(
+                                    _isFrontCamera ? Icons.cameraswitch : Icons.cameraswitch_outlined,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+
                               // 靜音按鈕
                               Container(
                                 decoration: BoxDecoration(

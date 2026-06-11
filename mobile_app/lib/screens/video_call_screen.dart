@@ -103,6 +103,17 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       }
     };
 
+    // ★ issue 5：通話中發生無法復原的連線中斷（已超過 signaling.dart 的 2 秒重連寬限期）
+    _signaling.onConnectionLost = () {
+      if (mounted) {
+        _stopCallTimer();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('連線中斷，通話已結束')),
+        );
+        Navigator.of(context).pop();
+      }
+    };
+
     // ★ 接聽回達後由家屬端觸發 createOffer（唯一入口，防止重複 Offer）
     _signaling.onCallAcceptedByRemote = (accepterId, callId) {
       debugPrint("✅ [VideoCallScreen] Target Accepted ($accepterId), sending Offer...");
@@ -294,6 +305,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     _signaling.onCallEnded = null;
     _signaling.onCallBusy = null;
     _signaling.onJoinFailed = null;
+    _signaling.onConnectionLost = null;
     
     _localRenderer.dispose();
     _remoteRenderer.dispose();

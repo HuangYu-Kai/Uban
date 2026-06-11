@@ -87,6 +87,14 @@ class _SplashScreenState extends State<SplashScreen> {
       final String? effectiveUserName = prefs.getString('caregiver_name');
       final String? effectiveLocalRole = prefs.getString('user_role');
 
+      // ★ issue 2：先以本機紀錄的角色預先設置全域 appRole，
+      //   避免在等待 API 回應期間（例如冷啟動時 CallKit 的接聽事件搶先觸發），
+      //   main.dart 的 _navigateToVideoCall 因 appRole 仍是 null 而誤判為家屬端，
+      //   導致長輩端被推到錯誤的 VideoCallScreen。下方 API 成功後會再次校正。
+      if (effectiveLocalRole != null) {
+        appRole = effectiveLocalRole;
+      }
+
       if (effectiveUserId != null && effectiveUserName != null) {
         // 先嘗試獲取當前使用者資訊，以驗證連線與角色
         try {
@@ -107,30 +115,19 @@ class _SplashScreenState extends State<SplashScreen> {
             final bool isCCTV = prefs.getBool('saved_is_cctv') ?? false;
             final String deviceName = prefs.getString('saved_device_name') ?? effectiveUserName;
             final String elderRoomId = apiElderId ?? prefs.getString('elder_room_id') ?? effectiveUserId.toString();
-            
-            if (isCCTV) {
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => ElderScreen(
-                    roomId: elderRoomId,
-                    isCCTVMode: true,
-                    deviceName: deviceName,
-                  ),
+
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) => _resolveElderDestination(
+                  isCCTV: isCCTV,
+                  deviceName: deviceName,
+                  elderRoomId: elderRoomId,
+                  effectiveUserId: effectiveUserId,
+                  effectiveUserName: effectiveUserName,
                 ),
-              );
-            } else {
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => ElderHomeScreen(
-                    userId: effectiveUserId,
-                    userName: effectiveUserName,
-                    roomId: elderRoomId,
-                  ),
-                ),
-              );
-            }
+              ),
+            );
             return;
           }
 
@@ -170,30 +167,19 @@ class _SplashScreenState extends State<SplashScreen> {
               final bool isCCTV = prefs.getBool('saved_is_cctv') ?? false;
               final String deviceName = prefs.getString('saved_device_name') ?? effectiveUserName;
               final String elderRoomId = prefs.getString('elder_room_id') ?? effectiveUserId.toString();
-              
-              if (isCCTV) {
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => ElderScreen(
-                      roomId: elderRoomId,
-                      isCCTVMode: true,
-                      deviceName: deviceName,
-                    ),
+
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => _resolveElderDestination(
+                    isCCTV: isCCTV,
+                    deviceName: deviceName,
+                    elderRoomId: elderRoomId,
+                    effectiveUserId: effectiveUserId,
+                    effectiveUserName: effectiveUserName,
                   ),
-                );
-              } else {
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => ElderHomeScreen(
-                      userId: effectiveUserId,
-                      userName: effectiveUserName,
-                      roomId: elderRoomId,
-                    ),
-                  ),
-                );
-              }
+                ),
+              );
             } else {
               _goNext();
             }
@@ -214,6 +200,44 @@ class _SplashScreenState extends State<SplashScreen> {
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(builder: (context) => const IdentificationScreen()),
+    );
+  }
+
+  /// ★ issue 2/10：決定長輩端啟動後要進入哪個畫面。
+  /// 在等待 SharedPreferences/API 期間，若收到待接聽的來電（一般或緊急），
+  /// `pendingAcceptedCall` 會被填入。此處在「導航當下」重新檢查一次，
+  /// 若有待接聽來電則直接跳過長輩主畫面，進入 ElderScreen 並帶上通話資料，
+  /// 模擬「像緊急來電一樣直接進入視訊房間」的需求。
+  Widget _resolveElderDestination({
+    required bool isCCTV,
+    required String deviceName,
+    required String elderRoomId,
+    required int effectiveUserId,
+    required String effectiveUserName,
+  }) {
+    final pending = pendingAcceptedCall.value;
+    if (pending != null && !isCCTV) {
+      pendingAcceptedCall.value = null; // 消費掉，避免主畫面重複處理
+      debugPrint("🚨 [Splash] 偵測到待接聽來電，直接進入 ElderScreen");
+      return ElderScreen(
+        roomId: pending['roomId'] ?? elderRoomId,
+        deviceName: deviceName,
+        initialCallData: pending,
+      );
+    }
+
+    if (isCCTV) {
+      return ElderScreen(
+        roomId: elderRoomId,
+        isCCTVMode: true,
+        deviceName: deviceName,
+      );
+    }
+
+    return ElderHomeScreen(
+      userId: effectiveUserId,
+      userName: effectiveUserName,
+      roomId: elderRoomId,
     );
   }
 

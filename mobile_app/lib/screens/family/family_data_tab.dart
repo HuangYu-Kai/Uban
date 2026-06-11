@@ -181,12 +181,10 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
         builder: (context) => ElderProfileEditScreen(
           elderData: elderData,
           familyId: widget.userId,
-          onUnbind: () async {
-            // unbind confirmation is handled in ElderProfileEditScreen
+          onUnbind: () {
+            // ★ issue 13：先關閉編輯頁，回到 FamilyDataTab 後再顯示解除綁定確認對話框
             Navigator.pop(context);
-            if (widget.onElderUpdated != null) {
-              widget.onElderUpdated!();
-            }
+            _showUnbindConfirmDialog();
           },
         ),
       ),
@@ -196,6 +194,53 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
         widget.onElderUpdated!();
       }
     });
+  }
+
+  // ★ issue 13：解除綁定確認對話框，呼叫後端 unbind API 並在成功後刷新長輩列表
+  void _showUnbindConfirmDialog() {
+    if (widget.currentElder == null) return;
+    final elder = widget.currentElder!;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('解除綁定', style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold)),
+        content: Text(
+          '確定要解除與「${elder.name}」的綁定嗎？\n\n警告：這將會永久刪除該長輩的所有資料與對話紀錄，無法復原。',
+          style: GoogleFonts.notoSansTc(color: Colors.redAccent, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('取消', style: GoogleFonts.notoSansTc()),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () async {
+              final navigator = Navigator.of(context);
+              final messenger = ScaffoldMessenger.of(context);
+              final result = await ApiService.unbindElder(widget.userId, elder.id);
+              if (!mounted) return;
+              if (result['status'] == 'success') {
+                navigator.pop();
+                if (widget.onElderUpdated != null) {
+                  widget.onElderUpdated!();
+                }
+                messenger.showSnackBar(
+                  const SnackBar(content: Text('已刪除並解除綁定'), backgroundColor: Colors.redAccent),
+                );
+              } else {
+                navigator.pop();
+                messenger.showSnackBar(
+                  SnackBar(content: Text('刪除失敗: ${result['error']}'), backgroundColor: Colors.redAccent),
+                );
+              }
+            },
+            child: Text('確定刪除', style: GoogleFonts.notoSansTc(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showRecoveryAssistantDialog() {

@@ -79,14 +79,14 @@ class _FamilyDashboardViewState extends State<FamilyDashboardView> {
     };
 
     // ★ 監聽來電（長輩打給家屬）
-    _signaling.onCallRequest = (roomId, senderId, callId) {
+    _signaling.onCallRequest = (roomId, senderId, callId, [senderName]) {
       if (!mounted) return;
       debugPrint('📞 [FamilyDashboardView] 收到來電: room=$roomId, sender=$senderId, callId=$callId');
       _showIncomingCallDialog(roomId, senderId, callId);
     };
 
     // 監聽取消呼叫
-    _signaling.onCancelCall = (roomId, senderId, callId) {
+    _signaling.onCancelCall = (roomId, senderId, callId, [senderName]) {
       if (!mounted) return;
       debugPrint('🔕 [FamilyDashboardView] 來電取消: room=$roomId');
       // 如果有來電對話框正在顯示，關閉它

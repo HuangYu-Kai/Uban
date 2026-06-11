@@ -15,7 +15,7 @@ typedef StreamStateCallback = void Function(MediaStream stream);
 typedef IncomingCallCallback = Future<bool> Function(String callerId, String callType);
 // NOTE: 不要重新定義 VoidCallback，Flutter 已內建
 typedef ErrorCallback = void Function(String message);
-typedef CallRequestCallback = void Function(String roomId, String senderId, String? callId);
+typedef CallRequestCallback = void Function(String roomId, String senderId, String? callId, [String? senderName]);
 typedef CallAcceptedCallback = void Function(String accepterId, String? callId);
 
 class Signaling {
@@ -167,7 +167,19 @@ class Signaling {
 
     socket!.onDisconnect((reason) {
       debugPrint('⚠️ [Signaling] Socket disconnected: $reason');
-      if (onConnectionLost != null) onConnectionLost!();
+      // ★ issue 5：通話進行中若 Socket 短暫斷線（例如冷啟動切換網路時），
+      //   不要立刻觸發 onConnectionLost 把使用者彈回主畫面，給予 2 秒重連寬限期。
+      if (peerConnection != null) {
+        debugPrint('⏳ [Signaling] Disconnected during active call, granting 2s reconnect window...');
+        Future.delayed(const Duration(seconds: 2), () {
+          if (socket != null && !socket!.connected && peerConnection != null) {
+            debugPrint('❌ [Signaling] Reconnect window expired, notifying connection lost');
+            if (onConnectionLost != null) onConnectionLost!();
+          }
+        });
+      } else {
+        if (onConnectionLost != null) onConnectionLost!();
+      }
     });
 
     socket!.onConnect((_) async {
@@ -222,7 +234,9 @@ class Signaling {
       _currentCallId = data['callId'];
       if (onCallRequest != null) {
         debugPrint('📞 [Signaling] 觸發 onCallRequest 回調...');
-        onCallRequest!(data['room'], data['senderId'], data['callId']);
+        // ★ issue 11：透傳後端解析出的來電者名稱，避免 UI 端用「目前選擇的長輩」誤判來電者
+        final String? senderName = (data['senderName'] ?? data['callerName'])?.toString();
+        onCallRequest!(data['room'], data['senderId'], data['callId'], senderName);
       } else {
         debugPrint('⚠️ [Signaling] onCallRequest 回調未設置！來電將被忽略！');
       }
@@ -255,7 +269,11 @@ class Signaling {
         debugPrint('🚨 [Signaling] 忽略相同角色發出的 emergency-call (SenderRole: $senderRole)');
         return;
       }
-      if (onEmergencyCall != null) onEmergencyCall!(data['room'], data['senderId'], data['callId']);
+      if (onEmergencyCall != null) {
+        // ★ issue 11：透傳來電者名稱
+        final String? senderName = (data['senderName'] ?? data['callerName'])?.toString();
+        onEmergencyCall!(data['room'], data['senderId'], data['callId'], senderName);
+      }
     });
 
 
@@ -276,8 +294,14 @@ class Signaling {
       }
     });
 
-    // 忙線監聽
+    // 忙線/拒接監聽
     socket!.on('call-busy', (data) {
+      debugPrint('🚫 [Signaling] 收到 call-busy: $data');
+      // ★ issue 15：對方拒接/忙線時，呼叫端必須立即結束「等待連線」狀態，
+      //   避免持續卡在 PeerConnection 已建立但對端永遠不會回應的情形。
+      _isCreatingOffer = false;
+      _closePeerConnection();
+      _currentCallId = null;
       if (onCallBusy != null) onCallBusy!(data['targetId'], data['callId']);
     });
 
@@ -588,7 +612,12 @@ class Signaling {
   }
 
   Future<void> _acceptCall(Map<String, dynamic> data, {required bool useLocalStream}) async {
-    if (peerConnection != null) await peerConnection!.close();
+    // ★ issue 4：接聽新來電前，先徹底關閉既有連線，確保一般通話房與緊急通話房不會並存
+    if (peerConnection != null) {
+      await peerConnection!.close();
+      peerConnection = null;
+    }
+    _candidateQueue.clear();
     await _createPeerConnection(useLocalStream: useLocalStream);
 
     // ★ Fix: 緊急通話強制啟用本機視訊軌道
@@ -795,9 +824,14 @@ class Signaling {
   }
 
   Future<void> startMonitoring(String targetId) async {
+    // ★ issue 4：開始監看前，先關閉既有連線，確保監控房與通話房不會並存
+    if (peerConnection != null) {
+      await peerConnection!.close();
+      peerConnection = null;
+    }
     _candidateQueue.clear();
     _peerSocketId = targetId;
-    await _createPeerConnection(useLocalStream: false); 
+    await _createPeerConnection(useLocalStream: false);
     await peerConnection!.addTransceiver(
       kind: RTCRtpMediaType.RTCRtpMediaTypeVideo,
       init: RTCRtpTransceiverInit(direction: TransceiverDirection.RecvOnly),

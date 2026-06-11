@@ -152,9 +152,9 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> with Widg
     }
 
     // 3. 處理響鈴 (使用當前的 Context)
-    _signaling.onCallRequest = (roomId, senderId, callId) {
+    _signaling.onCallRequest = (roomId, senderId, callId, [senderName]) {
       if (!mounted) return;
-      
+
       // Remove any existing dialogs to prevent multiple stacking, or if the user cancels
       if (Navigator.canPop(context)) {
         // Warning: This pops the current top route. Assuming the only pop-able route here is the dialog.
@@ -190,7 +190,7 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> with Widg
             _dialogContext = dialogContext;
             
             // Register cancel-call listener tightly to this dialog's lifecycle
-            _signaling.onCancelCall = (cancelRoomId, cancelSenderId, cancelCallId) {
+            _signaling.onCancelCall = (cancelRoomId, cancelSenderId, cancelCallId, [cancelSenderName]) {
                 if (roomId == cancelRoomId && isDialogOpen && mounted) {
                     Navigator.of(dialogContext).pop();
                     isDialogOpen = false;

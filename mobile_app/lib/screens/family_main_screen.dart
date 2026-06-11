@@ -116,21 +116,21 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
 
   void _setupSignalingCallbacks() {
     // 監聽來電（長輩打給家屬）
-    _signaling.onCallRequest = (roomId, senderId, callId) {
+    _signaling.onCallRequest = (roomId, senderId, callId, [senderName]) {
       if (!mounted) return;
-      debugPrint('📞 [FamilyMainScreen] 收到來電: room=$roomId, sender=$senderId, callId=$callId');
-      _showIncomingCallDialog(roomId, senderId, callId);
+      debugPrint('📞 [FamilyMainScreen] 收到來電: room=$roomId, sender=$senderId, callId=$callId, senderName=$senderName');
+      _showIncomingCallDialog(roomId, senderId, callId, callerName: senderName);
     };
 
     // 監聽緊急來電
-    _signaling.onEmergencyCall = (roomId, senderId, callId) {
+    _signaling.onEmergencyCall = (roomId, senderId, callId, [senderName]) {
       if (!mounted) return;
-      debugPrint('🚨 [FamilyMainScreen] 緊急來電: room=$roomId');
-      _showIncomingCallDialog(roomId, senderId, callId, isEmergency: true);
+      debugPrint('🚨 [FamilyMainScreen] 緊急來電: room=$roomId, senderName=$senderName');
+      _showIncomingCallDialog(roomId, senderId, callId, isEmergency: true, callerName: senderName);
     };
 
     // 監聽取消呼叫
-    _signaling.onCancelCall = (roomId, senderId, callId) {
+    _signaling.onCancelCall = (roomId, senderId, callId, [senderName]) {
       if (!mounted) return;
       debugPrint('🔕 [FamilyMainScreen] 來電取消: room=$roomId');
       if (_isIncomingCallDialogOpen && Navigator.canPop(context)) {
@@ -237,7 +237,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     }
   }
 
-  void _showIncomingCallDialog(String roomId, String senderId, String? callId, {bool isEmergency = false}) {
+  void _showIncomingCallDialog(String roomId, String senderId, String? callId, {bool isEmergency = false, String? callerName}) {
     if (_isIncomingCallDialogOpen) return; // 防止重複彈窗
     _isIncomingCallDialogOpen = true;
     
@@ -265,7 +265,9 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
             ],
           ),
           content: Text(
-            '${_currentElder?.displayName ?? "長輩"} 正在呼叫您！',
+            // ★ issue 11：優先使用後端解析出的實際來電者名稱，
+            //   避免在切換關照長輩後，來電通知仍顯示先前選擇的長輩名稱
+            '${callerName ?? _currentElder?.displayName ?? "長輩"} 正在呼叫您！',
             style: const TextStyle(fontSize: 18),
           ),
           backgroundColor: isEmergency ? Colors.red.shade50 : Colors.green.shade50,

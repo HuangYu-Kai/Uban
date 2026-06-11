@@ -44,8 +44,11 @@ class MainActivity : FlutterActivity() {
 
     private fun forceBringToFront() {
         showOverLockScreen()
+        // ★ issue 1：launchMode 已改為 singleTask，且 Manifest 移除了
+        //   taskAffinity=""，此處不再需要 FLAG_ACTIVITY_NEW_TASK。
+        //   從前景 Activity context 重新喚醒既有實例（觸發 onNewIntent），
+        //   避免與背景 FCM isolate 啟動的 Intent 各自建立新 Task / 新 Flutter engine。
         val intent = android.content.Intent(context, MainActivity::class.java)
-        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
         intent.addFlags(android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
         intent.addFlags(android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP)
         context.startActivity(intent)

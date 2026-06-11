@@ -79,7 +79,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
   void _restoreSignalingCallbacks() {
     debugPrint("🔄 [ElderHomeScreen] 重新綁定 Signaling Callbacks");
     // 監聽來自家屬的來電請求
-    Signaling().onCallRequest = (roomId, senderId, callId) {
+    Signaling().onCallRequest = (roomId, senderId, callId, [senderName]) {
       if (!mounted) return;
       _showIncomingCallDialog(roomId, senderId, callId);
     };

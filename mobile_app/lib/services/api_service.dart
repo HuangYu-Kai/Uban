@@ -668,7 +668,8 @@ class ApiService {
     try {
       final response = await http
           .post(
-            Uri.parse('$baseUrl/monitor_setup'),
+            // ★ issue 6：後端路由為 /api/pairing/monitor_setup，先前缺少 /pairing 前綴導致 404
+            Uri.parse('$baseUrl/pairing/monitor_setup'),
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({
               'family_id': familyId,
@@ -693,10 +694,12 @@ class ApiService {
     try {
       final response = await http
           .post(
-            Uri.parse('$baseUrl/monitor_setup/resolve'),
+            // ★ issue 6：後端路由為 /api/pairing/monitor_setup/resolve，
+            //   先前缺少 /pairing 前綴；且後端 MonitorSetupResolve 欄位名為 'code'，非 'pairing_code'
+            Uri.parse('$baseUrl/pairing/monitor_setup/resolve'),
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({
-              'pairing_code': code,
+              'code': code,
             }),
           )
           .timeout(_timeout);

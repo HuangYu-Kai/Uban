@@ -99,8 +99,9 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
     if (!mounted) return;
     Navigator.pop(context); // close loading
 
-    if (data != null && data['pairing_code'] != null) {
-      final code = data['pairing_code'];
+    // ★ issue 6：後端 /api/pairing/monitor_setup 回傳的欄位名為 'code'，非 'pairing_code'
+    if (data != null && data['code'] != null) {
+      final code = data['code'];
       showDialog(
         context: context,
         builder: (ctx) => AlertDialog(
@@ -688,22 +689,6 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                       fontSize: 18,
                       fontWeight: FontWeight.w800,
                       color: const Color(0xFF0F172A),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE2E8F0),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      '預留方案B',
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: const Color(0xFF64748B),
-                      ),
                     ),
                   ),
                 ],

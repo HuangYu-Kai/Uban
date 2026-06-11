@@ -67,21 +67,22 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     }
 
     final role = prefs.getString('user_role') ?? prefs.getString('saved_role');
+    final roomId = (message.data['roomId'] ?? '').toString();
+    final senderId = (message.data['senderId'] ?? '').toString();
+    final callId = (message.data['callId'] ?? '').toString();
+
     if (role == 'elder' && type == 'emergency-call') {
       debugPrint("🚨 [BG] Emergency call for elder, saving pending call and waking app");
-      
-      final roomId = (message.data['roomId'] ?? '').toString();
-      final senderId = (message.data['senderId'] ?? '').toString();
-      final callId = (message.data['callId'] ?? '').toString();
-      
+
       final pendingCall = jsonEncode({
         'roomId': roomId,
         'senderId': senderId,
         'callId': callId,
         'isEmergency': true,
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
       });
       await prefs.setString('pendingAcceptedCall', pendingCall);
-      
+
       // ★ 直接發送 Intent 啟動應用程式，喚醒裝置並進入視訊房間
       try {
         if (defaultTargetPlatform == TargetPlatform.android) {
@@ -102,10 +103,32 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       }
       return;
     }
+
+    // ★ issue 2：長輩端收到「一般」來電時，預先記錄 pendingAcceptedCall（含時間戳），
+    //   讓使用者點擊 CallKit 接聽、App 冷啟動後可直接跳過開機動畫進入視訊房間，
+    //   不再強制喚醒 App，避免與 CallKit 接聽各自啟動 Activity 造成雙實例（issue 1）。
+    if (role == 'elder' && type == 'call-request') {
+      final pendingCall = jsonEncode({
+        'roomId': roomId,
+        'senderId': senderId,
+        'callId': callId,
+        'isEmergency': false,
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+      });
+      await prefs.setString('pendingAcceptedCall', pendingCall);
+      await _showFullScreenCallkit(message.data);
+      return;
+    }
+
+    // ★ issue 14：家屬端在背景／螢幕關閉時收到長輩的「一般」來電，
+    //   不應強制把 App 帶到前景，只顯示來電通知，由使用者主動點擊接聽。
+    if (role != 'elder' && type == 'call-request') {
+      await _showFullScreenCallkit(message.data);
+      return;
+    }
   } catch (_) {}
 
-  // ★ issue 2 & 3 & 6：App 在背景／被殺死／螢幕關閉時，彈出 CallKit 全螢幕來電
-  // 同時強制將 App 帶到前台，確保解鎖使用中的裝置也能覆蓋全螢幕
+  // 其餘情況（例如家屬端收到緊急來電）：彈出全螢幕 CallKit 並強制將 App 帶到前台
   try {
     if (defaultTargetPlatform == TargetPlatform.android) {
       final AndroidIntent intent = AndroidIntent(
@@ -206,9 +229,19 @@ void main() async {
     if (pendingCallStr != null) {
       try {
         final Map<String, dynamic> decoded = jsonDecode(pendingCallStr);
-        pendingAcceptedCall.value = decoded.map((key, value) => MapEntry(key, value?.toString()));
+        // ★ issue 10：App 被滑掉重啟時，丟棄逾時（>60秒）未完成的待接聽通話，
+        //   避免冷啟動後直接被導向一通早已結束/被拒絕的舊通話。
+        final int? ts = int.tryParse('${decoded['timestamp'] ?? ''}');
+        final int ageMs = ts != null
+            ? DateTime.now().millisecondsSinceEpoch - ts
+            : 0;
+        if (ts != null && ageMs > 60000) {
+          debugPrint("🗑️ [Main] Discarding stale pendingAcceptedCall (age: ${ageMs}ms)");
+        } else {
+          pendingAcceptedCall.value = decoded.map((key, value) => MapEntry(key, value?.toString()));
+          debugPrint("🚨 [Main] Loaded pendingAcceptedCall from SharedPreferences: $pendingCallStr");
+        }
         await prefs.remove('pendingAcceptedCall');
-        debugPrint("🚨 [Main] Loaded pendingAcceptedCall from SharedPreferences: $pendingCallStr");
       } catch (e) {
         debugPrint("Error parsing pendingAcceptedCall: $e");
       }
@@ -758,7 +791,17 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         final Map<String, dynamic> decoded = jsonDecode(pendingCallStr);
         debugPrint("🚨 [Main] Found pendingAcceptedCall in SharedPreferences on Resume: $pendingCallStr");
         await prefs.remove('pendingAcceptedCall');
-        
+
+        // ★ issue 10：忽略逾時（>60秒）的待接聽通話
+        final int? ts = int.tryParse('${decoded['timestamp'] ?? ''}');
+        final int ageMs = ts != null
+            ? DateTime.now().millisecondsSinceEpoch - ts
+            : 0;
+        if (ts != null && ageMs > 60000) {
+          debugPrint("🗑️ [Main] Discarding stale pendingAcceptedCall on resume (age: ${ageMs}ms)");
+          return;
+        }
+
         // 更新 ValueNotifier，讓首頁 listener 接手
         pendingAcceptedCall.value = decoded.map((key, value) => MapEntry(key, value?.toString()));
       }
@@ -869,13 +912,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     //   長輩端的 onCallRequest 由 ElderHomeScreen.initState() 負責設定，
     //   如果在這裡也設定，會覆蓋掉 ElderHomeScreen 的回調，導致長輩端收不到來電。
     if (appRole != 'elder') {
-      s.onCallRequest = (roomId, senderId, callId) {
+      s.onCallRequest = (roomId, senderId, callId, [senderName]) {
         _showIncomingCallDialog(roomId, senderId, callId: callId, isEmergency: false);
       };
     }
     
     // ★ 緊急呼叫處理（家屬端與長輩端都需要）
-    s.onEmergencyCall = (roomId, senderId, callId) {
+    s.onEmergencyCall = (roomId, senderId, callId, [senderName]) {
       if (appRole == 'elder') {
         // ★ Issue 3 修復：去重，防止 Socket.IO + FCM 雙重觸發
         if (callId != null && callId == _lastHandledEmergencyCallId) {
@@ -900,7 +943,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     };
 
     // 對方取消來電
-    s.onCancelCall = (roomId, senderId, callId) {
+    s.onCancelCall = (roomId, senderId, callId, [senderName]) {
       if (_activeCallDialogContext != null) {
         debugPrint(
             "🔕 [Main] Remote canceled call. Dismissing global dialog...");
@@ -1024,10 +1067,15 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   void _sendDeclineEvent(String roomId, String senderId, {String? callId}) async {
     debugPrint(
         "❌ Call Declined from CallKit, sending call-busy to $senderId (callId: $callId)...");
-    
+
     final prefs = await SharedPreferences.getInstance();
     final int? userId = prefs.getInt('caregiver_id');
     final String? role = prefs.getString('user_role') ?? 'family';
+
+    // ★ issue 2/15：拒接時清除可能已預先寫入的 pendingAcceptedCall，
+    //   避免下次冷啟動誤導向這通已被拒絕的通話。
+    await prefs.remove('pendingAcceptedCall');
+    pendingAcceptedCall.value = null;
     
     final io.Socket socket = io.io(
         sig.Signaling.serverUrl,
@@ -1059,6 +1107,16 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     // ★ Bug 16 解決方案：如果身分是長輩，絕對不可啟動 VideoCallScreen (那是給家屬用的)。
     // 我們僅儲存 pendingAcceptedCall，讓長輩主畫面 (ElderScreen) 啟動後去接手。
     if (appRole == 'elder') {
+      // ★ issue 2/5：此通話可能已由 splash/ElderScreen 透過 SharedPreferences
+      //   預先載入並消費過（lastProcessedCallId 已記錄）。此時若再次寫入
+      //   pendingAcceptedCall，會在通話結束、回到 ElderHomeScreen 後被誤判為
+      //   「新來電」而重新嘗試接聽一通早已結束的通話。
+      if (callId != null &&
+          callId.isNotEmpty &&
+          callId == sig.Signaling().lastProcessedCallId) {
+        debugPrint("ℹ️ [Main] 略過已處理過的來電 (callId=$callId)，不重複寫入 pendingAcceptedCall");
+        return;
+      }
       debugPrint(
           "📱 Elder role detected, skipping VideoCallScreen push and caching accepted call.");
       pendingAcceptedCall.value = <String, String?>{

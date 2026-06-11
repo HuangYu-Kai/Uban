@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'elder_pairing_display_screen.dart';
 import 'login_screen.dart';
+import 'monitor_pairing_screen.dart'; // ★ issue 7：監視器角色
 class IdentificationScreen extends StatelessWidget {
   const IdentificationScreen({super.key});
 
@@ -75,6 +76,24 @@ class IdentificationScreen extends StatelessWidget {
                               },
                             ),
                           ),
+                          const SizedBox(width: 16),
+                          // ★ issue 7：監視器設備卡片
+                          Expanded(
+                            child: _buildRoleCard(
+                              context: context,
+                              label: '我是監控設備',
+                              icon: Icons.videocam_rounded,
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) =>
+                                        const MonitorPairingScreen(),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -92,7 +111,8 @@ class IdentificationScreen extends StatelessWidget {
   Widget _buildRoleCard({
     required BuildContext context,
     required String label,
-    required String imagePath,
+    String? imagePath,
+    IconData? icon,
     required VoidCallback onTap,
   }) {
     return GestureDetector(
@@ -104,6 +124,7 @@ class IdentificationScreen extends StatelessWidget {
             aspectRatio: 1,
             child: Container(
               decoration: BoxDecoration(
+                color: imagePath == null ? const Color(0xFFF1F5F9) : null,
                 borderRadius: BorderRadius.circular(24),
                 boxShadow: [
                   BoxShadow(
@@ -112,11 +133,16 @@ class IdentificationScreen extends StatelessWidget {
                     offset: const Offset(0, 4),
                   ),
                 ],
-                image: DecorationImage(
-                  image: AssetImage(imagePath),
-                  fit: BoxFit.cover,
-                ),
+                image: imagePath != null
+                    ? DecorationImage(
+                        image: AssetImage(imagePath),
+                        fit: BoxFit.cover,
+                      )
+                    : null,
               ),
+              child: imagePath == null
+                  ? Icon(icon, size: 56, color: const Color(0xFF59B294))
+                  : null,
             ),
           ),
           const SizedBox(height: 12),

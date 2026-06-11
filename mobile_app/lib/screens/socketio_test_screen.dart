@@ -32,19 +32,19 @@ class _SocketIOTestScreenState extends State<SocketIOTestScreen> {
 
   void _setupSignalingCallbacks() {
     // 收到來電請求
-    _signaling.onCallRequest = (roomId, senderId, callId) {
+    _signaling.onCallRequest = (roomId, senderId, callId, [senderName]) {
       _addLog('📞 收到來電！Room: $roomId, Sender: $senderId');
       _showIncomingCallDialog(roomId, senderId, callId);
     };
 
     // 收到緊急通話
-    _signaling.onEmergencyCall = (roomId, senderId, callId) {
+    _signaling.onEmergencyCall = (roomId, senderId, callId, [senderName]) {
       _addLog('🚨 緊急來電！Room: $roomId, Sender: $senderId');
       _showIncomingCallDialog(roomId, senderId, callId, isEmergency: true);
     };
 
     // 收到取消通話
-    _signaling.onCancelCall = (roomId, senderId, callId) {
+    _signaling.onCancelCall = (roomId, senderId, callId, [senderName]) {
       _addLog('🔕 來電已取消');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

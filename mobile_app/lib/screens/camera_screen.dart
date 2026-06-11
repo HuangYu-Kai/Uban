@@ -53,8 +53,8 @@ class _CameraScreenState extends State<CameraScreen> {
       final monitors = devices.where((d) => d['deviceMode'] == 'monitor' || d['role'] == 'video-peer').toList();
       
       if (monitors.isNotEmpty) {
-        // 找到監視器，取得對方的 socketId
-        _targetMonitorId = monitors.first['socketId'];
+        // ★ issue 8：後端 elder-devices-update 回傳的 socket id 欄位是 'id'，並非 'socketId'
+        _targetMonitorId = monitors.first['id'];
         debugPrint("📹 [CameraScreen] 找到監視設備: $_targetMonitorId");
         
         setState(() => _isConnecting = false);
