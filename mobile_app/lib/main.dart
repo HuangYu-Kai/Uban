@@ -121,7 +121,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
       // ★ issue 2：長輩端收到「一般」來電時，預先記錄 pendingAcceptedCall（含時間戳），
       //   讓使用者點擊 CallKit 接聽、App 冷啟動後可直接跳過開機動畫進入視訊房間，
-      //   不再強制喚醒 App，避免與 CallKit 接聽各自啟動 Activity 造成雙實例（issue 1）。
+      //   並喚醒 App 確保 pendingAcceptedCall 被正確消費。
       if (role == 'elder' && type == 'call-request') {
         final pendingCall = jsonEncode({
           'roomId': roomId,
@@ -132,6 +132,27 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         });
         await prefs.setString('pendingAcceptedCall', pendingCall);
         await _showFullScreenCallkit(message.data);
+
+        // ★ 修復：長輩端一般來電也要喚醒 App（問題 4）
+        //   否則螢幕亮起時 App 仍在後台，pendingAcceptedCall 無法被及時消費
+        try {
+          if (defaultTargetPlatform == TargetPlatform.android) {
+            final AndroidIntent intent = AndroidIntent(
+              action: 'android.intent.action.MAIN',
+              package: 'com.example.flutter_application_1',
+              componentName: 'com.example.flutter_application_1.MainActivity',
+              flags: <int>[
+                0x10000000, // FLAG_ACTIVITY_NEW_TASK
+                0x00020000, // FLAG_ACTIVITY_REORDER_TO_FRONT
+                0x20000000, // FLAG_ACTIVITY_SINGLE_TOP
+              ],
+            );
+            await intent.launch();
+          }
+        } catch (e, stackTrace) {
+          debugPrint('❌ [BG] AndroidIntent error (elder call-request): $e');
+          debugPrint('📍 Stack trace: $stackTrace');
+        }
         return;
       }
 
@@ -829,6 +850,14 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
             : 0;
         if (ts != null && ageMs > 60000) {
           debugPrint("🗑️ [Main] Discarding stale pendingAcceptedCall on resume (age: ${ageMs}ms)");
+          return;
+        }
+
+        // ★ 修復：檢查是否與 Signaling 中的 lastProcessedCallId 重複（問題 4）
+        final String? callId = decoded['callId']?.toString();
+        final String? lastId = sig.Signaling().lastProcessedCallId;
+        if (callId != null && callId == lastId) {
+          debugPrint("🗑️ [Main] Discarding duplicate pendingAcceptedCall (callId=$callId)");
           return;
         }
 
