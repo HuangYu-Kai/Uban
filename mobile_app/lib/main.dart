@@ -65,12 +65,18 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     debugPrint("📩 Background message received: ${message.data}");
 
     final type = message.data['type'];
-    if (type != 'call-request' && type != 'emergency-call') {
+    if (type != 'call-request' && type != 'emergency-call' && type != 'cancel-call') {
       debugPrint('⚠️ [BG] Ignoring message of type: $type');
       return;
     }
 
-    // ★ issue 1：過濾「自己發起的來電」。
+    // ★ issue 4/5 fix: cancel-call FCM → dismiss CallKit immediately
+    if (type == 'cancel-call') {
+      debugPrint('🔕 [BG] Remote canceled call, dismissing CallKit...');
+      await FlutterCallkitIncoming.endAllCalls();
+      return;
+    }
+
     try {
       final prefs = await SharedPreferences.getInstance();
       final myId = prefs.getInt('caregiver_id');
@@ -119,42 +125,14 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         return;
       }
 
-      // ★ issue 2：長輩端收到「一般」來電時，預先記錄 pendingAcceptedCall（含時間戳），
-      //   讓使用者點擊 CallKit 接聽、App 冷啟動後可直接跳過開機動畫進入視訊房間，
-      //   並喚醒 App 確保 pendingAcceptedCall 被正確消費。
-      if (role == 'elder' && type == 'call-request') {
-        final pendingCall = jsonEncode({
-          'roomId': roomId,
-          'senderId': senderId,
-          'callId': callId,
-          'isEmergency': false,
-          'timestamp': DateTime.now().millisecondsSinceEpoch,
-        });
-        await prefs.setString('pendingAcceptedCall', pendingCall);
-        await _showFullScreenCallkit(message.data);
-
-        // ★ 修復：長輩端一般來電也要喚醒 App（問題 4）
-        //   否則螢幕亮起時 App 仍在後台，pendingAcceptedCall 無法被及時消費
-        try {
-          if (defaultTargetPlatform == TargetPlatform.android) {
-            final AndroidIntent intent = AndroidIntent(
-              action: 'android.intent.action.MAIN',
-              package: 'com.example.flutter_application_1',
-              componentName: 'com.example.flutter_application_1.MainActivity',
-              flags: <int>[
-                0x10000000, // FLAG_ACTIVITY_NEW_TASK
-                0x00020000, // FLAG_ACTIVITY_REORDER_TO_FRONT
-                0x20000000, // FLAG_ACTIVITY_SINGLE_TOP
-              ],
-            );
-            await intent.launch();
-          }
-        } catch (e, stackTrace) {
-          debugPrint('❌ [BG] AndroidIntent error (elder call-request): $e');
-          debugPrint('📍 Stack trace: $stackTrace');
-        }
-        return;
-      }
+     if (role == 'elder' && type == 'call-request') {
+       // ★ issue 2 fix: elder background handler must NOT pre-save pendingAcceptedCall
+       //   nor cold-launch the app before user taps Accept on CallKit.
+       //   Only show the CallKit notification. pendingAcceptedCall is set later
+       //   by _setupCallKitListener when user actually taps Accept.
+       await _showFullScreenCallkit(message.data);
+       return;
+     }
 
       // ★ issue 14：家屬端在背景／螢幕關閉時收到長輩的「一般」來電，
       //   不應強制把 App 帶到前景，只顯示來電通知，由使用者主動點擊接聽。
@@ -168,7 +146,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       // Continue to show notification even if prefs processing fails
     }
 
-    // 其餘情況（例如家屬端收到緊急來電）：彈出全螢 céu CallKit 並強制將 App 帶到前台
+    // 其餘情況（例如家屬端收到緊急來電）：彈出全螢幕 CallKit 並強制將 App 帶到前台
     try {
       if (defaultTargetPlatform == TargetPlatform.android) {
         final AndroidIntent intent = AndroidIntent(
@@ -960,6 +938,20 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         // ★ 備援：FCM 用作備份，以防 Socket 連接不穩定時收不到來電
         // 由於 Socket 優先級更高，FCM 的去重機制確保不會重複彈窗
         _showIncomingCallDialog(roomId, senderId, callId: callId, isEmergency: isEmergency);
+      }
+
+      // ★ issue 4/5 fix: cancel-call FCM in foreground → dismiss in-app dialog and CallKit
+      if (message.data['type'] == 'cancel-call') {
+        debugPrint("🔕 [FCM-Fg] Remote canceled call, dismissing dialog...");
+        if (_activeCallDialogContext != null) {
+          if (Navigator.canPop(_activeCallDialogContext!)) {
+            Navigator.pop(_activeCallDialogContext!);
+          }
+          _activeCallDialogContext = null;
+        }
+        // Also end any active CallKit
+        FlutterCallkitIncoming.endAllCalls();
+        return;
       }
     });
   }

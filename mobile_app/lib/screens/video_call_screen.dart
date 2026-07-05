@@ -8,6 +8,8 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../services/signaling.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import '../globals.dart';
+import '../screens/family_main_screen.dart';
 
 class VideoCallScreen extends StatefulWidget {
   final String roomId;
@@ -106,7 +108,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("通話已結束")),
         );
-        Navigator.pop(context);
+        safeNavigateBack(context, _buildFallbackHome());
       }
     };
 
@@ -116,7 +118,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('對方目前無法接聽通話')),
         );
-        Navigator.of(context).pop();
+        safeNavigateBack(context, _buildFallbackHome());
       }
     };
 
@@ -127,7 +129,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('連線中斷，通話已結束')),
         );
-        Navigator.of(context).pop();
+        safeNavigateBack(context, _buildFallbackHome());
       }
     };
 
@@ -361,6 +363,23 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     super.dispose();
   }
 
+
+  // ★ issue 3 fix: 安全掛斷並導航，防止冷啟動進入時 pop 後黑屏
+  void _safeHangUp() {
+    _signaling.hangUp(disconnectSocket: false, disposeLocalStream: false);
+    _stopCallTimer();
+    if (mounted) {
+      safeNavigateBack(context, _buildFallbackHome());
+    }
+  }
+
+  // ★ issue 3 fix: 冷啟動時無上一頁，退回 FamilyMainScreen
+  Widget _buildFallbackHome() {
+    return FamilyMainScreen(
+      userId: 0,  // will be re-read from SharedPreferences in FamilyMainScreen
+      userName: '家屬端',
+    );
+  }
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -612,7 +631,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                       // 掛斷
                       _buildControlButton(
                         icon: Icons.call_end,
-                        onPressed: () => Navigator.pop(context),
+                        onPressed: _safeHangUp,
                         isEndCall: true,
                       ),
                       // 鏡頭

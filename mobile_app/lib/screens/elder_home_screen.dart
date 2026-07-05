@@ -83,6 +83,15 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
       if (!mounted) return;
       _showIncomingCallDialog(roomId, senderId, callId);
     };
+    // ★ issue 4 fix: 監聽家屬取消來電，關閉彈窗
+    Signaling().onCancelCall = (roomId, senderId, callId, [senderName]) {
+      if (!mounted) return;
+      debugPrint('🔕 [ElderHomeScreen] 家屬取消來電，關閉彈窗');
+      if (_isIncomingCallDialogOpen && Navigator.canPop(context)) {
+        Navigator.of(context).pop();
+        _isIncomingCallDialogOpen = false;
+      }
+    };
 
     // 監聽家屬發送的主動關心留言 (Heartbeat)
     Signaling().onHeartbeatMessage = (message) {
@@ -219,6 +228,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
     pendingAcceptedCall.removeListener(_onPendingCallChanged);
     Signaling().onHeartbeatMessage = null;
     Signaling().onCallRequest = null;
+    Signaling().onCancelCall = null;
     super.dispose();
   }
 
