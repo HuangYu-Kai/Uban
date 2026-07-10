@@ -8,7 +8,6 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../services/signaling.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import '../globals.dart';
 import '../screens/family_main_screen.dart';
 
 class VideoCallScreen extends StatefulWidget {
@@ -59,6 +58,10 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   // ★ 通話逾時計時器
   Timer? _callTimeoutTimer;
 
+  // ★ 情境 3 修復：結束通話後導回主畫面時所需的真實使用者資料（於 _initCall 從 prefs 讀取）
+  int _resolvedUserId = 0;
+  String _resolvedUserName = '家屬端';
+
   @override
   void initState() {
     super.initState();
@@ -108,7 +111,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("通話已結束")),
         );
-        safeNavigateBack(context, _buildFallbackHome());
+        _goHomeAfterCall();
       }
     };
 
@@ -118,7 +121,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('對方目前無法接聽通話')),
         );
-        safeNavigateBack(context, _buildFallbackHome());
+        _goHomeAfterCall();
       }
     };
 
@@ -129,7 +132,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('連線中斷，通話已結束')),
         );
-        safeNavigateBack(context, _buildFallbackHome());
+        _goHomeAfterCall();
       }
     };
 
@@ -170,6 +173,10 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     final String userName = (role == 'elder')
         ? (prefs.getString('caregiver_name') ?? '長輩')
         : (prefs.getString('user_name') ?? prefs.getString('caregiver_name') ?? '家屬端');
+
+    // ★ 情境 3 修復：暫存真實使用者資料，供通話結束後重建主畫面使用（避免 userId:0 導致主畫面失效）
+    _resolvedUserId = userId ?? 0;
+    _resolvedUserName = userName;
 
     // ★ 修復：若 Socket 已經連線（從 FamilyMainScreen 傳承下來），則不要重新連線，
     //   否則會導致原本的 callbacks 被覆寫且 SocketId 改變。
@@ -369,15 +376,27 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     _signaling.hangUp(disconnectSocket: false, disposeLocalStream: false);
     _stopCallTimer();
     if (mounted) {
-      safeNavigateBack(context, _buildFallbackHome());
+      _goHomeAfterCall();
     }
   }
 
-  // ★ issue 3 fix: 冷啟動時無上一頁，退回 FamilyMainScreen
+  // ★ issue 3 fix: 冷啟動時無上一頁，退回 FamilyMainScreen（帶入真實使用者資料）
   Widget _buildFallbackHome() {
     return FamilyMainScreen(
-      userId: 0,  // will be re-read from SharedPreferences in FamilyMainScreen
-      userName: '家屬端',
+      userId: _resolvedUserId,
+      userName: _resolvedUserName,
+    );
+  }
+
+  // ★ 情境 3 修復：通話結束/拒接/斷線後，一律用 pushAndRemoveUntil 導向「重建的」主畫面。
+  //   家屬端在 APP 外接聽時，VideoCallScreen 會被疊在 SplashScreen 之上；若用 pop()
+  //   會回到已完成任務的 SplashScreen 造成黑屏。改用 pushAndRemoveUntil 可確定性返回
+  //   主畫面、清空堆疊，杜絕任何黑屏。
+  void _goHomeAfterCall() {
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => _buildFallbackHome()),
+      (route) => false,
     );
   }
   @override

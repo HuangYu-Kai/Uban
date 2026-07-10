@@ -863,20 +863,21 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     }
   }
 
-  // ★ 冷啟動恢復：如果 App 因點擊接聽而啟動，這裡會抓到並導航
+  // ★ 情境 2 修復：冷啟動時「僅響鈴、尚未接聽」的 CallKit 也會出現在 activeCalls()，
+  //   若在此自動 _navigateToVideoCall 等同於「未經使用者確認就接聽並進入視訊房間」。
+  //   因此這裡「不再自動導航」，只記錄狀態。真正的「接聽」一律由
+  //   _setupCallKitListener 的 actionCallAccept 事件負責（冷啟動時
+  //   flutter_callkit_incoming 會把接聽事件遞送給已註冊的 listener），
+  //   確保長輩/家屬端一定要明確點擊「接聽」才會進房。
   Future<void> _checkInitialCall() async {
-    final activeCalls = await FlutterCallkitIncoming.activeCalls();
-    if (activeCalls is List && activeCalls.isNotEmpty) {
-      final call = activeCalls.first;
-      final extra = call['extra'];
-      if (extra != null) {
-        final roomId = extra['roomId'] as String?;
-        final senderId = extra['senderId'] as String?;
-        if (roomId != null && senderId != null) {
-          debugPrint("🚀 [Main] Initial Active Call found! Auto-navigating...");
-          _navigateToVideoCall(roomId, senderId, callId: extra['callId']);
-        }
+    try {
+      final activeCalls = await FlutterCallkitIncoming.activeCalls();
+      if (activeCalls is List && activeCalls.isNotEmpty) {
+        debugPrint(
+            "ℹ️ [Main] 偵測到 ${activeCalls.length} 筆進行中的 CallKit，等待使用者明確接聽（不自動進房）");
       }
+    } catch (e) {
+      debugPrint("⚠️ [Main] _checkInitialCall error: $e");
     }
   }
 
