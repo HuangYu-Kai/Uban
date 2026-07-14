@@ -145,7 +145,7 @@ class _FamilyElderChatScreenState extends State<FamilyElderChatScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.7),
         decoration: BoxDecoration(
-          color: isMe ? const Color(0xFF2563EB) : Colors.white,
+          color: isMe ? const Color(0xFF59B294) : Colors.white,
           borderRadius: BorderRadius.circular(20).copyWith(
             bottomRight: isMe ? const Radius.circular(0) : const Radius.circular(20),
             bottomLeft: isMe ? const Radius.circular(20) : const Radius.circular(0),
@@ -224,7 +224,7 @@ class _FamilyElderChatScreenState extends State<FamilyElderChatScreen> {
           ),
           const SizedBox(width: 8),
           IconButton(
-            icon: const Icon(Icons.send_rounded, color: Color(0xFF2563EB)),
+            icon: const Icon(Icons.send_rounded, color: Color(0xFF59B294)),
             onPressed: _sendMessage,
           ),
         ],

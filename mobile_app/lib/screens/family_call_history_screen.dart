@@ -89,7 +89,7 @@ class _FamilyCallHistoryScreenState extends State<FamilyCallHistoryScreen> {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh_rounded, color: Color(0xFF2563EB)),
+            icon: const Icon(Icons.refresh_rounded, color: Color(0xFF59B294)),
             onPressed: _fetchHistory,
           ),
         ],

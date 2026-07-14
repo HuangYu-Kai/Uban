@@ -52,7 +52,7 @@ class _FamilyScriptsViewState extends State<FamilyScriptsView> {
           IconButton(
             icon: const Icon(
               Icons.add_circle_outline,
-              color: Color(0xFF2563EB),
+              color: Color(0xFF59B294),
               size: 30,
             ),
             onPressed: () => _showCreateScriptSheet(context),

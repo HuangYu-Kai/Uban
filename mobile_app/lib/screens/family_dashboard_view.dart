@@ -349,7 +349,7 @@ Widget build(BuildContext context) {
     backgroundColor: const Color(0xFFF8FAFC),
     body: RefreshIndicator(
       onRefresh: () async => await _loadSelectedElder(),
-      color: const Color(0xFF2563EB),
+      color: const Color(0xFF59B294),
       backgroundColor: Colors.white,
       child: SafeArea(
         bottom: false,
@@ -416,7 +416,7 @@ Widget build(BuildContext context) {
                   _elderName ?? '未知',
                   style: GoogleFonts.notoSansTc(
                     fontSize: 14,
-                    color: const Color(0xFF2563EB),
+                    color: const Color(0xFF59B294),
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -528,7 +528,7 @@ Widget build(BuildContext context) {
                   children: [
                     const Icon(
                       Icons.sync_rounded,
-                      color: Color(0xFF2563EB),
+                      color: Color(0xFF59B294),
                       size: 18,
                     ),
                     const SizedBox(width: 6),
@@ -536,7 +536,7 @@ Widget build(BuildContext context) {
                       '切換',
                       style: GoogleFonts.notoSansTc(
                         fontSize: 15,
-                        color: const Color(0xFF2563EB),
+                        color: const Color(0xFF59B294),
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -679,7 +679,7 @@ borderRadius: BorderRadius.circular(12),
 ),
 child: const Icon(
 Icons.auto_awesome_rounded,
-color: Color(0xFF2563EB),
+color: Color(0xFF59B294),
 size: 20,
 ),
 ),
@@ -728,14 +728,14 @@ Row(
 children: [
 _buildStatusChip('專注', const Color(0xFF10B981)),
 const SizedBox(width: 8),
-_buildStatusChip('心情愉快', const Color(0xFF2563EB)),
+_buildStatusChip('心情愉快', const Color(0xFF59B294)),
 const Spacer(),
 Text(
 '立即提問',
 style: GoogleFonts.notoSansTc(
 fontSize: 13,
 fontWeight: FontWeight.w700,
-color: const Color(0xFF2563EB),
+color: const Color(0xFF59B294),
 ),
 ),
 ],
@@ -810,7 +810,7 @@ barGroups: [
 _makeBar(0, 5, const Color(0xFFCBD5E1)),
 _makeBar(1, 8, const Color(0xFFCBD5E1)),
 _makeBar(2, 4, const Color(0xFFCBD5E1)),
-_makeBar(3, 9, const Color(0xFF2563EB)), // Today
+_makeBar(3, 9, const Color(0xFF59B294)), // Today
 _makeBar(4, 3, const Color(0xFFCBD5E1)),
 _makeBar(5, 7, const Color(0xFFCBD5E1)),
 _makeBar(6, 6, const Color(0xFFCBD5E1)),
@@ -878,13 +878,13 @@ color: color,
                   width: 120,
                   height: 120,
                   decoration: BoxDecoration(
-                    color: const Color(0xFF2563EB).withValues(alpha: 0.1),
+                    color: const Color(0xFF59B294).withValues(alpha: 0.1),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(
                     Icons.person_add_rounded,
                     size: 60,
-                    color: Color(0xFF2563EB),
+                    color: Color(0xFF59B294),
                   ),
                 ).animate()
                   .scale(duration: 600.ms, curve: Curves.easeOut),
@@ -935,7 +935,7 @@ color: color,
                       _loadSelectedElder();
                     },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF2563EB),
+                      backgroundColor: const Color(0xFF59B294),
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),
@@ -975,7 +975,7 @@ color: color,
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: isOnline 
-              ? [const Color(0xFF2563EB), const Color(0xFF3B82F6)]
+              ? [const Color(0xFF59B294), const Color(0xFF3B82F6)]
               : [const Color(0xFF64748B), const Color(0xFF94A3B8)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -983,7 +983,7 @@ color: color,
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: (isOnline ? const Color(0xFF2563EB) : const Color(0xFF64748B))
+            color: (isOnline ? const Color(0xFF59B294) : const Color(0xFF64748B))
                 .withValues(alpha: 0.3),
             blurRadius: 20,
             offset: const Offset(0, 10),

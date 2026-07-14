@@ -639,7 +639,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   Widget _buildNavItem(int index, IconData icon, String label) {
     final isSelected = _selectedIndex == index;
     final color = isSelected
-        ? const Color(0xFF2563EB) // Primary Blue
+        ? const Color(0xFF59B294) // Primary Teal
         : const Color(0xFF64748B); // Slate Gray
 
     return Expanded(

@@ -23,6 +23,7 @@ import 'network/http_overrides_stub.dart'
     if (dart.library.io) 'network/http_overrides_io.dart';
 
 // Screens
+import 'theme/app_theme.dart';
 import 'screens/video_call_screen.dart';
 import 'screens/splash_screen.dart';
 import 'screens/elder_home_screen.dart';
@@ -1165,11 +1166,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       navigatorKey: navigatorKey, // ★ 關鍵：必須綁定 navigatorKey，否則無法顯示彈窗或導航
       title: 'UBan',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF59B294)),
-        useMaterial3: true,
-        textTheme: GoogleFonts.notoSansTcTextTheme(Theme.of(context).textTheme),
-      ),
+      theme: buildAppTheme(context),
       // ★★★ 還原為原始入口：SplashScreen ★★★
       home: const SplashScreen(),
       /*

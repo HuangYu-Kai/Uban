@@ -7,7 +7,6 @@ import 'elder_screen.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'dart:convert';
 import '../services/signaling.dart';
-import '../widgets/desktop_pet.dart';
 import 'dart:async';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -31,16 +30,10 @@ class ElderHomeScreen extends StatefulWidget {
 class _ElderHomeScreenState extends State<ElderHomeScreen> {
   int _selectedIndex = 0; // 0: Home/Calendar, 1: Chat, 2: Profile/Settings
   final GlobalKey<ZenPondScreenState> _zenPondKey = GlobalKey<ZenPondScreenState>();
-  // ★ 新增：用於控制小豬
-  final GlobalKey<DesktopPetState> _petKey = GlobalKey<DesktopPetState>();
 
   // ★ 新增：對話 Overlay 顯示狀態，用以動態隱藏導覽列防止重合
   bool _isZenPondOverlayVisible = false;
 
-  // ★ 新增：投餵動畫列表
-  
-  // ★ 新增：遠征系統步數監控
-  int _lastDiscoveredSteps = 0;
   bool _isNavigatingToCall = false;
 
   Future<void> _requestPermissions() async {
@@ -197,13 +190,6 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
     await _flutterTts.setSpeechRate(0.8);
     await _flutterTts.speak("喔！");
 
-    if (mounted) {
-      // 2. 讓小豬頭上的氣泡顯示內容，並進入開心狀態 (取代原本的大對話框)
-      if (_selectedIndex == 0) {
-        _petKey.currentState?.say(displayText, state: PetState.happy);
-      }
-    }
-
     // 4. 通知 ZenPond 更新，觸發錦鯉游入動畫
     _zenPondKey.currentState?.addNotification(displayText);
 
@@ -285,14 +271,6 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
               ),
             ],
           ),
-          // 小豬桌寵 (僅在首頁顯示，擁有全螢幕的定位權)
-          if (_selectedIndex == 0)
-            DesktopPet(
-              key: _petKey,
-              userId: widget.userId,
-              bottomBarHeight: 110,
-              onStepsChanged: (steps) => checkExpeditionDiscovery(steps),
-            ),
           // 自定義浮動導覽列 (長輩對話與落葉木牌開啟時，平滑滑落隱藏以防遮擋)
           AnimatedPositioned(
             duration: const Duration(milliseconds: 300),
@@ -367,21 +345,4 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
     );
   }
 
-  // --- 遠征系統核心邏輯 ---
-
-  // 遠征系統：檢查是否撿到東西
-  void checkExpeditionDiscovery(int currentSteps) {
-    // 每 500 步有機率撿到東西
-    if (currentSteps - _lastDiscoveredSteps >= 500) {
-      _lastDiscoveredSteps = currentSteps;
-      final items = ["神秘種子", "閃亮石頭", "古老硬幣", "小紅花"];
-      final foundItem = items[DateTime.now().second % items.length];
-      
-      Timer(const Duration(seconds: 3), () {
-        if (mounted && _selectedIndex == 0) {
-          _petKey.currentState?.say("嘎挖！我在路邊撿到了【$foundItem】！送給您！🎁", state: PetState.happy);
-        }
-      });
-    }
-  }
 }

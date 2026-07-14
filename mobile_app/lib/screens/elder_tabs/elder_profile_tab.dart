@@ -12,7 +12,6 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'package:intl/intl.dart';
 import '../identification_screen.dart';
-import '../leaderboard_screen.dart';
 
 class ElderProfileTab extends StatefulWidget {
   final int userId;
@@ -40,7 +39,6 @@ class _ElderProfileTabState extends State<ElderProfileTab>
   static const Duration _minSampleInterval = Duration(seconds: 1);
   static const double _cleanCoordThresholdMeters = 1.0;
   static const bool _enableSplineSmoothing = true;
-  static const Color _routeAccentColor = Color(0xFF59B294);
 
   // ── 數據 ───────────────────────────────────────────────
   final int dailyStepGoal = 8000;
@@ -68,7 +66,6 @@ class _ElderProfileTabState extends State<ElderProfileTab>
   _CoordinateKalmanFilter? _latFilter;
   _CoordinateKalmanFilter? _lngFilter;
   // 台北 101 作為預設中心點
-  static const LatLng _defaultCenter = LatLng(25.0339, 121.5645);
 
   @override
   void initState() {
@@ -661,136 +658,6 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     );
   }
 
-  // ── ✨ 真實 OpenStreetMap 地圖 + GPS 追蹤 ────────────────────
-  Widget _buildRealMap() {
-    final displayPoints = _displayRoutePoints;
-    final avatarPoint = _currentPosition ??
-        (displayPoints.isNotEmpty ? displayPoints.last : _defaultCenter);
-    return Container(
-      height: 380,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.14),
-            blurRadius: 14,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Stack(
-        children: [
-          FlutterMap(
-            mapController: _mapController,
-            options: MapOptions(
-              initialCenter: displayPoints.isNotEmpty
-                  ? displayPoints.last
-                  : (_currentPosition ?? _defaultCenter),
-              initialZoom: 18.0,
-              initialCameraFit: displayPoints.length > 1
-                  ? CameraFit.bounds(
-                      bounds: LatLngBounds.fromPoints(displayPoints),
-                      padding: const EdgeInsets.all(80.0),
-                    )
-                  : null,
-              interactionOptions: const InteractionOptions(
-                flags: InteractiveFlag.none,
-              ),
-            ),
-            children: [
-              TileLayer(
-                urlTemplate:
-                    'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-                subdomains: const ['a', 'b', 'c', 'd'],
-                retinaMode: true,
-                userAgentPackageName: 'com.uban.app',
-                maxZoom: 20,
-              ),
-              if (displayPoints.length >= 2)
-                PolylineLayer(
-                  polylines: [
-                    Polyline(
-                      points: displayPoints,
-                      strokeWidth: 6.0,
-                      color: _routeAccentColor,
-                      borderStrokeWidth: 1.2,
-                      borderColor: const Color(0xFFFFFFFF),
-                      strokeJoin: StrokeJoin.round,
-                      strokeCap: StrokeCap.round,
-                    ),
-                  ],
-                ),
-              if (displayPoints.isNotEmpty)
-                MarkerLayer(
-                  markers: [
-                    Marker(
-                      point: displayPoints.first,
-                      width: 22,
-                      height: 22,
-                      alignment: Alignment.center,
-                      child: Container(
-                        width: 22,
-                        height: 22,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: const Color(0xFF59B294),
-                          border: Border.all(color: Colors.white, width: 3),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.25),
-                              blurRadius: 4,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              MarkerLayer(
-                markers: [
-                  Marker(
-                    point: avatarPoint,
-                    width: 72,
-                    height: 96,
-                    alignment: Marker.computePixelAlignment(
-                      width: 72,
-                      height: 96,
-                      left: 36,
-                      top: 81,
-                    ),
-                    child: const _AvatarPin(),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          Positioned(
-            top: 16,
-            left: 16,
-            child: _TrackingStateChip(state: _movementState),
-          ),
-          Positioned(
-            bottom: 8,
-            right: 8,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.5),
-                borderRadius: BorderRadius.circular(3),
-              ),
-              child: const Text(
-                '© CartoDB',
-                style: TextStyle(fontSize: 8, color: Colors.black38),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _handleLogout() {
     showDialog(
       context: context,
@@ -900,30 +767,6 @@ class _ElderProfileTabState extends State<ElderProfileTab>
               _buildDailyGoalRing(),
               const SizedBox(height: 24),
 
-              // ── 冒險護照 (遊戲入口) ───────────────────────────
-              _buildGameEntryCard(),
-              const SizedBox(height: 24),
-
-              // ── 移動軌跡地圖 ───────────────────────────
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(left: 8, bottom: 12),
-                    child: Text(
-                      '今日步行軌跡',
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: const Color(0xFF334155),
-                      ),
-                    ),
-                  ),
-                  _buildRealMap(),
-                ],
-              ),
-              const SizedBox(height: 40),
-
               // ── 系統設定選單 ───────────────────────────
               Container(
                 decoration: BoxDecoration(
@@ -981,100 +824,6 @@ class _ElderProfileTabState extends State<ElderProfileTab>
             const Spacer(),
             Icon(Icons.arrow_forward_ios_rounded,
                 color: Colors.grey.shade300, size: 18),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildGameEntryCard() {
-    return InkWell(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) =>
-                LeaderboardScreen(elderId: widget.userId.toString()),
-          ),
-        );
-      },
-      borderRadius: BorderRadius.circular(32),
-      child: Container(
-        height: 140,
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFFFFF1F2), Color(0xFFFFE4E6)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(32),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.pink.withValues(alpha: 0.1),
-              blurRadius: 20,
-              offset: const Offset(0, 10),
-            ),
-          ],
-        ),
-        child: Stack(
-          children: [
-            Positioned(
-              right: -20,
-              bottom: -20,
-              child: Opacity(
-                opacity: 0.2,
-                child: Image.asset(
-                  'assets/images/pig_2d_idle_v4.png',
-                  width: 150,
-                  errorBuilder: (context, _, __) =>
-                      const Icon(Icons.pets, size: 100),
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(24),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.stars_rounded,
-                      color: Colors.pinkAccent,
-                      size: 40,
-                    ),
-                  ),
-                  const SizedBox(width: 20),
-                  Expanded(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '我的冒險護照',
-                          style: GoogleFonts.notoSansTc(
-                            fontSize: 26,
-                            fontWeight: FontWeight.w900,
-                            color: const Color(0xFFE11D48),
-                          ),
-                        ),
-                        Text(
-                          '點擊進入小豬遊戲',
-                          style: GoogleFonts.notoSansTc(
-                            fontSize: 22, // Increased from 18
-                            color: const Color(0xFFF43F5E),
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
           ],
         ),
       ),
@@ -1284,16 +1033,6 @@ class TrianglePainter extends CustomPainter {
 }
 
 enum _MovementState { stationary, walking, fastTransit }
-
-class _TrackingStateChip extends StatelessWidget {
-  final _MovementState state;
-  const _TrackingStateChip({required this.state});
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox.shrink();
-  }
-}
 
 class _CoordinateKalmanFilter {
   double _estimate;

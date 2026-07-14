@@ -147,7 +147,7 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
           maxWidth: MediaQuery.of(context).size.width * 0.75,
         ),
         decoration: BoxDecoration(
-          color: isAi ? Colors.white : const Color(0xFF2563EB),
+          color: isAi ? Colors.white : const Color(0xFF59B294),
           borderRadius: BorderRadius.only(
             topLeft: const Radius.circular(20),
             topRight: const Radius.circular(20),
@@ -209,7 +209,7 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
               height: 12,
               child: CircularProgressIndicator(
                 strokeWidth: 2,
-                color: Color(0xFF2563EB),
+                color: Color(0xFF59B294),
               ),
             ),
             const SizedBox(width: 8),
@@ -275,7 +275,7 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
               width: 44,
               height: 44,
               decoration: const BoxDecoration(
-                color: Color(0xFF2563EB),
+                color: Color(0xFF59B294),
                 shape: BoxShape.circle,
               ),
               child: const Icon(

@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:lunar/lunar.dart';
 import 'package:intl/intl.dart';
 import '../elder_screen.dart';
+import '../friends_screen.dart';
 import '../news_listen_player/news_listen_player_screen.dart';
 import '../../services/api_service.dart';
 
@@ -500,7 +501,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                   ),
                   const Spacer(),
                   InkWell(
-                    onTap: () => _showFriendsBottomSheet(context),
+                    onTap: () => _openFriendsScreen(),
                     borderRadius: BorderRadius.circular(999),
                     child: Container(
                       padding: const EdgeInsets.all(8),
@@ -690,238 +691,15 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     );
   }
 
-  // ── ✨ 聯絡家人彈跳視窗與邏輯 ───────────────────────────────────
-  void _showFriendsBottomSheet(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (ctx) => _buildContactListSheet(ctx),
-    );
-  }
-
-  Widget _buildContactListSheet(BuildContext popupContext) {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 40,
-            height: 5,
-            decoration: BoxDecoration(
-              color: Colors.grey[300],
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
-          const SizedBox(height: 20),
-          Text(
-            '請問您想聯絡誰？',
-            style: GoogleFonts.notoSansTc(
-              fontSize: 24,
-              fontWeight: FontWeight.w900,
-              color: const Color(0xFF1E293B),
-            ),
-          ),
-          const SizedBox(height: 24),
-          if (_isLoadingFamily)
-            const Center(child: CircularProgressIndicator())
-          else if (_familyList.isEmpty)
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Text(
-                "目前尚未綁定任何家屬",
-                style: GoogleFonts.notoSansTc(color: Colors.grey, fontSize: 18),
-              ),
-            )
-          else
-            ..._familyList.map((family) => Padding(
-                  padding: const EdgeInsets.only(bottom: 16.0),
-                  child: _buildContactListItem(
-                      popupContext, family['user_name'] ?? '家人', '主要照護者'),
-                )),
-          const SizedBox(height: 14),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildContactListItem(
-      BuildContext popupContext, String name, String relation) {
-    return InkWell(
-      onTap: () {
-        Navigator.pop(popupContext); // Close first popup
-        _showActionBottomSheet(context, name, relation); // Open second popup
-      },
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF1F5F9),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: const Color(0xFFE2E8F0)),
-        ),
-        child: Row(
-          children: [
-            CircleAvatar(
-              radius: 30,
-              backgroundColor: const Color(0xFFCFEADF),
-              child:
-                  const Icon(Icons.person, size: 35, color: Color(0xFF59B294)),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    name,
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: const Color(0xFF1E293B),
-                    ),
-                  ),
-                  Text(
-                    relation,
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 18,
-                      color: const Color(0xFF64748B),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(Icons.arrow_forward_ios_rounded,
-                color: Color(0xFF94A3B8)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showActionBottomSheet(
-      BuildContext context, String name, String relation) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (ctx) => _buildActionSheet(ctx, name, relation),
-    );
-  }
-
-  Widget _buildActionSheet(
-      BuildContext popupContext, String name, String relation) {
-    return Container(
-      padding: const EdgeInsets.all(30),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(36)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          CircleAvatar(
-            radius: 40,
-            backgroundColor: const Color(0xFFCFEADF),
-            child: const Icon(Icons.person, size: 45, color: Color(0xFF59B294)),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            name,
-            style: GoogleFonts.notoSansTc(
-              fontSize: 28,
-              fontWeight: FontWeight.w900,
-              color: const Color(0xFF1E293B),
-            ),
-          ),
-          Text(
-            relation,
-            style: GoogleFonts.notoSansTc(
-              fontSize: 18,
-              color: const Color(0xFF64748B),
-            ),
-          ),
-          const SizedBox(height: 32),
-          Row(
-            children: [
-              Expanded(
-                child: _buildCallButton(
-                  icon: Icons.call_rounded,
-                  label: '語音通話',
-                  color: const Color(0xFF3B82F6),
-                  onTap: () {
-                    Navigator.pop(popupContext);
-                    _handleCall(name, isVideo: false);
-                  },
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: _buildCallButton(
-                  icon: Icons.videocam_rounded,
-                  label: '視訊通話',
-                  color: const Color(0xFF10B981),
-                  onTap: () {
-                    Navigator.pop(popupContext);
-                    _handleCall(name, isVideo: true);
-                  },
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 30),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCallButton({
-    required IconData icon,
-    required String label,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 20),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: color.withValues(alpha: 0.3), width: 2),
-        ),
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: color,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                      color: color.withValues(alpha: 0.3),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4)),
-                ],
-              ),
-              child: Icon(icon, size: 32, color: Colors.white),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              label,
-              style: GoogleFonts.notoSansTc(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                color: color,
-              ),
-            ),
-          ],
+  // ── ✨ 開啟「朋友列表」全畫面（撥號為主）───────────────────────
+  void _openFriendsScreen() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => FriendsScreen(
+          userId: widget.userId,
+          userName: widget.userName,
+          roomId: widget.roomId,
         ),
       ),
     );

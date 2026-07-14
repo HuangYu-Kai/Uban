@@ -195,7 +195,7 @@ class _FamilyAgentViewState extends State<FamilyAgentView> {
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: _buildAppBar(),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF2563EB)))
+          ? const Center(child: CircularProgressIndicator(color: Color(0xFF59B294)))
           : _elders.isEmpty
               ? _emptyState()
               : _buildBody(),
@@ -216,7 +216,7 @@ class _FamilyAgentViewState extends State<FamilyAgentView> {
                   fontSize: 18, fontWeight: FontWeight.w800, color: const Color(0xFF0F172A))),
           if (_selectedElder != null)
             Text('正在設定：$name',
-                style: GoogleFonts.notoSansTc(fontSize: 12, color: const Color(0xFF2563EB),
+                style: GoogleFonts.notoSansTc(fontSize: 12, color: const Color(0xFF59B294),
                     fontWeight: FontWeight.w600)),
         ],
       ),
@@ -228,13 +228,13 @@ class _FamilyAgentViewState extends State<FamilyAgentView> {
                   padding: EdgeInsets.all(14),
                   child: SizedBox(
                     width: 20, height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF2563EB)),
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF59B294)),
                   ))
               : TextButton(
                   onPressed: _selectedElder != null ? _save : null,
                   child: Text('儲存',
                       style: GoogleFonts.notoSansTc(
-                          color: const Color(0xFF2563EB),
+                          color: const Color(0xFF59B294),
                           fontSize: 16, fontWeight: FontWeight.w800)),
                 ),
         ),
@@ -553,7 +553,7 @@ class _FamilyAgentViewState extends State<FamilyAgentView> {
     if (_templates.isEmpty) return const SizedBox.shrink();
 
     final styles = {
-      'grandson':   ('👦', const Color(0xFFEFF6FF), const Color(0xFF2563EB)),
+      'grandson':   ('👦', const Color(0xFFEFF6FF), const Color(0xFF59B294)),
       'old_friend': ('🧓', const Color(0xFFFFF7ED), const Color(0xFFEA580C)),
       'butler':     ('🎩', const Color(0xFFF0FDF4), const Color(0xFF16A34A)),
     };
@@ -721,10 +721,10 @@ class _FamilyAgentViewState extends State<FamilyAgentView> {
                 duration: const Duration(milliseconds: 180),
                 padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
                 decoration: BoxDecoration(
-                  color: active ? const Color(0xFF2563EB) : Colors.white,
+                  color: active ? const Color(0xFF59B294) : Colors.white,
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(
-                      color: active ? const Color(0xFF2563EB) : Colors.grey.shade300),
+                      color: active ? const Color(0xFF59B294) : Colors.grey.shade300),
                 ),
                 child: Text(e['user_name'] ?? '長輩',
                     style: GoogleFonts.notoSansTc(

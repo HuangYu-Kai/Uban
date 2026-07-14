@@ -142,7 +142,7 @@ class _FamilyOnboardingScreenState extends State<FamilyOnboardingScreen> {
                 }
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF2563EB),
+                backgroundColor: const Color(0xFF59B294),
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
@@ -183,7 +183,7 @@ class _FamilyOnboardingScreenState extends State<FamilyOnboardingScreen> {
       margin: const EdgeInsets.only(right: 8),
       decoration: BoxDecoration(
         color: _currentPage == index
-            ? const Color(0xFF2563EB)
+            ? const Color(0xFF59B294)
             : const Color(0xFFE2E8F0),
         borderRadius: BorderRadius.circular(4),
       ),

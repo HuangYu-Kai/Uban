@@ -152,7 +152,7 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
                   const Icon(
                     Icons.favorite,
                     size: 64,
-                    color: Color(0xFF2563EB),
+                    color: Color(0xFF59B294),
                   ),
                   const SizedBox(height: 16),
                   Text(
@@ -276,7 +276,7 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
               child: ElevatedButton(
                 onPressed: _isLoading ? null : _handleConfirmPairing,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF2563EB),
+                  backgroundColor: const Color(0xFF59B294),
                   foregroundColor: Colors.white,
                   elevation: 0,
                   shape: RoundedRectangleBorder(
@@ -333,7 +333,7 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
-        borderSide: const BorderSide(color: Color(0xFF2563EB), width: 1.5),
+        borderSide: const BorderSide(color: Color(0xFF59B294), width: 1.5),
       ),
     );
   }
@@ -367,7 +367,7 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
             style: GoogleFonts.notoSansTc(
               fontSize: 14,
               fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-              color: isSelected ? const Color(0xFF2563EB) : Colors.grey[600],
+              color: isSelected ? const Color(0xFF59B294) : Colors.grey[600],
             ),
           ),
         ),
