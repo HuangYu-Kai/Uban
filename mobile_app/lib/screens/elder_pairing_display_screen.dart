@@ -47,9 +47,27 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
   //   角色會存進 SharedPreferences，之後重開機沿用，不會角色互換。
   Future<void> _promptModeAndNavigate(int elderId, String elderName, String? elderRoomId) async {
     final String elderRoom = elderRoomId ?? elderId.toString();
-    final bool isMonitor = await ApiService.hasCommDevice(elderRoom);
-
     final prefs = await SharedPreferences.getInstance();
+
+    // ★ Issue 2 修復：本裝置對「這個長輩」的角色（通話機/監控機）只在首次決定，
+    //   之後（含快速登入、重開機）一律沿用，不再重新呼叫 hasCommDevice，
+    //   避免同一台裝置重新登入時，因後端殘留的舊 FCM token 被誤判為「已有通話機」
+    //   而被錯誤指派為監控機（CCTV）。
+    final String deviceRoleKey = 'device_role_$elderRoom';
+    final String? savedRole = prefs.getString(deviceRoleKey);
+
+    bool isMonitor;
+    if (savedRole != null) {
+      isMonitor = savedRole == 'monitor';
+      debugPrint(
+          '🔁 [ElderPairingDisplay] 沿用已記住的裝置角色 ($deviceRoleKey=$savedRole)，不重查 hasCommDevice');
+    } else {
+      isMonitor = await ApiService.hasCommDevice(elderRoom);
+      await prefs.setString(deviceRoleKey, isMonitor ? 'monitor' : 'comm');
+      debugPrint(
+          '🆕 [ElderPairingDisplay] 首次判定裝置角色 ($deviceRoleKey=${isMonitor ? 'monitor' : 'comm'})');
+    }
+
     await prefs.setBool('saved_is_cctv', isMonitor);
 
     // 自動產生裝置名稱，免除中文輸入問題；監控機用不同名稱避免與通話機衝突
@@ -167,6 +185,11 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
 
   Future<void> _quickLoginSameElder() async {
     final prefs = await SharedPreferences.getInstance();
+
+    // ★ Issue 3 診斷 log：記錄呼叫當下 prefs 內既有的三個關鍵欄位（尚未套用開發模式覆寫）。
+    debugPrint(
+        '🔎 [ElderPairingDisplay] _quickLoginSameElder 開頭 prefs 快照: caregiver_id=${prefs.getInt('caregiver_id')}, caregiver_name=${prefs.getString('caregiver_name')}, user_role=${prefs.getString('user_role')}');
+
     int? elderId;
     String? elderName;
     String? role;

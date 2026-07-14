@@ -64,10 +64,9 @@ class _SplashScreenState extends State<SplashScreen> {
       }
       if (!mounted) return;
 
-      // 嘗試獲取登入狀態，設置 2 秒超時以防掛起
-      final prefs = await SharedPreferences.getInstance().timeout(
-        const Duration(seconds: 2),
-      );
+      // 嘗試獲取登入狀態（已移除 2 秒 .timeout，避免冷啟動 SharedPreferences
+      // 初始化 + 磁碟讀取超過 2 秒 → 拋例外 → 誤跳身分頁，讓已登入長輩看似 session 遺失）
+      final prefs = await SharedPreferences.getInstance();
       if (!mounted) return;
 
       final int? userId = prefs.getInt('caregiver_id');
@@ -86,6 +85,11 @@ class _SplashScreenState extends State<SplashScreen> {
       final int? effectiveUserId = prefs.getInt('caregiver_id');
       final String? effectiveUserName = prefs.getString('caregiver_name');
       final String? effectiveLocalRole = prefs.getString('user_role');
+
+      // ★ Issue 3 診斷 log：記錄本機 session 三個關鍵欄位，用於區分「session 真的遺失」
+      //   還是「短暫讀取異常造成的假性遺失」。
+      debugPrint(
+          '🔎 [Splash] _navigateToNext prefs 快照: caregiver_id=$effectiveUserId, caregiver_name=$effectiveUserName, user_role=$effectiveLocalRole');
 
       // ★ issue 2：先以本機紀錄的角色預先設置全域 appRole，
       //   避免在等待 API 回應期間（例如冷啟動時 CallKit 的接聽事件搶先觸發），
@@ -181,18 +185,25 @@ class _SplashScreenState extends State<SplashScreen> {
                 ),
               );
             } else {
-              _goNext();
+              // ★ Issue 3 硬化：effectiveLocalRole 只是進入本函式當下的快照，
+              //   API 失敗不代表本機真的不是長輩帳號；改由 _goNextOrRestoreElder
+              //   重讀 prefs 二次確認，避免暫時性失敗把已登入長輩丟到身分頁。
+              await _goNextOrRestoreElder();
             }
           }
         }
       } else {
         // 未登入，進入身分辨識頁
-        _goNext();
+        // ★ Issue 3 硬化：effectiveUserId/effectiveUserName 可能只是短暫讀取異常
+        //   造成的假性 null，先由 _goNextOrRestoreElder 重讀一次 prefs 再決定。
+        await _goNextOrRestoreElder();
       }
     } catch (e) {
       // 若發生任何錯誤 (如 SharedPreferences 失敗)，確保能進入身分選擇頁
       debugPrint('Splash error: $e');
-      if (mounted) _goNext();
+      // ★ Issue 3 硬化：任何例外都先嘗試重讀 prefs 判斷是否為已登入長輩，
+      //   絕不能因為一次例外就把已登入長輩導回身分辨識頁。
+      if (mounted) await _goNextOrRestoreElder();
     }
   }
 
@@ -201,6 +212,54 @@ class _SplashScreenState extends State<SplashScreen> {
       context,
       MaterialPageRoute(builder: (context) => const IdentificationScreen()),
     );
+  }
+
+  /// ★ Issue 3 硬化：在導向身分辨識頁（_goNext）之前的最後防線。
+  /// API 失敗或 prefs 短暫讀取異常，不代表本機真的沒有已登入的長輩 session。
+  /// 這裡「重新」讀一次 SharedPreferences（不沿用外層可能已經是舊快照的區域變數），
+  /// 只要看起來像長輩 session（user_role 直接是 'elder'；或 user_role 欄位本身缺漏
+  /// 但 caregiver_id/caregiver_name 都還在，視為寫入未完成的邊界情況也保守當作長輩），
+  /// 就一律導向長輩主畫面，絕不因暫時性失敗把已登入長輩丟回身分頁。
+  Future<void> _goNextOrRestoreElder() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final int? uid = prefs.getInt('caregiver_id');
+      final String? uname = prefs.getString('caregiver_name');
+      final String? role = prefs.getString('user_role');
+
+      debugPrint(
+          '🛟 [Splash] _goNextOrRestoreElder 重讀 prefs: caregiver_id=$uid, caregiver_name=$uname, user_role=$role');
+
+      final bool looksLikeElderSession =
+          role == 'elder' || (role == null && uid != null && uname != null);
+
+      if (looksLikeElderSession && mounted) {
+        final bool isCCTV = prefs.getBool('saved_is_cctv') ?? false;
+        final String deviceName =
+            prefs.getString('saved_device_name') ?? uname ?? '長輩';
+        final String elderRoomId =
+            prefs.getString('elder_room_id') ?? uid?.toString() ?? '0';
+
+        debugPrint('🛡️ [Splash] 偵測到本機長輩 session，改導向長輩主畫面而非身分頁');
+
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => _resolveElderDestination(
+              isCCTV: isCCTV,
+              deviceName: deviceName,
+              elderRoomId: elderRoomId,
+              effectiveUserId: uid ?? 0,
+              effectiveUserName: uname ?? deviceName,
+            ),
+          ),
+        );
+        return;
+      }
+    } catch (e) {
+      debugPrint('⚠️ [Splash] _goNextOrRestoreElder 重讀 prefs 失敗: $e');
+    }
+    if (mounted) _goNext();
   }
 
   /// ★ issue 2/10：決定長輩端啟動後要進入哪個畫面。

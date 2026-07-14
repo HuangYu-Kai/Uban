@@ -50,6 +50,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   Timer? _callTimer;
   int _callDuration = 0; // 秒數
   int? _userId; // ★ issue 3/10：用於安全導航回主畫面時建構 ElderHomeScreen
+  String? _prefsUserName; // ★ Issue 1 硬化：真實 caregiver_name，供 _buildFallbackHome 使用
 
   // ★ 新增：用於生成新格式的房間ID
   late String _formattedRoomId;
@@ -303,8 +304,12 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     //    elder_id（widget.roomId，如 '0343'）≠ user_id（資料庫帳號整數 ID）
     final prefs = await SharedPreferences.getInstance();
     final int? actualUserId = prefs.getInt('caregiver_id');
+    final String? actualUserName = prefs.getString('caregiver_name');
     final dynamic resolvedUserId = actualUserId ?? widget.roomId;
     _userId = actualUserId;
+    // ★ Issue 1 硬化：一併記住真實使用者名稱，供 _buildFallbackHome 導航使用，
+    //   避免通話結束回退時錯用 widget.deviceName（裝置暱稱，非長輩本名）。
+    _prefsUserName = actualUserName;
     
     // ★ 修復：若 Socket 已經連線（從 ElderHomeScreen 傳承下來），則不要重新連線，
     //   否則會導致原本的 callbacks 被覆寫。若是從 CCTV 模式直接進入，則會在此處連線。
@@ -403,8 +408,29 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     };
 
     _signaling.socket?.on('force-logout', (_) async {
+      debugPrint('🚪 [ElderScreen] force-logout 觸發');
       final prefs = await SharedPreferences.getInstance();
-      await prefs.clear();
+      // ★ Issue 3 硬化：force-logout 只應清除「登入/角色/裝置身分」相關鍵，
+      //   不可用 prefs.clear() 清光全部本機資料，避免波及與登入狀態無關的設定。
+      const List<String> keysToRemove = [
+        'caregiver_id',
+        'caregiver_name',
+        'user_role',
+        'saved_role',
+        'saved_id',
+        'saved_device_name',
+        'saved_is_cctv',
+        'elder_room_id',
+        'access_token',
+      ];
+      for (final key in keysToRemove) {
+        await prefs.remove(key);
+      }
+      final deviceRoleKeys =
+          prefs.getKeys().where((k) => k.startsWith('device_role_')).toList();
+      for (final key in deviceRoleKeys) {
+        await prefs.remove(key);
+      }
       if (mounted) {
          Navigator.pushAndRemoveUntil(
           context,
@@ -571,7 +597,9 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   Widget _buildFallbackHome() {
     return ElderHomeScreen(
       userId: _userId ?? 0,
-      userName: widget.deviceName,
+      // ★ Issue 1 硬化：優先使用 prefs 讀到的真實 caregiver_name，
+      //   讀不到才退回舊有的 widget.deviceName（裝置暱稱）。
+      userName: _prefsUserName ?? widget.deviceName,
       roomId: widget.roomId,
     );
   }
