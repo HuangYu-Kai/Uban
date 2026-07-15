@@ -3,7 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 
-/// 長輩端「和小雲聊天」—— 一般 AI 聊天頁（訊息泡泡 + 輸入列）。
+/// 長輩端「和小嘎聊天」—— 一般 AI 聊天頁（訊息泡泡 + 輸入列）。
 ///
 /// 沿用既有 AI 後端 `ApiService.aiChat`。
 /// 註：原本的禪意池塘聊天 `ZenPondScreen`（lib/screens/zen_pond/）**保留未刪**，
@@ -38,7 +38,7 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
   void initState() {
     super.initState();
     _messages.add(_ChatMessage(
-      '您好，${widget.userName}！我是小雲 😊\n想聊什麼都可以跟我說喔～',
+      '您好，${widget.userName}！我是小嘎 😊\n想聊什麼都可以跟我說喔～',
       false,
     ));
   }
@@ -68,7 +68,7 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
       } else if (result['data'] is Map && result['data']['reply'] != null) {
         reply = result['data']['reply'].toString();
       } else if (result['status'] == 'error') {
-        reply = (result['message'] ?? '小雲現在有點累，等等再聊好嗎？').toString();
+        reply = (result['message'] ?? '小嘎現在有點累，等等再聊好嗎？').toString();
       }
       // 移除回覆中的 [圖片]/[影片] 等標記
       reply = reply.replaceAll(RegExp(r'\[[^\]]*\]'), '').trim();
@@ -81,7 +81,7 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _messages.add(_ChatMessage('小雲現在連不上，稍後再聊喔', false));
+        _messages.add(_ChatMessage('小嘎現在連不上，稍後再聊喔', false));
         _isThinking = false;
       });
     }
@@ -142,40 +142,24 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
   Widget _buildHeader() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 52,
-            height: 52,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.white.withValues(alpha: 0.9),
-              border: Border.all(color: Colors.white, width: 2),
+          Text(
+            '小嘎',
+            style: GoogleFonts.notoSansTc(
+              fontSize: 26,
+              fontWeight: FontWeight.w900,
+              color: Colors.white,
             ),
-            alignment: Alignment.center,
-            child: const Text('☁️', style: TextStyle(fontSize: 26)),
           ),
-          const SizedBox(width: 14),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '小雲',
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 26,
-                  fontWeight: FontWeight.w900,
-                  color: Colors.white,
-                ),
-              ),
-              Text(
-                '陪您聊天的好朋友',
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white.withValues(alpha: 0.9),
-                ),
-              ),
-            ],
+          Text(
+            '陪您聊天的好朋友',
+            style: GoogleFonts.notoSansTc(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: Colors.white.withValues(alpha: 0.9),
+            ),
           ),
         ],
       ),
@@ -191,10 +175,6 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
             isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          if (!isUser) ...[
-            _miniAvatar(),
-            const SizedBox(width: 8),
-          ],
           Flexible(
             child: Container(
               padding:
@@ -245,7 +225,7 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
               borderRadius: BorderRadius.circular(22),
             ),
             child: Text(
-              '小雲思考中…',
+              '小嘎思考中…',
               style: GoogleFonts.notoSansTc(
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
@@ -307,7 +287,7 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
                   color: AppColors.textPrimary,
                 ),
                 decoration: InputDecoration(
-                  hintText: '想跟小雲說什麼…',
+                  hintText: '想跟小嘎說什麼…',
                   hintStyle: GoogleFonts.notoSansTc(
                     fontSize: 19,
                     color: AppColors.textHint,

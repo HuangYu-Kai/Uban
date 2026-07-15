@@ -813,7 +813,17 @@ void initPedometer() {
 | 小雲聊天（現行長輩聊天分頁）| 💬 一般 AI 聊天泡泡介面（沿用 `ApiService.aiChat`）| `mobile_app/lib/screens/elder_chat_screen.dart` |
 | 魚你聊聊（保留未刪）| 🐟 非壓力型 AI 互動與通知池塘 | `mobile_app/lib/screens/zen_pond/zen_pond_screen.dart` |
 
-> ⚠️ **注意（UI 改造）**：長輩端「聊天」分頁已改用一般 AI 聊天頁 `elder_chat_screen.dart`。原本的 **魚你聊聊 / 禪意池塘（`zen_pond/`）程式碼完整保留、未刪除**，只是不再掛在長輩導覽的聊天分頁；若要切回，於 `elder_home_screen.dart` 的 `IndexedStack` 把 `ElderChatScreen` 換回 `ZenPondScreen` 即可。
+> ⚠️ **注意（UI 改造）**：長輩端「聊天」分頁已改用一般 AI 聊天頁 `elder_chat_screen.dart`（AI 名稱「小嘎」）。原本的 **魚你聊聊 / 禪意池塘（`zen_pond/`）程式碼完整保留、未刪除**，只是不再掛在長輩導覽的聊天分頁；若要切回，於 `elder_home_screen.dart` 的 `IndexedStack` 把 `ElderChatScreen` 換回 `ZenPondScreen` 即可。
+
+### 🔌 待接後端資料（UI 已就緒、資料來源尚未串接）
+
+以下資料目前 UI 為**佔位 / 本機計算**，需接後端 API（**長輩端與子女端都會用到**，請設計成兩端共用的欄位/端點）：
+
+| 項目 | 現況 | 待辦 |
+|------|------|------|
+| **會員等級（金/銀/銅豬）** | 首頁徽章固定顯示「金豬會員」(`elder_home_tab.dart` `_buildMembershipBadge`)；徽章圖 `assets/images/pig_badge_gold\|silver\|bronze.png` 已備妥 | 後端需提供**會員等級欄位**，前端依 tier 切換金/銀/銅徽章與文字 |
+| **健康資料** | 尚無統一健康資料來源 | 後端需提供健康資料端點（長輩端顯示、子女端遠端查看共用） |
+| **步數 / 活動量** | 長輩端 `elder_profile_tab.dart` `_computeFusedSteps()` 為**本機 pedometer 計算、未上傳**；後端已有 `/ai/log_activity` 端點可參考 | 需把步數/活動量**上傳後端並同步**，供子女端遠端查看（活動量、趨勢） |
 | 長輩首頁 | 主功能選單 | `mobile_app/lib/screens/elder_home_screen.dart` |
 | 長輩 Tabs | 分頁導航 | `mobile_app/lib/screens/elder_tabs/` |
 | 天氣頁面 | 天氣資訊顯示 | `mobile_app/lib/screens/weather_screen.dart` |
