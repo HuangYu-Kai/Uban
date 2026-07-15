@@ -400,6 +400,35 @@ void initPedometer() {
 
 ## 更新日誌
 
+### 2026-07-15 🎨 長輩端 UI 全面改造（統一設計語言 + 毛玻璃 + 適老化）
+
+> **只改 UI、不動功能邏輯**（WebRTC 信令 / 背景 GPS / API service / 登入-CCTV 路由全程未修改）。分支 `newui`。客群定位：**不太會用手機的獨居長輩**。
+
+**設計系統**
+- 新建 `lib/theme/app_theme.dart`：集中 design tokens（`AppColors` 主色統一 teal `0xFF59B294`、`AppSpacing`、`AppRadius`、`AppTextStyles`、適老化 `ElderScale`）＋ `buildAppTheme()`，`main.dart` 套用。
+- 家屬端主色 `0xFF2563EB` 藍 → teal `0xFF59B294`（全專案 35 處統一）。
+- 新增毛玻璃元件 `lib/widgets/glass_card.dart`（BackdropFilter 模糊＋半透明＋細白邊）。
+
+**移除項目**
+- 移除養豬系統 UI：桌寵 `DesktopPet`、遠征撿寶、個人頁遊戲入口卡（寵物/game 相關檔案保留為死碼，未刪）。
+- 移除長輩個人頁「地圖/移動軌跡」UI（`_buildRealMap`），**保留**背景 GPS/`_routePoints`/上傳邏輯；步數環、距離、熱量等活動量保留。
+
+**長輩端首頁 `elder_tabs/elder_home_tab.dart`**
+- 三層堆疊封面：第一層 teal `55B695→FFFFFF`、第二層 `DFFFF4→FFFFFF`（偏左露圓角）、第三層內容 sheet `DDE6DE`（圓角 20）。
+- 右上浮動**會員徽章 + 使用者頭像**：金/銀/銅豬徽章 `assets/images/pig_badge_gold|silver|bronze.png`（目前固定「金豬會員」）、頭像 `assets/images/user_avatar.png`。
+- 毛玻璃日期卡；**單一大頭條新聞卡**（優先挑有圖新聞當背景、「點我聆聽」膠囊、整卡點擊→聆聽頁、「看更多新聞」→聆聽頁自動展開列表面板）。移除輪播控制與自動跳頁，新聞抓取/TTS 保留。清理約 1100 行死碼。
+
+**長輩端導覽與分頁 `elder_home_screen.dart`**
+- 底部導覽列改「圖示 + 大字標籤」，4 分頁 `首頁 / 電話 / 聊天 / 我的`（bar 固定、只換內容）。
+- **電話分頁** = 新畫面 `friends_screen.dart`（好友列表，每位家人右側「電話(語音)＋視訊」圓鈕，沿用 `ElderScreen` 通話入口）。
+- **聊天分頁** = 新畫面 `elder_chat_screen.dart`：AI 名「**小嘎**」，一般泡泡聊天（沿用 `ApiService.aiChat`）、無標題無頭像、平底背景，**WeChat 式「按住　說話」語音輸入**（沿用 `speech_to_text`，按住時上方即時顯示辨識文字，放開送出）＋鍵盤切換。
+- **原「魚你聊聊 / 禪意池塘」`zen_pond/` 程式碼完整保留、未刪**，只是不再掛在聊天分頁（切回法見上文螢幕列表註記）。
+- 長輩個人頁 `elder_profile_tab.dart`：**登出鈕固定畫面最底**（避開浮動導覽列）。
+
+**待接後端**（見上文「🔌 待接後端資料」）：會員等級、健康資料、步數/活動量同步（長輩端與子女端共用）。
+
+**子女端**：本次未改動。
+
 ### 2026-06-11 📞 通話/監視器/綁定 15 項問題修復
 
 **修復來電與視訊通話流程、新增「監視器」角色、修正監控配對與一鍵監看、修復解除綁定按鈕，並補強多處黑/白屏的安全導航。**

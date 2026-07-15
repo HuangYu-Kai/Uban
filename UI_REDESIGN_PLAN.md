@@ -2,22 +2,24 @@
 
 ---
 
-## 🔄 第三階段：毛玻璃設計語言 + 長輩端細修（進行中，2026-07-15）
+## ✅ 第三階段：毛玻璃設計語言 + 長輩端細修（**長輩端已完成並實機驗證**，2026-07-15）
 
-分支 `newui`。使用者要蘋果「毛玻璃(frosted/liquid glass)」為設計語言。已完成/現況（`flutter analyze lib` = 0 error）：
-- ✅ 新增 `lib/widgets/glass_card.dart`（毛玻璃容器：BackdropFilter 模糊+半透明+細白邊）。
-- ✅ **長輩首頁 `elder_home_tab.dart` 重排**：上方 teal 漸層封面 + 下方圓角內容 sheet；**右上浮動「會員徽章膠囊(金豬會員) + 使用者頭像」**（徽章圖 `assets/images/pig_badge_gold|silver|bronze.png` 尚未提供，暫用 🐷 emoji 佔位，errorBuilder fallback；會員等級資料來源後端尚未接）。內容：毛玻璃日期卡 + 單一大頭條新聞卡（優先挑有圖新聞當背景圖；點卡=聆聽頁、看更多=聆聽頁自動展開列表面板）。
-- ✅ **電話移到底部導覽列**：長輩導覽 4 分頁 `首頁/電話/聊天/我的`（IndexedStack index 0/1/2/3）。電話分頁=`FriendsScreen`（每位家人右側「電話(語音)+視訊(視訊)」圓鈕）。
-- ✅ **聊天分頁改 `elder_chat_screen.dart`**（一般 AI 泡泡聊天，沿用 `ApiService.aiChat`）。**ZenPond(`zen_pond/`) 保留未刪**、只是不掛在分頁（README 已註記；要切回改 elder_home_screen IndexedStack）。
-- ✅ **個人頁登出鈕固定最底**（`elder_profile_tab.dart`，bottom padding 120 避開浮動導覽列）。
-- ✅ 「看更多新聞」自動展開聆聽頁列表：`news_listen_player_screen.dart` 加 opt-in 參數 `startExpanded`（進場 `_panelController.forward()`），不改其外觀/現有行為。
+分支 `newui`。`flutter analyze lib` = 0 error。**完整更新日誌見 `README.md`（2026-07-15 條目）**，此處只留接力重點。
 
-**待辦**：
-- 🔲 使用者要提供 3 顆豬徽章 PNG 放 `assets/images/`（金/銀/銅）；會員等級後端欄位。
-- 🔲 家屬端整體套毛玻璃/統一設計語言（task 10）。
-- 🔲 實機截圖驗證第三階段全畫面（本輪模擬器磁碟爆滿 wipe 重裝中）。
+**長輩端全部完成（實機截圖驗證四分頁 OK）**：
+- ✅ 毛玻璃元件 `lib/widgets/glass_card.dart`。
+- ✅ 首頁 `elder_tabs/elder_home_tab.dart`：**三層封面**（第一層 teal `55B695→FFFFFF`／第二層 `DFFFF4→FFFFFF` 偏左露圓角／第三層 sheet `DDE6DE` 圓角20）＋右上浮動**會員徽章+頭像**（徽章圖已放 `assets/images/pig_badge_gold|silver|bronze.png`＝金太陽/銀/銅豬；頭像 `assets/images/user_avatar.png`；目前固定顯示「金豬會員」）＋毛玻璃日期卡＋單一大頭條（優先有圖、點卡=聆聽頁、看更多=聆聽頁自動展開列表）。
+- ✅ 導覽 4 分頁 `首頁/電話/聊天/我的`（`elder_home_screen.dart` IndexedStack 0/1/2/3，bar 固定）。
+- ✅ 電話分頁 `friends_screen.dart`（每位家人右側「電話(語音)+視訊」圓鈕）。
+- ✅ 聊天分頁 `elder_chat_screen.dart`：AI 名「**小嘎**」、無標題無頭像、平底背景 `F1F5F9`、**WeChat 式「按住 說話」語音輸入**（`speech_to_text`，按住即時顯示辨識文字、放開送出）＋鍵盤切換。**ZenPond `zen_pond/` 保留未刪**。
+- ✅ 個人頁 `elder_profile_tab.dart` 登出鈕固定最底（避開導覽列）。
+- ✅ `news_listen_player_screen.dart` 加 opt-in `startExpanded`（看更多→進場自動展開列表面板）。
 
-**測試備註**：登入會跳 CCTV（後端 hasCommDevice，非 bug）。用 dev-bypass 進長輩首頁：`flutter run --dart-define=DEV_BYPASS_LOGIN=true --dart-define=DEV_BYPASS_USER_ID=4 --dart-define=DEV_BYPASS_USER_NAME=gawa --dart-define=DEV_BYPASS_ROLE=elder`。模擬器 DNS 要 `-dns-server 8.8.8.8`（否則 API TimeoutException）。
+**下一棒待辦**：
+- 🔲 **子女端（家屬端）整體套此設計語言**——使用者本輪明確指示「先不要動」，之後再做。
+- 🔲 **接後端資料**（見 README「🔌 待接後端資料」）：會員等級（金/銀/銅豬切換）、健康資料、步數/活動量同步——**長輩端與子女端共用**，請設計共用欄位/端點。
+
+**測試備註**：登入會跳 CCTV（後端 `hasCommDevice`，非 bug，連 `pm clear` 也一樣）。要進長輩首頁測試用 App 內建 dev-bypass：`flutter run --dart-define=DEV_BYPASS_LOGIN=true --dart-define=DEV_BYPASS_USER_ID=4 --dart-define=DEV_BYPASS_USER_NAME=gawa --dart-define=DEV_BYPASS_ROLE=elder`。模擬器 DNS 要 `-dns-server 8.8.8.8`（否則 API TimeoutException）；debug APK 180MB，模擬器磁碟易爆，必要時 `emulator -wipe-data` 冷開。
 
 ---
 
