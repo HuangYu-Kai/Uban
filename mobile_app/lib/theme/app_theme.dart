@@ -115,6 +115,61 @@ class AppTextStyles {
       );
 }
 
+/// 適老化尺度（Elder-friendly）—— 長輩端專用的放大字級 / 大點擊區 / 高對比。
+///
+/// 客群為「不太會用手機的獨居長輩」，設計原則：字大、按鈕大、對比高、
+/// 每屏選項少、圖示一律配文字。長輩端畫面請優先使用這組尺度。
+class ElderScale {
+  ElderScale._();
+
+  // --- 文字（比一般大 1 級以上）---
+  /// 超大標題（如日期、問候語）。
+  static TextStyle get displayTitle => GoogleFonts.notoSansTc(
+        fontSize: 40,
+        fontWeight: FontWeight.w900,
+        color: AppColors.textPrimary,
+        height: 1.1,
+      );
+
+  /// 區塊標題。
+  static TextStyle get sectionTitle => GoogleFonts.notoSansTc(
+        fontSize: 30,
+        fontWeight: FontWeight.w900,
+        color: AppColors.textPrimary,
+      );
+
+  /// 大按鈕文字。
+  static TextStyle get button => GoogleFonts.notoSansTc(
+        fontSize: 28,
+        fontWeight: FontWeight.w800,
+      );
+
+  /// 內文（長輩可讀最小值）。
+  static TextStyle get body => GoogleFonts.notoSansTc(
+        fontSize: 22,
+        fontWeight: FontWeight.w600,
+        color: AppColors.textPrimary,
+        height: 1.35,
+      );
+
+  /// 次要說明文字。
+  static TextStyle get caption => GoogleFonts.notoSansTc(
+        fontSize: 18,
+        fontWeight: FontWeight.w600,
+        color: AppColors.textSecondary,
+      );
+
+  // --- 尺寸 ---
+  /// 主要大按鈕高度（最小點擊區）。
+  static const double buttonHeight = 84;
+
+  /// 大按鈕內圖示尺寸。
+  static const double buttonIcon = 40;
+
+  /// 卡片圓角。
+  static const double cardRadius = 28;
+}
+
 /// 建立全 App 統一的 ThemeData。
 ThemeData buildAppTheme(BuildContext context) {
   final colorScheme = ColorScheme.fromSeed(

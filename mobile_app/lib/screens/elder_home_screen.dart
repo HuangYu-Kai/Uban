@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'elder_tabs/elder_home_tab.dart';
-import 'zen_pond/zen_pond_screen.dart';
+import 'friends_screen.dart';
+import 'elder_chat_screen.dart';
 import 'elder_tabs/elder_profile_tab.dart';
 import '../globals.dart';
 import 'elder_screen.dart';
@@ -28,11 +30,7 @@ class ElderHomeScreen extends StatefulWidget {
 }
 
 class _ElderHomeScreenState extends State<ElderHomeScreen> {
-  int _selectedIndex = 0; // 0: Home/Calendar, 1: Chat, 2: Profile/Settings
-  final GlobalKey<ZenPondScreenState> _zenPondKey = GlobalKey<ZenPondScreenState>();
-
-  // ★ 新增：對話 Overlay 顯示狀態，用以動態隱藏導覽列防止重合
-  bool _isZenPondOverlayVisible = false;
+  int _selectedIndex = 0; // 0:首頁 1:電話 2:聊天 3:我的
 
   bool _isNavigatingToCall = false;
 
@@ -190,9 +188,6 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
     await _flutterTts.setSpeechRate(0.8);
     await _flutterTts.speak("喔！");
 
-    // 4. 通知 ZenPond 更新，觸發錦鯉游入動畫
-    _zenPondKey.currentState?.addNotification(displayText);
-
     // 5. 正式的語音朗讀
     await _flutterTts.setPitch(1.0); // 恢復正常音調
     await _flutterTts.setSpeechRate(0.5);
@@ -252,32 +247,35 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
           IndexedStack(
             index: _selectedIndex,
             children: [
+              // 0 首頁
               ElderHomeTab(
                 userId: widget.userId,
                 userName: widget.userName,
-                roomId: widget.roomId, // ★ 新增傳遞 roomId
+                roomId: widget.roomId,
               ),
-              ZenPondScreen(
-                key: _zenPondKey,
-                onOverlayStateChanged: (isVisible) {
-                  setState(() {
-                    _isZenPondOverlayVisible = isVisible;
-                  });
-                },
+              // 1 電話（好友列表）
+              FriendsScreen(
+                userId: widget.userId,
+                userName: widget.userName,
+                roomId: widget.roomId,
               ),
+              // 2 聊天（小雲 AI 聊天）
+              ElderChatScreen(
+                userId: widget.userId,
+                userName: widget.userName,
+              ),
+              // 3 我的
               ElderProfileTab(
                 userId: widget.userId,
                 userName: widget.userName,
               ),
             ],
           ),
-          // 自定義浮動導覽列 (長輩對話與落葉木牌開啟時，平滑滑落隱藏以防遮擋)
-          AnimatedPositioned(
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeInOut,
+          // 浮動導覽列（永遠顯示）
+          Positioned(
             left: 0,
             right: 0,
-            bottom: (_selectedIndex == 1 && _isZenPondOverlayVisible) ? -100 : 0,
+            bottom: 0,
             child: _buildFloatingNavBar(),
           ),
         ],
@@ -287,8 +285,8 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
 
   Widget _buildFloatingNavBar() {
     return Container(
-      height: 90,
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      height: 104,
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: const BorderRadius.only(
@@ -306,40 +304,51 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _buildNavItem(0, Icons.home_rounded),
-          _buildNavItem(1, Icons.chat_bubble_rounded),
-          _buildNavItem(2, Icons.person_rounded),
+          _buildNavItem(0, Icons.home_rounded, '首頁'),
+          _buildNavItem(1, Icons.phone_rounded, '電話'),
+          _buildNavItem(2, Icons.chat_bubble_rounded, '聊天'),
+          _buildNavItem(3, Icons.person_rounded, '我的'),
         ],
       ),
     );
   }
 
-  Widget _buildNavItem(int index, IconData icon) {
+  Widget _buildNavItem(int index, IconData icon, String label) {
     final isSelected = _selectedIndex == index;
+    final Color activeColor = const Color(0xFF59B294);
+    final Color inactiveColor = const Color(0xFF94A3B8);
     return GestureDetector(
       onTap: () => setState(() => _selectedIndex = index),
+      behavior: HitTestBehavior.opaque,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
+        duration: const Duration(milliseconds: 250),
         curve: Curves.easeOutCubic,
-        transform: Matrix4.translationValues(0, isSelected ? -15 : 0, 0),
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF59B294) : Colors.transparent,
-          shape: BoxShape.circle,
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: const Color(0xFF59B294).withValues(alpha: 0.3),
-                    blurRadius: 10,
-                    offset: const Offset(0, 5),
-                  ),
-                ]
-              : [],
+          color: isSelected
+              ? activeColor.withValues(alpha: 0.12)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(20),
         ),
-        child: Icon(
-          icon,
-          size: 32,
-          color: isSelected ? Colors.white : Colors.grey[400],
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 34,
+              color: isSelected ? activeColor : inactiveColor,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: GoogleFonts.notoSansTc(
+                fontSize: 18,
+                fontWeight: isSelected ? FontWeight.w900 : FontWeight.w700,
+                color: isSelected ? activeColor : inactiveColor,
+                height: 1.0,
+              ),
+            ),
+          ],
         ),
       ),
     );

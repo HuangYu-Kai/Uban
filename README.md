@@ -810,7 +810,10 @@ void initPedometer() {
 |------|------|----------|
 | AI 聊天 | 語音對話主介面 | `mobile_app/lib/screens/ai_chat_screen.dart` |
 | 重設計聊天 | 新版 UI 聊天介面 | `mobile_app/lib/screens/redesigned_ai_chat_screen.dart` |
-| 魚你聊聊 | 🐟 非壓力型 AI 互動與通知池塘 | `mobile_app/lib/screens/zen_pond/zen_pond_screen.dart` |
+| 小雲聊天（現行長輩聊天分頁）| 💬 一般 AI 聊天泡泡介面（沿用 `ApiService.aiChat`）| `mobile_app/lib/screens/elder_chat_screen.dart` |
+| 魚你聊聊（保留未刪）| 🐟 非壓力型 AI 互動與通知池塘 | `mobile_app/lib/screens/zen_pond/zen_pond_screen.dart` |
+
+> ⚠️ **注意（UI 改造）**：長輩端「聊天」分頁已改用一般 AI 聊天頁 `elder_chat_screen.dart`。原本的 **魚你聊聊 / 禪意池塘（`zen_pond/`）程式碼完整保留、未刪除**，只是不再掛在長輩導覽的聊天分頁；若要切回，於 `elder_home_screen.dart` 的 `IndexedStack` 把 `ElderChatScreen` 換回 `ZenPondScreen` 即可。
 | 長輩首頁 | 主功能選單 | `mobile_app/lib/screens/elder_home_screen.dart` |
 | 長輩 Tabs | 分頁導航 | `mobile_app/lib/screens/elder_tabs/` |
 | 天氣頁面 | 天氣資訊顯示 | `mobile_app/lib/screens/weather_screen.dart` |

@@ -1,25 +1,26 @@
-import 'dart:async';
-import 'dart:math';
-
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lunar/lunar.dart';
 import 'package:intl/intl.dart';
-import '../elder_screen.dart';
-import '../friends_screen.dart';
 import '../news_listen_player/news_listen_player_screen.dart';
 import '../../services/api_service.dart';
+import '../../theme/app_theme.dart';
+import '../../widgets/glass_card.dart';
 
 class ElderHomeTab extends StatefulWidget {
   final int userId;
   final String userName;
   final String? roomId;
 
+  /// 切換到「聊天」分頁的回呼（首頁「和小雲聊天」大按鈕用）。
+  final VoidCallback? onNavigateToChat;
+
   const ElderHomeTab({
     super.key,
     required this.userId,
     required this.userName,
     this.roomId,
+    this.onNavigateToChat,
   });
 
   @override
@@ -32,44 +33,16 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
   late String _dayName;
   late String _dateStr;
   late String _monthStr;
-  late String _yearStr;
 
-  List<dynamic> _familyList = [];
-  bool _isLoadingFamily = true;
   List<Map<String, dynamic>> _newsItems = [];
   bool _isLoadingNews = true;
-  String? _newsError;
-  final Random _random = Random();
   int _topNewsIndex = 0;
-  Timer? _topNewsRotateTimer;
-  Timer? _topNewsAutoResumeTimer;
-  bool _topNewsAutoPaused = false;
-  static const Duration _topNewsRotationDuration = Duration(seconds: 15);
-  DateTime _topNewsCycleStartedAt = DateTime.now();
-  int _topNewsCycleToken = 0;
 
   @override
   void initState() {
     super.initState();
     _updateTime();
-    _fetchFamily();
     _fetchNews();
-  }
-
-  Future<void> _fetchFamily() async {
-    try {
-      final family = await ApiService.getPairedFamily(widget.userId);
-      if (mounted) {
-        setState(() {
-          _familyList = family;
-          _isLoadingFamily = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isLoadingFamily = false);
-      }
-    }
   }
 
   Future<void> _fetchNews({String? category}) async {
@@ -108,25 +81,14 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
         setState(() {
           _newsItems = deduped;
           _isLoadingNews = false;
-          _newsError = null;
-          _topNewsAutoPaused = false;
-          if (_newsItems.isNotEmpty) {
-            _topNewsIndex = _random.nextInt(_newsItems.length);
-            _resetTopNewsCycle();
-          } else {
-            _topNewsIndex = 0;
-          }
+          // 適老化：顯示最新一則頭條，不自動輪播（避免長輩困惑）。
+          _topNewsIndex = 0;
         });
-        _startTopNewsRotation();
       }
     } catch (e) {
       if (mounted) {
-        setState(() {
-          _isLoadingNews = false;
-          _newsError = '新聞暫時讀取失敗，稍後再試。';
-        });
+        setState(() => _isLoadingNews = false);
       }
-      _topNewsRotateTimer?.cancel();
     }
   }
 
@@ -172,35 +134,6 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     return merged;
   }
 
-  void _startTopNewsRotation() {
-    _topNewsRotateTimer?.cancel();
-    _topNewsAutoResumeTimer?.cancel();
-    _resetTopNewsCycle();
-    if (_newsItems.length <= 1) {
-      return;
-    }
-    _topNewsRotateTimer = Timer.periodic(_topNewsRotationDuration, (_) {
-      if (!mounted || _newsItems.length <= 1) return;
-      if (_topNewsAutoPaused) {
-        setState(_resetTopNewsCycle);
-        return;
-      }
-      setState(() {
-        var next = _random.nextInt(_newsItems.length);
-        if (next == _topNewsIndex) {
-          next = (next + 1) % _newsItems.length;
-        }
-        _topNewsIndex = next;
-        _resetTopNewsCycle();
-      });
-    });
-  }
-
-  void _resetTopNewsCycle() {
-    _topNewsCycleStartedAt = DateTime.now();
-    _topNewsCycleToken++;
-  }
-
   void _updateTime() {
     final now = DateTime.now();
     final lunar = Lunar.fromDate(now);
@@ -216,73 +149,96 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
         _dayName = DateFormat('EEEE', 'zh_TW').format(now);
         _dateStr = DateFormat('dd').format(now);
         _monthStr = DateFormat('MM月', 'zh_TW').format(now);
-        _yearStr = DateFormat('yyyy').format(now);
       } catch (e) {
         debugPrint('DateFormat error: $e');
         _dayName = "星期${['一', '二', '三', '四', '五', '六', '日'][now.weekday - 1]}";
         _dateStr = now.day.toString().padLeft(2, '0');
         _monthStr = "${now.month}月";
-        _yearStr = now.year.toString();
       }
     });
   }
 
   @override
-  void dispose() {
-    _topNewsRotateTimer?.cancel();
-    _topNewsAutoResumeTimer?.cancel();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return Container(
+      // 頂部封面漸層（Figma：55B695 → FFFFFF）
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [Color(0xFF59B294), Color(0xFFF1F5F9)],
-          stops: [0.0, 0.3],
+          colors: [Color(0xFF55B695), Color(0xFFFFFFFF)],
         ),
       ),
       child: SafeArea(
         bottom: false,
         child: Column(
           children: [
-            _buildHeader(),
+            const SizedBox(height: 52), // 第一層：teal 封面帶
             Expanded(
-              child: Container(
-                width: double.infinity,
-                decoration: const BoxDecoration(
-                  color: Color(0xFFF1F5F9),
-                  borderRadius: BorderRadius.only(
-                    topLeft: Radius.circular(32),
-                    topRight: Radius.circular(32),
-                  ),
-                ),
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final compactTopLayout = constraints.maxHeight < 700;
-                    return SingleChildScrollView(
-                      physics: const BouncingScrollPhysics(),
-                      child: Padding(
-                        padding: EdgeInsets.fromLTRB(
-                            20, 8, 20, compactTopLayout ? 8 : 40), // Extreme reduction
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            _buildCalendarCard(compact: compactTopLayout),
-                            SizedBox(height: compactTopLayout ? 2 : 4), // Minimized
-                            _buildMainFeaturesRow(compact: compactTopLayout),
-                            SizedBox(height: compactTopLayout ? 8 : 12), // Minimized
-                            _buildTopRotatingNewsCard(
-                                compact: compactTopLayout),
-                          ],
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  // 第二層：DFFFF4 → 白（偏左、右側內縮露出圓角，往上露出一截）
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 58,
+                    bottom: 0,
+                    child: Container(
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [Color(0xFFDFFFF4), Color(0xFFFFFFFF)],
+                          stops: [0.0, 0.5],
+                        ),
+                        borderRadius: BorderRadius.only(
+                          topLeft: Radius.circular(20),
+                          topRight: Radius.circular(20),
                         ),
                       ),
-                    );
-                  },
-                ),
+                    ),
+                  ),
+                  // 第三層：DDE6DE 主內容 sheet（往下 offset，露出第二層）
+                  Positioned(
+                    top: 42,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: Container(
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFDDE6DE),
+                        borderRadius: BorderRadius.only(
+                          topLeft: Radius.circular(20),
+                          topRight: Radius.circular(20),
+                        ),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 44),
+                        child: SingleChildScrollView(
+                          physics: const BouncingScrollPhysics(),
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(20, 0, 20, 130),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                _buildElderDateCard(),
+                                const SizedBox(height: AppSpacing.lg),
+                                _buildFeaturedNewsCard(),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  // 會員徽章 + 頭像（浮在右上、跨越分層交界）
+                  Positioned(
+                    top: 4,
+                    right: 20,
+                    child: _buildHeader(),
+                  ),
+                ],
               ),
             ),
           ],
@@ -291,399 +247,80 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     );
   }
 
+
   Widget _buildHeader() {
-    return const SizedBox(height: 20);
-  }
-
-  Widget _buildCalendarCard({bool compact = false}) {
-    return Container(
-      padding: EdgeInsets.all(compact ? 3 : 4),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.6),
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: Colors.white, width: 2),
-      ),
-      child: Row(
-        children: [
-          // 左側西曆方塊
-          Container(
-            padding: EdgeInsets.all(compact ? 4 : 6), // Further reduced padding
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(
-                color: const Color(0xFF59B294).withValues(alpha: 0.3),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Column(
-              children: [
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      _monthStr,
-                      style: GoogleFonts.notoSansTc(
-                        color: const Color(0xFF59B294),
-                        fontWeight: FontWeight.bold,
-                        fontSize: compact ? 18 : 22,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Text(
-                      _yearStr,
-                      style: GoogleFonts.inter(
-                        color: const Color(0xFF59B294),
-                        fontWeight: FontWeight.bold,
-                        fontSize: compact ? 18 : 22,
-                      ),
-                    ),
-                  ],
-                ),
-                Text(
-                  _dateStr,
-                  style: GoogleFonts.inter(
-                    fontSize: compact ? 48 : 60, // Further reduced
-                    fontWeight: FontWeight.w800,
-                    color: const Color(0xFF59B294),
-                  ),
-                ),
-                Text(
-                  _dayName,
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: compact ? 16 : 18, // Reduced from 18/20
-                    color: const Color(0xFF59B294),
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          SizedBox(width: compact ? 14 : 20),
-          // 右側農曆標註
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _lunarDate,
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: compact ? 20 : 24, // Reduced from 24/28
-                    fontWeight: FontWeight.w800,
-                    color: const Color(0xFF59B294),
-                  ),
-                ),
-                Text(
-                  _solarTerm,
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: compact ? 20 : 24, // Reduced from 24/28
-                    fontWeight: FontWeight.w800,
-                    color: const Color(0xFF59B294),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMainFeaturesRow({bool compact = false}) {
-    final featureHeight =
-        compact ? 150.0 : 190.0; // Extreme reduction
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // 代誌報給你知
-        Expanded(
-          flex:
-              4, // Changed from 3 to 4 to give more balance if needed, wait, I need MORE for friends
-          child: InkWell(
-            onTap: _openNewsListFromTopEntry,
-            borderRadius: BorderRadius.circular(24),
-            child: Container(
-              height: featureHeight,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(24),
-                image: const DecorationImage(
-                  image: AssetImage('assets/images/newspaper.png'),
-                  fit: BoxFit.cover,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.1),
-                      blurRadius: 10,
-                      offset: const Offset(0, 5))
-                ],
+        // 會員等級徽章
+        _buildMembershipBadge(),
+        const SizedBox(width: 10),
+        // 使用者頭像
+        Container(
+          width: 60,
+          height: 60,
+          padding: const EdgeInsets.all(2.5),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Colors.white,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.15),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
               ),
-              child: Stack(
-                children: [
-                  Positioned(
-                    top: 20,
-                    left: 20,
-                    right: 20,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '代誌',
-                          style: TextStyle(
-                            fontFamily: 'StarPanda',
-                            fontSize: compact ? 22 : 26, // Reduced from 28/32
-                            color: const Color(0xFF334155),
-                          ),
-                        ),
-                        Text(
-                          '報給你知',
-                          style: TextStyle(
-                            fontFamily: 'StarPanda',
-                            fontSize: compact ? 22 : 26, // Reduced from 28/32
-                            color: const Color(0xFF334155),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
+            ],
+          ),
+          child: ClipOval(
+            child: Image.asset(
+              'assets/images/user_avatar.png',
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => const Icon(
+                  Icons.person_rounded, color: AppColors.primary, size: 36),
             ),
           ),
-        ),
-        SizedBox(width: compact ? 12 : 16),
-        // 好友捷徑區
-        Expanded(
-          flex: 3, // Increased from 2 to 3 to handle the 60dp+ buttons
-          child: _buildFriendsQuickPanel(panelHeight: featureHeight),
         ),
       ],
     );
   }
 
-  Widget _buildFriendsQuickPanel({double panelHeight = 220}) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final narrowPanel = constraints.maxWidth < 130;
-        final topFamilies = _familyList.take(narrowPanel ? 1 : 2).toList();
-        return Container(
-          height: panelHeight,
-          padding:
-              EdgeInsets.all(narrowPanel ? 8 : 12), // Slightly reduced padding
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(24),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.08),
-                blurRadius: 12,
-                offset: const Offset(0, 6),
-              ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Text(
-                    '朋友',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: narrowPanel ? 22 : 28,
-                      fontWeight: FontWeight.w900,
-                      color: const Color(0xFF0F172A),
-                    ),
-                  ),
-                  const Spacer(),
-                  InkWell(
-                    onTap: () => _openFriendsScreen(),
-                    borderRadius: BorderRadius.circular(999),
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF59B294),
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color:
-                                const Color(0xFF59B294).withValues(alpha: 0.3),
-                            blurRadius: 8,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: Icon(
-                        Icons.arrow_forward_rounded,
-                        color: Colors.white,
-                        size: narrowPanel ? 36 : 42,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: narrowPanel ? 2 : 4),
-              Text(
-                '已配對子女',
-                style: GoogleFonts.notoSansTc(
-                  fontSize: narrowPanel ? 14 : 16,
-                  color: const Color(0xFF64748B),
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              SizedBox(height: narrowPanel ? 2 : 4),
-              if (_isLoadingFamily)
-                const Expanded(
-                  child: Center(
-                      child: CircularProgressIndicator(strokeWidth: 2.5)),
-                )
-              else if (topFamilies.isEmpty)
-                Expanded(
-                  child: Center(
-                    child: Text(
-                      '尚無已配對子女',
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: narrowPanel ? 12 : 13,
-                        color: const Color(0xFF94A3B8),
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                )
-              else
-                Expanded(
-                  child: ListView(
-                    padding: EdgeInsets.zero,
-                    children: [
-                      for (final family in topFamilies) ...[
-                        _buildPairedFamilyRow(family),
-                        const SizedBox(height: 8),
-                      ],
-                      _buildSocialPlaceholder(compact: narrowPanel),
-                    ],
-                  ),
-                ),
-            ],
-          ),
-        );
-      },
-    );
-  }
+  /// 會員等級徽章膠囊（金豬 / 銀豬 / 銅豬）。
+  /// 目前預設「金豬會員」——等後端提供會員等級欄位後再依資料切換。
+  /// 徽章圖片放 assets/images/pig_badge_gold|silver|bronze.png；未放檔前以 🐷 佔位。
+  Widget _buildMembershipBadge() {
+    const String tierLabel = '金豬會員';
+    const String badgeAsset = 'assets/images/pig_badge_gold.png';
+    const Color pillColor = Color(0xFFFFF1C4);
+    const Color textColor = Color(0xFF9A6B1E);
 
-  Widget _buildPairedFamilyRow(dynamic family) {
-    final map = family is Map ? family : <String, dynamic>{};
-    final name = (map['user_name'] ?? '家人').toString();
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final compact = constraints.maxWidth < 130;
-        final ultraCompact = constraints.maxWidth < 105;
-        return Container(
-          padding: EdgeInsets.symmetric(
-            horizontal: ultraCompact ? 6 : (compact ? 8 : 10),
-            vertical: ultraCompact ? 5 : (compact ? 6 : 8),
-          ),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF8FAFC),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFFE2E8F0)),
-          ),
-          child: Row(
-            children: [
-              CircleAvatar(
-                radius: ultraCompact ? 18 : (compact ? 20 : 24),
-                backgroundColor: const Color(0xFFCFEADF),
-                child: Text(
-                  name.isNotEmpty ? name.substring(0, 1) : '家',
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: ultraCompact ? 14 : (compact ? 16 : 18),
-                    fontWeight: FontWeight.w900,
-                    color: const Color(0xFF0F766E),
-                  ),
-                ),
-              ),
-              SizedBox(width: ultraCompact ? 4 : (compact ? 5 : 8)),
-              if (!ultraCompact)
-                Expanded(
-                  child: Text(
-                    name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: compact ? 22 : 24,
-                      fontWeight: FontWeight.w800,
-                      color: const Color(0xFF1E293B),
-                    ),
-                  ),
-                )
-              else
-                const Spacer(),
-              const SizedBox(width: 4),
-              Flexible(
-                // Use Flexible instead of InkWell directly to ensure it doesn't push Row
-                child: InkWell(
-                  onTap: () => _handleCall(name, isVideo: true),
-                  borderRadius: BorderRadius.circular(999),
-                  child: Container(
-                    width: ultraCompact
-                        ? 50
-                        : (compact
-                            ? 56
-                            : 60), // Slightly reduced to fit (still ~60dp)
-                    height: ultraCompact ? 50 : (compact ? 56 : 60),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF10B981),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      Icons.videocam_rounded,
-                      color: Colors.white,
-                      size: ultraCompact ? 28 : 32,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildSocialPlaceholder({bool compact = false}) {
     return Container(
-      width: double.infinity,
-      padding: EdgeInsets.symmetric(
-          horizontal: compact ? 8 : 10, vertical: compact ? 6 : 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        color: pillColor.withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.6), width: 1.5),
       ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          CircleAvatar(
-              radius: compact ? 9 : 11,
-              backgroundColor: const Color(0xFFD1D5DB)),
-          SizedBox(width: compact ? 4 : 6),
-          CircleAvatar(
-              radius: compact ? 9 : 11,
-              backgroundColor: const Color(0xFFD1D5DB)),
-          SizedBox(width: compact ? 6 : 8),
-          Expanded(
-            child: Text(
-              compact ? '推薦好友' : '推薦好友（即將推出）',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.notoSansTc(
-                fontSize: compact ? 11 : 12,
-                fontWeight: FontWeight.w700,
-                color: const Color(0xFF64748B),
-              ),
+          SizedBox(
+            width: 34,
+            height: 34,
+            child: Image.asset(
+              badgeAsset,
+              fit: BoxFit.contain,
+              errorBuilder: (_, __, ___) =>
+                  const Center(child: Text('🐷', style: TextStyle(fontSize: 24))),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            tierLabel,
+            style: GoogleFonts.notoSansTc(
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+              color: textColor,
             ),
           ),
         ],
@@ -691,53 +328,99 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     );
   }
 
-  // ── ✨ 開啟「朋友列表」全畫面（撥號為主）───────────────────────
-  void _openFriendsScreen() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => FriendsScreen(
-          userId: widget.userId,
-          userName: widget.userName,
-          roomId: widget.roomId,
-        ),
+  /// 大日期卡片（毛玻璃）。
+  Widget _buildElderDateCard() {
+    return GlassCard(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+      child: Row(
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '$_monthStr$_dateStr日',
+                style: GoogleFonts.notoSansTc(
+                  fontSize: 44,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.primary,
+                  height: 1.0,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                _dayName,
+                style: GoogleFonts.notoSansTc(
+                  fontSize: 26,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ],
+          ),
+          const Spacer(),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                _lunarDate,
+                style: GoogleFonts.notoSansTc(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                _solarTerm,
+                style: GoogleFonts.notoSansTc(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.primaryDark,
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
 
-  void _handleCall(String friendName, {bool isVideo = true}) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => ElderScreen(
-          roomId: widget.roomId ?? widget.userId.toString(), // ★ 使用正確的房間號
-          deviceName: widget.userName,
-          autoCall: true,
-          isVideoCall: isVideo, // ★ 傳遞語音/視訊模式
+  /// 單一大頭條新聞卡（大圖 + 大標 + 全寬「唸給我聽」+ 看更多）。
+  /// 只重做呈現，新聞抓取與 TTS 聆聽功能沿用既有邏輯。
+  Widget _buildFeaturedNewsCard() {
+    Widget header = Row(
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: const BoxDecoration(
+            color: Colors.redAccent,
+            shape: BoxShape.circle,
+          ),
         ),
-      ),
+        const SizedBox(width: 8),
+        Text(
+          '今日頭條',
+          style: GoogleFonts.notoSansTc(
+            fontSize: 26,
+            fontWeight: FontWeight.w900,
+            color: AppColors.textPrimary,
+          ),
+        ),
+      ],
     );
-  }
 
-
-  Widget _buildTopRotatingNewsCard({bool compact = false}) {
     if (_isLoadingNews) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildNewsHeaderContent(compact: compact),
+          header,
+          const SizedBox(height: 12),
           Container(
-            height: compact ? 160 : 220,
+            height: 200,
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
+              borderRadius: BorderRadius.circular(ElderScale.cardRadius),
             ),
             child: const Center(child: CircularProgressIndicator()),
           ),
@@ -745,198 +428,181 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
       );
     }
 
-    if (_newsItems.isEmpty || _newsError != null) {
+    if (_newsItems.isEmpty) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildNewsHeaderContent(compact: compact),
+          header,
+          const SizedBox(height: 12),
           Container(
-            constraints: BoxConstraints(minHeight: compact ? 160 : 220),
-            padding: const EdgeInsets.all(18),
+            padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
+              borderRadius: BorderRadius.circular(ElderScale.cardRadius),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  _newsError ?? '暫無新聞資料',
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 15,
-                    color: const Color(0xFF64748B),
-                    height: 1.45,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton.icon(
-                    onPressed: () {
-                      setState(() {
-                        _isLoadingNews = true;
-                        _newsError = null;
-                      });
-                      _fetchNews();
-                    },
-                    icon: const Icon(Icons.refresh_rounded, size: 16),
-                    label: const Text('重試'),
-                  ),
-                ),
-              ],
-            ),
+            child: Text('目前沒有新聞，稍後再看看', style: ElderScale.body),
           ),
         ],
       );
     }
 
-    final item = _newsItems[_topNewsIndex % _newsItems.length];
+    // 頭條優先挑「有圖片」的新聞當背景；都沒有才退回第一則
+    bool itemHasImage(Map<String, dynamic> it) {
+      final u = ((it['image_url'] ?? it['image']) ?? '').toString().trim();
+      return u.startsWith('http://') || u.startsWith('https://');
+    }
+
+    final item = _newsItems.firstWhere(
+      itemHasImage,
+      orElse: () => _newsItems[_topNewsIndex % _newsItems.length],
+    );
+    final imageUrl =
+        ((item['image_url'] ?? item['image']) ?? '').toString().trim();
+    final hasImage = itemHasImage(item);
+    final title = (item['title'] ?? '無標題').toString();
+
+    // 無圖時的實心底
+    Widget fallbackBg = Container(
+      color: AppColors.primary,
+      alignment: Alignment.center,
+      child: Icon(
+        Icons.newspaper_rounded,
+        size: 90,
+        color: Colors.white.withValues(alpha: 0.25),
+      ),
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildNewsHeaderContent(compact: compact),
-        SizedBox(height: compact ? 6 : 10), // Reduced from 12
-        Row(
-          children: [
-            Expanded(
-              child: _newsItems.length > 1
-                  ? TweenAnimationBuilder<double>(
-                      key: ValueKey<int>(_topNewsCycleToken),
-                      tween: Tween(begin: 0, end: 1),
-                      duration: _topNewsProgressRemaining(),
-                      curve: Curves.linear,
-                      builder: (context, value, _) => ClipRRect(
-                        borderRadius: BorderRadius.circular(999),
-                        child: LinearProgressIndicator(
-                          value: value,
-                          minHeight:
-                              8, // Increased from 5 to 8 for better visibility
-                          backgroundColor: const Color(0xFFD8E8E2),
-                          color: const Color(0xFF59B294),
-                        ),
-                      ),
+        header,
+        const SizedBox(height: 12),
+        // 整塊卡片可點 → 聆聽新聞畫面
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () => _openNewsListenPlayer(item),
+            borderRadius: BorderRadius.circular(ElderScale.cardRadius),
+            child: Container(
+              height: 300,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(ElderScale.cardRadius),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.14),
+                    blurRadius: 16,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  // 背景大圖（或漸層底）
+                  if (hasImage)
+                    Image.network(
+                      imageUrl,
+                      fit: BoxFit.cover,
+                      loadingBuilder: (context, child, progress) =>
+                          progress == null ? child : fallbackBg,
+                      errorBuilder: (_, __, ___) => fallbackBg,
                     )
-                  : ClipRRect(
-                      borderRadius: BorderRadius.circular(999),
-                      child: const LinearProgressIndicator(
-                        value: 1,
-                        minHeight: 8,
-                        backgroundColor: Color(0xFFD8E8E2),
-                        color: Color(0xFF59B294),
+                  else
+                    fallbackBg,
+                  // 底部深色漸層，讓標題看得清楚
+                  const DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.transparent,
+                          Color(0x33000000),
+                          Color(0xCC000000),
+                        ],
+                        stops: [0.3, 0.6, 1.0],
                       ),
                     ),
-            ),
-            const SizedBox(width: 14),
-            Text(
-              _topNewsAutoPaused ? '已暫停輪播' : _formatTopNewsTimeLabel(item),
-              style: GoogleFonts.notoSansTc(
-                fontSize: 14, // Increased from 12 to 14
-                color: const Color(0xFF64748B),
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-        if (_newsItems.length > 1) ...[
-          SizedBox(height: compact ? 6 : 8),
-          Row(
-            children: [
-              InkWell(
-                onTap: () => _switchTopNewsBy(-1),
-                borderRadius: BorderRadius.circular(999),
-                child: Padding(
-                  padding: EdgeInsets.all(compact ? 4 : 6),
-                  child: Icon(Icons.chevron_left_rounded,
-                      color: const Color(0xFF59B294), size: compact ? 20 : 24),
-                ),
-              ),
-              Expanded(
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: () {
-                    // 永遠只顯示固定 5 個點，用比例來映射進度
-                    const int totalDots = 5;
-                    return List.generate(totalDots, (i) {
-                      // 計算目前進度在哪個點上
-                      double progress = _topNewsIndex / (_newsItems.length > 1 ? _newsItems.length - 1 : 1);
-                      int activeDotIndex = (progress * (totalDots - 1)).round();
-                      
-                      bool isCurrent = i == activeDotIndex;
-
-                      return GestureDetector(
-                        onTap: () {
-                          // 點擊點點時，跳轉到對應比例的新聞
-                          int targetIndex = (i * (_newsItems.length - 1) / (totalDots - 1)).round();
-                          _jumpToTopNewsByRealIndex(targetIndex);
-                        },
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          margin: const EdgeInsets.symmetric(horizontal: 4),
-                          width: isCurrent ? (compact ? 16 : 20) : (compact ? 8 : 10),
-                          height: compact ? 8 : 10,
-                          decoration: BoxDecoration(
-                            color: isCurrent
-                                ? const Color(0xFF59B294)
-                                : const Color(0xFFC8D7D1),
-                            borderRadius: BorderRadius.circular(999),
+                  ),
+                  // 「點我聆聽」提示
+                  Positioned(
+                    top: 16,
+                    left: 16,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary,
+                        borderRadius: BorderRadius.circular(AppRadius.pill),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.2),
+                            blurRadius: 8,
+                            offset: const Offset(0, 3),
                           ),
-                        ),
-                      );
-                    });
-                  }(),
-                ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.headphones_rounded,
+                              color: Colors.white, size: 22),
+                          const SizedBox(width: 6),
+                          Text(
+                            '點我聆聽',
+                            style: GoogleFonts.notoSansTc(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  // 標題壓在圖片底部
+                  Positioned(
+                    left: 20,
+                    right: 20,
+                    bottom: 20,
+                    child: Text(
+                      title,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w800,
+                        height: 1.3,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              InkWell(
-                onTap: () => _switchTopNewsBy(1),
-                borderRadius: BorderRadius.circular(999),
-                child: Padding(
-                  padding: EdgeInsets.all(compact ? 6 : 8),
-                  child: Icon(Icons.chevron_right_rounded,
-                      color: const Color(0xFF59B294), size: compact ? 24 : 28),
-                ),
-              ),
-            ],
+            ),
           ),
-        ],
-        SizedBox(height: compact ? 8 : 10), // Further reduced
-        GestureDetector(
-          onHorizontalDragEnd: (details) {
-            if (details.primaryVelocity == null) return;
-            if (details.primaryVelocity! < 0) {
-              // Swipe Left -> Next
-              _switchTopNewsBy(1);
-            } else if (details.primaryVelocity! > 0) {
-              // Swipe Right -> Prev
-              _switchTopNewsBy(-1);
-            }
-          },
-          child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 420),
-            switchInCurve: Curves.easeOutCubic,
-            switchOutCurve: Curves.easeInCubic,
-            transitionBuilder: (child, animation) {
-              final offset = Tween<Offset>(
-                begin: const Offset(0, 0.05), // Slightly increased offset
-                end: Offset.zero,
-              ).animate(
-                  CurvedAnimation(parent: animation, curve: Curves.easeOut));
-              return FadeTransition(
-                opacity: animation,
-                child: SlideTransition(position: offset, child: child),
-              );
-            },
-            child: Container(
-              key: ValueKey<String>(
-                  'top-news-${item['source_url'] ?? _topNewsIndex}'),
-              child: _buildNewsListCard(item, compact: true, tight: compact),
+        ),
+        const SizedBox(height: 8),
+        // 看更多新聞 → 新聞列表
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton(
+            onPressed: _openNewsListFromTopEntry,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '看更多新聞',
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.primaryDark,
+                  ),
+                ),
+                const Icon(Icons.chevron_right_rounded,
+                    color: AppColors.primaryDark, size: 26),
+              ],
             ),
           ),
         ),
@@ -996,397 +662,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     return 0;
   }
 
-  Duration _topNewsProgressRemaining() {
-    final elapsed = DateTime.now().difference(_topNewsCycleStartedAt);
-    var remaining = _topNewsRotationDuration - elapsed;
-    if (remaining <= const Duration(milliseconds: 180)) {
-      remaining = const Duration(milliseconds: 180);
-    }
-    if (remaining > _topNewsRotationDuration) {
-      remaining = _topNewsRotationDuration;
-    }
-    return remaining;
-  }
-
-  DateTime? _extractNewsDateTime(Map<String, dynamic> item) {
-    final published =
-        DateTime.tryParse((item['published_at'] ?? '').toString());
-    if (published != null) return published;
-    final raw = (item['published_at_raw'] ?? '').toString().trim();
-    if (raw.isEmpty) return null;
-    final direct = DateTime.tryParse(raw);
-    if (direct != null) return direct;
-    if (raw.length >= 10) {
-      return DateTime.tryParse(raw.substring(0, 10));
-    }
-    return null;
-  }
-
-  String _formatTopNewsTimeLabel(Map<String, dynamic> item) {
-    final ts = _extractNewsDateTime(item);
-    if (ts == null) return '剛剛更新';
-    final now = DateTime.now();
-    final diff = now.difference(ts);
-    if (diff.inMinutes < 5) return '剛剛更新';
-    if (diff.inMinutes < 60) return '${diff.inMinutes} 分鐘前';
-    if (now.year == ts.year && now.month == ts.month && now.day == ts.day) {
-      return '更新於 ${DateFormat('HH:mm').format(ts)}';
-    }
-    return '更新於 ${DateFormat('MM/dd HH:mm').format(ts)}';
-  }
-
-  Widget _buildNewsHeaderContent({bool compact = false}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Text(
-              '最新',
-              style: GoogleFonts.notoSansTc(
-                color: const Color(0xFF334155),
-                fontWeight: FontWeight.w900,
-                fontSize: compact ? 20 : 24, // Reduced from 22/26
-              ),
-            ),
-            const SizedBox(width: 10),
-            Container(
-              width: 10, // Reduced from 12
-              height: 10, // Reduced from 12
-              decoration: const BoxDecoration(
-                color: Colors.redAccent,
-                shape: BoxShape.circle,
-              ),
-            ),
-            const Spacer(),
-            Text(
-              '新聞',
-              style: GoogleFonts.notoSansTc(
-                color: const Color(0xFF59B294),
-                fontWeight: FontWeight.bold,
-                fontSize: compact ? 20 : 24, // Reduced from 22/26
-              ),
-            ),
-          ],
-        ),
-        SizedBox(height: compact ? 4 : 8), // Reduced from 12
-        Text(
-          '頭條早知道',
-          style: TextStyle(
-            fontFamily: 'StarPanda',
-            fontSize: compact ? 28 : 34,
-            color: const Color(0xFF1E293B),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildNewsListCard(Map<String, dynamic> item,
-      {bool compact = false, bool tight = false}) {
-    final imageUrl =
-        ((item['image_url'] ?? item['image']) ?? '').toString().trim();
-    final hasImage =
-        imageUrl.startsWith('http://') || imageUrl.startsWith('https://');
-    if (hasImage) {
-      return _buildNewsImageCard(item, imageUrl,
-          compact: compact, tight: tight);
-    }
-    return _buildNewsTextCard(item, compact: compact, tight: tight);
-  }
-
-  Widget _buildNewsTextCard(Map<String, dynamic> item,
-      {bool compact = false, bool tight = false}) {
-    final categoryKey = (item['category_key'] ?? '').toString().trim();
-    final source = (item['category'] ?? '中央社').toString();
-    final title = (item['title'] ?? '無標題').toString();
-    final publishedAtRaw = (item['published_at_raw'] ?? '').toString();
-    final publishedAt = (item['published_at'] ?? '').toString();
-
-    return Container(
-      padding: EdgeInsets.all(tight ? 12 : (compact ? 14 : 16)),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  _buildCategoryTag(source, categoryKey),
-                ],
-              ),
-              Text(
-                _formatNewsDate(publishedAtRaw, publishedAt),
-                style: GoogleFonts.inter(
-                  color: Colors.grey,
-                  fontSize: compact ? 16 : 18,
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: tight ? 6 : (compact ? 8 : 10)),
-          Text(
-            title,
-            maxLines: tight ? 2 : (compact ? 3 : 4),
-            overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.notoSansTc(
-              fontSize: tight ? 22 : (compact ? 24 : 26),
-              fontWeight: FontWeight.w700,
-              height: 1.3,
-              color: const Color(0xFF1E293B),
-            ),
-          ),
-          SizedBox(height: tight ? 2 : (compact ? 4 : 6)),
-          InkWell(
-            onTap: () => _openNewsListenPlayer(item),
-            borderRadius: BorderRadius.circular(999),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                Text(
-                  '聆聽',
-                  style: GoogleFonts.notoSansTc(
-                    color: const Color(0xFF59B294),
-                    fontWeight: FontWeight.w600,
-                    fontSize: tight ? 18 : (compact ? 20 : 22),
-                  ),
-                ),
-                const SizedBox(width: 4),
-                const Icon(Icons.arrow_forward_rounded,
-                    color: Color(0xFF59B294), size: 18),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildNewsImageCard(Map<String, dynamic> item, String imageUrl,
-      {bool compact = false, bool tight = false}) {
-    final categoryKey = (item['category_key'] ?? '').toString().trim();
-    final source = (item['category'] ?? '中央社').toString();
-    final title = (item['title'] ?? '無標題').toString();
-    final publishedAtRaw = (item['published_at_raw'] ?? '').toString();
-    final publishedAt = (item['published_at'] ?? '').toString();
-
-    return Container(
-      constraints: BoxConstraints(
-        minHeight: tight ? 140 : (compact ? 180 : 240),
-      ),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
-        child: InkWell(
-          onTap: () => _openNewsListenPlayer(item),
-          child: Stack(
-            fit:
-                StackFit.loose, // Loose fit prevents circular height dependency
-            children: [
-              Positioned.fill(
-                child: Image.network(
-                  imageUrl,
-                  fit: BoxFit.cover,
-                  loadingBuilder: (context, child, progress) {
-                    if (progress == null) return child;
-                    return Container(
-                      color: const Color(0xFFE2E8F0),
-                      alignment: Alignment.center,
-                      child: SizedBox(
-                        width: 26,
-                        height: 26,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.4,
-                          valueColor: const AlwaysStoppedAnimation<Color>(
-                              Color(0xFF59B294)),
-                          value: progress.expectedTotalBytes != null
-                              ? progress.cumulativeBytesLoaded /
-                                  progress.expectedTotalBytes!
-                              : null,
-                        ),
-                      ),
-                    );
-                  },
-                  errorBuilder: (_, __, ___) => Container(
-                    color: Colors.white,
-                    alignment: Alignment.center,
-                    child: const Icon(Icons.image_not_supported_rounded,
-                        color: Color(0xFF94A3B8), size: 32),
-                  ),
-                ),
-              ),
-              Positioned.fill(
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.black.withValues(alpha: 0.15),
-                        Colors.black.withValues(alpha: 0.62),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              Padding(
-                padding: EdgeInsets.fromLTRB(
-                  tight ? 10 : (compact ? 12 : 14),
-                  tight ? 8 : (compact ? 10 : 12),
-                  tight ? 10 : (compact ? 12 : 14),
-                  tight ? 8 : 10,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min, // Essential for Fit.loose
-                  children: [
-                    Row(
-                      children: [
-                        _buildCategoryTag(source, categoryKey,
-                            darkSurface: true),
-                        const SizedBox(width: 8),
-                        const Spacer(),
-                        Text(
-                          _formatNewsDate(publishedAtRaw, publishedAt),
-                          style: GoogleFonts.inter(
-                            color: Colors.white.withValues(alpha: 0.9),
-                            fontSize: tight ? 16 : (compact ? 18 : 20),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(
-                        height:
-                            60), // Fixed gap to ensure title is on background
-                    Text(
-                      title,
-                      maxLines: tight ? 1 : (compact ? 1 : 2),
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: tight ? 22 : (compact ? 24 : 26),
-                        fontWeight: FontWeight.w700,
-                        height: tight ? 1.15 : (compact ? 1.2 : 1.25),
-                        color: Colors.white,
-                      ),
-                    ),
-                    SizedBox(height: tight ? 2 : (compact ? 4 : 6)),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        Text(
-                          '聆聽',
-                          style: GoogleFonts.notoSansTc(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
-                            fontSize: tight ? 12 : (compact ? 14 : 16),
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        const Icon(Icons.arrow_forward_rounded,
-                            color: Colors.white, size: 18),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCategoryTag(String label, String categoryKey,
-      {bool darkSurface = false}) {
-    final color = _categoryColor(categoryKey);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: darkSurface
-            ? color.withValues(alpha: 0.28)
-            : color.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: darkSurface
-              ? color.withValues(alpha: 0.6)
-              : color.withValues(alpha: 0.35),
-          width: 1,
-        ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.newspaper_rounded,
-            size: 14,
-            color: darkSurface ? Colors.white : color,
-          ),
-          const SizedBox(width: 5),
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.notoSansTc(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: darkSurface ? Colors.white : color,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Color _categoryColor(String categoryKey) {
-    switch (categoryKey) {
-      case 'politics':
-        return const Color(0xFFF97316);
-      case 'international':
-        return const Color(0xFF0EA5E9);
-      case 'china':
-        return const Color(0xFFE11D48);
-      case 'finance':
-        return const Color(0xFF22C55E);
-      case 'technology':
-        return const Color(0xFF6366F1);
-      case 'life':
-        return const Color(0xFF14B8A6);
-      case 'society':
-        return const Color(0xFF64748B);
-      case 'local':
-        return const Color(0xFF84CC16);
-      case 'culture':
-        return const Color(0xFFA855F7);
-      case 'sports':
-        return const Color(0xFFEF4444);
-      case 'entertainment':
-        return const Color(0xFFEC4899);
-      default:
-        return const Color(0xFF0F766E);
-    }
-  }
-
+  // 看更多新聞：進聆聽頁並自動展開新聞列表面板
   void _openNewsListFromTopEntry() {
     if (_newsItems.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1395,11 +671,12 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
       return;
     }
     final currentTop = _newsItems[_topNewsIndex % _newsItems.length];
-    _openNewsListenPlayer(currentTop);
+    _openNewsListenPlayer(currentTop, startExpanded: true);
   }
 
-  void _openNewsListenPlayer(Map<String, dynamic> currentItem) {
-    _pauseTopNewsAutoRotate();
+  // 點頭條卡：進聆聽頁，停在聆聽（面板收合）
+  void _openNewsListenPlayer(Map<String, dynamic> currentItem,
+      {bool startExpanded = false}) {
     final playlist = _orderedNewsItemsWithTopFirst().take(30).toList();
     if (playlist.isEmpty) return;
     final currentKey = _newsIdentityKey(currentItem);
@@ -1412,56 +689,10 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
           newsItems: playlist,
           initialIndex: initialIndex >= 0 ? initialIndex : 0,
           userId: widget.userId,
+          startExpanded: startExpanded,
         ),
       ),
     );
   }
 
-  String _formatNewsDate(String raw, String parsed) {
-    if (raw.isNotEmpty) {
-      if (raw.length >= 10) return raw.substring(0, 10);
-      return raw;
-    }
-    if (parsed.isNotEmpty) {
-      if (parsed.length >= 10) return parsed.substring(0, 10);
-      return parsed;
-    }
-    return '--';
-  }
-
-  void _pauseTopNewsAutoRotate(
-      [Duration duration = const Duration(seconds: 10)]) {
-    _topNewsAutoResumeTimer?.cancel();
-    setState(() {
-      _topNewsAutoPaused = true;
-      _resetTopNewsCycle();
-    });
-    _topNewsAutoResumeTimer = Timer(duration, () {
-      if (!mounted) return;
-      setState(() {
-        _topNewsAutoPaused = false;
-        _resetTopNewsCycle();
-      });
-    });
-  }
-
-  void _switchTopNewsBy(int delta) {
-    if (_newsItems.length <= 1) return;
-    setState(() {
-      _topNewsIndex =
-          (_topNewsIndex + delta + _newsItems.length) % _newsItems.length;
-      _resetTopNewsCycle();
-    });
-    _pauseTopNewsAutoRotate();
-  }
-
-  void _jumpToTopNewsByRealIndex(int index) {
-    if (_newsItems.length <= 1) return;
-    if (index < 0 || index >= _newsItems.length) return;
-    setState(() {
-      _topNewsIndex = index;
-      _resetTopNewsCycle();
-    });
-    _pauseTopNewsAutoRotate();
-  }
 }

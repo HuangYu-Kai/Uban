@@ -714,14 +714,17 @@ class _ElderProfileTabState extends State<ElderProfileTab>
       color: const Color(0xFFFDFCF9),
       width: double.infinity,
       child: SafeArea(
-        child: SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(24, 30, 24, 40),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // ── 溫馨標頭 (Header) ───────────────────────────
-              Row(
+        child: Column(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(24, 30, 24, 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // ── 溫馨標頭 (Header) ───────────────────────────
+                    Row(
                 children: [
                   Container(
                     width: 72,
@@ -761,14 +764,19 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                   ),
                 ],
               ),
-              const SizedBox(height: 32),
+                    const SizedBox(height: 32),
 
-              // ── 今日成就圓環 ───────────────────────────
-              _buildDailyGoalRing(),
-              const SizedBox(height: 24),
+                    // ── 今日成就圓環 ───────────────────────────
+                    _buildDailyGoalRing(),
+                  ],
+                ),
+              ),
+            ),
 
-              // ── 系統設定選單 ───────────────────────────
-              Container(
+            // ── 登出（固定最底，留出浮動導覽列高度）─────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 8, 24, 120),
+              child: Container(
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(24),
@@ -791,8 +799,8 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                   ],
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

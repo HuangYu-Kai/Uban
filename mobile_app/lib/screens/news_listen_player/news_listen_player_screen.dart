@@ -18,11 +18,15 @@ class NewsListenPlayerScreen extends StatefulWidget {
   final int initialIndex;
   final int userId;
 
+  /// 進場時是否自動展開新聞列表面板（給「看更多新聞」用；一般聆聽為 false）。
+  final bool startExpanded;
+
   const NewsListenPlayerScreen({
     super.key,
     required this.newsItems,
     required this.initialIndex,
     required this.userId,
+    this.startExpanded = false,
   });
 
   @override
@@ -78,6 +82,13 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
     _currentIndex =
         widget.initialIndex.clamp(0, max(_localNewsItems.length - 1, 0));
     _newsScrollController.addListener(_onNewsScroll);
+
+    // 「看更多新聞」進來時，進場後自動展開新聞列表面板（用既有滑動動畫）。
+    if (widget.startExpanded) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _panelController.forward();
+      });
+    }
 
     // 面板動畫控制器
     _panelController = AnimationController(

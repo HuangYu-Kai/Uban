@@ -125,7 +125,8 @@ class _FriendsScreenState extends State<FriendsScreen> {
 
   Widget _buildFriendList() {
     return ListView.separated(
-      padding: const EdgeInsets.all(AppSpacing.md),
+      padding: const EdgeInsets.fromLTRB(
+          AppSpacing.md, AppSpacing.md, AppSpacing.md, 120),
       itemCount: _familyList.length,
       separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.md),
       itemBuilder: (context, index) {
@@ -152,79 +153,69 @@ class _FriendsScreenState extends State<FriendsScreen> {
           ),
         ],
       ),
-      child: Column(
+      child: Row(
         children: [
-          Row(
-            children: [
-              CircleAvatar(
-                radius: 38,
-                backgroundColor: AppColors.primaryLight,
-                child: Text(
-                  name.isNotEmpty ? name.substring(0, 1) : '家',
+          CircleAvatar(
+            radius: 34,
+            backgroundColor: AppColors.primaryLight,
+            child: Text(
+              name.isNotEmpty ? name.substring(0, 1) : '家',
+              style: GoogleFonts.notoSansTc(
+                fontSize: 30,
+                fontWeight: FontWeight.w900,
+                color: AppColors.primaryDark,
+              ),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          // 名字
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: GoogleFonts.notoSansTc(
-                    fontSize: 32,
+                    fontSize: 28,
                     fontWeight: FontWeight.w900,
-                    color: AppColors.primaryDark,
+                    color: AppColors.textPrimary,
                   ),
                 ),
-              ),
-              const SizedBox(width: AppSpacing.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 30,
-                        fontWeight: FontWeight.w900,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '家人',
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 18,
-                        color: AppColors.textSecondary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
+                const SizedBox(height: 2),
+                Text(
+                  '家人',
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 16,
+                    color: AppColors.textSecondary,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-          const SizedBox(height: AppSpacing.md),
-          Row(
-            children: [
-              Expanded(
-                child: _buildCallButton(
-                  icon: Icons.call_rounded,
-                  label: '語音',
-                  color: AppColors.primary,
-                  onTap: () => _startCall(name, isVideo: false),
-                ),
-              ),
-              const SizedBox(width: AppSpacing.md),
-              Expanded(
-                child: _buildCallButton(
-                  icon: Icons.videocam_rounded,
-                  label: '視訊',
-                  color: AppColors.primaryDark,
-                  onTap: () => _startCall(name, isVideo: true),
-                ),
-              ),
-            ],
+          // 右邊：電話 + 視訊
+          _callAction(
+            icon: Icons.call_rounded,
+            label: '電話',
+            color: AppColors.primary,
+            onTap: () => _startCall(name, isVideo: false),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          _callAction(
+            icon: Icons.videocam_rounded,
+            label: '視訊',
+            color: AppColors.primaryDark,
+            onTap: () => _startCall(name, isVideo: true),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildCallButton({
+  // 右側圓形動作鈕（圖示 + 下方小字）
+  Widget _callAction({
     required IconData icon,
     required String label,
     required Color color,
@@ -232,35 +223,36 @@ class _FriendsScreenState extends State<FriendsScreen> {
   }) {
     return InkWell(
       onTap: onTap,
-      borderRadius: AppRadius.mdAll,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: AppRadius.mdAll,
-          boxShadow: [
-            BoxShadow(
-              color: color.withValues(alpha: 0.3),
-              blurRadius: 8,
-              offset: const Offset(0, 4),
+      borderRadius: BorderRadius.circular(AppRadius.pill),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 62,
+            height: 62,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: color,
+              boxShadow: [
+                BoxShadow(
+                  color: color.withValues(alpha: 0.3),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
-          ],
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: Colors.white, size: 30),
-            const SizedBox(width: AppSpacing.sm),
-            Text(
-              label,
-              style: GoogleFonts.notoSansTc(
-                fontSize: 24,
-                fontWeight: FontWeight.w800,
-                color: Colors.white,
-              ),
+            child: Icon(icon, color: Colors.white, size: 32),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: GoogleFonts.notoSansTc(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: color,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

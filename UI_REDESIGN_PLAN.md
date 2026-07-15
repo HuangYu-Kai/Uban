@@ -2,6 +2,42 @@
 
 ---
 
+## 🔄 第三階段：毛玻璃設計語言 + 長輩端細修（進行中，2026-07-15）
+
+分支 `newui`。使用者要蘋果「毛玻璃(frosted/liquid glass)」為設計語言。已完成/現況（`flutter analyze lib` = 0 error）：
+- ✅ 新增 `lib/widgets/glass_card.dart`（毛玻璃容器：BackdropFilter 模糊+半透明+細白邊）。
+- ✅ **長輩首頁 `elder_home_tab.dart` 重排**：上方 teal 漸層封面 + 下方圓角內容 sheet；**右上浮動「會員徽章膠囊(金豬會員) + 使用者頭像」**（徽章圖 `assets/images/pig_badge_gold|silver|bronze.png` 尚未提供，暫用 🐷 emoji 佔位，errorBuilder fallback；會員等級資料來源後端尚未接）。內容：毛玻璃日期卡 + 單一大頭條新聞卡（優先挑有圖新聞當背景圖；點卡=聆聽頁、看更多=聆聽頁自動展開列表面板）。
+- ✅ **電話移到底部導覽列**：長輩導覽 4 分頁 `首頁/電話/聊天/我的`（IndexedStack index 0/1/2/3）。電話分頁=`FriendsScreen`（每位家人右側「電話(語音)+視訊(視訊)」圓鈕）。
+- ✅ **聊天分頁改 `elder_chat_screen.dart`**（一般 AI 泡泡聊天，沿用 `ApiService.aiChat`）。**ZenPond(`zen_pond/`) 保留未刪**、只是不掛在分頁（README 已註記；要切回改 elder_home_screen IndexedStack）。
+- ✅ **個人頁登出鈕固定最底**（`elder_profile_tab.dart`，bottom padding 120 避開浮動導覽列）。
+- ✅ 「看更多新聞」自動展開聆聽頁列表：`news_listen_player_screen.dart` 加 opt-in 參數 `startExpanded`（進場 `_panelController.forward()`），不改其外觀/現有行為。
+
+**待辦**：
+- 🔲 使用者要提供 3 顆豬徽章 PNG 放 `assets/images/`（金/銀/銅）；會員等級後端欄位。
+- 🔲 家屬端整體套毛玻璃/統一設計語言（task 10）。
+- 🔲 實機截圖驗證第三階段全畫面（本輪模擬器磁碟爆滿 wipe 重裝中）。
+
+**測試備註**：登入會跳 CCTV（後端 hasCommDevice，非 bug）。用 dev-bypass 進長輩首頁：`flutter run --dart-define=DEV_BYPASS_LOGIN=true --dart-define=DEV_BYPASS_USER_ID=4 --dart-define=DEV_BYPASS_USER_NAME=gawa --dart-define=DEV_BYPASS_ROLE=elder`。模擬器 DNS 要 `-dns-server 8.8.8.8`（否則 API TimeoutException）。
+
+---
+
+## 🔄 第二階段：整體設計語言重做（進行中，2026-07-14）
+
+使用者追加需求：**整體設計語言重新設計**，主色維持 teal，**新聞（代誌報給你知）功能保留**，客群＝**不太會用手機的獨居長輩**。決策：兩端都重做／長輩首頁大幅簡化成大按鈕直列／導覽列圖示+大字標籤／頭條區改「單一大頭條 + 唸給我聽 + 看更多」。
+
+**已完成**：
+- ✅ `app_theme.dart` 新增 `ElderScale`（適老化字級/大按鈕高84/圖示40）。
+- ✅ 新增共用元件 `lib/widgets/elder_action_button.dart`（全寬大按鈕）。
+- ✅ 長輩導覽列 `elder_home_screen.dart`：圖示+大字標籤（首頁/聊天/我的），加 `onNavigateToChat` callback。
+- ✅ 長輩首頁 `elder_home_tab.dart` 重做：問候 header→大日期卡→大按鈕(打電話給家人/和小雲聊天)→單一大頭條新聞卡(大圖+大標+全寬「唸給我聽」+看更多)。移除輪播控制與自動跳頁，新聞抓取/TTS 保留。清掉約 1100 行死碼（1690→564 行），0 error。
+
+**待續**：
+- 🔲 長輩端其餘畫面（個人頁/朋友/ZenPond 聊天）套 ElderScale。
+- 🔲 家屬端整體套統一設計語言。
+- 🔲 實機截圖驗證新首頁。
+
+---
+
 ## ✅ 進度更新（2026-07-14，分支 `newui`）
 
 **四項需求決策已定案**：主色統一 **teal `0xFF59B294`**、建 design tokens + 全 App 套用、朋友列表放**長輩端撥號為主**、背景 GPS 邏輯不動（只移 UI）。
