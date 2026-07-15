@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:speech_to_text/speech_to_text.dart';
+import 'package:speech_to_text/speech_recognition_result.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 
@@ -34,6 +36,13 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
   final ScrollController _scroll = ScrollController();
   bool _isThinking = false;
 
+  // 語音輸入（沿用 speech_to_text）
+  final SpeechToText _stt = SpeechToText();
+  bool _speechReady = false;
+  bool _isListening = false;
+  String _recognized = '';
+  bool _voiceMode = true; // true=語音「按住說話」列，false=鍵盤輸入
+
   @override
   void initState() {
     super.initState();
@@ -41,10 +50,60 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
       '您好，${widget.userName}！我是小嘎 😊\n想聊什麼都可以跟我說喔～',
       false,
     ));
+    _initSpeech();
+  }
+
+  Future<void> _initSpeech() async {
+    try {
+      _speechReady = await _stt.initialize();
+    } catch (_) {
+      _speechReady = false;
+    }
+    if (mounted) setState(() {});
+  }
+
+  void _onSpeechResult(SpeechRecognitionResult result) {
+    setState(() => _recognized = result.recognizedWords);
+  }
+
+  Future<void> _startListening() async {
+    if (_isThinking || _isListening) return;
+    if (!_speechReady) {
+      _speechReady = await _stt.initialize();
+      if (!_speechReady) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('這台裝置無法使用語音，請改用打字喔')),
+          );
+        }
+        return;
+      }
+    }
+    setState(() {
+      _isListening = true;
+      _recognized = '';
+    });
+    await _stt.listen(
+      onResult: _onSpeechResult,
+      localeId: 'zh_TW',
+      listenFor: const Duration(seconds: 30),
+    );
+  }
+
+  Future<void> _stopListeningAndSend() async {
+    if (!_isListening) return;
+    await _stt.stop();
+    final text = _recognized.trim();
+    setState(() => _isListening = false);
+    if (text.isNotEmpty) {
+      _controller.text = text;
+      _send();
+    }
   }
 
   @override
   void dispose() {
+    _stt.stop();
     _controller.dispose();
     _scroll.dispose();
     super.dispose();
@@ -105,33 +164,30 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFF6FC1A5), Color(0xFFEDF5F1)],
-            stops: [0.0, 0.32],
-          ),
-        ),
+        color: AppColors.background,
         child: SafeArea(
-          child: Column(
+          child: Stack(
             children: [
-              _buildHeader(),
-              Expanded(
-                child: ListView.builder(
-                  controller: _scroll,
-                  physics: const BouncingScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                  itemCount: _messages.length + (_isThinking ? 1 : 0),
-                  itemBuilder: (context, index) {
-                    if (index == _messages.length) {
-                      return _buildThinkingBubble();
-                    }
-                    return _buildBubble(_messages[index]);
-                  },
-                ),
+              Column(
+                children: [
+                  Expanded(
+                    child: ListView.builder(
+                      controller: _scroll,
+                      physics: const BouncingScrollPhysics(),
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+                      itemCount: _messages.length + (_isThinking ? 1 : 0),
+                      itemBuilder: (context, index) {
+                        if (index == _messages.length) {
+                          return _buildThinkingBubble();
+                        }
+                        return _buildBubble(_messages[index]);
+                      },
+                    ),
+                  ),
+                  _buildInputBar(),
+                ],
               ),
-              _buildInputBar(),
+              if (_isListening) _buildListeningOverlay(),
             ],
           ),
         ),
@@ -139,29 +195,56 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
     );
   }
 
-  Widget _buildHeader() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '小嘎',
-            style: GoogleFonts.notoSansTc(
-              fontSize: 26,
-              fontWeight: FontWeight.w900,
-              color: Colors.white,
-            ),
+  // 錄音中：上方即時顯示辨識到的字，下方麥克風 + 放開送出
+  Widget _buildListeningOverlay() {
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: Container(
+          color: Colors.black.withValues(alpha: 0.55),
+          child: Column(
+            children: [
+              // 上方：即時辨識文字大氣泡
+              Padding(
+                padding: const EdgeInsets.fromLTRB(28, 60, 28, 0),
+                child: Container(
+                  width: double.infinity,
+                  constraints: const BoxConstraints(minHeight: 90),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 22),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF95EC69), // WeChat 綠
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    _recognized.isEmpty ? '請開始說話…' : _recognized,
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w700,
+                      height: 1.4,
+                      color: _recognized.isEmpty
+                          ? Colors.black45
+                          : Colors.black87,
+                    ),
+                  ),
+                ),
+              ),
+              const Spacer(),
+              // 下方：麥克風 + 放開送出
+              const Icon(Icons.graphic_eq_rounded,
+                  color: Colors.white, size: 64),
+              const SizedBox(height: 14),
+              Text(
+                '放開　送出給小嘎',
+                style: GoogleFonts.notoSansTc(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 60),
+            ],
           ),
-          Text(
-            '陪您聊天的好朋友',
-            style: GoogleFonts.notoSansTc(
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-              color: Colors.white.withValues(alpha: 0.9),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -216,8 +299,6 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         children: [
-          _miniAvatar(),
-          const SizedBox(width: 8),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
             decoration: BoxDecoration(
@@ -238,82 +319,133 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
     );
   }
 
-  Widget _miniAvatar() {
-    return Container(
-      width: 40,
-      height: 40,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: AppColors.primaryLight,
-      ),
-      alignment: Alignment.center,
-      child: const Text('☁️', style: TextStyle(fontSize: 20)),
-    );
-  }
-
   Widget _buildInputBar() {
     return Container(
       padding: EdgeInsets.fromLTRB(
         16,
         10,
         16,
-        // 讓輸入列浮在底部導覽列之上
         MediaQuery.of(context).viewInsets.bottom > 0 ? 12 : 120,
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Expanded(
+          // 切換：語音 / 鍵盤
+          GestureDetector(
+            onTap: () => setState(() => _voiceMode = !_voiceMode),
+            behavior: HitTestBehavior.opaque,
             child: Container(
+              width: 56,
+              height: 56,
               decoration: BoxDecoration(
+                shape: BoxShape.circle,
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(28),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: 0.08),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
                   ),
                 ],
               ),
-              child: TextField(
-                controller: _controller,
-                minLines: 1,
-                maxLines: 4,
-                textInputAction: TextInputAction.send,
-                onSubmitted: (_) => _send(),
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
-                ),
-                decoration: InputDecoration(
-                  hintText: '想跟小嘎說什麼…',
-                  hintStyle: GoogleFonts.notoSansTc(
-                    fontSize: 19,
-                    color: AppColors.textHint,
-                  ),
-                  border: InputBorder.none,
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
-                ),
+              child: Icon(
+                _voiceMode ? Icons.keyboard_rounded : Icons.mic_none_rounded,
+                color: AppColors.primaryDark,
+                size: 30,
               ),
             ),
           ),
           const SizedBox(width: 10),
-          // 送出鈕
-          Material(
-            color: AppColors.primary,
-            shape: const CircleBorder(),
-            child: InkWell(
-              customBorder: const CircleBorder(),
-              onTap: _send,
-              child: const Padding(
-                padding: EdgeInsets.all(16),
-                child: Icon(Icons.send_rounded, color: Colors.white, size: 30),
+          Expanded(
+            child: _voiceMode ? _buildHoldToTalkBar() : _buildTextField(),
+          ),
+          if (!_voiceMode) ...[
+            const SizedBox(width: 10),
+            Material(
+              color: AppColors.primary,
+              shape: const CircleBorder(),
+              child: InkWell(
+                customBorder: const CircleBorder(),
+                onTap: _send,
+                child: const Padding(
+                  padding: EdgeInsets.all(15),
+                  child:
+                      Icon(Icons.send_rounded, color: Colors.white, size: 30),
+                ),
               ),
             ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // 「按住 說話」列
+  Widget _buildHoldToTalkBar() {
+    return GestureDetector(
+      onLongPressStart: (_) => _startListening(),
+      onLongPressEnd: (_) => _stopListeningAndSend(),
+      onLongPressCancel: () => _stopListeningAndSend(),
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        height: 56,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: _isListening ? AppColors.primaryLight : Colors.white,
+          borderRadius: BorderRadius.circular(28),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.08),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Text(
+          _isListening ? '放開　送出' : '按住　說話',
+          style: GoogleFonts.notoSansTc(
+            fontSize: 20,
+            fontWeight: FontWeight.w800,
+            color: AppColors.primaryDark,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTextField() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
           ),
         ],
+      ),
+      child: TextField(
+        controller: _controller,
+        minLines: 1,
+        maxLines: 4,
+        autofocus: true,
+        textInputAction: TextInputAction.send,
+        onSubmitted: (_) => _send(),
+        style: GoogleFonts.notoSansTc(
+          fontSize: 20,
+          fontWeight: FontWeight.w600,
+          color: AppColors.textPrimary,
+        ),
+        decoration: InputDecoration(
+          hintText: '想跟小嘎說什麼…',
+          hintStyle:
+              GoogleFonts.notoSansTc(fontSize: 19, color: AppColors.textHint),
+          border: InputBorder.none,
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+        ),
       ),
     );
   }

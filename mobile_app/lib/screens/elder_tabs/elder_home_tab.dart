@@ -232,9 +232,9 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                       ),
                     ),
                   ),
-                  // 會員徽章 + 頭像（浮在右上、跨越分層交界）
+                  // 會員徽章 + 頭像（浮在右上、坐在第三層 sheet 上緣）
                   Positioned(
-                    top: 4,
+                    top: 20,
                     right: 20,
                     child: _buildHeader(),
                   ),
