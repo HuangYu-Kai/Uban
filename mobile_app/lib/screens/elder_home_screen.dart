@@ -235,6 +235,15 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
   void _onPendingCallChanged() {
     final call = pendingAcceptedCall.value;
     if (call != null && !_isNavigatingToCall) {
+      final int now = DateTime.now().millisecondsSinceEpoch;
+      final int? expiresAt = int.tryParse('${call['expiresAt'] ?? ''}');
+      final int? issuedAt = int.tryParse('${call['issuedAt'] ?? ''}');
+      final bool isExpired = (expiresAt != null && now > expiresAt) || (issuedAt != null && (now - issuedAt) > 15000);
+      if (isExpired) {
+        debugPrint("⏰ [ElderHomeScreen] 忽略過期待接聽來電 (callId=${call['callId']})");
+        pendingAcceptedCall.value = null;
+        return;
+      }
       _isNavigatingToCall = true; // ★ Issue 3：防止重複導航
       debugPrint(
           "📱 ElderHomeScreen: Incoming call detected! Navigating to ElderScreen...");

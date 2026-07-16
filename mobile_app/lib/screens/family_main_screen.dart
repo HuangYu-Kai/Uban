@@ -41,6 +41,8 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   bool _isElderOnline = false;
   String? _elderSocketId;
   Timer? _deviceRefreshTimer;
+  Timer? _onlineStateDebounceTimer;
+  bool? _pendingOnlineState;
 
   @override
   void initState() {
@@ -77,11 +79,13 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
 
   void _startDeviceRefreshTimer() {
     _deviceRefreshTimer?.cancel();
-    _deviceRefreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+    // 調整為 2.5 秒取樣，避免裝置快速上下線時誤判。
+    _deviceRefreshTimer = Timer.periodic(const Duration(milliseconds: 2500), (_) {
       final elder = _currentElder;
       if (elder == null || _signaling.socket?.connected != true) return;
       final elderIdStr = elder.elderId ?? elder.id.toString();
       _signaling.sendGetElderDevices('comm_elder_$elderIdStr');
+      debugPrint('🔄 [Device Refresh] 轮询长辈设备状态 (elder_id=$elderIdStr)');
     });
   }
 
@@ -144,18 +148,20 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
       if (!mounted) return;
       debugPrint('📡 [FamilyMainScreen] 收到長輩設備狀態更新: $devices');
       final online = devices.any((d) => d['isOnline'] == true);
-      setState(() {
-        _isElderOnline = online;
-        if (online) {
-          final onlineDevice = devices.firstWhere((d) => d['isOnline'] == true, orElse: () => {});
-          if (onlineDevice.isNotEmpty) {
-            _elderSocketId = onlineDevice['id'];
+      _pendingOnlineState = online;
+      _onlineStateDebounceTimer?.cancel();
+      _onlineStateDebounceTimer = Timer(const Duration(milliseconds: 2500), () {
+        if (!mounted || _pendingOnlineState == null) return;
+        final bool stableOnline = _pendingOnlineState!;
+        setState(() {
+          _isElderOnline = stableOnline;
+          if (stableOnline) {
+            final onlineDevice = devices.firstWhere((d) => d['isOnline'] == true, orElse: () => {});
+            _elderSocketId = onlineDevice.isNotEmpty ? onlineDevice['id'] : null;
           } else {
             _elderSocketId = null;
           }
-        } else {
-          _elderSocketId = null;
-        }
+        });
       });
     };
   }
@@ -204,6 +210,14 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
       final senderId = args['senderId']!;
       final roomId = args['roomId']!;
       final callId = args['callId'];
+      final int now = DateTime.now().millisecondsSinceEpoch;
+      final int? expiresAt = int.tryParse('${args['expiresAt'] ?? ''}');
+      final int? issuedAt = int.tryParse('${args['issuedAt'] ?? ''}');
+      final bool isExpired = (expiresAt != null && now > expiresAt) || (issuedAt != null && (now - issuedAt) > 15000);
+      if (isExpired) {
+        debugPrint("⏰ [FamilyMainScreen] 忽略過期待接聽來電 (callId=$callId)");
+        return;
+      }
       
       debugPrint("🔔 [FamilyMainScreen] 偵測到背景 CallKit 接聽 (Sender: $senderId, Room: $roomId)");
       
@@ -447,6 +461,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _deviceRefreshTimer?.cancel();
+    _onlineStateDebounceTimer?.cancel();
     pendingAcceptedCall.removeListener(_onPendingCallChanged);
     _signaling.onCallRequest = null;
     _signaling.onEmergencyCall = null;

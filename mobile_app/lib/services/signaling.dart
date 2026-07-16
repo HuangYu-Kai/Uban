@@ -68,6 +68,7 @@ class Signaling {
   bool _isAppForeground = true;
   final List<RTCIceCandidate> _candidateQueue = [];
   final List<String> _pendingRooms = [];
+  final Set<String> _invalidCallIds = <String>{};
 
   final Map<String, dynamic> _configuration = {
     'iceServers': [
@@ -168,10 +169,10 @@ class Signaling {
     socket!.onDisconnect((reason) {
       debugPrint('⚠️ [Signaling] Socket disconnected: $reason');
       // ★ issue 5：通話進行中若 Socket 短暫斷線（例如冷啟動切換網路時），
-      //   不要立刻觸發 onConnectionLost 把使用者彈回主畫面，給予 2 秒重連寬限期。
+      //   不要立刻觸發 onConnectionLost 把使用者彈回主畫面，給予 15 秒重連寬限期。
       if (peerConnection != null) {
-        debugPrint('⏳ [Signaling] Disconnected during active call, granting 2s reconnect window...');
-        Future.delayed(const Duration(seconds: 2), () {
+        debugPrint('⚠️ [Signaling] Disconnected during active call, granting 15s reconnect window...');
+        Future.delayed(const Duration(seconds: 15), () {
           if (socket != null && !socket!.connected && peerConnection != null) {
             debugPrint('❌ [Signaling] Reconnect window expired, notifying connection lost');
             if (onConnectionLost != null) onConnectionLost!();
@@ -216,6 +217,17 @@ class Signaling {
       
       // ★ 問題4修復：檢查是否已在短時間內處理過此 callId（防止重複）
       final String callId = data['callId'] ?? '';
+      if (callId.isNotEmpty && _invalidCallIds.contains(callId)) {
+        debugPrint('⛔ [Signaling] Ignore invalidated call-request (callId=$callId)');
+        return;
+      }
+      if (_isExpiredCallPayload(data)) {
+        debugPrint('⏰ [Signaling] Ignore expired call-request (callId=$callId)');
+        if (callId.isNotEmpty) {
+          _invalidCallIds.add(callId);
+        }
+        return;
+      }
       final int currentTime = DateTime.now().millisecondsSinceEpoch;
       if (callId.isNotEmpty && callId == lastProcessedCallId && 
           (currentTime - lastProcessedCallTime) < 2000) { // 2秒去重窗口
@@ -254,6 +266,13 @@ class Signaling {
         return;
       }
       debugPrint('🔕 [Signaling] 收到 cancel-call: $data');
+      final String callId = (data['callId'] ?? '').toString();
+      if (callId.isNotEmpty) {
+        _invalidCallIds.add(callId);
+      }
+      if (!kIsWeb) {
+        FlutterCallkitIncoming.endAllCalls();
+      }
       if (onCancelCall != null) onCancelCall!(data['room'], data['senderId'], data['callId']);
     });
 
@@ -302,6 +321,13 @@ class Signaling {
       _isCreatingOffer = false;
       _closePeerConnection();
       _currentCallId = null;
+      final String callId = (data['callId'] ?? '').toString();
+      if (callId.isNotEmpty) {
+        _invalidCallIds.add(callId);
+      }
+      if (!kIsWeb) {
+        FlutterCallkitIncoming.endAllCalls();
+      }
       if (onCallBusy != null) onCallBusy!(data['targetId'], data['callId']);
     });
 
@@ -390,8 +416,12 @@ class Signaling {
       }
     });
 
-    socket!.on('end-call', (_) async {
+    socket!.on('end-call', (data) async {
       debugPrint("📴 收到掛斷訊號");
+      final String callId = (data is Map ? (data['callId'] ?? '') : '').toString();
+      if (callId.isNotEmpty) {
+        _invalidCallIds.add(callId);
+      }
       if (!kIsWeb) {
         await FlutterCallkitIncoming.endAllCalls();
       }
@@ -552,13 +582,18 @@ class Signaling {
   }
 
   void sendCallRequest(String room, {String role = 'family', String? callId, String? targetId}) {
-    _currentCallId = callId;
+    final String effectiveCallId = callId ?? const Uuid().v4();
+    _currentCallId = effectiveCallId;
+    final int issuedAt = DateTime.now().millisecondsSinceEpoch;
     socket!.emit('call-request', {
       'room': room, 
       'role': role, 
-      'callId': callId,
+      'callId': effectiveCallId,
+      'issuedAt': issuedAt.toString(),
+      'expiresAt': (issuedAt + 15000).toString(),
       if (targetId != null) 'targetId': targetId,
-      'callerUserId': _userId // 新增：主動發送發起者的資料庫 ID
+      'callerUserId': _userId, // 新增：主動發送發起者的資料庫 ID
+      if (_deviceName != null) 'senderName': _deviceName,
     });
   }
 
@@ -595,6 +630,9 @@ class Signaling {
 
   void sendCancelCall(String room, {String role = 'family'}) {
     socket!.emit('cancel-call', {'room': room, 'role': role, 'callId': _currentCallId});
+    if (_currentCallId != null && _currentCallId!.isNotEmpty) {
+      _invalidCallIds.add(_currentCallId!);
+    }
     _currentCallId = null;
   }
 
@@ -882,6 +920,9 @@ class Signaling {
     if (socket != null && _currentRoomId != null) {
       socket!.emit('end-call', {'room': _currentRoomId, 'targetId': _peerSocketId, 'callId': _currentCallId});
     }
+    if (_currentCallId != null && _currentCallId!.isNotEmpty) {
+      _invalidCallIds.add(_currentCallId!);
+    }
     _currentCallId = null;
     _isCreatingOffer = false; // ⭐ 重置 createOffer flag
     
@@ -925,6 +966,16 @@ class Signaling {
       socket?.disconnect();
       socket = null;
     }
+  }
+
+  bool _isExpiredCallPayload(dynamic payload) {
+    if (payload is! Map) return false;
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    final int? expiresAt = int.tryParse('${payload['expiresAt'] ?? ''}');
+    if (expiresAt != null && now > expiresAt) return true;
+    final int? issuedAt = int.tryParse('${payload['issuedAt'] ?? ''}');
+    if (issuedAt != null && (now - issuedAt) > 15000) return true;
+    return false;
   }
 
   // ========================================

@@ -30,6 +30,7 @@ class _FamilyDashboardViewState extends State<FamilyDashboardView> {
   int? _elderId;
   String? _elderRoomId; // ★ 新增：房間號（= elder_id，如 "1142"）
   String? _elderSocketId;
+  bool _isElderOnline = false; // ★ 新增：長輩是否在線上
   final Signaling _signaling = Signaling();
   
   // ★ 輔助方法：生成雙向通訊房間ID
@@ -70,9 +71,11 @@ class _FamilyDashboardViewState extends State<FamilyDashboardView> {
           final online = devices.where((d) => d['isOnline'] == true);
           if (online.isNotEmpty) {
             _elderSocketId = online.first['id'];
+            _isElderOnline = true;
             debugPrint('Found online elder device: $_elderSocketId');
           } else {
             _elderSocketId = devices.first['id']; // 至少抓一個
+            _isElderOnline = false;
           }
         });
       }
@@ -425,7 +428,7 @@ Widget build(BuildContext context) {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: _elderSocketId != null 
+                    color: _isElderOnline 
                         ? const Color(0xFF10B981).withValues(alpha: 0.1)
                         : const Color(0xFF94A3B8).withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
@@ -437,7 +440,7 @@ Widget build(BuildContext context) {
                         width: 6,
                         height: 6,
                         decoration: BoxDecoration(
-                          color: _elderSocketId != null 
+                          color: _isElderOnline 
                               ? const Color(0xFF10B981)
                               : const Color(0xFF94A3B8),
                           shape: BoxShape.circle,
@@ -448,10 +451,10 @@ Widget build(BuildContext context) {
                         .fade(duration: 1500.ms, begin: 0.3, end: 1.0),
                       const SizedBox(width: 6),
                       Text(
-                        _elderSocketId != null ? '在線' : '離線',
+                        _isElderOnline ? '在線' : '離線',
                         style: GoogleFonts.notoSansTc(
                           fontSize: 11,
-                          color: _elderSocketId != null 
+                          color: _isElderOnline 
                               ? const Color(0xFF10B981)
                               : const Color(0xFF94A3B8),
                           fontWeight: FontWeight.w700,
@@ -968,7 +971,7 @@ color: color,
 
   /// 重新設計的快速操作卡片
   Widget _buildQuickActionsCard(BuildContext context) {
-    final isOnline = _elderSocketId != null;
+    final isOnline = _isElderOnline;
     
     return Container(
       padding: const EdgeInsets.all(20),

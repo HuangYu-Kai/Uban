@@ -1,0 +1,387 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## 1. Common Commands
+
+### Flutter Frontend (`Uban/mobile_app/`)
+
+```bash
+cd Uban/mobile_app
+
+# Run the app (SERVER_IP injected via --dart-define; never hardcode)
+flutter run --dart-define=SERVER_IP=localhost-0.tail5abf5e.ts.net \
+  --dart-define=TURN_SERVER=152.69.196.5:3478 \
+  --dart-define=TURN_USER=uban \
+  --dart-define=TURN_PASS=115207
+
+# Static analysis
+flutter analyze
+
+# Run all tests
+flutter test
+
+# Run a specific test file
+flutter test test/services/api_service_test.dart
+flutter test test/models/emotion_data_test.dart
+
+# Install dependencies
+flutter pub get
+```
+
+### FastAPI Backend (`uban-api/uban-api/`)
+
+```bash
+cd uban-api/uban-api
+
+# Install dependencies (Python 3.12 only, NOT 3.13+)
+pip install -r requirements.txt
+
+# Start server
+uvicorn main:app --host 0.0.0.0 --port 8000
+
+# Run all tests
+pytest tests/
+
+# Run a specific test file
+pytest tests/test_auth.py -v
+
+# Syntax check a single file
+python -m py_compile routers/pairing.py
+```
+
+Prerequisites for running the backend:
+- `serviceAccountKey.json` (Firebase) sits at the backend root.
+- `.env` defines `PINECONE_API_KEY`, `PINECONE_INDEX_NAME=uban`, and `PINECONE_HOST`.
+
+### One-Click Launchers
+
+| Platform | Command | Notes |
+|----------|---------|-------|
+| Windows | `cd Uban && .\run.ps1` | Interactive menu. Use `-Start` to skip the menu. |
+| macOS / Linux | `cd Uban && ./run.sh` | Interactive menu. Use `-s` to skip the menu. |
+
+Both launchers auto-detect emulators / physical devices and inject `SERVER_IP`.
+
+---
+
+## 2. High-Level Architecture
+
+### 2.1 Dual-Track Design (Critical)
+
+Signaling and media travel on **physically separate hosts** and must never be merged:
+
+| Track | Purpose | Host | Protocol |
+|-------|---------|------|----------|
+| 1 — Signaling | SDP/ICE text exchange | Tailscale Funnel → local Fedora FastAPI | TCP / WSS |
+| 2 — Media | Audio/video relay | Oracle Cloud Coturn (Japan) | UDP |
+
+**Rationale**: Camera access requires HTTPS. Tailscale Funnel provides free HTTPS but is **TCP-only**. Real-time video requires UDP, which needs a dedicated public IP (Oracle Cloud).
+
+Key service addresses:
+- Signaling: `https://localhost-0.tail5abf5e.ts.net`
+- TURN/STUN: `turn:152.69.196.5:3478`
+- Ollama AI: `https://boyo-desktop.tail531c8a.ts.net`
+- MySQL: `100.73.39.14:3306` (Tailscale)
+
+### 2.2 Signaling Singleton & WebRTC Flow
+
+`lib/services/signaling.dart` is a **Singleton**. The same instance is shared across the entire app lifecycle. Never instantiate it with `Signaling()`.
+
+The WebRTC call flow spans multiple files and is highly timing-sensitive:
+
+```
+main.dart (FCM/CallKit global listeners)
+  ↓
+globals.dart (pendingAcceptedCall state bridge)
+  ↓
+signaling.dart (Socket.IO + WebRTC logic)
+  ↓
+screens/video_call_screen.dart OR screens/elder_screen.dart (UI)
+```
+
+**Callee flow** (e.g., Elder receiving a call from Family):
+1. FCM background push → CallKit popup
+2. Tap Accept → sets `pendingAcceptedCall` in `globals.dart`
+3. `MainActivity` re-opens, reads `pendingAcceptedCall`
+4. Navigates to `VideoCallScreen` / `ElderScreen`
+5. `socket` emits `'call-accept'` (must wait until `socket.connected`; see cold-start note below)
+6. Callee awaits `'offer'` from caller
+
+**Caller flow**:
+1. Emits `'call-request'`
+2. Receives `'call-accept'` (containing callee's `socketId`)
+3. `createOffer(targetId: callee_sid)` ← **ONLY entry point for offer creation**
+4. Callee receives `'offer'` → `setRemoteDescription` → `createAnswer`
+5. Both exchange `'ice-candidate'`
+6. P2P established
+
+**Cold-start race condition**: When the app is killed by the system and awakened by FCM, `sendCallAccept` may fire before the socket is connected. The fix polls `socket.connected` for up to 5s before emitting. See `video_call_screen.dart` `_initCall()`.
+
+**ICE candidate queuing**: Candidates arriving before `setRemoteDescription` must be queued. This is handled in `signaling.dart`.
+
+### 2.3 FCM → CallKit → Cold-Start Wake Chain
+
+`main.dart` contains the FCM background handler and CallKit initialization.
+
+```
+FCM push (call-request or emergency-call)
+  → _firebaseMessagingBackgroundHandler
+    → call-request (family): shows CallKit, NO auto-wake
+    → call-request (elder): saves pendingRingCall to SharedPreferences,
+        then shows CallKit (NO auto-wake — user must explicitly accept)
+    → emergency-call: saves pendingAcceptedCall + triggers AndroidIntent to wake
+  → CallKit 'accept' event
+    → sets pendingAcceptedCall.value
+    → wakes MainActivity (if not already active)
+    → _navigateToVideoCall triggers navigation
+```
+
+CallKit is configured with `isShowFullLockedScreen: true` for lock-screen full-screen display.
+
+#### pendingRingCall 冷啟動補救機制（2026-07 新增）
+
+背景長輩端收到 `call-request` 時，app 可能已被系統殺掉。使用者在 CallKit 點接聽後冷啟動 app，`_setupCallKitListener` 可能尚未註冊而錯過 `actionCallAccept` 事件。
+
+**三層防線**：
+1. **背景 handler** — 將 `{roomId, senderId, callId, timestamp}` 存入 SharedPreferences key `pendingRingCall`
+2. **`_checkInitialCall()`（第一道防線）** — `initState()` 中檢查 `activeCalls()` 是否有已接聽（`isAnswered=true`）且未結束的通話，匹配 `pendingRingCallData` → 補設定 `pendingAcceptedCall.value`
+3. **`SplashScreen._navigateToNext()`（第二道防線）** — 4 秒動畫結束後（CallKit 狀態已穩定），再次檢查 `pendingRingCall` + `activeCalls()` → 補設定 `pendingAcceptedCall.value`
+
+逾時保護：`pendingRingCall` 超過 55 秒自動清除。
+
+#### FCM 前景雙通道備援（2026-07 新增）
+
+來電同時透過 **Socket.IO（主要）** 和 **FCM 前景訊息（備援）** 傳遞。若 Socket 斷線，FCM 仍能送達來電。
+
+去重機制：`Signaling.lastProcessedCallId` + `_fcmCallIdCache` 3 秒時間窗口，防止同一通來電由兩通道重複觸發 dialog。
+
+長輩端 FCM 前景備援：不再忽略，改用去重檢查取代 early return。若 Socket 已在 3 秒內處理過相同 `callId` 則跳過，否則顯示 styled dialog（樣式與 `ElderHomeScreen` 的綠色 dialog 一致）。
+
+### 2.4 Role Differences (Elder vs Family)
+
+**Hard rule**: Elder calls must enter through `ElderScreen`, not `VideoCallScreen`.
+
+| Aspect | Elder (`role: 'elder'`) | Family (`role: 'family'`) |
+|--------|--------|--------|
+| Entry | `ElderScreen` | `VideoCallScreen` |
+| Incoming UI | CallKit full-screen | Dialog in `FamilyMainScreen` |
+| Offer logic | Receives `call-accept` → creates offer | Receives `call-accept` → creates offer |
+| Video default | Camera on when entering call room (toggleable) | Camera on when entering call room (toggleable) |
+| Emergency mode | CCTV / auto-answer, camera forced on | Standard call |
+
+### 2.5 AI Dual-Engine & Pinecone Long-Term Memory
+
+The backend runs two AI engines:
+- **Primary**: Ollama (`gemma4:e4b-it-q4_K_M`), local via Tailscale, supports Tool Calling.
+- **Fallback**: Google Gemini (`gemini_service.py`), activated when Ollama is unreachable.
+
+**Pinecone Long-Term Memory**:
+- Every chat is embedded (nomic-embed-text, 768-dim) and upserted to Pinecone index `uban` in a **background thread**.
+- `daily_pond_leaf_job` (scheduled at 08:00 and 15:00 in `main.py`) queries Pinecone for semantic memory recall, generates a conversation topic, and pushes it via Socket.IO `'new-pond-leaf'` event to the Flutter `ZenPondScreen`.
+- The AI agent personality is defined in `uban-api/uban-api/server/agent/SOUL.md`, `IDENTITY.md`, etc.
+
+### 2.6 Backend: Raw SQL + Scheduler
+
+No ORM is used. All DB access is via `db_cursor()` context manager with parameterized queries:
+
+```python
+from database import db_cursor
+with db_cursor() as cursor:
+    cursor.execute("SELECT * FROM user_account_data WHERE user_id = %s", (user_id,))
+```
+
+Scheduled jobs (defined in `main.py`):
+| Job | Frequency | Purpose |
+|-----|-----------|---------|
+| `check_and_distribute` | Every minute | Pet appearance distribution |
+| `heartbeat_job` | Every minute | Proactive care push |
+| `daily_news_crawl_job` | Daily 06:00 | CNA news crawl |
+| `pre_generate_news_audio_background` | Daily 03:00 | Pre-generate news TTS |
+| `daily_pond_leaf_job` | Daily 08:00, 15:00 | Memory topic generation |
+
+---
+
+## 3. Hard Rules
+
+1. **Do not hardcode IPs / server URLs** — always use `--dart-define=SERVER_IP=`
+2. **Signaling is a Singleton** — never create a second `Signaling()` instance
+3. **Elder calls use `ElderScreen`** — do not route elders to `VideoCallScreen`
+4. **No ORM in backend** — use `db_cursor()` with `%s` placeholders
+5. **Never merge signaling and media tracks** — they are on separate hosts by design
+6. **AI personality must be stable and serious** — no roleplay, pet speak, or impersonation
+7. **Git commit messages must be in Traditional Chinese (繁體中文)**
+8. **Use `forceDisconnect()` instead of `disconnect()` for Signaling singleton** — To maintain FCM reception capability
+9. **Always check socket connection before sending WebRTC signals** — With timeout/retry logic (max 5s) to prevent cold-start disconnections
+10. **Use `_isInCall` flag to prevent concurrent calls** — Check in `createOffer()` and `_acceptCall()` methods
+11. **Convert SharedPreferences data properly** — When assigning to `pendingAcceptedCall.value`, convert `Map<String, dynamic>` to `Map<String, String?>`
+12. **Navigate back to home screen correctly** — Use `pushAndRemoveUntil` instead of `pop()` to return to proper home screen after calls
+13. **Do not open user media before creating offer** — must first obtain `localStream` before calling `createOffer`
+14. **ICE candidates must be queued** — candidates arriving before `setRemoteDescription` must be queued and flushed after
+15. **Do not broadcast SDP (Offer/Answer)** — must send to specific `targetId` using `to=target_sid`
+16. **Do not hardcode MySQL host** — in production, use `uban-mysql`; avoid `localhost` or `127.0.0.1`
+17. **Do not change the server port** — keep port 8000 for the FastAPI backend
+18. **Use Python 3.12** — do not use Python 3.13 or higher
+
+---
+
+## 4. Subproject Reference
+
+For per-subproject details, read:
+- **Flutter frontend**: `Uban/mobile_app/` 下的各檔案（無獨立 CLAUDE.md）
+- **FastAPI backend**: `uban-api/uban-api/CLAUDE.md`
+
+---
+
+## 5. Appendix: Fix Records
+
+### 2026-07-14 — 來電通知六項修復（分支 `call-fix`）
+
+| Issue | 檔案 | 根因 | 修復 |
+|-------|------|------|------|
+| 1 — 家屬端來電 dialog 樣式不一致 | `lib/main.dart` | FCM 前景備援用樸素 `AlertDialog`，Socket 路徑用 styled dialog | 重寫 `_showIncomingCallDialog`：綠色/紅色背景、Icon、`ElevatedButton.icon`，與 `FamilyMainScreen` 一致 |
+| 2 — 背景家屬端接聽後攝像頭無法開啟 | `lib/screens/video_call_screen.dart` | `_isCameraOff = true` 預設關閉 | `widget.isIncomingCall` 時設 `_isCameraOff = false`；`openUserMedia` 失敗延遲 500ms 重試一次 |
+| 3 — 背景長輩端接聽後只進主畫面 | `lib/main.dart` + `lib/screens/splash_screen.dart` | 冷啟動時 `_setupCallKitListener` 錯過 `actionCallAccept` 事件 | 三層防線：背景 handler 儲存 `pendingRingCall` → `_checkInitialCall()` 檢查 `activeCalls()` → `SplashScreen` B4 二次防線 |
+| 4 — 前景家屬端接聽後無法進入視訊房間 | `lib/main.dart` | `_navigateToVideoCall` 的 `popUntil(route.isFirst)` 清空導航堆疊 | 只關閉 `_activeCallDialogContext`，改為直接 `Navigator.push(VideoCallScreen)` |
+| 5 — 前景長輩端無法接收來電 | `lib/main.dart` | FCM 前景備援對長輩端完全忽略（early return） | 改用去重檢查（`lastProcessedCallId` + 3s 窗口）取代 early return；長輩端也顯示 styled dialog → 接聽導向 `ElderScreen` |
+| 6 — 發起方持續等待 | `lib/screens/video_call_screen.dart` | Issue 3/4/5 連鎖效應 + 30s 逾時過長 | 逾時從 30s 縮短至 20s |
+
+### 2026-07-15 — 來電通知第二輪殘留 Bug 修復（分支 `call-fix`）
+
+第一輪（07-14）修復後，Explore agent 診斷出 6 個殘留 bugs，其中 3 個為致命級別（直接導致無法進入視訊房間）。
+
+| Issue | 檔案 | 根因 | 修復 |
+|-------|------|------|------|
+| 1 — 進入視訊房間鏡頭應預設開啟 | `lib/screens/video_call_screen.dart` | `_isCameraOff = false` 僅限 `isIncomingCall`，撥打方仍預設關閉 | 移除條件，無條件設 `_isCameraOff = false` |
+| 2 — APP 背景時長輩端接聽後無法進入視訊房間 | `lib/main.dart` | `_navigateToVideoCall()` 的 dedup guard（`callId == signaling.lastProcessedCallId`）誤殺 CallKit accept | 移除 elder 端 dedup guard，讓 CallKit accept 能正常設定 `pendingAcceptedCall.value` |
+| 3 — APP 前景時家屬端接聽後無法進入視訊房間 | `lib/screens/video_call_screen.dart` | incomingCall 路徑直接 `sendCallAccept`，無 socket 輪詢；冷啟動時 socket 未連線 → 發送失敗 | incomingCall 路徑新增 socket 輪詢（50×100ms = max 5s），與 autoStart 路徑一致 |
+| 4 — APP 前景時長輩端無法接收來電通知 | `lib/screens/elder_home_screen.dart` | dialog 接聽按鈕建立 `ElderScreen` 時缺 `initialCallData`（senderId/callId/callerName） | 補傳 `initialCallData`；`_restoreSignalingCallbacks` 傳遞 `senderName` 以顯示來電者名稱 |
+| 5 — 拒絕來電後畫面異常（黑屏） | `lib/main.dart` | `_setupCallKitListener` 中 decline 路徑仍用 `popUntil(route.isFirst)` 清空堆疊 | 改用 `Navigator.of(currentContext).pop()` + `canPop()` guard，安全返回前頁 |
+| 6 — 拒絕/結束通話訊息立即消失 | `lib/screens/video_call_screen.dart` | `onCallBusy`/`onCallEnded` 用 `SnackBar` → `_goHomeAfterCall()` 立即導航 → SnackBar 隨 route 消失 | 改用 `showDialog`（不依附特定 route），顯示 2 秒後自動關閉 → `Future.microtask` 導航回首頁 |
+
+### 2026-07-10 — Socket 通話信令回歸直接轉發（提交 `dbdaa55` / `9c5e430`）
+
+**後端** `socket_app.py`：移除 `call_registry`，回歸確定性直接轉發。`on_join` 新增通話護欄。
+**前端** `main.dart`：`_checkInitialCall` 移除未接聽自動導航。`video_call_screen.dart`：`_goHomeAfterCall()` 杜絕冷啟動黑屏。
+
+### 2026-06-07 — 通話/監控十項修復
+
+`singleTask` launchMode、Splash 跳過動畫、pushAndRemoveUntil 黑屏修復、`_isInCall` 防並發、socket 連線輪詢、MonitorViewScreen 建立、降級 UI 移除、全域 watchdog 錯誤復原。
+
+### 2026-06-05/06 — 早期通話信令修復
+
+雙重 room ID prefix、`join-failed` 誤斷線、緊急模式 camera 強制開啟、unbind id/import 型別修正、CallKit 不自動喚醒、cold-start `call-accept` 輪詢等。
+
+### 2026-07-17（本 Session）— 第三輪：延遲來電、過期來電、前景接聽與同步終止修復
+
+#### A. 已完成更新（後端）
+
+**檔案：** `uban-api/uban-api/services/socket_app.py`
+
+1. `call-request` 新增有效期欄位  
+   - 發送 Socket/FCM 時附帶 `issuedAt`、`expiresAt`（15 秒）。
+   - FCM 設 `ttl=15s`，避免掛斷後延遲到達仍被誤當新來電。
+
+2. `cancel-call` / `end-call` 強化「雙端同步終止」  
+   - `end-call` 不只通知單一 target，會依 `call_registry` 對所有相關 Socket/FCM 發送 `end-call`/`cancel-call`。
+   - 避免「一端已掛斷，另一端仍在等接聽/仍顯示通知」。
+
+3. `cancel-call` 使用 `call_registry` 補齊目標集合  
+   - sender 取消後，所有已登記目標都會收到取消，不再遺漏。
+
+#### B. 已完成更新（Flutter）
+
+**檔案：** `Uban/mobile_app/lib/services/signaling.dart`
+
+1. 新增 `_invalidCallIds`  
+   - 任一 `callId` 收到 `cancel-call` / `call-busy` / `end-call` 後立即失效。
+   - 後續延遲抵達的同 `callId` `call-request` 直接丟棄，避免「掛斷後又響」與互打迴圈。
+
+2. `call-request` 過期保護  
+   - 新增 `_isExpiredCallPayload(...)`：超過 `expiresAt` 或 `issuedAt+15s` 一律忽略。
+
+3. 主叫 `sendCallRequest()`  
+   - 若未提供 `callId` 會自動建立 UUID。
+   - 一律帶上 `issuedAt` / `expiresAt` / `senderName`。
+
+4. 收到 `cancel-call` / `call-busy` 時  
+   - 強制 `FlutterCallkitIncoming.endAllCalls()`，同步關閉系統來電 UI。
+
+**檔案：** `Uban/mobile_app/lib/main.dart`
+
+1. FCM 前景/背景入口都加入過期檢查（`_isExpiredCallPayload`）。  
+2. `_showFullScreenCallkit(...)` 將 `issuedAt` / `expiresAt` 透傳到 `extra`。  
+3. CallKit `actionCallAccept` 再做一次過期驗證，過期直接忽略並關閉 CallKit。  
+4. 接聽後先寫入 `pendingAcceptedCall`，由頁面 listener 優先接手導航，保留短延遲全域兜底，避免回到主頁動畫路徑。
+
+**檔案：** `Uban/mobile_app/lib/screens/family_main_screen.dart`
+
+1. `isOnline` 取樣與套用節流改為 **2.5 秒**：  
+   - 輪詢週期 `2.5s`。  
+   - `onElderDevicesUpdate` 套用前再 `2.5s debounce`，降低快速上下線抖動誤判。
+2. `pendingAcceptedCall` 消費前增加過期檢查（15 秒）。
+
+**檔案：** `Uban/mobile_app/lib/screens/elder_home_screen.dart`
+
+1. `pendingAcceptedCall` 消費前增加過期檢查（15 秒），避免冷啟動延遲接聽舊來電。
+
+**檔案：** `Uban/mobile_app/lib/screens/elder_screen.dart`、`.../video_call_screen.dart`
+
+1. 進入視訊房間時鏡頭預設開啟（`_isCameraOff = false`）。
+2. `VideoCallScreen` 忙線/拒接提示改為對話框後返回，避免提示瞬間消失。
+
+#### C. 2026-07-17 建置故障與處理（Windows）
+
+錯誤：`flutter_inappwebview_android:compileDebugJavaWithJavac` 無法刪除 `build/.../javac/.../classes`（檔案鎖定）  
+處理流程（已驗證可恢復）：
+
+1. 終止鎖定行程（`java.exe` / `gradle.exe` / `flutter` / `dart`）。  
+2. 刪除：
+   - `Uban/mobile_app/build/flutter_inappwebview_android/intermediates/javac/.../classes`
+   - `Uban/mobile_app/build`
+3. 重跑：
+   - `flutter clean`
+   - `flutter pub get`
+   - `flutter build apk --debug`
+
+結果：`BUILD SUCCESSFUL`，APK 產於 `build/app/outputs/flutter-apk/app-debug.apk`。
+
+---
+
+## 6. 🚫 絕對不可改動區塊（給後續 AI）
+
+> 下列區塊是本專案目前通話穩定性的「護欄」。除非明確知道連鎖影響並同步改完整條鏈路，**不要單點修改**。
+
+1. **`Uban/mobile_app/lib/main.dart` → `_setupSignalingListener()` 的角色守門**
+   - `if (appRole != 'elder') { s.onCallRequest = ... }`
+   - **不可移除/放寬**：否則會覆蓋 `ElderHomeScreen` 的 callback，造成「長輩前景收不到來電」。
+
+2. **`Uban/mobile_app/lib/main.dart` → `_setupCallKitListener()` 接聽路徑**
+   - 先寫 `pendingAcceptedCall.value`，再短延遲 fallback `_navigateToVideoCall(...)`
+   - **不可改回直接強推單一路徑**：否則會重現「接聽後回主頁、不進通話房」。
+
+3. **`Uban/mobile_app/lib/main.dart` → `_navigateToVideoCall()`**
+   - 只關閉 `_activeCallDialogContext`，**禁止** `popUntil(route.isFirst)` 清堆疊
+   - **不可改回清堆疊**：會觸發 Splash/首頁重導，導致接聽失敗或黑屏。
+
+4. **`Uban/mobile_app/lib/services/signaling.dart`**
+   - `_invalidCallIds` + `_isExpiredCallPayload(...)` + 在 `call-request/cancel-call/call-busy/end-call` 的失效流程
+   - **不可移除**：移除後會再出現「掛斷後延遲來電」「接起舊來電互打迴圈」。
+
+5. **`uban-api/uban-api/services/socket_app.py`**
+   - `call-request` 下發 `issuedAt/expiresAt`（15 秒）與 FCM `ttl=15s`
+   - `on_end_call()` 依 `call_registry` 對 Socket+FCM 廣播終止
+   - `on_cancel_call()` 使用 `call_registry` 補齊目標
+   - **不可拆掉**：會回到「一端掛斷，另一端仍響/仍等待」。
+
+6. **`Uban/mobile_app/lib/screens/family_main_screen.dart`**
+   - `2.5s` 輪詢 + `2.5s` debounce 套用 `isOnline`
+   - **不要改回 1 秒瞬時切換**：會造成快速上下線抖動誤判。
+
+7. **`Uban/mobile_app/lib/screens/elder_home_screen.dart` / `family_main_screen.dart`**
+   - 消費 `pendingAcceptedCall` 前的過期判斷（15 秒）
+   - **不可刪除**：會讓冷啟動延遲收到的舊來電再次被接起。
+
+8. **`Uban/mobile_app/lib/screens/elder_screen.dart` + `video_call_screen.dart`**
+   - `_isCameraOff = false`（進入視訊房預設開鏡頭）
+   - **不可改回預設關閉**：與目前需求衝突，且會造成「接通黑畫面誤判」。

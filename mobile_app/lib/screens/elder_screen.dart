@@ -43,7 +43,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   final RTCVideoRenderer _remoteRenderer = RTCVideoRenderer();
   String _status = "等待連線...";
   bool _isInCall = false;
-  bool _isCameraOff = true; // ★ 攝像頭預設關閉
+  bool _isCameraOff = false; // 視訊房間預設開啟鏡頭
   bool _isMuted = false;
   bool _isFrontCamera = true; // ★ issue 12：前/後鏡頭狀態
   bool _mediaInitialized = false;

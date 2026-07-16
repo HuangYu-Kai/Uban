@@ -9,6 +9,8 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import '../services/signaling.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import '../screens/family_main_screen.dart';
+import '../screens/elder_home_screen.dart';
+import '../globals.dart' as globals;
 
 class VideoCallScreen extends StatefulWidget {
   final String roomId;
@@ -42,7 +44,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
 
   // ★ 通話控制狀態
   bool _isMicMuted = false;
-  bool _isCameraOff = true;  // ★ 預設關閉攝像頭，減少資源消耗和隱私風險
+  bool _isCameraOff = false;  // 視訊房間預設開啟鏡頭
   bool _isSpeakerOn = true;
   bool _isFrontCamera = true;
   bool _mediaInitialized = false;  // ★ 追蹤媒體是否已初始化
@@ -118,10 +120,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     _signaling.onCallBusy = (targetId, callId) {
       if (mounted) {
         _stopCallTimer();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('對方目前無法接聽通話')),
-        );
-        _goHomeAfterCall();
+        _showCallRejectedThenGoHome('對方已拒絕或目前無法接聽通話');
       }
     };
 
@@ -208,22 +207,17 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
         }
         if (!mounted) return;
 
-        if (widget.targetSocketId != null) {
-          _signaling.createOffer(
-            targetId: widget.targetSocketId,
-            isEmergency: widget.isEmergency,
-          );
-        } else if (widget.isEmergency) {
-          _signaling.sendEmergencyCall(widget.roomId);
+        if (widget.isEmergency) {
+          _signaling.sendEmergencyCall(widget.roomId, targetId: widget.targetSocketId);
         } else {
-          // 如果是主動呼叫，先發送 Request 給對方點擊接聽
-          _signaling.sendCallRequest(widget.roomId, role: 'family');
+          // 如果是主動呼叫，先發送 Request 給對方點擊接聽 (確保觸發 FCM 與資料庫記錄)
+          _signaling.sendCallRequest(widget.roomId, role: 'family', targetId: widget.targetSocketId);
         }
       });
     }
 
-    // 設定通話逾時（30秒後如果仍未連線，則視為失敗）
-    Future.delayed(const Duration(seconds: 30), () {
+    // 設定通話逾時（20秒後如果仍未連線，則視為失敗）
+    Future.delayed(const Duration(seconds: 20), () {
       if (mounted && _callConnecting && !_callConnected) {
         setState(() {
           _callConnecting = false;
@@ -382,6 +376,12 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
 
   // ★ issue 3 fix: 冷啟動時無上一頁，退回 FamilyMainScreen（帶入真實使用者資料）
   Widget _buildFallbackHome() {
+    if (globals.appRole == 'elder') {
+      return ElderHomeScreen(
+        userId: _resolvedUserId,
+        userName: _resolvedUserName,
+      );
+    }
     return FamilyMainScreen(
       userId: _resolvedUserId,
       userName: _resolvedUserName,
@@ -398,6 +398,25 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       MaterialPageRoute(builder: (_) => _buildFallbackHome()),
       (route) => false,
     );
+  }
+
+  void _showCallRejectedThenGoHome(String message) {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        title: const Text('通話已結束'),
+        content: Text(message),
+      ),
+    );
+    Future.delayed(const Duration(seconds: 2), () {
+      if (!mounted) return;
+      if (Navigator.of(context, rootNavigator: true).canPop()) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+      _goHomeAfterCall();
+    });
   }
   @override
   Widget build(BuildContext context) {

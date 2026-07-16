@@ -43,6 +43,15 @@ bool _supportsCallKit() {
           defaultTargetPlatform == TargetPlatform.iOS);
 }
 
+bool _isExpiredCallPayload(Map<String, dynamic> data) {
+  final int now = DateTime.now().millisecondsSinceEpoch;
+  final int? expiresAt = int.tryParse('${data['expiresAt'] ?? ''}');
+  if (expiresAt != null && now > expiresAt) return true;
+  final int? issuedAt = int.tryParse('${data['issuedAt'] ?? ''}');
+  if (issuedAt != null && (now - issuedAt) > 15000) return true;
+  return false;
+}
+
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -67,6 +76,12 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     final type = message.data['type'];
     if (type != 'call-request' && type != 'emergency-call' && type != 'cancel-call') {
       debugPrint('⚠️ [BG] Ignoring message of type: $type');
+      return;
+    }
+
+    if ((type == 'call-request' || type == 'emergency-call') &&
+        _isExpiredCallPayload(message.data)) {
+      debugPrint('⏰ [BG] Ignoring expired call payload: ${message.data['callId']}');
       return;
     }
 
@@ -190,6 +205,8 @@ Future<void> _showFullScreenCallkit(Map<String, dynamic> data) async {
   final callId = (data['callId'] ??
           DateTime.now().millisecondsSinceEpoch.toString())
       .toString();
+  final issuedAt = (data['issuedAt'] ?? '').toString();
+  final expiresAt = (data['expiresAt'] ?? '').toString();
   final isEmergency = data['type'] == 'emergency-call';
 
   final params = CallKitParams(
@@ -210,6 +227,8 @@ Future<void> _showFullScreenCallkit(Map<String, dynamic> data) async {
       'roomId': roomId,
       'senderId': senderId,
       'callId': callId,
+      'issuedAt': issuedAt,
+      'expiresAt': expiresAt,
     },
     android: const AndroidParams(
       isCustomNotification: true,
@@ -885,9 +904,14 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   String? _lastHandledEmergencyCallId;
 
   void _setupForegroundMessaging() {
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
+      // !!!!除非要更新視訊通話邏輯，否則禁止更動!!!!
+      FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
       debugPrint("📩 [Main] Foreground message received: ${message.data}");
       if (message.data['type'] == 'call-request' || message.data['type'] == 'emergency-call') {
+        if (_isExpiredCallPayload(message.data)) {
+          debugPrint("⏰ [FCM-Backup] 忽略過期來電 (callId=${message.data['callId']})");
+          return;
+        }
         final roomId = message.data['roomId'];
         final senderId = message.data['senderId'];
         final callId = message.data['callId'];
@@ -938,7 +962,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
             "🔔 [FCM-Backup] ${isEmergency ? '緊急' : ''}Call Request from $senderId in room $roomId (ID: $callId)");
         // ★ 備援：FCM 用作備份，以防 Socket 連接不穩定時收不到來電
         // 由於 Socket 優先級更高，FCM 的去重機制確保不會重複彈窗
-        _showIncomingCallDialog(roomId, senderId, callId: callId, isEmergency: isEmergency);
+        _showIncomingCallDialog(
+          roomId,
+          senderId,
+          callId: callId,
+          isEmergency: isEmergency,
+          callerName: message.data['senderName'] ?? message.data['callerName'],
+        );
       }
 
       // ★ issue 4/5 fix: cancel-call FCM in foreground → dismiss in-app dialog and CallKit
@@ -958,6 +988,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   }
 
   void _setupSignalingListener() {
+    // !!!!除非要更新視訊通話邏輯，否則禁止更動!!!!
     final s = sig.Signaling();
 
     // ★ 關鍵修復：只有家屬端才在這裡設定 onCallRequest / onEmergencyCall
@@ -965,7 +996,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     //   如果在這裡也設定，會覆蓋掉 ElderHomeScreen 的回調，導致長輩端收不到來電。
     if (appRole != 'elder') {
       s.onCallRequest = (roomId, senderId, callId, [senderName]) {
-        _showIncomingCallDialog(roomId, senderId, callId: callId, isEmergency: false);
+        _showIncomingCallDialog(
+          roomId,
+          senderId,
+          callId: callId,
+          isEmergency: false,
+          callerName: senderName,
+        );
       };
     }
     
@@ -990,7 +1027,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         });
         pendingAcceptedCall.value = pendingCallData.map((key, value) => MapEntry(key, value?.toString()));
       } else {
-        _showIncomingCallDialog(roomId, senderId, callId: callId, isEmergency: true);
+        _showIncomingCallDialog(
+          roomId,
+          senderId,
+          callId: callId,
+          isEmergency: true,
+          callerName: senderName,
+        );
       }
     };
 
@@ -1015,23 +1058,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   }
 
   void _showIncomingCallDialog(String roomId, String senderId,
-      {String? callId, bool isEmergency = false}) {
-    if (appRole == 'elder') {
-      if (isEmergency) {
-        // ★ Issue 3 修復：去重
-        if (callId != null && callId == _lastHandledEmergencyCallId) {
-          debugPrint("⚠️ [Main] 忽略重複的緊急通話 (callId=$callId 已處理)");
-          return;
-        }
-        _lastHandledEmergencyCallId = callId;
-        debugPrint("🚨 [Main] 緊急通話，長輩端直接接聽");
-        _navigateToVideoCall(roomId, senderId, callId: callId, isEmergency: true);
-      } else {
-        debugPrint("📞 [Main] 長輩端忽略 FCM 備用來電彈窗，交由 Socket.IO 綠色彈窗處理");
-      }
-      return;
-    }
-
+      {String? callId, bool isEmergency = false, String? callerName}) {
     if (_activeCallDialogContext != null) {
       debugPrint("⚠️ [Main] Dialog already showing, skipping...");
       return;
@@ -1044,7 +1071,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       return;
     }
 
-    final String callerLabel = (appRole == 'elder') ? '您的家人' : '長輩';
+    final String callerLabel = callerName?.toString().trim().isNotEmpty == true
+        ? callerName!.toString().trim()
+        : ((appRole == 'elder') ? '您的家人' : '長輩');
 
     showDialog(
       context: context,
@@ -1052,8 +1081,30 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       builder: (c) {
         _activeCallDialogContext = c;
         return AlertDialog(
-          title: const Text('💡 視訊通話申請'),
-          content: Text('$callerLabel 正在呼叫 (房間: $roomId)'),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: isEmergency ? Colors.red.shade100 : Colors.green.shade100,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  isEmergency ? Icons.warning : Icons.phone_callback,
+                  color: isEmergency ? Colors.red : Colors.green,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(isEmergency ? '🚨 緊急來電' : '📞 來電通知'),
+            ],
+          ),
+          content: Text(
+            '$callerLabel 正在呼叫您！',
+            style: const TextStyle(fontSize: 18),
+          ),
+          backgroundColor: isEmergency ? Colors.red.shade50 : Colors.green.shade50,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           actions: [
             TextButton(
               onPressed: () {
@@ -1061,15 +1112,21 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                 Navigator.pop(c);
                 sig.Signaling().sendCallBusy(senderId, callId: callId);
               },
-              child: const Text('拒絕', style: TextStyle(color: Colors.red)),
+              child: const Text('拒接', style: TextStyle(color: Colors.red, fontSize: 16)),
             ),
-            ElevatedButton(
+            ElevatedButton.icon(
               onPressed: () {
                 _activeCallDialogContext = null;
                 Navigator.pop(c);
                 _navigateToVideoCall(roomId, senderId, callId: callId);
               },
-              child: const Text('接聽'),
+              icon: const Icon(Icons.videocam),
+              label: const Text('接聽', style: TextStyle(fontSize: 16)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              ),
             ),
           ],
         );
@@ -1078,6 +1135,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   }
 
   void _setupCallKitListener() {
+    // !!!!除非要更新視訊通話邏輯，否則禁止更動!!!!
     FlutterCallkitIncoming.onEvent.listen((CallEvent? event) {
       if (event == null) return;
 
@@ -1086,11 +1144,39 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       final roomId = extra['roomId'] as String?;
       final senderId = extra['senderId'] as String?;
       final callId = extra['callId'] as String?;
+      final issuedAt = extra['issuedAt']?.toString();
+      final expiresAt = extra['expiresAt']?.toString();
 
       if (roomId == null || senderId == null) return;
 
       if (event.event == Event.actionCallAccept) {
-        _navigateToVideoCall(roomId, senderId, callId: callId);
+        final now = DateTime.now().millisecondsSinceEpoch;
+        final exp = int.tryParse(expiresAt ?? '');
+        final issued = int.tryParse(issuedAt ?? '');
+        final isExpired = (exp != null && now > exp) || (issued != null && (now - issued) > 15000);
+        if (isExpired) {
+          debugPrint("⏰ [CallKit] Ignore expired accept (callId=$callId)");
+          FlutterCallkitIncoming.endAllCalls();
+          return;
+        }
+        if (callId != null && callId.isNotEmpty) {
+          sig.Signaling().lastProcessedCallId = callId;
+          sig.Signaling().lastProcessedCallTime = DateTime.now().millisecondsSinceEpoch;
+        }
+        // 優先讓首頁 listener 消費（可關閉既有 in-app 來電彈窗），
+        // 若短時間內未被消費，再由全域導航兜底。
+        pendingAcceptedCall.value = <String, String?>{
+          'roomId': roomId,
+          'senderId': senderId,
+          'callId': callId,
+          'issuedAt': issuedAt,
+          'expiresAt': expiresAt,
+        };
+        Future.delayed(const Duration(milliseconds: 350), () {
+          if (pendingAcceptedCall.value != null) {
+            _navigateToVideoCall(roomId, senderId, callId: callId);
+          }
+        });
       } else if (event.event == Event.actionCallDecline) {
         // Broadcast the decline event so that active dialogs in the app can close themselves
         callKitDeclineStream.add(roomId);
@@ -1107,9 +1193,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           debugPrint("❌ Failed to notify caller of decline: $e");
         }
 
-        // Remove any active incoming call dialog if the app is open
-        if (navigatorKey.currentState != null) {
-          navigatorKey.currentState?.popUntil((route) => route.isFirst);
+        // 僅關閉來電彈窗，不清空整個導航堆疊
+        if (_activeCallDialogContext != null) {
+          if (Navigator.canPop(_activeCallDialogContext!)) {
+            Navigator.pop(_activeCallDialogContext!);
+          }
+          _activeCallDialogContext = null;
         }
         _sendDeclineEvent(roomId, senderId, callId: callId);
       }
@@ -1156,6 +1245,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   }
 
   void _navigateToVideoCall(String roomId, String senderId, {String? callId, bool isEmergency = false}) {
+    // !!!!除非要更新視訊通話邏輯，否則禁止更動!!!!
     // ★ Bug 16 解決方案：如果身分是長輩，絕對不可啟動 VideoCallScreen (那是給家屬用的)。
     // 我們僅儲存 pendingAcceptedCall，讓長輩主畫面 (ElderScreen) 啟動後去接手。
     if (appRole == 'elder') {
@@ -1189,9 +1279,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     }
 
     if (navigatorKey.currentState != null && isAppReady) {
-      // Pop any active dialogs (like the incoming call alert on the dashboard)
-      // before bringing up the VideoCallScreen from CallKit.
-      navigatorKey.currentState?.popUntil((route) => route.isFirst);
+      // 只關閉來電彈窗，避免 popUntil 觸發 Splash 重新導向
+      if (_activeCallDialogContext != null) {
+        if (Navigator.canPop(_activeCallDialogContext!)) {
+          Navigator.pop(_activeCallDialogContext!);
+        }
+        _activeCallDialogContext = null;
+      }
 
       Future.microtask(() {
         navigatorKey.currentState?.push(
