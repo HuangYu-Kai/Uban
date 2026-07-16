@@ -915,13 +915,32 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
                 ),
               ),
             const SizedBox(width: 6),
-            // 小豬圖片
+            // 圓形「聽」圖標
             GestureDetector(
               onTap: _showNewsSummary,
-              child: Image.asset(
-                'assets/images/pig_summary_expert.png',
+              child: Container(
                 width: 60,
                 height: 60,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: const Color(0xFF7FBFA6),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.15),
+                      blurRadius: 8,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                alignment: Alignment.center,
+                child: const Text(
+                  '聽',
+                  style: TextStyle(
+                    fontFamily: 'StarPanda',
+                    fontSize: 30,
+                    color: Colors.white,
+                  ),
+                ),
               ),
             ),
           ],
