@@ -664,8 +664,8 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
                 ),
               ),
 
-              // 3. CCTV 模式提示
-              if (widget.isCCTVMode)
+              // 3. CCTV 模式提示與退出按鈕
+              if (widget.isCCTVMode) ...[
                 Positioned(
                   top: MediaQuery.of(context).padding.top + 20,
                   left: 20,
@@ -685,6 +685,32 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
                     ),
                   ),
                 ),
+                Positioned(
+                  top: MediaQuery.of(context).padding.top + 20,
+                  right: 20,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.5),
+                      shape: BoxShape.circle,
+                    ),
+                    child: IconButton(
+                      icon: const Icon(Icons.exit_to_app, color: Colors.white),
+                      tooltip: '退出並重新登入',
+                      onPressed: () async {
+                        final prefs = await SharedPreferences.getInstance();
+                        await prefs.clear(); // 清空儲存的長輩資訊與 CCTV 角色
+                        if (context.mounted) {
+                          Navigator.pushAndRemoveUntil(
+                            context,
+                            MaterialPageRoute(builder: (context) => const IdentificationScreen()),
+                            (route) => false,
+                          );
+                        }
+                      },
+                    ),
+                  ),
+                ),
+              ],
 
                             // 4. 底部控制列 (大按鈕，便於操作)
               if (!widget.isCCTVMode)
