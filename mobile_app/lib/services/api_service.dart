@@ -217,7 +217,7 @@ class ApiService {
               if (imageUrl != null) 'image_url': imageUrl,
             }),
           )
-          .timeout(const Duration(seconds: 60)); // AI 回應需要更長時間，設為 60 秒
+          .timeout(const Duration(seconds: 120)); // 增加超時時間至 120 秒
       return _safeDecode(response);
     } on TimeoutException {
       return {'status': 'error', 'message': 'AI 回應逾時，請稍後再試'};
@@ -234,7 +234,7 @@ class ApiService {
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({'user_id': userId, 'message': context}),
           )
-          .timeout(const Duration(seconds: 60)); // 設為 60 秒以容納模型生成時間
+          .timeout(const Duration(seconds: 120)); // 增加超時時間至 120 秒
       return _safeDecode(response);
     } catch (e) {
       return {'status': 'error', 'message': '網路連線失敗: $e'};

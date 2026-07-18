@@ -308,6 +308,20 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
     }
   }
 
+  Future<void> _quickLoginYuxuanDemo() async {
+    try {
+      final int elderId = 2;
+      final String elderName = '宇璿';
+      final String elderRoomId = '6160';
+      await loginAndPersist(elderId: elderId, elderName: elderName, elderRoomId: elderRoomId);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('登入宇璿失敗：$e')),
+      );
+    }
+  }
+
   @override
   void dispose() {
     _statusTimer?.cancel();
@@ -426,6 +440,23 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
                     label: const Text('登入gawa'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF2E7D78),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 12,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  ElevatedButton.icon(
+                    onPressed: _quickLoginYuxuanDemo,
+                    icon: const Icon(Icons.elderly_rounded),
+                    label: const Text('登入宇璿'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFE67E22), // 橘色代表宇璿
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(
                         horizontal: 18,
