@@ -570,6 +570,23 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   void _makeCall() {
     setState(() { _status = "正在呼叫家人..."; _isInCall = true; });
     _signaling.sendCallRequest(_formattedRoomId, role: 'elder');  // ★ 使用格式化的房間ID
+    // ★ 2026-07-18：長輩端主動撥打新增 30 秒逾時。原本完全沒有逾時，
+    //   家屬未接時只能靠手動掛斷，被叫方 CallKit 也會一直響。逾時自動取消。
+    Future.delayed(const Duration(seconds: 30), () {
+      if (mounted && _status == "正在呼叫家人...") {
+        debugPrint("⏰ [ElderScreen] 撥打逾時，自動取消通話");
+        _signaling.sendCancelCall(_formattedRoomId, role: 'elder');
+        _signaling.hangUp(disconnectSocket: false, disposeLocalStream: false);
+        setState(() {
+          _remoteRenderer.srcObject = null;
+          _status = "對方未接聽";
+          _isInCall = false;
+        });
+        if (!widget.isCCTVMode) {
+          safeNavigateBack(context, _buildFallbackHome());
+        }
+      }
+    });
   }
 
   void _hangUp() {

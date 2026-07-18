@@ -10,6 +10,8 @@ import 'package:flutter_callkit_incoming/entities/entities.dart';
 import 'package:volume_controller/volume_controller.dart';
 import 'package:uuid/uuid.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import '../globals.dart';
+import 'api_service.dart';
 
 typedef StreamStateCallback = void Function(MediaStream stream);
 typedef IncomingCallCallback = Future<bool> Function(String callerId, String callType);
@@ -467,7 +469,7 @@ class Signaling {
       avatar: 'https://i.pravatar.cc/150?name=$callerName',  // ★ 動態頭貼，基於名稱生成
       handle: '📞 視訊通話',  // ★ 改進提示文字
       type: 0,  // 0 = audio, 1 = video
-      duration: 30000,
+      duration: 45000,  // ★ 2026-07-18：與 kCallValidityMs（45s）對齊
       textAccept: '✓ 接聽',  // ★ 加入emoji
       textDecline: '✕ 拒絕',  // ★ 加入emoji
       missedCallNotification: const NotificationParams(
@@ -590,7 +592,7 @@ class Signaling {
       'role': role, 
       'callId': effectiveCallId,
       'issuedAt': issuedAt.toString(),
-      'expiresAt': (issuedAt + 15000).toString(),
+      'expiresAt': (issuedAt + kCallValidityMs).toString(),
       if (targetId != null) 'targetId': targetId,
       'callerUserId': _userId, // 新增：主動發送發起者的資料庫 ID
       if (_deviceName != null) 'senderName': _deviceName,
@@ -622,9 +624,26 @@ class Signaling {
     }
   }
 
-  void sendCallBusy(String targetSocketId, {String? callId}) {
+  void sendCallBusy(String targetSocketId, {String? callId, String? room}) {
+    final String? effectiveRoom = room ?? _currentRoomId;
+    final String? effectiveCallId = callId ?? _currentCallId;
+    // ★ 拒接的 callId 立即失效，避免延遲到達的同一通 call-request 又響起。
+    if (effectiveCallId != null && effectiveCallId.isNotEmpty) {
+      _invalidCallIds.add(effectiveCallId);
+    }
     if (socket != null && socket!.connected) {
-      socket!.emit('call-busy', {'targetId': targetSocketId, 'callId': callId});
+      socket!.emit('call-busy', {'targetId': targetSocketId, 'callId': effectiveCallId});
+    } else {
+      // ★ 2026-07-18：Socket 未連線（背景/剛斷線）時走 HTTP 備援，
+      //   確保發起方仍能收到拒接、雙端同步關閉來電 UI。
+      debugPrint('⚠️ [Signaling] sendCallBusy: Socket 未連線，改走 HTTP declineCall');
+      if (effectiveRoom != null) {
+        ApiService.declineCall(
+          roomId: effectiveRoom,
+          senderId: targetSocketId,
+          callId: effectiveCallId,
+        );
+      }
     }
   }
 
@@ -974,7 +993,7 @@ class Signaling {
     final int? expiresAt = int.tryParse('${payload['expiresAt'] ?? ''}');
     if (expiresAt != null && now > expiresAt) return true;
     final int? issuedAt = int.tryParse('${payload['issuedAt'] ?? ''}');
-    if (issuedAt != null && (now - issuedAt) > 15000) return true;
+    if (issuedAt != null && (now - issuedAt) > kCallValidityMs) return true;
     return false;
   }
 

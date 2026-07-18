@@ -142,7 +142,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
           actions: [
             TextButton(
               onPressed: () {
-                Signaling().sendCallBusy(senderId, callId: callId);
+                Signaling().sendCallBusy(senderId, callId: callId, room: roomId);
                 Navigator.of(dialogContext).pop();
                 _isIncomingCallDialogOpen = false;
               },
@@ -238,7 +238,8 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
       final int now = DateTime.now().millisecondsSinceEpoch;
       final int? expiresAt = int.tryParse('${call['expiresAt'] ?? ''}');
       final int? issuedAt = int.tryParse('${call['issuedAt'] ?? ''}');
-      final bool isExpired = (expiresAt != null && now > expiresAt) || (issuedAt != null && (now - issuedAt) > 15000);
+      // ★ 2026-07-18：有效期改用 kCallValidityMs（45s），與後端一致。
+      final bool isExpired = (expiresAt != null && now > expiresAt) || (issuedAt != null && (now - issuedAt) > kCallValidityMs);
       if (isExpired) {
         debugPrint("⏰ [ElderHomeScreen] 忽略過期待接聽來電 (callId=${call['callId']})");
         pendingAcceptedCall.value = null;

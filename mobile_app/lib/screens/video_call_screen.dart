@@ -219,6 +219,16 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     // 設定通話逾時（20秒後如果仍未連線，則視為失敗）
     Future.delayed(const Duration(seconds: 20), () {
       if (mounted && _callConnecting && !_callConnected) {
+        // ★ 2026-07-18：逾時未接通時，主動通知對方取消／掛斷，避免被叫方 CallKit
+        //   繼續響到 45 秒。僅撥打方（非來電接聽方）需要送取消。
+        if (!widget.isIncomingCall) {
+          try {
+            _signaling.sendCancelCall(widget.roomId, role: 'family');
+          } catch (e) {
+            debugPrint('⚠️ [VideoCall] timeout sendCancelCall failed: $e');
+          }
+        }
+        _signaling.hangUp(disconnectSocket: false, disposeLocalStream: false);
         setState(() {
           _callConnecting = false;
           _callFailed = true;

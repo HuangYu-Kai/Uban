@@ -213,7 +213,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
       final int now = DateTime.now().millisecondsSinceEpoch;
       final int? expiresAt = int.tryParse('${args['expiresAt'] ?? ''}');
       final int? issuedAt = int.tryParse('${args['issuedAt'] ?? ''}');
-      final bool isExpired = (expiresAt != null && now > expiresAt) || (issuedAt != null && (now - issuedAt) > 15000);
+      final bool isExpired = (expiresAt != null && now > expiresAt) || (issuedAt != null && (now - issuedAt) > kCallValidityMs);
       if (isExpired) {
         debugPrint("⏰ [FamilyMainScreen] 忽略過期待接聽來電 (callId=$callId)");
         return;

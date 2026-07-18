@@ -12,7 +12,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:socket_io_client/socket_io_client.dart' as io;
 import 'package:flutter/services.dart';
 import 'package:flutter_line_sdk/flutter_line_sdk.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -48,7 +47,7 @@ bool _isExpiredCallPayload(Map<String, dynamic> data) {
   final int? expiresAt = int.tryParse('${data['expiresAt'] ?? ''}');
   if (expiresAt != null && now > expiresAt) return true;
   final int? issuedAt = int.tryParse('${data['issuedAt'] ?? ''}');
-  if (issuedAt != null && (now - issuedAt) > 15000) return true;
+  if (issuedAt != null && (now - issuedAt) > kCallValidityMs) return true;
   return false;
 }
 
@@ -247,6 +246,31 @@ Future<void> _showFullScreenCallkit(Map<String, dynamic> data) async {
   );
 
   await FlutterCallkitIncoming.showCallkitIncoming(params);
+
+  // ★ 2026-07-18 修復：APP 被殺死時，主 isolate 不存在，_setupCallKitListener
+  //   收不到 CallKit 的拒接/逾時事件 → 拒接訊號永遠送不出去，發起方持續等待。
+  //   這裡在背景 isolate 註冊短命 listener，攔到拒接/逾時就走無狀態 HTTP
+  //   /api/call/decline 通知後端廣播 cancel-call（含 FCM），讓發起方即時停止等待。
+  //   若使用者是「接聽」，則不處理（交由冷啟動後的正常流程接手）。
+  if (senderId.isNotEmpty && roomId.isNotEmpty) {
+    late final StreamSubscription<CallEvent?> bgSub;
+    bgSub = FlutterCallkitIncoming.onEvent.listen((CallEvent? e) async {
+      if (e == null) return;
+      if (e.event == Event.actionCallDecline ||
+          e.event == Event.actionCallTimeout) {
+        debugPrint('🔕 [BG-CallKit] ${e.event} → HTTP declineCall (call=$callId)');
+        await ApiService.declineCall(
+          roomId: roomId,
+          senderId: senderId,
+          callId: callId,
+        );
+        await bgSub.cancel();
+      } else if (e.event == Event.actionCallAccept) {
+        // 接聽由主 isolate 冷啟動流程處理，這裡只取消背景監聽
+        await bgSub.cancel();
+      }
+    });
+  }
 }
 
 void main() async {
@@ -300,20 +324,32 @@ void main() async {
       debugPrint("🌐 Web platform detected. Skipping Firebase if no options.");
     } else {
       await Firebase.initializeApp();
-      // Initialize Firebase Analytics
+      // ★ 2026-07-18 修復：背景訊息 handler 必須在 Firebase 初始化後「立即」註冊，
+      //   且獨立 try/catch。原本註冊在 LineSDK/Analytics 之後同一個 try 內，
+      //   任一項噴錯就會導致 handler 沒註冊 → APP 被殺死時 FCM 無法喚醒 CallKit。
+      try {
+        FirebaseMessaging.onBackgroundMessage(
+            _firebaseMessagingBackgroundHandler);
+        await FirebaseMessaging.instance.requestPermission();
+        debugPrint("🔔 FCM background handler registered");
+      } catch (e) {
+        debugPrint("⚠️ FCM background handler registration failed: $e");
+      }
+
+      // Initialize Firebase Analytics（非關鍵，失敗不影響來電）
       try {
         FirebaseAnalytics.instance.logAppOpen();
       } catch (e) {
         debugPrint("⚠️ Firebase Analytics initialization failed: $e");
       }
 
-      // Initialize LINE SDK
-      await LineSDK.instance.setup("2009500424").then((_) {
+      // Initialize LINE SDK（非關鍵，失敗不影響來電）
+      try {
+        await LineSDK.instance.setup("2009500424");
         debugPrint("🟢 LineSDK Initialized in main()");
-      });
-      FirebaseMessaging.onBackgroundMessage(
-          _firebaseMessagingBackgroundHandler);
-      await FirebaseMessaging.instance.requestPermission();
+      } catch (e) {
+        debugPrint("⚠️ LineSDK initialization failed: $e");
+      }
     }
   } catch (e) {
     debugPrint("⚠️ Firebase initialization failed or missing: $e");
@@ -1110,7 +1146,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
               onPressed: () {
                 _activeCallDialogContext = null;
                 Navigator.pop(c);
-                sig.Signaling().sendCallBusy(senderId, callId: callId);
+                sig.Signaling().sendCallBusy(senderId, callId: callId, room: roomId);
               },
               child: const Text('拒接', style: TextStyle(color: Colors.red, fontSize: 16)),
             ),
@@ -1153,7 +1189,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         final now = DateTime.now().millisecondsSinceEpoch;
         final exp = int.tryParse(expiresAt ?? '');
         final issued = int.tryParse(issuedAt ?? '');
-        final isExpired = (exp != null && now > exp) || (issued != null && (now - issued) > 15000);
+        final isExpired = (exp != null && now > exp) || (issued != null && (now - issued) > kCallValidityMs);
         if (isExpired) {
           debugPrint("⏰ [CallKit] Ignore expired accept (callId=$callId)");
           FlutterCallkitIncoming.endAllCalls();
@@ -1181,19 +1217,20 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         // Broadcast the decline event so that active dialogs in the app can close themselves
         callKitDeclineStream.add(roomId);
 
-        // ★ Issue 4：通知對方已拒絕（只在 socket 已連線時發送，不重新連線避免破壞 Singleton）
-        try {
-          if (sig.Signaling().socket?.connected == true) {
-            sig.Signaling().sendCallBusy(senderId, callId: callId);
-            debugPrint("✅ [CallKit Decline] 已透過 Socket 發送 call-busy");
-          } else {
-            debugPrint("⚠️ [CallKit Decline] Socket 未連線，無法發送 call-busy");
-          }
-        } catch (e) {
-          debugPrint("❌ Failed to notify caller of decline: $e");
-        }
-
         // 僅關閉來電彈窗，不清空整個導航堆疊
+        if (_activeCallDialogContext != null) {
+          if (Navigator.canPop(_activeCallDialogContext!)) {
+            Navigator.pop(_activeCallDialogContext!);
+          }
+          _activeCallDialogContext = null;
+        }
+        // ★ 2026-07-18：拒接統一走 _sendDeclineEvent（先 socket 後 HTTP 保底），
+        //   確保背景/被殺死狀態下 Socket 未連線時仍能通知發起方停止等待。
+        _sendDeclineEvent(roomId, senderId, callId: callId);
+      } else if (event.event == Event.actionCallTimeout) {
+        // ★ 2026-07-18：CallKit 響鈴逾時（無人接聽）等同拒接，需通知發起方停止等待，
+        //   否則發起方只能苦等自身逾時。同樣走 _sendDeclineEvent 的 socket→HTTP 保底。
+        debugPrint("⏰ [CallKit] 響鈴逾時未接聽 → 通知發起方 (callId=$callId)");
         if (_activeCallDialogContext != null) {
           if (Navigator.canPop(_activeCallDialogContext!)) {
             Navigator.pop(_activeCallDialogContext!);
@@ -1210,38 +1247,28 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         "❌ Call Declined from CallKit, sending call-busy to $senderId (callId: $callId)...");
 
     final prefs = await SharedPreferences.getInstance();
-    final int? userId = prefs.getInt('caregiver_id');
-    final String? role = prefs.getString('user_role') ?? 'family';
-
     // ★ issue 2/15：拒接時清除可能已預先寫入的 pendingAcceptedCall，
     //   避免下次冷啟動誤導向這通已被拒絕的通話。
     await prefs.remove('pendingAcceptedCall');
     pendingAcceptedCall.value = null;
-    
-    final io.Socket socket = io.io(
-        sig.Signaling.serverUrl,
-        io.OptionBuilder()
-            .setTransports(['websocket'])
-            .disableAutoConnect()
-            .enableForceNew()
-            .build());
 
-    socket.connect();
-    socket.onConnect((_) {
-      debugPrint('✅ Socket 連線成功 (Main-Decline Handler)');
-      socket.emit('join', {
-        'room': roomId,
-        'role': role,
-        'deviceName': 'Decline_Handler',
-        'userId': userId,
-      });
-      socket.emit('call-busy', {'targetId': senderId, 'callId': callId});
-
-      // Delay to ensure the event is fired, then disconnect to clean up
-      Future.delayed(const Duration(milliseconds: 500), () {
-        socket.disconnect();
-      });
-    });
+    // ★ 2026-07-18 修復：原本臨時 socket 需要 userId 才能通過 on_join 授權，
+    //   但這裡讀的是 caregiver_id，家屬端 userId 其實存在 user_id，導致 join-failed
+    //   → 隨後的 call-busy 遺失。改走無狀態 HTTP /api/call/decline：後端會依
+    //   call_registry 對雙端廣播 call-busy/cancel-call（含 FCM），確保同步終止。
+    // 先嘗試現有 Singleton socket（若在線），再以 HTTP 保底。
+    try {
+      if (sig.Signaling().socket?.connected == true) {
+        sig.Signaling().sendCallBusy(senderId, callId: callId, room: roomId);
+      }
+    } catch (e) {
+      debugPrint('⚠️ [Decline] socket sendCallBusy failed: $e');
+    }
+    await ApiService.declineCall(
+      roomId: roomId,
+      senderId: senderId,
+      callId: callId,
+    );
   }
 
   void _navigateToVideoCall(String roomId, String senderId, {String? callId, bool isEmergency = false}) {
