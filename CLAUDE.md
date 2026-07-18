@@ -175,3 +175,42 @@ String? appRole                                            // 當前角色 (elde
 - Python 3.12 (後端，不支援 3.13+)
 - Android Studio (模擬器)
 - 後端通過 Tailscale Funnel 對外開放
+
+## 🚫 絕對不可改動區塊 (Critical Guardrails)
+
+下列區塊是目前通話穩定性的重要護欄，不可單點修改：
+
+1. **`Uban/mobile_app/lib/main.dart` → `_setupSignalingListener()` 的角色守門**
+   - `if (appRole != 'elder') { s.onCallRequest = ... }`
+   - **不可移除/放寬**：否則會覆蓋 `ElderHomeScreen` 的 callback，造成「長輩前景收不到來電」。
+
+2. **`Uban/mobile_app/lib/main.dart` → `_setupCallKitListener()` 接聽路徑**
+   - 先寫 `pendingAcceptedCall.value`，再短延遲 fallback `_navigateToVideoCall(...)`
+   - **不可改回直接強推單一路徑**：否則會重現「接聽後回主頁、不進通話房」。
+
+3. **`Uban/mobile_app/lib/main.dart` → `_navigateToVideoCall()`**
+   - 只關閉 `_activeCallDialogContext`，**禁止** `popUntil(route.isFirst)` 清堆疊
+   - **不可改回清堆疊**：會觸發 Splash/首頁重導，導致接聽失敗或黑屏。
+
+4. **`Uban/mobile_app/lib/services/signaling.dart`**
+   - `_invalidCallIds` + `_isExpiredCallPayload(...)` + 在 `call-request/cancel-call/call-busy/end-call` 的失效流程
+   - **不可移除**：移除後會再出現「掛斷後延遲來電」「接起舊來電互打迴圈」。
+
+5. **`uban-api/uban-api/services/socket_app.py`**
+   - `call-request` 下發 `issuedAt/expiresAt`（15 秒）與 FCM `ttl=15s`
+   - `on_end_call()` 依 `call_registry` 對 Socket+FCM 廣播終止
+   - `on_cancel_call()` 使用 `call_registry` 補齊目標
+   - **不可拆掉**：會回到「一端掛斷，另一端仍響/仍等待」。
+
+6. **`Uban/mobile_app/lib/screens/family_main_screen.dart`**
+   - `2.5s` 輪詢 + `2.5s` debounce 套用 `isOnline`
+   - **不要改回 1 秒瞬時切換**：會造成快速上下線抖動誤判。
+
+7. **`Uban/mobile_app/lib/screens/elder_home_screen.dart` / `family_main_screen.dart`**
+   - 消費 `pendingAcceptedCall` 前的過期判斷（15 秒）
+   - **不可刪除**：會讓冷啟動延遲收到的舊來電再次被接起。
+
+8. **`Uban/mobile_app/lib/screens/elder_screen.dart` + `video_call_screen.dart`**
+   - `_isCameraOff = false`（進入視訊房預設開鏡頭）
+   - **不可改回預設關閉**：與目前需求衝突，且會造成「接通黑畫面誤判」。
+

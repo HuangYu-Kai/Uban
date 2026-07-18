@@ -1,26 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'dart:ui';
-import 'dart:async';
-import 'dart:convert';
 import 'package:speech_to_text/speech_to_text.dart';
+import 'package:flutter_tts/flutter_tts.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'dart:convert';
 
-import 'controllers/zen_pond_controller.dart';
-import 'widgets/pond_background.dart';
-import 'widgets/diary_dialog.dart';
-import 'widgets/interactive_ripples.dart';
-import 'widgets/pond_decorations.dart';
-import 'widgets/koi_fish_notification.dart';
-import 'widgets/lotus_leaf_card.dart';
-import 'widgets/falling_leaf_message.dart';
-import 'widgets/leaf_message_card.dart';
 import '../../services/api_service.dart';
 import '../../services/signaling.dart';
 
-// 【主螢幕元件】禪意池塘 - 整合落葉對話、原生 STT 語音 Overlay 與極致莫蘭迪背景
+enum AgentState { idle, listening, thinking, speaking }
 
 class ZenPondScreen extends StatefulWidget {
   final Function(bool isVisible)? onOverlayStateChanged;
@@ -30,1224 +21,201 @@ class ZenPondScreen extends StatefulWidget {
   State<ZenPondScreen> createState() => ZenPondScreenState();
 }
 
-class ZenPondScreenState extends State<ZenPondScreen> {
-  final ZenPondController _controller = ZenPondController();
+class ZenPondScreenState extends State<ZenPondScreen> with TickerProviderStateMixin {
+  // 核心語音服務
+  final SpeechToText _speechToText = SpeechToText();
+  final FlutterTts _flutterTts = FlutterTts();
+  final AudioPlayer _audioPlayer = AudioPlayer();
+
+  // 狀態管理
+  AgentState _agentState = AgentState.idle;
+  bool _speechEnabled = false;
+  String _userWords = "";
+  String _aiWords = "您好！我是您的語音陪伴小幫手。今天心情好嗎？隨時點擊圓球對我說說話吧！";
+  int _userId = 1;
+  String _language = 'mandarin'; // 'mandarin' 或 'taiwanese'
+  String? _mandarinLocaleId;
+  String? _taiwaneseLocaleId;
+
+  // 動畫控制器
+  late AnimationController _rotationController;
 
   @override
   void initState() {
     super.initState();
-    // 進入時非同步載入本地持久化歷史落葉，若無則啟動首次迎賓排程
-    _controller.loadLeaves();
-    _controller.loadHistory();
-    _controller.addListener(_onControllerChanged);
+    _rotationController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 3),
+    );
+    _initServices();
+    _bindSocketCallbacks();
 
-    // 掛載 Socket.IO 記憶落葉接收回調
-    // 當後端排程或 API 推送 'new-pond-leaf' 事件時，自動加入黃色記憶葉並 TTS 播報
-    Signaling().onNewPondLeaf = (String text, String type) {
-      if (!mounted) return;
-      
-      // 解析 Markdown 圖片: ![alt](url)
-      String? imageUrl;
-      final imgRegExp = RegExp(r'!\[.*?\]\((.*?)\)');
-      final imgMatch = imgRegExp.firstMatch(text);
-      if (imgMatch != null) {
-        imageUrl = imgMatch.group(1);
+    // 監聽歷史語音播放狀態
+    _audioPlayer.onPlayerStateChanged.listen((state) {
+      if (mounted && _agentState == AgentState.speaking) {
+        if (state == PlayerState.completed || state == PlayerState.stopped) {
+          _updateState(AgentState.idle);
+        }
       }
-      
-      // 解析影片 ID: [VIDEO_ID:xxxx]
-      String? videoId;
-      final videoRegExp = RegExp(r'\[VIDEO_ID:([^\]]+)\]');
-      final videoMatch = videoRegExp.firstMatch(text);
-      if (videoMatch != null) {
-        videoId = videoMatch.group(1);
-      }
-      
-      // 清理文本中的技術標籤和 Markdown 語法，只留乾淨對話
-      String cleanText = text
-          .replaceAll(imgRegExp, '')
-          .replaceAll(videoRegExp, '')
-          .trim();
-          
-      if (cleanText.isEmpty) {
-        cleanText = videoId != null ? '這是為您推薦的影片' : (imageUrl != null ? '為您分享了一張照片' : text);
-      }
-
-      _controller.addLeaf(
-        text: cleanText,
-        colorType: LeafColorType.yellow, // 黃色 = 長期記憶葉
-        imageUrl: imageUrl,
-        videoId: videoId,
-        playTts: false,
-      );
-
-      // 將推播的新記憶落葉加入時光日記
-      _controller.addHistory(
-        sender: 'ai',
-        text: cleanText,
-        imageUrl: imageUrl,
-        videoId: videoId,
-      );
-    };
+    });
   }
 
-  void _onControllerChanged() {
-    widget.onOverlayStateChanged?.call(_controller.isAnyOverlayVisible);
-  }
-
-  void addNotification(String message) {
-    _controller.showNotification(message);
-  }
-  
   @override
   void dispose() {
-    _controller.removeListener(_onControllerChanged);
-    _controller.dispose();
-    // 離開頁面時清除落葉回調，避免記憶體洩漏
+    _speechToText.stop();
+    _flutterTts.stop();
+    _audioPlayer.dispose();
+    _rotationController.dispose();
     Signaling().onNewPondLeaf = null;
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return ChangeNotifierProvider.value(
-      value: _controller,
-      child: const _ZenPondContent(),
-    );
-  }
-}
-
-class _ZenPondContent extends StatefulWidget {
-  const _ZenPondContent();
-
-  @override
-  State<_ZenPondContent> createState() => _ZenPondContentState();
-}
-
-class _ZenPondContentState extends State<_ZenPondContent>
-    with SingleTickerProviderStateMixin {
-  // --- STT 語音錄音相關 ---
-  final SpeechToText _speechToText = SpeechToText();
-  bool _speechEnabled = false;
-  bool _isRecording = false;
-  String _recognizedWords = '點擊麥克風開始說話...';
-
-
-  // --- AI 思考狀態 ---
-  bool _isAiThinking = false;
-  String? _currentLocaleId;
-  double _soundLevel = 0.0;
-
-  // --- 麥克風呼吸擴散動畫 ---
-  late AnimationController _pulseController;
-  late Animation<double> _pulseAnimation;
-
-  // --- 時光日記 (歷史對話) 新增變數 ---
-  bool _isDiaryDialogOpen = false;
-  final ScrollController _historyScrollController = ScrollController();
-  final AudioPlayer _historyAudioPlayer = AudioPlayer();
-
-  @override
-  void initState() {
-    super.initState();
-    _initSpeech();
-
-    // 初始化麥克風呼吸動畫 (極致平滑的擴散光圈)
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1600),
-    );
-    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.6).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeOut),
-    );
-
-    // 監聽歷史語音播放狀態，結束時重置播放按鈕狀態（透過 controller 通知 Dialog 刷新）
-    _historyAudioPlayer.onPlayerStateChanged.listen((state) {
-      if (mounted) {
-        final ctrl = Provider.of<ZenPondController>(context, listen: false);
-        if (state == PlayerState.completed || state == PlayerState.stopped) {
-          ctrl.setTtsState(playingId: null, loading: false);
+  // 初始化 STT, TTS 與使用者資訊
+  Future<void> _initServices() async {
+    // 獲取使用者 ID 與語音偏好
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      setState(() {
+        _userId = prefs.getInt('caregiver_id') ?? 1;
+        _language = prefs.getString('voice_language') ?? 'mandarin';
+        if (_language == 'taiwanese') {
+          _aiWords = "您好！我是一直陪伴您的語音小幫手。今天心情好無？隨時點圓球對我講說話喔！";
+        } else {
+          _aiWords = "您好！我是您的語音陪伴小幫手。今天心情好嗎？隨時點擊圓球對我說說話吧！";
         }
-      }
-    });
-  }
+      });
+    } catch (e) {
+      debugPrint("Error loading SharedPreferences: $e");
+    }
 
-  @override
-  void dispose() {
-    _pulseController.dispose();
-    _historyAudioPlayer.dispose();
-    _historyScrollController.dispose();
-    super.dispose();
-  }
+    // 初始化 TTS
+    try {
+      await _flutterTts.setLanguage("zh-TW");
+      await _flutterTts.setPitch(1.0);
+      await _flutterTts.setSpeechRate(0.42); // 偏慢，讓長輩聽得更清楚
+      // 當語音播放完畢時，回到 idle 狀態
+      _flutterTts.setCompletionHandler(() {
+        if (mounted && _agentState == AgentState.speaking && _language == 'mandarin') {
+          _updateState(AgentState.idle);
+        }
+      });
+    } catch (e) {
+      debugPrint("Error initializing TTS: $e");
+    }
 
-  // 原生語音錄音初始化
-  Future<void> _initSpeech() async {
+    // 初始化 STT
     try {
       final status = await Permission.microphone.request();
       if (status.isGranted) {
         _speechEnabled = await _speechToText.initialize(
-          debugLogging: true,
-          onStatus: (sttStatus) {
-            debugPrint('ZenPond STT status: $sttStatus');
-            if ((sttStatus == 'done' || sttStatus == 'notListening') && _isRecording) {
-              // 延遲 600 毫秒執行，給 finalResult 優先發送的機會
-              Future.delayed(const Duration(milliseconds: 600), () {
-                if (mounted && _isRecording) {
-                  _stopListening();
-                }
-              });
-            }
-          },
-          onError: (err) {
-            debugPrint('ZenPond STT error: ${err.errorMsg}');
-            if (mounted) {
-              setState(() {
-                _isRecording = false;
-                _soundLevel = 0.0;
-                _pulseController.stop();
-                _pulseController.reset();
-                
-                // 客製化貼心引導文字
-                if (err.errorMsg == 'error_no_match') {
-                  _recognizedWords = '沒聽清楚，請點擊麥克風大聲一點再試一次 😊';
-                } else if (err.errorMsg == 'error_speech_timeout') {
-                  _recognizedWords = '好像沒有聽到您的聲音，請點擊麥克風再說一次喔 😊';
-                } else if (err.errorMsg == 'error_network') {
-                  _recognizedWords = '網路連線有點忙碌，請再試一次 😊';
-                } else if (err.errorMsg == 'error_permission') {
-                  _recognizedWords = '麥克風權限尚未開啟，請在系統設定中允許喔 😊';
+          onStatus: (status) {
+            debugPrint("STT Status: $status");
+            if (status == "done" || status == "notListening") {
+              if (_agentState == AgentState.listening) {
+                // 自動斷句或結束時，若有收到字則送出，否則重置回 idle
+                if (_userWords.trim().isNotEmpty) {
+                  _processUserVoiceMessage(_userWords);
                 } else {
-                  _recognizedWords = '語音識別遇到一點小狀況，請重試或用鍵盤打字喔 😊';
+                  _updateState(AgentState.idle);
                 }
-              });
+              }
+            }
+          },
+          onError: (errorNotification) {
+            debugPrint("STT Error: $errorNotification");
+            if (mounted) {
+              _updateState(AgentState.idle);
             }
           },
         );
+
         if (_speechEnabled) {
-          try {
-            final locales = await _speechToText.locales();
-            for (var locale in locales) {
-              if (locale.localeId == 'zh_TW' || locale.localeId == 'zh-TW') {
-                _currentLocaleId = locale.localeId;
-                break;
+          final locales = await _speechToText.locales();
+          for (var loc in locales) {
+            final idLower = loc.localeId.toLowerCase();
+            if (idLower == 'zh-tw' || idLower == 'zh_tw') {
+              _mandarinLocaleId = loc.localeId;
+            } else if (idLower.contains('nan') || idLower.contains('min') || idLower.contains('tw')) {
+              if (idLower.contains('nan') || idLower.contains('min')) {
+                _taiwaneseLocaleId = loc.localeId;
               }
             }
-            if (_currentLocaleId == null && locales.isNotEmpty) {
-              for (var locale in locales) {
-                if (locale.localeId.startsWith('zh')) {
-                  _currentLocaleId = locale.localeId;
-                  break;
-                }
-              }
-            }
-            debugPrint('ZenPond Selected STT Locale: $_currentLocaleId');
-          } catch (e) {
-            debugPrint('Error getting locales: $e');
           }
+          _mandarinLocaleId ??= 'zh_TW';
+          _taiwaneseLocaleId ??= 'zh_TW'; // Fallback
+          debugPrint("STT Locales: Mandarin=$_mandarinLocaleId, Taiwanese=$_taiwaneseLocaleId");
         }
-      } else {
-        _speechEnabled = false;
       }
     } catch (e) {
-      debugPrint('ZenPond STT Init failed: $e');
-      _speechEnabled = false;
-    }
-
-    if (!_speechEnabled && mounted) {
-      setState(() {
-        _recognizedWords = '本機不支援語音識別，請點左下鍵盤聊天喔 😊';
-      });
+      debugPrint("Error initializing STT: $e");
     }
   }
 
-  // 開始錄音監聽
-  void _startListening() async {
-    if (!_speechEnabled) {
-      await _initSpeech();
-    }
-    if (_speechEnabled && !_isRecording) {
-      setState(() {
-        _recognizedWords = '聆聽中，請說話...';
-        _isRecording = true;
-        _soundLevel = 0.0;
-      });
-      _pulseController.repeat();
-      try {
-        await _speechToText.listen(
-          onResult: (result) {
-            if (mounted) {
-              setState(() {
-                _recognizedWords = result.recognizedWords.isNotEmpty 
-                    ? result.recognizedWords 
-                    : '聆聽中，請說話...';
-              });
-              // 當識別出最終結果且還在錄音時，立即觸發停止並發送，避免競態問題
-              if (result.finalResult && _isRecording) {
-                _stopListening();
-              }
-            }
-          },
-          listenFor: const Duration(seconds: 25),
-          pauseFor: const Duration(seconds: 4),
-          localeId: _currentLocaleId,
-          partialResults: true,
-          onSoundLevelChange: (level) {
-            if (mounted) {
-              setState(() {
-                _soundLevel = level;
-              });
-            }
-          },
-        );
-      } catch (e) {
-        debugPrint('STT listen failed: $e');
-        if (mounted) {
-          setState(() {
-            _isRecording = false;
-            _soundLevel = 0.0;
-            _pulseController.stop();
-            _pulseController.reset();
-            _recognizedWords = '錄音啟動失敗，請重試 😊';
-          });
-        }
+  // 綁定 Socket.IO 推播留言
+  void _bindSocketCallbacks() {
+    Signaling().onNewPondLeaf = (String text, String type) {
+      if (!mounted) return;
+      
+      // 清理 Markdown 圖片與影片等技術標籤
+      String cleanText = text
+          .replaceAll(RegExp(r'!\[.*?\]\((.*?)\)'), '')
+          .replaceAll(RegExp(r'\[VIDEO_ID:([^\]]+)\]'), '')
+          .trim();
+      
+      if (cleanText.isEmpty) {
+        cleanText = "收到一則新訊息";
       }
-    } else if (!_speechEnabled) {
-      // 語音不可用，自動切換至打字輸入，防禦模擬器不支援語音的痛點
-      final controller = Provider.of<ZenPondController>(context, listen: false);
-      _showTextInputDialog(controller);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('您的裝置不支援語音識別，已自動為您開啟文字輸入模式 😊'),
-          duration: Duration(seconds: 3),
-        ),
-      );
-    }
+
+      addNotification("子女傳來留言：$cleanText");
+    };
   }
 
-  // 停止錄製並發送 AI 對話
-  void _stopListening() async {
-    if (_isRecording) {
-      // 1. 同步將錄音狀態設為 false，並停止呼吸波紋動畫，杜絕非同步重入的 Race Condition
-      setState(() {
-        _isRecording = false;
-        _soundLevel = 0.0;
-        _pulseController.stop();
-        _pulseController.reset();
-      });
-
-      // 2. 隨後非同步地停止錄音
-      await _speechToText.stop();
-
-      final text = _recognizedWords.trim();
-      if (text.isNotEmpty && text != '聆聽中，請說話...' && text != '點擊麥克風開始說話...' && text != '本機不支援語音識別，請點左下鍵盤聊天喔 😊') {
-        _showHistoryDialog(); // 立即打開日記，展示對話流程與思考狀態
-        _sendToAiChat(text);
-      } else {
-        setState(() {
-          _recognizedWords = '沒聽清楚，請點擊麥克風再試一次 😊';
-        });
-      }
-    }
-  }
-
-  // 發送訊息並觸發翠綠落葉及 edge-tts 播報
-  Future<void> _sendToAiChat(String text, {String? imageUrl}) async {
-    final controller = Provider.of<ZenPondController>(context, listen: false);
+  // 外部通知接入口 (由 elder_home_screen.dart 呼叫)
+  void addNotification(String message) {
+    if (!mounted) return;
+    _flutterTts.stop();
+    _audioPlayer.stop();
     setState(() {
-      _recognizedWords = text;
-      _isAiThinking = true;
+      _userWords = "";
+      _aiWords = message;
     });
-    controller.setAiThinking(true);
-    controller.addHistory(sender: 'user', text: text, imageUrl: imageUrl);
+    _updateState(AgentState.speaking);
+    _speak(message);
+  }
 
-    try {
-      // 調用 API 後端 aiChat (User ID 固定為 1)
-      final result = await ApiService.aiChat(1, text, imageUrl: imageUrl);
+  // 更新 Agent 狀態並觸發 Overlay 變化通知
+  void _updateState(AgentState newState) {
+    if (!mounted) return;
+    setState(() {
+      _agentState = newState;
+    });
 
-      if (mounted) {
-        // 先判斷後端是否返回錯誤狀態
-        if (result['status'] == 'error' || result['status'] == 'fail') {
-          throw Exception(result['message'] ?? '服務器連線忙碌');
-        }
+    // 當非 idle 狀態時，通知首頁隱藏底部導航列，避免重疊
+    final isOverlayActive = newState != AgentState.idle;
+    widget.onOverlayStateChanged?.call(isOverlayActive);
 
-        String? reply;
-        if (result.containsKey('reply')) {
-          reply = result['reply'];
-        } else if (result.containsKey('data') && result['data'] is Map) {
-          final data = result['data'] as Map<String, dynamic>;
-          if (data.containsKey('reply')) {
-            reply = data['reply'];
-          }
-        }
-
-        if (reply != null) {
-          // 解析 Markdown 圖片: ![alt](url)
-          String? imageUrl;
-          final imgRegExp = RegExp(r'!\[.*?\]\((.*?)\)');
-          final imgMatch = imgRegExp.firstMatch(reply);
-          if (imgMatch != null) {
-            imageUrl = imgMatch.group(1);
-          }
-          
-          // 解析影片 ID: [VIDEO_ID:xxxx]
-          String? videoId;
-          final videoRegExp = RegExp(r'\[VIDEO_ID:([^\]]+)\]');
-          final videoMatch = videoRegExp.firstMatch(reply);
-          if (videoMatch != null) {
-            videoId = videoMatch.group(1);
-          }
-          
-          // 清理文本中的技術標籤和 Markdown 語法，只留乾淨對話
-          String cleanText = reply
-              .replaceAll(imgRegExp, '')
-              .replaceAll(videoRegExp, '')
-              .trim();
-              
-          if (cleanText.isEmpty) {
-            cleanText = videoId != null ? '這是為您推薦的影片' : (imageUrl != null ? '為您分享了一張照片' : reply);
-          }
-
-          // 1. 水面降落一片全新代表 AI 回覆的「碧綠落葉」，但不在水面彈出大木牌
-          controller.addLeaf(
-            text: cleanText,
-            colorType: LeafColorType.green,
-            imageUrl: imageUrl,
-            videoId: videoId,
-            playTts: false,
-            isCardVisible: false,
-          );
-
-          // 2. 將 AI 回覆存入時光日記
-          controller.addHistory(
-            sender: 'ai',
-            text: cleanText,
-            imageUrl: imageUrl,
-            videoId: videoId,
-          );
-
-          // 3. 成功後，自動平滑收起對話 Overlay
-          controller.closeAiOverlay();
-
-          // 4. 將思考狀態設為 false，使 ListView 提早重繪
-          if (mounted) {
-            setState(() {
-              _isAiThinking = false;
-            });
-          }
-
-          // 5. 自動彈出時光日記介面（若尚未打開）
-          if (!_isDiaryDialogOpen) _showHistoryDialog();
-
-          // 6. 自動朗讀最新的 AI 訊息
-          final lastTimestamp = controller.history.isNotEmpty
-              ? controller.history.last['timestamp']
-              : DateTime.now().millisecondsSinceEpoch;
-          final bubbleId = "${lastTimestamp}_ai";
-          _playHistoryTts(bubbleId, cleanText, controller);
-        } else {
-          throw Exception('回覆欄位格式不正確');
-        }
-      }
-    } catch (e) {
-      debugPrint('ZenPond AI conversation error: $e');
-      if (mounted) {
-        final errorMsg = e.toString().replaceAll('Exception: ', '');
-        setState(() {
-          _recognizedWords = '對話出錯：$errorMsg 😊';
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('對話失敗：$errorMsg'),
-            backgroundColor: Colors.redAccent,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-      }
-    } finally {
-      controller.setAiThinking(false);
-      if (mounted) {
-        setState(() {
-          _isAiThinking = false;
-        });
-      }
+    // 處理特殊狀態動畫
+    if (newState == AgentState.thinking) {
+      _rotationController.repeat();
+    } else {
+      _rotationController.stop();
     }
   }
 
-  // 打字輸入對話框
-  void _showTextInputDialog(ZenPondController controller) {
-    final TextEditingController textController = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: Text(
-          '與小幫手文字聊天',
-          style: GoogleFonts.notoSansTc(
-            fontWeight: FontWeight.bold,
-            fontSize: 22,
-            color: const Color(0xFF3E2723),
-          ),
-        ),
-        content: TextField(
-          controller: textController,
-          style: GoogleFonts.notoSansTc(fontSize: 24),
-          decoration: const InputDecoration(
-            hintText: '請輸入您想問的事情...',
-            border: OutlineInputBorder(),
-          ),
-          maxLines: 3,
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(
-              '取消',
-              style: GoogleFonts.notoSansTc(fontSize: 18, color: Colors.grey),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final text = textController.text.trim();
-              Navigator.pop(context);
-              if (text.isNotEmpty) {
-                _showHistoryDialog(); // 立即打開日記，展示對話流程
-                _sendToAiChat(text);
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF8C6D58),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-            ),
-            child: Text(
-              '送出',
-              style: GoogleFonts.notoSansTc(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final controller = context.watch<ZenPondController>();
+  // 播放 TTS 語音
+  Future<void> _speak(String text) async {
+    await _flutterTts.stop();
+    await _audioPlayer.stop();
     
-    // 當對話 Overlay 關閉時，自動重置語音識別文字與思考狀態
-    if (!controller.isAiOverlayVisible) {
-      _recognizedWords = '點擊麥克風開始說話...';
-      _soundLevel = 0.0;
-      _isAiThinking = false;
-    }
+    // 清除語音中可能含有的特殊影片代碼，避免唸出來
+    String cleanText = text.replaceAll(RegExp(r'\[VIDEO_ID:[^\]]+\]'), '').trim();
     
-    // 莫蘭迪淺藍綠底色，SOS 模式時轉紅
-    final Color bgColor = controller.isSOSMode 
-        ? const Color(0xFFFFEAEA) 
-        : const Color(0xFFE6F5EC); 
-
-    return Scaffold(
-      backgroundColor: bgColor,
-      body: InteractiveRipples(
-        onTap: controller.handleTap,
-        isSOSMode: controller.isSOSMode,
-        isEnabled: !controller.isAnyOverlayVisible,
-        child: Stack(
-          children: [
-            // 第一層：緩慢水波背景
-            const PondBackground(),
-            
-            // 第二層：邊緣石頭裝飾
-            const PondDecorations(),
-            
-            // 提示文字 (無 SOS 時展示於正中央，增加大字號引導)
-            if (!controller.isSOSMode && controller.leaves.isEmpty)
-              Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      '雙擊水面與我說話',
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 26,
-                        color: const Color(0xFF64748B).withOpacity(0.6),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      '(連續點擊 5 次可觸發求救)',
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 15,
-                        color: const Color(0xFF94A3B8).withOpacity(0.6),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              
-            // SOS 警報提示
-            if (controller.isSOSMode)
-              Center(
-                child: Text(
-                  'SOS 求救已觸發！',
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 32,
-                    color: Colors.redAccent,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-
-            // 第三層：錦鯉通知 (Phase 2 原生多隻錦鯉)
-            for (final item in controller.notifications)
-              if (!item.isLotusVisible)
-                KoiFishNotification(
-                  key: ValueKey(item.id),
-                  koiStyle: item.koiStyle,
-                  onTap: () => controller.tapKoi(item),
-                ),
-
-            // 第三層半：三色對話落葉 (新增的 Phase 3 浮游落葉圖層)
-            for (final leaf in controller.leaves)
-              if (!leaf.isCardVisible)
-                FallingLeafMessage(
-                  key: ValueKey(leaf.id),
-                  item: leaf,
-                  onTap: () => controller.tapLeaf(leaf),
-                ),
-
-            // 第四層：祈福水燈卡片 (錦鯉卡)
-            for (final item in controller.notifications)
-              if (item.isLotusVisible)
-                LotusLeafCard(
-                  key: ValueKey(item.id),
-                  message: item.message,
-                  imageUrl: item.imageUrl,
-                  onDismiss: () => controller.dismissLotus(item),
-                ),
-
-            // 第五層：展開後的落葉大木牌卡片
-            for (final leaf in controller.leaves)
-              if (leaf.isCardVisible)
-                LeafMessageCard(
-                  key: ValueKey('card_${leaf.id}'),
-                  id: leaf.id,
-                  message: leaf.text,
-                  imageUrl: leaf.imageUrl,
-                  videoId: leaf.videoId,
-                  onSwipeLeft: () {
-                    // 左滑：開始聊天 -> 將話題作為 ai 回覆加入歷史紀錄並開啟對話
-                    final topicText = leaf.text;
-                    final leafImageUrl = leaf.imageUrl; // 先儲存，dismissLeaf 後就無法取得
-                    final leafVideoId = leaf.videoId;
-                    controller.dismissLeaf(leaf); // 消耗並移去落葉
-                    
-                    // 總是把話題加入對話歷史作為 AI 說的話，使長輩可以直接回答
-                    controller.addHistory(
-                      sender: 'ai',
-                      text: topicText,
-                      imageUrl: leafImageUrl,
-                      videoId: leafVideoId,
-                    );
-                    
-                    _showHistoryDialog(); // 立即展開對話日記，向長輩呈現連貫感
-
-                    // 自動播放此新話題的語音
-                    if (controller.history.isNotEmpty) {
-                      final lastItem = controller.history.last;
-                      final timestamp = lastItem['timestamp'] ?? 0;
-                      final bubbleId = "${timestamp}_ai";
-                      _playHistoryTts(bubbleId, topicText, controller);
-                    }
-                  },
-                  onSwipeRight: () {
-                    // 右滑：捨棄話題 -> 移去落葉並給予溫馨 SnackBar 提示
-                    controller.dismissLeaf(leaf);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          '已為您捨棄話題 😊',
-                          style: GoogleFonts.notoSansTc(fontSize: 18, fontWeight: FontWeight.bold),
-                        ),
-                        duration: const Duration(seconds: 2),
-                      ),
-                    );
-                  },
-                ),
-
-            // 時光日記浮動書籍 (右上角，精緻手繪感 3D 閉合日記本，無文字/無按鈕感)
-            if (!controller.isAiOverlayVisible)
-              Positioned(
-                right: 20,
-                top: 100,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque, // 吸收事件，防止穿透到水面觸發 AI Overlay
-                  onTap: () => _showHistoryDialog(),
-                  child: MouseRegion(
-                    cursor: SystemMouseCursors.click,
-                    child: SizedBox(
-                      width: 86,
-                      height: 118,
-                      child: Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          // 1. 書籤絲帶 (Bookmark Ribbon) - 從書頁底部垂下
-                          Positioned(
-                            left: 42,
-                            bottom: 0,
-                            width: 10,
-                            height: 22,
-                            child: Container(
-                              decoration: const BoxDecoration(
-                                color: Color(0xFFC62828), // 典雅深紅絲帶
-                                borderRadius: BorderRadius.only(
-                                  bottomLeft: Radius.circular(2),
-                                  bottomRight: Radius.circular(2),
-                                  topLeft: Radius.circular(1),
-                                  topRight: Radius.circular(1),
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black12,
-                                    blurRadius: 2,
-                                    offset: Offset(1, 2),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-
-                          // 2. 整本書的主體 (封底與書頁層)
-                          Positioned(
-                            left: 0,
-                            top: 0,
-                            width: 80,
-                            height: 102,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF3E2723), // 封底深褐皮革
-                                borderRadius: const BorderRadius.only(
-                                  topLeft: Radius.circular(6),
-                                  bottomLeft: Radius.circular(6),
-                                  topRight: Radius.circular(8),
-                                  bottomRight: Radius.circular(8),
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(0.25),
-                                    blurRadius: 10,
-                                    offset: const Offset(3, 5),
-                                  ),
-                                ],
-                              ),
-                              child: Stack(
-                                children: [
-                                  // 3. 內頁層 (Pages) - 暖白/奶油色，右下上收縮，露出紙張質感與層次
-                                  Positioned(
-                                    left: 10,
-                                    top: 4,
-                                    bottom: 4,
-                                    right: 4,
-                                    child: Container(
-                                      decoration: const BoxDecoration(
-                                        color: Color(0xFFFFFDF0), // 溫暖紙張色
-                                        borderRadius: BorderRadius.only(
-                                          topRight: Radius.circular(5),
-                                          bottomRight: Radius.circular(5),
-                                        ),
-                                      ),
-                                      child: Stack(
-                                        children: [
-                                          // 畫出右側紙張層疊紋理 (Subtle Page Lines)
-                                          Positioned(
-                                            right: 2,
-                                            top: 0,
-                                            bottom: 0,
-                                            width: 1,
-                                            child: Container(color: const Color(0xFFE0D8C3)),
-                                          ),
-                                          Positioned(
-                                            right: 4,
-                                            top: 0,
-                                            bottom: 0,
-                                            width: 1,
-                                            child: Container(color: const Color(0xFFE0D8C3)),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-
-                                  // 4. 封面層 (Front Cover) - 比書頁稍寬、但露出右側書頁以呈 3D 閉合效果
-                                  Positioned(
-                                    left: 0,
-                                    top: 0,
-                                    bottom: 0,
-                                    right: 8, // 露出 8px 的書頁
-                                    child: Container(
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFF5D4037), // 封面亮褐皮革色
-                                        borderRadius: const BorderRadius.only(
-                                          topLeft: Radius.circular(6),
-                                          bottomLeft: Radius.circular(6),
-                                          topRight: Radius.circular(3),
-                                          bottomRight: Radius.circular(3),
-                                        ),
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: Colors.black.withOpacity(0.2),
-                                            blurRadius: 3,
-                                            offset: const Offset(2, 0),
-                                          ),
-                                        ],
-                                      ),
-                                      child: Stack(
-                                        clipBehavior: Clip.none,
-                                        children: [
-                                          // 書脊裝飾線 (Spine Ribs) - 經典皮革刻線與金箔質感
-                                          Positioned(
-                                            left: 0,
-                                            top: 0,
-                                            bottom: 0,
-                                            width: 12,
-                                            child: Container(
-                                              decoration: const BoxDecoration(
-                                                color: Color(0xFF4E342E), // 更深書脊皮色
-                                                borderRadius: BorderRadius.only(
-                                                  topLeft: Radius.circular(6),
-                                                  bottomLeft: Radius.circular(6),
-                                                ),
-                                              ),
-                                              child: Stack(
-                                                children: [
-                                                  // 書脊橫向金線
-                                                  Positioned(left: 2, right: 2, top: 15, height: 1.5, child: Container(color: const Color(0xFFD4AF37).withOpacity(0.8))),
-                                                  Positioned(left: 2, right: 2, top: 48, height: 1.5, child: Container(color: const Color(0xFFD4AF37).withOpacity(0.8))),
-                                                  Positioned(left: 2, right: 2, top: 80, height: 1.5, child: Container(color: const Color(0xFFD4AF37).withOpacity(0.8))),
-                                                ],
-                                              ),
-                                            ),
-                                          ),
-                                          // 書脊金色封邊垂直線
-                                          Positioned(
-                                            left: 12,
-                                            top: 0,
-                                            bottom: 0,
-                                            width: 1.2,
-                                            child: Container(color: const Color(0xFFD4AF37).withOpacity(0.7)),
-                                          ),
-
-                                          // 封面中央燙金「禪意雙葉」徽章 (取代任何文字)
-                                          Center(
-                                            child: Padding(
-                                              padding: const EdgeInsets.only(left: 12),
-                                              child: Icon(
-                                                Icons.spa_rounded, // 溫馨禪意草葉
-                                                color: const Color(0xFFD4AF37).withOpacity(0.9),
-                                                size: 26,
-                                              ),
-                                            ),
-                                          ),
-
-                                          // 5. 金屬皮帶鎖扣 (Clasp Strap) - 橫跨封面至書頁，呈現鎖扣感
-                                          Positioned(
-                                            right: -6,
-                                            top: 42,
-                                            width: 22,
-                                            height: 18,
-                                            child: Container(
-                                              decoration: BoxDecoration(
-                                                color: const Color(0xFF3E2723), // 鎖扣皮帶
-                                                borderRadius: const BorderRadius.only(
-                                                  topRight: Radius.circular(4),
-                                                  bottomRight: Radius.circular(4),
-                                                  topLeft: Radius.circular(2),
-                                                  bottomLeft: Radius.circular(2),
-                                                ),
-                                                boxShadow: [
-                                                  BoxShadow(
-                                                    color: Colors.black.withOpacity(0.15),
-                                                    blurRadius: 2,
-                                                    offset: const Offset(1, 1),
-                                                  ),
-                                                ],
-                                              ),
-                                              child: Align(
-                                                alignment: Alignment.centerLeft,
-                                                child: Container(
-                                                  margin: const EdgeInsets.only(left: 4),
-                                                  width: 8,
-                                                  height: 12,
-                                                  decoration: BoxDecoration(
-                                                    color: const Color(0xFFD4AF37), // 亮金扣環
-                                                    borderRadius: BorderRadius.circular(1.5),
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-
-            Positioned(
-              left: 20,
-              top: 100,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.7),
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.05),
-                          blurRadius: 5,
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      children: [6, 12, 17, 22].map((hour) {
-                        final labels = {6: '晨', 12: '晝', 17: '昏', 22: '夜'};
-                        final isSelected = controller.mockHour == hour;
-                        return InkWell(
-                          onTap: () => controller.setMockTime(hour),
-                          borderRadius: BorderRadius.circular(20),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: isSelected ? Colors.teal.withOpacity(0.2) : Colors.transparent,
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Text(
-                              labels[hour]!, 
-                              style: TextStyle(
-                                color: isSelected ? Colors.teal : Colors.grey[600],
-                                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                              )
-                            ),
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      controller.showNotification('爺爺！今天天氣很好，下午記得去公園散步走走喔！\n愛您的女兒 秀珠 ❤️');
-                    },
-                    icon: const Icon(Icons.notifications_active),
-                    label: const Text('模擬家人傳訊息'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white.withOpacity(0.8),
-                      foregroundColor: Colors.teal,
-                      elevation: 4,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // 第七層：極致優雅的【語音聆聽毛玻璃對話 Overlay】(Phase 3 核心互動)
-            Positioned.fill(
-              child: IgnorePointer(
-                ignoring: !controller.isAiOverlayVisible,
-                child: AnimatedOpacity(
-                  opacity: controller.isAiOverlayVisible ? 1.0 : 0.0,
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeInOut,
-                  child: GestureDetector(
-                    // 點擊 Overlay 背景空白處即可快速關閉對話
-                    onTap: () {
-                      if (!_isAiThinking && !_isRecording) {
-                        controller.closeAiOverlay();
-                      }
-                    },
-                    child: ClipRect(
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                        child: Container(
-                          color: const Color(0xFFFCFBF7).withOpacity(0.75), // 暖心象牙白宣紙毛玻璃
-                          child: SafeArea(
-                            child: AnimatedScale(
-                              scale: controller.isAiOverlayVisible ? 1.0 : 0.95,
-                              duration: const Duration(milliseconds: 300),
-                              curve: Curves.easeOutBack,
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  // 頂部小幫手標題
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 40),
-                                    child: Column(
-                                      children: [
-                                        Text(
-                                          '貼心小幫手',
-                                          style: GoogleFonts.notoSansTc(
-                                            fontSize: 32,
-                                            fontWeight: FontWeight.bold,
-                                            color: const Color(0xFF3E2723),
-                                          ),
-                                        ),
-                                        const SizedBox(height: 8),
-                                        Text(
-                                          '正在傾聽您的心聲...',
-                                          style: GoogleFonts.notoSansTc(
-                                            fontSize: 18,
-                                            color: const Color(0xFF8C6D58),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-
-                                  // 中間：大字體語音識別內容 (同時呈現識別文字與 AI 思考狀態，避免文字消失)
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 32.0),
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Text(
-                                          _recognizedWords,
-                                          textAlign: TextAlign.center,
-                                          style: GoogleFonts.notoSansTc(
-                                            fontSize: 30,
-                                            height: 1.5,
-                                            fontWeight: FontWeight.bold,
-                                            color: _isRecording
-                                                ? const Color(0xFFD84315) // 錄音中深橘色醒目提示
-                                                : const Color(0xFF3E2723),
-                                          ),
-                                        ),
-                                        if (_isAiThinking) ...[
-                                          const SizedBox(height: 24),
-                                          Row(
-                                            mainAxisAlignment: MainAxisAlignment.center,
-                                            children: [
-                                              const SizedBox(
-                                                width: 24,
-                                                height: 24,
-                                                child: CircularProgressIndicator(
-                                                  strokeWidth: 3,
-                                                  color: Color(0xFF8C6D58),
-                                                ),
-                                              ),
-                                              const SizedBox(width: 16),
-                                              Text(
-                                                '正在認真思考中...',
-                                                style: GoogleFonts.notoSansTc(
-                                                  fontSize: 22,
-                                                  fontWeight: FontWeight.bold,
-                                                  color: const Color(0xFF8C6D58),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ],
-                                      ],
-                                    ),
-                                  ),
-
-                                  // 底部：超大麥克風按鈕與輔助鍵盤
-                                  Padding(
-                                    padding: const EdgeInsets.only(bottom: 50),
-                                    child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                                      children: [
-                                        // 1. 打字鍵盤按鈕 (備用文字輸入通道)
-                                        CircleAvatar(
-                                          radius: 36,
-                                          backgroundColor: Colors.white,
-                                          child: IconButton(
-                                            icon: const Icon(
-                                              Icons.keyboard,
-                                              color: Color(0xFF8C6D58),
-                                              size: 34,
-                                            ),
-                                            onPressed: _isAiThinking
-                                                ? null
-                                                : () => _showTextInputDialog(controller),
-                                          ),
-                                        ),
-
-                                        // 2. 超大麥克風按鈕 (長按/單擊對話錄音)
-                                        GestureDetector(
-                                          onTap: () {
-                                            if (_isAiThinking) return;
-                                            if (_isRecording) {
-                                              _stopListening();
-                                            } else {
-                                              _startListening();
-                                            }
-                                          },
-                                          child: Stack(
-                                            alignment: Alignment.center,
-                                            children: [
-                                              // 擴散脈衝呼吸波紋
-                                              if (_isRecording)
-                                                AnimatedBuilder(
-                                                  animation: _pulseAnimation,
-                                                  builder: (context, child) {
-                                                    final levelScale = (_soundLevel > 0) ? (_soundLevel / 6.0) : 0.0;
-                                                    final scale = _pulseAnimation.value + levelScale.clamp(0.0, 0.8);
-                                                    return Transform.scale(
-                                                      scale: scale,
-                                                      child: Container(
-                                                        width: 120,
-                                                        height: 120,
-                                                        decoration: BoxDecoration(
-                                                          shape: BoxShape.circle,
-                                                          color: const Color(0xFFFFB74D).withOpacity(
-                                                            (1.0 - _pulseController.value).clamp(0.0, 1.0),
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    );
-                                                  },
-                                                ),
-                                              // 麥克風實體圓圈
-                                              Container(
-                                                width: 110,
-                                                height: 110,
-                                                decoration: BoxDecoration(
-                                                  shape: BoxShape.circle,
-                                                  color: _isRecording
-                                                      ? const Color(0xFFD84315)
-                                                      : const Color(0xFF8C6D58),
-                                                  boxShadow: [
-                                                    BoxShadow(
-                                                      color: Colors.black.withOpacity(0.15),
-                                                      blurRadius: 15,
-                                                      offset: const Offset(0, 5),
-                                                    ),
-                                                  ],
-                                                ),
-                                                child: Icon(
-                                                  _isRecording ? Icons.mic : Icons.mic_none,
-                                                  color: Colors.white,
-                                                  size: 55,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-
-                                        // 3. 關閉按鈕
-                                        CircleAvatar(
-                                          radius: 36,
-                                          backgroundColor: Colors.white,
-                                          child: IconButton(
-                                            icon: const Icon(
-                                              Icons.close,
-                                              color: Colors.redAccent,
-                                              size: 34,
-                                            ),
-                                            onPressed: _isAiThinking
-                                                ? null
-                                                : () => controller.closeAiOverlay(),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // --- 時光日記 (歷史紀錄) 彈出 Dialog 相關 ---
-  void _showHistoryDialog() {
-    if (_isDiaryDialogOpen) {
-      // 已經開啟了，滾動到底部以顯示最新對話
-      _scrollToBottom();
-      return;
-    }
-    _isDiaryDialogOpen = true;
-
-    final controllerInstance = Provider.of<ZenPondController>(context, listen: false);
-    controllerInstance.stopLeafTts(); // 開啟日記時，停止朗讀落葉
-
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (dialogContext) {
-        return DiaryDialogContent(
-          controller: controllerInstance,
-          speechToText: _speechToText,
-          currentLocaleId: _currentLocaleId,
-          sendToAiChat: _sendToAiChat,
-          historyAudioPlayer: _historyAudioPlayer,
-          playHistoryTts: _playHistoryTts,
-          speechEnabled: _speechEnabled,
-          showTextInputDialog: _showTextInputDialog,
-          scrollToBottom: _scrollToBottom,
-          historyScrollController: _historyScrollController,
-          isAiThinking: _isAiThinking,
-        );
-      },
-    ).then((_) {
-      _isDiaryDialogOpen = false;
-      _historyAudioPlayer.stop();
-      controllerInstance.setTtsState(playingId: null, loading: false);
-    });
-  }
-
-  void _scrollToBottom() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_historyScrollController.hasClients) {
-        _historyScrollController.animateTo(
-          _historyScrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
-      }
-    });
-  }
-
-
-  // 播放歷史紀錄語音 (狀態存於 controller，讓 Dialog Consumer 能同步刷新)
-  Future<void> _playHistoryTts(String id, String text, ZenPondController ctrl) async {
-    if (ctrl.ttsLoading) return;
-
-    if (ctrl.ttsPlayingId == id) {
-      await _historyAudioPlayer.stop();
-      ctrl.setTtsState(playingId: null, loading: false);
-      return;
-    }
-
-    ctrl.setTtsState(playingId: id, loading: true);
-
+    // 優先調用後端高音質語音合成 (Edge / Yating)
     try {
-      String speakText = text.replaceAll(RegExp(r'\[VIDEO_ID:[^\]]+\]'), '').trim();
-      final response = await ApiService.synthesizeTts(text: speakText);
+      final response = await ApiService.synthesizeTts(
+        text: cleanText, 
+        emotion: 'neutral'
+      );
       final isSuccess = response['success'] == true || response['status'] == 'success';
       if (!isSuccess) throw Exception('TTS 合成失敗');
 
@@ -1266,19 +234,475 @@ class _ZenPondContentState extends State<_ZenPondContent>
       if (missingPadding > 0) payload += '=' * (4 - missingPadding);
       final audioBytes = base64Decode(payload);
 
-      ctrl.setTtsState(playingId: id, loading: false);
-      await _historyAudioPlayer.stop();
-      await _historyAudioPlayer.play(BytesSource(audioBytes));
-      // 播放完成由 onPlayerStateChanged 監聽器重置
+      await _audioPlayer.play(BytesSource(audioBytes));
     } catch (e) {
-      debugPrint('History TTS error: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('語音播放失敗，請重試 😊')),
-        );
+      debugPrint('Remote TTS failed: $e. Falling back to local TTS.');
+      // 若遠端失敗，僅國語有辦法走本機 TTS 保底
+      if (_language == 'mandarin') {
+        await _flutterTts.speak(cleanText);
+      } else {
+        // 台語則嘗試以國語本機發音做最壞保底，或靜音
+        await _flutterTts.speak(cleanText);
       }
-      ctrl.setTtsState(playingId: null, loading: false);
     }
   }
 
+  // 啟動錄音
+  Future<void> _startListening() async {
+    if (!_speechEnabled) {
+      await _initServices();
+    }
+
+    await _flutterTts.stop();
+    await _audioPlayer.stop();
+    _speechToText.stop();
+
+    setState(() {
+      _userWords = "";
+    });
+    _updateState(AgentState.listening);
+
+    final String targetLocale = _language == 'taiwanese' 
+        ? (_taiwaneseLocaleId ?? 'zh_TW') 
+        : (_mandarinLocaleId ?? 'zh_TW');
+
+    await _speechToText.listen(
+      onResult: (result) {
+        setState(() {
+          _userWords = result.recognizedWords;
+        });
+        if (result.finalResult && _userWords.trim().isNotEmpty) {
+          _processUserVoiceMessage(_userWords);
+        }
+      },
+      localeId: targetLocale,
+      listenFor: const Duration(seconds: 15),
+      pauseFor: const Duration(seconds: 3), // 3 秒沒說話自動斷句
+    );
+  }
+
+  // 停止錄音並處理
+  Future<void> _stopListening() async {
+    await _speechToText.stop();
+    if (_userWords.trim().isNotEmpty) {
+      _processUserVoiceMessage(_userWords);
+    } else {
+      _updateState(AgentState.idle);
+    }
+  }
+
+  // 送出訊息至 AI 後端
+  Future<void> _processUserVoiceMessage(String text) async {
+    _updateState(AgentState.thinking);
+    await _flutterTts.stop();
+    await _audioPlayer.stop();
+
+    try {
+      final result = await ApiService.aiChat(_userId, text);
+      if (!mounted) return;
+
+      if (result.containsKey('reply')) {
+        final reply = result['reply'].toString();
+        setState(() {
+          _aiWords = reply;
+        });
+        _updateState(AgentState.speaking);
+        _speak(reply);
+      } else {
+        throw Exception("Invalid response format");
+      }
+    } catch (e) {
+      debugPrint("AI Chat Error: $e");
+      if (mounted) {
+        setState(() {
+          _aiWords = "抱歉，我現在連不上伺服器。您可以等等再試一次嗎？";
+        });
+        _updateState(AgentState.speaking);
+        _speak(_aiWords);
+      }
+    }
+  }
+
+  // 處理主要圓球的點擊事件
+  void _handleOrbTap() {
+    if (_agentState == AgentState.idle || _agentState == AgentState.speaking) {
+      _startListening();
+    } else if (_agentState == AgentState.listening) {
+      _stopListening();
+    }
+  }
+
+  // 依據不同狀態決定圓球的主色調
+  Color _getOrbColor() {
+    switch (_agentState) {
+      case AgentState.listening:
+        return const Color(0xFFE05252); // 紅色 (錄音中)
+      case AgentState.thinking:
+        return const Color(0xFF8E66F4); // 紫色 (思考中)
+      case AgentState.speaking:
+        return const Color(0xFF3B82F6); // 藍色 (說話中)
+      case AgentState.idle:
+        return const Color(0xFF59B294); // 莫蘭迪綠 (閒置狀態)
+    }
+  }
+
+  // 依據狀態顯示圓球中央圖示
+  IconData _getOrbIcon() {
+    switch (_agentState) {
+      case AgentState.listening:
+        return Icons.keyboard_voice_rounded;
+      case AgentState.thinking:
+        return Icons.psychology_rounded;
+      case AgentState.speaking:
+        return Icons.volume_up_rounded;
+      case AgentState.idle:
+        return Icons.mic_rounded;
+    }
+  }
+
+  // 狀態輔助說明文字
+  String _getStatusText() {
+    switch (_agentState) {
+      case AgentState.listening:
+        return "聆聽中...";
+      case AgentState.thinking:
+        return "動腦筋思考中...";
+      case AgentState.speaking:
+        return "說話中...";
+      case AgentState.idle:
+        return "點擊圓球開始聊聊";
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Color(0xFFEAF5F2), Color(0xFFF1EEF6)],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+      ),
+      child: SafeArea(
+        child: Column(
+          children: [
+            // 頂部精緻控制列與溫馨標題
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "語音陪伴小幫手",
+                        style: GoogleFonts.notoSansTc(
+                          fontSize: 30,
+                          fontWeight: FontWeight.w900,
+                          color: const Color(0xFF2C3E50),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        "隨時找我聊天，我一直都在",
+                        style: GoogleFonts.notoSansTc(
+                          fontSize: 16,
+                          color: const Color(0xFF7F8C8D),
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                  GestureDetector(
+                    onTap: () async {
+                      final nextLang = _language == 'mandarin' ? 'taiwanese' : 'mandarin';
+                      final prefs = await SharedPreferences.getInstance();
+                      await prefs.setString('voice_language', nextLang);
+                      
+                      setState(() {
+                        _language = nextLang;
+                        if (nextLang == 'taiwanese') {
+                          _aiWords = "您好！我是一直陪伴您的語音小幫手。今天心情好無？隨時點圓球對我講說話喔！";
+                        } else {
+                          _aiWords = "您好！我是您的語音陪伴小幫手。今天心情好嗎？隨時點擊圓球對我說說話吧！";
+                        }
+                      });
+                      
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(nextLang == 'taiwanese' ? '已切換為：台語陪伴模式 🎤' : '已切換為：國語陪伴模式 🎤'),
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: _language == 'taiwanese' ? const Color(0xFF59B294) : const Color(0xFF8E66F4),
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.08),
+                            blurRadius: 10,
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.translate_rounded,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            _language == 'taiwanese' ? '台語' : '國語',
+                            style: GoogleFonts.notoSansTc(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // 狀態說明標籤 (加大字體)
+                  Text(
+                    _getStatusText(),
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: _getOrbColor(),
+                    ),
+                  ).animate(key: ValueKey(_agentState))
+                   .fadeIn(duration: 300.ms)
+                   .scale(begin: const Offset(0.9, 0.9), end: const Offset(1, 1)),
+
+                  const SizedBox(height: 30),
+
+                  // 核心呼吸/波動大圓球
+                  GestureDetector(
+                    onTap: _handleOrbTap,
+                    child: Center(
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          // 狀態一：錄音中或播放中 -> 產生擴散動態聲波光圈 (用 flutter_animate 達到無卡頓動畫)
+                          if (_agentState == AgentState.listening || _agentState == AgentState.speaking)
+                            ...List.generate(2, (index) {
+                              final delay = index * 750;
+                              return Container(
+                                width: 220,
+                                height: 220,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: _getOrbColor().withValues(alpha: 0.15),
+                                ),
+                              ).animate(onPlay: (controller) => controller.repeat())
+                               .scale(
+                                 begin: const Offset(1.0, 1.0),
+                                 end: const Offset(1.6, 1.6),
+                                 duration: 1500.ms,
+                                 delay: delay.ms,
+                                 curve: Curves.easeOutCirc,
+                               )
+                               .fadeOut(duration: 1500.ms, delay: delay.ms);
+                            }),
+
+                          // 狀態二：思考中 -> 特殊旋轉外光圈
+                          if (_agentState == AgentState.thinking)
+                            RotationTransition(
+                              turns: _rotationController,
+                              child: Container(
+                                width: 200,
+                                height: 200,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: Colors.transparent,
+                                    width: 8,
+                                  ),
+                                  gradient: const SweepGradient(
+                                    colors: [
+                                      Color(0xFF8E66F4),
+                                      Color(0xFFE05252),
+                                      Color(0xFF59B294),
+                                      Color(0xFF3B82F6),
+                                      Color(0xFF8E66F4),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+
+                          // 實體發光大按鈕
+                          Container(
+                            width: 170,
+                            height: 170,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: _getOrbColor(),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: _getOrbColor().withValues(alpha: 0.35),
+                                  blurRadius: 25,
+                                  spreadRadius: 4,
+                                  offset: const Offset(0, 10),
+                                ),
+                                const BoxShadow(
+                                  color: Colors.white24,
+                                  blurRadius: 10,
+                                  spreadRadius: -2,
+                                  offset: Offset(0, -6),
+                                )
+                              ],
+                            ),
+                            child: Icon(
+                              _getOrbIcon(),
+                              color: Colors.white,
+                              size: 80,
+                            ),
+                          ).animate(
+                            onPlay: (controller) {
+                              if (_agentState == AgentState.idle) {
+                                controller.repeat(reverse: true);
+                              }
+                            }
+                          )
+                          // 閒置時的溫和呼吸動畫
+                          .scale(
+                            begin: const Offset(1.0, 1.0),
+                            end: const Offset(1.06, 1.06),
+                            duration: 1400.ms,
+                            curve: Curves.easeInOutSine,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 40),
+
+                  // 輔助指示提示
+                  Text(
+                    _agentState == AgentState.listening ? "說完話後，請稍等一下或再次點擊按鈕" : "點擊上方的圓球開始說話",
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 16,
+                      color: const Color(0xFF95A5A6),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // 對話內容區：顯示極致放大的雙向氣泡
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.all(24),
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.9),
+                borderRadius: BorderRadius.circular(32),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.04),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
+                  )
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // 長輩說的內容
+                  if (_userWords.isNotEmpty || _agentState == AgentState.listening)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      margin: const EdgeInsets.only(bottom: 16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE2F4EE),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            "您說：",
+                            style: GoogleFonts.notoSansTc(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: const Color(0xFF16A085),
+                            ),
+                          ),
+                          Expanded(
+                            child: Text(
+                              _userWords.isEmpty ? "正在辨識語音..." : _userWords,
+                              style: GoogleFonts.notoSansTc(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w600,
+                                color: const Color(0xFF2C3E50),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                  // AI 的回覆內容
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE8F4FD),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          "小幫手：",
+                          style: GoogleFonts.notoSansTc(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: const Color(0xFF2980B9),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _agentState == AgentState.thinking ? "正在動腦筋想一想..." : _aiWords,
+                          style: GoogleFonts.notoSansTc(
+                            fontSize: 26, // 特大字體讓長輩看得舒服
+                            fontWeight: FontWeight.bold,
+                            color: const Color(0xFF2C3E50),
+                            height: 1.4,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
