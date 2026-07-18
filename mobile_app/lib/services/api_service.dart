@@ -17,6 +17,14 @@ class ApiService {
     return url;
   }
 
+  // 本機 AI Server（Ollama 在這台電腦，遠端主後台沒有 Ollama）
+  // Android 模擬器用 10.0.2.2 存取 Host，實體裝置用 Tailscale IP
+  static const String _localAiServerIp = String.fromEnvironment(
+    'LOCAL_AI_IP',
+    defaultValue: '100.123.111.120', // 這台電腦的 Tailscale IP
+  );
+  static String get localAiBaseUrl => 'http://$_localAiServerIp:8000/api';
+
   // 統一超時時間
   static const Duration _timeout = Duration(seconds: 15);
 
@@ -205,11 +213,12 @@ class ApiService {
   }
 
   // AI 相關功能
+  // ⚠️ 使用本機 AI Server (localAiBaseUrl)，因遠端主後台無 Ollama 服務
   static Future<Map<String, dynamic>> aiChat(int userId, String message, {String? imageUrl}) async {
     try {
       final response = await http
           .post(
-            Uri.parse('$baseUrl/ai/chat'),
+            Uri.parse('$localAiBaseUrl/ai/chat'), // 打本機 AI Server
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({
               'user_id': userId,
@@ -217,7 +226,7 @@ class ApiService {
               if (imageUrl != null) 'image_url': imageUrl,
             }),
           )
-          .timeout(const Duration(seconds: 120)); // 增加超時時間至 120 秒
+          .timeout(const Duration(seconds: 120));
       return _safeDecode(response);
     } on TimeoutException {
       return {'status': 'error', 'message': 'AI 回應逾時，請稍後再試'};
