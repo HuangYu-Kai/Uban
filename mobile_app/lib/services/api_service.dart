@@ -235,6 +235,63 @@ class ApiService {
     }
   }
 
+  /// AI 串流聊天（SSE）- 逐 token 回傳，不需等待完整回應
+  static Stream<String> aiChatStream(int userId, String message) async* {
+    final client = http.Client();
+    try {
+      final request = http.Request(
+        'POST',
+        Uri.parse('$localAiBaseUrl/ai/chat/stream'),
+      );
+      request.headers['Content-Type'] = 'application/json';
+      request.body = jsonEncode({'user_id': userId, 'message': message});
+
+      final streamedResponse = await client.send(request).timeout(const Duration(seconds: 30));
+
+      if (streamedResponse.statusCode != 200) {
+        yield '[ERROR] 伺服器錯誤: ${streamedResponse.statusCode}';
+        return;
+      }
+
+      // 累積 buffer 處理跨 chunk 的不完整行
+      final StringBuffer lineBuf = StringBuffer();
+
+      await for (final chunk in streamedResponse.stream) {
+        final decoded = utf8.decode(chunk, allowMalformed: true);
+
+        for (int i = 0; i < decoded.length; i++) {
+          final ch = decoded[i];
+          if (ch == '\n') {
+            final line = lineBuf.toString().trimRight();
+            lineBuf.clear();
+            if (line.startsWith('data: ')) {
+              final payload = line.substring(6).trim();
+              if (payload == '[DONE]') return;
+              if (payload.startsWith('[ERROR]')) {
+                yield payload;
+                return;
+              }
+              try {
+                final token = jsonDecode(payload) as String;
+                if (token.isNotEmpty) yield token;
+              } catch (_) {
+                if (payload.isNotEmpty) yield payload;
+              }
+            }
+          } else {
+            lineBuf.write(ch);
+          }
+        }
+      }
+    } catch (e) {
+      yield '[ERROR] $e';
+    } finally {
+      client.close();
+    }
+  }
+
+
+
   static Future<Map<String, dynamic>> petGreeting(int userId, String context) async {
     try {
       final response = await http

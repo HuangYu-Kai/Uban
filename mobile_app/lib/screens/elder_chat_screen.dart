@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:speech_to_text/speech_recognition_result.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 
-/// 長輩端「和小嘎聊天」—— 一般 AI 聊天頁（訊息泡泡 + 輸入列）。
+/// 長輩端「和小嘎聊天」—— AI 聊天頁（串流 + Markdown 渲染）。
 ///
-/// 沿用既有 AI 後端 `ApiService.aiChat`。
-/// 註：原本的禪意池塘聊天 `ZenPondScreen`（lib/screens/zen_pond/）**保留未刪**，
-/// 只是不再掛在長輩導覽的聊天分頁；如需切回可於 elder_home_screen 換回。
+/// - 使用 ApiService.aiChatStream 串流接收 Ollama tokens
+/// - AI 回覆氣泡使用 flutter_markdown 渲染（支援粗體、條列、LaTeX）
 class ElderChatScreen extends StatefulWidget {
   final int userId;
   final String userName;
@@ -25,16 +25,18 @@ class ElderChatScreen extends StatefulWidget {
 }
 
 class _ChatMessage {
-  final String text;
+  String text;
   final bool isUser;
-  _ChatMessage(this.text, this.isUser);
+  bool isStreaming; // AI 訊息是否還在串流中
+
+  _ChatMessage(this.text, this.isUser, {this.isStreaming = false});
 }
 
 class _ElderChatScreenState extends State<ElderChatScreen> {
   final List<_ChatMessage> _messages = [];
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scroll = ScrollController();
-  bool _isThinking = false;
+  bool _isThinking = false; // 等待第一個 token 出現前的「思考中」狀態
 
   // 語音輸入（沿用 speech_to_text）
   final SpeechToText _stt = SpeechToText();
@@ -109,9 +111,11 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
     super.dispose();
   }
 
+  /// 發送訊息，使用串流接收 AI 回應
   Future<void> _send() async {
     final text = _controller.text.trim();
     if (text.isEmpty || _isThinking) return;
+
     setState(() {
       _messages.add(_ChatMessage(text, true));
       _isThinking = true;
@@ -119,28 +123,55 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
     });
     _scrollToBottom();
 
+    // 加入一個空白的 AI 訊息泡泡，稍後會在串流中逐字填入
+    final aiMsg = _ChatMessage('', false, isStreaming: true);
+
     try {
-      final result = await ApiService.aiChat(widget.userId, text);
-      String reply = '';
-      if (result['reply'] != null) {
-        reply = result['reply'].toString();
-      } else if (result['data'] is Map && result['data']['reply'] != null) {
-        reply = result['data']['reply'].toString();
-      } else if (result['status'] == 'error') {
-        reply = (result['message'] ?? '小嘎現在有點累，等等再聊好嗎？').toString();
+      final stream = ApiService.aiChatStream(widget.userId, text);
+      bool firstToken = true;
+
+      await for (final token in stream) {
+        if (!mounted) break;
+
+        if (token.startsWith('[ERROR]')) {
+          setState(() {
+            if (firstToken) {
+              _messages.add(_ChatMessage('小嘎現在連不上，稍後再聊喔 🙏', false));
+            } else {
+              aiMsg.text += '\n\n（連線中斷）';
+              aiMsg.isStreaming = false;
+            }
+            _isThinking = false;
+          });
+          return;
+        }
+
+        if (firstToken) {
+          firstToken = false;
+          setState(() {
+            _isThinking = false;
+            _messages.add(aiMsg); // 首個 token 到了才把泡泡加入
+          });
+        }
+
+        setState(() {
+          aiMsg.text += token;
+        });
+        _scrollToBottom();
       }
-      // 移除回覆中的 [圖片]/[影片] 等標記
-      reply = reply.replaceAll(RegExp(r'\[[^\]]*\]'), '').trim();
-      if (reply.isEmpty) reply = '嗯嗯，我在聽～';
-      if (!mounted) return;
-      setState(() {
-        _messages.add(_ChatMessage(reply, false));
-        _isThinking = false;
-      });
+
+      // 串流結束
+      if (mounted) {
+        setState(() {
+          aiMsg.isStreaming = false;
+          if (aiMsg.text.isEmpty) aiMsg.text = '嗯嗯，我在聽～';
+          _isThinking = false;
+        });
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _messages.add(_ChatMessage('小嘎現在連不上，稍後再聊喔', false));
+        _messages.add(_ChatMessage('小嘎現在連不上，稍後再聊喔 🙏', false));
         _isThinking = false;
       });
     }
@@ -152,7 +183,7 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
       if (_scroll.hasClients) {
         _scroll.animateTo(
           _scroll.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
+          duration: const Duration(milliseconds: 200),
           curve: Curves.easeOut,
         );
       }
@@ -278,15 +309,86 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
                   ),
                 ],
               ),
-              child: Text(
-                msg.text,
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 20,
-                  height: 1.4,
-                  fontWeight: FontWeight.w600,
-                  color: isUser ? Colors.white : AppColors.textPrimary,
-                ),
-              ),
+              // ── 使用者訊息：純文字；AI 訊息：Markdown 渲染 ──
+              child: isUser
+                  ? Text(
+                      msg.text,
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: 20,
+                        height: 1.4,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        MarkdownBody(
+                          data: msg.text.isEmpty ? ' ' : msg.text,
+                          styleSheet: MarkdownStyleSheet(
+                            p: GoogleFonts.notoSansTc(
+                              fontSize: 20,
+                              height: 1.5,
+                              fontWeight: FontWeight.w500,
+                              color: AppColors.textPrimary,
+                            ),
+                            strong: GoogleFonts.notoSansTc(
+                              fontSize: 20,
+                              height: 1.5,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.textPrimary,
+                            ),
+                            em: GoogleFonts.notoSansTc(
+                              fontSize: 20,
+                              height: 1.5,
+                              fontStyle: FontStyle.italic,
+                              color: AppColors.textPrimary,
+                            ),
+                            listBullet: GoogleFonts.notoSansTc(
+                              fontSize: 20,
+                              height: 1.5,
+                              color: AppColors.textPrimary,
+                            ),
+                            code: GoogleFonts.sourceCodePro(
+                              fontSize: 16,
+                              backgroundColor: const Color(0xFFF0F0F0),
+                              color: const Color(0xFF2E7D78),
+                            ),
+                            h1: GoogleFonts.notoSansTc(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w900,
+                              color: AppColors.textPrimary,
+                            ),
+                            h2: GoogleFonts.notoSansTc(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.textPrimary,
+                            ),
+                            h3: GoogleFonts.notoSansTc(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textPrimary,
+                            ),
+                            blockquoteDecoration: BoxDecoration(
+                              border: Border(
+                                left: BorderSide(
+                                  color: AppColors.primary,
+                                  width: 4,
+                                ),
+                              ),
+                              color: AppColors.primary.withValues(alpha: 0.06),
+                            ),
+                          ),
+                          softLineBreak: true,
+                        ),
+                        // 串流中：顯示打字游標動畫
+                        if (msg.isStreaming)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: _StreamingCursor(),
+                          ),
+                      ],
+                    ),
             ),
           ),
         ],
@@ -305,13 +407,20 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
               color: Colors.white,
               borderRadius: BorderRadius.circular(22),
             ),
-            child: Text(
-              '小嘎思考中…',
-              style: GoogleFonts.notoSansTc(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textSecondary,
-              ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _ThinkingDots(),
+                const SizedBox(width: 8),
+                Text(
+                  '小嘎想想…',
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -447,6 +556,111 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
               const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
         ),
       ),
+    );
+  }
+}
+
+// ── 打字游標閃爍動畫 ──
+class _StreamingCursor extends StatefulWidget {
+  @override
+  State<_StreamingCursor> createState() => _StreamingCursorState();
+}
+
+class _StreamingCursorState extends State<_StreamingCursor>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late Animation<double> _anim;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    )..repeat(reverse: true);
+    _anim = Tween<double>(begin: 0, end: 1).animate(_ctrl);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _anim,
+      child: Container(
+        width: 10,
+        height: 20,
+        decoration: BoxDecoration(
+          color: AppColors.primary,
+          borderRadius: BorderRadius.circular(2),
+        ),
+      ),
+    );
+  }
+}
+
+// ── 三點跳動「思考中」動畫 ──
+class _ThinkingDots extends StatefulWidget {
+  @override
+  State<_ThinkingDots> createState() => _ThinkingDotsState();
+}
+
+class _ThinkingDotsState extends State<_ThinkingDots>
+    with TickerProviderStateMixin {
+  late List<AnimationController> _ctrls;
+  late List<Animation<double>> _anims;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrls = List.generate(3, (i) {
+      final ctrl = AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 500),
+      );
+      Future.delayed(Duration(milliseconds: i * 160), () {
+        if (mounted) ctrl.repeat(reverse: true);
+      });
+      return ctrl;
+    });
+    _anims = _ctrls
+        .map((c) => Tween<double>(begin: 0, end: -6).animate(
+              CurvedAnimation(parent: c, curve: Curves.easeInOut),
+            ))
+        .toList();
+  }
+
+  @override
+  void dispose() {
+    for (final c in _ctrls) c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(3, (i) {
+        return AnimatedBuilder(
+          animation: _anims[i],
+          builder: (_, __) => Transform.translate(
+            offset: Offset(0, _anims[i].value),
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 2),
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: AppColors.primary,
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+        );
+      }),
     );
   }
 }
