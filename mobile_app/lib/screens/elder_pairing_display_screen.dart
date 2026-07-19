@@ -308,12 +308,36 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
     }
   }
 
+  /// 快速登入宇璿（user_id=2）- 直接以【通話機】身份進入長輩首頁，跳過角色選擇對話框
   Future<void> _quickLoginYuxuanDemo() async {
     try {
-      final int elderId = 2;
-      final String elderName = '宇璿';
-      final String elderRoomId = '6160';
-      await loginAndPersist(elderId: elderId, elderName: elderName, elderRoomId: elderRoomId);
+      const int elderId = 2;
+      const String elderName = '宇璿';
+      const String elderRoomId = '6160';
+
+      // 持久化登入資訊
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('caregiver_id', elderId);
+      await prefs.setString('caregiver_name', elderName);
+      await prefs.setString('user_role', 'elder');
+      await prefs.setString('elder_room_id', elderRoomId);
+      // 強制設為通話機（不需要對話框）
+      await prefs.setBool('saved_is_cctv', false);
+      await prefs.setString('saved_device_name', '$elderName的設備');
+
+      if (!mounted) return;
+
+      // 直接導向長輩首頁（通話機模式）
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ElderHomeScreen(
+            userId: elderId,
+            userName: elderName,
+            roomId: elderRoomId,
+          ),
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
