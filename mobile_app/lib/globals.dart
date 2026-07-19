@@ -9,6 +9,12 @@ String? appRole;
 ///   以及 CallKit `duration` 三者必須一致，否則會出現「通知還在響但接聽被判過期」。
 const int kCallValidityMs = 45000;
 
+/// ★ 2026-07-19：SplashScreen 是否仍在畫面上（冷啟動導航進行中）。
+///   冷啟動接聽來電時，SplashScreen 是 pendingAcceptedCall 的唯一導航擁有者；
+///   main.dart 的全域兜底導航在此期間必須讓位，避免把 VideoCallScreen push 到
+///   Splash 上後又被 Splash 的 pushReplacement 洗掉（家屬接聽後只進主畫面的 bug）。
+bool splashActive = false;
+
 /// ★ issue 3/10：通話/監控畫面結束時的安全導航。
 /// 若目前路由可以 pop（代表是從某個主畫面正常推入的），則直接返回；
 /// 若無法 pop（例如冷啟動後直接被導向通話畫面，沒有上一頁），

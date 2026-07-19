@@ -1209,7 +1209,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           'expiresAt': expiresAt,
         };
         Future.delayed(const Duration(milliseconds: 350), () {
-          if (pendingAcceptedCall.value != null) {
+          // ★ 2026-07-19：冷啟動期間 SplashScreen 是唯一導航擁有者，全域兜底讓位，
+          //   避免把 VideoCallScreen push 到 Splash 上後又被 Splash 的
+          //   pushReplacement 洗掉（家屬接聽後只進主畫面的 bug）。
+          if (pendingAcceptedCall.value != null && !splashActive) {
             _navigateToVideoCall(roomId, senderId, callId: callId);
           }
         });
