@@ -266,7 +266,25 @@ Future<void> _showFullScreenCallkit(Map<String, dynamic> data) async {
         );
         await bgSub.cancel();
       } else if (e.event == Event.actionCallAccept) {
-        // 接聽由主 isolate 冷啟動流程處理，這裡只取消背景監聽
+        // ★ 2026-07-19 第六輪：冷啟動時主 isolate 的 _setupCallKitListener 可能
+        //   還沒註冊就錯過 accept 事件。背景 isolate 在此把接聽資料寫入
+        //   SharedPreferences 的 pendingAcceptedCall——main() 冷啟動時會讀取
+        //   這個 key 並在 Splash 之前設定 pendingAcceptedCall.value，
+        //   確保「殺死狀態接聽」一定能導向視訊房間。
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('pendingAcceptedCall', jsonEncode({
+            'roomId': roomId,
+            'senderId': senderId,
+            'callId': callId,
+            'issuedAt': issuedAt,
+            'expiresAt': expiresAt,
+            'timestamp': DateTime.now().millisecondsSinceEpoch,
+          }));
+          debugPrint('✅ [BG-CallKit] accept → 已寫入 pendingAcceptedCall 至 prefs (call=$callId)');
+        } catch (err) {
+          debugPrint('⚠️ [BG-CallKit] 寫入 pendingAcceptedCall 失敗: $err');
+        }
         await bgSub.cancel();
       }
     });
@@ -918,18 +936,64 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     }
   }
 
-  // ★ 情境 2 修復：冷啟動時「僅響鈴、尚未接聽」的 CallKit 也會出現在 activeCalls()，
-  //   若在此自動 _navigateToVideoCall 等同於「未經使用者確認就接聽並進入視訊房間」。
-  //   因此這裡「不再自動導航」，只記錄狀態。真正的「接聽」一律由
-  //   _setupCallKitListener 的 actionCallAccept 事件負責（冷啟動時
-  //   flutter_callkit_incoming 會把接聽事件遞送給已註冊的 listener），
-  //   確保長輩/家屬端一定要明確點擊「接聽」才會進房。
+  // ★ 情境 2 修復 + 2026-07-19 第六輪還原：
+  //   冷啟動時 actionCallAccept 事件可能在 _setupCallKitListener 註冊「之前」
+  //   就已發生（使用者在 APP 被殺死時按下接聽 → 系統啟動 APP → Dart 尚未註冊
+  //   listener → 事件遺失）。此時 pendingAcceptedCall 永遠不會被設定，
+  //   使用者只會看到開機動畫 → 主畫面（真機回報的問題2）。
+  //
+  //   補救：檢查 activeCalls() 中「已被使用者明確接聽」(isAccepted=true) 且
+  //   未過期的通話，補設 pendingAcceptedCall。僅響鈴未接聽的通話
+  //   (isAccepted=false) 一律不動，維持「必須明確點擊接聽」的安全性。
   Future<void> _checkInitialCall() async {
     try {
       final activeCalls = await FlutterCallkitIncoming.activeCalls();
-      if (activeCalls is List && activeCalls.isNotEmpty) {
-        debugPrint(
-            "ℹ️ [Main] 偵測到 ${activeCalls.length} 筆進行中的 CallKit，等待使用者明確接聽（不自動進房）");
+      if (activeCalls is! List || activeCalls.isEmpty) return;
+      debugPrint("ℹ️ [Main] 偵測到 ${activeCalls.length} 筆進行中的 CallKit，檢查是否有已接聽事件...");
+
+      for (final call in activeCalls) {
+        if (call is! Map) continue;
+        // flutter_callkit_incoming: isAccepted=true 代表使用者已按下接聽
+        final bool isAccepted = call['isAccepted'] == true;
+        if (!isAccepted) {
+          debugPrint("ℹ️ [Main] CallKit ${call['id']} 尚未接聽，跳過（不自動進房）");
+          continue;
+        }
+        final extra = call['extra'];
+        if (extra is! Map) continue;
+        final String roomId = (extra['roomId'] ?? '').toString();
+        final String senderId = (extra['senderId'] ?? '').toString();
+        final String? callId = extra['callId']?.toString();
+        final String? issuedAt = extra['issuedAt']?.toString();
+        final String? expiresAt = extra['expiresAt']?.toString();
+        if (roomId.isEmpty || senderId.isEmpty) continue;
+
+        // 過期驗證（與 actionCallAccept 相同標準）
+        final int now = DateTime.now().millisecondsSinceEpoch;
+        final int? exp = int.tryParse(expiresAt ?? '');
+        final int? issued = int.tryParse(issuedAt ?? '');
+        final bool isExpired = (exp != null && now > exp) ||
+            (issued != null && (now - issued) > kCallValidityMs);
+        if (isExpired) {
+          debugPrint("⏰ [Main] _checkInitialCall: 已接聽通話已過期 (callId=$callId)，忽略並關閉");
+          FlutterCallkitIncoming.endAllCalls();
+          continue;
+        }
+
+        debugPrint("✅ [Main] _checkInitialCall: 偵測到冷啟動前已接聽的通話 (callId=$callId)，補設 pendingAcceptedCall");
+        if (callId != null && callId.isNotEmpty) {
+          sig.Signaling().lastProcessedCallId = callId;
+          sig.Signaling().lastProcessedCallTime = now;
+        }
+        pendingAcceptedCall.value = <String, String?>{
+          'roomId': roomId,
+          'senderId': senderId,
+          'callId': callId,
+          'issuedAt': issuedAt,
+          'expiresAt': expiresAt,
+        };
+        _scheduleAcceptedCallFallback(roomId, senderId, callId);
+        break; // 只處理第一通已接聽的通話
       }
     } catch (e) {
       debugPrint("⚠️ [Main] _checkInitialCall error: $e");
