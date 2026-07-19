@@ -1208,14 +1208,15 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           'issuedAt': issuedAt,
           'expiresAt': expiresAt,
         };
-        Future.delayed(const Duration(milliseconds: 350), () {
-          // ★ 2026-07-19：冷啟動期間 SplashScreen 是唯一導航擁有者，全域兜底讓位，
-          //   避免把 VideoCallScreen push 到 Splash 上後又被 Splash 的
-          //   pushReplacement 洗掉（家屬接聽後只進主畫面的 bug）。
-          if (pendingAcceptedCall.value != null && !splashActive) {
-            _navigateToVideoCall(roomId, senderId, callId: callId);
-          }
-        });
+        // ★ 2026-07-19：全域兜底導航。
+        //   冷啟動期間 SplashScreen 是 pendingAcceptedCall 的優先導航擁有者，
+        //   全域兜底必須讓位，避免把 VideoCallScreen push 到 Splash 上後又被
+        //   Splash 的 pushReplacement 洗掉（家屬接聽後只進主畫面的 bug）。
+        //   但 Splash 有多條路徑「不消費 pending」（如 API 失敗回退），若用一次性
+        //   350ms 兜底並在 splashActive 期間跳過，會造成永久漏接。因此改為輪詢：
+        //   等 splashActive 結束（Splash 已完成導航）後再兜底；若 pending 已被
+        //   Splash 消費（value==null）則自動跳過。
+        _scheduleAcceptedCallFallback(roomId, senderId, callId);
       } else if (event.event == Event.actionCallDecline) {
         // Broadcast the decline event so that active dialogs in the app can close themselves
         callKitDeclineStream.add(roomId);
@@ -1241,6 +1242,34 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           _activeCallDialogContext = null;
         }
         _sendDeclineEvent(roomId, senderId, callId: callId);
+      }
+    });
+  }
+
+  /// ★ 2026-07-19：接聽後全域兜底導航（輪詢版）。
+  /// 先讓 SplashScreen 有機會消費 pendingAcceptedCall（冷啟動優先擁有者）；
+  /// 每 200ms 檢查一次，最多約 8 秒：
+  ///   - pending 已被消費（value==null）→ 代表某頁面已接手，停止兜底；
+  ///   - splashActive 已結束且 pending 仍在 → 由本兜底導向通話畫面；
+  ///   - 逾時仍未消費 → 最後一次強制導航，避免漏接。
+  void _scheduleAcceptedCallFallback(String roomId, String senderId, String? callId) {
+    const int maxTicks = 40; // 40 × 200ms = 8s
+    int tick = 0;
+    Timer.periodic(const Duration(milliseconds: 200), (timer) {
+      tick++;
+      // 已被其他頁面（Splash / 首頁 listener）消費
+      if (pendingAcceptedCall.value == null) {
+        timer.cancel();
+        return;
+      }
+      // Splash 仍在導航中，讓位等待
+      if (splashActive && tick < maxTicks) {
+        return;
+      }
+      // Splash 已結束或逾時 → 由全域兜底接手
+      timer.cancel();
+      if (pendingAcceptedCall.value != null) {
+        _navigateToVideoCall(roomId, senderId, callId: callId);
       }
     });
   }
