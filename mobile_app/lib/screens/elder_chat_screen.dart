@@ -1,8 +1,10 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:record/record.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:audioplayers/audioplayers.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 
@@ -45,6 +47,10 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
   String _recognized = '';
   bool _voiceMode = true; // true=語音「按住說話」列，false=鍵盤輸入
   String? _recordingPath;
+
+  // 語音播放 (TTS) 與國台語切換
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  String _selectedLanguage = 'mandarin'; // 'mandarin' 或 'taigi'
 
   @override
   void initState() {
@@ -169,6 +175,7 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
   @override
   void dispose() {
     _recorder.dispose();
+    _audioPlayer.dispose();
     _controller.dispose();
     _scroll.dispose();
     super.dispose();
@@ -230,6 +237,9 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
           if (aiMsg.text.isEmpty) aiMsg.text = '嗯嗯，我在聽～';
           _isThinking = false;
         });
+        
+        // 觸發 TTS 語音播放
+        _playTts(aiMsg.text);
       }
     } catch (e) {
       if (!mounted) return;
@@ -239,6 +249,36 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
       });
     }
     _scrollToBottom();
+  }
+
+  Future<void> _playTts(String text) async {
+    try {
+      // 移除 Markdown 語法、Emoji 等，使語音朗讀順暢
+      String cleanText = text
+          .replaceAll(RegExp(r'\*\*|__|\*|_|#|>|`|\[|\]|\(|\)'), '')
+          .replaceAll(RegExp(r'!\[.*?\]\(.*?\)|\[.*?\]\(.*?\)', caseSensitive: false), '')
+          .replaceAll(RegExp(r'[\u{1F600}-\u{1F64F}|\u{1F300}-\u{1F5FF}|\u{1F680}-\u{1F6FF}|\u{2600}-\u{26FF}|\u{2700}-\u{27BF}]', unicode: true), '') // 移除 Emoji
+          .trim();
+
+      if (cleanText.isEmpty) return;
+
+      final engine = _selectedLanguage == 'taigi' ? 'yating' : 'edge';
+      final response = await ApiService.synthesizeTts(text: cleanText, engine: engine);
+      if (response['success'] == true) {
+        final audioBase64 = response['audio']?.toString() ?? '';
+        if (audioBase64.isNotEmpty) {
+          String payload = audioBase64;
+          if (payload.contains(',')) {
+            payload = payload.split(',').last;
+          }
+          final audioBytes = base64Decode(payload.trim());
+          await _audioPlayer.stop();
+          await _audioPlayer.play(BytesSource(audioBytes));
+        }
+      }
+    } catch (e) {
+      debugPrint('🎙️ [TTS Play Failed] $e');
+    }
   }
 
   void _scrollToBottom() {
@@ -253,6 +293,117 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
     });
   }
 
+  Widget _buildHeader() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                backgroundColor: AppColors.primary,
+                radius: 20,
+                child: const Text('嘎', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                '和小嘎聊天',
+                style: GoogleFonts.notoSansTc(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ],
+          ),
+          _buildLanguageToggle(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLanguageToggle() {
+    return Container(
+      width: 130,
+      height: 40,
+      decoration: BoxDecoration(
+        color: Colors.grey[200],
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Stack(
+        children: [
+          AnimatedAlign(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeInOut,
+            alignment: _selectedLanguage == 'taigi'
+                ? Alignment.centerRight
+                : Alignment.centerLeft,
+            child: Container(
+              width: 63,
+              height: 36,
+              margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+              decoration: BoxDecoration(
+                color: AppColors.primary,
+                borderRadius: BorderRadius.circular(18),
+              ),
+            ),
+          ),
+          Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => setState(() => _selectedLanguage = 'mandarin'),
+                  behavior: HitTestBehavior.opaque,
+                  child: Center(
+                    child: Text(
+                      '國語',
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: _selectedLanguage == 'mandarin'
+                            ? Colors.white
+                            : Colors.grey[600],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => setState(() => _selectedLanguage = 'taigi'),
+                  behavior: HitTestBehavior.opaque,
+                  child: Center(
+                    child: Text(
+                      '台語',
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: _selectedLanguage == 'taigi'
+                            ? Colors.white
+                            : Colors.grey[600],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -264,6 +415,7 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
             children: [
               Column(
                 children: [
+                  _buildHeader(),
                   Expanded(
                     child: ListView.builder(
                       controller: _scroll,

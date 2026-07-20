@@ -671,11 +671,12 @@ class ApiService {
   static Future<Map<String, dynamic>> synthesizeTts({
     required String text,
     String? emotion,
+    String engine = 'edge',
   }) async {
     try {
       final queryParameters = <String, String>{
         'text': text,
-        'engine': 'edge',
+        'engine': engine,
       };
       if (emotion != null && emotion.isNotEmpty) {
         queryParameters['emotion'] = emotion;
