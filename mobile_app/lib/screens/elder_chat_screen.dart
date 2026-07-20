@@ -133,6 +133,9 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
 
         if (text != null && text.isNotEmpty) {
           _controller.text = text;
+          setState(() {
+            _isThinking = false; // Reset to allow _send() to pass the _isThinking guard
+          });
           await _send();
         } else {
           setState(() {
