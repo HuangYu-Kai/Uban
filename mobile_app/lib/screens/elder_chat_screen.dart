@@ -138,11 +138,11 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
         debugPrint('🎙️ [ASR Result] Transcribed text: $text');
 
         if (text != null && text.isNotEmpty) {
-          _controller.text = text;
           setState(() {
-            _isThinking = false; // Reset to allow _send() to pass the _isThinking guard
+            _controller.text = text;
+            _voiceMode = false; // 自動切換為鍵盤打字模式，供使用者確認與手動送出
+            _isThinking = false;
           });
-          await _send();
         } else {
           setState(() {
             _isThinking = false;
