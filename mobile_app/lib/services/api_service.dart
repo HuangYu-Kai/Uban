@@ -305,8 +305,8 @@ class ApiService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        if (data['status'] == 'success') {
-          return data['text']?.toString().trim();
+        if (data['success'] == true) {
+          return data['transcription']?.toString().trim();
         }
       }
       return null;
