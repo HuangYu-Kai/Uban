@@ -290,7 +290,31 @@ class ApiService {
     }
   }
 
+  /// 語音轉文字 (ASR/STT) - 上傳本地錄音檔至 AI Server
+  static Future<String?> transcribeAudio(String filePath) async {
+    try {
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$localAiBaseUrl/voice/transcribe'),
+      );
+      request.files.add(await http.MultipartFile.fromPath('file', filePath));
+      request.fields['language'] = 'zh';
 
+      final streamedResponse = await request.send().timeout(const Duration(seconds: 30));
+      final response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['status'] == 'success') {
+          return data['text']?.toString().trim();
+        }
+      }
+      return null;
+    } catch (e) {
+      debugPrint('❌ [transcribeAudio] 錯誤: $e');
+      return null;
+    }
+  }
 
   static Future<Map<String, dynamic>> petGreeting(int userId, String context) async {
     try {

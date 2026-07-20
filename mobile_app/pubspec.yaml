@@ -85,6 +85,7 @@ dependencies:
   model_viewer_plus: ^1.9.3
   provider: ^6.1.5+1
   app_links: ^7.0.0
+  record: ^6.2.1
 
 dev_dependencies:
   flutter_test:
