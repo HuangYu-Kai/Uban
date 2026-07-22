@@ -272,63 +272,23 @@ For per-subproject details, read:
 
 雙重 room ID prefix、`join-failed` 誤斷線、緊急模式 camera 強制開啟、unbind id/import 型別修正、CallKit 不自動喚醒、cold-start `call-accept` 輪詢等。
 
-### 2026-07-17（本 Session）— 第三輪：延遲來電、過期來電、前景接聽與同步終止修復
+### 2026-07-17 — 第三輪：延遲來電、過期來電、前景接聽與同步終止修復
 
 #### A. 已完成更新（後端）
 
 **檔案：** `uban-api/uban-api/services/socket_app.py`
 
-1. `call-request` 新增有效期欄位  
-   - 發送 Socket/FCM 時附帶 `issuedAt`、`expiresAt`（15 秒）。
-   - FCM 設 `ttl=15s`，避免掛斷後延遲到達仍被誤當新來電。
-
-2. `cancel-call` / `end-call` 強化「雙端同步終止」  
-   - `end-call` 不只通知單一 target，會依 `call_registry` 對所有相關 Socket/FCM 發送 `end-call`/`cancel-call`。
-   - 避免「一端已掛斷，另一端仍在等接聽/仍顯示通知」。
-
-3. `cancel-call` 使用 `call_registry` 補齊目標集合  
-   - sender 取消後，所有已登記目標都會收到取消，不再遺漏。
+1. `call-request` 新增有效期欄位 — 發送 Socket/FCM 時附帶 `issuedAt`、`expiresAt`（初始 15s）。
+2. `cancel-call` / `end-call` 強化「雙端同步終止」— 依 `call_registry` 廣播。
+3. `cancel-call` 使用 `call_registry` 補齊目標集合。
 
 #### B. 已完成更新（Flutter）
 
-**檔案：** `Uban/mobile_app/lib/services/signaling.dart`
-
-1. 新增 `_invalidCallIds`  
-   - 任一 `callId` 收到 `cancel-call` / `call-busy` / `end-call` 後立即失效。
-   - 後續延遲抵達的同 `callId` `call-request` 直接丟棄，避免「掛斷後又響」與互打迴圈。
-
-2. `call-request` 過期保護  
-   - 新增 `_isExpiredCallPayload(...)`：超過 `expiresAt` 或 `issuedAt+15s` 一律忽略。
-
-3. 主叫 `sendCallRequest()`  
-   - 若未提供 `callId` 會自動建立 UUID。
-   - 一律帶上 `issuedAt` / `expiresAt` / `senderName`。
-
-4. 收到 `cancel-call` / `call-busy` 時  
-   - 強制 `FlutterCallkitIncoming.endAllCalls()`，同步關閉系統來電 UI。
-
-**檔案：** `Uban/mobile_app/lib/main.dart`
-
-1. FCM 前景/背景入口都加入過期檢查（`_isExpiredCallPayload`）。  
-2. `_showFullScreenCallkit(...)` 將 `issuedAt` / `expiresAt` 透傳到 `extra`。  
-3. CallKit `actionCallAccept` 再做一次過期驗證，過期直接忽略並關閉 CallKit。  
-4. 接聽後先寫入 `pendingAcceptedCall`，由頁面 listener 優先接手導航，保留短延遲全域兜底，避免回到主頁動畫路徑。
-
-**檔案：** `Uban/mobile_app/lib/screens/family_main_screen.dart`
-
-1. `isOnline` 取樣與套用節流改為 **2.5 秒**：  
-   - 輪詢週期 `2.5s`。  
-   - `onElderDevicesUpdate` 套用前再 `2.5s debounce`，降低快速上下線抖動誤判。
-2. `pendingAcceptedCall` 消費前增加過期檢查（15 秒）。
-
-**檔案：** `Uban/mobile_app/lib/screens/elder_home_screen.dart`
-
-1. `pendingAcceptedCall` 消費前增加過期檢查（15 秒），避免冷啟動延遲接聽舊來電。
-
-**檔案：** `Uban/mobile_app/lib/screens/elder_screen.dart`、`.../video_call_screen.dart`
-
-1. 進入視訊房間時鏡頭預設開啟（`_isCameraOff = false`）。
-2. `VideoCallScreen` 忙線/拒接提示改為對話框後返回，避免提示瞬間消失。
+**檔案：** `Uban/mobile_app/lib/services/signaling.dart` — 新增 `_invalidCallIds`、`_isExpiredCallPayload`、`sendCallRequest` 帶 issuedAt/expiresAt/senderName。
+**檔案：** `Uban/mobile_app/lib/main.dart` — FCM 過期檢查、CallKit 過期驗證。
+**檔案：** `Uban/mobile_app/lib/screens/family_main_screen.dart` — 2.5s 輪詢 + debounce、pendingAcceptedCall 過期檢查。
+**檔案：** `Uban/mobile_app/lib/screens/elder_home_screen.dart` — pendingAcceptedCall 過期檢查。
+**檔案：** `Uban/mobile_app/lib/screens/elder_screen.dart` / `video_call_screen.dart` — 鏡頭預設開啟、忙線/拒接改對話框。
 
 #### C. 2026-07-17 建置故障與處理（Windows）
 
@@ -345,6 +305,106 @@ For per-subproject details, read:
    - `flutter build apk --debug`
 
 結果：`BUILD SUCCESSFUL`，APK 產於 `build/app/outputs/flutter-apk/app-debug.apk`。
+
+---
+
+### 2026-07-18 — 第四輪：被殺死狀態來電與雙端同步終止修復
+
+> 目標：解決「雙端 APP 被系統殺死時收不到來電」與「一端拒接/掛斷/逾時，另一端未同步退出」兩大問題。
+
+#### A. 來電有效期 15s → 45s 全鏈路對齊
+
+- 根因：FCM 在 Doze/省電桶可能延遲數十秒送達，原本 `ttl=15s` 會讓被殺死的 APP 永遠收不到；且 CallKit 響鈴 45s 但第 16 秒後接聽被判過期。
+- 後端 `socket_app.py`：`expires_at = issued_at + 45000`，call-request FCM `ttl=45s`。
+- 前端統一常數 `globals.dart::kCallValidityMs = 45000`，套用於 `main.dart` / `signaling.dart` / `elder_home_screen.dart` / `family_main_screen.dart` 的過期判斷與 `sendCallRequest`、CallKit `duration`。
+
+#### B. FCM 背景 handler 提前註冊（`main.dart`）
+
+- 根因：`FirebaseMessaging.onBackgroundMessage(...)` 原註冊於 LineSDK/Analytics 之後、同一 try；任一項噴錯就導致 handler 未註冊。
+- 修復：`Firebase.initializeApp()` 後「立即」以獨立 try/catch 註冊背景 handler；LineSDK/Analytics 改為各自 try/catch。
+
+#### C. 拒接/掛斷/逾時 雙端同步終止
+
+1. 無狀態 HTTP 拒接（`api_service.dart::declineCall`）— `_sendDeclineEvent` 改為「先 Singleton socket、後 HTTP 保底」。
+2. 背景 isolate CallKit listener — 攔到拒接/逾時就走 HTTP `declineCall`。
+3. `actionCallTimeout` 處理 — 響鈴逾時視同拒接，通知發起方停止等待。
+4. `sendCallBusy` 加 HTTP 備援（`signaling.dart`）— Socket 未連線時改走 `ApiService.declineCall`。
+5. 後端 `on_call_busy` 用 `call_registry` 補齊對端（`socket_app.py`）。
+6. 發起方逾時主動取消 — `video_call_screen.dart` 20s 逾時 / `elder_screen.dart` 30s 逾時 → `sendCancelCall` + `hangUp`。
+
+#### D. 前景 Socket 也附發 FCM（`socket_app.py`）
+
+- 根因：`target_tokens` 只含「非前景」裝置，前景被殺→Socket 未逾時→不發 FCM→來電遺失。
+- 修復：把前景在線 Socket 的 `fcmToken` 也併入 FCM 發送集合，由前端 3 秒去重。
+
+#### E. 裝置級限制
+
+- 小米/OPPO/華為等 force-stop 的 APP 收不到 FCM。已宣告 `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`，仍需引導使用者開「自啟動白名單 / 電池不最佳化」。
+
+---
+
+### 2026-07-19 — 第五輪：真機回報兩問題修復（commit `b95cc78` / `76b1b36`）
+
+#### 問題1（長輩被殺死收不到來電）— `socket_app.py`
+
+- 根因：長輩被殺死後 Socket 仍以 `appState=foreground` 殘留，其 `fcmToken` 為空/過期 → `target_fcm_tokens` 不含 → 完全不發 FCM。
+- 修復：新增 `_get_all_known_fcm_tokens()`，回傳所有已知 FCM token（記憶體 + DB），不做 `is_socket_active` 過濾，併入 `fcm_send_map`。
+- 測試：`test_call_request_killed_elder_lingering_foreground_socket_still_gets_fcm`。
+
+#### 問題2（家屬冷啟動接聽後誤進主畫面）— `globals.dart` / `main.dart` / `splash_screen.dart`
+
+- 根因：`SplashScreen` 家屬分支不消費 `pendingAcceptedCall`，Splash 動畫結束的 `pushReplacement(FamilyMainScreen)` 把最上層的 VideoCall 洗掉。
+- 修復：(1) `globals.dart` 新增 `splashActive` 旗標；(2) main.dart 全域兜底加 `!splashActive` 條件；(3) splash_screen.dart 新增 `_navigateFamilyHome()` 確定性導航。
+
+#### 第六輪（同日追加）— 冷啟動接聽事件遺失雙保險 + 兜底輪詢
+
+- 根因：問題2仍在，真因是 `actionCallAccept` 在 `_setupCallKitListener` 註冊前發生 → 事件遺失。
+- **背景 isolate 寫 prefs**：BG listener `actionCallAccept` 時把來電資料寫入 SharedPreferences `pendingAcceptedCall`。
+- **`_checkInitialCall` 補救**：檢查 `activeCalls()` 中 `isAccepted=true` 且未過期的通話，補設 pending。
+- **兜底輪詢**（`_scheduleAcceptedCallFallback`）：取代一次性 350ms；每 200ms 檢查、最多 8s——pending 被消費即停；`splashActive` 期間讓位。
+
+#### 問題1 診斷指引
+
+POCO/MIUI 特別檢查：設定→應用程式→Uban→**自啟動（Autostart）**；電池→**無限制**；其他權限→**顯示彈出式視窗**、**後台彈出介面**、**鎖屏顯示**。
+
+---
+
+### 2026-07-20 — 第七輪：pendingRingCallData 預寫 + 有效期 45s→120s + Doze 安全窗口
+
+> 真機續報問題1/2仍在。問題2確認為「三重失敗場景」：BG isolate SharedPreferences 寫入失敗（小米嚴格背景 IO）+ `activeCalls()` isAccepted race + `onEvent` stream 錯過事件。
+
+#### A. 背景 handler 預寫 pendingRingCallData（`main.dart`，Fix A）
+
+長輩/家屬端 FCM `call-request` 路徑：在顯示 CallKit **之前**先寫入 `pendingRingCallData`（含 `isAccepted: false`），確保即使後續 Accept 事件遺失也有備援資料。`actionCallAccept` 時更新為 `isAccepted: true`。
+
+#### B. `_checkInitialCall()` 重試機制（`main.dart`，Fix B）
+
+單次查詢改為最多 3 次重試（間隔 300ms），等待 native CallKit plugin 狀態同步。
+
+#### C. `main()` pendingRingCallData 備援讀取（`main.dart`，Fix C）
+
+若 `pendingAcceptedCall` 為 null，檢查 `pendingRingCallData`：`isAccepted=true` 且未過期 → 重建 pending。
+
+#### D. 有效期 45s → 120s 全鏈路（Fix D）
+
+| 位置 | 舊值 | 新值 |
+|------|------|------|
+| `socket_app.py` `expires_at` | `issued_at + 45000` | `issued_at + 120000` |
+| `socket_app.py` FCM `ttl` | `seconds=45` | `seconds=120` |
+| `globals.dart` `kCallValidityMs` | `45000` | `120000` |
+
+> **CallKit `duration` 保持 45s**：使用者接聽時間仍以 45s 為限，FCM 有充足時間（120s）穿透 Doze 延遲。
+
+#### E. UnregisteredError DB 清除（`socket_app.py`，Fix E）
+
+FCM 發送遇 `UnregisteredError` 時同步清除 DB `user_fcm_token`，避免下次 `_get_all_known_fcm_tokens` 查出同一支舊 token 重複失敗。
+
+#### F. 驗證
+
+- `flutter analyze lib/` — 無新增 error
+- `python -m py_compile services/socket_app.py` — 通過
+- `python -m pytest tests/test_call_signaling.py -v` — 6 passed
+- 測試 `test_call_request_expires_at_is_45s` 更名為 `test_call_request_expires_at_is_120s`，assert 更新為 `120000`
 
 ---
 
@@ -369,19 +429,43 @@ For per-subproject details, read:
    - **不可移除**：移除後會再出現「掛斷後延遲來電」「接起舊來電互打迴圈」。
 
 5. **`uban-api/uban-api/services/socket_app.py`**
-   - `call-request` 下發 `issuedAt/expiresAt`（15 秒）與 FCM `ttl=15s`
+   - `call-request` 下發 `issuedAt/expiresAt`（**120 秒**，2026-07-20 修訂）與 FCM `ttl=120s`
    - `on_end_call()` 依 `call_registry` 對 Socket+FCM 廣播終止
-   - `on_cancel_call()` 使用 `call_registry` 補齊目標
-   - **不可拆掉**：會回到「一端掛斷，另一端仍響/仍等待」。
+   - `on_cancel_call()` / `on_call_busy()` 使用 `call_registry` 補齊目標並清理
+   - 前景在線 Socket 的 `fcmToken` 也併入 FCM 發送集合（`fcm_send_map`）
+   - `_get_all_known_fcm_tokens()` 回傳所有已知 token（記憶體+DB），不做 `is_socket_active` 過濾
+   - **不可拆掉**：會回到「一端掛斷，另一端仍響/仍等待」或 killed 長輩收不到 FCM。
 
 6. **`Uban/mobile_app/lib/screens/family_main_screen.dart`**
    - `2.5s` 輪詢 + `2.5s` debounce 套用 `isOnline`
    - **不要改回 1 秒瞬時切換**：會造成快速上下線抖動誤判。
 
 7. **`Uban/mobile_app/lib/screens/elder_home_screen.dart` / `family_main_screen.dart`**
-   - 消費 `pendingAcceptedCall` 前的過期判斷（15 秒）
+   - 消費 `pendingAcceptedCall` 前的過期判斷（**120 秒**，`kCallValidityMs`，2026-07-20 修訂）
    - **不可刪除**：會讓冷啟動延遲收到的舊來電再次被接起。
 
 8. **`Uban/mobile_app/lib/screens/elder_screen.dart` + `video_call_screen.dart`**
    - `_isCameraOff = false`（進入視訊房預設開鏡頭）
    - **不可改回預設關閉**：與目前需求衝突，且會造成「接通黑畫面誤判」。
+
+9. **`Uban/mobile_app/lib/main.dart` → `_firebaseMessagingBackgroundHandler`**
+   - FCM `call-request` 路徑：在 `_showFullScreenCallkit` **之前**預寫 `pendingRingCallData`（含 `isAccepted: false`）
+   - `actionCallAccept` 時更新 `pendingRingCallData` 的 `isAccepted` flag 為 `true`
+   - **不可移除預寫**：否則 BG isolate 寫入失敗 + activeCalls() race + onEvent 遺失三重場景無備援。
+
+10. **`Uban/mobile_app/lib/main.dart` → `_checkInitialCall()`**
+    - 最多 3 次重試（間隔 300ms），等待 native CallKit plugin 狀態同步
+    - `isAccepted=false`（僅響鈴中）**絕不**自動進房
+    - **不可改回單次查詢**：冷啟動時 CallKit 狀態更新非同步，一次查詢常抓不到。
+
+11. **`Uban/mobile_app/lib/main.dart` → `main()` pendingRingCallData 備援**
+    - `pendingAcceptedCall` 為 null 時檢查 `pendingRingCallData`（`isAccepted=true` + 未過期 → 重建 pending）
+    - **不可移除**：BG isolate 寫 `pendingAcceptedCall` 可能在小米/OPPO 嚴格背景 IO 下失敗。
+
+12. **`Uban/mobile_app/lib/main.dart` → `_scheduleAcceptedCallFallback()`**
+    - 兜底輪詢：每 200ms 檢查，最多 8s；`splashActive` 期間讓位；pending 被消費即停
+    - **不可改回一次性 350ms 延遲**：無法覆蓋冷啟動時間變異。
+
+13. **`Uban/mobile_app/lib/globals.dart` → `splashActive` 旗標**
+    - 冷啟動接聽期間，main.dart 全域兜底導航必須讓位給 SplashScreen
+    - **不可移除**：否則全域兜底把 VideoCallScreen push 到 Splash 上，又被 Splash 的 pushReplacement 洗掉。

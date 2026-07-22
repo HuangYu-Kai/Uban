@@ -469,7 +469,7 @@ class Signaling {
       avatar: 'https://i.pravatar.cc/150?name=$callerName',  // ★ 動態頭貼，基於名稱生成
       handle: '📞 視訊通話',  // ★ 改進提示文字
       type: 0,  // 0 = audio, 1 = video
-      duration: 45000,  // ★ 2026-07-18：與 kCallValidityMs（45s）對齊
+      duration: 45000,  // ★ CallKit 響鈴 45s（獨立於 kCallValidityMs 120s，接聽時限 ≠ FCM 有效期）
       textAccept: '✓ 接聽',  // ★ 加入emoji
       textDecline: '✕ 拒絕',  // ★ 加入emoji
       missedCallNotification: const NotificationParams(

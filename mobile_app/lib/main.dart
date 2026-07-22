@@ -104,6 +104,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       final roomId = (message.data['roomId'] ?? '').toString();
       final senderId = (message.data['senderId'] ?? '').toString();
       final callId = (message.data['callId'] ?? '').toString();
+      final callerName = (message.data['callerName'] ?? message.data['senderName'] ?? '有人來電').toString();
 
       if (role == 'elder' && type == 'emergency-call') {
         debugPrint("🚨 [BG] Emergency call for elder, saving pending call and waking app");
@@ -140,17 +141,48 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       }
 
      if (role == 'elder' && type == 'call-request') {
-       // ★ issue 2 fix: elder background handler must NOT pre-save pendingAcceptedCall
-       //   nor cold-launch the app before user taps Accept on CallKit.
-       //   Only show the CallKit notification. pendingAcceptedCall is set later
-       //   by _setupCallKitListener when user actually taps Accept.
+       // ★ 2026-07-20 第七輪修復：在顯示 CallKit *之前*預先寫入 pendingRingCallData，
+       //   確保 APP 被系統強制殺死後，冷啟動時 main() 有 fallback 資料可用。
+       //   即使 BG isolate 的 CallKit Accept listener 寫入失敗（小米/OPPO 嚴格背景
+       //   IO 限制），pendingRingCallData 已在收到 FCM 時寫入，不會遺失。
+       try {
+         final prefs = await SharedPreferences.getInstance();
+         await prefs.setString('pendingRingCallData', jsonEncode({
+           'roomId': roomId,
+           'senderId': senderId,
+           'callId': callId,
+           'issuedAt': (message.data['issuedAt'] ?? '').toString(),
+           'expiresAt': (message.data['expiresAt'] ?? '').toString(),
+           'callerName': callerName,
+           'isAccepted': false,
+           'timestamp': DateTime.now().millisecondsSinceEpoch,
+         }));
+       } catch (e) {
+         debugPrint('⚠️ [BG] 寫入 pendingRingCallData 失敗: $e');
+       }
        await _showFullScreenCallkit(message.data);
        return;
      }
 
       // ★ issue 14：家屬端在背景／螢幕關閉時收到長輩的「一般」來電，
-      //   不應強制把 App 帶到前景，只顯示來電通知，由使用者主動點擊接聽。
+      // 不應強制把 App 帶到前景，只顯示來電通知，由使用者主動點擊接聽。
       if (role != 'elder' && type == 'call-request') {
+        // ★ 2026-07-20 第七輪修復：同長輩端，預寫 pendingRingCallData。
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('pendingRingCallData', jsonEncode({
+            'roomId': roomId,
+            'senderId': senderId,
+            'callId': callId,
+            'issuedAt': (message.data['issuedAt'] ?? '').toString(),
+            'expiresAt': (message.data['expiresAt'] ?? '').toString(),
+            'callerName': callerName,
+            'isAccepted': false,
+            'timestamp': DateTime.now().millisecondsSinceEpoch,
+          }));
+        } catch (e) {
+          debugPrint('⚠️ [BG] 寫入 pendingRingCallData 失敗: $e');
+        }
         await _showFullScreenCallkit(message.data);
         return;
       }
@@ -271,6 +303,9 @@ Future<void> _showFullScreenCallkit(Map<String, dynamic> data) async {
         //   SharedPreferences 的 pendingAcceptedCall——main() 冷啟動時會讀取
         //   這個 key 並在 Splash 之前設定 pendingAcceptedCall.value，
         //   確保「殺死狀態接聽」一定能導向視訊房間。
+        // ★ 2026-07-20 第七輪：同時更新 pendingRingCallData 的 isAccepted flag，
+        //   作為 main() 冷啟動時的雙重備援（即使 pendingAcceptedCall 寫入失敗，
+        //   pendingRingCallData 已在收到 FCM 時預寫，main() 可用它重建 pending）。
         try {
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString('pendingAcceptedCall', jsonEncode({
@@ -282,6 +317,17 @@ Future<void> _showFullScreenCallkit(Map<String, dynamic> data) async {
             'timestamp': DateTime.now().millisecondsSinceEpoch,
           }));
           debugPrint('✅ [BG-CallKit] accept → 已寫入 pendingAcceptedCall 至 prefs (call=$callId)');
+          // 更新 pendingRingCallData isAccepted flag 作為備援
+          await prefs.setString('pendingRingCallData', jsonEncode({
+            'roomId': roomId,
+            'senderId': senderId,
+            'callId': callId,
+            'issuedAt': issuedAt,
+            'expiresAt': expiresAt,
+            'callerName': callerName,
+            'isAccepted': true,
+            'timestamp': DateTime.now().millisecondsSinceEpoch,
+          }));
         } catch (err) {
           debugPrint('⚠️ [BG-CallKit] 寫入 pendingAcceptedCall 失敗: $err');
         }
@@ -335,6 +381,40 @@ void main() async {
       } catch (e) {
         debugPrint("Error parsing pendingAcceptedCall: $e");
       }
+    }
+
+    // ★ 2026-07-20 第七輪：pendingRingCallData 備援。
+    //   若 pendingAcceptedCall 未成功載入（BG isolate 的 CallKit Accept listener
+    //   寫入失敗，或是冷啟動時主 isolate 尚未註冊 listener 就錯過事件），
+    //   從 pendingRingCallData（在收到 FCM 時就預寫）重建。
+    //   pendingRingCallData 含 isAccepted: true 代表使用者已按下接聽。
+    if (pendingAcceptedCall.value == null) {
+      final ringCallStr = prefs.getString('pendingRingCallData');
+      if (ringCallStr != null) {
+        try {
+          final Map<String, dynamic> decoded = jsonDecode(ringCallStr);
+          final bool isAccepted = decoded['isAccepted'] == true;
+          final int? ts = int.tryParse('${decoded['timestamp'] ?? ''}');
+          final int ageMs = ts != null
+              ? DateTime.now().millisecondsSinceEpoch - ts
+              : 0;
+          // 超過 120s 的舊資料直接丟棄
+          if (ts != null && ageMs > 120000) {
+            debugPrint("🗑️ [Main] Discarding stale pendingRingCallData (age: ${ageMs}ms)");
+          } else if (isAccepted) {
+            pendingAcceptedCall.value = decoded.map((key, value) => MapEntry(key, value?.toString()));
+            debugPrint("🚨 [Main] Fallback: reconstructed pendingAcceptedCall from pendingRingCallData (accepted)");
+          } else {
+            debugPrint("ℹ️ [Main] pendingRingCallData exists but isAccepted=false, keeping for fallback");
+          }
+          await prefs.remove('pendingRingCallData');
+        } catch (e) {
+          debugPrint("Error parsing pendingRingCallData: $e");
+        }
+      }
+    } else {
+      // pendingAcceptedCall 已成功載入，清理舊的 pendingRingCallData
+      await prefs.remove('pendingRingCallData');
     }
 
     if (kIsWeb) {
@@ -936,7 +1016,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     }
   }
 
-  // ★ 情境 2 修復 + 2026-07-19 第六輪還原：
+  // ★ 情境 2 修復 + 2026-07-19 第六輪還原 + 2026-07-20 第七輪重試強化：
   //   冷啟動時 actionCallAccept 事件可能在 _setupCallKitListener 註冊「之前」
   //   就已發生（使用者在 APP 被殺死時按下接聽 → 系統啟動 APP → Dart 尚未註冊
   //   listener → 事件遺失）。此時 pendingAcceptedCall 永遠不會被設定，
@@ -945,58 +1025,86 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   //   補救：檢查 activeCalls() 中「已被使用者明確接聽」(isAccepted=true) 且
   //   未過期的通話，補設 pendingAcceptedCall。僅響鈴未接聽的通話
   //   (isAccepted=false) 一律不動，維持「必須明確點擊接聽」的安全性。
+  //
+  //   ★ 第七輪：native CallKit plugin 狀態更新為非同步，冷啟動時查詢
+  //   activeCalls() 可能回傳 isAccepted=false 或空列表。加入最多 3 次重試
+  //   （間隔 300ms）等待 native 層完成狀態同步。
   Future<void> _checkInitialCall() async {
-    try {
-      final activeCalls = await FlutterCallkitIncoming.activeCalls();
-      if (activeCalls is! List || activeCalls.isEmpty) return;
-      debugPrint("ℹ️ [Main] 偵測到 ${activeCalls.length} 筆進行中的 CallKit，檢查是否有已接聽事件...");
+    const int maxAttempts = 3;
+    const int retryDelayMs = 300;
 
-      for (final call in activeCalls) {
-        if (call is! Map) continue;
-        // flutter_callkit_incoming: isAccepted=true 代表使用者已按下接聽
-        final bool isAccepted = call['isAccepted'] == true;
-        if (!isAccepted) {
-          debugPrint("ℹ️ [Main] CallKit ${call['id']} 尚未接聽，跳過（不自動進房）");
-          continue;
-        }
-        final extra = call['extra'];
-        if (extra is! Map) continue;
-        final String roomId = (extra['roomId'] ?? '').toString();
-        final String senderId = (extra['senderId'] ?? '').toString();
-        final String? callId = extra['callId']?.toString();
-        final String? issuedAt = extra['issuedAt']?.toString();
-        final String? expiresAt = extra['expiresAt']?.toString();
-        if (roomId.isEmpty || senderId.isEmpty) continue;
-
-        // 過期驗證（與 actionCallAccept 相同標準）
-        final int now = DateTime.now().millisecondsSinceEpoch;
-        final int? exp = int.tryParse(expiresAt ?? '');
-        final int? issued = int.tryParse(issuedAt ?? '');
-        final bool isExpired = (exp != null && now > exp) ||
-            (issued != null && (now - issued) > kCallValidityMs);
-        if (isExpired) {
-          debugPrint("⏰ [Main] _checkInitialCall: 已接聽通話已過期 (callId=$callId)，忽略並關閉");
-          FlutterCallkitIncoming.endAllCalls();
-          continue;
-        }
-
-        debugPrint("✅ [Main] _checkInitialCall: 偵測到冷啟動前已接聽的通話 (callId=$callId)，補設 pendingAcceptedCall");
-        if (callId != null && callId.isNotEmpty) {
-          sig.Signaling().lastProcessedCallId = callId;
-          sig.Signaling().lastProcessedCallTime = now;
-        }
-        pendingAcceptedCall.value = <String, String?>{
-          'roomId': roomId,
-          'senderId': senderId,
-          'callId': callId,
-          'issuedAt': issuedAt,
-          'expiresAt': expiresAt,
-        };
-        _scheduleAcceptedCallFallback(roomId, senderId, callId);
-        break; // 只處理第一通已接聽的通話
+    for (int attempt = 0; attempt < maxAttempts; attempt++) {
+      if (attempt > 0) {
+        debugPrint("🔄 [Main] _checkInitialCall retry ${attempt}/${maxAttempts - 1}...");
+        await Future.delayed(const Duration(milliseconds: retryDelayMs));
       }
-    } catch (e) {
-      debugPrint("⚠️ [Main] _checkInitialCall error: $e");
+      try {
+        final activeCalls = await FlutterCallkitIncoming.activeCalls();
+        if (activeCalls is! List || activeCalls.isEmpty) {
+          if (attempt < maxAttempts - 1) continue; // 可能是 native 尚未初始化，重試
+          return;
+        }
+        if (attempt == 0) {
+          debugPrint("ℹ️ [Main] 偵測到 ${activeCalls.length} 筆進行中的 CallKit，檢查是否有已接聽事件...");
+        }
+
+        bool foundAccepted = false;
+        for (final call in activeCalls) {
+          if (call is! Map) continue;
+          final bool isAccepted = call['isAccepted'] == true;
+          if (!isAccepted) {
+            continue;
+          }
+          foundAccepted = true;
+          final extra = call['extra'];
+          if (extra is! Map) continue;
+          final String roomId = (extra['roomId'] ?? '').toString();
+          final String senderId = (extra['senderId'] ?? '').toString();
+          final String? callId = extra['callId']?.toString();
+          final String? issuedAt = extra['issuedAt']?.toString();
+          final String? expiresAt = extra['expiresAt']?.toString();
+          if (roomId.isEmpty || senderId.isEmpty) continue;
+
+          // 過期驗證（與 actionCallAccept 相同標準）
+          final int now = DateTime.now().millisecondsSinceEpoch;
+          final int? exp = int.tryParse(expiresAt ?? '');
+          final int? issued = int.tryParse(issuedAt ?? '');
+          final bool isExpired = (exp != null && now > exp) ||
+              (issued != null && (now - issued) > kCallValidityMs);
+          if (isExpired) {
+            debugPrint("⏰ [Main] _checkInitialCall: 已接聽通話已過期 (callId=$callId)，忽略並關閉");
+            FlutterCallkitIncoming.endAllCalls();
+            continue;
+          }
+
+          debugPrint("✅ [Main] _checkInitialCall: 偵測到冷啟動前已接聽的通話 (callId=$callId)，補設 pendingAcceptedCall");
+          if (callId != null && callId.isNotEmpty) {
+            sig.Signaling().lastProcessedCallId = callId;
+            sig.Signaling().lastProcessedCallTime = now;
+          }
+          pendingAcceptedCall.value = <String, String?>{
+            'roomId': roomId,
+            'senderId': senderId,
+            'callId': callId,
+            'issuedAt': issuedAt,
+            'expiresAt': expiresAt,
+          };
+          _scheduleAcceptedCallFallback(roomId, senderId, callId);
+          return; // 找到已接聽通話，立即結束
+        }
+
+        if (!foundAccepted) {
+          if (attempt < maxAttempts - 1) {
+            debugPrint("ℹ️ [Main] _checkInitialCall: 尚無 isAccepted=true 的通話，等待 native 狀態同步...");
+            continue; // 重試
+          }
+          debugPrint("ℹ️ [Main] _checkInitialCall: ${maxAttempts} 次嘗試後仍無已接聽通話，放棄");
+        }
+        return; // 所有重試已用完
+      } catch (e) {
+        debugPrint("⚠️ [Main] _checkInitialCall error (attempt $attempt): $e");
+        if (attempt >= maxAttempts - 1) return;
+      }
     }
   }
 

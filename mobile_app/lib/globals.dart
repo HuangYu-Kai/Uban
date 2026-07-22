@@ -7,7 +7,10 @@ String? appRole;
 
 /// ★ 2026-07-18：來電有效期（毫秒）。與後端 socket_app.py 的 expires_at/FCM ttl
 ///   以及 CallKit `duration` 三者必須一致，否則會出現「通知還在響但接聽被判過期」。
-const int kCallValidityMs = 45000;
+/// ★ 2026-07-20：有效期 45s→120s，與後端 socket_app.py expires_at/FCM ttl 同步。
+///   Android Doze/省電桶可能延遲 FCM 60-90 秒，45s ttl 會在 Doze 期間過期。
+///   CallKit duration 保持 45s 不變（使用者接聽時間仍以 45s 為限）。
+const int kCallValidityMs = 120000;
 
 /// ★ 2026-07-19：SplashScreen 是否仍在畫面上（冷啟動導航進行中）。
 ///   冷啟動接聽來電時，SplashScreen 是 pendingAcceptedCall 的唯一導航擁有者；
