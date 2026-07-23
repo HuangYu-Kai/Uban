@@ -315,6 +315,7 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
                     {'id': targetId ?? 1, 'title': '新聞播放中', 'content': '請稍候...'}
                   ],
             initialIndex: targetIndex,
+            userId: widget.userId,
           ),
         ),
       );
@@ -328,7 +329,7 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
       context,
       MaterialPageRoute(
         builder: (context) => ElderScreen(
-          roomId: widget.roomId ?? widget.userId.toString(),
+          roomId: widget.userId.toString(),
           deviceName: widget.userName,
         ),
       ),
@@ -595,11 +596,18 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
                         MarkdownBody(
                           data: msg.text.isEmpty ? ' ' : msg.text,
                           onTapLink: (text, href, title) {
-                            if (href != null && href.startsWith('news://')) {
-                              final newsIdStr = href.replaceFirst('news://', '');
-                              _handleNewsLinkClick(newsIdStr);
-                            } else if (href != null && href.startsWith('call://')) {
-                              _handleCallLinkClick();
+                            debugPrint('🔗 [Markdown Link Tapped] text: $text, href: $href');
+                            if (href != null) {
+                              if (href.startsWith('news://')) {
+                                final newsIdStr = href.replaceFirst('news://', '');
+                                _handleNewsLinkClick(newsIdStr);
+                              } else if (href.contains('news') && href.contains('id=')) {
+                                final uri = Uri.tryParse(href);
+                                final newsIdStr = uri?.queryParameters['id'] ?? '';
+                                _handleNewsLinkClick(newsIdStr);
+                              } else if (href.startsWith('call://')) {
+                                _handleCallLinkClick();
+                              }
                             }
                           },
                           styleSheet: MarkdownStyleSheet(
