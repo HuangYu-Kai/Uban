@@ -286,9 +286,20 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
     }
   }
 
-  Future<void> _handleNewsLinkClick(String newsIdStr) async {
+  Future<void> _handleNewsLinkClick(String linkPath) async {
     try {
-      final response = await ApiService.getNews(limit: 30);
+      debugPrint('🎙️ [News Link Clicked] path: $linkPath');
+      String category = 'all';
+      String newsIdStr = linkPath;
+      
+      if (linkPath.contains('/')) {
+        final parts = linkPath.split('/');
+        category = parts[0];
+        newsIdStr = parts[1];
+      }
+
+      // 1. 優先撈取該新聞分類列表
+      var response = await ApiService.getNews(category: category, limit: 30);
       List<Map<String, dynamic>> newsItems = [];
       if (response['status'] == 'success' && response['data'] != null) {
         final items = response['data']['items'];
@@ -299,9 +310,25 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
 
       int targetIndex = 0;
       final targetId = int.tryParse(newsIdStr);
-      if (targetId != null && newsItems.isNotEmpty) {
-        final idx = newsItems.indexWhere((it) => it['id'] == targetId);
-        if (idx != -1) targetIndex = idx;
+      if (targetId != null) {
+        int idx = newsItems.indexWhere((it) => it['id'] == targetId);
+        if (idx == -1 && category != 'all') {
+          // 2. 備援：若該分類沒查到對應 ID，抓取全類別新聞
+          final fallbackResp = await ApiService.getNews(category: 'all', limit: 50);
+          if (fallbackResp['status'] == 'success' && fallbackResp['data'] != null) {
+            final fallbackItems = fallbackResp['data']['items'];
+            if (fallbackItems is List) {
+              final parsedFallback = fallbackItems.map((e) => Map<String, dynamic>.from(e)).toList();
+              final fIdx = parsedFallback.indexWhere((it) => it['id'] == targetId);
+              if (fIdx != -1) {
+                newsItems = parsedFallback;
+                targetIndex = fIdx;
+              }
+            }
+          }
+        } else if (idx != -1) {
+          targetIndex = idx;
+        }
       }
 
       if (!mounted) return;
