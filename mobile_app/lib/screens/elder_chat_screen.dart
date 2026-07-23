@@ -322,16 +322,16 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
     try {
       debugPrint('🎙️ [News Link Clicked] path: $linkPath');
       String category = 'all';
-      String newsIdStr = linkPath;
+      String newsIdStr = linkPath.trim();
       
       if (linkPath.contains('/')) {
         final parts = linkPath.split('/');
-        category = parts[0];
-        newsIdStr = parts[1];
+        category = parts[0].trim();
+        newsIdStr = parts[1].trim();
       }
 
-      // 1. 優先撈取該新聞分類列表
-      var response = await ApiService.getNews(category: category, limit: 30);
+      // 1. 優先從對應新聞類別中獲取新聞列表
+      var response = await ApiService.getNews(category: category, limit: 50);
       List<Map<String, dynamic>> newsItems = [];
       if (response['status'] == 'success' && response['data'] != null) {
         final items = response['data']['items'];
@@ -341,27 +341,30 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
       }
 
       int targetIndex = 0;
-      final targetId = int.tryParse(newsIdStr);
-      if (targetId != null) {
-        int idx = newsItems.indexWhere((it) => it['id'] == targetId);
-        if (idx == -1 && category != 'all') {
-          // 2. 備援：若該分類沒查到對應 ID，抓取全類別新聞
-          final fallbackResp = await ApiService.getNews(category: 'all', limit: 50);
-          if (fallbackResp['status'] == 'success' && fallbackResp['data'] != null) {
-            final fallbackItems = fallbackResp['data']['items'];
-            if (fallbackItems is List) {
-              final parsedFallback = fallbackItems.map((e) => Map<String, dynamic>.from(e)).toList();
-              final fIdx = parsedFallback.indexWhere((it) => it['id'] == targetId);
-              if (fIdx != -1) {
-                newsItems = parsedFallback;
-                targetIndex = fIdx;
-              }
+      int idx = newsItems.indexWhere((it) => it['id']?.toString() == newsIdStr);
+      debugPrint('🎙️ [News Match Check] targetIdStr: $newsIdStr, category: $category, foundIdx: $idx, itemsCount: ${newsItems.length}');
+
+      if (idx == -1 && category != 'all') {
+        // 2. 備援：若在指定類別中沒查到，抓取全類別新聞進行全庫比對
+        debugPrint('🎙️ [News Match Check] Not found in $category, trying fallback "all"...');
+        final fallbackResp = await ApiService.getNews(category: 'all', limit: 50);
+        if (fallbackResp['status'] == 'success' && fallbackResp['data'] != null) {
+          final fallbackItems = fallbackResp['data']['items'];
+          if (fallbackItems is List) {
+            final parsedFallback = fallbackItems.map((e) => Map<String, dynamic>.from(e)).toList();
+            final fIdx = parsedFallback.indexWhere((it) => it['id']?.toString() == newsIdStr);
+            if (fIdx != -1) {
+              newsItems = parsedFallback;
+              targetIndex = fIdx;
+              debugPrint('🎙️ [News Match Check] Found in fallback "all" at index: $fIdx');
             }
           }
-        } else if (idx != -1) {
-          targetIndex = idx;
         }
+      } else if (idx != -1) {
+        targetIndex = idx;
       }
+
+      debugPrint('🎙️ [News Final Navigation] Target Index: $targetIndex, Title: ${newsItems.isNotEmpty ? newsItems[targetIndex]['title'] : "N/A"}');
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
@@ -372,7 +375,7 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
             newsItems: newsItems.isNotEmpty
                 ? newsItems
                 : [
-                    {'id': targetId ?? 1, 'title': '新聞播放中', 'content': '請稍候...'}
+                    {'id': newsIdStr, 'title': '新聞載入中...', 'content': '請稍候...'}
                   ],
             initialIndex: targetIndex,
             userId: widget.userId,
