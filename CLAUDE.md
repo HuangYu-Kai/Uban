@@ -408,6 +408,126 @@ FCM 發送遇 `UnregisteredError` 時同步清除 DB `user_fcm_token`，避免�
 
 ---
 
+### 2026-07-22 — 第八輪：拒接三重訊息、角色反轉、拒接狀態清理、簡繁轉換
+
+> 真機續報：(1) 長輩端未在前景時，家屬端撥打被拒後跳出**三個**拒絕訊息；(2) APP 外拒接後回到 APP 內仍看到來電通知，點擊後**角色反轉**（接收方變發起方）；(3) 長輩被殺死仍收不到來電（加診斷日誌待定位）；(4) 少數簡體中文需轉繁體。
+
+#### Fix 1 — 拒接三重訊息（`main.dart::_sendDeclineEvent`）
+
+- 根因：`_sendDeclineEvent` **同時**發 Socket `call-busy` 和 HTTP `declineCall`，後端 `on_call_busy` 與 `api_decline_call` 各自廣播 `call-busy`+`cancel-call`；再加上 BG isolate CallKit listener 也發一則 HTTP decline → 發起方收到多重拒絕 dialog。
+- 修復：改為 **if-else 單通路**——Socket 在線只走 Socket，離線才走 HTTP；`catch` 區塊作 Socket 失敗時的 HTTP 備援。
+
+#### Fix 2 — 拒接後陳舊狀態清理（`main.dart`）
+
+- 根因：拒接路徑從不清除 `pendingRingCallData` / `pendingRingCall`（僅清 `pendingAcceptedCall`），下次冷啟動 `main()` 讀到 `pendingRingCallData` 誤重建 pending；FCM `call-request`（ttl 120s）延遲抵達又觸發假來電。
+- 修復：(A) `_sendDeclineEvent` 三個 prefs key 全清；(B) BG isolate listener 拒接/逾時時同樣清三個 key；(C) FCM 前景 + BG `cancel-call` handler 清 prefs 並呼叫 `Signaling().invalidateCallId(callId)`（新增公開方法）標記失效。
+
+#### Fix 3 — 防角色反轉（消費端 `senderRole` 驗證）
+
+- 根因：所有 `pendingAcceptedCall` 消費端（`family_main_screen` / `elder_home_screen` / `splash_screen`）盲信自己是接聽方，對陳舊/反轉資料仍發 `sendCallAccept` → 對端反被叫。
+- 修復：全鏈路帶上發起方角色 `senderRole`（`_showFullScreenCallkit` extra、CallKit accept、BG 寫入、`pendingRingCallData` 預寫皆補上），三個消費端消費前驗證 `senderRole != appRole`；相等即判為角色反轉 → 丟棄並清除。
+
+#### Fix 4 — 簡體中文轉繁體
+
+- `redesigned_ai_chat_screen.dart`（10 處 UI 可見字串：伴侶/互動/長者/狀態/活躍/回應/即時/風格/關閉）、`signaling.dart`（TURN 註解 7 處）、`ai_suggestion_service.dart`（1 處）、`family_main_screen.dart`（1 處 debugPrint）。掃描確認 `lib/` 已無殘留簡體字。
+
+#### Fix 5 — 後端無設備診斷日誌（`socket_app.py::on_call_request`）
+
+- FCM 發送迴圈後：若 `target_sids` 與 `fcm_send_map` 皆為空 → 打印 `🚨 目標完全無法觸達`；若僅有 Socket 無 token → 打印 `⚠️ 僅有在線 Socket、無 FCM token`。供真機測試定位問題1（killed 長輩收不到 FCM）之後端斷點。
+
+#### 驗證
+
+- `python -m py_compile services/socket_app.py` — 通過
+- `python -m pytest tests/test_call_signaling.py -q` — **5 passed**（順手修正 round 7 遺漏的 stale test：`test_call_request_expires_at_is_45s`→`_120s`，assert `45000`→`120000`）
+- `flutter analyze lib/` — 0 error（其餘為既有 withOpacity 等 info/warning）
+- `flutter build apk --debug` — **BUILD SUCCESSFUL**
+
+---
+
+### 2026-07-22 — 第九輪：長輩被殺死收不到來電 **根因** 修復（monitor-wakeup 誤判）
+
+> 真機關鍵線索：家屬撥長輩、**長輩被殺死收不到**；反向（長輩撥家屬、家屬被殺死）**正常**。兩機同型號 POCO/MIUI、權限全開。**對稱失效才是 MIUI 殺進程，但這是不對稱** → 必為 elder/family 結構性差異。第八輪的診斷日誌（Fix 5）指向此處。
+
+#### 根因鏈（elder/family 唯一差異：FCM `type` 欄位）
+
+- 後端依 `deviceMode` 決定 FCM `type`：`socket_app.py` `on_call_request`（call-request）與 `on_emergency_call`（emergency-call）皆為 `'monitor-wakeup' if info.get('deviceMode')=='monitor' else '...'`。
+- 前端背景 handler `main.dart:76` 只放行 `call-request`/`emergency-call`/`cancel-call`，**`monitor-wakeup` 被靜默丟棄**（全 `lib/` 無任何 monitor-wakeup handler）。
+- **family 永遠 `deviceMode='comm'`** → 永遠 `call-request` → 一定響；**elder 通訊機一旦被記成 `monitor`** → `monitor-wakeup` → 丟棄 → 被殺死不響。
+- elder 通訊機為何被記成 monitor：`user_fcm_token` 主鍵 `(user_id, room_id, fcm_token)`，同一支 token 可在 `comm_elder_X` 與 `monitor_elder_X` 各留一列（曾當監控機、後改通訊機）。FCM token 去重（`_get_all_known_fcm_tokens` / `_get_target_sockets_and_tokens`）**無 ORDER BY + 記憶體無條件覆寫** → monitor 蓋掉 comm → 送 monitor-wakeup。
+- 上游成因：`has_comm_elder_device` 信任 `on_disconnect` 從不清除的殘留離線 token → 主機重裝被誤判「已有通話機」→ 自我降級成 monitor。
+
+#### 修復（分層）
+
+| 層 | 檔案 | 修復 |
+|----|------|------|
+| **C1 前端止血** | `main.dart` BG + FG handler | 收到 `monitor-wakeup` 時，若本機權威旗標 `saved_is_cctv==false`（自認通訊機）→ 正規化為 `call-request`。裝新版即生效、免重新配對。 |
+| **B2 後端根治** | `socket_app.py::on_join` / `on_update_fcm_token` | 新增 `_purge_stale_reverse_mode_token()`：elder join 時以 token 為鍵刪除「反向模式房間」的殘留列（記憶體+DB）。只清同一台實體裝置的錯誤列。 |
+| **B1 後端防禦** | `_get_all_known_fcm_tokens` / `_get_target_sockets_and_tokens` | token 去重一律偏好 comm：記憶體迴圈加「comm 不被 monitor 覆蓋」，DB 查詢加 `ORDER BY (device_mode='comm') DESC`。 |
+| **B3 防復發** | `has_comm_elder_device` | 只認在線 socket，移除「殘留離線 token 也算已有通話機」判斷。 |
+
+#### 驗證
+
+- `python -m pytest tests/test_call_signaling.py -q` — **7 passed**（新增 `test_all_known_tokens_prefers_comm_over_monitor`、`test_has_comm_elder_device_ignores_stale_offline_token`）
+- `flutter analyze lib/main.dart` — 0 error
+- `flutter build apk --debug` — **BUILD SUCCESSFUL**
+- 端到端（真機）：長輩機裝新版 → 開一次 App（觸發 B2 清列）→ 殺死 → 家屬撥打 → 應跳 CallKit。`adb logcat -s flutter FLTFireMsgReceiver` 可見 `🔧 [BG] 本機為通訊機，將 monitor-wakeup 正規化為 call-request`。
+
+---
+
+### 2026-07-22 — 第十輪：長輩 token 查詢改用「家屬式 user_id 內容鍵」(位置鍵→內容鍵)
+
+> 使用者洞察：家屬被殺死能收到、長輩不行，**何不讓長輩沿用家屬端邏輯**。這是第九輪的**互補第二條腿**：第九輪解「token 撈到了但 type 被標成 monitor-wakeup」；本輪解「token 因 room_id 字串漂移**根本沒撈到**」。
+
+#### 根因：兩端 token 查詢的「鍵」不同
+
+- **家屬端**（`target_role='family'`）用 **user_id 內容鍵**：`family_elder_relationship` → `family_id` → `WHERE role='family' AND user_id IN (...)`。跟裝置註冊在哪個房間無關 → 穩。
+- **長輩端**（`target_role='elder'`）只用 **room_id 位置鍵**：`WHERE role='elder' AND room_id IN ('comm_elder_X','monitor_elder_X')`。房名字串一漂移（`elder_home_screen.dart:62` fallback 成 user_id、數字 elder_id 前導零/str↔int、舊格式殘列、重啟殘列）→ 查無 token → **完全不發 FCM** → 脆。
+- 設計本意：`elder_profile.elder_id`（PK）作 room_id 保獨立性，`user_id`（FK）綁定通訊。room_id 是後端為 Socket.IO 造的「`comm_`/`monitor_` + elder_id」字串（`user_fcm_token`/`call_record` 兩表有此欄，非原始設計表格欄位），本輪把原本閒置的 `elder_id↔user_id` FK 綁定啟用為查詢鍵。
+
+#### 修復（僅後端 `socket_app.py`，只改 FCM token 查詢，不動 room_id 的視訊信令/CCTV 用途）
+
+- 新增 `_resolve_elder_user_id(elder_id)`：一律走 `elder_profile` 反解 user_id，**不做 int 短路**（避開 `_resolve_user_id_int` 對數字型 elder_id 如 '0064' 的誤判）。
+- `_get_all_known_fcm_tokens` / `_get_target_sockets_and_tokens` elder 分支：DB 查詢 `WHERE role='elder' AND (room_id IN (%s,%s) OR user_id = %s)`（**疊加**，非取代——向後相容既有各種 room_id 殘列）；記憶體側新增「掃所有房間、`userId==elder_user_id`」的 user_id 補掃，對齊家屬式。
+- **全程保留第九輪 comm-over-monitor 去重**（`ORDER BY (device_mode='comm') DESC` + `existing.deviceMode=='comm'` 防呆 + DB 迴圈 `token in` guard）。`elder_user_id` 為 None 時 `OR user_id=NULL` 恆假 → 安全退化回純 room_id。
+
+#### 驗證
+
+- `python -m pytest tests/test_call_signaling.py -q` — **8 passed**（新增 `test_all_known_tokens_found_by_user_id_when_room_id_drifts`；已用「移除 OR user_id 後測試變紅」反證其有效）
+- `python -m py_compile services/socket_app.py` — 通過
+- 前端本輪未改（第九輪 C1 已就位）。
+- 端到端（真機）：後端日誌 `📡 [Routing] 目標查詢結果...離線 token N 個`，N 應 ≥1（先前 room_id mismatch 時為 0）。
+
+---
+
+### 2026-07-22 — 第十一輪：FCM 已送達但 CallKit 顯示不出來（原生層故障 + 通知備援）
+
+> 真機 log 證實**問題性質變了**：FCM `call-request` **已送達**被殺死的長輩機（`type: call-request` 非 `monitor-wakeup` → 九/十輪送達修復成功），但收到後**零 CallKit 畫面**，11.5 秒後家屬掛斷的 `endAllCalls()` 崩潰 `PlatformException(content is null)`。從「收不到」變「**收到了但顯示不出來**」。
+
+#### 根因（追進 flutter_callkit_incoming 3.0.0 原生 Kotlin 驗證）
+
+- `showCallkitIncoming` 是**射後不理**：Kotlin `sendBroadcast()` 後立即 `result.success(true)`，真正建通知在 `CallkitIncomingBroadcastReceiver.onReceive` **非同步**執行 → Dart 端以為成功（無 error log），但原生 BroadcastReceiver 在 MIUI 被殺死背景進程**建立通知失敗**（無畫面）。
+- `endAllCalls()` 是**同步** platform channel → 原生錯誤拋回 Dart，是同一故障唯一露出水面的部分。
+- `targetSdk=36`（Android 16）+ Android 14+：全螢幕來電需 `USE_FULL_SCREEN_INTENT` 特殊權限，MIUI 常預設關閉。
+- 來電**完全依賴 CallKit 一條路徑，無任何備援**。
+
+#### 修復（三管齊下，全部跨版本安全）
+
+| Fix | 檔案 | 修復 |
+|-----|------|------|
+| **1 修崩潰** | `main.dart` BG cancel-call + FG cancel-call + `showCallkitIncoming` | `endAllCalls()` / `showCallkitIncoming` 全包 try-catch + log，不再中斷後續清理、原生錯誤可見 |
+| **2 全螢幕權限引導** | `elder_home_screen.dart::_requestPermissions` | 用套件 `canUseFullScreenIntent()`/`requestFullIntentPermission()`（**原生層自帶版本判斷**，Android 13- 恆 true/安全略過），false 時彈 dialog 導設定頁 |
+| **3 原生通知備援** | 新增 `services/local_call_notification.dart` + `pubspec.yaml` | 新增 `flutter_local_notifications 18.0.1`，與 CallKit **平行發** heads-up 高優先級通知（標準 builder，非 CallKit RemoteViews，避開 content-is-null）；共用 callId，cancel-call/接聽/拒接一起關；點擊寫 `pendingAcceptedCall` → 冷啟動兜底 |
+
+- 建置設定：`android/app/build.gradle.kts` 啟用 **core library desugaring**（`isCoreLibraryDesugaringEnabled=true` + `coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")`），為 flutter_local_notifications 18.x 需求。
+
+#### 驗證
+
+- `flutter analyze lib/` — **0 error**
+- `flutter build apk --debug` — **BUILD SUCCESSFUL**（先遇 desugaring 需求→已啟用）
+- 端到端（真機 Android 14+）：啟動彈全螢幕權限引導→殺死→家屬撥打→CallKit 或備援通知至少一者顯示；掛斷 `endAllCalls` 不再崩潰。
+
+---
+
 ## 6. 🚫 絕對不可改動區塊（給後續 AI）
 
 > 下列區塊是本專案目前通話穩定性的「護欄」。除非明確知道連鎖影響並同步改完整條鏈路，**不要單點修改**。
@@ -469,3 +589,44 @@ FCM 發送遇 `UnregisteredError` 時同步清除 DB `user_fcm_token`，避免�
 13. **`Uban/mobile_app/lib/globals.dart` → `splashActive` 旗標**
     - 冷啟動接聽期間，main.dart 全域兜底導航必須讓位給 SplashScreen
     - **不可移除**：否則全域兜底把 VideoCallScreen push 到 Splash 上，又被 Splash 的 pushReplacement 洗掉。
+
+14. **`Uban/mobile_app/lib/main.dart` → `_sendDeclineEvent()` 單通路（2026-07-22 第八輪）**
+    - Socket 在線只走 `sendCallBusy`，離線才走 HTTP `declineCall`；`catch` 作 HTTP 備援
+    - **不可改回「Socket + HTTP 兩路都發」**：會重現拒接三重訊息（後端兩個 handler 各廣播一次）。
+
+15. **拒接/取消時清除三個 prefs key（2026-07-22 第八輪）**
+    - `_sendDeclineEvent`、BG isolate CallKit decline/timeout listener、FCM 前景/BG `cancel-call` handler
+      皆須清 `pendingAcceptedCall` + `pendingRingCallData` + `pendingRingCall`
+    - **不可移除**：殘留 `pendingRingCallData` 會讓冷啟動 `main()` 誤重建 pending → 假來電/角色反轉。
+
+16. **`senderRole` 防角色反轉（2026-07-22 第八輪）**
+    - 全鏈路帶 `senderRole`（`_showFullScreenCallkit` extra、CallKit accept `pendingAcceptedCall`、BG 寫入、`pendingRingCallData` 預寫）
+    - 三個消費端（`family_main_screen::_checkPendingAcceptedCall`、`elder_home_screen::_onPendingCallChanged`、`splash_screen::_isPendingRoleReversed`）消費前驗證 `senderRole != appRole`
+    - **不可移除**：相等代表這通「來電」實為自身角色發出的 stale 資料，若照常 `sendCallAccept` 會讓對端反被叫（接收方變發起方）。
+
+17. **`Uban/mobile_app/lib/services/signaling.dart` → `invalidateCallId()` / `isCallInvalidated()`（2026-07-22 第八輪）**
+    - 供 main.dart FCM handler 於拒接/取消時標記 callId 失效
+    - **不可移除**：與 `_invalidCallIds` 的失效流程一體，移除後延遲抵達的同一 call-request 會再彈窗。
+
+18. **`monitor-wakeup` 正規化與 FCM token 模式一致性（2026-07-22 第九輪，長輩被殺死收不到來電根因）**
+    - `main.dart` BG + FG handler：收到 `monitor-wakeup` 且 `saved_is_cctv==false` → 正規化為 `call-request`
+    - `socket_app.py`：`_get_all_known_fcm_tokens` / `_get_target_sockets_and_tokens` 的 token 去重一律**偏好 comm**（記憶體不被 monitor 覆蓋 + DB `ORDER BY (device_mode='comm') DESC`）
+    - `socket_app.py::on_join` / `on_update_fcm_token`：呼叫 `_purge_stale_reverse_mode_token()` 清同 token 反向模式殘留列
+    - **不可移除任一環**：任何一環失守，通訊機的 elder 來電就會被送成 `monitor-wakeup` 而被 App 丟棄 → 長輩被殺死收不到來電（且是 elder 專屬、family 不受影響的不對稱失效）。
+
+19. **`Uban/uban-api/services/socket_app.py` → `has_comm_elder_device()` 只認在線 socket（2026-07-22 第九輪）**
+    - **禁止**改回信任 `room_fcm_tokens` 殘留離線 token
+    - **原因**：`on_disconnect` 從不清除離線 token；若拿來當「已有通話機」依據，主通訊機重裝/清資料後會被自己的殘留 token 誤判 → 降級為監控機（monitor）→ 產生 monitor 列 → 觸發 #18 的整條 bug 鏈。
+
+20. **`Uban/uban-api/services/socket_app.py` → 長輩 token 查詢的 `OR user_id` 疊加（2026-07-22 第十輪）**
+    - `_get_all_known_fcm_tokens` / `_get_target_sockets_and_tokens` 的 elder 分支：DB `WHERE role='elder' AND (room_id IN (%s,%s) OR user_id = %s)` + 記憶體 user_id 補掃，`user_id` 由 `_resolve_elder_user_id()`（走 elder_profile、不 int 短路）反解。
+    - **禁止**改回「只用 room_id」：家屬端用 user_id 內容鍵故穩，長輩端若只用 room_id 位置鍵，房名字串一漂移就查無 token → 完全不發 FCM → 長輩被殺死收不到（family 不受影響的不對稱失效）。
+    - **禁止**用 `_resolve_user_id_int` 代替 `_resolve_elder_user_id`：前者對數字型 elder_id（如 '0064'）會 int 短路誤判成 user_id。
+    - comm-over-monitor 去重（#18）必須與此並存，不可因加 user_id 查詢而讓 monitor 列覆蓋 comm。
+
+21. **原生通知備援 + endAllCalls try-catch（2026-07-22 第十一輪，CallKit 在 MIUI 被殺死靜默失敗）**
+    - `Uban/mobile_app/lib/services/local_call_notification.dart`（`flutter_local_notifications`）：與 CallKit **平行發**來電備援通知，MIUI 被殺死背景 isolate 下 CallKit 常靜默建立失敗，此為唯一可靠來電畫面。**禁止移除**。
+    - `main.dart`：所有 `FlutterCallkitIncoming.endAllCalls()` / `showCallkitIncoming()` **必須包 try-catch**——原生層在某些 MIUI 會拋 `PlatformException(content is null)`，未包會中斷 cancel-call 清理鏈。
+    - `endAllCalls` / 拒接 / 接聽 / cancel-call 時**必須一併** `LocalCallNotification.cancel()`，否則備援通知殘留。
+    - `elder_home_screen.dart::_requestPermissions`：Android 14+ 全螢幕權限引導用套件 API（自帶版本判斷），**禁止**改成寫死 SDK 版本判斷。
+    - `android/app/build.gradle.kts`：**core library desugaring 不可移除**（flutter_local_notifications 18.x 需求，移除會 build 失敗）。
