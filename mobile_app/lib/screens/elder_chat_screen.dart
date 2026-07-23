@@ -53,6 +53,7 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
   // 語音播放 (TTS) 與國台語切換
   final AudioPlayer _audioPlayer = AudioPlayer();
   String _selectedLanguage = 'mandarin'; // 'mandarin' 或 'taigi'
+  bool _isNavigatingToNews = false; // 防連擊鎖與載入狀態
 
   @override
   void initState() {
@@ -287,6 +288,37 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
   }
 
   Future<void> _handleNewsLinkClick(String linkPath) async {
+    if (_isNavigatingToNews) {
+      debugPrint('🎙️ [News Link Clicked] 忽略重複連擊 (Debounce Active)');
+      return;
+    }
+    _isNavigatingToNews = true;
+
+    // 提示長輩「載入中」以防止疑慮連擊
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+            ),
+            const SizedBox(width: 14),
+            Text(
+              '📰 正在為您載入新聞播放器，請稍候...',
+              style: GoogleFonts.notoSansTc(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+        duration: const Duration(seconds: 4),
+        backgroundColor: AppColors.primary,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+
     try {
       debugPrint('🎙️ [News Link Clicked] path: $linkPath');
       String category = 'all';
@@ -332,7 +364,8 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
       }
 
       if (!mounted) return;
-      Navigator.push(
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      await Navigator.push(
         context,
         MaterialPageRoute(
           builder: (context) => NewsListenPlayerScreen(
@@ -348,6 +381,8 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
       );
     } catch (e) {
       debugPrint('開啟新聞播放器失敗: $e');
+    } finally {
+      _isNavigatingToNews = false;
     }
   }
 
