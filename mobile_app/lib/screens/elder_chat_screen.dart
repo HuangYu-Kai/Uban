@@ -252,6 +252,7 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
   }
 
   Future<void> _playTts(String text) async {
+    debugPrint('🎙️ [TTS Stream] _playTts called. Text length: ${text.length}');
     try {
       // 移除 Markdown 語法、Emoji 等，使語音朗讀順暢
       String cleanText = text
@@ -260,24 +261,26 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
           .replaceAll(RegExp(r'[\u{1F600}-\u{1F64F}|\u{1F300}-\u{1F5FF}|\u{1F680}-\u{1F6FF}|\u{2600}-\u{26FF}|\u{2700}-\u{27BF}]', unicode: true), '') // 移除 Emoji
           .trim();
 
-      if (cleanText.isEmpty) return;
+      debugPrint('🎙️ [TTS Stream] Cleaned text: "$cleanText"');
+      if (cleanText.isEmpty) {
+        debugPrint('🎙️ [TTS Stream] Cleaned text is empty. Skipping.');
+        return;
+      }
 
       final engine = _selectedLanguage == 'taigi' ? 'yating' : 'edge';
-      final response = await ApiService.synthesizeTts(text: cleanText, engine: engine);
-      if (response['success'] == true) {
-        final audioBase64 = response['audio']?.toString() ?? '';
-        if (audioBase64.isNotEmpty) {
-          String payload = audioBase64;
-          if (payload.contains(',')) {
-            payload = payload.split(',').last;
-          }
-          final audioBytes = base64Decode(payload.trim());
-          await _audioPlayer.stop();
-          await _audioPlayer.play(BytesSource(audioBytes));
-        }
-      }
+      
+      // 構建實時語音音訊串流 URL
+      final baseUrl = ApiService.baseUrl;
+      final encodedText = Uri.encodeComponent(cleanText);
+      final streamUrl = '$baseUrl/voice/tts/stream?text=$encodedText&engine=$engine';
+      
+      debugPrint('🎙️ [TTS Stream] Playing via UrlSource: $streamUrl');
+      
+      await _audioPlayer.stop();
+      await _audioPlayer.play(UrlSource(streamUrl));
+      debugPrint('🎙️ [TTS Stream] Play method invoked successfully.');
     } catch (e) {
-      debugPrint('🎙️ [TTS Play Failed] $e');
+      debugPrint('🎙️ [TTS Stream Failed] $e');
     }
   }
 
