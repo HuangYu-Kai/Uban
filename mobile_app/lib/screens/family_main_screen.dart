@@ -85,7 +85,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
       if (elder == null || _signaling.socket?.connected != true) return;
       final elderIdStr = elder.elderId ?? elder.id.toString();
       _signaling.sendGetElderDevices('comm_elder_$elderIdStr');
-      debugPrint('🔄 [Device Refresh] 轮询长辈设备状态 (elder_id=$elderIdStr)');
+      debugPrint('🔄 [Device Refresh] 輪詢長輩設備狀態 (elder_id=$elderIdStr)');
     });
   }
 
@@ -210,6 +210,15 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
       final senderId = args['senderId']!;
       final roomId = args['roomId']!;
       final callId = args['callId'];
+      // ★ 2026-07-22 第八輪 Fix 3：防角色反轉。senderRole 為發起方角色，
+      //   家屬端只應接聽「長輩」發起的來電。若 senderRole == 'family'（自身角色），
+      //   代表這是自己這方發出、經 stale state 回流的假來電 → 拒絕並清除，
+      //   否則會誤發 sendCallAccept 讓對端反被叫（接收方變發起方）。
+      final String? senderRole = args['senderRole'];
+      if (senderRole != null && senderRole.isNotEmpty && senderRole == appRole) {
+        debugPrint("🚫 [FamilyMainScreen] 忽略角色反轉來電 (senderRole=$senderRole == appRole=$appRole, callId=$callId)");
+        return;
+      }
       final int now = DateTime.now().millisecondsSinceEpoch;
       final int? expiresAt = int.tryParse('${args['expiresAt'] ?? ''}');
       final int? issuedAt = int.tryParse('${args['issuedAt'] ?? ''}');

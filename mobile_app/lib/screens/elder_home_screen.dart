@@ -11,6 +11,7 @@ import '../widgets/desktop_pet.dart';
 import 'dart:async';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 
 class ElderHomeScreen extends StatefulWidget {
   final int userId;
@@ -49,6 +50,46 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
         Permission.systemAlertWindow,
         Permission.notification,
       ].request();
+    } catch (_) {}
+    // ★ 2026-07-22 第十一輪 Fix 2：Android 14+ 全螢幕來電需特殊權限
+    //   USE_FULL_SCREEN_INTENT，MIUI 常預設關閉 → CallKit / 備援通知的全螢幕來電
+    //   無法彈出。用套件 API 檢查+引導（原生層自帶版本判斷，Android 13- 恆 true、
+    //   requestFullIntentPermission 安全略過，故跨版本通用）。
+    try {
+      final canUse = await FlutterCallkitIncoming.canUseFullScreenIntent();
+      if (canUse == false && mounted) {
+        await showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => AlertDialog(
+            title: const Row(children: [
+              Icon(Icons.phone_in_talk, color: Colors.green),
+              SizedBox(width: 10),
+              Text('開啟來電顯示'),
+            ]),
+            content: const Text(
+              '為確保手機休眠或 App 關閉時仍能收到家人的視訊來電，\n'
+              '請在接下來的設定頁面開啟「全螢幕通知」權限。',
+              style: TextStyle(fontSize: 16),
+            ),
+            actions: [
+              ElevatedButton(
+                onPressed: () async {
+                  Navigator.of(ctx).pop();
+                  try {
+                    await FlutterCallkitIncoming.requestFullIntentPermission();
+                  } catch (_) {}
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('前往設定'),
+              ),
+            ],
+          ),
+        );
+      }
     } catch (_) {}
   }
 
@@ -129,9 +170,16 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
       barrierDismissible: false,
       builder: (dialogContext) {
         return AlertDialog(
-          title: const Row(
+          title: Row(
             children: [
-              Icon(Icons.phone_in_talk, color: Colors.green, size: 28),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade100,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.phone_in_talk, color: Colors.green, size: 28),
+              ),
               SizedBox(width: 12),
               Text('家屬來電'),
             ],
@@ -152,7 +200,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
               onPressed: () {
                 Navigator.of(dialogContext).pop();
                 _isIncomingCallDialogOpen = false;
-                
+
                 // 接聽後跳轉到通話畫面
                 Signaling().sendCallAccept(senderId, callId: callId);
                 Navigator.push(
@@ -175,6 +223,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green,
                 foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
               ),
             ),
           ],
@@ -235,6 +284,15 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
   void _onPendingCallChanged() {
     final call = pendingAcceptedCall.value;
     if (call != null && !_isNavigatingToCall) {
+      // ★ 2026-07-22 第八輪 Fix 3：防角色反轉。長輩端只應接聽「家屬」發起的來電。
+      //   若 senderRole == 'elder'（自身角色），代表是自己這方發出、經 stale state
+      //   回流的假來電 → 拒絕並清除，避免誤發接聽讓對端反被叫。
+      final String? senderRole = call['senderRole'];
+      if (senderRole != null && senderRole.isNotEmpty && senderRole == appRole) {
+        debugPrint("🚫 [ElderHomeScreen] 忽略角色反轉來電 (senderRole=$senderRole == appRole=$appRole, callId=${call['callId']})");
+        pendingAcceptedCall.value = null;
+        return;
+      }
       final int now = DateTime.now().millisecondsSinceEpoch;
       final int? expiresAt = int.tryParse('${call['expiresAt'] ?? ''}');
       final int? issuedAt = int.tryParse('${call['issuedAt'] ?? ''}');

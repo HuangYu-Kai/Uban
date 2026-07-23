@@ -12,6 +12,8 @@ android {
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
+        // ★ 2026-07-22 第十一輪：flutter_local_notifications 18.x 需要 core library desugaring
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -42,4 +44,9 @@ android {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // ★ 2026-07-22 第十一輪：core library desugaring 執行庫（flutter_local_notifications 需求）
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }

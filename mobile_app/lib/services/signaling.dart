@@ -72,6 +72,19 @@ class Signaling {
   final List<String> _pendingRooms = [];
   final Set<String> _invalidCallIds = <String>{};
 
+  /// ★ 2026-07-22 第八輪 Fix 2C：供 main.dart FCM handler 於拒接/取消時標記
+  ///   callId 失效，後續延遲抵達的同一 `call-request`（Socket 或 FCM）將直接丟棄，
+  ///   避免「拒接後又響」與角色反轉迴圈。
+  bool isCallInvalidated(String? callId) =>
+      callId != null && callId.isNotEmpty && _invalidCallIds.contains(callId);
+
+  void invalidateCallId(String? callId) {
+    if (callId != null && callId.isNotEmpty) {
+      _invalidCallIds.add(callId);
+      debugPrint('⛔ [Signaling] callId 已標記失效: $callId');
+    }
+  }
+
   final Map<String, dynamic> _configuration = {
     'iceServers': [
       {'urls': 'stun:stun.l.google.com:19302'},
@@ -715,27 +728,27 @@ class Signaling {
     _candidateQueue.clear();
   }
 
-  // ★ 根据 elder_id 生成动态的 TURN 凭证
+  // ★ 根據 elder_id 生成動態的 TURN 憑證
   Map<String, dynamic> _generateDynamicTURNConfig() {
     String turnUsername = _turnUser;
     String turnPassword = _turnPass;
-    
-    // 如果有 elder_id，根据 elder_id 生成隔离的凭证
+
+    // 如果有 elder_id，根據 elder_id 生成隔離的憑證
     if (_elderId != null && _elderId!.isNotEmpty) {
-      // ★ 使用 elder_id 作为 TURN 用户名的后缀，实现通讯隔离
+      // ★ 使用 elder_id 作為 TURN 用戶名的後綴，實現通訊隔離
       // 格式: uban_elder_{elder_id}
       turnUsername = '${_turnUser}_elder_$_elderId';
-      
-      // ★ 生成基于 elder_id 的密码
-      // 这可以确保每个 elder 有独立的认证通道
-      turnPassword = _turnPass; // 保持相同的密码，由服务器验证 elder_id
-      
-      debugPrint("🔐 [TURN] 生成 elder_id 隔离的 TURN 凭证:");
+
+      // ★ 生成基於 elder_id 的密碼
+      // 這可以確保每個 elder 有獨立的認證通道
+      turnPassword = _turnPass; // 保持相同的密碼，由伺服器驗證 elder_id
+
+      debugPrint("🔐 [TURN] 生成 elder_id 隔離的 TURN 憑證:");
       debugPrint("   elder_id: $_elderId");
       debugPrint("   username: $turnUsername");
       debugPrint("   server: $_turnServer");
     } else {
-      debugPrint("⚠️ [TURN] 未找到 elder_id，使用默认 TURN 凭证");
+      debugPrint("⚠️ [TURN] 未找到 elder_id，使用預設 TURN 憑證");
     }
     
     return {
@@ -754,7 +767,7 @@ class Signaling {
   }
 
   Future<void> _createPeerConnection({required bool useLocalStream}) async {
-    // ★ 使用基于 elder_id 的动态 TURN 配置
+    // ★ 使用基於 elder_id 的動態 TURN 配置
     final config = _generateDynamicTURNConfig();
     debugPrint("📍 [WebRTC] Creating PeerConnection with config: $config");
     peerConnection = await createPeerConnection(config);

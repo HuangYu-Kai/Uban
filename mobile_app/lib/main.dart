@@ -31,6 +31,7 @@ import 'globals.dart';
 import 'services/signaling.dart' as sig;
 import 'services/api_service.dart';
 import 'services/video_call_permission_service.dart';
+import 'services/local_call_notification.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 final StreamController<String> callKitDeclineStream =
@@ -72,7 +73,24 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   try {
     debugPrint("📩 Background message received: ${message.data}");
 
-    final type = message.data['type'];
+    var type = message.data['type'];
+    // ★ 2026-07-22 monitor-wakeup 正規化（長輩被殺死收不到來電根因修復）：
+    //   後端依 deviceMode 決定 FCM type，若本機的 token 在後端殘留一列
+    //   deviceMode='monitor'（曾當過監控機的殘留列），來電會被送成 'monitor-wakeup'，
+    //   而本 handler 只放行 call-request/emergency-call/cancel-call → 被靜默丟棄 → 不響。
+    //   這裡用本機權威旗標 saved_is_cctv 判斷：若本機其實是通訊機（非 CCTV），
+    //   把 monitor-wakeup 還原成 call-request，確保通訊機被殺死時仍會響鈴。
+    if (type == 'monitor-wakeup') {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final isCctv = prefs.getBool('saved_is_cctv') ?? false;
+        if (!isCctv) {
+          debugPrint('🔧 [BG] 本機為通訊機，將 monitor-wakeup 正規化為 call-request');
+          type = 'call-request';
+          message.data['type'] = 'call-request';
+        }
+      } catch (_) {}
+    }
     if (type != 'call-request' && type != 'emergency-call' && type != 'cancel-call') {
       debugPrint('⚠️ [BG] Ignoring message of type: $type');
       return;
@@ -87,7 +105,23 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     // ★ issue 4/5 fix: cancel-call FCM → dismiss CallKit immediately
     if (type == 'cancel-call') {
       debugPrint('🔕 [BG] Remote canceled call, dismissing CallKit...');
-      await FlutterCallkitIncoming.endAllCalls();
+      // ★ 2026-07-22 第十一輪 Fix 1：endAllCalls 在 MIUI 被殺死背景 isolate 會拋
+      //   PlatformException(content is null)，必須 try-catch，否則會中斷後續清理。
+      try {
+        await FlutterCallkitIncoming.endAllCalls();
+      } catch (e) {
+        debugPrint('⚠️ [BG] endAllCalls 失敗（不影響後續）: $e');
+      }
+      // ★ 第十一輪 Fix 3：一併取消原生備援通知。
+      await LocalCallNotification.cancel();
+      // ★ 2026-07-22 第八輪 Fix 2C：取消來電時清除背景預寫的陳舊狀態，
+      //   避免冷啟動 main() 讀到 pendingRingCallData 誤重建 pending。
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('pendingAcceptedCall');
+        await prefs.remove('pendingRingCallData');
+        await prefs.remove('pendingRingCall');
+      } catch (_) {}
       return;
     }
 
@@ -154,6 +188,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
            'issuedAt': (message.data['issuedAt'] ?? '').toString(),
            'expiresAt': (message.data['expiresAt'] ?? '').toString(),
            'callerName': callerName,
+           'senderRole': (message.data['role'] ?? '').toString(),
            'isAccepted': false,
            'timestamp': DateTime.now().millisecondsSinceEpoch,
          }));
@@ -177,6 +212,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
             'issuedAt': (message.data['issuedAt'] ?? '').toString(),
             'expiresAt': (message.data['expiresAt'] ?? '').toString(),
             'callerName': callerName,
+            'senderRole': (message.data['role'] ?? '').toString(),
             'isAccepted': false,
             'timestamp': DateTime.now().millisecondsSinceEpoch,
           }));
@@ -238,6 +274,7 @@ Future<void> _showFullScreenCallkit(Map<String, dynamic> data) async {
       .toString();
   final issuedAt = (data['issuedAt'] ?? '').toString();
   final expiresAt = (data['expiresAt'] ?? '').toString();
+  final senderRole = (data['role'] ?? '').toString();
   final isEmergency = data['type'] == 'emergency-call';
 
   final params = CallKitParams(
@@ -260,6 +297,8 @@ Future<void> _showFullScreenCallkit(Map<String, dynamic> data) async {
       'callId': callId,
       'issuedAt': issuedAt,
       'expiresAt': expiresAt,
+      // ★ 2026-07-22 第八輪 Fix 3：透傳發起方角色，供接聽消費端驗證防角色反轉。
+      'senderRole': senderRole,
     },
     android: const AndroidParams(
       isCustomNotification: true,
@@ -277,7 +316,23 @@ Future<void> _showFullScreenCallkit(Map<String, dynamic> data) async {
     ),
   );
 
-  await FlutterCallkitIncoming.showCallkitIncoming(params);
+  // ★ 2026-07-22 第十一輪 Fix 1：showCallkitIncoming 補 try-catch + log。
+  //   它 Dart 端是「射後不理」（原生 sendBroadcast 後立即 success），正常不會拋錯，
+  //   但仍包起來以防原生 platform channel 在某些 MIUI 版本同步拋 content-is-null。
+  try {
+    await FlutterCallkitIncoming.showCallkitIncoming(params);
+    debugPrint('📲 [CallKit] showCallkitIncoming 已呼叫 (callId=$callId)');
+  } catch (e) {
+    debugPrint('⚠️ [CallKit] showCallkitIncoming 失敗（將依賴原生備援通知）: $e');
+  }
+
+  // ★ 2026-07-22 第十一輪 Fix 3：與 CallKit 平行發原生高優先級備援通知。
+  //   CallKit 在 MIUI 被殺死背景 isolate 會靜默建立失敗（無 error、無畫面），
+  //   此備援用標準 notification builder，MIUI 相容性最好，確保至少有一個來電通知。
+  //   兩者共用 callId；接聽/拒接/cancel 時一起關閉。
+  if (!isEmergency) {
+    await LocalCallNotification.show(data);
+  }
 
   // ★ 2026-07-18 修復：APP 被殺死時，主 isolate 不存在，_setupCallKitListener
   //   收不到 CallKit 的拒接/逾時事件 → 拒接訊號永遠送不出去，發起方持續等待。
@@ -291,11 +346,21 @@ Future<void> _showFullScreenCallkit(Map<String, dynamic> data) async {
       if (e.event == Event.actionCallDecline ||
           e.event == Event.actionCallTimeout) {
         debugPrint('🔕 [BG-CallKit] ${e.event} → HTTP declineCall (call=$callId)');
+        await LocalCallNotification.cancel(); // ★ 第十一輪：拒接時關備援通知
         await ApiService.declineCall(
           roomId: roomId,
           senderId: senderId,
           callId: callId,
         );
+        // ★ 2026-07-22 修復（第八輪 Issue 2）：BG isolate 拒接時清除所有陳舊狀態，
+        //   避免下次冷啟動 main() 讀到 pendingRingCallData 誤重建 pending，
+        //   或 pendingAcceptedCall 殘留導致角色反轉（接收方變發起方）。
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.remove('pendingAcceptedCall');
+          await prefs.remove('pendingRingCallData');
+          await prefs.remove('pendingRingCall');
+        } catch (_) {}
         await bgSub.cancel();
       } else if (e.event == Event.actionCallAccept) {
         // ★ 2026-07-19 第六輪：冷啟動時主 isolate 的 _setupCallKitListener 可能
@@ -314,6 +379,7 @@ Future<void> _showFullScreenCallkit(Map<String, dynamic> data) async {
             'callId': callId,
             'issuedAt': issuedAt,
             'expiresAt': expiresAt,
+            'senderRole': senderRole,
             'timestamp': DateTime.now().millisecondsSinceEpoch,
           }));
           debugPrint('✅ [BG-CallKit] accept → 已寫入 pendingAcceptedCall 至 prefs (call=$callId)');
@@ -325,12 +391,14 @@ Future<void> _showFullScreenCallkit(Map<String, dynamic> data) async {
             'issuedAt': issuedAt,
             'expiresAt': expiresAt,
             'callerName': callerName,
+            'senderRole': senderRole,
             'isAccepted': true,
             'timestamp': DateTime.now().millisecondsSinceEpoch,
           }));
         } catch (err) {
           debugPrint('⚠️ [BG-CallKit] 寫入 pendingAcceptedCall 失敗: $err');
         }
+        await LocalCallNotification.cancel(); // ★ 第十一輪：接聽時關備援通知
         await bgSub.cancel();
       }
     });
@@ -358,6 +426,7 @@ void main() async {
   try {
     // Bug 16: Ensure role is loaded at boot (Check both common keys)
     final prefs = await SharedPreferences.getInstance();
+    await prefs.reload(); // ★ 2026-07-22：冷啟動時強制從磁碟刷新，確保讀到 BG isolate 最新寫入
     appRole = prefs.getString('user_role') ?? prefs.getString('saved_role');
     debugPrint("🚀 App Booting. Detected Role: $appRole");
 
@@ -377,7 +446,9 @@ void main() async {
           pendingAcceptedCall.value = decoded.map((key, value) => MapEntry(key, value?.toString()));
           debugPrint("🚨 [Main] Loaded pendingAcceptedCall from SharedPreferences: $pendingCallStr");
         }
-        await prefs.remove('pendingAcceptedCall');
+        // ★ 2026-07-22：不在此處 remove，保留給 splash_screen 備援讀取。
+        //   splash_screen._navigateToNext() 的最終防線會在消費後清除。
+        // await prefs.remove('pendingAcceptedCall');
       } catch (e) {
         debugPrint("Error parsing pendingAcceptedCall: $e");
       }
@@ -407,14 +478,17 @@ void main() async {
           } else {
             debugPrint("ℹ️ [Main] pendingRingCallData exists but isAccepted=false, keeping for fallback");
           }
-          await prefs.remove('pendingRingCallData');
+          // ★ 2026-07-22：保留 pendingRingCallData 供 splash 備援，不在此處移除
+          // await prefs.remove('pendingRingCallData');
         } catch (e) {
           debugPrint("Error parsing pendingRingCallData: $e");
         }
       }
     } else {
-      // pendingAcceptedCall 已成功載入，清理舊的 pendingRingCallData
-      await prefs.remove('pendingRingCallData');
+      // pendingAcceptedCall 已成功載入，保留 pendingRingCallData 供 splash 備援
+      debugPrint("ℹ️ [Main] pendingAcceptedCall 已載入，保留 pendingRingCallData 供 splash 備援");
+      // ★ 2026-07-22：不在 main 清掉
+      // await prefs.remove('pendingRingCallData');
     }
 
     if (kIsWeb) {
@@ -1033,6 +1107,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     const int maxAttempts = 3;
     const int retryDelayMs = 300;
 
+    bool foundAccepted = false;
     for (int attempt = 0; attempt < maxAttempts; attempt++) {
       if (attempt > 0) {
         debugPrint("🔄 [Main] _checkInitialCall retry ${attempt}/${maxAttempts - 1}...");
@@ -1047,8 +1122,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         if (attempt == 0) {
           debugPrint("ℹ️ [Main] 偵測到 ${activeCalls.length} 筆進行中的 CallKit，檢查是否有已接聽事件...");
         }
-
-        bool foundAccepted = false;
         for (final call in activeCalls) {
           if (call is! Map) continue;
           final bool isAccepted = call['isAccepted'] == true;
@@ -1106,6 +1179,75 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         if (attempt >= maxAttempts - 1) return;
       }
     }
+    // ★ 2026-07-23：3 次快速重試後若仍未找到 isAccepted=true，
+    //   啟動背景 Timer 持續輪詢（不阻塞 initState 返回）。
+    //   冷啟動時使用者可能在 5-15 秒後才點接聽，900ms 遠不足以捕捉。
+    //   此 Timer 在 splash 期間讓位給 splash 的主動輪詢；splash 結束後
+    //   若仍未消費則由本 Timer 捕捉。
+    if (!foundAccepted) {
+      _scheduleExtendedActiveCallsPoll();
+    }
+  }
+
+  /// ★ 2026-07-23 背景 Timer 輪詢 activeCalls()，不阻塞 initState。
+  /// 每 1 秒一次、最多 15 次（15 秒）。找到 isAccepted=true 時設定
+  /// pendingAcceptedCall.value，由 splash / 首頁 listener 接手導航。
+  void _scheduleExtendedActiveCallsPoll() {
+    const int maxTicks = 15;
+    int tick = 0;
+    Timer.periodic(const Duration(seconds: 1), (timer) async {
+      tick++;
+      // pending 已被消費則停止
+      if (pendingAcceptedCall.value != null) {
+        timer.cancel();
+        return;
+      }
+      try {
+        final activeCalls = await FlutterCallkitIncoming.activeCalls();
+        if (activeCalls is! List || activeCalls.isEmpty) {
+          if (tick >= maxTicks) timer.cancel();
+          return;
+        }
+        for (final call in activeCalls) {
+          if (call is! Map) continue;
+          if (call['isAccepted'] != true) continue;
+          final extra = call['extra'];
+          if (extra is! Map) continue;
+          final String roomId = (extra['roomId'] ?? '').toString();
+          final String senderId = (extra['senderId'] ?? '').toString();
+          final String? callId = extra['callId']?.toString();
+          if (roomId.isEmpty || senderId.isEmpty) continue;
+
+          final int now = DateTime.now().millisecondsSinceEpoch;
+          final String? expStr = extra['expiresAt']?.toString();
+          final String? issStr = extra['issuedAt']?.toString();
+          final int? exp = int.tryParse(expStr ?? '');
+          final int? issued = int.tryParse(issStr ?? '');
+          if ((exp != null && now > exp) ||
+              (issued != null && (now - issued) > kCallValidityMs)) {
+            FlutterCallkitIncoming.endAllCalls();
+            continue;
+          }
+
+          debugPrint(
+              "🚨 [ExtendedPoll] 背景輪詢捕捉到已接聽 (callId=$callId)");
+          if (callId != null && callId.isNotEmpty) {
+            sig.Signaling().lastProcessedCallId = callId;
+            sig.Signaling().lastProcessedCallTime = now;
+          }
+          pendingAcceptedCall.value = <String, String?>{
+            'roomId': roomId,
+            'senderId': senderId,
+            'callId': callId,
+            'issuedAt': issStr,
+            'expiresAt': expStr,
+          };
+          timer.cancel();
+          return;
+        }
+      } catch (_) {}
+      if (tick >= maxTicks) timer.cancel();
+    });
   }
 
   BuildContext? _activeCallDialogContext;
@@ -1115,6 +1257,18 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       // !!!!除非要更新視訊通話邏輯，否則禁止更動!!!!
       FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
       debugPrint("📩 [Main] Foreground message received: ${message.data}");
+      // ★ 2026-07-22 monitor-wakeup 正規化（同背景 handler）：本機若非 CCTV 通訊機，
+      //   把後端因殘留 monitor token 誤送的 monitor-wakeup 還原成 call-request。
+      if (message.data['type'] == 'monitor-wakeup') {
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          final isCctv = prefs.getBool('saved_is_cctv') ?? false;
+          if (!isCctv) {
+            debugPrint("🔧 [FCM-Fg] 本機為通訊機，將 monitor-wakeup 正規化為 call-request");
+            message.data['type'] = 'call-request';
+          }
+        } catch (_) {}
+      }
       if (message.data['type'] == 'call-request' || message.data['type'] == 'emergency-call') {
         if (_isExpiredCallPayload(message.data)) {
           debugPrint("⏰ [FCM-Backup] 忽略過期來電 (callId=${message.data['callId']})");
@@ -1182,14 +1336,23 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       // ★ issue 4/5 fix: cancel-call FCM in foreground → dismiss in-app dialog and CallKit
       if (message.data['type'] == 'cancel-call') {
         debugPrint("🔕 [FCM-Fg] Remote canceled call, dismissing dialog...");
+        // ★ 2026-07-22 第八輪 Fix 2C：標記此 callId 失效，防止延遲抵達的同一
+        //   call-request（Socket 或 FCM）再次彈窗 → 避免「取消後又響」與角色反轉。
+        final canceledCallId = (message.data['callId'] ?? '').toString();
+        sig.Signaling().invalidateCallId(canceledCallId);
         if (_activeCallDialogContext != null) {
           if (Navigator.canPop(_activeCallDialogContext!)) {
             Navigator.pop(_activeCallDialogContext!);
           }
           _activeCallDialogContext = null;
         }
-        // Also end any active CallKit
-        FlutterCallkitIncoming.endAllCalls();
+        // Also end any active CallKit（★ 第十一輪：try-catch 防 content-is-null 崩潰）
+        try {
+          FlutterCallkitIncoming.endAllCalls();
+        } catch (e) {
+          debugPrint('⚠️ [FCM-Fg] endAllCalls 失敗（不影響）: $e');
+        }
+        await LocalCallNotification.cancel(); // ★ 第十一輪：關備援通知
         return;
       }
     });
@@ -1354,6 +1517,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       final callId = extra['callId'] as String?;
       final issuedAt = extra['issuedAt']?.toString();
       final expiresAt = extra['expiresAt']?.toString();
+      final senderRole = extra['senderRole']?.toString();
 
       if (roomId == null || senderId == null) return;
 
@@ -1379,6 +1543,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           'callId': callId,
           'issuedAt': issuedAt,
           'expiresAt': expiresAt,
+          // ★ 2026-07-22 第八輪 Fix 3：帶上發起方角色，供消費端防角色反轉驗證。
+          'senderRole': senderRole,
         };
         // ★ 2026-07-19：全域兜底導航。
         //   冷啟動期間 SplashScreen 是 pendingAcceptedCall 的優先導航擁有者，
@@ -1451,28 +1617,35 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         "❌ Call Declined from CallKit, sending call-busy to $senderId (callId: $callId)...");
 
     final prefs = await SharedPreferences.getInstance();
-    // ★ issue 2/15：拒接時清除可能已預先寫入的 pendingAcceptedCall，
-    //   避免下次冷啟動誤導向這通已被拒絕的通話。
+    // ★ 2026-07-22 修復：拒接時同步清除所有相關狀態，避免下次冷啟動誤導向這通已被拒絕的通話。
     await prefs.remove('pendingAcceptedCall');
+    await prefs.remove('pendingRingCallData');
+    await prefs.remove('pendingRingCall');
     pendingAcceptedCall.value = null;
 
-    // ★ 2026-07-18 修復：原本臨時 socket 需要 userId 才能通過 on_join 授權，
-    //   但這裡讀的是 caregiver_id，家屬端 userId 其實存在 user_id，導致 join-failed
-    //   → 隨後的 call-busy 遺失。改走無狀態 HTTP /api/call/decline：後端會依
-    //   call_registry 對雙端廣播 call-busy/cancel-call（含 FCM），確保同步終止。
-    // 先嘗試現有 Singleton socket（若在線），再以 HTTP 保底。
+    // ★ 2026-07-22 修復（第八輪 Issue 1）：原本 Socket 和 HTTP 兩路都發，
+    //   後端的 on_call_busy 和 api_decline_call 各自廣播 call-busy + cancel-call，
+    //   導致家屬端收到三重拒絕訊息。改為 if-else：Socket 在線時只走 Socket，
+    //   離線時才走 HTTP。catch 區塊作為 Socket 失敗時的 HTTP 備援。
     try {
       if (sig.Signaling().socket?.connected == true) {
         sig.Signaling().sendCallBusy(senderId, callId: callId, room: roomId);
+      } else {
+        debugPrint('🔌 [Decline] Socket 離線，改用 HTTP declineCall');
+        await ApiService.declineCall(
+          roomId: roomId,
+          senderId: senderId,
+          callId: callId,
+        );
       }
     } catch (e) {
-      debugPrint('⚠️ [Decline] socket sendCallBusy failed: $e');
+      debugPrint('⚠️ [Decline] 主通路失敗 ($e)，走 HTTP 備援');
+      await ApiService.declineCall(
+        roomId: roomId,
+        senderId: senderId,
+        callId: callId,
+      );
     }
-    await ApiService.declineCall(
-      roomId: roomId,
-      senderId: senderId,
-      callId: callId,
-    );
   }
 
   void _navigateToVideoCall(String roomId, String senderId, {String? callId, bool isEmergency = false}) {
