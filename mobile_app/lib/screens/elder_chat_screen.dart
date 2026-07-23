@@ -7,6 +7,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:audioplayers/audioplayers.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
+import 'news_listen_player/news_listen_player_screen.dart';
+import 'elder_screen.dart';
 
 /// 長輩端「和小嘎聊天」—— AI 聊天頁（串流 + Markdown 渲染）。
 ///
@@ -284,6 +286,55 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
     }
   }
 
+  Future<void> _handleNewsLinkClick(String newsIdStr) async {
+    try {
+      final response = await ApiService.getNews(limit: 30);
+      List<Map<String, dynamic>> newsItems = [];
+      if (response['status'] == 'success' && response['data'] != null) {
+        final items = response['data']['items'];
+        if (items is List) {
+          newsItems = items.map((e) => Map<String, dynamic>.from(e)).toList();
+        }
+      }
+
+      int targetIndex = 0;
+      final targetId = int.tryParse(newsIdStr);
+      if (targetId != null && newsItems.isNotEmpty) {
+        final idx = newsItems.indexWhere((it) => it['id'] == targetId);
+        if (idx != -1) targetIndex = idx;
+      }
+
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => NewsListenPlayerScreen(
+            newsItems: newsItems.isNotEmpty
+                ? newsItems
+                : [
+                    {'id': targetId ?? 1, 'title': '新聞播放中', 'content': '請稍候...'}
+                  ],
+            initialIndex: targetIndex,
+          ),
+        ),
+      );
+    } catch (e) {
+      debugPrint('開啟新聞播放器失敗: $e');
+    }
+  }
+
+  void _handleCallLinkClick() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ElderScreen(
+          roomId: widget.roomId ?? widget.userId.toString(),
+          deviceName: widget.userName,
+        ),
+      ),
+    );
+  }
+
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scroll.hasClients) {
@@ -543,6 +594,14 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
                       children: [
                         MarkdownBody(
                           data: msg.text.isEmpty ? ' ' : msg.text,
+                          onTapLink: (text, href, title) {
+                            if (href != null && href.startsWith('news://')) {
+                              final newsIdStr = href.replaceFirst('news://', '');
+                              _handleNewsLinkClick(newsIdStr);
+                            } else if (href != null && href.startsWith('call://')) {
+                              _handleCallLinkClick();
+                            }
+                          },
                           styleSheet: MarkdownStyleSheet(
                             p: GoogleFonts.notoSansTc(
                               fontSize: 20,
