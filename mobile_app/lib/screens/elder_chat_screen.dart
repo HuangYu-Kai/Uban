@@ -366,6 +366,18 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
 
       debugPrint('🎙️ [News Final Navigation] Target Index: $targetIndex, Title: ${newsItems.isNotEmpty ? newsItems[targetIndex]['title'] : "N/A"}');
 
+      // 記錄長輩新聞點閱偏好至 activity_log 以實現個人化記憶
+      if (newsItems.isNotEmpty) {
+        final targetNews = newsItems[targetIndex];
+        final newsTitle = targetNews['title'] ?? '點閱新聞';
+        ApiService.logActivity(
+          userId: widget.userId,
+          eventType: 'news_view',
+          content: '【新聞點閱】類別: $category | 標題: $newsTitle',
+          extraData: {'category': category, 'id': newsIdStr, 'title': newsTitle},
+        );
+      }
+
       if (!mounted) return;
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
       await Navigator.push(
