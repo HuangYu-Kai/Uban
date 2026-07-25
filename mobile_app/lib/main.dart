@@ -195,7 +195,8 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
        } catch (e) {
          debugPrint('⚠️ [BG] 寫入 pendingRingCallData 失敗: $e');
        }
-       await _showFullScreenCallkit(message.data);
+       // 長輩端一般來電統一使用原生 heads-up 樣式，避免與 CallKit 樣式隨機混用
+       await LocalCallNotification.show(message.data);
        return;
      }
 
@@ -219,7 +220,8 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         } catch (e) {
           debugPrint('⚠️ [BG] 寫入 pendingRingCallData 失敗: $e');
         }
-        await _showFullScreenCallkit(message.data);
+        // 家屬端一般來電同樣統一為原生 heads-up 樣式
+        await LocalCallNotification.show(message.data);
         return;
       }
     } catch (e, stackTrace) {
@@ -276,6 +278,7 @@ Future<void> _showFullScreenCallkit(Map<String, dynamic> data) async {
   final expiresAt = (data['expiresAt'] ?? '').toString();
   final senderRole = (data['role'] ?? '').toString();
   final isEmergency = data['type'] == 'emergency-call';
+  final useLocalBackup = (data['useLocalBackup']?.toString() == '1');
 
   final params = CallKitParams(
     id: callId,
@@ -326,12 +329,19 @@ Future<void> _showFullScreenCallkit(Map<String, dynamic> data) async {
     debugPrint('⚠️ [CallKit] showCallkitIncoming 失敗（將依賴原生備援通知）: $e');
   }
 
-  // ★ 2026-07-22 第十一輪 Fix 3：與 CallKit 平行發原生高優先級備援通知。
-  //   CallKit 在 MIUI 被殺死背景 isolate 會靜默建立失敗（無 error、無畫面），
-  //   此備援用標準 notification builder，MIUI 相容性最好，確保至少有一個來電通知。
-  //   兩者共用 callId；接聽/拒接/cancel 時一起關閉。
-  if (!isEmergency) {
-    await LocalCallNotification.show(data);
+  // ★ 2026-07-25：
+  //   僅在「長輩端背景/被殺死」場景啟用原生備援通知。
+  //   先嘗試讀 activeCalls；若 CallKit 未建立，再補發 Local 通知，避免雙重推播。
+  if (!isEmergency && useLocalBackup) {
+    bool shouldShowBackup = true;
+    try {
+      await Future.delayed(const Duration(milliseconds: 350));
+      final activeCalls = await FlutterCallkitIncoming.activeCalls();
+      shouldShowBackup = activeCalls is! List || activeCalls.isEmpty;
+    } catch (_) {}
+    if (shouldShowBackup) {
+      await LocalCallNotification.show(data);
+    }
   }
 
   // ★ 2026-07-18 修復：APP 被殺死時，主 isolate 不存在，_setupCallKitListener
@@ -1320,6 +1330,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           _fcmCallIdCache.removeWhere((key, value) => (currentTime - value) > 5000);
         }
 
+        // 前景來電一律交給 Socket 路徑處理，避免 FCM 備援與 Socket 雙重彈窗/樣式覆蓋
+        final isResumed = WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+        if (isResumed) {
+          debugPrint("ℹ️ [FCM-Backup] 前景狀態，略過 FCM UI（由 Socket 回調處理）");
+          return;
+        }
+
         debugPrint(
             "🔔 [FCM-Backup] ${isEmergency ? '緊急' : ''}Call Request from $senderId in room $roomId (ID: $callId)");
         // ★ 備援：FCM 用作備份，以防 Socket 連接不穩定時收不到來電
@@ -1477,13 +1494,19 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           backgroundColor: isEmergency ? Colors.red.shade50 : Colors.green.shade50,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           actions: [
-            TextButton(
+            ElevatedButton.icon(
               onPressed: () {
                 _activeCallDialogContext = null;
                 Navigator.pop(c);
                 sig.Signaling().sendCallBusy(senderId, callId: callId, room: roomId);
               },
-              child: const Text('拒接', style: TextStyle(color: Colors.red, fontSize: 16)),
+              icon: const Icon(Icons.call_end),
+              label: const Text('拒接', style: TextStyle(fontSize: 16)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              ),
             ),
             ElevatedButton.icon(
               onPressed: () {

@@ -300,13 +300,19 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
           backgroundColor: isEmergency ? Colors.red.shade50 : Colors.green.shade50,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           actions: [
-            TextButton(
+            ElevatedButton.icon(
               onPressed: () {
                 _signaling.sendCallBusy(senderId, callId: callId);
                 Navigator.of(dialogContext).pop();
                 _isIncomingCallDialogOpen = false;
               },
-              child: const Text('拒接', style: TextStyle(color: Colors.red, fontSize: 16)),
+              icon: const Icon(Icons.call_end),
+              label: const Text('拒接', style: TextStyle(fontSize: 16)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              ),
             ),
             ElevatedButton.icon(
               onPressed: () {

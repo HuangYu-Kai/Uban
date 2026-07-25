@@ -386,13 +386,24 @@ class Signaling {
       if (onIncomingCall != null) {
         shouldAnswer = await onIncomingCall!(_peerSocketId!, isEmergency ? 'emergency' : 'normal');
       } else {
-        // If no UI handler (e.g. background), try CallKit for Family role.
-        // But for Elder, they should auto-answer emergency.
+        // !!!!除非要更新視訊通話邏輯，否則禁止更動!!!!
+        // onIncomingCall 為空時，不能在 offer 階段再彈第二套 CallKit UI。
+        // 來電 UI 只允許由 call-request 路徑（main.dart / 各首頁）處理，
+        // 否則會出現隨機雙樣式、雙重推播與錯誤接聽路徑（只開 APP 不進通話房）。
         if (isEmergency) {
           shouldAnswer = true;
         } else {
-          // 如果沒有註冊 onIncomingCall，代表 APP 在背景 或沒有打開 Dashboard
-          shouldAnswer = await _showCallkitIncoming(data['room'] ?? 'Unknown');
+          final String incomingCallId = (data['callId'] ?? '').toString();
+          final bool isKnownAcceptedCall = incomingCallId.isNotEmpty &&
+              (incomingCallId == _currentCallId ||
+                  incomingCallId == lastProcessedCallId);
+          if (isKnownAcceptedCall) {
+            debugPrint('✅ [Signaling] onIncomingCall 為空，沿用既有接聽狀態自動應答 (callId=$incomingCallId)');
+            shouldAnswer = true;
+          } else {
+            debugPrint('⏭️ [Signaling] 略過未知 offer（未經 call-request 接聽鏈路）');
+            shouldAnswer = false;
+          }
         }
       }
 

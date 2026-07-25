@@ -216,8 +216,9 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       });
     }
 
-    // 設定通話逾時（20秒後如果仍未連線，則視為失敗）
-    Future.delayed(const Duration(seconds: 20), () {
+    // 緊急通話需等待對端被喚醒與自動接聽，逾時窗拉長避免家屬端誤判自動掛斷
+    final int connectTimeoutSeconds = widget.isEmergency ? 60 : 20;
+    Future.delayed(Duration(seconds: connectTimeoutSeconds), () {
       if (mounted && _callConnecting && !_callConnected) {
         // ★ 2026-07-18：逾時未接通時，主動通知對方取消／掛斷，避免被叫方 CallKit
         //   繼續響到 45 秒。僅撥打方（非來電接聽方）需要送取消。
