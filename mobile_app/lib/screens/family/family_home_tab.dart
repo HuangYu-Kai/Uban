@@ -723,9 +723,6 @@ class _AlertItem extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-     }
-}ignment.start,
-              children: [
                 Text(
                   data['title'] as String,
                   style: GoogleFonts.notoSansTc(
