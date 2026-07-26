@@ -371,9 +371,9 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
         final targetNews = newsItems[targetIndex];
         final newsTitle = targetNews['title'] ?? '點閱新聞';
         ApiService.logActivity(
-          userId: widget.userId,
-          eventType: 'news_view',
-          content: '【新聞點閱】類別: $category | 標題: $newsTitle',
+          widget.userId,
+          'news_view',
+          '【新聞點閱】類別: $category | 標題: $newsTitle',
           extraData: {'category': category, 'id': newsIdStr, 'title': newsTitle},
         );
       }
