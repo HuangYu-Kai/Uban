@@ -496,7 +496,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                 child: ElevatedButton.icon(
                   onPressed: () {
                     HapticFeedback.mediumImpact();
-                    Clipboard.setData(const ClipboardData(text: icebreakerTopic));
+                    Clipboard.setData(ClipboardData(text: icebreakerTopic));
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Row(
