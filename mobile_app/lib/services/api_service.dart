@@ -804,29 +804,5 @@ class ApiService {
     }
   }
 
-  static Future<Map<String, dynamic>> logActivity({
-    required int userId,
-    required String eventType,
-    required String content,
-    Map<String, dynamic>? extraData,
-  }) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse('$aiServerUrl/api/ai/log_activity'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'user_id': userId,
-              'event_type': eventType,
-              'content': content,
-              if (extraData != null) 'extra_data': extraData,
-            }),
-          )
-          .timeout(_timeout);
-      return _safeDecode(response);
-    } catch (e) {
-      debugPrint('⚠️ logActivity error: $e');
-      return {'status': 'error', 'message': e.toString()};
-    }
-  }
+
 }
