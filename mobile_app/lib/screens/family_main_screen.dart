@@ -460,7 +460,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
 
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFF0F172A),
       elevation: 0,
       scrolledUnderElevation: 0,
       titleSpacing: 16,
@@ -468,7 +468,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
           ? Text(
               'Uban 照護中樞',
               style: GoogleFonts.notoSansTc(
-                color: const Color(0xFF0F172A),
+                color: Colors.white,
                 fontWeight: FontWeight.w900,
                 fontSize: 24,
               ),
@@ -483,9 +483,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                   children: [
                     CircleAvatar(
                       radius: 20,
-                      backgroundColor: _currentElder!.gender == 'F'
-                          ? const Color(0xFFFDF2F8)
-                          : const Color(0xFFF0FDF4),
+                      backgroundColor: const Color(0xFF1E293B),
                       child: Text(
                         _currentElder!.genderEmoji,
                         style: const TextStyle(fontSize: 20),
@@ -495,7 +493,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                     Text(
                       _currentElder!.displayName,
                       style: GoogleFonts.notoSansTc(
-                        color: const Color(0xFF0F172A),
+                        color: Colors.white,
                         fontWeight: FontWeight.w900,
                         fontSize: 22,
                       ),
@@ -503,7 +501,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                     const SizedBox(width: 6),
                     const Icon(
                       Icons.keyboard_arrow_down_rounded,
-                      color: Color(0xFF64748B),
+                      color: Color(0xFF38BDF8),
                       size: 24,
                     ),
                     const SizedBox(width: 10),
@@ -518,8 +516,8 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                       style: GoogleFonts.notoSansTc(
                         fontSize: 14,
                         color: _isElderOnline
-                            ? const Color(0xFF065F46)
-                            : const Color(0xFF64748B),
+                            ? const Color(0xFF34D399)
+                            : const Color(0xFF94A3B8),
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -529,7 +527,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
             ),
       actions: [
         IconButton(
-          icon: const Icon(Icons.person_add_alt_1_rounded, color: Color(0xFF3B82F6), size: 28),
+          icon: const Icon(Icons.person_add_alt_1_rounded, color: Color(0xFF38BDF8), size: 28),
           tooltip: '配對新長輩',
           onPressed: () {
             Navigator.push(
@@ -548,7 +546,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
       bottom: PreferredSize(
         preferredSize: const Size.fromHeight(1),
         child: Container(
-          color: const Color(0xFFF1F5F9),
+          color: Colors.white.withValues(alpha: 0.08),
           height: 1,
         ),
       ),
@@ -558,6 +556,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFF0F172A),
       extendBody: true,
       appBar: _buildAppBar(),
       body: IndexedStack(
@@ -597,13 +596,13 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
       bottomNavigationBar: SafeArea(
         child: Container(
           margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          height: 82,
+          height: 76,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(32),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.1),
-                blurRadius: 20,
+                color: Colors.black.withValues(alpha: 0.4),
+                blurRadius: 24,
                 offset: const Offset(0, 10),
               ),
             ],
@@ -614,10 +613,10 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
               filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
               child: Container(
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.8),
+                  color: const Color(0xFF1E293B).withValues(alpha: 0.92),
                   borderRadius: BorderRadius.circular(32),
                   border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.5),
+                    color: const Color(0xFF38BDF8).withValues(alpha: 0.25),
                   ),
                 ),
                 child: Row(
@@ -639,7 +638,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   Widget _buildNavItem(int index, IconData icon, String label) {
     final isSelected = _selectedIndex == index;
     final color = isSelected
-        ? const Color(0xFF59B294) // Primary Teal
+        ? const Color(0xFF38BDF8) // Neon Cyan Glow
         : const Color(0xFF64748B); // Slate Gray
 
     return Expanded(

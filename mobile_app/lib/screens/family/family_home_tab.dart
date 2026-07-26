@@ -71,13 +71,14 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFF0F2027), Color(0xFF203A43), Color(0xFF2C5364)],
+          colors: [Color(0xFF1E293B), Color(0xFF0F172A)],
         ),
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.35), width: 1.5),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF203A43).withValues(alpha: 0.3),
-            blurRadius: 20,
+            color: Colors.black.withValues(alpha: 0.3),
+            blurRadius: 24,
             offset: const Offset(0, 8),
           ),
         ],
