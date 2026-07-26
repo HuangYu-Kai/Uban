@@ -6,13 +6,8 @@ import '../../models/elder.dart';
 import 'alert_center_screen.dart';
 import 'widgets/ai_suggestion_card.dart';
 
-/// 🏠 首頁 Tab
-///
-/// 集中顯示最重要的資訊：
-/// 1. 長輩在線狀態
-/// 2. AI 今日近況摘要（最主要）
-/// 3. 警示預覽
-class FamilyHomeTab extends StatelessWidget {
+/// 🏠 子女端首頁 Tab (全新極光玻璃與 AI 情緒氣象台 + 生活時光牆)
+class FamilyHomeTab extends StatefulWidget {
   final Elder? currentElder;
   final bool isElderOnline;
   final VoidCallback? onNavigateToAlerts;
@@ -25,6 +20,13 @@ class FamilyHomeTab extends StatelessWidget {
   });
 
   @override
+  State<FamilyHomeTab> createState() => _FamilyHomeTabState();
+}
+
+class _FamilyHomeTabState extends State<FamilyHomeTab> {
+  final Set<int> _likedLogs = {};
+
+  @override
   Widget build(BuildContext context) {
     return CustomScrollView(
       physics: const BouncingScrollPhysics(
@@ -35,15 +37,19 @@ class FamilyHomeTab extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
           sliver: SliverList(
             delegate: SliverChildListDelegate([
-              // 在線狀態橫幅
-              _buildStatusBanner(context),
+              // 1. 長輩頂部極光卡片與在線狀態
+              _buildElderHeaderCard(context),
               const SizedBox(height: 16),
 
-              // AI 近況摘要（最主要元件）
-              _buildAiSection(context),
+              // 2. 🤖 亮點一：AI 長輩情緒氣象台 & 破冰金句卡片
+              _buildAiMoodRadarCard(context),
               const SizedBox(height: 16),
 
-              // 警示預覽
+              // 3. 📸 亮點二：長輩生活動態時光牆 (Elder Life Feed)
+              _buildElderLifeFeedSection(context),
+              const SizedBox(height: 16),
+
+              // 4. 警示預覽
               _buildAlertPreview(context),
             ]),
           ),
@@ -52,132 +58,477 @@ class FamilyHomeTab extends StatelessWidget {
     );
   }
 
-  // ─── 在線狀態橫幅 ───
+  // ─── 1. 長輩頂部極光卡片與在線狀態 ───
 
-  Widget _buildStatusBanner(BuildContext context) {
-    final online = isElderOnline;
+  Widget _buildElderHeaderCard(BuildContext context) {
+    final online = widget.isElderOnline;
+    final name = widget.currentElder?.displayName ?? '長輩';
+    final location = widget.currentElder?.location ?? '台北市';
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      decoration: BoxDecoration(
-        color: online
-            ? const Color(0xFFECFDF5)
-            : const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: online
-              ? const Color(0xFF6EE7B7)
-              : const Color(0xFFE2E8F0),
-        ),
-      ),
-      child: Row(
-        children: [
-          // 脈衝燈
-          _PulseDot(color: online ? const Color(0xFF10B981) : const Color(0xFF94A3B8)),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  online ? '長輩裝置在線' : '長輩裝置離線',
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: online
-                        ? const Color(0xFF065F46)
-                        : const Color(0xFF475569),
-                  ),
-                ),
-                Text(
-                  online
-                      ? '可即時通話、傳送訊息'
-                      : '訊息將在長輩上線後送達',
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 14,
-                    color: online
-                        ? const Color(0xFF047857)
-                        : const Color(0xFF94A3B8),
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          // 最後更新時間
-          Text(
-            '10:30 更新',
-            style: GoogleFonts.inter(
-              fontSize: 13,
-              color: const Color(0xFFCBD5E1),
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
-      ),
-    ).animate().fadeIn(duration: 300.ms);
-  }
-
-  // ─── AI 近況摘要 ───
-
-  Widget _buildAiSection(BuildContext context) {
-    if (currentElder == null) {
-      return _buildNoElderPlaceholder(context);
-    }
-    return AiSuggestionCard(
-      elderName: currentElder!.displayName,
-      elderId: currentElder!.id,
-    ).animate().fadeIn(delay: 100.ms, duration: 400.ms).slideY(begin: 0.06);
-  }
-
-  Widget _buildNoElderPlaceholder(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 24),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFF3B82F6), Color(0xFF8B5CF6)],
+          colors: [Color(0xFF0F2027), Color(0xFF203A43), Color(0xFF2C5364)],
         ),
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF3B82F6).withValues(alpha: 0.35),
-            blurRadius: 24,
-            offset: const Offset(0, 12),
+            color: const Color(0xFF203A43).withValues(alpha: 0.3),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
       child: Column(
         children: [
-          const Icon(Icons.family_restroom_rounded,
-              color: Colors.white, size: 56),
-          const SizedBox(height: 16),
-          Text(
-            '尚未選擇長輩',
-            style: GoogleFonts.notoSansTc(
-              color: Colors.white,
-              fontSize: 20,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '請使用頂部選擇器選擇或配對長輩\n才能查看照護資訊',
-            style: GoogleFonts.notoSansTc(
-              color: Colors.white.withValues(alpha: 0.85),
-              fontSize: 14,
-              height: 1.6,
-            ),
-            textAlign: TextAlign.center,
+          Row(
+            children: [
+              // 大頭照與在線 Pulse
+              Stack(
+                children: [
+                  Container(
+                    width: 58,
+                    height: 58,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.8), width: 2),
+                      image: const DecorationImage(
+                        image: AssetImage('assets/images/user_avatar.png'),
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    right: 2,
+                    bottom: 2,
+                    child: _PulseDot(color: online ? const Color(0xFF10B981) : const Color(0xFF94A3B8)),
+                  ),
+                ],
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          name,
+                          style: GoogleFonts.notoSansTc(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: online ? const Color(0xFF10B981).withValues(alpha: 0.25) : Colors.white12,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: online ? const Color(0xFF34D399) : Colors.white24,
+                            ),
+                          ),
+                          child: Text(
+                            online ? '在線通話機' : '離線',
+                            style: GoogleFonts.notoSansTc(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: online ? const Color(0xFF6EE7B7) : const Color(0xFFCBD5E1),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        const Icon(Icons.location_on_rounded, size: 14, color: Color(0xFF94A3B8)),
+                        const SizedBox(width: 4),
+                        Text(
+                          '$location • 今日累積 3,850 步',
+                          style: GoogleFonts.notoSansTc(
+                            fontSize: 13,
+                            color: const Color(0xFFCBD5E1),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),
-    ).animate().fadeIn(delay: 100.ms);
+    ).animate().fadeIn(duration: 400.ms).slideY(begin: -0.05);
   }
 
-  // ─── 警示預覽 ───
+  // ─── 2. 🤖 AI 長輩情緒氣象台 & 破冰金句卡片 ───
 
-  // Mock 警示資料（之後從 PredictiveAlertService 取）
+  Widget _buildAiMoodRadarCard(BuildContext context) {
+    final name = widget.currentElder?.displayName ?? '長輩';
+    const icebreakerTopic = '阿公今天收聽了 2 則【經典賽棒球】新聞，試著撥通電話聊聊中華隊戰況吧！';
+
+    return Container(
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            const Color(0xFFECFDF5),
+            Colors.white,
+            const Color(0xFFEFF6FF),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFA7F3D0).withValues(alpha: 0.8)),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF10B981).withValues(alpha: 0.08),
+            blurRadius: 18,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 頂部標題與情緒氣象標籤
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.psychology_rounded, color: Color(0xFF059669), size: 24),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    'AI 情緒氣象台',
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      color: const Color(0xFF064E3B),
+                    ),
+                  ),
+                ],
+              ),
+              // 情緒指標 Badge
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF34D399), Color(0xFF059669)],
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  children: [
+                    const Text('🍵 ', style: TextStyle(fontSize: 12)),
+                    Text(
+                      '溫馨平穩 (88%)',
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 14),
+
+          // 情緒分析簡述
+          Text(
+            '$name 今天情緒非常穩定愉快，下午曾至大安森林公園散步，且對體育與賽事新聞展現極高興趣！',
+            style: GoogleFonts.notoSansTc(
+              fontSize: 14,
+              height: 1.5,
+              fontWeight: FontWeight.w500,
+              color: const Color(0xFF1E293B),
+            ),
+          ),
+
+          const SizedBox(height: 16),
+          const Divider(height: 1, color: Color(0xFFE2E8F0)),
+          const SizedBox(height: 14),
+
+          // 💡 破冰話題建議區塊
+          Row(
+            children: [
+              const Icon(Icons.lightbulb_rounded, color: Color(0xFFF59E0B), size: 20),
+              const SizedBox(width: 6),
+              Text(
+                '今日推薦關懷破冰金句：',
+                style: GoogleFonts.notoSansTc(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFF92400E),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 8),
+
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFFBEB),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFFDE68A)),
+            ),
+            child: Text(
+              '「$icebreakerTopic」',
+              style: GoogleFonts.notoSansTc(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFF78350F),
+                height: 1.4,
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          // 操作按鈕列
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    HapticFeedback.mediumImpact();
+                    Clipboard.setData(const ClipboardData(text: icebreakerTopic));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Row(
+                          children: [
+                            const Icon(Icons.check_circle_rounded, color: Colors.white),
+                            const SizedBox(width: 10),
+                            Text('已複製破冰金句！快傳訊息給長輩吧～', style: GoogleFonts.notoSansTc()),
+                          ],
+                        ),
+                        backgroundColor: const Color(0xFF059669),
+                        behavior: SnackBarBehavior.floating,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.copy_rounded, size: 16),
+                  label: Text('複製金句', style: GoogleFonts.notoSansTc(fontWeight: FontWeight.w700)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: const Color(0xFF047857),
+                    elevation: 0,
+                    side: const BorderSide(color: Color(0xFFA7F3D0)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    ).animate().fadeIn(delay: 100.ms, duration: 400.ms).slideY(begin: 0.05);
+  }
+
+  // ─── 3. 📸 長輩生活動態時光牆 (Elder Life Feed) ───
+
+  Widget _buildElderLifeFeedSection(BuildContext context) {
+    final name = widget.currentElder?.displayName ?? '長輩';
+
+    final List<Map<String, dynamic>> feedItems = [
+      {
+        'id': 1,
+        'time': '16:30',
+        'type': 'news',
+        'title': '新聞收聽動態',
+        'desc': '點閱收聽體育新聞：《NBA熱火誤發加盟預告 詹姆斯回歸傳聞升溫》',
+        'icon': Icons.newspaper_rounded,
+        'color': const Color(0xFF3B82F6),
+        'bg': const Color(0xFFEFF6FF),
+      },
+      {
+        'id': 2,
+        'time': '14:00',
+        'type': 'walk',
+        'title': '日常運動散步',
+        'desc': '在大安森林公園散步完成，今日步數達成 3,850 步 🏃‍♂️',
+        'icon': Icons.directions_walk_rounded,
+        'color': const Color(0xFF10B981),
+        'bg': const Color(0xFFECFDF5),
+      },
+      {
+        'id': 3,
+        'time': '08:30',
+        'type': 'medication',
+        'title': '晨間用藥確認',
+        'desc': '已按時服用【降血壓藥】與綜合維他命 ✅',
+        'icon': Icons.medication_rounded,
+        'color': const Color(0xFF8B5CF6),
+        'bg': const Color(0xFFF5F3FF),
+      },
+    ];
+
+    return Container(
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 18,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEFF6FF),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.dynamic_feed_rounded, color: Color(0xFF2563EB), size: 24),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    '$name 今日動態時光牆',
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      color: const Color(0xFF0F172A),
+                    ),
+                  ),
+                ],
+              ),
+              Text(
+                '即時連線',
+                style: GoogleFonts.notoSansTc(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF94A3B8),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
+          ...feedItems.map((item) {
+            final id = item['id'] as int;
+            final isLiked = _likedLogs.contains(id);
+
+            return Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: item['bg'] as Color,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: (item['color'] as Color).withValues(alpha: 0.2)),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: (item['color'] as Color).withValues(alpha: 0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(item['icon'] as IconData, color: item['color'] as Color, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              item['title'] as String,
+                              style: GoogleFonts.notoSansTc(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                                color: const Color(0xFF0F172A),
+                              ),
+                            ),
+                            const Spacer(),
+                            Text(
+                              item['time'] as String,
+                              style: GoogleFonts.inter(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: const Color(0xFF64748B),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          item['desc'] as String,
+                          style: GoogleFonts.notoSansTc(
+                            fontSize: 13,
+                            height: 1.35,
+                            color: const Color(0xFF475569),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // 愛心點讚互動按鈕
+                  IconButton(
+                    onPressed: () {
+                      HapticFeedback.lightImpact();
+                      setState(() {
+                        if (isLiked) {
+                          _likedLogs.remove(id);
+                        } else {
+                          _likedLogs.add(id);
+                        }
+                      });
+                    },
+                    icon: Icon(
+                      isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                      color: isLiked ? const Color(0xFFEF4444) : const Color(0xFF94A3B8),
+                      size: 22,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    ).animate().fadeIn(delay: 200.ms, duration: 400.ms);
+  }
+
+  // ─── 4. 警示預覽 ───
+
   static const List<Map<String, dynamic>> _mockAlerts = [
     {
       'title': '活動量偏低',
@@ -210,7 +561,6 @@ class FamilyHomeTab extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 標題列
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -239,8 +589,7 @@ class FamilyHomeTab extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 3),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
                       color: const Color(0xFFEF4444),
                       borderRadius: BorderRadius.circular(10),
@@ -259,15 +608,15 @@ class FamilyHomeTab extends StatelessWidget {
               GestureDetector(
                 onTap: () {
                   HapticFeedback.lightImpact();
-                  if (onNavigateToAlerts != null) {
-                    onNavigateToAlerts!();
+                  if (widget.onNavigateToAlerts != null) {
+                    widget.onNavigateToAlerts!();
                   } else if (context.mounted) {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (c) => AlertCenterScreen(
-                          elderName: currentElder?.displayName ?? '長輩',
-                          elderId: currentElder?.id,
+                          elderName: widget.currentElder?.displayName ?? '長輩',
+                          elderId: widget.currentElder?.id,
                         ),
                       ),
                     );
@@ -287,14 +636,122 @@ class FamilyHomeTab extends StatelessWidget {
 
           const SizedBox(height: 14),
 
-          // 警示列表
           ..._mockAlerts.asMap().entries.map((e) => Padding(
                 padding: EdgeInsets.only(bottom: e.key < _mockAlerts.length - 1 ? 10 : 0),
                 child: _AlertItem(data: e.value, index: e.key),
               )),
         ],
       ),
-    ).animate().fadeIn(delay: 200.ms, duration: 400.ms);
+    ).animate().fadeIn(delay: 300.ms, duration: 400.ms);
+  }
+}
+
+class _PulseDot extends StatelessWidget {
+  final Color color;
+  const _PulseDot({required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 12,
+      height: 12,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: color,
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.4),
+            blurRadius: 6,
+            spreadRadius: 1,
+          ),
+        ],
+      ),
+    )
+        .animate(onPlay: (c) => c.repeat())
+        .fade(duration: 1200.ms, begin: 1.0, end: 0.3)
+        .then()
+        .fade(duration: 1200.ms, begin: 0.3, end: 1.0);
+  }
+}
+
+class _AlertItem extends StatelessWidget {
+  final Map<String, dynamic> data;
+  final int index;
+  const _AlertItem({required this.data, required this.index});
+
+  @override
+  Widget build(BuildContext context) {
+    Color levelColor;
+    Color bgColor;
+    switch (data['level'] as String) {
+      case 'high':
+        levelColor = const Color(0xFFEF4444);
+        bgColor = const Color(0xFFFEF2F2);
+        break;
+      case 'medium':
+        levelColor = const Color(0xFFF59E0B);
+        bgColor = const Color(0xFFFFFBEB);
+        break;
+      default:
+        levelColor = const Color(0xFF3B82F6);
+        bgColor = const Color(0xFFEFF6FF);
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: levelColor.withValues(alpha: 0.2)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: levelColor.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              data['icon'] as IconData,
+              color: levelColor,
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  data['title'] as String,
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF0F172A),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  data['desc'] as String,
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 14,
+                    color: const Color(0xFF64748B),
+                    fontWeight: FontWeight.w500,
+                    height: 1.3,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Icon(
+            Icons.chevron_right_rounded,
+            color: Color(0xFFCBD5E1),
+            size: 24,
+          ),
+        ],
+      ),
+    ).animate(delay: (index * 80).ms).fadeIn().slideX(begin: 0.05);
   }
 }
 

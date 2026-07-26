@@ -445,6 +445,10 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
               if (widget.currentElder != null) ...[
                 _buildElderSummaryCard(),
                 const SizedBox(height: 20),
+
+                // 📖 亮點三：長輩人生故事膠囊 (Memoirs & Family Legacy)
+                _buildMemoirsCard(),
+                const SizedBox(height: 20),
                 
                 // 3. AI 輔助資料概覽 (長輩喜好、習慣、健康注意事項)
                 _buildAiHelperCard(),
@@ -543,6 +547,159 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
         ),
       ],
     );
+  }
+
+  // ─── 📖 亮點三：長輩人生故事膠囊 (Memoirs & Family Legacy) ───
+
+  Widget _buildMemoirsCard() {
+    final name = widget.currentElder?.displayName ?? '長輩';
+
+    final List<Map<String, String>> stories = [
+      {
+        'title': '大稻埕布莊歲月 (1975年)',
+        'tag': '經典記憶',
+        'preview': '年輕時在迪化街經營布料批發，最驕傲的是堅持選用頂級棉麻，結交了許多一輩子的摯友...',
+      },
+      {
+        'title': '給孫子的一封信',
+        'tag': '溫馨寄語',
+        'preview': '希望孩子們快快長大，阿公一直都記得你們第一次學會騎腳踏車時，全家在公園歡笑的模樣...',
+      },
+      {
+        'title': '最懷念的柴燒紅豆湯',
+        'tag': '美食記憶',
+        'preview': '媽媽當年手作的柴燒紅豆湯，慢火熬煮出綿密甜味，那是童年記憶中最溫暖的冬日滋味...',
+      },
+    ];
+
+    return Container(
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFFFF7ED), Colors.white, Color(0xFFFEF3C7)],
+        ),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFFDE68A)),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFF59E0B).withValues(alpha: 0.08),
+            blurRadius: 18,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.auto_stories_rounded, color: Color(0xFFD97706), size: 24),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    '📖 $name的人生故事膠囊',
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      color: const Color(0xFF78350F),
+                    ),
+                  ),
+                ],
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFD97706),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  '珍藏集',
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 6),
+          Text(
+            '由 AI 小嘎口述對話整理紀錄，保留家族珍貴記憶與生命智慧',
+            style: GoogleFonts.notoSansTc(
+              fontSize: 13,
+              color: const Color(0xFFB45309),
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          ...stories.map((st) => Container(
+            margin: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFFDE68A)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      st['title']!,
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: const Color(0xFF451A03),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFEF3C7),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        st['tag']!,
+                        style: GoogleFonts.notoSansTc(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: const Color(0xFFB45309),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  st['preview']!,
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 13,
+                    color: const Color(0xFF78350F),
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          )),
+        ],
+      ),
+    ).animate().fadeIn(delay: 250.ms, duration: 400.ms);
   }
 
   Widget _buildCaregiverCard() {
