@@ -69,33 +69,38 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
 
   @override
   Widget build(BuildContext context) {
-    return CustomScrollView(
-      physics: const BouncingScrollPhysics(
-        parent: AlwaysScrollableScrollPhysics(),
-      ),
-      slivers: [
-        SliverPadding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
-          sliver: SliverList(
-            delegate: SliverChildListDelegate([
-              // 1. 長輩頂部極光卡片與在線狀態
-              _buildElderHeaderCard(context),
-              const SizedBox(height: 16),
-
-              // 2. 🤖 亮點一：AI 長輩情緒氣象台 & 破冰金句卡片
-              _buildAiMoodRadarCard(context),
-              const SizedBox(height: 16),
-
-              // 3. 📸 亮點二：長輩生活動態時光牆 (Elder Life Feed)
-              _buildElderLifeFeedSection(context),
-              const SizedBox(height: 16),
-
-              // 4. 警示預覽
-              _buildAlertPreview(context),
-            ]),
-          ),
+    return RefreshIndicator(
+      color: const Color(0xFF38BDF8),
+      backgroundColor: const Color(0xFF1E293B),
+      onRefresh: _loadDynamicData,
+      child: CustomScrollView(
+        physics: const BouncingScrollPhysics(
+          parent: AlwaysScrollableScrollPhysics(),
         ),
-      ],
+        slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
+            sliver: SliverList(
+              delegate: SliverChildListDelegate([
+                // 1. 長輩頂部極光卡片與在線狀態
+                _buildElderHeaderCard(context),
+                const SizedBox(height: 16),
+
+                // 2. 🤖 亮點一：AI 長輩情緒氣象台 & 破冰金句卡片
+                _buildAiMoodRadarCard(context),
+                const SizedBox(height: 16),
+
+                // 3. 📸 亮點二：長輩生活動態時光牆 (Elder Life Feed)
+                _buildElderLifeFeedSection(context),
+                const SizedBox(height: 16),
+
+                // 4. 警示預覽
+                _buildAlertPreview(context),
+              ]),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
