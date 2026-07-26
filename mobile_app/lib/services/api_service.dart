@@ -804,5 +804,35 @@ class ApiService {
     }
   }
 
+  static Future<Map<String, dynamic>?> getElderMoodInsight(String elderId) async {
+    try {
+      final response = await http
+          .get(Uri.parse('$baseUrl/ai/elder_mood_insight/$elderId'))
+          .timeout(_timeout);
+      final data = _safeDecode(response);
+      if (data['status'] == 'success') {
+        return data['data'];
+      }
+      return null;
+    } catch (e) {
+      debugPrint('⚠️ getElderMoodInsight error: $e');
+      return null;
+    }
+  }
 
+  static Future<List<dynamic>> getElderActivityLogs(String elderId, {int limit = 10}) async {
+    try {
+      final response = await http
+          .get(Uri.parse('$baseUrl/activity/elder/$elderId?limit=$limit'))
+          .timeout(_timeout);
+      final data = _safeDecode(response);
+      if (data['status'] == 'success' && data['data'] is List) {
+        return data['data'];
+      }
+      return [];
+    } catch (e) {
+      debugPrint('⚠️ getElderActivityLogs error: $e');
+      return [];
+    }
+  }
 }

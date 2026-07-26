@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../models/elder.dart';
+import '../../services/api_service.dart';
 import 'alert_center_screen.dart';
 import 'widgets/ai_suggestion_card.dart';
 
@@ -26,6 +27,45 @@ class FamilyHomeTab extends StatefulWidget {
 class _FamilyHomeTabState extends State<FamilyHomeTab> {
   final Set<int> _likedLogs = {};
   bool _isFeedExpanded = false;
+  Map<String, dynamic>? _moodInsightData;
+  List<dynamic> _realLogs = [];
+  bool _isLoadingInsight = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDynamicData();
+  }
+
+  @override
+  void didUpdateWidget(FamilyHomeTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.currentElder?.id != oldWidget.currentElder?.id) {
+      _loadDynamicData();
+    }
+  }
+
+  Future<void> _loadDynamicData() async {
+    if (widget.currentElder == null) return;
+    final elderIdStr = widget.currentElder!.elderId ?? widget.currentElder!.id.toString();
+
+    setState(() => _isLoadingInsight = true);
+    try {
+      final insight = await ApiService.getElderMoodInsight(elderIdStr);
+      final logs = await ApiService.getElderActivityLogs(elderIdStr, limit: 10);
+      if (mounted) {
+        setState(() {
+          _moodInsightData = insight;
+          _realLogs = logs;
+          _isLoadingInsight = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingInsight = false);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -174,7 +214,11 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
 
   Widget _buildAiMoodRadarCard(BuildContext context) {
     final name = widget.currentElder?.displayName ?? '長輩';
-    const icebreakerTopic = '阿公！我今天看到中華隊經典賽的新聞，感覺超精彩的！您最近也有在關注戰況嗎？';
+    final moodTitle = _moodInsightData?['mood_title'] ?? '溫馨平穩';
+    final moodScore = _moodInsightData?['mood_score'] ?? 88;
+    final moodIcon = _moodInsightData?['mood_icon'] ?? '🍵';
+    final summaryText = _moodInsightData?['summary'] ?? '$name 今天情緒非常穩定愉快，下午曾至大安森林公園散步，且對體育與賽事新聞展現極高興趣！';
+    final icebreakerTopic = _moodInsightData?['icebreaker_topic'] ?? '$name！我今天看到經典賽新聞，感覺超精彩的！您最近也有在關注戰況嗎？';
 
     return Container(
       padding: const EdgeInsets.all(22),
@@ -264,9 +308,9 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                 ),
                 child: Row(
                   children: [
-                    const Text('🍵 ', style: TextStyle(fontSize: 13)),
+                    Text('$moodIcon ', style: const TextStyle(fontSize: 13)),
                     Text(
-                      '溫馨平穩 (88%)',
+                      '$moodTitle ($moodScore%)',
                       style: GoogleFonts.notoSansTc(
                         fontSize: 13,
                         fontWeight: FontWeight.w800,
@@ -283,7 +327,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
 
           // 情緒分析描述
           Text(
-            '$name 今天情緒非常穩定愉快，下午曾至大安森林公園散步，且對體育與賽事新聞展現極高興趣！',
+            summaryText,
             style: GoogleFonts.notoSansTc(
               fontSize: 15,
               height: 1.6,
@@ -491,68 +535,119 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
   Widget _buildElderLifeFeedSection(BuildContext context) {
     final name = widget.currentElder?.displayName ?? '長輩';
 
-    final List<Map<String, dynamic>> allFeedItems = [
-      {
-        'id': 1,
-        'time': '16:30',
-        'badge': 'NEWS',
-        'title': '新聞點閱收聽',
-        'desc': '點閱收聽體育新聞：《NBA熱火誤發加盟預告 詹姆斯回歸傳聞升溫》',
-        'icon': Icons.newspaper_rounded,
-        'color': const Color(0xFF38BDF8),
-        'glow': const Color(0xFF0284C7),
-      },
-      {
-        'id': 2,
-        'time': '14:00',
-        'badge': 'WALK',
-        'title': '日常運動散步',
-        'desc': '在大安森林公園散步完成，今日累積 3,850 步 🏃‍♂️',
-        'icon': Icons.directions_walk_rounded,
-        'color': const Color(0xFF34D399),
-        'glow': const Color(0xFF059669),
-      },
-      {
-        'id': 3,
-        'time': '11:45',
-        'badge': 'AI CHAT',
-        'title': 'AI 小嘎回憶對話',
-        'desc': '長輩分享了「大稻埕布莊歲月」的童年往事 📖 (已儲存至故事膠囊)',
-        'icon': Icons.auto_stories_rounded,
-        'color': const Color(0xFFF59E0B),
-        'glow': const Color(0xFFD97706),
-      },
-      {
-        'id': 4,
-        'time': '10:15',
-        'badge': 'CARE',
-        'title': '收到子女關懷',
-        'desc': '收到女兒傳送的語音卡片：「爸爸週末要不要一起吃火鍋」💌',
-        'icon': Icons.favorite_rounded,
-        'color': const Color(0xFFEC4899),
-        'glow': const Color(0xFFBE185D),
-      },
-      {
-        'id': 5,
-        'time': '08:30',
-        'badge': 'MEDICINE',
-        'title': '晨間用藥確認',
-        'desc': '已按時服用【降血壓藥】與綜合維他命 ✅',
-        'icon': Icons.medication_rounded,
-        'color': const Color(0xFFA78BFA),
-        'glow': const Color(0xFF7C3AED),
-      },
-      {
-        'id': 6,
-        'time': '07:00',
-        'badge': 'ROUTINE',
-        'title': '晨間點睛打卡',
-        'desc': '長輩開啟 Uban 完成晨間打卡，精神狀態極佳 🌟',
-        'icon': Icons.wb_sunny_rounded,
-        'color': const Color(0xFFFBBF24),
-        'glow': const Color(0xFFD97706),
-      },
-    ];
+    List<Map<String, dynamic>> allFeedItems = [];
+
+    if (_realLogs.isNotEmpty) {
+      allFeedItems = _realLogs.map<Map<String, dynamic>>((log) {
+        final eventType = log['event_type']?.toString() ?? 'activity';
+        final content = log['content']?.toString() ?? '生活紀錄';
+        final timestampStr = log['timestamp']?.toString() ?? '';
+        final timeStr = timestampStr.length >= 16 ? timestampStr.substring(11, 16) : '今日';
+
+        IconData icon = Icons.check_circle_rounded;
+        Color color = const Color(0xFF38BDF8);
+        Color glow = const Color(0xFF0284C7);
+        String badge = 'LOG';
+
+        if (eventType == 'news_view' || content.contains('新聞')) {
+          icon = Icons.newspaper_rounded;
+          color = const Color(0xFF38BDF8);
+          glow = const Color(0xFF0284C7);
+          badge = 'NEWS';
+        } else if (content.contains('散步') || content.contains('步數')) {
+          icon = Icons.directions_walk_rounded;
+          color = const Color(0xFF34D399);
+          glow = const Color(0xFF059669);
+          badge = 'WALK';
+        } else if (content.contains('對話') || content.contains('聊天') || content.contains('小嘎')) {
+          icon = Icons.auto_stories_rounded;
+          color = const Color(0xFFF59E0B);
+          glow = const Color(0xFFD97706);
+          badge = 'AI CHAT';
+        } else if (content.contains('藥')) {
+          icon = Icons.medication_rounded;
+          color = const Color(0xFFA78BFA);
+          glow = const Color(0xFF7C3AED);
+          badge = 'MEDICINE';
+        }
+
+        return {
+          'id': log['log_id'] ?? log.hashCode,
+          'time': timeStr,
+          'badge': badge,
+          'title': eventType == 'news_view' ? '新聞點閱收聽' : '生活足跡紀錄',
+          'desc': content,
+          'icon': icon,
+          'color': color,
+          'glow': glow,
+        };
+      }).toList();
+    }
+
+    if (allFeedItems.isEmpty) {
+      allFeedItems = [
+        {
+          'id': 1,
+          'time': '16:30',
+          'badge': 'NEWS',
+          'title': '新聞點閱收聽',
+          'desc': '點閱收聽體育新聞：《NBA熱火誤發加盟預告 詹姆斯回歸傳聞升溫》',
+          'icon': Icons.newspaper_rounded,
+          'color': const Color(0xFF38BDF8),
+          'glow': const Color(0xFF0284C7),
+        },
+        {
+          'id': 2,
+          'time': '14:00',
+          'badge': 'WALK',
+          'title': '日常運動散步',
+          'desc': '在大安森林公園散步完成，今日累積 3,850 步 🏃‍♂️',
+          'icon': Icons.directions_walk_rounded,
+          'color': const Color(0xFF34D399),
+          'glow': const Color(0xFF059669),
+        },
+        {
+          'id': 3,
+          'time': '11:45',
+          'badge': 'AI CHAT',
+          'title': 'AI 小嘎回憶對話',
+          'desc': '長輩分享了「大稻埕布莊歲月」的童年往事 📖 (已儲存至故事膠囊)',
+          'icon': Icons.auto_stories_rounded,
+          'color': const Color(0xFFF59E0B),
+          'glow': const Color(0xFFD97706),
+        },
+        {
+          'id': 4,
+          'time': '10:15',
+          'badge': 'CARE',
+          'title': '收到子女關懷',
+          'desc': '收到女兒傳送的語音卡片：「爸爸週末要不要一起吃火鍋」💌',
+          'icon': Icons.favorite_rounded,
+          'color': const Color(0xFFEC4899),
+          'glow': const Color(0xFFBE185D),
+        },
+        {
+          'id': 5,
+          'time': '08:30',
+          'badge': 'MEDICINE',
+          'title': '晨間用藥確認',
+          'desc': '已按時服用【降血壓藥】與綜合維他命 ✅',
+          'icon': Icons.medication_rounded,
+          'color': const Color(0xFFA78BFA),
+          'glow': const Color(0xFF7C3AED),
+        },
+        {
+          'id': 6,
+          'time': '07:00',
+          'badge': 'ROUTINE',
+          'title': '晨間點睛打卡',
+          'desc': '長輩開啟 Uban 完成晨間打卡，精神狀態極佳 🌟',
+          'icon': Icons.wb_sunny_rounded,
+          'color': const Color(0xFFFBBF24),
+          'glow': const Color(0xFFD97706),
+        },
+      ];
+    }
 
     final displayedItems = _isFeedExpanded ? allFeedItems : allFeedItems.take(3).toList();
 
