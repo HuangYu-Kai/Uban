@@ -25,6 +25,7 @@ class FamilyHomeTab extends StatefulWidget {
 
 class _FamilyHomeTabState extends State<FamilyHomeTab> {
   final Set<int> _likedLogs = {};
+  bool _isFeedExpanded = false;
 
   @override
   Widget build(BuildContext context) {
@@ -169,13 +170,11 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     ).animate().fadeIn(duration: 400.ms).slideY(begin: -0.05);
   }
 
-  // ─── 2. 🤖 AI 長輩情緒氣象台 & 破冰金句卡片 ───
-
-  // ─── 2. 🤖 AI 長輩情緒氣象台 & 破冰金句卡片 (高級極光霓虹擬態) ───
+  // ─── 2. 🤖 AI 長輩情緒氣象台 & 破冰話題 (方案 B：第一人稱問候 + 快捷動作) ───
 
   Widget _buildAiMoodRadarCard(BuildContext context) {
     final name = widget.currentElder?.displayName ?? '長輩';
-    const icebreakerTopic = '阿公今天收聽了 2 則【經典賽棒球】新聞，試著撥通電話聊聊中華隊戰況吧！';
+    const icebreakerTopic = '阿公！我今天看到中華隊經典賽的新聞，感覺超精彩的！您最近也有在關注戰況嗎？';
 
     return Container(
       padding: const EdgeInsets.all(22),
@@ -303,7 +302,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
               const Icon(Icons.auto_awesome_rounded, color: Color(0xFFF59E0B), size: 20),
               const SizedBox(width: 8),
               Text(
-                '今日推薦關懷破冰金句：',
+                '今日推薦關懷破冰話題：',
                 style: GoogleFonts.notoSansTc(
                   fontSize: 15,
                   fontWeight: FontWeight.w800,
@@ -315,7 +314,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
 
           const SizedBox(height: 10),
 
-          // 奢華亮金發光金句卡
+          // 奢華亮金發光金句卡（第一人稱溫情問候）
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -366,9 +365,84 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
 
           const SizedBox(height: 16),
 
-          // 按鈕操作區：雙膠囊按鈕
+          // 方案 B：直接動作按鈕 (Action Buttons)
           Row(
             children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    HapticFeedback.mediumImpact();
+                    showDialog(
+                      context: context,
+                      builder: (c) => AlertDialog(
+                        backgroundColor: const Color(0xFF1E293B),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                        title: Text(
+                          '📞 撥打關懷電話給$name',
+                          style: GoogleFonts.notoSansTc(color: Colors.white, fontWeight: FontWeight.w800),
+                        ),
+                        content: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '💡 推薦聊天開場白：',
+                              style: GoogleFonts.notoSansTc(color: const Color(0xFFFCD34D), fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 6),
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF0F172A),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                icebreakerTopic,
+                                style: GoogleFonts.notoSansTc(color: const Color(0xFFFEF3C7), height: 1.4),
+                              ),
+                            ),
+                          ],
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(c),
+                            child: Text('取消', style: GoogleFonts.notoSansTc(color: const Color(0xFF94A3B8))),
+                          ),
+                          ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF10B981)),
+                            onPressed: () {
+                              Navigator.pop(c);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('正在發起即時關懷連線...', style: GoogleFonts.notoSansTc()),
+                                  backgroundColor: const Color(0xFF10B981),
+                                ),
+                              );
+                            },
+                            icon: const Icon(Icons.phone_rounded, color: Colors.white, size: 18),
+                            label: Text('開始撥號', style: GoogleFonts.notoSansTc(color: Colors.white, fontWeight: FontWeight.bold)),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.phone_in_talk_rounded, size: 18, color: Colors.white),
+                  label: Text(
+                    '撥打電話聊聊',
+                    style: GoogleFonts.notoSansTc(
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF0284C7),
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
               Expanded(
                 child: ElevatedButton.icon(
                   onPressed: () {
@@ -378,20 +452,20 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                       SnackBar(
                         content: Row(
                           children: [
-                            const Icon(Icons.check_circle_rounded, color: Colors.white),
+                            const Icon(Icons.send_rounded, color: Colors.white),
                             const SizedBox(width: 10),
-                            Text('已複製破冰金句！快傳訊息給長輩吧～', style: GoogleFonts.notoSansTc()),
+                            Expanded(child: Text('已複製話題並準備帶入關懷卡！', style: GoogleFonts.notoSansTc())),
                           ],
                         ),
-                        backgroundColor: const Color(0xFF059669),
+                        backgroundColor: const Color(0xFF8B5CF6),
                         behavior: SnackBarBehavior.floating,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
                     );
                   },
-                  icon: const Icon(Icons.copy_rounded, size: 16, color: Color(0xFF78350F)),
+                  icon: const Icon(Icons.mark_email_unread_rounded, size: 18, color: Color(0xFF78350F)),
                   label: Text(
-                    '複製金句',
+                    '傳送關懷卡',
                     style: GoogleFonts.notoSansTc(
                       fontWeight: FontWeight.w800,
                       color: const Color(0xFF78350F),
@@ -412,17 +486,17 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     ).animate().fadeIn(delay: 100.ms, duration: 400.ms).slideY(begin: 0.05);
   }
 
-  // ─── 3. 📸 長輩生活動態時光牆 (發光時間軸與極光卡片) ───
+  // ─── 3. 📸 長輩生活動態時光牆 (動態擴充與折疊/展開機制) ───
 
   Widget _buildElderLifeFeedSection(BuildContext context) {
     final name = widget.currentElder?.displayName ?? '長輩';
 
-    final List<Map<String, dynamic>> feedItems = [
+    final List<Map<String, dynamic>> allFeedItems = [
       {
         'id': 1,
         'time': '16:30',
         'badge': 'NEWS',
-        'title': '新聞收聽動態',
+        'title': '新聞點閱收聽',
         'desc': '點閱收聽體育新聞：《NBA熱火誤發加盟預告 詹姆斯回歸傳聞升溫》',
         'icon': Icons.newspaper_rounded,
         'color': const Color(0xFF38BDF8),
@@ -431,15 +505,35 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
       {
         'id': 2,
         'time': '14:00',
-        'badge': 'HEALTH',
+        'badge': 'WALK',
         'title': '日常運動散步',
-        'desc': '在大安森林公園散步完成，今日步數達成 3,850 步 🏃‍♂️',
+        'desc': '在大安森林公園散步完成，今日累積 3,850 步 🏃‍♂️',
         'icon': Icons.directions_walk_rounded,
         'color': const Color(0xFF34D399),
         'glow': const Color(0xFF059669),
       },
       {
         'id': 3,
+        'time': '11:45',
+        'badge': 'AI CHAT',
+        'title': 'AI 小嘎回憶對話',
+        'desc': '長輩分享了「大稻埕布莊歲月」的童年往事 📖 (已儲存至故事膠囊)',
+        'icon': Icons.auto_stories_rounded,
+        'color': const Color(0xFFF59E0B),
+        'glow': const Color(0xFFD97706),
+      },
+      {
+        'id': 4,
+        'time': '10:15',
+        'badge': 'CARE',
+        'title': '收到子女關懷',
+        'desc': '收到女兒傳送的語音卡片：「爸爸週末要不要一起吃火鍋」💌',
+        'icon': Icons.favorite_rounded,
+        'color': const Color(0xFFEC4899),
+        'glow': const Color(0xFFBE185D),
+      },
+      {
+        'id': 5,
         'time': '08:30',
         'badge': 'MEDICINE',
         'title': '晨間用藥確認',
@@ -448,7 +542,19 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
         'color': const Color(0xFFA78BFA),
         'glow': const Color(0xFF7C3AED),
       },
+      {
+        'id': 6,
+        'time': '07:00',
+        'badge': 'ROUTINE',
+        'title': '晨間點睛打卡',
+        'desc': '長輩開啟 Uban 完成晨間打卡，精神狀態極佳 🌟',
+        'icon': Icons.wb_sunny_rounded,
+        'color': const Color(0xFFFBBF24),
+        'glow': const Color(0xFFD97706),
+      },
     ];
+
+    final displayedItems = _isFeedExpanded ? allFeedItems : allFeedItems.take(3).toList();
 
     return Container(
       padding: const EdgeInsets.all(22),
@@ -503,7 +609,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                         ),
                       ),
                       Text(
-                        '即時生活足跡紀錄',
+                        '今日共 ${allFeedItems.length} 筆生活足跡',
                         style: GoogleFonts.notoSansTc(
                           fontSize: 12,
                           color: const Color(0xFF94A3B8),
@@ -538,15 +644,31 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
             ],
           ),
 
+          const SizedBox(height: 16),
+
+          // 日期篩選標籤
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _buildDateChip('📅 今天 (${allFeedItems.length})', isSelected: true),
+                const SizedBox(width: 8),
+                _buildDateChip('昨天 (8)', isSelected: false),
+                const SizedBox(width: 8),
+                _buildDateChip('歷史月曆 🗓️', isSelected: false),
+              ],
+            ),
+          ),
+
           const SizedBox(height: 20),
 
           // 時間軸 Feed 列表
-          ...feedItems.asMap().entries.map((entry) {
+          ...displayedItems.asMap().entries.map((entry) {
             final idx = entry.key;
             final item = entry.value;
             final id = item['id'] as int;
             final isLiked = _likedLogs.contains(id);
-            final isLast = idx == feedItems.length - 1;
+            final isLast = idx == displayedItems.length - 1;
 
             return IntrinsicHeight(
               child: Row(
@@ -571,7 +693,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                         ),
                         child: Icon(item['icon'] as IconData, color: item['color'] as Color, size: 18),
                       ),
-                      if (!isLast)
+                      if (!isLast || !_isFeedExpanded)
                         Expanded(
                           child: Container(
                             width: 2,
@@ -699,9 +821,54 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
               ),
             );
           }),
+
+          // 展開/收起按鈕
+          Center(
+            child: TextButton.icon(
+              onPressed: () {
+                HapticFeedback.lightImpact();
+                setState(() {
+                  _isFeedExpanded = !_isFeedExpanded;
+                });
+              },
+              icon: Icon(
+                _isFeedExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                color: const Color(0xFF38BDF8),
+              ),
+              label: Text(
+                _isFeedExpanded ? '收起部分日誌' : '👇 展開今日完整 ${allFeedItems.length} 筆生活足跡',
+                style: GoogleFonts.notoSansTc(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: const Color(0xFF38BDF8),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     ).animate().fadeIn(delay: 200.ms, duration: 400.ms);
+  }
+
+  Widget _buildDateChip(String label, {required bool isSelected}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: isSelected ? const Color(0xFF38BDF8).withValues(alpha: 0.25) : Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isSelected ? const Color(0xFF38BDF8) : Colors.white12,
+        ),
+      ),
+      child: Text(
+        label,
+        style: GoogleFonts.notoSansTc(
+          fontSize: 12,
+          fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
+          color: isSelected ? const Color(0xFF38BDF8) : const Color(0xFF94A3B8),
+        ),
+      ),
+    );
   }
 
   // ─── 4. 警示預覽 ───
