@@ -217,7 +217,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     final moodTitle = _moodInsightData?['mood_title'] ?? '溫馨平穩';
     final moodScore = _moodInsightData?['mood_score'] ?? 88;
     final moodIcon = _moodInsightData?['mood_icon'] ?? '🍵';
-    final summaryText = _moodInsightData?['summary'] ?? '$name 今天情緒非常穩定愉快，下午曾至大安森林公園散步，且對體育與賽事新聞展現極高興趣！';
+    final summaryText = _moodInsightData?['summary'] ?? '$name 今天情緒非常穩定愉快，下午點閱收聽了熱門體育新聞，展現高度興趣！';
     final icebreakerTopic = _moodInsightData?['icebreaker_topic'] ?? '$name！我今天看到經典賽新聞，感覺超精彩的！您最近也有在關注戰況嗎？';
 
     return Container(
