@@ -49,6 +49,8 @@ dependencies:
   wakelock_plus: ^1.4.0
   image_picker: ^1.1.2
   http: ^1.6.0
+  # RevenueCat 訂閱金流（家屬端為長輩訂閱）
+  purchases_flutter: ^8.0.0
   path_provider: ^2.1.3
   mobile_scanner: ^7.2.0
   shared_preferences: ^2.2.1
