@@ -148,6 +148,11 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
           'senderId': senderId,
           'callId': callId,
           'isEmergency': true,
+          // ★ 2026-07-27 第十三輪：補上發起方角色與有效期，與 call-request 路徑對齊，
+          //   供消費端（splash / elder_home_screen）防角色反轉驗證（護欄 #16）。
+          'senderRole': (message.data['role'] ?? 'family').toString(),
+          'issuedAt': (message.data['issuedAt'] ?? '').toString(),
+          'expiresAt': (message.data['expiresAt'] ?? '').toString(),
           'timestamp': DateTime.now().millisecondsSinceEpoch,
         });
         await prefs.setString('pendingAcceptedCall', pendingCall);
@@ -195,8 +200,13 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
        } catch (e) {
          debugPrint('⚠️ [BG] 寫入 pendingRingCallData 失敗: $e');
        }
-       // 長輩端一般來電統一使用原生 heads-up 樣式，避免與 CallKit 樣式隨機混用
-       await LocalCallNotification.show(message.data);
+       // ★ 2026-07-27 第十三輪：長輩端一般來電回歸 CallKit 全螢幕來電 UI。
+       //   先前改成只發 LocalCallNotification（樸素 heads-up）造成兩個問題：
+       //   (1) 來電樣式不是期望的 CallKit UI；
+       //   (2) 備援通知的點擊 payload 在 APP 被殺死時無人消費，冷啟動只進主畫面。
+       //   CallKit 已有完整的冷啟動接聽鏈路（BG isolate 寫 prefs → main() → Splash）。
+       //   備援通知改由 _showFullScreenCallkit 內部在「CallKit 確實沒建立」時才補發。
+       await _showFullScreenCallkit(message.data);
        return;
      }
 
@@ -220,8 +230,8 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         } catch (e) {
           debugPrint('⚠️ [BG] 寫入 pendingRingCallData 失敗: $e');
         }
-        // 家屬端一般來電同樣統一為原生 heads-up 樣式
-        await LocalCallNotification.show(message.data);
+        // ★ 2026-07-27 第十三輪：家屬端一般來電同樣回歸 CallKit（與長輩端一致）。
+        await _showFullScreenCallkit(message.data);
         return;
       }
     } catch (e, stackTrace) {
@@ -278,7 +288,6 @@ Future<void> _showFullScreenCallkit(Map<String, dynamic> data) async {
   final expiresAt = (data['expiresAt'] ?? '').toString();
   final senderRole = (data['role'] ?? '').toString();
   final isEmergency = data['type'] == 'emergency-call';
-  final useLocalBackup = (data['useLocalBackup']?.toString() == '1');
 
   final params = CallKitParams(
     id: callId,
@@ -327,21 +336,6 @@ Future<void> _showFullScreenCallkit(Map<String, dynamic> data) async {
     debugPrint('📲 [CallKit] showCallkitIncoming 已呼叫 (callId=$callId)');
   } catch (e) {
     debugPrint('⚠️ [CallKit] showCallkitIncoming 失敗（將依賴原生備援通知）: $e');
-  }
-
-  // ★ 2026-07-25：
-  //   僅在「長輩端背景/被殺死」場景啟用原生備援通知。
-  //   先嘗試讀 activeCalls；若 CallKit 未建立，再補發 Local 通知，避免雙重推播。
-  if (!isEmergency && useLocalBackup) {
-    bool shouldShowBackup = true;
-    try {
-      await Future.delayed(const Duration(milliseconds: 350));
-      final activeCalls = await FlutterCallkitIncoming.activeCalls();
-      shouldShowBackup = activeCalls is! List || activeCalls.isEmpty;
-    } catch (_) {}
-    if (shouldShowBackup) {
-      await LocalCallNotification.show(data);
-    }
   }
 
   // ★ 2026-07-18 修復：APP 被殺死時，主 isolate 不存在，_setupCallKitListener
@@ -413,6 +407,36 @@ Future<void> _showFullScreenCallkit(Map<String, dynamic> data) async {
       }
     });
   }
+
+  // ★ 2026-07-27 第十三輪：備援通知改為「CallKit 確實建立失敗才補發」。
+  //   原本靠 data['useLocalBackup'] 旗標決定，但全專案（含後端）從未設過這個欄位，
+  //   等同死碼；而 call-request 分支又繞過本函式直接發備援通知 → 使用者只看得到
+  //   樸素通知、看不到 CallKit。現在改為無條件探測 activeCalls()：
+  //     - CallKit 建立成功 → 完全不發備援 → 天然互斥，杜絕雙重推播；
+  //     - CallKit 在 MIUI 被殺死背景 isolate 靜默失敗 → 補發備援（護欄 #21）。
+  //   延遲 600ms 等 native BroadcastReceiver 完成建立（350ms 在 MIUI 冷啟動偏短，
+  //   會誤判成「沒建立」而多發一則通知）。
+  //
+  //   ★ 這段必須放在 bgSub 註冊「之後」：它會 await 600ms，若擺在前面會連帶
+  //     延後 CallKit 拒接/接聽 listener 的註冊，讓早期事件有機會漏接。
+  if (!isEmergency) {
+    bool callkitAlive = false;
+    try {
+      await Future.delayed(const Duration(milliseconds: 600));
+      final activeCalls = await FlutterCallkitIncoming.activeCalls();
+      callkitAlive = activeCalls is List && activeCalls.isNotEmpty;
+    } catch (e) {
+      debugPrint('⚠️ [CallKit] activeCalls 探測失敗，改發備援通知: $e');
+    }
+    if (callkitAlive) {
+      debugPrint('✅ [CallKit] 來電 UI 已建立，略過備援通知 (callId=$callId)');
+      // 保險：若稍早殘留備援通知（例如上一通），一併關閉避免兩則並存
+      await LocalCallNotification.cancel();
+    } else {
+      debugPrint('⚠️ [CallKit] 未偵測到來電 UI，補發原生備援通知 (callId=$callId)');
+      await LocalCallNotification.show(data);
+    }
+  }
 }
 
 void main() async {
@@ -439,6 +463,17 @@ void main() async {
     await prefs.reload(); // ★ 2026-07-22：冷啟動時強制從磁碟刷新，確保讀到 BG isolate 最新寫入
     appRole = prefs.getString('user_role') ?? prefs.getString('saved_role');
     debugPrint("🚀 App Booting. Detected Role: $appRole");
+
+    // ★ 2026-07-27 第十三輪：若本次冷啟動是「點擊備援來電通知」觸發的，
+    //   payload 只會出現在 getNotificationAppLaunchDetails()（背景 tap handler
+    //   在 APP 已終止時不保證被呼叫）。這裡先把它寫進 pendingAcceptedCall prefs，
+    //   下面既有的讀取邏輯就能接手 → Splash → 視訊房間，與 CallKit 路徑一致。
+    try {
+      await LocalCallNotification.consumeLaunchPayload();
+      await prefs.reload();
+    } catch (e) {
+      debugPrint("⚠️ [Main] consumeLaunchPayload 失敗: $e");
+    }
 
     final pendingCallStr = prefs.getString('pendingAcceptedCall');
     if (pendingCallStr != null) {
@@ -1404,11 +1439,22 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         }
         _lastHandledEmergencyCallId = callId;
         debugPrint("🚨 [Main] 收到緊急通話 Socket 事件，自動接聽！");
+        // ★ 2026-07-27 第十三輪：記錄 lastProcessedCallId，讓 ElderScreen 的
+        //   isSameOngoingCall 去重生效（否則第二次 pending 會 hangUp 掉這通緊急通話），
+        //   同時讓 FCM 前景備援的 3 秒去重窗口能正確攔下重複來電。
+        if (callId != null && callId.isNotEmpty) {
+          sig.Signaling().lastProcessedCallId = callId;
+          sig.Signaling().lastProcessedCallTime =
+              DateTime.now().millisecondsSinceEpoch;
+        }
         final pendingCallData = {
           'roomId': roomId,
           'senderId': senderId,
           'callId': callId,
           'isEmergency': true,
+          // ★ 第十三輪：補上發起方角色，供消費端防角色反轉驗證（護欄 #16）。
+          //   緊急通話先前是全鏈路唯一沒帶 senderRole 的路徑。
+          'senderRole': 'family',
         };
         SharedPreferences.getInstance().then((prefs) {
           prefs.setString('pendingAcceptedCall', jsonEncode(pendingCallData));

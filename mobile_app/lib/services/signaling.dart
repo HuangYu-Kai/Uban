@@ -303,6 +303,31 @@ class Signaling {
         debugPrint('🚨 [Signaling] 忽略相同角色發出的 emergency-call (SenderRole: $senderRole)');
         return;
       }
+
+      // ★ 2026-07-27 第十三輪（緊急通話瞬間掛斷根因修復）：
+      //   emergency-call 先前完全沒有記錄 lastProcessedCallId（一般 call-request 有），
+      //   導致 ElderScreen._checkPendingAcceptedCall 的 isSameOngoingCall 判斷恆為
+      //   false —— 任何第二次寫入 pendingAcceptedCall（Socket/FCM 雙通道、CallKit
+      //   兜底輪詢）都會被誤判成「另一通新來電」而 hangUp() 掉正在進行的緊急通話，
+      //   對端（家屬）於是收到 end-call 瞬間掛斷。這裡補齊，與 call-request 對齊。
+      final String callId = (data['callId'] ?? '').toString();
+      if (callId.isNotEmpty && _invalidCallIds.contains(callId)) {
+        debugPrint('⛔ [Signaling] Ignore invalidated emergency-call (callId=$callId)');
+        return;
+      }
+      final int currentTime = DateTime.now().millisecondsSinceEpoch;
+      if (callId.isNotEmpty &&
+          callId == lastProcessedCallId &&
+          (currentTime - lastProcessedCallTime) < 2000) {
+        debugPrint('⚠️ [Signaling] 忽略重複的 emergency-call（CallId 已在 2 秒內處理: $callId）');
+        return;
+      }
+      if (callId.isNotEmpty) {
+        lastProcessedCallId = callId;
+        lastProcessedCallTime = currentTime;
+      }
+      _currentCallId = data['callId'];
+
       if (onEmergencyCall != null) {
         // ★ issue 11：透傳來電者名稱
         final String? senderName = (data['senderName'] ?? data['callerName'])?.toString();
@@ -679,10 +704,24 @@ class Signaling {
     _currentCallId = null;
   }
 
-  void sendEmergencyCall(String room, {String? targetId}) {
+  /// ★ 2026-07-27 第十三輪：與 [sendCallRequest] 對齊。
+  ///   原本只送 room + targetId，缺 role/callId/callerUserId/senderName，造成：
+  ///     1. 後端只能靠 rooms_manager 反查發起者角色，查不到就回發 call-busy 給自己；
+  ///     2. 發起端 _currentCallId 為 null → hangUp() 的 end-call 不帶 callId →
+  ///        後端 call_registry 查無此通話 → 雙端同步終止不完整。
+  void sendEmergencyCall(String room, {String? targetId, String? callId, String role = 'family'}) {
+    final String effectiveCallId = callId ?? const Uuid().v4();
+    _currentCallId = effectiveCallId;
+    final int issuedAt = DateTime.now().millisecondsSinceEpoch;
     socket!.emit('emergency-call', {
       'room': room,
+      'role': role,
+      'callId': effectiveCallId,
+      'issuedAt': issuedAt.toString(),
+      'expiresAt': (issuedAt + kCallValidityMs).toString(),
       if (targetId != null) 'targetId': targetId,
+      'callerUserId': _userId,
+      if (_deviceName != null) 'senderName': _deviceName,
     });
   }
 

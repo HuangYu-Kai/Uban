@@ -528,6 +528,59 @@ FCM 發送遇 `UnregisteredError` 時同步清除 DB `user_fcm_token`，避免�
 
 ---
 
+### 2026-07-27 — 第十三輪：來電樣式回歸 CallKit、緊急通話瞬間掛斷、快速登入
+
+> 真機回報四項：(1) **雙端**被殺死時來電通知是樸素 heads-up 樣式，不是要的 CallKit 來電 UI；(2) 緊急通話家屬端發起後**瞬間、無任何提示**跳回主畫面；(3) 長輩端登出後「快速登入同一長輩」永遠失敗；(4) 雙端被殺死時點通知進不了視訊房，走的是一般開 APP 流程。問題 1 與 4 為**同一條根因鏈**。
+
+#### 問題1＋4：`call-request` 繞過 CallKit，且備援的 launch payload 無人消費
+
+- `main.dart::_firebaseMessagingBackgroundHandler` 的長輩端／家屬端 `call-request` 分支（2026-07-25 改動）**只呼叫 `LocalCallNotification.show()` 就 return**，`_showFullScreenCallkit()` 從未執行。
+- `_showFullScreenCallkit` 的備援條件掛在 `data['useLocalBackup'] == '1'`，而全專案（含後端）**從未設過該欄位** → 死碼。
+- 問題4：APP 已終止時點擊備援通知，`onDidReceiveBackgroundNotificationResponse` 不保證觸發，payload 只在 `getNotificationAppLaunchDetails()` 裡，而全 `lib/` 從未呼叫它 → `pendingAcceptedCall` 從未寫入 → `_checkInitialCall` / `_scheduleExtendedActiveCallsPoll` / `_pollActiveCallsForAccepted` / Splash 最終防線四層兜底全部落空。
+
+| Fix | 檔案 | 修復 |
+|-----|------|------|
+| A | `main.dart` BG handler | 兩條 `call-request` 分支改回 `_showFullScreenCallkit()`（保留 `pendingRingCallData` 預寫） |
+| B | `main.dart::_showFullScreenCallkit` | 移除 `useLocalBackup` 死旗標；改為無條件探測 `activeCalls()`（350ms→600ms），CallKit 成功就完全不發備援（天然互斥），失敗才補發。**移到 `bgSub` listener 註冊之後**，避免 `await` 延後 listener |
+| C | `local_call_notification.dart` | 樣式向 CallKit 靠攏（`largeIcon` ＋ 紅「拒接」/綠「視訊」`AndroidNotificationAction` ＋ 標題改為來電者名稱）；新增 `consumeLaunchPayload()`；decline action 走 HTTP `declineCall` ＋ 清三個 prefs key |
+| D | `main.dart::main()` | 讀 `pendingAcceptedCall` prefs 前呼叫 `consumeLaunchPayload()` ＋ `prefs.reload()` |
+
+> `flutter_local_notifications 18.0.1` 不支援原生 `Notification.CallStyle`，備援無法與 CallKit 像素一致；C 是純 Dart 的最接近版本。因 B 的互斥設計，備援僅在 CallKit 原生層失敗時出現。
+
+#### 問題2：緊急通話全鏈路缺 `lastProcessedCallId` → 被自己的去重邏輯掛斷
+
+- `signaling.dart` 的 `emergency-call` handler 與 `main.dart::s.onEmergencyCall` **都沒設 `lastProcessedCallId`**（`call-request` 有設）→ `elder_screen.dart` 的 `isSameOngoingCall` **恆為 false** → 任何第二次寫入 `pendingAcceptedCall` 都落入 `if (_isInCall) { hangUp() }` → emit `end-call` → 家屬端掛斷。
+- **「沒有任何提示」**：`video_call_screen.dart` 的 `onCallEnded`/`onConnectionLost` 用 `SnackBar` 後立刻 `_goHomeAfterCall()`（`pushAndRemoveUntil`），route 當場移除、SnackBar 隨之消失。2026-07-15 第二輪 Issue 6 只修了 `onCallBusy`。
+
+| Fix | 檔案 | 修復 |
+|-----|------|------|
+| 1 | `signaling.dart` `emergency-call` | 補 `_invalidCallIds` 檢查、2s 去重窗口、`lastProcessedCallId`/`Time`、`_currentCallId` |
+| 2 | `main.dart::s.onEmergencyCall` ＋ BG emergency | 補設 `lastProcessedCallId`；pending 補 `senderRole`（緊急是全鏈路唯一漏帶的）＋ `issuedAt`/`expiresAt` |
+| 3 | `elder_screen.dart` | 新增 `_activeCallId`，`isSameOngoingCall` 改為 `== lastProcessedCallId \|\| == _activeCallId`（第二道防線） |
+| 4 | `video_call_screen.dart` | `onCallEnded`/`onConnectionLost` 改用 `_showCallRejectedThenGoHome()`，訊息「對方已掛斷通話」/「網路連線中斷」 |
+| 5 | `signaling.dart::sendEmergencyCall` | 與 `sendCallRequest` 對齊：`callId`/`_currentCallId`/`role`/`callerUserId`/`senderName`/有效期 |
+| 6 | `socket_app.py::on_emergency_call` | `call_id = data.get('callId') or uuid4()`；補上緊急通話一直缺的 **Layer B ＋ Layer C（`_get_all_known_fcm_tokens`）** → killed 長輩才收得到；補 `UnregisteredError` 清 DB ＋ 無設備診斷日誌 |
+
+#### 問題3：登出清掉了快速登入所依賴的鍵
+
+`_quickLoginSameElder` 讀 `caregiver_id`/`caregiver_name`/`user_role`，而 `elder_profile_tab::_handleLogout` 登出時正好 remove 掉前兩者。
+
+修復：引入登出不清除的 `last_elder_id`/`last_elder_name`/`last_elder_room_id`/`last_elder_device_role`；`_quickLoginSameElder` 讀不到 session 鍵時回退並回寫，**同時還原 `device_role_$room` 與 `saved_is_cctv`**（否則重判角色可能誤判成 monitor → 觸發第九輪的 `monitor-wakeup` bug 鏈）。`force-logout`（遠端強制解綁）才一併清除。
+
+#### 文件與程式碼不符（供後續 AI 注意）
+
+- 後端 `socket_app.py` 實際路徑是 **`uban-api/services/socket_app.py`**（非 `uban-api/uban-api/...`）。
+- 根目錄 `CLAUDE.md` 護欄 #5 所述「前景 active Socket 不發 FCM」**在現行程式碼中不存在**——`on_call_request` 是把前景在線 Socket 的 token 也併入 `fcm_send_map`（與本文件記載一致）。前景不雙重彈窗是靠**前端**擋（`isResumed` early return ＋ 3 秒 callId 去重）。本輪未更動此行為。
+
+#### 驗證
+
+- `python -m py_compile services/socket_app.py` — 通過
+- `python -m pytest tests/test_call_signaling.py -q` — **8 passed**（不退步）
+- `flutter analyze lib` — **0 error**（本輪改動的 6 個 Dart 檔案 0 issues）
+- `flutter build apk --debug` — **BUILD SUCCESSFUL**
+
+---
+
 ## 6. 🚫 絕對不可改動區塊（給後續 AI）
 
 > 下列區塊是本專案目前通話穩定性的「護欄」。除非明確知道連鎖影響並同步改完整條鏈路，**不要單點修改**。
@@ -625,8 +678,36 @@ FCM 發送遇 `UnregisteredError` 時同步清除 DB `user_fcm_token`，避免�
     - comm-over-monitor 去重（#18）必須與此並存，不可因加 user_id 查詢而讓 monitor 列覆蓋 comm。
 
 21. **原生通知備援 + endAllCalls try-catch（2026-07-22 第十一輪，CallKit 在 MIUI 被殺死靜默失敗）**
-    - `Uban/mobile_app/lib/services/local_call_notification.dart`（`flutter_local_notifications`）：與 CallKit **平行發**來電備援通知，MIUI 被殺死背景 isolate 下 CallKit 常靜默建立失敗，此為唯一可靠來電畫面。**禁止移除**。
+    - `Uban/mobile_app/lib/services/local_call_notification.dart`（`flutter_local_notifications`）：MIUI 被殺死背景 isolate 下 CallKit 常靜默建立失敗，此備援是唯一的後備來電畫面。**禁止移除**。
+      > ⚠️ **2026-07-27 第十三輪修訂**：不再與 CallKit「平行發」。改為 `_showFullScreenCallkit` 尾端探測 `activeCalls()`，**只在 CallKit 確實沒建立時才補發**——平行發會造成雙重推播，且讓使用者看到的是備援的樸素樣式而非 CallKit 來電 UI。詳見護欄 #22。
     - `main.dart`：所有 `FlutterCallkitIncoming.endAllCalls()` / `showCallkitIncoming()` **必須包 try-catch**——原生層在某些 MIUI 會拋 `PlatformException(content is null)`，未包會中斷 cancel-call 清理鏈。
     - `endAllCalls` / 拒接 / 接聽 / cancel-call 時**必須一併** `LocalCallNotification.cancel()`，否則備援通知殘留。
     - `elder_home_screen.dart::_requestPermissions`：Android 14+ 全螢幕權限引導用套件 API（自帶版本判斷），**禁止**改成寫死 SDK 版本判斷。
     - `android/app/build.gradle.kts`：**core library desugaring 不可移除**（flutter_local_notifications 18.x 需求，移除會 build 失敗）。
+
+22. **CallKit 是唯一的主要來電 UI 路徑（2026-07-27 第十三輪）**
+    - `main.dart::_firebaseMessagingBackgroundHandler` 的 `call-request` 分支（**長輩端與家屬端皆然**）必須呼叫 `_showFullScreenCallkit()`。
+    - **禁止**改回「只發 `LocalCallNotification` 就 return」：那是「來電樣式不對」＋「被殺死時點通知進不了視訊房」的共同根因——備援通知的 launch payload 走的是另一條消費路徑（見 #23），CallKit 才有完整的冷啟動接聽鏈。
+    - `_showFullScreenCallkit` 尾端的備援探測（延遲 600ms → `activeCalls()` → 沒建立才 `LocalCallNotification.show`）**必須放在 BG `bgSub` listener 註冊之後**：它會 `await`，擺在前面會延後拒接/接聽 listener 的註冊而漏接早期事件。
+    - **禁止**恢復 `data['useLocalBackup']` 旗標判斷：全鏈路（含後端）從未設定該欄位，是死碼。
+
+23. **`local_call_notification.dart::consumeLaunchPayload()`（2026-07-27 第十三輪）**
+    - 必須在 `main()` 讀取 `pendingAcceptedCall` prefs **之前**呼叫，其後接 `prefs.reload()`。
+    - **不可移除**：APP 已終止時點擊備援通知，payload 只存在於 `getNotificationAppLaunchDetails()`；`onDidReceiveBackgroundNotificationResponse` 對這個情境**不保證**被觸發。移除後備援路徑的接聽會退化成「開場動畫→主畫面」。
+
+24. **緊急通話必須記錄 `lastProcessedCallId`（2026-07-27 第十三輪）**
+    - `signaling.dart` 的 `emergency-call` handler 與 `main.dart::s.onEmergencyCall` 都要設 `lastProcessedCallId`/`lastProcessedCallTime`。
+    - `elder_screen.dart::_checkPendingAcceptedCall` 的 `isSameOngoingCall` 必須同時比對 `_activeCallId`（第二道防線）。
+    - **不可移除任一環**：少了就重現「第二次寫入 `pendingAcceptedCall` → 落入 `if (_isInCall) { hangUp() }` → emit `end-call` → 家屬端瞬間掛斷」。
+    - 緊急路徑寫入 `pendingAcceptedCall` 時**必須帶 `senderRole`**（#16 的全鏈路要求，緊急通話原本是唯一漏帶的）。
+    - 緊急通話的 FCM **刻意不帶** `issuedAt`/`expiresAt`（ttl 維持 3600s）：帶了會被前端 120s 過期判斷誤殺。
+
+25. **`video_call_screen.dart` 的通話終止提示必須用 dialog（2026-07-27 第十三輪）**
+    - `onCallEnded` / `onCallBusy` / `onConnectionLost` 一律走 `_showCallRejectedThenGoHome()`。
+    - **禁止**改回 `SnackBar`：緊接的 `_goHomeAfterCall()` 是 `pushAndRemoveUntil((route)=>false)`，會當場移除 route 讓 SnackBar 消失 → 使用者看到「瞬間、無提示跳回主畫面」，故障也無從診斷。
+
+26. **`last_elder_*` 快速登入記憶鍵（2026-07-27 第十三輪）**
+    - `last_elder_id` / `last_elder_name` / `last_elder_room_id` / `last_elder_device_role`。
+    - 使用者主動登出（`elder_tabs/elder_profile_tab.dart::_handleLogout`）**不可清除**這組鍵——它清 `caregiver_id`/`caregiver_name`，而 `_quickLoginSameElder` 正是讀那些鍵，這正是「快速登入抓不到上次 session」的根因。
+    - `_quickLoginSameElder` 回退時**必須一併還原 `device_role_$room` 與 `saved_is_cctv`**：否則會重新 `hasCommDevice` 重判裝置角色，誤判成 monitor 就觸發 #18 的整條 bug 鏈。
+    - 只有家屬端遠端 `force-logout`（強制解綁）才連同清除。

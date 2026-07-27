@@ -110,10 +110,11 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     _signaling.onCallEnded = () {
       if (mounted) {
         _stopCallTimer();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("通話已結束")),
-        );
-        _goHomeAfterCall();
+        // ★ 2026-07-27 第十三輪：原本用 SnackBar，但緊接著的 _goHomeAfterCall() 是
+        //   pushAndRemoveUntil，會立刻移除本 route，SnackBar 隨之消失 → 使用者看到
+        //   的是「瞬間跳回主畫面、毫無提示」。改用不依附特定 route 的 dialog
+        //   （與 onCallBusy 一致，2026-07-15 第二輪 Issue 6 當時漏改這兩個回調）。
+        _showCallRejectedThenGoHome('對方已掛斷通話');
       }
     };
 
@@ -128,10 +129,8 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     _signaling.onConnectionLost = () {
       if (mounted) {
         _stopCallTimer();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('連線中斷，通話已結束')),
-        );
-        _goHomeAfterCall();
+        // ★ 2026-07-27 第十三輪：同 onCallEnded，SnackBar 會被 pushAndRemoveUntil 吞掉。
+        _showCallRejectedThenGoHome('網路連線中斷');
       }
     };
 

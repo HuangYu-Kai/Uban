@@ -1,7 +1,10 @@
 import 'dart:convert';
+import 'dart:ui' show Color;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'api_service.dart';
 
 /// ★ 2026-07-22 第十一輪：原生高優先級通知備援。
 ///
@@ -9,7 +12,17 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// 通知會**靜默建立失敗**（`showCallkitIncoming` 射後不理，Dart 端無從得知），
 /// 導致 FCM 已送達卻沒有任何來電畫面。這裡用標準 Android notification builder
 /// （`flutter_local_notifications`，成熟穩定、不經 CallKit 的 RemoteViews 自訂通知）
-/// 發一則 heads-up 高優先級來電通知作為備援，與 CallKit 平行、共用 callId。
+/// 發一則 heads-up 高優先級來電通知作為備援。
+///
+/// ★ 2026-07-27 第十三輪：
+///   1. CallKit 恢復為主要來電路徑，本備援**只在 CallKit 確實建立失敗時**才由
+///      `main.dart::_showFullScreenCallkit` 補發（互斥，杜絕雙重推播）。
+///   2. 樣式向 CallKit 來電 UI 靠攏：大頭像 + 「拒接 / 視訊」兩顆動作按鈕。
+///      註：flutter_local_notifications 18.x 不支援 Android 原生 `Notification.CallStyle`，
+///      無法做到與 CallKit 像素一致；這是純 Dart 能達到的最接近版本。
+///   3. 新增 [consumeLaunchPayload]：APP 被殺死時點擊通知本體，plugin 走的是
+///      launch-details 路徑而**不保證**觸發背景 tap handler，先前因此完全沒有
+///      消費 payload → 冷啟動只進主畫面。現在由 `main()` 主動撈取。
 ///
 /// 兩個 isolate（主 + 背景 FCM handler）都會用到，故做成頂層函式 + 惰性初始化。
 class LocalCallNotification {
@@ -22,6 +35,10 @@ class LocalCallNotification {
   static const String _channelId = 'uban_incoming_call_backup';
   static const String _channelName = '來電通知（備援）';
   static const String _channelDesc = 'App 被系統關閉時，確保仍能收到視訊來電通知';
+
+  /// 動作按鈕 ID（背景 tap handler 依此分辨接聽/拒接）
+  static const String actionAcceptId = 'uban_call_accept';
+  static const String actionDeclineId = 'uban_call_decline';
 
   static Future<void> _ensureInit() async {
     if (_initialized) return;
@@ -49,7 +66,7 @@ class LocalCallNotification {
     _initialized = true;
   }
 
-  /// 顯示來電備援通知。與 CallKit 平行呼叫；MIUI 被殺死時這條較可靠。
+  /// 顯示來電備援通知。**僅在 CallKit 確認未建立時呼叫**（見 `_showFullScreenCallkit`）。
   static Future<void> show(Map<String, dynamic> data) async {
     if (kIsWeb) return;
     try {
@@ -76,11 +93,29 @@ class LocalCallNotification {
         autoCancel: false,
         visibility: NotificationVisibility.public,
         ticker: '視訊來電',
+        // ★ 第十三輪：向 CallKit 來電 UI 靠攏——大頭像 + 拒接/視訊 兩顆按鈕
+        largeIcon: const DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
+        actions: const <AndroidNotificationAction>[
+          AndroidNotificationAction(
+            actionDeclineId,
+            '拒接',
+            titleColor: Color(0xFFD32F2F), // 紅，對齊 CallKit 來電 UI 的拒接鍵
+            showsUserInterface: false,
+            cancelNotification: true,
+          ),
+          AndroidNotificationAction(
+            actionAcceptId,
+            '視訊',
+            titleColor: Color(0xFF2E7D32), // 綠，對齊 CallKit 來電 UI 的接聽鍵
+            showsUserInterface: true,
+            cancelNotification: true,
+          ),
+        ],
       );
       await _plugin.show(
         callNotificationId,
-        '📞 視訊來電',
-        '$callerName 正在呼叫您，點擊接聽',
+        callerName,
+        '來電',
         NotificationDetails(android: androidDetails),
         payload: payload,
       );
@@ -101,19 +136,52 @@ class LocalCallNotification {
     }
   }
 
+  /// ★ 2026-07-27 第十三輪：冷啟動消費「點擊備援通知而啟動 APP」的 payload。
+  ///
+  /// APP 被系統殺死時，使用者點擊通知本體會直接啟動 APP，此時
+  /// `onDidReceiveBackgroundNotificationResponse` **不保證**被呼叫——payload 只會
+  /// 出現在 `getNotificationAppLaunchDetails()` 裡。先前完全沒有讀取這裡，導致
+  /// `pendingAcceptedCall` 從未被寫入，冷啟動兜底鏈全部落空（只進主畫面）。
+  ///
+  /// 必須在 `main()` 讀取 `pendingAcceptedCall` prefs **之前**呼叫。
+  static Future<void> consumeLaunchPayload() async {
+    if (kIsWeb) return;
+    try {
+      await _ensureInit();
+      final details = await _plugin.getNotificationAppLaunchDetails();
+      if (details == null || !details.didNotificationLaunchApp) return;
+      final response = details.notificationResponse;
+      if (response == null) return;
+      if (response.actionId == actionDeclineId) {
+        debugPrint('🔕 [LocalNotif] 冷啟動 launch details 為拒接，忽略');
+        return;
+      }
+      debugPrint('✅ [LocalNotif] 冷啟動偵測到備援通知點擊，寫入 pendingAcceptedCall');
+      await _persistTapAsAccepted(response.payload);
+      await cancel();
+    } catch (e) {
+      debugPrint('⚠️ [LocalNotif] consumeLaunchPayload 失敗: $e');
+    }
+  }
+
   /// 前景點擊：把來電資料寫入 pendingAcceptedCall prefs，交由 main() / 頁面 listener 接手導航。
   static void _onTap(NotificationResponse response) {
-    _persistTapAsAccepted(response.payload);
+    notificationBackgroundTapHandler(response);
   }
 }
 
 /// 背景 isolate 點擊 handler（必須是頂層 + vm:entry-point）。
 @pragma('vm:entry-point')
 void notificationBackgroundTapHandler(NotificationResponse response) {
+  if (response.actionId == LocalCallNotification.actionDeclineId) {
+    _handleDecline(response.payload);
+    return;
+  }
   _persistTapAsAccepted(response.payload);
 }
 
-/// 點擊備援通知 = 接聽：寫入 pendingAcceptedCall，冷啟動時 main() 兜底導向 ElderScreen。
+/// 點擊備援通知 / 按「視訊」= 接聽：寫入 pendingAcceptedCall，
+/// 冷啟動時 main() → Splash 兜底導向 ElderScreen / VideoCallScreen。
 Future<void> _persistTapAsAccepted(String? payload) async {
   if (payload == null || payload.isEmpty) return;
   try {
@@ -134,5 +202,34 @@ Future<void> _persistTapAsAccepted(String? payload) async {
     debugPrint('✅ [LocalNotif] 點擊接聽 → 已寫入 pendingAcceptedCall (callId=${data['callId']})');
   } catch (e) {
     debugPrint('⚠️ [LocalNotif] 處理通知點擊失敗: $e');
+  }
+}
+
+/// 按「拒接」：走無狀態 HTTP 通知發起方停止等待，並清除三個陳舊狀態 key
+/// （與 `main.dart::_sendDeclineEvent` 及 BG isolate CallKit listener 一致，護欄 #15）。
+Future<void> _handleDecline(String? payload) async {
+  if (payload == null || payload.isEmpty) return;
+  try {
+    final Map<String, dynamic> data = jsonDecode(payload);
+    final String roomId = (data['roomId'] ?? '').toString();
+    final String senderId = (data['senderId'] ?? '').toString();
+    final String callId = (data['callId'] ?? '').toString();
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('pendingAcceptedCall');
+    await prefs.remove('pendingRingCallData');
+    await prefs.remove('pendingRingCall');
+
+    if (roomId.isNotEmpty && senderId.isNotEmpty) {
+      debugPrint('🔕 [LocalNotif] 拒接 → HTTP declineCall (callId=$callId)');
+      await ApiService.declineCall(
+        roomId: roomId,
+        senderId: senderId,
+        callId: callId.isEmpty ? null : callId,
+      );
+    }
+    await LocalCallNotification.cancel();
+  } catch (e) {
+    debugPrint('⚠️ [LocalNotif] 處理拒接失敗: $e');
   }
 }

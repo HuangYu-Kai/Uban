@@ -52,6 +52,12 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   int? _userId; // ★ issue 3/10：用於安全導航回主畫面時建構 ElderHomeScreen
   String? _prefsUserName; // ★ Issue 1 硬化：真實 caregiver_name，供 _buildFallbackHome 使用
 
+  /// ★ 2026-07-27 第十三輪：本畫面目前正在進行的通話 callId。
+  /// 作為 isSameOngoingCall 去重的第二道防線——不依賴 Signaling.lastProcessedCallId
+  /// 是否被各路徑正確設定。任何一條寫入 pendingAcceptedCall 的路徑若漏設，
+  /// 都不會再把進行中的通話誤判成新來電而 hangUp（緊急通話瞬間掛斷的直接成因）。
+  String? _activeCallId;
+
   // ★ 新增：用於生成新格式的房間ID
   late String _formattedRoomId;
   
@@ -150,9 +156,12 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       // ★ issue 5：CallKit 接聽與背景 FCM 路徑可能對「同一通」來電各自寫入一次
       //   pendingAcceptedCall。若 callId 與目前正在處理/已建立的通話相同，視為重複觸發，
       //   不可結束已建立好的通話（否則會造成 issue 5 的「連線後立刻斷線」）。
+      // ★ 2026-07-27 第十三輪：加入 _activeCallId 比對作為第二判準。
+      //   原本只比 _signaling.lastProcessedCallId，而緊急通話路徑從未設定它，
+      //   使本判斷恆為 false → 落入下方 hangUp() 分支 → 對端瞬間掛斷。
       final bool isSameOngoingCall = _isInCall &&
           callId != null &&
-          callId == _signaling.lastProcessedCallId;
+          (callId == _signaling.lastProcessedCallId || callId == _activeCallId);
 
       if (isSameOngoingCall) {
         debugPrint("ℹ️ [ElderScreen] 略過重複的 pendingAcceptedCall（與目前通話 callId 相同: $callId）");
@@ -164,6 +173,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       if (_isInCall) {
         debugPrint("⚠️ [ElderScreen] 已有通話進行中，先結束舊通話以接聽新來電");
         _callTimer?.cancel();
+        _activeCallId = null;
         _signaling.hangUp(disconnectSocket: false, disposeLocalStream: false);
         if (mounted) {
           setState(() {
@@ -183,6 +193,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
 
   Future<void> _handleAcceptedCallFromBackground(String senderId, {String? callId}) async {
     if (!_isInCall && mounted) {
+      _activeCallId = callId; // ★ 第十三輪：記錄進行中通話，供 isSameOngoingCall 去重
       setState(() {
         _isInCall = true;
         _status = "通話建立中...";
@@ -210,6 +221,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
 
   Future<void> _handleEmergencyAccept(String senderId, {String? callId}) async {
     if(!_isInCall && mounted) {
+      _activeCallId = callId; // ★ 第十三輪：記錄進行中通話，供 isSameOngoingCall 去重
       setState(() {
         _isInCall = true;
         _status = "緊急通話自動接聽中...";
@@ -359,6 +371,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
 
     _signaling.onCallEnded = () {
       _callTimer?.cancel();
+      _activeCallId = null;
       if (mounted) {
         setState(() {
           _remoteRenderer.srcObject = null;
@@ -381,6 +394,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
         );
         // ★ issue 15：對方拒接/忙線時，呼叫端結束「等待連線」狀態並安全返回
         _callTimer?.cancel();
+        _activeCallId = null;
         setState(() {
           _remoteRenderer.srcObject = null;
           _status = "通話結束";
@@ -422,6 +436,13 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
         'saved_is_cctv',
         'elder_room_id',
         'access_token',
+        // ★ 2026-07-27 第十三輪：force-logout 是家屬端「強制解綁本裝置」，
+        //   語意上這台裝置已被移除授權，不該還能用「快速登入同一長輩」一鍵登回，
+        //   故連快速登入記憶鍵一併清除。（使用者自己按「切換身分／登出」則保留。）
+        'last_elder_id',
+        'last_elder_name',
+        'last_elder_room_id',
+        'last_elder_device_role',
       ];
       for (final key in keysToRemove) {
         await prefs.remove(key);
