@@ -43,7 +43,11 @@ class SubscriptionTestScreen extends StatefulWidget {
 
 class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
   /// RevenueCat 後台設定的 Entitlement Identifier。
-  static const String _entitlementId = 'pro_access';
+  /// ⚠️ 實測後台用的是 'Uban-pro'（非最初提到的 pro_access）。可用 dart-define 覆寫。
+  static const String _entitlementId = String.fromEnvironment(
+    'REVENUECAT_ENTITLEMENT',
+    defaultValue: 'Uban-pro',
+  );
 
   /// RevenueCat Test Store 金鑰（test_ 開頭）。
   /// 建議用 --dart-define=REVENUECAT_API_KEY=test_xxx 傳入，或直接填在 defaultValue。
