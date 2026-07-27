@@ -8,6 +8,7 @@ import 'family/family_home_tab.dart';
 import 'family/family_interaction_tab.dart';
 import 'family/family_data_tab.dart';
 import 'family/alert_center_screen.dart';
+import 'family/subscription_test_screen.dart';
 import '../models/elder.dart';
 import '../services/elder_manager.dart';
 import '../services/signaling.dart';
@@ -526,6 +527,18 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
               ),
             ),
       actions: [
+        IconButton(
+          icon: const Icon(Icons.workspace_premium_rounded, color: Color(0xFFF5C451), size: 26),
+          tooltip: '訂閱測試（為長輩開通）',
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const SubscriptionTestScreen(),
+              ),
+            );
+          },
+        ),
         IconButton(
           icon: const Icon(Icons.person_add_alt_1_rounded, color: Color(0xFF38BDF8), size: 28),
           tooltip: '配對新長輩',

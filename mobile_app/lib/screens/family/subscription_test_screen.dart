@@ -7,37 +7,26 @@
 //
 // 依賴：pubspec.yaml → purchases_flutter: ^8.0.0
 //
-// ---- 一、main.dart 初始化（只需做一次）--------------------------------------
-//   import 'dart:io' show Platform;
-//   import 'package:purchases_flutter/purchases_flutter.dart';
+// ★ 測試方式：RevenueCat「Test Store」— 官方虛擬測試環境 -----------------------
+//   不需 Google Play / App Store 設定、不綁信用卡、模擬器可直接測。
+//   購買時會跳出模擬視窗，讓你選「成功 / 失敗 / 取消」，權限即時更新。
 //
-//   Future<void> main() async {
-//     WidgetsFlutterBinding.ensureInitialized();
+//   1) RevenueCat Dashboard → 左側「Apps and providers」→ Test configuration
+//      → 建立 Test Store → 複製 API key（test_ 開頭）。
+//   2) 本頁開啟時會自動 Purchases.configure()（見 _ensureConfigured），
+//      金鑰用 --dart-define 傳入即可，「不必改 main.dart」：
+//        flutter run --dart-define=REVENUECAT_API_KEY=test_你的金鑰 ...
+//      （或直接填入下方 _apiKey 常數）
+//   3) purchases_flutter 是 native plugin，加依賴後要「完全重跑」flutter run。
 //
-//     // 測試階段開 debug log，方便在 console 看 RevenueCat 事件
-//     await Purchases.setLogLevel(LogLevel.debug);
+//   ⚠️ 安全警告：正式上架（Google Play / App Store）絕不能用 test_ 金鑰，
+//      要換成平台金鑰（Android goog_ / iOS appl_）；正式版也建議把 configure()
+//      移到 main.dart 啟動時做一次。
 //
-//     // ⚠️ 換成 RevenueCat 後台 → Project settings → API keys 的「公開 SDK 金鑰」
-//     //    Android 用 goog_ 開頭、iOS 用 appl_ 開頭
-//     final apiKey = Platform.isIOS ? 'appl_你的iOS金鑰' : 'goog_你的Android金鑰';
-//
-//     await Purchases.configure(
-//       PurchasesConfiguration(apiKey)
-//         // 測試用固定 User ID；正式版建議帶「家屬帳號 id」讓權限跟著家屬走。
-//         // 也可整行拿掉，讓 SDK 自動產生匿名 ID。
-//         ..appUserID = 'dev_test_user_001',
-//     );
-//
-//     runApp(const MyApp());
-//   }
-//
-// ---- 二、導頁（從家屬端任何地方打開）----------------------------------------
+// ---- 導頁（從家屬端任何地方打開）--------------------------------------------
 //   Navigator.of(context).push(
 //     MaterialPageRoute(builder: (_) => const SubscriptionTestScreen()),
 //   );
-//
-// 註：purchases_flutter 是 native plugin，加入依賴後需「完全重跑」App
-//     （flutter run，非 hot reload）才會生效。
 // ============================================================================
 
 import 'package:flutter/material.dart';
@@ -55,6 +44,13 @@ class SubscriptionTestScreen extends StatefulWidget {
 class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
   /// RevenueCat 後台設定的 Entitlement Identifier。
   static const String _entitlementId = 'pro_access';
+
+  /// RevenueCat Test Store 金鑰（test_ 開頭）。
+  /// 建議用 --dart-define=REVENUECAT_API_KEY=test_xxx 傳入，或直接填在 defaultValue。
+  static const String _apiKey = String.fromEnvironment(
+    'REVENUECAT_API_KEY',
+    defaultValue: '', // 例如 'test_xxxxxxxxxxxxxxxx'
+  );
 
   // ---- 狀態 ----------------------------------------------------------------
   bool _initialLoading = true; // 首次載入 offerings / 權限
@@ -85,20 +81,36 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
   // 資料載入
   // ==========================================================================
 
-  /// 首次進頁：讀權限狀態 + 抓 offering。
+  /// 首次進頁：確保 SDK 已 configure → 讀權限狀態 + 抓 offering。
   Future<void> _bootstrap() async {
     setState(() {
       _initialLoading = true;
       _loadError = null;
     });
     try {
+      await _ensureConfigured();
       await _syncCustomerInfo();
       await _loadOfferings();
     } catch (e) {
-      _loadError = '初始化失敗：$e\n請確認 main.dart 已呼叫 Purchases.configure()、且金鑰正確。';
+      _loadError = '初始化失敗：$e';
     } finally {
       if (mounted) setState(() => _initialLoading = false);
     }
+  }
+
+  /// 若尚未 configure，就用 Test Store 金鑰初始化。
+  /// Test Store 是 RevenueCat 官方虛擬測試環境，不需 Google Play / App Store、不綁卡。
+  Future<void> _ensureConfigured() async {
+    if (await Purchases.isConfigured) return;
+    if (_apiKey.isEmpty) {
+      throw 'RevenueCat 尚未設定金鑰。請到 Dashboard → Apps and providers → '
+          'Test configuration 建立 Test Store，取得 test_ 開頭金鑰後，用 '
+          '--dart-define=REVENUECAT_API_KEY=test_xxx 啟動（或填入本檔 _apiKey 常數）。';
+    }
+    await Purchases.setLogLevel(LogLevel.debug);
+    await Purchases.configure(
+      PurchasesConfiguration(_apiKey)..appUserID = 'dev_test_user_001',
+    );
   }
 
   /// 抓取 current offering 的三個方案（月 / 季 / 年）。
