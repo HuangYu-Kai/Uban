@@ -789,11 +789,20 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
         final eventType = log['event_type']?.toString() ?? '';
         final tsStr = log['timestamp']?.toString() ?? '';
 
-        String timeStr = '今天';
         String dateStr = todayStr;
+        String timeStr = '12:00';
         if (tsStr.length >= 16) {
           dateStr = tsStr.substring(0, 10);
-          timeStr = tsStr.substring(11, 16);
+          final clockStr = tsStr.substring(11, 16);
+          if (dateStr == todayStr) {
+            timeStr = clockStr;
+          } else if (dateStr == yesterdayStr) {
+            timeStr = '昨天 $clockStr';
+          } else {
+            final m = dateStr.substring(5, 7);
+            final d = dateStr.substring(8, 10);
+            timeStr = '$m/$d $clockStr';
+          }
         }
 
         String badge = 'LOG';
@@ -811,12 +820,12 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
           col = const Color(0xFF34D399);
           glowCol = const Color(0xFF059669);
           ic = Icons.directions_run_rounded;
-        } else if (contentStr.contains('藥') || contentStr.contains('打卡')) {
+        } else if (contentStr.contains('藥') || contentStr.contains('打卡') || eventType == 'medication') {
           badge = 'MEDICINE';
           col = const Color(0xFFA78BFA);
           glowCol = const Color(0xFF7C3AED);
           ic = Icons.medication_rounded;
-        } else if (contentStr.contains('對話') || contentStr.contains('聊天') || contentStr.contains('小嘎')) {
+        } else if (contentStr.contains('對話') || contentStr.contains('聊天') || contentStr.contains('小嘎') || contentStr.contains('寂寞') || eventType == 'mood') {
           badge = 'AI CHAT';
           col = const Color(0xFFF59E0B);
           glowCol = const Color(0xFFD97706);
@@ -904,7 +913,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
         },
         {
           'id': 6,
-          'time': '19:30',
+          'time': '昨天 19:30',
           'date': yesterdayStr,
           'badge': 'AI CHAT',
           'title': '晚間台語歌仔戲對話',
@@ -918,7 +927,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
         },
         {
           'id': 7,
-          'time': '07:00',
+          'time': '昨天 07:00',
           'date': yesterdayStr,
           'badge': 'ROUTINE',
           'title': '晨間點睛打卡',
@@ -936,13 +945,14 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
 
     List<Map<String, dynamic>> activeFilteredItems;
     if (_selectedDateFilterIndex == 0) {
-      activeFilteredItems = todayItems;
+      activeFilteredItems = todayItems.isNotEmpty ? todayItems : rawFeedItems;
     } else if (_selectedDateFilterIndex == 1) {
-      activeFilteredItems = yesterdayItems;
+      activeFilteredItems = yesterdayItems.isNotEmpty ? yesterdayItems : rawFeedItems;
     } else {
       if (_selectedHistoricalDate != null) {
         final targetStr = "${_selectedHistoricalDate!.year}-${_selectedHistoricalDate!.month.toString().padLeft(2, '0')}-${_selectedHistoricalDate!.day.toString().padLeft(2, '0')}";
-        activeFilteredItems = rawFeedItems.where((i) => i['date'] == targetStr).toList();
+        final match = rawFeedItems.where((i) => i['date'] == targetStr).toList();
+        activeFilteredItems = match.isNotEmpty ? match : rawFeedItems;
       } else {
         activeFilteredItems = rawFeedItems;
       }
