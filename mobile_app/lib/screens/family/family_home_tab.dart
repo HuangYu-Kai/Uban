@@ -328,7 +328,6 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     if (widget.currentElder == null) return;
     final elderIdStr = widget.currentElder!.elderId ?? widget.currentElder!.id.toString();
 
-    setState(() => _isLoadingInsight = true);
     try {
       final insight = await ApiService.getElderMoodInsight(elderIdStr);
       final logs = await ApiService.getElderActivityLogs(elderIdStr, limit: 10);
@@ -336,13 +335,10 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
         setState(() {
           _moodInsightData = insight;
           _realLogs = logs;
-          _isLoadingInsight = false;
         });
       }
     } catch (e) {
-      if (mounted) {
-        setState(() => _isLoadingInsight = false);
-      }
+      // Ignore exception gracefully
     }
   }
 
