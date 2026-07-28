@@ -29,6 +29,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
   bool _isCategorizedView = true; // 預設開啟「主題大分類」檢視模式
   Map<String, dynamic>? _moodInsightData;
   List<dynamic> _realLogs = [];
+  bool _isLoadingInsight = false;
   int _selectedDateFilterIndex = 0; // 0: 今天, 1: 昨天, 2: 歷史月曆
   DateTime? _selectedHistoricalDate;
 
@@ -1223,197 +1224,192 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
           ],
           if (!_isCategorizedView) ...[
             // ─── 時間軸 Feed 列表 ───
-            ...displayedItems.asMap().entries.map((entry) {
-              final idx = entry.key;
-              final item = entry.value;
-              final id = item['id'] as int;
-              final isLiked = _likedLogs.contains(id);
-              final isLast = idx == displayedItems.length - 1;
-              final isChat = item['isChat'] == true;
-
-              return IntrinsicHeight(
+            for (final entry in displayedItems.asMap().entries) ...[
+              IntrinsicHeight(
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                  // 左側發光時間軸與節點 Icon
-                  Column(
-                    children: [
-                      Container(
-                        width: 38,
-                        height: 38,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: const Color(0xFF1E293B),
-                          border: Border.all(color: item['color'] as Color, width: 2),
-                          boxShadow: [
-                            BoxShadow(
-                              color: (item['glow'] as Color).withValues(alpha: 0.5),
-                              blurRadius: 10,
-                            ),
-                          ],
-                        ),
-                        child: Icon(item['icon'] as IconData, color: item['color'] as Color, size: 18),
-                      ),
-                      if (!isLast || !_isFeedExpanded)
-                        Expanded(
-                          child: Container(
-                            width: 2,
-                            margin: const EdgeInsets.symmetric(vertical: 4),
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.topCenter,
-                                end: Alignment.bottomCenter,
-                                colors: [
-                                  item['color'] as Color,
-                                  Colors.white24,
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-
-                  const SizedBox(width: 14),
-
-                  // 右側動態卡片
-                  Expanded(
-                    child: Container(
-                      margin: const EdgeInsets.only(bottom: 16),
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF0F172A).withValues(alpha: 0.6),
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: (item['color'] as Color).withValues(alpha: 0.2),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: (item['color'] as Color).withValues(alpha: 0.4)),
-                                ),
-                                child: Text(
-                                  item['badge'] as String,
-                                  style: GoogleFonts.inter(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w900,
-                                    color: item['color'] as Color,
-                                    letterSpacing: 0.5,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  item['title'] as String,
-                                  style: GoogleFonts.notoSansTc(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w800,
-                                    color: Colors.white,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              Text(
-                                item['time'] as String,
-                                style: GoogleFonts.inter(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                  color: const Color(0xFF64748B),
-                                ),
+                    // 左側發光時間軸與節點 Icon
+                    Column(
+                      children: [
+                        Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: const Color(0xFF1E293B),
+                            border: Border.all(color: entry.value['color'] as Color, width: 2),
+                            boxShadow: [
+                              BoxShadow(
+                                color: (entry.value['glow'] as Color).withValues(alpha: 0.5),
+                                blurRadius: 10,
                               ),
                             ],
                           ),
-                          const SizedBox(height: 8),
-                          Text(
-                            item['desc'] as String,
-                            maxLines: isChat ? 3 : 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.notoSansTc(
-                              fontSize: 13,
-                              height: 1.45,
-                              color: const Color(0xFFCBD5E1),
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          if (isChat) ...[
-                            const SizedBox(height: 8),
-                            GestureDetector(
-                              onTap: () {
-                                HapticFeedback.mediumImpact();
-                                _showFullDialogueDialog(
-                                  context,
-                                  item['fullQuery'] as String? ?? '',
-                                  item['fullAi'] as String? ?? '',
-                                  item['time'] as String? ?? '',
-                                );
-                              },
-                              child: Row(
-                                children: [
-                                  const Icon(Icons.auto_awesome_rounded, color: Color(0xFFF59E0B), size: 14),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    '📖 點擊查看 AI 語音陪伴完整對話',
-                                    style: GoogleFonts.notoSansTc(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w700,
-                                      color: const Color(0xFFFCD34D),
-                                    ),
-                                  ),
-                                ],
+                          child: Icon(entry.value['icon'] as IconData, color: entry.value['color'] as Color, size: 18),
+                        ),
+                        if (entry.key != displayedItems.length - 1 || !_isFeedExpanded)
+                          Expanded(
+                            child: Container(
+                              width: 2,
+                              margin: const EdgeInsets.symmetric(vertical: 4),
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    entry.value['color'] as Color,
+                                    Colors.white24,
+                                  ],
+                                ),
                               ),
                             ),
-                          ],
-                          const SizedBox(height: 8),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
+                          ),
+                      ],
+                    ),
+
+                    const SizedBox(width: 14),
+
+                    // 右側動態卡片
+                    Expanded(
+                      child: Container(
+                        margin: const EdgeInsets.only(bottom: 16),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0F172A).withValues(alpha: 0.6),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: (entry.value['color'] as Color).withValues(alpha: 0.2),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: (entry.value['color'] as Color).withValues(alpha: 0.4)),
+                                  ),
+                                  child: Text(
+                                    entry.value['badge'] as String,
+                                    style: GoogleFonts.inter(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w900,
+                                      color: entry.value['color'] as Color,
+                                      letterSpacing: 0.5,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    entry.value['title'] as String,
+                                    style: GoogleFonts.notoSansTc(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w800,
+                                      color: Colors.white,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                Text(
+                                  entry.value['time'] as String,
+                                  style: GoogleFonts.inter(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color: const Color(0xFF64748B),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              entry.value['desc'] as String,
+                              maxLines: entry.value['isChat'] == true ? 3 : 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.notoSansTc(
+                                fontSize: 13,
+                                height: 1.45,
+                                color: const Color(0xFFCBD5E1),
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            if (entry.value['isChat'] == true) ...[
+                              const SizedBox(height: 8),
                               GestureDetector(
                                 onTap: () {
-                                  HapticFeedback.lightImpact();
-                                  setState(() {
-                                    if (isLiked) {
-                                      _likedLogs.remove(id);
-                                    } else {
-                                      _likedLogs.add(id);
-                                    }
-                                  });
+                                  HapticFeedback.mediumImpact();
+                                  _showFullDialogueDialog(
+                                    context,
+                                    entry.value['fullQuery'] as String? ?? '',
+                                    entry.value['fullAi'] as String? ?? '',
+                                    entry.value['time'] as String? ?? '',
+                                  );
                                 },
                                 child: Row(
                                   children: [
-                                    Icon(
-                                      isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                                      color: isLiked ? const Color(0xFFEF4444) : const Color(0xFF64748B),
-                                      size: 18,
-                                    ),
+                                    const Icon(Icons.auto_awesome_rounded, color: Color(0xFFF59E0B), size: 14),
                                     const SizedBox(width: 4),
                                     Text(
-                                      isLiked ? '已給心意' : '給個心意',
+                                      '📖 點擊查看 AI 語音陪伴完整對話',
                                       style: GoogleFonts.notoSansTc(
                                         fontSize: 12,
-                                        color: isLiked ? const Color(0xFFEF4444) : const Color(0xFF64748B),
-                                        fontWeight: FontWeight.w600,
+                                        fontWeight: FontWeight.w700,
+                                        color: const Color(0xFFFCD34D),
                                       ),
                                     ),
                                   ],
                                 ),
                               ),
                             ],
-                          ),
-                        ],
+                            const SizedBox(height: 8),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                GestureDetector(
+                                  onTap: () {
+                                    HapticFeedback.lightImpact();
+                                    final item = entry.value;
+                                    final id = item['id'] as int;
+                                    setState(() {
+                                      if (_likedLogs.contains(id)) {
+                                        _likedLogs.remove(id);
+                                      } else {
+                                        _likedLogs.add(id);
+                                      }
+                                    });
+                                  },
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        _likedLogs.contains(entry.value['id'] as int) ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                                        color: _likedLogs.contains(entry.value['id'] as int) ? const Color(0xFFEF4444) : const Color(0xFF64748B),
+                                        size: 18,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        _likedLogs.contains(entry.value['id'] as int) ? '已給心意' : '給個心意',
+                                        style: GoogleFonts.notoSansTc(
+                                          fontSize: 12,
+                                          color: _likedLogs.contains(entry.value['id'] as int) ? const Color(0xFFEF4444) : const Color(0xFF64748B),
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            );
-          }),
+            ],
 
           // 展開/收起按鈕
           Center(
