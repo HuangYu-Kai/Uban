@@ -945,14 +945,19 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
 
     List<Map<String, dynamic>> activeFilteredItems;
     if (_selectedDateFilterIndex == 0) {
-      activeFilteredItems = todayItems.isNotEmpty ? todayItems : rawFeedItems;
+      // 0: 預設全部歷來紀錄 (All Footprints)
+      activeFilteredItems = rawFeedItems;
     } else if (_selectedDateFilterIndex == 1) {
-      activeFilteredItems = yesterdayItems.isNotEmpty ? yesterdayItems : rawFeedItems;
+      // 1: 今天
+      activeFilteredItems = todayItems;
+    } else if (_selectedDateFilterIndex == 2) {
+      // 2: 昨天
+      activeFilteredItems = yesterdayItems;
     } else {
+      // 3: 歷史月曆選取
       if (_selectedHistoricalDate != null) {
         final targetStr = "${_selectedHistoricalDate!.year}-${_selectedHistoricalDate!.month.toString().padLeft(2, '0')}-${_selectedHistoricalDate!.day.toString().padLeft(2, '0')}";
-        final match = rawFeedItems.where((i) => i['date'] == targetStr).toList();
-        activeFilteredItems = match.isNotEmpty ? match : rawFeedItems;
+        activeFilteredItems = rawFeedItems.where((i) => i['date'] == targetStr).toList();
       } else {
         activeFilteredItems = rawFeedItems;
       }
@@ -1048,13 +1053,13 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
 
           const SizedBox(height: 16),
 
-          // 日期篩選標籤 (具備完整點擊切換與月曆選取功能)
+          // 日期篩選標籤 (預設選中「全部足跡」，點擊精準過濾)
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
                 _buildDateChip(
-                  '📅 今天 (${todayItems.length})',
+                  '🌐 全部足跡 (${rawFeedItems.length})',
                   isSelected: _selectedDateFilterIndex == 0,
                   onTap: () {
                     HapticFeedback.lightImpact();
@@ -1063,7 +1068,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                 ),
                 const SizedBox(width: 8),
                 _buildDateChip(
-                  '昨天 (${yesterdayItems.length})',
+                  '📅 今天 (${todayItems.length})',
                   isSelected: _selectedDateFilterIndex == 1,
                   onTap: () {
                     HapticFeedback.lightImpact();
@@ -1072,10 +1077,19 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                 ),
                 const SizedBox(width: 8),
                 _buildDateChip(
+                  '昨天 (${yesterdayItems.length})',
+                  isSelected: _selectedDateFilterIndex == 2,
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    setState(() => _selectedDateFilterIndex = 2);
+                  },
+                ),
+                const SizedBox(width: 8),
+                _buildDateChip(
                   _selectedHistoricalDate != null
                       ? '🗓️ ${_selectedHistoricalDate!.month}/${_selectedHistoricalDate!.day}'
                       : '歷史月曆 🗓️',
-                  isSelected: _selectedDateFilterIndex == 2,
+                  isSelected: _selectedDateFilterIndex == 3,
                   onTap: () async {
                     HapticFeedback.lightImpact();
                     final picked = await showDatePicker(
@@ -1100,7 +1114,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                     if (picked != null) {
                       setState(() {
                         _selectedHistoricalDate = picked;
-                        _selectedDateFilterIndex = 2;
+                        _selectedDateFilterIndex = 3;
                       });
                     }
                   },
@@ -1129,7 +1143,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '點擊上方「今天」或「昨天」查看長輩最新動態',
+                    '點擊上方「🌐 全部足跡」觀看長輩完整歷史動態',
                     style: GoogleFonts.notoSansTc(
                       fontSize: 12,
                       color: Colors.white38,
