@@ -1266,7 +1266,8 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                 return b == 'AI CHAT' || b == 'CARE' || d.contains('陪伴') || d.contains('故事') || d.contains('女兒') || d.contains('對話');
               }).toList(),
             ),
-          ] else ...[
+          ],
+          if (!_isCategorizedView) ...[
             // ─── 時間軸 Feed 列表 ───
             ...displayedItems.asMap().entries.map((entry) {
               final idx = entry.key;
@@ -1618,7 +1619,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                 padding: const EdgeInsets.symmetric(vertical: 10),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
-                  side: Border.all(color: categoryColor.withValues(alpha: 0.6)),
+                  side: BorderSide(color: categoryColor.withValues(alpha: 0.6)),
                 ),
               ),
               onPressed: () {
