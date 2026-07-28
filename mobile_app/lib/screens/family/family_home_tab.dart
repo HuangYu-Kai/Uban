@@ -30,11 +30,104 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
   Map<String, dynamic>? _moodInsightData;
   List<dynamic> _realLogs = [];
   bool _isLoadingInsight = false;
+  int _selectedDateFilterIndex = 0; // 0: 今天, 1: 昨天, 2: 歷史月曆
+  DateTime? _selectedHistoricalDate;
 
   @override
   void initState() {
     super.initState();
     _loadDynamicData();
+  }
+
+  Map<String, String> _formatLogText(String rawContent, String eventType) {
+    if (rawContent.contains('長者詢問：') && rawContent.contains('| AI 回應：')) {
+      try {
+        final parts = rawContent.split('| AI 回應：');
+        final queryPart = parts[0].replaceAll('長者詢問：', '').trim();
+        final aiPart = parts.length > 1 ? parts[1].trim() : '';
+
+        final shortQuery = queryPart.length > 18 ? '${queryPart.substring(0, 18)}...' : queryPart;
+        final shortAi = aiPart.length > 28 ? '${aiPart.substring(0, 28)}...' : aiPart;
+
+        return {
+          'title': 'AI 小嘎語音對話',
+          'summary': '長輩問：「$shortQuery」\nAI小嘎：$shortAi',
+          'fullQuery': queryPart,
+          'fullAi': aiPart,
+          'isChat': 'true',
+        };
+      } catch (_) {}
+    }
+
+    if (rawContent.contains('【狀態更新】')) {
+      final clean = rawContent.replaceAll('【狀態更新】', '').trim();
+      return {
+        'title': '長輩作息狀態更新',
+        'summary': clean,
+        'isChat': 'false',
+      };
+    }
+
+    return {
+      'title': eventType == 'news_view' ? '新聞點閱收聽' : '生活足跡紀錄',
+      'summary': rawContent,
+      'isChat': 'false',
+    };
+  }
+
+  void _showFullDialogueDialog(BuildContext context, String query, String ai, String timeStr) {
+    showDialog(
+      context: context,
+      builder: (c) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Row(
+          children: [
+            const Icon(Icons.auto_stories_rounded, color: Color(0xFFF59E0B)),
+            const SizedBox(width: 8),
+            Text(
+              '🗣️ AI 語音陪伴對話紀錄 ($timeStr)',
+              style: GoogleFonts.notoSansTc(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('👴 長輩提問：', style: GoogleFonts.notoSansTc(color: const Color(0xFF38BDF8), fontWeight: FontWeight.bold)),
+            const SizedBox(height: 4),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0F172A),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.3)),
+              ),
+              child: Text(query, style: GoogleFonts.notoSansTc(color: Colors.white, height: 1.4)),
+            ),
+            const SizedBox(height: 14),
+            Text('🤖 AI 小嘎回報與陪伴：', style: GoogleFonts.notoSansTc(color: const Color(0xFFFCD34D), fontWeight: FontWeight.bold)),
+            const SizedBox(height: 4),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0F172A),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.3)),
+              ),
+              child: Text(ai, style: GoogleFonts.notoSansTc(color: const Color(0xFFFEF3C7), height: 1.4)),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c),
+            child: Text('關閉', style: GoogleFonts.notoSansTc(color: const Color(0xFF38BDF8), fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -535,19 +628,27 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     ).animate().fadeIn(delay: 100.ms, duration: 400.ms).slideY(begin: 0.05);
   }
 
-  // ─── 3. 📸 長輩生活動態時光牆 (動態擴充與折疊/展開機制) ───
+  // ─── 3. 📸 長輩生活動態時光牆 (動態擴充與折疊/展開機制 + 日期篩選) ───
 
   Widget _buildElderLifeFeedSection(BuildContext context) {
     final name = widget.currentElder?.displayName ?? '長輩';
 
-    List<Map<String, dynamic>> allFeedItems = [];
+    final now = DateTime.now();
+    final todayStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+    final yesterday = now.subtract(const Duration(days: 1));
+    final yesterdayStr = "${yesterday.year}-${yesterday.month.toString().padLeft(2, '0')}-${yesterday.day.toString().padLeft(2, '0')}";
+
+    List<Map<String, dynamic>> rawFeedItems = [];
 
     if (_realLogs.isNotEmpty) {
-      allFeedItems = _realLogs.map<Map<String, dynamic>>((log) {
+      rawFeedItems = _realLogs.map<Map<String, dynamic>>((log) {
         final eventType = log['event_type']?.toString() ?? 'activity';
         final content = log['content']?.toString() ?? '生活紀錄';
         final timestampStr = log['timestamp']?.toString() ?? '';
         final timeStr = timestampStr.length >= 16 ? timestampStr.substring(11, 16) : '今日';
+        final datePart = timestampStr.length >= 10 ? timestampStr.substring(0, 10) : todayStr;
+
+        final formatted = _formatLogText(content, eventType);
 
         IconData icon = Icons.check_circle_rounded;
         Color color = const Color(0xFF38BDF8);
@@ -579,9 +680,13 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
         return {
           'id': log['log_id'] ?? log.hashCode,
           'time': timeStr,
+          'date': datePart,
           'badge': badge,
-          'title': eventType == 'news_view' ? '新聞點閱收聽' : '生活足跡紀錄',
-          'desc': content,
+          'title': formatted['title']!,
+          'desc': formatted['summary']!,
+          'fullQuery': formatted['fullQuery'] ?? '',
+          'fullAi': formatted['fullAi'] ?? '',
+          'isChat': formatted['isChat'] == 'true',
           'icon': icon,
           'color': color,
           'glow': glow,
@@ -589,14 +694,16 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
       }).toList();
     }
 
-    if (allFeedItems.isEmpty) {
-      allFeedItems = [
+    if (rawFeedItems.isEmpty) {
+      rawFeedItems = [
         {
           'id': 1,
           'time': '16:30',
+          'date': todayStr,
           'badge': 'NEWS',
           'title': '新聞點閱收聽',
           'desc': '點閱收聽體育新聞：《NBA熱火誤發加盟預告 詹姆斯回歸傳聞升溫》',
+          'isChat': false,
           'icon': Icons.newspaper_rounded,
           'color': const Color(0xFF38BDF8),
           'glow': const Color(0xFF0284C7),
@@ -604,9 +711,11 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
         {
           'id': 2,
           'time': '14:00',
+          'date': todayStr,
           'badge': 'WALK',
           'title': '日常運動散步',
           'desc': '在大安森林公園散步完成，今日累積 3,850 步 🏃‍♂️',
+          'isChat': false,
           'icon': Icons.directions_walk_rounded,
           'color': const Color(0xFF34D399),
           'glow': const Color(0xFF059669),
@@ -614,9 +723,13 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
         {
           'id': 3,
           'time': '11:45',
+          'date': todayStr,
           'badge': 'AI CHAT',
-          'title': 'AI 小嘎回憶對話',
-          'desc': '長輩分享了「大稻埕布莊歲月」的童年往事 📖 (已儲存至故事膠囊)',
+          'title': 'AI 小嘎語音對話',
+          'desc': '長輩問：「陪我說說話好了」\nAI小嘎：好呀，宇璿！能陪您聊天我最開心了！',
+          'fullQuery': '陪我說說話好了',
+          'fullAi': '好呀，宇璿！能陪您聊天我最開心了。今天過得怎麼樣呢？剛才我們聊到晚餐，您後來決定要吃什麼好料的了嗎？',
+          'isChat': true,
           'icon': Icons.auto_stories_rounded,
           'color': const Color(0xFFF59E0B),
           'glow': const Color(0xFFD97706),
@@ -624,9 +737,11 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
         {
           'id': 4,
           'time': '10:15',
+          'date': yesterdayStr,
           'badge': 'CARE',
           'title': '收到子女關懷',
           'desc': '收到女兒傳送的語音卡片：「爸爸週末要不要一起吃火鍋」💌',
+          'isChat': false,
           'icon': Icons.favorite_rounded,
           'color': const Color(0xFFEC4899),
           'glow': const Color(0xFFBE185D),
@@ -634,9 +749,11 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
         {
           'id': 5,
           'time': '08:30',
+          'date': yesterdayStr,
           'badge': 'MEDICINE',
           'title': '晨間用藥確認',
           'desc': '已按時服用【降血壓藥】與綜合維他命 ✅',
+          'isChat': false,
           'icon': Icons.medication_rounded,
           'color': const Color(0xFFA78BFA),
           'glow': const Color(0xFF7C3AED),
@@ -644,9 +761,11 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
         {
           'id': 6,
           'time': '07:00',
+          'date': yesterdayStr,
           'badge': 'ROUTINE',
           'title': '晨間點睛打卡',
           'desc': '長輩開啟 Uban 完成晨間打卡，精神狀態極佳 🌟',
+          'isChat': false,
           'icon': Icons.wb_sunny_rounded,
           'color': const Color(0xFFFBBF24),
           'glow': const Color(0xFFD97706),
@@ -654,7 +773,26 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
       ];
     }
 
-    final displayedItems = _isFeedExpanded ? allFeedItems : allFeedItems.take(3).toList();
+    // 計算各日期的數量
+    final todayItems = rawFeedItems.where((i) => i['date'] == todayStr).toList();
+    final yesterdayItems = rawFeedItems.where((i) => i['date'] == yesterdayStr).toList();
+
+    List<Map<String, dynamic>> activeFilteredItems;
+    if (_selectedDateFilterIndex == 0) {
+      activeFilteredItems = todayItems.isNotEmpty ? todayItems : rawFeedItems;
+    } else if (_selectedDateFilterIndex == 1) {
+      activeFilteredItems = yesterdayItems.isNotEmpty ? yesterdayItems : rawFeedItems;
+    } else {
+      if (_selectedHistoricalDate != null) {
+        final targetStr = "${_selectedHistoricalDate!.year}-${_selectedHistoricalDate!.month.toString().padLeft(2, '0')}-${_selectedHistoricalDate!.day.toString().padLeft(2, '0')}";
+        final match = rawFeedItems.where((i) => i['date'] == targetStr).toList();
+        activeFilteredItems = match.isNotEmpty ? match : rawFeedItems;
+      } else {
+        activeFilteredItems = rawFeedItems;
+      }
+    }
+
+    final displayedItems = _isFeedExpanded ? activeFilteredItems : activeFilteredItems.take(3).toList();
 
     return Container(
       padding: const EdgeInsets.all(22),
@@ -709,7 +847,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                         ),
                       ),
                       Text(
-                        '今日共 ${allFeedItems.length} 筆生活足跡',
+                        '目前篩選共 ${activeFilteredItems.length} 筆生活足跡',
                         style: GoogleFonts.notoSansTc(
                           fontSize: 12,
                           color: const Color(0xFF94A3B8),
@@ -746,16 +884,63 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
 
           const SizedBox(height: 16),
 
-          // 日期篩選標籤
+          // 日期篩選標籤 (具備完整點擊切換與月曆選取功能)
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
-                _buildDateChip('📅 今天 (${allFeedItems.length})', isSelected: true),
+                _buildDateChip(
+                  '📅 今天 (${todayItems.isEmpty ? rawFeedItems.length : todayItems.length})',
+                  isSelected: _selectedDateFilterIndex == 0,
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    setState(() => _selectedDateFilterIndex = 0);
+                  },
+                ),
                 const SizedBox(width: 8),
-                _buildDateChip('昨天 (8)', isSelected: false),
+                _buildDateChip(
+                  '昨天 (${yesterdayItems.isEmpty ? 3 : yesterdayItems.length})',
+                  isSelected: _selectedDateFilterIndex == 1,
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    setState(() => _selectedDateFilterIndex = 1);
+                  },
+                ),
                 const SizedBox(width: 8),
-                _buildDateChip('歷史月曆 🗓️', isSelected: false),
+                _buildDateChip(
+                  _selectedHistoricalDate != null
+                      ? '🗓️ ${_selectedHistoricalDate!.month}/${_selectedHistoricalDate!.day}'
+                      : '歷史月曆 🗓️',
+                  isSelected: _selectedDateFilterIndex == 2,
+                  onTap: () async {
+                    HapticFeedback.lightImpact();
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: _selectedHistoricalDate ?? DateTime.now(),
+                      firstDate: DateTime(2023),
+                      lastDate: DateTime.now(),
+                      builder: (context, child) {
+                        return Theme(
+                          data: ThemeData.dark().copyWith(
+                            colorScheme: const ColorScheme.dark(
+                              primary: Color(0xFF38BDF8),
+                              onPrimary: Colors.white,
+                              surface: Color(0xFF1E293B),
+                              onSurface: Colors.white,
+                            ),
+                          ),
+                          child: child!,
+                        );
+                      },
+                    );
+                    if (picked != null) {
+                      setState(() {
+                        _selectedHistoricalDate = picked;
+                        _selectedDateFilterIndex = 2;
+                      });
+                    }
+                  },
+                ),
               ],
             ),
           ),
@@ -769,6 +954,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
             final id = item['id'] as int;
             final isLiked = _likedLogs.contains(id);
             final isLast = idx == displayedItems.length - 1;
+            final isChat = item['isChat'] == true;
 
             return IntrinsicHeight(
               child: Row(
@@ -848,15 +1034,17 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                                 ),
                               ),
                               const SizedBox(width: 8),
-                              Text(
-                                item['title'] as String,
-                                style: GoogleFonts.notoSansTc(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w800,
-                                  color: Colors.white,
+                              Expanded(
+                                child: Text(
+                                  item['title'] as String,
+                                  style: GoogleFonts.notoSansTc(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.white,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
-                              const Spacer(),
                               Text(
                                 item['time'] as String,
                                 style: GoogleFonts.inter(
@@ -870,6 +1058,8 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                           const SizedBox(height: 8),
                           Text(
                             item['desc'] as String,
+                            maxLines: isChat ? 3 : 2,
+                            overflow: TextOverflow.ellipsis,
                             style: GoogleFonts.notoSansTc(
                               fontSize: 13,
                               height: 1.45,
@@ -877,6 +1067,34 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                               fontWeight: FontWeight.w500,
                             ),
                           ),
+                          if (isChat) ...[
+                            const SizedBox(height: 8),
+                            GestureDetector(
+                              onTap: () {
+                                HapticFeedback.mediumImpact();
+                                _showFullDialogueDialog(
+                                  context,
+                                  item['fullQuery'] as String? ?? '',
+                                  item['fullAi'] as String? ?? '',
+                                  item['time'] as String? ?? '',
+                                );
+                              },
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.auto_awesome_rounded, color: Color(0xFFF59E0B), size: 14),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    '📖 點擊查看 AI 語音陪伴完整對話',
+                                    style: GoogleFonts.notoSansTc(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                      color: const Color(0xFFFCD34D),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                           const SizedBox(height: 8),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.end,
@@ -936,7 +1154,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                 color: const Color(0xFF38BDF8),
               ),
               label: Text(
-                _isFeedExpanded ? '收起部分日誌' : '👇 展開今日完整 ${allFeedItems.length} 筆生活足跡',
+                _isFeedExpanded ? '收起部分日誌' : '👇 展開此時段完整 ${activeFilteredItems.length} 筆生活足跡',
                 style: GoogleFonts.notoSansTc(
                   fontSize: 13,
                   fontWeight: FontWeight.bold,
@@ -950,22 +1168,25 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     ).animate().fadeIn(delay: 200.ms, duration: 400.ms);
   }
 
-  Widget _buildDateChip(String label, {required bool isSelected}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: isSelected ? const Color(0xFF38BDF8).withValues(alpha: 0.25) : Colors.white.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isSelected ? const Color(0xFF38BDF8) : Colors.white12,
+  Widget _buildDateChip(String label, {required bool isSelected, VoidCallback? onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF38BDF8).withValues(alpha: 0.25) : Colors.white.withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? const Color(0xFF38BDF8) : Colors.white12,
+          ),
         ),
-      ),
-      child: Text(
-        label,
-        style: GoogleFonts.notoSansTc(
-          fontSize: 12,
-          fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
-          color: isSelected ? const Color(0xFF38BDF8) : const Color(0xFF94A3B8),
+        child: Text(
+          label,
+          style: GoogleFonts.notoSansTc(
+            fontSize: 12,
+            fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
+            color: isSelected ? const Color(0xFF38BDF8) : const Color(0xFF94A3B8),
+          ),
         ),
       ),
     );
