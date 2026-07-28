@@ -24,9 +24,6 @@ class FamilyHomeTab extends StatefulWidget {
 }
 
 class _FamilyHomeTabState extends State<FamilyHomeTab> {
-  final Set<int> _likedLogs = {};
-  bool _isFeedExpanded = false;
-  bool _isCategorizedView = true; // 預設開啟「主題大分類」檢視模式
   Map<String, dynamic>? _moodInsightData;
   List<dynamic> _realLogs = [];
   int _selectedDateFilterIndex = 0; // 0: 今天, 1: 昨天, 2: 歷史月曆
@@ -38,41 +35,6 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     _loadDynamicData();
   }
 
-  Map<String, String> _formatLogText(String rawContent, String eventType) {
-    if (rawContent.contains('長者詢問：') && rawContent.contains('| AI 回應：')) {
-      try {
-        final parts = rawContent.split('| AI 回應：');
-        final queryPart = parts[0].replaceAll('長者詢問：', '').trim();
-        final aiPart = parts.length > 1 ? parts[1].trim() : '';
-
-        final shortQuery = queryPart.length > 18 ? '${queryPart.substring(0, 18)}...' : queryPart;
-        final shortAi = aiPart.length > 28 ? '${aiPart.substring(0, 28)}...' : aiPart;
-
-        return {
-          'title': 'AI 小嘎語音對話',
-          'summary': '長輩問：「$shortQuery」\nAI小嘎：$shortAi',
-          'fullQuery': queryPart,
-          'fullAi': aiPart,
-          'isChat': 'true',
-        };
-      } catch (_) {}
-    }
-
-    if (rawContent.contains('【狀態更新】')) {
-      final clean = rawContent.replaceAll('【狀態更新】', '').trim();
-      return {
-        'title': '長輩作息狀態更新',
-        'summary': clean,
-        'isChat': 'false',
-      };
-    }
-
-    return {
-      'title': eventType == 'news_view' ? '新聞點閱收聽' : '生活足跡紀錄',
-      'summary': rawContent,
-      'isChat': 'false',
-    };
-  }
 
   void _showFullDialogueDialog(BuildContext context, String query, String ai, String timeStr) {
     showDialog(
@@ -814,7 +776,6 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
 
   Widget _buildElderLifeFeedSection(BuildContext context) {
     final name = widget.currentElder?.displayName ?? '長輩';
-
     final now = DateTime.now();
     final todayStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
     final yesterday = now.subtract(const Duration(days: 1));
@@ -823,94 +784,95 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     List<Map<String, dynamic>> rawFeedItems = [];
 
     if (_realLogs.isNotEmpty) {
-      rawFeedItems = _realLogs.map<Map<String, dynamic>>((log) {
-        final eventType = log['event_type']?.toString() ?? 'activity';
-        final content = log['content']?.toString() ?? '生活紀錄';
-        final timestampStr = log['timestamp']?.toString() ?? '';
-        final timeStr = timestampStr.length >= 16 ? timestampStr.substring(11, 16) : '今日';
-        final datePart = timestampStr.length >= 10 ? timestampStr.substring(0, 10) : todayStr;
+      rawFeedItems = _realLogs.map((log) {
+        final contentStr = log['content']?.toString() ?? '';
+        final eventType = log['event_type']?.toString() ?? '';
+        final tsStr = log['timestamp']?.toString() ?? '';
 
-        final formatted = _formatLogText(content, eventType);
+        String timeStr = '今天';
+        String dateStr = todayStr;
+        if (tsStr.length >= 16) {
+          dateStr = tsStr.substring(0, 10);
+          timeStr = tsStr.substring(11, 16);
+        }
 
-        IconData icon = Icons.check_circle_rounded;
-        Color color = const Color(0xFF38BDF8);
-        Color glow = const Color(0xFF0284C7);
         String badge = 'LOG';
+        Color col = const Color(0xFF38BDF8);
+        Color glowCol = const Color(0xFF0284C7);
+        IconData ic = Icons.auto_awesome_rounded;
 
-        if (eventType == 'news_view' || content.contains('新聞')) {
-          icon = Icons.newspaper_rounded;
-          color = const Color(0xFF38BDF8);
-          glow = const Color(0xFF0284C7);
+        if (eventType == 'news_view' || contentStr.contains('新聞') || contentStr.contains('NBA')) {
           badge = 'NEWS';
-        } else if (content.contains('散步') || content.contains('步數')) {
-          icon = Icons.directions_walk_rounded;
-          color = const Color(0xFF34D399);
-          glow = const Color(0xFF059669);
+          col = const Color(0xFF38BDF8);
+          glowCol = const Color(0xFF0284C7);
+          ic = Icons.sports_basketball_rounded;
+        } else if (contentStr.contains('散步') || contentStr.contains('步數')) {
           badge = 'WALK';
-        } else if (content.contains('對話') || content.contains('聊天') || content.contains('小嘎')) {
-          icon = Icons.auto_stories_rounded;
-          color = const Color(0xFFF59E0B);
-          glow = const Color(0xFFD97706);
-          badge = 'AI CHAT';
-        } else if (content.contains('藥')) {
-          icon = Icons.medication_rounded;
-          color = const Color(0xFFA78BFA);
-          glow = const Color(0xFF7C3AED);
+          col = const Color(0xFF34D399);
+          glowCol = const Color(0xFF059669);
+          ic = Icons.directions_run_rounded;
+        } else if (contentStr.contains('藥') || contentStr.contains('打卡')) {
           badge = 'MEDICINE';
+          col = const Color(0xFFA78BFA);
+          glowCol = const Color(0xFF7C3AED);
+          ic = Icons.medication_rounded;
+        } else if (contentStr.contains('對話') || contentStr.contains('聊天') || contentStr.contains('小嘎')) {
+          badge = 'AI CHAT';
+          col = const Color(0xFFF59E0B);
+          glowCol = const Color(0xFFD97706);
+          ic = Icons.favorite_rounded;
         }
 
         return {
           'id': log['log_id'] ?? log.hashCode,
           'time': timeStr,
-          'date': datePart,
+          'date': dateStr,
           'badge': badge,
-          'title': formatted['title']!,
-          'desc': formatted['summary']!,
-          'fullQuery': formatted['fullQuery'] ?? '',
-          'fullAi': formatted['fullAi'] ?? '',
-          'isChat': formatted['isChat'] == 'true',
-          'icon': icon,
-          'color': color,
-          'glow': glow,
+          'title': contentStr.length > 15 ? contentStr.substring(0, 15) + '...' : contentStr,
+          'desc': contentStr,
+          'fullQuery': '與 AI 長輩陪伴語音互動',
+          'fullAi': contentStr,
+          'isChat': badge == 'AI CHAT',
+          'icon': ic,
+          'color': col,
+          'glow': glowCol,
         };
       }).toList();
-    }
-
-    if (rawFeedItems.isEmpty) {
+    } else {
       rawFeedItems = [
         {
           'id': 1,
-          'time': '16:30',
+          'time': '16:45',
           'date': todayStr,
           'badge': 'NEWS',
-          'title': '新聞點閱收聽',
-          'desc': '點閱收聽體育新聞：《NBA熱火誤發加盟預告 詹姆斯回歸傳聞升溫》',
+          'title': '點閱收聽體育新聞',
+          'desc': '長輩收聽熱門體育新聞《NBA熱火誤發詹姆斯加盟預告》，隨後發起 AI 語音問答交流 🏆',
           'isChat': false,
-          'icon': Icons.newspaper_rounded,
+          'icon': Icons.sports_basketball_rounded,
           'color': const Color(0xFF38BDF8),
           'glow': const Color(0xFF0284C7),
         },
         {
           'id': 2,
-          'time': '14:00',
+          'time': '15:30',
           'date': todayStr,
           'badge': 'WALK',
-          'title': '日常運動散步',
-          'desc': '在大安森林公園散步完成，今日累積 3,850 步 🏃‍♂️',
+          'title': '公園散步履約打卡',
+          'desc': '在大安森林公園完成步數目標 3,850 步，達成今日規律健康標章 🏃‍♂️',
           'isChat': false,
-          'icon': Icons.directions_walk_rounded,
+          'icon': Icons.directions_run_rounded,
           'color': const Color(0xFF34D399),
           'glow': const Color(0xFF059669),
         },
         {
           'id': 3,
-          'time': '11:45',
+          'time': '14:00',
           'date': todayStr,
           'badge': 'AI CHAT',
-          'title': 'AI 小嘎語音對話',
-          'desc': '長輩問：「陪我說說話好了」\nAI小嘎：好呀，宇璿！能陪您聊天我最開心了！',
-          'fullQuery': '陪我說說話好了',
-          'fullAi': '好呀，宇璿！能陪您聊天我最開心了。今天過得怎麼樣呢？剛才我們聊到晚餐，您後來決定要吃什麼好料的了嗎？',
+          'title': '童年大稻埕布莊故事',
+          'desc': '長輩與小嘎分享年輕時在大稻埕布莊當學徒的往事 💬',
+          'fullQuery': '聊聊以前大稻埕布莊的事',
+          'fullAi': '宇璿，您說您年輕時在布莊當學徒，那時候的布匹顏色跟質感真令人懷念！要不要再多說說當時最熱銷的布款呢？',
           'isChat': true,
           'icon': Icons.auto_stories_rounded,
           'color': const Color(0xFFF59E0B),
@@ -918,11 +880,11 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
         },
         {
           'id': 4,
-          'time': '10:15',
-          'date': yesterdayStr,
+          'time': '11:20',
+          'date': todayStr,
           'badge': 'CARE',
-          'title': '收到子女關懷',
-          'desc': '收到女兒傳送的語音卡片：「爸爸週末要不要一起吃火鍋」💌',
+          'title': '收到女兒關懷',
+          'desc': '收到女兒傳送的語音卡片：「爸，今晚想吃火鍋嗎？」💌',
           'isChat': false,
           'icon': Icons.favorite_rounded,
           'color': const Color(0xFFEC4899),
@@ -930,11 +892,11 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
         },
         {
           'id': 5,
-          'time': '08:30',
-          'date': yesterdayStr,
+          'time': '08:15',
+          'date': todayStr,
           'badge': 'MEDICINE',
-          'title': '晨間用藥確認',
-          'desc': '已按時服用【降血壓藥】與綜合維他命 ✅',
+          'title': '晨間降壓藥與量血壓',
+          'desc': '已按時服用【降血壓藥】乙顆，血壓 122 mmHg 狀態良好 💊',
           'isChat': false,
           'icon': Icons.medication_rounded,
           'color': const Color(0xFFA78BFA),
@@ -942,6 +904,20 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
         },
         {
           'id': 6,
+          'time': '19:30',
+          'date': yesterdayStr,
+          'badge': 'AI CHAT',
+          'title': '晚間台語歌仔戲對話',
+          'desc': '長輩與小嘎聊起《身騎白馬》歌詞與王寶釧故事 🎭',
+          'fullQuery': '想聽聽歌仔戲身騎白馬',
+          'fullAi': '好呀，宇璿！薛平貴騎著白馬過三關，這段戲曲真的是經典名作，您以前也很愛聽歌仔戲嗎？',
+          'isChat': true,
+          'icon': Icons.theater_comedy_rounded,
+          'color': const Color(0xFFF59E0B),
+          'glow': const Color(0xFFD97706),
+        },
+        {
+          'id': 7,
           'time': '07:00',
           'date': yesterdayStr,
           'badge': 'ROUTINE',
@@ -955,26 +931,22 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
       ];
     }
 
-    // 計算各日期的數量
     final todayItems = rawFeedItems.where((i) => i['date'] == todayStr).toList();
     final yesterdayItems = rawFeedItems.where((i) => i['date'] == yesterdayStr).toList();
 
     List<Map<String, dynamic>> activeFilteredItems;
     if (_selectedDateFilterIndex == 0) {
-      activeFilteredItems = todayItems.isNotEmpty ? todayItems : rawFeedItems;
+      activeFilteredItems = todayItems;
     } else if (_selectedDateFilterIndex == 1) {
-      activeFilteredItems = yesterdayItems.isNotEmpty ? yesterdayItems : rawFeedItems;
+      activeFilteredItems = yesterdayItems;
     } else {
       if (_selectedHistoricalDate != null) {
         final targetStr = "${_selectedHistoricalDate!.year}-${_selectedHistoricalDate!.month.toString().padLeft(2, '0')}-${_selectedHistoricalDate!.day.toString().padLeft(2, '0')}";
-        final match = rawFeedItems.where((i) => i['date'] == targetStr).toList();
-        activeFilteredItems = match.isNotEmpty ? match : rawFeedItems;
+        activeFilteredItems = rawFeedItems.where((i) => i['date'] == targetStr).toList();
       } else {
         activeFilteredItems = rawFeedItems;
       }
     }
-
-    final displayedItems = _isFeedExpanded ? activeFilteredItems : activeFilteredItems.take(3).toList();
 
     return Container(
       padding: const EdgeInsets.all(22),
@@ -1066,97 +1038,13 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
 
           const SizedBox(height: 16),
 
-          // 檢視模式切換 (📁 主題大分類 vs 🕒 時間軸順序)
-          Container(
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.06),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white12),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: GestureDetector(
-                    onTap: () {
-                      HapticFeedback.lightImpact();
-                      setState(() => _isCategorizedView = true);
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      decoration: BoxDecoration(
-                        color: _isCategorizedView ? const Color(0xFF38BDF8) : Colors.transparent,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.topic_rounded,
-                            size: 16,
-                            color: _isCategorizedView ? Colors.black : Colors.white60,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            '📁 主題大分類 (推薦)',
-                            style: GoogleFonts.notoSansTc(
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
-                              color: _isCategorizedView ? Colors.black : Colors.white70,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: GestureDetector(
-                    onTap: () {
-                      HapticFeedback.lightImpact();
-                      setState(() => _isCategorizedView = false);
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      decoration: BoxDecoration(
-                        color: !_isCategorizedView ? const Color(0xFF38BDF8) : Colors.transparent,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.timeline_rounded,
-                            size: 16,
-                            color: !_isCategorizedView ? Colors.black : Colors.white60,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            '🕒 時間軸列表',
-                            style: GoogleFonts.notoSansTc(
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
-                              color: !_isCategorizedView ? Colors.black : Colors.white70,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 14),
-
           // 日期篩選標籤 (具備完整點擊切換與月曆選取功能)
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
                 _buildDateChip(
-                  '📅 今天 (${todayItems.isEmpty ? rawFeedItems.length : todayItems.length})',
+                  '📅 今天 (${todayItems.length})',
                   isSelected: _selectedDateFilterIndex == 0,
                   onTap: () {
                     HapticFeedback.lightImpact();
@@ -1165,7 +1053,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                 ),
                 const SizedBox(width: 8),
                 _buildDateChip(
-                  '昨天 (${yesterdayItems.isEmpty ? 3 : yesterdayItems.length})',
+                  '昨天 (${yesterdayItems.length})',
                   isSelected: _selectedDateFilterIndex == 1,
                   onTap: () {
                     HapticFeedback.lightImpact();
@@ -1213,226 +1101,40 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
 
           const SizedBox(height: 20),
 
-          // ─── 當啟用「主題大分類」模式時動態渲染 (數量與主題非固定，由 AI 判定) ───
-          if (_isCategorizedView) ...[
-            ..._buildDynamicCategoryCards(context, activeFilteredItems),
-          ],
-          if (!_isCategorizedView) ...[
-            // ─── 時間軸 Feed 列表 ───
-            for (final entry in displayedItems.asMap().entries) ...[
-              IntrinsicHeight(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // 左側發光時間軸與節點 Icon
-                    Column(
-                      children: [
-                        Container(
-                          width: 38,
-                          height: 38,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: const Color(0xFF1E293B),
-                            border: Border.all(color: entry.value['color'] as Color, width: 2),
-                            boxShadow: [
-                              BoxShadow(
-                                color: (entry.value['glow'] as Color).withValues(alpha: 0.5),
-                                blurRadius: 10,
-                              ),
-                            ],
-                          ),
-                          child: Icon(entry.value['icon'] as IconData, color: entry.value['color'] as Color, size: 18),
-                        ),
-                        if (entry.key != displayedItems.length - 1 || !_isFeedExpanded)
-                          Expanded(
-                            child: Container(
-                              width: 2,
-                              margin: const EdgeInsets.symmetric(vertical: 4),
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment.topCenter,
-                                  end: Alignment.bottomCenter,
-                                  colors: [
-                                    entry.value['color'] as Color,
-                                    Colors.white24,
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                      ],
+          // ─── 完美整合：時間軸發光節點 + AI 主題卡片合二為一 ───
+          if (activeFilteredItems.isEmpty) ...[
+            const SizedBox(height: 24),
+            Center(
+              child: Column(
+                children: [
+                  const Icon(Icons.event_note_rounded, color: Colors.white38, size: 44),
+                  const SizedBox(height: 8),
+                  Text(
+                    '該日期尚無長輩活動紀錄 🗓️',
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 14,
+                      color: Colors.white60,
+                      fontWeight: FontWeight.w600,
                     ),
-
-                    const SizedBox(width: 14),
-
-                    // 右側動態卡片
-                    Expanded(
-                      child: Container(
-                        margin: const EdgeInsets.only(bottom: 16),
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF0F172A).withValues(alpha: 0.6),
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: (entry.value['color'] as Color).withValues(alpha: 0.2),
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(color: (entry.value['color'] as Color).withValues(alpha: 0.4)),
-                                  ),
-                                  child: Text(
-                                    entry.value['badge'] as String,
-                                    style: GoogleFonts.inter(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w900,
-                                      color: entry.value['color'] as Color,
-                                      letterSpacing: 0.5,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    entry.value['title'] as String,
-                                    style: GoogleFonts.notoSansTc(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w800,
-                                      color: Colors.white,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                Text(
-                                  entry.value['time'] as String,
-                                  style: GoogleFonts.inter(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w700,
-                                    color: const Color(0xFF64748B),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              entry.value['desc'] as String,
-                              maxLines: entry.value['isChat'] == true ? 3 : 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.notoSansTc(
-                                fontSize: 13,
-                                height: 1.45,
-                                color: const Color(0xFFCBD5E1),
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            if (entry.value['isChat'] == true) ...[
-                              const SizedBox(height: 8),
-                              GestureDetector(
-                                onTap: () {
-                                  HapticFeedback.mediumImpact();
-                                  _showFullDialogueDialog(
-                                    context,
-                                    entry.value['fullQuery'] as String? ?? '',
-                                    entry.value['fullAi'] as String? ?? '',
-                                    entry.value['time'] as String? ?? '',
-                                  );
-                                },
-                                child: Row(
-                                  children: [
-                                    const Icon(Icons.auto_awesome_rounded, color: Color(0xFFF59E0B), size: 14),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      '📖 點擊查看 AI 語音陪伴完整對話',
-                                      style: GoogleFonts.notoSansTc(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w700,
-                                        color: const Color(0xFFFCD34D),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                            const SizedBox(height: 8),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.end,
-                              children: [
-                                GestureDetector(
-                                  onTap: () {
-                                    HapticFeedback.lightImpact();
-                                    final item = entry.value;
-                                    final id = item['id'] as int;
-                                    setState(() {
-                                      if (_likedLogs.contains(id)) {
-                                        _likedLogs.remove(id);
-                                      } else {
-                                        _likedLogs.add(id);
-                                      }
-                                    });
-                                  },
-                                  child: Row(
-                                    children: [
-                                      Icon(
-                                        _likedLogs.contains(entry.value['id'] as int) ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                                        color: _likedLogs.contains(entry.value['id'] as int) ? const Color(0xFFEF4444) : const Color(0xFF64748B),
-                                        size: 18,
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        _likedLogs.contains(entry.value['id'] as int) ? '已給心意' : '給個心意',
-                                        style: GoogleFonts.notoSansTc(
-                                          fontSize: 12,
-                                          color: _likedLogs.contains(entry.value['id'] as int) ? const Color(0xFFEF4444) : const Color(0xFF64748B),
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '點擊上方「今天」或「昨天」查看長輩最新動態',
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 12,
+                      color: Colors.white38,
                     ),
-                  ],
-                ),
-              ),
-            ],
-
-          // 展開/收起按鈕
-          Center(
-            child: TextButton.icon(
-              onPressed: () {
-                HapticFeedback.lightImpact();
-                setState(() {
-                  _isFeedExpanded = !_isFeedExpanded;
-                });
-              },
-              icon: Icon(
-                _isFeedExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
-                color: const Color(0xFF38BDF8),
-              ),
-              label: Text(
-                _isFeedExpanded ? '收起部分日誌' : '👇 展開此時段完整 ${activeFilteredItems.length} 筆生活足跡',
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                  color: const Color(0xFF38BDF8),
-                ),
+                  ),
+                ],
               ),
             ),
-          ),
+            const SizedBox(height: 24),
+          ] else ...[
+            ..._buildUnifiedTimelineCategoryCards(context, activeFilteredItems),
+          ],
         ],
-      ],
-    ),
-  ).animate().fadeIn(delay: 200.ms, duration: 400.ms);
+      ),
+    ).animate().fadeIn(delay: 200.ms, duration: 400.ms);
   }
 
   Widget _buildDateChip(String label, {required bool isSelected, VoidCallback? onTap}) {
@@ -1459,7 +1161,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     );
   }
 
-  List<Widget> _buildDynamicCategoryCards(BuildContext context, List<Map<String, dynamic>> activeFilteredItems) {
+  List<Widget> _buildUnifiedTimelineCategoryCards(BuildContext context, List<Map<String, dynamic>> activeFilteredItems) {
     final name = widget.currentElder?.displayName ?? '長輩';
     final apiClusters = _moodInsightData?['topic_clusters'] as List<dynamic>?;
 
@@ -1574,18 +1276,84 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
       }
     }
 
-    return categoriesToRender.map((cat) {
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 16),
-        child: _buildCategoryCard(
-          context,
-          categoryTitle: cat['title'] as String,
-          categoryIcon: cat['icon'] as IconData,
-          categoryColor: cat['color'] as Color,
-          glowColor: cat['glow'] as Color,
-          tagline: cat['tagline'] as String,
-          previewSummary: cat['previewSummary'] as String,
-          items: cat['items'] as List<Map<String, dynamic>>,
+    final categoriesList = categoriesToRender.asMap().entries.toList();
+
+    return categoriesList.map((entry) {
+      final idx = entry.key;
+      final cat = entry.value;
+      final isLast = idx == categoriesList.length - 1;
+      final items = cat['items'] as List<Map<String, dynamic>>;
+      final latestTime = items.isNotEmpty ? (items.first['time'] as String? ?? '') : '';
+
+      return IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Column(
+              children: [
+                if (latestTime.isNotEmpty) ...[
+                  Text(
+                    latestTime,
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: cat['color'] as Color,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                ],
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: const Color(0xFF1E293B),
+                    border: Border.all(color: cat['color'] as Color, width: 2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: (cat['glow'] as Color).withValues(alpha: 0.5),
+                        blurRadius: 10,
+                      ),
+                    ],
+                  ),
+                  child: Icon(cat['icon'] as IconData, color: cat['color'] as Color, size: 18),
+                ),
+                if (!isLast)
+                  Expanded(
+                    child: Container(
+                      width: 2,
+                      margin: const EdgeInsets.symmetric(vertical: 4),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            cat['color'] as Color,
+                            Colors.white24,
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 18),
+                child: _buildCategoryCard(
+                  context,
+                  categoryTitle: cat['title'] as String,
+                  categoryIcon: cat['icon'] as IconData,
+                  categoryColor: cat['color'] as Color,
+                  glowColor: cat['glow'] as Color,
+                  tagline: cat['tagline'] as String,
+                  previewSummary: cat['previewSummary'] as String,
+                  items: items,
+                ),
+              ),
+            ),
+          ],
         ),
       );
     }).toList();
