@@ -5,7 +5,6 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../../models/elder.dart';
 import '../../services/api_service.dart';
 import 'alert_center_screen.dart';
-import 'widgets/ai_suggestion_card.dart';
 
 /// 🏠 子女端首頁 Tab (全新極光玻璃與 AI 情緒氣象台 + 生活時光牆)
 class FamilyHomeTab extends StatefulWidget {
@@ -30,7 +29,6 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
   bool _isCategorizedView = true; // 預設開啟「主題大分類」檢視模式
   Map<String, dynamic>? _moodInsightData;
   List<dynamic> _realLogs = [];
-  bool _isLoadingInsight = false;
   int _selectedDateFilterIndex = 0; // 0: 今天, 1: 昨天, 2: 歷史月曆
   DateTime? _selectedHistoricalDate;
 
@@ -1219,53 +1217,9 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
 
           const SizedBox(height: 20),
 
-          // ─── 當啟用「主題大分類」模式時渲染 ───
+          // ─── 當啟用「主題大分類」模式時動態渲染 (數量與主題非固定，由 AI 判定) ───
           if (_isCategorizedView) ...[
-            _buildCategoryCard(
-              context,
-              categoryTitle: '🏀 體育賽事與新聞關注',
-              categoryIcon: Icons.sports_basketball_rounded,
-              categoryColor: const Color(0xFF38BDF8),
-              glowColor: const Color(0xFF0284C7),
-              tagline: '關注話題：NBA 球星交易與轉隊賽事傳聞 🏆',
-              previewSummary: '長輩點閱收聽了熱門體育新聞《NBA熱火誤發加盟預告》，並隨後發起 AI 語音詢問討論。',
-              items: activeFilteredItems.where((i) {
-                final b = i['badge'].toString();
-                final d = i['desc'].toString();
-                final t = i['title'].toString();
-                return b == 'NEWS' || d.contains('NBA') || d.contains('體育') || d.contains('新聞') || t.contains('新聞') || d.contains('詹姆斯');
-              }).toList(),
-            ),
-            const SizedBox(height: 16),
-            _buildCategoryCard(
-              context,
-              categoryTitle: '🏃‍♂️ 健康與日常運動作息',
-              categoryIcon: Icons.directions_run_rounded,
-              categoryColor: const Color(0xFF34D399),
-              glowColor: const Color(0xFF059669),
-              tagline: '作息狀態：步數達標 3,850 步 🏃‍♂️ • 晨間降壓藥已確認',
-              previewSummary: '在大安森林公園完成步數目標，晨間定時打卡完成，血壓控制良好。',
-              items: activeFilteredItems.where((i) {
-                final b = i['badge'].toString();
-                final d = i['desc'].toString();
-                return b == 'WALK' || b == 'MEDICINE' || b == 'ROUTINE' || d.contains('散步') || d.contains('步數') || d.contains('藥') || d.contains('打卡');
-              }).toList(),
-            ),
-            const SizedBox(height: 16),
-            _buildCategoryCard(
-              context,
-              categoryTitle: '💬 溫情陪伴與家族互動',
-              categoryIcon: Icons.favorite_rounded,
-              categoryColor: const Color(0xFFF59E0B),
-              glowColor: const Color(0xFFD97706),
-              tagline: '家族互動：收到女兒火鍋邀約卡片 💌 • 童年布莊往事',
-              previewSummary: '長輩與 AI 小嘎分享童年布莊回憶故事，並收到了來自女兒的溫馨聚餐語音卡片。',
-              items: activeFilteredItems.where((i) {
-                final b = i['badge'].toString();
-                final d = i['desc'].toString();
-                return b == 'AI CHAT' || b == 'CARE' || d.contains('陪伴') || d.contains('故事') || d.contains('女兒') || d.contains('對話');
-              }).toList(),
-            ),
+            ..._buildDynamicCategoryCards(context, activeFilteredItems),
           ],
           if (!_isCategorizedView) ...[
             // ─── 時間軸 Feed 列表 ───
@@ -1511,6 +1465,138 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
         ),
       ),
     );
+  }
+
+  List<Widget> _buildDynamicCategoryCards(BuildContext context, List<Map<String, dynamic>> activeFilteredItems) {
+    final name = widget.currentElder?.displayName ?? '長輩';
+    final apiClusters = _moodInsightData?['topic_clusters'] as List<dynamic>?;
+
+    List<Map<String, dynamic>> categoriesToRender = [];
+
+    if (apiClusters != null && apiClusters.isNotEmpty) {
+      for (final cluster in apiClusters) {
+        final title = cluster['title']?.toString() ?? '主題紀錄';
+        final tagline = cluster['tagline']?.toString() ?? '';
+        final previewSummary = cluster['preview_summary']?.toString() ?? '';
+        final colorHexStr = cluster['color_hex']?.toString() ?? '0xFF38BDF8';
+        final glowHexStr = cluster['glow_hex']?.toString() ?? '0xFF0284C7';
+        final iconName = cluster['icon_name']?.toString() ?? '';
+        final keywords = (cluster['match_keywords'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [];
+
+        final colorHex = int.tryParse(colorHexStr) ?? 0xFF38BDF8;
+        final glowHex = int.tryParse(glowHexStr) ?? 0xFF0284C7;
+
+        IconData iconData = Icons.auto_awesome_rounded;
+        if (iconName.contains('sports') || iconName.contains('basketball')) {
+          iconData = Icons.sports_basketball_rounded;
+        } else if (iconName.contains('run') || iconName.contains('directions')) {
+          iconData = Icons.directions_run_rounded;
+        } else if (iconName.contains('favorite') || iconName.contains('heart')) {
+          iconData = Icons.favorite_rounded;
+        }
+
+        final matchedItems = activeFilteredItems.where((item) {
+          if (keywords.isEmpty) return true;
+          final b = item['badge'].toString();
+          final d = item['desc'].toString();
+          final t = item['title'].toString();
+          return keywords.any((k) => b.contains(k) || d.contains(k) || t.contains(k));
+        }).toList();
+
+        if (matchedItems.isNotEmpty) {
+          categoriesToRender.add({
+            'title': title,
+            'icon': iconData,
+            'color': Color(colorHex),
+            'glow': Color(glowHex),
+            'tagline': tagline,
+            'previewSummary': previewSummary,
+            'items': matchedItems,
+          });
+        }
+      }
+    }
+
+    if (categoriesToRender.isEmpty) {
+      final sportsItems = activeFilteredItems.where((i) {
+        final d = "${i['title']} ${i['desc']} ${i['badge']}";
+        return d.contains('NBA') || d.contains('體育') || d.contains('新聞') || d.contains('賽事') || d.contains('詹姆斯');
+      }).toList();
+
+      if (sportsItems.isNotEmpty) {
+        categoriesToRender.add({
+          'title': '🏀 體育賽事與熱門新聞關注',
+          'icon': Icons.sports_basketball_rounded,
+          'color': const Color(0xFF38BDF8),
+          'glow': const Color(0xFF0284C7),
+          'tagline': '關注話題：NBA 球星交易與轉隊賽事討論 🏆',
+          'previewSummary': '$name關注《NBA熱火誤發加盟預告》新聞，並與 AI 小嘎交流比賽戰況與球星動態。',
+          'items': sportsItems,
+        });
+      }
+
+      final healthItems = activeFilteredItems.where((i) {
+        final d = "${i['title']} ${i['desc']} ${i['badge']}";
+        return d.contains('散步') || d.contains('步數') || d.contains('藥') || d.contains('打卡') || d.contains('作息');
+      }).toList();
+
+      if (healthItems.isNotEmpty) {
+        categoriesToRender.add({
+          'title': '🏃‍♂️ 健康運動與日常作息保養',
+          'icon': Icons.directions_run_rounded,
+          'color': const Color(0xFF34D399),
+          'glow': const Color(0xFF059669),
+          'tagline': '作息狀態：公園散步達標 🏃‍♂️ • 降壓藥服用確認',
+          'previewSummary': '在大安森林公園完成步數目標，晨間定時打卡與用藥完成，血壓控制良好。',
+          'items': healthItems,
+        });
+      }
+
+      final chatItems = activeFilteredItems.where((i) {
+        final d = "${i['title']} ${i['desc']} ${i['badge']}";
+        return d.contains('對話') || d.contains('故事') || d.contains('女兒') || d.contains('關懷') || d.contains('聊天');
+      }).toList();
+
+      if (chatItems.isNotEmpty) {
+        categoriesToRender.add({
+          'title': '💬 溫情陪伴與家族互動',
+          'icon': Icons.favorite_rounded,
+          'color': const Color(0xFFF59E0B),
+          'glow': const Color(0xFFD97706),
+          'tagline': '家族互動：收到女兒關懷卡片 💌 • 昔日記憶膠囊',
+          'previewSummary': '$name與 AI 小嘎分享童年布莊回憶故事，並收到了來自女兒的溫馨聚餐語音卡片。',
+          'items': chatItems,
+        });
+      }
+
+      if (categoriesToRender.isEmpty) {
+        categoriesToRender.add({
+          'title': '🌟 每日生活足跡記錄',
+          'icon': Icons.auto_awesome_rounded,
+          'color': const Color(0xFF818CF8),
+          'glow': const Color(0xFF4F46E5),
+          'tagline': '生活狀態：開啟 Uban 保持健康互動 ✅',
+          'previewSummary': '$name今日穩定使用系統，作息規律與狀況平穩。',
+          'items': activeFilteredItems,
+        });
+      }
+    }
+
+    return categoriesToRender.map((cat) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: _buildCategoryCard(
+          context,
+          categoryTitle: cat['title'] as String,
+          categoryIcon: cat['icon'] as IconData,
+          categoryColor: cat['color'] as Color,
+          glowColor: cat['glow'] as Color,
+          tagline: cat['tagline'] as String,
+          previewSummary: cat['previewSummary'] as String,
+          items: cat['items'] as List<Map<String, dynamic>>,
+        ),
+      );
+    }).toList();
   }
 
   Widget _buildCategoryCard(
