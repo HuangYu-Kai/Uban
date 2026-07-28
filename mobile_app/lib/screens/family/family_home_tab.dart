@@ -24,6 +24,8 @@ class FamilyHomeTab extends StatefulWidget {
 }
 
 class _FamilyHomeTabState extends State<FamilyHomeTab> {
+  String? _selectedTopicKeyword;
+
   Map<String, dynamic>? _moodInsightData;
   List<dynamic> _realLogs = [];
   int _selectedDateFilterIndex = 0; // 0: 今天, 1: 昨天, 2: 歷史月曆
@@ -940,31 +942,37 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
       ];
     }
 
-    final todayItems = rawFeedItems.where((i) => i['date'] == todayStr).toList();
-    final yesterdayItems = rawFeedItems.where((i) => i['date'] == yesterdayStr).toList();
+    // Filter by topic keyword if selected
+    List<Map<String, dynamic>> itemsPool = rawFeedItems;
+    if (_selectedTopicKeyword != null) {
+      itemsPool = rawFeedItems.where((i) {
+        final d = "${i['title']} ${i['desc']} ${i['badge']}";
+        return d.contains(_selectedTopicKeyword!);
+      }).toList();
+    }
+
+    final todayItems = itemsPool.where((i) => i['date'] == todayStr).toList();
+    final yesterdayItems = itemsPool.where((i) => i['date'] == yesterdayStr).toList();
 
     List<Map<String, dynamic>> activeFilteredItems;
     if (_selectedDateFilterIndex == 0) {
-      // 0: 預設全部歷來紀錄 (All Footprints)
-      activeFilteredItems = rawFeedItems;
+      activeFilteredItems = itemsPool;
     } else if (_selectedDateFilterIndex == 1) {
-      // 1: 今天
       activeFilteredItems = todayItems;
     } else if (_selectedDateFilterIndex == 2) {
-      // 2: 昨天
       activeFilteredItems = yesterdayItems;
     } else {
-      // 3: 歷史月曆選取
       if (_selectedHistoricalDate != null) {
         final targetStr = "${_selectedHistoricalDate!.year}-${_selectedHistoricalDate!.month.toString().padLeft(2, '0')}-${_selectedHistoricalDate!.day.toString().padLeft(2, '0')}";
-        activeFilteredItems = rawFeedItems.where((i) => i['date'] == targetStr).toList();
+        activeFilteredItems = itemsPool.where((i) => i['date'] == targetStr).toList();
       } else {
-        activeFilteredItems = rawFeedItems;
+        activeFilteredItems = itemsPool;
       }
     }
 
     return Container(
-      padding: const EdgeInsets.all(22),
+      margin: const EdgeInsets.symmetric(horizontal: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 22),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
@@ -1051,15 +1059,20 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
             ],
           ),
 
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
 
-          // 日期篩選標籤 (預設選中「全部足跡」，點擊精準過濾)
+          // 🏷️ 特色功能 1：長輩熱情話題關鍵字雲 (Topic Pulse Cloud)
+          _buildTopicPulseCloud(),
+
+          const SizedBox(height: 12),
+
+          // 日期篩選標籤
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
                 _buildDateChip(
-                  '🌐 全部足跡 (${rawFeedItems.length})',
+                  '🌐 全部足跡 (${itemsPool.length})',
                   isSelected: _selectedDateFilterIndex == 0,
                   onTap: () {
                     HapticFeedback.lightImpact();
@@ -1125,7 +1138,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
 
           const SizedBox(height: 20),
 
-          // ─── 完美整合：時間軸發光節點 + AI 主題卡片合二為一 ───
+          // ─── 時間軸發光節點 + AI 主題卡片合二為一 ───
           if (activeFilteredItems.isEmpty) ...[
             const SizedBox(height: 24),
             Center(
@@ -1134,7 +1147,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                   const Icon(Icons.event_note_rounded, color: Colors.white38, size: 44),
                   const SizedBox(height: 8),
                   Text(
-                    '該日期尚無長輩活動紀錄 🗓️',
+                    '該搜尋條目尚無活動紀錄 🗓️',
                     style: GoogleFonts.notoSansTc(
                       fontSize: 14,
                       color: Colors.white60,
@@ -1159,6 +1172,68 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
         ],
       ),
     ).animate().fadeIn(delay: 200.ms, duration: 400.ms);
+  }
+
+  Widget _buildTopicPulseCloud() {
+    final topics = [
+      {'tag': '🔥 #NBA熱火交易', 'keyword': 'NBA', 'color': const Color(0xFF38BDF8)},
+      {'tag': '🌿 #大安森林公園', 'keyword': '散步', 'color': const Color(0xFF34D399)},
+      {'tag': '🧵 #大稻埕布莊往事', 'keyword': '布莊', 'color': const Color(0xFFF59E0B)},
+      {'tag': '🎭 #台語歌仔戲', 'keyword': '歌仔戲', 'color': const Color(0xFFEC4899)},
+      {'tag': '💊 #晨間作息打卡', 'keyword': '藥', 'color': const Color(0xFFA78BFA)},
+    ];
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: topics.map((t) {
+          final isSelected = _selectedTopicKeyword == t['keyword'];
+          final col = t['color'] as Color;
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: GestureDetector(
+              onTap: () {
+                HapticFeedback.lightImpact();
+                setState(() {
+                  if (_selectedTopicKeyword == t['keyword']) {
+                    _selectedTopicKeyword = null;
+                  } else {
+                    _selectedTopicKeyword = t['keyword'] as String;
+                  }
+                });
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+                decoration: BoxDecoration(
+                  color: isSelected ? col.withValues(alpha: 0.3) : col.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: isSelected ? col : col.withValues(alpha: 0.3),
+                    width: isSelected ? 1.5 : 1,
+                  ),
+                  boxShadow: isSelected
+                      ? [
+                          BoxShadow(
+                            color: col.withValues(alpha: 0.4),
+                            blurRadius: 8,
+                          ),
+                        ]
+                      : [],
+                ),
+                child: Text(
+                  t['tag'] as String,
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 11.5,
+                    fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                    color: isSelected ? Colors.white : col,
+                  ),
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
   }
 
   Widget _buildDateChip(String label, {required bool isSelected, VoidCallback? onTap}) {
@@ -1313,22 +1388,25 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Column(
-              children: [
-                if (latestTime.isNotEmpty) ...[
-                  Text(
-                    latestTime,
-                    style: GoogleFonts.inter(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      color: cat['color'] as Color,
+            SizedBox(
+              width: 56,
+              child: Column(
+                children: [
+                  if (latestTime.isNotEmpty) ...[
+                    Text(
+                      latestTime,
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.inter(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        color: cat['color'] as Color,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                ],
-                Container(
-                  width: 38,
-                  height: 38,
+                    const SizedBox(height: 4),
+                  ],
+                  Container(
+                    width: 36,
+                    height: 36,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: const Color(0xFF1E293B),
@@ -1361,7 +1439,8 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                   ),
               ],
             ),
-            const SizedBox(width: 12),
+            ),
+            const SizedBox(width: 8),
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.only(bottom: 18),
