@@ -29,7 +29,6 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
   bool _isCategorizedView = true; // 預設開啟「主題大分類」檢視模式
   Map<String, dynamic>? _moodInsightData;
   List<dynamic> _realLogs = [];
-  bool _isLoadingInsight = false;
   int _selectedDateFilterIndex = 0; // 0: 今天, 1: 昨天, 2: 歷史月曆
   DateTime? _selectedHistoricalDate;
 
@@ -1435,8 +1434,9 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
             ),
           ),
         ],
-      ),
-    ).animate().fadeIn(delay: 200.ms, duration: 400.ms);
+      ],
+    ),
+  ).animate().fadeIn(delay: 200.ms, duration: 400.ms);
   }
 
   Widget _buildDateChip(String label, {required bool isSelected, VoidCallback? onTap}) {
