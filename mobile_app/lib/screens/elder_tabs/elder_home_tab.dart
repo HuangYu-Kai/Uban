@@ -4,6 +4,7 @@ import 'package:lunar/lunar.dart';
 import 'package:intl/intl.dart';
 import '../news_listen_player/news_listen_player_screen.dart';
 import '../../services/api_service.dart';
+import '../../services/subscription_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/glass_card.dart';
 
@@ -38,11 +39,23 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
   bool _isLoadingNews = true;
   int _topNewsIndex = 0;
 
+  /// 家屬是否已為這位長輩開通 PRO（真相在後端，見 SubscriptionService）。
+  bool _isPro = false;
+
   @override
   void initState() {
     super.initState();
     _updateTime();
     _fetchNews();
+    _loadSubscription();
+  }
+
+  /// 長輩端的 roomId 即 elder_profile.elder_id（見 main.dart 的 elderIdUuid）。
+  Future<void> _loadSubscription() async {
+    final elderId = widget.roomId;
+    if (elderId == null || elderId.isEmpty) return;
+    final isPro = await SubscriptionService.isPro(elderId);
+    if (mounted) setState(() => _isPro = isPro);
   }
 
   Future<void> _fetchNews({String? category}) async {
@@ -253,9 +266,11 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // 會員等級徽章
-        _buildMembershipBadge(),
-        const SizedBox(width: 10),
+        // 會員徽章：只有已訂閱才亮金豬，未訂閱不顯示（不做銀/銅階）
+        if (_isPro) ...[
+          _buildMembershipBadge(),
+          const SizedBox(width: 10),
+        ],
         // 使用者頭像
         Container(
           width: 60,
@@ -285,9 +300,9 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     );
   }
 
-  /// 會員等級徽章膠囊（金豬 / 銀豬 / 銅豬）。
-  /// 目前預設「金豬會員」——等後端提供會員等級欄位後再依資料切換。
-  /// 徽章圖片放 assets/images/pig_badge_gold|silver|bronze.png；未放檔前以 🐷 佔位。
+  /// 訂閱徽章膠囊（金豬會員）。
+  /// 只有一階：家屬已為長輩開通 PRO 就亮金豬，未訂閱則整個膠囊不顯示。
+  /// （不做銀豬 / 銅豬分級；assets 內的 silver/bronze 圖暫時用不到。）
   Widget _buildMembershipBadge() {
     const String tierLabel = '金豬會員';
     const String badgeAsset = 'assets/images/pig_badge_gold.png';

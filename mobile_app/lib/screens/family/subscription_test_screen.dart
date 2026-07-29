@@ -23,9 +23,17 @@
 //      要換成平台金鑰（Android goog_ / iOS appl_）；正式版也建議把 configure()
 //      移到 main.dart 啟動時做一次。
 //
+// ---- 綁定長輩（正式流程的核心）----------------------------------------------
+//   傳入 elderId 後，本頁會把 RevenueCat App User ID 設為 elder_<elderId>，
+//   購買才會掛在長輩身上；RevenueCat webhook 收到 app_user_id="elder_xxxx"，
+//   後端才寫得進 subscription_status，長輩端才查得到 PRO。
+//   → 真相以後端 GET /api/subscription/{elderId} 為準（SDK 狀態僅供對照）。
+//
 // ---- 導頁（從家屬端任何地方打開）--------------------------------------------
 //   Navigator.of(context).push(
-//     MaterialPageRoute(builder: (_) => const SubscriptionTestScreen()),
+//     MaterialPageRoute(builder: (_) => SubscriptionTestScreen(
+//       elderId: elder.elderId, elderName: elder.displayName,
+//     )),
 //   );
 // ============================================================================
 
@@ -34,8 +42,15 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 
+import '../../services/subscription_service.dart';
+
 class SubscriptionTestScreen extends StatefulWidget {
-  const SubscriptionTestScreen({super.key});
+  /// 要開通的長輩 elder_id（elder_profile.elder_id，四碼字串）。
+  /// 給 null 時退回匿名測試 User，購買不會落到任何長輩身上。
+  final String? elderId;
+  final String? elderName;
+
+  const SubscriptionTestScreen({super.key, this.elderId, this.elderName});
 
   @override
   State<SubscriptionTestScreen> createState() => _SubscriptionTestScreenState();
@@ -62,10 +77,20 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
   String? _loadError; // 首次載入失敗訊息（顯示在頁面上）
 
   String _appUserId = '載入中…';
-  bool _isPro = false;
+  bool _isPro = false; // RevenueCat SDK 端的權限（僅供對照）
+
+  // 後端真相（GET /api/subscription/{elderId}）
+  bool _backendIsPro = false;
+  bool _backendChecking = false;
+  String? _backendExpiresText;
 
   List<Package> _packages = [];
   Package? _selected;
+
+  /// 沒帶 elderId 時退回匿名測試 User（購買不會落到任何長輩身上）。
+  String get _targetAppUserId => widget.elderId == null
+      ? 'dev_test_user_001'
+      : SubscriptionService.appUserIdFor(widget.elderId!);
 
   final TextEditingController _userIdController = TextEditingController();
 
@@ -95,6 +120,7 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
       await _ensureConfigured();
       await _syncCustomerInfo();
       await _loadOfferings();
+      await _refreshBackendStatus();
     } catch (e) {
       _loadError = '初始化失敗：$e';
     } finally {
@@ -102,10 +128,19 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
     }
   }
 
-  /// 若尚未 configure，就用 Test Store 金鑰初始化。
+  /// 若尚未 configure，就用 Test Store 金鑰初始化，並把身分綁到目標長輩。
   /// Test Store 是 RevenueCat 官方虛擬測試環境，不需 Google Play / App Store、不綁卡。
+  ///
+  /// 已 configure 的情況（例如從別頁進來、或切換了長輩）→ 用 logIn 換成正確身分，
+  /// 否則購買會掛到上一位長輩身上。
   Future<void> _ensureConfigured() async {
-    if (await Purchases.isConfigured) return;
+    if (await Purchases.isConfigured) {
+      final current = await Purchases.appUserID;
+      if (current != _targetAppUserId) {
+        await Purchases.logIn(_targetAppUserId);
+      }
+      return;
+    }
     if (_apiKey.isEmpty) {
       throw 'RevenueCat 尚未設定金鑰。請到 Dashboard → Apps and providers → '
           'Test configuration 建立 Test Store，取得 test_ 開頭金鑰後，用 '
@@ -113,8 +148,36 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
     }
     await Purchases.setLogLevel(LogLevel.debug);
     await Purchases.configure(
-      PurchasesConfiguration(_apiKey)..appUserID = 'dev_test_user_001',
+      PurchasesConfiguration(_apiKey)..appUserID = _targetAppUserId,
     );
+  }
+
+  /// 查後端真相。webhook 是非同步送達，購買後可能要等幾秒才寫進 DB，
+  /// 所以提供 retries：每次間隔 2 秒重查，直到後端也看到 PRO。
+  Future<void> _refreshBackendStatus({int retries = 0}) async {
+    final elderId = widget.elderId;
+    if (elderId == null) return;
+
+    if (mounted) setState(() => _backendChecking = true);
+    try {
+      for (int attempt = 0; attempt <= retries; attempt++) {
+        if (attempt > 0) {
+          await Future.delayed(const Duration(seconds: 2));
+        }
+        final status = await SubscriptionService.fetchStatus(
+          elderId,
+          forceRefresh: true,
+        );
+        _backendIsPro = status.isPro;
+        _backendExpiresText = status.expiresAt
+            ?.toLocal()
+            .toString()
+            .substring(0, 16);
+        if (_backendIsPro) break; // 後端已收到 webhook，不用再等
+      }
+    } finally {
+      if (mounted) setState(() => _backendChecking = false);
+    }
   }
 
   /// 抓取 current offering 的三個方案（月 / 季 / 年）。
@@ -155,11 +218,13 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
   // 使用者動作
   // ==========================================================================
 
-  /// 「重新整理狀態」：重新查詢 pro_access 是否 active。
+  /// 「重新整理狀態」：SDK 與後端各查一次。
   Future<void> _refreshStatus() async {
     await _runGuarded(() async {
       await _syncCustomerInfo();
-      _showSnack(_isPro ? '狀態已更新：目前為 PRO' : '狀態已更新：目前為 FREE');
+      await _refreshBackendStatus();
+      final truth = widget.elderId == null ? _isPro : _backendIsPro;
+      _showSnack(truth ? '狀態已更新：目前為 PRO' : '狀態已更新：目前為 FREE');
     }, failMsg: '讀取狀態失敗');
   }
 
@@ -171,12 +236,24 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
       return;
     }
     await _runGuarded(() async {
+      // 購買前再確認一次身分沒被別頁換掉，否則會開通到別的長輩。
+      await _ensureConfigured();
       // 回傳型別在不同 purchases_flutter 版本略有差異，
       // 這裡購買後一律重新查詢 CustomerInfo，最穩定。
       await Purchases.purchasePackage(pkg);
       await _syncCustomerInfo();
+
+      if (widget.elderId == null) {
+        _showSnack(_isPro ? '購買成功（未綁定長輩）' : '購買流程結束，但尚未偵測到 PRO 權限');
+        return;
+      }
+
+      // 等 RevenueCat webhook 打到後端並寫入 subscription_status。
+      await _refreshBackendStatus(retries: 4);
       _showSnack(
-        _isPro ? '購買成功，已為長輩解鎖 PRO 進階照護！' : '購買流程結束，但尚未偵測到 PRO 權限',
+        _backendIsPro
+            ? '購買成功，已為${widget.elderName ?? "長輩"}解鎖 PRO 進階照護！'
+            : '購買已完成，但後端尚未收到 webhook（可稍後按重新整理）',
       );
     }, failMsg: '購買失敗');
   }
@@ -188,6 +265,7 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
       _isPro = info.entitlements.active.containsKey(_entitlementId);
       _appUserId = await Purchases.appUserID;
       if (mounted) setState(() {});
+      await _refreshBackendStatus(retries: 2);
       _showSnack(_isPro ? '已恢復購買，PRO 已啟用' : '已執行恢復購買，但查無有效訂閱');
     }, failMsg: '恢復購買失敗');
   }
@@ -346,7 +424,9 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
               Icon(Icons.badge_outlined, size: 18, color: Colors.grey[600]),
               const SizedBox(width: 6),
               Text(
-                '測試 User ID',
+                widget.elderId == null
+                    ? '測試 User ID（未綁定長輩）'
+                    : '綁定長輩：${widget.elderName ?? widget.elderId}',
                 style: GoogleFonts.notoSansTc(fontSize: 13, color: Colors.grey[600]),
               ),
             ],
@@ -397,16 +477,49 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
               ),
             ],
           ),
-          if (_isPro)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text(
-                '長輩已享有 PRO 進階照護服務。',
-                style: GoogleFonts.notoSansTc(fontSize: 13, color: accent),
-              ),
-            ),
+          if (widget.elderId != null) ...[
+            const Divider(height: 24),
+            _buildBackendStatusRow(),
+          ],
         ],
       ),
+    );
+  }
+
+  /// 後端真相列：長輩端實際吃的是這個值（GET /api/subscription/{elderId}）。
+  /// SDK 顯示 PRO 但這裡還是 FREE，通常代表 webhook 尚未送達或後端沒收到。
+  Widget _buildBackendStatusRow() {
+    final Color color =
+        _backendIsPro ? const Color(0xFF16A34A) : const Color(0xFF64748B);
+    return Row(
+      children: [
+        Icon(Icons.cloud_done_outlined, size: 18, color: Colors.grey[600]),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '後端訂閱狀態（長輩端依此解鎖）',
+                style: GoogleFonts.notoSansTc(fontSize: 13, color: Colors.grey[600]),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                _backendChecking
+                    ? '查詢中…'
+                    : _backendIsPro
+                        ? 'PRO 已開通${_backendExpiresText == null ? '' : '（到期 $_backendExpiresText）'}'
+                        : '尚未開通',
+                style: GoogleFonts.notoSansTc(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: color,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 

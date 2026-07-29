@@ -531,10 +531,16 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
           icon: const Icon(Icons.workspace_premium_rounded, color: Color(0xFFF5C451), size: 26),
           tooltip: '訂閱測試（為長輩開通）',
           onPressed: () {
+            final elder = _currentElder;
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => const SubscriptionTestScreen(),
+                // 帶入 elder_id → RevenueCat App User ID 綁成 elder_<id>，
+                // 購買才會落到這位長輩身上（見 SubscriptionTestScreen 說明）。
+                builder: (context) => SubscriptionTestScreen(
+                  elderId: elder?.elderId ?? elder?.id.toString(),
+                  elderName: elder?.displayName,
+                ),
               ),
             );
           },
