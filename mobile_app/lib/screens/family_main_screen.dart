@@ -39,7 +39,6 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   Elder? _currentElder;
   List<Elder> _elders = [];
   bool _isElderOnline = false;
-  String? _elderSocketId;
   Timer? _deviceRefreshTimer;
   Timer? _onlineStateDebounceTimer;
   bool? _pendingOnlineState;
@@ -157,9 +156,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
           _isElderOnline = stableOnline;
           if (stableOnline) {
             final onlineDevice = devices.firstWhere((d) => d['isOnline'] == true, orElse: () => {});
-            _elderSocketId = onlineDevice.isNotEmpty ? onlineDevice['id'] : null;
           } else {
-            _elderSocketId = null;
           }
         });
       });
@@ -181,7 +178,6 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     setState(() {
       _currentElder = elder;
       _isElderOnline = false;
-      _elderSocketId = null;
     });
     
     await _loadElderAndConnect();
