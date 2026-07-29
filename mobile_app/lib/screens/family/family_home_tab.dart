@@ -1062,7 +1062,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
           const SizedBox(height: 14),
 
           // 🏷️ 特色功能 1：長輩熱情話題關鍵字雲 (Topic Pulse Cloud)
-          _buildTopicPulseCloud(),
+          _buildTopicPulseCloud(rawFeedItems),
 
           const SizedBox(height: 12),
 
@@ -1174,19 +1174,105 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     ).animate().fadeIn(delay: 200.ms, duration: 400.ms);
   }
 
-  Widget _buildTopicPulseCloud() {
-    final topics = [
-      {'tag': '🔥 #NBA熱火交易', 'keyword': 'NBA', 'color': const Color(0xFF38BDF8)},
-      {'tag': '🌿 #大安森林公園', 'keyword': '散步', 'color': const Color(0xFF34D399)},
-      {'tag': '🧵 #大稻埕布莊往事', 'keyword': '布莊', 'color': const Color(0xFFF59E0B)},
-      {'tag': '🎭 #台語歌仔戲', 'keyword': '歌仔戲', 'color': const Color(0xFFEC4899)},
-      {'tag': '💊 #晨間作息打卡', 'keyword': '藥', 'color': const Color(0xFFA78BFA)},
-    ];
+  List<Map<String, dynamic>> _extractDynamicTopicTags(
+    List<Map<String, dynamic>> rawFeedItems,
+    dynamic moodInsightData,
+    String elderInterests,
+  ) {
+    List<Map<String, dynamic>> tags = [];
+    final Set<String> seenKeywords = {};
+
+    // 1. 優先從 AI 後端 API (topic_clusters) 提取動態主題標籤
+    final apiClusters = moodInsightData?['topic_clusters'] as List<dynamic>?;
+    if (apiClusters != null && apiClusters.isNotEmpty) {
+      for (final cluster in apiClusters) {
+        final title = cluster['title']?.toString() ?? '';
+        final keywords = (cluster['match_keywords'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [];
+        final colorHexStr = cluster['color_hex']?.toString() ?? '0xFF38BDF8';
+        final color = Color(int.tryParse(colorHexStr) ?? 0xFF38BDF8);
+
+        String tagLabel = '';
+        String kw = keywords.isNotEmpty ? keywords.first : '';
+
+        if (title.contains('體育') || title.contains('新聞')) {
+          tagLabel = '🔥 #NBA熱火與體育焦點';
+          kw = 'NBA';
+        } else if (title.contains('健康') || title.contains('運動')) {
+          tagLabel = '🌿 #大安森林公園散步';
+          kw = '散步';
+        } else if (title.contains('陪伴') || title.contains('家族')) {
+          tagLabel = '🧵 #大稻埕布莊與親情故事';
+          kw = '布莊';
+        } else if (title.isNotEmpty) {
+          tagLabel = '✨ #${title.replaceAll(RegExp(r'[^\w\u4e00-\u9fa5]'), '')}';
+        }
+
+        if (kw.isNotEmpty && !seenKeywords.contains(kw)) {
+          seenKeywords.add(kw);
+          tags.add({'tag': tagLabel, 'keyword': kw, 'color': color});
+        }
+      }
+    }
+
+    // 2. 掃描近 50 筆活動日誌進行加權萃取 (Weighted Log Tag Extraction)
+    if (rawFeedItems.isNotEmpty) {
+      final hasNews = rawFeedItems.any((i) => "${i['title']} ${i['desc']}".contains('NBA') || "${i['title']} ${i['desc']}".contains('新聞'));
+      final hasWalk = rawFeedItems.any((i) => "${i['title']} ${i['desc']}".contains('散步') || "${i['title']} ${i['desc']}".contains('步數'));
+      final hasStory = rawFeedItems.any((i) => "${i['title']} ${i['desc']}".contains('布莊') || "${i['title']} ${i['desc']}".contains('回憶'));
+      final hasOpera = rawFeedItems.any((i) => "${i['title']} ${i['desc']}".contains('歌仔戲') || "${i['title']} ${i['desc']}".contains('身騎白馬'));
+      final hasMed = rawFeedItems.any((i) => "${i['title']} ${i['desc']}".contains('藥') || "${i['title']} ${i['desc']}".contains('打卡'));
+
+      if (hasNews && !seenKeywords.contains('NBA')) {
+        seenKeywords.add('NBA');
+        tags.add({'tag': '🔥 #NBA熱火交易', 'keyword': 'NBA', 'color': const Color(0xFF38BDF8)});
+      }
+      if (hasWalk && !seenKeywords.contains('散步')) {
+        seenKeywords.add('散步');
+        tags.add({'tag': '🌿 #大安森林公園', 'keyword': '散步', 'color': const Color(0xFF34D399)});
+      }
+      if (hasStory && !seenKeywords.contains('布莊')) {
+        seenKeywords.add('布莊');
+        tags.add({'tag': '🧵 #大稻埕布莊往事', 'keyword': '布莊', 'color': const Color(0xFFF59E0B)});
+      }
+      if (hasOpera && !seenKeywords.contains('歌仔戲')) {
+        seenKeywords.add('歌仔戲');
+        tags.add({'tag': '🎭 #台語歌仔戲', 'keyword': '歌仔戲', 'color': const Color(0xFFEC4899)});
+      }
+      if (hasMed && !seenKeywords.contains('藥')) {
+        seenKeywords.add('藥');
+        tags.add({'tag': '💊 #晨間作息與降壓藥', 'keyword': '藥', 'color': const Color(0xFFA78BFA)});
+      }
+    }
+
+    // 3. 備援：長輩 Profile 興趣 (Elder Profile Interests)
+    if (tags.isEmpty && elderInterests.isNotEmpty) {
+      final interestList = elderInterests.split(RegExp(r'[,，\s]+'));
+      for (final item in interestList) {
+        final trimmed = item.trim();
+        if (trimmed.isNotEmpty && !seenKeywords.contains(trimmed)) {
+          seenKeywords.add(trimmed);
+          tags.add({
+            'tag': '✨ #${trimmed}',
+            'keyword': trimmed,
+            'color': const Color(0xFF818CF8),
+          });
+        }
+      }
+    }
+
+    return tags;
+  }
+
+  Widget _buildTopicPulseCloud(List<Map<String, dynamic>> rawFeedItems) {
+    final elderInterests = widget.currentElder?.interests ?? '聽歌仔戲, 泡茶, 散步';
+    final dynamicTopics = _extractDynamicTopicTags(rawFeedItems, _moodInsightData, elderInterests);
+
+    if (dynamicTopics.isEmpty) return const SizedBox.shrink();
 
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
-        children: topics.map((t) {
+        children: dynamicTopics.map((t) {
           final isSelected = _selectedTopicKeyword == t['keyword'];
           final col = t['color'] as Color;
           return Padding(
