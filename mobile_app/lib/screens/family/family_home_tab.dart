@@ -1350,13 +1350,26 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     final name = widget.currentElder?.displayName ?? '長輩';
     final apiClusters = _moodInsightData?['topic_clusters'] as List<dynamic>?;
 
+    String makeDynamicTagline(List<Map<String, dynamic>> items, String fallback) {
+      if (items.isEmpty) return fallback;
+      final first = items.first;
+      final t = first['title']?.toString() ?? '';
+      final tm = first['time']?.toString() ?? '';
+      return '最新紀錄：$t ($tm)';
+    }
+
+    String makeDynamicSummary(List<Map<String, dynamic>> items, String fallback) {
+      if (items.isEmpty) return fallback;
+      final descs = items.map((i) => i['desc']?.toString() ?? '').where((d) => d.isNotEmpty).toList();
+      if (descs.isEmpty) return fallback;
+      return descs.take(2).join('； ');
+    }
+
     List<Map<String, dynamic>> categoriesToRender = [];
 
     if (apiClusters != null && apiClusters.isNotEmpty) {
       for (final cluster in apiClusters) {
         final title = cluster['title']?.toString() ?? '主題紀錄';
-        final tagline = cluster['tagline']?.toString() ?? '';
-        final previewSummary = cluster['preview_summary']?.toString() ?? '';
         final colorHexStr = cluster['color_hex']?.toString() ?? '0xFF38BDF8';
         final glowHexStr = cluster['glow_hex']?.toString() ?? '0xFF0284C7';
         final iconName = cluster['icon_name']?.toString() ?? '';
@@ -1388,8 +1401,8 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
             'icon': iconData,
             'color': Color(colorHex),
             'glow': Color(glowHex),
-            'tagline': tagline,
-            'previewSummary': previewSummary,
+            'tagline': makeDynamicTagline(matchedItems, '$title 相關動態'),
+            'previewSummary': makeDynamicSummary(matchedItems, '$name今日關心 $title。'),
             'items': matchedItems,
           });
         }
@@ -1408,8 +1421,8 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
           'icon': Icons.sports_basketball_rounded,
           'color': const Color(0xFF38BDF8),
           'glow': const Color(0xFF0284C7),
-          'tagline': '關注話題：NBA 球星交易與轉隊賽事討論 🏆',
-          'previewSummary': '$name關注《NBA熱火誤發加盟預告》新聞，並與 AI 小嘎交流比賽戰況與球星動態。',
+          'tagline': makeDynamicTagline(sportsItems, '關注新聞：體育與球賽資訊 🏆'),
+          'previewSummary': makeDynamicSummary(sportsItems, '$name收聽關注熱門新聞點閱紀錄。'),
           'items': sportsItems,
         });
       }
@@ -1425,8 +1438,8 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
           'icon': Icons.directions_run_rounded,
           'color': const Color(0xFF34D399),
           'glow': const Color(0xFF059669),
-          'tagline': '作息狀態：公園散步達標 🏃‍♂️ • 降壓藥服用確認',
-          'previewSummary': '在大安森林公園完成步數目標，晨間定時打卡與用藥完成，血壓控制良好。',
+          'tagline': makeDynamicTagline(healthItems, '作息狀態：健康打卡與運動 🏃‍♂️'),
+          'previewSummary': makeDynamicSummary(healthItems, '$name按時完成晨間打卡與健康運動。'),
           'items': healthItems,
         });
       }
@@ -1442,8 +1455,8 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
           'icon': Icons.favorite_rounded,
           'color': const Color(0xFFF59E0B),
           'glow': const Color(0xFFD97706),
-          'tagline': '家族互動：收到女兒關懷卡片 💌 • 昔日記憶膠囊',
-          'previewSummary': '$name與 AI 小嘎分享童年布莊回憶故事，並收到了來自女兒的溫馨聚餐語音卡片。',
+          'tagline': makeDynamicTagline(chatItems, '家族互動：陪伴對話與語音卡片 💌'),
+          'previewSummary': makeDynamicSummary(chatItems, '$name與 AI 進行語音陪伴對話交流。'),
           'items': chatItems,
         });
       }
@@ -1454,8 +1467,8 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
           'icon': Icons.auto_awesome_rounded,
           'color': const Color(0xFF818CF8),
           'glow': const Color(0xFF4F46E5),
-          'tagline': '生活狀態：開啟 Uban 保持健康互動 ✅',
-          'previewSummary': '$name今日穩定使用系統，作息規律與狀況平穩。',
+          'tagline': makeDynamicTagline(activeFilteredItems, '生活狀態：保持健康互動 ✅'),
+          'previewSummary': makeDynamicSummary(activeFilteredItems, '$name今日穩定使用系統，作息規律與狀況平穩。'),
           'items': activeFilteredItems,
         });
       }
@@ -1493,38 +1506,38 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                   Container(
                     width: 36,
                     height: 36,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: const Color(0xFF1E293B),
-                    border: Border.all(color: cat['color'] as Color, width: 2),
-                    boxShadow: [
-                      BoxShadow(
-                        color: (cat['glow'] as Color).withValues(alpha: 0.5),
-                        blurRadius: 10,
-                      ),
-                    ],
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: const Color(0xFF1E293B),
+                      border: Border.all(color: cat['color'] as Color, width: 2),
+                      boxShadow: [
+                        BoxShadow(
+                          color: (cat['glow'] as Color).withValues(alpha: 0.5),
+                          blurRadius: 10,
+                        ),
+                      ],
+                    ),
+                    child: Icon(cat['icon'] as IconData, color: cat['color'] as Color, size: 18),
                   ),
-                  child: Icon(cat['icon'] as IconData, color: cat['color'] as Color, size: 18),
-                ),
-                if (!isLast)
-                  Expanded(
-                    child: Container(
-                      width: 2,
-                      margin: const EdgeInsets.symmetric(vertical: 4),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            cat['color'] as Color,
-                            Colors.white24,
-                          ],
+                  if (!isLast)
+                    Expanded(
+                      child: Container(
+                        width: 2,
+                        margin: const EdgeInsets.symmetric(vertical: 4),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              cat['color'] as Color,
+                              Colors.white24,
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-              ],
-            ),
+                ],
+              ),
             ),
             const SizedBox(width: 8),
             Expanded(
