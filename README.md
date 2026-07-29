@@ -179,6 +179,7 @@ flowchart TD
 - **配對機制**：PIN 碼 + QR Code 雙軌認領
 - **GPS 快速選址**：一鍵帶入行政區域
 - **陪伴大腦設定**：自訂 AI 人格與長輩資料
+- **PRO 進階照護訂閱**：家屬替長輩付費開通，以 RevenueCat 收費、**後端為單一真相來源**。購買前綁定 `elder_<elderId>`，訂閱掛在長輩身上；長輩端不整合購買 SDK，僅查後端解鎖（詳見 [訂閱會員系統技術設計與實作紀錄](docs/technical/SUBSCRIPTION_ARCHITECTURE.md)）
 
 ### 五、視訊通話（雙軌制 WebRTC + 完整優化）
 
@@ -399,6 +400,51 @@ void initPedometer() {
 ---
 
 ## 更新日誌
+
+### 2026-07-29 💳 PRO 進階照護訂閱前後端接通（RevenueCat + 後端單一真相來源）
+
+> **家屬替長輩訂閱**的完整鏈路打通並通過端到端驗證。分支 `payment-test` 已合併。
+> 完整技術設計見 [訂閱會員系統 (RevenueCat) 技術設計與實作紀錄](docs/technical/SUBSCRIPTION_ARCHITECTURE.md)。
+
+**為什麼後端要當單一真相來源**
+
+家屬付錢、長輩使用，跨帳號又跨裝置——長輩那台根本沒有 RevenueCat SDK 快取可讀。因此一律以
+後端 `subscription_status` 表為準，RevenueCat 透過 Webhook 把狀態推進來，兩端都只查後端。
+
+**後端 (uban-api)**
+- 新增 `routers/subscription.py`：
+  - `POST /api/revenuecat/webhook`：驗證 `Authorization` secret（失敗 401）→ 解析 `app_user_id` 的 `elder_<id>`
+    → 以 `(elder_id, entitlement)` 唯一鍵 upsert。`EXPIRATION`/`REFUND` → `is_active=0`，其餘 → `1`
+    （`CANCELLATION` 只是關閉續訂，到期前仍有存取權）。`TEST` 事件與非 `elder_` 綁定一律略過但回 200，避免 RC 重送風暴。
+  - `GET /api/subscription/{elder_id}`：回傳 `is_pro = is_active AND expires_at > NOW()`。
+  - ⚠️ 此端點為 **POST-only**，用瀏覽器開會得到 `405 Method Not Allowed`，屬正常。
+- 新增資料表 `subscription_status`（InnoDB、兩條外鍵、`UNIQUE(elder_id, entitlement)`）。
+
+**前端 — 共用**
+- 新增 `lib/services/subscription_service.dart`：封裝查詢、60 秒快取、失敗一律回未訂閱（後端掛掉不擋 App）。
+  `appUserIdFor(elderId)` 是 App User ID 格式的單一來源。**刻意不 import `purchases_flutter`**，
+  長輩端才能只讀狀態、不背購買 SDK。
+
+**前端 — 家屬端**
+- `subscription_test_screen.dart`：改為綁定實際長輩（`elder_<id>`），身分不符會自動 `logIn` 換過去；
+  購買後每 2 秒重查後端（最多 5 次）等 webhook 送達；狀態卡並列顯示「SDK 狀態」與「後端訂閱狀態」。
+- `family_main_screen.dart`：AppBar 皇冠入口帶入當前長輩 `elderId`。
+
+**前端 — 長輩端**
+- `elder_home_tab.dart`：首頁會員徽章改由後端驅動。**只做「金豬」一階**——已開通才顯示金豬會員膠囊，
+  未開通整個不顯示；**不做銀豬 / 銅豬分級**（原本寫死固定顯示金豬）。
+
+**驗證結果**
+- 後端 7 項 `curl` 測試全通（含 401 防偽造、`EXPIRATION`/`RENEWAL` 翻轉、upsert 不重複、非 elder 略過）。
+- 真實 Test Store 購買 → SDK 轉 PRO → 後端狀態列轉 PRO → DB 收到 RevenueCat 產生的 event UUID。
+- 長輩端徽章正反向皆正確（開通亮起 / 到期後重啟消失）。
+- `flutter analyze` 無新增問題。
+
+**尚未完成**
+- **功能鎖還沒接**：目前只驅動徽章，尚無 PRO 專屬功能被實際鎖定，待定義 PRO 功能清單。
+- Webhook 亂序重送的時間戳保護、後端 `tests/test_subscription.py` 尚未補。
+- 上架前 `test_` 金鑰須換為 `goog_` / `appl_`。
+- Test Store 訂閱僅約 5 分鐘到期，測試時徽章自然消失屬正常。
 
 ### 2026-07-15 🎨 長輩端 UI 全面改造（統一設計語言 + 毛玻璃 + 適老化）
 

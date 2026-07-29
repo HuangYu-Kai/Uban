@@ -1,14 +1,14 @@
 # 訂閱會員系統 (RevenueCat) 技術設計與實作紀錄
 
 * 建立日期：2026-07-27
-* 最近更新：2026-07-27
-* 適用版本：v1.1.0（規劃中）
+* 最近更新：2026-07-29
+* 適用版本：v1.1.0
 * 負責組件：後端 (uban-api) + 家屬端 (Flutter) + 長輩端 (Flutter)
-* 文件狀態：**設計提案（待使用者確認後實作）**
+* 文件狀態：**已實作並通過端到端驗證（2026-07-29）**
 
-> 本文件為「家屬替長輩訂閱 PRO 進階照護」的正式架構設計。目前已完成的 `SubscriptionTestScreen`
-> （見 [subscription_test_screen.dart](file:///C:/Users/kevin/Desktop/115207/Uban/mobile_app/lib/screens/family/subscription_test_screen.dart)）
-> 僅為 RevenueCat Test Store 的**前端付費流程驗證**，尚未接後端會員狀態同步；本文件描述的即為那一層。
+> 本文件為「家屬替長輩訂閱 PRO 進階照護」的正式架構設計。
+> 後端 Webhook 落地、查詢端點、家屬端綁定購買、長輩端功能鎖（金豬徽章）皆已完成，
+> 並於 Android 模擬器 + RevenueCat Test Store 完成端到端驗證（詳見 ❽ 測試結果）。
 
 ---
 
@@ -132,16 +132,36 @@ Webhook Payload（節錄，實際以 RevenueCat 文件為準）：
 * **[調和既有欄位]** 選配：webhook 更新時，同步把該長輩對應 `user_account_data.user_authority`
   設為 `Sub1`（active）/ `Normal`（到期）。**此為改動既有欄位語意，須使用者確認**。
 
+### 前端 — 共用 (Flutter)
+
+* **[NEW-已完成]** [services/subscription_service.dart](file:///C:/Users/kevin/Desktop/115207/Uban/mobile_app/lib/services/subscription_service.dart)：
+  封裝 `GET /api/subscription/{elderId}`，供家屬 / 長輩端共用。
+  * `SubscriptionStatus` 模型（`elderId / isPro / entitlement / productId / expiresAt`）。
+  * `fetchStatus(elderId, {forceRefresh})`：60 秒記憶體快取，避免同頁多個 widget 重複打 API；
+    逾時或任何例外一律回 `SubscriptionStatus.free()`（**後端掛掉不擋 App 正常運作**）。
+  * `appUserIdFor(elderId) → "elder_<id>"`：App User ID 格式的單一來源，與後端 `_parse_elder_id` 對應。
+  * `invalidate([elderId])`：購買完成 / 切換長輩時清快取。
+  * ⚠️ **本檔刻意不 import `purchases_flutter`**，長輩端才能只讀狀態、不背購買 SDK。
+
 ### 前端 — 家屬端 (Flutter)
 
-* **[MODIFY]** [subscription_test_screen.dart](file:///C:/Users/kevin/Desktop/115207/Uban/mobile_app/lib/screens/family/subscription_test_screen.dart)：
-  正式版把 App User ID 由測試用改為 `Purchases.logIn("elder_<currentElderId>")`；購買成功後呼叫後端刷新。
-* **[NEW]** `services/subscription_service.dart`：封裝 `GET /api/subscription/{elderId}`，供家屬/長輩端共用。
+* **[MODIFY-已完成]** [subscription_test_screen.dart](file:///C:/Users/kevin/Desktop/115207/Uban/mobile_app/lib/screens/family/subscription_test_screen.dart)：
+  * 新增 `elderId` / `elderName` 參數；`Purchases.configure()` 時 `appUserID` 直接設為 `elder_<id>`。
+  * 若 SDK 已 configure 但目前身分不符（從別頁進來、或切換過長輩）→ `Purchases.logIn()` 換成正確身分；
+    購買前再確認一次，避免開通到上一位長輩。
+  * 購買成功後 `_refreshBackendStatus(retries: 4)`：每 2 秒重查後端，等 RevenueCat webhook 非同步送達。
+  * 狀態卡新增「後端訂閱狀態（長輩端依此解鎖）」一列，與 SDK 狀態並列對照。
+* **[MODIFY-已完成]** [family_main_screen.dart](file:///C:/Users/kevin/Desktop/115207/Uban/mobile_app/lib/screens/family_main_screen.dart)：
+  AppBar 皇冠入口帶入當前長輩 `elderId: elder?.elderId ?? elder?.id.toString()`。
 
 ### 前端 — 長輩端 (Flutter)
 
-* **[MODIFY]** 長輩端進階功能入口：以 `SubscriptionService.isPro(elderId)`（查後端）作為功能鎖，
-  **不整合購買 SDK**。
+* **[MODIFY-已完成]** [elder_tabs/elder_home_tab.dart](file:///C:/Users/kevin/Desktop/115207/Uban/mobile_app/lib/screens/elder_tabs/elder_home_tab.dart)：
+  首頁會員徽章改由後端驅動。`_loadSubscription()` 以 `widget.roomId`（長輩端的 roomId **即** `elder_id`，
+  來源見 `main.dart` 的 `elderIdUuid`）呼叫 `SubscriptionService.isPro()`。
+  * **徽章只做「金豬」一階**：已開通 → 顯示金豬會員膠囊；未開通 → 整個膠囊不顯示。
+    **不做銀豬 / 銅豬分級**（`assets/images/pig_badge_silver|bronze.png` 目前未使用）。
+  * 長輩端**不整合購買 SDK**，僅以後端狀態作為功能鎖。
 
 ---
 
@@ -160,9 +180,11 @@ is_pro = subscription_status.is_active = 1  AND  expires_at > NOW()
 
 * **家屬端 Paywall**：沿用現有 `SubscriptionTestScreen` 版面（淺色卡片、`GoogleFonts.notoSansTc`、
   月/季/年 `RadioGroup`、主色 `#0EA5E9`）。
-* **長輩端**：僅呈現「已開通 / 未開通」結果，**不出現付費 UI**。若顯示開通狀態文字，
-  須符合長輩無障礙：核心文字 ≥ 24pt、大點擊熱區。
-* PRO 徽章配色：啟用綠 `#16A34A`、未啟用灰 `#64748B`。
+* **長輩端**：僅呈現「已開通 / 未開通」結果，**不出現付費 UI**。
+  實作上採「**有才顯示**」而非灰階降級——未開通時整個徽章不出現，
+  避免在長輩畫面上製造看不懂的鎖頭或推銷入口（付費決策屬家屬端）。
+  金豬膠囊：底 `#FFF1C4`、字 `#9A6B1E`、徽章圖 36px、文字 18pt w900。
+* 家屬端測試頁 PRO 徽章配色：啟用綠 `#16A34A`、未啟用灰 `#64748B`。
 
 ---
 
@@ -174,25 +196,58 @@ is_pro = subscription_status.is_active = 1  AND  expires_at > NOW()
    * 前端只用 **public SDK key**（Test Store `test_`、正式 `goog_`/`appl_`）。
    * **secret key（`sk_`）只放後端**，用於反查 `GET /v1/subscribers/{id}` 對帳，**嚴禁進前端**。
    * ⚠️ 現階段測試金鑰 `test_...` 屬 Test Store，正式上架必須換平台金鑰（見測試頁註解）。
-3. **冪等性**：Webhook 可能重送 —— 以 `latest_event_id` 去重、以 `(elder_id, entitlement)` 唯一鍵 upsert，
-   並比對 `expiration_at_ms` 只接受較新的狀態，避免舊事件覆蓋新狀態。
+3. **冪等性**：Webhook 可能重送。
+   * ✅ **已實作**：以 `(elder_id, entitlement)` 唯一鍵 upsert（手動 `SELECT → UPDATE/INSERT`），
+     重送同一事件不會產生重複列，`latest_event_id` 有記錄下來供追查。
+   * ⚠️ **尚未實作（已知缺口）**：目前並**未**用 `latest_event_id` 做去重，也**未**比對 `expiration_at_ms`
+     只接受較新狀態。若 RevenueCat 亂序重送（例如 `EXPIRATION` 晚於 `RENEWAL` 抵達），
+     舊事件會覆蓋新狀態，造成短暫誤降級。上線前應補上「時間戳較舊則略過」的判斷。
 4. **多租戶隔離**：所有查詢以 `elder_id` / `family_id` 參數化（`%s`）絕對隔離，禁字串拼接。
 5. **防誤觸**：購買按鈕 Loading 鎖定（測試頁已具備 `_busy` 機制），避免重複下單。
 
 ---
 
-## ❽ 測試與驗證計畫 (Test Plan & Checklist)
+## ❽ 測試與驗證計畫與結果 (Test Plan, Checklist & Results)
 
-* **靜態分析**：`flutter analyze`（前端）；後端 `pytest`（新增 `tests/test_subscription.py`）。
-* **Webhook 測試**：
-  * RevenueCat 後台「Send test event」→ 確認 `POST /api/revenuecat/webhook` 收到並 upsert。
-  * `curl` 模擬各事件型別（含錯誤 secret → 預期 401）。
-* **端到端 Checklist**：
-  1. 家屬 `logIn(elder_0343)` → 購買 sub1month → RevenueCat 發 `INITIAL_PURCHASE` → 表 `is_active=1`。
-  2. 家屬端 / 長輩端 `GET /api/subscription/0343` → `is_pro=true`。
-  3. 後台取消 / 到期 → `CANCELLATION`/`EXPIRATION` webhook → 表 `is_active=0` → 兩端即時降級（解決「不及時」）。
-  4. 邊界：webhook 亂序重送（冪等）、`elder_id` 不存在、後端離線時前端回退顯示、Test Store 短時效訂閱。
-  5. 跨裝置：長輩端不裝購買 SDK，僅靠後端解鎖成功。
+### 驗證結果（2026-07-29，測試長輩 `elder_6160`／家屬 BoYo，Android 模擬器 Pixel_9a）
+
+**後端 API（`curl` 直打線上端點）**
+
+| 項目 | 預期 | 結果 |
+|------|------|------|
+| `POST` webhook `INITIAL_PURCHASE` + `app_user_id=elder_6160` | 200、`is_active=1` | ✅ |
+| `GET /api/subscription/6160` | `is_pro=true` | ✅ |
+| `POST` webhook 帶錯誤 `Authorization` | 401 | ✅ |
+| `POST` webhook `EXPIRATION` | `is_pro` 轉 `false` | ✅ |
+| `POST` webhook `RENEWAL` | 轉回 `true`，且表中仍只有 1 列 | ✅ |
+| `POST` webhook `app_user_id` 非 `elder_` 開頭 | `skipped:true`、不落表、仍回 200 | ✅ |
+| `GET` 未訂閱長輩 `9053` | `is_pro=false`、欄位為 null | ✅ |
+
+**端到端（真實 RevenueCat Test Store 購買）**
+
+1. 家屬端訂閱頁顯示「綁定長輩：宇璿 / `elder_6160`」→ `Purchases.logIn` 綁定生效 ✅
+2. Test Store 選 *Test valid Purchase* → SDK 轉「已解鎖 VIP (PRO)」✅
+3. 後端狀態列自動轉「PRO 已開通」→ webhook 於重試視窗內送達 ✅
+4. DB `latest_event_id` 為 RevenueCat 產生的 UUID（非測試用 curl 事件）→ **證明後台 Webhook 設定正確** ✅
+5. 長輩端（後端 `is_pro=true`）→ 首頁金豬徽章亮起 ✅
+6. 送 `EXPIRATION` 後重啟長輩端 → 徽章消失、只剩頭像 ✅（確認由後端驅動、非寫死）
+
+**靜態分析**：`flutter analyze` 對本次 4 個異動檔皆無新增問題 ✅
+
+### 已知限制與未完成項目
+
+* **Test Store 訂閱僅約 5 分鐘到期**（實測 10:32 購買、`expires_at` 10:37），
+  徽章隨後自然消失屬測試環境特性，非缺陷。
+* 後端尚未新增 `tests/test_subscription.py`（本輪以 `curl` 手動驗證代替）。
+* Webhook 亂序重送的時間戳保護尚未實作（見 ❼-3）。
+* **功能鎖尚未接上**：`SubscriptionService` 目前只驅動長輩端金豬徽章，
+  尚無任何 PRO 專屬功能被實際鎖定，待定義 PRO 功能清單後補上。
+* 正式上架前須將 `test_` 金鑰換為 `goog_` / `appl_`，並把 `Purchases.configure()` 移至 `main.dart` 只做一次。
+
+### 邊界情境（尚未逐一驗證）
+
+`elder_id` 不存在時的外鍵拒絕行為、後端離線時前端回退顯示（程式上一律回未訂閱）、
+以及跨實體裝置（長輩端不裝購買 SDK）的實機驗證。
 
 ---
 
