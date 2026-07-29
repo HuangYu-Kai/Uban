@@ -260,9 +260,9 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
               if (!isRoleSelected) ...[
                 ElevatedButton.icon(icon: const Icon(Icons.visibility), label: const Text("我是家屬"), onPressed: () => setState(() => _selectedRole = 'family'), style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(60))),
                 const SizedBox(height: 20),
-                ElevatedButton.icon(icon: const Icon(Icons.elderly), label: const Text("我是長輩"), style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, minimumSize: const Size.fromHeight(60)), onPressed: () => setState(() => _selectedRole = 'elder')),
+                ElevatedButton(child: const Text("我是監控設備"), style: ElevatedButton.styleFrom(backgroundColor: Colors.grey, minimumSize: const Size.fromHeight(60)), onPressed: () => setState(() => _selectedRole = 'monitor')),
                 const SizedBox(height: 20),
-                ElevatedButton.icon(icon: const Icon(Icons.videocam), label: const Text("我是監控設備"), style: ElevatedButton.styleFrom(backgroundColor: Colors.grey, minimumSize: const Size.fromHeight(60)), onPressed: () => setState(() => _selectedRole = 'monitor')),
+                ElevatedButton.icon(icon: const Icon(Icons.elderly), label: const Text("我是長輩"), style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, minimumSize: const Size.fromHeight(60)), onPressed: () => setState(() => _selectedRole = 'elder')),
               ],
 
               if (isRoleSelected) ...[

@@ -40,6 +40,28 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
     _requestNewCode();
   }
 
+  /// ★ 2026-07-27 第十三輪：記住「上次登入的長輩」，供登出後的快速登入使用。
+  ///
+  /// 這組 `last_elder_*` 鍵刻意與 session 鍵（`caregiver_id` / `caregiver_name` /
+  /// `user_role`）分離：使用者在長輩端按「切換身分／登出」時會清掉 session 鍵
+  /// （見 `elder_tabs/elder_profile_tab.dart::_handleLogout`），而
+  /// `_quickLoginSameElder` 正是讀那三個 session 鍵 —— 於是登出後快速登入必定失敗。
+  /// 這組鍵登出時不清除，只有家屬端遠端 `force-logout`（強制解綁）才會一併清掉。
+  static Future<void> _rememberLastElder(
+    SharedPreferences prefs, {
+    required int elderId,
+    required String elderName,
+    String? elderRoomId,
+  }) async {
+    await prefs.setInt('last_elder_id', elderId);
+    await prefs.setString('last_elder_name', elderName);
+    if (elderRoomId != null && elderRoomId.isNotEmpty) {
+      await prefs.setString('last_elder_room_id', elderRoomId);
+    }
+    debugPrint(
+        '💾 [ElderPairingDisplay] 已記住上次登入長輩 (id=$elderId, name=$elderName, room=$elderRoomId)');
+  }
+
   // ★ 自動決定設備角色（不需資料庫欄位、不需手動選擇）：
   //   詢問後端該長輩是否已存在「通話機」。
   //   - 尚無通話機 → 本設備成為「通話機」(comm)，進入長輩首頁。
@@ -102,7 +124,31 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
     }
 
     final prefs = await SharedPreferences.getInstance();
+
+    // ★ Issue 2 修復：本裝置對「這個長輩」的角色（通話機/監控機）只在首次決定，
+    //   之後（含快速登入、重開機）一律沿用，不再重新呼叫 hasCommDevice，
+    //   避免同一台裝置重新登入時，因後端殘留的舊 FCM token 被誤判為「已有通話機」
+    //   而被錯誤指派為監控機（CCTV）。
+    final String deviceRoleKey = 'device_role_$elderRoom';
+    final String? savedRole = prefs.getString(deviceRoleKey);
+
+    bool isMonitor;
+    if (savedRole != null) {
+      isMonitor = savedRole == 'monitor';
+      debugPrint(
+          '🔁 [ElderPairingDisplay] 沿用已記住的裝置角色 ($deviceRoleKey=$savedRole)，不重查 hasCommDevice');
+    } else {
+      isMonitor = await ApiService.hasCommDevice(elderRoom);
+      await prefs.setString(deviceRoleKey, isMonitor ? 'monitor' : 'comm');
+      debugPrint(
+          '🆕 [ElderPairingDisplay] 首次判定裝置角色 ($deviceRoleKey=${isMonitor ? 'monitor' : 'comm'})');
+    }
+
     await prefs.setBool('saved_is_cctv', isMonitor);
+    // ★ 2026-07-27 第十三輪：把裝置角色一併存進「登出不清除」的記憶鍵，
+    //   讓快速登入能原封不動還原角色，不必重新呼叫 hasCommDevice 重判。
+    await prefs.setString(
+        'last_elder_device_role', isMonitor ? 'monitor' : 'comm');
 
     // 自動產生裝置名稱，免除中文輸入問題；監控機用不同名稱避免與通話機衝突
     final deviceName = isMonitor ? '$elderName的監控機' : '$elderName的設備';
@@ -206,6 +252,14 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
             await prefs.setString('elder_room_id', elderRoomId);
           }
 
+          // ★ 2026-07-27 第十三輪：同步寫入登出不清除的快速登入記憶鍵
+          await _rememberLastElder(
+            prefs,
+            elderId: status['elder_id'],
+            elderName: status['elder_name'] ?? '長輩',
+            elderRoomId: elderRoomId,
+          );
+
           if (!mounted) return;
 
           // ★ 呼叫提示選擇模式
@@ -219,6 +273,11 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
 
   Future<void> _quickLoginSameElder() async {
     final prefs = await SharedPreferences.getInstance();
+
+    // ★ Issue 3 診斷 log：記錄呼叫當下 prefs 內既有的三個關鍵欄位（尚未套用開發模式覆寫）。
+    debugPrint(
+        '🔎 [ElderPairingDisplay] _quickLoginSameElder 開頭 prefs 快照: caregiver_id=${prefs.getInt('caregiver_id')}, caregiver_name=${prefs.getString('caregiver_name')}, user_role=${prefs.getString('user_role')}');
+
     int? elderId;
     String? elderName;
     String? role;
@@ -236,6 +295,46 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
       elderId = prefs.getInt('caregiver_id');
       elderName = prefs.getString('caregiver_name');
       role = prefs.getString('user_role');
+
+      // ★ 2026-07-27 第十三輪：登出後 session 鍵已被清除（elder_profile_tab
+      //   的 _handleLogout 會 remove caregiver_id / caregiver_name），
+      //   此時改讀登出不清除的 last_elder_* 記憶鍵並還原 session。
+      if (elderId == null || elderName == null || role != 'elder') {
+        final int? lastId = prefs.getInt('last_elder_id');
+        final String? lastName = prefs.getString('last_elder_name');
+        if (lastId != null && lastName != null) {
+          debugPrint(
+              '♻️ [ElderPairingDisplay] session 鍵已被登出清除，改用 last_elder_* 還原 (id=$lastId)');
+          elderId = lastId;
+          elderName = lastName;
+          role = 'elder';
+          await prefs.setInt('caregiver_id', lastId);
+          await prefs.setString('caregiver_name', lastName);
+          await prefs.setString('user_role', 'elder');
+          final String? lastRoom = prefs.getString('last_elder_room_id');
+          if (lastRoom != null && lastRoom.isNotEmpty) {
+            await prefs.setString('elder_room_id', lastRoom);
+          }
+
+          // ★ 一併還原裝置角色（通話機／監控機）。
+          //   登出時 saved_is_cctv 與 device_role_* 都被清掉，若不還原，
+          //   _promptModeAndNavigate 會重新呼叫 hasCommDevice 重判；一旦被判成
+          //   monitor，就會觸發「通訊機被記成 monitor → FCM 送成 monitor-wakeup
+          //   → 被 App 丟棄 → 長輩被殺死收不到來電」那條 bug 鏈（護欄 #18/#19）。
+          //   本裝置對這個長輩的角色本就該沿用（見 _promptModeAndNavigate 註解）。
+          final String? lastDeviceRole =
+              prefs.getString('last_elder_device_role');
+          if (lastDeviceRole != null && lastDeviceRole.isNotEmpty) {
+            final String room = (lastRoom != null && lastRoom.isNotEmpty)
+                ? lastRoom
+                : lastId.toString();
+            await prefs.setString('device_role_$room', lastDeviceRole);
+            await prefs.setBool('saved_is_cctv', lastDeviceRole == 'monitor');
+            debugPrint(
+                '♻️ [ElderPairingDisplay] 已還原裝置角色 (device_role_$room=$lastDeviceRole)');
+          }
+        }
+      }
     }
 
     if (!mounted) return;
@@ -249,7 +348,7 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
 
     final String? elderRoomId = prefs.getString('elder_room_id');
     // ★ 呼叫提示選擇模式
-    await _promptModeAndNavigate(elderId!, elderName!, elderRoomId);
+    await _promptModeAndNavigate(elderId, elderName, elderRoomId);
   }
 
   Future<void> loginAndPersist({required int elderId, required String elderName, String? elderRoomId}) async {
@@ -260,6 +359,13 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
     if (elderRoomId != null) {
       await prefs.setString('elder_room_id', elderRoomId);
     }
+    // ★ 2026-07-27 第十三輪：同步寫入登出不清除的快速登入記憶鍵
+    await _rememberLastElder(
+      prefs,
+      elderId: elderId,
+      elderName: elderName,
+      elderRoomId: elderRoomId,
+    );
 
     if (!mounted) return;
 

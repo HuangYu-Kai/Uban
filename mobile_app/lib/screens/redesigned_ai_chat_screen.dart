@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
-/// 🎨 重新設計的聊天界面 - 高端現代风格
-/// 靈感来自 Discord、Slack 的現代設計
+/// 🎨 重新設計的聊天界面 - 高端現代風格
+/// 靈感來自 Discord、Slack 的現代設計
 class RedesignedAiChatScreen extends StatefulWidget {
   final String? elderName;
   final String? aiPersona;
@@ -77,7 +77,7 @@ class _RedesignedAiChatScreenState extends State<RedesignedAiChatScreen>
     setState(() {
       _messages.add({
         'isUser': false,
-        'text': '你好呀！我是 ${personaConfig['gentle']?['name'] ?? 'AI 伴侣'}。',
+        'text': '你好呀！我是 ${personaConfig['gentle']?['name'] ?? 'AI 伴侶'}。',
         'timestamp': DateTime.now(),
       });
     });
@@ -147,7 +147,7 @@ class _RedesignedAiChatScreenState extends State<RedesignedAiChatScreen>
 
   String _getPersonaName() {
     final persona = widget.aiPersona?.toLowerCase() ?? 'gentle';
-    return personaConfig[persona]?['name'] ?? 'AI 伴侣';
+    return personaConfig[persona]?['name'] ?? 'AI 伴侶';
   }
 
   @override
@@ -591,7 +591,7 @@ class _RedesignedAiChatScreenState extends State<RedesignedAiChatScreen>
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '与 ${widget.elderName ?? '长者'} 互动中',
+                        '與 ${widget.elderName ?? '長者'} 互動中',
                         style: GoogleFonts.notoSansTc(
                           fontSize: 12,
                           color: const Color(0xFF94A3B8),
@@ -605,11 +605,11 @@ class _RedesignedAiChatScreenState extends State<RedesignedAiChatScreen>
             const SizedBox(height: 24),
             Divider(color: const Color(0xFFF0F1F3)),
             const SizedBox(height: 16),
-            _buildInfoRow('状态', '在線 · 活跃中'),
+            _buildInfoRow('狀態', '在線 · 活躍中'),
             const SizedBox(height: 12),
-            _buildInfoRow('响应速度', '即时'),
+            _buildInfoRow('回應速度', '即時'),
             const SizedBox(height: 12),
-            _buildInfoRow('說話风格', _getPersonaName()),
+            _buildInfoRow('說話風格', _getPersonaName()),
             const SizedBox(height: 24),
             SizedBox(
               width: double.infinity,
@@ -625,7 +625,7 @@ class _RedesignedAiChatScreenState extends State<RedesignedAiChatScreen>
                 ),
                 onPressed: () => Navigator.pop(context),
                 child: Text(
-                  '关闭',
+                  '關閉',
                   style: GoogleFonts.notoSansTc(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,

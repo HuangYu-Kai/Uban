@@ -41,6 +41,8 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   bool _isElderOnline = false;
   String? _elderSocketId;
   Timer? _deviceRefreshTimer;
+  Timer? _onlineStateDebounceTimer;
+  bool? _pendingOnlineState;
 
   @override
   void initState() {
@@ -77,31 +79,33 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
 
   void _startDeviceRefreshTimer() {
     _deviceRefreshTimer?.cancel();
-    _deviceRefreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+    // 調整為 2.5 秒取樣，避免裝置快速上下線時誤判。
+    _deviceRefreshTimer = Timer.periodic(const Duration(milliseconds: 2500), (_) {
       final elder = _currentElder;
       if (elder == null || _signaling.socket?.connected != true) return;
       final elderIdStr = elder.elderId ?? elder.id.toString();
       _signaling.sendGetElderDevices('comm_elder_$elderIdStr');
+      debugPrint('🔄 [Device Refresh] 輪詢長輩設備狀態 (elder_id=$elderIdStr)');
     });
   }
 
   Future<void> _loadElderAndConnect() async {
     debugPrint('📡📡📡 [FamilyMainScreen] ===== 開始載入長輩並連線 =====');
-    
+
     if (_currentElder == null) {
       debugPrint('⚠️ [FamilyMainScreen] 沒有已選長輩，嘗試重新整理...');
       return;
     }
-    
+
     // ★ 修復：使用正確的房間格式 comm_elder_{elder_id}
     //    elderId 是 elder_profile.elder_id（如 '0343'），而非數字 id
     final elderIdStr = _currentElder!.elderId ?? _currentElder!.id.toString();
     final roomId = 'comm_elder_$elderIdStr';
-    
+
     debugPrint('📡📡📡 [FamilyMainScreen] ===== 連線到房間: $roomId =====');
-    
+
     final String? fcmToken = await FirebaseMessaging.instance.getToken();
-    
+
     _signaling.connect(
       roomId,
       'family',
@@ -109,7 +113,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
       userId: widget.userId,
       fcmToken: fcmToken,
     );
-    
+
     // 請求取得長輩設備在線狀態
     _signaling.sendGetElderDevices(roomId);
   }
@@ -144,14 +148,20 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
       if (!mounted) return;
       debugPrint('📡 [FamilyMainScreen] 收到長輩設備狀態更新: $devices');
       final online = devices.any((d) => d['isOnline'] == true);
-      setState(() {
-        _isElderOnline = online;
-        if (online) {
-          final onlineDevice = devices.firstWhere((d) => d['isOnline'] == true);
-          _elderSocketId = onlineDevice['id'];
-        } else {
-          _elderSocketId = null;
-        }
+      _pendingOnlineState = online;
+      _onlineStateDebounceTimer?.cancel();
+      _onlineStateDebounceTimer = Timer(const Duration(milliseconds: 2500), () {
+        if (!mounted || _pendingOnlineState == null) return;
+        final bool stableOnline = _pendingOnlineState!;
+        setState(() {
+          _isElderOnline = stableOnline;
+          if (stableOnline) {
+            final onlineDevice = devices.firstWhere((d) => d['isOnline'] == true, orElse: () => {});
+            _elderSocketId = onlineDevice.isNotEmpty ? onlineDevice['id'] : null;
+          } else {
+            _elderSocketId = null;
+          }
+        });
       });
     };
   }
@@ -200,6 +210,23 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
       final senderId = args['senderId']!;
       final roomId = args['roomId']!;
       final callId = args['callId'];
+      // ★ 2026-07-22 第八輪 Fix 3：防角色反轉。senderRole 為發起方角色，
+      //   家屬端只應接聽「長輩」發起的來電。若 senderRole == 'family'（自身角色），
+      //   代表這是自己這方發出、經 stale state 回流的假來電 → 拒絕並清除，
+      //   否則會誤發 sendCallAccept 讓對端反被叫（接收方變發起方）。
+      final String? senderRole = args['senderRole'];
+      if (senderRole != null && senderRole.isNotEmpty && senderRole == appRole) {
+        debugPrint("🚫 [FamilyMainScreen] 忽略角色反轉來電 (senderRole=$senderRole == appRole=$appRole, callId=$callId)");
+        return;
+      }
+      final int now = DateTime.now().millisecondsSinceEpoch;
+      final int? expiresAt = int.tryParse('${args['expiresAt'] ?? ''}');
+      final int? issuedAt = int.tryParse('${args['issuedAt'] ?? ''}');
+      final bool isExpired = (expiresAt != null && now > expiresAt) || (issuedAt != null && (now - issuedAt) > kCallValidityMs);
+      if (isExpired) {
+        debugPrint("⏰ [FamilyMainScreen] 忽略過期待接聽來電 (callId=$callId)");
+        return;
+      }
       
       debugPrint("🔔 [FamilyMainScreen] 偵測到背景 CallKit 接聽 (Sender: $senderId, Room: $roomId)");
       
@@ -273,13 +300,19 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
           backgroundColor: isEmergency ? Colors.red.shade50 : Colors.green.shade50,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           actions: [
-            TextButton(
+            ElevatedButton.icon(
               onPressed: () {
                 _signaling.sendCallBusy(senderId, callId: callId);
                 Navigator.of(dialogContext).pop();
                 _isIncomingCallDialogOpen = false;
               },
-              child: const Text('拒接', style: TextStyle(color: Colors.red, fontSize: 16)),
+              icon: const Icon(Icons.call_end),
+              label: const Text('拒接', style: TextStyle(fontSize: 16)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              ),
             ),
             ElevatedButton.icon(
               onPressed: () {
@@ -443,6 +476,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _deviceRefreshTimer?.cancel();
+    _onlineStateDebounceTimer?.cancel();
     pendingAcceptedCall.removeListener(_onPendingCallChanged);
     _signaling.onCallRequest = null;
     _signaling.onEmergencyCall = null;
@@ -483,17 +517,17 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                   children: [
                     CircleAvatar(
                       radius: 20,
-                      backgroundColor: _currentElder!.gender == 'F'
+                      backgroundColor: _currentElder?.gender == 'F'
                           ? const Color(0xFFFDF2F8)
                           : const Color(0xFFF0FDF4),
                       child: Text(
-                        _currentElder!.genderEmoji,
+                        _currentElder?.genderEmoji ?? '',
                         style: const TextStyle(fontSize: 20),
                       ),
                     ),
                     const SizedBox(width: 10),
                     Text(
-                      _currentElder!.displayName,
+                      _currentElder?.displayName ?? '',
                       style: GoogleFonts.notoSansTc(
                         color: const Color(0xFF0F172A),
                         fontWeight: FontWeight.w900,

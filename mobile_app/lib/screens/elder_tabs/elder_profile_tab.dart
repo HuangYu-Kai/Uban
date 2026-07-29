@@ -682,6 +682,16 @@ class _ElderProfileTabState extends State<ElderProfileTab>
               final prefs = await SharedPreferences.getInstance();
               await prefs.remove('caregiver_id');
               await prefs.remove('caregiver_name');
+              // ★ Issue 2 配套：登出後清除裝置角色記憶與監控旗標，
+              //   確保下次重新配對時能重新判定通話機／監控機角色。
+              await prefs.remove('saved_is_cctv');
+              final deviceRoleKeys = prefs
+                  .getKeys()
+                  .where((k) => k.startsWith('device_role_'))
+                  .toList();
+              for (final key in deviceRoleKeys) {
+                await prefs.remove(key);
+              }
 
               if (!mounted) return;
               Navigator.of(context).pushAndRemoveUntil(

@@ -43,13 +43,20 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   final RTCVideoRenderer _remoteRenderer = RTCVideoRenderer();
   String _status = "等待連線...";
   bool _isInCall = false;
-  bool _isCameraOff = true; // ★ 攝像頭預設關閉
+  bool _isCameraOff = false; // 視訊房間預設開啟鏡頭
   bool _isMuted = false;
   bool _isFrontCamera = true; // ★ issue 12：前/後鏡頭狀態
   bool _mediaInitialized = false;
   Timer? _callTimer;
   int _callDuration = 0; // 秒數
   int? _userId; // ★ issue 3/10：用於安全導航回主畫面時建構 ElderHomeScreen
+  String? _prefsUserName; // ★ Issue 1 硬化：真實 caregiver_name，供 _buildFallbackHome 使用
+
+  /// ★ 2026-07-27 第十三輪：本畫面目前正在進行的通話 callId。
+  /// 作為 isSameOngoingCall 去重的第二道防線——不依賴 Signaling.lastProcessedCallId
+  /// 是否被各路徑正確設定。任何一條寫入 pendingAcceptedCall 的路徑若漏設，
+  /// 都不會再把進行中的通話誤判成新來電而 hangUp（緊急通話瞬間掛斷的直接成因）。
+  String? _activeCallId;
 
   // ★ 新增：用於生成新格式的房間ID
   late String _formattedRoomId;
@@ -149,9 +156,12 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       // ★ issue 5：CallKit 接聽與背景 FCM 路徑可能對「同一通」來電各自寫入一次
       //   pendingAcceptedCall。若 callId 與目前正在處理/已建立的通話相同，視為重複觸發，
       //   不可結束已建立好的通話（否則會造成 issue 5 的「連線後立刻斷線」）。
+      // ★ 2026-07-27 第十三輪：加入 _activeCallId 比對作為第二判準。
+      //   原本只比 _signaling.lastProcessedCallId，而緊急通話路徑從未設定它，
+      //   使本判斷恆為 false → 落入下方 hangUp() 分支 → 對端瞬間掛斷。
       final bool isSameOngoingCall = _isInCall &&
           callId != null &&
-          callId == _signaling.lastProcessedCallId;
+          (callId == _signaling.lastProcessedCallId || callId == _activeCallId);
 
       if (isSameOngoingCall) {
         debugPrint("ℹ️ [ElderScreen] 略過重複的 pendingAcceptedCall（與目前通話 callId 相同: $callId）");
@@ -163,6 +173,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       if (_isInCall) {
         debugPrint("⚠️ [ElderScreen] 已有通話進行中，先結束舊通話以接聽新來電");
         _callTimer?.cancel();
+        _activeCallId = null;
         _signaling.hangUp(disconnectSocket: false, disposeLocalStream: false);
         if (mounted) {
           setState(() {
@@ -182,6 +193,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
 
   Future<void> _handleAcceptedCallFromBackground(String senderId, {String? callId}) async {
     if (!_isInCall && mounted) {
+      _activeCallId = callId; // ★ 第十三輪：記錄進行中通話，供 isSameOngoingCall 去重
       setState(() {
         _isInCall = true;
         _status = "通話建立中...";
@@ -209,6 +221,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
 
   Future<void> _handleEmergencyAccept(String senderId, {String? callId}) async {
     if(!_isInCall && mounted) {
+      _activeCallId = callId; // ★ 第十三輪：記錄進行中通話，供 isSameOngoingCall 去重
       setState(() {
         _isInCall = true;
         _status = "緊急通話自動接聽中...";
@@ -303,8 +316,12 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     //    elder_id（widget.roomId，如 '0343'）≠ user_id（資料庫帳號整數 ID）
     final prefs = await SharedPreferences.getInstance();
     final int? actualUserId = prefs.getInt('caregiver_id');
+    final String? actualUserName = prefs.getString('caregiver_name');
     final dynamic resolvedUserId = actualUserId ?? widget.roomId;
     _userId = actualUserId;
+    // ★ Issue 1 硬化：一併記住真實使用者名稱，供 _buildFallbackHome 導航使用，
+    //   避免通話結束回退時錯用 widget.deviceName（裝置暱稱，非長輩本名）。
+    _prefsUserName = actualUserName;
     
     // ★ 修復：若 Socket 已經連線（從 ElderHomeScreen 傳承下來），則不要重新連線，
     //   否則會導致原本的 callbacks 被覆寫。若是從 CCTV 模式直接進入，則會在此處連線。
@@ -354,6 +371,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
 
     _signaling.onCallEnded = () {
       _callTimer?.cancel();
+      _activeCallId = null;
       if (mounted) {
         setState(() {
           _remoteRenderer.srcObject = null;
@@ -376,6 +394,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
         );
         // ★ issue 15：對方拒接/忙線時，呼叫端結束「等待連線」狀態並安全返回
         _callTimer?.cancel();
+        _activeCallId = null;
         setState(() {
           _remoteRenderer.srcObject = null;
           _status = "通話結束";
@@ -403,8 +422,36 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     };
 
     _signaling.socket?.on('force-logout', (_) async {
+      debugPrint('🚪 [ElderScreen] force-logout 觸發');
       final prefs = await SharedPreferences.getInstance();
-      await prefs.clear();
+      // ★ Issue 3 硬化：force-logout 只應清除「登入/角色/裝置身分」相關鍵，
+      //   不可用 prefs.clear() 清光全部本機資料，避免波及與登入狀態無關的設定。
+      const List<String> keysToRemove = [
+        'caregiver_id',
+        'caregiver_name',
+        'user_role',
+        'saved_role',
+        'saved_id',
+        'saved_device_name',
+        'saved_is_cctv',
+        'elder_room_id',
+        'access_token',
+        // ★ 2026-07-27 第十三輪：force-logout 是家屬端「強制解綁本裝置」，
+        //   語意上這台裝置已被移除授權，不該還能用「快速登入同一長輩」一鍵登回，
+        //   故連快速登入記憶鍵一併清除。（使用者自己按「切換身分／登出」則保留。）
+        'last_elder_id',
+        'last_elder_name',
+        'last_elder_room_id',
+        'last_elder_device_role',
+      ];
+      for (final key in keysToRemove) {
+        await prefs.remove(key);
+      }
+      final deviceRoleKeys =
+          prefs.getKeys().where((k) => k.startsWith('device_role_')).toList();
+      for (final key in deviceRoleKeys) {
+        await prefs.remove(key);
+      }
       if (mounted) {
          Navigator.pushAndRemoveUntil(
           context,
@@ -544,6 +591,23 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   void _makeCall() {
     setState(() { _status = "正在呼叫家人..."; _isInCall = true; });
     _signaling.sendCallRequest(_formattedRoomId, role: 'elder');  // ★ 使用格式化的房間ID
+    // ★ 2026-07-18：長輩端主動撥打新增 30 秒逾時。原本完全沒有逾時，
+    //   家屬未接時只能靠手動掛斷，被叫方 CallKit 也會一直響。逾時自動取消。
+    Future.delayed(const Duration(seconds: 30), () {
+      if (mounted && _status == "正在呼叫家人...") {
+        debugPrint("⏰ [ElderScreen] 撥打逾時，自動取消通話");
+        _signaling.sendCancelCall(_formattedRoomId, role: 'elder');
+        _signaling.hangUp(disconnectSocket: false, disposeLocalStream: false);
+        setState(() {
+          _remoteRenderer.srcObject = null;
+          _status = "對方未接聽";
+          _isInCall = false;
+        });
+        if (!widget.isCCTVMode) {
+          safeNavigateBack(context, _buildFallbackHome());
+        }
+      }
+    });
   }
 
   void _hangUp() {
@@ -571,7 +635,9 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   Widget _buildFallbackHome() {
     return ElderHomeScreen(
       userId: _userId ?? 0,
-      userName: widget.deviceName,
+      // ★ Issue 1 硬化：優先使用 prefs 讀到的真實 caregiver_name，
+      //   讀不到才退回舊有的 widget.deviceName（裝置暱稱）。
+      userName: _prefsUserName ?? widget.deviceName,
       roomId: widget.roomId,
     );
   }

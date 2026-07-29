@@ -10,6 +10,8 @@ import 'package:flutter_callkit_incoming/entities/entities.dart';
 import 'package:volume_controller/volume_controller.dart';
 import 'package:uuid/uuid.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import '../globals.dart';
+import 'api_service.dart';
 
 typedef StreamStateCallback = void Function(MediaStream stream);
 typedef IncomingCallCallback = Future<bool> Function(String callerId, String callType);
@@ -68,6 +70,20 @@ class Signaling {
   bool _isAppForeground = true;
   final List<RTCIceCandidate> _candidateQueue = [];
   final List<String> _pendingRooms = [];
+  final Set<String> _invalidCallIds = <String>{};
+
+  /// ★ 2026-07-22 第八輪 Fix 2C：供 main.dart FCM handler 於拒接/取消時標記
+  ///   callId 失效，後續延遲抵達的同一 `call-request`（Socket 或 FCM）將直接丟棄，
+  ///   避免「拒接後又響」與角色反轉迴圈。
+  bool isCallInvalidated(String? callId) =>
+      callId != null && callId.isNotEmpty && _invalidCallIds.contains(callId);
+
+  void invalidateCallId(String? callId) {
+    if (callId != null && callId.isNotEmpty) {
+      _invalidCallIds.add(callId);
+      debugPrint('⛔ [Signaling] callId 已標記失效: $callId');
+    }
+  }
 
   final Map<String, dynamic> _configuration = {
     'iceServers': [
@@ -168,10 +184,10 @@ class Signaling {
     socket!.onDisconnect((reason) {
       debugPrint('⚠️ [Signaling] Socket disconnected: $reason');
       // ★ issue 5：通話進行中若 Socket 短暫斷線（例如冷啟動切換網路時），
-      //   不要立刻觸發 onConnectionLost 把使用者彈回主畫面，給予 2 秒重連寬限期。
+      //   不要立刻觸發 onConnectionLost 把使用者彈回主畫面，給予 15 秒重連寬限期。
       if (peerConnection != null) {
-        debugPrint('⏳ [Signaling] Disconnected during active call, granting 2s reconnect window...');
-        Future.delayed(const Duration(seconds: 2), () {
+        debugPrint('⚠️ [Signaling] Disconnected during active call, granting 15s reconnect window...');
+        Future.delayed(const Duration(seconds: 15), () {
           if (socket != null && !socket!.connected && peerConnection != null) {
             debugPrint('❌ [Signaling] Reconnect window expired, notifying connection lost');
             if (onConnectionLost != null) onConnectionLost!();
@@ -216,6 +232,17 @@ class Signaling {
       
       // ★ 問題4修復：檢查是否已在短時間內處理過此 callId（防止重複）
       final String callId = data['callId'] ?? '';
+      if (callId.isNotEmpty && _invalidCallIds.contains(callId)) {
+        debugPrint('⛔ [Signaling] Ignore invalidated call-request (callId=$callId)');
+        return;
+      }
+      if (_isExpiredCallPayload(data)) {
+        debugPrint('⏰ [Signaling] Ignore expired call-request (callId=$callId)');
+        if (callId.isNotEmpty) {
+          _invalidCallIds.add(callId);
+        }
+        return;
+      }
       final int currentTime = DateTime.now().millisecondsSinceEpoch;
       if (callId.isNotEmpty && callId == lastProcessedCallId && 
           (currentTime - lastProcessedCallTime) < 2000) { // 2秒去重窗口
@@ -254,6 +281,13 @@ class Signaling {
         return;
       }
       debugPrint('🔕 [Signaling] 收到 cancel-call: $data');
+      final String callId = (data['callId'] ?? '').toString();
+      if (callId.isNotEmpty) {
+        _invalidCallIds.add(callId);
+      }
+      if (!kIsWeb) {
+        FlutterCallkitIncoming.endAllCalls();
+      }
       if (onCancelCall != null) onCancelCall!(data['room'], data['senderId'], data['callId']);
     });
 
@@ -269,6 +303,31 @@ class Signaling {
         debugPrint('🚨 [Signaling] 忽略相同角色發出的 emergency-call (SenderRole: $senderRole)');
         return;
       }
+
+      // ★ 2026-07-27 第十三輪（緊急通話瞬間掛斷根因修復）：
+      //   emergency-call 先前完全沒有記錄 lastProcessedCallId（一般 call-request 有），
+      //   導致 ElderScreen._checkPendingAcceptedCall 的 isSameOngoingCall 判斷恆為
+      //   false —— 任何第二次寫入 pendingAcceptedCall（Socket/FCM 雙通道、CallKit
+      //   兜底輪詢）都會被誤判成「另一通新來電」而 hangUp() 掉正在進行的緊急通話，
+      //   對端（家屬）於是收到 end-call 瞬間掛斷。這裡補齊，與 call-request 對齊。
+      final String callId = (data['callId'] ?? '').toString();
+      if (callId.isNotEmpty && _invalidCallIds.contains(callId)) {
+        debugPrint('⛔ [Signaling] Ignore invalidated emergency-call (callId=$callId)');
+        return;
+      }
+      final int currentTime = DateTime.now().millisecondsSinceEpoch;
+      if (callId.isNotEmpty &&
+          callId == lastProcessedCallId &&
+          (currentTime - lastProcessedCallTime) < 2000) {
+        debugPrint('⚠️ [Signaling] 忽略重複的 emergency-call（CallId 已在 2 秒內處理: $callId）');
+        return;
+      }
+      if (callId.isNotEmpty) {
+        lastProcessedCallId = callId;
+        lastProcessedCallTime = currentTime;
+      }
+      _currentCallId = data['callId'];
+
       if (onEmergencyCall != null) {
         // ★ issue 11：透傳來電者名稱
         final String? senderName = (data['senderName'] ?? data['callerName'])?.toString();
@@ -302,6 +361,13 @@ class Signaling {
       _isCreatingOffer = false;
       _closePeerConnection();
       _currentCallId = null;
+      final String callId = (data['callId'] ?? '').toString();
+      if (callId.isNotEmpty) {
+        _invalidCallIds.add(callId);
+      }
+      if (!kIsWeb) {
+        FlutterCallkitIncoming.endAllCalls();
+      }
       if (onCallBusy != null) onCallBusy!(data['targetId'], data['callId']);
     });
 
@@ -345,13 +411,24 @@ class Signaling {
       if (onIncomingCall != null) {
         shouldAnswer = await onIncomingCall!(_peerSocketId!, isEmergency ? 'emergency' : 'normal');
       } else {
-        // If no UI handler (e.g. background), try CallKit for Family role.
-        // But for Elder, they should auto-answer emergency.
+        // !!!!除非要更新視訊通話邏輯，否則禁止更動!!!!
+        // onIncomingCall 為空時，不能在 offer 階段再彈第二套 CallKit UI。
+        // 來電 UI 只允許由 call-request 路徑（main.dart / 各首頁）處理，
+        // 否則會出現隨機雙樣式、雙重推播與錯誤接聽路徑（只開 APP 不進通話房）。
         if (isEmergency) {
           shouldAnswer = true;
         } else {
-          // 如果沒有註冊 onIncomingCall，代表 APP 在背景 或沒有打開 Dashboard
-          shouldAnswer = await _showCallkitIncoming(data['room'] ?? 'Unknown');
+          final String incomingCallId = (data['callId'] ?? '').toString();
+          final bool isKnownAcceptedCall = incomingCallId.isNotEmpty &&
+              (incomingCallId == _currentCallId ||
+                  incomingCallId == lastProcessedCallId);
+          if (isKnownAcceptedCall) {
+            debugPrint('✅ [Signaling] onIncomingCall 為空，沿用既有接聽狀態自動應答 (callId=$incomingCallId)');
+            shouldAnswer = true;
+          } else {
+            debugPrint('⏭️ [Signaling] 略過未知 offer（未經 call-request 接聽鏈路）');
+            shouldAnswer = false;
+          }
         }
       }
 
@@ -390,8 +467,12 @@ class Signaling {
       }
     });
 
-    socket!.on('end-call', (_) async {
+    socket!.on('end-call', (data) async {
       debugPrint("📴 收到掛斷訊號");
+      final String callId = (data is Map ? (data['callId'] ?? '') : '').toString();
+      if (callId.isNotEmpty) {
+        _invalidCallIds.add(callId);
+      }
       if (!kIsWeb) {
         await FlutterCallkitIncoming.endAllCalls();
       }
@@ -437,7 +518,7 @@ class Signaling {
       avatar: 'https://i.pravatar.cc/150?name=$callerName',  // ★ 動態頭貼，基於名稱生成
       handle: '📞 視訊通話',  // ★ 改進提示文字
       type: 0,  // 0 = audio, 1 = video
-      duration: 30000,
+      duration: 45000,  // ★ CallKit 響鈴 45s（獨立於 kCallValidityMs 120s，接聽時限 ≠ FCM 有效期）
       textAccept: '✓ 接聽',  // ★ 加入emoji
       textDecline: '✕ 拒絕',  // ★ 加入emoji
       missedCallNotification: const NotificationParams(
@@ -552,13 +633,18 @@ class Signaling {
   }
 
   void sendCallRequest(String room, {String role = 'family', String? callId, String? targetId}) {
-    _currentCallId = callId;
+    final String effectiveCallId = callId ?? const Uuid().v4();
+    _currentCallId = effectiveCallId;
+    final int issuedAt = DateTime.now().millisecondsSinceEpoch;
     socket!.emit('call-request', {
       'room': room, 
       'role': role, 
-      'callId': callId,
+      'callId': effectiveCallId,
+      'issuedAt': issuedAt.toString(),
+      'expiresAt': (issuedAt + kCallValidityMs).toString(),
       if (targetId != null) 'targetId': targetId,
-      'callerUserId': _userId // 新增：主動發送發起者的資料庫 ID
+      'callerUserId': _userId, // 新增：主動發送發起者的資料庫 ID
+      if (_deviceName != null) 'senderName': _deviceName,
     });
   }
 
@@ -587,21 +673,55 @@ class Signaling {
     }
   }
 
-  void sendCallBusy(String targetSocketId, {String? callId}) {
+  void sendCallBusy(String targetSocketId, {String? callId, String? room}) {
+    final String? effectiveRoom = room ?? _currentRoomId;
+    final String? effectiveCallId = callId ?? _currentCallId;
+    // ★ 拒接的 callId 立即失效，避免延遲到達的同一通 call-request 又響起。
+    if (effectiveCallId != null && effectiveCallId.isNotEmpty) {
+      _invalidCallIds.add(effectiveCallId);
+    }
     if (socket != null && socket!.connected) {
-      socket!.emit('call-busy', {'targetId': targetSocketId, 'callId': callId});
+      socket!.emit('call-busy', {'targetId': targetSocketId, 'callId': effectiveCallId});
+    } else {
+      // ★ 2026-07-18：Socket 未連線（背景/剛斷線）時走 HTTP 備援，
+      //   確保發起方仍能收到拒接、雙端同步關閉來電 UI。
+      debugPrint('⚠️ [Signaling] sendCallBusy: Socket 未連線，改走 HTTP declineCall');
+      if (effectiveRoom != null) {
+        ApiService.declineCall(
+          roomId: effectiveRoom,
+          senderId: targetSocketId,
+          callId: effectiveCallId,
+        );
+      }
     }
   }
 
   void sendCancelCall(String room, {String role = 'family'}) {
     socket!.emit('cancel-call', {'room': room, 'role': role, 'callId': _currentCallId});
+    if (_currentCallId != null && _currentCallId!.isNotEmpty) {
+      _invalidCallIds.add(_currentCallId!);
+    }
     _currentCallId = null;
   }
 
-  void sendEmergencyCall(String room, {String? targetId}) {
+  /// ★ 2026-07-27 第十三輪：與 [sendCallRequest] 對齊。
+  ///   原本只送 room + targetId，缺 role/callId/callerUserId/senderName，造成：
+  ///     1. 後端只能靠 rooms_manager 反查發起者角色，查不到就回發 call-busy 給自己；
+  ///     2. 發起端 _currentCallId 為 null → hangUp() 的 end-call 不帶 callId →
+  ///        後端 call_registry 查無此通話 → 雙端同步終止不完整。
+  void sendEmergencyCall(String room, {String? targetId, String? callId, String role = 'family'}) {
+    final String effectiveCallId = callId ?? const Uuid().v4();
+    _currentCallId = effectiveCallId;
+    final int issuedAt = DateTime.now().millisecondsSinceEpoch;
     socket!.emit('emergency-call', {
       'room': room,
+      'role': role,
+      'callId': effectiveCallId,
+      'issuedAt': issuedAt.toString(),
+      'expiresAt': (issuedAt + kCallValidityMs).toString(),
       if (targetId != null) 'targetId': targetId,
+      'callerUserId': _userId,
+      if (_deviceName != null) 'senderName': _deviceName,
     });
   }
 
@@ -658,27 +778,27 @@ class Signaling {
     _candidateQueue.clear();
   }
 
-  // ★ 根据 elder_id 生成动态的 TURN 凭证
+  // ★ 根據 elder_id 生成動態的 TURN 憑證
   Map<String, dynamic> _generateDynamicTURNConfig() {
     String turnUsername = _turnUser;
     String turnPassword = _turnPass;
-    
-    // 如果有 elder_id，根据 elder_id 生成隔离的凭证
+
+    // 如果有 elder_id，根據 elder_id 生成隔離的憑證
     if (_elderId != null && _elderId!.isNotEmpty) {
-      // ★ 使用 elder_id 作为 TURN 用户名的后缀，实现通讯隔离
+      // ★ 使用 elder_id 作為 TURN 用戶名的後綴，實現通訊隔離
       // 格式: uban_elder_{elder_id}
       turnUsername = '${_turnUser}_elder_$_elderId';
-      
-      // ★ 生成基于 elder_id 的密码
-      // 这可以确保每个 elder 有独立的认证通道
-      turnPassword = _turnPass; // 保持相同的密码，由服务器验证 elder_id
-      
-      debugPrint("🔐 [TURN] 生成 elder_id 隔离的 TURN 凭证:");
+
+      // ★ 生成基於 elder_id 的密碼
+      // 這可以確保每個 elder 有獨立的認證通道
+      turnPassword = _turnPass; // 保持相同的密碼，由伺服器驗證 elder_id
+
+      debugPrint("🔐 [TURN] 生成 elder_id 隔離的 TURN 憑證:");
       debugPrint("   elder_id: $_elderId");
       debugPrint("   username: $turnUsername");
       debugPrint("   server: $_turnServer");
     } else {
-      debugPrint("⚠️ [TURN] 未找到 elder_id，使用默认 TURN 凭证");
+      debugPrint("⚠️ [TURN] 未找到 elder_id，使用預設 TURN 憑證");
     }
     
     return {
@@ -697,7 +817,7 @@ class Signaling {
   }
 
   Future<void> _createPeerConnection({required bool useLocalStream}) async {
-    // ★ 使用基于 elder_id 的动态 TURN 配置
+    // ★ 使用基於 elder_id 的動態 TURN 配置
     final config = _generateDynamicTURNConfig();
     debugPrint("📍 [WebRTC] Creating PeerConnection with config: $config");
     peerConnection = await createPeerConnection(config);
@@ -882,6 +1002,9 @@ class Signaling {
     if (socket != null && _currentRoomId != null) {
       socket!.emit('end-call', {'room': _currentRoomId, 'targetId': _peerSocketId, 'callId': _currentCallId});
     }
+    if (_currentCallId != null && _currentCallId!.isNotEmpty) {
+      _invalidCallIds.add(_currentCallId!);
+    }
     _currentCallId = null;
     _isCreatingOffer = false; // ⭐ 重置 createOffer flag
     
@@ -925,6 +1048,16 @@ class Signaling {
       socket?.disconnect();
       socket = null;
     }
+  }
+
+  bool _isExpiredCallPayload(dynamic payload) {
+    if (payload is! Map) return false;
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    final int? expiresAt = int.tryParse('${payload['expiresAt'] ?? ''}');
+    if (expiresAt != null && now > expiresAt) return true;
+    final int? issuedAt = int.tryParse('${payload['issuedAt'] ?? ''}');
+    if (issuedAt != null && (now - issuedAt) > kCallValidityMs) return true;
+    return false;
   }
 
   // ========================================

@@ -8,6 +8,9 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../services/signaling.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import '../screens/family_main_screen.dart';
+import '../screens/elder_home_screen.dart';
+import '../globals.dart' as globals;
 
 class VideoCallScreen extends StatefulWidget {
   final String roomId;
@@ -41,14 +44,25 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
 
   // ★ 通話控制狀態
   bool _isMicMuted = false;
-  bool _isCameraOff = true;  // ★ 預設關閉攝像頭，減少資源消耗和隱私風險
+  bool _isCameraOff = false;  // 視訊房間預設開啟鏡頭
   bool _isSpeakerOn = true;
   bool _isFrontCamera = true;
   bool _mediaInitialized = false;  // ★ 追蹤媒體是否已初始化
+  bool _callConnecting = true;   // ★ 追蹤通話是否正在連線中
+  bool _callConnected = false;   // ★ 追蹤通話是否已成功連線
+  bool _callFailed = false;      // ★ 追蹤通話是否連線失敗
+  String _callErrorMessage = ''; // ★ 通話失敗時的錯誤訊息
 
   // ★ 通話計時器
   Timer? _callTimer;
   int _callDurationSeconds = 0;
+
+  // ★ 通話逾時計時器
+  Timer? _callTimeoutTimer;
+
+  // ★ 情境 3 修復：結束通話後導回主畫面時所需的真實使用者資料（於 _initCall 從 prefs 讀取）
+  int _resolvedUserId = 0;
+  String _resolvedUserName = '家屬端';
 
   @override
   void initState() {
@@ -57,6 +71,13 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       Helper.setAndroidAudioConfiguration(AndroidAudioConfiguration.communication);
     }
     _initCall();
+    // 設定通話逾時（30秒）
+    _callTimeoutTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (_callConnecting && !_callConnected && !_callFailed) {
+        // 如果已經連線中超過30秒且仍未連線，則視為失敗
+        // 這裡其實是每5秒檢查一次，但實際逾時時間在 _initCall 中控制
+      }
+    });
   }
 
   Future<void> _initCall() async {
@@ -69,6 +90,9 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
         setState(() {
           _remoteRenderer.srcObject = stream;
           _inCall = true;
+          _callConnecting = false;
+          _callConnected = true;
+          _callFailed = false;
         });
         _startCallTimer();
       }
@@ -86,20 +110,18 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     _signaling.onCallEnded = () {
       if (mounted) {
         _stopCallTimer();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("通話已結束")),
-        );
-        Navigator.pop(context);
+        // ★ 2026-07-27 第十三輪：原本用 SnackBar，但緊接著的 _goHomeAfterCall() 是
+        //   pushAndRemoveUntil，會立刻移除本 route，SnackBar 隨之消失 → 使用者看到
+        //   的是「瞬間跳回主畫面、毫無提示」。改用不依附特定 route 的 dialog
+        //   （與 onCallBusy 一致，2026-07-15 第二輪 Issue 6 當時漏改這兩個回調）。
+        _showCallRejectedThenGoHome('對方已掛斷通話');
       }
     };
 
     _signaling.onCallBusy = (targetId, callId) {
       if (mounted) {
         _stopCallTimer();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('對方目前無法接聽通話')),
-        );
-        Navigator.of(context).pop();
+        _showCallRejectedThenGoHome('對方已拒絕或目前無法接聽通話');
       }
     };
 
@@ -107,10 +129,8 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     _signaling.onConnectionLost = () {
       if (mounted) {
         _stopCallTimer();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('連線中斷，通話已結束')),
-        );
-        Navigator.of(context).pop();
+        // ★ 2026-07-27 第十三輪：同 onCallEnded，SnackBar 會被 pushAndRemoveUntil 吞掉。
+        _showCallRejectedThenGoHome('網路連線中斷');
       }
     };
 
@@ -133,17 +153,28 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       }
     } catch (e) {
       debugPrint("❌ Failed to initialize media: $e");
+      if (mounted) {
+        setState(() {
+          _callConnecting = false;
+          _callFailed = true;
+          _callErrorMessage = '無法開啟攝像頭或麥克風: $e';
+        });
+      }
     }
 
     // ★ 自動讀取使用者 ID 與名稱
     final prefs = await SharedPreferences.getInstance();
     final String role = prefs.getString('user_role') ?? 'family';
-    final int? userId = (role == 'elder') 
-        ? prefs.getInt('caregiver_id') 
+    final int? userId = (role == 'elder')
+        ? prefs.getInt('caregiver_id')
         : (prefs.getInt('user_id') ?? prefs.getInt('caregiver_id'));
     final String userName = (role == 'elder')
         ? (prefs.getString('caregiver_name') ?? '長輩')
         : (prefs.getString('user_name') ?? prefs.getString('caregiver_name') ?? '家屬端');
+
+    // ★ 情境 3 修復：暫存真實使用者資料，供通話結束後重建主畫面使用（避免 userId:0 導致主畫面失效）
+    _resolvedUserId = userId ?? 0;
+    _resolvedUserName = userName;
 
     // ★ 修復：若 Socket 已經連線（從 FamilyMainScreen 傳承下來），則不要重新連線，
     //   否則會導致原本的 callbacks 被覆寫且 SocketId 改變。
@@ -151,9 +182,9 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       debugPrint("🔌 [VideoCallScreen] Socket 未連線，開始連線...");
       final String? fcmToken = await FirebaseMessaging.instance.getToken();
       _signaling.connect(
-        widget.roomId, 
-        'family', 
-        userId: userId, 
+        widget.roomId,
+        'family',
+        userId: userId,
         deviceName: userName,
         fcmToken: fcmToken,
       );
@@ -175,19 +206,36 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
         }
         if (!mounted) return;
 
-        if (widget.targetSocketId != null) {
-          _signaling.createOffer(
-            targetId: widget.targetSocketId,
-            isEmergency: widget.isEmergency,
-          );
-        } else if (widget.isEmergency) {
-          _signaling.sendEmergencyCall(widget.roomId);
+        if (widget.isEmergency) {
+          _signaling.sendEmergencyCall(widget.roomId, targetId: widget.targetSocketId);
         } else {
-          // 如果是主動呼叫，先發送 Request 給對方點擊接聽
-          _signaling.sendCallRequest(widget.roomId, role: 'family');
+          // 如果是主動呼叫，先發送 Request 給對方點擊接聽 (確保觸發 FCM 與資料庫記錄)
+          _signaling.sendCallRequest(widget.roomId, role: 'family', targetId: widget.targetSocketId);
         }
       });
     }
+
+    // 緊急通話需等待對端被喚醒與自動接聽，逾時窗拉長避免家屬端誤判自動掛斷
+    final int connectTimeoutSeconds = widget.isEmergency ? 60 : 20;
+    Future.delayed(Duration(seconds: connectTimeoutSeconds), () {
+      if (mounted && _callConnecting && !_callConnected) {
+        // ★ 2026-07-18：逾時未接通時，主動通知對方取消／掛斷，避免被叫方 CallKit
+        //   繼續響到 45 秒。僅撥打方（非來電接聽方）需要送取消。
+        if (!widget.isIncomingCall) {
+          try {
+            _signaling.sendCancelCall(widget.roomId, role: 'family');
+          } catch (e) {
+            debugPrint('⚠️ [VideoCall] timeout sendCancelCall failed: $e');
+          }
+        }
+        _signaling.hangUp(disconnectSocket: false, disposeLocalStream: false);
+        setState(() {
+          _callConnecting = false;
+          _callFailed = true;
+          _callErrorMessage = '連線逾時，請檢查網路連接或稍後再試';
+        });
+      }
+    });
   }
 
   // ★ 通話計時器
@@ -294,9 +342,10 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   @override
   void dispose() {
     _stopCallTimer();
+    _callTimeoutTimer?.cancel();
     // ★ 修復：只結束 WebRTC，不要斷開 Socket，這樣回到 FamilyMainScreen 時才能繼續接收推播
     _signaling.hangUp(disconnectSocket: false, disposeLocalStream: false);
-    
+
     // ★ 清空 UI 相關的 callbacks，讓全域的 callbacks 重拾控制權
     _signaling.onCallAcceptedByRemote = null;
     _signaling.onAddRemoteStream = null;
@@ -306,10 +355,10 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     _signaling.onCallBusy = null;
     _signaling.onJoinFailed = null;
     _signaling.onConnectionLost = null;
-    
+
     _localRenderer.dispose();
     _remoteRenderer.dispose();
-    
+
     if (!kIsWeb && Platform.isAndroid) {
       Helper.setAndroidAudioConfiguration(AndroidAudioConfiguration(
         manageAudioFocus: false,
@@ -321,10 +370,64 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       ));
       Helper.clearAndroidCommunicationDevice();
     }
-    
+
     super.dispose();
   }
 
+
+  // ★ issue 3 fix: 安全掛斷並導航，防止冷啟動進入時 pop 後黑屏
+  void _safeHangUp() {
+    _signaling.hangUp(disconnectSocket: false, disposeLocalStream: false);
+    _stopCallTimer();
+    if (mounted) {
+      _goHomeAfterCall();
+    }
+  }
+
+  // ★ issue 3 fix: 冷啟動時無上一頁，退回 FamilyMainScreen（帶入真實使用者資料）
+  Widget _buildFallbackHome() {
+    if (globals.appRole == 'elder') {
+      return ElderHomeScreen(
+        userId: _resolvedUserId,
+        userName: _resolvedUserName,
+      );
+    }
+    return FamilyMainScreen(
+      userId: _resolvedUserId,
+      userName: _resolvedUserName,
+    );
+  }
+
+  // ★ 情境 3 修復：通話結束/拒接/斷線後，一律用 pushAndRemoveUntil 導向「重建的」主畫面。
+  //   家屬端在 APP 外接聽時，VideoCallScreen 會被疊在 SplashScreen 之上；若用 pop()
+  //   會回到已完成任務的 SplashScreen 造成黑屏。改用 pushAndRemoveUntil 可確定性返回
+  //   主畫面、清空堆疊，杜絕任何黑屏。
+  void _goHomeAfterCall() {
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => _buildFallbackHome()),
+      (route) => false,
+    );
+  }
+
+  void _showCallRejectedThenGoHome(String message) {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        title: const Text('通話已結束'),
+        content: Text(message),
+      ),
+    );
+    Future.delayed(const Duration(seconds: 2), () {
+      if (!mounted) return;
+      if (Navigator.of(context, rootNavigator: true).canPop()) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+      _goHomeAfterCall();
+    });
+  }
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -350,16 +453,61 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const CircularProgressIndicator(color: Colors.white70),
-                          const SizedBox(height: 24),
-                          Text(
-                            "正在連線中...",
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.8),
-                              fontSize: 18,
-                              letterSpacing: 1.2,
+                          if (_callFailed)
+                            Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.wifi_off,
+                                  color: Colors.redAccent,
+                                  size: 48,
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  _callErrorMessage.isNotEmpty
+                                      ? _callErrorMessage
+                                      : '通話連線失敗',
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.8),
+                                    fontSize: 16,
+                                  ),
+                                ),
+                                const SizedBox(height: 24),
+                                ElevatedButton.icon(
+                                  onPressed: () {
+                                    // 重試連線
+                                    setState(() {
+                                      _callConnecting = true;
+                                      _callFailed = false;
+                                      _callErrorMessage = '';
+                                      _callConnected = false;
+                                    });
+                                    _initCall(); // 重新初始化通話
+                                  },
+                                  icon: const Icon(Icons.refresh),
+                                  label: const Text('重試連線'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.blueAccent,
+                                  ),
+                                ),
+                              ],
+                            )
+                          else
+                            Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const CircularProgressIndicator(color: Colors.white70),
+                                const SizedBox(height: 24),
+                                Text(
+                                  "正在連線中...",
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.8),
+                                    fontSize: 18,
+                                    letterSpacing: 1.2,
+                                  ),
+                                ),
+                              ],
                             ),
-                          ),
                         ],
                       ),
                     ),
@@ -531,7 +679,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                       // 掛斷
                       _buildControlButton(
                         icon: Icons.call_end,
-                        onPressed: () => Navigator.pop(context),
+                        onPressed: _safeHangUp,
                         isEndCall: true,
                       ),
                       // 鏡頭

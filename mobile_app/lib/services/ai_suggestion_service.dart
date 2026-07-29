@@ -405,7 +405,7 @@ class AiSuggestion {
     };
   }
 
-  /// 从 Map 创建（用于反序列化）
+  /// 從 Map 創建（用於反序列化）
   factory AiSuggestion.fromMap(Map<String, dynamic> map) {
     return AiSuggestion(
       icon: map['icon'] as IconData,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'dart:math' as math;
+import 'dart:convert'; // ★ 2026-07-22：備援讀取 pendingAcceptedCall JSON
 import '../services/api_service.dart';
 import 'identification_screen.dart';
 import 'family_onboarding_screen.dart';
@@ -9,6 +10,8 @@ import 'elder_home_screen.dart';
 import 'family_main_screen.dart';
 import '../globals.dart'; // ★ 新增
 import 'elder_screen.dart'; // ★ 新增
+import 'video_call_screen.dart'; // ★ 2026-07-19：家屬冷啟動待接聽來電直接進視訊房
+import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart'; // ★ 2026-07-23：splash activeCalls 輪詢
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -40,8 +43,15 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
+    splashActive = true; // ★ 2026-07-19：宣告冷啟動導航由 Splash 擁有
     _playAnimations();
     _navigateToNext();
+  }
+
+  @override
+  void dispose() {
+    splashActive = false;
+    super.dispose();
   }
 
   Future<void> _playAnimations() async {
@@ -64,10 +74,9 @@ class _SplashScreenState extends State<SplashScreen> {
       }
       if (!mounted) return;
 
-      // 嘗試獲取登入狀態，設置 2 秒超時以防掛起
-      final prefs = await SharedPreferences.getInstance().timeout(
-        const Duration(seconds: 2),
-      );
+      // 嘗試獲取登入狀態（已移除 2 秒 .timeout，避免冷啟動 SharedPreferences
+      // 初始化 + 磁碟讀取超過 2 秒 → 拋例外 → 誤跳身分頁，讓已登入長輩看似 session 遺失）
+      final prefs = await SharedPreferences.getInstance();
       if (!mounted) return;
 
       final int? userId = prefs.getInt('caregiver_id');
@@ -86,6 +95,11 @@ class _SplashScreenState extends State<SplashScreen> {
       final int? effectiveUserId = prefs.getInt('caregiver_id');
       final String? effectiveUserName = prefs.getString('caregiver_name');
       final String? effectiveLocalRole = prefs.getString('user_role');
+
+      // ★ Issue 3 診斷 log：記錄本機 session 三個關鍵欄位，用於區分「session 真的遺失」
+      //   還是「短暫讀取異常造成的假性遺失」。
+      debugPrint(
+          '🔎 [Splash] _navigateToNext prefs 快照: caregiver_id=$effectiveUserId, caregiver_name=$effectiveUserName, user_role=$effectiveLocalRole');
 
       // ★ issue 2：先以本機紀錄的角色預先設置全域 appRole，
       //   避免在等待 API 回應期間（例如冷啟動時 CallKit 的接聽事件搶先觸發），
@@ -116,6 +130,58 @@ class _SplashScreenState extends State<SplashScreen> {
             final String deviceName = prefs.getString('saved_device_name') ?? effectiveUserName;
             final String elderRoomId = apiElderId ?? prefs.getString('elder_room_id') ?? effectiveUserId.toString();
 
+            // ★ 2026-07-23 Splash 主動輪詢：在動畫播放期間（約 4 秒），每隔 500ms
+            //   檢查 FlutterCallkitIncoming.activeCalls() 是否有 isAccepted=true
+            //   的通話。這是「冷啟動時 BG isolate 已死、CallKit accept 事件遺失」
+            //   情境下的唯一可行偵測手段——foreground service 在 BG handler 死後
+            //   仍存活，且使用者接聽後會更新內部狀態。
+            //   先於 SharedPreferences 備援執行（若 service 存活，比 prefs 更快捕捉）。
+            final bool foundByActiveCallsPoll = await _pollActiveCallsForAccepted(
+              elderRoomId, deviceName, effectiveUserId, effectiveUserName, isCCTV);
+            if (foundByActiveCallsPoll) return; // 已導航至 ElderScreen，中止後續流程
+
+            // ★ 2026-07-22 最終防線：若 pendingAcceptedCall.value 仍為 null，
+            //   直接重讀 SharedPreferences（此時 API 呼叫已給足時間讓 BG isolate
+            //   的寫入完成），重建 pendingAcceptedCall。
+            if (pendingAcceptedCall.value == null) {
+              // ★ 強制從磁碟重新載入，確保讀到 BG isolate 在冷啟動期間的延遲寫入
+              await prefs.reload();
+              final String? rawPending = prefs.getString('pendingAcceptedCall');
+              if (rawPending != null) {
+                try {
+                  final Map<String, dynamic> decoded = jsonDecode(rawPending);
+                  final int? ts = int.tryParse('${decoded['timestamp'] ?? ''}');
+                  if (ts == null || (DateTime.now().millisecondsSinceEpoch - ts) <= 120000) {
+                    pendingAcceptedCall.value = decoded.map(
+                      (key, value) => MapEntry(key, value?.toString()),
+                    );
+                    debugPrint('🚨 [Splash] 最後防線：從 SharedPreferences 重建 pendingAcceptedCall');
+                  }
+                } catch (_) {}
+              }
+              if (pendingAcceptedCall.value == null) {
+                final String? rawRing = prefs.getString('pendingRingCallData');
+                if (rawRing != null) {
+                  try {
+                    final Map<String, dynamic> data = jsonDecode(rawRing);
+                    if (data['isAccepted'] == true) {
+                      final int? ts = int.tryParse('${data['timestamp'] ?? ''}');
+                      if (ts == null || (DateTime.now().millisecondsSinceEpoch - ts) <= 120000) {
+                        pendingAcceptedCall.value = data.map(
+                          (key, value) => MapEntry(key, value?.toString()),
+                        );
+                        debugPrint('🚨 [Splash] 最後防線 II：從 pendingRingCallData (isAccepted:true) 重建 pending');
+                      }
+                    }
+                  } catch (_) {}
+                }
+              }
+              // 清除以避免下次冷啟動誤判
+              await prefs.remove('pendingAcceptedCall');
+              await prefs.remove('pendingRingCallData');
+              await prefs.remove('pendingRingCall');
+            }
+
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(
@@ -137,16 +203,7 @@ class _SplashScreenState extends State<SplashScreen> {
 
           if (elders.isNotEmpty) {
             // 已有長輩，進入主介面
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(
-                builder: (context) =>
-                    FamilyMainScreen(
-                      userId: effectiveUserId,
-                      userName: effectiveUserName,
-                    ),
-              ),
-            );
+            _navigateFamilyHome(effectiveUserId, effectiveUserName);
           } else {
             // 未綁定任何長輩，進入引導頁
             Navigator.pushReplacement(
@@ -181,18 +238,25 @@ class _SplashScreenState extends State<SplashScreen> {
                 ),
               );
             } else {
-              _goNext();
+              // ★ Issue 3 硬化：effectiveLocalRole 只是進入本函式當下的快照，
+              //   API 失敗不代表本機真的不是長輩帳號；改由 _goNextOrRestoreElder
+              //   重讀 prefs 二次確認，避免暫時性失敗把已登入長輩丟到身分頁。
+              await _goNextOrRestoreElder();
             }
           }
         }
       } else {
         // 未登入，進入身分辨識頁
-        _goNext();
+        // ★ Issue 3 硬化：effectiveUserId/effectiveUserName 可能只是短暫讀取異常
+        //   造成的假性 null，先由 _goNextOrRestoreElder 重讀一次 prefs 再決定。
+        await _goNextOrRestoreElder();
       }
     } catch (e) {
       // 若發生任何錯誤 (如 SharedPreferences 失敗)，確保能進入身分選擇頁
       debugPrint('Splash error: $e');
-      if (mounted) _goNext();
+      // ★ Issue 3 硬化：任何例外都先嘗試重讀 prefs 判斷是否為已登入長輩，
+      //   絕不能因為一次例外就把已登入長輩導回身分辨識頁。
+      if (mounted) await _goNextOrRestoreElder();
     }
   }
 
@@ -203,11 +267,219 @@ class _SplashScreenState extends State<SplashScreen> {
     );
   }
 
+  /// ★ Issue 3 硬化：在導向身分辨識頁（_goNext）之前的最後防線。
+  /// API 失敗或 prefs 短暫讀取異常，不代表本機真的沒有已登入的長輩 session。
+  /// 這裡「重新」讀一次 SharedPreferences（不沿用外層可能已經是舊快照的區域變數），
+  /// 只要看起來像長輩 session（user_role 直接是 'elder'；或 user_role 欄位本身缺漏
+  /// 但 caregiver_id/caregiver_name 都還在，視為寫入未完成的邊界情況也保守當作長輩），
+  /// 就一律導向長輩主畫面，絕不因暫時性失敗把已登入長輩丟回身分頁。
+  Future<void> _goNextOrRestoreElder() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final int? uid = prefs.getInt('caregiver_id');
+      final String? uname = prefs.getString('caregiver_name');
+      final String? role = prefs.getString('user_role');
+
+      debugPrint(
+          '🛟 [Splash] _goNextOrRestoreElder 重讀 prefs: caregiver_id=$uid, caregiver_name=$uname, user_role=$role');
+
+      final bool looksLikeElderSession =
+          role == 'elder' || (role == null && uid != null && uname != null);
+
+      if (looksLikeElderSession && mounted) {
+        final bool isCCTV = prefs.getBool('saved_is_cctv') ?? false;
+        final String deviceName =
+            prefs.getString('saved_device_name') ?? uname ?? '長輩';
+        final String elderRoomId =
+            prefs.getString('elder_room_id') ?? uid?.toString() ?? '0';
+
+        debugPrint('🛡️ [Splash] 偵測到本機長輩 session，改導向長輩主畫面而非身分頁');
+
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => _resolveElderDestination(
+              isCCTV: isCCTV,
+              deviceName: deviceName,
+              elderRoomId: elderRoomId,
+              effectiveUserId: uid ?? 0,
+              effectiveUserName: uname ?? deviceName,
+            ),
+          ),
+        );
+        return;
+      }
+    } catch (e) {
+      debugPrint('⚠️ [Splash] _goNextOrRestoreElder 重讀 prefs 失敗: $e');
+    }
+    if (mounted) _goNext();
+  }
+
   /// ★ issue 2/10：決定長輩端啟動後要進入哪個畫面。
   /// 在等待 SharedPreferences/API 期間，若收到待接聽的來電（一般或緊急），
   /// `pendingAcceptedCall` 會被填入。此處在「導航當下」重新檢查一次，
   /// 若有待接聽來電則直接跳過長輩主畫面，進入 ElderScreen 並帶上通話資料，
   /// 模擬「像緊急來電一樣直接進入視訊房間」的需求。
+  /// ★ 2026-07-19 修復：家屬端冷啟動接聽後，先 pushReplacement 到主畫面，
+  /// 若有待接聽來電再「疊上」VideoCallScreen。
+  ///
+  /// 原本 Splash 家屬分支不消費 pendingAcceptedCall，導致：
+  ///   1) main.dart 在 350ms 把 VideoCallScreen push 到 Splash 之上；
+  ///   2) Splash 動畫結束 pushReplacement(FamilyMainScreen) 取代「最上層」，
+  ///      正好把那個 VideoCallScreen 洗掉 → 使用者只看到家屬主畫面。
+  /// 這裡改為由 Splash 確定性地先建主畫面、再疊 VideoCallScreen，杜絕競態。
+  void _navigateFamilyHome(int effectiveUserId, String effectiveUserName) {
+    if (!mounted) return;
+    Map<String, String?>? pending = pendingAcceptedCall.value;
+    // ★ 2026-07-22 第八輪 Fix 3：角色反轉來電視為無效，直接丟棄。
+    if (pending != null && _isPendingRoleReversed(pending)) {
+      debugPrint("🚫 [Splash] 家屬冷啟動忽略角色反轉來電 (senderRole=${pending['senderRole']})");
+      pendingAcceptedCall.value = null;
+      pending = null;
+    }
+    final bool hasPending = pending != null &&
+        (pending['roomId']?.isNotEmpty ?? false) &&
+        (pending['senderId']?.isNotEmpty ?? false) &&
+        !_isPendingExpired(pending);
+
+    // 取用 NavigatorState（跨 route 置換仍穩定），避免 pushReplacement 後
+    // 使用已失效的 Splash context 再 push 而拋例外。
+    final navigator = Navigator.of(context);
+
+    // 先確定性地把主畫面設為堆疊底部（取代 Splash）
+    navigator.pushReplacement(
+      MaterialPageRoute(
+        builder: (context) => FamilyMainScreen(
+          userId: effectiveUserId,
+          userName: effectiveUserName,
+        ),
+      ),
+    );
+
+    if (hasPending) {
+      pendingAcceptedCall.value = null; // 消費，避免 FamilyMainScreen 再處理一次
+      debugPrint("🚨 [Splash] 家屬冷啟動偵測到待接聽來電，疊上 VideoCallScreen");
+      navigator.push(
+        MaterialPageRoute(
+          builder: (context) => VideoCallScreen(
+            roomId: pending!['roomId']!,
+            targetSocketId: pending['senderId']!,
+            isIncomingCall: true,
+            callId: pending['callId'],
+          ),
+        ),
+      );
+    }
+  }
+
+  bool _isPendingExpired(Map<String, String?> pending) {
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    final int? expiresAt = int.tryParse('${pending['expiresAt'] ?? ''}');
+    if (expiresAt != null && now > expiresAt) return true;
+    final int? issuedAt = int.tryParse('${pending['issuedAt'] ?? ''}');
+    if (issuedAt != null && (now - issuedAt) > kCallValidityMs) return true;
+    return false;
+  }
+
+  /// ★ 2026-07-22 第八輪 Fix 3：防角色反轉。senderRole 為發起方角色，
+  /// 本機只應接聽「對方角色」發起的來電。若 senderRole == appRole，
+  /// 代表這是自身角色發出、經 stale state 回流的假來電 → 視為無效。
+  bool _isPendingRoleReversed(Map<String, String?> pending) {
+    final String? senderRole = pending['senderRole'];
+    return senderRole != null &&
+        senderRole.isNotEmpty &&
+        appRole != null &&
+        senderRole == appRole;
+  }
+
+  /// ★ 2026-07-23 Splash 動畫期間輪詢 FlutterCallkitIncoming.activeCalls()。
+  /// 約 4 秒內每 500ms 檢查一次（最多 8 次），尋找 isAccepted=true 的通話。
+  /// 找到後直接 pushReplacement 到 ElderScreen 並回傳 true。
+  /// 注意：依賴 native foreground service 在 BG handler 死後仍存活。
+  Future<bool> _pollActiveCallsForAccepted(
+    String elderRoomId,
+    String deviceName,
+    int effectiveUserId,
+    String effectiveUserName,
+    bool isCCTV,
+  ) async {
+    const int maxPolls = 8; // 8 × 500ms = 4s
+    for (int i = 0; i < maxPolls; i++) {
+      await Future.delayed(const Duration(milliseconds: 500));
+      if (!mounted) return false;
+      // 若 pending 已被其他路徑（如 SharedPreferences 備援、_setupCallKitListener）
+      // 設定，停止輪詢以免覆蓋正確資料。
+      if (pendingAcceptedCall.value != null) return false;
+      try {
+        final activeCalls = await FlutterCallkitIncoming.activeCalls();
+        if (activeCalls is! List || activeCalls.isEmpty) continue;
+        for (final call in activeCalls) {
+          if (call is! Map) continue;
+          if (call['isAccepted'] != true) continue;
+          final extra = call['extra'];
+          if (extra is! Map) continue;
+          final String roomId = (extra['roomId'] ?? '').toString();
+          final String senderId = (extra['senderId'] ?? '').toString();
+          final String? callId = extra['callId']?.toString();
+          final String? issuedAt = extra['issuedAt']?.toString();
+          final String? expiresAt = extra['expiresAt']?.toString();
+          final String? senderRole = extra['senderRole']?.toString();
+          if (roomId.isEmpty || senderId.isEmpty) continue;
+
+          // 過期驗證
+          final int now = DateTime.now().millisecondsSinceEpoch;
+          final int? exp = int.tryParse(expiresAt ?? '');
+          final int? issued = int.tryParse(issuedAt ?? '');
+          if ((exp != null && now > exp) ||
+              (issued != null && (now - issued) > kCallValidityMs)) {
+            debugPrint("⏰ [SplashPoll] activeCalls 找到已接聽但過期，忽略");
+            FlutterCallkitIncoming.endAllCalls();
+            continue;
+          }
+
+          // 防角色反轉
+          if (senderRole != null &&
+              senderRole.isNotEmpty &&
+              senderRole == appRole) {
+            debugPrint(
+                "🚫 [SplashPoll] 忽略角色反轉來電 (senderRole=$senderRole)");
+            continue;
+          }
+
+          debugPrint(
+              "🚨 [SplashPoll] activeCalls 偵測到已接聽 (callId=$callId)，直接導向 ElderScreen");
+          pendingAcceptedCall.value = <String, String?>{
+            'roomId': roomId,
+            'senderId': senderId,
+            'callId': callId,
+            'issuedAt': issuedAt,
+            'expiresAt': expiresAt,
+            'senderRole': senderRole,
+          };
+          // 立即跳過動畫淡出
+          if (mounted) setState(() => _fadedOut = true);
+          // 直接導航（不等待 4s 動畫）
+          if (mounted) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) => ElderScreen(
+                  roomId: roomId,
+                  deviceName: deviceName,
+                  initialCallData: pendingAcceptedCall.value,
+                ),
+              ),
+            );
+          }
+          return true;
+        }
+      } catch (_) {
+        // activeCalls() 偶發失敗（native channel 尚未就緒），繼續重試
+      }
+    }
+    return false;
+  }
+
   Widget _resolveElderDestination({
     required bool isCCTV,
     required String deviceName,
@@ -216,7 +488,10 @@ class _SplashScreenState extends State<SplashScreen> {
     required String effectiveUserName,
   }) {
     final pending = pendingAcceptedCall.value;
-    if (pending != null && !isCCTV) {
+    if (pending != null && !isCCTV && _isPendingRoleReversed(pending)) {
+      debugPrint("🚫 [Splash] 長輩冷啟動忽略角色反轉來電 (senderRole=${pending['senderRole']})");
+      pendingAcceptedCall.value = null;
+    } else if (pending != null && !isCCTV) {
       pendingAcceptedCall.value = null; // 消費掉，避免主畫面重複處理
       debugPrint("🚨 [Splash] 偵測到待接聽來電，直接進入 ElderScreen");
       return ElderScreen(
