@@ -1252,7 +1252,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
         if (trimmed.isNotEmpty && !seenKeywords.contains(trimmed)) {
           seenKeywords.add(trimmed);
           tags.add({
-            'tag': '✨ #${trimmed}',
+            'tag': '✨ #$trimmed',
             'keyword': trimmed,
             'color': const Color(0xFF818CF8),
           });
@@ -1264,7 +1264,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
   }
 
   Widget _buildTopicPulseCloud(List<Map<String, dynamic>> rawFeedItems) {
-    final elderInterests = widget.currentElder?.interests ?? '聽歌仔戲, 泡茶, 散步';
+    final elderInterests = _moodInsightData?['interests']?.toString() ?? '聽歌仔戲, 泡茶, 散步';
     final dynamicTopics = _extractDynamicTopicTags(rawFeedItems, _moodInsightData, elderInterests);
 
     if (dynamicTopics.isEmpty) return const SizedBox.shrink();
