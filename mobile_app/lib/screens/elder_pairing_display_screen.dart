@@ -69,60 +69,6 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
   //   角色會存進 SharedPreferences，之後重開機沿用，不會角色互換。
   Future<void> _promptModeAndNavigate(int elderId, String elderName, String? elderRoomId) async {
     final String elderRoom = elderRoomId ?? elderId.toString();
-    bool isMonitor = await ApiService.hasCommDevice(elderRoom);
-
-    // 如果後端檢測到已有通話機，彈出對話框讓使用者選擇設備角色
-    if (isMonitor) {
-      if (!mounted) return;
-      final bool? chooseMonitor = await showDialog<bool>(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Text(
-            '設備角色選擇',
-            style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold),
-          ),
-          content: Text(
-            '系統偵測到此長輩目前已有其他「通話設備」在線。\n\n您希望將此設備設定為：',
-            style: GoogleFonts.notoSansTc(fontSize: 16),
-          ),
-          actionsAlignment: MainAxisAlignment.spaceEvenly,
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false), // 選擇通話機
-              child: Text(
-                '設為通話機',
-                style: GoogleFonts.notoSansTc(
-                  color: const Color(0xFF2E7D78),
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
-              ),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context, true), // 選擇監控機
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFE74C3C),
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-              child: Text(
-                '設為監控機',
-                style: GoogleFonts.notoSansTc(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-      if (chooseMonitor != null) {
-        isMonitor = chooseMonitor;
-      }
-    }
-
     final prefs = await SharedPreferences.getInstance();
 
     // ★ Issue 2 修復：本裝置對「這個長輩」的角色（通話機/監控機）只在首次決定，
@@ -139,6 +85,56 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
           '🔁 [ElderPairingDisplay] 沿用已記住的裝置角色 ($deviceRoleKey=$savedRole)，不重查 hasCommDevice');
     } else {
       isMonitor = await ApiService.hasCommDevice(elderRoom);
+      if (isMonitor) {
+        if (!mounted) return;
+        final bool? chooseMonitor = await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: Text(
+              '設備角色選擇',
+              style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold),
+            ),
+            content: Text(
+              '系統偵測到此長輩目前已有其他「通話設備」在線。\n\n您希望將此設備設定為：',
+              style: GoogleFonts.notoSansTc(fontSize: 16),
+            ),
+            actionsAlignment: MainAxisAlignment.spaceEvenly,
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false), // 選擇通話機
+                child: Text(
+                  '設為通話機',
+                  style: GoogleFonts.notoSansTc(
+                    color: const Color(0xFF2E7D78),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true), // 選擇監控機
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFE74C3C),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                child: Text(
+                  '設為監控機',
+                  style: GoogleFonts.notoSansTc(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+        if (chooseMonitor != null) {
+          isMonitor = chooseMonitor;
+        }
+      }
       await prefs.setString(deviceRoleKey, isMonitor ? 'monitor' : 'comm');
       debugPrint(
           '🆕 [ElderPairingDisplay] 首次判定裝置角色 ($deviceRoleKey=${isMonitor ? 'monitor' : 'comm'})');
