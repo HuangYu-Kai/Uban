@@ -786,7 +786,6 @@ class ApiService {
     try {
       final response = await http
           .post(
-            // ★ issue 6：後端路由為 /api/pairing/monitor_setup，先前缺少 /pairing 前綴導致 404
             Uri.parse('$baseUrl/pairing/monitor_setup'),
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({
@@ -812,8 +811,6 @@ class ApiService {
     try {
       final response = await http
           .post(
-            // ★ issue 6：後端路由為 /api/pairing/monitor_setup/resolve，
-            //   先前缺少 /pairing 前綴；且後端 MonitorSetupResolve 欄位名為 'code'，非 'pairing_code'
             Uri.parse('$baseUrl/pairing/monitor_setup/resolve'),
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({
@@ -833,29 +830,35 @@ class ApiService {
     }
   }
 
-  static Future<Map<String, dynamic>> logActivity({
-    required int userId,
-    required String eventType,
-    required String content,
-    Map<String, dynamic>? extraData,
-  }) async {
+  static Future<Map<String, dynamic>?> getElderMoodInsight(String elderId) async {
     try {
       final response = await http
-          .post(
-            Uri.parse('$aiServerUrl/api/ai/log_activity'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'user_id': userId,
-              'event_type': eventType,
-              'content': content,
-              if (extraData != null) 'extra_data': extraData,
-            }),
-          )
+          .get(Uri.parse('$baseUrl/ai/elder_mood_insight/$elderId'))
           .timeout(_timeout);
-      return _safeDecode(response);
+      final data = _safeDecode(response);
+      if (data['status'] == 'success') {
+        return data['data'];
+      }
+      return null;
     } catch (e) {
-      debugPrint('⚠️ logActivity error: $e');
-      return {'status': 'error', 'message': e.toString()};
+      debugPrint('⚠️ getElderMoodInsight error: $e');
+      return null;
+    }
+  }
+
+  static Future<List<dynamic>> getElderActivityLogs(String elderId, {int limit = 10}) async {
+    try {
+      final response = await http
+          .get(Uri.parse('$baseUrl/activity/elder/$elderId?limit=$limit'))
+          .timeout(_timeout);
+      final data = _safeDecode(response);
+      if (data['status'] == 'success' && data['data'] is List) {
+        return data['data'];
+      }
+      return [];
+    } catch (e) {
+      debugPrint('⚠️ getElderActivityLogs error: $e');
+      return [];
     }
   }
 }
