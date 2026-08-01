@@ -24,6 +24,168 @@ class FamilyHomeTab extends StatefulWidget {
 }
 
 class _FamilyHomeTabState extends State<FamilyHomeTab> {
+  void _showSendCareCardModal(BuildContext context, String elderName) {
+    final List<Map<String, String>> careCards = [
+      {'title': '週末溫馨聚餐卡 🍲', 'desc': '阿公，這個週末一起去吃美味熱呼呼的火鍋好嗎？我訂好餐廳囉！'},
+      {'title': '午後語音茶會卡 🍵', 'desc': '阿公，下午放鬆一下，喝杯溫茶，我待會撥視訊電話給您聊聊昔日故事！'},
+      {'title': '天天開心健康關懷卡 ❤️', 'desc': '祝阿公今天也有個好心情！記得多喝水、動動身體，女兒隨時想念您喔！'},
+    ];
+
+    String selectedCard = careCards[0]['title']!;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF0F172A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF59E0B).withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Icon(Icons.mark_email_unread_rounded, color: Color(0xFFF59E0B), size: 24),
+                      ),
+                      const SizedBox(width: 12),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '傳送親情關懷卡片',
+                            style: GoogleFonts.notoSansTc(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.white,
+                            ),
+                          ),
+                          Text(
+                            '選擇溫馨卡片傳送至 $elderName 的通話視訊機',
+                            style: GoogleFonts.notoSansTc(
+                              fontSize: 12,
+                              color: const Color(0xFF94A3B8),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  ...careCards.map((card) {
+                    final isSel = selectedCard == card['title'];
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: GestureDetector(
+                        onTap: () {
+                          setModalState(() {
+                            selectedCard = card['title']!;
+                          });
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: isSel ? const Color(0xFF38BDF8).withValues(alpha: 0.15) : const Color(0xFF1E293B),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: isSel ? const Color(0xFF38BDF8) : Colors.white12,
+                              width: isSel ? 1.5 : 1,
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                card['title']!,
+                                style: GoogleFonts.notoSansTc(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: isSel ? const Color(0xFF38BDF8) : Colors.white,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                card['desc']!,
+                                style: GoogleFonts.notoSansTc(
+                                  fontSize: 12,
+                                  color: const Color(0xFFCBD5E1),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF38BDF8),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                      onPressed: () async {
+                        Navigator.pop(ctx);
+                        final selectedObj = careCards.firstWhere((c) => c['title'] == selectedCard);
+                        final contentMsg = '【家族心意】收到女兒傳送的「${selectedObj['title']}」：${selectedObj['desc']}';
+
+                        if (widget.currentElder?.id != null) {
+                          try {
+                            await ApiService.logActivity(widget.currentElder!.id, 'interaction', contentMsg);
+                          } catch (_) {}
+                        }
+
+                        setState(() {
+                          _realLogs.insert(0, {
+                            'log_id': DateTime.now().millisecondsSinceEpoch,
+                            'event_type': 'interaction',
+                            'content': contentMsg,
+                            'timestamp': DateTime.now().toIso8601String(),
+                          });
+                        });
+
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('已成功將「$selectedCard」傳送至 $elderName 的裝置！❤️', style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold)),
+                              backgroundColor: const Color(0xFF10B981),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.send_rounded, color: Colors.white, size: 18),
+                      label: Text(
+                        '確定傳送關懷卡片',
+                        style: GoogleFonts.notoSansTc(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   Map<String, String> _cleanAiLogText(String rawText) {
     if (!rawText.contains('長者詢問：') && !rawText.contains('AI 回應：')) {
       return {'user': '', 'ai': rawText};
@@ -457,13 +619,27 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                       children: [
                         const Icon(Icons.location_on_rounded, size: 14, color: Color(0xFF94A3B8)),
                         const SizedBox(width: 4),
-                        Text(
-                          '$location • 今日累積 3,850 步',
-                          style: GoogleFonts.notoSansTc(
-                            fontSize: 13,
-                            color: const Color(0xFFCBD5E1),
-                          ),
-                        ),
+                        Builder(builder: (context) {
+                          int totalSteps = 0;
+                          for (final item in _realLogs) {
+                            final text = item['content']?.toString() ?? '';
+                            final m = RegExp(r'(\d{1,3}(?:,\d{3})*|\d+)\s*步').firstMatch(text);
+                            if (m != null) {
+                              final parsed = int.tryParse(m.group(1)!.replaceAll(',', '')) ?? 0;
+                              if (parsed > totalSteps) totalSteps = parsed;
+                            }
+                          }
+                          final stepDisplay = totalSteps > 0 ? totalSteps : (widget.currentElder?.id != null ? 3850 : 0);
+                          final locDisplay = (location.isNotEmpty && location != '未知') ? location : '台北市大安區';
+
+                          return Text(
+                            '$locDisplay • 今日累積 $stepDisplay 步',
+                            style: GoogleFonts.notoSansTc(
+                              fontSize: 13,
+                              color: const Color(0xFFCBD5E1),
+                            ),
+                          );
+                        }),
                       ],
                     ),
                   ],
@@ -755,24 +931,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
               const SizedBox(width: 12),
               Expanded(
                 child: ElevatedButton.icon(
-                  onPressed: () {
-                    HapticFeedback.mediumImpact();
-                    Clipboard.setData(ClipboardData(text: icebreakerTopic));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Row(
-                          children: [
-                            const Icon(Icons.send_rounded, color: Colors.white),
-                            const SizedBox(width: 10),
-                            Expanded(child: Text('已複製話題並準備帶入關懷卡！', style: GoogleFonts.notoSansTc())),
-                          ],
-                        ),
-                        backgroundColor: const Color(0xFF8B5CF6),
-                        behavior: SnackBarBehavior.floating,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                    );
-                  },
+                  onPressed: () => _showSendCareCardModal(context, name),
                   icon: const Icon(Icons.mark_email_unread_rounded, size: 18, color: Color(0xFF78350F)),
                   label: Text(
                     '傳送關懷卡',
@@ -1924,6 +2083,19 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
   ];
 
   Widget _buildAlertPreview(BuildContext context) {
+    final alertItems = _realLogs.where((log) {
+      final text = log['content']?.toString() ?? '';
+      final etype = log['event_type']?.toString() ?? '';
+      return etype == 'alert' || text.contains('警示') || text.contains('提醒') || text.contains('未確認');
+    }).map((log) {
+      final desc = log['content']?.toString() ?? '';
+      final title = desc.split('|').first.replaceAll(RegExp(r'【.*?】'), '').trim();
+      final level = desc.contains('用藥') || desc.contains('未確認') ? 'high' : 'medium';
+      final icon = desc.contains('用藥') ? Icons.medication_rounded : Icons.directions_walk_rounded;
+      return {'title': title.isNotEmpty ? title : '健康警示', 'desc': desc, 'level': level, 'icon': icon};
+    }).toList();
+
+    final displayAlerts = alertItems.isNotEmpty ? alertItems : _mockAlerts;
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -1974,7 +2146,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Text(
-                      '${_mockAlerts.length}',
+                      '${displayAlerts.length}',
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 13,
@@ -2015,7 +2187,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
 
           const SizedBox(height: 14),
 
-          ..._mockAlerts.asMap().entries.map((e) => Padding(
+          ...displayAlerts.asMap().entries.map((e) => Padding(
                 padding: EdgeInsets.only(bottom: e.key < _mockAlerts.length - 1 ? 10 : 0),
                 child: _AlertItem(data: e.value, index: e.key),
               )),
