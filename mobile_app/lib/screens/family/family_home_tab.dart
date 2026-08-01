@@ -659,8 +659,43 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     final moodTitle = _moodInsightData?['mood_title'] ?? '溫馨平穩';
     final moodScore = _moodInsightData?['mood_score'] ?? 88;
     final moodIcon = _moodInsightData?['mood_icon'] ?? '🍵';
-    final summaryText = _moodInsightData?['summary'] ?? '$name 今天情緒非常穩定愉快，下午點閱收聽了熱門體育新聞，展現高度興趣！';
-    final icebreakerTopic = _moodInsightData?['icebreaker_topic'] ?? '$name！我今天看到經典賽新聞，感覺超精彩的！您最近也有在關注戰況嗎？';
+
+    final String summaryText;
+    final String icebreakerTopic;
+
+    final now = DateTime.now();
+    final todayStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+    final todayLogs = _realLogs.where((log) => (log['timestamp']?.toString() ?? '').startsWith(todayStr)).toList();
+
+    if (_moodInsightData != null && _moodInsightData!['summary'] != null && _moodInsightData!['summary'].toString().isNotEmpty) {
+      summaryText = _moodInsightData!['summary'].toString();
+      icebreakerTopic = _moodInsightData!['icebreaker_topic']?.toString() ?? '$name！今天過得好嗎？撥個電話聽聽長輩的聲音關心一下吧！';
+    } else if (todayLogs.isNotEmpty) {
+      final hasWalk = todayLogs.any((l) => (l['content']?.toString() ?? '').contains('散步') || (l['content']?.toString() ?? '').contains('步數'));
+      final hasMed = todayLogs.any((l) => (l['content']?.toString() ?? '').contains('藥'));
+      final hasNews = todayLogs.any((l) => (l['content']?.toString() ?? '').contains('新聞'));
+
+      List<String> acts = [];
+      if (hasMed) acts.add('按時完成了晨間用藥打卡');
+      if (hasWalk) acts.add('完成了公園散步運動');
+      if (hasNews) acts.add('點閱收聽了熱門新聞');
+
+      final actStr = acts.isNotEmpty ? acts.join('，且') : '作息非常規律';
+      summaryText = '$name 今天情緒非常穩定愉快，$actStr！';
+      icebreakerTopic = hasNews
+          ? '$name！我今天看到熱門賽事新聞，感覺超精彩的！您最近也有在關注戰況嗎？'
+          : '$name！聽說您今天有出門散步，公園空氣感覺怎麼樣呢？';
+    } else {
+      final lastLogDate = _realLogs.isNotEmpty ? (_realLogs.first['timestamp']?.toString() ?? '').substring(0, 10) : '';
+      if (lastLogDate.length >= 10) {
+        final m = lastLogDate.substring(5, 7);
+        final d = lastLogDate.substring(8, 10);
+        summaryText = '$name 今天尚未產生新的動態紀錄。最近一次紀錄於 $m/$d，作息狀況平穩！';
+      } else {
+        summaryText = '$name 今日尚無活動紀錄，撥個電話問候關心一下長輩吧！';
+      }
+      icebreakerTopic = '$name！今天過得好嗎？已有段時間沒聽到您的聲音，撥個電話問候關心您！';
+    }
 
     return Container(
       padding: const EdgeInsets.all(22),
@@ -2097,15 +2132,25 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
 
     final displayAlerts = alertItems.isNotEmpty ? alertItems : _mockAlerts;
     return Container(
-      padding: const EdgeInsets.all(24),
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFF1E1015),
+            Color(0xFF0F172A),
+            Color(0xFF1A1325),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.35), width: 1.5),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
+            color: const Color(0xFFEF4444).withValues(alpha: 0.15),
+            blurRadius: 24,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
@@ -2120,12 +2165,20 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFFEF3C7),
-                      borderRadius: BorderRadius.circular(10),
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFFEF4444), Color(0xFFDC2626)],
+                      ),
+                      borderRadius: BorderRadius.circular(14),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFFEF4444).withValues(alpha: 0.4),
+                          blurRadius: 10,
+                        ),
+                      ],
                     ),
                     child: const Icon(
                       Icons.notifications_active_rounded,
-                      color: Color(0xFFF59E0B),
+                      color: Colors.white,
                       size: 22,
                     ),
                   ),
@@ -2133,24 +2186,31 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                   Text(
                     '最新警示',
                     style: GoogleFonts.notoSansTc(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      color: const Color(0xFF0F172A),
+                      fontSize: 19,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white,
+                      letterSpacing: 0.5,
                     ),
                   ),
                   const SizedBox(width: 8),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
                       color: const Color(0xFFEF4444),
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFFEF4444).withValues(alpha: 0.5),
+                          blurRadius: 8,
+                        ),
+                      ],
                     ),
                     child: Text(
                       '${displayAlerts.length}',
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 13,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w900,
                       ),
                     ),
                   ),
@@ -2173,22 +2233,28 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                     );
                   }
                 },
-                child: Text(
-                  '查看全部 →',
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: const Color(0xFF3B82F6),
-                  ),
+                child: Row(
+                  children: [
+                    Text(
+                      '查看全部',
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF38BDF8),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    const Icon(Icons.arrow_forward_ios_rounded, size: 13, color: Color(0xFF38BDF8)),
+                  ],
                 ),
               ),
             ],
           ),
 
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
 
           ...displayAlerts.asMap().entries.map((e) => Padding(
-                padding: EdgeInsets.only(bottom: e.key < _mockAlerts.length - 1 ? 10 : 0),
+                padding: EdgeInsets.only(bottom: e.key < displayAlerts.length - 1 ? 12 : 0),
                 child: _AlertItem(data: e.value, index: e.key),
               )),
         ],
@@ -2233,35 +2299,58 @@ class _AlertItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     Color levelColor;
-    Color bgColor;
+    Color iconBgColor;
+    Color cardBgColor;
+    Color titleColor;
+    Color descColor;
+    BorderSide borderSide;
+
     switch (data['level'] as String) {
       case 'high':
-        levelColor = const Color(0xFFEF4444);
-        bgColor = const Color(0xFFFEF2F2);
+        levelColor = const Color(0xFFF87171);
+        iconBgColor = const Color(0xFF7F1D1D);
+        cardBgColor = const Color(0xFF231012);
+        titleColor = const Color(0xFFFECACA);
+        descColor = const Color(0xFFFCA5A5);
+        borderSide = BorderSide(color: const Color(0xFFEF4444).withValues(alpha: 0.5), width: 1.2);
         break;
       case 'medium':
-        levelColor = const Color(0xFFF59E0B);
-        bgColor = const Color(0xFFFFFBEB);
+        levelColor = const Color(0xFFFBBF24);
+        iconBgColor = const Color(0xFF78350F);
+        cardBgColor = const Color(0xFF221A08);
+        titleColor = const Color(0xFFFEF08A);
+        descColor = const Color(0xFFFDE68A);
+        borderSide = BorderSide(color: const Color(0xFFF59E0B).withValues(alpha: 0.5), width: 1.2);
         break;
       default:
-        levelColor = const Color(0xFF3B82F6);
-        bgColor = const Color(0xFFEFF6FF);
+        levelColor = const Color(0xFF38BDF8);
+        iconBgColor = const Color(0xFF075985);
+        cardBgColor = const Color(0xFF091F2C);
+        titleColor = const Color(0xFFBAE6FD);
+        descColor = const Color(0xFF7DD3FC);
+        borderSide = BorderSide(color: const Color(0xFF0284C7).withValues(alpha: 0.5), width: 1.2);
     }
 
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: levelColor.withValues(alpha: 0.2)),
+        color: cardBgColor,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.fromBorderSide(borderSide),
+        boxShadow: [
+          BoxShadow(
+            color: levelColor.withValues(alpha: 0.08),
+            blurRadius: 10,
+          ),
+        ],
       ),
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: levelColor.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10),
+              color: iconBgColor,
+              borderRadius: BorderRadius.circular(14),
             ),
             child: Icon(
               data['icon'] as IconData,
@@ -2279,26 +2368,27 @@ class _AlertItem extends StatelessWidget {
                   style: GoogleFonts.notoSansTc(
                     fontSize: 16,
                     fontWeight: FontWeight.w800,
-                    color: const Color(0xFF0F172A),
+                    color: titleColor,
                   ),
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: 3),
                 Text(
                   data['desc'] as String,
                   style: GoogleFonts.notoSansTc(
-                    fontSize: 14,
-                    color: const Color(0xFF64748B),
+                    fontSize: 13.5,
+                    color: descColor,
                     fontWeight: FontWeight.w500,
-                    height: 1.3,
+                    height: 1.35,
                   ),
                 ),
               ],
             ),
           ),
-          const Icon(
+          const SizedBox(width: 8),
+          Icon(
             Icons.chevron_right_rounded,
-            color: Color(0xFFCBD5E1),
-            size: 24,
+            color: levelColor,
+            size: 22,
           ),
         ],
       ),
