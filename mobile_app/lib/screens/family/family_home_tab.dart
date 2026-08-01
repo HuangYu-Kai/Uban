@@ -24,6 +24,27 @@ class FamilyHomeTab extends StatefulWidget {
 }
 
 class _FamilyHomeTabState extends State<FamilyHomeTab> {
+  Map<String, String> _cleanAiLogText(String rawText) {
+    if (!rawText.contains('長者詢問：') && !rawText.contains('AI 回應：')) {
+      return {'user': '', 'ai': rawText};
+    }
+    String userPart = '';
+    String aiPart = rawText;
+
+    if (rawText.contains('| AI 回應：')) {
+      final parts = rawText.split('| AI 回應：');
+      userPart = parts[0].replaceAll('長者詢問：', '').trim();
+      aiPart = parts.length > 1 ? parts[1].trim() : '';
+    } else if (rawText.contains('AI 回應：')) {
+      final parts = rawText.split('AI 回應：');
+      userPart = parts[0].replaceAll('長者詢問：', '').trim();
+      aiPart = parts.length > 1 ? parts[1].trim() : '';
+    } else {
+      userPart = rawText.replaceAll('長者詢問：', '').trim();
+    }
+    return {'user': userPart, 'ai': aiPart};
+  }
+
   String? _selectedTopicKeyword;
 
   Map<String, dynamic>? _moodInsightData;
@@ -1168,6 +1189,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
             const SizedBox(height: 24),
           ] else ...[
             ..._buildUnifiedTimelineCategoryCards(context, activeFilteredItems),
+          const SizedBox(height: 36),
           ],
         ],
       ),
@@ -1446,7 +1468,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
 
       final chatItems = activeFilteredItems.where((i) {
         final d = "${i['title']} ${i['desc']} ${i['badge']}";
-        return d.contains('對話') || d.contains('故事') || d.contains('女兒') || d.contains('關懷') || d.contains('聊天');
+        return d.contains('對話') || d.contains('故事') || d.contains('女兒') || d.contains('關懷') || d.contains('聊天') || d.contains('說說話');
       }).toList();
 
       if (chatItems.isNotEmpty) {
@@ -1475,6 +1497,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     }
 
     final categoriesList = categoriesToRender.asMap().entries.toList();
+    String lastRenderedTime = '';
 
     return categoriesList.map((entry) {
       final idx = entry.key;
@@ -1482,6 +1505,11 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
       final isLast = idx == categoriesList.length - 1;
       final items = cat['items'] as List<Map<String, dynamic>>;
       final latestTime = items.isNotEmpty ? (items.first['time'] as String? ?? '') : '';
+
+      final bool showTimeLabel = latestTime.isNotEmpty && latestTime != lastRenderedTime;
+      if (showTimeLabel) {
+        lastRenderedTime = latestTime;
+      }
 
       return IntrinsicHeight(
         child: Row(
@@ -1491,7 +1519,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
               width: 56,
               child: Column(
                 children: [
-                  if (latestTime.isNotEmpty) ...[
+                  if (showTimeLabel) ...[
                     Text(
                       latestTime,
                       textAlign: TextAlign.center,
@@ -1502,22 +1530,24 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                       ),
                     ),
                     const SizedBox(height: 4),
+                  ] else ...[
+                    const SizedBox(height: 14),
                   ],
                   Container(
-                    width: 36,
-                    height: 36,
+                    width: 34,
+                    height: 34,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: const Color(0xFF1E293B),
+                      color: const Color(0xFF0F172A),
                       border: Border.all(color: cat['color'] as Color, width: 2),
                       boxShadow: [
                         BoxShadow(
-                          color: (cat['glow'] as Color).withValues(alpha: 0.5),
+                          color: (cat['glow'] as Color).withValues(alpha: 0.4),
                           blurRadius: 10,
                         ),
                       ],
                     ),
-                    child: Icon(cat['icon'] as IconData, color: cat['color'] as Color, size: 18),
+                    child: Icon(cat['icon'] as IconData, color: cat['color'] as Color, size: 16),
                   ),
                   if (!isLast)
                     Expanded(
@@ -1539,10 +1569,10 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                 ],
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 10),
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.only(bottom: 18),
+                padding: const EdgeInsets.only(bottom: 20),
                 child: _buildCategoryCard(
                   context,
                   categoryTitle: cat['title'] as String,
@@ -1572,34 +1602,40 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     required List<Map<String, dynamic>> items,
   }) {
     final count = items.length;
+    final name = widget.currentElder?.displayName ?? '長輩';
+
+    // 判斷是否包含 AI 語音對話/故事
+    final isChatCategory = categoryTitle.contains('陪伴') || categoryTitle.contains('對話') || items.any((i) => i['isChat'] == true);
 
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: const Color(0xFF0F172A).withValues(alpha: 0.7),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: categoryColor.withValues(alpha: 0.3), width: 1.5),
+        color: const Color(0xFF0F172A).withValues(alpha: 0.65),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: categoryColor.withValues(alpha: 0.28), width: 1.2),
         boxShadow: [
           BoxShadow(
-            color: glowColor.withValues(alpha: 0.15),
-            blurRadius: 16,
+            color: glowColor.withValues(alpha: 0.12),
+            blurRadius: 20,
             spreadRadius: 1,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // 標題與數量標籤
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(9),
                 decoration: BoxDecoration(
-                  color: categoryColor.withValues(alpha: 0.2),
+                  color: categoryColor.withValues(alpha: 0.18),
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: categoryColor.withValues(alpha: 0.5)),
+                  border: Border.all(color: categoryColor.withValues(alpha: 0.4)),
                 ),
-                child: Icon(categoryIcon, color: categoryColor, size: 22),
+                child: Icon(categoryIcon, color: categoryColor, size: 20),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -1620,7 +1656,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.notoSansTc(
-                        fontSize: 11.5,
+                        fontSize: 11,
                         color: categoryColor,
                         fontWeight: FontWeight.w600,
                       ),
@@ -1634,6 +1670,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                 decoration: BoxDecoration(
                   color: categoryColor.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: categoryColor.withValues(alpha: 0.4)),
                 ),
                 child: Text(
                   '$count 筆',
@@ -1646,280 +1683,227 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          Text(
-            previewSummary,
-            style: GoogleFonts.notoSansTc(
-              fontSize: 13,
-              height: 1.45,
-              color: const Color(0xFFCBD5E1),
-              fontWeight: FontWeight.w400,
-            ),
-          ),
+
           const SizedBox(height: 14),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: categoryColor.withValues(alpha: 0.15),
-                foregroundColor: Colors.white,
-                elevation: 0,
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  side: BorderSide(color: categoryColor.withValues(alpha: 0.6)),
+
+          // 💬 特色內容區塊：若為對話則渲染親情對話對白框，若為健康作息則渲染簡潔動態條目
+          if (isChatCategory) ...[
+            Builder(builder: (context) {
+              final rawDesc = items.isNotEmpty ? items.first['desc'].toString() : previewSummary;
+              final cleaned = _cleanAiLogText(rawDesc);
+              final userTalk = cleaned['user'] ?? '';
+              final aiTalk = cleaned['ai'] ?? '';
+
+              return Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E293B).withValues(alpha: 0.6),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
                 ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (userTalk.isNotEmpty) ...[
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('💬 ', style: TextStyle(fontSize: 13)),
+                          Expanded(
+                            child: Text(
+                              '$name：「$userTalk」',
+                              style: GoogleFonts.notoSansTc(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w700,
+                                color: const Color(0xFFFDE68A),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('💌 ', style: TextStyle(fontSize: 13)),
+                        Expanded(
+                          child: Text(
+                            '小嘎：「${aiTalk.length > 80 ? aiTalk.substring(0, 80) + '...' : aiTalk}」',
+                            style: GoogleFonts.notoSansTc(
+                              fontSize: 12,
+                              height: 1.45,
+                              color: const Color(0xFFE2E8F0),
+                              fontWeight: FontWeight.w400,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ] else ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E293B).withValues(alpha: 0.6),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
               ),
-              onPressed: () {
-                HapticFeedback.mediumImpact();
-                _showCategoryDetailModal(
-                  context,
-                  categoryTitle: categoryTitle,
-                  categoryIcon: categoryIcon,
-                  categoryColor: categoryColor,
-                  items: items,
-                );
-              },
-              icon: const Icon(Icons.auto_stories_rounded, size: 16, color: Colors.white),
-              label: Text(
-                '🔍 點擊展開閱覽新聞與 AI 對話紀錄 ($count)',
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: items.take(2).map((item) {
+                  final titleStr = item['title']?.toString() ?? '';
+                  final descStr = item['desc']?.toString() ?? '';
+                  final cleanD = _cleanAiLogText(descStr)['ai'] ?? descStr;
+
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(item['icon'] as IconData? ?? Icons.check_circle_rounded, color: categoryColor, size: 15),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '$titleStr • $cleanD',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.notoSansTc(
+                              fontSize: 12,
+                              height: 1.4,
+                              color: const Color(0xFFCBD5E1),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
               ),
             ),
+          ],
+
+          const SizedBox(height: 14),
+
+          // ❤️ 雙向心意熱度互動按鈕與點讚標籤
+          Row(
+            children: [
+              Expanded(
+                child: InkWell(
+                  onTap: () {
+                    HapticFeedback.mediumImpact();
+                    _showCategoryDetailModal(
+                      context,
+                      categoryTitle: categoryTitle,
+                      categoryIcon: categoryIcon,
+                      categoryColor: categoryColor,
+                      items: items,
+                    );
+                  },
+                  borderRadius: BorderRadius.circular(14),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: categoryColor.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: categoryColor.withValues(alpha: 0.5)),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.auto_stories_rounded, color: categoryColor, size: 15),
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            '閱覽對話與新聞紀錄 ($count)',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.notoSansTc(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Icon(Icons.arrow_forward_ios_rounded, color: categoryColor, size: 10),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: () {
+                  HapticFeedback.mediumImpact();
+                  setState(() {
+                    if (_likedCategories.contains(categoryTitle)) {
+                      _likedCategories.remove(categoryTitle);
+                    } else {
+                      _likedCategories.add(categoryTitle);
+                    }
+                  });
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Row(
+                        children: [
+                          const Icon(Icons.favorite_rounded, color: Color(0xFFEC4899), size: 20),
+                          const SizedBox(width: 8),
+                          Text(
+                            '已傳送女兒的溫馨心意給 $name！❤️',
+                            style: GoogleFonts.notoSansTc(color: Colors.white, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                      backgroundColor: const Color(0xFF1E293B),
+                      behavior: SnackBarBehavior.floating,
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: _likedCategories.contains(categoryTitle)
+                        ? const Color(0xFFEC4899).withValues(alpha: 0.25)
+                        : Colors.white.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: _likedCategories.contains(categoryTitle)
+                          ? const Color(0xFFEC4899)
+                          : Colors.white24,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        _likedCategories.contains(categoryTitle) ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                        color: _likedCategories.contains(categoryTitle) ? const Color(0xFFEC4899) : Colors.white60,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        _likedCategories.contains(categoryTitle) ? '已讚' : '給個心意',
+                        style: GoogleFonts.notoSansTc(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: _likedCategories.contains(categoryTitle) ? const Color(0xFFEC4899) : Colors.white70,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
     );
   }
 
-  // ─── 4. 警示預覽 ───
-
-  static const List<Map<String, dynamic>> _mockAlerts = [
-    {
-      'title': '活動量偏低',
-      'desc': '今日步數僅 800 步，低於平均值',
-      'level': 'medium',
-      'icon': Icons.directions_walk_rounded,
-    },
-    {
-      'title': '用藥提醒確認',
-      'desc': '下午 2 點的血壓藥尚未確認服用',
-      'level': 'high',
-      'icon': Icons.medication_rounded,
-    },
-  ];
-
-  Widget _buildAlertPreview(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFEF3C7),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(
-                      Icons.notifications_active_rounded,
-                      color: Color(0xFFF59E0B),
-                      size: 22,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    '最新警示',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      color: const Color(0xFF0F172A),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEF4444),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      '${_mockAlerts.length}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              GestureDetector(
-                onTap: () {
-                  HapticFeedback.lightImpact();
-                  if (widget.onNavigateToAlerts != null) {
-                    widget.onNavigateToAlerts!();
-                  } else if (context.mounted) {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (c) => AlertCenterScreen(
-                          elderName: widget.currentElder?.displayName ?? '長輩',
-                          elderId: widget.currentElder?.id,
-                        ),
-                      ),
-                    );
-                  }
-                },
-                child: Text(
-                  '查看全部 →',
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: const Color(0xFF3B82F6),
-                  ),
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 14),
-
-          ..._mockAlerts.asMap().entries.map((e) => Padding(
-                padding: EdgeInsets.only(bottom: e.key < _mockAlerts.length - 1 ? 10 : 0),
-                child: _AlertItem(data: e.value, index: e.key),
-              )),
-        ],
-      ),
-    ).animate().fadeIn(delay: 300.ms, duration: 400.ms);
-  }
-}
-
-class _PulseDot extends StatelessWidget {
-  final Color color;
-  const _PulseDot({required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 12,
-      height: 12,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: color,
-        boxShadow: [
-          BoxShadow(
-            color: color.withValues(alpha: 0.4),
-            blurRadius: 6,
-            spreadRadius: 1,
-          ),
-        ],
-      ),
-    )
-        .animate(onPlay: (c) => c.repeat())
-        .fade(duration: 1200.ms, begin: 1.0, end: 0.3)
-        .then()
-        .fade(duration: 1200.ms, begin: 0.3, end: 1.0);
-  }
-}
-
-class _AlertItem extends StatelessWidget {
-  final Map<String, dynamic> data;
-  final int index;
-  const _AlertItem({required this.data, required this.index});
-
-  @override
-  Widget build(BuildContext context) {
-    Color levelColor;
-    Color bgColor;
-    switch (data['level'] as String) {
-      case 'high':
-        levelColor = const Color(0xFFEF4444);
-        bgColor = const Color(0xFFFEF2F2);
-        break;
-      case 'medium':
-        levelColor = const Color(0xFFF59E0B);
-        bgColor = const Color(0xFFFFFBEB);
-        break;
-      default:
-        levelColor = const Color(0xFF3B82F6);
-        bgColor = const Color(0xFFEFF6FF);
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: levelColor.withValues(alpha: 0.2)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: levelColor.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(
-              data['icon'] as IconData,
-              color: levelColor,
-              size: 22,
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  data['title'] as String,
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: const Color(0xFF0F172A),
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  data['desc'] as String,
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 14,
-                    color: const Color(0xFF64748B),
-                    fontWeight: FontWeight.w500,
-                    height: 1.3,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const Icon(
-            Icons.chevron_right_rounded,
-            color: Color(0xFFCBD5E1),
-            size: 24,
-          ),
-        ],
-      ),
-    ).animate(delay: (index * 80).ms).fadeIn().slideX(begin: 0.05);
-  }
-}
+  
