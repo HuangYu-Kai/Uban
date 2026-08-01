@@ -148,7 +148,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       if (_signaling.localStream != null) {
         final videoTracks = _signaling.localStream!.getVideoTracks();
         for (var track in videoTracks) {
-          track.enabled = !_isCameraOff;
+          track.enabled = true;
         }
       }
     } catch (e) {

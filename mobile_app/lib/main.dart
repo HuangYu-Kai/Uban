@@ -26,6 +26,8 @@ import 'theme/app_theme.dart';
 import 'screens/video_call_screen.dart';
 import 'screens/splash_screen.dart';
 import 'screens/elder_home_screen.dart';
+import 'screens/identification_screen.dart';
+import 'screens/role_selection_screen.dart';
 
 // Utils & Globals
 import 'globals.dart';
@@ -92,7 +94,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         }
       } catch (_) {}
     }
-    if (type != 'call-request' && type != 'emergency-call' && type != 'cancel-call') {
+    if (type != 'call-request' && type != 'emergency-call' && type != 'cancel-call' && type != 'force-logout') {
       debugPrint('⚠️ [BG] Ignoring message of type: $type');
       return;
     }
@@ -126,12 +128,36 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       return;
     }
 
+    // ★ 2026-07-30 第十四輪：force-logout 在背景 handler 中清除所有 session 鍵，
+    //   讓下次冷啟動時 Splash → main() 看到空 prefs → 跳轉到 IdentificationScreen。
+    //   背景 handler 無法導航（獨立 isolate），只能清 prefs；導航由冷啟動路徑接手。
+    if (type == 'force-logout') {
+      debugPrint('🚪 [BG] 收到 force-logout，清除背景 session 鍵');
+      try {
+        final bgPrefs = await SharedPreferences.getInstance();
+        const keysToRemove = [
+          'caregiver_id', 'caregiver_name', 'user_role', 'saved_role',
+          'saved_id', 'saved_device_name', 'saved_is_cctv', 'elder_room_id',
+          'access_token',
+          'last_elder_id', 'last_elder_name', 'last_elder_room_id', 'last_elder_device_role',
+          'pendingAcceptedCall', 'pendingRingCallData', 'pendingRingCall',
+        ];
+        for (final key in keysToRemove) { await bgPrefs.remove(key); }
+        final deviceRoleKeys = bgPrefs.getKeys().where((k) => k.startsWith('device_role_')).toList();
+        for (final key in deviceRoleKeys) { await bgPrefs.remove(key); }
+        debugPrint('🚪 [BG] force-logout 清除完成（${keysToRemove.length + deviceRoleKeys.length} 鍵）');
+      } catch (e) {
+        debugPrint('❌ [BG] force-logout 清除失敗: $e');
+      }
+      return;
+    }
+
     try {
       final prefs = await SharedPreferences.getInstance();
       final myId = prefs.getInt('caregiver_id');
-      final callerUserId = int.tryParse('${message.data['callerUserId'] ?? ''}');
-      if (myId != null && callerUserId != null && myId == callerUserId) {
-        debugPrint("🙅 [BG] 略過自己發起的來電 (callerUserId=$callerUserId == me=$myId)");
+      final callerUserIdRaw = (message.data['callerUserId'] ?? '').toString();
+      if (callerUserIdRaw.isNotEmpty && myId != null && myId.toString() == callerUserIdRaw) {
+        debugPrint("🙅 [BG] 略過自己發起的來電 (callerUserId=$callerUserIdRaw == me=$myId)");
         return;
       }
 
@@ -409,32 +435,20 @@ Future<void> _showFullScreenCallkit(Map<String, dynamic> data) async {
     });
   }
 
-  // ★ 2026-07-27 第十三輪：備援通知改為「CallKit 確實建立失敗才補發」。
-  //   原本靠 data['useLocalBackup'] 旗標決定，但全專案（含後端）從未設過這個欄位，
-  //   等同死碼；而 call-request 分支又繞過本函式直接發備援通知 → 使用者只看得到
-  //   樸素通知、看不到 CallKit。現在改為無條件探測 activeCalls()：
-  //     - CallKit 建立成功 → 完全不發備援 → 天然互斥，杜絕雙重推播；
-  //     - CallKit 在 MIUI 被殺死背景 isolate 靜默失敗 → 補發備援（護欄 #21）。
-  //   延遲 600ms 等 native BroadcastReceiver 完成建立（350ms 在 MIUI 冷啟動偏短，
-  //   會誤判成「沒建立」而多發一則通知）。
-  //
-  //   ★ 這段必須放在 bgSub 註冊「之後」：它會 await 600ms，若擺在前面會連帶
-  //     延後 CallKit 拒接/接聽 listener 的註冊，讓早期事件有機會漏接。
+  // ★ 被殺死狀態可靠性修復：CallKit 在部分裝置會靜默建立失敗，
+  //   若未補備援通知就會變成「完全沒來電彈窗」。
+  //   這裡維持互斥：只有偵測到 CallKit 未建立時才補一則本地來電通知。
   if (!isEmergency) {
     bool callkitAlive = false;
     try {
-      await Future.delayed(const Duration(milliseconds: 600));
+      await Future.delayed(const Duration(milliseconds: 900));
       final activeCalls = await FlutterCallkitIncoming.activeCalls();
       callkitAlive = activeCalls is List && activeCalls.isNotEmpty;
-    } catch (e) {
-      debugPrint('⚠️ [CallKit] activeCalls 探測失敗，改發備援通知: $e');
-    }
+    } catch (_) {}
+
     if (callkitAlive) {
-      debugPrint('✅ [CallKit] 來電 UI 已建立，略過備援通知 (callId=$callId)');
-      // 保險：若稍早殘留備援通知（例如上一通），一併關閉避免兩則並存
       await LocalCallNotification.cancel();
     } else {
-      debugPrint('⚠️ [CallKit] 未偵測到來電 UI，補發原生備援通知 (callId=$callId)');
       await LocalCallNotification.show(data);
     }
   }
@@ -1408,7 +1422,52 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         await LocalCallNotification.cancel(); // ★ 第十一輪：關備援通知
         return;
       }
+
+      // ★ 2026-07-30 第十四輪：FCM 前景 force-logout 處理。
+      //   當長輩在前景（如 ElderHomeScreen）收到 FCM force-logout → 清除 session 並導航。
+      if (message.data['type'] == 'force-logout') {
+        debugPrint('🚪 [FCM-Fg] 收到 force-logout，執行 handleForceLogout');
+        _MyAppState.handleForceLogout();
+        return;
+      }
     });
+  }
+
+  static Future<void> handleForceLogout() async {
+    debugPrint('🚪 [Main] 執行 handleForceLogout：清除 session 並退回身分選擇介面');
+    try {
+      sig.Signaling().clearSession();
+      sig.Signaling().forceDisconnect();
+
+      final prefs = await SharedPreferences.getInstance();
+      const keysToRemove = [
+        'caregiver_id', 'caregiver_name', 'user_role', 'saved_role',
+        'saved_id', 'saved_device_name', 'saved_is_cctv', 'elder_room_id',
+        'access_token',
+        'last_elder_id', 'last_elder_name', 'last_elder_room_id', 'last_elder_device_role',
+        'pendingAcceptedCall', 'pendingRingCallData', 'pendingRingCall',
+        'selected_elder_id', 'selected_elder_name', 'selected_elder_room_id',
+      ];
+      for (final key in keysToRemove) {
+        await prefs.remove(key);
+      }
+      final devRoleKeys = prefs.getKeys().where((k) => k.startsWith('device_role_')).toList();
+      for (final key in devRoleKeys) {
+        await prefs.remove(key);
+      }
+      pendingAcceptedCall.value = null;
+      appRole = null;
+
+      if (navigatorKey.currentState != null) {
+        navigatorKey.currentState!.pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
+          (route) => false,
+        );
+      }
+      debugPrint('🚪 [Main] handleForceLogout 完成，已成功退回 RoleSelectionScreen');
+    } catch (e) {
+      debugPrint('❌ [Main] handleForceLogout 失敗: $e');
+    }
   }
 
   void _setupSignalingListener() {
@@ -1440,9 +1499,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         }
         _lastHandledEmergencyCallId = callId;
         debugPrint("🚨 [Main] 收到緊急通話 Socket 事件，自動接聽！");
-        // ★ 2026-07-27 第十三輪：記錄 lastProcessedCallId，讓 ElderScreen 的
-        //   isSameOngoingCall 去重生效（否則第二次 pending 會 hangUp 掉這通緊急通話），
-        //   同時讓 FCM 前景備援的 3 秒去重窗口能正確攔下重複來電。
         if (callId != null && callId.isNotEmpty) {
           sig.Signaling().lastProcessedCallId = callId;
           sig.Signaling().lastProcessedCallTime =
@@ -1453,8 +1509,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           'senderId': senderId,
           'callId': callId,
           'isEmergency': true,
-          // ★ 第十三輪：補上發起方角色，供消費端防角色反轉驗證（護欄 #16）。
-          //   緊急通話先前是全鏈路唯一沒帶 senderRole 的路徑。
           'senderRole': 'family',
         };
         SharedPreferences.getInstance().then((prefs) {
@@ -1490,6 +1544,14 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           "📞 [Main] Global Incoming Offer from $callerId (Type: $callType). Auto-accepting...");
       return true;
     };
+
+    // ★ 2026-07-30 第十四輪 Task 1：全局 Socket force-logout 處理器。
+    //   當後端透過 Socket.IO 推送 force-logout（家屬端解除本長輩的綁定），
+    //   清除所有本地 session 鍵並導航回身分辨識介面（無論目前在哪個畫面）。
+    s.socket?.on('force-logout', (_) async {
+      debugPrint('🚪 [Main-Socket] 收到 force-logout，全域處理');
+      _MyAppState.handleForceLogout();
+    });
   }
 
   void _showIncomingCallDialog(String roomId, String senderId,

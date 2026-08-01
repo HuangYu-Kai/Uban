@@ -127,23 +127,6 @@ class _DeviceSelectionScreenState extends State<DeviceSelectionScreen> {
                               trailing: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  if (mode == 'monitor')
-                                    IconButton(
-                                      icon: Icon(Icons.videocam, color: isOnline ? Colors.blue : Colors.grey),
-                                      tooltip: '觀看監控畫面',
-                                      onPressed: () {
-                                        if (isOnline) {
-                                            Navigator.push(context, MaterialPageRoute(builder: (_) => VideoCallScreen(
-                                              roomId: 'monitor_elder_${widget.elderId}',
-                                              targetSocketId: socketId,
-                                              isEmergency: true,
-                                              autoStart: true,
-                                            )));
-                                        } else {
-                                           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("設備離線中，無法觀看 CCTV")));
-                                        }
-                                      }
-                                    ),
                                   if (mode == 'comm')
                                     IconButton(
                                       icon: Icon(Icons.call, color: isOnline ? Colors.green : Colors.grey),

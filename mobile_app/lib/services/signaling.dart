@@ -104,7 +104,9 @@ class Signaling {
       'OfferToReceiveAudio': true,
       'OfferToReceiveVideo': true,
     },
-    'optional': [],
+    'optional': [
+      {'DtlsSrtpKeyAgreement': true},
+    ],
   };
 
   StreamSubscription<String>? _tokenRefreshSubscription;
@@ -829,9 +831,9 @@ class Signaling {
 
     peerConnection!.onConnectionState = (state) {
       debugPrint("🔌 [Signaling] Connection State: $state");
-      if (state == 'connected') {
+      if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
         debugPrint("✅ [Signaling] P2P Connection Established!");
-      } else if (state == 'failed') {
+      } else if (state == RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
         debugPrint("❌ [Signaling] P2P Connection Failed!");
       }
     };
@@ -914,9 +916,8 @@ class Signaling {
       _peerSocketId = targetId;
       await _createPeerConnection(useLocalStream: useLocalStream);
       
-      // ⏳ 等待 DTLS 材料生成（CRITICAL: 防止 fingerprint 不匹配）
-      // 增加到 1000ms 以確保 DTLS 證書完全初始化
-      await Future.delayed(Duration(milliseconds: 1000));
+      // ⏳ 等待 DTLS 材料生成（優化連線速度：50ms）
+      await Future.delayed(const Duration(milliseconds: 50));
       
       // 建立 Offer 時帶入 constraints，確保雙向或單向通訊
       final constraints = useLocalStream 
@@ -972,10 +973,25 @@ class Signaling {
   }
 
   Future<void> openUserMedia(RTCVideoRenderer localVideo, {bool videoEnabled = true}) async {
-    var stream = await navigator.mediaDevices.getUserMedia({
-      'video': videoEnabled,
-      'audio': true,
-    });
+    // ★ Task 3：提高畫質與幀率 constraint (1280x720 30fps)
+    final Map<String, dynamic> videoConstraints = videoEnabled
+        ? {
+            'video': {
+              'mandatory': {
+                'minWidth': '640',
+                'idealWidth': '1280',
+                'minHeight': '480',
+                'idealHeight': '720',
+                'minFrameRate': '24',
+                'idealFrameRate': '30',
+              },
+              'facingMode': 'user',
+              'optional': [],
+            },
+            'audio': true,
+          }
+        : {'video': false, 'audio': true};
+    var stream = await navigator.mediaDevices.getUserMedia(videoConstraints);
     localVideo.srcObject = stream;
     localStream = stream;
     if (onLocalStream != null) onLocalStream!(stream);

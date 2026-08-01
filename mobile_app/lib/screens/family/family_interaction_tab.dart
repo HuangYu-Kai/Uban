@@ -233,25 +233,6 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                     );
                   },
                 ),
-                const SizedBox(height: 16),
-                // 單向視訊監控
-                _buildCallOptionButton(
-                  title: '單向視訊監控',
-                  subtitle: '不打擾長輩，靜音查看即時畫面',
-                  icon: Icons.visibility_rounded,
-                  color: const Color(0xFF8B5CF6),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => CameraScreen(
-                          roomId: 'monitor_elder_$rawId',
-                        ),
-                      ),
-                    );
-                  },
-                ),
               ],
             ),
           ),
@@ -751,7 +732,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                       ),
                       const SizedBox(height: 12),
                       Text(
-                        '尚未連接獨立攝影機設備',
+                        '尚未連接任何監視機設備',
                         style: GoogleFonts.notoSansTc(
                           color: Colors.white.withValues(alpha: 0.7),
                           fontSize: 16,

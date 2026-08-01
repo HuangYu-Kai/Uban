@@ -7,7 +7,6 @@ import 'package:flutter_tts/flutter_tts.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
-import 'dart:io' show Platform;
 import 'package:firebase_messaging/firebase_messaging.dart';
 import '../services/signaling.dart';
 import '../widgets/heartbeat_overlay.dart';
@@ -84,9 +83,12 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     // ★ 初始化格式化的房間ID
     _formattedRoomId = _getFormattedRoomId(widget.roomId);
 
-    // ★ issue 8：CCTV/監控模式下，鏡頭必須預設開啟，否則監視器端只會看到黑畫面
+    // 「電話」與「視訊」共用同一套 call-request 後端邏輯；
+    // 唯一差異只在進房時鏡頭預設狀態。
     if (widget.isCCTVMode) {
       _isCameraOff = false;
+    } else {
+      _isCameraOff = !widget.isVideoCall;
     }
 
     // ★ Bug 16 解決方案：監聽從系統層 (main.dart) 傳進來的 CallKit 接聽動作
@@ -149,7 +151,8 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       final senderId = args['senderId']!;
       final roomId = args['roomId']!;
       final callId = args['callId'];
-      final isEmergency = args['isEmergency'] == 'true';
+      final rawEmergency = args['isEmergency'];
+      final isEmergency = rawEmergency?.toString() == 'true';
 
       debugPrint("📞 Detected Accepted Call from $senderId (Room: $roomId, CallId: $callId, Emergency: $isEmergency). Bridging...");
 
@@ -642,6 +645,52 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     );
   }
 
+  Future<void> _exitCCTVMode() async {
+    final bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('退出監視機模式'),
+        content: const Text('確定要退出監視機模式並重新選擇身分？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('退出並重置'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('saved_is_cctv');
+      await prefs.remove('saved_role');
+      await prefs.remove('saved_id');
+      await prefs.remove('saved_device_name');
+      await prefs.remove('user_role');
+      await prefs.remove('caregiver_id');
+      await prefs.remove('caregiver_name');
+
+      _signaling.clearSession();
+      _signaling.forceDisconnect();
+
+      if (mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const IdentificationScreen()),
+          (route) => false,
+        );
+      }
+    }
+  }
+
   @override
   void dispose() {
     _callTimer?.cancel();
@@ -675,104 +724,120 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
         builder: (context, pendingCall, _) {
           return Stack(
             children: [
-              // 1. 全螢幕視訊區塊 (沉浸式)
+              // 1. 全螢幕視訊區塊
               Positioned.fill(
                 child: Container(
                   color: const Color(0xFF121212),
-                  child: _remoteRenderer.srcObject != null
+                  child: widget.isCCTVMode
                       ? RTCVideoView(
-                          _remoteRenderer,
+                          _localRenderer,
+                          mirror: true,
                           objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
                         )
-                      : Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              if (_isInCall)
-                                const CircularProgressIndicator(color: Colors.orangeAccent),
-                              const SizedBox(height: 24),
-                              Text(
-                                _status,
-                                style: const TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w500,
-                                ),
+                      : _remoteRenderer.srcObject != null
+                          ? RTCVideoView(
+                              _remoteRenderer,
+                              objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                            )
+                          : Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  if (_isInCall)
+                                    const CircularProgressIndicator(color: Colors.orangeAccent),
+                                  const SizedBox(height: 24),
+                                  Text(
+                                    _status,
+                                    style: const TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ],
-                          ),
+                            ),
+                ),
+              ),
+
+              // 2. 本地 PIP（僅雙向通話模式顯示）
+              if (!widget.isCCTVMode)
+                Positioned(
+                  right: 20,
+                  top: MediaQuery.of(context).padding.top + 20,
+                  width: 110,
+                  height: 160,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.4),
+                          blurRadius: 8,
+                          offset: const Offset(0, 4),
                         ),
-                ),
-              ),
-
-              // 2. 本地預覽 (精緻 PIP)
-              Positioned(
-                right: 20,
-                top: MediaQuery.of(context).padding.top + 20,
-                width: 110,
-                height: 160,
-                child: Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.4),
-                        blurRadius: 8,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                    border: Border.all(color: Colors.white24, width: 1.5),
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(14),
-                    child: RTCVideoView(_localRenderer, mirror: true, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
+                      ],
+                      border: Border.all(color: Colors.white24, width: 1.5),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(14),
+                      child: RTCVideoView(_localRenderer, mirror: true, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
+                    ),
                   ),
                 ),
-              ),
 
-              // 3. CCTV 模式提示與退出按鈕
+              // ★ CCTV 模式：頂部退出按鈕與底部「CCTV 監視中」標籤
               if (widget.isCCTVMode) ...[
                 Positioned(
-                  top: MediaQuery.of(context).padding.top + 20,
-                  left: 20,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.redAccent.withValues(alpha: 0.8),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.videocam, color: Colors.white, size: 18),
-                        SizedBox(width: 8),
-                        Text("CCTV 守護中", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                      ],
+                  top: MediaQuery.of(context).padding.top + 10,
+                  right: 16,
+                  child: GestureDetector(
+                    onTap: _exitCCTVMode,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.6),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.white30, width: 1),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.logout_rounded, color: Colors.white, size: 16),
+                          SizedBox(width: 6),
+                          Text(
+                            '退出監視機',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
                 Positioned(
-                  top: MediaQuery.of(context).padding.top + 20,
-                  right: 20,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.5),
-                      shape: BoxShape.circle,
-                    ),
-                    child: IconButton(
-                      icon: const Icon(Icons.exit_to_app, color: Colors.white),
-                      tooltip: '退出並重新登入',
-                      onPressed: () async {
-                        final prefs = await SharedPreferences.getInstance();
-                        await prefs.clear(); // 清空儲存的長輩資訊與 CCTV 角色
-                        if (context.mounted) {
-                          Navigator.pushAndRemoveUntil(
-                            context,
-                            MaterialPageRoute(builder: (context) => const IdentificationScreen()),
-                            (route) => false,
-                          );
-                        }
-                      },
+                  bottom: 12,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.45),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        'CCTV 監視中…',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.6),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w400,
+                          letterSpacing: 1.0,
+                        ),
+                      ),
                     ),
                   ),
                 ),

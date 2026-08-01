@@ -137,7 +137,22 @@ class ElderManager {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_currentElderIdKey, elder.id);
   }
-  
+
+  /// ★ 2026-07-30 Task 2：從本地配對列表中移除長輩（解綁時使用，不呼叫後端 API）。
+  void removeElderLocally(String elderId) {
+    _pairedElders.removeWhere((e) {
+      final eId = e.elderId ?? e.id.toString();
+      return eId == elderId;
+    });
+    if (_currentElder != null) {
+      final cId = _currentElder!.elderId ?? _currentElder!.id.toString();
+      if (cId == elderId) {
+        _currentElder = null;
+      }
+    }
+    appLogger.d('🔓 [ElderManager] 本地移除長輩 elderId=$elderId, 剩餘 ${_pairedElders.length} 位');
+  }
+
   /// 重新整理配對列表
   Future<bool> refresh() async {
     if (_currentUserId == null) {

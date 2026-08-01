@@ -833,28 +833,30 @@ class ApiService {
     }
   }
 
-  static Future<Map<String, dynamic>> logActivity({
-    required int userId,
-    required String eventType,
-    required String content,
-    Map<String, dynamic>? extraData,
-  }) async {
+  /// ★ Task 6：取得使用者目前訂閱層級與設備上限
+  /// GET /api/subscription/tier/{user_id}
+  static Future<Map<String, dynamic>> getSubscriptionTier(int userId) async {
     try {
       final response = await http
-          .post(
-            Uri.parse('$aiServerUrl/api/ai/log_activity'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'user_id': userId,
-              'event_type': eventType,
-              'content': content,
-              if (extraData != null) 'extra_data': extraData,
-            }),
-          )
+          .get(Uri.parse('$baseUrl/subscription/tier/$userId'))
           .timeout(_timeout);
       return _safeDecode(response);
     } catch (e) {
-      debugPrint('⚠️ logActivity error: $e');
+      debugPrint('⚠️ getSubscriptionTier error: $e');
+      return {'status': 'error', 'message': e.toString()};
+    }
+  }
+
+  /// ★ Task 6：取得使用者訂閱歷史明細列表
+  /// GET /api/subscription/records/{user_id}
+  static Future<Map<String, dynamic>> getSubscriptionRecords(int userId) async {
+    try {
+      final response = await http
+          .get(Uri.parse('$baseUrl/subscription/records/$userId'))
+          .timeout(_timeout);
+      return _safeDecode(response);
+    } catch (e) {
+      debugPrint('⚠️ getSubscriptionRecords error: $e');
       return {'status': 'error', 'message': e.toString()};
     }
   }

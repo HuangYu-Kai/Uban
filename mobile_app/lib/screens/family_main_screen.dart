@@ -13,6 +13,7 @@ import '../services/elder_manager.dart';
 import '../services/signaling.dart';
 import 'video_call_screen.dart';
 import 'caregiver_pairing_screen.dart';
+import 'family_onboarding_screen.dart';
 import 'package:flutter_application_1/utils/app_logger.dart';
 import '../globals.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -142,6 +143,53 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
         _isIncomingCallDialogOpen = false;
       }
     };
+
+    // ★ 2026-07-30 Task 2：監聽長輩被解綁事件，即時更新 UI，避免黑屏。
+    _signaling.socket?.on('elder-unbound', (data) {
+      if (!mounted) return;
+      try {
+        final unboundElderId = data is Map ? (data['elderId'] ?? data['elder_id'])?.toString() : null;
+        debugPrint('🔓 [FamilyMainScreen] 收到 elder-unbound: elderId=$unboundElderId');
+        if (unboundElderId == null) return;
+
+        // 比對當前選中的長輩
+        final currentElderId = _currentElder?.elderId ?? _currentElder?.id?.toString();
+        final isCurrentElder = unboundElderId == currentElderId;
+
+        // 從列表中移除
+        setState(() {
+          _elders.removeWhere((e) {
+            final eId = e.elderId ?? e.id.toString();
+            return eId == unboundElderId;
+          });
+          if (isCurrentElder) {
+            _currentElder = null;
+            _isElderOnline = false;
+            _elderSocketId = null;
+          }
+        });
+
+        // 同步 ElderManager
+        ElderManager().removeElderLocally(unboundElderId);
+
+        // 若列表為空 → 導航至 Onboarding；否則若目前長輩被解綁 → 自動選第一個
+        if (_elders.isEmpty) {
+          debugPrint('🔓 [FamilyMainScreen] 所有長輩已解綁，導航至 Onboarding');
+          if (mounted) {
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(builder: (_) => FamilyOnboardingScreen(userId: widget.userId, userName: widget.userName)),
+              (route) => false,
+            );
+          }
+        } else if (isCurrentElder) {
+          debugPrint('🔓 [FamilyMainScreen] 當前長輩被解綁，自動切換至第一個');
+          _switchElder(_elders.first);
+        }
+      } catch (e) {
+        debugPrint('❌ [FamilyMainScreen] elder-unbound 處理失敗: $e');
+      }
+    });
 
     // 監聽長輩設備狀態更新
     _signaling.onElderDevicesUpdate = (devices) {
@@ -478,9 +526,6 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     _deviceRefreshTimer?.cancel();
     _onlineStateDebounceTimer?.cancel();
     pendingAcceptedCall.removeListener(_onPendingCallChanged);
-    _signaling.onCallRequest = null;
-    _signaling.onEmergencyCall = null;
-    _signaling.onCancelCall = null;
     _signaling.onElderDevicesUpdate = null;
     super.dispose();
   }
@@ -497,6 +542,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
       backgroundColor: Colors.white,
       elevation: 0,
       scrolledUnderElevation: 0,
+      centerTitle: false,
       titleSpacing: 16,
       title: _currentElder == null
           ? Text(
