@@ -430,8 +430,13 @@ void initPedometer() {
 查別家機構的資料回 **404 而非 403**（403 等於確認 ID 存在，可用來列舉）。
 
 **驗證**：`tests/test_institution.py` 22 passed（對線上 MySQL）；
-九個頁面在亮／暗主題、1280／1600 寬皆逐一人工確認。
-⚠️ 尚未部署到正式環境，第一次部署前請先在本機 `podman build` 驗過 node stage。
+九個頁面在亮／暗主題、1280／1600 寬皆逐一人工確認；
+Dockerfile 的 webbuild stage 已在乾淨目錄乾跑過（`npm ci` → 複製原始碼 →
+`npm run build`），並確認產物內是同源 `/api` 而非開發用網址。
+
+⚠️ **尚未實際部署**。另注意 `deploy.yml` 是 `set -e` 且 `podman build` 在
+`podman rm` **之前**，所以萬一前端建置失敗，只會讓部署不生效（Actions 紅字），
+**舊容器會繼續跑，API 不會斷**。
 
 ---
 

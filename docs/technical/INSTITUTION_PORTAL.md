@@ -297,11 +297,58 @@ admin 不可停用自己、班次生命週期（建立→409→未上班先下�
 | 1280 / 1600 寬 | ✅ 表格與圖表皆不橫向溢出 |
 | `/admin` SPA fallback | ✅ `/admin`、`/admin/elders`、`/admin/elders/D000` 皆回 index.html；資產 content-type 正確 |
 
-### 尚未驗證
+### 部署風險評估（實際讀過 `deploy.yml` 後）
 
-- **未部署到正式環境**。Dockerfile 新增的 node build stage 尚未在 Fedora 主機
-  實跑過；部署腳本是 `set -e`，node stage 失敗會讓整包部署失敗（含 API）。
-  **第一次部署前務必先在本機 `podman build` 跑一次。**
+`deploy.yml` 的順序是：
+
+```
+set -e
+podman build -t uban-api .      # ← 第 77 行
+podman image prune -f
+podman rm -f uban-api || true   # ← 第 83 行
+podman run -d --name uban-api …
+```
+
+因為 `set -e`，**若 `podman build` 失敗，腳本會在第 77 行就中止**，
+根本走不到第 83 行的 `podman rm`。也就是說：
+
+> **node build stage 失敗 → GitHub Actions 顯示紅字，但舊容器繼續跑，API 不會斷。**
+
+失效模式是「部署沒生效」，不是「服務掛掉」。這比新增 build stage 之前的
+直覺風險小很多。
+
+### webbuild stage 的乾跑驗證（2026-08-03）
+
+沒有本機 podman，改為在乾淨目錄逐步重現 Dockerfile 的三個步驟：
+
+| 步驟 | 結果 |
+|------|------|
+| `npm ci`（只給 package.json + package-lock.json） | ✅ 通過（**修過 lockfile 後**，見下） |
+| 複製原始碼（比照 `COPY uban-admin/ ./`，排除 node_modules/dist） | ✅ |
+| `npm run build` | ✅ 產出 dist/（index.html + assets） |
+| 產物檢查 | ✅ bundle 內 `VITE_API_BASE` 被編譯成 `` `/api` ``（同源），**0 個** Tailscale 開發網址殘留 |
+
+**過程中修掉一個會讓每次部署都失敗的真問題**：原本的 `package-lock.json` 有一筆
+`node_modules/rolldown/node_modules/@rolldown/binding-android-arm64` **缺少 `version` 欄位**
+（npm 11 + rolldown 產生的畸形 lockfile），`npm ci` 會直接死在
+`npm error Invalid Version:`。刪掉重新 `npm install` 產生的 lockfile 已無此問題，
+並實測 `npm ci` 可從 lockfile 單獨還原。
+
+> ⚠️ 之後若升級 vite / rolldown 並重產 lockfile，**請務必再跑一次乾淨的 `npm ci`**
+> 確認沒有再出現缺 `version` 的條目 —— 這個錯誤在本機 `npm install` 完全看不出來，
+> 只有 `npm ci`（也就是 Docker build）會爆。
+
+**基底映像選 `node:22-alpine` 的理由**：vite 8 / rolldown 的 `engines` 是
+`^20.19.0 || >=22.12.0`，而 `node:20` 是浮動 tag，萬一解析到 20.19 之前的版本就會
+建置失敗；22 LTS 不會踩到這個邊界。alpine 是 musl，已確認 lockfile 內含
+`@rolldown/binding-linux-x64-musl`，原生 binding 沒問題。
+
+### 仍未驗證
+
+- **仍未實際在 Fedora 主機 `podman build` 過**。乾跑已涵蓋 `npm ci` / `npm run build`
+  這兩個最可能出事的步驟，剩下的未知只有「主機能不能拉 `docker.io/node:22-alpine`」
+  與「build 期間能不能連 npm registry」—— 這台主機每次 build 本來就會拉
+  pytorch 映像並跑 `pip install`，所以這兩件事風險很低。
 - 種子腳本尚未在「真正的備份 DB」上驗過 `--purge`（已在線上 DB 驗過一次
   完整 purge→re-seed 循環，真實資料筆數未變）。
 
