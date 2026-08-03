@@ -401,6 +401,40 @@ void initPedometer() {
 
 ## 更新日誌
 
+### 2026-08-03 🏥 機構管理端網頁（賣給日照中心的 B2B 對外儀表板）
+
+> Uban 從「兩個 App」擴成「兩個 App + 一個機構管理網頁」。
+> 機構人員在桌機上檢視旗下所有長輩的圖表化數據，並管理護工排班與派工。
+> 完整技術設計見 [機構管理端網頁技術設計與實作紀錄](docs/technical/INSTITUTION_PORTAL.md)。
+
+**這是系統第一次把真實資料聚合成圖表**
+
+在此之前，家屬端的 `health_trends_screen.dart`、`emotion_timeline_screen.dart`、
+`alert_center_screen.dart` 全都是 `_generateMockData()` 的假資料，後端沒有任何
+聚合端點。本模組把 `activity_log`／`call_record`／`emergency_alerts`／
+`subscription_status` 真的聚合起來畫成圖。
+
+**新增內容**
+
+| 面向 | 內容 |
+|------|------|
+| 資料庫 | 新增 8 張表：`institution`、`care_staff`、`institution_elder`、`staff_elder_assignment`、`care_shift`、`shift_swap_request`、`care_task`、`elder_daily_step`。migration 放 `uban-api/scripts/migrations/001_institution.sql`，開機冪等執行 |
+| 認證 | `uban-api/auth_staff.py`。機構員工 JWT 帶 `typ:"staff"`，與家屬端 token **完全分離**，家屬 token 打機構端點必定 401 |
+| 後端 | `routers/institution.py`（認證＋唯讀統計）、`routers/institution_ops.py`（排班派工寫入）、`routers/institution_common.py`（跨機構越權守衛） |
+| 前端 | `uban-api/uban-admin`（React + Vite + TypeScript + Recharts），9 個頁面。正式環境由 FastAPI 掛在 `/admin`，與 API 同源 |
+| 步數歷史 | 新增 `elder_daily_step`。`elder_profile.step_total` 會被 `do_distribute_appearances()` 歸零，原本畫不出趨勢；`game.py` 三個計步端點現在共用 `_record_daily_steps()` 同步累積逐日快照 |
+| 示範資料 | `scripts/seed_demo_institution.py`：一間機構、8 位員工、20 位長輩、90 天歷史、4 週班表。冪等且可 `--purge` 完全清除 |
+| 部署 | `Dockerfile` 加 node build stage 自動建置前端；`deploy.yml` **不需改動** |
+
+**跨機構隔離**：所有端點一律以 token 內的 `institution_id` 過濾，不接受呼叫端傳入；
+查別家機構的資料回 **404 而非 403**（403 等於確認 ID 存在，可用來列舉）。
+
+**驗證**：`tests/test_institution.py` 22 passed（對線上 MySQL）；
+九個頁面在亮／暗主題、1280／1600 寬皆逐一人工確認。
+⚠️ 尚未部署到正式環境，第一次部署前請先在本機 `podman build` 驗過 node stage。
+
+---
+
 ### 2026-07-29 💳 PRO 進階照護訂閱前後端接通（RevenueCat + 後端單一真相來源）
 
 > **家屬替長輩訂閱**的完整鏈路打通並通過端到端驗證。分支 `payment-test` 已合併。
