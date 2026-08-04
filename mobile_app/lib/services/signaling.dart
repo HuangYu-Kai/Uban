@@ -48,6 +48,9 @@ class Signaling {
   VoidCallback? onCallEnded;
   ErrorCallback? onJoinFailed;
   CallRequestCallback? onCallRequest;
+  /// ★ 2026-08-04：後端推送 force-logout（家屬端解除本長輩綁定）時觸發。
+  ///   由 main.dart 註冊，負責清除 session 並導航回身分選擇介面。
+  void Function()? onForceLogout;
   CallRequestCallback? onCancelCall;
   CallRequestCallback? onEmergencyCall;
   CallAcceptedCallback? onCallAcceptedByRemote;
@@ -61,6 +64,12 @@ class Signaling {
   String? _currentCallId; // 追蹤當前通話 ID，確保 hangUp 時能傳給後端
   String? lastProcessedCallId; // ★ 問題4修復：記錄最後一個已處理的來電 ID，防止重複
   int lastProcessedCallTime = 0; // ★ 問題4修復：記錄最後一個已處理來電的時間戳，用於去重檢查
+  // ★ Fix E：記錄目前處理中來電的 callId 與其視訊/語音旗標，供 main.dart 在
+  //   同一 isolate 存活的前景 Socket 接聽路徑（如 _showIncomingCallDialog 直接
+  //   呼叫 _navigateToVideoCall）查詢。CallKit/FCM 冷啟動路徑改走
+  //   pendingAcceptedCall 攜帶的 isVideoCall 欄位，不依賴此處。
+  String? incomingCallIsVideoCallId;
+  bool incomingCallIsVideo = true;
   dynamic _userId; // 新增：儲存當前使用者的資料庫 ID
   String? _role; // 新增：儲存當前連線的角色
   String? _deviceName;
@@ -77,6 +86,16 @@ class Signaling {
   ///   避免「拒接後又響」與角色反轉迴圈。
   bool isCallInvalidated(String? callId) =>
       callId != null && callId.isNotEmpty && _invalidCallIds.contains(callId);
+
+  /// ★ Fix E（2026-08-02 第十四輪修正）：依 callId 查詢是否為視訊通話；
+  ///   callId 不吻合或查無紀錄時預設為 true。旗標解析改用 globals.dart 的
+  ///   parseIsVideoCall（共用解析器，相容 bool 與後端 str(bool) 產生的大小寫字串）。
+  bool isVideoCallFor(String? callId) {
+    if (callId != null && callId.isNotEmpty && callId == incomingCallIsVideoCallId) {
+      return incomingCallIsVideo;
+    }
+    return true;
+  }
 
   void invalidateCallId(String? callId) {
     if (callId != null && callId.isNotEmpty) {
@@ -255,7 +274,11 @@ class Signaling {
       // ★ 更新最後處理的來電 ID 和時間戳
       lastProcessedCallId = callId;
       lastProcessedCallTime = currentTime;
-      
+
+      // ★ Fix E：記錄本通來電是否為視訊，供 isVideoCallFor() 查詢。
+      incomingCallIsVideoCallId = callId;
+      incomingCallIsVideo = parseIsVideoCall(data['isVideoCall']);
+
       debugPrint('📞📞📞 [Signaling] ===== 收到 call-request =====');
       debugPrint('📞 [Signaling] data: $data');
       debugPrint('📞 [Signaling] room: ${data['room']}, senderId: ${data['senderId']}, callId: ${data['callId']}');
@@ -376,6 +399,14 @@ class Signaling {
     socket!.on('elder-devices-update', (devices) {
       debugPrint("📡 [Signaling] Received elder-devices-update (count: ${devices.length})");
       if (onElderDevicesUpdate != null) onElderDevicesUpdate!(devices);
+    });
+
+    // ★ 2026-08-04：force-logout 必須在此註冊。原本寫在 main.dart 的
+    //   `s.socket?.on('force-logout', ...)` 於 initState 執行，當時 socket 仍為 null，
+    //   `?.` 短路導致從未掛上；即使掛上，connect() 重建 socket 物件後也會失效。
+    socket!.on('force-logout', (_) {
+      debugPrint("🚪 [Signaling] Received force-logout (家屬端已解除綁定)");
+      if (onForceLogout != null) onForceLogout!();
     });
 
     socket!.on('offer', (data) async {
@@ -634,19 +665,20 @@ class Signaling {
     Helper.setSpeakerphoneOn(enable);
   }
 
-  void sendCallRequest(String room, {String role = 'family', String? callId, String? targetId}) {
+  void sendCallRequest(String room, {String role = 'family', String? callId, String? targetId, bool isVideoCall = true}) {
     final String effectiveCallId = callId ?? const Uuid().v4();
     _currentCallId = effectiveCallId;
     final int issuedAt = DateTime.now().millisecondsSinceEpoch;
     socket!.emit('call-request', {
-      'room': room, 
-      'role': role, 
+      'room': room,
+      'role': role,
       'callId': effectiveCallId,
       'issuedAt': issuedAt.toString(),
       'expiresAt': (issuedAt + kCallValidityMs).toString(),
       if (targetId != null) 'targetId': targetId,
       'callerUserId': _userId, // 新增：主動發送發起者的資料庫 ID
       if (_deviceName != null) 'senderName': _deviceName,
+      'isVideoCall': isVideoCall.toString(), // ★ 2026-08-02 第十四輪：送字串，避免後端 str(bool) 產生大寫 "False"
     });
   }
 
@@ -756,6 +788,7 @@ class Signaling {
       await _processCandidateQueue();
       var answer = await peerConnection?.createAnswer(_constraints);
       await peerConnection?.setLocalDescription(answer!);
+      await _applyVideoEncodingParams();
       
       // ★ 確保發送 answer 時正確指定發起者的 socketId 作為 targetId
       final targetSocketId = data['senderId'] ?? _peerSocketId;
@@ -814,7 +847,20 @@ class Signaling {
           'username': turnUsername,
           'credential': turnPassword,
         },
-      ]
+      ],
+      // ★ 2026-08-04 第 3 項：縮短連線建立時間。以下四項都不改變媒體路徑，
+      //   只影響 ICE 協商的效率，與雙軌設計（信令走 Tailscale、媒體走 Coturn）無關。
+      //   iceCandidatePoolSize：PeerConnection 一建立就預先蒐集候選位址，
+      //     不必等到 setLocalDescription 之後才開始，這是縮短等待最有效的一項。
+      //   bundlePolicy max-bundle：音訊與視訊共用同一條傳輸通道，
+      //     ICE 檢查從兩組降為一組。
+      //   rtcpMuxPolicy require：RTP 與 RTCP 共用同一個埠，候選數量減半。
+      //   sdpSemantics unified-plan：與本檔使用 addTrack（第 920 行）的寫法一致，
+      //     明確指定以免不同平台預設值不同。
+      'iceCandidatePoolSize': 2,
+      'bundlePolicy': 'max-bundle',
+      'rtcpMuxPolicy': 'require',
+      'sdpSemantics': 'unified-plan',
     };
   }
 
@@ -897,6 +943,34 @@ class Signaling {
     }
   }
 
+  /// ★ 2026-08-04 第 3 項：拉高視訊送出端的位元率與幀率上限。
+  ///   擷取端已要求 1280x720@30，但 WebRTC 送出端預設可能把位元率壓得很低而導致畫面糊。
+  ///   必須在 setLocalDescription / setRemoteDescription 之後呼叫——
+  ///   協商完成前 sender.parameters.encodings 可能是空的，此時直接跳過即可，
+  ///   絕不可強行塞入 encoding（在部分 Android 裝置會拋例外並中斷通話）。
+  Future<void> _applyVideoEncodingParams() async {
+    try {
+      final pc = peerConnection;
+      if (pc == null) return;
+      for (final sender in await pc.getSenders()) {
+        if (sender.track?.kind != 'video') continue;
+        final params = sender.parameters;
+        final encodings = params.encodings;
+        if (encodings == null || encodings.isEmpty) {
+          debugPrint('ℹ️ [Signaling] 視訊 encodings 尚未就緒，略過編碼參數設定');
+          continue;
+        }
+        encodings.first.maxBitrate = 2500000; // 2.5 Mbps，720p30 的合理上限
+        encodings.first.maxFramerate = 30;
+        await sender.setParameters(params);
+        debugPrint('🎥 [Signaling] 已套用視訊編碼參數: maxBitrate=2.5Mbps, maxFramerate=30');
+      }
+    } catch (e) {
+      // 設定失敗絕不可影響通話本身，僅記錄。
+      debugPrint('⚠️ [Signaling] 套用視訊編碼參數失敗（不影響通話）: $e');
+    }
+  }
+
   Future<void> createOffer({String? targetId, bool isEmergency = false, bool useLocalStream = true}) async {
     // ⭐ 防止重複調用 createOffer
     if (_isCreatingOffer) {
@@ -926,6 +1000,7 @@ class Signaling {
       
       RTCSessionDescription offer = await peerConnection!.createOffer(constraints);
       await peerConnection!.setLocalDescription(offer);
+      await _applyVideoEncodingParams();
       
       debugPrint("📤 [Signaling] Emitting offer to $targetId");
       socket!.emit('offer', {

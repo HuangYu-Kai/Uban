@@ -20,6 +20,7 @@ class VideoCallScreen extends StatefulWidget {
   final bool isEmergency;
   final String? callId;
   final bool sendAcceptOnOpen;
+  final bool isVideoCall; // ★ Fix E：是否為視訊通話（false = 純語音/電話）
 
   const VideoCallScreen({
     super.key,
@@ -30,6 +31,7 @@ class VideoCallScreen extends StatefulWidget {
     this.isEmergency = false,
     this.callId,
     this.sendAcceptOnOpen = true,
+    this.isVideoCall = true, // 預設視訊通話
   });
 
   @override
@@ -145,10 +147,15 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     try {
       await _signaling.openUserMedia(_localRenderer);
       _mediaInitialized = true;
+      // ★ Fix E：語音通話（isVideoCall=false）預設關閉鏡頭，與發起端對稱；
+      //   鏡頭按鈕仍可手動開啟（見 _toggleCamera），此處僅決定進房初始狀態。
+      if (!widget.isVideoCall && mounted) {
+        setState(() => _isCameraOff = true);
+      }
       if (_signaling.localStream != null) {
         final videoTracks = _signaling.localStream!.getVideoTracks();
         for (var track in videoTracks) {
-          track.enabled = true;
+          track.enabled = widget.isVideoCall;
         }
       }
     } catch (e) {
@@ -532,13 +539,20 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                   child: Row(
                     children: [
                       Icon(
-                        widget.isEmergency ? Icons.warning : Icons.shield,
-                        color: widget.isEmergency ? Colors.orangeAccent : Colors.greenAccent,
+                        widget.isEmergency
+                            ? Icons.warning
+                            : (widget.isVideoCall ? Icons.shield : Icons.call),
+                        color: widget.isEmergency
+                            ? Colors.orangeAccent
+                            : (widget.isVideoCall ? Colors.greenAccent : Colors.lightBlueAccent),
                         size: 16,
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        widget.isEmergency ? "緊急通話" : "視訊通話",
+                        // ★ Fix E：非緊急且非視訊時顯示「語音通話」，其餘沿用原邏輯。
+                        widget.isEmergency
+                            ? "緊急通話"
+                            : (widget.isVideoCall ? "視訊通話" : "語音通話"),
                         style: const TextStyle(color: Colors.white, fontSize: 14),
                       ),
                     ],

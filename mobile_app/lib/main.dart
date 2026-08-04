@@ -55,6 +55,29 @@ bool _isExpiredCallPayload(Map<String, dynamic> data) {
   return false;
 }
 
+/// ★ 2026-08-05 第十六輪：由「來電payload 的發起方角色」反推本機角色。
+///
+/// 根因：整條來電鏈（BG handler 的 `role == 'elder'` 分支、FCM 前景守門、
+/// `_setupSignalingListener` 的 `appRole != 'elder'`）全部只看本機 prefs 的
+/// `user_role ?? saved_role`，而這兩個鍵由**不同畫面**寫入且語意不一致：
+///   - `login_screen` 寫 `user_role='family'`
+///   - `role_selection_screen` 只寫 `saved_role`（從不寫 `user_role`）
+/// 因為 `user_role` 優先，一台曾登入過家屬、之後改當長輩的手機會永遠停在
+/// `appRole='family'` → 家屬打來時 `senderRole('family') == appRole('family')`
+/// 被判為角色反轉而丟棄，且 BG handler 也不會走長輩的 CallKit 分支
+/// → 家屬→長輩在 APP 內/背景/被殺死**三態全滅**；
+/// 而長輩→家屬完全不受影響（長輩撥出時 `role: 'elder'` 是明確傳入的，
+/// 不讀 prefs）—— 正是回報的「不對稱失效」。
+///
+/// 通話只可能是 elder↔family，所以 payload 的 `role` 一旦有值就是權威：
+/// 對方是 family → 我方必為 elder，反之亦然。prefs 僅作為 payload 缺角色時的退路。
+String? _deriveMyRoleFromCall(dynamic senderRoleRaw, String? localRole) {
+  final String senderRole = (senderRoleRaw ?? '').toString().trim();
+  if (senderRole == 'family') return 'elder';
+  if (senderRole == 'elder') return 'family';
+  return localRole;
+}
+
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -161,7 +184,18 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         return;
       }
 
-      final role = prefs.getString('user_role') ?? prefs.getString('saved_role');
+      // ★ 2026-08-05 第十六輪：不再直接採信本機 prefs 的角色。
+      //   payload 的發起方角色是權威（通話只可能 elder↔family），prefs 只作退路。
+      //   詳見 _deriveMyRoleFromCall 的註解——本機 user_role 殘留 'family' 會讓
+      //   下方 `role == 'elder'` 的長輩 CallKit 分支永遠不成立，來電整條消失。
+      //   刻意**不**把推導結果寫回 prefs：裝置身分會決定冷啟動導航，
+      //   在背景 isolate 改寫身分的爆炸半徑過大，此處只用於本通來電的分支判斷。
+      final localRole = prefs.getString('user_role') ?? prefs.getString('saved_role');
+      final role = _deriveMyRoleFromCall(message.data['role'], localRole);
+      if (role != localRole) {
+        debugPrint("🧭 [BG] 本機 prefs 角色為 $localRole，依 payload 發起方角色"
+            "(${message.data['role']}) 推導本機應為 $role（prefs 未同步，本通依推導結果處理）");
+      }
       final roomId = (message.data['roomId'] ?? '').toString();
       final senderId = (message.data['senderId'] ?? '').toString();
       final callId = (message.data['callId'] ?? '').toString();
@@ -221,6 +255,8 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
            'expiresAt': (message.data['expiresAt'] ?? '').toString(),
            'callerName': callerName,
            'senderRole': (message.data['role'] ?? '').toString(),
+           // ★ Fix E：透傳是否為視訊通話，false = 純語音（電話），預設 true。
+           'isVideoCall': (message.data['isVideoCall'] ?? 'true').toString(),
            'isAccepted': false,
            'timestamp': DateTime.now().millisecondsSinceEpoch,
          }));
@@ -251,6 +287,8 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
             'expiresAt': (message.data['expiresAt'] ?? '').toString(),
             'callerName': callerName,
             'senderRole': (message.data['role'] ?? '').toString(),
+            // ★ Fix E：透傳是否為視訊通話，false = 純語音（電話），預設 true。
+            'isVideoCall': (message.data['isVideoCall'] ?? 'true').toString(),
             'isAccepted': false,
             'timestamp': DateTime.now().millisecondsSinceEpoch,
           }));
@@ -314,6 +352,9 @@ Future<void> _showFullScreenCallkit(Map<String, dynamic> data) async {
   final issuedAt = (data['issuedAt'] ?? '').toString();
   final expiresAt = (data['expiresAt'] ?? '').toString();
   final senderRole = (data['role'] ?? '').toString();
+  // ★ Fix E：是否為視訊通話，false = 純語音（電話），預設 true。
+  //   緊急通話路徑從不帶此欄位，會自然預設為 true（維持強制視訊）。
+  final isVideoCall = (data['isVideoCall'] ?? 'true').toString();
   final isEmergency = data['type'] == 'emergency-call';
 
   final params = CallKitParams(
@@ -338,6 +379,8 @@ Future<void> _showFullScreenCallkit(Map<String, dynamic> data) async {
       'expiresAt': expiresAt,
       // ★ 2026-07-22 第八輪 Fix 3：透傳發起方角色，供接聽消費端驗證防角色反轉。
       'senderRole': senderRole,
+      // ★ Fix E：透傳是否為視訊通話，供接聽消費端決定進房時鏡頭預設狀態。
+      'isVideoCall': isVideoCall,
     },
     android: const AndroidParams(
       isCustomNotification: true,
@@ -411,6 +454,7 @@ Future<void> _showFullScreenCallkit(Map<String, dynamic> data) async {
             'issuedAt': issuedAt,
             'expiresAt': expiresAt,
             'senderRole': senderRole,
+            'isVideoCall': isVideoCall, // ★ Fix E
             'timestamp': DateTime.now().millisecondsSinceEpoch,
           }));
           debugPrint('✅ [BG-CallKit] accept → 已寫入 pendingAcceptedCall 至 prefs (call=$callId)');
@@ -423,6 +467,7 @@ Future<void> _showFullScreenCallkit(Map<String, dynamic> data) async {
             'expiresAt': expiresAt,
             'callerName': callerName,
             'senderRole': senderRole,
+            'isVideoCall': isVideoCall, // ★ Fix E
             'isAccepted': true,
             'timestamp': DateTime.now().millisecondsSinceEpoch,
           }));
@@ -439,17 +484,38 @@ Future<void> _showFullScreenCallkit(Map<String, dynamic> data) async {
   //   若未補備援通知就會變成「完全沒來電彈窗」。
   //   這裡維持互斥：只有偵測到 CallKit 未建立時才補一則本地來電通知。
   if (!isEmergency) {
+    // ★ 2026-08-02 第十四輪：單次 900ms 取樣容易誤判（CallKit 原生建立是非同步的），
+    //   長輩機因此常落到備援的樸素樣式。改為輪詢。
     bool callkitAlive = false;
-    try {
-      await Future.delayed(const Duration(milliseconds: 900));
-      final activeCalls = await FlutterCallkitIncoming.activeCalls();
-      callkitAlive = activeCalls is List && activeCalls.isNotEmpty;
-    } catch (_) {}
+    for (int i = 0; i < 8; i++) { // 8 × 250ms = 最多 2.0s
+      await Future.delayed(const Duration(milliseconds: 250));
+      try {
+        final activeCalls = await FlutterCallkitIncoming.activeCalls();
+        if (activeCalls is List && activeCalls.isNotEmpty) {
+          callkitAlive = true;
+          break;
+        }
+      } catch (_) {}
+    }
 
     if (callkitAlive) {
+      debugPrint('✅ [BG-CallKit] CallKit 已建立，不發備援通知');
       await LocalCallNotification.cancel();
     } else {
+      debugPrint('⚠️ [BG-CallKit] CallKit 未建立，補發備援通知');
       await LocalCallNotification.show(data);
+      // 二段確認：CallKit 可能較慢才建立；事後出現就撤掉備援，避免雙重通知。
+      for (int i = 0; i < 6; i++) { // 6 × 250ms = 最多 1.5s
+        await Future.delayed(const Duration(milliseconds: 250));
+        try {
+          final activeCalls = await FlutterCallkitIncoming.activeCalls();
+          if (activeCalls is List && activeCalls.isNotEmpty) {
+            debugPrint('✅ [BG-CallKit] CallKit 事後建立成功，撤銷備援通知');
+            await LocalCallNotification.cancel();
+            break;
+          }
+        } catch (_) {}
+      }
     }
   }
 }
@@ -1221,6 +1287,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
             'callId': callId,
             'issuedAt': issuedAt,
             'expiresAt': expiresAt,
+            'isVideoCall': extra['isVideoCall']?.toString(),
           };
           _scheduleAcceptedCallFallback(roomId, senderId, callId);
           return; // 找到已接聽通話，立即結束
@@ -1301,6 +1368,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
             'callId': callId,
             'issuedAt': issStr,
             'expiresAt': expStr,
+            'isVideoCall': extra['isVideoCall']?.toString(),
           };
           timer.cancel();
           return;
@@ -1312,6 +1380,27 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   BuildContext? _activeCallDialogContext;
   String? _lastHandledEmergencyCallId;
+
+  /// ★ 2026-08-04：force-logout 重入防護時間戳。
+  ///   後端 unbind 會同時送 Socket 與 FCM 兩份 force-logout，兩條路徑各觸發一次
+  ///   handleForceLogout()，兩次 pushAndRemoveUntil 疊加會在轉場途中清空路由 → 黑屏。
+  ///   刻意採「時間戳比對」而非布林旗標：無論中途發生什麼異常，3 秒後必定自動失效，
+  ///   不可能永久卡死（比照 lastProcessedCallId / lastProcessedCallTime 的既有慣用法）。
+  static int _lastForceLogoutMs = 0;
+
+  /// ★ 2026-08-02 第十四輪：只有「真正顯示來電 UI」的通路才可以宣告共用去重 token。
+  ///   先前 FCM 前景路徑先寫 token 再 early return，導致隨後抵達的 Socket
+  ///   call-request 被 signaling.dart 的 2 秒去重窗口丟棄 → 前景完全沒有來電 UI。
+  void _claimCallDedupToken(String? callId, {dynamic isVideoCallRaw}) {
+    if (callId == null || callId.isEmpty) return;
+    sig.Signaling().lastProcessedCallId = callId;
+    sig.Signaling().lastProcessedCallTime = DateTime.now().millisecondsSinceEpoch;
+    // ★ 2026-08-02 第十四輪：FCM 前景備援接手時，Socket 從未寫過視訊/語音旗標，
+    //   這裡補記，讓後續 _navigateToVideoCall 的 isVideoCallFor(callId) 查得到。
+    //   isVideoCallRaw 為 null 時 parseIsVideoCall 回傳 true，即安全預設（視訊）。
+    sig.Signaling().incomingCallIsVideoCallId = callId;
+    sig.Signaling().incomingCallIsVideo = parseIsVideoCall(isVideoCallRaw);
+  }
 
   void _setupForegroundMessaging() {
       // !!!!除非要更新視訊通話邏輯，否則禁止更動!!!!
@@ -1340,8 +1429,15 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         final senderRole = message.data['role'];
         final isEmergency = message.data['type'] == 'emergency-call';
 
-        if (senderRole != null && appRole == senderRole) {
-          debugPrint("📞 [FCM-Backup] Ignoring call-request: sender role ($senderRole) matches our appRole ($appRole)");
+        // ★ 2026-08-05 第十六輪：原本用 `appRole == senderRole` 判角色反轉，
+        //   但 appRole 來自可能過期的 prefs（user_role/saved_role 由不同畫面寫入、
+        //   語意不一致）。長輩機殘留 user_role='family' 時，家屬來電會在這裡被
+        //   誤判為「同角色」而丟棄 → 前景收不到來電。改用 payload 反推：
+        //   payload 有角色時它就是權威，只有 payload 缺角色時才退回 appRole 比對，
+        //   保留護欄 #16 對「自己的來電繞回自己」的防護。
+        final myRole = _deriveMyRoleFromCall(senderRole, appRole);
+        if (senderRole != null && myRole == senderRole) {
+          debugPrint("📞 [FCM-Backup] Ignoring call-request: sender role ($senderRole) matches our role ($myRole, appRole=$appRole)");
           return;
         }
 
@@ -1374,23 +1470,48 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           }
           // 更新緩存
           _fcmCallIdCache[callId] = currentTime;
-          sig.Signaling().lastProcessedCallId = callId;
-          sig.Signaling().lastProcessedCallTime = currentTime;
           // ★ 清理舊的快取（超過5秒的記錄）
           _fcmCallIdCache.removeWhere((key, value) => (currentTime - value) > 5000);
         }
 
-        // 前景來電一律交給 Socket 路徑處理，避免 FCM 備援與 Socket 雙重彈窗/樣式覆蓋
+        // ★ 2026-08-02 第十四輪：前景不再裸 return（那會讓 Socket 也被去重丟棄 →
+        //   家屬端在 APP 內完全收不到來電）。改為給 Socket 1.5 秒寬限期；
+        //   寬限期屆滿仍未被 Socket 處理，才由 FCM 備援補上 dialog。
         final isResumed = WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
         if (isResumed) {
-          debugPrint("ℹ️ [FCM-Backup] 前景狀態，略過 FCM UI（由 Socket 回調處理）");
+          debugPrint("⏳ [FCM-Backup] 前景狀態，讓 Socket 優先處理（1.5 秒寬限期）");
+          Timer(const Duration(milliseconds: 1500), () {
+            if (!mounted) return;
+            // Socket 路徑已處理（signaling.dart 在呼叫 onCallRequest 之前就會寫入此 token）
+            if (callId != null && callId == sig.Signaling().lastProcessedCallId) {
+              debugPrint("ℹ️ [FCM-Backup] 寬限期內 Socket 已處理，不重複彈窗 (callId=$callId)");
+              return;
+            }
+            if (_isExpiredCallPayload(message.data)) {
+              debugPrint("⏰ [FCM-Backup] 寬限期屆滿但來電已過期，忽略 (callId=$callId)");
+              return;
+            }
+            if (callId != null && sig.Signaling().isCallInvalidated(callId.toString())) {
+              debugPrint("🔕 [FCM-Backup] 寬限期屆滿但來電已被取消/拒接，忽略 (callId=$callId)");
+              return;
+            }
+            debugPrint("🔔 [FCM-Backup] 寬限期屆滿，Socket 未處理，由 FCM 備援彈窗 (callId=$callId)");
+            _claimCallDedupToken(callId?.toString(), isVideoCallRaw: message.data['isVideoCall']);
+            _showIncomingCallDialog(
+              roomId,
+              senderId,
+              callId: callId,
+              isEmergency: isEmergency,
+              callerName: message.data['senderName'] ?? message.data['callerName'],
+            );
+          });
           return;
         }
 
         debugPrint(
             "🔔 [FCM-Backup] ${isEmergency ? '緊急' : ''}Call Request from $senderId in room $roomId (ID: $callId)");
         // ★ 備援：FCM 用作備份，以防 Socket 連接不穩定時收不到來電
-        // 由於 Socket 優先級更高，FCM 的去重機制確保不會重複彈窗
+        _claimCallDedupToken(callId?.toString(), isVideoCallRaw: message.data['isVideoCall']);
         _showIncomingCallDialog(
           roomId,
           senderId,
@@ -1434,6 +1555,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   }
 
   static Future<void> handleForceLogout() async {
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    if (nowMs - _lastForceLogoutMs < 3000) {
+      debugPrint('🚪 [Main] force-logout 已於 ${nowMs - _lastForceLogoutMs}ms 前處理過，忽略重複觸發（防黑屏）');
+      return;
+    }
+    _lastForceLogoutMs = nowMs;
     debugPrint('🚪 [Main] 執行 handleForceLogout：清除 session 並退回身分選擇介面');
     try {
       sig.Signaling().clearSession();
@@ -1545,13 +1672,14 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       return true;
     };
 
-    // ★ 2026-07-30 第十四輪 Task 1：全局 Socket force-logout 處理器。
-    //   當後端透過 Socket.IO 推送 force-logout（家屬端解除本長輩的綁定），
-    //   清除所有本地 session 鍵並導航回身分辨識介面（無論目前在哪個畫面）。
-    s.socket?.on('force-logout', (_) async {
+    // ★ 2026-08-04：改用 Signaling 的 onForceLogout callback。
+    //   舊寫法 `s.socket?.on('force-logout', ...)` 在 initState 執行時 socket 為 null，
+    //   `?.` 短路使 handler 從未註冊；實際的 socket 監聽已移入
+    //   signaling.dart::_registerSocketListeners()，該處保證在 socket 建立後執行。
+    s.onForceLogout = () {
       debugPrint('🚪 [Main-Socket] 收到 force-logout，全域處理');
       _MyAppState.handleForceLogout();
-    });
+    };
   }
 
   void _showIncomingCallDialog(String roomId, String senderId,
@@ -1634,7 +1762,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           ],
         );
       },
-    );
+    ).then((_) {
+      // ★ 2026-08-02 第十四輪：dialog 以任何方式關閉都要重置 guard，
+      //   否則 _activeCallDialogContext 永久卡住 → 之後所有來電 dialog 都被擋。
+      _activeCallDialogContext = null;
+    });
   }
 
   void _setupCallKitListener() {
@@ -1650,6 +1782,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       final issuedAt = extra['issuedAt']?.toString();
       final expiresAt = extra['expiresAt']?.toString();
       final senderRole = extra['senderRole']?.toString();
+      final isVideoCall = extra['isVideoCall']?.toString(); // ★ Fix E
 
       if (roomId == null || senderId == null) return;
 
@@ -1677,6 +1810,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           'expiresAt': expiresAt,
           // ★ 2026-07-22 第八輪 Fix 3：帶上發起方角色，供消費端防角色反轉驗證。
           'senderRole': senderRole,
+          'isVideoCall': isVideoCall, // ★ Fix E
         };
         // ★ 2026-07-19：全域兜底導航。
         //   冷啟動期間 SplashScreen 是 pendingAcceptedCall 的優先導航擁有者，
@@ -1823,6 +1957,18 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         _activeCallDialogContext = null;
       }
 
+      // ★ Fix E：優先採用 pendingAcceptedCall 攜帶的 isVideoCall（CallKit/FCM
+      //   冷啟動路徑寫入），callId 不吻合或未攜帶該欄位時，退回 Signaling
+      //   同一 isolate 內的快取（前景 Socket 直接接聽路徑，見 isVideoCallFor）。
+      // ★ 2026-08-02 第十四輪修正：改用 parseIsVideoCall 正規化，相容後端
+      //   str(bool) 產生的 "True"/"False"（Python 首字大寫）。
+      final pendingMap = pendingAcceptedCall.value;
+      final bool resolvedIsVideoCall = (pendingMap != null &&
+              pendingMap['callId'] == callId &&
+              pendingMap['isVideoCall'] != null)
+          ? parseIsVideoCall(pendingMap['isVideoCall'])
+          : sig.Signaling().isVideoCallFor(callId);
+
       Future.microtask(() {
         navigatorKey.currentState?.push(
           MaterialPageRoute(
@@ -1831,6 +1977,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
               targetSocketId: senderId,
               isIncomingCall: true,
               callId: callId,
+              isVideoCall: resolvedIsVideoCall,
             ),
           ),
         );

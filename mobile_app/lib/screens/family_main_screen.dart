@@ -8,9 +8,11 @@ import 'family/family_home_tab.dart';
 import 'family/family_interaction_tab.dart';
 import 'family/family_data_tab.dart';
 import 'family/alert_center_screen.dart';
+import 'family/family_subscription_screen.dart';
 import '../models/elder.dart';
 import '../services/elder_manager.dart';
 import '../services/signaling.dart';
+import '../services/api_service.dart';
 import 'video_call_screen.dart';
 import 'caregiver_pairing_screen.dart';
 import 'family_onboarding_screen.dart';
@@ -45,17 +47,31 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   Timer? _onlineStateDebounceTimer;
   bool? _pendingOnlineState;
 
+  // ★ 移植自 family_dashboard_view.dart：監控裝置清單、CCTV 警報、訂閱層級
+  //   （型別對齊該檔實際宣告：_monitorDevices 為 List<dynamic>、_tierLevel 為 String）
+  List<dynamic> _monitorDevices = [];
+  final List<Map<String, dynamic>> _activeAlerts = [];
+  final Set<int> _knownAlertIds = {};
+  String _tierLevel = 'free';
+  String _tierDisplayName = '一般會員';
+  int _devicesMax = 2;
+
+  /// ★ 2026-08-04 第 4 項：訂閱到期／設備超量彈窗只在每次進入本畫面時提示一次，
+  /// 避免每次 `_loadSubscriptionTier()` 重新整理都再彈一次而干擾使用者。
+  bool _overLimitDialogShown = false;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     pendingAcceptedCall.addListener(_onPendingCallChanged);
-    
+
     appLogger.d('🔍 FamilyMainScreen initialized:');
     appLogger.d('   userId: ${widget.userId}');
     appLogger.d('   userName: ${widget.userName}');
-    
+
     _initializeElderManagerAndConnect();
+    _loadSubscriptionTier();
   }
   
   Future<void> _initializeElderManagerAndConnect() async {
@@ -95,7 +111,35 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
 
     if (_currentElder == null) {
       debugPrint('⚠️ [FamilyMainScreen] 沒有已選長輩，嘗試重新整理...');
-      return;
+      // ★ B2 修復（2026-08-04）：原本這裡只印 log 就直接 return，完全沒有重試，
+      //   導致家屬端永遠不會 join 任何房間 → 後端 rooms_manager/user_fcm_token
+      //   查無此房 → 長輩來電時後端記「無任何轉發目標」，通話 100% 遺失且前端毫無提示。
+      //   改為有限次數（最多 2 次、間隔 2 秒）重新初始化 ElderManager 後再檢查一次；
+      //   若仍失敗則印出顯眼錯誤並中止，不進入無窮迴圈、不阻塞 initState。
+      const maxRetries = 2;
+      for (var attempt = 1; attempt <= maxRetries; attempt++) {
+        if (attempt > 1) {
+          await Future.delayed(const Duration(seconds: 2));
+          if (!mounted) return;
+        }
+        debugPrint('🔁 [FamilyMainScreen] 第 $attempt/$maxRetries 次嘗試重新取得配對長輩...');
+        await ElderManager().initialize(userId: widget.userId);
+        if (!mounted) return;
+        final refreshedElder = ElderManager().currentElder;
+        if (refreshedElder != null) {
+          setState(() {
+            _elders = ElderManager().pairedElders;
+            _currentElder = refreshedElder;
+          });
+          debugPrint('✅ [FamilyMainScreen] 第 $attempt 次重試成功取得配對長輩: ${refreshedElder.displayName}');
+          break;
+        }
+      }
+
+      if (_currentElder == null) {
+        debugPrint('❌❌❌ [FamilyMainScreen] 無法取得配對長輩，家屬端將不會加入任何房間 → 長輩來電必然收不到！請檢查 family_elder_relationship 配對資料。');
+        return;
+      }
     }
 
     // ★ 修復：使用正確的房間格式 comm_elder_{elder_id}
@@ -114,6 +158,16 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
       userId: widget.userId,
       fcmToken: fcmToken,
     );
+
+    // ★ B3（2026-08-04）：連線後印出 join 參數，供真機除錯比對家屬端與長輩端房號是否一致
+    //   （房號漂移會導致長輩端 join-failed 而被後端斷線）。純 log，不影響邏輯。
+    debugPrint('🔑 [FamilyMainScreen] join 參數：room=$roomId, role=family, userId=${widget.userId}, fcmToken=${fcmToken == null ? "null" : "${fcmToken.substring(0, fcmToken.length < 12 ? fcmToken.length : 12)}..."}');
+
+    // ★ B1（2026-08-04）：此處 socket 必定已由上面的 _signaling.connect(...) 建立完成，
+    //   再呼叫一次以保證 elder-unbound 監聽器確實掛上
+    //   （_setupSignalingCallbacks() 那次呼叫發生在 connect() 之前，socket 當時可能仍是 null）。
+    _registerElderUnboundListener();
+    _registerCctvAlertListener();
 
     // 請求取得長輩設備在線狀態
     _signaling.sendGetElderDevices(roomId);
@@ -145,51 +199,13 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     };
 
     // ★ 2026-07-30 Task 2：監聽長輩被解綁事件，即時更新 UI，避免黑屏。
-    _signaling.socket?.on('elder-unbound', (data) {
-      if (!mounted) return;
-      try {
-        final unboundElderId = data is Map ? (data['elderId'] ?? data['elder_id'])?.toString() : null;
-        debugPrint('🔓 [FamilyMainScreen] 收到 elder-unbound: elderId=$unboundElderId');
-        if (unboundElderId == null) return;
-
-        // 比對當前選中的長輩
-        final currentElderId = _currentElder?.elderId ?? _currentElder?.id?.toString();
-        final isCurrentElder = unboundElderId == currentElderId;
-
-        // 從列表中移除
-        setState(() {
-          _elders.removeWhere((e) {
-            final eId = e.elderId ?? e.id.toString();
-            return eId == unboundElderId;
-          });
-          if (isCurrentElder) {
-            _currentElder = null;
-            _isElderOnline = false;
-            _elderSocketId = null;
-          }
-        });
-
-        // 同步 ElderManager
-        ElderManager().removeElderLocally(unboundElderId);
-
-        // 若列表為空 → 導航至 Onboarding；否則若目前長輩被解綁 → 自動選第一個
-        if (_elders.isEmpty) {
-          debugPrint('🔓 [FamilyMainScreen] 所有長輩已解綁，導航至 Onboarding');
-          if (mounted) {
-            Navigator.pushAndRemoveUntil(
-              context,
-              MaterialPageRoute(builder: (_) => FamilyOnboardingScreen(userId: widget.userId, userName: widget.userName)),
-              (route) => false,
-            );
-          }
-        } else if (isCurrentElder) {
-          debugPrint('🔓 [FamilyMainScreen] 當前長輩被解綁，自動切換至第一個');
-          _switchElder(_elders.first);
-        }
-      } catch (e) {
-        debugPrint('❌ [FamilyMainScreen] elder-unbound 處理失敗: $e');
-      }
-    });
+    // ★ B1 修復（2026-08-04）：原本用 _signaling.socket?.on(...) 直接掛在這裡，
+    //   但 initState → _initializeElderManagerAndConnect() 呼叫本方法時 socket 還沒建立
+    //   （socket 要到稍後的 _loadElderAndConnect() → _signaling.connect() 才建立），
+    //   `?.` 短路導致這個監聽器從未掛上。改為呼叫可重試、冪等的註冊方法；
+    //   真正確保掛得上的第二次呼叫點在 _loadElderAndConnect() 內 connect() 之後。
+    _registerElderUnboundListener();
+    _registerCctvAlertListener();
 
     // 監聽長輩設備狀態更新
     _signaling.onElderDevicesUpdate = (devices) {
@@ -209,9 +225,337 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
           } else {
             _elderSocketId = null;
           }
+          // ★ 移植自 family_dashboard_view.dart 第 119-121 行：過濾出監視機設備
+          _monitorDevices = devices.where((d) => d['deviceMode'] == 'monitor').toList();
         });
       });
     };
+  }
+
+  /// ★ B1（2026-08-04）：'elder-unbound' 事件的實際處理邏輯，從原本直接掛在
+  /// `_signaling.socket?.on(...)` 的 inline callback 原封不動抽出，供
+  /// `_registerElderUnboundListener()` 在 socket 確定存在時掛上。
+  void _handleElderUnbound(dynamic data) {
+    if (!mounted) return;
+    try {
+      final unboundElderId = data is Map ? (data['elderId'] ?? data['elder_id'])?.toString() : null;
+      debugPrint('🔓 [FamilyMainScreen] 收到 elder-unbound: elderId=$unboundElderId');
+      if (unboundElderId == null) return;
+
+      // 比對當前選中的長輩
+      final currentElderId = _currentElder?.elderId ?? _currentElder?.id?.toString();
+      final isCurrentElder = unboundElderId == currentElderId;
+
+      // 從列表中移除
+      setState(() {
+        _elders.removeWhere((e) {
+          final eId = e.elderId ?? e.id.toString();
+          return eId == unboundElderId;
+        });
+        if (isCurrentElder) {
+          _currentElder = null;
+          _isElderOnline = false;
+          _elderSocketId = null;
+        }
+      });
+
+      // 同步 ElderManager
+      ElderManager().removeElderLocally(unboundElderId);
+
+      // 若列表為空 → 導航至 Onboarding；否則若目前長輩被解綁 → 自動選第一個
+      if (_elders.isEmpty) {
+        debugPrint('🔓 [FamilyMainScreen] 所有長輩已解綁，導航至 Onboarding');
+        if (mounted) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (_) => FamilyOnboardingScreen(userId: widget.userId, userName: widget.userName)),
+            (route) => false,
+          );
+        }
+      } else if (isCurrentElder) {
+        debugPrint('🔓 [FamilyMainScreen] 當前長輩被解綁，自動切換至第一個');
+        _switchElder(_elders.first);
+      }
+    } catch (e) {
+      debugPrint('❌ [FamilyMainScreen] elder-unbound 處理失敗: $e');
+    }
+  }
+
+  /// ★ B1（2026-08-04）：冪等註冊 'elder-unbound' 監聽器。socket 尚未建立時安全跳過，
+  /// 呼叫端（_setupSignalingCallbacks / _loadElderAndConnect）需在 socket 建立後再呼叫一次，
+  /// 才能保證監聽器實際掛上（見上方兩處呼叫點的註解）。
+  void _registerElderUnboundListener() {
+    final s = _signaling.socket;
+    if (s == null) {
+      debugPrint('⚠️ [FamilyMainScreen] socket 尚未建立，elder-unbound 監聽器延後註冊');
+      return;
+    }
+    s.off('elder-unbound'); // 冪等：避免重連時重複註冊造成同一事件觸發多次
+    s.on('elder-unbound', _handleElderUnbound);
+    debugPrint('✅ [FamilyMainScreen] elder-unbound 監聽器已註冊');
+  }
+
+  /// ★ 移植自 family_dashboard_view.dart 第 145-160 行：處理 CCTV 跌倒警報（YOLO）。
+  /// 從原本直接掛在 `_signaling.socket?.on(...)` 的 inline callback 抽出，
+  /// 供 `_registerCctvAlertListener()` 在 socket 確定存在時掛上（比照 `_handleElderUnbound`）。
+  void _handleCctvAlert(dynamic data) {
+    if (!mounted) return;
+    try {
+      final alertId = data is Map ? int.tryParse((data['alert_id'] ?? data['alertId'])?.toString() ?? '') : null;
+      if (alertId == null || _knownAlertIds.contains(alertId)) return;
+      _knownAlertIds.add(alertId);
+      final newAlert = Map<String, dynamic>.from(data is Map ? data : {});
+      setState(() {
+        _activeAlerts.insert(0, newAlert);
+        if (_activeAlerts.length > 20) _activeAlerts.removeLast();
+      });
+      debugPrint('🚨 [FamilyMainScreen] 收到 CCTV 警報: ${newAlert['alert_type']} elder=${newAlert['elder_id']}');
+    } catch (e) {
+      debugPrint('❌ [FamilyMainScreen] cctv-alert 處理失敗: $e');
+    }
+  }
+
+  /// ★ 冪等註冊 'cctv-alert' 監聽器。socket 尚未建立時安全跳過，
+  /// 呼叫端（_setupSignalingCallbacks / _loadElderAndConnect）需在 socket 建立後再呼叫一次，
+  /// 註冊方式完全比照 `_registerElderUnboundListener()`。
+  void _registerCctvAlertListener() {
+    final s = _signaling.socket;
+    if (s == null) {
+      debugPrint('⚠️ [FamilyMainScreen] socket 尚未建立，cctv-alert 監聽器延後註冊');
+      return;
+    }
+    s.off('cctv-alert'); // 冪等：避免重連時重複註冊造成同一事件觸發多次
+    s.on('cctv-alert', _handleCctvAlert);
+    debugPrint('✅ [FamilyMainScreen] cctv-alert 監聽器已註冊');
+  }
+
+  /// ★ 移植自 family_dashboard_view.dart 第 396-409 行（原名 _loadTier）：
+  /// 載入使用者目前訂閱層級，供監控區塊的訂閱徽章與設備上限顯示。
+  Future<void> _loadSubscriptionTier() async {
+    try {
+      final data = await ApiService.getSubscriptionTier(widget.userId);
+      if (data['tier_level'] != null && mounted) {
+        setState(() {
+          _tierLevel = (data['tier_level'] ?? 'free').toString();
+          _tierDisplayName = (data['tier_display_name'] ?? '一般會員').toString();
+          _devicesMax = (data['devices_max'] ?? 2) as int;
+        });
+
+        // ★ 2026-08-04 第 4 項：訂閱到期後方案會退回免費層（上限 2 台），
+        //   原本合法的 3～5 台監視機就變成超量。此時必須讓使用者二選一：
+        //   繼續訂閱，或刪掉多出來的監視機。
+        //   後端 `over_limit` 已是「逐位長輩比對 devices_in_use > devices_max」的結果，
+        //   前端不重算，避免兩邊判準不一致。
+        final overLimit = data['over_limit'] == true;
+        if (overLimit && !_overLimitDialogShown) {
+          _overLimitDialogShown = true;
+          // 用 postFrameCallback：此時仍在 setState 的建置流程中，直接 showDialog 會拋例外。
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            _showSubscriptionOverLimitDialog(
+              elders: (data['elders'] as List?) ?? const [],
+              endDate: data['end_date']?.toString(),
+              totalDevicesInUse: (data['total_devices_in_use'] ?? 0) is int
+                  ? data['total_devices_in_use'] as int
+                  : int.tryParse('${data['total_devices_in_use']}') ?? 0,
+            );
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ [FamilyMainScreen] 載入訂閱層級失敗: $e');
+    }
+  }
+
+  /// ★ 2026-08-04 第 4 項：監視機超過方案上限時的二選一彈窗。
+  /// `barrierDismissible: false` —— 這是需要使用者做決定的狀態，
+  /// 但仍保留「稍後再說」出口，不可把人鎖死在彈窗裡。
+  void _showSubscriptionOverLimitDialog({
+    required List<dynamic> elders,
+    String? endDate,
+    required int totalDevicesInUse,
+  }) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.orange.shade700),
+            const SizedBox(width: 10),
+            const Expanded(child: Text('監視機數量超過方案上限')),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('目前方案：$_tierDisplayName（每位長輩上限 $_devicesMax 台）'),
+            if (endDate != null && endDate.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text('訂閱到期日：$endDate',
+                  style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+            ],
+            const SizedBox(height: 4),
+            Text('目前使用中：共 $totalDevicesInUse 台',
+                style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+            const SizedBox(height: 12),
+            // 逐位長輩列出超量狀況，讓使用者知道要從哪一位長輩底下刪除
+            ...elders.where((e) => e['over_limit'] == true).map(
+                  (e) => Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Text(
+                      '• ${e['elder_name'] ?? e['elder_id']}：'
+                      '${e['devices_in_use']} / ${e['devices_max']} 台',
+                      style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.red.shade700,
+                          fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ),
+            const SizedBox(height: 12),
+            const Text(
+              '請選擇繼續訂閱以保留全部監視機，或刪除部分監視機以符合目前方案。',
+              style: TextStyle(fontSize: 13),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text('稍後再說', style: TextStyle(color: Colors.grey.shade600)),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              _showDeleteMonitorDeviceDialog();
+            },
+            child: Text('刪除部分監視機',
+                style: TextStyle(color: Colors.red.shade700)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => const FamilySubscriptionScreen()),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF59B294),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('繼續訂閱'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// ★ 2026-08-04 第 4 項：刪除監視機的挑選介面。
+  /// 只列出「目前關照中的這位長輩」底下的監視機——Socket 的
+  /// `elder-devices-update` 本來就只推送當前長輩的設備清單，
+  /// 硬要跨長輩列出會需要另一支 API，且使用者也必須先切換長輩才看得到畫面。
+  void _showDeleteMonitorDeviceDialog() {
+    final elder = _currentElder;
+    if (elder == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('請先選擇要管理的長輩')),
+      );
+      return;
+    }
+    final String rawElderId = elder.elderId ?? elder.id.toString();
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text('刪除監視機（${elder.displayName}）'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: _monitorDevices.isEmpty
+                ? const Text('這位長輩目前沒有連接任何監視機設備')
+                : ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: _monitorDevices.length,
+                    itemBuilder: (_, index) {
+                      final device = _monitorDevices[index];
+                      final name =
+                          (device['deviceName'] ?? 'Unnamed').toString();
+                      final isOnline = device['isOnline'] == true;
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(
+                          Icons.videocam_rounded,
+                          color: isOnline ? const Color(0xFF59B294) : Colors.grey,
+                        ),
+                        title: Text(name, style: const TextStyle(fontSize: 15)),
+                        subtitle: Text(isOnline ? '線上' : '離線',
+                            style: TextStyle(
+                                fontSize: 12, color: Colors.grey.shade600)),
+                        trailing: IconButton(
+                          icon: Icon(Icons.delete_outline,
+                              color: Colors.red.shade600),
+                          onPressed: () async {
+                            final confirmed = await _confirmDeleteDevice(name);
+                            if (confirmed != true) return;
+                            final ok = await ApiService.deleteMonitorDevice(
+                              elderId: rawElderId,
+                              deviceName: name,
+                            );
+                            if (!mounted) return;
+                            if (ok) {
+                              // 後端刪除後會廣播 elder-devices-update，
+                              // _monitorDevices 會自動更新；這裡同步移除以便彈窗即時反映。
+                              setState(() => _monitorDevices.removeWhere(
+                                  (d) => d['deviceName'] == name));
+                              setDialogState(() {});
+                              await _loadSubscriptionTier();
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('刪除失敗，請稍後再試')),
+                              );
+                            }
+                          },
+                        ),
+                      );
+                    },
+                  ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('完成'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<bool?> _confirmDeleteDevice(String deviceName) {
+    return showDialog<bool>(
+      context: context,
+      builder: (confirmContext) => AlertDialog(
+        title: const Text('確認刪除'),
+        content: Text('確定要移除監視機「$deviceName」嗎？\n該設備將被登出並停止推送畫面。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(confirmContext, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(confirmContext, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red.shade700),
+            child: const Text('刪除'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _switchElder(Elder elder) async {
@@ -297,6 +641,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
             isIncomingCall: true,
             callId: callId,
             sendAcceptOnOpen: false,
+            isVideoCall: parseIsVideoCall(args['isVideoCall']), // ★ 2026-08-02 第十四輪修正
           ),
         ),
       ).then((_) {
@@ -378,6 +723,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                       isIncomingCall: true,
                       callId: callId,
                       sendAcceptOnOpen: false,
+                      isVideoCall: _signaling.isVideoCallFor(callId), // ★ Fix E
                     ),
                   ),
                 ).then((_) {
@@ -663,6 +1009,12 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
           FamilyInteractionTab(
             currentElder: _currentElder,
             signaling: _signaling,
+            monitorDevices: _monitorDevices,
+            activeAlerts: _activeAlerts,
+            devicesMax: _devicesMax,
+            tierDisplayName: _tierDisplayName,
+            tierLevel: _tierLevel,
+            userId: widget.userId,
           ),
           FamilyDataTab(
             currentElder: _currentElder,

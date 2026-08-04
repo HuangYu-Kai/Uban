@@ -53,6 +53,10 @@ class _LoginScreenState extends State<LoginScreen> {
         await prefs.setInt('caregiver_id', userId);
         await prefs.setString('caregiver_name', userName);
         await prefs.setString('user_role', 'family');
+        // ★ 2026-08-05 第十六輪：兩個角色鍵必須同步寫，否則
+        //   `user_role ?? saved_role` 會讀到跨身分殘留值（見 main.dart
+        //   _deriveMyRoleFromCall 註解）。
+        await prefs.setString('saved_role', 'family');
         appRole = 'family'; // ★ 新增：更新全域變數，確保通話偵聽正常
 
         if (!mounted) return; // MUST check again after async setInt/setString

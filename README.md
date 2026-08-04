@@ -6,6 +6,19 @@
 
 ---
 
+## 🚨 動手改「通話 / 來電通知 / 監控」之前
+
+> **本檔對這三塊只有**功能面**的介紹（第五節、第 400 行後的更新日誌），
+> 不足以據以修改程式碼。動手前必須先讀
+> [`CLAUDE_call-monitor.md`](CLAUDE_call-monitor.md)——那是唯一權威，
+> 含檔案地圖、Socket/FCM/prefs 資料契約、冷啟動五層兜底、
+> **§5 UI 按鈕與跳轉地圖（只改 UI 也要看）**、36 條護欄、14 輪修復年表、除錯 SOP。**
+
+本檔第 400 行之後的「更新日誌」只涵蓋到早期幾輪，**已被 §8 取代**；兩者衝突時以
+`CLAUDE_call-monitor.md` 為準，而它與程式碼衝突時以**程式碼**為準。
+
+---
+
 ## 📖 目錄
 
 - [專案簡介](#專案簡介)
@@ -146,7 +159,7 @@ flowchart TD
 
 ### 二、AI 技能系統
 
-> ⚠️ **校正（2026-05-30）**：實際註冊於 Tool Calling 的技能共 **8 項**，全部定義在 `uban-api/uban-api/services/tools_service.py`：
+> ⚠️ **校正（2026-05-30）**：實際註冊於 Tool Calling 的技能共 **8 項**，全部定義在 `uban-api/services/tools_service.py`：
 > `get_elder_context`、`get_current_time`、`notify_family_SOS`、`get_weather_info`、`suggest_activity`、`record_elder_activity`、`get_family_messages`、`initiate_video_call`。
 > 下表中其餘項目（`save_elder_memory`、`search_web`、`search_youtube_video`、`get_music_recommendations`）及 `server/skills/*.py` 路徑為**舊版規劃，尚未實裝**。
 
@@ -182,13 +195,18 @@ flowchart TD
 
 ### 五、視訊通話（雙軌制 WebRTC + 完整優化）
 
+> 📖 這裡只列功能。實作細節、資料契約與護欄見
+> [`CLAUDE_call-monitor.md`](CLAUDE_call-monitor.md)。
+
 - **信令 (第一軌)**：Tailscale Funnel (TCP/WSS) — 交換 SDP Offer/Answer + ICE Candidate
 - **媒體 (第二軌)**：Oracle Cloud Coturn (UDP) — 轉發實際影音串流
 - **WebRTC P2P**：高品質視訊、STUN + coturn TURN 雙重 NAT 穿透
-- **三層備援**：Socket.IO 即時 → FCM 推播 → Cold Start 冷啟動
+- **雙通道 + 冷啟動五層兜底**：Socket.IO 即時 ‖ FCM 推播（互為備援、以 `callId` 去重）
+  → CallKit ／ 通知備援 → 冷啟動五層兜底（詳見 `CLAUDE_call-monitor.md` §4）
 - **緊急模式**：CCTV 監控 / 自動接聽
 - **通話控制**：麥克風靜音、鏡頭開關、前後鏡頭切換、揚聲器、通話計時
-- **語音模式**：支援純語音通話（不啟動攝影機）
+- **語音模式**：長輩端按「電話」鍵撥出時雙端鏡頭預設關閉，**但仍取得 video track，
+  可在通話中手動開啟升級為視訊**（2026-08-02 第十四輪；`isVideoCall` 欄位貫穿全鏈路）
 - **TURN 伺服器**：Oracle Cloud coturn (152.69.196.5)，獨立公網 IP，支援跨 NAT（4G ↔ WiFi）場景
 - **媒體懶加載**：進入通話頁面不自動請求權限，用戶點擊時才初始化
 - **攝像頭預設關閉**：隱私優先，用戶主動開啟才傳輸影像

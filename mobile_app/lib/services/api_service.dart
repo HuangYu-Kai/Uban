@@ -860,4 +860,103 @@ class ApiService {
       return {'status': 'error', 'message': e.toString()};
     }
   }
+
+  /// ★ 2026-08-04 第 7 項：CCTV 監視機推送單一影格給後端做 YOLO 跌倒偵測。
+  /// POST /api/cctv/frame（multipart/form-data）；任何失敗都吞掉只回 false，
+  /// 避免影格推送迴圈因單次網路錯誤而中斷。
+  ///
+  /// 檔名為 .png 是因為 flutter_webrtc 1.3.1 的 `captureFrame()` 產出的就是 PNG
+  /// （它把畫面寫成暫存 png 再讀回）。後端用 cv2.imdecode 靠魔術位元組判別格式，
+  /// 副檔名只是給人看的，但不要改成 .jpg 以免誤導後續維護者。
+  static Future<bool> pushCctvFrame({
+    required String elderId,
+    required String deviceName,
+    required Uint8List frameBytes,
+  }) async {
+    try {
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/cctv/frame'),
+      );
+      request.fields['elder_id'] = elderId;
+      request.fields['device_name'] = deviceName;
+      request.files.add(
+        http.MultipartFile.fromBytes('frame', frameBytes, filename: 'frame.png'),
+      );
+      final streamed = await request.send().timeout(_timeout);
+      return streamed.statusCode == 200;
+    } catch (e) {
+      debugPrint('⚠️ pushCctvFrame error: $e');
+      return false;
+    }
+  }
+
+  /// ★ 2026-08-04 第 7 項：移除一台監視機設備（含其 FCM token）。
+  /// DELETE /api/pairing/monitor_device?elder_id=...&device_name=...
+  static Future<bool> deleteMonitorDevice({
+    required String elderId,
+    required String deviceName,
+  }) async {
+    try {
+      final uri = Uri.parse('$baseUrl/pairing/monitor_device').replace(
+        queryParameters: {
+          'elder_id': elderId,
+          'device_name': deviceName,
+        },
+      );
+      final response = await http.delete(uri).timeout(_timeout);
+      final data = _safeDecode(response);
+      return data['status'] == 'success';
+    } catch (e) {
+      debugPrint('⚠️ deleteMonitorDevice error: $e');
+      return false;
+    }
+  }
+
+  /// ★ 2026-08-04 第 7 項：開通／延長警報的音頻橋（30 分鐘單向音頻）。
+  /// POST /api/alerts/{alert_id}/audio-bridge
+  static Future<Map<String, dynamic>?> openAudioBridge({
+    required int alertId,
+    required int fromId,
+    required int toDeviceId,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/alerts/$alertId/audio-bridge'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'from_id': fromId,
+              'to_device_id': toDeviceId,
+            }),
+          )
+          .timeout(_timeout);
+      final data = _safeDecode(response);
+      if (data['status'] == 'success') {
+        return data['data'];
+      }
+      return null;
+    } catch (e) {
+      debugPrint('⚠️ openAudioBridge error: $e');
+      return null;
+    }
+  }
+
+  /// ★ 2026-08-04 第 7 項：查詢某警報目前是否有有效的音頻橋。
+  /// GET /api/alerts/audio/{alert_id}
+  static Future<Map<String, dynamic>?> checkAudioBridge(int alertId) async {
+    try {
+      final response = await http
+          .get(Uri.parse('$baseUrl/alerts/audio/$alertId'))
+          .timeout(_timeout);
+      final data = _safeDecode(response);
+      if (data['status'] == 'success') {
+        return data['data'];
+      }
+      return null;
+    } catch (e) {
+      debugPrint('⚠️ checkAudioBridge error: $e');
+      return null;
+    }
+  }
 }

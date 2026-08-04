@@ -119,6 +119,24 @@ class _SplashScreenState extends State<SplashScreen> {
           final role = profileData['role'] ?? effectiveLocalRole ?? 'family';
           appRole = role; // ★ 新增：同步到全域變數，確保啟動後通話偵聽正常
 
+          // ★ 2026-08-05 第十六輪：校正結果必須**寫回 prefs**，不能只改記憶體全域。
+          //   `_firebaseMessagingBackgroundHandler` 是獨立 isolate，看不到 appRole，
+          //   只能讀 prefs 的 `user_role ?? saved_role`（main.dart:164）來決定
+          //   走長輩的 CallKit 分支（`role == 'elder'`）還是家屬分支。
+          //   在此之前，splash 每次冷啟動都只把前景的 appRole 修好，prefs 內的
+          //   殘留角色（例如這台手機曾登入過家屬帳號留下的 user_role='family'）
+          //   永遠沒被更新 → 長輩端在**背景／被殺死**時整條來電分支不成立，
+          //   來電無聲消失；而長輩撥出時 role 是明確傳入的，不讀此鍵，
+          //   所以長輩→家屬照常 —— 正是回報的「不對稱失效」。
+          //   API 的 role 是權威來源，兩個鍵一起寫以免再次分歧。
+          final String roleStr = role.toString();
+          if (roleStr.isNotEmpty && roleStr != effectiveLocalRole) {
+            await prefs.setString('user_role', roleStr);
+            await prefs.setString('saved_role', roleStr);
+            debugPrint('🧭 [Splash] 角色校正並寫回 prefs: $effectiveLocalRole → $role'
+                '（背景 isolate 之後才能正確判斷來電分支）');
+          }
+
           if (role == 'elder') {
             final String? apiElderId = profileData['elder_id']?.toString();
             if (apiElderId != null) {
@@ -366,6 +384,7 @@ class _SplashScreenState extends State<SplashScreen> {
             targetSocketId: pending['senderId']!,
             isIncomingCall: true,
             callId: pending['callId'],
+            isVideoCall: parseIsVideoCall(pending['isVideoCall']), // ★ 2026-08-02 第十四輪修正
           ),
         ),
       );

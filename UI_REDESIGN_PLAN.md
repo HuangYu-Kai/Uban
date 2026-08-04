@@ -1,5 +1,17 @@
 # Uban UI 改造接力計劃 (HANDOFF)
 
+> 🚨 **改到通話／來電／監控相關畫面時，必須先讀
+> [`CLAUDE_call-monitor.md`](CLAUDE_call-monitor.md) 的 §5「UI 按鈕與跳轉地圖」。**
+>
+> 那一節就是為了「只改 UI 的人」寫的：33 處畫面建構點（17 個檔案）、每顆通話按鈕按下去
+> 會發什麼事件／跳到哪個畫面、**§5.4 安全清單**（可以隨便改的 vs 碰了會斷通話的）、
+> **§5.5 導航規則**（`pushAndRemoveUntil` vs `pop()`、`_activeCallDialogContext` 的處理）。
+>
+> 涉及的畫面：`elder_screen.dart`、`video_call_screen.dart`、`elder_home_screen.dart`、
+> `family_main_screen.dart`、`splash_screen.dart`、`friends_screen.dart`、`camera_screen.dart`。
+> 這些檔案的 UI 與信令時序是耦合的——換掉一個按鈕的 `onPressed` 或改一次 `Navigator` 呼叫，
+> 就可能重現前 14 輪修過的故障。
+
 ---
 
 ## ✅ 第三階段：毛玻璃設計語言 + 長輩端細修（**長輩端已完成並實機驗證**，2026-07-15）

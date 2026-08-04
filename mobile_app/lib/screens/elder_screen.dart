@@ -9,6 +9,7 @@ import 'dart:convert';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import '../services/signaling.dart';
+import '../services/api_service.dart';
 import '../widgets/heartbeat_overlay.dart';
 import 'identification_screen.dart';
 import 'elder_home_screen.dart';
@@ -48,6 +49,15 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   bool _mediaInitialized = false;
   Timer? _callTimer;
   int _callDuration = 0; // 秒數
+
+  /// ★ 2026-08-04 第 7 項：CCTV 影格推送給後端做 YOLO 跌倒偵測。
+  /// 只在 `widget.isCCTVMode == true` 時啟動——一般通話路徑完全不建立這個計時器、
+  /// 不呼叫 captureFrame，位元組層級與修改前相同，不影響通話品質與時序。
+  Timer? _cctvFrameTimer;
+
+  /// 上一張影格是否仍在上傳中。網路變慢時直接跳過該輪，**絕不排隊**，
+  /// 避免計時器堆積把長輩機的記憶體與上行頻寬吃光（與後端限流丟幀策略一致）。
+  bool _cctvFrameSending = false;
   int? _userId; // ★ issue 3/10：用於安全導航回主畫面時建構 ElderHomeScreen
   String? _prefsUserName; // ★ Issue 1 硬化：真實 caregiver_name，供 _buildFallbackHome 使用
 
@@ -71,6 +81,54 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     } else {
       return 'comm_elder_$elderId';  // 雙向通訊模式
     }
+  }
+
+  /// ★ 2026-08-04 第 7 項：由 `_formattedRoomId` 還原出純 elder_id。
+  /// `/api/cctv/frame` 與後端設備清單的 device_id 推導都以「純 elder_id」為基準，
+  /// 若誤把 `monitor_elder_0343` 整串送過去，推導出的 device_id 會與
+  /// `_get_elder_devices_list()` 算出來的不一致，家屬端的紅色高亮就永遠對不上。
+  String get _rawElderId {
+    const monitorPrefix = 'monitor_elder_';
+    const commPrefix = 'comm_elder_';
+    if (_formattedRoomId.startsWith(monitorPrefix)) {
+      return _formattedRoomId.substring(monitorPrefix.length);
+    }
+    if (_formattedRoomId.startsWith(commPrefix)) {
+      return _formattedRoomId.substring(commPrefix.length);
+    }
+    return _formattedRoomId;
+  }
+
+  /// ★ 2026-08-04 第 7 項：每 2 秒擷取一張畫面推給後端做 YOLO 偵測。
+  ///
+  /// 為何是 2 秒：後端 `yolo_detector_service` 的判定窗口以「連續影格數」計算
+  /// （FALL_WINDOW_FRAMES=12、CRAWL_WINDOW_FRAMES=18、INACTIVITY_WINDOW_FRAMES=24），
+  /// 2 秒一張正好對應到 24 秒倒地不起、36 秒爬行、48 秒無動作才告警，
+  /// 符合需求所說的「長時間倒地不起」，也不會讓監視機一直滿載。
+  ///
+  /// 任何一輪失敗都只記錄並跳過，計時器本身絕不因單次錯誤而中止。
+  void _startCctvFrameLoop() {
+    _cctvFrameTimer?.cancel();
+    _cctvFrameTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
+      if (!mounted || _cctvFrameSending) return;
+      final videoTracks = _signaling.localStream?.getVideoTracks();
+      if (videoTracks == null || videoTracks.isEmpty) return;
+
+      _cctvFrameSending = true;
+      try {
+        final buffer = await videoTracks.first.captureFrame();
+        await ApiService.pushCctvFrame(
+          elderId: _rawElderId,
+          deviceName: widget.deviceName,
+          frameBytes: buffer.asUint8List(),
+        );
+      } catch (e) {
+        debugPrint('⚠️ [CCTV] 影格推送失敗（略過本輪，不中斷迴圈）: $e');
+      } finally {
+        _cctvFrameSending = false;
+      }
+    });
+    debugPrint('🎥 [CCTV] 已啟動影格推送迴圈 (elder=$_rawElderId, device=${widget.deviceName})');
   }
 
   @override
@@ -313,7 +371,15 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     if (!_mediaInitialized) {
       await _initializeMedia();
     }
-    
+
+    // ★ 2026-08-04 第 7 項：只有監視機（CCTV）才推送影格做 YOLO 偵測。
+    //   必須等 _initializeMedia 成功後才啟動，否則 localStream 還是 null，
+    //   整個迴圈會空轉到相機就緒為止（雖然安全，但白費計時器）。
+    if (widget.isCCTVMode && _mediaInitialized) {
+      _startCctvFrameLoop();
+    }
+
+
     // ★ 修復：從 SharedPreferences 讀取真正的 user_id（caregiver_id），
     //    而不是誤用 elder_id 當作 userId。
     //    elder_id（widget.roomId，如 '0343'）≠ user_id（資料庫帳號整數 ID）
@@ -593,7 +659,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   // 主動呼叫 (先響鈴)
   void _makeCall() {
     setState(() { _status = "正在呼叫家人..."; _isInCall = true; });
-    _signaling.sendCallRequest(_formattedRoomId, role: 'elder');  // ★ 使用格式化的房間ID
+    _signaling.sendCallRequest(_formattedRoomId, role: 'elder', isVideoCall: widget.isVideoCall);  // ★ 使用格式化的房間ID
     // ★ 2026-07-18：長輩端主動撥打新增 30 秒逾時。原本完全沒有逾時，
     //   家屬未接時只能靠手動掛斷，被叫方 CallKit 也會一直響。逾時自動取消。
     Future.delayed(const Duration(seconds: 30), () {
@@ -694,6 +760,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     _callTimer?.cancel();
+    _cctvFrameTimer?.cancel();  // ★ 第 7 項：離開監視機畫面必須停止推幀，否則相機釋放後會持續拋例外
     pendingAcceptedCall.removeListener(_onPendingCallChanged);
     _localRenderer.dispose();
     _remoteRenderer.dispose();
