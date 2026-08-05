@@ -90,7 +90,11 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
       if (alertId == null || _audioBridgeChecked.contains(alertId)) continue;
       _audioBridgeChecked.add(alertId);
       try {
-        final data = await ApiService.checkAudioBridge(alertId);
+        // ★ 2026-08-05 第十七輪（安全）：帶上 userId，讓後端走完整關係驗證分支
+        final data = await ApiService.checkAudioBridge(
+          alertId,
+          userId: widget.userId,
+        );
         if (!mounted) return;
         if (data != null && data['has_audio_bridge'] == true) {
           setState(() {
@@ -1088,6 +1092,9 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                           targetSocketId: socketId,
                           isEmergency: true,
                           autoStart: true,
+                          // ★ 2026-08-05 第十七輪：CCTV 監控檢視改用 pop() 返回本頁
+                          //   （互動分頁），不再整個重建 FamilyMainScreen。
+                          returnByPop: true,
                         ),
                       ),
                     );

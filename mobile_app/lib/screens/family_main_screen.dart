@@ -19,6 +19,10 @@ import 'family_onboarding_screen.dart';
 import 'package:flutter_application_1/utils/app_logger.dart';
 import '../globals.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+// ★ 2026-08-05 第十七輪：跌倒警報的「亮螢幕 + 通知 + 朗讀」三件套
+import 'package:flutter_tts/flutter_tts.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
+import '../services/cctv_alert_notification.dart';
 
 class FamilyMainScreen extends StatefulWidget {
   final int userId;
@@ -44,14 +48,30 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   bool _isElderOnline = false;
   String? _elderSocketId;
   Timer? _deviceRefreshTimer;
-  Timer? _onlineStateDebounceTimer;
-  bool? _pendingOnlineState;
+  // ★ 2026-08-05 第十七輪：原本的 _onlineStateDebounceTimer / _pendingOnlineState
+  //   是「每收到事件就重排」的雙向 debounce，週期與輪詢週期（2500ms）相等，
+  //   兩者互相取消導致狀態長期停滯不提交。改為 _offlineConfirmTimer：
+  //   僅在「上線→離線」方向做一次性確認，見 onElderDevicesUpdate 內的說明。
+  Timer? _offlineConfirmTimer;
 
   // ★ 移植自 family_dashboard_view.dart：監控裝置清單、CCTV 警報、訂閱層級
   //   （型別對齊該檔實際宣告：_monitorDevices 為 List<dynamic>、_tierLevel 為 String）
   List<dynamic> _monitorDevices = [];
   final List<Map<String, dynamic>> _activeAlerts = [];
-  final Set<int> _knownAlertIds = {};
+  /// ★ 2026-08-05 第十七輪：去重鍵由「alert_id」改為「alert_id + timestamp」複合鍵。
+  ///   後端 `_insert_alert()`（`services/yolo_alert_dispatcher.py`）對同 elder + 同 device +
+  ///   同 alert_type 且 `status='active'` 的既有列是 **UPDATE 並沿用原本的 alert_id**，
+  ///   只靠 alert_id 去重會讓第二次以後的同類警報完全靜默
+  ///   （「跌倒測試」鈕按第二次不會有任何反應，YOLO 連續偵測也一樣）。
+  final Set<String> _knownAlertKeys = {};
+
+  /// ★ 2026-08-05 第十七輪：跌倒警報彈窗的**本地**防疊加旗標。
+  ///   刻意不放進 `Signaling` singleton——先前加在 singleton 的顯示狀態旗標
+  ///   （`isIncomingCallDialogVisible`）曾導致長輩端冷啟動失敗而被整輪回退。
+  bool _cctvAlertDialogOpen = false;
+
+  /// 警報朗讀用的 TTS，只建立一次（不要每次警報都 new），`dispose()` 時 stop。
+  FlutterTts? _alertTts;
   String _tierLevel = 'free';
   String _tierDisplayName = '一般會員';
   int _devicesMax = 2;
@@ -96,7 +116,8 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
 
   void _startDeviceRefreshTimer() {
     _deviceRefreshTimer?.cancel();
-    // 調整為 2.5 秒取樣，避免裝置快速上下線時誤判。
+    // 取樣週期維持 2.5 秒不變；「上線→離線」的抖動抑制改由 _offlineConfirmTimer
+    // 單向處理（見 onElderDevicesUpdate），不再讓輪詢週期與 debounce 週期相等而互相取消。
     _deviceRefreshTimer = Timer.periodic(const Duration(milliseconds: 2500), (_) {
       final elder = _currentElder;
       if (elder == null || _signaling.socket?.connected != true) return;
@@ -211,22 +232,43 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     _signaling.onElderDevicesUpdate = (devices) {
       if (!mounted) return;
       debugPrint('📡 [FamilyMainScreen] 收到長輩設備狀態更新: $devices');
-      final online = devices.any((d) => d['isOnline'] == true);
-      _pendingOnlineState = online;
-      _onlineStateDebounceTimer?.cancel();
-      _onlineStateDebounceTimer = Timer(const Duration(milliseconds: 2500), () {
-        if (!mounted || _pendingOnlineState == null) return;
-        final bool stableOnline = _pendingOnlineState!;
+
+      // ★ 2026-08-05 第十七輪：原本的 debounce 每收到一個事件就 cancel + 重排 2500ms，
+      //   而輪詢週期也正好是 2500ms（_startDeviceRefreshTimer）、後端還會廣播給房內所有
+      //   家屬 socket，於是 debounce 幾乎永遠在 fire 之前就被下一個事件取消 →
+      //   `_isElderOnline` 與 `_monitorDevices` 兩個狀態長期停在初始值
+      //   （家屬端看不到監視機、在線燈不亮）。
+      //   改為：清單一律立即套用；只有「上線→離線」這個方向做 2.5 秒確認，
+      //   且該計時器只在尚未排程時建立（??=），永遠不因新事件重啟，
+      //   保證最遲 2.5 秒一定提交，符合需求的 2.5 秒上限。
+      final bool online = devices.any(_isDeviceOnline);
+      final List<dynamic> monitors =
+          devices.where((d) => d is Map && d['deviceMode'] == 'monitor').toList();
+      final onlineDevice = devices.firstWhere(_isDeviceOnline, orElse: () => {});
+      final String? onlineSid =
+          (onlineDevice is Map && onlineDevice.isNotEmpty) ? onlineDevice['id'] as String? : null;
+
+      if (online) {
+        // 離線→上線：立即生效，不等待（延遲只剩一次輪詢往返）
+        _offlineConfirmTimer?.cancel();
+        _offlineConfirmTimer = null;
         setState(() {
-          _isElderOnline = stableOnline;
-          if (stableOnline) {
-            final onlineDevice = devices.firstWhere((d) => d['isOnline'] == true, orElse: () => {});
-            _elderSocketId = onlineDevice.isNotEmpty ? onlineDevice['id'] : null;
-          } else {
-            _elderSocketId = null;
-          }
-          // ★ 移植自 family_dashboard_view.dart 第 119-121 行：過濾出監視機設備
-          _monitorDevices = devices.where((d) => d['deviceMode'] == 'monitor').toList();
+          _isElderOnline = true;
+          _elderSocketId = onlineSid;
+          _monitorDevices = monitors;
+        });
+        return;
+      }
+
+      // 判定為離線：設備清單仍立即更新（清單本身不需要抖動抑制）
+      setState(() => _monitorDevices = monitors);
+      if (!_isElderOnline) return; // 本來就離線，無需確認
+      _offlineConfirmTimer ??= Timer(const Duration(milliseconds: 2500), () {
+        _offlineConfirmTimer = null;
+        if (!mounted) return;
+        setState(() {
+          _isElderOnline = false;
+          _elderSocketId = null;
         });
       });
     };
@@ -295,6 +337,16 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     debugPrint('✅ [FamilyMainScreen] elder-unbound 監聽器已註冊');
   }
 
+  /// ★ 2026-08-05 第十七輪：`isOnline` 可能是 bool / int / String（不同來源序列化不同），
+  ///   只認 `== true` 曾造成 2026-07-16 的裝置狀態迴歸，這裡一律容錯解析。
+  static bool _isDeviceOnline(dynamic d) {
+    final v = (d is Map) ? d['isOnline'] : null;
+    if (v is bool) return v;
+    if (v is num) return v != 0;
+    if (v is String) return v.toLowerCase() == 'true' || v == '1';
+    return false;
+  }
+
   /// ★ 移植自 family_dashboard_view.dart 第 145-160 行：處理 CCTV 跌倒警報（YOLO）。
   /// 從原本直接掛在 `_signaling.socket?.on(...)` 的 inline callback 抽出，
   /// 供 `_registerCctvAlertListener()` 在 socket 確定存在時掛上（比照 `_handleElderUnbound`）。
@@ -302,17 +354,209 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     if (!mounted) return;
     try {
       final alertId = data is Map ? int.tryParse((data['alert_id'] ?? data['alertId'])?.toString() ?? '') : null;
-      if (alertId == null || _knownAlertIds.contains(alertId)) return;
-      _knownAlertIds.add(alertId);
+      if (alertId == null) return;
+      // ★ 2026-08-05 第十七輪：見 `_knownAlertKeys` 的說明——alert_id 會被後端重複沿用，
+      //   必須把 timestamp 一併納入去重鍵。timestamp 缺漏時退回只用 alert_id：
+      //   寧可漏掉一次重複顯示，也不要因為缺欄位而讓每一則警報都重複彈窗。
+      final String ts =
+          (data is Map ? (data['timestamp'] ?? data['ts']) : null)?.toString() ?? '';
+      final String alertKey = ts.isEmpty ? 'a$alertId' : 'a$alertId@$ts';
+      if (_knownAlertKeys.contains(alertKey)) return;
+      _knownAlertKeys.add(alertKey);
+      // 長時間執行時避免無限增長（Set 為 LinkedHashSet，first 即最早插入的那筆）
+      if (_knownAlertKeys.length > 100) {
+        _knownAlertKeys.remove(_knownAlertKeys.first);
+      }
       final newAlert = Map<String, dynamic>.from(data is Map ? data : {});
       setState(() {
         _activeAlerts.insert(0, newAlert);
         if (_activeAlerts.length > 20) _activeAlerts.removeLast();
       });
       debugPrint('🚨 [FamilyMainScreen] 收到 CCTV 警報: ${newAlert['alert_type']} elder=${newAlert['elder_id']}');
+      // ★ 2026-08-05 第十七輪：原本到上一行就結束（只有設備卡片變紅），
+      //   使用者沒盯著畫面就完全不會知道長輩跌倒了。需求要求「強制開啟螢幕 +
+      //   彈出通知 + 朗讀」，故追加 _presentCctvAlert（原本的清單插入與去重完整保留）。
+      _presentCctvAlert(newAlert);
     } catch (e) {
       debugPrint('❌ [FamilyMainScreen] cctv-alert 處理失敗: $e');
     }
+  }
+
+  /// ★ 2026-08-05 第十七輪：把警報型別轉成人看得懂的中文。
+  /// YOLO 會送出四種：`fall` / `crawl` / `lying_down` / `prolonged_inactivity`，
+  /// 只有第一種代表「跌倒」，其餘三種不可混為一談（實測時最常搞混的就是這點）。
+  static String _alertTypeLabel(String type) {
+    switch (type) {
+      case 'fall':
+        return '跌倒';
+      case 'crawl':
+        return '疑似爬行';
+      case 'lying_down':
+        return '長時間躺臥';
+      case 'prolonged_inactivity':
+        return '長時間無活動';
+      default:
+        return '異常狀況';
+    }
+  }
+
+  /// ★ 2026-08-05 第十七輪：家屬端在**前景**時的跌倒警報呈現。
+  /// 需求的三件事分別由三個機制負責，任一項失敗都不得影響其餘兩項：
+  ///   - 強制開啟螢幕 → `CctvAlertNotification`（`fullScreenIntent`）＋ `WakelockPlus`（維持亮著）
+  ///   - 彈出通知     → 本方法的 `AlertDialog`（APP 已在前景時系統通知容易被忽略）
+  ///   - 朗讀         → `FlutterTts`
+  /// APP 在背景／被殺死時走的是 `main.dart` 的 FCM `cctv-alert` 分支，不會經過這裡。
+  Future<void> _presentCctvAlert(Map<String, dynamic> alert) async {
+    final String alertType =
+        (alert['alert_type'] ?? alert['alertType'] ?? 'fall').toString();
+    final String typeLabel = _alertTypeLabel(alertType);
+
+    // 1) 保持螢幕亮著
+    try {
+      await WakelockPlus.enable();
+    } catch (e) {
+      debugPrint('⚠️ [FamilyMainScreen] WakelockPlus.enable 失敗: $e');
+    }
+
+    // 2) 系統通知（螢幕關閉時由 fullScreenIntent 負責點亮）
+    try {
+      await CctvAlertNotification.show({
+        'elderId': (alert['elder_id'] ?? alert['elderId'] ?? '').toString(),
+        'alertId': (alert['alert_id'] ?? alert['alertId'] ?? '').toString(),
+        'alertType': alertType,
+      });
+    } catch (e) {
+      debugPrint('⚠️ [FamilyMainScreen] 跌倒警報通知發送失敗: $e');
+    }
+
+    // 3) 朗讀
+    try {
+      _alertTts ??= FlutterTts();
+      await _alertTts!.setLanguage('zh-TW');
+      await _alertTts!.setSpeechRate(0.45);
+      await _alertTts!.speak('注意，偵測到長輩可能$typeLabel，請立即查看監視畫面');
+    } catch (e) {
+      debugPrint('⚠️ [FamilyMainScreen] 跌倒警報朗讀失敗: $e');
+    }
+
+    // 4) 彈窗
+    if (!mounted || _cctvAlertDialogOpen) return;
+
+    // 由 device_id 反查設備，取得名稱與該台監視機自己的 socketId。
+    // 🚨 一定要用該裝置自己的 `id`，不可用 `_elderSocketId`（那是「第一台在線設備」，
+    //    很可能是通訊機而不是這台監視機，送過去會連到錯的裝置）。
+    final String deviceIdStr =
+        (alert['device_id'] ?? alert['deviceId'] ?? '').toString();
+    final dynamic device = _monitorDevices.firstWhere(
+      (d) =>
+          d is Map && (d['deviceId'] ?? d['id'])?.toString() == deviceIdStr,
+      orElse: () => null,
+    );
+    final String deviceName =
+        (device is Map ? (device['deviceName'] ?? '監視機') : '監視機').toString();
+    final String viewSocketId =
+        (device is Map ? (device['id'] as String? ?? '') : '');
+    // 解析不出線上的來源設備就不給「查看監視畫面」鍵——寧可少一個功能鍵，
+    // 也不要帶著空的 targetSocketId 進房而卡在連線中。
+    final bool canView = viewSocketId.isNotEmpty && _isDeviceOnline(device);
+    final String rawElderId =
+        (alert['elder_id'] ?? alert['elderId'] ?? '').toString();
+    final String monitorRoomId = 'monitor_elder_$rawElderId';
+
+    final double? conf = double.tryParse(
+        (alert['confidence'] ?? '').toString());
+    final String confText =
+        conf == null ? '' : '信心度 ${(conf * 100).toStringAsFixed(0)}%';
+
+    _cctvAlertDialogOpen = true;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Row(
+            children: [
+              const Icon(Icons.warning_amber_rounded,
+                  color: Color(0xFFB91C1C), size: 28),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '偵測到$typeLabel',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFFB91C1C),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('監視機：$deviceName'),
+              if (confText.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(confText, style: const TextStyle(color: Colors.black54)),
+              ],
+              const SizedBox(height: 8),
+              const Text(
+                '請立即查看監視畫面確認長輩狀況。',
+                style: TextStyle(color: Colors.black87),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('我知道了'),
+            ),
+            if (canView)
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.of(dialogContext).pop();
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => VideoCallScreen(
+                        roomId: monitorRoomId,
+                        targetSocketId: viewSocketId,
+                        isEmergency: true,
+                        autoStart: true,
+                        // 從彈窗進入的監控檢視同樣用 pop() 返回本頁
+                        returnByPop: true,
+                      ),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.videocam_rounded),
+                label: const Text('查看監視畫面'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFB91C1C),
+                  foregroundColor: Colors.white,
+                ),
+              ),
+          ],
+        );
+      },
+    ).then((_) async {
+      _cctvAlertDialogOpen = false;
+      try {
+        await WakelockPlus.disable();
+      } catch (e) {
+        debugPrint('⚠️ [FamilyMainScreen] WakelockPlus.disable 失敗: $e');
+      }
+      try {
+        await _alertTts?.stop();
+      } catch (e) {
+        debugPrint('⚠️ [FamilyMainScreen] TTS stop 失敗: $e');
+      }
+      try {
+        await CctvAlertNotification.cancel();
+      } catch (e) {
+        debugPrint('⚠️ [FamilyMainScreen] 取消警報通知失敗: $e');
+      }
+    });
   }
 
   /// ★ 冪等註冊 'cctv-alert' 監聽器。socket 尚未建立時安全跳過，
@@ -870,7 +1114,11 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _deviceRefreshTimer?.cancel();
-    _onlineStateDebounceTimer?.cancel();
+    _offlineConfirmTimer?.cancel();
+    // ★ 2026-08-05 第十七輪：離開畫面時務必收掉警報朗讀與 wakelock，
+    //   否則 TTS 會繼續唸完、螢幕也會一直亮著。
+    _alertTts?.stop();
+    WakelockPlus.disable();
     pendingAcceptedCall.removeListener(_onPendingCallChanged);
     _signaling.onElderDevicesUpdate = null;
     super.dispose();

@@ -21,6 +21,9 @@ class VideoCallScreen extends StatefulWidget {
   final String? callId;
   final bool sendAcceptOnOpen;
   final bool isVideoCall; // ★ Fix E：是否為視訊通話（false = 純語音/電話）
+  // ★ 2026-08-05 第十七輪：是否以 pop() 返回上一頁（而非 pushAndRemoveUntil 重建主畫面）。
+  //   預設 false，維持所有現有建構點的行為完全不變；只有監控檢視入口會傳 true。
+  final bool returnByPop;
 
   const VideoCallScreen({
     super.key,
@@ -32,6 +35,7 @@ class VideoCallScreen extends StatefulWidget {
     this.callId,
     this.sendAcceptOnOpen = true,
     this.isVideoCall = true, // 預設視訊通話
+    this.returnByPop = false,
   });
 
   @override
@@ -88,17 +92,37 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
 
     _signaling.onAddRemoteStream = ((stream) {
       debugPrint("📺 [VideoCallScreen] Remote stream added! Tracks: ${stream.getTracks().length}");
+      // ★ 2026-08-05 第十七輪：onAddRemoteStream 只代表 SDP 談成（setRemoteDescription
+      //   當下就會觸發），不代表 ICE 已連通、有任何媒體在流動，因此 _startCallTimer()
+      //   與 _callConnected 改移到真正連上時才觸發的 onPeerConnected（見下方）。
       if (mounted) {
         setState(() {
           _remoteRenderer.srcObject = stream;
           _inCall = true;
           _callConnecting = false;
-          _callConnected = true;
           _callFailed = false;
         });
-        _startCallTimer();
       }
     });
+
+    // ★ 2026-08-05 第十七輪：ICE 真正連通（RTCPeerConnectionStateConnected）時才開始計時，
+    //   避免「有通話計時卻雙方都看不到聽不到」的假象。
+    _signaling.onPeerConnected = () {
+      if (mounted) {
+        setState(() => _callConnected = true);
+        _startCallTimer();
+      }
+    };
+
+    // ★ 2026-08-05 第十七輪：ICE 連線失敗時據實回報並安全返回主畫面，而不是讓通話停在
+    //   「已連線」但零影音的假狀態。
+    _signaling.onPeerConnectionFailed = (msg) {
+      if (mounted) {
+        _stopCallTimer();
+        _showCallRejectedThenGoHome(msg);
+      }
+    };
+
     _signaling.onLocalStream = ((stream) {
       debugPrint("🤳 [VideoCallScreen] Local stream set! Tracks: ${stream.getTracks().length}");
       if (mounted) setState(() => _localRenderer.srcObject = stream);
@@ -362,6 +386,8 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     _signaling.onCallBusy = null;
     _signaling.onJoinFailed = null;
     _signaling.onConnectionLost = null;
+    _signaling.onPeerConnected = null;
+    _signaling.onPeerConnectionFailed = null;
 
     _localRenderer.dispose();
     _remoteRenderer.dispose();
@@ -409,8 +435,16 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   //   家屬端在 APP 外接聽時，VideoCallScreen 會被疊在 SplashScreen 之上；若用 pop()
   //   會回到已完成任務的 SplashScreen 造成黑屏。改用 pushAndRemoveUntil 可確定性返回
   //   主畫面、清空堆疊，杜絕任何黑屏。
+  // ★ 2026-08-05 第十七輪：監控檢視是由家屬端主畫面 Navigator.push 疊上來的，
+  //   pop 回去可保留互動分頁與既有 signaling 狀態。上述「一律 pushAndRemoveUntil」的護欄
+  //   針對的是冷啟動時疊在 SplashScreen 上的來電路徑——那條路徑 widget.returnByPop 為 false，
+  //   行為完全不變；這裡另外再檢查一次 canPop，pop 不了就退回原本的重建主畫面。
   void _goHomeAfterCall() {
     if (!mounted) return;
+    if (widget.returnByPop && Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+      return;
+    }
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => _buildFallbackHome()),
       (route) => false,
@@ -585,6 +619,44 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
               ],
             ),
           ),
+
+          // ★ 2026-08-05 第十七輪：CCTV 監控檢視的返回鍵。僅 widget.returnByPop == true
+          //   （目前只有 family_interaction_tab.dart 的「觀看 CCTV」入口會傳入）才顯示，
+          //   樣式比照 elder_screen.dart 的「退出監視機」按鈕；水平位置沿用規格的 left: 16，
+          //   但垂直位置從 padding.top + 10 下移到 + 56，避免與上方「2. 頂部資訊欄」的
+          //   通話類型膠囊（同樣 top: padding.top + 10、left: 20）互相重疊。
+          //   onTap 沿用 _safeHangUp（既有掛斷 → 導航流程），不自行寫 pop。
+          if (widget.returnByPop)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 56,
+              left: 16,
+              child: GestureDetector(
+                onTap: _safeHangUp,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.6),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.white30, width: 1),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.arrow_back_rounded, color: Colors.white, size: 16),
+                      SizedBox(width: 6),
+                      Text(
+                        '返回',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
 
           // 3. 本地預覽 (PIP) — 鏡頭關閉時顯示圖標
           Positioned(

@@ -5,7 +5,7 @@
 
 # CLAUDE_call-monitor.md — 視訊通話與監控子系統 唯一權威參考
 
-> **最後更新：2026-08-03（第十四輪後）**
+> **最後更新：2026-08-05（第十七輪後）**
 > 本文件是 Uban 專案「視訊通話 + 監控（CCTV）」全部功能的**單一權威來源**。
 > 相關內容已從 `CLAUDE.md` / `Uban/CLAUDE.md` / `uban-api/CLAUDE.md` 遷移至此，那些檔案只保留指向本檔的指標。
 
@@ -29,7 +29,14 @@ Uban/mobile_app/lib/screens/family_main_screen.dart
 Uban/mobile_app/lib/screens/splash_screen.dart
 Uban/mobile_app/lib/screens/camera_screen.dart
 Uban/mobile_app/lib/screens/friends_screen.dart
+Uban/mobile_app/lib/screens/family/family_interaction_tab.dart
+Uban/mobile_app/lib/services/cctv_alert_notification.dart
+Uban/mobile_app/lib/services/api_service.dart（CCTV / alert 相關方法）
 uban-api/services/socket_app.py
+uban-api/services/call_security.py
+uban-api/services/yolo_alert_dispatcher.py
+uban-api/services/monitor_identity.py
+uban-api/routers/alert.py
 uban-api/routers/pairing.py
 uban-api/routers/user.py（has-comm-device 端點）
 ```
@@ -132,11 +139,12 @@ AI 對話、Pinecone 長期記憶、新聞爬蟲、遊戲、寵物、TTS/STT、`
 | `lib/globals.dart` | 跨 isolate／跨畫面的全域狀態橋 | `pendingAcceptedCall`、`isAppReady`、`appRole`、`kCallValidityMs`、`splashActive`、`safeNavigateBack()`、`parseIsVideoCall()` | 🔴 極高 |
 | `lib/services/signaling.dart` | Socket.IO 連線 + WebRTC（**Singleton**） | 見 §2.3 | 🔴 極高 |
 | `lib/services/local_call_notification.dart` | CallKit 失敗時的本地通知備援 | `show()`、`cancel()`、`consumeLaunchPayload()`、`_handleDecline()`、`_persistTapAsAccepted()`、`notificationBackgroundTapHandler` | 🔴 極高 |
-| `lib/services/api_service.dart` | HTTP 層；通話相關只有 `declineCall()` | `declineCall(roomId, senderId, callId)` | 🟡 中 |
+| `lib/services/api_service.dart` | HTTP 層；通話與監控相關 | `declineCall(roomId, senderId, callId)`、`pushCctvFrame()`、`triggerTestFall()`（回 `String?`）、`checkAudioBridge(alertId,{userId})`、`_deviceTokenHeader`（`X-Uban-Device-Token`） | 🟡 中 |
+| `lib/services/cctv_alert_notification.dart` | YOLO／測試跌倒警報的高優先級通知（**獨立 channel**，與來電備援分開） | `show()` | 🟠 中高 |
 | `lib/screens/video_call_screen.dart` | **家屬端**通話畫面 | `_initCall()`、`_toggleCamera`、`_toggleMic`、`_switchCamera`、`_toggleSpeaker`、`_safeHangUp`、`_goHomeAfterCall()`、`_showCallRejectedThenGoHome()` | 🔴 極高 |
 | `lib/screens/elder_screen.dart` | **長輩端**通話畫面（含 CCTV 模式） | `_makeCall()`、`_checkPendingAcceptedCall()`、`_toggleCamera`、`_toggleMute`、`_switchCamera`、`_hangUp`、`_exitCCTVMode`、`_activeCallId` | 🔴 極高 |
 | `lib/screens/elder_home_screen.dart` | 長輩主畫面；APP 內來電 dialog | `_onPendingCallChanged`、`_restoreSignalingCallbacks`、`_requestPermissions`（全螢幕權限引導） | 🔴 高 |
-| `lib/screens/family_main_screen.dart` | 家屬主畫面；APP 內來電 dialog、裝置上下線 | `_checkPendingAcceptedCall`、`onElderDevicesUpdate`（2.5s 節流） | 🔴 高 |
+| `lib/screens/family_main_screen.dart` | 家屬主畫面；APP 內來電 dialog、裝置上下線、**CCTV 跌倒警報呈現** | `_checkPendingAcceptedCall`、`onElderDevicesUpdate`（2.5s 單向確認，見 G40）、`_isDeviceOnline`、`_knownAlertKeys`、`_cctvAlertDialogOpen`、`_alertTts`、`_offlineConfirmTimer` | 🔴 高 |
 | `lib/screens/splash_screen.dart` | 冷啟動導航；接聽兜底最終防線 | `_navigateToNext()`、`_navigateFamilyHome()`、`_isPendingRoleReversed()` | 🔴 高 |
 | `lib/screens/friends_screen.dart` | **長輩端撥出入口**（`isVideoCall` 的唯一來源） | `_startCall(friendName, {required bool isVideo})` | 🟡 中 |
 | `lib/screens/camera_screen.dart` | 家屬端觀看監控畫面 | 建構子 `CameraScreen({required roomId})` | 🟡 中 |
@@ -145,7 +153,8 @@ AI 對話、Pinecone 長期記憶、新聞爬蟲、遊戲、寵物、TTS/STT、`
 | `lib/screens/elder_pairing_display_screen.dart` | 長輩配對碼顯示 + 快速登入 | `_quickLoginSameElder()` | 🟡 中 |
 | `lib/screens/elder_tabs/elder_profile_tab.dart` | 長輩端登出 | `_handleLogout()`（**不可清 `last_elder_*`**） | 🟡 中 |
 | `lib/screens/family_dashboard_view.dart` / `family_dashboard_screen.dart` | 家屬儀表板通話入口 | 多處 `VideoCallScreen(...)` | 🟢 低 |
-| `lib/screens/family/family_interaction_tab.dart` / `family/ai_hub_screen.dart` | 家屬互動頁通話入口 | 同上 | 🟢 低 |
+| `lib/screens/family/family_interaction_tab.dart` | 家屬互動頁：通話入口、**監視機清單／「觀看 CCTV」／警報語音橋** | `_syncAudioBridgeForAlerts`、`_buildAudioBridgeButton`、`VideoCallScreen(..., returnByPop: true)` | 🟠 中高 |
+| `lib/screens/family/ai_hub_screen.dart` | 家屬互動頁通話入口 | 多處 `VideoCallScreen(...)` | 🟢 低 |
 | `lib/screens/role_selection_screen.dart` | 角色選擇 → 長輩畫面 | 三處 `ElderScreen(...)` | 🟢 低 |
 | `lib/screens/socketio_test_screen.dart` | 測試畫面 | — | ⚪ 可忽略 |
 | `android/app/build.gradle.kts` | **core library desugaring**（`flutter_local_notifications 18.x` 必需） | `isCoreLibraryDesugaringEnabled` | 🔴 高（移除會 build 失敗） |
@@ -161,7 +170,12 @@ AI 對話、Pinecone 長期記憶、新聞爬蟲、遊戲、寵物、TTS/STT、`
 | `main.py` | FastAPI 入口；`GET /api/call_history`(682)、`POST /api/call/decline`(698) | `api_decline_call` | 🟡 中 |
 | `routers/pairing.py` | 配對；`POST /monitor_setup`、`POST /monitor_setup/resolve` 為監控機專用 | — | 🟡 中 |
 | `routers/user.py` | `GET /elder/{elder_id}/has-comm-device`(251) — **裝置角色判定的唯一依據** | — | 🔴 高 |
+| `routers/alert.py` | `/api/alerts` 與 `/api/cctv`：警報清單／確認、音訊橋接、影格推送、**跌倒測試** | `get_alerts`、`acknowledge_alert`、`open_audio_bridge`、`check_audio_bridge`、`push_cctv_frame`、`trigger_test_fall` | 🟠 中高 |
+| `services/call_security.py` | **通話／監控的共用授權守衛**（REST 與 Socket 兩條路共用） | `test_fall_enabled()`、`ingest_token_ok()`、`elder_exists()`、`is_user_linked_to_elder()`、`get_alert_context()`、`is_device_of_elder()` | 🟠 中高 |
+| `services/yolo_alert_dispatcher.py` | 跌倒警報派送（YOLO 與測試鈕共用） | `dispatch()`、`_insert_alert()`（**UPSERT，沿用 alert_id**）、`_build_push_payload()`、`_get_connected_family()`、`_get_family_fcm_tokens()` | 🟠 中高 |
+| `services/monitor_identity.py` | 監視機 `device_id` 計算 | `monitor_device_id(elder_id, device_name)` = `crc32("elder_id|name") & 0x7FFFFFFF` | 🟡 中 |
 | `tests/test_call_signaling.py` | 通話信令回歸測試（目前 8 passed） | — | 🟡 中 |
+| `.env` / `.env.example` | `CCTV_TEST_FALL_ENABLED`、`CCTV_INGEST_TOKEN`（見 §6.10） | — | 🟠 中高 |
 
 > ⚠️ **路徑更正**：後端 socket 檔的實際路徑是 **`uban-api/services/socket_app.py`**。
 > 歷史文件寫成 `uban-api/uban-api/services/socket_app.py` 或 `Uban/uban-api/services/socket_app.py` 都是**錯的**。
@@ -179,6 +193,7 @@ AI 對話、Pinecone 長期記憶、新聞爬蟲、遊戲、寵物、TTS/STT、`
 | 連線 | `connect()`、`reconnect()`、`_asyncJoin()`、`_registerSocketListeners()`、`_emitJoin()`、`joinRoom()`、**`forceDisconnect()`**、`updateAppForeground()`、`_setupTokenMonitor()` |
 | 信令送出 | `sendCallRequest(room,{role,callId,targetId,isVideoCall})`、`sendCallAccept(targetSocketId,{callId})`、`sendCallBusy(targetSocketId,{callId,room})`、`sendCancelCall(room,{role})`、`sendEmergencyCall(room,{targetId,callId,role})`、`sendDeleteDevice(room,targetId)`、`sendGetElderDevices(roomId)` |
 | WebRTC | `_createPeerConnection()`、`createOffer()`、`startMonitoring(targetId)`、`_acceptCall()`、`_processCandidateQueue()`、`_generateDynamicTURNConfig()`、`openUserMedia(renderer,{videoEnabled})`、`hangUp()`、`stopMedia()`、`clearSession()`、`_closePeerConnection()` |
+| 連線品質（第十七輪） | **`onPeerConnected`**（ICE 真正連通，取 `onConnectionState` ∪ `onIceConnectionState`，見 G37）、**`onPeerConnectionFailed(String reason)`**、**`_startMediaWatchdog()`** / `_mediaWatchdogTimer`（12s 檢查 `inbound-rtp.bytesReceived`，見 G38） |
 | 其他 | `enableSpeakerphone()`、`sendHeartbeat()`、`pushContent()`、`listenToElderChat()`、`listenToMedicationConfirmation()` |
 
 > **`forceDisconnect()` vs `disconnect()`**：一律用 `forceDisconnect()`。`disconnect()` 會讓 socket 徹底斷開並失去 FCM 接收能力。
@@ -309,6 +324,29 @@ AI 對話、Pinecone 長期記憶、新聞爬蟲、遊戲、寵物、TTS/STT、`
 | **無 `issuedAt`/`expiresAt`** | — | ⚠️ **刻意**不帶：帶了會被前端 120s 過期判斷誤殺 |
 | **無 `role`** | — | ⚠️ 見 §7.3 已知缺口 |
 | **無 `isVideoCall`** | — | 緊急通話一律視訊 |
+
+#### `cctv-alert`（`services/yolo_alert_dispatcher.py`:68-95）— 跌倒／異常警報
+
+> 這條**不是通話**，是監控子系統的警報推播（YOLO 偵測與「跌倒測試」鈕共用同一條派送路徑）。
+> Socket 通路事件名同為 `cctv-alert`，payload 由同檔的 `_build_push_payload()` 產生。
+
+| 欄位 | 值 | 說明 |
+|------|-----|------|
+| `type` | `'cctv-alert'` | 前端在 `main.dart`:122（BG）與 :1439（FG）分流；**必須排在通話型別白名單之前** |
+| `elderId` | `str(elder_id)` | 原始（未加前綴）長輩 ID |
+| `deviceId` | `str(device_id)` | 監視機的 `monitor_device_id`（見 §6.9） |
+| `alertType` | `'fall'` / `'prolonged_inactivity'` / `'lying_down'` / `'crawl'` | |
+| `alertId` | `str(alert_id)` | ⚠️ **會被重複沿用**，見下 |
+| `confidence` | `str(round(confidence, 3))` | |
+| **`timestamp`** | `str(int(utcnow().timestamp()))` | ⚠️ **去重的關鍵欄位** |
+| priority | `android=AndroidConfig(priority='high')`、APNS `content_available` | 無 `notification` 區塊（同 G33） |
+
+> 🚫 **`alertId` 單獨不可作為去重鍵**：`_insert_alert()` 對「同 elder + 同 device + 同 alert_type
+> 且 `status='active'`」的既有列是 **UPDATE `detected_at` 並沿用原本的 `alert_id`**。
+> 只用 `alertId` 去重，第二次以後的同類警報會**完全靜默**
+> （「跌倒測試」鈕按第二次沒反應，YOLO 連續偵測也一樣）。
+> 家屬端因此用 **`"a$alertId@$timestamp"` 複合鍵**（`family_main_screen.dart::_knownAlertKeys`）。
+> 後端若要改掉 UPSERT 語意，必須同步改前端這個鍵。
 
 #### `cancel-call`（:1634 / :1908 / :2004）
 
@@ -741,6 +779,29 @@ void _startCall(String friendName, {required bool isVideo}) {
 > 「視訊」鍵傳 `isVideo: true`、「電話」鍵傳 `isVideo: false`。
 > **這是全專案唯一決定通話類型的地方。** 加新的撥出入口時記得也要傳。
 
+#### 監控（CCTV）相關按鈕 — 2026-08-05 第十七輪新增
+
+| 端 | 位置 | 按鈕 | 行為 | 備註 |
+|----|------|------|------|------|
+| 家屬 | `family_interaction_tab.dart`:1084-1105 | **「觀看 CCTV」** `ElevatedButton.icon` | `Navigator.push` → `VideoCallScreen(roomId: monitorRoomId, targetSocketId: socketId, isEmergency: true, autoStart: true, returnByPop: true)` | `onPressed` 由 `isOnline` gate（離線時 disabled）。設備卡片本身來自 `_monitorDevices` |
+| 家屬 | `family_main_screen.dart`:515-533 | 跌倒警報彈窗的**「查看監視畫面」** | 同上，先 `pop()` 掉彈窗再 push | 只有 `canView`（有在線監視機）時才顯示 |
+| 家屬 | `video_call_screen.dart`:623-631 | **「← 返回」** | `Navigator.pop()` | **只在 `widget.returnByPop == true` 時渲染**（即 CCTV 檢視） |
+| 長輩 | `elder_screen.dart`:949-985 | **「🚨 跌倒測試」** | `_sendTestFallAlert()`（:688）→ `ApiService.triggerTestFall` → `POST /api/cctv/test-fall` | 位於「退出監視機」正下方，**只在 CCTV 模式畫面出現**；`_testFallSending` 防連點 |
+
+> **`returnByPop` 的語意**（`video_call_screen.dart`:24-38，預設 `false`）：
+> `true` → `_goHomeAfterCall()` 走 `Navigator.pop()` 返回上一頁；
+> `false` → 維持既有的 `pushAndRemoveUntil` 重建主畫面。
+> 🚫 **不可把預設值改成 `true`**：`false` 是給「冷啟動時疊在 `SplashScreen` 上的來電路徑」用的，
+> 那條路徑底下沒有可 pop 的頁面，pop 會黑屏（這正是 §5.5 導航規則的由來）。
+> 程式碼中另有 `canPop()` 二次保險（:444）。
+
+> **「跌倒測試」是暫時性測試入口**：走的是與 YOLO 真實偵測**完全相同**的派送路徑
+> （寫 `emergency_alerts` → Socket `cctv-alert` + 高優先級 FCM → 家屬端亮螢幕 + 通知 + 朗讀）。
+> 後端該端點**預設關閉**，見 §6.10。`triggerTestFall` 回傳 `String?`：
+> `null` = 成功，非 null = 可直接顯示給使用者的失敗原因。
+> 🚫 **不要改回 `Future<bool>`**——關閉／密鑰錯誤／查無監視機三種失敗長得一樣，
+> 使用者會完全不知道為什麼按了沒反應。
+
 #### APP 內來電 dialog
 
 | 端 | 位置 | 樣式基準 |
@@ -939,19 +1000,26 @@ WHERE role='elder' AND (room_id IN (%s, %s) OR user_id = %s)
 
 1. 每 **10 秒**呼叫 HTTP API 交叉驗證裝置清單
 2. **15 秒** staleness watchdog：超過 15s 沒更新即視為離線
-3. `isOnline` 的取樣與套用一律 **2.5 秒**節流（輪詢週期 2.5s + `onElderDevicesUpdate` 套用前再 2.5s debounce）
+3. 輪詢週期 **2.5 秒**；`onElderDevicesUpdate` 收到事件後：
+   - 裝置**清單**與「離線→上線」→ **立即套用**
+   - 「上線→離線」→ 做一次性 **2.5 秒**確認（計時器 `??=` 建立，**永不因新事件重啟**）
 
-> 🚫 **不要改回 1 秒瞬時切換**（護欄 #6）：會造成快速上下線抖動誤判。
-> `isOnline` 的型別檢查要容忍多型別（曾有只判 `== true` 導致字串 `"true"` 被當離線的回歸）。
+> 🚫 **不要改回 1 秒瞬時切換**：會造成快速上下線抖動誤判。
+> 🚫 **更不要改回「每收到事件就 cancel + 重排」的雙向 debounce**——那與輪詢週期同為 2500ms，
+> 會互相取消到永遠不 fire，家屬端因此**看不到監視機、在線燈不亮**（第十七輪需求 1+3 的根因）。
+> 完整規則見 **G40**。
+> `isOnline` 的型別檢查要容忍 bool / int / String 多型別
+>（曾有只判 `== true` 導致字串 `"true"` 被當離線的回歸）。
 
 ### 6.7 監控相關事件
 
 | 事件 | 說明 |
 |------|------|
-| `get-elder-devices` / `elder-devices-update` | 裝置清單查詢與推播 |
-| `delete-device` → `force-logout` | 家屬端移除長輩裝置；被踢裝置收到 `force-logout`（Socket + FCM 雙路） |
-| `cctv-alert-ack` | 回應 YOLO 影像告警；後端回 `cctv-alert-ack-success` / `cctv-alert-ack-failed` |
-| `audio-bridge-request` → `audio-bridge-response` | 音訊橋接 |
+| `get-elder-devices` / `elder-devices-update` | 裝置清單查詢與推播（`elder-devices-update` **只在 join 時廣播，disconnect 不發**） |
+| `delete-device` → `force-logout` | 家屬端移除長輩裝置；被踢裝置收到 `force-logout`（Socket + FCM 雙路）。**發送者必須是該長輩 comm/monitor 房間成員**（G46） |
+| `cctv-alert` | 後端 → 家屬：YOLO／測試跌倒警報（見 §3.2、§6.9） |
+| `cctv-alert-ack` | 回應影像告警；後端回 `cctv-alert-ack-success` / `cctv-alert-ack-failed`。**需通過關係驗證**，無權回 `{'reason': 'not_found'}`（G44/G45） |
+| `audio-bridge-request` → `audio-bridge-response` | 30 分鐘單向音訊橋接（家屬 → 監視機）。**需關係驗證 + `to_device_id` 歸屬驗證**（G44） |
 | `emergency-call` | CCTV 模式下自動接聽、強制開鏡頭（§4.7） |
 
 ### 6.8 CCTV 模式進出
@@ -960,11 +1028,94 @@ WHERE role='elder' AND (room_id IN (%s, %s) OR user_id = %s)
 - 退出：`elder_screen.dart::_exitCCTVMode`（:795）
 - 緊急通話待處理鍵：`pending_emergency_room` / `pending_emergency_sender`（`elder_screen.dart`:130-139 讀取後立即 remove）
 
+### 6.9 跌倒警報派送鏈（YOLO 與「跌倒測試」共用）
+
+```
+影格來源
+ ├─ 監視機推流：ApiService.pushCctvFrame → POST /api/cctv/frame（multipart PNG）
+ │     └─ 後端每 2 秒取一個窗口送 YOLO 推論
+ └─ 「跌倒測試」鈕：ApiService.triggerTestFall → POST /api/cctv/test-fall
+       └─ 跳過 YOLO，直接以 alert_type='fall' 進入下一步
+
+           ↓ 兩條路在此匯流（services/yolo_alert_dispatcher.py::dispatch）
+
+  _insert_alert()  ← ⚠️ UPSERT 語意：同 elder+device+type 且 status='active' 只更新
+                       detected_at 並沿用原 alert_id（見 §3.2 的去重警告）
+           ↓
+  Layer 1  Socket.IO 'cctv-alert' → 在線家屬 sid
+  Layer 2  FCM data-only（priority=high）→ 離線／背景家屬 token
+           ↓
+  家屬端 family_main_screen.dart
+    ├─ 複合鍵 "a$alertId@$timestamp" 去重（_knownAlertKeys）
+    ├─ WakelockPlus 強制點亮螢幕
+    ├─ CctvAlertNotification（獨立 channel，與來電備援分開）
+    ├─ FlutterTts 朗讀
+    └─ AlertDialog（_cctvAlertDialogOpen 防疊加）+「查看監視畫面」鍵
+```
+
+**`device_id` 的計算**（`services/monitor_identity.py`）：
+```python
+monitor_device_id(elder_id, device_name) = zlib.crc32(f"{elder_id}|{device_name.strip()}") & 0x7FFFFFFF
+```
+> ⚠️ 兩端必須都用**原始（未加 `elder_`／`comm_`／`monitor_` 前綴）的 elder_id**，
+> 否則算出來的 id 不同 → 後端「查無此監視機」。
+
+### 6.10 監控安全開關（2026-08-05 第十七輪新增）
+
+兩個環境變數，都在 `uban-api/.env`（範本見 `.env.example`），
+實作在 `uban-api/services/call_security.py`（**在呼叫時讀取，不在 import 時讀**）：
+
+| 變數 | 預設 | 作用 |
+|------|------|------|
+| `CCTV_TEST_FALL_ENABLED` | `false` | `POST /api/cctv/test-fall` 的總開關。關閉時回 **404** 並附中文原因，前端會直接顯示在 SnackBar |
+| `CCTV_INGEST_TOKEN` | 空 | 推流與測試端點的共用密鑰。**留空 = 不驗證（向後相容既有行為）**；有值則兩個端點都要求 `X-Uban-Device-Token` 標頭，不符回 403 |
+
+前端以 `--dart-define=CCTV_INGEST_TOKEN=<同一字串>` 注入
+（`api_service.dart`:31 的 `_cctvIngestToken` / `_deviceTokenHeader`，空字串時**不送**該標頭）。
+
+**要測「跌倒測試」鈕時**：`.env` 設 `CCTV_TEST_FALL_ENABLED=true` → 重啟後端 → 測完**立刻改回 `false`**。
+理由：`elder_id` 只有 4 位數字（10 000 組，可完整列舉），長期開放等同開放對任意長輩家庭發動騷擾。
+
+### 6.11 怎麼測 YOLO 的跌倒偵測
+
+> 對應使用者的提問「我要趴在地上幾分鐘之類的」。**先看這裡再去躺地板。**
+
+**先決條件**
+1. 監視機端已進入 CCTV 模式且正在推流（後端 log 每 2 秒一個窗口）。
+2. 家屬端 APP 已登入同一位長輩，且**至少開過一次**（FCM token 才會寫進 `user_fcm_token`）。
+3. 想跳過 YOLO 直接驗證「派送 + 家屬端呈現」→ 用 §6.10 的測試鈕，**不需要躺地板**。
+
+**分兩階段測，不要混在一起測**
+
+| 階段 | 目的 | 方法 | 判準 |
+|------|------|------|------|
+| **A. 派送鏈** | 驗證 DB 寫入 → Socket/FCM → 亮螢幕 + 通知 + 朗讀 + 彈窗 | 開 `CCTV_TEST_FALL_ENABLED=true`，按「🚨 跌倒測試」 | 家屬端**熄屏**狀態下也要亮起並朗讀。連按兩次要**兩次都有反應**（驗證複合鍵去重沒退化） |
+| **B. YOLO 推論** | 驗證模型真的判得出跌倒 | 見下方姿勢清單 | 後端 log 出現 `🚨 [YoloAlert] fall ...` 且 `confidence` 合理 |
+
+**階段 B 的實際做法**
+
+- **姿勢比時間重要**：`fall` 的判準是**人體 bounding box 的長寬比翻轉**（站姿是高>寬，倒地是寬>高）＋持續數個窗口。
+  所以要**整個人平躺／側躺、身體長軸與畫面水平方向大致平行**。蹲下、彎腰、坐地板通常**不會**觸發。
+- **時間**：後端每 2 秒一個推論窗口。維持姿勢 **10–15 秒**足夠讓連續窗口都判到；
+  不需要趴好幾分鐘。若 15 秒沒觸發，代表是角度／距離／光線問題，趴更久也沒用。
+- **鏡頭位置**：監視機要能**看到全身**。太近（只拍到上半身）會讓長寬比失效，這是最常見的失敗原因。
+  建議 2–3 公尺、離地 1.2–1.8 公尺、稍微俯角。
+- **光線**：偏暗會讓信心度掉到門檻以下。先在明亮環境測通，再測夜間。
+- **安全**：請在**床墊或瑜珈墊**上做，不要真的往硬地板倒。模型看的是最終姿勢，不是倒下的過程。
+- **其他型別**：`prolonged_inactivity`（久臥不動）需要的時間長很多，
+  測它請直接改後端門檻參數，不要用肉身等——那才是真的要躺好幾分鐘。
+
+**測不出來時的排查順序**
+1. 後端 log 有沒有收到影格？沒有 → 推流斷了，看 §9 的 A/B/C 定位法。
+2. 有影格但沒 `[YoloAlert]` → 推論沒過門檻，調整鏡頭距離／光線／姿勢。
+3. 有 `[YoloAlert]` 但家屬端沒反應 → 是派送鏈問題，回頭跑階段 A 隔離。
+
 ---
 
 ## 7. 護欄（合併後的唯一權威清單）
 
-> 本清單合併自 `CLAUDE.md`（13 條）與 `Uban/CLAUDE.md`（26 條），去重並修正其中的矛盾。
+> 目前共 **46 條**（G1–G46）：G1–G36 合併自 `CLAUDE.md`（13 條）與 `Uban/CLAUDE.md`（26 條）並去重、
+> 修正矛盾；G37–G46 為 2026-08-05 第十七輪新增（連線可靠性 4 條、監控警報 2 條、安全 4 條）。
 > **除非明確知道連鎖影響並能同步改完整條鏈路，不要單點修改。**
 
 ### 7.1 前端護欄
@@ -1116,6 +1267,53 @@ FCM 前景路徑必須先排 **1500ms** 寬限期，屆時依序檢查
 `family_dashboard_screen.dart`:155、`family_dashboard_view.dart`:127、`socketio_test_screen.dart`:35/194。
 需要傳新資訊時，用 G27 的「callId 綁定資料欄位」模式，不要改簽章。
 
+**G37 — 「已連線」UI 與通話計時不可綁在 `onTrack` / `onAddRemoteStream` 上**
+`onTrack` 只代表 **SDP 談成**，不代表 ICE 已連通、更不代表有位元組在流動。
+計時器必須由 `onPeerConnected` 觸發，而 `onPeerConnected` 取
+`onConnectionState == Connected` **與** `onIceConnectionState == Connected/Completed` 的**聯集**
+（`signaling.dart`:887-925）。
+- 取聯集是**刻意**的：`flutter_webrtc` 在部分 Android 原生層 `onConnectionState` 回報不完整，
+  單押它會讓正常通話**完全不計時**——比修復前更糟。兩端的 `_startCallTimer()` 都以
+  `_callTimer?.cancel()` 開頭，冪等，重複觸發無副作用。
+- 🚫 **絕對不要**把 `RTCIceConnectionStateFailed` 接到 `onPeerConnectionFailed`：
+  ICE 層的 Failed 有機會自行恢復，接上去等於製造「通話中途無故被掛斷」的新回歸。
+  失敗判定只由 `onConnectionState` 的 `Failed` 分支與 G38 的媒體看門狗負責。
+
+**G38 — 媒體看門狗只能掛在 `onTrack`，不可掛在 Connected**
+`_startMediaWatchdog()`（`signaling.dart`:985）在收到 remote track 後 **12 秒**檢查
+`inbound-rtp` 的 `bytesReceived` 總和，仍為 0 就呼叫 `onPeerConnectionFailed` 據實回報。
+🚫 **不可改掛在 `onConnectionState == Connected`**：`startMonitoring()` 建立的是 **recvonly**
+監控連線，那一端本來就不會收到 remote track、永遠不會有 `inbound-rtp`，
+掛在 Connected 上會**誤殺所有 CCTV 監控連線**。
+清理點有三處（`hangUp` / `_cleanup` / PeerConnection close 前），少一處就會在連線關閉後才觸發。
+
+**G39 — TURN 的靜態帳號必須排在第一組**
+Coturn 實際只有 `lt-cred-mech` 靜態帳號 `uban`（`README.md`:338-343）。
+`_turnUser`／`_turnPass` 那組必須是 `iceServers` 的**第一組 TURN**；
+`uban_elder_<id>` 那組是為「日後真的開了 per-elder 帳號」預留的，只能**附加在後面**。
+🚫 **不可改回只送 `uban_elder_<id>`**：會被 Coturn 回 401 → 拿不到任何 relay 候選 →
+同網域靠 srflx 還能通、**跨網域對稱 NAT 就必然「SDP 談成、ICE 配不出 pair」**
+→ 有通話計時卻零影音（第十七輪問題 2 的根因）。
+
+**G40 — 裝置在線判定的 debounce 不可重啟、且不可與輪詢週期相等**
+`family_main_screen.dart::onElderDevicesUpdate`：
+- 裝置**清單**（`_monitorDevices`）與「離線→上線」一律**立即套用**，不 debounce。
+- 只有「上線→離線」方向做 **2.5 秒**確認，且計時器用 `??=` 建立，**永遠不因新事件重啟**。
+
+🚫 **不可改回「每收到事件就 cancel + 重排」的雙向 debounce**：
+輪詢週期也是 2500ms、後端還會廣播給房內所有家屬 socket，於是 debounce 幾乎永遠在 fire
+之前就被下一個事件取消 → `_isElderOnline` 與 `_monitorDevices` **長期停在初始值**
+（家屬端看不到監視機、在線燈不亮）。
+`isOnline` 的型別檢查要容忍 bool / int / String 多型別（`_isDeviceOnline`，:340）。
+
+**G41 — 跌倒警報去重必須用 `alertId + timestamp` 複合鍵**
+後端 `_insert_alert()` 對同 elder+device+type 的 active 列是 UPDATE 並**沿用原 alert_id**。
+只用 `alertId` 去重 → 第二次以後的同類警報**完全靜默**。見 §3.2 與 §6.9。
+
+**G42 — 跌倒警報彈窗的防疊加旗標必須是畫面內的區域變數**
+`_cctvAlertDialogOpen` 宣告在 `_FamilyMainScreenState` 內。
+🚫 **不可搬進 `Signaling` 單例**——這正是 G27 禁止的那類「影響顯示流程的全域旗標」。
+
 ### 7.2 後端護欄
 
 **G29 — `socket_app.py` 的終止廣播**
@@ -1153,6 +1351,39 @@ Flutter BG handler 不會被觸發 → CallKit 不會響鈴。
 **G36 — 環境固定值**
 Python **3.12**（不可 3.13+）；FastAPI **port 8000** 不可更改；
 production MySQL host 用 `uban-mysql`（**不可** `localhost` / `127.0.0.1`）。
+> ℹ️ 後端跑在**遠端實體機**上。本機開發機只有 Python 3.13/3.14 是**正常的**，不是環境問題。
+
+**G43 — `/api/cctv/test-fall` 必須預設關閉**
+`CCTV_TEST_FALL_ENABLED` 的預設值是 `false`，關閉時回 **404**。
+🚫 **不可改為預設開啟、不可移除開關**：該端點會走與真實 YOLO **完全相同**的派送路徑
+（寫 DB + 對所有家屬送高優先級 FCM → 強制亮螢幕 + 通知 + 朗讀），
+而 `elder_id` 只有 4 位數字可被完整列舉。
+
+**G44 — 授權檢查一律走 `services/call_security.py`，REST 與 Socket 兩條路徑強度必須一致**
+每個既有洞都有**兩個入口**（REST + Socket），只補一邊等於沒補：
+
+| 動作 | REST | Socket |
+|------|------|--------|
+| 確認警報 | `POST /api/alerts/{id}/acknowledge` | `cctv-alert-ack` |
+| 開音訊橋接 | `POST /api/alerts/{id}/audio-bridge` | `audio-bridge-request` |
+
+`is_user_linked_to_elder()` 的判定邏輯**刻意與 `socket_app.py::_verify_room_access()` 一致**
+（長輩本人 via `elder_profile`，或已配對家屬 via `family_elder_relationship`）。
+改其中一邊必須同步改另一邊。
+- 查詢失敗時的預設：`is_user_linked_to_elder` / `is_device_of_elder` 回 **False**（守寫入，安全優先）；
+  `elder_exists` 回 **True**（可用性優先，DB 抖動不該打斷監視機推流）。
+- 音訊橋接的 SQL 必須帶 `AND to_device_id = %s`，否則會**延長到別台裝置的權限**。
+
+**G45 — 「無權」一律回 404，不要回 403**
+`elder_id` 是 4 位數字、`alert_id` 是自增整數，兩者都可完整列舉；
+403 等於確認該 ID 存在。與 `routers/institution_common.py` 的既有慣例一致。
+（例外：`X-Uban-Device-Token` 不符回 **403**——那是密鑰錯誤，不洩漏任何 ID 是否存在。）
+
+**G46 — `delete-device` 必須驗證發送者身分**
+`on_delete_device` 先 `_parse_room_id(room)` 取出 elder，再確認 `sid` 是
+`comm_elder_<id>` 或 `monitor_elder_<id>` **其中之一的成員**，否則直接 return。
+🚫 **不可移除**：這個 handler 會踢掉裝置（`force-logout`）並清掉它的 FCM token，
+等於讓任意連線者把任意長輩的通訊機變成收不到來電。
 
 ### 7.3 已知的文件錯誤（以程式碼為準）
 
@@ -1172,8 +1403,30 @@ production MySQL host 用 `uban-mysql`（**不可** `localhost` / `127.0.0.1`）
 | 10 | 長輩端登出只有 `elder_profile_tab::_handleLogout` 一處 | **另有 `elder_screen.dart`:674-680** | grep |
 | 11 | `Uban/CLAUDE.md` 護欄 #5 同時寫「15 秒」與「120 秒」兩組矛盾條目 | 以 **120 秒**為準，15 秒條目作廢 | 同 #4 |
 | 12 | `Uban/CLAUDE.md` 第九輪記錄中段插入了 `## 環境要求` + `## 🚫 絕對不可改動區塊` 片段 | 結構損毀，非有意內容 | `Uban/CLAUDE.md`:452-458 |
+| 13 | `signaling.dart`:116 的 **`_configuration`** 看起來是 ICE / TURN 設定 | **死碼，完全沒有被使用**（`flutter analyze` 有 `unused_field` 警告）。真正生效的是 **`_generateDynamicTURNConfig()`（:826）**，`_createPeerConnection` 在 :881 呼叫它 | :116 / :826 / :881 |
+
+> 🪤 **#13 是一個很容易踩的陷阱**：要改 TURN 憑證或 ICE 參數的人，第一眼會看到 `_configuration`
+> 並改在那裡——**改了不會有任何效果**，而且它裡面的 `iceServers` 內容看起來還很合理。
+> 一律改 `_generateDynamicTURNConfig()`。
+> （`signaling.dart`:542 的 `_showCallkitIncoming` 同樣是未被引用的死碼，見 §7.3 的既有記錄脈絡。）
 
 > ⚠️ `Uban/mobile_app/lib/main.dart.bak` 是**備份檔**，grep 會撈到它。永遠不要編輯它。
+
+### 7.4 已知且**刻意保留**的安全缺口（2026-08-05 第十七輪稽核結論）
+
+> 這些是稽核時看到、評估後**決定不改**的項目。寫在這裡是為了：
+> (a) 後續 AI 不要以為是漏看的；(b) 真的要補時，知道代價在哪。
+
+| # | 缺口 | 為什麼不補 | 真要補的話 |
+|---|------|-----------|-----------|
+| 1 | **整個 App API 實質上未認證**：後端**會發** JWT（`auth.py::create_access_token`，在 `routers/auth.py`:79 與 `routers/pairing.py`:91/339/486/883 呼叫），但 `get_current_user` **只在 `auth.py` / `auth_staff.py` 出現，沒有任何 router 把它當 dependency**；`api_service.dart` 也從不送 `Authorization` 標頭 | 硬上 `Depends(get_current_user)` 會讓**每一幀 CCTV 推流當場 401**，監控與通話全滅 | 前後端同時上線：`api_service.dart` 統一注入標頭 → 後端逐 router 加 dependency → 最後才移除本文件的關係驗證兜底 |
+| 2 | `offer` / `answer` / `candidate` 依 `targetId` 轉發，**不檢查房間成員資格** | 要利用得先拿到受害者的**隨機 UUID sid**，而 sid 只在已受 `_verify_room_access` 保護的房間內揭露；反之在 SDP 路徑加嚴格成員檢查，極可能打斷冷啟動 join 競態——正是本子系統「單點修改幾乎必然造成回歸」的典型 | 要做就連同 §4 的 join 時序一起重測，並補進 `tests/test_call_signaling.py` |
+| 3 | Socket 連線的 `userId` 是**自稱**的（socket 層同樣沒有 JWT） | 同 #1，是同一個根問題的不同切面 | 隨 #1 一起解 |
+
+**第十七輪實際補起來的洞**（都已上線，見 §8）：
+`test-fall` 未授權觸發、`frame` 可偽造推流、音訊橋接可開進**任意裝置**（最嚴重）、
+`acknowledge` 可偽造／消音、警報清單可列舉任意長輩、音訊橋接查詢洩漏 `from_id`/`to_device_id`、
+`delete-device` 可遠端踢任意裝置。
 
 ---
 
@@ -1324,6 +1577,105 @@ socket 連線輪詢、降級 UI 移除、全域 watchdog 錯誤復原。
 全部遷移至本檔（`CLAUDE_call-monitor.md`），並在各 AI 記憶檔加上強制先讀本檔的指示。
 順帶修正 §7.3 列出的 12 項文件與程式碼不符處。
 
+### 2026-08-04 — 第十五輪：九項稽核（CCTV / YOLO / 訂閱）
+> ⚠️ **補記**（2026-08-05 第十七輪時才回填）。當時未即時記錄，內容依程式碼中的
+> `★ 2026-08-04 第 N 項` 註解與記憶檔 `project_round15_cctv_yolo_subscription.md` 重建。
+> 程式碼註解是權威。
+
+| 項 | 內容 | 落點 |
+|----|------|------|
+| 3 | ICE 協商加速：`iceCandidatePoolSize` 預蒐候選、`bundlePolicy: max-bundle`、`rtcpMuxPolicy: require`、`sdpSemantics: unified-plan` | `signaling.dart::_generateDynamicTURNConfig()`（:826）⚠️ **不是** `_configuration`，見 §7.3 #13 |
+| 4 | 訂閱到期／設備超量彈窗改為**每次進入畫面只提示一次**，不再每次重新整理都彈 | `family_main_screen.dart`:79、:588、:614 |
+| 6 | 訂閱層級（free / gold / diamond）在家屬端要一眼分辨得出來 | `family_interaction_tab.dart`:20、:1193 |
+| 7 | **CCTV → YOLO 影格推送**與**警報語音橋接**：`_pushCctvFrame` 每 2 秒推一張、`audio-bridge` 30 分鐘單向語音（家屬 → 監視機） | `elder_screen.dart`:57/90/106/387、`family_interaction_tab.dart`:46/82/111/154 |
+| B1/B2/B3 | `elder-unbound` 監聽器改為冪等註冊（原本直接掛 `socket?.on` 會在重連後失效）、連線失敗補重試、join 參數診斷 log | `family_main_screen.dart`:135/183/187/223/277/326 |
+
+**幾個容易記錯的事實**（都被實測推翻過一次）：
+- 「每 2 秒推一幀」是**由後端推論窗口反推**得到的節奏，不是任意選的。
+- `device_id` 用的 `elder_id` 必須**去掉前綴**（見 §6.9）。
+- 設備數量限制是「**同一 IP 合計 5 台**」的硬上限，且**只排除自己那一列**。
+- `captureFrame` 產出的是 **PNG**（不是 JPEG）。
+
+### 2026-08-05 — 第十六輪：家屬→長輩三態全滅（角色鍵分歧）
+> ⚠️ **補記**，同上。依 `main.dart`:60-76/205-212/1464-1470 與記憶檔
+> `project_videocall_round16_role_key_split.md` 重建。
+
+**症狀**：家屬 → 長輩的來電，在長輩端 **APP 內／APP 外／被殺死三種狀態全部收不到**；
+反方向（長輩 → 家屬）完全正常。
+
+**根因**：角色有**兩個鍵**（`user_role` / `saved_role`），不同寫入者各寫各的；
+`splash_screen` 校正時**只改記憶體裡的 `appRole`，沒有寫回 prefs**
+→ FCM 背景 isolate 每次都讀到殘留的 `'family'`
+→ BG handler 的長輩 CallKit 分支**恆不成立**。
+**撥出**方向不讀這個鍵，所以失效是**不對稱**的——這就是關鍵線索。
+
+**修復**：
+- 前端 `_deriveMyRoleFromCall(senderRoleRaw, localRole)`（`main.dart`:76）：
+  由**來電 payload 的發起方角色反推本機角色**，不再直接採信本機 prefs。
+  兩處採用：BG handler（:212）與角色反轉判定（:1470，原本用 `appRole == senderRole`）。
+- 後端補上 elder 在線 socket 的**內容鍵**查詢與對稱診斷 log。
+
+### 2026-08-05 — 第十七輪：連線可靠性、監控可用性、跌倒測試、**全面安全稽核**
+
+> 本輪分兩段：**A. 使用者提出的 5 項功能需求**（1-5），**B. 使用者追加的安全稽核**。
+
+#### A. 功能需求
+
+| # | 需求／症狀 | 根因 | 修復 |
+|---|-----------|------|------|
+| **1** | 家屬端判別長輩 `isOnline` 太慢，要求收斂到 **2.5 秒** | `onElderDevicesUpdate` 的 debounce 是「每收到事件就 cancel + 重排 2500ms」的**雙向** debounce，而輪詢週期也正好 2500ms、後端還會廣播給房內每個家屬 socket → debounce 幾乎永遠在 fire 之前就被下一個事件取消 → `_isElderOnline` 與 `_monitorDevices` **長期停在初始值** | 清單與「離線→上線」**立即套用**；只有「上線→離線」做一次性 2.5s 確認，計時器用 `??=` 建立**永不重啟**。→ **G40**。這同時是需求 3「家屬端看不到監視機」的根因之一 |
+| **2** | 跨網域／網路不穩時，會出現「**WebRTC 連線成功、通話計時已跳動，但雙端完全沒有影音**」 | **三個獨立缺陷疊加**：(a) TURN 只送 `uban_elder_<id>` 帳號，但 Coturn 實際只有靜態帳號 `uban` → 被回 **401** → 拿不到任何 relay 候選 → 同網域靠 srflx 還能通、跨網域對稱 NAT 必然配不出 pair；(b) 通話計時與「已連線」UI 綁在 `onTrack`／`onAddRemoteStream` 上，而它只代表 **SDP 談成**；(c) 連線失敗時沒有任何回報，UI 停在假裝已連線的畫面 | (a) 靜態帳號**放第一組**，per-elder 帳號降為附加 → **G39**；(b) 改由 `onPeerConnected` 觸發，取 `onConnectionState` 與 `onIceConnectionState` 的**聯集** → **G37**；(c) 新增**媒體看門狗**：收到 remote track 後 12s 檢查 `inbound-rtp.bytesReceived`，仍為 0 就據實回報並安全返回主畫面 → **G38** |
+| **3** | 監控機已連線，家屬端列表**不顯示監視器名稱**、無法點開、也退不回來 | 顯示不出來 = 問題 1 的 debounce 死結（`_monitorDevices` 停在初始值）。退不回來 = `VideoCallScreen` 結束一律走 `pushAndRemoveUntil` 重建主畫面 | 修 debounce（同 #1）；`VideoCallScreen` 新增 **`returnByPop`**（預設 `false`），CCTV 檢視傳 `true` 改走 `pop()`，並在 `true` 時渲染「← 返回」鍵。**預設值不可改**，見 §5.3 |
+| **4** | YOLO 尚無法實測，需要一個**「跌倒測試」**鈕，走與真實偵測完全相同的通知路徑 | — | 長輩端 CCTV 畫面新增「🚨 跌倒測試」→ `POST /api/cctv/test-fall` → 與 YOLO 共用 `yolo_alert_dispatcher.dispatch`。家屬端補齊**亮螢幕（WakelockPlus）+ 獨立 channel 通知 + TTS 朗讀 + 彈窗**。**附帶抓到的既有 bug**：`_insert_alert` 是 UPSERT 且沿用原 `alert_id`，只用 `alertId` 去重會讓第二次以後的警報完全靜默 → 改用 `alertId + timestamp` 複合鍵 → **G41** |
+| **5** | 「怎麼測 YOLO 跌倒偵測比較合適」 | — | 已答覆並寫入 **§6.11**（分派送鏈／推論兩階段測；姿勢比時間重要，10-15 秒足夠，不需要趴好幾分鐘；鏡頭要拍得到全身） |
+
+#### B. 安全稽核（使用者追加：「為所有與雙向通話與單向監控的功能都做安全檢查」）
+
+**稽核時發現的根本問題**：後端**會發** JWT，但**沒有任何 router 把 `get_current_user` 當 dependency**，
+前端也從不送 `Authorization` 標頭 —— **整個 App API 實質上未認證**。
+硬上 JWT 會讓每一幀 CCTV 推流當場 401、監控與通話全滅，
+因此採取 **(a) 一律開啟的關係驗證 + (b) 選用的共用密鑰** 雙軌策略：
+**所有檢查都是現行合法客戶端本來就會通過的**，不改變任何既有行為；
+要更硬的保護則透過預設維持現狀的環境變數開啟。
+
+新增 `uban-api/services/call_security.py`（環境變數**在呼叫時讀取**，不與 `load_dotenv()` 順序耦合）。
+
+| # | 位置 | 洞 | 修補 |
+|---|------|----|------|
+| 1 | `POST /api/cctv/test-fall` | 無驗證、無開關，任何人可對任意長輩觸發真實緊急警報 + 高優先級 FCM | 開關（**預設關**）+ 密鑰 + 長輩存在 + 裝置歸屬，四道 |
+| 2 | `POST /api/cctv/frame` | 無驗證，可冒充任意長輩推影格讓 YOLO 判出跌倒 | 密鑰 + 長輩存在（DB 抖動時放行，可用性優先） |
+| 3 | `POST /api/alerts/{id}/audio-bridge` | **最嚴重**——可把 30 分鐘單向語音開進**任意裝置** | `from_id` 關係驗證 + `to_device_id` 歸屬驗證 |
+| 4 | Socket `audio-bridge-request` | 同 #3；另有既有缺陷：延長權限的 SQL **沒帶 `to_device_id`**，會延長到別台裝置 | 同上 + SQL 補 `AND to_device_id = %s`（兩處） |
+| 5 | `POST /api/alerts/{id}/acknowledge` | 可偽造確認者、可消音真實警報 | 關係驗證 |
+| 6 | Socket `cctv-alert-ack` | 同 #5 | 關係驗證 |
+| 7 | `GET /api/alerts/{elder_id}` | 可列舉任意長輩的跌倒史與快照 URL | `user_id` 改為**必填** + 關係驗證（安全前提：全專案**零呼叫端**） |
+| 8 | `GET /api/alerts/audio/{id}` | 洩漏 `from_id` / `to_device_id` | 新增選填 `user_id`；未驗證時**不回傳**這兩個欄位 |
+| 9 | Socket `delete-device` | 任何連線者可遠端踢掉任意裝置並清掉其 FCM token | 發送者必須是該長輩 comm/monitor 房間的成員 → **G46** |
+
+**刻意不改的三項**（連同理由）記在 **§7.4**：整體未認證的架構問題、
+SDP `targetId` 轉發不檢查房間成員、socket `userId` 自稱。
+
+**新增護欄**：G37（連線判定取聯集）、G38（媒體看門狗掛 `onTrack`）、G39（TURN 靜態帳號優先）、
+G40（在線判定 debounce 不可重啟）、G41（警報複合去重鍵）、G42（警報彈窗旗標不進單例）、
+G43（test-fall 預設關）、G44（REST/Socket 授權強度一致）、G45（無權回 404）、G46（delete-device 驗身分）。
+
+**新增檔案**：`uban-api/services/call_security.py`、`lib/services/cctv_alert_notification.dart`。
+**新增環境變數**：`CCTV_TEST_FALL_ENABLED`（預設 `false`）、`CCTV_INGEST_TOKEN`（預設空＝不驗證），見 §6.10。
+
+**API 契約變更**（呼叫端請對照）：
+- `ApiService.triggerTestFall` 回傳 **`Future<String?>`**（原 `Future<bool>`）：`null` = 成功，非 null = 可直接顯示的原因。
+- `ApiService.checkAudioBridge(alertId, {int? userId})` 新增選填 `userId`。
+- `GET /api/alerts/{elder_id}` 的 `user_id` 由無 → **必填**。
+
+**驗證**：`flutter analyze lib` **0 error**（135 項既有 info/warning）、
+改動的 3 個 Dart 檔 `flutter analyze` **No issues found**、
+`python -m py_compile`（`alert.py` / `call_security.py` / `socket_app.py`）OK、
+`pytest tests/test_call_signaling.py -q` **8 passed**、`flutter build apk --debug` BUILD SUCCESSFUL。
+
+> ℹ️ **一項刻意保留的不對稱**：`elder_screen.dart` 仍在 SDP 談成當下就把 `_status` 設為「通話中」，
+> 而計時器只在真正連通時才啟動。因為 `_isInCall` 同時是 `onJoinFailed` 讀取的**並發守衛**，
+> 把它延後到 ICE 連通會打開一個並發窗口。顯示文字與計時器不同步是**已知且可接受**的。
+
 ---
 
 ## 9. 驗證與除錯
@@ -1342,7 +1694,9 @@ python -m py_compile services/socket_app.py main.py
 python -m pytest tests/test_call_signaling.py -q   # 目前基準：8 passed，不可退步
 ```
 
-> 既有 ~137 項 `withOpacity` 等 info/warning 是歷史遺留，**不算退步**，但你改動的檔案必須 0 issue。
+> 既有 **135** 項 `withOpacity` 等 info/warning 是歷史遺留，**不算退步**，但你改動的檔案必須 0 issue。
+> `flutter analyze` 只要有任何 issue 就 **exit code 1**，這**不代表失敗**——看的是 `error` 的數量。
+> `flutter analyze lib` 冷跑要 300 秒以上；只想確認自己改的檔案時，直接把檔案路徑列在後面（約 45 秒）。
 
 ### 9.2 真機驗收矩陣
 
@@ -1357,6 +1711,9 @@ python -m pytest tests/test_call_signaling.py -q   # 目前基準：8 passed，�
 | 7 | 緊急通話（家屬端發起） | 不得瞬間無提示掛斷；長輩端自動接聽、鏡頭強制開啟 |
 | 8 | 長輩端登出 → 快速登入同一長輩 | 成功，且裝置角色維持原本的通訊機／監控機 |
 | 9 | 通話中一端掛斷 | 另一端顯示 dialog 提示 2 秒後才回首頁（不可瞬間跳走） |
+| 10 | **雙端接不同網域**（一端 Wi-Fi、一端行動網路）互撥 | 進房後**看得到對方影像、聽得到聲音**。若失敗，必須在 12 秒內跳出「無法建立影音連線」並安全返回主畫面，**不可**停在有計時卻沒畫面的假連線 |
+| 11 | 長輩監控機上線／下線 | 家屬端列表**最遲 2.5 秒**出現／移除監視器名稱；點「觀看 CCTV」可進入，按「← 返回」回到原本的分頁（**不是**重建主畫面） |
+| 12 | `.env` 開 `CCTV_TEST_FALL_ENABLED=true` → 按「🚨 跌倒測試」**連按兩次** | 家屬端（含**熄屏**狀態）**兩次都**亮螢幕 + 通知 + 朗讀 + 彈窗。改回 `false` 後再按 → SnackBar 顯示「測試端點未啟用」而非靜默無反應 |
 
 ### 9.3 三層數據定位法（「收不到來電」的標準診斷）
 
@@ -1434,16 +1791,36 @@ python -m pytest tests/test_call_signaling.py -q   # 目前基準：8 passed，�
 5. 在 §8 補一筆修復記錄（日期 / 症狀 / 根因 / 修復 / 驗證）
 6. 若新增了不可回退的設計 → 在 §7 補一條護欄
 7. 若發現本文件與程式碼不符 → 修本文件並在 §7.3 記一筆
+8. **把本檔複製到另一個 repo 的鏡像**（見檔首警告），確認 `diff -q` 兩份完全相同
 ```
 
-### 10.4 git 規範
+> 📌 **使用者常規要求**：「每次更新程式後都記錄在 `CLAUDE_call-monitor.md`，
+> 若有重複則簡要合併並由**新覆蓋舊**」。第 5-8 步不是可選的。
+
+### 10.4 新增／修改「監控或警報」端點時的安全檢查表
+
+> 第十七輪稽核的結論：**每個動作都有 REST 與 Socket 兩個入口，只補一邊等於沒補。**
+
+- [ ] 這個端點會不會**寫入**或**觸發推播**？→ 必須做 `is_user_linked_to_elder()` 關係驗證
+- [ ] 會不會指定「對哪一台裝置」？→ 必須做 `is_device_of_elder()` 歸屬驗證
+- [ ] 同一動作的 **Socket handler** 也補了嗎？（`routers/alert.py` ↔ `services/socket_app.py`）
+- [ ] 無權的回應是 **404** 而不是 403 嗎？（G45）
+- [ ] 回應 payload 有沒有洩漏未驗證者不該看到的欄位？
+- [ ] 是**測試／除錯**用的端點嗎？→ 必須有預設關閉的環境開關（G43）
+- [ ] 是**裝置**（非使用者）呼叫的端點嗎？→ 支援 `X-Uban-Device-Token`，且**留空時維持現行行為**
+- [ ] 新增的環境變數寫進 `.env.example` 了嗎？（含「為什麼」與「不設定的風險」）
+
+### 10.5 git 規範
 
 - **commit message 一律繁體中文**
 - 只在使用者明確要求時 commit / push
-- 本專案有**三個獨立 git repo**：`D:\114project\.git`、`D:\114project\Uban\.git`、`D:\114project\uban-api\.git`
+- 實際可用的 git repo 有**兩個**：`D:\114project\Uban\.git` 與 `D:\114project\uban-api\.git`
   → 跨端改動要分別 commit
+  > ⚠️ `D:\114project\.git` 是**空目錄、無法運作**，不要對它下 git 指令。
+  > 這也是本檔必須在兩個 repo 各留一份鏡像的原因。
+- 🚫 這兩個 repo **永遠不要跑 `git clean`**
 
-### 10.5 給後續 AI 的最後提醒
+### 10.6 給後續 AI 的最後提醒
 
 這個子系統的每一層兜底、每一個看似冗餘的判斷，
 都對應一次真機回報的故障和一輪追查。**它看起來複雜，是因為它真的很複雜。**

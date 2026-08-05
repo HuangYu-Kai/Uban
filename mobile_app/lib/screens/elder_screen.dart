@@ -50,6 +50,10 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   Timer? _callTimer;
   int _callDuration = 0; // 秒數
 
+  /// ★ 2026-08-05 第十七輪：跌倒測試按鈕的防連點旗標（暫時性測試入口，
+  ///   YOLO 可實測後連同按鈕一起移除）。
+  bool _testFallSending = false;
+
   /// ★ 2026-08-04 第 7 項：CCTV 影格推送給後端做 YOLO 跌倒偵測。
   /// 只在 `widget.isCCTVMode == true` 時啟動——一般通話路徑完全不建立這個計時器、
   /// 不呼叫 captureFrame，位元組層級與修改前相同，不影響通話品質與時序。
@@ -316,16 +320,24 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
 
     _signaling.onAddRemoteStream = ((stream) {
       debugPrint("📺 [ElderScreen] Remote stream added! Tracks: ${stream.getTracks().length}");
+      // ★ 2026-08-05 第十七輪：onAddRemoteStream 只代表 SDP 談成，不代表 ICE 已連通、
+      //   有任何媒體在流動，_startCallTimer() 改移到真正連上時才觸發的 onPeerConnected。
       if (mounted) {
-        setState(() { 
-          _remoteRenderer.srcObject = stream; 
-          _status = "通話中"; 
+        setState(() {
+          _remoteRenderer.srcObject = stream;
+          _status = "通話中";
           _isInCall = true;
           _callDuration = 0;
         });
-        _startCallTimer();
       }
     });
+
+    // ★ 2026-08-05 第十七輪：ICE 真正連通時才開始計時，避免「有通話計時卻沒有影音」的假象。
+    _signaling.onPeerConnected = () {
+      if (mounted) {
+        _startCallTimer();
+      }
+    };
 
     _signaling.onJoinFailed = (errorMessage) {
       // ★ issue 5：通話已建立時，忽略遲到的 join-failed（例如重新 join 房間時的競態），
@@ -482,6 +494,25 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
         setState(() {
           _remoteRenderer.srcObject = null;
           _status = "連線中斷";
+          _isInCall = false;
+        });
+        if (!widget.isCCTVMode) {
+          safeNavigateBack(context, _buildFallbackHome());
+        }
+      }
+    };
+
+    // ★ 2026-08-05 第十七輪：ICE 連線失敗時據實回報並安全返回主畫面，避免通話停在
+    //   「已連線」卻完全沒有影音的假狀態。沿用本檔既有的「掛斷後安全導航」方法。
+    _signaling.onPeerConnectionFailed = (msg) {
+      _callTimer?.cancel();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg)),
+        );
+        setState(() {
+          _remoteRenderer.srcObject = null;
+          _status = "連線失敗";
           _isInCall = false;
         });
         if (!widget.isCCTVMode) {
@@ -650,6 +681,34 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     });
   }
 
+  /// ★ 2026-08-05 第十七輪：暫時性測試入口——模擬 YOLO 判定跌倒。
+  /// 後端 `POST /api/cctv/test-fall` 走的是與真實偵測完全相同的
+  /// `dispatch_yolo_alert()`（寫入 emergency_alerts → Socket 'cctv-alert' → FCM 高優先級），
+  /// 只跳過「影像判定」那一段。YOLO 可實測後，此方法與對應按鈕可一併移除。
+  Future<void> _sendTestFallAlert() async {
+    if (_testFallSending) return;
+    setState(() => _testFallSending = true);
+    // 🚨 必須傳 _rawElderId（去掉 monitor_elder_ / comm_elder_ 前綴的原始 elder_id）。
+    //    後端以 monitor_device_id(elder_id, device_name) 推導 device_id，
+    //    若送整串 room_id，推導值會與 /cctv/frame 那條路徑算出來的不一致，
+    //    家屬端的設備卡片高亮就永遠對不上。
+    // ★ 2026-08-05 第十七輪（安全）：後端此端點預設關閉，回傳的字串即為原因
+    //   （未啟用開關／密鑰錯誤／查無此監視機），null 才代表成功。
+    //   直接把原因顯示出來，否則使用者只會看到「送出失敗」而不知道要去 .env 開開關。
+    final err = await ApiService.triggerTestFall(
+      elderId: _rawElderId,
+      deviceName: widget.deviceName,
+    );
+    if (!mounted) return;
+    setState(() => _testFallSending = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(err ?? '已送出跌倒測試警報'),
+        duration: Duration(seconds: err == null ? 2 : 6),
+      ),
+    );
+  }
+
   String _formatDuration(int seconds) {
     final mins = seconds ~/ 60;
     final secs = seconds % 60;
@@ -773,6 +832,8 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     _signaling.onCallBusy = null;
     _signaling.onCallEnded = null;
     _signaling.onConnectionLost = null;
+    _signaling.onPeerConnected = null;
+    _signaling.onPeerConnectionFailed = null;
     _signaling.onAddRemoteStream = null;
     _signaling.onLocalStream = null;
     _signaling.onJoinFailed = null;
@@ -877,6 +938,49 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
                             style: TextStyle(
                               color: Colors.white,
                               fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                // ★ 2026-08-05 第十七輪：暫時性的跌倒測試入口，位於「退出監視機」正下方。
+                //   按下後走與 YOLO 真實偵測完全相同的派送路徑（見 _sendTestFallAlert）。
+                //   YOLO 可實測後，這整個 Positioned 可以直接刪除。
+                Positioned(
+                  top: MediaQuery.of(context).padding.top + 56,
+                  right: 16,
+                  child: GestureDetector(
+                    onTap: _testFallSending ? null : _sendTestFallAlert,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.6),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.white30, width: 1),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (_testFallSending)
+                            const SizedBox(
+                              width: 12,
+                              height: 12,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            )
+                          else
+                            const Text('🚨', style: TextStyle(fontSize: 12)),
+                          const SizedBox(width: 6),
+                          const Text(
+                            '跌倒測試',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
                               fontWeight: FontWeight.w600,
                             ),
                           ),

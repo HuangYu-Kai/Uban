@@ -28,6 +28,21 @@ class ApiService {
   // 統一超時時間
   static const Duration _timeout = Duration(seconds: 15);
 
+  /// ★ 2026-08-05 第十七輪（安全）：監視機推流／跌倒測試端點的共用密鑰。
+  ///
+  /// 後端 `POST /api/cctv/frame` 的下游就是「偽造跌倒 → 對家屬強制點亮螢幕」，
+  /// 原本無任何驗證。後端在 `.env` 設定 `CCTV_INGEST_TOKEN` 後即要求此標頭；
+  /// **未設定時後端完全維持舊行為**，故這裡留空也不會打斷現有部署。
+  ///
+  /// 注入方式比照 `SERVER_IP` / `TURN_PASS`，絕不寫死在程式碼內：
+  ///   flutter run --dart-define=CCTV_INGEST_TOKEN=<與後端 .env 相同的字串>
+  static const String _cctvIngestToken =
+      String.fromEnvironment('CCTV_INGEST_TOKEN', defaultValue: '');
+
+  /// 空字串時回傳空 Map，讓呼叫端可無條件展開（`...`）而不需分支。
+  static Map<String, String> get _deviceTokenHeader =>
+      _cctvIngestToken.isEmpty ? {} : {'X-Uban-Device-Token': _cctvIngestToken};
+
   static Future<Map<String, dynamic>> register({
     required String username,
     required String email,
@@ -878,6 +893,7 @@ class ApiService {
         'POST',
         Uri.parse('$baseUrl/cctv/frame'),
       );
+      request.headers.addAll(_deviceTokenHeader);
       request.fields['elder_id'] = elderId;
       request.fields['device_name'] = deviceName;
       request.files.add(
@@ -888,6 +904,45 @@ class ApiService {
     } catch (e) {
       debugPrint('⚠️ pushCctvFrame error: $e');
       return false;
+    }
+  }
+
+  /// ★ 2026-08-05 第十七輪：POST /api/cctv/test-fall，觸發與 YOLO 相同的跌倒警報派送路徑。
+  /// 暫時性測試入口，YOLO 可實測後即可移除。後端該端點是 `Form(...)`，故用
+  /// application/x-www-form-urlencoded（body 傳 Map，http 套件會自動編碼並設定
+  /// Content-Type），欄位名沿用後端的 snake_case（elder_id / device_name）。
+  /// ★ 2026-08-05 第十七輪（安全）：後端此端點**預設關閉**，且回傳的
+  /// `detail` 會明講關閉／無密鑰／查無監視機三種原因。若這裡照舊只回 bool，
+  /// 使用者按下測試鍵只會看到「送出失敗」而無從得知要去 .env 開開關，
+  /// 因此改回傳 **錯誤訊息字串**：`null` 代表成功，非 null 就是可直接顯示的原因。
+  static Future<String?> triggerTestFall({
+    required String elderId,
+    required String deviceName,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/cctv/test-fall'),
+            headers: _deviceTokenHeader,
+            body: {'elder_id': elderId, 'device_name': deviceName},
+          )
+          .timeout(_timeout);
+      if (response.statusCode == 200) return null;
+      // FastAPI 的 HTTPException 一律以 {"detail": "..."} 回傳
+      String detail = '送出失敗（HTTP ${response.statusCode}）';
+      try {
+        final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+        if (decoded is Map && decoded['detail'] != null) {
+          detail = decoded['detail'].toString();
+        }
+      } catch (_) {
+        // body 不是 JSON 就沿用上面的預設訊息
+      }
+      debugPrint('⚠️ triggerTestFall 被拒: ${response.statusCode} $detail');
+      return detail;
+    } catch (e) {
+      debugPrint('⚠️ triggerTestFall error: $e');
+      return '無法連線到後端，請確認網路狀態';
     }
   }
 
@@ -944,11 +999,20 @@ class ApiService {
 
   /// ★ 2026-08-04 第 7 項：查詢某警報目前是否有有效的音頻橋。
   /// GET /api/alerts/audio/{alert_id}
-  static Future<Map<String, dynamic>?> checkAudioBridge(int alertId) async {
+  ///
+  /// ★ 2026-08-05 第十七輪（安全）：新增選填 `userId`。後端有帶就驗證
+  /// 「此人是否為該警報長輩的本人或已配對家屬」，並在通過後才回傳
+  /// `from_id` / `to_device_id`；未帶則只回布林狀態與到期時間。
+  /// 呼叫端請一律帶上，讓它走完整驗證分支。
+  static Future<Map<String, dynamic>?> checkAudioBridge(
+    int alertId, {
+    int? userId,
+  }) async {
     try {
-      final response = await http
-          .get(Uri.parse('$baseUrl/alerts/audio/$alertId'))
-          .timeout(_timeout);
+      final uri = Uri.parse('$baseUrl/alerts/audio/$alertId').replace(
+        queryParameters: userId == null ? null : {'user_id': '$userId'},
+      );
+      final response = await http.get(uri).timeout(_timeout);
       final data = _safeDecode(response);
       if (data['status'] == 'success') {
         return data['data'];

@@ -35,6 +35,8 @@ import 'services/signaling.dart' as sig;
 import 'services/api_service.dart';
 import 'services/video_call_permission_service.dart';
 import 'services/local_call_notification.dart';
+// ★ 2026-08-05 第十七輪：YOLO／測試跌倒警報的高優先級通知（與來電備援 channel 分開）
+import 'services/cctv_alert_notification.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 final StreamController<String> callKitDeclineStream =
@@ -117,6 +119,22 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         }
       } catch (_) {}
     }
+    // ★ 2026-08-05 第十七輪：YOLO／測試跌倒警報。必須放在下方的型別白名單**之前**，
+    //   否則會被那道 `type != ...` 的過濾直接丟掉（白名單本身不動，避免影響來電路徑）。
+    //   背景 isolate 不做 TTS（在裸 isolate 不可靠），改由 fullScreenIntent 通知
+    //   點亮螢幕並發聲；使用者打開 App 後由前景路徑（family_main_screen）朗讀。
+    //   這裡完全不碰任何來電去重狀態（lastProcessedCallId / pendingAcceptedCall），
+    //   警報與來電是兩條互不相干的通路，混用共用 token 必然造成來電被吃掉。
+    if (type == 'cctv-alert') {
+      debugPrint('🚨 [BG] 收到 CCTV 警報，顯示高優先級通知');
+      try {
+        await CctvAlertNotification.show(message.data);
+      } catch (e) {
+        debugPrint('⚠️ [BG] 跌倒警報通知失敗: $e');
+      }
+      return;
+    }
+
     if (type != 'call-request' && type != 'emergency-call' && type != 'cancel-call' && type != 'force-logout') {
       debugPrint('⚠️ [BG] Ignoring message of type: $type');
       return;
@@ -1418,6 +1436,20 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           }
         } catch (_) {}
       }
+      // ★ 2026-08-05 第十七輪：YOLO／測試跌倒警報（前景 FCM）。
+      //   APP 在前景時 Socket 的 'cctv-alert' 才是主通路（family_main_screen 會彈窗＋朗讀），
+      //   這裡只補一則系統通知當備援，並且**絕對不碰**來電去重狀態
+      //   （_claimCallDedupToken / lastProcessedCallId）——那條 token 只屬於來電通路。
+      if (message.data['type'] == 'cctv-alert') {
+        debugPrint("🚨 [FCM-Fg] 收到 CCTV 警報，補發系統通知");
+        try {
+          await CctvAlertNotification.show(message.data);
+        } catch (e) {
+          debugPrint("⚠️ [FCM-Fg] 跌倒警報通知失敗: $e");
+        }
+        return;
+      }
+
       if (message.data['type'] == 'call-request' || message.data['type'] == 'emergency-call') {
         if (_isExpiredCallPayload(message.data)) {
           debugPrint("⏰ [FCM-Backup] 忽略過期來電 (callId=${message.data['callId']})");

@@ -54,8 +54,13 @@ class Signaling {
   CallRequestCallback? onCancelCall;
   CallRequestCallback? onEmergencyCall;
   CallAcceptedCallback? onCallAcceptedByRemote;
-  CallAcceptedCallback? onCallBusy; 
-  VoidCallback? onConnectionLost; 
+  CallAcceptedCallback? onCallBusy;
+  VoidCallback? onConnectionLost;
+  /// ★ 2026-08-05 第十七輪：ICE **真正**連通（RTCPeerConnectionStateConnected）時觸發。
+  /// `onAddRemoteStream` 只代表 SDP 談成，不代表有任何媒體流動，不可用來判定通話已建立。
+  VoidCallback? onPeerConnected;
+  /// ICE 連線失敗且自動 ICE restart 也救不回來時觸發（參數為給使用者看的訊息）。
+  ErrorCallback? onPeerConnectionFailed;
   Function(String message)? onHeartbeatMessage; // 新增：主動式心跳消息回傳
   Function(String text, String type)? onNewPondLeaf; // 新增：記憶落葉話題推播
 
@@ -80,6 +85,10 @@ class Signaling {
   final List<RTCIceCandidate> _candidateQueue = [];
   final List<String> _pendingRooms = [];
   final Set<String> _invalidCallIds = <String>{};
+  /// ★ 2026-08-05 第十七輪：`onTrack` 只代表 SDP 談成，ICE 是否連通、有沒有位元組
+  /// 在流動完全無關。這裡在收到遠端 track 後 12 秒檢查一次 inbound-rtp 的
+  /// bytesReceived，仍為 0 就據實回報 —— 這正是「有通話計時卻雙方都看不到聽不到」的症狀。
+  Timer? _mediaWatchdogTimer;
 
   /// ★ 2026-07-22 第八輪 Fix 2C：供 main.dart FCM handler 於拒接/取消時標記
   ///   callId 失效，後續延遲抵達的同一 `call-request`（Socket 或 FCM）將直接丟棄，
@@ -816,17 +825,12 @@ class Signaling {
   // ★ 根據 elder_id 生成動態的 TURN 憑證
   Map<String, dynamic> _generateDynamicTURNConfig() {
     String turnUsername = _turnUser;
-    String turnPassword = _turnPass;
 
-    // 如果有 elder_id，根據 elder_id 生成隔離的憑證
+    // 如果有 elder_id，根據 elder_id 生成隔離用的使用者名稱（僅供除錯輸出）
     if (_elderId != null && _elderId!.isNotEmpty) {
       // ★ 使用 elder_id 作為 TURN 用戶名的後綴，實現通訊隔離
       // 格式: uban_elder_{elder_id}
       turnUsername = '${_turnUser}_elder_$_elderId';
-
-      // ★ 生成基於 elder_id 的密碼
-      // 這可以確保每個 elder 有獨立的認證通道
-      turnPassword = _turnPass; // 保持相同的密碼，由伺服器驗證 elder_id
 
       debugPrint("🔐 [TURN] 生成 elder_id 隔離的 TURN 憑證:");
       debugPrint("   elder_id: $_elderId");
@@ -835,18 +839,26 @@ class Signaling {
     } else {
       debugPrint("⚠️ [TURN] 未找到 elder_id，使用預設 TURN 憑證");
     }
-    
+
     return {
       'iceServers': [
         {'urls': 'stun:stun.l.google.com:19302'},
         {
-          'urls': [
-            'turn:$_turnServer',
-            'turn:$_turnServer?transport=tcp',
-          ],
-          'username': turnUsername,
-          'credential': turnPassword,
+          // ★ 2026-08-05 第十七輪：Coturn 實際只有靜態帳號 uban（README.md:338-343，
+          //   lt-cred-mech + user=uban:115207）。原本只送 `uban_elder_<id>` 會被回 401，
+          //   拿不到任何 relay 候選；同網域靠 srflx 還能通，跨網域對稱 NAT 就必然
+          //   「SDP 談成、ICE 配不出 pair」→ 有通話計時卻零影音。靜態帳號必須放第一組。
+          'urls': ['turn:$_turnServer', 'turn:$_turnServer?transport=tcp'],
+          'username': _turnUser,
+          'credential': _turnPass,
         },
+        // 若日後 Coturn 真的開了 per-elder 帳號，這組會被一併嘗試，不影響上面那組。
+        if (_elderId != null && _elderId!.isNotEmpty)
+          {
+            'urls': ['turn:$_turnServer', 'turn:$_turnServer?transport=tcp'],
+            'username': '${_turnUser}_elder_$_elderId',
+            'credential': _turnPass,
+          },
       ],
       // ★ 2026-08-04 第 3 項：縮短連線建立時間。以下四項都不改變媒體路徑，
       //   只影響 ICE 協商的效率，與雙軌設計（信令走 Tailscale、媒體走 Coturn）無關。
@@ -871,21 +883,44 @@ class Signaling {
     peerConnection = await createPeerConnection(config);
     
     var iceGatheringCount = 0;
-    peerConnection!.onIceConnectionState = (state) {
-      debugPrint("❄️ ICE Connection State: $state");
-    };
 
+    // ★ 2026-08-05 第十七輪：onConnectionState 改為真正回報連線狀態，不只 debugPrint。
+    //   不做 ICE restart（已查證，不要自行加回去）：restart offer 會送進對端的
+    //   socket!.on('offer')（來電流程），沒有 callId → isKnownAcceptedCall 為 false →
+    //   shouldAnswer = false → offer 被靜默丟棄，純粹是死碼；而若 onIncomingCall
+    //   當下有註冊，還會在通話中彈出第二個來電提示。要做對必須在後端
+    //   services/socket_app.py 新增獨立的 renegotiate 轉發事件——那是全專案風險最高的
+    //   檔案，收益（B-1 修好後 Failed 應極罕見）遠低於回歸風險。本輪只做「據實回報」。
     peerConnection!.onConnectionState = (state) {
       debugPrint("🔌 [Signaling] Connection State: $state");
       if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
         debugPrint("✅ [Signaling] P2P Connection Established!");
+        onPeerConnected?.call();
       } else if (state == RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
         debugPrint("❌ [Signaling] P2P Connection Failed!");
+        onPeerConnectionFailed?.call('無法建立影音連線（雙方網路環境不支援），請改用行動網路或其他 Wi-Fi 再試');
       }
+      // Disconnected / Closed 不處理：Disconnected 常會自行恢復，
+      // 誤判會把正常通話砍掉；真的救不回來時瀏覽器/原生層會轉成 Failed。
     };
-    
+
     peerConnection!.onIceConnectionState = (state) {
       debugPrint("🧊 [Signaling] ICE Connection State: $state");
+      // ★ 2026-08-05 第十七輪（硬化）：不要把「已連通」單押在 onConnectionState 上。
+      //   flutter_webrtc 在部分 Android 原生層 onConnectionState 回報並不完整，一旦它沒
+      //   觸發，正常通話會完全不計時——那比修復前更糟。故 ICE 進入 Connected/Completed
+      //   時同樣視為已連通，兩條原生回呼取聯集。
+      //   兩端的 onPeerConnected 實作都是冪等的（video_call_screen.dart 與
+      //   elder_screen.dart 的 _startCallTimer() 都以 _callTimer?.cancel() 開頭，
+      //   setState 也只是把旗標設為 true），重複觸發無副作用。
+      //   ⚠️ 只擴大「連通」這個良性訊號，**絕對不要**把 RTCIceConnectionStateFailed 接到
+      //   onPeerConnectionFailed——那條路徑會直接拆掉通話，而 ICE 層的 Failed 有機會自行
+      //   恢復，接上去等於製造「通話中途無故被掛斷」的新回歸。失敗判定維持只由
+      //   onConnectionState 的 Failed 分支與媒體看門狗負責。
+      if (state == RTCIceConnectionState.RTCIceConnectionStateConnected ||
+          state == RTCIceConnectionState.RTCIceConnectionStateCompleted) {
+        onPeerConnected?.call();
+      }
     };
 
     peerConnection!.onIceCandidate = (candidate) {
@@ -917,6 +952,10 @@ class Signaling {
     
     peerConnection!.onTrack = (event) {
       debugPrint("🛤️ [Signaling] Received Remote Track: kind=${event.track.kind}, enabled=${event.track.enabled}");
+      // ★ 2026-08-05 第十七輪：只有真的收到 remote track 才啟動媒體看門狗——
+      //   startMonitoring() 的 recvonly 端本來就不會有 remote track，
+      //   以此為前提就不可能誤殺監控連線（詳見 _startMediaWatchdog 說明）。
+      _startMediaWatchdog();
       if (event.streams.isNotEmpty && onAddRemoteStream != null) {
         debugPrint("✅ [Signaling] Adding remote stream with ${event.streams.length} stream(s)");
         onAddRemoteStream!(event.streams[0]);
@@ -924,7 +963,7 @@ class Signaling {
         debugPrint("⚠️ [Signaling] Remote track received but no onAddRemoteStream callback or streams empty");
       }
     };
-    
+
     if (useLocalStream && localStream != null) {
       final tracks = localStream!.getTracks();
       debugPrint("📍 [Signaling] Adding ${tracks.length} local tracks to PeerConnection:");
@@ -941,6 +980,41 @@ class Signaling {
     } else {
       debugPrint("📍 [Signaling] useLocalStream=false, not adding local tracks (receive-only mode)");
     }
+  }
+
+  /// ★ 2026-08-05 第十七輪：媒體看門狗。`onTrack` 只代表 SDP 談成，收到 remote track
+  /// 後 12 秒檢查一次 inbound-rtp 的 bytesReceived 總和，仍為 0 就代表雖然「看似連線」
+  /// 卻完全沒有任何影音位元組在流動，據實回報（onPeerConnectionFailed）而不是讓 UI
+  /// 停在假裝已連線的畫面。只由 onTrack 呼叫，不掛在 onConnectionState 的 Connected
+  /// 分支——startMonitoring() 建立的是 recvonly 監控連線，那一端本來就不會收到任何
+  /// remote track、也永遠不會有 inbound-rtp，若掛在 Connected 上會誤殺監控連線。
+  void _startMediaWatchdog() {
+    _mediaWatchdogTimer?.cancel();
+    _mediaWatchdogTimer = Timer(const Duration(seconds: 12), () async {
+      try {
+        final pc = peerConnection;
+        if (pc == null) return;
+        final reports = await pc.getStats();
+        double bytesReceived = 0;
+        for (final report in reports) {
+          if (report.type == 'inbound-rtp') {
+            final value = report.values['bytesReceived'];
+            if (value is num) {
+              bytesReceived += value.toDouble();
+            }
+          }
+        }
+        if (bytesReceived > 0) {
+          debugPrint('✅ [Signaling] 媒體看門狗：已收到 $bytesReceived bytes，連線正常');
+        } else {
+          debugPrint('❌ [Signaling] 媒體看門狗：12 秒內 inbound-rtp bytesReceived 仍為 0');
+          onPeerConnectionFailed?.call('影音無法傳輸，請確認雙方網路環境後重新撥打');
+        }
+      } catch (e) {
+        // 看門狗本身絕不可讓通話掛掉，任何例外都只記錄。
+        debugPrint('⚠️ [Signaling] 媒體看門狗檢查失敗（不影響通話）: $e');
+      }
+    });
   }
 
   /// ★ 2026-08-04 第 3 項：拉高視訊送出端的位元率與幀率上限。
@@ -1077,7 +1151,10 @@ class Signaling {
     _closePeerConnection();
     _currentCallId = null;
     _isCreatingOffer = false; // ⭐ 重置 createOffer flag
-    
+    // ★ 2026-08-05 第十七輪：媒體看門狗屬於單次通話狀態，一併清除。
+    _mediaWatchdogTimer?.cancel();
+    _mediaWatchdogTimer = null;
+
     // 僅清除與「單次通話連線」相關的介面回調
     onAddRemoteStream = null;
     onLocalStream = null;
@@ -1098,9 +1175,12 @@ class Signaling {
     }
     _currentCallId = null;
     _isCreatingOffer = false; // ⭐ 重置 createOffer flag
-    
+    // ★ 2026-08-05 第十七輪：媒體看門狗屬於單次通話狀態，一併清除。
+    _mediaWatchdogTimer?.cancel();
+    _mediaWatchdogTimer = null;
+
     _closePeerConnection();
-    
+
     if (disposeLocalStream) {
       stopMedia();
     }
@@ -1111,6 +1191,10 @@ class Signaling {
   }
 
   Future<void> _closePeerConnection() async {
+    // ★ 2026-08-05 第十七輪：PeerConnection 即將關閉，媒體看門狗不再需要，避免關閉後
+    //   仍觸發 12 秒後的 getStats() 檢查。
+    _mediaWatchdogTimer?.cancel();
+    _mediaWatchdogTimer = null;
     if (peerConnection != null) {
       // ★ 在關閉之前確保所有 track 都被移除和停止
       for (var sender in await peerConnection!.getSenders()) {
