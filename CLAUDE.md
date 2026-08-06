@@ -2,6 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> 🚨 **CRITICAL RULE / 文件同步更新鐵律**: 
+> 任何時候新增、修改或重構系統功能（包含 API 端點、資料庫 Schema、UI 介面、連線機制、TTS/AI 引擎、通話權限等），**必須同步更新相對應的 README.md 文檔**（`Uban/README.md` 及 `Uban-api/readme.md`），確保系統文檔 100% 保持最新且與實作無落差。
+
 ## 1. Common Commands
 
 ### Flutter Frontend (`Uban/mobile_app/`)
@@ -79,9 +82,9 @@ Signaling and media travel on **physically separate hosts** and must never be me
 **Rationale**: Camera access requires HTTPS. Tailscale Funnel provides free HTTPS but is **TCP-only**. Real-time video requires UDP, which needs a dedicated public IP (Oracle Cloud).
 
 Key service addresses:
-- Signaling: `https://localhost-0.tail5abf5e.ts.net`
+- uban-api (FastAPI 後端 + Socket.IO 信令): `https://localhost-0.tail5abf5e.ts.net`
+- AI Server (Ollama AI 引擎): `https://boyo-desktop.tail531c8a.ts.net`
 - TURN/STUN: `turn:152.69.196.5:3478`
-- Ollama AI: `https://boyo-desktop.tail531c8a.ts.net`
 - MySQL: `100.73.39.14:3306` (Tailscale)
 
 ### 2.2 Signaling Singleton & WebRTC Flow
@@ -724,3 +727,9 @@ FCM 發送遇 `UnregisteredError` 時同步清除 DB `user_fcm_token`，避免�
     - 使用者主動登出（`elder_tabs/elder_profile_tab.dart::_handleLogout`）**不可清除**這組鍵——它清 `caregiver_id`/`caregiver_name`，而 `_quickLoginSameElder` 正是讀那些鍵，這正是「快速登入抓不到上次 session」的根因。
     - `_quickLoginSameElder` 回退時**必須一併還原 `device_role_$room` 與 `saved_is_cctv`**：否則會重新 `hasCommDevice` 重判裝置角色，誤判成 monitor 就觸發 #18 的整條 bug 鏈。
     - 只有家屬端遠端 `force-logout`（強制解綁）才連同清除。
+
+27. **全域音訊焦點共存 (Audio Focus Coexistence) 設定 (2026-08-04 第十四輪)**
+    - `lib/main.dart` 啟動階段必須設定 `AudioPlayer.global.setAudioContext(AudioContext(android: const AudioContextAndroid(stayAwake: true, contentType: AndroidContentType.music, usageType: AndroidUsageType.media, audioFocus: AndroidAudioFocus.none)))`。
+    - **禁止改回**預設獨佔焦點（`AndroidAudioFocus.GAIN` / `GAIN_TRANSIENT`）。
+    - **原因**：長輩端全時語音喚醒 (`SpeechToText`) 運作時，若播放器強搶音訊焦點，系統會發送 `-2` (`AUDIOFOCUS_LOSS_TRANSIENT`) 導致音訊/新聞/TTS播音自動暫停。設定 `AndroidAudioFocus.none` 確保媒體播放與語音喚醒 100% 完全平行共存。
+
