@@ -401,6 +401,16 @@ void initPedometer() {
 
 ## 更新日誌
 
+> 以下標註 ✍️ 的條目是 2026-08-06 回頭從 git 紀錄補寫的——當時有做但沒寫進日誌。
+> 內容依 commit 訊息重建，細節可能不如當事人寫得完整。
+
+### 2026-08-06 💬 AI 對話歷史持久化與 YouTube 播放修復 ✍️
+
+- **對話歷史持久化**：AI 聊天記錄改為保存，重開 App 不再從零開始。
+- **YouTube 全螢幕返回迴圈修復**：全螢幕播放時的返回手勢會卡在迴圈裡，已修正。
+
+---
+
 ### 2026-08-06 🔐 機構管理端加上三角色權限分層
 
 > 機構員工分 **管理員／督導／照服員**，登入後看到的東西不一樣。
@@ -417,6 +427,13 @@ void initPedometer() {
 
 實作與完整權限矩陣見 `uban-api/readme.md` 的同日更新日誌，
 以及 `uban-api/uban-admin/README.md`。
+
+---
+
+### 2026-08-05 🎥 監控與 YOLO 更新 ✍️
+
+CCTV 監控與 YOLO 跌倒偵測的一輪更新（後端對應 `uban-api` 的
+`services/yolo_alert_dispatcher.py` 與警報端點）。
 
 ---
 
@@ -456,6 +473,16 @@ Dockerfile 的 webbuild stage 已在乾淨目錄乾跑過（`npm ci` → 複製�
 ⚠️ **尚未實際部署**。另注意 `deploy.yml` 是 `set -e` 且 `podman build` 在
 `podman rm` **之前**，所以萬一前端建置失敗，只會讓部署不生效（Actions 紅字），
 **舊容器會繼續跑，API 不會斷**。
+
+---
+
+### 2026-08-01 ✨ 家屬端玻璃擬態改版與真實數據對接 ✍️
+
+- **長輩時光牆重構**：改為 Luxury Glassmorphism 介面，掃除原本的純文字牆與重複時間軸。
+- **最新警示區塊**：重構為暗黑極光玻璃風格，關懷卡改為動態對接、
+  優化「當日真實日誌」的相符演算法。
+- **氣象台與全模組真實數據對接**：新增動態累積步數統計、關懷卡互動與警示預覽。
+- **視訊修復**：修好合併後「App 內長輩端無法打給家屬端」。
 
 ---
 
@@ -504,6 +531,49 @@ Dockerfile 的 webbuild stage 已在乾淨目錄乾跑過（`npm ci` → 複製�
 - 上架前 `test_` 金鑰須換為 `goog_` / `appl_`。
 - Test Store 訂閱僅約 5 分鐘到期，測試時徽章自然消失屬正常。
 
+---
+
+### 2026-07-28 🗂️ 家屬端生活足跡：分類卡片、關鍵字雲與日期篩選 ✍️
+
+- **全部足跡模式**：新增預設模式，完整呈現長輩歷來所有活動紀錄與主題。
+- **主題分類卡片**：時間軸與主題分類極光卡片整合，附詳情 bottom sheet；
+  卡片內文與副標題改為 **100% 由長輩真實活動日誌動態合成**（不再寫死）。
+- **話題關鍵字雲**：升級為近 50 筆日誌 ＋ AI 後端動態加權萃取。
+- **雙向心意互動**：家屬可回應長輩的活動。
+- 日期篩選 chips ＋ 日期選擇器、冗長日誌文字摘要化並可展開完整對話、
+  時間戳記改相對格式（今天／昨天／歷史日期）。
+
+---
+
+### 2026-07-26 🌌 家屬端首頁改版（AI 心情雷達 / 破冰卡片 / 回憶膠囊）✍️
+
+- 新增 **AI 心情雷達**、**破冰卡片**、**長輩生活足跡**、**回憶膠囊** 四個區塊，
+  並與後端 API 動態綁定。
+- 全頁背景與底部列統一為暗色太空主題，心情雷達與生活時間軸改霓虹暗色玻璃擬態。
+- 新增下拉更新（RefreshIndicator）。
+
+---
+
+### 2026-07-23 🔗 AI 聊天可點連結直達新聞與視訊 ✍️
+
+- **聊天泡泡內可點連結**：AI markdown 回覆中的新聞與視訊通話連結可直接點擊開啟。
+- **精準跳轉**：解析分類與新聞 ID，直接落在 `NewsListenPlayerScreen` 的該則新聞。
+- **TTS 改直接 URL 串流**：不再下載 base64 再播，改為直接串流播放。
+- 新增防抖鎖與載入提示，避免重複導航到新聞播放器。
+- 新聞觀看行為回寫後端，供 AI 做個人化新聞推薦。
+
+---
+
+### 2026-07-20 🎙️ 語音鏈路改為自製錄音 + Whisper ASR ✍️
+
+- **取代 `speech_to_text`**：改用自製 `AudioRecorder`，上傳到本機 AI Server 的
+  Whisper ASR 轉寫。
+- **轉寫後先填入輸入框**：切到鍵盤模式讓使用者確認後再送出，不再直接發送。
+- **TTS 播放與國台語切換**：聊天室標頭新增語言切換。
+- AI 聊天改 **SSE 串流 ＋ markdown 渲染**；修復 `_isThinking` 未重置導致的畫面凍結。
+
+---
+
 ### 2026-07-15 🎨 長輩端 UI 全面改造（統一設計語言 + 毛玻璃 + 適老化）
 
 > **只改 UI、不動功能邏輯**（WebRTC 信令 / 背景 GPS / API service / 登入-CCTV 路由全程未修改）。分支 `newui`。客群定位：**不太會用手機的獨居長輩**。
@@ -532,6 +602,25 @@ Dockerfile 的 webbuild stage 已在乾淨目錄乾跑過（`npm ci` → 複製�
 **待接後端**（見上文「🔌 待接後端資料」）：會員等級、健康資料、步數/活動量同步（長輩端與子女端共用）。
 
 **子女端**：本次未改動。
+
+---
+
+### 2026-07-14 🔑 長輩端登入 / Session / CCTV 五項修復 ✍️
+
+長輩端登入流程、Session 保存與 CCTV 監控模式的一輪修復，
+並在 `ElderScreen` 的 CCTV 監控模式新增登出按鈕。
+
+---
+
+### 2026-07-10 📞 通話穩定性長期修復（第一～十三輪）✍️
+
+> 07-10 至 07-27 之間針對「來電收不到 / 接聽進不了視訊房 / 雙端未同步終止」
+> 做了十三輪修復，橫跨 Flutter 與後端 `socket_app.py`。
+
+因為輪次多且互相牽連，**完整根因鏈與修改位置記在 `CLAUDE.md` 第 5 節「Fix Records」**，
+那裡也列出了不可單點修改的護欄清單（目前 26 條）。這裡只留指標，避免兩份文件不同步。
+
+---
 
 ### 2026-06-11 📞 通話/監視器/綁定 15 項問題修復
 
@@ -589,12 +678,20 @@ Dockerfile 的 webbuild stage 已在乾淨目錄乾跑過（`npm ci` → 複製�
 
 ---
 
+### 2026-06-08 🩺 醫療免責與隱私權授權視窗 ✍️
+
+新增醫療免責與隱私權授權視窗；並修復長語音輸入卡在「聆聽中」毛玻璃畫面的競態問題。
+
+---
+
 ### 2026-05-26 📰 代誌報給你知（沉浸式新聞播放器）技術文件補完
 **補齊代誌報給你知（新聞朗讀播放器）的完整系統設計與底層同步定位技術文檔**
 
 #### 🚀 核心更新
 - **技術文件歸檔**：已依據規範於 [代誌報給你知技術設計與實作紀錄](file:///c:/Users/tung0/Desktop/Uban/Uban/docs/technical/NEWS_LISTEN_PLAYER.md) 中完整記錄系統架構、CNA 爬蟲與背景預生成機制，以及卡拉 OK 字元染色與「瞬移置中」字幕定位數學公式。
 - **開發指引對接**：同步更新 `CLAUDE.md` 以鏈接並說明該技術文件，提供統一的開發導航。
+
+---
 
 ### 2026-05-26 🍂 時光日記目錄與 RAG 自動回憶落葉功能升級
 **重構時光日記對話歷史，新增分類目錄管理與基於長期記憶 (RAG) 的話題落葉生成**
@@ -604,6 +701,8 @@ Dockerfile 的 webbuild stage 已在乾淨目錄乾跑過（`npm ci` → 複製�
 - **RAG 長期記憶話題生成**：前端對接後端 `/api/ai/generate_pond_leaf` RAG 端點。在日記目錄中增設「🍂 喚起腦海中的回憶落葉」按鈕，點擊時 AI 自動從 Pinecone 提取長輩長期回憶並轉化為溫馨的對話話題以黃色記憶落葉飄落至水面。
 - **技術文件歸檔**：已依據規範於 [時光日記目錄與 RAG 話題落葉功能技術紀錄](file:///c:/Users/tung0/Desktop/Uban/Uban/docs/technical/DIARY_DIRECTORY_AND_RAG_LEAF.md) 中完整記錄系統架構與分頁歸檔邏輯。
 
+---
+
 ### 2026-05-21 🐟 「魚你聊聊」正式更名與後端測試碼大掃除
 **將長輩端陪伴池塘命名為「魚你聊聊」，並清理 uban-api 中所有多餘的測試程式碼與臨時腳本**
 
@@ -611,6 +710,8 @@ Dockerfile 的 webbuild stage 已在乾淨目錄乾跑過（`npm ci` → 複製�
 - **正式更名為「魚你聊聊」**：使用好記親切的諧音梗「魚你聊聊」 (Yuni Chat) 替換原本文謅謅的「禪意池塘 (Zen Pond)」，並重構與更新所有前端說明手冊 (`docs/technical/YUNI_CHAT_MANUAL.md`)、系統架構圖及相關開發文件。
 - **後端冗餘測試清理**：精簡後端 `uban-api/tests` 與 `scratch` 目錄，刪除 30 多個 Legacy 和臨時測試腳本，僅保留 6 個核心維護測試檔案，並同步更新 CLAUDE.md 中的測試套件清單。
 - **語音與推播鏈路整合**：優化 Socket.IO `new-pond-leaf` 事件監聽與語音播報機制，確保長輩在「魚你聊聊」中能即時接收由 Pinecone 檢索生成的長期記憶黃色落葉話題。
+
+---
 
 ### 2026-05-19 📍 高速移動背景判斷 (Silent Mode)
 **GPS 追蹤增強：自動偵測高速移動，背景靜默暫停記錄無需通知用戶**
@@ -635,6 +736,29 @@ Dockerfile 的 webbuild stage 已在乾淨目錄乾跑過（`npm ci` → 複製�
 - `mobile_app/lib/screens/elder_tabs/elder_profile_tab.dart`：修改 `_TrackingStateChip.build()` 邏輯
 
 ---
+
+### 2026-04-22 🐷 全景互動室效能革命 + 寵物生活系統
+
+**將原本卡頓的 3D 場景重構為高效能 2D 全景平移架構，FPS 從 5 提升至 60**
+
+#### ✨ 重大更新
+1. **效能神級優化**：
+   - 捨棄 `Positioned` 佈局更新，改用 `Transform.translate` 繪製層級平移，徹底解決 UI Thread 堵塞。
+   - 實作感應器節流 (Throttling)，將取樣頻率穩定在 50Hz (20ms)，避免數據洪水。
+2. **全景視野解放**：
+   - 採用自研 4:3 高畫質全景素材，解決上下視角狹窄問題。
+   - 實作「動態邊界計算」，根據裝置比例自動撐開畫布，保證無黑邊。
+3. **寵物互動點系統**：
+   - 建立 `Hotspot` 機制，讓小豬能識別房間內的家具位置（沙發、餐桌、地毯）。
+   - 實作 `AnimatedPositioned` 座標連動，讓小豬能穿梭於虛擬房間中。
+
+#### 📋 修改檔案
+- `pet_interaction_screen.dart` — 核心架構重寫
+- `main.dart` — 移除過重的測試依賴
+- `pubspec.yaml` — 資源註冊更新
+
+---
+
 ### 2026-04-21 🐖 小豬互動與心情系統全面升級
 **將桌面小豬轉化為具備「體感」與「健康感應」的數位伴侶**
 
@@ -644,6 +768,8 @@ Dockerfile 的 webbuild stage 已在乾淨目錄乾跑過（`npm ci` → 複製�
 - **溫馨豬豬屋 (Pet Profile)**：新增專屬個人介面，透過 **Hero Animation** 實現從首頁到個人頁面的無縫縮放轉場。
 - **全螢幕遊走解鎖**：移除 Y 軸限制，小豬現在可在整個 App 畫面範圍內自由探索。
 - **資產規範與去背工程**：建立 `ASSET_STYLE_GUIDE.md` 並實作 Python 去背腳本，確保擴充資產視覺品質。
+
+---
 
 ### 2026-04-20 🐖 小豬桌寵「靈魂化」：2D 卡通動畫系統實裝
 **從靜態圖片進化為具有多狀態的動態桌寵**
@@ -656,6 +782,7 @@ Dockerfile 的 webbuild stage 已在乾淨目錄乾跑過（`npm ci` → 複製�
 - **洪水填充去背 (Flood-fill Alpha)**：採用精準的邊緣偵測去背，保護眼睛內部的白色亮點，修復了先前「空心眼」的視覺問題。
 - **全域視覺統一**：同步更新排行榜、個人檔案分頁，確保全 App 小豬形象一致。
 
+---
 
 ### 2026-04-16 🧹 專案大掃除 + 模型同步
 **完全移除 Legacy 代碼，同步生產環境模型資訊**
@@ -672,64 +799,6 @@ Dockerfile 的 webbuild stage 已在乾淨目錄乾跑過（`npm ci` → 複製�
 - `ollama_service.py` 預設模型更新為 `gemma4:e4b-it-q4_K_M`。
 - `test_ollama.py` 與 `diagnose_ollama.py` 同步更新。
 - 修正 `README.md` 中的架構圖與功能對照表。
-
----
-
-### 2026-04-12 🏗️ 雙軌制架構遷移 + WebRTC 影像修復
-**TURN 伺服器從 Tailscale 遷移至 Oracle Cloud + 修復遠端影像黑屏**
-
-#### 🏗️ 架構變更：雙軌制 (Dual-Track)
-
-| | 舊架構 | 新架構 |
-|--|--------|--------|
-| 信令 | Tailscale (TCP) | Tailscale (TCP) — 不變 |
-| TURN/媒體 | Tailscale 內網 `100.73.39.14` | Oracle Cloud `152.69.196.5` (UDP) |
-| 原因 | Tailscale Funnel 不支援 UDP，TURN 走 TCP 會卡頓 | Oracle 有獨立公網 IP，直接走 UDP |
-
-**修改檔案**
-- `signaling.dart` — TURN 預設值 `100.73.39.14` → `152.69.196.5`
-- `webrtc_test.html` — TURN URI 預設值更新
-- `README.md` — 完整重寫架構圖、連線資訊表、TURN 配置段落
-- `CLAUDE.md` × 2 — 更新架構說明與 TURN 配置
-- `.geminirules` × 2 — 更新架構約束
-- `.cursorrules` — 更新 TURN 說明
-
-#### 🐛 WebRTC 影像修復 (webrtc_test.html v1.1)
-1. **ICE Candidate 排隊機制** — 解決 candidate 在 `setRemoteDescription` 之前到達時被丟棄
-2. **ontrack fallback 處理** — 當 `e.streams` 為空時使用 fallback MediaStream
-3. **增強診斷日誌** — track 狀態、SDP 大小等詳細日誌
-
----
-
-### 2026-04-11 🎥 視訊功能完整實裝 + TURN 配置 + 測試工具
-**7 個檔案修改，補完視訊通話所有缺失功能**
-
-#### 🔧 修改內容
-
-**新增檔案**
-- `webrtc_test.html` — 瀏覽器版 WebRTC 測試工具（含 TURN 驗證）
-- `CLAUDE.md` × 2 — Claude AI 開發指引（前端 + 後端）
-
-**signaling.dart (4 處修改)**
-1. **TURN 伺服器配置** — 新增 coturn ICE server（含 TCP 備援）
-2. **移除 VoidCallback 重定義** — 避免與 Flutter 內建衝突
-3. **openUserMedia 支援純語音** — 新增 `videoEnabled` 參數
-4. **防止重複 Offer** — `call-accept` handler 改為條件觸發
-
-**video_call_screen.dart (完整重寫)**
-- ✅ 麥克風靜音/取消靜音
-- ✅ 鏡頭開關
-- ✅ 前後鏡頭切換
-- ✅ 揚聲器切換
-- ✅ 通話計時器 (mm:ss)
-- ✅ Glassmorphism 底部控制列
-- ✅ 單一 createOffer 入口（防止重複）
-
-**elder_screen.dart** — 新增 `isVideoCall` 參數（語音模式不啟動攝影機）
-**elder_home_tab.dart** — 傳遞 `isVideo` 給 ElderScreen
-**socket_app.py** — 修正 `debugPrint()` → `print()`
-**requirements.txt** — 合併 `python-socketio[asgi,asyncio_client]`
-**.geminirules** × 2 — 全面更新（含通話流程、角色差異、ICE 配置）
 
 ---
 
@@ -826,6 +895,64 @@ Dockerfile 的 webbuild stage 已在乾淨目錄乾跑過（`npm ci` → 複製�
 
 ---
 
+### 2026-04-12 🏗️ 雙軌制架構遷移 + WebRTC 影像修復
+**TURN 伺服器從 Tailscale 遷移至 Oracle Cloud + 修復遠端影像黑屏**
+
+#### 🏗️ 架構變更：雙軌制 (Dual-Track)
+
+| | 舊架構 | 新架構 |
+|--|--------|--------|
+| 信令 | Tailscale (TCP) | Tailscale (TCP) — 不變 |
+| TURN/媒體 | Tailscale 內網 `100.73.39.14` | Oracle Cloud `152.69.196.5` (UDP) |
+| 原因 | Tailscale Funnel 不支援 UDP，TURN 走 TCP 會卡頓 | Oracle 有獨立公網 IP，直接走 UDP |
+
+**修改檔案**
+- `signaling.dart` — TURN 預設值 `100.73.39.14` → `152.69.196.5`
+- `webrtc_test.html` — TURN URI 預設值更新
+- `README.md` — 完整重寫架構圖、連線資訊表、TURN 配置段落
+- `CLAUDE.md` × 2 — 更新架構說明與 TURN 配置
+- `.geminirules` × 2 — 更新架構約束
+- `.cursorrules` — 更新 TURN 說明
+
+#### 🐛 WebRTC 影像修復 (webrtc_test.html v1.1)
+1. **ICE Candidate 排隊機制** — 解決 candidate 在 `setRemoteDescription` 之前到達時被丟棄
+2. **ontrack fallback 處理** — 當 `e.streams` 為空時使用 fallback MediaStream
+3. **增強診斷日誌** — track 狀態、SDP 大小等詳細日誌
+
+---
+
+### 2026-04-11 🎥 視訊功能完整實裝 + TURN 配置 + 測試工具
+**7 個檔案修改，補完視訊通話所有缺失功能**
+
+#### 🔧 修改內容
+
+**新增檔案**
+- `webrtc_test.html` — 瀏覽器版 WebRTC 測試工具（含 TURN 驗證）
+- `CLAUDE.md` × 2 — Claude AI 開發指引（前端 + 後端）
+
+**signaling.dart (4 處修改)**
+1. **TURN 伺服器配置** — 新增 coturn ICE server（含 TCP 備援）
+2. **移除 VoidCallback 重定義** — 避免與 Flutter 內建衝突
+3. **openUserMedia 支援純語音** — 新增 `videoEnabled` 參數
+4. **防止重複 Offer** — `call-accept` handler 改為條件觸發
+
+**video_call_screen.dart (完整重寫)**
+- ✅ 麥克風靜音/取消靜音
+- ✅ 鏡頭開關
+- ✅ 前後鏡頭切換
+- ✅ 揚聲器切換
+- ✅ 通話計時器 (mm:ss)
+- ✅ Glassmorphism 底部控制列
+- ✅ 單一 createOffer 入口（防止重複）
+
+**elder_screen.dart** — 新增 `isVideoCall` 參數（語音模式不啟動攝影機）
+**elder_home_tab.dart** — 傳遞 `isVideo` 給 ElderScreen
+**socket_app.py** — 修正 `debugPrint()` → `print()`
+**requirements.txt** — 合併 `python-socketio[asgi,asyncio_client]`
+**.geminirules** × 2 — 全面更新（含通話流程、角色差異、ICE 配置）
+
+---
+
 ### 2026-04-09 🎙️ WebRTC 信令流程完整修復
 **修復內容：自動媒體協商 + 精準信令轉發 + 完整資源釋放**
 
@@ -875,9 +1002,13 @@ Dockerfile 的 webbuild stage 已在乾淨目錄乾跑過（`npm ci` → 複製�
 - **[Feature]** 家屬端自動獲取配對長輩並連線到正確房間
 - **[Docs]** 更新 `TEST_CALL_SIMULATOR_GUIDE.md` 測試指南
 
+---
+
 ### 2026-04-02
 
 - **[Docs]** 文檔整合：合併 CLAUDE.md、feedgawa_intro.md
+
+---
 
 ### 2026-04-01
 
@@ -886,6 +1017,8 @@ Dockerfile 的 webbuild stage 已在乾淨目錄乾跑過（`npm ci` → 複製�
 - **[AI] Heartbeat 機制**：每 20 分鐘主動關懷
 - **[AI] 新增技能**：`save_elder_memory`、`search_web`、`get_music_recommendations`
 - **[DevOps] run.sh/run.ps1**：新增 Ollama 連線檢測
+
+---
 
 ### 2026-03-31
 
@@ -1061,26 +1194,4 @@ Dockerfile 的 webbuild stage 已在乾淨目錄乾跑過（`npm ci` → 複製�
 
 ---
 
-### 2026-04-22 🐷 全景互動室效能革命 + 寵物生活系統
-
-**將原本卡頓的 3D 場景重構為高效能 2D 全景平移架構，FPS 從 5 提升至 60**
-
-#### ✨ 重大更新
-1. **效能神級優化**：
-   - 捨棄 `Positioned` 佈局更新，改用 `Transform.translate` 繪製層級平移，徹底解決 UI Thread 堵塞。
-   - 實作感應器節流 (Throttling)，將取樣頻率穩定在 50Hz (20ms)，避免數據洪水。
-2. **全景視野解放**：
-   - 採用自研 4:3 高畫質全景素材，解決上下視角狹窄問題。
-   - 實作「動態邊界計算」，根據裝置比例自動撐開畫布，保證無黑邊。
-3. **寵物互動點系統**：
-   - 建立 `Hotspot` 機制，讓小豬能識別房間內的家具位置（沙發、餐桌、地毯）。
-   - 實作 `AnimatedPositioned` 座標連動，讓小豬能穿梭於虛擬房間中。
-
-#### 📋 修改檔案
-- `pet_interaction_screen.dart` — 核心架構重寫
-- `main.dart` — 移除過重的測試依賴
-- `pubspec.yaml` — 資源註冊更新
-
----
-
-📝 *最後更新：2026/05/19*
+📝 *最後更新：2026/08/06*
