@@ -466,7 +466,9 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
       }
 
       int targetIndex = 0;
-      int idx = newsItems.indexWhere((it) => it['id']?.toString() == newsIdStr);
+      int idx = newsItems.indexWhere((it) => 
+          it['id']?.toString() == newsIdStr || 
+          (it['title'] != null && newsIdStr.isNotEmpty && (it['title'].toString().contains(newsIdStr) || newsIdStr.contains(it['title'].toString()))));
       debugPrint('🎙️ [News Match Check] targetIdStr: $newsIdStr, category: $category, foundIdx: $idx, itemsCount: ${newsItems.length}');
 
       if (idx == -1 && category != 'all') {
@@ -477,7 +479,9 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
           final fallbackItems = fallbackResp['data']['items'];
           if (fallbackItems is List) {
             final parsedFallback = fallbackItems.map((e) => Map<String, dynamic>.from(e)).toList();
-            final fIdx = parsedFallback.indexWhere((it) => it['id']?.toString() == newsIdStr);
+            final fIdx = parsedFallback.indexWhere((it) => 
+                it['id']?.toString() == newsIdStr || 
+                (it['title'] != null && newsIdStr.isNotEmpty && (it['title'].toString().contains(newsIdStr) || newsIdStr.contains(it['title'].toString()))));
             if (fIdx != -1) {
               newsItems = parsedFallback;
               targetIndex = fIdx;
