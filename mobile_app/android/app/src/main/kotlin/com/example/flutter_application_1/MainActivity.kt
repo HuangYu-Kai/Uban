@@ -10,6 +10,12 @@ class MainActivity : FlutterActivity() {
     private val channel = "com.example.app/bring_to_front"
 
     // ★ issue 3：來電（尤其鎖屏/螢幕關閉）時，讓 Activity 顯示在鎖定畫面之上並點亮螢幕。
+    // ★ 2026-08-05 第十八輪（需求 4）：過去無條件呼叫 requestDismissKeyguard +
+    //   FLAG_DISMISS_KEYGUARD，在有設定 PIN / 圖形 / 指紋等安全鎖的裝置上會強制彈出
+    //   解鎖畫面，使用者必須先解鎖才能進入通話——這正是「無法跳過螢幕鎖」的成因。
+    //   改為比照 LINE 的作法：靠 setShowWhenLocked(true) 讓通話畫面直接蓋在鎖定畫面
+    //   之上、不主動解鎖；只有裝置「沒有」設定安全鎖（單純滑動鎖）時才呼叫
+    //   requestDismissKeyguard 把它收起來，體驗較好。
     private fun showOverLockScreen() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
@@ -19,8 +25,7 @@ class MainActivity : FlutterActivity() {
         window.addFlags(
             android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
                 android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
-                android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
-                android.view.WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
+                android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
         )
         try {
             val powerManager = getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager
@@ -34,9 +39,32 @@ class MainActivity : FlutterActivity() {
         }
         try {
             val keyguardManager = getSystemService(android.content.Context.KEYGUARD_SERVICE) as android.app.KeyguardManager
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            // ★ 只有裝置「沒有」設定安全鎖（isKeyguardSecure == false）時才主動收起
+            //   keyguard；已設定 PIN/圖形/指紋的裝置一律不呼叫，讓通話畫面直接顯示在
+            //   鎖定畫面之上，避免強迫使用者先解鎖才能接聽。
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !keyguardManager.isKeyguardSecure) {
                 keyguardManager.requestDismissKeyguard(this, null)
             }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    // ★ 2026-08-05 第十八輪（需求 4）：通話結束後還原鎖屏行為。
+    //   不還原的話，setShowWhenLocked(true) 會讓 APP 永久蓋在鎖定畫面之上，
+    //   使用者按電源鍵後仍能直接看到 APP 內容（體驗與隱私都不對）。
+    private fun restoreLockScreen() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                setShowWhenLocked(false)
+                setTurnScreenOn(false)
+            }
+            @Suppress("DEPRECATION")
+            window.clearFlags(
+                android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                    android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+                    android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+            )
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -74,6 +102,14 @@ class MainActivity : FlutterActivity() {
                 when (call.method) {
                     "bringToFront" -> {
                         forceBringToFront()
+                        result.success(true)
+                    }
+                    "showOverLockScreen" -> {
+                        showOverLockScreen()
+                        result.success(true)
+                    }
+                    "restoreLockScreen" -> {
+                        restoreLockScreen()
                         result.success(true)
                     }
                     else -> result.notImplemented()

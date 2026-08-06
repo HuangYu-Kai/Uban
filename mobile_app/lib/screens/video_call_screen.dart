@@ -1,5 +1,6 @@
 // lib/screens/video_call_screen.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'dart:async';
 import 'dart:ui';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
@@ -117,9 +118,10 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     // ★ 2026-08-05 第十七輪：ICE 連線失敗時據實回報並安全返回主畫面，而不是讓通話停在
     //   「已連線」但零影音的假狀態。
     _signaling.onPeerConnectionFailed = (msg) {
+      debugPrint('⚠️ [VideoCall] PeerConnection 失敗: $msg');
       if (mounted) {
         _stopCallTimer();
-        _showCallRejectedThenGoHome(msg);
+        _showCallProblemThenGoHome(kCallFailUnreachable);
       }
     };
 
@@ -136,18 +138,17 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     _signaling.onCallEnded = () {
       if (mounted) {
         _stopCallTimer();
-        // ★ 2026-07-27 第十三輪：原本用 SnackBar，但緊接著的 _goHomeAfterCall() 是
-        //   pushAndRemoveUntil，會立刻移除本 route，SnackBar 隨之消失 → 使用者看到
-        //   的是「瞬間跳回主畫面、毫無提示」。改用不依附特定 route 的 dialog
-        //   （與 onCallBusy 一致，2026-07-15 第二輪 Issue 6 當時漏改這兩個回調）。
-        _showCallRejectedThenGoHome('對方已掛斷通話');
+        // ★ 2026-08-05 第十八輪（需求 3）：正常掛斷改為靜默直接返回主介面。
+        //   （第十三輪為了讓提示不被 pushAndRemoveUntil 吞掉而改用 dialog，
+        //    現在依使用者要求連提示本身一併移除，dialog 的必要性隨之消失。）
+        _endCallAndGoHome('對方已掛斷通話');
       }
     };
 
     _signaling.onCallBusy = (targetId, callId) {
       if (mounted) {
         _stopCallTimer();
-        _showCallRejectedThenGoHome('對方已拒絕或目前無法接聽通話');
+        _showCallProblemThenGoHome(callBusyMessageFor(_signaling.lastCallBusyReason));
       }
     };
 
@@ -155,8 +156,8 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     _signaling.onConnectionLost = () {
       if (mounted) {
         _stopCallTimer();
-        // ★ 2026-07-27 第十三輪：同 onCallEnded，SnackBar 會被 pushAndRemoveUntil 吞掉。
-        _showCallRejectedThenGoHome('網路連線中斷');
+        // ★ 2026-07-27 第十三輪：SnackBar 會被 pushAndRemoveUntil 吞掉，必須用 dialog。
+        _showCallProblemThenGoHome(kCallFailDisconnected);
       }
     };
 
@@ -441,6 +442,16 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   //   行為完全不變；這裡另外再檢查一次 canPop，pop 不了就退回原本的重建主畫面。
   void _goHomeAfterCall() {
     if (!mounted) return;
+    // ★ 2026-08-05 第十八輪（需求 4）：通話結束 → 還原鎖屏行為，
+    //   否則 setShowWhenLocked(true) 會讓 APP 一直蓋在鎖定畫面之上。
+    //   `invokeMethod` 是非同步的，PlatformException 會以 Future 錯誤丟出，
+    //   同步 try/catch 接不到，必須用 catchError。
+    const MethodChannel('com.example.app/bring_to_front')
+        .invokeMethod('restoreLockScreen')
+        .catchError((e) {
+      debugPrint('⚠️ [VideoCall] restoreLockScreen 失敗: $e');
+      return null;
+    });
     if (widget.returnByPop && Navigator.of(context).canPop()) {
       Navigator.of(context).pop();
       return;
@@ -451,14 +462,36 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     );
   }
 
-  void _showCallRejectedThenGoHome(String message) {
+  /// ★ 2026-08-05 第十八輪（需求 3）：依使用者要求移除「通話已結束」對話框。
+  /// **正常結束**的通話（雙方任一端掛斷）不再顯示任何視窗，直接返回主介面。
+  ///
+  /// ⚠️ 只有這條路徑是靜默的。拒接／忙線／斷線／連線失敗仍必須回饋，
+  /// 走 [_showCallProblemThenGoHome] —— 家屬撥出後若毫無提示就跳回主畫面，
+  /// 會分不清是被拒接還是自己誤觸（第八輪拒接回饋、第十七輪媒體看門狗都依賴它）。
+  void _endCallAndGoHome(String reason) {
+    if (!mounted) return;
+    debugPrint('📴 [VideoCall] 通話結束（$reason），直接返回主畫面');
+    _goHomeAfterCall();
+  }
+
+  /// ★ 2026-08-05 第十八輪（需求 3）：**異常**結束時的提示。
+  /// 文案由呼叫端指定（見 `signaling.dart` 的 `kCallFail*` 常數），刻意不再叫「通話已結束」——那個視窗依需求 3 已移除；
+  /// 這裡保留的是「為什麼沒接通」的診斷資訊。
+  ///
+  /// 護欄 G23 仍然適用：**不可改用 `SnackBar`**——緊接的 `_goHomeAfterCall()`
+  /// 是 `pushAndRemoveUntil((route) => false)`，會當場移除本 route
+  /// 讓 SnackBar 一起消失，變成「瞬間跳回主畫面、毫無提示」。
+  void _showCallProblemThenGoHome(String message) {
     if (!mounted) return;
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (_) => AlertDialog(
-        title: const Text('通話已結束'),
-        content: Text(message),
+        content: Text(
+          message,
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+        ),
       ),
     );
     Future.delayed(const Duration(seconds: 2), () {

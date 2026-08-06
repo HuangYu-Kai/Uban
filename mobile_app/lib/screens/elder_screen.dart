@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_tts/flutter_tts.dart';
@@ -46,6 +48,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   bool _isCameraOff = false; // 視訊房間預設開啟鏡頭
   bool _isMuted = false;
   bool _isFrontCamera = true; // ★ issue 12：前/後鏡頭狀態
+  bool _isSpeakerOn = true; // ★ 2026-08-05 第十八輪：擴音(true)／聽筒(false)，與攝像頭開關無關
   bool _mediaInitialized = false;
   Timer? _callTimer;
   int _callDuration = 0; // 秒數
@@ -404,22 +407,26 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     //   避免通話結束回退時錯用 widget.deviceName（裝置暱稱，非長輩本名）。
     _prefsUserName = actualUserName;
     
-    // ★ 修復：若 Socket 已經連線（從 ElderHomeScreen 傳承下來），則不要重新連線，
-    //   否則會導致原本的 callbacks 被覆寫。若是從 CCTV 模式直接進入，則會在此處連線。
-    if (_signaling.socket?.connected != true) {
-      debugPrint("🔌 [ElderScreen] Socket 未連線，開始連線 (room: $_formattedRoomId)...");
-      final String? fcmToken = await FirebaseMessaging.instance.getToken();
-      _signaling.connect(
-        _formattedRoomId,  // ★ 使用格式化的房間ID，而不是原始的 roomId
-        'elder', 
-        userId: resolvedUserId,  // ★ 修復：使用真正的 user_id（caregiver_id）或 elder_id 作為備用
-        deviceName: widget.deviceName,
-        deviceMode: widget.isCCTVMode ? 'monitor' : 'comm',
-        fcmToken: fcmToken,
-      );
-    } else {
-      debugPrint("🔌 [ElderScreen] Socket 已連線，重用現有連線 (room: $_formattedRoomId)");
-    }
+    // ★ 2026-08-05 第十八輪（需求 5）根因修復：
+    //   原本「socket 已連線就完全不呼叫 connect()」會讓監控機在配對後
+    //   停留在 comm_elder_<id>，永遠沒有以 deviceMode:'monitor' 加入
+    //   monitor_elder_<id>，家屬端的遠端視訊列表因此永遠是空的。
+    //   `Signaling.connect()` 內部已有「已連線則只重新 join」的重用分支
+    //   （signaling.dart:169-173），不會重新註冊 listener 或覆寫 callback，
+    //   因此一律呼叫是安全的，且能確保房間與 deviceMode 永遠正確。
+    final String? fcmToken = await FirebaseMessaging.instance.getToken();
+    debugPrint(
+        "🔌 [ElderScreen] 加入房間 $_formattedRoomId "
+        "(mode=${widget.isCCTVMode ? 'monitor' : 'comm'}, "
+        "socketConnected=${_signaling.socket?.connected == true})");
+    _signaling.connect(
+      _formattedRoomId,
+      'elder',
+      userId: resolvedUserId,
+      deviceName: widget.deviceName,
+      deviceMode: widget.isCCTVMode ? 'monitor' : 'comm',
+      fcmToken: fcmToken,
+    );
 
     Future.delayed(const Duration(milliseconds: 100), () {
       _checkPendingEmergency();
@@ -470,9 +477,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
 
     _signaling.onCallBusy = (targetId, callId) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("家人目前無法接聽通話")),
-        );
+        _showElderCallFailToast(callBusyMessageFor(_signaling.lastCallBusyReason));
         // ★ issue 15：對方拒接/忙線時，呼叫端結束「等待連線」狀態並安全返回
         _callTimer?.cancel();
         _activeCallId = null;
@@ -491,6 +496,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     _signaling.onConnectionLost = () {
       _callTimer?.cancel();
       if (mounted) {
+        _showElderCallFailToast(kCallFailDisconnected);
         setState(() {
           _remoteRenderer.srcObject = null;
           _status = "連線中斷";
@@ -507,9 +513,8 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     _signaling.onPeerConnectionFailed = (msg) {
       _callTimer?.cancel();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(msg)),
-        );
+        debugPrint('⚠️ [ElderScreen] PeerConnection 失敗: $msg');
+        _showElderCallFailToast(kCallFailUnreachable);
         setState(() {
           _remoteRenderer.srcObject = null;
           _status = "連線失敗";
@@ -608,6 +613,41 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
 
   }
 
+  /// ★ 2026-08-06 第十九輪（需求 3）：長輩端「沒接通」提示。
+  /// 樣式沿用第十八輪需求 3 敲定的大字級＋深綠底，四種情境只換文案不換樣式。
+  void _showElderCallFailToast(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: const Color(0xFF1A472A),
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+        duration: const Duration(seconds: 4),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+        ),
+        content: Row(
+          children: [
+            const Icon(Icons.phone_missed, color: Colors.white, size: 32),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(
+                message,
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                  height: 1.3,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // ★ 新增：懶加載媒體初始化
   Future<void> _initializeMedia() async {
     if (_mediaInitialized) return;
@@ -619,6 +659,20 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
           track.enabled = !_isCameraOff; // 預設關閉，保護隱私
         }
       }
+
+      // ★ 2026-08-05 第十八輪：無論是否開攝像頭，都要進入通話音訊模式，
+      //   否則 setSpeakerphoneOn 在部分機型上不會生效。
+      if (!kIsWeb && Platform.isAndroid) {
+        try {
+          await Helper.setAndroidAudioConfiguration(
+            AndroidAudioConfiguration.communication,
+          );
+        } catch (e) {
+          debugPrint('⚠️ [ElderScreen] setAndroidAudioConfiguration 失敗: $e');
+        }
+      }
+      _signaling.enableSpeakerphone(_isSpeakerOn);
+
       if (mounted) {
         setState(() => _mediaInitialized = true);
       }
@@ -669,6 +723,15 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       setState(() => _isMuted = !_isMuted);
       _signaling.localStream?.getAudioTracks().forEach((track) => track.enabled = !_isMuted);
     }
+  }
+
+  /// ★ 2026-08-05 第十八輪（需求 1）：切換音訊輸出來源。
+  /// 與攝像頭狀態完全無關——關鏡頭的純語音通話一樣可以切換擴音／聽筒（比照 LINE）。
+  void _toggleSpeaker() {
+    if (!mounted) return;
+    setState(() => _isSpeakerOn = !_isSpeakerOn);
+    _signaling.enableSpeakerphone(_isSpeakerOn);
+    debugPrint("🔊 [ElderScreen] 音訊輸出切換為 ${_isSpeakerOn ? '擴音' : '聽筒'}");
   }
 
   // ★ 新增：通話計時器
@@ -826,7 +889,23 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     
     // ★ 修復：只結束 WebRTC，不要斷開 Socket，這樣回到 ElderHomeScreen 時才能繼續接收推播
     _signaling.hangUp(disconnectSocket: false, disposeLocalStream: false);
-    
+
+    // ★ 2026-08-05 第十八輪（需求 4）：通話畫面離開 → 還原鎖屏行為，讓裝置回到原本的螢幕鎖。
+    //   `showOverLockScreen()` 會設 setShowWhenLocked(true) + FLAG_KEEP_SCREEN_ON，
+    //   不還原的話 APP 會永久蓋在鎖定畫面之上、螢幕也永不休眠。
+    //   監控機（CCTV）刻意排除——它本來就必須維持恆亮才能持續推幀。
+    //   這裡涵蓋所有離開路徑（掛斷／對方掛斷／忙線／斷線／連線失敗／撥打逾時），
+    //   它們最終都會讓本 route 被 pop 或 pushAndRemoveUntil 移除而觸發 dispose()。
+    if (!widget.isCCTVMode) {
+      const MethodChannel('com.example.app/bring_to_front')
+          .invokeMethod('restoreLockScreen')
+          .catchError((e) {
+        debugPrint('⚠️ [ElderScreen] restoreLockScreen 失敗: $e');
+        return null;
+      });
+    }
+
+
     // ★ 清空 UI 相關的 callbacks，讓全域的 callbacks 重拾控制權
     _signaling.onCallAcceptedByRemote = null;
     _signaling.onCallBusy = null;
@@ -1120,7 +1199,30 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
                                   ),
                                 ),
                               ),
-                              
+
+                              // ★ 2026-08-05 第十八輪（需求 1）：擴音／聽筒切換
+                              Container(
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black26,
+                                      blurRadius: 8,
+                                    ),
+                                  ],
+                                ),
+                                child: FloatingActionButton(
+                                  onPressed: _toggleSpeaker,
+                                  heroTag: 'speaker',
+                                  mini: true,
+                                  backgroundColor: _isSpeakerOn ? Colors.blue.shade500 : Colors.grey.shade600,
+                                  child: Icon(
+                                    _isSpeakerOn ? Icons.volume_up : Icons.phone_in_talk,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+
                               // 掛斷按鈕（紅色、較大）
                               GestureDetector(
                                 onTap: _hangUp,

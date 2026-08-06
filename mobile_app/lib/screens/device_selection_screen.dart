@@ -236,7 +236,9 @@ class _DeviceSelectionScreenState extends State<DeviceSelectionScreen> {
     _signaling.onCallBusy = (busyTargetId, callId) {
       if (mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("對方忙線中或已拒絕")));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(callBusyMessageFor(_signaling.lastCallBusyReason))),
+        );
       }
     };
 
@@ -278,7 +280,9 @@ class _DeviceSelectionScreenState extends State<DeviceSelectionScreen> {
     _signaling.onCallBusy = (busyTargetId, callId) {
       if (mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("對方忙線中或已拒絕")));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(callBusyMessageFor(_signaling.lastCallBusyReason))),
+        );
       }
     };
 

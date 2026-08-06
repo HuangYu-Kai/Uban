@@ -124,8 +124,8 @@ Key service addresses:
 | 撥打 → 接聽 → 掛斷 完整流程（含冷啟動五層兜底） | §4 通話生命週期 |
 | **按鈕在哪、按了跳去哪、可以安全改什麼** | §5 UI 按鈕與跳轉地圖 |
 | 監控機／CCTV／裝置角色指派 | §6 監控子系統 |
-| **46 條護欄（絕對不可單點修改）** | §7 |
-| 這段程式碼為什麼長這樣（17 輪修復年表） | §8 |
+| **52 條護欄（絕對不可單點修改）** | §7 |
+| 這段程式碼為什麼長這樣（18 輪修復年表） | §8 |
 | 出問題了怎麼查（三層 A/B/C 定位法、MIUI 檢查表） | §9 |
 | 改完要做什麼 | §10 修改 SOP |
 
@@ -173,10 +173,11 @@ Scheduled jobs (defined in `main.py`):
 6. **Do not change the server port** — keep port 8000 for the FastAPI backend
 7. **Use Python 3.12** — do not use Python 3.13 or higher
 8. **計畫制定與成果檢驗用 Opus、執行用 Sonnet 子代理** — 所有實作計畫的制定，以及子代理產出的檢驗／驗收，一律由 Opus 模型負責；既定計畫的實際執行交由 Sonnet 子代理（`Agent` 工具傳 `model: "sonnet"`）。
+9. **每次更動完成後必須清除不必要的空白檔案** — 收尾前掃一次工作目錄，刪除本次作業產生的零位元組檔、只剩空白字元的殘留檔、以及空的暫存目錄（例如中途建立後未使用的 stub、被清空但忘了刪的檔案）。**不要刪除**專案本來就需要的空檔案（如 `__init__.py`、`.gitkeep`、`py.typed`、空的 `__init__.dart`）。判斷準則：該檔是否被任何程式碼、設定或建置流程引用；有引用就留下。
 
 ### 3.2 通話與監控
 
-**完整規則見 [`CLAUDE_call-monitor.md`](CLAUDE_call-monitor.md) §7（46 條護欄）。**
+**完整規則見 [`CLAUDE_call-monitor.md`](CLAUDE_call-monitor.md) §7（52 條護欄）。**
 以下僅列最高頻的幾條，動手前仍必須讀完整版：
 
 - **Never merge signaling and media tracks** — they are on separate hosts by design
@@ -208,7 +209,7 @@ Flutter 前端在 `Uban/mobile_app/` 下沒有更細的 CLAUDE.md，本檔即為
 
 ## 5. 變更歷史
 
-通話與監控子系統的完整修復年表（2026-06-05 起共 17 輪，含每一輪的根因、檔案、行號）
+通話與監控子系統的完整修復年表（2026-06-05 起共 18 輪，含每一輪的根因、檔案、行號）
 已遷移至 [`CLAUDE_call-monitor.md`](CLAUDE_call-monitor.md) §8。
 
 其他子系統的變更請查 git log。

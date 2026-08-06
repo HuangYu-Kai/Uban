@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'dart:math' as math;
 import 'dart:convert'; // ★ 2026-07-22：備援讀取 pendingAcceptedCall JSON
+import 'dart:async'; // ★ 2026-08-05 第十八輪：衝刺通道背景角色校正需要 unawaited
 import '../services/api_service.dart';
 import 'identification_screen.dart';
 import 'family_onboarding_screen.dart';
@@ -64,6 +65,20 @@ class _SplashScreenState extends State<SplashScreen> {
 
   Future<void> _navigateToNext() async {
     try {
+      // ★ 2026-08-05 第十八輪（需求 2）：冷啟動衝刺通道。
+      //   被殺死後從 CallKit 接聽時，main() 已在 runApp 前把 pendingAcceptedCall
+      //   填好；此時再等 `ApiService.getStatus`（無逾時的網路往返）與
+      //   `_pollActiveCallsForAccepted`（含 500ms 延遲的輪詢）純屬浪費，
+      //   使用者實測「跳回視訊房間過久」就是卡在這兩段。
+      //   這裡改用本機 prefs（第十六輪起 user_role/saved_role 已由 splash 寫回，
+      //   是可信來源）直接導航，角色校正改為背景不阻塞執行。
+      if (pendingAcceptedCall.value != null) {
+        if (mounted) setState(() => _fadedOut = true);
+        final bool sprinted = await _sprintToPendingCall();
+        if (sprinted) return;
+        debugPrint('⚠️ [Splash] 衝刺通道條件不足，回退標準流程');
+      }
+
       // 若有待接聽的緊急通話，直接跳過開機動畫以加速進入視訊房間
       if (pendingAcceptedCall.value == null) {
         await Future.delayed(const Duration(milliseconds: 4000));
@@ -112,7 +127,13 @@ class _SplashScreenState extends State<SplashScreen> {
       if (effectiveUserId != null && effectiveUserName != null) {
         // 先嘗試獲取當前使用者資訊，以驗證連線與角色
         try {
-          final userProfile = await ApiService.getStatus(effectiveUserId);
+          // ★ 2026-08-05 第十八輪（需求 2）：加上逾時上限。
+          //   逾時會落入下方既有的 catch，由本機 prefs 決定去向（見下方
+          //   catch 區塊與 _goNextOrRestoreElder），不會把已登入長輩丟回身分頁。
+          //   6 秒遠高於正常延遲，僅用於封住「網路半死」時無限等待導致的
+          //   冷啟動卡頓。
+          final userProfile = await ApiService.getStatus(effectiveUserId)
+              .timeout(const Duration(seconds: 6));
           if (!mounted) return;
           
           final profileData = userProfile['data'] as Map<String, dynamic>? ?? {};
@@ -276,6 +297,86 @@ class _SplashScreenState extends State<SplashScreen> {
       //   絕不能因為一次例外就把已登入長輩導回身分辨識頁。
       if (mounted) await _goNextOrRestoreElder();
     }
+  }
+
+  /// ★ 2026-08-05 第十八輪（需求 2）：已知使用者接聽時的最短路徑導航。
+  ///
+  /// 回傳 true 表示已導航（呼叫端必須立即 return）；回傳 false 表示本機資料
+  /// 不足以判斷去向，交還給標準流程處理。
+  ///
+  /// 刻意**不呼叫任何 API**：此路徑的唯一目標是把使用者用最短時間送進通話畫面。
+  /// 角色校正（第十六輪的 prefs 寫回）改以背景工作進行，不阻塞導航。
+  Future<bool> _sprintToPendingCall() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final int? uid = prefs.getInt('caregiver_id');
+      final String? uname = prefs.getString('caregiver_name');
+      final String? localRole =
+          prefs.getString('user_role') ?? prefs.getString('saved_role');
+
+      if (uid == null || uname == null || localRole == null || localRole.isEmpty) {
+        return false; // 本機 session 不完整，交回標準流程（它有多層兜底）
+      }
+
+      appRole = localRole;
+
+      // 背景校正角色（不 await，不影響導航速度）
+      _refreshRoleInBackground(uid, localRole);
+
+      if (!mounted) return false;
+
+      if (localRole == 'elder') {
+        final bool isCCTV = prefs.getBool('saved_is_cctv') ?? false;
+        final String deviceName = prefs.getString('saved_device_name') ?? uname;
+        final String elderRoomId =
+            prefs.getString('elder_room_id') ?? uid.toString();
+
+        debugPrint(
+            '🚀 [Splash] 衝刺通道：長輩端直接進入通話畫面 (room=$elderRoomId, cctv=$isCCTV)');
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => _resolveElderDestination(
+              isCCTV: isCCTV,
+              deviceName: deviceName,
+              elderRoomId: elderRoomId,
+              effectiveUserId: uid,
+              effectiveUserName: uname,
+            ),
+          ),
+        );
+        return true;
+      }
+
+      // 家屬端：_navigateFamilyHome 內部會自行檢查 pendingAcceptedCall，
+      // 在疊上主畫面後直接 push VideoCallScreen，不需要額外處理。
+      debugPrint('🚀 [Splash] 衝刺通道：家屬端直接進入主畫面並疊上待接聽通話');
+      _navigateFamilyHome(uid, uname);
+      return true;
+    } catch (e) {
+      debugPrint('⚠️ [Splash] 衝刺通道失敗，回退標準流程: $e');
+      return false;
+    }
+  }
+
+  /// ★ 2026-08-05 第十八輪：衝刺通道用的背景角色校正。
+  /// 維持第十六輪護欄「API 的 role 是權威來源，user_role 與 saved_role 必須一起寫回」，
+  /// 只是把它從導航關鍵路徑移到背景，避免拖慢進房。
+  void _refreshRoleInBackground(int userId, String localRole) {
+    unawaited(() async {
+      try {
+        final profile = await ApiService.getStatus(userId);
+        final data = profile['data'] as Map<String, dynamic>? ?? {};
+        final String roleStr = (data['role'] ?? '').toString();
+        if (roleStr.isEmpty || roleStr == localRole) return;
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('user_role', roleStr);
+        await prefs.setString('saved_role', roleStr);
+        debugPrint('🧭 [Splash] 背景角色校正並寫回 prefs: $localRole → $roleStr');
+      } catch (e) {
+        debugPrint('⚠️ [Splash] 背景角色校正失敗（不影響本次導航）: $e');
+      }
+    }());
   }
 
   void _goNext() {

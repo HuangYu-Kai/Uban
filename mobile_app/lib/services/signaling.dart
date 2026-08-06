@@ -20,6 +20,26 @@ typedef ErrorCallback = void Function(String message);
 typedef CallRequestCallback = void Function(String roomId, String senderId, String? callId, [String? senderName]);
 typedef CallAcceptedCallback = void Function(String accepterId, String? callId);
 
+/// ★ 2026-08-06 第十九輪（需求 3）：四種「沒接通」情境的固定文案。
+/// 由使用者指定，四種必須彼此可區分。集中在這裡，避免三個畫面各自漂移。
+const String kCallFailDeclined = '對方暫時無法接聽';   // 對方按下拒接
+const String kCallFailBusy = '對方正在通話中';         // 對方正在另一通通話中
+const String kCallFailDisconnected = '連線中斷';       // 通話中連線掉了
+const String kCallFailUnreachable = '無法連線';        // ICE 或伺服器層面根本連不上
+
+/// 把 `call-busy` 帶回來的 reason 轉成給使用者看的文案。
+/// 未知或缺漏一律退回「拒接」文案（安全預設：不會謊稱對方在通話中）。
+String callBusyMessageFor(String reason) {
+  switch (reason) {
+    case 'busy':
+      return kCallFailBusy;
+    case 'server-error':
+      return kCallFailUnreachable;
+    default:
+      return kCallFailDeclined;
+  }
+}
+
 class Signaling {
   static const String _serverIp = String.fromEnvironment('SERVER_IP', defaultValue: 'localhost-0.tail5abf5e.ts.net');
   static const String _turnServer = String.fromEnvironment('TURN_SERVER', defaultValue: '152.69.196.5:3478');
@@ -55,6 +75,10 @@ class Signaling {
   CallRequestCallback? onEmergencyCall;
   CallAcceptedCallback? onCallAcceptedByRemote;
   CallAcceptedCallback? onCallBusy;
+  /// ★ 2026-08-06 第十九輪（需求 3）：與 [onCallBusy] 同步配對的**純資料**欄位。
+  /// 在觸發 onCallBusy 之前寫入、回呼內同步讀取，語意與 `lastProcessedCallId` 同一類，
+  /// 不是顯示狀態旗標（護欄 G27）。讀不到就是預設的 'declined'。
+  String lastCallBusyReason = 'declined';
   VoidCallback? onConnectionLost;
   /// ★ 2026-08-05 第十七輪：ICE **真正**連通（RTCPeerConnectionStateConnected）時觸發。
   /// `onAddRemoteStream` 只代表 SDP 談成，不代表有任何媒體流動，不可用來判定通話已建立。
@@ -402,6 +426,8 @@ class Signaling {
       if (!kIsWeb) {
         FlutterCallkitIncoming.endAllCalls();
       }
+      // ★ 2026-08-06 第十九輪（需求 3）：先記下原因，讓回呼能區分拒接／忙線／伺服器錯誤。
+      lastCallBusyReason = (data['reason'] ?? 'declined').toString();
       if (onCallBusy != null) onCallBusy!(data['targetId'], data['callId']);
     });
 
@@ -716,15 +742,24 @@ class Signaling {
     }
   }
 
-  void sendCallBusy(String targetSocketId, {String? callId, String? room}) {
+  void sendCallBusy(String targetSocketId, {String? callId, String? room, String? reason}) {
     final String? effectiveRoom = room ?? _currentRoomId;
     final String? effectiveCallId = callId ?? _currentCallId;
+    // ★ 2026-08-06 第十九輪（需求 3）：區分「拒接」與「忙線」。
+    //   peerConnection 不為 null 代表本機此刻真的還在一通通話裡 → 對發起端回報忙線。
+    //   這只影響對方看到的**文案**，不會擋掉任何來電。
+    final String effectiveReason =
+        reason ?? (peerConnection != null ? 'busy' : 'declined');
     // ★ 拒接的 callId 立即失效，避免延遲到達的同一通 call-request 又響起。
     if (effectiveCallId != null && effectiveCallId.isNotEmpty) {
       _invalidCallIds.add(effectiveCallId);
     }
     if (socket != null && socket!.connected) {
-      socket!.emit('call-busy', {'targetId': targetSocketId, 'callId': effectiveCallId});
+      socket!.emit('call-busy', {
+        'targetId': targetSocketId,
+        'callId': effectiveCallId,
+        'reason': effectiveReason,
+      });
     } else {
       // ★ 2026-07-18：Socket 未連線（背景/剛斷線）時走 HTTP 備援，
       //   確保發起方仍能收到拒接、雙端同步關閉來電 UI。
