@@ -23,7 +23,7 @@ class ApiService {
   // Android 模擬器/實體裝置用 LAN IP 存取 Host
   static const String _localAiServerIp = String.fromEnvironment(
     'LOCAL_AI_IP',
-    defaultValue: '192.168.31.210', // 這台電腦的 Wi-Fi IP
+    defaultValue: '192.168.31.209', // 這台電腦目前實際 LAN IP 192.168.31.209
   );
   static String get localAiBaseUrl => 'http://$_localAiServerIp:8000/api';
 
@@ -373,80 +373,107 @@ class ApiService {
   }
 
   // AI 相關功能
-  // ⚠️ 使用本機 AI Server (localAiBaseUrl)，因遠端主後台無 Ollama 服務
+  // ⚠️ 使用本機 AI Server (localAiBaseUrl) 與自動降級連線備援
   static Future<Map<String, dynamic>> aiChat(int userId, String message, {String? imageUrl}) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse('$localAiBaseUrl/ai/chat'), // 打本機 AI Server
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'user_id': userId,
-              'message': message,
-              if (imageUrl != null) 'image_url': imageUrl,
-            }),
-          )
-          .timeout(const Duration(seconds: 120));
-      return _safeDecode(response);
-    } on TimeoutException {
-      return {'status': 'error', 'message': 'AI 回應逾時，請稍後再試'};
-    } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
+    final List<String> candidateUrls = [
+      '$localAiBaseUrl/ai/chat',
+      'http://192.168.31.209:8000/api/ai/chat',
+      'http://10.0.2.2:8000/api/ai/chat',
+      '${baseUrl.replaceFirst('/api', '')}/api/ai/chat',
+    ];
+    final uniqueUrls = candidateUrls.toSet().toList();
+
+    for (final url in uniqueUrls) {
+      try {
+        final response = await http
+            .post(
+              Uri.parse(url),
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({
+                'user_id': userId,
+                'message': message,
+                if (imageUrl != null) 'image_url': imageUrl,
+              }),
+            )
+            .timeout(const Duration(seconds: 30));
+        if (response.statusCode == 200) {
+          return _safeDecode(response);
+        }
+      } catch (_) {}
     }
+    return {'status': 'error', 'message': '網路連線失敗，請檢查 AI Server 是否開啟'};
   }
 
-  /// AI 串流聊天（SSE）- 逐 token 回傳，不需等待完整回應
+  /// AI 串流聊天（SSE）- 逐 token 回傳，支援多候選 IP 自動降級連線
   static Stream<String> aiChatStream(int userId, String message) async* {
-    final client = http.Client();
-    try {
-      final request = http.Request(
-        'POST',
-        Uri.parse('$localAiBaseUrl/ai/chat/stream'),
-      );
-      request.headers['Content-Type'] = 'application/json';
-      request.body = jsonEncode({'user_id': userId, 'message': message});
+    final List<String> candidateUrls = [
+      '$localAiBaseUrl/ai/chat/stream',
+      'http://192.168.31.209:8000/api/ai/chat/stream',
+      'http://10.0.2.2:8000/api/ai/chat/stream',
+      '${baseUrl.replaceFirst('/api', '')}/api/ai/chat/stream',
+    ];
+    final uniqueUrls = candidateUrls.toSet().toList();
 
-      final streamedResponse = await client.send(request).timeout(const Duration(seconds: 30));
+    for (int idx = 0; idx < uniqueUrls.length; idx++) {
+      final targetUrl = uniqueUrls[idx];
+      final client = http.Client();
+      try {
+        debugPrint('📡 [aiChatStream Attempt ${idx + 1}] -> $targetUrl');
+        final request = http.Request('POST', Uri.parse(targetUrl));
+        request.headers['Content-Type'] = 'application/json';
+        request.body = jsonEncode({'user_id': userId, 'message': message});
 
-      if (streamedResponse.statusCode != 200) {
-        yield '[ERROR] 伺服器錯誤: ${streamedResponse.statusCode}';
-        return;
-      }
+        final streamedResponse = await client.send(request).timeout(const Duration(seconds: 15));
 
-      // 累積 buffer 處理跨 chunk 的不完整行
-      final StringBuffer lineBuf = StringBuffer();
+        if (streamedResponse.statusCode != 200) {
+          client.close();
+          if (idx < uniqueUrls.length - 1) continue;
+          yield '[ERROR] 伺服器錯誤: ${streamedResponse.statusCode}';
+          return;
+        }
 
-      await for (final chunk in streamedResponse.stream) {
-        final decoded = utf8.decode(chunk, allowMalformed: true);
+        final StringBuffer lineBuf = StringBuffer();
+        bool receivedData = false;
 
-        for (int i = 0; i < decoded.length; i++) {
-          final ch = decoded[i];
-          if (ch == '\n') {
-            final line = lineBuf.toString().trimRight();
-            lineBuf.clear();
-            if (line.startsWith('data: ')) {
-              final payload = line.substring(6).trim();
-              if (payload == '[DONE]') return;
-              if (payload.startsWith('[ERROR]')) {
-                yield payload;
-                return;
+        await for (final chunk in streamedResponse.stream) {
+          receivedData = true;
+          final decoded = utf8.decode(chunk, allowMalformed: true);
+          for (int i = 0; i < decoded.length; i++) {
+            final ch = decoded[i];
+            if (ch == '\n') {
+              final line = lineBuf.toString().trimRight();
+              lineBuf.clear();
+              if (line.startsWith('data: ')) {
+                final payload = line.substring(6).trim();
+                if (payload == '[DONE]') {
+                  client.close();
+                  return;
+                }
+                if (payload.startsWith('[ERROR]')) {
+                  client.close();
+                  yield payload;
+                  return;
+                }
+                try {
+                  final token = jsonDecode(payload) as String;
+                  if (token.isNotEmpty) yield token;
+                } catch (_) {
+                  if (payload.isNotEmpty) yield payload;
+                }
               }
-              try {
-                final token = jsonDecode(payload) as String;
-                if (token.isNotEmpty) yield token;
-              } catch (_) {
-                if (payload.isNotEmpty) yield payload;
-              }
+            } else {
+              lineBuf.write(ch);
             }
-          } else {
-            lineBuf.write(ch);
           }
         }
+        client.close();
+        if (receivedData) return;
+      } catch (e) {
+        debugPrint('⚠️ [aiChatStream Fail] $targetUrl error: $e');
+        client.close();
+        if (idx < uniqueUrls.length - 1) continue;
+        yield '[ERROR] $e';
       }
-    } catch (e) {
-      yield '[ERROR] $e';
-    } finally {
-      client.close();
     }
   }
 
