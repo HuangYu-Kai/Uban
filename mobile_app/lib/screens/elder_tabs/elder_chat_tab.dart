@@ -1143,7 +1143,10 @@ class ElderChatTabState extends State<ElderChatTab>
             // 如果有影片，顯示播放器
             if (videoId != null) ...[
               const SizedBox(height: 12),
-              YoutubeBubblePlayer(videoId: videoId),
+              YoutubeBubblePlayer(
+                key: ValueKey(videoId),
+                videoId: videoId,
+              ),
             ],
           ],
         ),

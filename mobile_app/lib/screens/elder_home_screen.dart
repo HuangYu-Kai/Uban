@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:speech_to_text/speech_to_text.dart';
 import 'elder_tabs/elder_home_tab.dart';
 import 'friends_screen.dart';
 import 'elder_chat_screen.dart';
@@ -13,6 +15,7 @@ import 'dart:async';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
+import '../widgets/google_assistant_overlay.dart';
 
 class ElderHomeScreen extends StatefulWidget {
   final int userId;
@@ -30,10 +33,18 @@ class ElderHomeScreen extends StatefulWidget {
   State<ElderHomeScreen> createState() => _ElderHomeScreenState();
 }
 
-class _ElderHomeScreenState extends State<ElderHomeScreen> {
+class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingObserver {
   int _selectedIndex = 0; // 0:首頁 1:電話 2:聊天 3:我的
 
   bool _isNavigatingToCall = false;
+
+  // Google / Uban 助理與全域語音喚醒設定
+  String _aiName = '嘎蛙';
+  String _userName = '宇璿';
+  final SpeechToText _wakeWordStt = SpeechToText();
+  bool _wakeWordListening = false;
+  bool _isAssistantShowing = false;
+
 
   Future<void> _requestPermissions() async {
     try {
@@ -87,8 +98,10 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     isAppReady = true;
     _requestPermissions();
+    _loadAssistantSettings();
 
     // ★ 核心修復：強制使用長輩的專屬配對房間號 (elder_id)，且帶有 comm_elder_ 字首，確保與後端格式及權限匹配
     final String rawRoomId = widget.roomId ?? widget.userId.toString();
@@ -98,6 +111,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
     _connectSocket(roomToJoin);
 
     pendingAcceptedCall.addListener(_onPendingCallChanged);
+    isMediaPlayingNotifier.addListener(_onMediaPlayingChanged);
     
     // 檢查是否有在背景接聽的通話初始化前就傳入的待接聽電話
     Future.delayed(const Duration(milliseconds: 500), () {
@@ -106,6 +120,229 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
 
     // 監聽來自親人的呼叫與推播留言
     _restoreSignalingCallbacks();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    debugPrint('📱 [WakeWord Emergency Protection] 系統狀態改變: $state - 保持全時背景與休眠緊急喚醒監聽');
+    if (mounted && !_isAssistantShowing && !_wakeWordListening) {
+      _safeRestartWakeWordListening('lifecycle');
+    }
+  }
+
+  Future<void> _loadAssistantSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (mounted) {
+        setState(() {
+          final savedUserName = prefs.getString('caregiver_name') ??
+              prefs.getString('user_name') ??
+              prefs.getString('elder_name');
+          if (savedUserName != null && savedUserName.isNotEmpty) {
+            _userName = savedUserName;
+          } else if (widget.userName.isNotEmpty) {
+            _userName = widget.userName;
+          } else {
+            _userName = '宇璿';
+          }
+
+          _aiName = prefs.getString('ai_assistant_name') ??
+              prefs.getString('ai_name') ??
+              '嘎蛙';
+        });
+      }
+      _initWakeWordListener();
+    } catch (e) {
+      debugPrint('🤖 [_loadAssistantSettings Error] $e');
+    }
+  }
+
+  String? _preferredLocaleId;
+  Timer? _wakeWordWatchdogTimer;
+  bool _isStartingListen = false;
+
+  Future<void> _initWakeWordListener() async {
+    try {
+      final status = await Permission.microphone.request();
+      if (!status.isGranted) {
+        debugPrint('🎙️ [WakeWord] 麥克風權限未授予');
+        return;
+      }
+
+      bool available = await _wakeWordStt.initialize(
+        onError: (val) {
+          debugPrint('🤖 [WakeWord Error] $val');
+          if (mounted && !_isAssistantShowing && !_isStartingListen) {
+            _wakeWordListening = false;
+            Future.delayed(const Duration(milliseconds: 600), () {
+              if (mounted) _safeRestartWakeWordListening('onError');
+            });
+          }
+        },
+        onStatus: (status) {
+          debugPrint('🤖 [WakeWord Status] $status');
+          if ((status == 'done' || status == 'notListening') && mounted) {
+            _wakeWordListening = false;
+            if (!_isAssistantShowing && !_isStartingListen) {
+              Future.delayed(const Duration(milliseconds: 400), () {
+                if (mounted) _safeRestartWakeWordListening('onStatus');
+              });
+            }
+          }
+        },
+      );
+
+      if (available) {
+        final systemLoc = await _wakeWordStt.systemLocale();
+        _preferredLocaleId = systemLoc?.localeId ?? 'zh_TW';
+        debugPrint('🎙️ [WakeWord Locale] 使用系統適配語系: $_preferredLocaleId');
+
+        if (mounted) {
+          _safeRestartWakeWordListening('init');
+          _startWakeWordWatchdog();
+        }
+      }
+    } catch (e) {
+      debugPrint('🤖 [WakeWord Init Failed] $e');
+      _wakeWordListening = false;
+    }
+  }
+
+  void _onMediaPlayingChanged() {
+    if (!mounted) return;
+    if (isMediaPlayingNotifier.value) {
+      debugPrint('🛑 [WakeWord Listener] 全域媒體播放中 → 暫停背景喚醒');
+      _wakeWordStt.stop();
+      _wakeWordListening = false;
+    } else {
+      debugPrint('▶️ [WakeWord Listener] 全域媒體播放結束 → 恢復背景喚醒');
+      _safeRestartWakeWordListening('media_stopped');
+    }
+  }
+
+  /// 🐕 看門狗定時器：每 5 秒安全協調檢查，防止併發競態死鎖
+  void _startWakeWordWatchdog() {
+    _wakeWordWatchdogTimer?.cancel();
+    _wakeWordWatchdogTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+      if (mounted && !isMediaPlayingNotifier.value && !_isAssistantShowing && !_isStartingListen && !_wakeWordStt.isListening) {
+        debugPrint('🐕 [WakeWord Watchdog] 檢測到語音監聽完全停止，觸發安全重啟...');
+        _safeRestartWakeWordListening('Watchdog');
+      }
+    });
+  }
+
+  /// 🛡️ 安全重啟協調器：帶有 Re-entrancy 互斥鎖與 Android cancel() 防併發死鎖
+  Future<void> _safeRestartWakeWordListening([String reason = '']) async {
+    if (isMediaPlayingNotifier.value || _isAssistantShowing || _isStartingListen || !mounted) {
+      if (isMediaPlayingNotifier.value) {
+        debugPrint('🛑 [WakeWord] 檢測到媒體正在播放中，暫停背景語音喚醒監聽 (觸發源: $reason)');
+        if (_wakeWordStt.isListening) {
+          _wakeWordStt.stop();
+          _wakeWordListening = false;
+        }
+      }
+      return;
+    }
+    _isStartingListen = true;
+
+    try {
+      debugPrint('🎙️ [WakeWord SafeRestart] 正在重啟監聽 (觸發源: $reason)...');
+
+      if (_wakeWordStt.isListening) {
+        await _wakeWordStt.cancel();
+        await Future.delayed(const Duration(milliseconds: 300));
+      }
+
+      if (_isAssistantShowing || !mounted) {
+        _isStartingListen = false;
+        return;
+      }
+
+      _wakeWordListening = true;
+      await _wakeWordStt.listen(
+        localeId: _preferredLocaleId ?? 'zh_TW',
+        listenOptions: SpeechListenOptions(
+          partialResults: true,
+          cancelOnError: false,
+          listenMode: ListenMode.dictation,
+        ),
+        listenFor: const Duration(hours: 1),
+        pauseFor: const Duration(seconds: 60),
+        onResult: (result) {
+          final text = result.recognizedWords.toLowerCase();
+          debugPrint('🎙️ [WakeWord Recognized] $text (Target AI: $_aiName)');
+
+          if (_isDynamicWakeWordMatch(text, _aiName)) {
+            debugPrint('🎯 [WakeWord Match Success!] 觸發 AI 助理彈窗 (識別內容: $text)');
+            _wakeWordStt.stop();
+            _wakeWordListening = false;
+            _triggerGoogleAssistantOverlay(text);
+          }
+        },
+      );
+    } catch (e) {
+      debugPrint('🎙️ [WakeWord Listen Exception] $e');
+      _wakeWordListening = false;
+    } finally {
+      _isStartingListen = false;
+    }
+  }
+
+  /// 動態喚醒詞比對算法：100% 覆蓋所有中文 ASR 轉錄同音字、前綴與常見意圖問句
+  bool _isDynamicWakeWordMatch(String text, String customAiName) {
+    final lowerText = text.toLowerCase().replaceAll(RegExp(r'\s+'), '');
+    final lowerAi = customAiName.toLowerCase().trim();
+    if (lowerAi.isEmpty) return false;
+
+    // 1. 完整包含自訂 AI 名稱
+    if (lowerText.contains(lowerAi)) return true;
+
+    // 2. 嘎蛙超廣角同音字與轉錄變體 (嘎蛙 / 嘎挖 / 嘎娃 / 嘎哇 / gawa / 黑嘎 / 嘿嘎 / 嗨嘎 / 嘎)
+    final Set<String> targetVariants = {
+      lowerAi,
+      '嘎蛙', '嘎挖', '嘎娃', '嘎哇', '黑嘎', '嘿嘎', '嗨嘎', 'gawa', 'gawha', '小嘎', '嘎', '蛙'
+    };
+
+    for (final variant in targetVariants) {
+      if (lowerText.contains(variant)) return true;
+    }
+
+    // 3. 常見喚醒前綴 (Hey / 黑 / 嘿 / 嗨 / Hi / 哈囉 / 呼叫 / 小 / 喂)
+    final prefixes = ['hey', 'hi', 'hello', '黑', '嘿', '嗨', '哈囉', '呼叫', '小', '喂'];
+    for (final prefix in prefixes) {
+      if (lowerText.contains(prefix)) return true;
+    }
+
+    // 4. 常見意圖問句 (防止 ASR 裁切掉前導喚醒詞時漏接，如："可以幹嘛", "在嗎", "幫我", "幾點")
+    final intentPhrases = ['可以幹嘛', '在嗎', '你好', '幫我', '幾點', '天氣', '請問', '做什麼', '幹嘛'];
+    for (final intent in intentPhrases) {
+      if (lowerText.contains(intent)) return true;
+    }
+
+    return false;
+  }
+
+  void _triggerGoogleAssistantOverlay([String? prompt]) async {
+    if (_isAssistantShowing) return;
+    _isAssistantShowing = true;
+    _wakeWordStt.stop();
+    _wakeWordListening = false;
+
+    await GoogleAssistantOverlay.show(
+      context,
+      userName: _userName,
+      aiName: _aiName,
+      userId: widget.userId,
+      initialPrompt: prompt,
+    );
+
+    if (mounted) {
+      setState(() {
+        _isAssistantShowing = false;
+      });
+      _safeRestartWakeWordListening('overlay_closed');
+    }
   }
 
   void _restoreSignalingCallbacks() {
@@ -260,8 +497,12 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
 
   @override
   void dispose() {
+    _wakeWordWatchdogTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    _wakeWordStt.stop();
     isAppReady = false;
     pendingAcceptedCall.removeListener(_onPendingCallChanged);
+    isMediaPlayingNotifier.removeListener(_onMediaPlayingChanged);
     Signaling().onHeartbeatMessage = null;
     Signaling().onCallRequest = null;
     Signaling().onCancelCall = null;
@@ -281,8 +522,8 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
         return;
       }
       final int now = DateTime.now().millisecondsSinceEpoch;
-      final int? expiresAt = int.tryParse('${call['expiresAt'] ?? ''}');
-      final int? issuedAt = int.tryParse('${call['issuedAt'] ?? ''}');
+      final int? expiresAt = int.tryParse(call['expiresAt']?.toString() ?? '');
+      final int? issuedAt = int.tryParse(call['issuedAt']?.toString() ?? '');
       // ★ 2026-07-20：有效期改用 kCallValidityMs（120s），與後端一致。
       final bool isExpired = (expiresAt != null && now > expiresAt) || (issuedAt != null && (now - issuedAt) > kCallValidityMs);
       if (isExpired) {

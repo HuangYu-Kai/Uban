@@ -1,5 +1,6 @@
 // lib/screens/video_call_screen.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'dart:async';
 import 'dart:ui';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
@@ -20,6 +21,10 @@ class VideoCallScreen extends StatefulWidget {
   final bool isEmergency;
   final String? callId;
   final bool sendAcceptOnOpen;
+  final bool isVideoCall; // ★ Fix E：是否為視訊通話（false = 純語音/電話）
+  // ★ 2026-08-05 第十七輪：是否以 pop() 返回上一頁（而非 pushAndRemoveUntil 重建主畫面）。
+  //   預設 false，維持所有現有建構點的行為完全不變；只有監控檢視入口會傳 true。
+  final bool returnByPop;
 
   const VideoCallScreen({
     super.key,
@@ -30,6 +35,8 @@ class VideoCallScreen extends StatefulWidget {
     this.isEmergency = false,
     this.callId,
     this.sendAcceptOnOpen = true,
+    this.isVideoCall = true, // 預設視訊通話
+    this.returnByPop = false,
   });
 
   @override
@@ -86,17 +93,38 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
 
     _signaling.onAddRemoteStream = ((stream) {
       debugPrint("📺 [VideoCallScreen] Remote stream added! Tracks: ${stream.getTracks().length}");
+      // ★ 2026-08-05 第十七輪：onAddRemoteStream 只代表 SDP 談成（setRemoteDescription
+      //   當下就會觸發），不代表 ICE 已連通、有任何媒體在流動，因此 _startCallTimer()
+      //   與 _callConnected 改移到真正連上時才觸發的 onPeerConnected（見下方）。
       if (mounted) {
         setState(() {
           _remoteRenderer.srcObject = stream;
           _inCall = true;
           _callConnecting = false;
-          _callConnected = true;
           _callFailed = false;
         });
-        _startCallTimer();
       }
     });
+
+    // ★ 2026-08-05 第十七輪：ICE 真正連通（RTCPeerConnectionStateConnected）時才開始計時，
+    //   避免「有通話計時卻雙方都看不到聽不到」的假象。
+    _signaling.onPeerConnected = () {
+      if (mounted) {
+        setState(() => _callConnected = true);
+        _startCallTimer();
+      }
+    };
+
+    // ★ 2026-08-05 第十七輪：ICE 連線失敗時據實回報並安全返回主畫面，而不是讓通話停在
+    //   「已連線」但零影音的假狀態。
+    _signaling.onPeerConnectionFailed = (msg) {
+      debugPrint('⚠️ [VideoCall] PeerConnection 失敗: $msg');
+      if (mounted) {
+        _stopCallTimer();
+        _showCallProblemThenGoHome(kCallFailUnreachable);
+      }
+    };
+
     _signaling.onLocalStream = ((stream) {
       debugPrint("🤳 [VideoCallScreen] Local stream set! Tracks: ${stream.getTracks().length}");
       if (mounted) setState(() => _localRenderer.srcObject = stream);
@@ -110,18 +138,17 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     _signaling.onCallEnded = () {
       if (mounted) {
         _stopCallTimer();
-        // ★ 2026-07-27 第十三輪：原本用 SnackBar，但緊接著的 _goHomeAfterCall() 是
-        //   pushAndRemoveUntil，會立刻移除本 route，SnackBar 隨之消失 → 使用者看到
-        //   的是「瞬間跳回主畫面、毫無提示」。改用不依附特定 route 的 dialog
-        //   （與 onCallBusy 一致，2026-07-15 第二輪 Issue 6 當時漏改這兩個回調）。
-        _showCallRejectedThenGoHome('對方已掛斷通話');
+        // ★ 2026-08-05 第十八輪（需求 3）：正常掛斷改為靜默直接返回主介面。
+        //   （第十三輪為了讓提示不被 pushAndRemoveUntil 吞掉而改用 dialog，
+        //    現在依使用者要求連提示本身一併移除，dialog 的必要性隨之消失。）
+        _endCallAndGoHome('對方已掛斷通話');
       }
     };
 
     _signaling.onCallBusy = (targetId, callId) {
       if (mounted) {
         _stopCallTimer();
-        _showCallRejectedThenGoHome('對方已拒絕或目前無法接聽通話');
+        _showCallProblemThenGoHome(callBusyMessageFor(_signaling.lastCallBusyReason));
       }
     };
 
@@ -129,8 +156,8 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     _signaling.onConnectionLost = () {
       if (mounted) {
         _stopCallTimer();
-        // ★ 2026-07-27 第十三輪：同 onCallEnded，SnackBar 會被 pushAndRemoveUntil 吞掉。
-        _showCallRejectedThenGoHome('網路連線中斷');
+        // ★ 2026-07-27 第十三輪：SnackBar 會被 pushAndRemoveUntil 吞掉，必須用 dialog。
+        _showCallProblemThenGoHome(kCallFailDisconnected);
       }
     };
 
@@ -145,10 +172,15 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     try {
       await _signaling.openUserMedia(_localRenderer);
       _mediaInitialized = true;
+      // ★ Fix E：語音通話（isVideoCall=false）預設關閉鏡頭，與發起端對稱；
+      //   鏡頭按鈕仍可手動開啟（見 _toggleCamera），此處僅決定進房初始狀態。
+      if (!widget.isVideoCall && mounted) {
+        setState(() => _isCameraOff = true);
+      }
       if (_signaling.localStream != null) {
         final videoTracks = _signaling.localStream!.getVideoTracks();
         for (var track in videoTracks) {
-          track.enabled = !_isCameraOff;
+          track.enabled = widget.isVideoCall;
         }
       }
     } catch (e) {
@@ -355,6 +387,8 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     _signaling.onCallBusy = null;
     _signaling.onJoinFailed = null;
     _signaling.onConnectionLost = null;
+    _signaling.onPeerConnected = null;
+    _signaling.onPeerConnectionFailed = null;
 
     _localRenderer.dispose();
     _remoteRenderer.dispose();
@@ -402,22 +436,62 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   //   家屬端在 APP 外接聽時，VideoCallScreen 會被疊在 SplashScreen 之上；若用 pop()
   //   會回到已完成任務的 SplashScreen 造成黑屏。改用 pushAndRemoveUntil 可確定性返回
   //   主畫面、清空堆疊，杜絕任何黑屏。
+  // ★ 2026-08-05 第十七輪：監控檢視是由家屬端主畫面 Navigator.push 疊上來的，
+  //   pop 回去可保留互動分頁與既有 signaling 狀態。上述「一律 pushAndRemoveUntil」的護欄
+  //   針對的是冷啟動時疊在 SplashScreen 上的來電路徑——那條路徑 widget.returnByPop 為 false，
+  //   行為完全不變；這裡另外再檢查一次 canPop，pop 不了就退回原本的重建主畫面。
   void _goHomeAfterCall() {
     if (!mounted) return;
+    // ★ 2026-08-05 第十八輪（需求 4）：通話結束 → 還原鎖屏行為，
+    //   否則 setShowWhenLocked(true) 會讓 APP 一直蓋在鎖定畫面之上。
+    //   `invokeMethod` 是非同步的，PlatformException 會以 Future 錯誤丟出，
+    //   同步 try/catch 接不到，必須用 catchError。
+    const MethodChannel('com.example.app/bring_to_front')
+        .invokeMethod('restoreLockScreen')
+        .catchError((e) {
+      debugPrint('⚠️ [VideoCall] restoreLockScreen 失敗: $e');
+      return null;
+    });
+    if (widget.returnByPop && Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+      return;
+    }
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => _buildFallbackHome()),
       (route) => false,
     );
   }
 
-  void _showCallRejectedThenGoHome(String message) {
+  /// ★ 2026-08-05 第十八輪（需求 3）：依使用者要求移除「通話已結束」對話框。
+  /// **正常結束**的通話（雙方任一端掛斷）不再顯示任何視窗，直接返回主介面。
+  ///
+  /// ⚠️ 只有這條路徑是靜默的。拒接／忙線／斷線／連線失敗仍必須回饋，
+  /// 走 [_showCallProblemThenGoHome] —— 家屬撥出後若毫無提示就跳回主畫面，
+  /// 會分不清是被拒接還是自己誤觸（第八輪拒接回饋、第十七輪媒體看門狗都依賴它）。
+  void _endCallAndGoHome(String reason) {
+    if (!mounted) return;
+    debugPrint('📴 [VideoCall] 通話結束（$reason），直接返回主畫面');
+    _goHomeAfterCall();
+  }
+
+  /// ★ 2026-08-05 第十八輪（需求 3）：**異常**結束時的提示。
+  /// 文案由呼叫端指定（見 `signaling.dart` 的 `kCallFail*` 常數），刻意不再叫「通話已結束」——那個視窗依需求 3 已移除；
+  /// 這裡保留的是「為什麼沒接通」的診斷資訊。
+  ///
+  /// 護欄 G23 仍然適用：**不可改用 `SnackBar`**——緊接的 `_goHomeAfterCall()`
+  /// 是 `pushAndRemoveUntil((route) => false)`，會當場移除本 route
+  /// 讓 SnackBar 一起消失，變成「瞬間跳回主畫面、毫無提示」。
+  void _showCallProblemThenGoHome(String message) {
     if (!mounted) return;
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (_) => AlertDialog(
-        title: const Text('通話已結束'),
-        content: Text(message),
+        content: Text(
+          message,
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+        ),
       ),
     );
     Future.delayed(const Duration(seconds: 2), () {
@@ -532,13 +606,20 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                   child: Row(
                     children: [
                       Icon(
-                        widget.isEmergency ? Icons.warning : Icons.shield,
-                        color: widget.isEmergency ? Colors.orangeAccent : Colors.greenAccent,
+                        widget.isEmergency
+                            ? Icons.warning
+                            : (widget.isVideoCall ? Icons.shield : Icons.call),
+                        color: widget.isEmergency
+                            ? Colors.orangeAccent
+                            : (widget.isVideoCall ? Colors.greenAccent : Colors.lightBlueAccent),
                         size: 16,
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        widget.isEmergency ? "緊急通話" : "視訊通話",
+                        // ★ Fix E：非緊急且非視訊時顯示「語音通話」，其餘沿用原邏輯。
+                        widget.isEmergency
+                            ? "緊急通話"
+                            : (widget.isVideoCall ? "視訊通話" : "語音通話"),
                         style: const TextStyle(color: Colors.white, fontSize: 14),
                       ),
                     ],
@@ -571,6 +652,44 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
               ],
             ),
           ),
+
+          // ★ 2026-08-05 第十七輪：CCTV 監控檢視的返回鍵。僅 widget.returnByPop == true
+          //   （目前只有 family_interaction_tab.dart 的「觀看 CCTV」入口會傳入）才顯示，
+          //   樣式比照 elder_screen.dart 的「退出監視機」按鈕；水平位置沿用規格的 left: 16，
+          //   但垂直位置從 padding.top + 10 下移到 + 56，避免與上方「2. 頂部資訊欄」的
+          //   通話類型膠囊（同樣 top: padding.top + 10、left: 20）互相重疊。
+          //   onTap 沿用 _safeHangUp（既有掛斷 → 導航流程），不自行寫 pop。
+          if (widget.returnByPop)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 56,
+              left: 16,
+              child: GestureDetector(
+                onTap: _safeHangUp,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.6),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.white30, width: 1),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.arrow_back_rounded, color: Colors.white, size: 16),
+                      SizedBox(width: 6),
+                      Text(
+                        '返回',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
 
           // 3. 本地預覽 (PIP) — 鏡頭關閉時顯示圖標
           Positioned(

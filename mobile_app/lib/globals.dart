@@ -1,9 +1,11 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 ValueNotifier<Map<String, String?>?> pendingAcceptedCall = ValueNotifier(null);
 bool isAppReady = false;
 String? appRole;
+
+/// ★ 全域媒體播放狀態通知：當有 YouTube / 新聞 / TTS 播放時設為 true，背景 WakeWord 語音喚醒暫停監聽，徹底防範 Android 語音焦點競爭跳針
+ValueNotifier<bool> isMediaPlayingNotifier = ValueNotifier(false);
 
 /// ★ 2026-07-18：來電有效期（毫秒）。與後端 socket_app.py 的 expires_at/FCM ttl
 ///   以及 CallKit `duration` 三者必須一致，否則會出現「通知還在響但接聽被判過期」。
@@ -34,4 +36,14 @@ void safeNavigateBack(BuildContext context, Widget fallbackScreen) {
       (route) => false,
     );
   }
+}
+
+/// ★ 2026-08-02 第十四輪：解析各通路傳來的 isVideoCall。
+/// Socket 給 bool、FCM 經後端 `str()` 會變成 "True"/"False"（Python 首字大寫）、
+/// prefs/CallKit extra 給字串——一律在此正規化。
+/// **只有明確為 false 才判定為語音通話**，其餘（含 null、無法解析）一律 true（安全預設）。
+bool parseIsVideoCall(dynamic raw) {
+  if (raw == null) return true;
+  if (raw is bool) return raw;
+  return raw.toString().trim().toLowerCase() != 'false';
 }

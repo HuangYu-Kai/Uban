@@ -1,5 +1,11 @@
 # 監控機（CCTV）新增與使用指南
 
+> 🚨 **本檔是給「使用者／操作者」看的說明，不是給改程式的人看的。**
+> 要修改監控（CCTV）、裝置角色指派、來電通知或視訊通話的**程式碼**，
+> 必須先讀 [`../../CLAUDE_call-monitor.md`](../../CLAUDE_call-monitor.md)
+> **§6 監控子系統**（含角色指派完整流程與 `monitor-wakeup` 誤判的歷史故障），
+> 以及 §7 的 36 條護欄。文件與程式碼衝突時以**程式碼**為準。
+
 ## 概述
 
 Uban 的長輩端設備分兩種角色：
@@ -75,8 +81,8 @@ flowchart TD
 
 | 位置 | 作用 |
 |------|------|
-| `uban-api/uban-api/routers/user.py` → `GET /elder/{elder_id}/has-comm-device` | 查詢是否已有通話機 |
-| `uban-api/uban-api/services/socket_app.py` → `has_comm_elder_device()` | 記憶體判斷邏輯 |
+| `uban-api/routers/user.py` → `GET /elder/{elder_id}/has-comm-device` | 查詢是否已有通話機 |
+| `uban-api/services/socket_app.py` → `has_comm_elder_device()` | 記憶體判斷邏輯 |
 | `mobile_app/lib/services/api_service.dart` → `hasCommDevice()` | 前端查詢 |
 | `mobile_app/lib/screens/elder_pairing_display_screen.dart`、`role_selection_screen.dart` | 登入時自動決定角色 |
 | `mobile_app/lib/screens/device_selection_screen.dart` | 家屬端觀看監控畫面 |

@@ -34,14 +34,46 @@ class _AIChatScreenState extends State<AIChatScreen> {
   void initState() {
     super.initState();
     _initTts();
-    // 進入畫面先念出第一句
-    Future.delayed(const Duration(seconds: 1), () {
-      _speak(_messages.first['text']);
-    });
+    _loadChatHistory();
 
     // 演示用：5秒後模擬子女傳送話題
     Future.delayed(const Duration(seconds: 5), () {
       if (mounted) _simulateCaregiverTopic();
+    });
+  }
+
+  Future<void> _loadChatHistory() async {
+    try {
+      final res = await ApiService.get('/ai/history?user_id=$_elderId&limit=50');
+      if (res != null && res['status'] == 'success' && res['data'] != null) {
+        final List<dynamic> rawMessages = res['data']['messages'] ?? [];
+        if (rawMessages.isNotEmpty) {
+          final List<Map<String, dynamic>> loaded = [];
+          for (var item in rawMessages) {
+            final role = item['role'] == 'user' ? 'user' : 'ai';
+            final text = item['text'] ?? '';
+            if (text.isNotEmpty) {
+              loaded.add({'role': role, 'text': text});
+            }
+          }
+          if (mounted && loaded.isNotEmpty) {
+            setState(() {
+              _messages.clear();
+              _messages.addAll(loaded);
+            });
+            _scrollToBottom();
+            return;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ [AIChatScreen Load History Error] $e');
+    }
+    // 若無歷史，唸出首句招呼
+    Future.delayed(const Duration(seconds: 1), () {
+      if (mounted && _messages.isNotEmpty) {
+        _speak(_messages.first['text']);
+      }
     });
   }
 
@@ -319,7 +351,10 @@ class _AIChatScreenState extends State<AIChatScreen> {
                       _buildTextContent(cleanText),
                       const SizedBox(height: 12),
                     ],
-                    YoutubeBubblePlayer(videoId: videoId),
+                    YoutubeBubblePlayer(
+                      key: ValueKey(videoId),
+                      videoId: videoId,
+                    ),
                   ],
                 );
               }

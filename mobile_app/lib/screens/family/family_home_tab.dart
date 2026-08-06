@@ -24,6 +24,191 @@ class FamilyHomeTab extends StatefulWidget {
 }
 
 class _FamilyHomeTabState extends State<FamilyHomeTab> {
+  void _showSendCareCardModal(BuildContext context, String elderName) {
+    final List<Map<String, String>> careCards = [
+      {'title': '週末溫馨聚餐卡 🍲', 'desc': '阿公，這個週末一起去吃美味熱呼呼的火鍋好嗎？我訂好餐廳囉！'},
+      {'title': '午後語音茶會卡 🍵', 'desc': '阿公，下午放鬆一下，喝杯溫茶，我待會撥視訊電話給您聊聊昔日故事！'},
+      {'title': '天天開心健康關懷卡 ❤️', 'desc': '祝阿公今天也有個好心情！記得多喝水、動動身體，女兒隨時想念您喔！'},
+    ];
+
+    String selectedCard = careCards[0]['title']!;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF0F172A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF59E0B).withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Icon(Icons.mark_email_unread_rounded, color: Color(0xFFF59E0B), size: 24),
+                      ),
+                      const SizedBox(width: 12),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '傳送親情關懷卡片',
+                            style: GoogleFonts.notoSansTc(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.white,
+                            ),
+                          ),
+                          Text(
+                            '選擇溫馨卡片傳送至 $elderName 的通話視訊機',
+                            style: GoogleFonts.notoSansTc(
+                              fontSize: 12,
+                              color: const Color(0xFF94A3B8),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  ...careCards.map((card) {
+                    final isSel = selectedCard == card['title'];
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: GestureDetector(
+                        onTap: () {
+                          setModalState(() {
+                            selectedCard = card['title']!;
+                          });
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: isSel ? const Color(0xFF38BDF8).withValues(alpha: 0.15) : const Color(0xFF1E293B),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: isSel ? const Color(0xFF38BDF8) : Colors.white12,
+                              width: isSel ? 1.5 : 1,
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                card['title']!,
+                                style: GoogleFonts.notoSansTc(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: isSel ? const Color(0xFF38BDF8) : Colors.white,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                card['desc']!,
+                                style: GoogleFonts.notoSansTc(
+                                  fontSize: 12,
+                                  color: const Color(0xFFCBD5E1),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF38BDF8),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                      onPressed: () async {
+                        final messenger = ScaffoldMessenger.of(context);
+                        Navigator.pop(ctx);
+                        final selectedObj = careCards.firstWhere((c) => c['title'] == selectedCard);
+                        final contentMsg = '【家族心意】收到女兒傳送的「${selectedObj['title']}」：${selectedObj['desc']}';
+
+                        if (widget.currentElder?.id != null) {
+                          try {
+                            await ApiService.logActivity(widget.currentElder!.id, 'interaction', contentMsg);
+                          } catch (_) {}
+                        }
+
+                        if (mounted) {
+                          setState(() {
+                            _realLogs.insert(0, {
+                              'log_id': DateTime.now().millisecondsSinceEpoch,
+                              'event_type': 'interaction',
+                              'content': contentMsg,
+                              'timestamp': DateTime.now().toIso8601String(),
+                            });
+                          });
+
+                          messenger.showSnackBar(
+                            SnackBar(
+                              content: Text('已成功將「$selectedCard」傳送至 $elderName 的裝置！❤️', style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold)),
+                              backgroundColor: const Color(0xFF10B981),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.send_rounded, color: Colors.white, size: 18),
+                      label: Text(
+                        '確定傳送關懷卡片',
+                        style: GoogleFonts.notoSansTc(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Map<String, String> _cleanAiLogText(String rawText) {
+    if (!rawText.contains('長者詢問：') && !rawText.contains('AI 回應：')) {
+      return {'user': '', 'ai': rawText};
+    }
+    String userPart = '';
+    String aiPart = rawText;
+
+    if (rawText.contains('| AI 回應：')) {
+      final parts = rawText.split('| AI 回應：');
+      userPart = parts[0].replaceAll('長者詢問：', '').trim();
+      aiPart = parts.length > 1 ? parts[1].trim() : '';
+    } else if (rawText.contains('AI 回應：')) {
+      final parts = rawText.split('AI 回應：');
+      userPart = parts[0].replaceAll('長者詢問：', '').trim();
+      aiPart = parts.length > 1 ? parts[1].trim() : '';
+    } else {
+      userPart = rawText.replaceAll('長者詢問：', '').trim();
+    }
+    return {'user': userPart, 'ai': aiPart};
+  }
+
+  final Set<String> _likedCategories = {};
   String? _selectedTopicKeyword;
 
   Map<String, dynamic>? _moodInsightData;
@@ -294,7 +479,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
 
     try {
       final insight = await ApiService.getElderMoodInsight(elderIdStr);
-      final logs = await ApiService.getElderActivityLogs(elderIdStr, limit: 10);
+      final logs = await ApiService.getElderActivityLogs(elderIdStr, limit: 30);
       if (mounted) {
         setState(() {
           _moodInsightData = insight;
@@ -435,13 +620,27 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                       children: [
                         const Icon(Icons.location_on_rounded, size: 14, color: Color(0xFF94A3B8)),
                         const SizedBox(width: 4),
-                        Text(
-                          '$location • 今日累積 3,850 步',
-                          style: GoogleFonts.notoSansTc(
-                            fontSize: 13,
-                            color: const Color(0xFFCBD5E1),
-                          ),
-                        ),
+                        Builder(builder: (context) {
+                          int totalSteps = 0;
+                          for (final item in _realLogs) {
+                            final text = item['content']?.toString() ?? '';
+                            final m = RegExp(r'(\d{1,3}(?:,\d{3})*|\d+)\s*步').firstMatch(text);
+                            if (m != null) {
+                              final parsed = int.tryParse(m.group(1)!.replaceAll(',', '')) ?? 0;
+                              if (parsed > totalSteps) totalSteps = parsed;
+                            }
+                          }
+                          final stepDisplay = totalSteps > 0 ? totalSteps : (widget.currentElder?.id != null ? 3850 : 0);
+                          final locDisplay = (location.isNotEmpty && location != '未知') ? location : '台北市大安區';
+
+                          return Text(
+                            '$locDisplay • 今日累積 $stepDisplay 步',
+                            style: GoogleFonts.notoSansTc(
+                              fontSize: 13,
+                              color: const Color(0xFFCBD5E1),
+                            ),
+                          );
+                        }),
                       ],
                     ),
                   ],
@@ -461,8 +660,43 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     final moodTitle = _moodInsightData?['mood_title'] ?? '溫馨平穩';
     final moodScore = _moodInsightData?['mood_score'] ?? 88;
     final moodIcon = _moodInsightData?['mood_icon'] ?? '🍵';
-    final summaryText = _moodInsightData?['summary'] ?? '$name 今天情緒非常穩定愉快，下午點閱收聽了熱門體育新聞，展現高度興趣！';
-    final icebreakerTopic = _moodInsightData?['icebreaker_topic'] ?? '$name！我今天看到經典賽新聞，感覺超精彩的！您最近也有在關注戰況嗎？';
+
+    final String summaryText;
+    final String icebreakerTopic;
+
+    final now = DateTime.now();
+    final todayStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+    final todayLogs = _realLogs.where((log) => (log['timestamp']?.toString() ?? '').startsWith(todayStr)).toList();
+
+    if (_moodInsightData != null && _moodInsightData!['summary'] != null && _moodInsightData!['summary'].toString().isNotEmpty) {
+      summaryText = _moodInsightData!['summary'].toString();
+      icebreakerTopic = _moodInsightData!['icebreaker_topic']?.toString() ?? '$name！今天過得好嗎？撥個電話聽聽長輩的聲音關心一下吧！';
+    } else if (todayLogs.isNotEmpty) {
+      final hasWalk = todayLogs.any((l) => (l['content']?.toString() ?? '').contains('散步') || (l['content']?.toString() ?? '').contains('步數'));
+      final hasMed = todayLogs.any((l) => (l['content']?.toString() ?? '').contains('藥'));
+      final hasNews = todayLogs.any((l) => (l['content']?.toString() ?? '').contains('新聞'));
+
+      List<String> acts = [];
+      if (hasMed) acts.add('按時完成了晨間用藥打卡');
+      if (hasWalk) acts.add('完成了公園散步運動');
+      if (hasNews) acts.add('點閱收聽了熱門新聞');
+
+      final actStr = acts.isNotEmpty ? acts.join('，且') : '作息非常規律';
+      summaryText = '$name 今天情緒非常穩定愉快，$actStr！';
+      icebreakerTopic = hasNews
+          ? '$name！我今天看到熱門賽事新聞，感覺超精彩的！您最近也有在關注戰況嗎？'
+          : '$name！聽說您今天有出門散步，公園空氣感覺怎麼樣呢？';
+    } else {
+      final lastLogDate = _realLogs.isNotEmpty ? (_realLogs.first['timestamp']?.toString() ?? '').substring(0, 10) : '';
+      if (lastLogDate.length >= 10) {
+        final m = lastLogDate.substring(5, 7);
+        final d = lastLogDate.substring(8, 10);
+        summaryText = '$name 今天尚未產生新的動態紀錄。最近一次紀錄於 $m/$d，作息狀況平穩！';
+      } else {
+        summaryText = '$name 今日尚無活動紀錄，撥個電話問候關心一下長輩吧！';
+      }
+      icebreakerTopic = '$name！今天過得好嗎？已有段時間沒聽到您的聲音，撥個電話問候關心您！';
+    }
 
     return Container(
       padding: const EdgeInsets.all(22),
@@ -733,24 +967,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
               const SizedBox(width: 12),
               Expanded(
                 child: ElevatedButton.icon(
-                  onPressed: () {
-                    HapticFeedback.mediumImpact();
-                    Clipboard.setData(ClipboardData(text: icebreakerTopic));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Row(
-                          children: [
-                            const Icon(Icons.send_rounded, color: Colors.white),
-                            const SizedBox(width: 10),
-                            Expanded(child: Text('已複製話題並準備帶入關懷卡！', style: GoogleFonts.notoSansTc())),
-                          ],
-                        ),
-                        backgroundColor: const Color(0xFF8B5CF6),
-                        behavior: SnackBarBehavior.floating,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                    );
-                  },
+                  onPressed: () => _showSendCareCardModal(context, name),
                   icon: const Icon(Icons.mark_email_unread_rounded, size: 18, color: Color(0xFF78350F)),
                   label: Text(
                     '傳送關懷卡',
@@ -812,12 +1029,17 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
         Color glowCol = const Color(0xFF0284C7);
         IconData ic = Icons.auto_awesome_rounded;
 
-        if (eventType == 'news_view' || contentStr.contains('新聞') || contentStr.contains('NBA')) {
+        if (eventType == 'news_view' || eventType == 'news_query' || contentStr.contains('新聞') || contentStr.contains('NBA')) {
           badge = 'NEWS';
           col = const Color(0xFF38BDF8);
           glowCol = const Color(0xFF0284C7);
           ic = Icons.sports_basketball_rounded;
-        } else if (contentStr.contains('散步') || contentStr.contains('步數')) {
+        } else if (eventType == 'youtube_query' || contentStr.contains('YouTube') || contentStr.contains('音樂') || contentStr.contains('影片') || contentStr.contains('歌曲')) {
+          badge = 'MEDIA';
+          col = const Color(0xFFF43F5E);
+          glowCol = const Color(0xFFBE123C);
+          ic = Icons.play_circle_fill_rounded;
+        } else if (contentStr.contains('散步') || contentStr.contains('步數') || contentStr.contains('運動') || eventType == 'activity') {
           badge = 'WALK';
           col = const Color(0xFF34D399);
           glowCol = const Color(0xFF059669);
@@ -827,7 +1049,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
           col = const Color(0xFFA78BFA);
           glowCol = const Color(0xFF7C3AED);
           ic = Icons.medication_rounded;
-        } else if (contentStr.contains('對話') || contentStr.contains('聊天') || contentStr.contains('小嘎') || contentStr.contains('寂寞') || eventType == 'mood') {
+        } else if (contentStr.contains('對話') || contentStr.contains('聊天') || contentStr.contains('小嘎') || contentStr.contains('寂寞') || eventType == 'mood' || eventType == 'chat') {
           badge = 'AI CHAT';
           col = const Color(0xFFF59E0B);
           glowCol = const Color(0xFFD97706);
@@ -836,10 +1058,11 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
 
         return {
           'id': log['log_id'] ?? log.hashCode,
+          'rawTimestamp': tsStr,
           'time': timeStr,
           'date': dateStr,
           'badge': badge,
-          'title': contentStr.length > 15 ? contentStr.substring(0, 15) + '...' : contentStr,
+          'title': contentStr.length > 15 ? '${contentStr.substring(0, 15)}...' : contentStr,
           'desc': contentStr,
           'fullQuery': '與 AI 長輩陪伴語音互動',
           'fullAi': contentStr,
@@ -849,105 +1072,43 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
           'glow': glowCol,
         };
       }).toList();
-    } else {
-      rawFeedItems = [
-        {
-          'id': 1,
-          'time': '16:45',
-          'date': todayStr,
-          'badge': 'NEWS',
-          'title': '點閱收聽體育新聞',
-          'desc': '長輩收聽熱門體育新聞《NBA熱火誤發詹姆斯加盟預告》，隨後發起 AI 語音問答交流 🏆',
-          'isChat': false,
-          'icon': Icons.sports_basketball_rounded,
-          'color': const Color(0xFF38BDF8),
-          'glow': const Color(0xFF0284C7),
-        },
-        {
-          'id': 2,
-          'time': '15:30',
-          'date': todayStr,
-          'badge': 'WALK',
-          'title': '公園散步履約打卡',
-          'desc': '在大安森林公園完成步數目標 3,850 步，達成今日規律健康標章 🏃‍♂️',
-          'isChat': false,
-          'icon': Icons.directions_run_rounded,
-          'color': const Color(0xFF34D399),
-          'glow': const Color(0xFF059669),
-        },
-        {
-          'id': 3,
-          'time': '14:00',
-          'date': todayStr,
-          'badge': 'AI CHAT',
-          'title': '童年大稻埕布莊故事',
-          'desc': '長輩與小嘎分享年輕時在大稻埕布莊當學徒的往事 💬',
-          'fullQuery': '聊聊以前大稻埕布莊的事',
-          'fullAi': '宇璿，您說您年輕時在布莊當學徒，那時候的布匹顏色跟質感真令人懷念！要不要再多說說當時最熱銷的布款呢？',
-          'isChat': true,
-          'icon': Icons.auto_stories_rounded,
-          'color': const Color(0xFFF59E0B),
-          'glow': const Color(0xFFD97706),
-        },
-        {
-          'id': 4,
-          'time': '11:20',
-          'date': todayStr,
-          'badge': 'CARE',
-          'title': '收到女兒關懷',
-          'desc': '收到女兒傳送的語音卡片：「爸，今晚想吃火鍋嗎？」💌',
-          'isChat': false,
-          'icon': Icons.favorite_rounded,
-          'color': const Color(0xFFEC4899),
-          'glow': const Color(0xFFBE185D),
-        },
-        {
-          'id': 5,
-          'time': '08:15',
-          'date': todayStr,
-          'badge': 'MEDICINE',
-          'title': '晨間降壓藥與量血壓',
-          'desc': '已按時服用【降血壓藥】乙顆，血壓 122 mmHg 狀態良好 💊',
-          'isChat': false,
-          'icon': Icons.medication_rounded,
-          'color': const Color(0xFFA78BFA),
-          'glow': const Color(0xFF7C3AED),
-        },
-        {
-          'id': 6,
-          'time': '昨天 19:30',
-          'date': yesterdayStr,
-          'badge': 'AI CHAT',
-          'title': '晚間台語歌仔戲對話',
-          'desc': '長輩與小嘎聊起《身騎白馬》歌詞與王寶釧故事 🎭',
-          'fullQuery': '想聽聽歌仔戲身騎白馬',
-          'fullAi': '好呀，宇璿！薛平貴騎著白馬過三關，這段戲曲真的是經典名作，您以前也很愛聽歌仔戲嗎？',
-          'isChat': true,
-          'icon': Icons.theater_comedy_rounded,
-          'color': const Color(0xFFF59E0B),
-          'glow': const Color(0xFFD97706),
-        },
-        {
-          'id': 7,
-          'time': '昨天 07:00',
-          'date': yesterdayStr,
-          'badge': 'ROUTINE',
-          'title': '晨間點睛打卡',
-          'desc': '長輩開啟 Uban 完成晨間打卡，精神狀態極佳 🌟',
-          'isChat': false,
-          'icon': Icons.wb_sunny_rounded,
-          'color': const Color(0xFFFBBF24),
-          'glow': const Color(0xFFD97706),
-        },
-      ];
     }
 
     // Filter by topic keyword if selected
     List<Map<String, dynamic>> itemsPool = rawFeedItems;
     if (_selectedTopicKeyword != null) {
+      final kw = _selectedTopicKeyword!.trim().toLowerCase();
       itemsPool = rawFeedItems.where((i) {
-        final d = "${i['title']} ${i['desc']} ${i['badge']}";
-        return d.contains(_selectedTopicKeyword!);
+        final b = i['badge']?.toString().toLowerCase() ?? '';
+        final t = i['title']?.toString() ?? '';
+        final d = i['desc']?.toString() ?? '';
+        final fullText = '$b $t $d';
+
+        if (fullText.contains(kw)) return true;
+
+        // 語意相容與分類標籤匹配 (Semantic synonym matching so clicking tags NEVER loses items)
+        if ((kw == '影音' || kw == '音樂' || kw.contains('音樂')) &&
+            (fullText.contains('音樂') || fullText.contains('影音') || fullText.contains('歌曲') || fullText.contains('youtube') || b == 'media')) {
+          return true;
+        }
+        if ((kw == '散步' || kw == '運動' || kw == '健走') &&
+            (fullText.contains('散步') || fullText.contains('運動') || fullText.contains('步數') || b == 'walk')) {
+          return true;
+        }
+        if ((kw == '新聞' || kw == '體育') &&
+            (fullText.contains('新聞') || fullText.contains('體育') || fullText.contains('nba') || b == 'news')) {
+          return true;
+        }
+        if ((kw == '對話' || kw == '故事' || kw == '聊天') &&
+            (fullText.contains('對話') || fullText.contains('故事') || fullText.contains('聊天') || fullText.contains('小嘎') || b == 'ai chat')) {
+          return true;
+        }
+        if ((kw == '藥' || kw == '血壓' || kw == '打卡') &&
+            (fullText.contains('藥') || fullText.contains('血壓') || fullText.contains('打卡') || b == 'medicine')) {
+          return true;
+        }
+
+        return false;
       }).toList();
     }
 
@@ -1062,7 +1223,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
           const SizedBox(height: 14),
 
           // 🏷️ 特色功能 1：長輩熱情話題關鍵字雲 (Topic Pulse Cloud)
-          _buildTopicPulseCloud(),
+          _buildTopicPulseCloud(activeFilteredItems),
 
           const SizedBox(height: 12),
 
@@ -1174,19 +1335,136 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     ).animate().fadeIn(delay: 200.ms, duration: 400.ms);
   }
 
-  Widget _buildTopicPulseCloud() {
-    final topics = [
-      {'tag': '🔥 #NBA熱火交易', 'keyword': 'NBA', 'color': const Color(0xFF38BDF8)},
-      {'tag': '🌿 #大安森林公園', 'keyword': '散步', 'color': const Color(0xFF34D399)},
-      {'tag': '🧵 #大稻埕布莊往事', 'keyword': '布莊', 'color': const Color(0xFFF59E0B)},
-      {'tag': '🎭 #台語歌仔戲', 'keyword': '歌仔戲', 'color': const Color(0xFFEC4899)},
-      {'tag': '💊 #晨間作息打卡', 'keyword': '藥', 'color': const Color(0xFFA78BFA)},
-    ];
+  List<Map<String, dynamic>> _extractDynamicTopicTags(
+    List<Map<String, dynamic>> rawFeedItems,
+    dynamic moodInsightData,
+    String elderInterests,
+  ) {
+    List<Map<String, dynamic>> tags = [];
+    final Set<String> seenKeywords = {};
+
+    void addTag(String tagLabel, String keyword, Color color) {
+      final cleanKw = keyword.trim();
+      if (cleanKw.isNotEmpty && !seenKeywords.contains(cleanKw)) {
+        seenKeywords.add(cleanKw);
+        tags.add({
+          'tag': tagLabel,
+          'keyword': cleanKw,
+          'color': color,
+        });
+      }
+    }
+
+    // 1. 即時動態萃取：從長輩實際產生的日誌活動（rawFeedItems）中提煉真實關鍵字標籤
+    if (rawFeedItems.isNotEmpty) {
+      for (final item in rawFeedItems) {
+        final desc = item['desc']?.toString() ?? '';
+        final title = item['title']?.toString() ?? '';
+        final badge = item['badge']?.toString() ?? '';
+        final fullText = '$title $desc';
+
+        // A0. 財經與台股投資
+        if (fullText.contains('財經') || fullText.contains('台股') || fullText.contains('股票') || fullText.contains('股市') || fullText.contains('投資') || fullText.contains('理財')) {
+          if (fullText.contains('台股')) {
+            addTag('📈 #台股焦點', '台股', const Color(0xFF10B981));
+          } else if (fullText.contains('股票') || fullText.contains('股市')) {
+            addTag('📈 #股市觀點', '股市', const Color(0xFF10B981));
+          } else {
+            addTag('📈 #財經趨勢', '財經', const Color(0xFF10B981));
+          }
+        }
+
+        // A0. 美食佳餚與料理食譜
+        else if (fullText.contains('食譜') || fullText.contains('烹飪') || fullText.contains('做菜') || fullText.contains('美食') || fullText.contains('火鍋') || fullText.contains('料理')) {
+          if (fullText.contains('火鍋')) {
+            addTag('🍳 #火鍋佳餚', '火鍋', const Color(0xFFFB923C));
+          } else if (fullText.contains('食譜') || fullText.contains('做菜')) {
+            addTag('🍳 #烹飪食譜', '食譜', const Color(0xFFFB923C));
+          } else {
+            addTag('🍳 #美食料理', '美食', const Color(0xFFFB923C));
+          }
+        }
+
+        // A. 影音點播 (YouTube / 歌名 / 歌手)
+        else if (badge == 'MEDIA' || fullText.contains('YouTube') || fullText.contains('音樂') || fullText.contains('歌曲')) {
+          final match = RegExp(r'(?:YouTube 音樂/影片|歌曲|音樂)[：:\s]*([^\s|｜]+)').firstMatch(fullText);
+          if (match != null) {
+            final kw = match.group(1)!.replaceAll(RegExp(r'[^\w\u4e00-\u9fa5]'), '');
+            if (kw.length >= 2) {
+              addTag('🎵 #$kw', kw, const Color(0xFFF43F5E));
+              continue;
+            }
+          }
+          addTag('🎵 #經典音樂', '音樂', const Color(0xFFF43F5E));
+        }
+
+        // B. 健康運動與作息
+        else if (badge == 'WALK' || fullText.contains('運動') || fullText.contains('散步') || fullText.contains('步數')) {
+          if (fullText.contains('散步')) {
+            addTag('🌿 #戶外散步', '散步', const Color(0xFF34D399));
+          } else if (fullText.contains('運動')) {
+            addTag('🏃 #日常運動', '運動', const Color(0xFF34D399));
+          } else if (fullText.contains('步數')) {
+            addTag('👟 #健走步數', '步數', const Color(0xFF34D399));
+          } else {
+            addTag('🏃 #健康作息', '健康', const Color(0xFF34D399));
+          }
+        }
+
+        // C. 熱門新聞點閱與關注
+        else if (badge == 'NEWS' || fullText.contains('新聞')) {
+          final match = RegExp(r'【([^】]+)】').firstMatch(fullText);
+          if (match != null) {
+            final cat = match.group(1)!;
+            if (cat != 'all' && cat.isNotEmpty) {
+              addTag('📰 #$cat新聞', cat, const Color(0xFF38BDF8));
+              continue;
+            }
+          }
+          if (fullText.contains('NBA') || fullText.contains('體育')) {
+            addTag('🏀 #體育賽事新聞', '體育', const Color(0xFF38BDF8));
+          } else {
+            addTag('📰 #熱門新聞關注', '新聞', const Color(0xFF38BDF8));
+          }
+        }
+
+        // D. 用藥提醒與健康打卡
+        else if (badge == 'MEDICINE' || fullText.contains('藥') || fullText.contains('打卡')) {
+          if (fullText.contains('血壓')) {
+            addTag('💊 #血壓用藥', '血壓', const Color(0xFFA78BFA));
+          } else if (fullText.contains('藥')) {
+            addTag('💊 #按時服藥', '藥', const Color(0xFFA78BFA));
+          } else {
+            addTag('🌟 #晨間健康打卡', '打卡', const Color(0xFFA78BFA));
+          }
+        }
+
+        // E. AI 陪伴與歷史回憶對話
+        else if (badge == 'AI CHAT' || fullText.contains('對話') || fullText.contains('聊天') || fullText.contains('故事')) {
+          if (fullText.contains('布莊') || fullText.contains('童年') || fullText.contains('往事')) {
+            addTag('💬 #昔日記憶故事', '故事', const Color(0xFFF59E0B));
+          } else if (fullText.contains('歌仔戲') || fullText.contains('戲曲')) {
+            addTag('🎭 #歌仔戲曲', '歌仔戲', const Color(0xFFF59E0B));
+          } else {
+            addTag('💬 #AI親情對話', '對話', const Color(0xFFF59E0B));
+          }
+        }
+      }
+    }
+
+    return tags;
+  }
+
+  Widget _buildTopicPulseCloud(List<Map<String, dynamic>> rawFeedItems) {
+    if (rawFeedItems.isEmpty) return const SizedBox.shrink();
+    final dynamicTopics = _extractDynamicTopicTags(rawFeedItems, _moodInsightData, '');
+
+    if (dynamicTopics.isEmpty) return const SizedBox.shrink();
 
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
-        children: topics.map((t) {
+        children: dynamicTopics.map((t) {
           final isSelected = _selectedTopicKeyword == t['keyword'];
           final col = t['color'] as Color;
           return Padding(
@@ -1264,13 +1542,28 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     final name = widget.currentElder?.displayName ?? '長輩';
     final apiClusters = _moodInsightData?['topic_clusters'] as List<dynamic>?;
 
+    String makeDynamicTagline(List<Map<String, dynamic>> items, String fallback) {
+      if (items.isEmpty) return fallback;
+      final first = items.first;
+      final t = first['title']?.toString() ?? '';
+      final tm = first['time']?.toString() ?? '';
+      return '最新紀錄：$t ($tm)';
+    }
+
+    String makeDynamicSummary(List<Map<String, dynamic>> items, String fallback) {
+      if (items.isEmpty) return fallback;
+      final descs = items.map((i) => i['desc']?.toString() ?? '').where((d) => d.isNotEmpty).toList();
+      if (descs.isEmpty) return fallback;
+      return descs.take(2).join('； ');
+    }
+
     List<Map<String, dynamic>> categoriesToRender = [];
 
     if (apiClusters != null && apiClusters.isNotEmpty) {
+      final Set<int> matchedItemIds = {};
+
       for (final cluster in apiClusters) {
         final title = cluster['title']?.toString() ?? '主題紀錄';
-        final tagline = cluster['tagline']?.toString() ?? '';
-        final previewSummary = cluster['preview_summary']?.toString() ?? '';
         final colorHexStr = cluster['color_hex']?.toString() ?? '0xFF38BDF8';
         final glowHexStr = cluster['glow_hex']?.toString() ?? '0xFF0284C7';
         final iconName = cluster['icon_name']?.toString() ?? '';
@@ -1286,6 +1579,12 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
           iconData = Icons.directions_run_rounded;
         } else if (iconName.contains('favorite') || iconName.contains('heart')) {
           iconData = Icons.favorite_rounded;
+        } else if (iconName.contains('play') || iconName.contains('music')) {
+          iconData = Icons.play_circle_fill_rounded;
+        } else if (iconName.contains('trending') || iconName.contains('chart') || iconName.contains('finance')) {
+          iconData = Icons.trending_up_rounded;
+        } else if (iconName.contains('restaurant') || iconName.contains('food')) {
+          iconData = Icons.restaurant_rounded;
         }
 
         final matchedItems = activeFilteredItems.where((item) {
@@ -1297,20 +1596,98 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
         }).toList();
 
         if (matchedItems.isNotEmpty) {
+          for (final it in matchedItems) {
+            final itemId = it['id'];
+            if (itemId is int) {
+              matchedItemIds.add(itemId);
+            }
+          }
           categoriesToRender.add({
             'title': title,
             'icon': iconData,
             'color': Color(colorHex),
             'glow': Color(glowHex),
-            'tagline': tagline,
-            'previewSummary': previewSummary,
+            'tagline': makeDynamicTagline(matchedItems, '$title 相關動態'),
+            'previewSummary': makeDynamicSummary(matchedItems, '$name今日關心 $title。'),
             'items': matchedItems,
+          });
+        }
+      }
+
+      // Catch any leftover items not matched by apiClusters so no items are ever lost
+      final unmatchedItems = activeFilteredItems.where((item) {
+        final id = item['id'];
+        return id == null || (id is int && !matchedItemIds.contains(id));
+      }).toList();
+
+      if (unmatchedItems.isNotEmpty) {
+        final mediaLeftovers = unmatchedItems.where((i) {
+          final d = "${i['title']} ${i['desc']} ${i['badge']}";
+          return d.contains('YouTube') || d.contains('影音') || d.contains('音樂') || d.contains('歌曲') || d.contains('歌') || d.contains('MEDIA');
+        }).toList();
+
+        if (mediaLeftovers.isNotEmpty) {
+          categoriesToRender.add({
+            'title': '🎵 音樂影音與娛樂點播',
+            'icon': Icons.play_circle_fill_rounded,
+            'color': const Color(0xFFF43F5E),
+            'glow': const Color(0xFFBE123C),
+            'tagline': makeDynamicTagline(mediaLeftovers, '影音娛樂：點播喜愛的經典歌曲與影音 🎶'),
+            'previewSummary': makeDynamicSummary(mediaLeftovers, '$name點播收聽影音娛樂內容。'),
+            'items': mediaLeftovers,
+          });
+        }
+
+        final remaining = unmatchedItems.where((i) => !mediaLeftovers.contains(i)).toList();
+        if (remaining.isNotEmpty) {
+          categoriesToRender.add({
+            'title': '🌟 每日生活足跡記錄',
+            'icon': Icons.auto_awesome_rounded,
+            'color': const Color(0xFF818CF8),
+            'glow': const Color(0xFF4F46E5),
+            'tagline': makeDynamicTagline(remaining, '生活狀態：保持健康互動 ✅'),
+            'previewSummary': makeDynamicSummary(remaining, '$name今日生活足跡與活動紀錄。'),
+            'items': remaining,
           });
         }
       }
     }
 
     if (categoriesToRender.isEmpty) {
+      final financeItems = activeFilteredItems.where((i) {
+        final d = "${i['title']} ${i['desc']} ${i['badge']}";
+        return d.contains('財經') || d.contains('台股') || d.contains('股票') || d.contains('股市') || d.contains('投資') || d.contains('理財');
+      }).toList();
+
+      if (financeItems.isNotEmpty) {
+        categoriesToRender.add({
+          'title': '📈 財經觀點與台股投資',
+          'icon': Icons.trending_up_rounded,
+          'color': const Color(0xFF10B981),
+          'glow': const Color(0xFF059669),
+          'tagline': makeDynamicTagline(financeItems, '財經焦點：股市與財經資訊 📊'),
+          'previewSummary': makeDynamicSummary(financeItems, '$name關心財經市場與台股動態。'),
+          'items': financeItems,
+        });
+      }
+
+      final foodItems = activeFilteredItems.where((i) {
+        final d = "${i['title']} ${i['desc']} ${i['badge']}";
+        return d.contains('食譜') || d.contains('烹飪') || d.contains('做菜') || d.contains('美食') || d.contains('火鍋') || d.contains('料理');
+      }).toList();
+
+      if (foodItems.isNotEmpty) {
+        categoriesToRender.add({
+          'title': '🍳 美食佳餚與餐飲食譜交流',
+          'icon': Icons.restaurant_rounded,
+          'color': const Color(0xFFFB923C),
+          'glow': const Color(0xFFC2410C),
+          'tagline': makeDynamicTagline(foodItems, '飲食點滴：美食與健康食譜 🥗'),
+          'previewSummary': makeDynamicSummary(foodItems, '$name關注分享日常飲食料理。'),
+          'items': foodItems,
+        });
+      }
+
       final sportsItems = activeFilteredItems.where((i) {
         final d = "${i['title']} ${i['desc']} ${i['badge']}";
         return d.contains('NBA') || d.contains('體育') || d.contains('新聞') || d.contains('賽事') || d.contains('詹姆斯');
@@ -1322,15 +1699,15 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
           'icon': Icons.sports_basketball_rounded,
           'color': const Color(0xFF38BDF8),
           'glow': const Color(0xFF0284C7),
-          'tagline': '關注話題：NBA 球星交易與轉隊賽事討論 🏆',
-          'previewSummary': '$name關注《NBA熱火誤發加盟預告》新聞，並與 AI 小嘎交流比賽戰況與球星動態。',
+          'tagline': makeDynamicTagline(sportsItems, '關注新聞：體育與球賽資訊 🏆'),
+          'previewSummary': makeDynamicSummary(sportsItems, '$name收聽關注熱門新聞點閱紀錄。'),
           'items': sportsItems,
         });
       }
 
       final healthItems = activeFilteredItems.where((i) {
         final d = "${i['title']} ${i['desc']} ${i['badge']}";
-        return d.contains('散步') || d.contains('步數') || d.contains('藥') || d.contains('打卡') || d.contains('作息');
+        return d.contains('散步') || d.contains('步數') || d.contains('藥') || d.contains('打卡') || d.contains('作息') || d.contains('運動') || d.contains('活動') || d.contains('WALK');
       }).toList();
 
       if (healthItems.isNotEmpty) {
@@ -1339,15 +1716,32 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
           'icon': Icons.directions_run_rounded,
           'color': const Color(0xFF34D399),
           'glow': const Color(0xFF059669),
-          'tagline': '作息狀態：公園散步達標 🏃‍♂️ • 降壓藥服用確認',
-          'previewSummary': '在大安森林公園完成步數目標，晨間定時打卡與用藥完成，血壓控制良好。',
+          'tagline': makeDynamicTagline(healthItems, '作息狀態：健康打卡與運動 🏃‍♂️'),
+          'previewSummary': makeDynamicSummary(healthItems, '$name按時完成晨間打卡與健康運動。'),
           'items': healthItems,
+        });
+      }
+
+      final mediaItems = activeFilteredItems.where((i) {
+        final d = "${i['title']} ${i['desc']} ${i['badge']}";
+        return d.contains('YouTube') || d.contains('影音') || d.contains('音樂') || d.contains('歌曲') || d.contains('歌') || d.contains('MEDIA');
+      }).toList();
+
+      if (mediaItems.isNotEmpty) {
+        categoriesToRender.add({
+          'title': '🎵 音樂影音與娛樂點播',
+          'icon': Icons.play_circle_fill_rounded,
+          'color': const Color(0xFFF43F5E),
+          'glow': const Color(0xFFBE123C),
+          'tagline': makeDynamicTagline(mediaItems, '影音娛樂：點播喜愛的經典歌曲與影音 🎶'),
+          'previewSummary': makeDynamicSummary(mediaItems, '$name點播收聽影音娛樂內容。'),
+          'items': mediaItems,
         });
       }
 
       final chatItems = activeFilteredItems.where((i) {
         final d = "${i['title']} ${i['desc']} ${i['badge']}";
-        return d.contains('對話') || d.contains('故事') || d.contains('女兒') || d.contains('關懷') || d.contains('聊天');
+        return d.contains('對話') || d.contains('故事') || d.contains('女兒') || d.contains('關懷') || d.contains('聊天') || d.contains('說說話') || d.contains('AI CHAT');
       }).toList();
 
       if (chatItems.isNotEmpty) {
@@ -1356,8 +1750,8 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
           'icon': Icons.favorite_rounded,
           'color': const Color(0xFFF59E0B),
           'glow': const Color(0xFFD97706),
-          'tagline': '家族互動：收到女兒關懷卡片 💌 • 昔日記憶膠囊',
-          'previewSummary': '$name與 AI 小嘎分享童年布莊回憶故事，並收到了來自女兒的溫馨聚餐語音卡片。',
+          'tagline': makeDynamicTagline(chatItems, '家族互動：陪伴對話與語音卡片 💌'),
+          'previewSummary': makeDynamicSummary(chatItems, '$name與 AI 進行語音陪伴對話交流。'),
           'items': chatItems,
         });
       }
@@ -1368,14 +1762,24 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
           'icon': Icons.auto_awesome_rounded,
           'color': const Color(0xFF818CF8),
           'glow': const Color(0xFF4F46E5),
-          'tagline': '生活狀態：開啟 Uban 保持健康互動 ✅',
-          'previewSummary': '$name今日穩定使用系統，作息規律與狀況平穩。',
+          'tagline': makeDynamicTagline(activeFilteredItems, '生活狀態：保持健康互動 ✅'),
+          'previewSummary': makeDynamicSummary(activeFilteredItems, '$name今日穩定使用系統，作息規律與狀況平穩。'),
           'items': activeFilteredItems,
         });
       }
     }
 
+    // 依據類別中最新一筆紀錄的時間戳記進行【由新到舊 (由上至下)】嚴格排序 (Top -> Bottom Descending)
+    categoriesToRender.sort((a, b) {
+      final itemsA = a['items'] as List<Map<String, dynamic>>?;
+      final itemsB = b['items'] as List<Map<String, dynamic>>?;
+      final tsA = (itemsA != null && itemsA.isNotEmpty) ? (itemsA.first['rawTimestamp'] ?? itemsA.first['time'] ?? '') : '';
+      final tsB = (itemsB != null && itemsB.isNotEmpty) ? (itemsB.first['rawTimestamp'] ?? itemsB.first['time'] ?? '') : '';
+      return tsB.toString().compareTo(tsA.toString());
+    });
+
     final categoriesList = categoriesToRender.asMap().entries.toList();
+    String lastRenderedTime = '';
 
     return categoriesList.map((entry) {
       final idx = entry.key;
@@ -1383,6 +1787,11 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
       final isLast = idx == categoriesList.length - 1;
       final items = cat['items'] as List<Map<String, dynamic>>;
       final latestTime = items.isNotEmpty ? (items.first['time'] as String? ?? '') : '';
+
+      final bool showTimeLabel = latestTime.isNotEmpty && latestTime != lastRenderedTime;
+      if (showTimeLabel) {
+        lastRenderedTime = latestTime;
+      }
 
       return IntrinsicHeight(
         child: Row(
@@ -1392,7 +1801,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
               width: 56,
               child: Column(
                 children: [
-                  if (latestTime.isNotEmpty) ...[
+                  if (showTimeLabel) ...[
                     Text(
                       latestTime,
                       textAlign: TextAlign.center,
@@ -1403,47 +1812,49 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                       ),
                     ),
                     const SizedBox(height: 4),
+                  ] else ...[
+                    const SizedBox(height: 14),
                   ],
                   Container(
-                    width: 36,
-                    height: 36,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: const Color(0xFF1E293B),
-                    border: Border.all(color: cat['color'] as Color, width: 2),
-                    boxShadow: [
-                      BoxShadow(
-                        color: (cat['glow'] as Color).withValues(alpha: 0.5),
-                        blurRadius: 10,
-                      ),
-                    ],
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: const Color(0xFF0F172A),
+                      border: Border.all(color: cat['color'] as Color, width: 2),
+                      boxShadow: [
+                        BoxShadow(
+                          color: (cat['glow'] as Color).withValues(alpha: 0.4),
+                          blurRadius: 10,
+                        ),
+                      ],
+                    ),
+                    child: Icon(cat['icon'] as IconData, color: cat['color'] as Color, size: 16),
                   ),
-                  child: Icon(cat['icon'] as IconData, color: cat['color'] as Color, size: 18),
-                ),
-                if (!isLast)
-                  Expanded(
-                    child: Container(
-                      width: 2,
-                      margin: const EdgeInsets.symmetric(vertical: 4),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            cat['color'] as Color,
-                            Colors.white24,
-                          ],
+                  if (!isLast)
+                    Expanded(
+                      child: Container(
+                        width: 2,
+                        margin: const EdgeInsets.symmetric(vertical: 4),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              cat['color'] as Color,
+                              Colors.white24,
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
-            ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 10),
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.only(bottom: 18),
+                padding: const EdgeInsets.only(bottom: 20),
                 child: _buildCategoryCard(
                   context,
                   categoryTitle: cat['title'] as String,
@@ -1473,34 +1884,40 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     required List<Map<String, dynamic>> items,
   }) {
     final count = items.length;
+    final name = widget.currentElder?.displayName ?? '長輩';
+
+    // 判斷是否包含 AI 語音對話/故事
+    final isChatCategory = categoryTitle.contains('陪伴') || categoryTitle.contains('對話') || items.any((i) => i['isChat'] == true);
 
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: const Color(0xFF0F172A).withValues(alpha: 0.7),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: categoryColor.withValues(alpha: 0.3), width: 1.5),
+        color: const Color(0xFF0F172A).withValues(alpha: 0.65),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: categoryColor.withValues(alpha: 0.28), width: 1.2),
         boxShadow: [
           BoxShadow(
-            color: glowColor.withValues(alpha: 0.15),
-            blurRadius: 16,
+            color: glowColor.withValues(alpha: 0.12),
+            blurRadius: 20,
             spreadRadius: 1,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // 標題與數量標籤
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(9),
                 decoration: BoxDecoration(
-                  color: categoryColor.withValues(alpha: 0.2),
+                  color: categoryColor.withValues(alpha: 0.18),
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: categoryColor.withValues(alpha: 0.5)),
+                  border: Border.all(color: categoryColor.withValues(alpha: 0.4)),
                 ),
-                child: Icon(categoryIcon, color: categoryColor, size: 22),
+                child: Icon(categoryIcon, color: categoryColor, size: 20),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -1521,7 +1938,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.notoSansTc(
-                        fontSize: 11.5,
+                        fontSize: 11,
                         color: categoryColor,
                         fontWeight: FontWeight.w600,
                       ),
@@ -1535,6 +1952,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                 decoration: BoxDecoration(
                   color: categoryColor.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: categoryColor.withValues(alpha: 0.4)),
                 ),
                 child: Text(
                   '$count 筆',
@@ -1547,57 +1965,230 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          Text(
-            previewSummary,
-            style: GoogleFonts.notoSansTc(
-              fontSize: 13,
-              height: 1.45,
-              color: const Color(0xFFCBD5E1),
-              fontWeight: FontWeight.w400,
-            ),
-          ),
+
           const SizedBox(height: 14),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: categoryColor.withValues(alpha: 0.15),
-                foregroundColor: Colors.white,
-                elevation: 0,
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  side: BorderSide(color: categoryColor.withValues(alpha: 0.6)),
+
+          // 💬 特色內容區塊：若為對話則渲染親情對話對白框，若為健康作息則渲染簡潔動態條目
+          if (isChatCategory) ...[
+            Builder(builder: (context) {
+              final rawDesc = items.isNotEmpty ? items.first['desc'].toString() : previewSummary;
+              final cleaned = _cleanAiLogText(rawDesc);
+              final userTalk = cleaned['user'] ?? '';
+              final aiTalk = cleaned['ai'] ?? '';
+
+              return Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E293B).withValues(alpha: 0.6),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
                 ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (userTalk.isNotEmpty) ...[
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('💬 ', style: TextStyle(fontSize: 13)),
+                          Expanded(
+                            child: Text(
+                              '$name：「$userTalk」',
+                              style: GoogleFonts.notoSansTc(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w700,
+                                color: const Color(0xFFFDE68A),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('💌 ', style: TextStyle(fontSize: 13)),
+                        Expanded(
+                          child: Text(
+                            '小嘎：「${aiTalk.length > 80 ? '${aiTalk.substring(0, 80)}...' : aiTalk}」',
+                            style: GoogleFonts.notoSansTc(
+                              fontSize: 12,
+                              height: 1.45,
+                              color: const Color(0xFFE2E8F0),
+                              fontWeight: FontWeight.w400,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ] else ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E293B).withValues(alpha: 0.6),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
               ),
-              onPressed: () {
-                HapticFeedback.mediumImpact();
-                _showCategoryDetailModal(
-                  context,
-                  categoryTitle: categoryTitle,
-                  categoryIcon: categoryIcon,
-                  categoryColor: categoryColor,
-                  items: items,
-                );
-              },
-              icon: const Icon(Icons.auto_stories_rounded, size: 16, color: Colors.white),
-              label: Text(
-                '🔍 點擊展開閱覽新聞與 AI 對話紀錄 ($count)',
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: items.take(2).map((item) {
+                  final titleStr = item['title']?.toString() ?? '';
+                  final descStr = item['desc']?.toString() ?? '';
+                  final cleanD = _cleanAiLogText(descStr)['ai'] ?? descStr;
+
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(item['icon'] as IconData? ?? Icons.check_circle_rounded, color: categoryColor, size: 15),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '$titleStr • $cleanD',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.notoSansTc(
+                              fontSize: 12,
+                              height: 1.4,
+                              color: const Color(0xFFCBD5E1),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
               ),
             ),
+          ],
+
+          const SizedBox(height: 14),
+
+          // ❤️ 雙向心意熱度互動按鈕與點讚標籤
+          Row(
+            children: [
+              Expanded(
+                child: InkWell(
+                  onTap: () {
+                    HapticFeedback.mediumImpact();
+                    _showCategoryDetailModal(
+                      context,
+                      categoryTitle: categoryTitle,
+                      categoryIcon: categoryIcon,
+                      categoryColor: categoryColor,
+                      items: items,
+                    );
+                  },
+                  borderRadius: BorderRadius.circular(14),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: categoryColor.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: categoryColor.withValues(alpha: 0.5)),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.auto_stories_rounded, color: categoryColor, size: 15),
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            '閱覽對話與新聞紀錄 ($count)',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.notoSansTc(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Icon(Icons.arrow_forward_ios_rounded, color: categoryColor, size: 10),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: () {
+                  HapticFeedback.mediumImpact();
+                  setState(() {
+                    if (_likedCategories.contains(categoryTitle)) {
+                      _likedCategories.remove(categoryTitle);
+                    } else {
+                      _likedCategories.add(categoryTitle);
+                    }
+                  });
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Row(
+                        children: [
+                          const Icon(Icons.favorite_rounded, color: Color(0xFFEC4899), size: 20),
+                          const SizedBox(width: 8),
+                          Text(
+                            '已傳送女兒的溫馨心意給 $name！❤️',
+                            style: GoogleFonts.notoSansTc(color: Colors.white, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                      backgroundColor: const Color(0xFF1E293B),
+                      behavior: SnackBarBehavior.floating,
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: _likedCategories.contains(categoryTitle)
+                        ? const Color(0xFFEC4899).withValues(alpha: 0.25)
+                        : Colors.white.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: _likedCategories.contains(categoryTitle)
+                          ? const Color(0xFFEC4899)
+                          : Colors.white24,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        _likedCategories.contains(categoryTitle) ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                        color: _likedCategories.contains(categoryTitle) ? const Color(0xFFEC4899) : Colors.white60,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        _likedCategories.contains(categoryTitle) ? '已讚' : '給個心意',
+                        style: GoogleFonts.notoSansTc(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: _likedCategories.contains(categoryTitle) ? const Color(0xFFEC4899) : Colors.white70,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
     );
   }
 
-  // ─── 4. 警示預覽 ───
+    // ─── 4. 警示預覽 ───
 
   static const List<Map<String, dynamic>> _mockAlerts = [
     {
@@ -1615,16 +2206,39 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
   ];
 
   Widget _buildAlertPreview(BuildContext context) {
+    final alertItems = _realLogs.where((log) {
+      final text = log['content']?.toString() ?? '';
+      final etype = log['event_type']?.toString() ?? '';
+      return etype == 'alert' || text.contains('警示') || text.contains('提醒') || text.contains('未確認');
+    }).map((log) {
+      final desc = log['content']?.toString() ?? '';
+      final title = desc.split('|').first.replaceAll(RegExp(r'【.*?】'), '').trim();
+      final level = desc.contains('用藥') || desc.contains('未確認') ? 'high' : 'medium';
+      final icon = desc.contains('用藥') ? Icons.medication_rounded : Icons.directions_walk_rounded;
+      return {'title': title.isNotEmpty ? title : '健康警示', 'desc': desc, 'level': level, 'icon': icon};
+    }).toList();
+
+    final displayAlerts = alertItems.isNotEmpty ? alertItems : _mockAlerts;
     return Container(
-      padding: const EdgeInsets.all(24),
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFF1E1015),
+            Color(0xFF0F172A),
+            Color(0xFF1A1325),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.35), width: 1.5),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
+            color: const Color(0xFFEF4444).withValues(alpha: 0.15),
+            blurRadius: 24,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
@@ -1639,12 +2253,20 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFFEF3C7),
-                      borderRadius: BorderRadius.circular(10),
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFFEF4444), Color(0xFFDC2626)],
+                      ),
+                      borderRadius: BorderRadius.circular(14),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFFEF4444).withValues(alpha: 0.4),
+                          blurRadius: 10,
+                        ),
+                      ],
                     ),
                     child: const Icon(
                       Icons.notifications_active_rounded,
-                      color: Color(0xFFF59E0B),
+                      color: Colors.white,
                       size: 22,
                     ),
                   ),
@@ -1652,24 +2274,31 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                   Text(
                     '最新警示',
                     style: GoogleFonts.notoSansTc(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      color: const Color(0xFF0F172A),
+                      fontSize: 19,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white,
+                      letterSpacing: 0.5,
                     ),
                   ),
                   const SizedBox(width: 8),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
                       color: const Color(0xFFEF4444),
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFFEF4444).withValues(alpha: 0.5),
+                          blurRadius: 8,
+                        ),
+                      ],
                     ),
                     child: Text(
-                      '${_mockAlerts.length}',
+                      '${displayAlerts.length}',
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 13,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w900,
                       ),
                     ),
                   ),
@@ -1692,22 +2321,28 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                     );
                   }
                 },
-                child: Text(
-                  '查看全部 →',
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: const Color(0xFF3B82F6),
-                  ),
+                child: Row(
+                  children: [
+                    Text(
+                      '查看全部',
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF38BDF8),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    const Icon(Icons.arrow_forward_ios_rounded, size: 13, color: Color(0xFF38BDF8)),
+                  ],
                 ),
               ),
             ],
           ),
 
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
 
-          ..._mockAlerts.asMap().entries.map((e) => Padding(
-                padding: EdgeInsets.only(bottom: e.key < _mockAlerts.length - 1 ? 10 : 0),
+          ...displayAlerts.asMap().entries.map((e) => Padding(
+                padding: EdgeInsets.only(bottom: e.key < displayAlerts.length - 1 ? 12 : 0),
                 child: _AlertItem(data: e.value, index: e.key),
               )),
         ],
@@ -1752,35 +2387,58 @@ class _AlertItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     Color levelColor;
-    Color bgColor;
+    Color iconBgColor;
+    Color cardBgColor;
+    Color titleColor;
+    Color descColor;
+    BorderSide borderSide;
+
     switch (data['level'] as String) {
       case 'high':
-        levelColor = const Color(0xFFEF4444);
-        bgColor = const Color(0xFFFEF2F2);
+        levelColor = const Color(0xFFF87171);
+        iconBgColor = const Color(0xFF7F1D1D);
+        cardBgColor = const Color(0xFF231012);
+        titleColor = const Color(0xFFFECACA);
+        descColor = const Color(0xFFFCA5A5);
+        borderSide = BorderSide(color: const Color(0xFFEF4444).withValues(alpha: 0.5), width: 1.2);
         break;
       case 'medium':
-        levelColor = const Color(0xFFF59E0B);
-        bgColor = const Color(0xFFFFFBEB);
+        levelColor = const Color(0xFFFBBF24);
+        iconBgColor = const Color(0xFF78350F);
+        cardBgColor = const Color(0xFF221A08);
+        titleColor = const Color(0xFFFEF08A);
+        descColor = const Color(0xFFFDE68A);
+        borderSide = BorderSide(color: const Color(0xFFF59E0B).withValues(alpha: 0.5), width: 1.2);
         break;
       default:
-        levelColor = const Color(0xFF3B82F6);
-        bgColor = const Color(0xFFEFF6FF);
+        levelColor = const Color(0xFF38BDF8);
+        iconBgColor = const Color(0xFF075985);
+        cardBgColor = const Color(0xFF091F2C);
+        titleColor = const Color(0xFFBAE6FD);
+        descColor = const Color(0xFF7DD3FC);
+        borderSide = BorderSide(color: const Color(0xFF0284C7).withValues(alpha: 0.5), width: 1.2);
     }
 
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: levelColor.withValues(alpha: 0.2)),
+        color: cardBgColor,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.fromBorderSide(borderSide),
+        boxShadow: [
+          BoxShadow(
+            color: levelColor.withValues(alpha: 0.08),
+            blurRadius: 10,
+          ),
+        ],
       ),
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: levelColor.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10),
+              color: iconBgColor,
+              borderRadius: BorderRadius.circular(14),
             ),
             child: Icon(
               data['icon'] as IconData,
@@ -1798,26 +2456,27 @@ class _AlertItem extends StatelessWidget {
                   style: GoogleFonts.notoSansTc(
                     fontSize: 16,
                     fontWeight: FontWeight.w800,
-                    color: const Color(0xFF0F172A),
+                    color: titleColor,
                   ),
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: 3),
                 Text(
                   data['desc'] as String,
                   style: GoogleFonts.notoSansTc(
-                    fontSize: 14,
-                    color: const Color(0xFF64748B),
+                    fontSize: 13.5,
+                    color: descColor,
                     fontWeight: FontWeight.w500,
-                    height: 1.3,
+                    height: 1.35,
                   ),
                 ),
               ],
             ),
           ),
-          const Icon(
+          const SizedBox(width: 8),
+          Icon(
             Icons.chevron_right_rounded,
-            color: Color(0xFFCBD5E1),
-            size: 24,
+            color: levelColor,
+            size: 22,
           ),
         ],
       ),

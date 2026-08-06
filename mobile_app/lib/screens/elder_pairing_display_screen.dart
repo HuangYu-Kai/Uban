@@ -78,7 +78,6 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
     final String deviceRoleKey = 'device_role_$elderRoom';
     final String? savedRole = prefs.getString(deviceRoleKey);
 
-    bool isMonitor;
     if (savedRole != null) {
       isMonitor = savedRole == 'monitor';
       debugPrint(
@@ -141,6 +140,12 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
     }
 
     await prefs.setBool('saved_is_cctv', isMonitor);
+    await _rememberLastElder(
+      prefs,
+      elderId: elderId,
+      elderName: elderName,
+      elderRoomId: elderRoom,
+    );
     // ★ 2026-07-27 第十三輪：把裝置角色一併存進「登出不清除」的記憶鍵，
     //   讓快速登入能原封不動還原角色，不必重新呼叫 hasCommDevice 重判。
     await prefs.setString(

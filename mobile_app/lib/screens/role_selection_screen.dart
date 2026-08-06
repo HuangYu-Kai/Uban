@@ -142,6 +142,10 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
         if (result != null) {
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString('saved_role', 'elder'); // Monitor 屬於長輩端角色
+          // ★ 2026-08-05 第十六輪：user_role 必須同步寫。appRole 讀的是
+          //   `user_role ?? saved_role`，只寫 saved_role 會讓曾登入過家屬的手機
+          //   永遠停在 appRole='family'，家屬來電三態全滅。
+          await prefs.setString('user_role', 'elder');
           await prefs.setString('saved_id', result['elder_id'].toString());
           await prefs.setString('saved_device_name', result['device_name']);
           await prefs.setBool('saved_is_cctv', true);
@@ -180,6 +184,8 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
       // ★ 登入成功，儲存狀態
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('saved_role', 'family');
+      // ★ 2026-08-05 第十六輪：與 saved_role 同步（appRole 讀 user_role 優先）
+      await prefs.setString('user_role', 'family');
       await prefs.setString('saved_id', inputText);
       appRole = 'family';
 
@@ -219,6 +225,10 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('saved_role', 'elder');
+      // ★ 2026-08-05 第十六輪：與 saved_role 同步。這是本輪「家屬→長輩三態全滅」
+      //   的根源寫入點——長輩身分只寫了 saved_role，殘留的 user_role='family'
+      //   會讓 appRole 與 BG handler 的 `role == 'elder'` 分支全部判錯。
+      await prefs.setString('user_role', 'elder');
       await prefs.setString('saved_id', inputText);
       await prefs.setString('saved_device_name', deviceName);
       await prefs.setBool('saved_is_cctv', isMonitor);

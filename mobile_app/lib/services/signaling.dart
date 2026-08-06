@@ -20,15 +20,44 @@ typedef ErrorCallback = void Function(String message);
 typedef CallRequestCallback = void Function(String roomId, String senderId, String? callId, [String? senderName]);
 typedef CallAcceptedCallback = void Function(String accepterId, String? callId);
 
+/// ★ 2026-08-06 第十九輪（需求 3）：四種「沒接通」情境的固定文案。
+/// 由使用者指定，四種必須彼此可區分。集中在這裡，避免三個畫面各自漂移。
+const String kCallFailDeclined = '對方暫時無法接聽';   // 對方按下拒接
+const String kCallFailBusy = '對方正在通話中';         // 對方正在另一通通話中
+const String kCallFailDisconnected = '連線中斷';       // 通話中連線掉了
+const String kCallFailUnreachable = '無法連線';        // ICE 或伺服器層面根本連不上
+
+/// 把 `call-busy` 帶回來的 reason 轉成給使用者看的文案。
+/// 未知或缺漏一律退回「拒接」文案（安全預設：不會謊稱對方在通話中）。
+String callBusyMessageFor(String reason) {
+  switch (reason) {
+    case 'busy':
+      return kCallFailBusy;
+    case 'server-error':
+      return kCallFailUnreachable;
+    default:
+      return kCallFailDeclined;
+  }
+}
+
 class Signaling {
   static const String _serverIp = String.fromEnvironment('SERVER_IP', defaultValue: 'localhost-0.tail5abf5e.ts.net');
   static const String _turnServer = String.fromEnvironment('TURN_SERVER', defaultValue: '152.69.196.5:3478');
   static const String _turnUser = String.fromEnvironment('TURN_USER', defaultValue: 'uban');
   static const String _turnPass = String.fromEnvironment('TURN_PASS', defaultValue: '115207');
   
-  static String get serverUrl => _serverIp.contains('ngrok') || _serverIp.contains('ts.net')
-      ? 'https://$_serverIp' 
-      : 'http://$_serverIp:8000';
+  static String? _overrideServerUrl;
+
+  static String get serverUrl {
+    if (_overrideServerUrl != null) return _overrideServerUrl!;
+    if (_serverIp.startsWith('http://') || _serverIp.startsWith('https://')) {
+      return _serverIp;
+    }
+    if (_serverIp.contains('ts.net') || _serverIp.contains('ngrok')) {
+      return 'https://$_serverIp';
+    }
+    return 'http://$_serverIp:8000';
+  }
 
   static const platform = MethodChannel('com.example.app/bring_to_front');
 
@@ -48,11 +77,23 @@ class Signaling {
   VoidCallback? onCallEnded;
   ErrorCallback? onJoinFailed;
   CallRequestCallback? onCallRequest;
+  /// ★ 2026-08-04：後端推送 force-logout（家屬端解除本長輩綁定）時觸發。
+  ///   由 main.dart 註冊，負責清除 session 並導航回身分選擇介面。
+  void Function()? onForceLogout;
   CallRequestCallback? onCancelCall;
   CallRequestCallback? onEmergencyCall;
   CallAcceptedCallback? onCallAcceptedByRemote;
-  CallAcceptedCallback? onCallBusy; 
-  VoidCallback? onConnectionLost; 
+  CallAcceptedCallback? onCallBusy;
+  /// ★ 2026-08-06 第十九輪（需求 3）：與 [onCallBusy] 同步配對的**純資料**欄位。
+  /// 在觸發 onCallBusy 之前寫入、回呼內同步讀取，語意與 `lastProcessedCallId` 同一類，
+  /// 不是顯示狀態旗標（護欄 G27）。讀不到就是預設的 'declined'。
+  String lastCallBusyReason = 'declined';
+  VoidCallback? onConnectionLost;
+  /// ★ 2026-08-05 第十七輪：ICE **真正**連通（RTCPeerConnectionStateConnected）時觸發。
+  /// `onAddRemoteStream` 只代表 SDP 談成，不代表有任何媒體流動，不可用來判定通話已建立。
+  VoidCallback? onPeerConnected;
+  /// ICE 連線失敗且自動 ICE restart 也救不回來時觸發（參數為給使用者看的訊息）。
+  ErrorCallback? onPeerConnectionFailed;
   Function(String message)? onHeartbeatMessage; // 新增：主動式心跳消息回傳
   Function(String text, String type)? onNewPondLeaf; // 新增：記憶落葉話題推播
 
@@ -61,6 +102,12 @@ class Signaling {
   String? _currentCallId; // 追蹤當前通話 ID，確保 hangUp 時能傳給後端
   String? lastProcessedCallId; // ★ 問題4修復：記錄最後一個已處理的來電 ID，防止重複
   int lastProcessedCallTime = 0; // ★ 問題4修復：記錄最後一個已處理來電的時間戳，用於去重檢查
+  // ★ Fix E：記錄目前處理中來電的 callId 與其視訊/語音旗標，供 main.dart 在
+  //   同一 isolate 存活的前景 Socket 接聽路徑（如 _showIncomingCallDialog 直接
+  //   呼叫 _navigateToVideoCall）查詢。CallKit/FCM 冷啟動路徑改走
+  //   pendingAcceptedCall 攜帶的 isVideoCall 欄位，不依賴此處。
+  String? incomingCallIsVideoCallId;
+  bool incomingCallIsVideo = true;
   dynamic _userId; // 新增：儲存當前使用者的資料庫 ID
   String? _role; // 新增：儲存當前連線的角色
   String? _deviceName;
@@ -71,12 +118,26 @@ class Signaling {
   final List<RTCIceCandidate> _candidateQueue = [];
   final List<String> _pendingRooms = [];
   final Set<String> _invalidCallIds = <String>{};
+  /// ★ 2026-08-05 第十七輪：`onTrack` 只代表 SDP 談成，ICE 是否連通、有沒有位元組
+  /// 在流動完全無關。這裡在收到遠端 track 後 12 秒檢查一次 inbound-rtp 的
+  /// bytesReceived，仍為 0 就據實回報 —— 這正是「有通話計時卻雙方都看不到聽不到」的症狀。
+  Timer? _mediaWatchdogTimer;
 
   /// ★ 2026-07-22 第八輪 Fix 2C：供 main.dart FCM handler 於拒接/取消時標記
   ///   callId 失效，後續延遲抵達的同一 `call-request`（Socket 或 FCM）將直接丟棄，
   ///   避免「拒接後又響」與角色反轉迴圈。
   bool isCallInvalidated(String? callId) =>
       callId != null && callId.isNotEmpty && _invalidCallIds.contains(callId);
+
+  /// ★ Fix E（2026-08-02 第十四輪修正）：依 callId 查詢是否為視訊通話；
+  ///   callId 不吻合或查無紀錄時預設為 true。旗標解析改用 globals.dart 的
+  ///   parseIsVideoCall（共用解析器，相容 bool 與後端 str(bool) 產生的大小寫字串）。
+  bool isVideoCallFor(String? callId) {
+    if (callId != null && callId.isNotEmpty && callId == incomingCallIsVideoCallId) {
+      return incomingCallIsVideo;
+    }
+    return true;
+  }
 
   void invalidateCallId(String? callId) {
     if (callId != null && callId.isNotEmpty) {
@@ -104,7 +165,9 @@ class Signaling {
       'OfferToReceiveAudio': true,
       'OfferToReceiveVideo': true,
     },
-    'optional': [],
+    'optional': [
+      {'DtlsSrtpKeyAgreement': true},
+    ],
   };
 
   StreamSubscription<String>? _tokenRefreshSubscription;
@@ -178,7 +241,21 @@ class Signaling {
   }
 
   void _registerSocketListeners(String roomId, String role, String deviceName, String deviceMode, String? fcmToken) {
-    socket!.onConnectError((err) => debugPrint('❌ Socket Connect Error: $err (Server: $serverUrl)'));
+    int connectErrorCount = 0;
+    socket!.onConnectError((err) {
+      debugPrint('❌ Socket Connect Error: $err (Server: $serverUrl)');
+      connectErrorCount++;
+      if (connectErrorCount >= 2 && _overrideServerUrl == null && serverUrl.contains('ts.net')) {
+        debugPrint('🔄 [Signaling Fallback] Socket Handshake Error. Fallback to local dev server http://10.0.2.2:8000...');
+        _overrideServerUrl = 'http://10.0.2.2:8000';
+        try {
+          socket?.disconnect();
+          socket?.dispose();
+        } catch (_) {}
+        socket = null;
+        connect(roomId, role, userId: _userId, deviceName: _deviceName ?? 'Unknown', deviceMode: _deviceMode ?? 'comm', fcmToken: fcmToken);
+      }
+    });
     socket!.onError((err) => debugPrint('❌ Socket Error: $err'));
 
     socket!.onDisconnect((reason) {
@@ -253,7 +330,11 @@ class Signaling {
       // ★ 更新最後處理的來電 ID 和時間戳
       lastProcessedCallId = callId;
       lastProcessedCallTime = currentTime;
-      
+
+      // ★ Fix E：記錄本通來電是否為視訊，供 isVideoCallFor() 查詢。
+      incomingCallIsVideoCallId = callId;
+      incomingCallIsVideo = parseIsVideoCall(data['isVideoCall']);
+
       debugPrint('📞📞📞 [Signaling] ===== 收到 call-request =====');
       debugPrint('📞 [Signaling] data: $data');
       debugPrint('📞 [Signaling] room: ${data['room']}, senderId: ${data['senderId']}, callId: ${data['callId']}');
@@ -368,12 +449,22 @@ class Signaling {
       if (!kIsWeb) {
         FlutterCallkitIncoming.endAllCalls();
       }
+      // ★ 2026-08-06 第十九輪（需求 3）：先記下原因，讓回呼能區分拒接／忙線／伺服器錯誤。
+      lastCallBusyReason = (data['reason'] ?? 'declined').toString();
       if (onCallBusy != null) onCallBusy!(data['targetId'], data['callId']);
     });
 
     socket!.on('elder-devices-update', (devices) {
       debugPrint("📡 [Signaling] Received elder-devices-update (count: ${devices.length})");
       if (onElderDevicesUpdate != null) onElderDevicesUpdate!(devices);
+    });
+
+    // ★ 2026-08-04：force-logout 必須在此註冊。原本寫在 main.dart 的
+    //   `s.socket?.on('force-logout', ...)` 於 initState 執行，當時 socket 仍為 null，
+    //   `?.` 短路導致從未掛上；即使掛上，connect() 重建 socket 物件後也會失效。
+    socket!.on('force-logout', (_) {
+      debugPrint("🚪 [Signaling] Received force-logout (家屬端已解除綁定)");
+      if (onForceLogout != null) onForceLogout!();
     });
 
     socket!.on('offer', (data) async {
@@ -632,19 +723,20 @@ class Signaling {
     Helper.setSpeakerphoneOn(enable);
   }
 
-  void sendCallRequest(String room, {String role = 'family', String? callId, String? targetId}) {
+  void sendCallRequest(String room, {String role = 'family', String? callId, String? targetId, bool isVideoCall = true}) {
     final String effectiveCallId = callId ?? const Uuid().v4();
     _currentCallId = effectiveCallId;
     final int issuedAt = DateTime.now().millisecondsSinceEpoch;
     socket!.emit('call-request', {
-      'room': room, 
-      'role': role, 
+      'room': room,
+      'role': role,
       'callId': effectiveCallId,
       'issuedAt': issuedAt.toString(),
       'expiresAt': (issuedAt + kCallValidityMs).toString(),
       if (targetId != null) 'targetId': targetId,
       'callerUserId': _userId, // 新增：主動發送發起者的資料庫 ID
       if (_deviceName != null) 'senderName': _deviceName,
+      'isVideoCall': isVideoCall.toString(), // ★ 2026-08-02 第十四輪：送字串，避免後端 str(bool) 產生大寫 "False"
     });
   }
 
@@ -673,15 +765,24 @@ class Signaling {
     }
   }
 
-  void sendCallBusy(String targetSocketId, {String? callId, String? room}) {
+  void sendCallBusy(String targetSocketId, {String? callId, String? room, String? reason}) {
     final String? effectiveRoom = room ?? _currentRoomId;
     final String? effectiveCallId = callId ?? _currentCallId;
+    // ★ 2026-08-06 第十九輪（需求 3）：區分「拒接」與「忙線」。
+    //   peerConnection 不為 null 代表本機此刻真的還在一通通話裡 → 對發起端回報忙線。
+    //   這只影響對方看到的**文案**，不會擋掉任何來電。
+    final String effectiveReason =
+        reason ?? (peerConnection != null ? 'busy' : 'declined');
     // ★ 拒接的 callId 立即失效，避免延遲到達的同一通 call-request 又響起。
     if (effectiveCallId != null && effectiveCallId.isNotEmpty) {
       _invalidCallIds.add(effectiveCallId);
     }
     if (socket != null && socket!.connected) {
-      socket!.emit('call-busy', {'targetId': targetSocketId, 'callId': effectiveCallId});
+      socket!.emit('call-busy', {
+        'targetId': targetSocketId,
+        'callId': effectiveCallId,
+        'reason': effectiveReason,
+      });
     } else {
       // ★ 2026-07-18：Socket 未連線（背景/剛斷線）時走 HTTP 備援，
       //   確保發起方仍能收到拒接、雙端同步關閉來電 UI。
@@ -754,6 +855,7 @@ class Signaling {
       await _processCandidateQueue();
       var answer = await peerConnection?.createAnswer(_constraints);
       await peerConnection?.setLocalDescription(answer!);
+      await _applyVideoEncodingParams();
       
       // ★ 確保發送 answer 時正確指定發起者的 socketId 作為 targetId
       final targetSocketId = data['senderId'] ?? _peerSocketId;
@@ -781,17 +883,12 @@ class Signaling {
   // ★ 根據 elder_id 生成動態的 TURN 憑證
   Map<String, dynamic> _generateDynamicTURNConfig() {
     String turnUsername = _turnUser;
-    String turnPassword = _turnPass;
 
-    // 如果有 elder_id，根據 elder_id 生成隔離的憑證
+    // 如果有 elder_id，根據 elder_id 生成隔離用的使用者名稱（僅供除錯輸出）
     if (_elderId != null && _elderId!.isNotEmpty) {
       // ★ 使用 elder_id 作為 TURN 用戶名的後綴，實現通訊隔離
       // 格式: uban_elder_{elder_id}
       turnUsername = '${_turnUser}_elder_$_elderId';
-
-      // ★ 生成基於 elder_id 的密碼
-      // 這可以確保每個 elder 有獨立的認證通道
-      turnPassword = _turnPass; // 保持相同的密碼，由伺服器驗證 elder_id
 
       debugPrint("🔐 [TURN] 生成 elder_id 隔離的 TURN 憑證:");
       debugPrint("   elder_id: $_elderId");
@@ -800,19 +897,40 @@ class Signaling {
     } else {
       debugPrint("⚠️ [TURN] 未找到 elder_id，使用預設 TURN 憑證");
     }
-    
+
     return {
       'iceServers': [
         {'urls': 'stun:stun.l.google.com:19302'},
         {
-          'urls': [
-            'turn:$_turnServer',
-            'turn:$_turnServer?transport=tcp',
-          ],
-          'username': turnUsername,
-          'credential': turnPassword,
+          // ★ 2026-08-05 第十七輪：Coturn 實際只有靜態帳號 uban（README.md:338-343，
+          //   lt-cred-mech + user=uban:115207）。原本只送 `uban_elder_<id>` 會被回 401，
+          //   拿不到任何 relay 候選；同網域靠 srflx 還能通，跨網域對稱 NAT 就必然
+          //   「SDP 談成、ICE 配不出 pair」→ 有通話計時卻零影音。靜態帳號必須放第一組。
+          'urls': ['turn:$_turnServer', 'turn:$_turnServer?transport=tcp'],
+          'username': _turnUser,
+          'credential': _turnPass,
         },
-      ]
+        // 若日後 Coturn 真的開了 per-elder 帳號，這組會被一併嘗試，不影響上面那組。
+        if (_elderId != null && _elderId!.isNotEmpty)
+          {
+            'urls': ['turn:$_turnServer', 'turn:$_turnServer?transport=tcp'],
+            'username': '${_turnUser}_elder_$_elderId',
+            'credential': _turnPass,
+          },
+      ],
+      // ★ 2026-08-04 第 3 項：縮短連線建立時間。以下四項都不改變媒體路徑，
+      //   只影響 ICE 協商的效率，與雙軌設計（信令走 Tailscale、媒體走 Coturn）無關。
+      //   iceCandidatePoolSize：PeerConnection 一建立就預先蒐集候選位址，
+      //     不必等到 setLocalDescription 之後才開始，這是縮短等待最有效的一項。
+      //   bundlePolicy max-bundle：音訊與視訊共用同一條傳輸通道，
+      //     ICE 檢查從兩組降為一組。
+      //   rtcpMuxPolicy require：RTP 與 RTCP 共用同一個埠，候選數量減半。
+      //   sdpSemantics unified-plan：與本檔使用 addTrack（第 920 行）的寫法一致，
+      //     明確指定以免不同平台預設值不同。
+      'iceCandidatePoolSize': 2,
+      'bundlePolicy': 'max-bundle',
+      'rtcpMuxPolicy': 'require',
+      'sdpSemantics': 'unified-plan',
     };
   }
 
@@ -823,21 +941,44 @@ class Signaling {
     peerConnection = await createPeerConnection(config);
     
     var iceGatheringCount = 0;
-    peerConnection!.onIceConnectionState = (state) {
-      debugPrint("❄️ ICE Connection State: $state");
-    };
 
+    // ★ 2026-08-05 第十七輪：onConnectionState 改為真正回報連線狀態，不只 debugPrint。
+    //   不做 ICE restart（已查證，不要自行加回去）：restart offer 會送進對端的
+    //   socket!.on('offer')（來電流程），沒有 callId → isKnownAcceptedCall 為 false →
+    //   shouldAnswer = false → offer 被靜默丟棄，純粹是死碼；而若 onIncomingCall
+    //   當下有註冊，還會在通話中彈出第二個來電提示。要做對必須在後端
+    //   services/socket_app.py 新增獨立的 renegotiate 轉發事件——那是全專案風險最高的
+    //   檔案，收益（B-1 修好後 Failed 應極罕見）遠低於回歸風險。本輪只做「據實回報」。
     peerConnection!.onConnectionState = (state) {
       debugPrint("🔌 [Signaling] Connection State: $state");
-      if (state == 'connected') {
+      if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
         debugPrint("✅ [Signaling] P2P Connection Established!");
-      } else if (state == 'failed') {
+        onPeerConnected?.call();
+      } else if (state == RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
         debugPrint("❌ [Signaling] P2P Connection Failed!");
+        onPeerConnectionFailed?.call('無法建立影音連線（雙方網路環境不支援），請改用行動網路或其他 Wi-Fi 再試');
       }
+      // Disconnected / Closed 不處理：Disconnected 常會自行恢復，
+      // 誤判會把正常通話砍掉；真的救不回來時瀏覽器/原生層會轉成 Failed。
     };
-    
+
     peerConnection!.onIceConnectionState = (state) {
       debugPrint("🧊 [Signaling] ICE Connection State: $state");
+      // ★ 2026-08-05 第十七輪（硬化）：不要把「已連通」單押在 onConnectionState 上。
+      //   flutter_webrtc 在部分 Android 原生層 onConnectionState 回報並不完整，一旦它沒
+      //   觸發，正常通話會完全不計時——那比修復前更糟。故 ICE 進入 Connected/Completed
+      //   時同樣視為已連通，兩條原生回呼取聯集。
+      //   兩端的 onPeerConnected 實作都是冪等的（video_call_screen.dart 與
+      //   elder_screen.dart 的 _startCallTimer() 都以 _callTimer?.cancel() 開頭，
+      //   setState 也只是把旗標設為 true），重複觸發無副作用。
+      //   ⚠️ 只擴大「連通」這個良性訊號，**絕對不要**把 RTCIceConnectionStateFailed 接到
+      //   onPeerConnectionFailed——那條路徑會直接拆掉通話，而 ICE 層的 Failed 有機會自行
+      //   恢復，接上去等於製造「通話中途無故被掛斷」的新回歸。失敗判定維持只由
+      //   onConnectionState 的 Failed 分支與媒體看門狗負責。
+      if (state == RTCIceConnectionState.RTCIceConnectionStateConnected ||
+          state == RTCIceConnectionState.RTCIceConnectionStateCompleted) {
+        onPeerConnected?.call();
+      }
     };
 
     peerConnection!.onIceCandidate = (candidate) {
@@ -869,6 +1010,10 @@ class Signaling {
     
     peerConnection!.onTrack = (event) {
       debugPrint("🛤️ [Signaling] Received Remote Track: kind=${event.track.kind}, enabled=${event.track.enabled}");
+      // ★ 2026-08-05 第十七輪：只有真的收到 remote track 才啟動媒體看門狗——
+      //   startMonitoring() 的 recvonly 端本來就不會有 remote track，
+      //   以此為前提就不可能誤殺監控連線（詳見 _startMediaWatchdog 說明）。
+      _startMediaWatchdog();
       if (event.streams.isNotEmpty && onAddRemoteStream != null) {
         debugPrint("✅ [Signaling] Adding remote stream with ${event.streams.length} stream(s)");
         onAddRemoteStream!(event.streams[0]);
@@ -876,7 +1021,7 @@ class Signaling {
         debugPrint("⚠️ [Signaling] Remote track received but no onAddRemoteStream callback or streams empty");
       }
     };
-    
+
     if (useLocalStream && localStream != null) {
       final tracks = localStream!.getTracks();
       debugPrint("📍 [Signaling] Adding ${tracks.length} local tracks to PeerConnection:");
@@ -892,6 +1037,69 @@ class Signaling {
       debugPrint("⚠️ [Signaling] useLocalStream=true but localStream is null");
     } else {
       debugPrint("📍 [Signaling] useLocalStream=false, not adding local tracks (receive-only mode)");
+    }
+  }
+
+  /// ★ 2026-08-05 第十七輪：媒體看門狗。`onTrack` 只代表 SDP 談成，收到 remote track
+  /// 後 12 秒檢查一次 inbound-rtp 的 bytesReceived 總和，仍為 0 就代表雖然「看似連線」
+  /// 卻完全沒有任何影音位元組在流動，據實回報（onPeerConnectionFailed）而不是讓 UI
+  /// 停在假裝已連線的畫面。只由 onTrack 呼叫，不掛在 onConnectionState 的 Connected
+  /// 分支——startMonitoring() 建立的是 recvonly 監控連線，那一端本來就不會收到任何
+  /// remote track、也永遠不會有 inbound-rtp，若掛在 Connected 上會誤殺監控連線。
+  void _startMediaWatchdog() {
+    _mediaWatchdogTimer?.cancel();
+    _mediaWatchdogTimer = Timer(const Duration(seconds: 12), () async {
+      try {
+        final pc = peerConnection;
+        if (pc == null) return;
+        final reports = await pc.getStats();
+        double bytesReceived = 0;
+        for (final report in reports) {
+          if (report.type == 'inbound-rtp') {
+            final value = report.values['bytesReceived'];
+            if (value is num) {
+              bytesReceived += value.toDouble();
+            }
+          }
+        }
+        if (bytesReceived > 0) {
+          debugPrint('✅ [Signaling] 媒體看門狗：已收到 $bytesReceived bytes，連線正常');
+        } else {
+          debugPrint('❌ [Signaling] 媒體看門狗：12 秒內 inbound-rtp bytesReceived 仍為 0');
+          onPeerConnectionFailed?.call('影音無法傳輸，請確認雙方網路環境後重新撥打');
+        }
+      } catch (e) {
+        // 看門狗本身絕不可讓通話掛掉，任何例外都只記錄。
+        debugPrint('⚠️ [Signaling] 媒體看門狗檢查失敗（不影響通話）: $e');
+      }
+    });
+  }
+
+  /// ★ 2026-08-04 第 3 項：拉高視訊送出端的位元率與幀率上限。
+  ///   擷取端已要求 1280x720@30，但 WebRTC 送出端預設可能把位元率壓得很低而導致畫面糊。
+  ///   必須在 setLocalDescription / setRemoteDescription 之後呼叫——
+  ///   協商完成前 sender.parameters.encodings 可能是空的，此時直接跳過即可，
+  ///   絕不可強行塞入 encoding（在部分 Android 裝置會拋例外並中斷通話）。
+  Future<void> _applyVideoEncodingParams() async {
+    try {
+      final pc = peerConnection;
+      if (pc == null) return;
+      for (final sender in await pc.getSenders()) {
+        if (sender.track?.kind != 'video') continue;
+        final params = sender.parameters;
+        final encodings = params.encodings;
+        if (encodings == null || encodings.isEmpty) {
+          debugPrint('ℹ️ [Signaling] 視訊 encodings 尚未就緒，略過編碼參數設定');
+          continue;
+        }
+        encodings.first.maxBitrate = 2500000; // 2.5 Mbps，720p30 的合理上限
+        encodings.first.maxFramerate = 30;
+        await sender.setParameters(params);
+        debugPrint('🎥 [Signaling] 已套用視訊編碼參數: maxBitrate=2.5Mbps, maxFramerate=30');
+      }
+    } catch (e) {
+      // 設定失敗絕不可影響通話本身，僅記錄。
+      debugPrint('⚠️ [Signaling] 套用視訊編碼參數失敗（不影響通話）: $e');
     }
   }
 
@@ -914,9 +1122,8 @@ class Signaling {
       _peerSocketId = targetId;
       await _createPeerConnection(useLocalStream: useLocalStream);
       
-      // ⏳ 等待 DTLS 材料生成（CRITICAL: 防止 fingerprint 不匹配）
-      // 增加到 1000ms 以確保 DTLS 證書完全初始化
-      await Future.delayed(Duration(milliseconds: 1000));
+      // ⏳ 等待 DTLS 材料生成（優化連線速度：50ms）
+      await Future.delayed(const Duration(milliseconds: 50));
       
       // 建立 Offer 時帶入 constraints，確保雙向或單向通訊
       final constraints = useLocalStream 
@@ -925,6 +1132,7 @@ class Signaling {
       
       RTCSessionDescription offer = await peerConnection!.createOffer(constraints);
       await peerConnection!.setLocalDescription(offer);
+      await _applyVideoEncodingParams();
       
       debugPrint("📤 [Signaling] Emitting offer to $targetId");
       socket!.emit('offer', {
@@ -972,10 +1180,25 @@ class Signaling {
   }
 
   Future<void> openUserMedia(RTCVideoRenderer localVideo, {bool videoEnabled = true}) async {
-    var stream = await navigator.mediaDevices.getUserMedia({
-      'video': videoEnabled,
-      'audio': true,
-    });
+    // ★ Task 3：提高畫質與幀率 constraint (1280x720 30fps)
+    final Map<String, dynamic> videoConstraints = videoEnabled
+        ? {
+            'video': {
+              'mandatory': {
+                'minWidth': '640',
+                'idealWidth': '1280',
+                'minHeight': '480',
+                'idealHeight': '720',
+                'minFrameRate': '24',
+                'idealFrameRate': '30',
+              },
+              'facingMode': 'user',
+              'optional': [],
+            },
+            'audio': true,
+          }
+        : {'video': false, 'audio': true};
+    var stream = await navigator.mediaDevices.getUserMedia(videoConstraints);
     localVideo.srcObject = stream;
     localStream = stream;
     if (onLocalStream != null) onLocalStream!(stream);
@@ -986,7 +1209,10 @@ class Signaling {
     _closePeerConnection();
     _currentCallId = null;
     _isCreatingOffer = false; // ⭐ 重置 createOffer flag
-    
+    // ★ 2026-08-05 第十七輪：媒體看門狗屬於單次通話狀態，一併清除。
+    _mediaWatchdogTimer?.cancel();
+    _mediaWatchdogTimer = null;
+
     // 僅清除與「單次通話連線」相關的介面回調
     onAddRemoteStream = null;
     onLocalStream = null;
@@ -1007,9 +1233,12 @@ class Signaling {
     }
     _currentCallId = null;
     _isCreatingOffer = false; // ⭐ 重置 createOffer flag
-    
+    // ★ 2026-08-05 第十七輪：媒體看門狗屬於單次通話狀態，一併清除。
+    _mediaWatchdogTimer?.cancel();
+    _mediaWatchdogTimer = null;
+
     _closePeerConnection();
-    
+
     if (disposeLocalStream) {
       stopMedia();
     }
@@ -1020,6 +1249,10 @@ class Signaling {
   }
 
   Future<void> _closePeerConnection() async {
+    // ★ 2026-08-05 第十七輪：PeerConnection 即將關閉，媒體看門狗不再需要，避免關閉後
+    //   仍觸發 12 秒後的 getStats() 檢查。
+    _mediaWatchdogTimer?.cancel();
+    _mediaWatchdogTimer = null;
     if (peerConnection != null) {
       // ★ 在關閉之前確保所有 track 都被移除和停止
       for (var sender in await peerConnection!.getSenders()) {

@@ -1,6 +1,7 @@
 import 'dart:convert';
-import 'dart:ui' show Color;
+import 'dart:ui' show Color, DartPluginRegistrant;
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -73,6 +74,7 @@ class LocalCallNotification {
       await _ensureInit();
       final callerName =
           (data['callerName'] ?? data['senderName'] ?? '有人來電').toString();
+      final bool isEmergency = data['type'] == 'emergency-call';
       final payload = jsonEncode({
         'roomId': (data['roomId'] ?? '').toString(),
         'senderId': (data['senderId'] ?? '').toString(),
@@ -80,6 +82,8 @@ class LocalCallNotification {
         'issuedAt': (data['issuedAt'] ?? '').toString(),
         'expiresAt': (data['expiresAt'] ?? '').toString(),
         'senderRole': (data['role'] ?? '').toString(),
+        // ★ Fix E：透傳是否為視訊通話，false = 純語音（電話），預設 true。
+        'isVideoCall': (data['isVideoCall'] ?? 'true').toString(),
       });
       final androidDetails = AndroidNotificationDetails(
         _channelId,
@@ -93,19 +97,22 @@ class LocalCallNotification {
         autoCancel: false,
         visibility: NotificationVisibility.public,
         ticker: '視訊來電',
+        // ★ 2026-08-02 第十四輪：通知底色向 CallKit 來電 UI 靠攏
+        color: const Color(0xFF1A472A),
+        colorized: true,
         // ★ 第十三輪：向 CallKit 來電 UI 靠攏——大頭像 + 拒接/視訊 兩顆按鈕
         largeIcon: const DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
         actions: const <AndroidNotificationAction>[
           AndroidNotificationAction(
             actionDeclineId,
-            '拒接',
+            '✕ 拒絕',
             titleColor: Color(0xFFD32F2F), // 紅，對齊 CallKit 來電 UI 的拒接鍵
             showsUserInterface: false,
             cancelNotification: true,
           ),
           AndroidNotificationAction(
             actionAcceptId,
-            '視訊',
+            '✓ 接聽',
             titleColor: Color(0xFF2E7D32), // 綠，對齊 CallKit 來電 UI 的接聽鍵
             showsUserInterface: true,
             cancelNotification: true,
@@ -115,7 +122,7 @@ class LocalCallNotification {
       await _plugin.show(
         callNotificationId,
         callerName,
-        '來電',
+        isEmergency ? '🚨 緊急視訊通話' : '📞 視訊通話',
         NotificationDetails(android: androidDetails),
         payload: payload,
       );
@@ -172,12 +179,22 @@ class LocalCallNotification {
 
 /// 背景 isolate 點擊 handler（必須是頂層 + vm:entry-point）。
 @pragma('vm:entry-point')
-void notificationBackgroundTapHandler(NotificationResponse response) {
+Future<void> notificationBackgroundTapHandler(NotificationResponse response) async {
+  // ★ 2026-08-02 第十四輪：背景 isolate 未初始化 binding/plugin registrant 時，
+  //   SharedPreferences 與 HTTP 都會拋 MissingPluginException——這正是
+  //   「備援通知只能接聽、無法拒絕」的根因（拒接整段被 catch 吞掉）。
+  //   比照 main.dart 的 FCM 背景 handler 先做初始化。
+  try {
+    WidgetsFlutterBinding.ensureInitialized();
+    DartPluginRegistrant.ensureInitialized();
+  } catch (e) {
+    debugPrint('⚠️ [LocalNotif] 背景 isolate 初始化失敗: $e');
+  }
   if (response.actionId == LocalCallNotification.actionDeclineId) {
-    _handleDecline(response.payload);
+    await _handleDecline(response.payload);
     return;
   }
-  _persistTapAsAccepted(response.payload);
+  await _persistTapAsAccepted(response.payload);
 }
 
 /// 點擊備援通知 / 按「視訊」= 接聽：寫入 pendingAcceptedCall，
@@ -196,6 +213,8 @@ Future<void> _persistTapAsAccepted(String? payload) async {
         'issuedAt': (data['issuedAt'] ?? '').toString(),
         'expiresAt': (data['expiresAt'] ?? '').toString(),
         'senderRole': (data['senderRole'] ?? '').toString(),
+        // ★ Fix E：透傳是否為視訊通話，false = 純語音（電話），預設 true。
+        'isVideoCall': (data['isVideoCall'] ?? 'true').toString(),
         'timestamp': DateTime.now().millisecondsSinceEpoch,
       }),
     );
@@ -209,17 +228,22 @@ Future<void> _persistTapAsAccepted(String? payload) async {
 /// （與 `main.dart::_sendDeclineEvent` 及 BG isolate CallKit listener 一致，護欄 #15）。
 Future<void> _handleDecline(String? payload) async {
   if (payload == null || payload.isEmpty) return;
+  String roomId = '';
+  String senderId = '';
+  String callId = '';
   try {
     final Map<String, dynamic> data = jsonDecode(payload);
-    final String roomId = (data['roomId'] ?? '').toString();
-    final String senderId = (data['senderId'] ?? '').toString();
-    final String callId = (data['callId'] ?? '').toString();
+    roomId = (data['roomId'] ?? '').toString();
+    senderId = (data['senderId'] ?? '').toString();
+    callId = (data['callId'] ?? '').toString();
+  } catch (e) {
+    debugPrint('⚠️ [LocalNotif] 拒接 payload 解析失敗: $e');
+    return;
+  }
 
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('pendingAcceptedCall');
-    await prefs.remove('pendingRingCallData');
-    await prefs.remove('pendingRingCall');
-
+  // ★ 2026-08-02 第十四輪：三段各自獨立 try/catch，任一段失敗都不得阻斷其餘兩段。
+  //   先發 declineCall（最重要、只依賴 HTTP），再清 prefs，最後關通知。
+  try {
     if (roomId.isNotEmpty && senderId.isNotEmpty) {
       debugPrint('🔕 [LocalNotif] 拒接 → HTTP declineCall (callId=$callId)');
       await ApiService.declineCall(
@@ -227,9 +251,25 @@ Future<void> _handleDecline(String? payload) async {
         senderId: senderId,
         callId: callId.isEmpty ? null : callId,
       );
+    } else {
+      debugPrint('⚠️ [LocalNotif] 拒接缺 roomId/senderId，略過 declineCall');
     }
+  } catch (e) {
+    debugPrint('⚠️ [LocalNotif] declineCall 失敗: $e');
+  }
+
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('pendingAcceptedCall');
+    await prefs.remove('pendingRingCallData');
+    await prefs.remove('pendingRingCall');
+  } catch (e) {
+    debugPrint('⚠️ [LocalNotif] 拒接清除 prefs 失敗: $e');
+  }
+
+  try {
     await LocalCallNotification.cancel();
   } catch (e) {
-    debugPrint('⚠️ [LocalNotif] 處理拒接失敗: $e');
+    debugPrint('⚠️ [LocalNotif] 拒接關閉通知失敗: $e');
   }
 }

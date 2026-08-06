@@ -1,5 +1,13 @@
 # Uban WebRTC 修复 - 快速测试指南
 
+> 🚨 **這是一份早期（第一輪修復時期）的簡體中文測試指南，內容已嚴重過期。**
+> 其中的行號（`on_call_request()` 第 393-480 行）、檔案路徑、流程描述都已不符現行程式碼。
+>
+> **要修改通話／來電通知／監控程式碼，或要做通話相關的驗證與除錯，
+> 請改讀 [`CLAUDE_call-monitor.md`](CLAUDE_call-monitor.md)**：
+> §9 驗證與除錯（三層 A/B/C 定位法、MIUI 檢查表、真機驗收清單）、§7 護欄、§8 修復年表。
+> 本檔僅供追溯第一輪修復的歷史脈絡。
+
 ## 📋 修复内容总览
 
 | 问题 | 状态 | 关键修复 |
@@ -154,7 +162,7 @@ adb logcat > uban_call_log.txt
 ## 📝 修改文件清单
 
 ### 后端修改
-**文件**: `D:\114project\uban-api\uban-api\services\socket_app.py`
+**文件**: `D:\114project\uban-api\services\socket_app.py`（原文誤寫為 `uban-api\uban-api\...`）
 **修改**: `on_call_request()` 函数 (第 393-480 行)
 **改进**:
 - 多层排除逻辑（Socket/用户/elder_id 级别）
@@ -162,7 +170,7 @@ adb logcat > uban_call_log.txt
 - 增强诊断日志
 
 ### 客户端修改
-**文件**: `D:\114project\Uban\Uban\mobile_app\lib\services\signaling.dart`
+**文件**: `D:\114project\Uban\mobile_app\lib\services\signaling.dart`（原文誤寫為 `Uban\Uban\...`）
 **修改**:
 1. `_elderId` 字段添加（第 61 行）
 2. `connect()` 方法添加房间 ID 解析（第 110-113 行）

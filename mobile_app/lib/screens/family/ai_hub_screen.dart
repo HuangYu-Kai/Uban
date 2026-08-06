@@ -585,27 +585,6 @@ class _AiHubScreenState extends State<AiHubScreen> {
                   );
                 },
               ),
-              const SizedBox(height: 16),
-              // 單向視訊監控
-              _buildCallOptionButton(
-                title: '單向視訊監控',
-                subtitle: '不打擾長輩，靜音查看長輩即時狀況',
-                icon: Icons.visibility_rounded,
-                color: const Color(0xFF8B5CF6),
-                onTap: () {
-                  Navigator.pop(context);
-                  final String rawId = _currentElder!.elderId ?? _currentElder!.id.toString();
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => CameraScreen(
-                        roomId: 'monitor_elder_$rawId',
-                      ),
-                    ),
-                  );
-                },
-              ),
-
             ],
           ),
         );

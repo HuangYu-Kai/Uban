@@ -8,25 +8,181 @@ class ApiService {
   static const String _serverIp = String.fromEnvironment('SERVER_IP',
       defaultValue: 'localhost-0.tail5abf5e.ts.net');
 
-  // 依據是否為 ngrok 自動切換 http/https 與 埠號
+  // 依據環境動態切換 API 基礎網址（預設 Android 模擬器連線本機: 10.0.2.2:8000）
   static String get baseUrl {
-    debugPrint('🔍 Current _serverIp: "$_serverIp"');
-    final url = _serverIp.contains('ngrok') || _serverIp.contains('ts.net')
-        ? 'https://$_serverIp/api'
-        : 'http://$_serverIp:8000/api';
-    return url;
+    if (_serverIp.startsWith('http://') || _serverIp.startsWith('https://')) {
+      return _serverIp.endsWith('/api') ? _serverIp : '$_serverIp/api';
+    }
+    if (_serverIp.contains('ts.net') || _serverIp.contains('ngrok')) {
+      return 'https://$_serverIp/api';
+    }
+    return 'http://$_serverIp:8000/api';
   }
 
   // 本機 AI Server（Ollama 在這台電腦，遠端主後台沒有 Ollama）
-  // Android 模擬器用 10.0.2.2 存取 Host，實體裝置用 Tailscale IP
+  // Android 模擬器/實體裝置用 LAN IP 存取 Host
   static const String _localAiServerIp = String.fromEnvironment(
     'LOCAL_AI_IP',
-    defaultValue: '100.123.111.120', // 這台電腦的 Tailscale IP
+    defaultValue: 'boyo-desktop.tail531c8a.ts.net', // AI Hub 專屬 Tailscale 網域
   );
-  static String get localAiBaseUrl => 'http://$_localAiServerIp:8000/api';
+  static String get localAiBaseUrl {
+    if (_localAiServerIp.startsWith('http://') || _localAiServerIp.startsWith('https://')) {
+      return _localAiServerIp.endsWith('/api') ? _localAiServerIp : '$_localAiServerIp/api';
+    }
+    if (_localAiServerIp.contains('ts.net')) {
+      return 'https://$_localAiServerIp/api';
+    }
+    return 'http://$_localAiServerIp:8000/api';
+  }
 
   // 統一超時時間
   static const Duration _timeout = Duration(seconds: 15);
+
+  static String _fullUrl(String path) {
+    if (path.startsWith('http://') || path.startsWith('https://')) {
+      return path;
+    }
+    String cleanPath = path;
+    if (baseUrl.endsWith('/api') && cleanPath.startsWith('/api/')) {
+      cleanPath = cleanPath.substring(4);
+    }
+    if (!cleanPath.startsWith('/')) {
+      cleanPath = '/$cleanPath';
+    }
+    return '$baseUrl$cleanPath';
+  }
+
+  static Future<Map<String, dynamic>?> get(String path) async {
+    try {
+      final url = _fullUrl(path);
+      debugPrint('📡 [ApiService.get] -> $url');
+      final response = await http
+          .get(Uri.parse(url))
+          .timeout(_timeout);
+      debugPrint('📡 [ApiService.get] <- status: ${response.statusCode}, body: ${response.body}');
+      if (response.statusCode == 200) {
+        final decoded = _safeDecode(response);
+        if (decoded != null && decoded['status'] == 'success') {
+          return decoded;
+        }
+      }
+      // 如果遠端回傳 404 或非 success，降級嘗試本機伺服器
+      if (url.contains('ts.net') || response.statusCode == 404) {
+        final cleanPath = path.startsWith('/api') ? path.substring(4) : path;
+        final fallbackUrl = 'http://10.0.2.2:8000/api$cleanPath';
+        debugPrint('🔄 [ApiService.get Fallback 404/Non-Success] -> $fallbackUrl');
+        final fbRes = await http.get(Uri.parse(fallbackUrl)).timeout(const Duration(seconds: 4));
+        if (fbRes.statusCode == 200) {
+          return _safeDecode(fbRes);
+        }
+      }
+      return _safeDecode(response);
+    } catch (e) {
+      debugPrint('⚠️ ApiService.get error: $e');
+      try {
+        final cleanPath = path.startsWith('/api') ? path.substring(4) : path;
+        final fallbackUrl = 'http://10.0.2.2:8000/api$cleanPath';
+        debugPrint('🔄 [ApiService.get Fallback Exception] -> $fallbackUrl');
+        final fbRes = await http.get(Uri.parse(fallbackUrl)).timeout(const Duration(seconds: 4));
+        if (fbRes.statusCode == 200) {
+          return _safeDecode(fbRes);
+        }
+      } catch (_) {}
+      return null;
+    }
+  }
+
+  static Future<Map<String, dynamic>?> post(String path, Map<String, dynamic> body) async {
+    try {
+      final url = _fullUrl(path);
+      debugPrint('📡 [ApiService.post] -> $url body: $body');
+      final response = await http
+          .post(
+            Uri.parse(url),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(body),
+          )
+          .timeout(_timeout);
+      debugPrint('📡 [ApiService.post] <- status: ${response.statusCode}, body: ${response.body}');
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final decoded = _safeDecode(response);
+        if (decoded != null && decoded['status'] == 'success') {
+          return decoded;
+        }
+      }
+      if (url.contains('ts.net') || response.statusCode == 404) {
+        final cleanPath = path.startsWith('/api') ? path.substring(4) : path;
+        final fallbackUrl = 'http://10.0.2.2:8000/api$cleanPath';
+        debugPrint('🔄 [ApiService.post Fallback 404/Non-Success] -> $fallbackUrl');
+        final fbRes = await http.post(
+          Uri.parse(fallbackUrl),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode(body),
+        ).timeout(const Duration(seconds: 4));
+        if (fbRes.statusCode == 200 || fbRes.statusCode == 201) {
+          return _safeDecode(fbRes);
+        }
+      }
+      return _safeDecode(response);
+    } catch (e) {
+      debugPrint('⚠️ ApiService.post error: $e');
+      try {
+        final cleanPath = path.startsWith('/api') ? path.substring(4) : path;
+        final fallbackUrl = 'http://10.0.2.2:8000/api$cleanPath';
+        final fbRes = await http.post(
+          Uri.parse(fallbackUrl),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode(body),
+        ).timeout(const Duration(seconds: 4));
+        if (fbRes.statusCode == 200 || fbRes.statusCode == 201) {
+          return _safeDecode(fbRes);
+        }
+      } catch (_) {}
+      return null;
+    }
+  }
+
+  static Future<Map<String, dynamic>?> put(String path, Map<String, dynamic> body) async {
+    try {
+      final response = await http
+          .put(
+            Uri.parse(_fullUrl(path)),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(body),
+          )
+          .timeout(_timeout);
+      return _safeDecode(response);
+    } catch (e) {
+      debugPrint('⚠️ ApiService.put error: $e');
+      return null;
+    }
+  }
+
+  static Future<Map<String, dynamic>?> delete(String path) async {
+    try {
+      final response = await http
+          .delete(Uri.parse(_fullUrl(path)))
+          .timeout(_timeout);
+      return _safeDecode(response);
+    } catch (e) {
+      debugPrint('⚠️ ApiService.delete error: $e');
+      return null;
+    }
+  }
+  /// ★ 2026-08-05 第十七輪（安全）：監視機推流／跌倒測試端點的共用密鑰。
+  ///
+  /// 後端 `POST /api/cctv/frame` 的下游就是「偽造跌倒 → 對家屬強制點亮螢幕」，
+  /// 原本無任何驗證。後端在 `.env` 設定 `CCTV_INGEST_TOKEN` 後即要求此標頭；
+  /// **未設定時後端完全維持舊行為**，故這裡留空也不會打斷現有部署。
+  ///
+  /// 注入方式比照 `SERVER_IP` / `TURN_PASS`，絕不寫死在程式碼內：
+  ///   flutter run --dart-define=CCTV_INGEST_TOKEN=<與後端 .env 相同的字串>
+  static const String _cctvIngestToken =
+      String.fromEnvironment('CCTV_INGEST_TOKEN', defaultValue: '');
+
+  /// 空字串時回傳空 Map，讓呼叫端可無條件展開（`...`）而不需分支。
+  static Map<String, String> get _deviceTokenHeader =>
+      _cctvIngestToken.isEmpty ? {} : {'X-Uban-Device-Token': _cctvIngestToken};
 
   static Future<Map<String, dynamic>> register({
     required String username,
@@ -239,80 +395,109 @@ class ApiService {
   }
 
   // AI 相關功能
-  // ⚠️ 使用本機 AI Server (localAiBaseUrl)，因遠端主後台無 Ollama 服務
+  // ⚠️ 使用本機 AI Server (localAiBaseUrl) 與自動降級連線備援
   static Future<Map<String, dynamic>> aiChat(int userId, String message, {String? imageUrl}) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse('$localAiBaseUrl/ai/chat'), // 打本機 AI Server
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'user_id': userId,
-              'message': message,
-              if (imageUrl != null) 'image_url': imageUrl,
-            }),
-          )
-          .timeout(const Duration(seconds: 120));
-      return _safeDecode(response);
-    } on TimeoutException {
-      return {'status': 'error', 'message': 'AI 回應逾時，請稍後再試'};
-    } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
+    final List<String> candidateUrls = [
+      'https://boyo-desktop.tail531c8a.ts.net/api/ai/chat',
+      '$localAiBaseUrl/ai/chat',
+      'http://192.168.31.209:8000/api/ai/chat',
+      'http://10.0.2.2:8000/api/ai/chat',
+      '${baseUrl.replaceFirst('/api', '')}/api/ai/chat',
+    ];
+    final uniqueUrls = candidateUrls.toSet().toList();
+
+    for (final url in uniqueUrls) {
+      try {
+        final response = await http
+            .post(
+              Uri.parse(url),
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({
+                'user_id': userId,
+                'message': message,
+                if (imageUrl != null) 'image_url': imageUrl,
+              }),
+            )
+            .timeout(const Duration(seconds: 30));
+        if (response.statusCode == 200) {
+          return _safeDecode(response);
+        }
+      } catch (_) {}
     }
+    return {'status': 'error', 'message': '網路連線失敗，請檢查 AI Server 是否開啟'};
   }
 
-  /// AI 串流聊天（SSE）- 逐 token 回傳，不需等待完整回應
+  /// AI 串流聊天（SSE）- 逐 token 回傳，支援多候選 IP 自動降級連線
   static Stream<String> aiChatStream(int userId, String message) async* {
-    final client = http.Client();
-    try {
-      final request = http.Request(
-        'POST',
-        Uri.parse('$localAiBaseUrl/ai/chat/stream'),
-      );
-      request.headers['Content-Type'] = 'application/json';
-      request.body = jsonEncode({'user_id': userId, 'message': message});
+    final List<String> candidateUrls = [
+      'https://boyo-desktop.tail531c8a.ts.net/api/ai/chat/stream',
+      '$localAiBaseUrl/ai/chat/stream',
+      'http://192.168.31.209:8000/api/ai/chat/stream',
+      'http://10.0.2.2:8000/api/ai/chat/stream',
+      '${baseUrl.replaceFirst('/api', '')}/api/ai/chat/stream',
+    ];
+    final uniqueUrls = candidateUrls.toSet().toList();
 
-      final streamedResponse = await client.send(request).timeout(const Duration(seconds: 30));
+    for (int idx = 0; idx < uniqueUrls.length; idx++) {
+      final targetUrl = uniqueUrls[idx];
+      final client = http.Client();
+      try {
+        debugPrint('📡 [aiChatStream Attempt ${idx + 1}] -> $targetUrl');
+        final request = http.Request('POST', Uri.parse(targetUrl));
+        request.headers['Content-Type'] = 'application/json';
+        request.body = jsonEncode({'user_id': userId, 'message': message});
 
-      if (streamedResponse.statusCode != 200) {
-        yield '[ERROR] 伺服器錯誤: ${streamedResponse.statusCode}';
-        return;
-      }
+        final streamedResponse = await client.send(request).timeout(const Duration(seconds: 15));
 
-      // 累積 buffer 處理跨 chunk 的不完整行
-      final StringBuffer lineBuf = StringBuffer();
+        if (streamedResponse.statusCode != 200) {
+          client.close();
+          if (idx < uniqueUrls.length - 1) continue;
+          yield '[ERROR] 伺服器錯誤: ${streamedResponse.statusCode}';
+          return;
+        }
 
-      await for (final chunk in streamedResponse.stream) {
-        final decoded = utf8.decode(chunk, allowMalformed: true);
+        final StringBuffer lineBuf = StringBuffer();
+        bool receivedData = false;
 
-        for (int i = 0; i < decoded.length; i++) {
-          final ch = decoded[i];
-          if (ch == '\n') {
-            final line = lineBuf.toString().trimRight();
-            lineBuf.clear();
-            if (line.startsWith('data: ')) {
-              final payload = line.substring(6).trim();
-              if (payload == '[DONE]') return;
-              if (payload.startsWith('[ERROR]')) {
-                yield payload;
-                return;
+        await for (final chunk in streamedResponse.stream) {
+          receivedData = true;
+          final decoded = utf8.decode(chunk, allowMalformed: true);
+          for (int i = 0; i < decoded.length; i++) {
+            final ch = decoded[i];
+            if (ch == '\n') {
+              final line = lineBuf.toString().trimRight();
+              lineBuf.clear();
+              if (line.startsWith('data: ')) {
+                final payload = line.substring(6).trim();
+                if (payload == '[DONE]') {
+                  client.close();
+                  return;
+                }
+                if (payload.startsWith('[ERROR]')) {
+                  client.close();
+                  yield payload;
+                  return;
+                }
+                try {
+                  final token = jsonDecode(payload) as String;
+                  if (token.isNotEmpty) yield token;
+                } catch (_) {
+                  if (payload.isNotEmpty) yield payload;
+                }
               }
-              try {
-                final token = jsonDecode(payload) as String;
-                if (token.isNotEmpty) yield token;
-              } catch (_) {
-                if (payload.isNotEmpty) yield payload;
-              }
+            } else {
+              lineBuf.write(ch);
             }
-          } else {
-            lineBuf.write(ch);
           }
         }
+        client.close();
+        if (receivedData) return;
+      } catch (e) {
+        debugPrint('⚠️ [aiChatStream Fail] $targetUrl error: $e');
+        client.close();
+        if (idx < uniqueUrls.length - 1) continue;
+        yield '[ERROR] $e';
       }
-    } catch (e) {
-      yield '[ERROR] $e';
-    } finally {
-      client.close();
     }
   }
 
@@ -830,6 +1015,143 @@ class ApiService {
     }
   }
 
+  /// ★ Task 6：取得使用者目前訂閱層級與設備上限
+  /// GET /api/subscription/tier/{user_id}
+  static Future<Map<String, dynamic>> getSubscriptionTier(int userId) async {
+    try {
+      final response = await http
+          .get(Uri.parse('$baseUrl/subscription/tier/$userId'))
+          .timeout(_timeout);
+      return _safeDecode(response);
+    } catch (e) {
+      debugPrint('⚠️ getSubscriptionTier error: $e');
+      return {'status': 'error', 'message': e.toString()};
+    }
+  }
+
+  /// ★ Task 6：取得使用者訂閱歷史明細列表
+  /// GET /api/subscription/records/{user_id}
+  static Future<Map<String, dynamic>> getSubscriptionRecords(int userId) async {
+    try {
+      final response = await http
+          .get(Uri.parse('$baseUrl/subscription/records/$userId'))
+          .timeout(_timeout);
+      return _safeDecode(response);
+    } catch (e) {
+      debugPrint('⚠️ getSubscriptionRecords error: $e');
+      return {'status': 'error', 'message': e.toString()};
+    }
+  }
+
+  /// ★ 2026-08-04 第 7 項：CCTV 監視機推送單一影格給後端做 YOLO 跌倒偵測。
+  /// POST /api/cctv/frame（multipart/form-data）；任何失敗都吞掉只回 false，
+  /// 避免影格推送迴圈因單次網路錯誤而中斷。
+  ///
+  /// 檔名為 .png 是因為 flutter_webrtc 1.3.1 的 `captureFrame()` 產出的就是 PNG
+  /// （它把畫面寫成暫存 png 再讀回）。後端用 cv2.imdecode 靠魔術位元組判別格式，
+  /// 副檔名只是給人看的，但不要改成 .jpg 以免誤導後續維護者。
+  static Future<bool> pushCctvFrame({
+    required String elderId,
+    required String deviceName,
+    required Uint8List frameBytes,
+  }) async {
+    try {
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/cctv/frame'),
+      );
+      request.headers.addAll(_deviceTokenHeader);
+      request.fields['elder_id'] = elderId;
+      request.fields['device_name'] = deviceName;
+      request.files.add(
+        http.MultipartFile.fromBytes('frame', frameBytes, filename: 'frame.png'),
+      );
+      final streamed = await request.send().timeout(_timeout);
+      return streamed.statusCode == 200;
+    } catch (e) {
+      debugPrint('⚠️ pushCctvFrame error: $e');
+      return false;
+    }
+  }
+
+  /// ★ 2026-08-05 第十七輪：POST /api/cctv/test-fall，觸發與 YOLO 相同的跌倒警報派送路徑。
+  /// 暫時性測試入口，YOLO 可實測後即可移除。後端該端點是 `Form(...)`，故用
+  /// application/x-www-form-urlencoded（body 傳 Map，http 套件會自動編碼並設定
+  /// Content-Type），欄位名沿用後端的 snake_case（elder_id / device_name）。
+  /// ★ 2026-08-05 第十七輪（安全）：後端此端點**預設關閉**，且回傳的
+  /// `detail` 會明講關閉／無密鑰／查無監視機三種原因。若這裡照舊只回 bool，
+  /// 使用者按下測試鍵只會看到「送出失敗」而無從得知要去 .env 開開關，
+  /// 因此改回傳 **錯誤訊息字串**：`null` 代表成功，非 null 就是可直接顯示的原因。
+  static Future<String?> triggerTestFall({
+    required String elderId,
+    required String deviceName,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/cctv/test-fall'),
+            headers: _deviceTokenHeader,
+            body: {'elder_id': elderId, 'device_name': deviceName},
+          )
+          .timeout(_timeout);
+      if (response.statusCode == 200) return null;
+      // FastAPI 的 HTTPException 一律以 {"detail": "..."} 回傳
+      String detail = '送出失敗（HTTP ${response.statusCode}）';
+      try {
+        final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+        if (decoded is Map && decoded['detail'] != null) {
+          detail = decoded['detail'].toString();
+        }
+      } catch (_) {
+        // body 不是 JSON 就沿用上面的預設訊息
+      }
+      debugPrint('⚠️ triggerTestFall 被拒: ${response.statusCode} $detail');
+      return detail;
+    } catch (e) {
+      debugPrint('⚠️ triggerTestFall error: $e');
+      return '無法連線到後端，請確認網路狀態';
+    }
+  }
+
+  /// ★ 2026-08-04 第 7 項：移除一台監視機設備（含其 FCM token）。
+  /// DELETE /api/pairing/monitor_device?elder_id=...&device_name=...
+  static Future<bool> deleteMonitorDevice({
+    required String elderId,
+    required String deviceName,
+  }) async {
+    try {
+      final uri = Uri.parse('$baseUrl/pairing/monitor_device').replace(
+        queryParameters: {
+          'elder_id': elderId,
+          'device_name': deviceName,
+        },
+      );
+      final response = await http.delete(uri).timeout(_timeout);
+      final data = _safeDecode(response);
+      return data['status'] == 'success';
+    } catch (e) {
+      debugPrint('⚠️ deleteMonitorDevice error: $e');
+      return false;
+    }
+  }
+
+  /// ★ 2026-08-04 第 7 項：開通／延長警報的音頻橋（30 分鐘單向音頻）。
+  /// POST /api/alerts/{alert_id}/audio-bridge
+  static Future<Map<String, dynamic>?> openAudioBridge({
+    required int alertId,
+    required int fromId,
+    required int toDeviceId,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/alerts/$alertId/audio-bridge'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'from_id': fromId,
+              'to_device_id': toDeviceId,
+            }),
+          )
   static Future<Map<String, dynamic>?> getElderMoodInsight(String elderId) async {
     try {
       final response = await http
@@ -841,7 +1163,7 @@ class ApiService {
       }
       return null;
     } catch (e) {
-      debugPrint('⚠️ getElderMoodInsight error: $e');
+      debugPrint('⚠️ openAudioBridge error: $e');
       return null;
     }
   }
@@ -859,6 +1181,30 @@ class ApiService {
     } catch (e) {
       debugPrint('⚠️ getElderActivityLogs error: $e');
       return [];
+  /// ★ 2026-08-04 第 7 項：查詢某警報目前是否有有效的音頻橋。
+  /// GET /api/alerts/audio/{alert_id}
+  ///
+  /// ★ 2026-08-05 第十七輪（安全）：新增選填 `userId`。後端有帶就驗證
+  /// 「此人是否為該警報長輩的本人或已配對家屬」，並在通過後才回傳
+  /// `from_id` / `to_device_id`；未帶則只回布林狀態與到期時間。
+  /// 呼叫端請一律帶上，讓它走完整驗證分支。
+  static Future<Map<String, dynamic>?> checkAudioBridge(
+    int alertId, {
+    int? userId,
+  }) async {
+    try {
+      final uri = Uri.parse('$baseUrl/alerts/audio/$alertId').replace(
+        queryParameters: userId == null ? null : {'user_id': '$userId'},
+      );
+      final response = await http.get(uri).timeout(_timeout);
+      final data = _safeDecode(response);
+      if (data['status'] == 'success') {
+        return data['data'];
+      }
+      return null;
+    } catch (e) {
+      debugPrint('⚠️ checkAudioBridge error: $e');
+      return null;
     }
   }
 }

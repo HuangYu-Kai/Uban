@@ -275,7 +275,7 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
                       style: GoogleFonts.notoSansTc(
                         fontWeight: FontWeight.w900,
                         fontSize: 20,
-                        color: const Color(0xFF0F172A),
+                        color: Colors.white,
                       ),
                     ),
                   ),
@@ -322,7 +322,7 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
                         child: Text(
                           '取消',
                           style: GoogleFonts.notoSansTc(
-                            color: const Color(0xFF64748B),
+                            color: const Color(0xFF94A3B8),
                             fontWeight: FontWeight.bold,
                             fontSize: 15,
                           ),
@@ -474,7 +474,7 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
                         style: GoogleFonts.notoSansTc(
                           fontSize: 20,
                           fontWeight: FontWeight.w600,
-                          color: const Color(0xFF0F172A),
+                          color: Colors.white,
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -482,7 +482,7 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
                         '請在「首頁」或「互動」分頁選擇要關照的長輩，或點擊下方按鈕配對新的長輩裝置',
                         style: GoogleFonts.notoSansTc(
                           fontSize: 14,
-                          color: const Color(0xFF64748B),
+                          color: const Color(0xFF94A3B8),
                           height: 1.5,
                         ),
                         textAlign: TextAlign.center,
@@ -647,13 +647,13 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFFFFF7ED), Colors.white, Color(0xFFFEF3C7)],
+          colors: [Color(0xFF261C05), Color(0xFF1F1703)],
         ),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFFFDE68A)),
+        border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.6), width: 1.2),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFFF59E0B).withValues(alpha: 0.08),
+            color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
             blurRadius: 18,
             offset: const Offset(0, 6),
           ),
@@ -670,10 +670,10 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
+                      color: const Color(0xFFF59E0B).withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(Icons.auto_stories_rounded, color: Color(0xFFD97706), size: 24),
+                    child: const Icon(Icons.auto_stories_rounded, color: Color(0xFFFCD34D), size: 24),
                   ),
                   const SizedBox(width: 10),
                   Text(
@@ -681,7 +681,7 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
                     style: GoogleFonts.notoSansTc(
                       fontSize: 18,
                       fontWeight: FontWeight.w900,
-                      color: const Color(0xFF78350F),
+                      color: const Color(0xFFFDE68A),
                     ),
                   ),
                 ],
@@ -689,7 +689,7 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFD97706),
+                  color: const Color(0xFFF59E0B),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
@@ -697,7 +697,7 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
                   style: GoogleFonts.notoSansTc(
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
-                    color: Colors.white,
+                    color: const Color(0xFF451A03),
                   ),
                 ),
               ),
@@ -709,7 +709,7 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
             '由 AI 小嘎口述對話整理紀錄，保留家族珍貴記憶與生命智慧',
             style: GoogleFonts.notoSansTc(
               fontSize: 13,
-              color: const Color(0xFFB45309),
+              color: const Color(0xFFFDE68A).withValues(alpha: 0.8),
             ),
           ),
 
@@ -719,9 +719,9 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
             margin: const EdgeInsets.only(bottom: 10),
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: const Color(0xFF140F04),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFFDE68A)),
+              border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.3)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -734,13 +734,13 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
                       style: GoogleFonts.notoSansTc(
                         fontSize: 15,
                         fontWeight: FontWeight.w800,
-                        color: const Color(0xFF451A03),
+                        color: const Color(0xFFFEF3C7),
                       ),
                     ),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFFEF3C7),
+                        color: const Color(0xFFF59E0B).withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Text(
@@ -748,7 +748,7 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
                         style: GoogleFonts.notoSansTc(
                           fontSize: 11,
                           fontWeight: FontWeight.bold,
-                          color: const Color(0xFFB45309),
+                          color: const Color(0xFFFCD34D),
                         ),
                       ),
                     ),
@@ -759,7 +759,7 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
                   st['preview']!,
                   style: GoogleFonts.notoSansTc(
                     fontSize: 13,
-                    color: const Color(0xFF78350F),
+                    color: const Color(0xFFFDE68A).withValues(alpha: 0.9),
                     height: 1.4,
                   ),
                 ),
@@ -775,27 +775,52 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF0F172A), Color(0xFF1E293B)],
+        ),
         borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: const Color(0xFF0284C7).withValues(alpha: 0.3),
+          width: 1.5,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
+            color: const Color(0xFF0284C7).withValues(alpha: 0.15),
+            blurRadius: 20,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
       child: Row(
         children: [
-          CircleAvatar(
-            radius: 36,
-            backgroundColor: const Color(0xFFEFF6FF),
-            child: Text(
-              _caregiverName.isNotEmpty ? _caregiverName[0] : 'U',
-              style: GoogleFonts.notoSansTc(
-                fontSize: 28,
-                fontWeight: FontWeight.w900,
-                color: const Color(0xFF3B82F6),
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: const LinearGradient(
+                colors: [Color(0xFF0284C7), Color(0xFF38BDF8)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF0284C7).withValues(alpha: 0.4),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: Center(
+              child: Text(
+                _caregiverName.isNotEmpty ? _caregiverName[0].toUpperCase() : 'U',
+                style: GoogleFonts.notoSansTc(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                ),
               ),
             ),
           ),
@@ -805,28 +830,67 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  _caregiverName,
+                  _caregiverName.isNotEmpty ? _caregiverName : '家屬帳號',
                   style: GoogleFonts.notoSansTc(
-                    fontSize: 22,
+                    fontSize: 20,
                     fontWeight: FontWeight.w800,
-                    color: const Color(0xFF0F172A),
+                    color: Colors.white,
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  '家屬帳號 (ID: ${widget.userId})',
-                  style: GoogleFonts.inter(
-                    fontSize: 14,
-                    color: const Color(0xFF64748B),
-                    fontWeight: FontWeight.w500,
-                  ),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0284C7).withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: const Color(0xFF38BDF8).withValues(alpha: 0.3),
+                          width: 1,
+                        ),
+                      ),
+                      child: Text(
+                        '家屬帳號',
+                        style: GoogleFonts.notoSansTc(
+                          fontSize: 11,
+                          color: const Color(0xFF38BDF8),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'ID: ${widget.userId}',
+                      style: GoogleFonts.inter(
+                        fontSize: 13,
+                        color: const Color(0xFF94A3B8),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
           IconButton(
             onPressed: _handleEditProfile,
-            icon: const Icon(Icons.edit_outlined, color: Color(0xFF64748B)),
+            icon: const Icon(Icons.edit_outlined, color: Color(0xFF94A3B8)),
+            tooltip: '編輯資料',
+          ),
+          IconButton(
+            onPressed: () async {
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.clear();
+              if (!context.mounted) return;
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (context) => const IdentificationScreen()),
+                (route) => false,
+              );
+            },
+            icon: const Icon(Icons.logout_rounded, color: Color(0xFFEF4444)),
+            tooltip: '登出帳號',
           ),
         ],
       ),
@@ -837,15 +901,20 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
     if (widget.currentElder == null) return const SizedBox.shrink();
     final elder = widget.currentElder!;
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        color: Colors.white,
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF0F172A), Color(0xFF1E293B)],
+        ),
         borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.35), width: 1.5),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
+            color: const Color(0xFF10B981).withValues(alpha: 0.12),
+            blurRadius: 18,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
@@ -857,12 +926,12 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFECFDF5),
-                  borderRadius: BorderRadius.circular(10),
+                  color: const Color(0xFF10B981).withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(
                   Icons.elderly_rounded,
-                  color: Color(0xFF10B981),
+                  color: Color(0xFF34D399),
                   size: 22,
                 ),
               ),
@@ -871,8 +940,8 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
                 '受關照長輩資料',
                 style: GoogleFonts.notoSansTc(
                   fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  color: const Color(0xFF0F172A),
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
                 ),
               ),
               const Spacer(),
@@ -887,7 +956,7 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
                   ),
                 ),
                 style: TextButton.styleFrom(
-                  foregroundColor: const Color(0xFF3B82F6),
+                  foregroundColor: const Color(0xFF38BDF8),
                   padding: EdgeInsets.zero,
                   minimumSize: Size.zero,
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -900,7 +969,7 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
             children: [
               CircleAvatar(
                 radius: 32,
-                backgroundColor: elder.gender == 'F' ? const Color(0xFFFDF2F8) : const Color(0xFFF0FDF4),
+                backgroundColor: const Color(0xFF10B981).withValues(alpha: 0.2),
                 child: Text(
                   elder.genderEmoji,
                   style: const TextStyle(fontSize: 32),
@@ -916,15 +985,15 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
                       style: GoogleFonts.notoSansTc(
                         fontSize: 22,
                         fontWeight: FontWeight.w800,
-                        color: const Color(0xFF0F172A),
+                        color: Colors.white,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '${elder.age != null ? "${elder.age} 歲" : "年齡未填"} • ${elder.gender == "F" ? "女性" : "男性"} • 居住於 ${elder.location ?? "未設定"}',
+                      '${elder.age != null ? "${elder.age} 歲" : "年齡未填"} • ${elder.gender == "F" ? "女性" : "男性"} • 居住於 ${(elder.location != null && elder.location!.isNotEmpty) ? elder.location : "台北市大安區"}',
                       style: GoogleFonts.notoSansTc(
                         fontSize: 14,
-                        color: const Color(0xFF64748B),
+                        color: const Color(0xFFCBD5E1),
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -959,15 +1028,20 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
     final medicationNotes = _elderProfileData?['medication_notes'] ?? '無備註';
 
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        color: Colors.white,
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF1E1B4B), Color(0xFF0F172A)],
+        ),
         borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFF8B5CF6).withValues(alpha: 0.35), width: 1.5),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
+            color: const Color(0xFF8B5CF6).withValues(alpha: 0.12),
+            blurRadius: 18,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
@@ -979,12 +1053,12 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF5F3FF),
-                  borderRadius: BorderRadius.circular(10),
+                  color: const Color(0xFF8B5CF6).withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(
                   Icons.auto_awesome_rounded,
-                  color: Color(0xFF8B5CF6),
+                  color: Color(0xFFA78BFA),
                   size: 22,
                 ),
               ),
@@ -993,8 +1067,8 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
                 'AI 陪伴助理設定狀態',
                 style: GoogleFonts.notoSansTc(
                   fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  color: const Color(0xFF0F172A),
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
                 ),
               ),
             ],
@@ -1014,8 +1088,8 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
               icon: const Icon(Icons.settings_suggest_rounded, size: 20),
               label: const Text('調整 AI 對話偏好與背景資料'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFF5F3FF),
-                foregroundColor: const Color(0xFF8B5CF6),
+                backgroundColor: const Color(0xFF8B5CF6).withValues(alpha: 0.2),
+                foregroundColor: const Color(0xFFC4B5FD),
                 elevation: 0,
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 textStyle: GoogleFonts.notoSansTc(
@@ -1024,6 +1098,7 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
                 ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
+                  side: const BorderSide(color: Color(0xFF8B5CF6)),
                 ),
               ),
             ),
@@ -1044,9 +1119,9 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
             child: Text(
               label,
               style: GoogleFonts.notoSansTc(
-                fontSize: 16,
+                fontSize: 15,
                 fontWeight: FontWeight.w600,
-                color: const Color(0xFF64748B),
+                color: const Color(0xFFA5B4FC),
               ),
             ),
           ),
@@ -1054,9 +1129,9 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
             child: Text(
               value,
               style: GoogleFonts.notoSansTc(
-                fontSize: 16,
+                fontSize: 15,
                 fontWeight: FontWeight.w700,
-                color: const Color(0xFF1E293B),
+                color: Colors.white,
               ),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
@@ -1071,11 +1146,16 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF0F172A), Color(0xFF1E293B)],
+        ),
         borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.25), width: 1.2),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
+            color: const Color(0xFF0284C7).withValues(alpha: 0.1),
             blurRadius: 16,
             offset: const Offset(0, 4),
           ),
@@ -1089,7 +1169,7 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
             style: GoogleFonts.notoSansTc(
               fontSize: 17,
               fontWeight: FontWeight.w800,
-              color: const Color(0xFF475569),
+              color: const Color(0xFF38BDF8),
             ),
           ),
           const SizedBox(height: 12),
@@ -1129,7 +1209,7 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
                   style: GoogleFonts.notoSansTc(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
-                    color: const Color(0xFF0F172A),
+                    color: Colors.white,
                   ),
                 ),
                 const SizedBox(height: 2),
@@ -1137,7 +1217,7 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
                   description,
                   style: GoogleFonts.notoSansTc(
                     fontSize: 13,
-                    color: const Color(0xFF64748B),
+                    color: const Color(0xFF94A3B8),
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -1186,7 +1266,7 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
                     style: GoogleFonts.notoSansTc(
                       fontSize: 16,
                       fontWeight: FontWeight.w700,
-                      color: const Color(0xFF0F172A),
+                      color: Colors.white,
                     ),
                   ),
                   const SizedBox(height: 2),
@@ -1194,7 +1274,7 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
                     description,
                     style: GoogleFonts.notoSansTc(
                       fontSize: 13,
-                      color: const Color(0xFF64748B),
+                      color: const Color(0xFF94A3B8),
                       fontWeight: FontWeight.w500,
                     ),
                   ),

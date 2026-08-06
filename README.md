@@ -6,12 +6,24 @@
 
 ---
 
+## 🚨 動手改「通話 / 來電通知 / 監控」之前
+
+> **本檔對這三塊只有**功能面**的介紹（第五節、第 400 行後的更新日誌），
+> 不足以據以修改程式碼。動手前必須先讀
+> [`CLAUDE_call-monitor.md`](CLAUDE_call-monitor.md)——那是唯一權威，
+> 含檔案地圖、Socket/FCM/prefs 資料契約、冷啟動五層兜底、
+> **§5 UI 按鈕與跳轉地圖（只改 UI 也要看）**、36 條護欄、14 輪修復年表、除錯 SOP。**
+
+本檔第 400 行之後的「更新日誌」只涵蓋到早期幾輪，**已被 §8 取代**；兩者衝突時以
+`CLAUDE_call-monitor.md` 為準，而它與程式碼衝突時以**程式碼**為準。
+
+---
+
 ## 📖 目錄
 
 - [專案簡介](#專案簡介)
 - [系統架構](#系統架構)
 - [核心功能](#核心功能)
-- [全景互動室](#全景互動室-✨-new)
 - [快速開始](#快速開始)
 - [開發指南](#開發指南)
 - [更新日誌](#更新日誌)
@@ -91,9 +103,9 @@ flowchart TD
 
 | 服務 | 類型 | 地址 | 協定 |
 |------|------|------|------|
-| 信令伺服器 (FastAPI) | Signaling | `https://localhost-0.tail5abf5e.ts.net` | TCP/WSS |
+| uban-api (FastAPI 後端與信令) | Backend & Signaling | `https://localhost-0.tail5abf5e.ts.net` | TCP/WSS |
+| AI Server (Ollama AI) | AI Engine | `https://boyo-desktop.tail531c8a.ts.net` | TCP |
 | 媒體中繼 (Coturn) | TURN/STUN | `turn:152.69.196.5:3478` | UDP |
-| Ollama AI | AI Engine | `https://boyo-desktop.tail531c8a.ts.net` | TCP |
 | Pinecone Index | Vector DB | `uban` (768 dim, cosine) | TCP |
 
 ---
@@ -102,10 +114,12 @@ flowchart TD
 
 ### 一、AI 核心引擎
 
-#### 1. 雙軌 AI 引擎
+#### 1. 雙軌 AI 引擎與語音合成 (TTS/ASR)
 
 - **Ollama（主要）**：使用 `gemma4:e4b-it-q4_K_M` 模型，支援 Tool Calling
-- **Gemini（備用）**：Google Gemini 2.0 Flash API (及 1.5 系列)
+- **Gemini（備用）**：Google Gemini 2.5 Flash / 3.5 Flash API
+- **TTS 語音合成引擎**：支援 `auto` (自動)、`edge` (Edge-TTS)、`piper` (離線模型)、`cosyvoice` (Zero-Shot 音色複製) 及 **`yating` (雅婷台語 TTS 轉發及自動備援)** ⭐ 新增
+- **ASR 語音辨識**：本地端 Faster-Whisper (`large-v3-turbo`) GPU/CUDA 離線即時轉錄
 
 #### 2. AI Agent 人格系統 (`server/agent/`)
 
@@ -119,20 +133,6 @@ flowchart TD
 | **AGENTS.md** | 運作流程：啟動順序、記憶更新原則 |
 
 #### 3. 記憶機制
-... (原本內容)
-
----
-
-## 全景互動室 ✨ NEW
-
-專為長輩設計的虛擬陪伴空間，利用手機感應器實現 360 度視角探索。
-
-- **體感追蹤**：優化後的陀螺儀演算法，支援 60 FPS 極速響應，無暈眩感。
-- **家具互動點**：點擊沙發、餐桌、地毯，小豬會跑過去觸發特定動作。
-- **超寬視野**：支援 4:3 / 21:9 超廣角全景圖，上下左右皆可自由觀察。
-- **生活化陪伴**：小豬會根據長輩的互動在房間內「生活」，而不只是裝飾品。
-
----
 
 - **短期記憶**：最近 5 輪對話（10筆）
 - **長期記憶**：透過 `save_elder_memory` 永久記錄至 MEMORY.md
@@ -146,8 +146,10 @@ flowchart TD
 
 ### 二、AI 技能系統
 
-> ⚠️ **校正（2026-05-30）**：實際註冊於 Tool Calling 的技能共 **8 項**，全部定義在 `uban-api/uban-api/services/tools_service.py`：
+> ⚠️ **校正（2026-05-30）**：實際註冊於 Tool Calling 的技能共 **8 項**，全部定義在 `uban-api/services/tools_service.py`：
 > `get_elder_context`、`get_current_time`、`notify_family_SOS`、`get_weather_info`、`suggest_activity`、`record_elder_activity`、`get_family_messages`、`initiate_video_call`。
+> ⚠️ **校正（2026-05-30）**：實際註冊於 Tool Calling 的技能共 **8 項**，全部定義在 `uban-api/uban-api/services/tools_service.py`：
+> `get_elder_context``get_current_time` `notify_family_SOS` `get_weather_info` `suggest_activity` `record_elder_activity` `get_family_messages` `initiate_video_call`。
 > 下表中其餘項目（`save_elder_memory`、`search_web`、`search_youtube_video`、`get_music_recommendations`）及 `server/skills/*.py` 路徑為**舊版規劃，尚未實裝**。
 
 | 技能 | 描述 | 模組 |
@@ -167,12 +169,16 @@ flowchart TD
 
 ### 三、長輩端 App (Flutter)
 
-- **魚你聊聊 (原禪意池塘)**：非壓力型 AI 互動與溫馨通知池塘。長輩可透過點擊游動的錦鯉讀取訊息，並可連續點擊 5 次空白處觸發 SOS 連擊求救，支援基於 Pinecone RAG 長期記憶的「落葉話題機制」。
-- **語音對話**：STT / EdgeTTS、連續對話、打斷機制（CosyVoice 測試中）
-- **沉浸式新聞播放器 2.0**：支援兩段式垂直翻頁、卡拉 OK 式「瞬移置中」同步字幕、與長輩友善的大字體排版（詳見 [代誌報給你知技術設計與實作紀錄](file:///c:/Users/tung0/Desktop/Uban/Uban/docs/technical/NEWS_LISTEN_PLAYER.md)）
+#### 🌟 現行核心功能
+- **無障礙極簡語音介面**：大字體、全語音優先對話介面，防誤觸極簡四分頁導覽（首頁、電話、聊天、我的）。
+- **Google 助理風格全域語音喚醒與 AI 助理 (GoogleAssistantOverlay)** ⭐ 新增：
+  - 支援在長輩端任何畫面喊出「Hey 嘎蛙」（或自訂 AI 名稱）自動觸發語音喚醒。
+  - AI 助理開啟後會立即透過 TTS 語音朗讀回應：「怎麼了嗎 宇璿」（自動動態取得呼叫設備主人名稱與 AI 名稱設定）。
+  - 提供仿 Google 助理 4 色炫彩聲波波浪動畫 BottomSheet，支援 ASR 語音輸入、即時 LLM 對話串流回傳與快捷選單卡片，並可隨時在「我的」頁面進行名稱設定與喚醒測試。
+  - 具備全域音訊焦點共存模式 (`AndroidAudioFocus.none`)，全時語音監聽不會中斷長輩聆聽新聞、音樂或廣播，實現音訊播放與背景喚醒 100% 平行運作。
 - **2D 賽博桌寵皮皮**：具備「拎起掙扎」體感互動、全螢幕自由行走、及與步數連動的「活力/慵懶/疲勞」心情系統。支援 Hero 動畫轉場至專屬個人屋。
-- **Markdown 渲染**：自動轉換影片/圖片卡片
 - **快捷問題卡片**：一鍵發問常見問題
+- **自動提醒聲光語音接收**：當遠端提醒時間到達，觸發長輩端預警音效（"喔！"）與全自動 TTS 語音朗讀提醒標題與內文。
 
 ### 四、家屬端管理
 
@@ -180,16 +186,30 @@ flowchart TD
 - **GPS 快速選址**：一鍵帶入行政區域
 - **陪伴大腦設定**：自訂 AI 人格與長輩資料
 - **PRO 進階照護訂閱**：家屬替長輩付費開通，以 RevenueCat 收費、**後端為單一真相來源**。購買前綁定 `elder_<elderId>`，訂閱掛在長輩身上；長輩端不整合購買 SDK，僅查後端解鎖（詳見 [訂閱會員系統技術設計與實作紀錄](docs/technical/SUBSCRIPTION_ARCHITECTURE.md)）
+- **長輩生活動態時光牆 (Elder Life Feed)** ⭐ 優化：
+  - **全動態實時主題標籤 (Topic Pulse Cloud)**：移除硬編碼範例文字，改為從長輩實際產生的影音搜尋（如：`🎵 #江蕙`、`🎵 #動力火車`）、運動作息（如：`🏃 #日常運動`）、關注新聞（如：`📰 #體育`）中 100% 零硬編碼動態萃取實時關鍵字標籤。
+  - **動態主題卡片聚類**：支援新聞關注、健康運動、音樂影音娛樂點播 (`MEDIA`)、溫情陪伴，並具備全項目零遺漏 (Leftover Catch) 兜底渲染機制。
+  - API 動態日誌讀取筆數擴充至 30 筆，支援多天歷史日誌篩選與即時同步。
+- **遠端提醒與用藥行程管理** ⭐ 新增：
+  - 支援 DatePicker 日期選擇 (`start_date`)、分類（用藥/看診/飲水/運動/叮嚀）、時間與重複頻率。
+  - 三層式卡片視覺佈局，右側整合垂直居中且放大 120% 的控制 Switch 與刪除按鈕。
+  - 前端 `ApiService` 支援從 Tailscale (`ts.net` 404/異常) 自動降級備援至 `http://10.0.2.2:8000` 本地伺服器。
 
 ### 五、視訊通話（雙軌制 WebRTC + 完整優化）
 
+> 📖 這裡只列功能。實作細節、資料契約與護欄見
+> [`CLAUDE_call-monitor.md`](CLAUDE_call-monitor.md)。
+
 - **信令 (第一軌)**：Tailscale Funnel (TCP/WSS) — 交換 SDP Offer/Answer + ICE Candidate
+  - **全憑證相容與自動降級**：內建 `badCertificateCallback` 相容開發端憑證；當連線遇到 SSL Handshake 異常時，Socket.IO 自動降級連線至 `http://10.0.2.2:8000`。
 - **媒體 (第二軌)**：Oracle Cloud Coturn (UDP) — 轉發實際影音串流
 - **WebRTC P2P**：高品質視訊、STUN + coturn TURN 雙重 NAT 穿透
-- **三層備援**：Socket.IO 即時 → FCM 推播 → Cold Start 冷啟動
+- **雙通道 + 冷啟動五層兜底**：Socket.IO 即時 ‖ FCM 推播（互為備援、以 `callId` 去重）
+  → CallKit ／ 通知備援 → 冷啟動五層兜底（詳見 `CLAUDE_call-monitor.md` §4）
 - **緊急模式**：CCTV 監控 / 自動接聽
 - **通話控制**：麥克風靜音、鏡頭開關、前後鏡頭切換、揚聲器、通話計時
-- **語音模式**：支援純語音通話（不啟動攝影機）
+- **語音模式**：長輩端按「電話」鍵撥出時雙端鏡頭預設關閉，**但仍取得 video track，
+  可在通話中手動開啟升級為視訊**（2026-08-02 第十四輪；`isVideoCall` 欄位貫穿全鏈路）
 - **TURN 伺服器**：Oracle Cloud coturn (152.69.196.5)，獨立公網 IP，支援跨 NAT（4G ↔ WiFi）場景
 - **媒體懶加載**：進入通話頁面不自動請求權限，用戶點擊時才初始化
 - **攝像頭預設關閉**：隱私優先，用戶主動開啟才傳輸影像
