@@ -37,3 +37,13 @@ void safeNavigateBack(BuildContext context, Widget fallbackScreen) {
     );
   }
 }
+
+/// ★ 2026-08-02 第十四輪：解析各通路傳來的 isVideoCall。
+/// Socket 給 bool、FCM 經後端 `str()` 會變成 "True"/"False"（Python 首字大寫）、
+/// prefs/CallKit extra 給字串——一律在此正規化。
+/// **只有明確為 false 才判定為語音通話**，其餘（含 null、無法解析）一律 true（安全預設）。
+bool parseIsVideoCall(dynamic raw) {
+  if (raw == null) return true;
+  if (raw is bool) return raw;
+  return raw.toString().trim().toLowerCase() != 'false';
+}

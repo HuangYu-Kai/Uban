@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
-import 'dart:io' show Platform;
 import 'package:firebase_messaging/firebase_messaging.dart';
 import '../services/signaling.dart';
+import '../services/api_service.dart';
 import '../widgets/heartbeat_overlay.dart';
 import 'identification_screen.dart';
 import 'elder_home_screen.dart';
@@ -46,9 +48,23 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   bool _isCameraOff = false; // 視訊房間預設開啟鏡頭
   bool _isMuted = false;
   bool _isFrontCamera = true; // ★ issue 12：前/後鏡頭狀態
+  bool _isSpeakerOn = true; // ★ 2026-08-05 第十八輪：擴音(true)／聽筒(false)，與攝像頭開關無關
   bool _mediaInitialized = false;
   Timer? _callTimer;
   int _callDuration = 0; // 秒數
+
+  /// ★ 2026-08-05 第十七輪：跌倒測試按鈕的防連點旗標（暫時性測試入口，
+  ///   YOLO 可實測後連同按鈕一起移除）。
+  bool _testFallSending = false;
+
+  /// ★ 2026-08-04 第 7 項：CCTV 影格推送給後端做 YOLO 跌倒偵測。
+  /// 只在 `widget.isCCTVMode == true` 時啟動——一般通話路徑完全不建立這個計時器、
+  /// 不呼叫 captureFrame，位元組層級與修改前相同，不影響通話品質與時序。
+  Timer? _cctvFrameTimer;
+
+  /// 上一張影格是否仍在上傳中。網路變慢時直接跳過該輪，**絕不排隊**，
+  /// 避免計時器堆積把長輩機的記憶體與上行頻寬吃光（與後端限流丟幀策略一致）。
+  bool _cctvFrameSending = false;
   int? _userId; // ★ issue 3/10：用於安全導航回主畫面時建構 ElderHomeScreen
   String? _prefsUserName; // ★ Issue 1 硬化：真實 caregiver_name，供 _buildFallbackHome 使用
 
@@ -74,6 +90,54 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     }
   }
 
+  /// ★ 2026-08-04 第 7 項：由 `_formattedRoomId` 還原出純 elder_id。
+  /// `/api/cctv/frame` 與後端設備清單的 device_id 推導都以「純 elder_id」為基準，
+  /// 若誤把 `monitor_elder_0343` 整串送過去，推導出的 device_id 會與
+  /// `_get_elder_devices_list()` 算出來的不一致，家屬端的紅色高亮就永遠對不上。
+  String get _rawElderId {
+    const monitorPrefix = 'monitor_elder_';
+    const commPrefix = 'comm_elder_';
+    if (_formattedRoomId.startsWith(monitorPrefix)) {
+      return _formattedRoomId.substring(monitorPrefix.length);
+    }
+    if (_formattedRoomId.startsWith(commPrefix)) {
+      return _formattedRoomId.substring(commPrefix.length);
+    }
+    return _formattedRoomId;
+  }
+
+  /// ★ 2026-08-04 第 7 項：每 2 秒擷取一張畫面推給後端做 YOLO 偵測。
+  ///
+  /// 為何是 2 秒：後端 `yolo_detector_service` 的判定窗口以「連續影格數」計算
+  /// （FALL_WINDOW_FRAMES=12、CRAWL_WINDOW_FRAMES=18、INACTIVITY_WINDOW_FRAMES=24），
+  /// 2 秒一張正好對應到 24 秒倒地不起、36 秒爬行、48 秒無動作才告警，
+  /// 符合需求所說的「長時間倒地不起」，也不會讓監視機一直滿載。
+  ///
+  /// 任何一輪失敗都只記錄並跳過，計時器本身絕不因單次錯誤而中止。
+  void _startCctvFrameLoop() {
+    _cctvFrameTimer?.cancel();
+    _cctvFrameTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
+      if (!mounted || _cctvFrameSending) return;
+      final videoTracks = _signaling.localStream?.getVideoTracks();
+      if (videoTracks == null || videoTracks.isEmpty) return;
+
+      _cctvFrameSending = true;
+      try {
+        final buffer = await videoTracks.first.captureFrame();
+        await ApiService.pushCctvFrame(
+          elderId: _rawElderId,
+          deviceName: widget.deviceName,
+          frameBytes: buffer.asUint8List(),
+        );
+      } catch (e) {
+        debugPrint('⚠️ [CCTV] 影格推送失敗（略過本輪，不中斷迴圈）: $e');
+      } finally {
+        _cctvFrameSending = false;
+      }
+    });
+    debugPrint('🎥 [CCTV] 已啟動影格推送迴圈 (elder=$_rawElderId, device=${widget.deviceName})');
+  }
+
   @override
   void initState() {
     super.initState();
@@ -84,9 +148,12 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     // ★ 初始化格式化的房間ID
     _formattedRoomId = _getFormattedRoomId(widget.roomId);
 
-    // ★ issue 8：CCTV/監控模式下，鏡頭必須預設開啟，否則監視器端只會看到黑畫面
+    // 「電話」與「視訊」共用同一套 call-request 後端邏輯；
+    // 唯一差異只在進房時鏡頭預設狀態。
     if (widget.isCCTVMode) {
       _isCameraOff = false;
+    } else {
+      _isCameraOff = !widget.isVideoCall;
     }
 
     // ★ Bug 16 解決方案：監聽從系統層 (main.dart) 傳進來的 CallKit 接聽動作
@@ -149,7 +216,8 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       final senderId = args['senderId']!;
       final roomId = args['roomId']!;
       final callId = args['callId'];
-      final isEmergency = args['isEmergency'] == 'true';
+      final rawEmergency = args['isEmergency'];
+      final isEmergency = rawEmergency?.toString() == 'true';
 
       debugPrint("📞 Detected Accepted Call from $senderId (Room: $roomId, CallId: $callId, Emergency: $isEmergency). Bridging...");
 
@@ -255,16 +323,24 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
 
     _signaling.onAddRemoteStream = ((stream) {
       debugPrint("📺 [ElderScreen] Remote stream added! Tracks: ${stream.getTracks().length}");
+      // ★ 2026-08-05 第十七輪：onAddRemoteStream 只代表 SDP 談成，不代表 ICE 已連通、
+      //   有任何媒體在流動，_startCallTimer() 改移到真正連上時才觸發的 onPeerConnected。
       if (mounted) {
-        setState(() { 
-          _remoteRenderer.srcObject = stream; 
-          _status = "通話中"; 
+        setState(() {
+          _remoteRenderer.srcObject = stream;
+          _status = "通話中";
           _isInCall = true;
           _callDuration = 0;
         });
-        _startCallTimer();
       }
     });
+
+    // ★ 2026-08-05 第十七輪：ICE 真正連通時才開始計時，避免「有通話計時卻沒有影音」的假象。
+    _signaling.onPeerConnected = () {
+      if (mounted) {
+        _startCallTimer();
+      }
+    };
 
     _signaling.onJoinFailed = (errorMessage) {
       // ★ issue 5：通話已建立時，忽略遲到的 join-failed（例如重新 join 房間時的競態），
@@ -310,7 +386,15 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     if (!_mediaInitialized) {
       await _initializeMedia();
     }
-    
+
+    // ★ 2026-08-04 第 7 項：只有監視機（CCTV）才推送影格做 YOLO 偵測。
+    //   必須等 _initializeMedia 成功後才啟動，否則 localStream 還是 null，
+    //   整個迴圈會空轉到相機就緒為止（雖然安全，但白費計時器）。
+    if (widget.isCCTVMode && _mediaInitialized) {
+      _startCctvFrameLoop();
+    }
+
+
     // ★ 修復：從 SharedPreferences 讀取真正的 user_id（caregiver_id），
     //    而不是誤用 elder_id 當作 userId。
     //    elder_id（widget.roomId，如 '0343'）≠ user_id（資料庫帳號整數 ID）
@@ -323,22 +407,26 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     //   避免通話結束回退時錯用 widget.deviceName（裝置暱稱，非長輩本名）。
     _prefsUserName = actualUserName;
     
-    // ★ 修復：若 Socket 已經連線（從 ElderHomeScreen 傳承下來），則不要重新連線，
-    //   否則會導致原本的 callbacks 被覆寫。若是從 CCTV 模式直接進入，則會在此處連線。
-    if (_signaling.socket?.connected != true) {
-      debugPrint("🔌 [ElderScreen] Socket 未連線，開始連線 (room: $_formattedRoomId)...");
-      final String? fcmToken = await FirebaseMessaging.instance.getToken();
-      _signaling.connect(
-        _formattedRoomId,  // ★ 使用格式化的房間ID，而不是原始的 roomId
-        'elder', 
-        userId: resolvedUserId,  // ★ 修復：使用真正的 user_id（caregiver_id）或 elder_id 作為備用
-        deviceName: widget.deviceName,
-        deviceMode: widget.isCCTVMode ? 'monitor' : 'comm',
-        fcmToken: fcmToken,
-      );
-    } else {
-      debugPrint("🔌 [ElderScreen] Socket 已連線，重用現有連線 (room: $_formattedRoomId)");
-    }
+    // ★ 2026-08-05 第十八輪（需求 5）根因修復：
+    //   原本「socket 已連線就完全不呼叫 connect()」會讓監控機在配對後
+    //   停留在 comm_elder_<id>，永遠沒有以 deviceMode:'monitor' 加入
+    //   monitor_elder_<id>，家屬端的遠端視訊列表因此永遠是空的。
+    //   `Signaling.connect()` 內部已有「已連線則只重新 join」的重用分支
+    //   （signaling.dart:169-173），不會重新註冊 listener 或覆寫 callback，
+    //   因此一律呼叫是安全的，且能確保房間與 deviceMode 永遠正確。
+    final String? fcmToken = await FirebaseMessaging.instance.getToken();
+    debugPrint(
+        "🔌 [ElderScreen] 加入房間 $_formattedRoomId "
+        "(mode=${widget.isCCTVMode ? 'monitor' : 'comm'}, "
+        "socketConnected=${_signaling.socket?.connected == true})");
+    _signaling.connect(
+      _formattedRoomId,
+      'elder',
+      userId: resolvedUserId,
+      deviceName: widget.deviceName,
+      deviceMode: widget.isCCTVMode ? 'monitor' : 'comm',
+      fcmToken: fcmToken,
+    );
 
     Future.delayed(const Duration(milliseconds: 100), () {
       _checkPendingEmergency();
@@ -389,9 +477,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
 
     _signaling.onCallBusy = (targetId, callId) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("家人目前無法接聽通話")),
-        );
+        _showElderCallFailToast(callBusyMessageFor(_signaling.lastCallBusyReason));
         // ★ issue 15：對方拒接/忙線時，呼叫端結束「等待連線」狀態並安全返回
         _callTimer?.cancel();
         _activeCallId = null;
@@ -410,9 +496,28 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     _signaling.onConnectionLost = () {
       _callTimer?.cancel();
       if (mounted) {
+        _showElderCallFailToast(kCallFailDisconnected);
         setState(() {
           _remoteRenderer.srcObject = null;
           _status = "連線中斷";
+          _isInCall = false;
+        });
+        if (!widget.isCCTVMode) {
+          safeNavigateBack(context, _buildFallbackHome());
+        }
+      }
+    };
+
+    // ★ 2026-08-05 第十七輪：ICE 連線失敗時據實回報並安全返回主畫面，避免通話停在
+    //   「已連線」卻完全沒有影音的假狀態。沿用本檔既有的「掛斷後安全導航」方法。
+    _signaling.onPeerConnectionFailed = (msg) {
+      _callTimer?.cancel();
+      if (mounted) {
+        debugPrint('⚠️ [ElderScreen] PeerConnection 失敗: $msg');
+        _showElderCallFailToast(kCallFailUnreachable);
+        setState(() {
+          _remoteRenderer.srcObject = null;
+          _status = "連線失敗";
           _isInCall = false;
         });
         if (!widget.isCCTVMode) {
@@ -508,6 +613,41 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
 
   }
 
+  /// ★ 2026-08-06 第十九輪（需求 3）：長輩端「沒接通」提示。
+  /// 樣式沿用第十八輪需求 3 敲定的大字級＋深綠底，四種情境只換文案不換樣式。
+  void _showElderCallFailToast(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: const Color(0xFF1A472A),
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+        duration: const Duration(seconds: 4),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+        ),
+        content: Row(
+          children: [
+            const Icon(Icons.phone_missed, color: Colors.white, size: 32),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(
+                message,
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                  height: 1.3,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // ★ 新增：懶加載媒體初始化
   Future<void> _initializeMedia() async {
     if (_mediaInitialized) return;
@@ -519,6 +659,20 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
           track.enabled = !_isCameraOff; // 預設關閉，保護隱私
         }
       }
+
+      // ★ 2026-08-05 第十八輪：無論是否開攝像頭，都要進入通話音訊模式，
+      //   否則 setSpeakerphoneOn 在部分機型上不會生效。
+      if (!kIsWeb && Platform.isAndroid) {
+        try {
+          await Helper.setAndroidAudioConfiguration(
+            AndroidAudioConfiguration.communication,
+          );
+        } catch (e) {
+          debugPrint('⚠️ [ElderScreen] setAndroidAudioConfiguration 失敗: $e');
+        }
+      }
+      _signaling.enableSpeakerphone(_isSpeakerOn);
+
       if (mounted) {
         setState(() => _mediaInitialized = true);
       }
@@ -571,6 +725,15 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     }
   }
 
+  /// ★ 2026-08-05 第十八輪（需求 1）：切換音訊輸出來源。
+  /// 與攝像頭狀態完全無關——關鏡頭的純語音通話一樣可以切換擴音／聽筒（比照 LINE）。
+  void _toggleSpeaker() {
+    if (!mounted) return;
+    setState(() => _isSpeakerOn = !_isSpeakerOn);
+    _signaling.enableSpeakerphone(_isSpeakerOn);
+    debugPrint("🔊 [ElderScreen] 音訊輸出切換為 ${_isSpeakerOn ? '擴音' : '聽筒'}");
+  }
+
   // ★ 新增：通話計時器
   void _startCallTimer() {
     _callTimer?.cancel();
@@ -579,6 +742,34 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
         setState(() => _callDuration++);
       }
     });
+  }
+
+  /// ★ 2026-08-05 第十七輪：暫時性測試入口——模擬 YOLO 判定跌倒。
+  /// 後端 `POST /api/cctv/test-fall` 走的是與真實偵測完全相同的
+  /// `dispatch_yolo_alert()`（寫入 emergency_alerts → Socket 'cctv-alert' → FCM 高優先級），
+  /// 只跳過「影像判定」那一段。YOLO 可實測後，此方法與對應按鈕可一併移除。
+  Future<void> _sendTestFallAlert() async {
+    if (_testFallSending) return;
+    setState(() => _testFallSending = true);
+    // 🚨 必須傳 _rawElderId（去掉 monitor_elder_ / comm_elder_ 前綴的原始 elder_id）。
+    //    後端以 monitor_device_id(elder_id, device_name) 推導 device_id，
+    //    若送整串 room_id，推導值會與 /cctv/frame 那條路徑算出來的不一致，
+    //    家屬端的設備卡片高亮就永遠對不上。
+    // ★ 2026-08-05 第十七輪（安全）：後端此端點預設關閉，回傳的字串即為原因
+    //   （未啟用開關／密鑰錯誤／查無此監視機），null 才代表成功。
+    //   直接把原因顯示出來，否則使用者只會看到「送出失敗」而不知道要去 .env 開開關。
+    final err = await ApiService.triggerTestFall(
+      elderId: _rawElderId,
+      deviceName: widget.deviceName,
+    );
+    if (!mounted) return;
+    setState(() => _testFallSending = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(err ?? '已送出跌倒測試警報'),
+        duration: Duration(seconds: err == null ? 2 : 6),
+      ),
+    );
   }
 
   String _formatDuration(int seconds) {
@@ -590,7 +781,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   // 主動呼叫 (先響鈴)
   void _makeCall() {
     setState(() { _status = "正在呼叫家人..."; _isInCall = true; });
-    _signaling.sendCallRequest(_formattedRoomId, role: 'elder');  // ★ 使用格式化的房間ID
+    _signaling.sendCallRequest(_formattedRoomId, role: 'elder', isVideoCall: widget.isVideoCall);  // ★ 使用格式化的房間ID
     // ★ 2026-07-18：長輩端主動撥打新增 30 秒逾時。原本完全沒有逾時，
     //   家屬未接時只能靠手動掛斷，被叫方 CallKit 也會一直響。逾時自動取消。
     Future.delayed(const Duration(seconds: 30), () {
@@ -642,21 +833,86 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     );
   }
 
+  Future<void> _exitCCTVMode() async {
+    final bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('退出監視機模式'),
+        content: const Text('確定要退出監視機模式並重新選擇身分？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('退出並重置'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('saved_is_cctv');
+      await prefs.remove('saved_role');
+      await prefs.remove('saved_id');
+      await prefs.remove('saved_device_name');
+      await prefs.remove('user_role');
+      await prefs.remove('caregiver_id');
+      await prefs.remove('caregiver_name');
+
+      _signaling.clearSession();
+      _signaling.forceDisconnect();
+
+      if (mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const IdentificationScreen()),
+          (route) => false,
+        );
+      }
+    }
+  }
+
   @override
   void dispose() {
     _callTimer?.cancel();
+    _cctvFrameTimer?.cancel();  // ★ 第 7 項：離開監視機畫面必須停止推幀，否則相機釋放後會持續拋例外
     pendingAcceptedCall.removeListener(_onPendingCallChanged);
     _localRenderer.dispose();
     _remoteRenderer.dispose();
     
     // ★ 修復：只結束 WebRTC，不要斷開 Socket，這樣回到 ElderHomeScreen 時才能繼續接收推播
     _signaling.hangUp(disconnectSocket: false, disposeLocalStream: false);
-    
+
+    // ★ 2026-08-05 第十八輪（需求 4）：通話畫面離開 → 還原鎖屏行為，讓裝置回到原本的螢幕鎖。
+    //   `showOverLockScreen()` 會設 setShowWhenLocked(true) + FLAG_KEEP_SCREEN_ON，
+    //   不還原的話 APP 會永久蓋在鎖定畫面之上、螢幕也永不休眠。
+    //   監控機（CCTV）刻意排除——它本來就必須維持恆亮才能持續推幀。
+    //   這裡涵蓋所有離開路徑（掛斷／對方掛斷／忙線／斷線／連線失敗／撥打逾時），
+    //   它們最終都會讓本 route 被 pop 或 pushAndRemoveUntil 移除而觸發 dispose()。
+    if (!widget.isCCTVMode) {
+      const MethodChannel('com.example.app/bring_to_front')
+          .invokeMethod('restoreLockScreen')
+          .catchError((e) {
+        debugPrint('⚠️ [ElderScreen] restoreLockScreen 失敗: $e');
+        return null;
+      });
+    }
+
+
     // ★ 清空 UI 相關的 callbacks，讓全域的 callbacks 重拾控制權
     _signaling.onCallAcceptedByRemote = null;
     _signaling.onCallBusy = null;
     _signaling.onCallEnded = null;
     _signaling.onConnectionLost = null;
+    _signaling.onPeerConnected = null;
+    _signaling.onPeerConnectionFailed = null;
     _signaling.onAddRemoteStream = null;
     _signaling.onLocalStream = null;
     _signaling.onJoinFailed = null;
@@ -675,104 +931,163 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
         builder: (context, pendingCall, _) {
           return Stack(
             children: [
-              // 1. 全螢幕視訊區塊 (沉浸式)
+              // 1. 全螢幕視訊區塊
               Positioned.fill(
                 child: Container(
                   color: const Color(0xFF121212),
-                  child: _remoteRenderer.srcObject != null
+                  child: widget.isCCTVMode
                       ? RTCVideoView(
-                          _remoteRenderer,
+                          _localRenderer,
+                          mirror: true,
                           objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
                         )
-                      : Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              if (_isInCall)
-                                const CircularProgressIndicator(color: Colors.orangeAccent),
-                              const SizedBox(height: 24),
-                              Text(
-                                _status,
-                                style: const TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w500,
-                                ),
+                      : _remoteRenderer.srcObject != null
+                          ? RTCVideoView(
+                              _remoteRenderer,
+                              objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                            )
+                          : Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  if (_isInCall)
+                                    const CircularProgressIndicator(color: Colors.orangeAccent),
+                                  const SizedBox(height: 24),
+                                  Text(
+                                    _status,
+                                    style: const TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ],
-                          ),
+                            ),
+                ),
+              ),
+
+              // 2. 本地 PIP（僅雙向通話模式顯示）
+              if (!widget.isCCTVMode)
+                Positioned(
+                  right: 20,
+                  top: MediaQuery.of(context).padding.top + 20,
+                  width: 110,
+                  height: 160,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.4),
+                          blurRadius: 8,
+                          offset: const Offset(0, 4),
                         ),
-                ),
-              ),
-
-              // 2. 本地預覽 (精緻 PIP)
-              Positioned(
-                right: 20,
-                top: MediaQuery.of(context).padding.top + 20,
-                width: 110,
-                height: 160,
-                child: Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.4),
-                        blurRadius: 8,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                    border: Border.all(color: Colors.white24, width: 1.5),
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(14),
-                    child: RTCVideoView(_localRenderer, mirror: true, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
+                      ],
+                      border: Border.all(color: Colors.white24, width: 1.5),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(14),
+                      child: RTCVideoView(_localRenderer, mirror: true, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
+                    ),
                   ),
                 ),
-              ),
 
-              // 3. CCTV 模式提示與退出按鈕
+              // ★ CCTV 模式：頂部退出按鈕與底部「CCTV 監視中」標籤
               if (widget.isCCTVMode) ...[
                 Positioned(
-                  top: MediaQuery.of(context).padding.top + 20,
-                  left: 20,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.redAccent.withValues(alpha: 0.8),
-                      borderRadius: BorderRadius.circular(20),
+                  top: MediaQuery.of(context).padding.top + 10,
+                  right: 16,
+                  child: GestureDetector(
+                    onTap: _exitCCTVMode,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.6),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.white30, width: 1),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.logout_rounded, color: Colors.white, size: 16),
+                          SizedBox(width: 6),
+                          Text(
+                            '退出監視機',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.videocam, color: Colors.white, size: 18),
-                        SizedBox(width: 8),
-                        Text("CCTV 守護中", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                      ],
+                  ),
+                ),
+                // ★ 2026-08-05 第十七輪：暫時性的跌倒測試入口，位於「退出監視機」正下方。
+                //   按下後走與 YOLO 真實偵測完全相同的派送路徑（見 _sendTestFallAlert）。
+                //   YOLO 可實測後，這整個 Positioned 可以直接刪除。
+                Positioned(
+                  top: MediaQuery.of(context).padding.top + 56,
+                  right: 16,
+                  child: GestureDetector(
+                    onTap: _testFallSending ? null : _sendTestFallAlert,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.6),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.white30, width: 1),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (_testFallSending)
+                            const SizedBox(
+                              width: 12,
+                              height: 12,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            )
+                          else
+                            const Text('🚨', style: TextStyle(fontSize: 12)),
+                          const SizedBox(width: 6),
+                          const Text(
+                            '跌倒測試',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
                 Positioned(
-                  top: MediaQuery.of(context).padding.top + 20,
-                  right: 20,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.5),
-                      shape: BoxShape.circle,
-                    ),
-                    child: IconButton(
-                      icon: const Icon(Icons.exit_to_app, color: Colors.white),
-                      tooltip: '退出並重新登入',
-                      onPressed: () async {
-                        final prefs = await SharedPreferences.getInstance();
-                        await prefs.clear(); // 清空儲存的長輩資訊與 CCTV 角色
-                        if (context.mounted) {
-                          Navigator.pushAndRemoveUntil(
-                            context,
-                            MaterialPageRoute(builder: (context) => const IdentificationScreen()),
-                            (route) => false,
-                          );
-                        }
-                      },
+                  bottom: 12,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.45),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        'CCTV 監視中…',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.6),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w400,
+                          letterSpacing: 1.0,
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -884,7 +1199,30 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
                                   ),
                                 ),
                               ),
-                              
+
+                              // ★ 2026-08-05 第十八輪（需求 1）：擴音／聽筒切換
+                              Container(
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black26,
+                                      blurRadius: 8,
+                                    ),
+                                  ],
+                                ),
+                                child: FloatingActionButton(
+                                  onPressed: _toggleSpeaker,
+                                  heroTag: 'speaker',
+                                  mini: true,
+                                  backgroundColor: _isSpeakerOn ? Colors.blue.shade500 : Colors.grey.shade600,
+                                  child: Icon(
+                                    _isSpeakerOn ? Icons.volume_up : Icons.phone_in_talk,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+
                               // 掛斷按鈕（紅色、較大）
                               GestureDetector(
                                 onTap: _hangUp,

@@ -1,7 +1,38 @@
-# CLAUDE.md
+# CLAUDE.md（`Uban/` — Flutter 前端）
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+---
+
+## 🚨 動手前必讀
+
+> **在修改任何「視訊通話 / 來電通知 / 監控（CCTV）」相關的 Dart 程式碼之前，
+> 必須先完整閱讀 [`CLAUDE_call-monitor.md`](CLAUDE_call-monitor.md)。**
+
+該檔案是通話與監控子系統的**唯一權威參考**。本檔案不再記載通話／監控細節——
+以前寫在這裡的 §2.2 Signaling/WebRTC 流程、§2.3 FCM→CallKit 喚醒鏈、§2.4 角色差異、
+§5 修復記錄、§6 的 26 條護欄，**全部已遷移過去**（並已修正其中的路徑錯誤與自相矛盾條目）。
+
+**觸發條件**（符合任一項就必須先讀）：
+
+| 檔案 | 風險 |
+|------|------|
+| `lib/main.dart` | 🔴 極高（FCM BG handler、CallKit listener、冷啟動五層兜底） |
+| `lib/services/signaling.dart` | 🔴 極高（Singleton、WebRTC、去重、失效清單） |
+| `lib/globals.dart` | 🔴 極高（`pendingAcceptedCall`、`kCallValidityMs`、`splashActive`） |
+| `lib/services/local_call_notification.dart` | 🔴 極高（CallKit 失敗時的唯一備援） |
+| `lib/screens/elder_screen.dart` | 🔴 高（長輩端通話房 + CCTV） |
+| `lib/screens/video_call_screen.dart` | 🔴 高（家屬端通話房） |
+| `lib/screens/elder_home_screen.dart` / `family_main_screen.dart` | 🟠 中高（前景來電 dialog、裝置在線判定） |
+| `lib/screens/splash_screen.dart` | 🟠 中高（冷啟動導航競態） |
+| `lib/screens/camera_screen.dart` / `friends_screen.dart` | 🟠 中（監控入口、撥打入口） |
+
+只改 UI 樣式（顏色、字體、間距）也**必須**先看 `CLAUDE_call-monitor.md` **§5 UI 按鈕與跳轉地圖**——
+那一節就是為了讓只動 UI 的人不必讀完整條信令鏈也能安全改動而寫的。
+
+⚠️ `lib/main.dart.bak` 是過期備份，會污染 grep 結果，**永遠不要編輯它**。
+
+---
 > 🚨 **CRITICAL RULE / 文件同步更新鐵律**: 
 > 任何時候新增、修改或重構系統功能（包含 API 端點、資料庫 Schema、UI 介面、連線機制、TTS/AI 引擎、通話權限等），**必須同步更新相對應的 README.md 文檔**（`Uban/README.md` 及 `Uban-api/readme.md`），確保系統文檔 100% 保持最新且與實作無落差。
 
@@ -18,8 +49,8 @@ flutter run --dart-define=SERVER_IP=localhost-0.tail5abf5e.ts.net \
   --dart-define=TURN_USER=uban \
   --dart-define=TURN_PASS=115207
 
-# Static analysis
-flutter analyze
+# Static analysis（改通話相關檔案後必跑，須 0 error）
+flutter analyze lib
 
 # Run all tests
 flutter test
@@ -30,27 +61,26 @@ flutter test test/models/emotion_data_test.dart
 
 # Install dependencies
 flutter pub get
+
+# 完整驗證（改通話相關檔案後必跑）
+flutter build apk --debug
 ```
 
-### FastAPI Backend (`uban-api/uban-api/`)
+> Windows 上 `flutter build` 若出現 `compileDebugJavaWithJavac` 檔案鎖定錯誤，
+> 復原步驟見 `CLAUDE_call-monitor.md` §9.6。
+
+### FastAPI Backend (`uban-api/`)
+
+> ⚠️ 後端根目錄是 **`uban-api/`**（不是舊文件寫的 `uban-api/uban-api/` 或 `Uban/uban-api/`）。
 
 ```bash
-cd uban-api/uban-api
+cd uban-api
 
-# Install dependencies (Python 3.12 only, NOT 3.13+)
-pip install -r requirements.txt
-
-# Start server
+pip install -r requirements.txt          # Python 3.12 only, NOT 3.13+
 uvicorn main:app --host 0.0.0.0 --port 8000
-
-# Run all tests
 pytest tests/
-
-# Run a specific test file
-pytest tests/test_auth.py -v
-
-# Syntax check a single file
-python -m py_compile routers/pairing.py
+pytest tests/test_call_signaling.py -q   # 通話迴歸套件，須維持 8 passed
+python -m py_compile services/socket_app.py
 ```
 
 Prerequisites for running the backend:
@@ -87,93 +117,21 @@ Key service addresses:
 - TURN/STUN: `turn:152.69.196.5:3478`
 - MySQL: `100.73.39.14:3306` (Tailscale)
 
-### 2.2 Signaling Singleton & WebRTC Flow
+### 2.2 通話與監控子系統 → 見 `CLAUDE_call-monitor.md`
 
-`lib/services/signaling.dart` is a **Singleton**. The same instance is shared across the entire app lifecycle. Never instantiate it with `Signaling()`.
+| 想知道的事 | 節次 |
+|-----------|------|
+| 有哪些檔案、風險多高、`signaling.dart` 公開介面 | §2 檔案地圖 |
+| Socket 事件 / FCM 欄位 / SharedPreferences 鍵位 | §3 資料契約 |
+| 撥打 → 接聽 → 掛斷 完整流程（含冷啟動五層兜底） | §4 通話生命週期 |
+| **按鈕在哪、按了跳去哪、可以安全改什麼** | §5 UI 按鈕與跳轉地圖 |
+| 監控機／CCTV／裝置角色指派 | §6 監控子系統 |
+| **52 條護欄（絕對不可單點修改）** | §7 |
+| 這段程式碼為什麼長這樣（18 輪修復年表） | §8 |
+| 出問題了怎麼查（三層 A/B/C 定位法、MIUI 檢查表） | §9 |
+| 改完要做什麼 | §10 修改 SOP |
 
-The WebRTC call flow spans multiple files and is highly timing-sensitive:
-
-```
-main.dart (FCM/CallKit global listeners)
-  ↓
-globals.dart (pendingAcceptedCall state bridge)
-  ↓
-signaling.dart (Socket.IO + WebRTC logic)
-  ↓
-screens/video_call_screen.dart OR screens/elder_screen.dart (UI)
-```
-
-**Callee flow** (e.g., Elder receiving a call from Family):
-1. FCM background push → CallKit popup
-2. Tap Accept → sets `pendingAcceptedCall` in `globals.dart`
-3. `MainActivity` re-opens, reads `pendingAcceptedCall`
-4. Navigates to `VideoCallScreen` / `ElderScreen`
-5. `socket` emits `'call-accept'` (must wait until `socket.connected`; see cold-start note below)
-6. Callee awaits `'offer'` from caller
-
-**Caller flow**:
-1. Emits `'call-request'`
-2. Receives `'call-accept'` (containing callee's `socketId`)
-3. `createOffer(targetId: callee_sid)` ← **ONLY entry point for offer creation**
-4. Callee receives `'offer'` → `setRemoteDescription` → `createAnswer`
-5. Both exchange `'ice-candidate'`
-6. P2P established
-
-**Cold-start race condition**: When the app is killed by the system and awakened by FCM, `sendCallAccept` may fire before the socket is connected. The fix polls `socket.connected` for up to 5s before emitting. See `video_call_screen.dart` `_initCall()`.
-
-**ICE candidate queuing**: Candidates arriving before `setRemoteDescription` must be queued. This is handled in `signaling.dart`.
-
-### 2.3 FCM → CallKit → Cold-Start Wake Chain
-
-`main.dart` contains the FCM background handler and CallKit initialization.
-
-```
-FCM push (call-request or emergency-call)
-  → _firebaseMessagingBackgroundHandler
-    → call-request (family): shows CallKit, NO auto-wake
-    → call-request (elder): saves pendingRingCall to SharedPreferences,
-        then shows CallKit (NO auto-wake — user must explicitly accept)
-    → emergency-call: saves pendingAcceptedCall + triggers AndroidIntent to wake
-  → CallKit 'accept' event
-    → sets pendingAcceptedCall.value
-    → wakes MainActivity (if not already active)
-    → _navigateToVideoCall triggers navigation
-```
-
-CallKit is configured with `isShowFullLockedScreen: true` for lock-screen full-screen display.
-
-#### pendingRingCall 冷啟動補救機制（2026-07 新增）
-
-背景長輩端收到 `call-request` 時，app 可能已被系統殺掉。使用者在 CallKit 點接聽後冷啟動 app，`_setupCallKitListener` 可能尚未註冊而錯過 `actionCallAccept` 事件。
-
-**三層防線**：
-1. **背景 handler** — 將 `{roomId, senderId, callId, timestamp}` 存入 SharedPreferences key `pendingRingCall`
-2. **`_checkInitialCall()`（第一道防線）** — `initState()` 中檢查 `activeCalls()` 是否有已接聽（`isAnswered=true`）且未結束的通話，匹配 `pendingRingCallData` → 補設定 `pendingAcceptedCall.value`
-3. **`SplashScreen._navigateToNext()`（第二道防線）** — 4 秒動畫結束後（CallKit 狀態已穩定），再次檢查 `pendingRingCall` + `activeCalls()` → 補設定 `pendingAcceptedCall.value`
-
-逾時保護：`pendingRingCall` 超過 55 秒自動清除。
-
-#### FCM 前景雙通道備援（2026-07 新增）
-
-來電同時透過 **Socket.IO（主要）** 和 **FCM 前景訊息（備援）** 傳遞。若 Socket 斷線，FCM 仍能送達來電。
-
-去重機制：`Signaling.lastProcessedCallId` + `_fcmCallIdCache` 3 秒時間窗口，防止同一通來電由兩通道重複觸發 dialog。
-
-長輩端 FCM 前景備援：不再忽略，改用去重檢查取代 early return。若 Socket 已在 3 秒內處理過相同 `callId` 則跳過，否則顯示 styled dialog（樣式與 `ElderHomeScreen` 的綠色 dialog 一致）。
-
-### 2.4 Role Differences (Elder vs Family)
-
-**Hard rule**: Elder calls must enter through `ElderScreen`, not `VideoCallScreen`.
-
-| Aspect | Elder (`role: 'elder'`) | Family (`role: 'family'`) |
-|--------|--------|--------|
-| Entry | `ElderScreen` | `VideoCallScreen` |
-| Incoming UI | CallKit full-screen | Dialog in `FamilyMainScreen` |
-| Offer logic | Receives `call-accept` → creates offer | Receives `call-accept` → creates offer |
-| Video default | Camera on when entering call room (toggleable) | Camera on when entering call room (toggleable) |
-| Emergency mode | CCTV / auto-answer, camera forced on | Standard call |
-
-### 2.5 AI Dual-Engine & Pinecone Long-Term Memory
+### 2.3 AI Dual-Engine & Pinecone Long-Term Memory
 
 The backend runs two AI engines:
 - **Primary**: Ollama (`gemma4:e4b-it-q4_K_M`), local via Tailscale, supports Tool Calling.
@@ -182,9 +140,9 @@ The backend runs two AI engines:
 **Pinecone Long-Term Memory**:
 - Every chat is embedded (nomic-embed-text, 768-dim) and upserted to Pinecone index `uban` in a **background thread**.
 - `daily_pond_leaf_job` (scheduled at 08:00 and 15:00 in `main.py`) queries Pinecone for semantic memory recall, generates a conversation topic, and pushes it via Socket.IO `'new-pond-leaf'` event to the Flutter `ZenPondScreen`.
-- The AI agent personality is defined in `uban-api/uban-api/server/agent/SOUL.md`, `IDENTITY.md`, etc.
+- The AI agent personality is defined in `uban-api/server/agent/SOUL.md`, `IDENTITY.md`, etc.
 
-### 2.6 Backend: Raw SQL + Scheduler
+### 2.4 Backend: Raw SQL + Scheduler
 
 No ORM is used. All DB access is via `db_cursor()` context manager with parameterized queries:
 
@@ -207,38 +165,54 @@ Scheduled jobs (defined in `main.py`):
 
 ## 3. Hard Rules
 
+### 3.1 通用
+
 1. **Do not hardcode IPs / server URLs** — always use `--dart-define=SERVER_IP=`
-2. **Signaling is a Singleton** — never create a second `Signaling()` instance
-3. **Elder calls use `ElderScreen`** — do not route elders to `VideoCallScreen`
-4. **No ORM in backend** — use `db_cursor()` with `%s` placeholders
-5. **Never merge signaling and media tracks** — they are on separate hosts by design
-6. **AI personality must be stable and serious** — no roleplay, pet speak, or impersonation
-7. **Git commit messages must be in Traditional Chinese (繁體中文)**
-8. **Use `forceDisconnect()` instead of `disconnect()` for Signaling singleton** — To maintain FCM reception capability
-9. **Always check socket connection before sending WebRTC signals** — With timeout/retry logic (max 5s) to prevent cold-start disconnections
-10. **Use `_isInCall` flag to prevent concurrent calls** — Check in `createOffer()` and `_acceptCall()` methods
-11. **Convert SharedPreferences data properly** — When assigning to `pendingAcceptedCall.value`, convert `Map<String, dynamic>` to `Map<String, String?>`
-12. **Navigate back to home screen correctly** — Use `pushAndRemoveUntil` instead of `pop()` to return to proper home screen after calls
-13. **Do not open user media before creating offer** — must first obtain `localStream` before calling `createOffer`
-14. **ICE candidates must be queued** — candidates arriving before `setRemoteDescription` must be queued and flushed after
-15. **Do not broadcast SDP (Offer/Answer)** — must send to specific `targetId` using `to=target_sid`
-16. **Do not hardcode MySQL host** — in production, use `uban-mysql`; avoid `localhost` or `127.0.0.1`
-17. **Do not change the server port** — keep port 8000 for the FastAPI backend
-18. **Use Python 3.12** — do not use Python 3.13 or higher
+2. **No ORM in backend** — use `db_cursor()` with `%s` placeholders
+3. **AI personality must be stable and serious** — no roleplay, pet speak, or impersonation
+4. **Git commit messages must be in Traditional Chinese (繁體中文)**
+5. **Do not hardcode MySQL host** — in production, use `uban-mysql`; avoid `localhost` or `127.0.0.1`
+6. **Do not change the server port** — keep port 8000 for the FastAPI backend
+7. **Use Python 3.12** — do not use Python 3.13 or higher
+8. **計畫制定與成果檢驗用 Opus、執行用 Sonnet 子代理** — 所有實作計畫的制定，以及子代理產出的檢驗／驗收，一律由 Opus 模型負責；既定計畫的實際執行交由 Sonnet 子代理（`Agent` 工具傳 `model: "sonnet"`）。
+9. **每次更動完成後必須清除不必要的空白檔案** — 收尾前掃一次工作目錄，刪除本次作業產生的零位元組檔、只剩空白字元的殘留檔、以及空的暫存目錄（例如中途建立後未使用的 stub、被清空但忘了刪的檔案）。**不要刪除**專案本來就需要的空檔案（如 `__init__.py`、`.gitkeep`、`py.typed`、空的 `__init__.dart`）。判斷準則：該檔是否被任何程式碼、設定或建置流程引用；有引用就留下。
+
+### 3.2 通話與監控
+
+**完整規則見 [`CLAUDE_call-monitor.md`](CLAUDE_call-monitor.md) §7（52 條護欄）。**
+以下僅列最高頻的幾條，動手前仍必須讀完整版：
+
+- **Never merge signaling and media tracks** — they are on separate hosts by design
+- **Signaling is a Singleton** — never create a second `Signaling()` instance；斷線一律用 `forceDisconnect()`（用 `disconnect()` 會失去 FCM 接收能力）
+- **Elder calls use `ElderScreen`** — do not route elders to `VideoCallScreen`
+- **Do not broadcast SDP (Offer/Answer)** — must send to a specific `targetId` via `to=target_sid`
+- **ICE candidates must be queued** — candidates arriving before `setRemoteDescription` must be queued and flushed after
+- **Do not open user media after creating offer** — `localStream` must exist before `createOffer`
+- **Always check socket connection before sending WebRTC signals** — poll with timeout (max 5s) to survive cold start
+- **Use the `_isInCall` flag to prevent concurrent calls**
+- **Convert SharedPreferences data properly** — `Map<String, dynamic>` → `Map<String, String?>` before assigning to `pendingAcceptedCall.value`
+- **Navigate home with `pushAndRemoveUntil`, never `pop()`**
+- **不要在 `Signaling` singleton 新增「顯示狀態」全域旗標** — 曾有一個 `isIncomingCallDialogVisible` 導致長輩端冷啟動失敗而被回退；需要跨路徑協調時，用**與 `callId` 綁定、讀不到就退回安全預設**的純資料欄位（比照 `lastProcessedCallId`）
 
 ---
 
 ## 4. Subproject Reference
 
-For per-subproject details, read:
-- **Flutter frontend**: `Uban/mobile_app/` 下的各檔案（無獨立 CLAUDE.md）
-- **FastAPI backend**: `uban-api/uban-api/CLAUDE.md`
+| 主題 | 檔案 |
+|------|------|
+| **視訊通話 / 來電通知 / 監控**（最優先） | [`CLAUDE_call-monitor.md`](CLAUDE_call-monitor.md) |
+| 專案總覽 | `../CLAUDE.md` |
+| FastAPI 後端 | `../uban-api/CLAUDE.md` |
+| Codex／其他代理 | `../AGENTS.md` |
+
+Flutter 前端在 `Uban/mobile_app/` 下沒有更細的 CLAUDE.md，本檔即為前端的入口文件。
 
 ---
 
-## 5. Appendix: Fix Records
+## 5. 變更歷史
 
-### 2026-07-14 — 來電通知六項修復（分支 `call-fix`）
+通話與監控子系統的完整修復年表（2026-06-05 起共 18 輪，含每一輪的根因、檔案、行號）
+已遷移至 [`CLAUDE_call-monitor.md`](CLAUDE_call-monitor.md) §8。
 
 | Issue | 檔案 | 根因 | 修復 |
 |-------|------|------|------|

@@ -2,6 +2,18 @@ You are an expert AI Coding Assistant for the Uban project (Flutter + FastAPI).
 
 **CRITICAL**: Before ANY code modification, you MUST read `README.md` in the project root.
 
+**CRITICAL — video call / incoming-call notification / CCTV monitoring**: before modifying ANY
+front-end or back-end code in that subsystem, you MUST read `CLAUDE_call-monitor.md` in full.
+It is the single source of truth (file map, Socket.IO/FCM/prefs contracts, full call lifecycle,
+UI button & navigation map, 36 guardrails, 14-round fix chronology, debugging handbook).
+Triggers: `main.dart`, `signaling.dart`, `globals.dart`, `local_call_notification.dart`,
+`elder_screen.dart`, `video_call_screen.dart`, `elder_home_screen.dart`, `family_main_screen.dart`,
+`splash_screen.dart`, `camera_screen.dart`, `friends_screen.dart`,
+`uban-api/services/socket_app.py`, or any call/monitor button, FCM push, CallKit, or
+call-related SharedPreferences key. Everything about calls below is a summary only — where this
+file and `CLAUDE_call-monitor.md` disagree, that document wins, and the code wins over both.
+Single-point edits to this subsystem almost always cause regressions.
+
 ## Project Rules
 - Frontend: Flutter (Dart). Backend: `uban-api` (separate FastAPI repo).
 - `server/` directory is DEPRECATED Legacy Flask code — DO NOT MODIFY.
@@ -27,6 +39,7 @@ You are an expert AI Coding Assistant for the Uban project (Flutter + FastAPI).
 - Elder supports `isVideoCall: false` for audio-only mode
 
 ## For Socket.IO / WebRTC tasks, read first:
+- `CLAUDE_call-monitor.md` — **mandatory, read this before the source files**
 - `lib/services/signaling.dart` — Singleton socket + WebRTC
 - `lib/main.dart` — Global CallKit / FCM listeners
 - `lib/globals.dart` — `pendingAcceptedCall` state

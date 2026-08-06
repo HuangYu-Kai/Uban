@@ -6,9 +6,11 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'redesigned_ai_chat_screen.dart';
 import 'family_call_history_screen.dart'; // 新增
+import 'family/family_subscription_screen.dart'; // ★ Task 6
 import 'elder_selection_screen.dart';
 import 'elder_profile_edit_screen.dart';
 import '../services/signaling.dart'; // 新增
+import '../services/api_service.dart'; // ★ Task 6
 import 'video_call_screen.dart'; // 新增
 
 class FamilyDashboardView extends StatefulWidget {
@@ -32,6 +34,18 @@ class _FamilyDashboardViewState extends State<FamilyDashboardView> {
   String? _elderSocketId;
   bool _isElderOnline = false; // ★ 新增：長輩是否在線上
   final Signaling _signaling = Signaling();
+
+  // ★ Task 6：會員層級徽章
+  String _tierLevel = 'free';
+  String _tierDisplayName = '一般會員';
+
+  // ★ Task 4：CCTV 監視機設備追蹤 + 訂閱設備上限
+  List<dynamic> _monitorDevices = [];
+  int _devicesMax = 2;
+
+  // ★ Task 7d：YOLO 警報狀態追蹤
+  final List<Map<String, dynamic>> _activeAlerts = [];
+  final Set<int> _knownAlertIds = {};
   
   // ★ 輔助方法：生成雙向通訊房間ID
   String _getCommRoomId() {
@@ -58,11 +72,35 @@ class _FamilyDashboardViewState extends State<FamilyDashboardView> {
     super.initState();
     _loadSelectedElder();
     _initSignaling();
+    _loadTier();
   }
 
 
 
   void _initSignaling() {
+    // ★ 2026-07-30 Task 2：監聽長輩被解綁事件，即時更新 dashboard。
+    _signaling.socket?.on('elder-unbound', (data) {
+      if (!mounted) return;
+      try {
+        final unboundElderId = data is Map ? (data['elderId'] ?? data['elder_id'])?.toString() : null;
+        debugPrint('🔓 [FamilyDashboard] 收到 elder-unbound: elderId=$unboundElderId');
+        if (unboundElderId == null) return;
+
+        final currentId = _elderRoomId ?? _elderId?.toString();
+        if (unboundElderId == currentId) {
+          setState(() {
+            _elderId = null;
+            _elderName = null;
+            _elderSocketId = null;
+            _isElderOnline = false;
+          });
+          debugPrint('🔓 [FamilyDashboard] 當前長輩被解綁，重置 dashboard 狀態');
+        }
+      } catch (e) {
+        debugPrint('❌ [FamilyDashboard] elder-unbound 處理失敗: $e');
+      }
+    });
+
     // 監聽長輩裝置更新，找出在線的 Socket ID
     _signaling.onElderDevicesUpdate = (devices) {
       if (devices.isNotEmpty && mounted) {
@@ -77,6 +115,10 @@ class _FamilyDashboardViewState extends State<FamilyDashboardView> {
             _elderSocketId = devices.first['id']; // 至少抓一個
             _isElderOnline = false;
           }
+          // ★ Task 4：過濾監視機設備（deviceMode == 'monitor'）
+          _monitorDevices = devices
+              .where((d) => d['deviceMode'] == 'monitor')
+              .toList();
         });
       }
     };
@@ -98,6 +140,24 @@ class _FamilyDashboardViewState extends State<FamilyDashboardView> {
         _isIncomingCallDialogOpen = false;
       }
     };
+
+    // ★ Task 7d：監聽 YOLO 警報（CCTV 跌倒檢測）
+    _signaling.socket?.on('cctv-alert', (data) {
+      if (!mounted) return;
+      try {
+        final alertId = data is Map ? int.tryParse((data['alert_id'] ?? data['alertId'])?.toString() ?? '') : null;
+        if (alertId == null || _knownAlertIds.contains(alertId)) return;
+        _knownAlertIds.add(alertId);
+        final newAlert = Map<String, dynamic>.from(data is Map ? data : {});
+        setState(() {
+          _activeAlerts.insert(0, newAlert);
+          if (_activeAlerts.length > 20) _activeAlerts.removeLast();
+        });
+        debugPrint('🚨 [FamilyDashboard] 收到 CCTV 警報: ${newAlert['alert_type']} elder=${newAlert['elder_id']}');
+      } catch (e) {
+        debugPrint('❌ [FamilyDashboard] cctv-alert 處理失敗: $e');
+      }
+    });
   }
 
   bool _isIncomingCallDialogOpen = false;
@@ -332,12 +392,25 @@ Future<void> _loadSelectedElder() async {
   }
 }
 
+/// ★ Task 6：載入使用者目前訂閱層級，供 header badge 顯示。
+Future<void> _loadTier() async {
+  try {
+    final data = await ApiService.getSubscriptionTier(widget.userId);
+    if (data['tier_level'] != null && mounted) {
+      setState(() {
+        _tierLevel = (data['tier_level'] ?? 'free').toString();
+        _tierDisplayName = (data['tier_display_name'] ?? '一般會員').toString();
+        _devicesMax = (data['devices_max'] ?? 2) as int;
+      });
+    }
+  } catch (e) {
+    debugPrint('⚠️ [FamilyDashboard] 載入 tier 失敗: $e');
+  }
+}
+
   @override
   void dispose() {
-    // _signaling.dispose(); // Singleton 不建議隨便完全 dispose，但可以清掉回撥
     _signaling.onElderDevicesUpdate = null;
-    _signaling.onCallRequest = null;
-    _signaling.onCancelCall = null;
     super.dispose();
   }
 
@@ -380,6 +453,10 @@ Widget build(BuildContext context) {
               
               // 5. 活動趨勢
               _buildActivityInsight(context),
+              const SizedBox(height: 20),
+
+              // ★ Task 4：6. 遠端視訊監控（CCCTV 區段）
+              _buildRemoteCCTVSection(),
               const SizedBox(height: 140),
             ],
           ),
@@ -470,6 +547,9 @@ Widget build(BuildContext context) {
         // 右側操作列
         Row(
           children: [
+            // ★ Task 6：會員層級徽章
+            _buildTierBadge(),
+            const SizedBox(width: 8),
             // 編輯資料按鈕
             GestureDetector(
               onTap: () async {
@@ -550,6 +630,56 @@ Widget build(BuildContext context) {
           ],
         ),
       ],
+    );
+  }
+
+/// ★ Task 6：會員層級徽章 — 點擊導向訂閱頁。
+  static const Map<String, int> _tierColors = {
+    'free':    0xFF9E9E9E,
+    'gold':    0xFFFF9800,
+    'diamond': 0xFF3F51B5,
+  };
+
+  Widget _buildTierBadge() {
+    final color = Color(_tierColors[_tierLevel] ?? _tierColors['free']!);
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const FamilySubscriptionScreen()),
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: color.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              _tierLevel == 'diamond'
+                  ? Icons.diamond_rounded
+                  : _tierLevel == 'gold'
+                      ? Icons.star_rounded
+                      : Icons.person_outline_rounded,
+              size: 16,
+              color: color,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              _tierDisplayName,
+              style: GoogleFonts.notoSansTc(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: color,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1116,6 +1246,347 @@ color: color,
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // ★ Task 4：遠端視訊監控（CCTV）區段
+  // ═══════════════════════════════════════════════════════
+
+  Widget _buildRemoteCCTVSection() {
+    final monitorRoomId = _getMonitorRoomId();
+    final reachedLimit = _monitorDevices.length >= _devicesMax;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ── 區段標題列 ──
+        Row(
+          children: [
+            const Icon(Icons.videocam_rounded,
+                color: Color(0xFF64748B), size: 22),
+            const SizedBox(width: 8),
+            Text(
+              '遠端視訊監控',
+              style: GoogleFonts.notoSansTc(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF0F172A),
+              ),
+            ),
+            const Spacer(),
+            // ★ Task 7d：活躍警報計數 badge
+            if (_activeAlerts.isNotEmpty)
+              Container(
+                margin: const EdgeInsets.only(right: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade500,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.warning_amber_rounded, color: Colors.white, size: 14),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${_activeAlerts.length} 警報',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            // 設備計數 badge
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: reachedLimit
+                    ? Colors.orange.shade50
+                    : Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                '${_monitorDevices.length} / $_devicesMax',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: reachedLimit ? Colors.orange : Colors.grey[600],
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+
+        // ── 設備列表 or 空狀態 ──
+        if (_monitorDevices.isEmpty)
+          _buildNoMonitorDevice()
+        else ...[
+          ..._monitorDevices.map((device) =>
+              _buildMonitorDeviceCard(device, monitorRoomId: monitorRoomId)),
+          // 達到上限提示
+          if (reachedLimit)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: _buildDeviceLimitWarning(),
+            ),
+        ],
+      ],
+    );
+  }
+
+  /// 空狀態：尚未連接任何監視機設備
+  Widget _buildNoMonitorDevice() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 24),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.videocam_off_rounded,
+              color: Colors.grey.shade400, size: 48),
+          const SizedBox(height: 12),
+          Text(
+            '尚未連接任何監視機設備',
+            style: GoogleFonts.notoSansTc(
+              color: Colors.grey.shade600,
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '請至「設定」配對家庭監控裝置',
+            style: GoogleFonts.notoSansTc(
+              color: Colors.grey.shade400,
+              fontSize: 13,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 單一監視機裝置卡片（Task 7d：紅框警報）
+  Widget _buildMonitorDeviceCard(Map device, {required String monitorRoomId}) {
+    final name = device['deviceName'] ?? 'Unnamed';
+    final socketId = device['id'] as String? ?? '';
+    final isOnline = device['isOnline'] == true;
+    final deviceId = device['deviceId'] ?? device['id'];
+
+    // ★ 是否有作用中警報
+    final deviceAlerts = _activeAlerts
+        .where((a) => (a['device_id'] ?? a['deviceId'])?.toString() == deviceId.toString())
+        .toList();
+    final hasActiveAlert = deviceAlerts.isNotEmpty;
+    final mostSevereAlert = hasActiveAlert ? deviceAlerts.first : null;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 18),
+      decoration: BoxDecoration(
+        color: hasActiveAlert ? Colors.red.shade50 : Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: hasActiveAlert ? Colors.red.shade400 : Colors.grey.shade200,
+          width: hasActiveAlert ? 2.0 : 1.0,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: hasActiveAlert
+                ? Colors.red.withValues(alpha: 0.12)
+                : Colors.black.withValues(alpha: 0.03),
+            blurRadius: hasActiveAlert ? 12 : 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          // 設備狀態指示燈
+          Container(
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(
+              color: isOnline ? Colors.green : Colors.grey,
+              shape: BoxShape.circle,
+              boxShadow: isOnline
+                  ? [
+                      BoxShadow(
+                        color: Colors.green.withValues(alpha: 0.4),
+                        blurRadius: 6,
+                      )
+                    ]
+                  : null,
+            ),
+          ),
+          const SizedBox(width: 14),
+          // 設備名稱
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        isOnline ? name : '(離線) $name',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: isOnline ? Colors.black87 : Colors.grey,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+                    if (hasActiveAlert) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.red.shade500,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          _alertTypeLabel(mostSevereAlert?['alert_type'] ?? 'fall'),
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  hasActiveAlert
+                      ? '⚠️ ${_alertTypeLabel(mostSevereAlert?['alert_type'] ?? '')}（信心: ${((mostSevereAlert?['confidence'] ?? 0) * 100).toStringAsFixed(0)}%）'
+                      : '監視機模式',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: hasActiveAlert ? Colors.red.shade700 : Colors.grey.shade500,
+                    fontWeight: hasActiveAlert ? FontWeight.w600 : FontWeight.normal,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // 觀看 CCTV 按鈕
+          ElevatedButton.icon(
+            onPressed: isOnline
+                ? () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => VideoCallScreen(
+                          roomId: monitorRoomId,
+                          targetSocketId: socketId,
+                          isEmergency: true,
+                          autoStart: true,
+                        ),
+                      ),
+                    );
+                  }
+                : null,
+            icon: const Icon(Icons.videocam_rounded, size: 18),
+            label: const Text('觀看 CCTV'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: isOnline
+                  ? const Color(0xFF59B294).withValues(alpha: 0.1)
+                  : Colors.grey.shade200,
+              foregroundColor:
+                  isOnline ? const Color(0xFF59B294) : Colors.grey,
+              elevation: 0,
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// ★ Task 7d：警報類型中文標籤
+  String _alertTypeLabel(String type) {
+    const map = {
+      'fall': '跌倒',
+      'prolonged_inactivity': '久未活動',
+      'lying_down': '倒地',
+      'crawl': '爬行',
+    };
+    return map[type] ?? type;
+  }
+
+  /// 設備數量達上限時的警告卡片
+  Widget _buildDeviceLimitWarning() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 18),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade50,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.orange.shade200),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.warning_amber_rounded,
+              color: Colors.orange.shade700, size: 22),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '已達 $_tierDisplayName 設備上限 ($_devicesMax 台)',
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.orange.shade800,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '升級方案以新增更多監視機',
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 12,                    color: Colors.orange.shade600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => const FamilySubscriptionScreen()),
+              );
+            },
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.orange.shade800,
+            ),
+            child: Text(
+              '升級',
+              style: GoogleFonts.notoSansTc(fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -169,6 +169,20 @@ class ApiService {
       return null;
     }
   }
+  /// ★ 2026-08-05 第十七輪（安全）：監視機推流／跌倒測試端點的共用密鑰。
+  ///
+  /// 後端 `POST /api/cctv/frame` 的下游就是「偽造跌倒 → 對家屬強制點亮螢幕」，
+  /// 原本無任何驗證。後端在 `.env` 設定 `CCTV_INGEST_TOKEN` 後即要求此標頭；
+  /// **未設定時後端完全維持舊行為**，故這裡留空也不會打斷現有部署。
+  ///
+  /// 注入方式比照 `SERVER_IP` / `TURN_PASS`，絕不寫死在程式碼內：
+  ///   flutter run --dart-define=CCTV_INGEST_TOKEN=<與後端 .env 相同的字串>
+  static const String _cctvIngestToken =
+      String.fromEnvironment('CCTV_INGEST_TOKEN', defaultValue: '');
+
+  /// 空字串時回傳空 Map，讓呼叫端可無條件展開（`...`）而不需分支。
+  static Map<String, String> get _deviceTokenHeader =>
+      _cctvIngestToken.isEmpty ? {} : {'X-Uban-Device-Token': _cctvIngestToken};
 
   static Future<Map<String, dynamic>> register({
     required String username,
@@ -1001,6 +1015,143 @@ class ApiService {
     }
   }
 
+  /// ★ Task 6：取得使用者目前訂閱層級與設備上限
+  /// GET /api/subscription/tier/{user_id}
+  static Future<Map<String, dynamic>> getSubscriptionTier(int userId) async {
+    try {
+      final response = await http
+          .get(Uri.parse('$baseUrl/subscription/tier/$userId'))
+          .timeout(_timeout);
+      return _safeDecode(response);
+    } catch (e) {
+      debugPrint('⚠️ getSubscriptionTier error: $e');
+      return {'status': 'error', 'message': e.toString()};
+    }
+  }
+
+  /// ★ Task 6：取得使用者訂閱歷史明細列表
+  /// GET /api/subscription/records/{user_id}
+  static Future<Map<String, dynamic>> getSubscriptionRecords(int userId) async {
+    try {
+      final response = await http
+          .get(Uri.parse('$baseUrl/subscription/records/$userId'))
+          .timeout(_timeout);
+      return _safeDecode(response);
+    } catch (e) {
+      debugPrint('⚠️ getSubscriptionRecords error: $e');
+      return {'status': 'error', 'message': e.toString()};
+    }
+  }
+
+  /// ★ 2026-08-04 第 7 項：CCTV 監視機推送單一影格給後端做 YOLO 跌倒偵測。
+  /// POST /api/cctv/frame（multipart/form-data）；任何失敗都吞掉只回 false，
+  /// 避免影格推送迴圈因單次網路錯誤而中斷。
+  ///
+  /// 檔名為 .png 是因為 flutter_webrtc 1.3.1 的 `captureFrame()` 產出的就是 PNG
+  /// （它把畫面寫成暫存 png 再讀回）。後端用 cv2.imdecode 靠魔術位元組判別格式，
+  /// 副檔名只是給人看的，但不要改成 .jpg 以免誤導後續維護者。
+  static Future<bool> pushCctvFrame({
+    required String elderId,
+    required String deviceName,
+    required Uint8List frameBytes,
+  }) async {
+    try {
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/cctv/frame'),
+      );
+      request.headers.addAll(_deviceTokenHeader);
+      request.fields['elder_id'] = elderId;
+      request.fields['device_name'] = deviceName;
+      request.files.add(
+        http.MultipartFile.fromBytes('frame', frameBytes, filename: 'frame.png'),
+      );
+      final streamed = await request.send().timeout(_timeout);
+      return streamed.statusCode == 200;
+    } catch (e) {
+      debugPrint('⚠️ pushCctvFrame error: $e');
+      return false;
+    }
+  }
+
+  /// ★ 2026-08-05 第十七輪：POST /api/cctv/test-fall，觸發與 YOLO 相同的跌倒警報派送路徑。
+  /// 暫時性測試入口，YOLO 可實測後即可移除。後端該端點是 `Form(...)`，故用
+  /// application/x-www-form-urlencoded（body 傳 Map，http 套件會自動編碼並設定
+  /// Content-Type），欄位名沿用後端的 snake_case（elder_id / device_name）。
+  /// ★ 2026-08-05 第十七輪（安全）：後端此端點**預設關閉**，且回傳的
+  /// `detail` 會明講關閉／無密鑰／查無監視機三種原因。若這裡照舊只回 bool，
+  /// 使用者按下測試鍵只會看到「送出失敗」而無從得知要去 .env 開開關，
+  /// 因此改回傳 **錯誤訊息字串**：`null` 代表成功，非 null 就是可直接顯示的原因。
+  static Future<String?> triggerTestFall({
+    required String elderId,
+    required String deviceName,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/cctv/test-fall'),
+            headers: _deviceTokenHeader,
+            body: {'elder_id': elderId, 'device_name': deviceName},
+          )
+          .timeout(_timeout);
+      if (response.statusCode == 200) return null;
+      // FastAPI 的 HTTPException 一律以 {"detail": "..."} 回傳
+      String detail = '送出失敗（HTTP ${response.statusCode}）';
+      try {
+        final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+        if (decoded is Map && decoded['detail'] != null) {
+          detail = decoded['detail'].toString();
+        }
+      } catch (_) {
+        // body 不是 JSON 就沿用上面的預設訊息
+      }
+      debugPrint('⚠️ triggerTestFall 被拒: ${response.statusCode} $detail');
+      return detail;
+    } catch (e) {
+      debugPrint('⚠️ triggerTestFall error: $e');
+      return '無法連線到後端，請確認網路狀態';
+    }
+  }
+
+  /// ★ 2026-08-04 第 7 項：移除一台監視機設備（含其 FCM token）。
+  /// DELETE /api/pairing/monitor_device?elder_id=...&device_name=...
+  static Future<bool> deleteMonitorDevice({
+    required String elderId,
+    required String deviceName,
+  }) async {
+    try {
+      final uri = Uri.parse('$baseUrl/pairing/monitor_device').replace(
+        queryParameters: {
+          'elder_id': elderId,
+          'device_name': deviceName,
+        },
+      );
+      final response = await http.delete(uri).timeout(_timeout);
+      final data = _safeDecode(response);
+      return data['status'] == 'success';
+    } catch (e) {
+      debugPrint('⚠️ deleteMonitorDevice error: $e');
+      return false;
+    }
+  }
+
+  /// ★ 2026-08-04 第 7 項：開通／延長警報的音頻橋（30 分鐘單向音頻）。
+  /// POST /api/alerts/{alert_id}/audio-bridge
+  static Future<Map<String, dynamic>?> openAudioBridge({
+    required int alertId,
+    required int fromId,
+    required int toDeviceId,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/alerts/$alertId/audio-bridge'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'from_id': fromId,
+              'to_device_id': toDeviceId,
+            }),
+          )
   static Future<Map<String, dynamic>?> getElderMoodInsight(String elderId) async {
     try {
       final response = await http
@@ -1012,7 +1163,7 @@ class ApiService {
       }
       return null;
     } catch (e) {
-      debugPrint('⚠️ getElderMoodInsight error: $e');
+      debugPrint('⚠️ openAudioBridge error: $e');
       return null;
     }
   }
@@ -1030,6 +1181,30 @@ class ApiService {
     } catch (e) {
       debugPrint('⚠️ getElderActivityLogs error: $e');
       return [];
+  /// ★ 2026-08-04 第 7 項：查詢某警報目前是否有有效的音頻橋。
+  /// GET /api/alerts/audio/{alert_id}
+  ///
+  /// ★ 2026-08-05 第十七輪（安全）：新增選填 `userId`。後端有帶就驗證
+  /// 「此人是否為該警報長輩的本人或已配對家屬」，並在通過後才回傳
+  /// `from_id` / `to_device_id`；未帶則只回布林狀態與到期時間。
+  /// 呼叫端請一律帶上，讓它走完整驗證分支。
+  static Future<Map<String, dynamic>?> checkAudioBridge(
+    int alertId, {
+    int? userId,
+  }) async {
+    try {
+      final uri = Uri.parse('$baseUrl/alerts/audio/$alertId').replace(
+        queryParameters: userId == null ? null : {'user_id': '$userId'},
+      );
+      final response = await http.get(uri).timeout(_timeout);
+      final data = _safeDecode(response);
+      if (data['status'] == 'success') {
+        return data['data'];
+      }
+      return null;
+    } catch (e) {
+      debugPrint('⚠️ checkAudioBridge error: $e');
+      return null;
     }
   }
 }
