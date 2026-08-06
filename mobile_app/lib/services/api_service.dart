@@ -23,9 +23,17 @@ class ApiService {
   // Android 模擬器/實體裝置用 LAN IP 存取 Host
   static const String _localAiServerIp = String.fromEnvironment(
     'LOCAL_AI_IP',
-    defaultValue: '192.168.31.209', // 這台電腦目前實際 LAN IP 192.168.31.209
+    defaultValue: 'boyo-desktop.tail531c8a.ts.net', // AI Hub 專屬 Tailscale 網域
   );
-  static String get localAiBaseUrl => 'http://$_localAiServerIp:8000/api';
+  static String get localAiBaseUrl {
+    if (_localAiServerIp.startsWith('http://') || _localAiServerIp.startsWith('https://')) {
+      return _localAiServerIp.endsWith('/api') ? _localAiServerIp : '$_localAiServerIp/api';
+    }
+    if (_localAiServerIp.contains('ts.net')) {
+      return 'https://$_localAiServerIp/api';
+    }
+    return 'http://$_localAiServerIp:8000/api';
+  }
 
   // 統一超時時間
   static const Duration _timeout = Duration(seconds: 15);
@@ -376,6 +384,7 @@ class ApiService {
   // ⚠️ 使用本機 AI Server (localAiBaseUrl) 與自動降級連線備援
   static Future<Map<String, dynamic>> aiChat(int userId, String message, {String? imageUrl}) async {
     final List<String> candidateUrls = [
+      'https://boyo-desktop.tail531c8a.ts.net/api/ai/chat',
       '$localAiBaseUrl/ai/chat',
       'http://192.168.31.209:8000/api/ai/chat',
       'http://10.0.2.2:8000/api/ai/chat',
@@ -407,6 +416,7 @@ class ApiService {
   /// AI 串流聊天（SSE）- 逐 token 回傳，支援多候選 IP 自動降級連線
   static Stream<String> aiChatStream(int userId, String message) async* {
     final List<String> candidateUrls = [
+      'https://boyo-desktop.tail531c8a.ts.net/api/ai/chat/stream',
       '$localAiBaseUrl/ai/chat/stream',
       'http://192.168.31.209:8000/api/ai/chat/stream',
       'http://10.0.2.2:8000/api/ai/chat/stream',
