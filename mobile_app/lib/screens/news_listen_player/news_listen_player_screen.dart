@@ -6,6 +6,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
+import '../../globals.dart';
 import '../../services/api_service.dart';
 import 'widgets/news_card_list.dart';
 import 'widgets/news_category_selector.dart';
@@ -78,6 +79,18 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
   @override
   void initState() {
     super.initState();
+    try {
+      final audioCtx = AudioContext(
+        android: const AudioContextAndroid(
+          stayAwake: true,
+          contentType: AndroidContentType.music,
+          usageType: AndroidUsageType.media,
+          audioFocus: AndroidAudioFocus.none,
+        ),
+      );
+      _audioPlayer.setAudioContext(audioCtx);
+      _aiAudioPlayer.setAudioContext(audioCtx);
+    } catch (_) {}
     _localNewsItems = List.from(widget.newsItems);
     _currentIndex =
         widget.initialIndex.clamp(0, max(_localNewsItems.length - 1, 0));
@@ -119,6 +132,7 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
     _audioPlayer.onPlayerStateChanged.listen((state) {
       if (!mounted) return;
       final playing = state == PlayerState.playing;
+      isMediaPlayingNotifier.value = playing;
       setState(() => _isPlaying = playing);
     });
 

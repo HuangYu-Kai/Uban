@@ -18,6 +18,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:app_links/app_links.dart';
 import 'package:android_intent_plus/android_intent.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:audioplayers/audioplayers.dart';
 import 'network/http_overrides_stub.dart'
     if (dart.library.io) 'network/http_overrides_io.dart';
 
@@ -443,6 +444,21 @@ Future<void> _showFullScreenCallkit(Map<String, dynamic> data) async {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   configureHttpOverrides();
+
+  // ★ 音訊焦點共存設定：防止背景語音喚醒與音訊播放器搶奪 Audio Focus 造成播音中斷
+  try {
+    AudioPlayer.global.setAudioContext(AudioContext(
+      android: const AudioContextAndroid(
+        stayAwake: true,
+        contentType: AndroidContentType.music,
+        usageType: AndroidUsageType.media,
+        audioFocus: AndroidAudioFocus.none,
+      ),
+    ));
+  } catch (e) {
+    debugPrint('⚠️ [AudioContext Config Fail] $e');
+  }
+
   try {
     await dotenv.load(fileName: '.env');
   } catch (_) {}

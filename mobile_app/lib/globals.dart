@@ -1,9 +1,11 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 ValueNotifier<Map<String, String?>?> pendingAcceptedCall = ValueNotifier(null);
 bool isAppReady = false;
 String? appRole;
+
+/// ★ 全域媒體播放狀態通知：當有 YouTube / 新聞 / TTS 播放時設為 true，背景 WakeWord 語音喚醒暫停監聽，徹底防範 Android 語音焦點競爭跳針
+ValueNotifier<bool> isMediaPlayingNotifier = ValueNotifier(false);
 
 /// ★ 2026-07-18：來電有效期（毫秒）。與後端 socket_app.py 的 expires_at/FCM ttl
 ///   以及 CallKit `duration` 三者必須一致，否則會出現「通知還在響但接聽被判過期」。

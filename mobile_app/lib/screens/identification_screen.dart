@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../globals.dart';
+import 'family_main_screen.dart';
 import 'elder_pairing_display_screen.dart';
 import 'login_screen.dart';
 import 'monitor_pairing_screen.dart'; // ★ issue 7：監視器角色

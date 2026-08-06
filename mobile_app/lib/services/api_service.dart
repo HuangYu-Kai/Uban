@@ -8,25 +8,159 @@ class ApiService {
   static const String _serverIp = String.fromEnvironment('SERVER_IP',
       defaultValue: 'localhost-0.tail5abf5e.ts.net');
 
-  // 依據是否為 ngrok 自動切換 http/https 與 埠號
+  // 依據環境動態切換 API 基礎網址（預設 Android 模擬器連線本機: 10.0.2.2:8000）
   static String get baseUrl {
-    debugPrint('🔍 Current _serverIp: "$_serverIp"');
-    final url = _serverIp.contains('ngrok') || _serverIp.contains('ts.net')
-        ? 'https://$_serverIp/api'
-        : 'http://$_serverIp:8000/api';
-    return url;
+    if (_serverIp.startsWith('http://') || _serverIp.startsWith('https://')) {
+      return _serverIp.endsWith('/api') ? _serverIp : '$_serverIp/api';
+    }
+    if (_serverIp.contains('ts.net') || _serverIp.contains('ngrok')) {
+      return 'https://$_serverIp/api';
+    }
+    return 'http://$_serverIp:8000/api';
   }
 
   // 本機 AI Server（Ollama 在這台電腦，遠端主後台沒有 Ollama）
-  // Android 模擬器用 10.0.2.2 存取 Host，實體裝置用 Tailscale IP
+  // Android 模擬器/實體裝置用 LAN IP 存取 Host
   static const String _localAiServerIp = String.fromEnvironment(
     'LOCAL_AI_IP',
-    defaultValue: '100.123.111.120', // 這台電腦的 Tailscale IP
+    defaultValue: '192.168.31.210', // 這台電腦的 Wi-Fi IP
   );
   static String get localAiBaseUrl => 'http://$_localAiServerIp:8000/api';
 
   // 統一超時時間
   static const Duration _timeout = Duration(seconds: 15);
+
+  static String _fullUrl(String path) {
+    if (path.startsWith('http://') || path.startsWith('https://')) {
+      return path;
+    }
+    String cleanPath = path;
+    if (baseUrl.endsWith('/api') && cleanPath.startsWith('/api/')) {
+      cleanPath = cleanPath.substring(4);
+    }
+    if (!cleanPath.startsWith('/')) {
+      cleanPath = '/$cleanPath';
+    }
+    return '$baseUrl$cleanPath';
+  }
+
+  static Future<Map<String, dynamic>?> get(String path) async {
+    try {
+      final url = _fullUrl(path);
+      debugPrint('📡 [ApiService.get] -> $url');
+      final response = await http
+          .get(Uri.parse(url))
+          .timeout(_timeout);
+      debugPrint('📡 [ApiService.get] <- status: ${response.statusCode}, body: ${response.body}');
+      if (response.statusCode == 200) {
+        final decoded = _safeDecode(response);
+        if (decoded != null && decoded['status'] == 'success') {
+          return decoded;
+        }
+      }
+      // 如果遠端回傳 404 或非 success，降級嘗試本機伺服器
+      if (url.contains('ts.net') || response.statusCode == 404) {
+        final cleanPath = path.startsWith('/api') ? path.substring(4) : path;
+        final fallbackUrl = 'http://10.0.2.2:8000/api$cleanPath';
+        debugPrint('🔄 [ApiService.get Fallback 404/Non-Success] -> $fallbackUrl');
+        final fbRes = await http.get(Uri.parse(fallbackUrl)).timeout(const Duration(seconds: 4));
+        if (fbRes.statusCode == 200) {
+          return _safeDecode(fbRes);
+        }
+      }
+      return _safeDecode(response);
+    } catch (e) {
+      debugPrint('⚠️ ApiService.get error: $e');
+      try {
+        final cleanPath = path.startsWith('/api') ? path.substring(4) : path;
+        final fallbackUrl = 'http://10.0.2.2:8000/api$cleanPath';
+        debugPrint('🔄 [ApiService.get Fallback Exception] -> $fallbackUrl');
+        final fbRes = await http.get(Uri.parse(fallbackUrl)).timeout(const Duration(seconds: 4));
+        if (fbRes.statusCode == 200) {
+          return _safeDecode(fbRes);
+        }
+      } catch (_) {}
+      return null;
+    }
+  }
+
+  static Future<Map<String, dynamic>?> post(String path, Map<String, dynamic> body) async {
+    try {
+      final url = _fullUrl(path);
+      debugPrint('📡 [ApiService.post] -> $url body: $body');
+      final response = await http
+          .post(
+            Uri.parse(url),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(body),
+          )
+          .timeout(_timeout);
+      debugPrint('📡 [ApiService.post] <- status: ${response.statusCode}, body: ${response.body}');
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final decoded = _safeDecode(response);
+        if (decoded != null && decoded['status'] == 'success') {
+          return decoded;
+        }
+      }
+      if (url.contains('ts.net') || response.statusCode == 404) {
+        final cleanPath = path.startsWith('/api') ? path.substring(4) : path;
+        final fallbackUrl = 'http://10.0.2.2:8000/api$cleanPath';
+        debugPrint('🔄 [ApiService.post Fallback 404/Non-Success] -> $fallbackUrl');
+        final fbRes = await http.post(
+          Uri.parse(fallbackUrl),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode(body),
+        ).timeout(const Duration(seconds: 4));
+        if (fbRes.statusCode == 200 || fbRes.statusCode == 201) {
+          return _safeDecode(fbRes);
+        }
+      }
+      return _safeDecode(response);
+    } catch (e) {
+      debugPrint('⚠️ ApiService.post error: $e');
+      try {
+        final cleanPath = path.startsWith('/api') ? path.substring(4) : path;
+        final fallbackUrl = 'http://10.0.2.2:8000/api$cleanPath';
+        final fbRes = await http.post(
+          Uri.parse(fallbackUrl),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode(body),
+        ).timeout(const Duration(seconds: 4));
+        if (fbRes.statusCode == 200 || fbRes.statusCode == 201) {
+          return _safeDecode(fbRes);
+        }
+      } catch (_) {}
+      return null;
+    }
+  }
+
+  static Future<Map<String, dynamic>?> put(String path, Map<String, dynamic> body) async {
+    try {
+      final response = await http
+          .put(
+            Uri.parse(_fullUrl(path)),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(body),
+          )
+          .timeout(_timeout);
+      return _safeDecode(response);
+    } catch (e) {
+      debugPrint('⚠️ ApiService.put error: $e');
+      return null;
+    }
+  }
+
+  static Future<Map<String, dynamic>?> delete(String path) async {
+    try {
+      final response = await http
+          .delete(Uri.parse(_fullUrl(path)))
+          .timeout(_timeout);
+      return _safeDecode(response);
+    } catch (e) {
+      debugPrint('⚠️ ApiService.delete error: $e');
+      return null;
+    }
+  }
 
   static Future<Map<String, dynamic>> register({
     required String username,

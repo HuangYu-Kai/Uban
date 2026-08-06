@@ -26,9 +26,18 @@ class Signaling {
   static const String _turnUser = String.fromEnvironment('TURN_USER', defaultValue: 'uban');
   static const String _turnPass = String.fromEnvironment('TURN_PASS', defaultValue: '115207');
   
-  static String get serverUrl => _serverIp.contains('ngrok') || _serverIp.contains('ts.net')
-      ? 'https://$_serverIp' 
-      : 'http://$_serverIp:8000';
+  static String? _overrideServerUrl;
+
+  static String get serverUrl {
+    if (_overrideServerUrl != null) return _overrideServerUrl!;
+    if (_serverIp.startsWith('http://') || _serverIp.startsWith('https://')) {
+      return _serverIp;
+    }
+    if (_serverIp.contains('ts.net') || _serverIp.contains('ngrok')) {
+      return 'https://$_serverIp';
+    }
+    return 'http://$_serverIp:8000';
+  }
 
   static const platform = MethodChannel('com.example.app/bring_to_front');
 
@@ -178,7 +187,21 @@ class Signaling {
   }
 
   void _registerSocketListeners(String roomId, String role, String deviceName, String deviceMode, String? fcmToken) {
-    socket!.onConnectError((err) => debugPrint('❌ Socket Connect Error: $err (Server: $serverUrl)'));
+    int connectErrorCount = 0;
+    socket!.onConnectError((err) {
+      debugPrint('❌ Socket Connect Error: $err (Server: $serverUrl)');
+      connectErrorCount++;
+      if (connectErrorCount >= 2 && _overrideServerUrl == null && serverUrl.contains('ts.net')) {
+        debugPrint('🔄 [Signaling Fallback] Socket Handshake Error. Fallback to local dev server http://10.0.2.2:8000...');
+        _overrideServerUrl = 'http://10.0.2.2:8000';
+        try {
+          socket?.disconnect();
+          socket?.dispose();
+        } catch (_) {}
+        socket = null;
+        connect(roomId, role, userId: _userId, deviceName: _deviceName ?? 'Unknown', deviceMode: _deviceMode ?? 'comm', fcmToken: fcmToken);
+      }
+    });
     socket!.onError((err) => debugPrint('❌ Socket Error: $err'));
 
     socket!.onDisconnect((reason) {

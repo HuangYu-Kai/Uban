@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -7,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:audioplayers/audioplayers.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/youtube_bubble_player.dart';
 import 'news_listen_player/news_listen_player_screen.dart';
 import 'elder_screen.dart';
 
@@ -58,11 +58,91 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
   @override
   void initState() {
     super.initState();
+    try {
+      _audioPlayer.setAudioContext(AudioContext(
+        android: const AudioContextAndroid(
+          stayAwake: true,
+          contentType: AndroidContentType.music,
+          usageType: AndroidUsageType.media,
+          audioFocus: AndroidAudioFocus.none,
+        ),
+      ));
+    } catch (_) {}
     _messages.add(_ChatMessage(
       '您好，${widget.userName}！我是小嘎 😊\n想聊什麼都可以跟我說喔～',
       false,
     ));
     _initSpeech();
+    _loadChatHistory();
+  }
+
+  Future<void> _loadChatHistory() async {
+    try {
+      final res = await ApiService.get('/ai/history?user_id=${widget.userId}&limit=50');
+      if (res != null && res['status'] == 'success' && res['data'] != null) {
+        final List<dynamic> rawMessages = res['data']['messages'] ?? [];
+        if (rawMessages.isNotEmpty) {
+          final List<_ChatMessage> loaded = [];
+          for (var item in rawMessages) {
+            final role = item['role'] ?? 'user';
+            final text = item['text'] ?? '';
+            if (text.isNotEmpty) {
+              loaded.add(_ChatMessage(text, role == 'user'));
+            }
+          }
+          if (mounted && loaded.isNotEmpty) {
+            setState(() {
+              _messages.clear();
+              _messages.addAll(loaded);
+            });
+            _scrollToBottom();
+            return;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ [ChatHistory Load Error] $e');
+    }
+  }
+
+  Future<void> _clearChatHistory() async {
+    final bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('清空對話紀錄'),
+        content: const Text('確定要清除過往的聊天紀錄嗎？清除後無法復原喔。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('確定清空', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        await ApiService.delete('/ai/history?user_id=${widget.userId}');
+        if (mounted) {
+          setState(() {
+            _messages.clear();
+            _messages.add(_ChatMessage(
+              '您好，${widget.userName}！我是小嘎 😊\n已為您重置聊天紀錄，想聊什麼隨時跟我說喔～',
+              false,
+            ));
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('已成功重置對話紀錄')),
+          );
+        }
+      } catch (e) {
+        debugPrint('⚠️ [Clear History Error] $e');
+      }
+    }
   }
 
   Future<void> _initSpeech() async {
@@ -257,8 +337,9 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
   Future<void> _playTts(String text) async {
     debugPrint('🎙️ [TTS Stream] _playTts called. Text length: ${text.length}');
     try {
-      // 移除 Markdown 語法、Emoji 等，使語音朗讀順暢
+      // 移除 [VIDEO_ID:...] 標籤、Markdown 語法、Emoji 等，使語音朗讀順暢
       String cleanText = text
+          .replaceAll(RegExp(r'\[VIDEO_ID:[^\]]+\]'), '')
           .replaceAll(RegExp(r'\*\*|__|\*|_|#|>|`|\[|\]|\(|\)'), '')
           .replaceAll(RegExp(r'!\[.*?\]\(.*?\)|\[.*?\]\(.*?\)', caseSensitive: false), '')
           .replaceAll(RegExp(r'[\u{1F600}-\u{1F64F}|\u{1F300}-\u{1F5FF}|\u{1F680}-\u{1F6FF}|\u{2600}-\u{26FF}|\u{2700}-\u{27BF}]', unicode: true), '') // 移除 Emoji
@@ -459,7 +540,22 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
               ),
             ],
           ),
-          _buildLanguageToggle(),
+          Row(
+            children: [
+              _buildLanguageToggle(),
+              const SizedBox(width: 2),
+              IconButton(
+                icon: const Icon(Icons.refresh_rounded, color: Colors.grey, size: 24),
+                tooltip: '重新載入歷史紀錄',
+                onPressed: _loadChatHistory,
+              ),
+              IconButton(
+                icon: const Icon(Icons.delete_outline_rounded, color: Colors.grey, size: 24),
+                tooltip: '清空紀錄',
+                onPressed: _clearChatHistory,
+              ),
+            ],
+          ),
         ],
       ),
     );
@@ -629,6 +725,23 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
 
   Widget _buildBubble(_ChatMessage msg) {
     final isUser = msg.isUser;
+
+    // --- [YouTube 影片 ID 偵測與提煉] ---
+    final tagMatch = RegExp(r'\[VIDEO_ID:([^\]]+)\]').firstMatch(msg.text);
+    final urlRegex = RegExp(
+        r'https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/v\/)([\w-]{11})');
+    final urlMatch = urlRegex.firstMatch(msg.text);
+
+    String? videoId;
+    String displayLine = msg.text;
+
+    if (tagMatch != null) {
+      videoId = tagMatch.group(1);
+      displayLine = displayLine.replaceAll(tagMatch.group(0)!, '').trim();
+    } else if (urlMatch != null) {
+      videoId = urlMatch.group(1);
+    }
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
@@ -671,7 +784,7 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         MarkdownBody(
-                          data: msg.text.isEmpty ? ' ' : msg.text,
+                          data: displayLine.isEmpty ? ' ' : displayLine,
                           onTapLink: (text, href, title) {
                             debugPrint('🔗 [Markdown Link Tapped] text: $text, href: $href');
                             if (href != null) {
@@ -743,6 +856,17 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
                           ),
                           softLineBreak: true,
                         ),
+                        if (videoId != null && !msg.isStreaming) ...[
+                          const SizedBox(height: 12),
+                          YoutubeBubblePlayer(
+                            key: ValueKey(videoId),
+                            videoId: videoId,
+                            onPlay: () {
+                              debugPrint('🎥 YouTube video started playing -> Stopping TTS to release audio focus');
+                              _audioPlayer.stop();
+                            },
+                          ),
+                        ],
                         // 串流中：顯示打字游標動畫
                         if (msg.isStreaming)
                           Padding(

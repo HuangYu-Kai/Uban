@@ -137,6 +137,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                       ),
                       onPressed: () async {
+                        final messenger = ScaffoldMessenger.of(context);
                         Navigator.pop(ctx);
                         final selectedObj = careCards.firstWhere((c) => c['title'] == selectedCard);
                         final contentMsg = '【家族心意】收到女兒傳送的「${selectedObj['title']}」：${selectedObj['desc']}';
@@ -147,17 +148,17 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                           } catch (_) {}
                         }
 
-                        setState(() {
-                          _realLogs.insert(0, {
-                            'log_id': DateTime.now().millisecondsSinceEpoch,
-                            'event_type': 'interaction',
-                            'content': contentMsg,
-                            'timestamp': DateTime.now().toIso8601String(),
-                          });
-                        });
-
                         if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
+                          setState(() {
+                            _realLogs.insert(0, {
+                              'log_id': DateTime.now().millisecondsSinceEpoch,
+                              'event_type': 'interaction',
+                              'content': contentMsg,
+                              'timestamp': DateTime.now().toIso8601String(),
+                            });
+                          });
+
+                          messenger.showSnackBar(
                             SnackBar(
                               content: Text('已成功將「$selectedCard」傳送至 $elderName 的裝置！❤️', style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold)),
                               backgroundColor: const Color(0xFF10B981),
@@ -478,7 +479,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
 
     try {
       final insight = await ApiService.getElderMoodInsight(elderIdStr);
-      final logs = await ApiService.getElderActivityLogs(elderIdStr, limit: 10);
+      final logs = await ApiService.getElderActivityLogs(elderIdStr, limit: 30);
       if (mounted) {
         setState(() {
           _moodInsightData = insight;
@@ -1028,12 +1029,17 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
         Color glowCol = const Color(0xFF0284C7);
         IconData ic = Icons.auto_awesome_rounded;
 
-        if (eventType == 'news_view' || contentStr.contains('新聞') || contentStr.contains('NBA')) {
+        if (eventType == 'news_view' || eventType == 'news_query' || contentStr.contains('新聞') || contentStr.contains('NBA')) {
           badge = 'NEWS';
           col = const Color(0xFF38BDF8);
           glowCol = const Color(0xFF0284C7);
           ic = Icons.sports_basketball_rounded;
-        } else if (contentStr.contains('散步') || contentStr.contains('步數')) {
+        } else if (eventType == 'youtube_query' || contentStr.contains('YouTube') || contentStr.contains('音樂') || contentStr.contains('影片') || contentStr.contains('歌曲')) {
+          badge = 'MEDIA';
+          col = const Color(0xFFF43F5E);
+          glowCol = const Color(0xFFBE123C);
+          ic = Icons.play_circle_fill_rounded;
+        } else if (contentStr.contains('散步') || contentStr.contains('步數') || contentStr.contains('運動') || eventType == 'activity') {
           badge = 'WALK';
           col = const Color(0xFF34D399);
           glowCol = const Color(0xFF059669);
@@ -1043,7 +1049,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
           col = const Color(0xFFA78BFA);
           glowCol = const Color(0xFF7C3AED);
           ic = Icons.medication_rounded;
-        } else if (contentStr.contains('對話') || contentStr.contains('聊天') || contentStr.contains('小嘎') || contentStr.contains('寂寞') || eventType == 'mood') {
+        } else if (contentStr.contains('對話') || contentStr.contains('聊天') || contentStr.contains('小嘎') || contentStr.contains('寂寞') || eventType == 'mood' || eventType == 'chat') {
           badge = 'AI CHAT';
           col = const Color(0xFFF59E0B);
           glowCol = const Color(0xFFD97706);
@@ -1052,10 +1058,11 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
 
         return {
           'id': log['log_id'] ?? log.hashCode,
+          'rawTimestamp': tsStr,
           'time': timeStr,
           'date': dateStr,
           'badge': badge,
-          'title': contentStr.length > 15 ? contentStr.substring(0, 15) + '...' : contentStr,
+          'title': contentStr.length > 15 ? '${contentStr.substring(0, 15)}...' : contentStr,
           'desc': contentStr,
           'fullQuery': '與 AI 長輩陪伴語音互動',
           'fullAi': contentStr,
@@ -1065,105 +1072,43 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
           'glow': glowCol,
         };
       }).toList();
-    } else {
-      rawFeedItems = [
-        {
-          'id': 1,
-          'time': '16:45',
-          'date': todayStr,
-          'badge': 'NEWS',
-          'title': '點閱收聽體育新聞',
-          'desc': '長輩收聽熱門體育新聞《NBA熱火誤發詹姆斯加盟預告》，隨後發起 AI 語音問答交流 🏆',
-          'isChat': false,
-          'icon': Icons.sports_basketball_rounded,
-          'color': const Color(0xFF38BDF8),
-          'glow': const Color(0xFF0284C7),
-        },
-        {
-          'id': 2,
-          'time': '15:30',
-          'date': todayStr,
-          'badge': 'WALK',
-          'title': '公園散步履約打卡',
-          'desc': '在大安森林公園完成步數目標 3,850 步，達成今日規律健康標章 🏃‍♂️',
-          'isChat': false,
-          'icon': Icons.directions_run_rounded,
-          'color': const Color(0xFF34D399),
-          'glow': const Color(0xFF059669),
-        },
-        {
-          'id': 3,
-          'time': '14:00',
-          'date': todayStr,
-          'badge': 'AI CHAT',
-          'title': '童年大稻埕布莊故事',
-          'desc': '長輩與小嘎分享年輕時在大稻埕布莊當學徒的往事 💬',
-          'fullQuery': '聊聊以前大稻埕布莊的事',
-          'fullAi': '宇璿，您說您年輕時在布莊當學徒，那時候的布匹顏色跟質感真令人懷念！要不要再多說說當時最熱銷的布款呢？',
-          'isChat': true,
-          'icon': Icons.auto_stories_rounded,
-          'color': const Color(0xFFF59E0B),
-          'glow': const Color(0xFFD97706),
-        },
-        {
-          'id': 4,
-          'time': '11:20',
-          'date': todayStr,
-          'badge': 'CARE',
-          'title': '收到女兒關懷',
-          'desc': '收到女兒傳送的語音卡片：「爸，今晚想吃火鍋嗎？」💌',
-          'isChat': false,
-          'icon': Icons.favorite_rounded,
-          'color': const Color(0xFFEC4899),
-          'glow': const Color(0xFFBE185D),
-        },
-        {
-          'id': 5,
-          'time': '08:15',
-          'date': todayStr,
-          'badge': 'MEDICINE',
-          'title': '晨間降壓藥與量血壓',
-          'desc': '已按時服用【降血壓藥】乙顆，血壓 122 mmHg 狀態良好 💊',
-          'isChat': false,
-          'icon': Icons.medication_rounded,
-          'color': const Color(0xFFA78BFA),
-          'glow': const Color(0xFF7C3AED),
-        },
-        {
-          'id': 6,
-          'time': '昨天 19:30',
-          'date': yesterdayStr,
-          'badge': 'AI CHAT',
-          'title': '晚間台語歌仔戲對話',
-          'desc': '長輩與小嘎聊起《身騎白馬》歌詞與王寶釧故事 🎭',
-          'fullQuery': '想聽聽歌仔戲身騎白馬',
-          'fullAi': '好呀，宇璿！薛平貴騎著白馬過三關，這段戲曲真的是經典名作，您以前也很愛聽歌仔戲嗎？',
-          'isChat': true,
-          'icon': Icons.theater_comedy_rounded,
-          'color': const Color(0xFFF59E0B),
-          'glow': const Color(0xFFD97706),
-        },
-        {
-          'id': 7,
-          'time': '昨天 07:00',
-          'date': yesterdayStr,
-          'badge': 'ROUTINE',
-          'title': '晨間點睛打卡',
-          'desc': '長輩開啟 Uban 完成晨間打卡，精神狀態極佳 🌟',
-          'isChat': false,
-          'icon': Icons.wb_sunny_rounded,
-          'color': const Color(0xFFFBBF24),
-          'glow': const Color(0xFFD97706),
-        },
-      ];
     }
 
     // Filter by topic keyword if selected
     List<Map<String, dynamic>> itemsPool = rawFeedItems;
     if (_selectedTopicKeyword != null) {
+      final kw = _selectedTopicKeyword!.trim().toLowerCase();
       itemsPool = rawFeedItems.where((i) {
-        final d = "${i['title']} ${i['desc']} ${i['badge']}";
-        return d.contains(_selectedTopicKeyword!);
+        final b = i['badge']?.toString().toLowerCase() ?? '';
+        final t = i['title']?.toString() ?? '';
+        final d = i['desc']?.toString() ?? '';
+        final fullText = '$b $t $d';
+
+        if (fullText.contains(kw)) return true;
+
+        // 語意相容與分類標籤匹配 (Semantic synonym matching so clicking tags NEVER loses items)
+        if ((kw == '影音' || kw == '音樂' || kw.contains('音樂')) &&
+            (fullText.contains('音樂') || fullText.contains('影音') || fullText.contains('歌曲') || fullText.contains('youtube') || b == 'media')) {
+          return true;
+        }
+        if ((kw == '散步' || kw == '運動' || kw == '健走') &&
+            (fullText.contains('散步') || fullText.contains('運動') || fullText.contains('步數') || b == 'walk')) {
+          return true;
+        }
+        if ((kw == '新聞' || kw == '體育') &&
+            (fullText.contains('新聞') || fullText.contains('體育') || fullText.contains('nba') || b == 'news')) {
+          return true;
+        }
+        if ((kw == '對話' || kw == '故事' || kw == '聊天') &&
+            (fullText.contains('對話') || fullText.contains('故事') || fullText.contains('聊天') || fullText.contains('小嘎') || b == 'ai chat')) {
+          return true;
+        }
+        if ((kw == '藥' || kw == '血壓' || kw == '打卡') &&
+            (fullText.contains('藥') || fullText.contains('血壓') || fullText.contains('打卡') || b == 'medicine')) {
+          return true;
+        }
+
+        return false;
       }).toList();
     }
 
@@ -1278,7 +1223,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
           const SizedBox(height: 14),
 
           // 🏷️ 特色功能 1：長輩熱情話題關鍵字雲 (Topic Pulse Cloud)
-          _buildTopicPulseCloud(rawFeedItems),
+          _buildTopicPulseCloud(activeFilteredItems),
 
           const SizedBox(height: 12),
 
@@ -1398,80 +1343,111 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     List<Map<String, dynamic>> tags = [];
     final Set<String> seenKeywords = {};
 
-    // 1. 優先從 AI 後端 API (topic_clusters) 提取動態主題標籤
-    final apiClusters = moodInsightData?['topic_clusters'] as List<dynamic>?;
-    if (apiClusters != null && apiClusters.isNotEmpty) {
-      for (final cluster in apiClusters) {
-        final title = cluster['title']?.toString() ?? '';
-        final keywords = (cluster['match_keywords'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [];
-        final colorHexStr = cluster['color_hex']?.toString() ?? '0xFF38BDF8';
-        final color = Color(int.tryParse(colorHexStr) ?? 0xFF38BDF8);
-
-        String tagLabel = '';
-        String kw = keywords.isNotEmpty ? keywords.first : '';
-
-        if (title.contains('體育') || title.contains('新聞')) {
-          tagLabel = '🔥 #NBA熱火與體育焦點';
-          kw = 'NBA';
-        } else if (title.contains('健康') || title.contains('運動')) {
-          tagLabel = '🌿 #大安森林公園散步';
-          kw = '散步';
-        } else if (title.contains('陪伴') || title.contains('家族')) {
-          tagLabel = '🧵 #大稻埕布莊與親情故事';
-          kw = '布莊';
-        } else if (title.isNotEmpty) {
-          tagLabel = '✨ #${title.replaceAll(RegExp(r'[^\w\u4e00-\u9fa5]'), '')}';
-        }
-
-        if (kw.isNotEmpty && !seenKeywords.contains(kw)) {
-          seenKeywords.add(kw);
-          tags.add({'tag': tagLabel, 'keyword': kw, 'color': color});
-        }
+    void addTag(String tagLabel, String keyword, Color color) {
+      final cleanKw = keyword.trim();
+      if (cleanKw.isNotEmpty && !seenKeywords.contains(cleanKw)) {
+        seenKeywords.add(cleanKw);
+        tags.add({
+          'tag': tagLabel,
+          'keyword': cleanKw,
+          'color': color,
+        });
       }
     }
 
-    // 2. 掃描近 50 筆活動日誌進行加權萃取 (Weighted Log Tag Extraction)
+    // 1. 即時動態萃取：從長輩實際產生的日誌活動（rawFeedItems）中提煉真實關鍵字標籤
     if (rawFeedItems.isNotEmpty) {
-      final hasNews = rawFeedItems.any((i) => "${i['title']} ${i['desc']}".contains('NBA') || "${i['title']} ${i['desc']}".contains('新聞'));
-      final hasWalk = rawFeedItems.any((i) => "${i['title']} ${i['desc']}".contains('散步') || "${i['title']} ${i['desc']}".contains('步數'));
-      final hasStory = rawFeedItems.any((i) => "${i['title']} ${i['desc']}".contains('布莊') || "${i['title']} ${i['desc']}".contains('回憶'));
-      final hasOpera = rawFeedItems.any((i) => "${i['title']} ${i['desc']}".contains('歌仔戲') || "${i['title']} ${i['desc']}".contains('身騎白馬'));
-      final hasMed = rawFeedItems.any((i) => "${i['title']} ${i['desc']}".contains('藥') || "${i['title']} ${i['desc']}".contains('打卡'));
+      for (final item in rawFeedItems) {
+        final desc = item['desc']?.toString() ?? '';
+        final title = item['title']?.toString() ?? '';
+        final badge = item['badge']?.toString() ?? '';
+        final fullText = '$title $desc';
 
-      if (hasNews && !seenKeywords.contains('NBA')) {
-        seenKeywords.add('NBA');
-        tags.add({'tag': '🔥 #NBA熱火交易', 'keyword': 'NBA', 'color': const Color(0xFF38BDF8)});
-      }
-      if (hasWalk && !seenKeywords.contains('散步')) {
-        seenKeywords.add('散步');
-        tags.add({'tag': '🌿 #大安森林公園', 'keyword': '散步', 'color': const Color(0xFF34D399)});
-      }
-      if (hasStory && !seenKeywords.contains('布莊')) {
-        seenKeywords.add('布莊');
-        tags.add({'tag': '🧵 #大稻埕布莊往事', 'keyword': '布莊', 'color': const Color(0xFFF59E0B)});
-      }
-      if (hasOpera && !seenKeywords.contains('歌仔戲')) {
-        seenKeywords.add('歌仔戲');
-        tags.add({'tag': '🎭 #台語歌仔戲', 'keyword': '歌仔戲', 'color': const Color(0xFFEC4899)});
-      }
-      if (hasMed && !seenKeywords.contains('藥')) {
-        seenKeywords.add('藥');
-        tags.add({'tag': '💊 #晨間作息與降壓藥', 'keyword': '藥', 'color': const Color(0xFFA78BFA)});
-      }
-    }
+        // A0. 財經與台股投資
+        if (fullText.contains('財經') || fullText.contains('台股') || fullText.contains('股票') || fullText.contains('股市') || fullText.contains('投資') || fullText.contains('理財')) {
+          if (fullText.contains('台股')) {
+            addTag('📈 #台股焦點', '台股', const Color(0xFF10B981));
+          } else if (fullText.contains('股票') || fullText.contains('股市')) {
+            addTag('📈 #股市觀點', '股市', const Color(0xFF10B981));
+          } else {
+            addTag('📈 #財經趨勢', '財經', const Color(0xFF10B981));
+          }
+        }
 
-    // 3. 備援：長輩 Profile 興趣 (Elder Profile Interests)
-    if (tags.isEmpty && elderInterests.isNotEmpty) {
-      final interestList = elderInterests.split(RegExp(r'[,，\s]+'));
-      for (final item in interestList) {
-        final trimmed = item.trim();
-        if (trimmed.isNotEmpty && !seenKeywords.contains(trimmed)) {
-          seenKeywords.add(trimmed);
-          tags.add({
-            'tag': '✨ #$trimmed',
-            'keyword': trimmed,
-            'color': const Color(0xFF818CF8),
-          });
+        // A0. 美食佳餚與料理食譜
+        else if (fullText.contains('食譜') || fullText.contains('烹飪') || fullText.contains('做菜') || fullText.contains('美食') || fullText.contains('火鍋') || fullText.contains('料理')) {
+          if (fullText.contains('火鍋')) {
+            addTag('🍳 #火鍋佳餚', '火鍋', const Color(0xFFFB923C));
+          } else if (fullText.contains('食譜') || fullText.contains('做菜')) {
+            addTag('🍳 #烹飪食譜', '食譜', const Color(0xFFFB923C));
+          } else {
+            addTag('🍳 #美食料理', '美食', const Color(0xFFFB923C));
+          }
+        }
+
+        // A. 影音點播 (YouTube / 歌名 / 歌手)
+        else if (badge == 'MEDIA' || fullText.contains('YouTube') || fullText.contains('音樂') || fullText.contains('歌曲')) {
+          final match = RegExp(r'(?:YouTube 音樂/影片|歌曲|音樂)[：:\s]*([^\s|｜]+)').firstMatch(fullText);
+          if (match != null) {
+            final kw = match.group(1)!.replaceAll(RegExp(r'[^\w\u4e00-\u9fa5]'), '');
+            if (kw.length >= 2) {
+              addTag('🎵 #$kw', kw, const Color(0xFFF43F5E));
+              continue;
+            }
+          }
+          addTag('🎵 #經典音樂', '音樂', const Color(0xFFF43F5E));
+        }
+
+        // B. 健康運動與作息
+        else if (badge == 'WALK' || fullText.contains('運動') || fullText.contains('散步') || fullText.contains('步數')) {
+          if (fullText.contains('散步')) {
+            addTag('🌿 #戶外散步', '散步', const Color(0xFF34D399));
+          } else if (fullText.contains('運動')) {
+            addTag('🏃 #日常運動', '運動', const Color(0xFF34D399));
+          } else if (fullText.contains('步數')) {
+            addTag('👟 #健走步數', '步數', const Color(0xFF34D399));
+          } else {
+            addTag('🏃 #健康作息', '健康', const Color(0xFF34D399));
+          }
+        }
+
+        // C. 熱門新聞點閱與關注
+        else if (badge == 'NEWS' || fullText.contains('新聞')) {
+          final match = RegExp(r'【([^】]+)】').firstMatch(fullText);
+          if (match != null) {
+            final cat = match.group(1)!;
+            if (cat != 'all' && cat.isNotEmpty) {
+              addTag('📰 #$cat新聞', cat, const Color(0xFF38BDF8));
+              continue;
+            }
+          }
+          if (fullText.contains('NBA') || fullText.contains('體育')) {
+            addTag('🏀 #體育賽事新聞', '體育', const Color(0xFF38BDF8));
+          } else {
+            addTag('📰 #熱門新聞關注', '新聞', const Color(0xFF38BDF8));
+          }
+        }
+
+        // D. 用藥提醒與健康打卡
+        else if (badge == 'MEDICINE' || fullText.contains('藥') || fullText.contains('打卡')) {
+          if (fullText.contains('血壓')) {
+            addTag('💊 #血壓用藥', '血壓', const Color(0xFFA78BFA));
+          } else if (fullText.contains('藥')) {
+            addTag('💊 #按時服藥', '藥', const Color(0xFFA78BFA));
+          } else {
+            addTag('🌟 #晨間健康打卡', '打卡', const Color(0xFFA78BFA));
+          }
+        }
+
+        // E. AI 陪伴與歷史回憶對話
+        else if (badge == 'AI CHAT' || fullText.contains('對話') || fullText.contains('聊天') || fullText.contains('故事')) {
+          if (fullText.contains('布莊') || fullText.contains('童年') || fullText.contains('往事')) {
+            addTag('💬 #昔日記憶故事', '故事', const Color(0xFFF59E0B));
+          } else if (fullText.contains('歌仔戲') || fullText.contains('戲曲')) {
+            addTag('🎭 #歌仔戲曲', '歌仔戲', const Color(0xFFF59E0B));
+          } else {
+            addTag('💬 #AI親情對話', '對話', const Color(0xFFF59E0B));
+          }
         }
       }
     }
@@ -1480,8 +1456,8 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
   }
 
   Widget _buildTopicPulseCloud(List<Map<String, dynamic>> rawFeedItems) {
-    final elderInterests = _moodInsightData?['interests']?.toString() ?? '聽歌仔戲, 泡茶, 散步';
-    final dynamicTopics = _extractDynamicTopicTags(rawFeedItems, _moodInsightData, elderInterests);
+    if (rawFeedItems.isEmpty) return const SizedBox.shrink();
+    final dynamicTopics = _extractDynamicTopicTags(rawFeedItems, _moodInsightData, '');
 
     if (dynamicTopics.isEmpty) return const SizedBox.shrink();
 
@@ -1584,6 +1560,8 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     List<Map<String, dynamic>> categoriesToRender = [];
 
     if (apiClusters != null && apiClusters.isNotEmpty) {
+      final Set<int> matchedItemIds = {};
+
       for (final cluster in apiClusters) {
         final title = cluster['title']?.toString() ?? '主題紀錄';
         final colorHexStr = cluster['color_hex']?.toString() ?? '0xFF38BDF8';
@@ -1601,6 +1579,12 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
           iconData = Icons.directions_run_rounded;
         } else if (iconName.contains('favorite') || iconName.contains('heart')) {
           iconData = Icons.favorite_rounded;
+        } else if (iconName.contains('play') || iconName.contains('music')) {
+          iconData = Icons.play_circle_fill_rounded;
+        } else if (iconName.contains('trending') || iconName.contains('chart') || iconName.contains('finance')) {
+          iconData = Icons.trending_up_rounded;
+        } else if (iconName.contains('restaurant') || iconName.contains('food')) {
+          iconData = Icons.restaurant_rounded;
         }
 
         final matchedItems = activeFilteredItems.where((item) {
@@ -1612,6 +1596,12 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
         }).toList();
 
         if (matchedItems.isNotEmpty) {
+          for (final it in matchedItems) {
+            final itemId = it['id'];
+            if (itemId is int) {
+              matchedItemIds.add(itemId);
+            }
+          }
           categoriesToRender.add({
             'title': title,
             'icon': iconData,
@@ -1623,9 +1613,81 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
           });
         }
       }
+
+      // Catch any leftover items not matched by apiClusters so no items are ever lost
+      final unmatchedItems = activeFilteredItems.where((item) {
+        final id = item['id'];
+        return id == null || (id is int && !matchedItemIds.contains(id));
+      }).toList();
+
+      if (unmatchedItems.isNotEmpty) {
+        final mediaLeftovers = unmatchedItems.where((i) {
+          final d = "${i['title']} ${i['desc']} ${i['badge']}";
+          return d.contains('YouTube') || d.contains('影音') || d.contains('音樂') || d.contains('歌曲') || d.contains('歌') || d.contains('MEDIA');
+        }).toList();
+
+        if (mediaLeftovers.isNotEmpty) {
+          categoriesToRender.add({
+            'title': '🎵 音樂影音與娛樂點播',
+            'icon': Icons.play_circle_fill_rounded,
+            'color': const Color(0xFFF43F5E),
+            'glow': const Color(0xFFBE123C),
+            'tagline': makeDynamicTagline(mediaLeftovers, '影音娛樂：點播喜愛的經典歌曲與影音 🎶'),
+            'previewSummary': makeDynamicSummary(mediaLeftovers, '$name點播收聽影音娛樂內容。'),
+            'items': mediaLeftovers,
+          });
+        }
+
+        final remaining = unmatchedItems.where((i) => !mediaLeftovers.contains(i)).toList();
+        if (remaining.isNotEmpty) {
+          categoriesToRender.add({
+            'title': '🌟 每日生活足跡記錄',
+            'icon': Icons.auto_awesome_rounded,
+            'color': const Color(0xFF818CF8),
+            'glow': const Color(0xFF4F46E5),
+            'tagline': makeDynamicTagline(remaining, '生活狀態：保持健康互動 ✅'),
+            'previewSummary': makeDynamicSummary(remaining, '$name今日生活足跡與活動紀錄。'),
+            'items': remaining,
+          });
+        }
+      }
     }
 
     if (categoriesToRender.isEmpty) {
+      final financeItems = activeFilteredItems.where((i) {
+        final d = "${i['title']} ${i['desc']} ${i['badge']}";
+        return d.contains('財經') || d.contains('台股') || d.contains('股票') || d.contains('股市') || d.contains('投資') || d.contains('理財');
+      }).toList();
+
+      if (financeItems.isNotEmpty) {
+        categoriesToRender.add({
+          'title': '📈 財經觀點與台股投資',
+          'icon': Icons.trending_up_rounded,
+          'color': const Color(0xFF10B981),
+          'glow': const Color(0xFF059669),
+          'tagline': makeDynamicTagline(financeItems, '財經焦點：股市與財經資訊 📊'),
+          'previewSummary': makeDynamicSummary(financeItems, '$name關心財經市場與台股動態。'),
+          'items': financeItems,
+        });
+      }
+
+      final foodItems = activeFilteredItems.where((i) {
+        final d = "${i['title']} ${i['desc']} ${i['badge']}";
+        return d.contains('食譜') || d.contains('烹飪') || d.contains('做菜') || d.contains('美食') || d.contains('火鍋') || d.contains('料理');
+      }).toList();
+
+      if (foodItems.isNotEmpty) {
+        categoriesToRender.add({
+          'title': '🍳 美食佳餚與餐飲食譜交流',
+          'icon': Icons.restaurant_rounded,
+          'color': const Color(0xFFFB923C),
+          'glow': const Color(0xFFC2410C),
+          'tagline': makeDynamicTagline(foodItems, '飲食點滴：美食與健康食譜 🥗'),
+          'previewSummary': makeDynamicSummary(foodItems, '$name關注分享日常飲食料理。'),
+          'items': foodItems,
+        });
+      }
+
       final sportsItems = activeFilteredItems.where((i) {
         final d = "${i['title']} ${i['desc']} ${i['badge']}";
         return d.contains('NBA') || d.contains('體育') || d.contains('新聞') || d.contains('賽事') || d.contains('詹姆斯');
@@ -1645,7 +1707,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
 
       final healthItems = activeFilteredItems.where((i) {
         final d = "${i['title']} ${i['desc']} ${i['badge']}";
-        return d.contains('散步') || d.contains('步數') || d.contains('藥') || d.contains('打卡') || d.contains('作息');
+        return d.contains('散步') || d.contains('步數') || d.contains('藥') || d.contains('打卡') || d.contains('作息') || d.contains('運動') || d.contains('活動') || d.contains('WALK');
       }).toList();
 
       if (healthItems.isNotEmpty) {
@@ -1660,9 +1722,26 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
         });
       }
 
+      final mediaItems = activeFilteredItems.where((i) {
+        final d = "${i['title']} ${i['desc']} ${i['badge']}";
+        return d.contains('YouTube') || d.contains('影音') || d.contains('音樂') || d.contains('歌曲') || d.contains('歌') || d.contains('MEDIA');
+      }).toList();
+
+      if (mediaItems.isNotEmpty) {
+        categoriesToRender.add({
+          'title': '🎵 音樂影音與娛樂點播',
+          'icon': Icons.play_circle_fill_rounded,
+          'color': const Color(0xFFF43F5E),
+          'glow': const Color(0xFFBE123C),
+          'tagline': makeDynamicTagline(mediaItems, '影音娛樂：點播喜愛的經典歌曲與影音 🎶'),
+          'previewSummary': makeDynamicSummary(mediaItems, '$name點播收聽影音娛樂內容。'),
+          'items': mediaItems,
+        });
+      }
+
       final chatItems = activeFilteredItems.where((i) {
         final d = "${i['title']} ${i['desc']} ${i['badge']}";
-        return d.contains('對話') || d.contains('故事') || d.contains('女兒') || d.contains('關懷') || d.contains('聊天') || d.contains('說說話');
+        return d.contains('對話') || d.contains('故事') || d.contains('女兒') || d.contains('關懷') || d.contains('聊天') || d.contains('說說話') || d.contains('AI CHAT');
       }).toList();
 
       if (chatItems.isNotEmpty) {
@@ -1689,6 +1768,15 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
         });
       }
     }
+
+    // 依據類別中最新一筆紀錄的時間戳記進行【由新到舊 (由上至下)】嚴格排序 (Top -> Bottom Descending)
+    categoriesToRender.sort((a, b) {
+      final itemsA = a['items'] as List<Map<String, dynamic>>?;
+      final itemsB = b['items'] as List<Map<String, dynamic>>?;
+      final tsA = (itemsA != null && itemsA.isNotEmpty) ? (itemsA.first['rawTimestamp'] ?? itemsA.first['time'] ?? '') : '';
+      final tsB = (itemsB != null && itemsB.isNotEmpty) ? (itemsB.first['rawTimestamp'] ?? itemsB.first['time'] ?? '') : '';
+      return tsB.toString().compareTo(tsA.toString());
+    });
 
     final categoriesList = categoriesToRender.asMap().entries.toList();
     String lastRenderedTime = '';
@@ -1924,7 +2012,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                         const Text('💌 ', style: TextStyle(fontSize: 13)),
                         Expanded(
                           child: Text(
-                            '小嘎：「${aiTalk.length > 80 ? aiTalk.substring(0, 80) + '...' : aiTalk}」',
+                            '小嘎：「${aiTalk.length > 80 ? '${aiTalk.substring(0, 80)}...' : aiTalk}」',
                             style: GoogleFonts.notoSansTc(
                               fontSize: 12,
                               height: 1.45,
