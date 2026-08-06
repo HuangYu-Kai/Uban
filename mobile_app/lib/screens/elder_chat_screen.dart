@@ -1,9 +1,11 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:record/record.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/youtube_bubble_player.dart';
@@ -77,31 +79,68 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
   }
 
   Future<void> _loadChatHistory() async {
+    // 1. 本地 SharedPreferences 快速讀取快取 (0ms 無痛瞬間載入先前聊天紀錄)
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final String? cached = prefs.getString('chat_history_${widget.userId}');
+      if (cached != null && cached.isNotEmpty) {
+        final List<dynamic> decoded = jsonDecode(cached);
+        final List<_ChatMessage> localLoaded = decoded
+            .map((item) => _ChatMessage(item['text'] ?? '', item['isUser'] == true))
+            .where((m) => m.text.isNotEmpty)
+            .toList();
+
+        if (mounted && localLoaded.isNotEmpty) {
+          setState(() {
+            _messages.clear();
+            _messages.addAll(localLoaded);
+          });
+          _scrollToBottom();
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ [Local ChatHistory Load Error] $e');
+    }
+
+    // 2. 異步向後端同步最新聊天歷史紀錄
     try {
       final res = await ApiService.get('/ai/history?user_id=${widget.userId}&limit=50');
       if (res != null && res['status'] == 'success' && res['data'] != null) {
         final List<dynamic> rawMessages = res['data']['messages'] ?? [];
         if (rawMessages.isNotEmpty) {
-          final List<_ChatMessage> loaded = [];
+          final List<_ChatMessage> remoteLoaded = [];
           for (var item in rawMessages) {
             final role = item['role'] ?? 'user';
             final text = item['text'] ?? '';
             if (text.isNotEmpty) {
-              loaded.add(_ChatMessage(text, role == 'user'));
+              remoteLoaded.add(_ChatMessage(text, role == 'user'));
             }
           }
-          if (mounted && loaded.isNotEmpty) {
+          if (mounted && remoteLoaded.isNotEmpty) {
             setState(() {
               _messages.clear();
-              _messages.addAll(loaded);
+              _messages.addAll(remoteLoaded);
             });
+            _saveLocalChatHistory();
             _scrollToBottom();
-            return;
           }
         }
       }
     } catch (e) {
-      debugPrint('⚠️ [ChatHistory Load Error] $e');
+      debugPrint('⚠️ [Remote ChatHistory Load Error] $e');
+    }
+  }
+
+  Future<void> _saveLocalChatHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final listData = _messages
+          .where((m) => !m.isStreaming && m.text.isNotEmpty)
+          .map((m) => {'text': m.text, 'isUser': m.isUser})
+          .toList();
+      await prefs.setString('chat_history_${widget.userId}', jsonEncode(listData));
+    } catch (e) {
+      debugPrint('⚠️ [Save Local ChatHistory Error] $e');
     }
   }
 
@@ -126,6 +165,8 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
 
     if (confirm == true) {
       try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('chat_history_${widget.userId}');
         await ApiService.delete('/ai/history?user_id=${widget.userId}');
         if (mounted) {
           setState(() {
@@ -321,6 +362,8 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
           _isThinking = false;
         });
         
+        _saveLocalChatHistory();
+
         // 觸發 TTS 語音播放
         _playTts(aiMsg.text);
       }
@@ -330,6 +373,7 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
         _messages.add(_ChatMessage('小嘎現在連不上，稍後再聊喔 🙏', false));
         _isThinking = false;
       });
+      _saveLocalChatHistory();
     }
     _scrollToBottom();
   }
