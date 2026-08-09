@@ -1152,6 +1152,18 @@ class ApiService {
               'to_device_id': toDeviceId,
             }),
           )
+          .timeout(_timeout);
+      final data = _safeDecode(response);
+      if (data['status'] == 'success') {
+        return data['data'];
+      }
+      return null;
+    } catch (e) {
+      debugPrint('⚠️ openAudioBridge error: $e');
+      return null;
+    }
+  }
+
   static Future<Map<String, dynamic>?> getElderMoodInsight(String elderId) async {
     try {
       final response = await http
@@ -1163,7 +1175,7 @@ class ApiService {
       }
       return null;
     } catch (e) {
-      debugPrint('⚠️ openAudioBridge error: $e');
+      debugPrint('⚠️ getElderMoodInsight error: $e');
       return null;
     }
   }
@@ -1181,6 +1193,9 @@ class ApiService {
     } catch (e) {
       debugPrint('⚠️ getElderActivityLogs error: $e');
       return [];
+    }
+  }
+
   /// ★ 2026-08-04 第 7 項：查詢某警報目前是否有有效的音頻橋。
   /// GET /api/alerts/audio/{alert_id}
   ///
