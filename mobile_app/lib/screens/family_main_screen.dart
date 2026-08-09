@@ -46,6 +46,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   Elder? _currentElder;
   List<Elder> _elders = [];
   bool _isElderOnline = false;
+  String? _elderSocketId;
   Timer? _deviceRefreshTimer;
   // ★ 2026-08-05 第十七輪：原本的 _onlineStateDebounceTimer / _pendingOnlineState
   //   是「每收到事件就重排」的雙向 debounce，週期與輪詢週期（2500ms）相等，
