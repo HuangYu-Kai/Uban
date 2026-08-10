@@ -2,12 +2,30 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../globals.dart';
+import '../services/session_manager.dart';
 import 'family_main_screen.dart';
 import 'elder_pairing_display_screen.dart';
 import 'login_screen.dart';
 import 'monitor_pairing_screen.dart'; // ★ issue 7：監視器角色
-class IdentificationScreen extends StatelessWidget {
+
+class IdentificationScreen extends StatefulWidget {
   const IdentificationScreen({super.key});
+
+  @override
+  State<IdentificationScreen> createState() => _IdentificationScreenState();
+}
+
+class _IdentificationScreenState extends State<IdentificationScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // ★ 2026-08-10 第二十輪（需求 1）：進到身分選擇頁就代表使用者尚未選擇身分，
+    //   此時必須主動釋放上一個 session，否則會繼續收到上一個帳號的來電推播，
+    //   而且下次冷啟動會直接跳回被綁死的帳號。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      SessionManager.releaseIfBound();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {

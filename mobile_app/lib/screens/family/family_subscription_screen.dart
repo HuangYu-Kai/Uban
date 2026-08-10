@@ -325,11 +325,15 @@ class _FamilySubscriptionScreenState extends State<FamilySubscriptionScreen> {
                       children: [
                         Icon(Icons.check_circle, color: color, size: 18),
                         const SizedBox(width: 12),
-                        Text(
-                          f,
-                          style: GoogleFonts.notoSansTc(
-                            fontSize: 14,
-                            color: Colors.black87,
+                        // ★ 2026-08-10 第二十輪（需求 2）：方案特色文案長度不一，
+                        //   未包 Expanded 時長文案會整條往右溢位。
+                        Expanded(
+                          child: Text(
+                            f,
+                            style: GoogleFonts.notoSansTc(
+                              fontSize: 14,
+                              color: Colors.black87,
+                            ),
                           ),
                         ),
                       ],

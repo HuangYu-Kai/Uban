@@ -12,6 +12,7 @@ import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import '../services/signaling.dart';
 import '../services/api_service.dart';
+import '../services/session_manager.dart';
 import '../widgets/heartbeat_overlay.dart';
 import 'identification_screen.dart';
 import 'elder_home_screen.dart';
@@ -48,7 +49,8 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   bool _isCameraOff = false; // 視訊房間預設開啟鏡頭
   bool _isMuted = false;
   bool _isFrontCamera = true; // ★ issue 12：前/後鏡頭狀態
-  bool _isSpeakerOn = true; // ★ 2026-08-05 第十八輪：擴音(true)／聽筒(false)，與攝像頭開關無關
+  late bool _isSpeakerOn; // ★ 2026-08-10 第二十輪（D4）：擴音(true)／聽筒(false)，依通話類型於 initState 決定初始值
+  bool _speakerAutoSwitched = false; // ★ 2026-08-10 第二十輪（D4）：語音通話中途開鏡頭時只自動切一次擴音，不覆蓋使用者手動切回聽筒的選擇
   bool _mediaInitialized = false;
   Timer? _callTimer;
   int _callDuration = 0; // 秒數
@@ -67,6 +69,12 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   bool _cctvFrameSending = false;
   int? _userId; // ★ issue 3/10：用於安全導航回主畫面時建構 ElderHomeScreen
   String? _prefsUserName; // ★ Issue 1 硬化：真實 caregiver_name，供 _buildFallbackHome 使用
+
+  /// ★ 2026-08-06 第十九輪（D4）：監視機「目前」的裝置名稱，初始值等於 widget.deviceName。
+  /// 收到後端 'monitor-renamed' 事件後會更新成新名稱，讓退出監控時呼叫刪除 API、
+  /// 以及推送 CCTV 影格都使用「改名後」的最新名稱——後端以 device_name 字串精確比對，
+  /// 若改名後仍送出過期的 widget.deviceName 會比對不到，家屬端清單/影格歸屬就會對不上。
+  late String _currentDeviceName;
 
   /// ★ 2026-07-27 第十三輪：本畫面目前正在進行的通話 callId。
   /// 作為 isSameOngoingCall 去重的第二道防線——不依賴 Signaling.lastProcessedCallId
@@ -126,7 +134,10 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
         final buffer = await videoTracks.first.captureFrame();
         await ApiService.pushCctvFrame(
           elderId: _rawElderId,
-          deviceName: widget.deviceName,
+          // ★ 第十九輪（D4）：改用 _currentDeviceName（可隨 monitor-renamed 更新），
+          //   避免改名後這個每 2 秒跑一次的迴圈仍持續用舊名稱推幀，
+          //   導致 YOLO 偵測結果被後端歸到「改名前」的裝置、與家屬端看到的新名稱對不上。
+          deviceName: _currentDeviceName,
           frameBytes: buffer.asUint8List(),
         );
       } catch (e) {
@@ -135,7 +146,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
         _cctvFrameSending = false;
       }
     });
-    debugPrint('🎥 [CCTV] 已啟動影格推送迴圈 (elder=$_rawElderId, device=${widget.deviceName})');
+    debugPrint('🎥 [CCTV] 已啟動影格推送迴圈 (elder=$_rawElderId, device=$_currentDeviceName)');
   }
 
   @override
@@ -147,6 +158,8 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     
     // ★ 初始化格式化的房間ID
     _formattedRoomId = _getFormattedRoomId(widget.roomId);
+    // ★ 第十九輪（D4）：CCTV 目前裝置名稱初始值，改名事件會更新它
+    _currentDeviceName = widget.deviceName;
 
     // 「電話」與「視訊」共用同一套 call-request 後端邏輯；
     // 唯一差異只在進房時鏡頭預設狀態。
@@ -156,18 +169,19 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       _isCameraOff = !widget.isVideoCall;
     }
 
+    // ★ 2026-08-10 第二十輪（D4）：視訊通話／CCTV 監控預設擴音，一般語音通話預設聽筒。
+    _isSpeakerOn = widget.isVideoCall || widget.isCCTVMode;
+
     // ★ Bug 16 解決方案：監聽從系統層 (main.dart) 傳進來的 CallKit 接聽動作
     pendingAcceptedCall.addListener(_onPendingCallChanged);
 
-    _initElderMode();
-
-    if (widget.autoCall) {
-      Future.delayed(const Duration(seconds: 2), () {
-        if (mounted && !_isInCall) {
-          _makeCall();
-        }
-      });
-    }
+    // ★ 2026-08-10 第二十輪（D1-c）：改為等待 _initElderMode() 完成（含 socket 連線與
+    //   媒體初始化）後才嘗試自動撥號，取代原本固定等待 2 秒的猜測值——2 秒不夠時
+    //   會在 socket 尚未連上就呼叫 _makeCall()，導致 sendCallRequest 送不出去。
+    _initElderMode().then((_) {
+      if (!mounted || !widget.autoCall || _isInCall) return;
+      _makeCall();
+    });
   }
 
   Future<void> _checkPermissions() async {
@@ -302,10 +316,15 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
         debugPrint("Failed to end CallKit calls: $e");
       }
       
-      FlutterTts flutterTts = FlutterTts();
-      await flutterTts.setLanguage("zh-TW");
-      await flutterTts.setVolume(1.0);
-      await flutterTts.speak("緊急通話，自動接聽中。緊急通話，自動接聽中。");
+      // ★ 2026-08-06 第十九輪（B）：監視機（CCTV）自動接聽必須完全靜音——
+      //   家屬端開啟監控不該觸發長輩端的緊急通話語音提示，也不該讓長輩察覺
+      //   監控端正在觀看。一般（非 CCTV）緊急通話維持原有語音提示不變。
+      if (!widget.isCCTVMode) {
+        FlutterTts flutterTts = FlutterTts();
+        await flutterTts.setLanguage("zh-TW");
+        await flutterTts.setVolume(1.0);
+        await flutterTts.speak("緊急通話，自動接聽中。緊急通話，自動接聽中。");
+      }
 
       // Notify the Family App that we are awake and ready to receive the Offer!
       _signaling.sendCallAccept(senderId, callId: callId);
@@ -342,7 +361,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       }
     };
 
-    _signaling.onJoinFailed = (errorMessage) {
+    _signaling.onJoinFailed = (errorMessage, {String? reason}) {
       // ★ issue 5：通話已建立時，忽略遲到的 join-failed（例如重新 join 房間時的競態），
       //   避免誤把進行中的通話導向「連線失敗」對話框，間接觸發 dispose -> hangUp ->
       //   end-call，導致家屬端被彈回主畫面、長輩端畫面變黑。
@@ -355,12 +374,46 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
         Future.delayed(const Duration(milliseconds: 200), () {
           HapticFeedback.mediumImpact();
         });
+
+        // ★ 2026-08-06 第十九輪（A5）：monitor-limit／ip_limit_exceeded 代表這台
+        //   監視機從一開始就不該綁定成功（額度已滿），不是暫時性的連線問題。
+        //   改用不可關閉的專屬「綁定失敗」畫面把原因講清楚，並提供「返回」
+        //   走既有的 _exitCCTVMode() 清理流程（清 prefs、斷線、導回身分選擇畫面）。
+        if (widget.isCCTVMode &&
+            (reason == 'monitor-limit' || reason == 'ip_limit_exceeded')) {
+          final String explanation = reason == 'monitor-limit'
+              ? '此長輩的監控設備數量已達訂閱方案上限，請先在家屬端移除一台舊設備後再試。'
+              : '同一網路下的監控設備數量已達上限。';
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => AlertDialog(
+              title: const Text('綁定失敗'),
+              content: Text(explanation),
+              actions: [
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.pop(context); // 關閉對話框
+                    _exitCCTVMode();
+                  },
+                  child: const Text('返回'),
+                )
+              ],
+            ),
+          );
+          return;
+        }
+
         showDialog(
           context: context,
           barrierDismissible: false,
           builder: (context) => AlertDialog(
             title: const Text('連線失敗'),
-            content: Text(errorMessage),
+            content: Text(
+              (reason != null && reason.isNotEmpty)
+                  ? '$errorMessage\n錯誤代碼：$reason'
+                  : errorMessage,
+            ),
             actions: [
               ElevatedButton(
                 onPressed: () {
@@ -611,6 +664,54 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       }
     };
 
+    // ★ 2026-08-06 第十九輪（D4）：監視機被家屬端改名時，同步更新本機記憶
+    //   （SharedPreferences saved_device_name）與畫面內部狀態，避免退出監控時
+    //   仍用改名前的舊名稱去比對後端（後端以 device_name 字串精確比對）。
+    //   只在監視機模式註冊，一般通訊模式沒有「監控設備改名」這個概念。
+    if (widget.isCCTVMode) {
+      _signaling.onMonitorRenamed = (data) async {
+        final String eventElderId = (data['elderId'] ?? '').toString();
+        final String oldName = (data['oldDeviceName'] ?? '').toString();
+        final String newName = (data['newDeviceName'] ?? '').toString();
+        if (newName.isEmpty) return;
+        // 只處理「自己」被改名的事件：elderId 對得上、且事件回報的舊名稱與目前
+        // 顯示名稱相同——避免同一長輩底下有多台監控設備時，誤把別台設備的
+        // 改名事件套用到自己身上。
+        if (eventElderId.isNotEmpty && eventElderId != _rawElderId) return;
+        if (oldName.isNotEmpty && oldName != _currentDeviceName) return;
+        debugPrint('✏️ [ElderScreen] 監視機已被改名: $_currentDeviceName → $newName');
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('saved_device_name', newName);
+        if (mounted) {
+          setState(() => _currentDeviceName = newName);
+        }
+      };
+
+      // ★ 2026-08-10 第二十輪（需求 4＋5）：家屬端刪除本監視器時，立刻退回主畫面。
+      //   過去後端只是把這台裝置踢線，監控機端無從區分「被刪除」與「網路斷線」，
+      //   於是留在 CCTV 畫面等重連；使用者只好按「退出並重置」，而那條路徑
+      //   舊版只清 7 個 prefs 鍵、不通知後端註銷 FCM token，於是 session 被綁死
+      //   ——同一台裝置之後輸入正確綁定碼也一律「綁定碼過期或錯誤」（需求 5）。
+      //   現在改為：收到事件 → 走 SessionManager 完整釋放 → pushAndRemoveUntil
+      //   回身分選擇頁（護欄：回首頁一律 pushAndRemoveUntil，不可 pop）。
+      _signaling.onMonitorRemoved = (data) async {
+        final String eventElderId = (data['elderId'] ?? '').toString();
+        final String deviceName = (data['deviceName'] ?? '').toString();
+        // 同一長輩底下可能有多台監控設備，必須確認被刪的就是自己。
+        if (eventElderId.isNotEmpty && eventElderId != _rawElderId) return;
+        if (deviceName.isNotEmpty && deviceName != _currentDeviceName) return;
+        debugPrint('🗑️ [ElderScreen] 本監視器已被家屬端刪除，釋放 session 並退回身分選擇頁');
+        // 先釋放 session（含通知後端註銷 FCM token、forceDisconnect、清 prefs），
+        // 再導航——順序顛倒的話畫面已切走、await 可能被中斷而漏清。
+        await SessionManager.releaseSession();
+        if (!mounted) return;
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const IdentificationScreen()),
+          (route) => false,
+        );
+      };
+    }
+
   }
 
   /// ★ 2026-08-06 第十九輪（需求 3）：長輩端「沒接通」提示。
@@ -652,7 +753,19 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   Future<void> _initializeMedia() async {
     if (_mediaInitialized) return;
     try {
-      await _signaling.openUserMedia(_localRenderer); // 永遠要求影像軌道
+      // ★ 2026-08-10 第二十輪（D5）：ElderScreen 內鏡頭／麥克風硬體存取的唯一入口。
+      //   本函式開頭已用 _mediaInitialized 擋掉重複呼叫（見上方 if (_mediaInitialized) return;），
+      //   確保同一個畫面實例只會跟系統要一次硬體權限與媒體軌道。
+      //   這裡固定不帶 videoEnabled 參數（沿用預設值 true）＝一律連視訊軌道一併要求，
+      //   不是依當下 _isCameraOff 決定要不要開鏡頭；真正決定鏡頭是否可見／LED 是否亮起的
+      //   是緊接在下面的 track.enabled = !_isCameraOff。之後使用者按下切換鏡頭鈕
+      //   （_toggleCamera）也只是翻轉既有 track 的 enabled，並不會重新呼叫
+      //   getUserMedia、也不會 replaceTrack 或重建 PeerConnection——維持本輪
+      //   D5「不可加 replaceTrack、不可更動取得媒體時機」的要求。
+      //   又因為 ElderScreen 只會在真正撥打／接聽通話或進入 CCTV 監控模式時才會被
+      //   導航進入（非通話情境不會建立這個畫面），鏡頭與麥克風實質上只在通話／監控
+      //   進行中才會被要求，並非在長輩主畫面背景常駐存取硬體。
+      await _signaling.openUserMedia(_localRenderer);
       if (_signaling.localStream != null) {
         final videoTracks = _signaling.localStream!.getVideoTracks();
         for (var track in videoTracks) {
@@ -697,12 +810,34 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     }
 
     if (mounted) {
-      setState(() => _isCameraOff = !_isCameraOff);
-      
+      final bool turningCameraOn = _isCameraOff; // 切換前是關的，代表這次操作是要開鏡頭
+      // ★ 2026-08-10 第二十輪（D4）：語音通話中途開鏡頭時，比照一般通話 App 的習慣
+      //   自動切成擴音（用鏡頭代表要跟對方視訊互動，貼耳聽筒既拿不穩也看不到畫面）。
+      //   只在「原本是語音通話、且擴音目前是關的」時觸發一次，用 _speakerAutoSwitched
+      //   確保整通電話只自動切一次——使用者若切回聽筒後再開一次鏡頭，不會被再次強制拉回擴音。
+      final bool shouldAutoSwitchSpeaker = turningCameraOn &&
+          !widget.isVideoCall &&
+          !widget.isCCTVMode &&
+          !_isSpeakerOn &&
+          !_speakerAutoSwitched;
+
+      setState(() {
+        _isCameraOff = !_isCameraOff;
+        if (shouldAutoSwitchSpeaker) {
+          _isSpeakerOn = true;
+          _speakerAutoSwitched = true;
+        }
+      });
+
       if (_isCameraOff) {
         _signaling.localStream?.getVideoTracks().forEach((track) => track.enabled = false);
       } else {
         _signaling.localStream?.getVideoTracks().forEach((track) => track.enabled = true);
+      }
+
+      if (shouldAutoSwitchSpeaker) {
+        _signaling.enableSpeakerphone(true);
+        debugPrint("🔊 [ElderScreen] 語音通話中開啟鏡頭，自動切換為擴音");
       }
     }
   }
@@ -729,6 +864,8 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   /// 與攝像頭狀態完全無關——關鏡頭的純語音通話一樣可以切換擴音／聽筒（比照 LINE）。
   void _toggleSpeaker() {
     if (!mounted) return;
+    // ★ 2026-08-10 第二十輪（需求 9）：使用者手動選過之後就不再自動切換。
+    _speakerAutoSwitched = true;
     setState(() => _isSpeakerOn = !_isSpeakerOn);
     _signaling.enableSpeakerphone(_isSpeakerOn);
     debugPrint("🔊 [ElderScreen] 音訊輸出切換為 ${_isSpeakerOn ? '擴音' : '聽筒'}");
@@ -779,9 +916,28 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   }
 
   // 主動呼叫 (先響鈴)
-  void _makeCall() {
+  Future<void> _makeCall() async {
     setState(() { _status = "正在呼叫家人..."; _isInCall = true; });
-    _signaling.sendCallRequest(_formattedRoomId, role: 'elder', isVideoCall: widget.isVideoCall);  // ★ 使用格式化的房間ID
+    // ★ 2026-08-10 第二十輪（D1-d）：sendCallRequest 現在會回傳是否成功送出
+    //   （內部會等待 socket 連線，逾時視為失敗）。過去無論是否送出成功都直接
+    //   進入 30 秒逾時計時，socket 尚未連上時長輩端會白白卡在「正在呼叫家人...」
+    //   30 秒，期間其實從頭到尾沒送出任何請求。
+    final bool sent = await _signaling.sendCallRequest(
+      _formattedRoomId,
+      role: 'elder',
+      isVideoCall: widget.isVideoCall,
+    ); // ★ 使用格式化的房間ID
+    if (!mounted) return;
+    if (!sent) {
+      setState(() {
+        _status = "連線中斷，無法撥出";
+        _isInCall = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('目前無法連上伺服器，請確認網路後再試')),
+      );
+      return;
+    }
     // ★ 2026-07-18：長輩端主動撥打新增 30 秒逾時。原本完全沒有逾時，
     //   家屬未接時只能靠手動掛斷，被叫方 CallKit 也會一直響。逾時自動取消。
     Future.delayed(const Duration(seconds: 30), () {
@@ -858,17 +1014,41 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     );
 
     if (confirm == true) {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('saved_is_cctv');
-      await prefs.remove('saved_role');
-      await prefs.remove('saved_id');
-      await prefs.remove('saved_device_name');
-      await prefs.remove('user_role');
-      await prefs.remove('caregiver_id');
-      await prefs.remove('caregiver_name');
+      // ★ 2026-08-10 第二十輪（需求 5）：這裡原本只 remove 七個 prefs 鍵，
+      //   漏掉 `access_token`、`user_id`、`elder_room_id`、`device_role_*` 等等，
+      //   而且**從不通知後端註銷 FCM token**。後果就是使用者回報的：
+      //   同一台裝置曾當過監控機、退出並重置之後，再輸入正確的 6 位綁定碼
+      //   一律顯示「綁定碼過期或錯誤」——因為後端 `user_fcm_token` 仍留著這台
+      //   裝置綁在舊長輩房間的列，而殘留的 `device_role_*` 又讓本機自我判定
+      //   成監控機，兩邊狀態互相打架。
+      //   改走 SessionManager 這唯一入口（見 services/session_manager.dart），
+      //   任何新的登出／退出路徑都不得再自行 remove 鍵位。
+      //   刪除設備 API 必須排在 releaseSession() **之前**：releaseSession 會清掉
+      //   caregiver_id 等鍵，且 deleteMonitorDevice 需要它們才能通過後端授權。
 
-      _signaling.clearSession();
-      _signaling.forceDisconnect();
+      // ★ 2026-08-06 第十九輪（D4）：監視機主動退出監控模式時，同步通知後端刪除
+      //   這台監控設備，家屬端的遠端監控清單才不會留下永久殘影。走 HTTP REST，
+      //   不依賴 socket 是否還活著，故排在 forceDisconnect() 之前呼叫。
+      //   elderId 用 _rawElderId（純 elder_id，與後端 device_id 推導基準一致）、
+      //   deviceName 用 _currentDeviceName（若中途被 monitor-renamed 改過名，
+      //   後端是用「改名後」的名稱比對，仍送初始的 widget.deviceName 會比對不到
+      //   而刪除失敗）、userId 用已快取的 _userId（此時 caregiver_id 已被上面的
+      //   prefs.remove 清掉，此刻才去重新讀 prefs 會拿到 null）。
+      //   成功與否都不影響既有清理流程——刪除失敗頂多是家屬端清單殘影，
+      //   不該卡住長輩端本身的登出流程。
+      try {
+        await ApiService.deleteMonitorDevice(
+          elderId: _rawElderId,
+          deviceName: _currentDeviceName,
+          userId: _userId,
+        );
+      } catch (e) {
+        debugPrint('⚠️ [ElderScreen] 退出監控時刪除設備失敗（不影響登出流程）: $e');
+      }
+
+      // SessionManager 內部已包含 clearSession() + forceDisconnect()，
+      // 不需要（也不可以）在這裡再呼叫一次 disconnect()。
+      await SessionManager.releaseSession();
 
       if (mounted) {
         Navigator.of(context).pushAndRemoveUntil(
@@ -918,7 +1098,9 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     _signaling.onJoinFailed = null;
     _signaling.onIncomingCall = null;
     _signaling.onHeartbeatMessage = null;
-    
+    _signaling.onMonitorRenamed = null;
+    _signaling.onMonitorRemoved = null;
+
     super.dispose();
   }
 

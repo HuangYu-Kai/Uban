@@ -992,6 +992,11 @@ class ApiService {
     }
   }
 
+  /// ★ 2026-08-10 第二十輪：resolveMonitorSetup 失敗時的可讀錯誤訊息，
+  ///   供 monitor_pairing_screen 顯示具體原因（綁定碼不存在／已過期／連線失敗）。
+  ///   成功時會重置為 null；每次呼叫都會覆寫上一次的值。
+  static String? lastResolveError;
+
   static Future<Map<String, dynamic>?> resolveMonitorSetup(String code) async {
     try {
       final response = await http
@@ -1006,12 +1011,48 @@ class ApiService {
       
       final data = _safeDecode(response);
       if (data['status'] == 'success') {
+        lastResolveError = null;
         return data['data'];
       }
+
+      // ★ 2026-08-10 第二十輪：取出後端 HTTPException 的 detail（例如「綁定碼不存在」
+      //   或「綁定碼已過期」），讓 UI 能顯示具體原因而非統一的模糊訊息。
+      final dynamic msg = data['detail'] ?? data['message'];
+      lastResolveError =
+          msg != null ? msg.toString() : '伺服器錯誤（HTTP ${response.statusCode}）';
       return null;
     } catch (e) {
       debugPrint('⚠️ resolveMonitorSetup error: $e');
+      lastResolveError = '無法連線到後端，請確認網路狀態';
       return null;
+    }
+  }
+
+  /// ★ 2026-08-10 第二十輪（需求 1、5）：通知後端釋放目前 session，
+  ///   後端會據此註銷 FCM token，避免登出後仍收到上一個帳號的來電推播。
+  /// 對應後端 POST /api/pairing/session/release。
+  /// 任何網路例外都吞掉並回傳 false —— 絕不能讓後端呼叫失敗擋住本機登出流程。
+  static Future<bool> releaseSession({
+    required String fcmToken,
+    int? userId,
+    String? roomId,
+  }) async {
+    try {
+      final Map<String, dynamic> body = {'fcm_token': fcmToken};
+      if (userId != null) body['user_id'] = userId;
+      if (roomId != null) body['room_id'] = roomId;
+
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/pairing/session/release'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(body),
+          )
+          .timeout(_timeout);
+      return response.statusCode >= 200 && response.statusCode < 300;
+    } catch (e) {
+      debugPrint('⚠️ [ApiService] releaseSession error: $e');
+      return false;
     }
   }
 
@@ -1114,16 +1155,22 @@ class ApiService {
   }
 
   /// ★ 2026-08-04 第 7 項：移除一台監視機設備（含其 FCM token）。
-  /// DELETE /api/pairing/monitor_device?elder_id=...&device_name=...
+  /// DELETE /api/pairing/monitor_device?elder_id=...&device_name=...&user_id=...
+  ///
+  /// ★ 2026-08-10 第十九輪（D2）：後端補上授權，`user_id` 必須帶（呼叫端須為該
+  ///   長輩本人或已配對家屬），不符一律回 404。舊版沒有這個參數時後端零驗證，
+  ///   任何人知道 elder_id + device_name 就能刪別人家的監視機。
   static Future<bool> deleteMonitorDevice({
     required String elderId,
     required String deviceName,
+    int? userId,
   }) async {
     try {
       final uri = Uri.parse('$baseUrl/pairing/monitor_device').replace(
         queryParameters: {
           'elder_id': elderId,
           'device_name': deviceName,
+          if (userId != null) 'user_id': userId.toString(),
         },
       );
       final response = await http.delete(uri).timeout(_timeout);
@@ -1132,6 +1179,86 @@ class ApiService {
     } catch (e) {
       debugPrint('⚠️ deleteMonitorDevice error: $e');
       return false;
+    }
+  }
+
+  /// ★ 2026-08-10 第十九輪（A4）：以 HTTP 交叉驗證長輩名下的監視設備清單。
+  /// GET /api/pairing/monitor_devices?elder_id=...&user_id=...
+  ///
+  /// 回傳形狀與 Socket `elder-devices-update` **完全相同**（後端直接呼叫同一支
+  /// `_get_elder_devices_list`），每筆為 `{id, deviceName, deviceMode, isOnline,
+  /// appState, deviceId}`。比 Socket 事件多的好處：裝置只要完成過配對碼兌換
+  /// （後端 A2 已寫入 `monitor_device_binding`），即使從未成功 join 過，
+  /// 這裡也會回一筆 `isOnline: false` 的紀錄。
+  ///
+  /// 任何錯誤（含 404 無權）一律回**空陣列**，而呼叫端
+  /// （`family_main_screen.dart::_refreshMonitorDevicesViaHttp`）對空陣列直接
+  /// return——絕不因單次 HTTP 失敗就把既有的 Socket 清單清空。
+  ///
+  /// ⚠️ 非空時呼叫端是「後到者為準」整批覆蓋，**不是聯集**：需求 3 的
+  /// 「刪除監視機」與「監視機主動退出即移除」都需要清單能夠**變短**，
+  /// 聯集會讓已刪除的裝置永遠留在畫面上。
+  static Future<List<dynamic>> fetchMonitorDevices({
+    required String elderId,
+    required int userId,
+  }) async {
+    try {
+      final uri = Uri.parse('$baseUrl/pairing/monitor_devices').replace(
+        queryParameters: {
+          'elder_id': elderId,
+          'user_id': userId.toString(),
+        },
+      );
+      final response = await http.get(uri).timeout(_timeout);
+      final data = _safeDecode(response);
+      if (data['status'] != 'success') return [];
+      final devices = (data['data'] ?? const {})['devices'];
+      return devices is List ? devices : [];
+    } catch (e) {
+      debugPrint('⚠️ fetchMonitorDevices error: $e');
+      return [];
+    }
+  }
+
+  /// ★ 2026-08-10 第十九輪（D3）：重新命名一台監視設備。
+  /// PATCH /api/pairing/monitor_device
+  ///
+  /// 後端的 `device_id = crc32("elder_id|device_name")`，**改名即改身分**，
+  /// 因此後端會在同一次請求內同步更新 `monitor_device_binding`、
+  /// `user_fcm_token.device_name`、`cctv_feed_status.device_id` 與兩個記憶體字典，
+  /// 並對該裝置推 `monitor-renamed` 事件。
+  ///
+  /// 回傳後端的 data（含 `device_id`）；失敗回 null。
+  /// 撞名時後端回 **409**，此處一併吞成 null——呼叫端只需知道「沒成功」。
+  static Future<Map<String, dynamic>?> renameMonitorDevice({
+    required String elderId,
+    required int userId,
+    required String oldDeviceName,
+    required String newDeviceName,
+  }) async {
+    try {
+      final response = await http
+          .patch(
+            Uri.parse('$baseUrl/pairing/monitor_device'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'elder_id': elderId,
+              'user_id': userId,
+              'old_device_name': oldDeviceName,
+              'new_device_name': newDeviceName,
+            }),
+          )
+          .timeout(_timeout);
+      final data = _safeDecode(response);
+      if (data['status'] != 'success') {
+        debugPrint('⚠️ renameMonitorDevice 被拒: ${response.statusCode} $data');
+        return null;
+      }
+      final payload = data['data'];
+      return payload is Map ? Map<String, dynamic>.from(payload) : <String, dynamic>{};
+    } catch (e) {
+      debugPrint('⚠️ renameMonitorDevice error: $e');
+      return null;
     }
   }
 
@@ -1152,6 +1279,19 @@ class ApiService {
               'to_device_id': toDeviceId,
             }),
           )
+          .timeout(_timeout);
+      final data = _safeDecode(response);
+      if (data['status'] == 'success') {
+        final payload = data['data'];
+        return payload is Map ? Map<String, dynamic>.from(payload) : <String, dynamic>{};
+      }
+      return null;
+    } catch (e) {
+      debugPrint('⚠️ openAudioBridge error: $e');
+      return null;
+    }
+  }
+
   static Future<Map<String, dynamic>?> getElderMoodInsight(String elderId) async {
     try {
       final response = await http
@@ -1163,7 +1303,7 @@ class ApiService {
       }
       return null;
     } catch (e) {
-      debugPrint('⚠️ openAudioBridge error: $e');
+      debugPrint('⚠️ getElderMoodInsight error: $e');
       return null;
     }
   }
@@ -1181,6 +1321,9 @@ class ApiService {
     } catch (e) {
       debugPrint('⚠️ getElderActivityLogs error: $e');
       return [];
+    }
+  }
+
   /// ★ 2026-08-04 第 7 項：查詢某警報目前是否有有效的音頻橋。
   /// GET /api/alerts/audio/{alert_id}
   ///

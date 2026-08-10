@@ -6,6 +6,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../models/elder.dart';
 import '../../services/api_service.dart';
+import '../../services/session_manager.dart';
 import '../elder_profile_edit_screen.dart';
 import '../caregiver_pairing_screen.dart';
 import '../identification_screen.dart';
@@ -143,12 +144,8 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
           TextButton(
             onPressed: () async {
               Navigator.pop(dialogContext);
-              final prefs = await SharedPreferences.getInstance();
-              await prefs.remove('caregiver_id');
-              await prefs.remove('caregiver_name');
-              await prefs.remove('selected_elder_id');
-              await prefs.remove('selected_elder_name');
-              
+              await SessionManager.releaseSession();
+
               if (!mounted) return;
               Navigator.of(context).pushAndRemoveUntil(
                 MaterialPageRoute(builder: (_) => const IdentificationScreen()),
@@ -665,27 +662,36 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF59E0B).withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(12),
+              // ★ 2026-08-10 第二十輪（需求 2）：spaceBetween 的左側 Row 未包
+              //   Expanded，長輩名字一長就整條往右溢位（黃黑斜紋警示）。
+              Expanded(
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF59E0B).withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.auto_stories_rounded, color: Color(0xFFFCD34D), size: 24),
                     ),
-                    child: const Icon(Icons.auto_stories_rounded, color: Color(0xFFFCD34D), size: 24),
-                  ),
-                  const SizedBox(width: 10),
-                  Text(
-                    '📖 $name的人生故事膠囊',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                      color: const Color(0xFFFDE68A),
+                    const SizedBox(width: 10),
+                    Flexible(
+                      child: Text(
+                        '📖 $name的人生故事膠囊',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.notoSansTc(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                          color: const Color(0xFFFDE68A),
+                        ),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
+              const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
@@ -729,14 +735,19 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      st['title']!,
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                        color: const Color(0xFFFEF3C7),
+                    Expanded(
+                      child: Text(
+                        st['title']!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.notoSansTc(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFFFEF3C7),
+                        ),
                       ),
                     ),
+                    const SizedBox(width: 8),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
@@ -880,8 +891,7 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
           ),
           IconButton(
             onPressed: () async {
-              final prefs = await SharedPreferences.getInstance();
-              await prefs.clear();
+              await SessionManager.releaseSession();
               if (!context.mounted) return;
               Navigator.pushAndRemoveUntil(
                 context,

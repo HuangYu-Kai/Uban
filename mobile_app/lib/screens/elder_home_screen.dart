@@ -112,6 +112,8 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
 
     pendingAcceptedCall.addListener(_onPendingCallChanged);
     isMediaPlayingNotifier.addListener(_onMediaPlayingChanged);
+    // ★ 2026-08-10 第二十輪（需求 6）：語音喚醒總開關的即時生效。
+    wakeWordEnabledNotifier.addListener(_onWakeWordEnabledChanged);
     
     // 檢查是否有在背景接聽的通話初始化前就傳入的待接聽電話
     Future.delayed(const Duration(milliseconds: 500), () {
@@ -126,6 +128,8 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     debugPrint('📱 [WakeWord Emergency Protection] 系統狀態改變: $state - 保持全時背景與休眠緊急喚醒監聽');
+    // ★ 2026-08-10 第二十輪（需求 6）：關閉語音喚醒時，生命週期變化不再重啟麥克風。
+    if (!wakeWordEnabledNotifier.value) return;
     if (mounted && !_isAssistantShowing && !_wakeWordListening) {
       _safeRestartWakeWordListening('lifecycle');
     }
@@ -152,9 +156,32 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
               '嘎蛙';
         });
       }
+      // ★ 2026-08-10 第二十輪（需求 6）：先讀總開關再決定要不要初始化語音喚醒。
+      //   預設 false——這是使用者明確要求的行為（避免雜訊誤觸開麥克風／鏡頭）。
+      wakeWordEnabledNotifier.value =
+          prefs.getBool(kWakeWordEnabledKey) ?? false;
       _initWakeWordListener();
     } catch (e) {
       debugPrint('🤖 [_loadAssistantSettings Error] $e');
+    }
+  }
+
+  /// ★ 2026-08-10 第二十輪（需求 6）：設定頁切換總開關時即時生效，不必重開 App。
+  void _onWakeWordEnabledChanged() {
+    if (!mounted) return;
+    if (wakeWordEnabledNotifier.value) {
+      debugPrint('🎙️ [WakeWord] 使用者啟用語音喚醒，開始初始化');
+      _initWakeWordListener();
+    } else {
+      debugPrint('🔇 [WakeWord] 使用者關閉語音喚醒，停止監聽並取消看門狗');
+      _wakeWordWatchdogTimer?.cancel();
+      _wakeWordWatchdogTimer = null;
+      _wakeWordListening = false;
+      try {
+        _wakeWordStt.cancel();
+      } catch (e) {
+        debugPrint('⚠️ [WakeWord] 停止監聽失敗（忽略）: $e');
+      }
     }
   }
 
@@ -163,6 +190,14 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
   bool _isStartingListen = false;
 
   Future<void> _initWakeWordListener() async {
+    // ★ 2026-08-10 第二十輪（需求 6）：總開關關閉時完全不啟動語音喚醒。
+    //   注意這裡連 `Permission.microphone.request()` 都不呼叫——那個請求本身
+    //   就會讓系統把麥克風標記為使用中，是「打開 App 就一直開關麥克風」
+    //   使用者觀感的一部分。
+    if (!wakeWordEnabledNotifier.value) {
+      debugPrint('🔇 [WakeWord] 語音喚醒已關閉（wake_word_enabled=false），不初始化監聽');
+      return;
+    }
     try {
       final status = await Permission.microphone.request();
       if (!status.isGranted) {
@@ -224,6 +259,8 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
   /// 🐕 看門狗定時器：每 5 秒安全協調檢查，防止併發競態死鎖
   void _startWakeWordWatchdog() {
     _wakeWordWatchdogTimer?.cancel();
+    // ★ 2026-08-10 第二十輪（需求 6）：關閉時不啟動看門狗（第二道閘門）。
+    if (!wakeWordEnabledNotifier.value) return;
     _wakeWordWatchdogTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
       if (mounted && !isMediaPlayingNotifier.value && !_isAssistantShowing && !_isStartingListen && !_wakeWordStt.isListening) {
         debugPrint('🐕 [WakeWord Watchdog] 檢測到語音監聽完全停止，觸發安全重啟...');
@@ -234,6 +271,11 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
 
   /// 🛡️ 安全重啟協調器：帶有 Re-entrancy 互斥鎖與 Android cancel() 防併發死鎖
   Future<void> _safeRestartWakeWordListening([String reason = '']) async {
+    // ★ 2026-08-10 第二十輪（需求 6）：總開關是所有重啟路徑的共同閘門。
+    //   這個函式有五個呼叫端（init / onError / onStatus / 看門狗 / lifecycle /
+    //   媒體播放結束），漏掉任何一個都會讓麥克風又自己開起來，
+    //   所以閘門放在這裡而不是放在各呼叫端。
+    if (!wakeWordEnabledNotifier.value) return;
     if (isMediaPlayingNotifier.value || _isAssistantShowing || _isStartingListen || !mounted) {
       if (isMediaPlayingNotifier.value) {
         debugPrint('🛑 [WakeWord] 檢測到媒體正在播放中，暫停背景語音喚醒監聽 (觸發源: $reason)');
@@ -503,6 +545,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     isAppReady = false;
     pendingAcceptedCall.removeListener(_onPendingCallChanged);
     isMediaPlayingNotifier.removeListener(_onMediaPlayingChanged);
+    wakeWordEnabledNotifier.removeListener(_onWakeWordEnabledChanged);
     Signaling().onHeartbeatMessage = null;
     Signaling().onCallRequest = null;
     Signaling().onCancelCall = null;

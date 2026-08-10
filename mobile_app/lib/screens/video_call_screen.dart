@@ -26,6 +26,17 @@ class VideoCallScreen extends StatefulWidget {
   //   預設 false，維持所有現有建構點的行為完全不變；只有監控檢視入口會傳 true。
   final bool returnByPop;
 
+  /// ★ 2026-08-10 第十九輪（需求 2）：單向監控檢視模式。
+  ///
+  /// `true` 時本畫面只「看」對方、不送出自己的影像：不取視訊軌、不顯示本地
+  /// 預覽 PiP、隱藏鏡頭開關與前後鏡頭切換，只保留麥克風 / 擴音 / 掛斷 / 返回。
+  ///
+  /// ⚠️ **這是護欄 G8「`_isCameraOff` 宣告式初值必須為 false」的唯一明文例外**
+  /// （見 `CLAUDE_call-monitor.md` §7 G55）。預設 `false`，全專案**只有**家屬端
+  /// 「觀看 CCTV」那一個建構點可以傳 `true`；一般通話（含緊急通話）的鏡頭
+  /// 仍必須預設開啟。看到這個欄位不要以為它違反 G8 而刪掉。
+  final bool monitorViewOnly;
+
   const VideoCallScreen({
     super.key,
     required this.roomId,
@@ -37,6 +48,7 @@ class VideoCallScreen extends StatefulWidget {
     this.sendAcceptOnOpen = true,
     this.isVideoCall = true, // 預設視訊通話
     this.returnByPop = false,
+    this.monitorViewOnly = false,
   });
 
   @override
@@ -52,7 +64,16 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   // ★ 通話控制狀態
   bool _isMicMuted = false;
   bool _isCameraOff = false;  // 視訊房間預設開啟鏡頭
-  bool _isSpeakerOn = true;
+  /// ★ 2026-08-10 第二十輪（需求 9）：音量來源（聽筒／擴音）。
+  ///   規則：一般語音通話預設**聽筒**、視訊通話預設**擴音**；
+  ///   語音通話中途開啟鏡頭時自動切成擴音（見 [_toggleCamera]）。
+  ///   原本無條件 `= true` 又在 `_initCall` 裡寫死 `enableSpeakerphone(true)`，
+  ///   語音通話貼著耳朵講也是外放，長輩端很容易造成回授嘯叫。
+  late bool _isSpeakerOn;
+
+  /// 是否已因「語音通話中開啟鏡頭」自動切過一次擴音。
+  /// 只自動切一次，之後尊重使用者手動的選擇，不再覆蓋。
+  bool _speakerAutoSwitched = false;
   bool _isFrontCamera = true;
   bool _mediaInitialized = false;  // ★ 追蹤媒體是否已初始化
   bool _callConnecting = true;   // ★ 追蹤通話是否正在連線中
@@ -74,6 +95,11 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   @override
   void initState() {
     super.initState();
+    // ★ 2026-08-10 第二十輪（需求 9）：決定音量來源預設值。
+    //   視訊通話／緊急通話／監控檢視都是「放在面前看」的情境 → 擴音；
+    //   一般語音通話是「貼著耳朵講」 → 聽筒。
+    _isSpeakerOn =
+        widget.isVideoCall || widget.isEmergency || widget.monitorViewOnly;
     if (!kIsWeb && Platform.isAndroid) {
       Helper.setAndroidAudioConfiguration(AndroidAudioConfiguration.communication);
     }
@@ -170,17 +196,26 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     // ★ 初始化媒體：通話必須有音軌才能建立 WebRTC 連線
     // 我們先開啟媒體，但預設將鏡頭的軌道設為停用 (黑屏)，保護隱私
     try {
-      await _signaling.openUserMedia(_localRenderer);
+      // ★ 2026-08-10 第十九輪（需求 2）：單向監控檢視只取音訊軌。
+      //   刻意沿用既有的 openUserMedia 呼叫「位置」與時序（仍在 createOffer 之前
+      //   取得 localStream），只改 constraint——不可改成「不呼叫 openUserMedia」，
+      //   那會讓 localStream 為 null 而違反護欄「localStream 必須先於 createOffer 存在」，
+      //   且監控需要雙向語音，音訊軌一定要有。
+      await _signaling.openUserMedia(
+        _localRenderer,
+        videoEnabled: !widget.monitorViewOnly,
+      );
       _mediaInitialized = true;
       // ★ Fix E：語音通話（isVideoCall=false）預設關閉鏡頭，與發起端對稱；
       //   鏡頭按鈕仍可手動開啟（見 _toggleCamera），此處僅決定進房初始狀態。
-      if (!widget.isVideoCall && mounted) {
+      //   monitorViewOnly 時根本沒有視訊軌，同樣視為鏡頭關閉。
+      if ((!widget.isVideoCall || widget.monitorViewOnly) && mounted) {
         setState(() => _isCameraOff = true);
       }
       if (_signaling.localStream != null) {
         final videoTracks = _signaling.localStream!.getVideoTracks();
         for (var track in videoTracks) {
-          track.enabled = widget.isVideoCall;
+          track.enabled = widget.isVideoCall && !widget.monitorViewOnly;
         }
       }
     } catch (e) {
@@ -224,8 +259,9 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       debugPrint("🔌 [VideoCallScreen] Socket 已連線，重用現有連線 (room: ${widget.roomId})");
     }
 
-    // ★ 預設開啟揚聲器
-    _signaling.enableSpeakerphone(true);
+    // ★ 2026-08-10 第二十輪（需求 9）：套用 initState 決定的音量來源，
+    //   不再無條件開擴音（語音通話預設走聽筒）。
+    _signaling.enableSpeakerphone(_isSpeakerOn);
 
     if (widget.isIncomingCall && widget.sendAcceptOnOpen) {
       _signaling.sendCallAccept(widget.targetSocketId!, callId: widget.callId);
@@ -323,6 +359,21 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       }
     });
     debugPrint("📷 Camera ${_isCameraOff ? 'Off' : 'On'}");
+    _autoSwitchToSpeakerOnCameraOn();
+  }
+
+  /// ★ 2026-08-10 第二十輪（需求 9）：一般語音通話中途開啟鏡頭 → 自動切擴音。
+  ///   使用者一旦把鏡頭打開，手機就會從耳邊移開，此時仍走聽筒等於聽不到。
+  ///   只自動切一次（`_speakerAutoSwitched`），之後尊重使用者手動的選擇。
+  void _autoSwitchToSpeakerOnCameraOn() {
+    if (widget.isVideoCall) return; // 視訊通話本來就預設擴音
+    if (_isCameraOff) return;
+    if (_speakerAutoSwitched) return;
+    if (_isSpeakerOn) return;
+    _speakerAutoSwitched = true;
+    setState(() => _isSpeakerOn = true);
+    _signaling.enableSpeakerphone(true);
+    debugPrint('🔊 [VideoCall] 語音通話開啟鏡頭，音量來源自動切換為擴音');
   }
 
   // ★ 初始化媒體並打開攝像頭
@@ -342,6 +393,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
             }
           });
           debugPrint("📷 Camera initialized and turned On");
+          _autoSwitchToSpeakerOnCameraOn();
         }
       }
     } catch (e) {
@@ -366,6 +418,8 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
 
   // ★ 揚聲器切換
   void _toggleSpeaker() {
+    // 使用者手動選過之後就不再自動切換（需求 9）。
+    _speakerAutoSwitched = true;
     setState(() => _isSpeakerOn = !_isSpeakerOn);
     _signaling.enableSpeakerphone(_isSpeakerOn);
     debugPrint("🔊 Speaker ${_isSpeakerOn ? 'On' : 'Off'}");
@@ -692,6 +746,9 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
             ),
 
           // 3. 本地預覽 (PIP) — 鏡頭關閉時顯示圖標
+          // ★ 2026-08-10 第十九輪（需求 2）：單向監控檢視完全不顯示自己的畫面，
+          //   連「鏡頭已關閉」的佔位框都不要——家屬只是在看監視器，不是在通話。
+          if (!widget.monitorViewOnly)
           Positioned(
             right: 20,
             bottom: 220,  // ★ 從 140 改為 220，避免與按鈕重疊
@@ -749,7 +806,8 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
           ),
 
           // ★ 鏡頭切換提示 (PIP 右下角小圖標)
-          if (_mediaInitialized && !_isCameraOff)
+          // ★ 2026-08-10 第十九輪（需求 2）：監控檢視沒有 PiP，提示自然也不該出現。
+          if (!widget.monitorViewOnly && _mediaInitialized && !_isCameraOff)
             Positioned(
               right: 24,
               bottom: 224,  // ★ 與 PIP 位置同步（220 + 4）
@@ -782,11 +840,17 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
-                      // 揚聲器
+                      // 音量來源（擴音／聽筒）
+                      // ★ 2026-08-10 第二十輪（需求 9）：原本用 volume_up/volume_off，
+                      //   語意是「有聲／靜音」，使用者會誤以為按了會靜音。
+                      //   改為 volume_up（擴音）／phone_in_talk（聽筒），且關閉狀態
+                      //   不再用灰階——聽筒不是「停用」，兩態都是正常可用的來源。
                       _buildControlButton(
-                        icon: _isSpeakerOn ? Icons.volume_up : Icons.volume_off,
+                        icon: _isSpeakerOn
+                            ? Icons.volume_up
+                            : Icons.phone_in_talk,
                         onPressed: _toggleSpeaker,
-                        color: _isSpeakerOn ? Colors.white : Colors.white38,
+                        color: Colors.white,
                       ),
                       // 麥克風
                       _buildControlButton(
@@ -796,25 +860,35 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                         bgColor: _isMicMuted ? Colors.white24 : null,
                       ),
                       // 掛斷
-                      _buildControlButton(
-                        icon: Icons.call_end,
-                        onPressed: _safeHangUp,
-                        isEndCall: true,
-                      ),
+                      // ★ 2026-08-10 第二十輪（需求 3）：家屬端監控檢視不再顯示
+                      //   「掛電話」按鈕，只保留左上角的返回鍵。監控是單向觀看、
+                      //   不是一通「電話」，掛斷的隱喻本身就是錯的；而且返回鍵
+                      //   走的是 `returnByPop: true` 的既有離開路徑（護欄 G31 的
+                      //   唯一例外），兩個出口並存只會讓使用者選到錯的那個。
+                      if (!widget.monitorViewOnly)
+                        _buildControlButton(
+                          icon: Icons.call_end,
+                          onPressed: _safeHangUp,
+                          isEndCall: true,
+                        ),
                       // 鏡頭
-                      _buildControlButton(
-                        icon: _isCameraOff ? Icons.videocam_off : Icons.videocam,
-                        onPressed: _toggleCamera,
-                        color: _isCameraOff ? Colors.redAccent : Colors.white,
-                        bgColor: _isCameraOff ? Colors.white24 : null,
-                      ),
+                      // ★ 2026-08-10 第十九輪（需求 2）：單向監控只留麥克風／擴音／掛斷，
+                      //   兩個鏡頭類按鈕整組隱藏（見 CLAUDE_call-monitor.md §7 G55）。
+                      if (!widget.monitorViewOnly)
+                        _buildControlButton(
+                          icon: _isCameraOff ? Icons.videocam_off : Icons.videocam,
+                          onPressed: _toggleCamera,
+                          color: _isCameraOff ? Colors.redAccent : Colors.white,
+                          bgColor: _isCameraOff ? Colors.white24 : null,
+                        ),
                       // 翻轉鏡頭
-                      _buildControlButton(
-                        icon: Icons.cameraswitch,
-                        onPressed: (_mediaInitialized && !_isCameraOff) ? _switchCamera : null,
-                        color: (_mediaInitialized && !_isCameraOff) ? Colors.white : Colors.white24,
-                        bgColor: (_mediaInitialized && !_isCameraOff) ? null : Colors.white.withValues(alpha: 0.1),
-                      ),
+                      if (!widget.monitorViewOnly)
+                        _buildControlButton(
+                          icon: Icons.cameraswitch,
+                          onPressed: (_mediaInitialized && !_isCameraOff) ? _switchCamera : null,
+                          color: (_mediaInitialized && !_isCameraOff) ? Colors.white : Colors.white24,
+                          bgColor: (_mediaInitialized && !_isCameraOff) ? null : Colors.white.withValues(alpha: 0.1),
+                        ),
                     ],
                   ),
                 ),

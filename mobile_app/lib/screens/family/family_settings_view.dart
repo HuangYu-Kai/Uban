@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../services/api_service.dart';
 import '../../services/elder_manager.dart';
+import '../../services/session_manager.dart';
 import '../identification_screen.dart';
 import '../caregiver_pairing_screen.dart';
 import '../elder_profile_edit_screen.dart';
@@ -93,9 +94,7 @@ class _FamilySettingsViewState extends State<FamilySettingsView> {
           TextButton(
             onPressed: () async {
               Navigator.pop(dialogContext);
-              final prefs = await SharedPreferences.getInstance();
-              await prefs.remove('caregiver_id');
-              await prefs.remove('caregiver_name');
+              await SessionManager.releaseSession();
               if (!mounted) return;
               Navigator.of(context).pushAndRemoveUntil(
                 MaterialPageRoute(builder: (_) => const IdentificationScreen()),

@@ -9,6 +9,9 @@ import 'family/family_interaction_tab.dart';
 import 'family/family_data_tab.dart';
 import 'family/alert_center_screen.dart';
 import 'family/subscription_test_screen.dart';
+// ⚠️ 這行 import 在分支整合時遺失（:798 有 const FamilySubscriptionScreen() 卻無 import），
+//    2026-08-10 第十九輪補回。
+import 'family/family_subscription_screen.dart';
 import '../models/elder.dart';
 import '../services/elder_manager.dart';
 import '../services/signaling.dart';
@@ -46,12 +49,40 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   Elder? _currentElder;
   List<Elder> _elders = [];
   bool _isElderOnline = false;
+
+  /// 長輩端「第一台在線設備」的 socket id，由 `_applyDeviceList()` 維護。
+  /// 撥打通話時當作 `VideoCallScreen.targetSocketId`，讓 SDP 精準送達而非靠房間廣播。
+  ///
+  /// ⚠️ 這個欄位在分支整合時連同宣告一起遺失（HEAD 上只剩三處賦值、無宣告，
+  ///    整個檔案無法編譯），2026-08-10 第十九輪補回。
+  /// 🚨 跌倒警報要開哪一台監視機時**不可**用它——那要用該裝置自己的 `id`，
+  ///    見 `_presentCctvAlert()` 內的說明。
+  String? _elderSocketId;
   Timer? _deviceRefreshTimer;
   // ★ 2026-08-05 第十七輪：原本的 _onlineStateDebounceTimer / _pendingOnlineState
   //   是「每收到事件就重排」的雙向 debounce，週期與輪詢週期（2500ms）相等，
   //   兩者互相取消導致狀態長期停滯不提交。改為 _offlineConfirmTimer：
   //   僅在「上線→離線」方向做一次性確認，見 onElderDevicesUpdate 內的說明。
   Timer? _offlineConfirmTimer;
+  // ★ 2026-08-10 第十九輪（A4）：設備清單的 HTTP 交叉驗證輪詢（10 秒）。
+  //   與上面 2.5 秒的 Socket 輪詢**併行**、互為備援：
+  //   - Socket 斷線（切網路／進背景被凍結／後端重啟）時清單不會停在舊值；
+  //   - 剛用配對碼綁定、尚未成功 join 的離線監視機只存在於後端階段 0
+  //     （`monitor_device_binding`），只有這條 HTTP 路徑撈得到。
+  //   週期刻意取 10 秒（非 2.5 秒的倍數附近）：既不與 Socket 輪詢同步打點，
+  //   也不至於讓「監視機主動退出」的移除延遲到使用者有感。
+  Timer? _monitorHttpTimer;
+
+  // ★ 2026-08-10 第十九輪（E）：dispose 時要把自己掛在 Signaling **單例**上的
+  //   來電 callback 收回，否則 closure 會一直持有已 dispose 的 State。
+  //   但**不能無條件設 null**：`_goHomeAfterCall()` 走的是 `pushAndRemoveUntil`，
+  //   Flutter 會先建好新的 FamilyMainScreen（其 initState 已重新註冊 callback）
+  //   才 dispose 舊的——無條件 null 會把「新的」handler 一起清掉，家屬端從此
+  //   前景收不到來電。因此保留自己那份 closure 的參考，dispose 時只在
+  //   「單例上掛的仍是我這一份」時才清除（identical 比對）。
+  CallRequestCallback? _ownCallRequest;
+  CallRequestCallback? _ownEmergencyCall;
+  CallRequestCallback? _ownCancelCall;
 
   // ★ 移植自 family_dashboard_view.dart：監控裝置清單、CCTV 警報、訂閱層級
   //   （型別對齊該檔實際宣告：_monitorDevices 為 List<dynamic>、_tierLevel 為 String）
@@ -124,6 +155,15 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
       _signaling.sendGetElderDevices('comm_elder_$elderIdStr');
       debugPrint('🔄 [Device Refresh] 輪詢長輩設備狀態 (elder_id=$elderIdStr)');
     });
+
+    // ★ 2026-08-10 第十九輪（A4）：HTTP 交叉驗證，不依賴 socket 是否還活著。
+    //   先立即打一次，避免使用者剛配對完還要等滿 10 秒才看到裝置。
+    _monitorHttpTimer?.cancel();
+    _refreshMonitorDevicesViaHttp();
+    _monitorHttpTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      if (!mounted) return;
+      _refreshMonitorDevicesViaHttp();
+    });
   }
 
   Future<void> _loadElderAndConnect() async {
@@ -195,21 +235,23 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
 
   void _setupSignalingCallbacks() {
     // 監聽來電（長輩打給家屬）
-    _signaling.onCallRequest = (roomId, senderId, callId, [senderName]) {
+    _ownCallRequest = (roomId, senderId, callId, [senderName]) {
       if (!mounted) return;
       debugPrint('📞 [FamilyMainScreen] 收到來電: room=$roomId, sender=$senderId, callId=$callId, senderName=$senderName');
       _showIncomingCallDialog(roomId, senderId, callId, callerName: senderName);
     };
+    _signaling.onCallRequest = _ownCallRequest;
 
     // 監聽緊急來電
-    _signaling.onEmergencyCall = (roomId, senderId, callId, [senderName]) {
+    _ownEmergencyCall = (roomId, senderId, callId, [senderName]) {
       if (!mounted) return;
       debugPrint('🚨 [FamilyMainScreen] 緊急來電: room=$roomId, senderName=$senderName');
       _showIncomingCallDialog(roomId, senderId, callId, isEmergency: true, callerName: senderName);
     };
+    _signaling.onEmergencyCall = _ownEmergencyCall;
 
     // 監聽取消呼叫
-    _signaling.onCancelCall = (roomId, senderId, callId, [senderName]) {
+    _ownCancelCall = (roomId, senderId, callId, [senderName]) {
       if (!mounted) return;
       debugPrint('🔕 [FamilyMainScreen] 來電取消: room=$roomId');
       if (_isIncomingCallDialogOpen && Navigator.canPop(context)) {
@@ -217,6 +259,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
         _isIncomingCallDialogOpen = false;
       }
     };
+    _signaling.onCancelCall = _ownCancelCall;
 
     // ★ 2026-07-30 Task 2：監聽長輩被解綁事件，即時更新 UI，避免黑屏。
     // ★ B1 修復（2026-08-04）：原本用 _signaling.socket?.on(...) 直接掛在這裡，
@@ -231,7 +274,19 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     _signaling.onElderDevicesUpdate = (devices) {
       if (!mounted) return;
       debugPrint('📡 [FamilyMainScreen] 收到長輩設備狀態更新: $devices');
+      _applyDeviceList(devices);
+    };
+  }
 
+  /// ★ 2026-08-10 第十九輪（需求 5 / A4）：設備清單的**唯一**套用點。
+  /// Socket 的 `elder-devices-update` 與新的 10 秒 HTTP 交叉驗證
+  /// （`_refreshMonitorDevicesViaHttp`）都走這裡——兩者呼叫的是後端同一支
+  /// `_get_elder_devices_list()`，形狀與內容完全一致，因此以「後到者為準」
+  /// 覆蓋，而**不是**單調聯集。
+  ///
+  /// ⚠️ 不要改成聯集：需求 3「監視機主動退出監控模式要從家屬端清單移除」
+  /// 與卡片上的刪除功能都仰賴清單能夠**變短**，聯集會讓已刪除的裝置永遠留著。
+  void _applyDeviceList(List<dynamic> devices) {
       // ★ 2026-08-05 第十七輪：原本的 debounce 每收到一個事件就 cancel + 重排 2500ms，
       //   而輪詢週期也正好是 2500ms（_startDeviceRefreshTimer）、後端還會廣播給房內所有
       //   家屬 socket，於是 debounce 幾乎永遠在 fire 之前就被下一個事件取消 →
@@ -270,7 +325,66 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
           _elderSocketId = null;
         });
       });
-    };
+  }
+
+  /// ★ 2026-08-10 第十九輪（需求 5 / A4）：每 10 秒以 HTTP 交叉驗證設備清單。
+  ///
+  /// 為什麼需要它：Socket 的 `elder-devices-update` 只送給**房內**的 socket，
+  /// 家屬端 socket 一斷（切網路、進背景被凍結、後端重啟）清單就永遠停在舊值。
+  /// 這條 HTTP 路徑不依賴 socket，且呼叫的是後端同一支 `_get_elder_devices_list()`，
+  /// 所以能補上剛配對完、尚未 join 成功的離線監視機（後端階段 0）。
+  ///
+  /// 失敗一律安靜略過——這是補強路徑，不能因為後端暫時不可用就把清單清空。
+  Future<void> _refreshMonitorDevicesViaHttp() async {
+    final elder = _currentElder;
+    final userId = widget.userId;
+    if (elder == null) return;
+    final String elderIdStr = elder.elderId ?? elder.id.toString();
+    try {
+      final devices = await ApiService.fetchMonitorDevices(
+        elderId: elderIdStr,
+        userId: userId,
+      );
+      if (!mounted || devices.isEmpty) return;
+      // 切換長輩的競態：回應回來時已經不是同一位長輩就丟棄
+      final current = _currentElder;
+      if (current == null ||
+          (current.elderId ?? current.id.toString()) != elderIdStr) {
+        return;
+      }
+      debugPrint('🔁 [Device HTTP] 交叉驗證取得 ${devices.length} 台設備 (elder_id=$elderIdStr)');
+      _applyDeviceList(devices);
+    } catch (e) {
+      debugPrint('⚠️ [Device HTTP] 交叉驗證失敗（略過）: $e');
+    }
+  }
+
+  /// ★ 2026-08-10 第十九輪（需求 4）：一般視訊通話的**單一**發起點。
+  ///
+  /// 與 `family_interaction_tab.dart` 的「一般視訊通話」使用完全相同的參數
+  /// （`comm_elder_<rawId>` + `targetSocketId` + `autoStart` + 非緊急）。
+  /// 首頁分頁的「開始撥號」透過 `FamilyHomeTab.onStartVideoCall` 注入這裡，
+  /// 避免各分頁各自拼一份房號／目標邏輯而互相漂移。
+  void _startNormalVideoCall() {
+    final elder = _currentElder;
+    if (elder == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('尚未選擇長輩，無法撥打')),
+      );
+      return;
+    }
+    final String rawId = elder.elderId ?? elder.id.toString();
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => VideoCallScreen(
+          roomId: 'comm_elder_$rawId',
+          targetSocketId: _elderSocketId,
+          autoStart: true,
+          isEmergency: false,
+        ),
+      ),
+    );
   }
 
   /// ★ B1（2026-08-04）：'elder-unbound' 事件的實際處理邏輯，從原本直接掛在
@@ -524,6 +638,13 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                         autoStart: true,
                         // 從彈窗進入的監控檢視同樣用 pop() 返回本頁
                         returnByPop: true,
+                        // ★ 2026-08-10 第十九輪（需求 2）：這裡與互動分頁的
+                        //   「觀看 CCTV」是同一種單向監控檢視，只是入口不同
+                        //   （跌倒警報彈窗）。少了這個旗標會變成同一個功能
+                        //   從不同入口進去行為不一樣：這條路徑仍會開自己的
+                        //   鏡頭、仍有鏡頭按鈕。CCTV 檢視的建構點只有這兩處，
+                        //   兩處都必須傳 true（護欄 G55）。
+                        monitorViewOnly: true,
                       ),
                     ),
                   );
@@ -923,7 +1044,13 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                 ),
               ),
               const SizedBox(width: 12),
-              Text(isEmergency ? '🚨 緊急來電' : '📞 長輩來電'),
+              Flexible(
+                child: Text(
+                  isEmergency ? '🚨 緊急來電' : '📞 長輩來電',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             ],
           ),
           content: Text(
@@ -1113,12 +1240,27 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     WidgetsBinding.instance.removeObserver(this);
     _deviceRefreshTimer?.cancel();
     _offlineConfirmTimer?.cancel();
+    _monitorHttpTimer?.cancel();
     // ★ 2026-08-05 第十七輪：離開畫面時務必收掉警報朗讀與 wakelock，
     //   否則 TTS 會繼續唸完、螢幕也會一直亮著。
     _alertTts?.stop();
     WakelockPlus.disable();
     pendingAcceptedCall.removeListener(_onPendingCallChanged);
+    // ★ 2026-08-10 第十九輪（E）：原本只清 onElderDevicesUpdate，
+    //   onCallRequest / onEmergencyCall / onCancelCall 三個覆寫留在 Signaling
+    //   singleton 上（Signaling 是全域單例，不會隨本畫面銷毀），closure 持續
+    //   持有已 dispose 的 State。
+    //   ⚠️ 只清「還是自己那一份」的，理由見欄位宣告處的 pushAndRemoveUntil 說明。
     _signaling.onElderDevicesUpdate = null;
+    if (identical(_signaling.onCallRequest, _ownCallRequest)) {
+      _signaling.onCallRequest = null;
+    }
+    if (identical(_signaling.onEmergencyCall, _ownEmergencyCall)) {
+      _signaling.onEmergencyCall = null;
+    }
+    if (identical(_signaling.onCancelCall, _ownCancelCall)) {
+      _signaling.onCancelCall = null;
+    }
     super.dispose();
   }
 
@@ -1162,12 +1304,19 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                       ),
                     ),
                     const SizedBox(width: 10),
-                    Text(
-                      _currentElder?.displayName ?? '',
-                      style: GoogleFonts.notoSansTc(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w900,
-                        fontSize: 22,
+                    // ★ 2026-08-10 第二十輪（需求 2）：長輩名字長度不可控，
+                    //   這條 AppBar 標題列出現在家屬端每一頁的最上方，
+                    //   不包 Flexible 就會整條往右溢出（黃黑斜紋 RenderFlex 警示）。
+                    Flexible(
+                      child: Text(
+                        _currentElder?.displayName ?? '',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.notoSansTc(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 22,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 6),
@@ -1255,6 +1404,9 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
           FamilyHomeTab(
             currentElder: _currentElder,
             isElderOnline: _isElderOnline,
+            // ★ 2026-08-10 第十九輪（需求 4）：首頁「開始撥號」接回真正的通話路徑，
+            //   與互動分頁的「一般視訊通話」完全同一組參數（含 targetSocketId）。
+            onStartVideoCall: _startNormalVideoCall,
             onNavigateToAlerts: () {
               if (_currentElder != null) {
                 Navigator.push(
@@ -1278,6 +1430,13 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
             tierDisplayName: _tierDisplayName,
             tierLevel: _tierLevel,
             userId: widget.userId,
+            // ★ 2026-08-10 第十九輪（需求 4）：撥打通話時要帶目標 socket。
+            elderSocketId: _elderSocketId,
+            // ★ 2026-08-10 第十九輪（需求 3）：卡片刪除／改名後立即重新整理。
+            onDevicesChanged: () {
+              _refreshMonitorDevicesViaHttp();
+              _loadSubscriptionTier();
+            },
           ),
           FamilyDataTab(
             currentElder: _currentElder,

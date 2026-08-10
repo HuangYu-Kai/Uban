@@ -7,6 +7,30 @@ String? appRole;
 /// ★ 全域媒體播放狀態通知：當有 YouTube / 新聞 / TTS 播放時設為 true，背景 WakeWord 語音喚醒暫停監聽，徹底防範 Android 語音焦點競爭跳針
 ValueNotifier<bool> isMediaPlayingNotifier = ValueNotifier(false);
 
+/// ★ 2026-08-10 第二十輪（需求 6）：長輩端「全時語音喚醒詞」總開關。
+///
+/// 使用者回報「打開 App 後麥克風與攝像頭不斷地開啟與關閉」。追下去的根因是
+/// `elder_home_screen.dart` 的常駐 `SpeechToText` 監聽——它被設計成**永不停止**：
+///   - `onError` → 600ms 後重啟
+///   - `onStatus` 收到 `done` / `notListening` → 400ms 後重啟
+///   - 5 秒週期的看門狗發現沒在聽 → 重啟
+///   - 每一次 `didChangeAppLifecycleState`（含通知列下拉這種小事）→ 重啟
+///   - 媒體播放結束 → 重啟
+/// 每次重啟都是一次麥克風 acquire/release，系統的麥克風指示燈於是不停閃爍，
+/// 而這個 App 的核心是「環繞長輩語音操作」，環境雜音又會不斷觸發誤判重啟。
+///
+/// 預設 **false（關閉）**，由長輩端設定頁的開關手動啟用。
+/// 關閉時完全不初始化 STT、不請求麥克風權限、不啟動看門狗——
+/// 不是「啟動後再停掉」，而是根本不開始。
+///
+/// 這個 notifier 讓設定頁的切換能即時生效，不必重開 App；
+/// 持久化鍵位為 [kWakeWordEnabledKey]，屬於「與帳號無關的裝置偏好」，
+/// 因此**刻意不列入** `SessionManager._sessionKeys`，登出不會被清掉。
+ValueNotifier<bool> wakeWordEnabledNotifier = ValueNotifier(false);
+
+/// [wakeWordEnabledNotifier] 的 SharedPreferences 鍵位。
+const String kWakeWordEnabledKey = 'wake_word_enabled';
+
 /// ★ 2026-07-18：來電有效期（毫秒）。與後端 socket_app.py 的 expires_at/FCM ttl
 ///   以及 CallKit `duration` 三者必須一致，否則會出現「通知還在響但接聽被判過期」。
 /// ★ 2026-07-20：有效期 45s→120s，與後端 socket_app.py expires_at/FCM ttl 同步。

@@ -23,6 +23,15 @@ class FamilyInteractionTab extends StatefulWidget {
   final String tierLevel;
   final int? userId;
 
+  /// ★ 2026-08-10 第十九輪（需求 4）：長輩通訊機的 socket id，由
+  /// `FamilyMainScreen._elderSocketId` 維護。撥打一般／緊急通話時必須帶上，
+  /// 否則後端只能靠房間廣播猜目標，與舊版 `family_dashboard_view` 行為不一致。
+  final String? elderSocketId;
+
+  /// ★ 2026-08-10 第十九輪（需求 3）：卡片上刪除／改名成功後通知父層重新整理
+  /// 設備清單與訂閱用量。
+  final VoidCallback? onDevicesChanged;
+
   const FamilyInteractionTab({
     super.key,
     required this.currentElder,
@@ -33,6 +42,8 @@ class FamilyInteractionTab extends StatefulWidget {
     this.tierDisplayName = '一般會員',
     this.tierLevel = 'free',
     this.userId,
+    this.elderSocketId,
+    this.onDevicesChanged,
   });
 
   @override
@@ -45,10 +56,24 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
   List<Map<String, dynamic>> _reminders = [];
   bool _isLoadingReminders = false;
 
+  // ★ 2026-08-04 第 7 項：跌倒警報的語音橋狀態。
+  // ⚠️ 這三行宣告在分支整合時遺失（HEAD 上有 11 處使用卻無宣告，整個檔案無法編譯），
+  //    2026-08-10 第十九輪補回。
+  /// 已查過語音橋的 alert_id——同一筆只查一次，失敗也不重試（避免網路問題洗版）。
+  final Set<int> _audioBridgeChecked = {};
+  /// 正在開通語音橋的 alert_id，用來把按鈕切成 loading 並防連點。
+  final Set<int> _audioBridgePending = {};
+  /// alert_id → 語音橋到期時間字串（後端回傳的 `expire_at` 原文）。
+  final Map<int, String> _audioBridgeExpire = {};
+
+  // ⚠️ initState / didUpdateWidget 在分支整合時各被複製成兩份
+  //    （第二份原本在 _buildCatChip 之後），Dart 不允許重複定義。
+  //    2026-08-10 第十九輪合併為一份，兩邊的副作用都保留。
   @override
   void initState() {
     super.initState();
     _fetchReminders();
+    _syncAudioBridgeForAlerts();
   }
 
   @override
@@ -57,6 +82,10 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
     if (widget.currentElder?.id != oldWidget.currentElder?.id ||
         widget.currentElder?.elderId != oldWidget.currentElder?.elderId) {
       _fetchReminders();
+    }
+    // 新警報進來時才查一次語音橋狀態（_audioBridgeChecked 保證同一 alert 只查一次）
+    if (widget.activeAlerts.length != oldWidget.activeAlerts.length) {
+      _syncAudioBridgeForAlerts();
     }
   }
 
@@ -413,21 +442,6 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
     );
   }
 
-  @override
-  void initState() {
-    super.initState();
-    _syncAudioBridgeForAlerts();
-  }
-
-  @override
-  void didUpdateWidget(covariant FamilyInteractionTab oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // 新警報進來時才查一次語音橋狀態（_audioBridgeChecked 保證同一 alert 只查一次）
-    if (widget.activeAlerts.length != oldWidget.activeAlerts.length) {
-      _syncAudioBridgeForAlerts();
-    }
-  }
-
   /// ★ 2026-08-04 第 7 項：為尚未查過的警報查詢語音橋狀態。
   /// 任何一筆查詢失敗都只略過該筆，不影響其餘警報，也不彈任何錯誤給使用者——
   /// 語音權限是輔助功能，不能讓它的網路問題干擾警報本身的顯示。
@@ -704,6 +718,9 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                       MaterialPageRoute(
                         builder: (context) => VideoCallScreen(
                           roomId: 'comm_elder_$rawId',
+                          // ★ 2026-08-10 第十九輪（需求 4）：補回舊版一直帶著的
+                          //   targetSocketId，避免 SDP 只能靠房間廣播找對象。
+                          targetSocketId: widget.elderSocketId,
                           autoStart: true,
                           isEmergency: false,
                         ),
@@ -725,6 +742,8 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                       MaterialPageRoute(
                         builder: (context) => VideoCallScreen(
                           roomId: 'comm_elder_$rawId',
+                          // ★ 2026-08-10 第十九輪（需求 4）：同上，緊急通話也要帶。
+                          targetSocketId: widget.elderSocketId,
                           autoStart: true,
                           isEmergency: true,
                         ),
@@ -1383,123 +1402,29 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: const Icon(
-    return Container(
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF0F172A), Color(0xFF1E293B)],
-        ),
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3), width: 1.2),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF10B981).withValues(alpha: 0.08),
-            blurRadius: 20,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(28),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 14),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF10B981).withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.3)),
-                    ),
-                    child: const Icon(
-                      Icons.videocam_off_rounded,
-                      color: Color(0xFF34D399),
-                      size: 22,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    '遠端視訊監控',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 19,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            // 仿真監控鏡頭畫面佔位符
-            Container(
-              height: 220,
-              width: double.infinity,
-              color: const Color(0xFF0F172A),
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  // 網格底紋模擬數位相機
-                  Opacity(
-                    opacity: 0.1,
-                    child: GridPaper(
-                      color: Colors.white,
-                      divisions: 1,
-                      subdivisions: 1,
-                      interval: 40,
-                      child: Container(),
-                    ),
-                  ),
-                  // REC 圖示
-                  Positioned(
-                    top: 14,
-                    left: 18,
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 10,
-                          height: 10,
-                          decoration: const BoxDecoration(
-                            color: Color(0xFFEF4444),
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'STANDBY',
-                          style: GoogleFonts.inter(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 1.0,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  // 中間佔位文字
-                  Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
                         Icons.videocam_off_rounded,
                         color: Color(0xFF10B981),
                         size: 22,
                       ),
                     ),
                     const SizedBox(width: 12),
-                    Text(
-                      '遠端視訊監控',
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        color: const Color(0xFF0F172A),
+                    // ★ 2026-08-10 第二十輪（需求 2）：原本是 Text + Spacer，
+                    //   標題不可壓縮；一旦出現「N 警報」徽章，
+                    //   標題 + 兩個徽章的總寬就超過卡片內寬 → 整條往右溢位。
+                    //   改成 Expanded 後視覺位置完全相同（Text 在 Expanded 內靠左），
+                    //   但空間不足時會自行縮短而非溢出。
+                    Expanded(
+                      child: Text(
+                        '遠端視訊監控',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.notoSansTc(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFF0F172A),
+                        ),
                       ),
                     ),
-                    const Spacer(),
                     // ★ 移植自 family_dashboard_view.dart 第 1280-1303 行：活躍警報計數 badge
                     if (widget.activeAlerts.isNotEmpty)
                       Container(
@@ -1764,6 +1689,10 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                           // ★ 2026-08-05 第十七輪：CCTV 監控檢視改用 pop() 返回本頁
                           //   （互動分頁），不再整個重建 FamilyMainScreen。
                           returnByPop: true,
+                          // ★ 2026-08-10 第十九輪（需求 2）：單向監控——不開自己的
+                          //   鏡頭、不顯示本地預覽、不給鏡頭類按鈕，只留麥克風。
+                          //   全專案唯一可以傳 true 的地方（見 §7 G55）。
+                          monitorViewOnly: true,
                         ),
                       ),
                     );
@@ -1783,7 +1712,168 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
               ),
             ),
           ),
+          // ★ 2026-08-10 第十九輪（需求 3）：家屬端也能刪除監視機與改名。
+          //   離線裝置同樣要能操作（離線殘影正是最需要被刪掉的情況）。
+          PopupMenuButton<String>(
+            tooltip: '管理監視機',
+            icon: Icon(Icons.more_vert_rounded, color: Colors.grey.shade500),
+            onSelected: (value) {
+              if (value == 'rename') {
+                _showRenameMonitorDeviceDialog(name.toString());
+              } else if (value == 'delete') {
+                _showDeleteMonitorDeviceDialog(name.toString());
+              }
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem<String>(
+                value: 'rename',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.drive_file_rename_outline_rounded),
+                  title: Text('重新命名'),
+                ),
+              ),
+              PopupMenuItem<String>(
+                value: 'delete',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.delete_outline_rounded, color: Colors.red),
+                  title: Text('刪除監視機', style: TextStyle(color: Colors.red)),
+                ),
+              ),
+            ],
+          ),
         ],
+      ),
+    );
+  }
+
+  /// ★ 2026-08-10 第十九輪（需求 3）：取得目前長輩的原始 elder_id。
+  /// 與 `_buildMonitorDeviceCard` 產生 `monitorRoomId` 的來源一致。
+  String? get _rawElderId {
+    final elder = widget.currentElder;
+    if (elder == null) return null;
+    return elder.elderId ?? elder.id.toString();
+  }
+
+  /// ★ 2026-08-10 第十九輪（需求 3）：從卡片直接刪除監視機。
+  Future<void> _showDeleteMonitorDeviceDialog(String deviceName) async {
+    final elderId = _rawElderId;
+    final userId = widget.userId;
+    if (elderId == null || userId == null) {
+      _toast('缺少長輩或使用者資訊，無法刪除');
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('確認刪除'),
+        content: Text('確定要移除監視機「$deviceName」嗎？\n該設備將被登出並停止推送畫面。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red.shade700),
+            child: const Text('刪除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final ok = await ApiService.deleteMonitorDevice(
+      elderId: elderId,
+      deviceName: deviceName,
+      userId: userId,
+    );
+    if (!mounted) return;
+    if (ok) {
+      _toast('已刪除監視機「$deviceName」');
+      // 後端刪除後會廣播 elder-devices-update；這裡再請父層主動刷新一次，
+      // 避免監視機已離線（收不到踢除）時清單留著殘影。
+      widget.onDevicesChanged?.call();
+    } else {
+      _toast('刪除失敗，請稍後再試');
+    }
+  }
+
+  /// ★ 2026-08-10 第十九輪（需求 3）：從卡片重新命名監視機。
+  /// 後端的 device_id 由名稱 crc32 導出（`services/monitor_identity.py`），
+  /// 改名即改身分，所以一律走 `PATCH /api/pairing/monitor_device` 由後端
+  /// 一次更新所有以名稱／id 為鍵的儲存（見 §7 G57），不要在前端自行拼湊。
+  Future<void> _showRenameMonitorDeviceDialog(String oldName) async {
+    final elderId = _rawElderId;
+    final userId = widget.userId;
+    if (elderId == null || userId == null) {
+      _toast('缺少長輩或使用者資訊，無法重新命名');
+      return;
+    }
+
+    final controller = TextEditingController(text: oldName);
+    final newName = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('重新命名監視機'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLength: 40,
+          decoration: const InputDecoration(
+            labelText: '監視機名稱',
+            hintText: '例如：客廳、房間',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            onPressed: () =>
+                Navigator.pop(dialogContext, controller.text.trim()),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF59B294),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('儲存'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+
+    if (!mounted) return;
+    if (newName == null || newName.isEmpty || newName == oldName) return;
+
+    final result = await ApiService.renameMonitorDevice(
+      elderId: elderId,
+      userId: userId,
+      oldDeviceName: oldName,
+      newDeviceName: newName,
+    );
+    if (!mounted) return;
+    if (result != null) {
+      _toast('已將「$oldName」改名為「$newName」');
+      widget.onDevicesChanged?.call();
+    } else {
+      _toast('重新命名失敗，名稱可能已被使用');
+    }
+  }
+
+  void _toast(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
   }

@@ -423,11 +423,15 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
             children: [
               Icon(Icons.badge_outlined, size: 18, color: Colors.grey[600]),
               const SizedBox(width: 6),
-              Text(
-                widget.elderId == null
-                    ? '測試 User ID（未綁定長輩）'
-                    : '綁定長輩：${widget.elderName ?? widget.elderId}',
-                style: GoogleFonts.notoSansTc(fontSize: 13, color: Colors.grey[600]),
+              Expanded(
+                child: Text(
+                  widget.elderId == null
+                      ? '測試 User ID（未綁定長輩）'
+                      : '綁定長輩：${widget.elderName ?? widget.elderId}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.notoSansTc(fontSize: 13, color: Colors.grey[600]),
+                ),
               ),
             ],
           ),

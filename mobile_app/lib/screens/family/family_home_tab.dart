@@ -12,11 +12,18 @@ class FamilyHomeTab extends StatefulWidget {
   final bool isElderOnline;
   final VoidCallback? onNavigateToAlerts;
 
+  /// ★ 2026-08-10 第十九輪（需求 4）：「撥打電話聊聊 → 開始撥號」的實際動作。
+  /// 分支整合後這顆按鈕只剩一個 SnackBar、完全不會撥號；改由父層
+  /// `FamilyMainScreen` 注入與互動分頁同一條 `VideoCallScreen` 路徑
+  /// （帶 `targetSocketId`），避免這裡再自行拼一份房號邏輯而漂移。
+  final VoidCallback? onStartVideoCall;
+
   const FamilyHomeTab({
     super.key,
     this.currentElder,
     this.isElderOnline = false,
     this.onNavigateToAlerts,
+    this.onStartVideoCall,
   });
 
   @override
@@ -233,9 +240,13 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
           children: [
             const Icon(Icons.auto_stories_rounded, color: Color(0xFFF59E0B)),
             const SizedBox(width: 8),
-            Text(
-              '🗣️ AI 語音陪伴對話紀錄 ($timeStr)',
-              style: GoogleFonts.notoSansTc(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800),
+            Expanded(
+              child: Text(
+                '🗣️ AI 語音陪伴對話紀錄 ($timeStr)',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.notoSansTc(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800),
+              ),
             ),
           ],
         ),
@@ -586,12 +597,16 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                   children: [
                     Row(
                       children: [
-                        Text(
-                          name,
-                          style: GoogleFonts.notoSansTc(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.white,
+                        Flexible(
+                          child: Text(
+                            name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.notoSansTc(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.white,
+                            ),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -727,7 +742,11 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
+              // ★ 2026-08-10 第二十輪（需求 2）：spaceBetween 的左側 Row 未包
+              //   Expanded，右側情緒徽章的 $moodTitle 由 AI 產生、長度不可控，
+              //   兩邊相加超過寬度就整條往右溢位。
+              Expanded(
+                child: Row(
                 children: [
                   Container(
                     padding: const EdgeInsets.all(10),
@@ -746,56 +765,75 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                     child: const Icon(Icons.psychology_rounded, color: Colors.white, size: 24),
                   ),
                   const SizedBox(width: 12),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'AI 情緒氣象台',
-                        style: GoogleFonts.notoSansTc(
-                          fontSize: 19,
-                          fontWeight: FontWeight.w900,
-                          color: Colors.white,
-                          letterSpacing: 0.5,
+                  Flexible(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'AI 情緒氣象台',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.notoSansTc(
+                            fontSize: 19,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                            letterSpacing: 0.5,
+                          ),
                         ),
+                        Text(
+                          '即時情緒趨勢分析',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.notoSansTc(
+                            fontSize: 12,
+                            color: const Color(0xFF94A3B8),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              // 極光發光情緒指標 Badge
+              // ★ 2026-08-10 第二十輪（需求 2）：mood_title 由 AI 產生，長度不可控。
+              //   Row 會先用「無限寬」量非 flex 子元素，量出來多寬就佔多寬，
+              //   左側 Expanded 只能拿剩下的（可能為 0）→ 溢位。故在此硬性設上限。
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 180),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF10B981), Color(0xFF059669)],
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF10B981).withValues(alpha: 0.4),
+                        blurRadius: 10,
                       ),
-                      Text(
-                        '即時情緒趨勢分析',
-                        style: GoogleFonts.notoSansTc(
-                          fontSize: 12,
-                          color: const Color(0xFF94A3B8),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('$moodIcon ', style: const TextStyle(fontSize: 13)),
+                      Flexible(
+                        child: Text(
+                          '$moodTitle ($moodScore%)',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.notoSansTc(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                          ),
                         ),
                       ),
                     ],
                   ),
-                ],
-              ),
-              // 極光發光情緒指標 Badge
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF10B981), Color(0xFF059669)],
-                  ),
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF10B981).withValues(alpha: 0.4),
-                      blurRadius: 10,
-                    ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    Text('$moodIcon ', style: const TextStyle(fontSize: 13)),
-                    Text(
-                      '$moodTitle ($moodScore%)',
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ],
                 ),
               ),
             ],
@@ -934,12 +972,20 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF10B981)),
                             onPressed: () {
                               Navigator.pop(c);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('正在發起即時關懷連線...', style: GoogleFonts.notoSansTc()),
-                                  backgroundColor: const Color(0xFF10B981),
-                                ),
-                              );
+                              // ★ 2026-08-10 第十九輪（需求 4）：原本只彈 SnackBar、
+                              //   什麼都不做。改為交給父層注入的撥號路徑；
+                              //   父層沒給（不該發生）才退回原本的提示，不要靜默。
+                              final startCall = widget.onStartVideoCall;
+                              if (startCall != null) {
+                                startCall();
+                              } else {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('目前無法發起通話，請稍後再試', style: GoogleFonts.notoSansTc()),
+                                    backgroundColor: const Color(0xFFEF4444),
+                                  ),
+                                );
+                              }
                             },
                             icon: const Icon(Icons.phone_rounded, color: Colors.white, size: 18),
                             label: Text('開始撥號', style: GoogleFonts.notoSansTc(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -2136,9 +2182,13 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                         children: [
                           const Icon(Icons.favorite_rounded, color: Color(0xFFEC4899), size: 20),
                           const SizedBox(width: 8),
-                          Text(
-                            '已傳送女兒的溫馨心意給 $name！❤️',
-                            style: GoogleFonts.notoSansTc(color: Colors.white, fontWeight: FontWeight.bold),
+                          Expanded(
+                            child: Text(
+                              '已傳送女兒的溫馨心意給 $name！❤️',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.notoSansTc(color: Colors.white, fontWeight: FontWeight.bold),
+                            ),
                           ),
                         ],
                       ),

@@ -392,6 +392,8 @@ class _SplashScreenState extends State<SplashScreen> {
   /// 只要看起來像長輩 session（user_role 直接是 'elder'；或 user_role 欄位本身缺漏
   /// 但 caregiver_id/caregiver_name 都還在，視為寫入未完成的邊界情況也保守當作長輩），
   /// 就一律導向長輩主畫面，絕不因暫時性失敗把已登入長輩丟回身分頁。
+  /// ★ 2026-08-10 第二十輪：家屬 session（user_role == 'family' 且 caregiver_id 尚在）
+  /// 同樣還原，理由見函式內註解——身分頁現在會主動釋放 session。
   Future<void> _goNextOrRestoreElder() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -402,8 +404,9 @@ class _SplashScreenState extends State<SplashScreen> {
       debugPrint(
           '🛟 [Splash] _goNextOrRestoreElder 重讀 prefs: caregiver_id=$uid, caregiver_name=$uname, user_role=$role');
 
-      final bool looksLikeElderSession =
-          role == 'elder' || (role == null && uid != null && uname != null);
+      // ★ 2026-08-10 第二十輪（需求 1）：移除 role == null 的推測性分支。
+      //   使用者若已登出，prefs 只剩殘值時不該被猜成長輩 session 而跳過身分選擇頁。
+      final bool looksLikeElderSession = role == 'elder';
 
       if (looksLikeElderSession && mounted) {
         final bool isCCTV = prefs.getBool('saved_is_cctv') ?? false;
@@ -426,6 +429,21 @@ class _SplashScreenState extends State<SplashScreen> {
             ),
           ),
         );
+        return;
+      }
+
+      // ★ 2026-08-10 第二十輪（需求 1 的必要配套）：家屬 session 也要還原。
+      //   需求 1 讓身分選擇頁一進去就釋放 session（IdentificationScreen.initState
+      //   → SessionManager.releaseIfBound()），這對「使用者主動回到身分頁」是對的，
+      //   但本函式是**暫時性失敗**的兜底路徑——`getPairedElders()` 一噴錯（斷網、
+      //   後端重啟、Funnel 抖動）家屬就會被送到這裡，過去只是看到身分頁、重登即可，
+      //   現在卻會連帶把有效的家屬 session 一併清掉。
+      //   對稱補上家屬分支：暫時性失敗一律還原既有 session，只有使用者**自己**
+      //   走到身分頁才算真正要換身分。
+      final bool looksLikeFamilySession = role == 'family' && uid != null;
+      if (looksLikeFamilySession && mounted) {
+        debugPrint('🛡️ [Splash] 偵測到本機家屬 session，改導向家屬主畫面而非身分頁');
+        _navigateFamilyHome(uid, uname ?? '家屬');
         return;
       }
     } catch (e) {

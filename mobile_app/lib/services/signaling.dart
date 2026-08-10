@@ -75,11 +75,25 @@ class Signaling {
   Function(List<dynamic>)? onElderDevicesUpdate;
   IncomingCallCallback? onIncomingCall;
   VoidCallback? onCallEnded;
-  ErrorCallback? onJoinFailed;
+  /// ★ 2026-08-06 第十九輪（A5）：join 被後端拒絕時觸發。原本只有 message，
+  ///   family/monitor 綁定失敗時看不出真正原因（missing_room／invalid_room／
+  ///   missing_user／unauthorized／monitor-limit／ip_limit_exceeded）。
+  ///   新增具名參數 reason 帶出後端原文代碼，message 維持給使用者看的文字不變。
+  Function(String message, {String? reason})? onJoinFailed;
   CallRequestCallback? onCallRequest;
   /// ★ 2026-08-04：後端推送 force-logout（家屬端解除本長輩綁定）時觸發。
   ///   由 main.dart 註冊，負責清除 session 並導航回身分選擇介面。
   void Function()? onForceLogout;
+  /// ★ 2026-08-06 第十九輪（D4）：後端監視機被家屬端改名時觸發。
+  ///   payload: {elderId, oldDeviceName, newDeviceName, deviceId}。
+  ///   只由 CCTV 模式的畫面（elder_screen.dart）註冊，一般通訊模式沒有這個概念。
+  Function(Map<String, dynamic>)? onMonitorRenamed;
+  /// ★ 2026-08-10 第二十輪（需求 4）：家屬端在監控清單刪除本機時觸發。
+  ///   payload: {elderId, deviceName, reason}。
+  ///   只由 CCTV 模式的畫面（elder_screen.dart）註冊；處理端必須走
+  ///   `SessionManager.releaseSession()` 完整釋放 session（需求 5），
+  ///   否則這台裝置之後再也綁不回去。
+  Function(Map<String, dynamic>)? onMonitorRemoved;
   CallRequestCallback? onCancelCall;
   CallRequestCallback? onEmergencyCall;
   CallAcceptedCallback? onCallAcceptedByRemote;
@@ -286,7 +300,10 @@ class Signaling {
     });
 
     socket!.on('join-failed', (data) {
-      if (onJoinFailed != null) onJoinFailed!(data['message']);
+      if (onJoinFailed != null) {
+        onJoinFailed!(data['message']?.toString() ?? '加入房間失敗',
+            reason: data['reason']?.toString());
+      }
       // 僅在尚未建立有效連線時才斷開 socket，避免通話中因競態 join-failed 斷線
       if (peerConnection == null) {
         socket?.disconnect();
@@ -465,6 +482,27 @@ class Signaling {
     socket!.on('force-logout', (_) {
       debugPrint("🚪 [Signaling] Received force-logout (家屬端已解除綁定)");
       if (onForceLogout != null) onForceLogout!();
+    });
+
+    // ★ 2026-08-06 第十九輪（D4）：監視機被家屬端改名時，即時同步通知該監視機本身。
+    socket!.on('monitor-renamed', (data) {
+      debugPrint("✏️ [Signaling] Received monitor-renamed: $data");
+      if (onMonitorRenamed != null) {
+        onMonitorRenamed!(Map<String, dynamic>.from(data as Map));
+      }
+    });
+
+    // ★ 2026-08-10 第二十輪（需求 4）：家屬端刪除監視器後，監控機必須**立刻**
+    //   退回主畫面。原本後端只是 `sio.disconnect(kick_sid)`，監控機端看不出
+    //   自己是「被刪除」還是「網路斷線」，於是停在 CCTV 畫面等重連——
+    //   使用者只能手動按「退出並重置」，而那條路徑又踩到需求 5 的綁死問題。
+    //   後端現在會在 disconnect **之前**先送這個事件（見 pairing.py
+    //   delete_monitor_device），順序不可對調，否則事件送不出去。
+    socket!.on('monitor-removed', (data) {
+      debugPrint("🗑️ [Signaling] Received monitor-removed: $data");
+      if (onMonitorRemoved != null) {
+        onMonitorRemoved!(data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{});
+      }
     });
 
     socket!.on('offer', (data) async {
@@ -723,9 +761,44 @@ class Signaling {
     Helper.setSpeakerphoneOn(enable);
   }
 
-  void sendCallRequest(String room, {String role = 'family', String? callId, String? targetId, bool isVideoCall = true}) {
+  /// 送出撥打請求。
+  ///
+  /// ★ 2026-08-10 第二十輪（需求 7：長輩端在 App 內撥不出去）：
+  ///   原本這裡是 `void` 且直接 `socket!.emit(...)`——socket 尚未連上時
+  ///   socket.io client 會把事件**丟棄**（不是排隊），呼叫端卻毫不知情，
+  ///   於是長輩端停在「正在呼叫家人...」直到 30 秒逾時，全程沒送出任何東西。
+  ///   長輩端特別容易踩到：`ElderScreen` 是 initState 就 autoCall，
+  ///   而 `connect()` 才剛開始握手。家屬端多半是先進主畫面（socket 早就連好）
+  ///   才按撥打，所以只有長輩端會壞——這正是「不對稱失效」的線索。
+  ///
+  ///   改為與 [sendCallAccept] 同樣的連線輪詢（50 × 100ms，最多 5 秒，
+  ///   對齊護欄「送 WebRTC 信令前必須輪詢等待 socket 連線」），
+  ///   並回傳是否真的送出，讓呼叫端能立即顯示錯誤而不是空等 30 秒。
+  ///
+  ///   `_currentCallId` 刻意等到確認會送出才寫入：沒送出去的 callId 若留在
+  ///   欄位上，後續 `hangUp()` 會拿它去 emit end-call，對端收到一個從未存在
+  ///   的 callId。
+  Future<bool> sendCallRequest(String room, {String role = 'family', String? callId, String? targetId, bool isVideoCall = true}) async {
     final String effectiveCallId = callId ?? const Uuid().v4();
+
+    if (socket == null) {
+      debugPrint('❌ [CallRequest] socket 為 null，無法送出撥打請求');
+      return false;
+    }
+
+    int retries = 50;
+    while (!socket!.connected && retries > 0) {
+      await Future.delayed(const Duration(milliseconds: 100));
+      retries--;
+    }
+
+    if (!socket!.connected) {
+      debugPrint('❌ [CallRequest] 等待 socket 連線逾時（5 秒），撥打請求未送出');
+      return false;
+    }
+
     _currentCallId = effectiveCallId;
+    // issuedAt 在確認連線後才取，避免等待連線的時間白白吃掉 120 秒有效期。
     final int issuedAt = DateTime.now().millisecondsSinceEpoch;
     socket!.emit('call-request', {
       'room': room,
@@ -738,6 +811,7 @@ class Signaling {
       if (_deviceName != null) 'senderName': _deviceName,
       'isVideoCall': isVideoCall.toString(), // ★ 2026-08-02 第十四輪：送字串，避免後端 str(bool) 產生大寫 "False"
     });
+    return true;
   }
 
   // ★ Feature 13: 請求更新長輩設備列表
@@ -1225,7 +1299,19 @@ class Signaling {
 
   void hangUp({bool disconnectSocket = false, bool disposeLocalStream = true}) {
     debugPrint("📢 [Signaling] Hanging up (disconnectSocket: $disconnectSocket, disposeLocalStream: $disposeLocalStream, callId: $_currentCallId)...");
-    if (socket != null && _currentRoomId != null) {
+    // ★ 2026-08-10 第二十輪（需求 8：某一方掛斷後另一端仍留在通話房間）：
+    //   原條件是 `socket != null && _currentRoomId != null`，只要 `_currentRoomId`
+    //   為 null 就**完全不送 end-call**，對端於是永遠停在通話畫面。
+    //   `_currentRoomId` 只在 `join()` 成功後才寫入，但有數條路徑會在沒有它的
+    //   情況下掛斷：
+    //     a. 接聽方走 CallKit 冷啟動鏈，`clearSession()` 之後才進房，中途掛斷；
+    //     b. 家屬端在 `_goHomeAfterCall()` 之後又被 watchdog 補呼叫一次 hangUp；
+    //     c. join 失敗（join-failed）後掛斷 —— 此時房間沒進去但通話 registry 已存在。
+    //   後端 `on_end_call` 對 `room=None` 是安全的：它會改用 call_registry 的
+    //   caller_sid / target_sids / accepter_sid 湊出對端（room 只是額外的 fallback），
+    //   所以只要還有 `targetId` 或 `callId` 其中之一就值得送。
+    if (socket != null &&
+        (_currentRoomId != null || _peerSocketId != null || _currentCallId != null)) {
       socket!.emit('end-call', {'room': _currentRoomId, 'targetId': _peerSocketId, 'callId': _currentCallId});
     }
     if (_currentCallId != null && _currentCallId!.isNotEmpty) {

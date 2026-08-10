@@ -12,6 +12,8 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'package:intl/intl.dart';
 import '../identification_screen.dart';
+import '../../globals.dart';
+import '../../services/session_manager.dart';
 import '../../widgets/google_assistant_overlay.dart';
 
 class ElderProfileTab extends StatefulWidget {
@@ -680,19 +682,10 @@ class _ElderProfileTabState extends State<ElderProfileTab>
           TextButton(
             onPressed: () async {
               Navigator.pop(dialogContext);
-              final prefs = await SharedPreferences.getInstance();
-              await prefs.remove('caregiver_id');
-              await prefs.remove('caregiver_name');
-              // ★ Issue 2 配套：登出後清除裝置角色記憶與監控旗標，
-              //   確保下次重新配對時能重新判定通話機／監控機角色。
-              await prefs.remove('saved_is_cctv');
-              final deviceRoleKeys = prefs
-                  .getKeys()
-                  .where((k) => k.startsWith('device_role_'))
-                  .toList();
-              for (final key in deviceRoleKeys) {
-                await prefs.remove(key);
-              }
+              // ★ 2026-08-10 第二十輪：改走 SessionManager 統一釋放入口，
+              //   除了原本清的 device_role_*／saved_is_cctv，
+              //   也一併清掉 user_role，避免殘留 'elder' 造成下次冷啟動被誤判為長輩 session。
+              await SessionManager.releaseSession();
 
               if (!mounted) return;
               Navigator.of(context).pushAndRemoveUntil(
@@ -723,6 +716,8 @@ class _ElderProfileTabState extends State<ElderProfileTab>
         prefs.getString('elder_name') ??
         (widget.userName.isNotEmpty ? widget.userName : '宇璿');
     bool isPortableMode = prefs.getBool('is_portable_mode') ?? true;
+    // ★ 2026-08-10 第二十輪（需求 6）：語音喚醒總開關，預設關閉。
+    bool wakeWordEnabled = prefs.getBool(kWakeWordEnabledKey) ?? false;
 
     final aiNameController = TextEditingController(text: currentAiName);
     final userNameController = TextEditingController(text: currentUserName);
@@ -775,6 +770,33 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                   prefixIcon: Icon(Icons.person),
                   border: OutlineInputBorder(),
                 ),
+              ),
+              const SizedBox(height: 12),
+              // ★ 2026-08-10 第二十輪（需求 6）：語音喚醒總開關。
+              //   預設關閉——常駐監聽會讓麥克風不斷 acquire/release（系統指示燈
+              //   一直閃），環境雜音也容易誤觸。需要免持喚醒的長輩再自行開啟。
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(
+                  '🎙️ 語音喚醒（免持呼叫 AI）',
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                subtitle: Text(
+                  wakeWordEnabled
+                      ? '已開啟：麥克風全時待命，說出喚醒詞即可呼叫 AI（較耗電）'
+                      : '已關閉：麥克風不會自動開啟，改由畫面上的按鈕呼叫 AI',
+                  style: GoogleFonts.notoSansTc(fontSize: 12),
+                ),
+                value: wakeWordEnabled,
+                activeThumbColor: const Color(0xFF38BDF8),
+                onChanged: (val) {
+                  setDialogState(() {
+                    wakeWordEnabled = val;
+                  });
+                },
               ),
               const SizedBox(height: 12),
               SwitchListTile(
@@ -837,6 +859,10 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                 final newAi = aiNameController.text.trim();
                 final newUser = userNameController.text.trim();
                 await prefs.setBool('is_portable_mode', isPortableMode);
+                // ★ 2026-08-10 第二十輪（需求 6）：寫入 prefs 後同步更新 notifier，
+                //   讓 ElderHomeScreen 立刻啟動／停止監聽，不必重開 App。
+                await prefs.setBool(kWakeWordEnabledKey, wakeWordEnabled);
+                wakeWordEnabledNotifier.value = wakeWordEnabled;
                 if (newAi.isNotEmpty) {
                   await prefs.setString('ai_assistant_name', newAi);
                   await prefs.setString('ai_name', newAi);

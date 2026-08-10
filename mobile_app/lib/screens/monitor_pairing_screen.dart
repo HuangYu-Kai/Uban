@@ -39,8 +39,12 @@ class _MonitorPairingScreenState extends State<MonitorPairingScreen> {
     setState(() => _isLoading = false);
 
     if (result == null) {
+      // ★ 2026-08-10 第二十輪：優先顯示後端回傳的具體原因（綁定碼不存在／已過期／連線失敗），
+      //   查無具體原因時才退回原本的通用提示文字。
+      final String errorMsg =
+          ApiService.lastResolveError ?? '綁定碼無效或已過期，請向家屬確認後重新輸入';
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('綁定碼無效或已過期，請向家屬確認後重新輸入')),
+        SnackBar(content: Text(errorMsg)),
       );
       return;
     }

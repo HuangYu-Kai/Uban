@@ -78,6 +78,12 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
     final String deviceRoleKey = 'device_role_$elderRoom';
     final String? savedRole = prefs.getString(deviceRoleKey);
 
+    // ⚠️ 這行宣告在分支整合時遺失（HEAD 上 isMonitor 有 10 處使用卻無宣告，
+    //    整個檔案無法編譯），2026-08-10 第十九輪補回。
+    //    刻意維持**區域變數**：裝置角色的權威來源是 prefs 的 device_role_$room，
+    //    存成 State 欄位反而會讓兩者有機會分歧。
+    bool isMonitor;
+
     if (savedRole != null) {
       isMonitor = savedRole == 'monitor';
       debugPrint(
