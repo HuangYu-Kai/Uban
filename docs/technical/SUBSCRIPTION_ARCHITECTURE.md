@@ -244,6 +244,23 @@ is_pro = subscription_status.is_active = 1  AND  expires_at > NOW()
 
 **靜態分析**：`flutter analyze` 對本次 4 個異動檔皆無新增問題 ✅
 
+### 🐛 2026-08-10 發現：webhook 自 07-30 起全數 500（已修，待部署驗證）
+
+`revenuecat_webhook()` 第 182 行用 `entitlement_ids`，但賦值那行
+（`entitlement_ids = event.get("entitlement_ids") or []`）在 07-30「Task 6」重構時被誤刪
+（原始 commit `40d0b34` 有）。任何**非 TEST** 且 `app_user_id` 為 `elder_` 開頭的事件
+都會 `NameError` → 500，`subscription_status` 自此不再更新。
+
+**為什麼一直沒被發現**：TEST 事件在第 170 行就 `return`，後台「Send test event」全綠；
+`GET /api/subscription/{elder_id}` 也照常回舊資料，看不出寫入已死。
+線索是 elder_6160 的 `expires_at` 卡在 `2026-07-29 10:57:22`——最後一次成功寫入那天。
+
+**教訓**：❽ 的端到端驗證是用 `curl` 直打 + 一次真實購買完成的，但**沒有留下自動化測試**
+（見下方「後端尚未新增 `tests/test_subscription.py`」）。有那支測試的話，這個 NameError
+在重構當下就會被擋住。補測試的優先級應提高。
+
+---
+
 ### 已知限制與未完成項目
 
 * **Test Store 訂閱僅約 5 分鐘到期**（實測 10:32 購買、`expires_at` 10:37），

@@ -46,12 +46,17 @@
 //   );
 // ============================================================================
 
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:http/http.dart' as http;
 import 'package:purchases_flutter/purchases_flutter.dart';
 
+import '../../services/api_service.dart';
 import '../../services/subscription_service.dart';
 
 /// 版面配色：沿用 App 家屬端既有的 slate + sky 色階，不另開一套。
@@ -89,16 +94,29 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
   );
 
   /// RevenueCat Test Store 金鑰（test_ 開頭）。
-  /// 建議用 --dart-define=REVENUECAT_API_KEY=test_xxx 傳入，或直接填在 defaultValue。
+  /// 這是 Test Store 的 **public SDK key**，不是 secret（`sk_`），放前端沒有外洩風險；
+  /// 仍可用 --dart-define=REVENUECAT_API_KEY=test_xxx 覆寫。
+  /// ⚠️ 正式上架必須換成平台金鑰（Android `goog_` / iOS `appl_`）。
   static const String _apiKey = String.fromEnvironment(
     'REVENUECAT_API_KEY',
-    defaultValue: '', // 例如 'test_xxxxxxxxxxxxxxxx'
+    defaultValue: 'test_hGxZbuGwjlZtvuMQthnZPGZPYAk',
+  );
+
+  /// 後端 `.env` 的 `REVENUECAT_WEBHOOK_SECRET`，只給「重設為未訂閱」除錯鈕用。
+  ///
+  /// ⚠️ **預設為空，且絕對不要填進 defaultValue**：這把密鑰是後端用來擋偽造開通的，
+  /// 一旦編進 APK，任何人反編譯後就能替任意長輩開通 PRO（見設計文件 ❼-2）。
+  /// 要用時才在啟動指令帶：`--dart-define=REVENUECAT_WEBHOOK_SECRET=xxx`。
+  /// 後端 `.env` 沒設這個變數時不驗證授權，不帶也能用。
+  static const String _webhookSecret = String.fromEnvironment(
+    'REVENUECAT_WEBHOOK_SECRET',
+    defaultValue: '',
   );
 
   /// 進階照護的賣點清單。三個方案（月/季/年）內容相同，只差計費週期，
   /// 所以做成「所有方案都包含」的共用區塊，而非每張卡各列一次。
   static const List<String> _features = [
-    '不限次數的 AI 陪伴對話，長輩想聊多久都可以',
+    '不限次數的 AI 陪伴對話',
     '每月 AI 深度情緒與作息洞察報告',
     '完整回憶錄雲端備份，長久保存',
     '專屬劇本編輯器，客製長輩的日常引導',
@@ -327,6 +345,80 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
       await _loadOfferings(); // 換 User 後方案可能不同，重抓一次
       _showSnack('已切換至 User：$newId');
     }, failMsg: '切換 User 失敗');
+  }
+
+  /// 【除錯專用】把這位長輩的後端訂閱狀態重設為未訂閱。
+  ///
+  /// ⚠️ **這不是真的取消訂閱**。商店（Google Play / App Store）不允許 App 以程式
+  /// 取消訂閱，真正的取消只能由使用者到商店的「訂閱管理」自行操作。本功能是
+  /// 直接對後端補送一則 `EXPIRATION` webhook，把 `subscription_status` 翻成未開通，
+  /// 好讓你不必等 Test Store 自然到期（約 5 分鐘）就能重測 FREE 狀態。
+  ///
+  /// 因此：RevenueCat 那邊的訂閱仍然存在，下次續訂 webhook 進來就會再變回 PRO。
+  Future<void> _devResetToFree() async {
+    final elderId = widget.elderId;
+    if (elderId == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('重設為未訂閱？', style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold)),
+        content: Text(
+          '會對後端補送一則 EXPIRATION 事件，把 $_elderLabel（elder_$elderId）的訂閱狀態'
+          '翻成未開通。\n\n'
+          '這是寫進正式資料庫的操作，不是只改本機畫面；也不會真的取消商店那邊的訂閱。',
+          style: GoogleFonts.notoSansTc(fontSize: 14, height: 1.7),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text('取消', style: GoogleFonts.notoSansTc()),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: FilledButton.styleFrom(backgroundColor: _Palette.danger),
+            child: Text('確定重設', style: GoogleFonts.notoSansTc()),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    await _runGuarded(() async {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final response = await http.post(
+        Uri.parse('${ApiService.baseUrl}/revenuecat/webhook'),
+        headers: {
+          'Content-Type': 'application/json',
+          // 後端 .env 沒設 REVENUECAT_WEBHOOK_SECRET 時不驗證，帶空字串也無妨。
+          if (_webhookSecret.isNotEmpty) 'Authorization': _webhookSecret,
+        },
+        body: jsonEncode({
+          'event': {
+            'type': 'EXPIRATION',
+            'id': 'devtool-$now',
+            'app_user_id': _targetAppUserId,
+            'entitlement_ids': [_entitlementId],
+            'product_id': _selected?.storeProduct.identifier,
+            'store': 'TEST_STORE',
+            'expiration_at_ms': now,
+          },
+        }),
+      ).timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 401) {
+        _showSnack('後端拒絕（401）：需要用 --dart-define=REVENUECAT_WEBHOOK_SECRET 帶密鑰');
+        return;
+      }
+      if (response.statusCode != 200) {
+        _showSnack('重設失敗（HTTP ${response.statusCode}）：${response.body}');
+        return;
+      }
+
+      SubscriptionService.invalidate(elderId);
+      await _refreshBackendStatus();
+      _showSnack(_backendIsPro ? '後端仍回報 PRO，請確認事件是否被略過' : '已重設為未訂閱');
+    }, failMsg: '重設失敗');
   }
 
   /// 統一的動作包裝：設 busy、catch RevenueCat 例外、確保不崩潰。
@@ -1027,6 +1119,8 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
         child: ExpansionTile(
           tilePadding: const EdgeInsets.symmetric(horizontal: 18),
           childrenPadding: const EdgeInsets.fromLTRB(18, 0, 18, 20),
+          // ExpansionTile 的 children 預設置中，這裡全是標籤與說明文字，要靠左。
+          expandedCrossAxisAlignment: CrossAxisAlignment.start,
           leading: const Icon(Icons.tune_rounded, size: 18, color: _Palette.mist),
           iconColor: _Palette.mist,
           collapsedIconColor: _Palette.mist,
@@ -1156,6 +1250,40 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
                 ),
               ),
             ),
+            // 重設鈕只在 debug build 出現：kDebugMode 是編譯期常數，
+            // release 版整段會被 tree-shake 掉，不會流到使用者手上。
+            if (kDebugMode && widget.elderId != null) ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _busy ? null : _devResetToFree,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: _Palette.danger,
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    side: BorderSide(color: _Palette.danger.withValues(alpha: 0.4)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  icon: const Icon(Icons.lock_reset_rounded, size: 18),
+                  label: Text(
+                    '重設為未訂閱（測試用）',
+                    style: GoogleFonts.notoSansTc(fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '送一則 EXPIRATION 到後端，把這位長輩翻回未開通，方便重測 FREE 畫面。'
+                '不會真的取消商店訂閱——真正的取消要使用者自己到 Google Play / App Store 操作。',
+                style: GoogleFonts.notoSansTc(
+                  fontSize: 11.5,
+                  height: 1.6,
+                  color: _Palette.mist,
+                ),
+              ),
+            ],
           ],
         ),
       ),
