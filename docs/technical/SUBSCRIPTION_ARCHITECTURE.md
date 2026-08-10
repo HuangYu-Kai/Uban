@@ -178,8 +178,18 @@ is_pro = subscription_status.is_active = 1  AND  expires_at > NOW()
 
 ## ❻ UI/UX 視覺美學與無障礙規範 (Aesthetics & Accessibility)
 
-* **家屬端 Paywall**：沿用現有 `SubscriptionTestScreen` 版面（淺色卡片、`GoogleFonts.notoSansTc`、
-  月/季/年 `RadioGroup`、主色 `#0EA5E9`）。
+* **家屬端 Paywall**（`SubscriptionTestScreen`，2026-08-10 改版）：採「官網 Pricing 頁」骨架，
+  配色沿用家屬端既有 slate + sky 色階（見檔內 `_Palette`）：
+  底 `#F8FAFC`、卡片白、主文字 `#0F172A`、次要 `#64748B`、小字 `#94A3B8`、
+  邊框 `#E2E8F0`、強調 `#0284C7`（亮色 `#38BDF8`）、已開通綠 `#16A34A`。
+  區塊順序：Hero 標題 → 目前狀態列 → 月/季/年方案卡 → 「所有方案都包含」特色清單
+  → 深色 CTA（`#0F172A`）→ 條款小字 → 開發者選項（收合）。
+  * 方案卡為**自繪選取卡**（非 `RadioGroup`/`RadioListTile`），選中 2px `#0284C7` 邊框 + 淡藍陰影。
+  * 比價由前端自算：`storeProduct.price ÷ 週期月數` → 「平均每月」；與月繳價相比 → 「省 xx%」，
+    掛在省最多的方案上並預設選取。無月繳方案或週期不明（lifetime / custom）時整個略過比價。
+  * 除錯資訊（App User ID、SDK 權限、後端狀態、切換測試 User、重新整理）一律收在
+    最下方 `ExpansionTile`「開發者選項」內，預設收合。
+  * 特色清單（`_features`）目前僅為 UI 文案，尚未對應真正被鎖住的功能，見 ❽「功能鎖尚未接上」。
 * **長輩端**：僅呈現「已開通 / 未開通」結果，**不出現付費 UI**。
   實作上採「**有才顯示**」而非灰階降級——未開通時整個徽章不出現，
   避免在長輩畫面上製造看不懂的鎖頭或推銷入口（付費決策屬家屬端）。

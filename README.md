@@ -424,6 +424,25 @@ void initPedometer() {
 > 以下標註 ✍️ 的條目是 2026-08-06 回頭從 git 紀錄補寫的——當時有做但沒寫進日誌。
 > 內容依 commit 訊息重建，細節可能不如當事人寫得完整。
 
+### 2026-08-10 💳 家屬端訂閱頁改版為正式 Paywall 版面
+
+> 只動 `subscription_test_screen.dart` 的 UI，RevenueCat / 後端邏輯完全未變。
+
+- **版面改為「官網 Pricing 頁」骨架、Uban 既有 slate + sky 配色**：
+  Hero 標題 →「目前狀態」列 → 月/季/年方案卡 →「所有方案都包含」特色清單
+  → 深色 CTA → 條款小字 → 開發者選項。
+- **方案卡自算比價**：由 `storeProduct.price` 除以週期月數，顯示「平均每月 NT$xxx」，
+  並與月繳價比較算出「省 xx%」掛在最划算的方案上；預設就選那一個。
+  週期抓不到（lifetime / custom package）時自動略過比價，不會顯示錯誤數字。
+- **`RadioGroup` / `RadioListTile` 換成自繪選取卡**，選中時 2px `#0284C7` 邊框 + 淡藍陰影。
+- **除錯工具收進「開發者選項」ExpansionTile**（預設收合）：App User ID、SDK 權限、
+  後端訂閱狀態、切換測試 User、重新整理狀態。正式使用者第一眼看不到。
+- CTA 在後端已回報 PRO 時轉為綠色「進階照護已開通」並停用，避免重複下單。
+- ⚠️ 特色清單目前是 UI 文案，尚未對應真正被鎖住的功能（功能鎖仍未接）。
+- `flutter analyze lib/screens/family/subscription_test_screen.dart` — **No issues found**。
+
+---
+
 ### 2026-08-06 💬 AI 對話歷史持久化與 YouTube 播放修復 ✍️
 
 - **對話歷史持久化**：AI 聊天記錄改為保存，重開 App 不再從零開始。
