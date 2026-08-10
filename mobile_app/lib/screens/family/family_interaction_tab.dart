@@ -45,10 +45,14 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
   List<Map<String, dynamic>> _reminders = [];
   bool _isLoadingReminders = false;
 
+  // ⚠️ f3a1070 合併時，family-side-design 與 monitor-newtool 各自新增了一份
+  //    initState / didUpdateWidget，被整段疊在一起造成 duplicate_definition。
+  //    這裡是兩邊合併後的單一版本，兩側的行為都必須保留。
   @override
   void initState() {
     super.initState();
-    _fetchReminders();
+    _fetchReminders(); // family-side-design：提醒事項
+    _syncAudioBridgeForAlerts(); // monitor-newtool：警報語音橋狀態
   }
 
   @override
@@ -57,6 +61,10 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
     if (widget.currentElder?.id != oldWidget.currentElder?.id ||
         widget.currentElder?.elderId != oldWidget.currentElder?.elderId) {
       _fetchReminders();
+    }
+    // 新警報進來時才查一次語音橋狀態（_audioBridgeChecked 保證同一 alert 只查一次）
+    if (widget.activeAlerts.length != oldWidget.activeAlerts.length) {
+      _syncAudioBridgeForAlerts();
     }
   }
 
@@ -412,21 +420,26 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
       onSelected: (_) => onSelect(catKey),
     );
   }
+  /// ★ 2026-08-04 第 7 項：警報語音橋狀態。key = alert_id，value = expire_at 字串。
+  /// 後端在派送警報時（`yolo_alert_dispatcher._insert_alert`）就已自動為每位家屬
+  /// 建立 30 分鐘權限，所以這裡多半是「查到已開啟」而不是由家屬手動開通；
+  /// 按鈕的主要用途是**延長**（再按一次 = 從現在起重新算 30 分鐘）與顯示狀態。
+  final Map<int, String> _audioBridgeExpire = {};
 
-  @override
-  void initState() {
-    super.initState();
-    _syncAudioBridgeForAlerts();
-  }
+  /// 正在送出開通請求的 alert_id，避免連點造成重複請求。
+  final Set<int> _audioBridgePending = {};
 
-  @override
-  void didUpdateWidget(covariant FamilyInteractionTab oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // 新警報進來時才查一次語音橋狀態（_audioBridgeChecked 保證同一 alert 只查一次）
-    if (widget.activeAlerts.length != oldWidget.activeAlerts.length) {
-      _syncAudioBridgeForAlerts();
-    }
-  }
+  /// 已查詢過語音橋狀態的 alert_id，避免每次 rebuild 都打一次 API。
+  final Set<int> _audioBridgeChecked = {};
+
+  final List<String> _quickMessages = [
+    '記得吃藥喔！💊',
+    '今天過得好嗎？🌸',
+    '吃飽了沒？🍚',
+    '等一下打電話給您！📞',
+    '今天天氣變冷了，多穿點衣服！🧣',
+    '注意多喝水喔！🥤',
+  ];
 
   /// ★ 2026-08-04 第 7 項：為尚未查過的警報查詢語音橋狀態。
   /// 任何一筆查詢失敗都只略過該筆，不影響其餘警報，也不彈任何錯誤給使用者——
@@ -1383,108 +1396,6 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: const Icon(
-    return Container(
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF0F172A), Color(0xFF1E293B)],
-        ),
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3), width: 1.2),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF10B981).withValues(alpha: 0.08),
-            blurRadius: 20,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(28),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 14),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF10B981).withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.3)),
-                    ),
-                    child: const Icon(
-                      Icons.videocam_off_rounded,
-                      color: Color(0xFF34D399),
-                      size: 22,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    '遠端視訊監控',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 19,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            // 仿真監控鏡頭畫面佔位符
-            Container(
-              height: 220,
-              width: double.infinity,
-              color: const Color(0xFF0F172A),
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  // 網格底紋模擬數位相機
-                  Opacity(
-                    opacity: 0.1,
-                    child: GridPaper(
-                      color: Colors.white,
-                      divisions: 1,
-                      subdivisions: 1,
-                      interval: 40,
-                      child: Container(),
-                    ),
-                  ),
-                  // REC 圖示
-                  Positioned(
-                    top: 14,
-                    left: 18,
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 10,
-                          height: 10,
-                          decoration: const BoxDecoration(
-                            color: Color(0xFFEF4444),
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'STANDBY',
-                          style: GoogleFonts.inter(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 1.0,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  // 中間佔位文字
-                  Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
                         Icons.videocam_off_rounded,
                         color: Color(0xFF10B981),
                         size: 22,

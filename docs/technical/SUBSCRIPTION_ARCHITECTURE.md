@@ -255,9 +255,19 @@ is_pro = subscription_status.is_active = 1  AND  expires_at > NOW()
 `GET /api/subscription/{elder_id}` 也照常回舊資料，看不出寫入已死。
 線索是 elder_6160 的 `expires_at` 卡在 `2026-07-29 10:57:22`——最後一次成功寫入那天。
 
-**教訓**：❽ 的端到端驗證是用 `curl` 直打 + 一次真實購買完成的，但**沒有留下自動化測試**
-（見下方「後端尚未新增 `tests/test_subscription.py`」）。有那支測試的話，這個 NameError
-在重構當下就會被擋住。補測試的優先級應提高。
+**教訓**：❽ 的端到端驗證是用 `curl` 直打 + 一次真實購買完成的，但**沒有留下自動化測試**。
+有那支測試的話，這個 NameError 在重構當下就會被擋住。
+
+**已補**：`uban-api/tests/test_subscription.py`（21 passed）。已用「把那行再刪掉」反證
+會變 **9 failed**。⚠️ 其中 `test_test_event_does_not_touch_db` 特別記錄了
+「TEST 事件碰不到 `entitlement_ids` 那段」——**後台 Send test event 全綠不代表 webhook 正常**。
+
+### 🚨 上架前必補：免費試用揭露
+
+2026-08-10 實測 Test Store 購買視窗顯示 `sub3month` 帶
+`Phase: $0.00 for P1W`（一週免費試用），但 Paywall **完全沒顯示**。
+Apple / Google 都要求購買前明確揭露試用期長度與試用後價格，否則會被退件。
+資料來源：`StoreProduct.introductoryPrice`／`defaultOption` 的 free phase。
 
 ---
 

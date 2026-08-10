@@ -9,6 +9,9 @@ import 'family/family_interaction_tab.dart';
 import 'family/family_data_tab.dart';
 import 'family/alert_center_screen.dart';
 import 'family/subscription_test_screen.dart';
+// ⚠️ 這行 import 在 f3a1070 合併時被吃掉，造成第 687 行的 FamilySubscriptionScreen
+//    無法解析（creation_with_non_type）。
+import 'family/family_subscription_screen.dart';
 import '../models/elder.dart';
 import '../services/elder_manager.dart';
 import '../services/signaling.dart';
@@ -46,6 +49,10 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   Elder? _currentElder;
   List<Elder> _elders = [];
   bool _isElderOnline = false;
+  // ⚠️ 這行宣告在 f3a1070 合併時被吃掉（bf62fe7 有），造成三處賦值 undefined。
+  //    只是「第一台在線設備」的 sid，**不可**拿來當監視機的目標——
+  //    那台很可能是通訊機，見下方 _openMonitorView 內的註解。
+  String? _elderSocketId;
   Timer? _deviceRefreshTimer;
   // ★ 2026-08-05 第十七輪：原本的 _onlineStateDebounceTimer / _pendingOnlineState
   //   是「每收到事件就重排」的雙向 debounce，週期與輪詢週期（2500ms）相等，

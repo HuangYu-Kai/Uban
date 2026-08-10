@@ -78,6 +78,8 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
     final String deviceRoleKey = 'device_role_$elderRoom';
     final String? savedRole = prefs.getString(deviceRoleKey);
 
+    // ⚠️ 這行宣告曾在 f3a1070 合併時被吃掉，導致下面 10 處 isMonitor 全部 undefined。
+    bool isMonitor;
     if (savedRole != null) {
       isMonitor = savedRole == 'monitor';
       debugPrint(

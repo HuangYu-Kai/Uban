@@ -466,8 +466,42 @@ void initPedometer() {
 - **佐證**：模擬器查到 elder_6160 的 `expires_at` 停在 `2026-07-29 10:57:22`，
   正是最後一次端到端驗證那天；`5accbdb`（含此缺陷）已在 `origin/main` 上。
 - **修復**：補回被刪的那一行，並加註解標明不可再移除。`python -m py_compile` 通過。
+- **補上迴歸測試** `uban-api/tests/test_subscription.py`（21 passed）。
+  已用「把那行再刪掉」反證：測試會變成 **9 failed**，涵蓋所有真實事件路徑。
+  * 特別注意 `test_test_event_does_not_touch_db` 的註解：TEST 事件在函式很前面就
+    `return`，**碰不到** `entitlement_ids` 那段——這正是後台「Send test event」
+    全綠卻掩蓋了 bug 的原因。**「TEST 通過」永遠不能當成 webhook 正常的證據。**
 - ⚠️ **尚未驗證線上**：webhook 有設 `REVENUECAT_WEBHOOK_SECRET`（探測回 401，
   代表防偽造那道防線是好的），無密鑰無法從外部確認；需部署後補一次真實購買驗證。
+
+---
+
+### 2026-08-10 🔧 修復 f3a1070 合併損壞，`main` 恢復可編譯
+
+> `main`（== `origin/main` == `a2f14ce`）自 `f3a1070`
+> （Merge branch 'monitor-newtool' into feat/family-side-design）起就**編譯不過**，
+> `flutter analyze lib` 有 **59 個 error**。那次合併沒解乾淨，兩個父版本的內容被
+> 整段疊在一起。任何人從 main 開分支都會繼承。
+
+| 檔案 | 損壞 | 修復 |
+|------|------|------|
+| `services/api_service.dart` | 兩處方法被縫錯（`openAudioBridge` 尾巴接到 `getElderMoodInsight` 頭上、`getElderActivityLogs` 收尾被 `checkAudioBridge` 註解切斷） | 四個方法從兩個父版本逐字還原 |
+| `screens/family/family_interaction_tab.dart` | 兩邊各自新增了一份 `initState`/`didUpdateWidget` 被疊在一起；1354 行起括號大量不配對 | 用 `git merge-file` 以 merge-base 重做三方合併（只 2 個衝突），`initState`/`didUpdateWidget` 合併成單一版本、兩側行為都保留 |
+| `screens/elder_pairing_display_screen.dart` | `bool isMonitor;` 宣告被吃掉 → 10 處 undefined | 補回宣告 |
+| `screens/family_main_screen.dart` | `String? _elderSocketId;` 宣告被吃掉（3 處 undefined）、`family_subscription_screen.dart` 的 import 被吃掉 | 兩者補回 |
+
+- 三個被吃掉的宣告／import 都加了 `⚠️ 這行在 f3a1070 合併時被吃掉` 註解，避免再被誤刪。
+- `family_main_screen.dart` 屬通話高風險檔，動手前已依規定讀 `CLAUDE_call-monitor.md` §5.4；
+  本次只補欄位宣告與 import，未觸及 `initState` 順序、signaling callback、導航與 SharedPreferences。
+- **驗證**：`flutter analyze lib` **0 error**（原 59）、`flutter build apk --debug` **BUILD SUCCESSFUL**、
+  後端 `tests/test_call_signaling.py` 維持 **12 passed** 不退步。
+
+### 已知缺口（本次發現，未處理）
+
+- **免費試用沒有揭露**：Test Store 購買視窗顯示 `sub3month` 有 `Phase: $0.00 for P1W`
+  （一週免費試用），但 Paywall 完全沒顯示。Apple / Google 都要求在購買前明確揭露
+  試用期與後續價格，上架前必須補（`StoreProduct.introductoryPrice` /
+  `defaultOption.freePhase` 可取得）。
 
 ---
 
