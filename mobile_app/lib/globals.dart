@@ -36,7 +36,15 @@ const String kWakeWordEnabledKey = 'wake_word_enabled';
 /// ★ 2026-07-20：有效期 45s→120s，與後端 socket_app.py expires_at/FCM ttl 同步。
 ///   Android Doze/省電桶可能延遲 FCM 60-90 秒，45s ttl 會在 Doze 期間過期。
 ///   CallKit duration 保持 45s 不變（使用者接聽時間仍以 45s 為限）。
-const int kCallValidityMs = 120000;
+/// ★ 2026-08-11 第二十二輪（需求 10）：120s→**60s**。使用者明確要求
+///   「發起端最多僅可等待 1 分鐘，逾時就關閉該次連線」，避免出現
+///   「電話明明是 2、3 分鐘前撥的，現在才跳來電通知」。
+///   後端 `socket_app.py` 的 `expires_at`（一般＋緊急皆為 issued_at + 60000）與
+///   FCM `ttl=60s`（call-request / emergency-call / cancel-call）必須與此值一致。
+///   **取捨**：Doze 延遲超過 60 秒的推播會被丟棄而不是遲到才響——這是使用者
+///   明確選擇的取捨，**不要改回 120s**。
+///   CallKit `duration` 仍維持 45s（響鈴時間 ≠ 推播有效期，兩者本就不同義）。
+const int kCallValidityMs = 60000;
 
 /// ★ 2026-07-19：SplashScreen 是否仍在畫面上（冷啟動導航進行中）。
 ///   冷啟動接聽來電時，SplashScreen 是 pendingAcceptedCall 的唯一導航擁有者；

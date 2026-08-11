@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -65,6 +67,11 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
   final Set<int> _audioBridgePending = {};
   /// alert_id → 語音橋到期時間字串（後端回傳的 `expire_at` 原文）。
   final Map<int, String> _audioBridgeExpire = {};
+
+  /// ★ 2026-08-11 第二十二輪（需求 1）：配對碼彈窗的「綁定完成」輪詢計時器。
+  /// 宣告成欄位（而非只在 `_showAddMonitorDialog` 的區域變數）是為了讓 [dispose]
+  /// 一定關得掉——使用者可能在配對進行中直接切分頁或退出家屬端。
+  Timer? _monitorBindPollTimer;
 
   // ⚠️ initState / didUpdateWidget 在分支整合時各被複製成兩份
   //    （第二份原本在 _buildCatChip 之後），Dart 不允許重複定義。
@@ -536,10 +543,13 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                   : '開啟語音通道 30 分鐘',
           style: GoogleFonts.notoSansTc(fontSize: 12, fontWeight: FontWeight.w600),
         ),
+        // ★ 2026-08-11 第二十二輪（需求 5）：這顆按鈕長在監視機卡片內，
+        //   卡片轉深色後原本的 `Colors.red.shade700` 幾乎看不見，改用亮一階的紅／綠。
         style: OutlinedButton.styleFrom(
-          foregroundColor: isOpen ? const Color(0xFF59B294) : Colors.red.shade700,
+          foregroundColor:
+              isOpen ? const Color(0xFF34D399) : const Color(0xFFF87171),
           side: BorderSide(
-            color: isOpen ? const Color(0xFF59B294) : Colors.red.shade300,
+            color: isOpen ? const Color(0xFF34D399) : const Color(0xFFEF4444),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 12),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -550,6 +560,10 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
 
   @override
   void dispose() {
+    // ★ 2026-08-11 第二十二輪（需求 1）：離開分頁時務必停掉配對輪詢，
+    //   否則計時器會在 State 已銷毀後繼續打 HTTP 並碰 context。
+    _monitorBindPollTimer?.cancel();
+    _monitorBindPollTimer = null;
     _messageController.dispose();
     super.dispose();
   }
@@ -615,47 +629,136 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
     // ★ issue 6：後端 /api/pairing/monitor_setup 回傳的欄位名為 'code'，非 'pairing_code'
     if (data != null && data['code'] != null) {
       final code = data['code'];
+      final String targetDeviceName = nameCtrl.text.trim();
+
+      // ★ 2026-08-11 第二十二輪（需求 1）：監視機兌換配對碼、綁定完成後，
+      //   家屬端這個「配對碼」彈窗要自己關掉——過去必須手動按「完成」，
+      //   使用者無從得知對面到底綁好了沒。
+      //
+      //   偵測方式是「清單裡出現了新裝置」，來源有兩條、兩條都吃：
+      //     (a) `widget.monitorDevices`——後端在 `resolve_monitor_setup` 兌換成功時
+      //         會廣播 `elder-devices-update`（本輪 B2 補的），父層收到就會刷新。
+      //     (b) HTTP `fetchMonitorDevicesOrNull`——(a) 的 socket 若不在線就靠這條。
+      //   查詢失敗回 `null` 時**不做任何判斷**，避免網路抖動誤判成「綁好了」。
+      final Set<String> namesBefore = widget.monitorDevices
+          .map((d) => (d is Map ? (d['deviceName'] ?? '') : '').toString())
+          .where((n) => n.isNotEmpty)
+          .toSet();
+
+      bool dialogClosed = false;
+      BuildContext? codeDialogContext;
+
+      void stopPolling() {
+        _monitorBindPollTimer?.cancel();
+        _monitorBindPollTimer = null;
+      }
+
+      bool isBoundIn(Iterable<dynamic> devices) {
+        for (final d in devices) {
+          if (d is! Map) continue;
+          final name = (d['deviceName'] ?? '').toString();
+          if (name.isEmpty) continue;
+          // 名稱對上就是它；否則只要出現快照以外的新裝置也算綁定成功
+          //（監視機端可能自行改過名稱）。
+          if (name == targetDeviceName || !namesBefore.contains(name)) return true;
+        }
+        return false;
+      }
+
+      void closeCodeDialogOnBound() {
+        if (dialogClosed) return;
+        dialogClosed = true;
+        stopPolling();
+        final ctx = codeDialogContext;
+        if (ctx != null && ctx.mounted && Navigator.of(ctx).canPop()) {
+          Navigator.of(ctx).pop();
+        }
+        if (!mounted) return;
+        _toast('監控設備「$targetDeviceName」已完成綁定');
+        widget.onDevicesChanged?.call();
+      }
+
+      stopPolling();
+      int ticks = 0;
+      _monitorBindPollTimer =
+          Timer.periodic(const Duration(seconds: 2), (timer) async {
+        // 硬上限 5 分鐘（150 次）：逾時只停止輪詢，彈窗與配對碼仍然有效
+        //（後端配對碼壽命是 15 分鐘），使用者可繼續手動按「完成」。
+        if (dialogClosed || !mounted || ++ticks > 150) {
+          if (ticks > 150) stopPolling();
+          return;
+        }
+
+        if (isBoundIn(widget.monitorDevices)) {
+          closeCodeDialogOnBound();
+          return;
+        }
+
+        final userIdForQuery = widget.userId ?? familyId;
+        final devices = await ApiService.fetchMonitorDevicesOrNull(
+          elderId: rawId,
+          userId: userIdForQuery,
+        );
+        if (devices == null) return; // 查詢失敗：什麼都不做，下一輪再試
+        if (!dialogClosed && mounted && isBoundIn(devices)) {
+          closeCodeDialogOnBound();
+        }
+      });
+
       showDialog(
         context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('設備配對碼已產生'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              const Text('請在要作為攝影機的備用手機上，安裝 Uban 長輩版並選擇「作為監控設備登入」，然後輸入以下 6 位數代碼：'),
-              const SizedBox(height: 20),
-              Container(
-                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade200,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  code,
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 8,
-                    color: Colors.blue.shade700,
+        builder: (ctx) {
+          codeDialogContext = ctx;
+          return AlertDialog(
+            title: const Text('設備配對碼已產生'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const Text('請在要作為攝影機的備用手機上，安裝 Uban 長輩版並選擇「作為監控設備登入」，然後輸入以下 6 位數代碼：'),
+                const SizedBox(height: 20),
+                Container(
+                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade200,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    code,
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 8,
+                      color: Colors.blue.shade700,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                '此代碼將在 15 分鐘後失效。',
-                style: TextStyle(color: Colors.red.shade400, fontSize: 12),
+                const SizedBox(height: 12),
+                Text(
+                  '此代碼將在 15 分鐘後失效。',
+                  style: TextStyle(color: Colors.red.shade400, fontSize: 12),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '對方輸入完成後，本視窗會自動關閉。',
+                  style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                ),
+              ],
+            ),
+            actions: [
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('完成'),
               ),
             ],
-          ),
-          actions: [
-            ElevatedButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('完成'),
-            ),
-          ],
-        ),
-      );
+          );
+        },
+      ).then((_) {
+        // 使用者自己按「完成」或點掉彈窗 → 一併停掉輪詢，
+        // 並標記為已關閉，避免之後又去 pop 到底下的頁面。
+        dialogClosed = true;
+        stopPolling();
+      });
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('產生配對碼失敗，請稍後再試')),
@@ -1380,6 +1483,8 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
     final reachedLimit = widget.monitorDevices.length >= widget.devicesMax;
     final String rawId = widget.currentElder!.elderId ?? widget.currentElder!.id.toString();
     final String monitorRoomId = 'monitor_elder_$rawId';
+    // ★ 2026-08-11 第二十二輪（需求 5）：ICON 依會員層級變色。
+    final Color accent = _tierAccentColor();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1388,12 +1493,17 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
         _buildTierBadge(),
         const SizedBox(height: 12),
         Container(
+          // ★ 2026-08-11 第二十二輪（需求 5）：改用家屬端暗色系。
+          //   `family_main_screen.dart` 的 Scaffold 底色是 `0xFF0F172A`、卡片是 `0xFF1E293B`，
+          //   這張白卡在深色底上像貼錯的浮水印，故整段（含子元件）一併改深。
+          //   ⚠️ 純配色調整：版面結構、Expanded/Spacer、按鈕行為與跳轉全部不動。
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: const Color(0xFF1E293B),
             borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: const Color(0xFF334155)),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
+                color: Colors.black.withValues(alpha: 0.35),
                 blurRadius: 16,
                 offset: const Offset(0, 4),
               ),
@@ -1409,12 +1519,14 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                     Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFECFDF5),
+                        color: accent.withValues(alpha: 0.16),
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: const Icon(
+                      // ★ 2026-08-11 第二十二輪（需求 5）：這就是使用者指名要
+                      //   「依會員等級變色」的遠端視訊監控 ICON。
+                      child: Icon(
                         Icons.videocam_off_rounded,
-                        color: Color(0xFF10B981),
+                        color: accent,
                         size: 22,
                       ),
                     ),
@@ -1432,7 +1544,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                         style: GoogleFonts.notoSansTc(
                           fontSize: 18,
                           fontWeight: FontWeight.w800,
-                          color: const Color(0xFF0F172A),
+                          color: const Color(0xFFE2E8F0),
                         ),
                       ),
                     ),
@@ -1465,7 +1577,9 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
-                        color: reachedLimit ? Colors.orange.shade50 : Colors.grey.shade100,
+                        color: reachedLimit
+                            ? const Color(0xFFF59E0B).withValues(alpha: 0.18)
+                            : const Color(0xFF0F172A),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
@@ -1473,7 +1587,9 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w700,
-                          color: reachedLimit ? Colors.orange : Colors.grey[600],
+                          color: reachedLimit
+                              ? const Color(0xFFFBBF24)
+                              : const Color(0xFF94A3B8),
                         ),
                       ),
                     ),
@@ -1505,8 +1621,8 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                     icon: const Icon(Icons.add_a_photo_rounded, size: 20),
                     label: const Text('新增並連接監控設備'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFF1F5F9),
-                      foregroundColor: const Color(0xFF475569),
+                      backgroundColor: const Color(0xFF334155),
+                      foregroundColor: const Color(0xFFE2E8F0),
                       elevation: 0,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       textStyle: GoogleFonts.notoSansTc(
@@ -1529,23 +1645,28 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
 
   /// 空狀態：尚未連接任何監視機設備（移植自 family_dashboard_view.dart 第 1345 行 _buildNoMonitorDevice）
   Widget _buildNoMonitorDevice() {
+    // ★ 2026-08-11 第二十二輪（需求 5）：空狀態同樣改暗色系，ICON 依會員層級著色。
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 24),
       decoration: BoxDecoration(
-        color: Colors.grey.shade50,
+        color: const Color(0xFF0F172A),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.grey.shade200),
+        border: Border.all(color: const Color(0xFF334155)),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.videocam_off_rounded, color: Colors.grey.shade400, size: 48),
+          Icon(
+            Icons.videocam_off_rounded,
+            color: _tierAccentColor().withValues(alpha: 0.55),
+            size: 48,
+          ),
           const SizedBox(height: 12),
           Text(
             '尚未連接任何監視機設備',
             style: GoogleFonts.notoSansTc(
-              color: Colors.grey.shade600,
+              color: const Color(0xFFCBD5E1),
               fontSize: 15,
               fontWeight: FontWeight.w700,
             ),
@@ -1554,7 +1675,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
           Text(
             '請至「設定」配對家庭監控裝置',
             style: GoogleFonts.notoSansTc(
-              color: Colors.grey.shade400,
+              color: const Color(0xFF64748B),
               fontSize: 13,
             ),
           ),
@@ -1586,22 +1707,27 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
             (mostSevereAlert?['alert_id'] ?? mostSevereAlert?['alertId'])?.toString() ?? '')
         : null;
     final int? numericDeviceId = int.tryParse(deviceId.toString());
+    // ★ 2026-08-11 第二十二輪（需求 5）：卡片內的操作主色同樣依會員層級。
+    final Color accent = _tierAccentColor();
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 18),
+      // ★ 2026-08-11 第二十二輪（需求 5）：暗色系。跌倒警報的紅色高亮**必須保留**
+      //   （§7 護欄：警報視覺不可被弱化），只是把淺紅底換成深紅底、邊框轉亮，
+      //   在深色卡片上維持同等的「一眼看到」強度。
       decoration: BoxDecoration(
-        color: hasActiveAlert ? Colors.red.shade50 : Colors.white,
+        color: hasActiveAlert ? const Color(0xFF3F1D1D) : const Color(0xFF0F172A),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: hasActiveAlert ? Colors.red.shade400 : Colors.grey.shade200,
+          color: hasActiveAlert ? const Color(0xFFF87171) : const Color(0xFF334155),
           width: hasActiveAlert ? 2.0 : 1.0,
         ),
         boxShadow: [
           BoxShadow(
             color: hasActiveAlert
-                ? Colors.red.withValues(alpha: 0.12)
-                : Colors.black.withValues(alpha: 0.03),
+                ? Colors.red.withValues(alpha: 0.22)
+                : Colors.black.withValues(alpha: 0.25),
             blurRadius: hasActiveAlert ? 12 : 8,
             offset: const Offset(0, 2),
           ),
@@ -1614,12 +1740,12 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
             width: 10,
             height: 10,
             decoration: BoxDecoration(
-              color: isOnline ? Colors.green : Colors.grey,
+              color: isOnline ? const Color(0xFF34D399) : const Color(0xFF475569),
               shape: BoxShape.circle,
               boxShadow: isOnline
                   ? [
                       BoxShadow(
-                        color: Colors.green.withValues(alpha: 0.4),
+                        color: const Color(0xFF34D399).withValues(alpha: 0.5),
                         blurRadius: 6,
                       )
                     ]
@@ -1640,7 +1766,9 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
-                          color: isOnline ? Colors.black87 : Colors.grey,
+                          color: isOnline
+                              ? const Color(0xFFE2E8F0)
+                              : const Color(0xFF64748B),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
@@ -1672,7 +1800,9 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                       : '監視機模式',
                   style: TextStyle(
                     fontSize: 12,
-                    color: hasActiveAlert ? Colors.red.shade700 : Colors.grey.shade500,
+                    color: hasActiveAlert
+                        ? const Color(0xFFFCA5A5)
+                        : const Color(0xFF94A3B8),
                     fontWeight: hasActiveAlert ? FontWeight.w600 : FontWeight.normal,
                   ),
                 ),
@@ -1713,9 +1843,9 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
             label: const Text('觀看 CCTV'),
             style: ElevatedButton.styleFrom(
               backgroundColor: isOnline
-                  ? const Color(0xFF59B294).withValues(alpha: 0.1)
-                  : Colors.grey.shade200,
-              foregroundColor: isOnline ? const Color(0xFF59B294) : Colors.grey,
+                  ? accent.withValues(alpha: 0.16)
+                  : const Color(0xFF334155),
+              foregroundColor: isOnline ? accent : const Color(0xFF64748B),
               elevation: 0,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               shape: RoundedRectangleBorder(
@@ -1727,7 +1857,10 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
           //   離線裝置同樣要能操作（離線殘影正是最需要被刪掉的情況）。
           PopupMenuButton<String>(
             tooltip: '管理監視機',
-            icon: Icon(Icons.more_vert_rounded, color: Colors.grey.shade500),
+            // ★ 2026-08-11 第二十二輪（需求 5）：選單本身預設是亮底，
+            //   在暗色卡片上點開會整片刺眼，一併轉深。
+            color: const Color(0xFF1E293B),
+            icon: const Icon(Icons.more_vert_rounded, color: Color(0xFF94A3B8)),
             onSelected: (value) {
               if (value == 'rename') {
                 _showRenameMonitorDeviceDialog(name.toString());
@@ -1740,16 +1873,18 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                 value: 'rename',
                 child: ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.drive_file_rename_outline_rounded),
-                  title: Text('重新命名'),
+                  leading: Icon(Icons.drive_file_rename_outline_rounded,
+                      color: Color(0xFFCBD5E1)),
+                  title: Text('重新命名',
+                      style: TextStyle(color: Color(0xFFE2E8F0))),
                 ),
               ),
               PopupMenuItem<String>(
                 value: 'delete',
                 child: ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.delete_outline_rounded, color: Colors.red),
-                  title: Text('刪除監視機', style: TextStyle(color: Colors.red)),
+                  leading: Icon(Icons.delete_outline_rounded, color: Color(0xFFF87171)),
+                  title: Text('刪除監視機', style: TextStyle(color: Color(0xFFF87171))),
                 ),
               ),
             ],
@@ -1902,17 +2037,18 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
 
   /// 設備數量達上限時的警告卡片（移植自 family_dashboard_view.dart 第 1537 行 _buildDeviceLimitWarning）
   Widget _buildDeviceLimitWarning() {
+    // ★ 2026-08-11 第二十二輪（需求 5）：與監視機卡片同一張深色卡內，一併轉深底暖黃。
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 18),
       decoration: BoxDecoration(
-        color: Colors.orange.shade50,
+        color: const Color(0xFF3A2A0B),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.orange.shade200),
+        border: Border.all(color: const Color(0xFF92400E)),
       ),
       child: Row(
         children: [
-          Icon(Icons.warning_amber_rounded, color: Colors.orange.shade700, size: 22),
+          const Icon(Icons.warning_amber_rounded, color: Color(0xFFFBBF24), size: 22),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -1923,7 +2059,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                   style: GoogleFonts.notoSansTc(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
-                    color: Colors.orange.shade800,
+                    color: const Color(0xFFFCD34D),
                   ),
                 ),
                 const SizedBox(height: 2),
@@ -1931,7 +2067,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                   '升級方案以新增更多監視機',
                   style: GoogleFonts.notoSansTc(
                     fontSize: 12,
-                    color: Colors.orange.shade600,
+                    color: const Color(0xFFFDE68A),
                   ),
                 ),
               ],
@@ -1945,7 +2081,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
               );
             },
             style: TextButton.styleFrom(
-              foregroundColor: Colors.orange.shade800,
+              foregroundColor: const Color(0xFFFBBF24),
             ),
             child: Text(
               '升級',
@@ -1957,16 +2093,29 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
     );
   }
 
+  /// ★ 2026-08-11 第二十二輪（需求 5）：會員層級主色——**全分頁唯一來源**。
+  ///
+  /// 使用者指定：一般會員綠色、黃金會員金黃色、鑽石會員亮藍色。
+  /// 這裡刻意比 2026-08-04 第 6 項的原色（`0xFFC9911B` / `0xFF4A7FD9` / `0xFF59B294`）
+  /// 更亮一階——那組是為**白底卡片**挑的，遠端視訊監控改成 `0xFF1E293B` 深底之後
+  /// 對比度不足（尤其黃金的暗金會糊在深底上）。鑽石的 `0xFF38BDF8` 同時也是
+  /// `family_main_screen.dart` 底部導覽列選中態的主色，兩處一致。
+  ///
+  /// ⚠️ 未知層級一律退回一般會員的綠色，**不可拋例外**——`tierLevel` 來自後端訂閱
+  ///   查詢，查詢失敗時是 `'free'` 以外的任意字串，不能因此讓整個分頁白畫面。
+  Color _tierAccentColor() {
+    return switch (widget.tierLevel) {
+      'gold' => const Color(0xFFF5C451),    // 黃金會員 — 金黃
+      'diamond' => const Color(0xFF38BDF8), // 鑽石會員 — 亮藍
+      _ => const Color(0xFF10B981),         // 一般會員（免費）— 綠
+    };
+  }
+
   /// ★ Task B4：訂閱層級徽章 — 點擊導向訂閱頁（參考 family_dashboard_view.dart
   /// 第 649 行 _buildTierBadge 與第 1578 行 _buildDeviceLimitWarning 的既有導航寫法）。
+  /// 顏色與遠端視訊監控的 ICON 共用 [_tierAccentColor]，避免同一畫面出現兩種「黃金色」。
   Widget _buildTierBadge() {
-    // ★ 2026-08-04 第 6 項：三個層級要一眼分得出來，否則使用者無從得知自己是哪一級。
-    //   未知層級一律退回一般會員的顏色，不可拋例外。
-    final Color color = switch (widget.tierLevel) {
-      'gold' => const Color(0xFFC9911B),    // 黃金會員
-      'diamond' => const Color(0xFF4A7FD9), // 鑽石會員
-      _ => const Color(0xFF59B294),         // 一般會員（免費）
-    };
+    final Color color = _tierAccentColor();
     return GestureDetector(
       onTap: () {
         Navigator.push(

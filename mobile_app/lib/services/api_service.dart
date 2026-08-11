@@ -1201,6 +1201,25 @@ class ApiService {
   static Future<List<dynamic>> fetchMonitorDevices({
     required String elderId,
     required int userId,
+  }) async =>
+      await fetchMonitorDevicesOrNull(elderId: elderId, userId: userId) ??
+      const [];
+
+  /// ★ 2026-08-11 第二十二輪（需求 6）：與 [fetchMonitorDevices] 相同的查詢，
+  /// 但**區分「查詢失敗」與「查到了、清單是空的」**——失敗回 `null`、成功回清單
+  /// （可能為空陣列）。
+  ///
+  /// 為什麼需要這個變體：`elder_screen.dart` 的監控機在斷線時要判斷
+  /// 「是網路斷了」還是「這台已被家屬端刪除」。若沿用會把錯誤吞成 `[]` 的舊方法，
+  /// 空陣列同時代表「請求失敗」與「名下已無任何監控設備（正是被刪除的樣子）」，
+  /// 兩種相反結論無從區分，一定會誤報其中一種。
+  ///
+  /// [fetchMonitorDevices] 現在直接轉呼叫本方法並把 `null` 攤平成 `[]`，
+  /// 既有呼叫端（`family_main_screen.dart::_refreshMonitorDevicesViaHttp`）
+  /// 的行為完全不變。
+  static Future<List<dynamic>?> fetchMonitorDevicesOrNull({
+    required String elderId,
+    required int userId,
   }) async {
     try {
       final uri = Uri.parse('$baseUrl/pairing/monitor_devices').replace(
@@ -1211,12 +1230,12 @@ class ApiService {
       );
       final response = await http.get(uri).timeout(_timeout);
       final data = _safeDecode(response);
-      if (data['status'] != 'success') return [];
+      if (data['status'] != 'success') return null;
       final devices = (data['data'] ?? const {})['devices'];
-      return devices is List ? devices : [];
+      return devices is List ? devices : const [];
     } catch (e) {
       debugPrint('⚠️ fetchMonitorDevices error: $e');
-      return [];
+      return null;
     }
   }
 

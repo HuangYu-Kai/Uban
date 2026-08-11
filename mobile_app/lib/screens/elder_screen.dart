@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:audioplayers/audioplayers.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
@@ -67,6 +68,40 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   /// 上一張影格是否仍在上傳中。網路變慢時直接跳過該輪，**絕不排隊**，
   /// 避免計時器堆積把長輩機的記憶體與上行頻寬吃光（與後端限流丟幀策略一致）。
   bool _cctvFrameSending = false;
+
+  /// ★ 2026-08-11 第二十二輪（需求 3：家屬端奇數次進入監控會讓監控機畫面停住）。
+  /// 連續失敗次數；連續 3 輪失敗就視為擷取管線已壞，觸發 [_recoverCctvCapture]。
+  int _cctvFrameFailStreak = 0;
+
+  /// 最近一次「成功推出影格」的時間。超過 30 秒沒有任何一張成功就強制重建擷取管線——
+  /// 這條看門狗涵蓋的是「沒有拋例外、就只是永遠不返回」的情境（失敗計數不會增加）。
+  DateTime? _cctvLastFrameOkAt;
+
+  /// [_recoverCctvCapture] 的重入保護。重建過程本身有 await，沒有這個旗標，
+  /// 每 2 秒一輪的計時器會疊著呼叫，把相機開開關關到真的壞掉。
+  bool _cctvRecovering = false;
+
+  /// ★ 2026-08-11 第二十二輪（需求 6）：本監控機是否已被家屬端刪除。
+  ///
+  /// 後端刪除監控設備時會先 emit `monitor-removed`、再把這台裝置踢線，
+  /// 於是監控機端會**先後**收到兩個訊號；若只看後者（連線中斷），畫面會顯示
+  /// 「連線中斷」——使用者看到的是「設備明明還開著、卻說我斷線」而不是真相
+  /// 「這台已經被移除了」。這個旗標讓 [Signaling.onConnectionLost] 能分辨兩者。
+  ///
+  /// 兩個訊號的到達順序不保證（踢線可能先到），所以 `onConnectionLost` 除了讀
+  /// 這個旗標，還會再用 REST 清單交叉驗證一次。
+  bool _monitorRemoved = false;
+
+  /// ★ 2026-08-11 第二十二輪（需求 8）：本畫面註冊在 socket 上的 `force-logout`
+  /// 原生監聽。存起來才有辦法在 dispose() 時用
+  /// `socket.off('force-logout', _forceLogoutHandler)` 精準解除，
+  /// 避免每進出一次通話／監控畫面就在 singleton socket 上多疊一份殭屍 handler。
+  void Function(dynamic)? _forceLogoutHandler;
+
+  /// ★ 2026-08-11 第二十二輪（需求 9）：緊急通話的 7 秒提示音播放器
+  /// （取代舊的「緊急通話，自動接聽中」TTS 語音）。接通或離開畫面時停止並釋放。
+  AudioPlayer? _emergencyTonePlayer;
+
   int? _userId; // ★ issue 3/10：用於安全導航回主畫面時建構 ElderHomeScreen
   String? _prefsUserName; // ★ Issue 1 硬化：真實 caregiver_name，供 _buildFallbackHome 使用
 
@@ -122,16 +157,54 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   /// 符合需求所說的「長時間倒地不起」，也不會讓監視機一直滿載。
   ///
   /// 任何一輪失敗都只記錄並跳過，計時器本身絕不因單次錯誤而中止。
+  ///
+  /// ★ 2026-08-11 第二十二輪（需求 3：**家屬端奇數次進入監控會讓監控機畫面停住，
+  ///   要再進一次才恢復**）。根因就在這個迴圈：
+  ///   1. 家屬端進入監控 → 監控機的 `startMonitoring`/`_acceptCall` 會先
+  ///      `_closePeerConnection()`，那裡有一段
+  ///      `for (sender in await pc.getSenders()) { await pc.removeTrack(sender); }`。
+  ///      `removeTrack` 會把本機視訊軌從編碼器上拆下來。
+  ///   2. 若此刻剛好有一輪 `captureFrame()` 正在等原生層回傳，那個 Future 會
+  ///      **永遠不完成**——不是丟例外，是卡住。`try/catch` 完全攔不到。
+  ///   3. 於是 `finally` 不執行、`_cctvFrameSending` 永遠停在 `true`，
+  ///      之後每一輪都被開頭的 `if (_cctvFrameSending) return;` 擋掉 →
+  ///      **推幀徹底停止**，家屬端看到的畫面就凍住。
+  ///   4. 家屬端再進一次時，peer connection 重建、軌道重新掛回編碼器，
+  ///      那個卡住的 Future 才被原生層以錯誤收掉 → `finally` 終於跑到 →
+  ///      旗標歸位 → 「第 2、4、6 次進入就正常」。這正是使用者觀察到的奇偶數規律。
+  ///
+  ///   修法有三層，缺一不可：
+  ///   - **逾時**：`captureFrame()` 與上傳都加 `.timeout(...)`，把「永遠卡住」
+  ///     變成「會拋 TimeoutException」，`finally` 就一定跑得到。
+  ///   - **連續失敗計數**：連續 3 輪失敗 → 重建擷取管線。
+  ///   - **無成功影格看門狗**：30 秒內一張都沒成功 → 重建擷取管線。
   void _startCctvFrameLoop() {
     _cctvFrameTimer?.cancel();
+    _cctvLastFrameOkAt = DateTime.now();
+    _cctvFrameFailStreak = 0;
     _cctvFrameTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
-      if (!mounted || _cctvFrameSending) return;
+      if (!mounted || _cctvFrameSending || _cctvRecovering) return;
+
+      // 看門狗：30 秒沒有任何一張成功送出就重建擷取管線。
+      //   放在 localStream 檢查**之前**，因為「localStream 變成 null / 沒有視訊軌」
+      //   本身就是需要重建的故障態，擺在後面會被 return 掉而永遠不觸發。
+      final lastOk = _cctvLastFrameOkAt;
+      if (lastOk != null && DateTime.now().difference(lastOk).inSeconds >= 30) {
+        debugPrint('🚑 [CCTV] 看門狗：30 秒內沒有任何影格成功送出，重建擷取管線');
+        await _recoverCctvCapture();
+        return;
+      }
+
       final videoTracks = _signaling.localStream?.getVideoTracks();
       if (videoTracks == null || videoTracks.isEmpty) return;
 
       _cctvFrameSending = true;
       try {
-        final buffer = await videoTracks.first.captureFrame();
+        // ★ 第二十二輪：captureFrame 沒有逾時就是本輪需求 3 的直接死因。
+        //   6 秒遠大於正常擷取時間（實測數十毫秒），只在真的卡死時才會觸發。
+        final buffer = await videoTracks.first
+            .captureFrame()
+            .timeout(const Duration(seconds: 6));
         await ApiService.pushCctvFrame(
           elderId: _rawElderId,
           // ★ 第十九輪（D4）：改用 _currentDeviceName（可隨 monitor-renamed 更新），
@@ -139,14 +212,71 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
           //   導致 YOLO 偵測結果被後端歸到「改名前」的裝置、與家屬端看到的新名稱對不上。
           deviceName: _currentDeviceName,
           frameBytes: buffer.asUint8List(),
-        );
+        ).timeout(const Duration(seconds: 10));
+        _cctvFrameFailStreak = 0;
+        _cctvLastFrameOkAt = DateTime.now();
       } catch (e) {
-        debugPrint('⚠️ [CCTV] 影格推送失敗（略過本輪，不中斷迴圈）: $e');
+        _cctvFrameFailStreak++;
+        debugPrint('⚠️ [CCTV] 影格推送失敗（第 $_cctvFrameFailStreak 次，略過本輪，不中斷迴圈）: $e');
       } finally {
+        // ★ 絕對不可移除：這一行是「畫面停住」的解鎖點。
         _cctvFrameSending = false;
+      }
+
+      // 連續 3 輪失敗＝擷取管線已壞（軌道被 removeTrack 拆掉、相機被搶走…），
+      // 單純再等下一輪不會自己好，直接重建。
+      if (_cctvFrameFailStreak >= 3 && !_cctvRecovering) {
+        debugPrint('🚑 [CCTV] 連續 $_cctvFrameFailStreak 輪失敗，重建擷取管線');
+        await _recoverCctvCapture();
       }
     });
     debugPrint('🎥 [CCTV] 已啟動影格推送迴圈 (elder=$_rawElderId, device=$_currentDeviceName)');
+  }
+
+  /// ★ 2026-08-11 第二十二輪（需求 3）：重建監控機的本機擷取管線。
+  ///
+  /// 只在 CCTV 模式下有意義；一般通話路徑永遠不會呼叫到（呼叫端都在
+  /// [_startCctvFrameLoop] 內，而該迴圈只在 `widget.isCCTVMode` 時啟動）。
+  ///
+  /// 步驟刻意是「先停迴圈 → 釋放媒體 → 重新取得 → 重掛預覽 → 重啟迴圈」：
+  /// 直接呼叫 `_initializeMedia()` 是沒用的，它開頭就有 `if (_mediaInitialized) return;`。
+  Future<void> _recoverCctvCapture() async {
+    if (_cctvRecovering) return;
+    _cctvRecovering = true;
+    debugPrint('🚑 [CCTV] 開始重建擷取管線…');
+    try {
+      _cctvFrameTimer?.cancel();
+      _cctvFrameTimer = null;
+
+      // 釋放舊的相機資源。stopMedia() 會 stop 每一條 track 再 dispose stream，
+      // 卡住的 captureFrame 也會因為軌道被停止而被原生層以錯誤收掉。
+      _signaling.stopMedia();
+      _localRenderer.srcObject = null;
+      _mediaInitialized = false;
+
+      // 給原生層一點時間真正釋放相機，否則某些機型會立刻 getUserMedia 失敗。
+      await Future.delayed(const Duration(milliseconds: 400));
+      if (!mounted) return;
+
+      await _initializeMedia();
+      if (!mounted) return;
+
+      _cctvFrameSending = false;
+      _cctvFrameFailStreak = 0;
+      _cctvLastFrameOkAt = DateTime.now();
+      _startCctvFrameLoop();
+      debugPrint('✅ [CCTV] 擷取管線重建完成');
+    } catch (e) {
+      debugPrint('❌ [CCTV] 重建擷取管線失敗（下一輪看門狗會再試一次）: $e');
+      // 失敗也要把旗標歸位並保住迴圈，否則監控機就此徹底停擺。
+      _cctvFrameSending = false;
+      if (mounted && _cctvFrameTimer == null) {
+        _cctvLastFrameOkAt = DateTime.now();
+        _startCctvFrameLoop();
+      }
+    } finally {
+      _cctvRecovering = false;
+    }
   }
 
   @override
@@ -315,33 +445,99 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     }
   }
 
+  /// ★ 2026-08-11 第二十二輪（需求 9）：緊急通話**無條件接聽**。
+  ///
+  /// 使用者要求：無論長輩端在 APP 內或外、是否在背景被殺死、螢幕是否關閉，
+  /// 只要家屬端撥打緊急通話，長輩端就必須進入緊急通話視訊房，無視長輩是否同意。
+  ///
+  /// 舊版開頭是 `if (!_isInCall && mounted)`——只要本機自認「已在通話中」，
+  /// 整個函式就**什麼都不做**：不 `endAllCalls()`、不 `sendCallAccept()`，
+  /// 家屬端一路等到逾時，使用者看到的就是「緊急通話打不通」。
+  /// 而 `_isInCall` 殘留為 true 的情況並不罕見：上一通已結束但 `end-call` 沒送達、
+  /// CCTV 模式下的自動接聽尚未歸零、前一次緊急通話被對端取消卻沒收到事件。
+  /// 緊急通話的語意就是「壓過一切」，不該被這種殘留狀態擋下。
+  ///
+  /// 新行為：
+  ///   1. `callId` 與進行中的同一通 → 直接 return（避免重複 `sendCallAccept`
+  ///      造成對端收到兩次 accept 而重送 Offer）。
+  ///   2. 不同通但 `_isInCall` → **先拆掉舊通話**，再接這通緊急通話。
+  ///      `disposeLocalStream: false` 是刻意的：緊急通話下一步就要用同一顆相機，
+  ///      釋放再重開會多花數百毫秒，且 Android Camera2 重開期間可能卡住。
+  ///   3. 其餘一律往下接聽。
   Future<void> _handleEmergencyAccept(String senderId, {String? callId}) async {
-    if(!_isInCall && mounted) {
-      _activeCallId = callId; // ★ 第十三輪：記錄進行中通話，供 isSameOngoingCall 去重
-      setState(() {
-        _isInCall = true;
-        _status = "緊急通話自動接聽中...";
-      });
-      
-      // Clear CallKit ringing
-      try {
-        await FlutterCallkitIncoming.endAllCalls();
-      } catch (e) {
-        debugPrint("Failed to end CallKit calls: $e");
-      }
-      
-      // ★ 2026-08-06 第十九輪（B）：監視機（CCTV）自動接聽必須完全靜音——
-      //   家屬端開啟監控不該觸發長輩端的緊急通話語音提示，也不該讓長輩察覺
-      //   監控端正在觀看。一般（非 CCTV）緊急通話維持原有語音提示不變。
-      if (!widget.isCCTVMode) {
-        FlutterTts flutterTts = FlutterTts();
-        await flutterTts.setLanguage("zh-TW");
-        await flutterTts.setVolume(1.0);
-        await flutterTts.speak("緊急通話，自動接聽中。緊急通話，自動接聽中。");
-      }
+    if (!mounted) return;
 
-      // Notify the Family App that we are awake and ready to receive the Offer!
-      _signaling.sendCallAccept(senderId, callId: callId);
+    // 1. 同一通的重複觸發（CallKit accept 與 FCM 兩條路徑常各寫一次）
+    if (_isInCall && callId != null && callId == _activeCallId) {
+      debugPrint("ℹ️ [ElderScreen] 略過重複的緊急接聽（callId 相同: $callId）");
+      return;
+    }
+
+    // 2. 不同通進行中 → 先讓位給緊急通話
+    if (_isInCall) {
+      debugPrint("🚨 [ElderScreen] 緊急通話優先：先結束進行中的通話再接聽");
+      _callTimer?.cancel();
+      _activeCallId = null;
+      _signaling.hangUp(disconnectSocket: false, disposeLocalStream: false);
+      _isInCall = false;
+    }
+
+    _activeCallId = callId; // ★ 第十三輪：記錄進行中通話，供 isSameOngoingCall 去重
+    setState(() {
+      _isInCall = true;
+      _status = "緊急通話接通中...";
+    });
+
+    // Clear CallKit ringing
+    try {
+      await FlutterCallkitIncoming.endAllCalls();
+    } catch (e) {
+      debugPrint("Failed to end CallKit calls: $e");
+    }
+
+    // ★ 2026-08-06 第十九輪（B）：監視機（CCTV）自動接聽必須完全靜音——
+    //   家屬端開啟監控不該觸發長輩端的提示音，也不該讓長輩察覺監控端正在觀看。
+    // ★ 2026-08-11 第二十二輪（需求 9）：一般緊急通話**移除 TTS 語音播報**
+    //   （原本是「緊急通話，自動接聽中。」唸兩遍），改為約 7 秒的緊急提示音。
+    //   TTS 會與剛接通的通話語音搶同一條輸出、還會被系統的語音佇列延後，
+    //   提示音則是單純的音檔播放，長輩也更容易辨識。
+    if (!widget.isCCTVMode) {
+      _playEmergencyTone();
+    }
+
+    // Notify the Family App that we are awake and ready to receive the Offer!
+    _signaling.sendCallAccept(senderId, callId: callId);
+  }
+
+  /// ★ 2026-08-11 第二十二輪（需求 9）：播放約 7 秒的緊急提示音。
+  ///
+  /// 刻意**不呼叫** `player.setAudioContext(...)`：全域已在 `main.dart` 設定
+  /// `AndroidAudioFocus.none`（護欄 G27），在這裡覆寫成搶焦點會把剛接通的
+  /// 通話語音壓掉，也會打斷長輩端的語音喚醒監聽。
+  /// 播放失敗一律吞掉——提示音只是輔助，**絕不可**讓它擋住接聽流程。
+  Future<void> _playEmergencyTone() async {
+    try {
+      await _stopEmergencyTone();
+      final player = AudioPlayer();
+      _emergencyTonePlayer = player;
+      await player.setReleaseMode(ReleaseMode.stop);
+      await player.play(AssetSource('sounds/emergency_alert.wav'));
+    } catch (e) {
+      debugPrint('⚠️ [ElderScreen] 緊急提示音播放失敗（不影響接聽）: $e');
+    }
+  }
+
+  /// 停止並釋放緊急提示音播放器。接通（`onPeerConnected`）與離開畫面時都會呼叫，
+  /// 避免「已經看到對方了、提示音還在響」。
+  Future<void> _stopEmergencyTone() async {
+    final player = _emergencyTonePlayer;
+    _emergencyTonePlayer = null;
+    if (player == null) return;
+    try {
+      await player.stop();
+      await player.dispose();
+    } catch (e) {
+      debugPrint('⚠️ [ElderScreen] 停止緊急提示音失敗（忽略）: $e');
     }
   }
 
@@ -370,6 +566,9 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
 
     // ★ 2026-08-05 第十七輪：ICE 真正連通時才開始計時，避免「有通話計時卻沒有影音」的假象。
     _signaling.onPeerConnected = () {
+      // ★ 2026-08-11 第二十二輪（需求 9）：真的看到對方了就停掉緊急提示音，
+      //   否則會出現「畫面已接通、警示音還在響」。
+      _stopEmergencyTone();
       if (mounted) {
         _startCallTimer();
       }
@@ -579,16 +778,37 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     // ★ issue 5：通話中發生無法復原的連線中斷（已超過 signaling.dart 的 2 秒重連寬限期）
     _signaling.onConnectionLost = () {
       _callTimer?.cancel();
-      if (mounted) {
+      if (!mounted) return;
+
+      // ── 一般通話路徑：與第二十二輪修改前**完全相同**，不得更動 ──
+      if (!widget.isCCTVMode) {
         _showElderCallFailToast(kCallFailDisconnected);
         setState(() {
           _remoteRenderer.srcObject = null;
           _status = "連線中斷";
           _isInCall = false;
         });
-        if (!widget.isCCTVMode) {
-          safeNavigateBack(context, _buildFallbackHome());
-        }
+        safeNavigateBack(context, _buildFallbackHome());
+        return;
+      }
+
+      // ── 監控機路徑（★ 2026-08-11 第二十二輪／需求 6）──
+      //   監控機斷線有兩種完全不同的成因，過去一律顯示「連線中斷」：
+      //     (a) 網路真的斷了 → 「連線中斷」才是實話
+      //     (b) 家屬端把這台監控設備刪掉了，後端把它踢線 → 設備明明還在運轉，
+      //         使用者卻看到「連線中斷」，只會以為是自己家的網路壞了。
+      //   這裡不再走 `_showElderCallFailToast`（那是「沒接通」的通話語意，
+      //   監控機沒有在通話），也不導航——監控機被刪除的導航由
+      //   `onMonitorRemoved` 負責（它會先 releaseSession 再回身分選擇頁）。
+      setState(() {
+        _remoteRenderer.srcObject = null;
+        _isInCall = false;
+        _status = _monitorRemoved ? "該監控機已被刪除" : "連線中斷，檢查中…";
+      });
+      if (!_monitorRemoved) {
+        // `monitor-removed` 事件與「被踢線」的到達順序不保證，甚至可能因為
+        // socket 先斷而永遠收不到事件，所以再用 REST 清單交叉驗證一次。
+        _verifyMonitorStillExists();
       }
     };
 
@@ -610,7 +830,16 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       }
     };
 
-    _signaling.socket?.on('force-logout', (_) async {
+    // ★ 2026-08-11 第二十二輪（需求 8）：這是本畫面唯一一個**直接掛在 socket 上**
+    //   的原生監聽（其餘都是 Signaling 的 callback 欄位，dispose() 時設 null 即可解除）。
+    //   過去它註冊後**從不解除**：離開監控機、回到長輩端、再進通話畫面，
+    //   同一個 socket 上就疊了好幾份 force-logout handler，各自持有已 dispose 的
+    //   State 與 BuildContext；一旦後端真的送 force-logout，多份 handler 併發
+    //   remove prefs 並各自 pushAndRemoveUntil，正是使用者回報的
+    //   「在後台徹底死機（ANR）」的成因之一。
+    //   存成欄位，dispose() 時用 socket.off('force-logout', _forceLogoutHandler) 精準移除
+    //   （**不可**用不帶 handler 的 off()，那會把其他地方註冊的同名監聽一併清掉）。
+    _forceLogoutHandler = (_) async {
       debugPrint('🚪 [ElderScreen] force-logout 觸發');
       final prefs = await SharedPreferences.getInstance();
       // ★ Issue 3 硬化：force-logout 只應清除「登入/角色/裝置身分」相關鍵，
@@ -648,7 +877,8 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
           (route) => false,
         );
       }
-    });
+    };
+    _signaling.socket?.on('force-logout', _forceLogoutHandler!);
 
     _signaling.onIncomingCall = (callerId, callType) async {
       debugPrint("📞 [ElderScreen] Incoming Offer from $callerId (Type: $callType)");
@@ -732,6 +962,12 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
         if (eventElderId.isNotEmpty && eventElderId != _rawElderId) return;
         if (deviceName.isNotEmpty && deviceName != _currentDeviceName) return;
         debugPrint('🗑️ [ElderScreen] 本監視器已被家屬端刪除，釋放 session 並退回身分選擇頁');
+        // ★ 2026-08-11 第二十二輪（需求 6）：**先立旗標、再做任何 await**。
+        //   後端是「先 emit monitor-removed、再把這台踢線」，踢線觸發的
+        //   onConnectionLost 極可能在下面 releaseSession() 的 await 期間插進來；
+        //   旗標沒先立好，使用者就會先看到一瞬間的「連線中斷」。
+        _monitorRemoved = true;
+        if (mounted) setState(() => _status = "該監控機已被刪除");
         // 先釋放 session（含通知後端註銷 FCM token、forceDisconnect、清 prefs），
         // 再導航——順序顛倒的話畫面已切走、await 可能被中斷而漏清。
         await SessionManager.releaseSession();
@@ -743,6 +979,53 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       };
     }
 
+  }
+
+  /// ★ 2026-08-11 第二十二輪（需求 6）：監控機斷線後，用 REST 交叉驗證
+  /// 「這台監控設備是否還存在於家屬端清單」，據以把畫面上的
+  /// 「連線中斷，檢查中…」定案成「該監控機已被刪除」或「連線中斷」。
+  ///
+  /// 為什麼不能只靠 `monitor-removed` 事件：後端刪除時是「先 emit、再踢線」，
+  /// 但兩者都經由同一條已在崩解中的 socket，事件很可能根本送不到；
+  /// 反過來若網路真的斷了，HTTP 也會失敗——所以用
+  /// [ApiService.fetchMonitorDevicesOrNull]（失敗回 `null`、成功回清單）來區分：
+  ///   - `null`（查詢失敗，含無權 404）→ 無從判斷 → 維持「連線中斷」
+  ///   - 清單裡**找不到**自己 → 確定已被刪除
+  ///   - 清單裡找得到自己 → 真的只是網路問題 → 「連線中斷」
+  ///
+  /// 這裡**只改文字、不導航**：被刪除的導航屬於 `onMonitorRemoved`
+  /// （它會先 `SessionManager.releaseSession()` 再回身分選擇頁），
+  /// 在這裡重複一次會變成兩條併行的清理路徑互相打架。
+  Future<void> _verifyMonitorStillExists() async {
+    final int? userId = _userId;
+    if (userId == null) {
+      if (mounted) setState(() => _status = "連線中斷");
+      return;
+    }
+    List<dynamic>? devices;
+    try {
+      devices = await ApiService.fetchMonitorDevicesOrNull(
+        elderId: _rawElderId,
+        userId: userId,
+      ).timeout(const Duration(seconds: 8));
+    } catch (e) {
+      debugPrint('⚠️ [CCTV] 交叉驗證監控設備是否仍存在失敗（維持「連線中斷」）: $e');
+      devices = null;
+    }
+    if (!mounted) return;
+    if (devices == null) {
+      setState(() => _status = "連線中斷");
+      return;
+    }
+    final bool stillExists = devices.any((d) =>
+        d is Map && (d['deviceName'] ?? '').toString() == _currentDeviceName);
+    if (!stillExists) {
+      debugPrint('🗑️ [CCTV] 交叉驗證：本監控機已不在家屬端清單中 → 判定為已被刪除');
+    }
+    setState(() {
+      _monitorRemoved = !stillExists;
+      _status = stillExists ? "連線中斷" : "該監控機已被刪除";
+    });
   }
 
   /// ★ 2026-08-06 第十九輪（需求 3）：長輩端「沒接通」提示。
@@ -932,10 +1215,22 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     );
     if (!mounted) return;
     setState(() => _testFallSending = false);
+
+    // ★ 2026-08-11 第二十二輪（需求 2）：後端 `CCTV_TEST_FALL_ENABLED` 預設 false，
+    //   回的原文是「測試端點未啟用（請在後端 .env 設定 CCTV_TEST_FALL_ENABLED=true）」，
+    //   使用者看到只會以為是 App 壞了。這裡把它換成「說明這不是故障、以及該找誰開」的
+    //   完整句子；**其餘錯誤字串一律原樣顯示**（密鑰錯誤／查無此監視機都要看得到原因）。
+    //   ⚠️ 這是純 UI 文案，`triggerTestFall` 的回傳語意（null=成功）完全不動。
+    final bool disabledByServer = err != null && err.contains('測試端點未啟用');
+    final String message = disabledByServer
+        ? '測試端點未啟用。這是後端的安全預設值，不是 App 故障——'
+            '需由伺服器管理者在後端 .env 設定 CCTV_TEST_FALL_ENABLED=true 並重啟服務後才能使用。'
+        : (err ?? '已送出跌倒測試警報');
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(err ?? '已送出跌倒測試警報'),
-        duration: Duration(seconds: err == null ? 2 : 6),
+        content: Text(message),
+        duration: Duration(seconds: err == null ? 2 : (disabledByServer ? 10 : 6)),
       ),
     );
   }
@@ -1057,6 +1352,28 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       //   刪除設備 API 必須排在 releaseSession() **之前**：releaseSession 會清掉
       //   caregiver_id 等鍵，且 deleteMonitorDevice 需要它們才能通過後端授權。
 
+      // ★ 2026-08-11 第二十二輪（需求 8）：**先停推幀、先還相機，再做其他清理。**
+      //   使用者回報「從監視機跳回長輩端後，通話完全不能用，還有 >50% 機率 ANR」。
+      //   其中一半的根因就在這裡：這條退出路徑從不釋放 `localStream`。
+      //   監控機模式下相機是**一直開著**在推幀的，退出時只 releaseSession + 導航，
+      //   攝影機與麥克風軌道就一路活到下一個畫面；接著長輩端要通話時
+      //   `openUserMedia()` 會去搶同一顆相機，Android Camera2 在被佔用時
+      //   不是丟例外而是**卡住不返回**——按下「接聽」沒有任何反應、
+      //   `createOffer` 永遠等不到 localStream，主執行緒被拖住就變成系統的
+      //   「要停止還是等待」對話框。
+      //   排在 `deleteMonitorDevice` 之前：釋放相機是純本機操作、不需要網路，
+      //   不該被一個可能逾時的 HTTP 請求擋住。
+      _cctvFrameTimer?.cancel();
+      _cctvFrameTimer = null;
+      _cctvFrameSending = false;
+      try {
+        _signaling.stopMedia();
+        _localRenderer.srcObject = null;
+        _mediaInitialized = false;
+      } catch (e) {
+        debugPrint('⚠️ [ElderScreen] 退出監控時釋放媒體失敗（續行）: $e');
+      }
+
       // ★ 2026-08-06 第十九輪（D4）：監視機主動退出監控模式時，同步通知後端刪除
       //   這台監控設備，家屬端的遠端監控清單才不會留下永久殘影。走 HTTP REST，
       //   不依賴 socket 是否還活著，故排在 forceDisconnect() 之前呼叫。
@@ -1098,8 +1415,30 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     _localRenderer.dispose();
     _remoteRenderer.dispose();
     
+    // ★ 2026-08-11 第二十二輪（需求 8）：解除本畫面掛在 socket 上的原生監聽。
+    //   必須帶上 handler 參數精準移除；不帶參數的 off('force-logout') 會連
+    //   其他地方註冊的同名監聽一起清掉。
+    if (_forceLogoutHandler != null) {
+      try {
+        _signaling.socket?.off('force-logout', _forceLogoutHandler);
+      } catch (e) {
+        debugPrint('⚠️ [ElderScreen] 解除 force-logout 監聽失敗（續行）: $e');
+      }
+      _forceLogoutHandler = null;
+    }
+
     // ★ 修復：只結束 WebRTC，不要斷開 Socket，這樣回到 ElderHomeScreen 時才能繼續接收推播
-    _signaling.hangUp(disconnectSocket: false, disposeLocalStream: false);
+    // ★ 2026-08-11 第二十二輪（需求 8）：`disposeLocalStream` 改為**視模式而定**。
+    //   一般通話仍維持 `false`（原行為不變：通話結束後 localStream 留著，
+    //   下一通可以立刻復用、不必重開相機，這是接通速度的一部分）。
+    //   監控機（CCTV）模式則必須 `true`：監控機的相機是長時間持續開啟的，
+    //   離開畫面卻不釋放，下一個畫面要用相機時 Android Camera2 會卡死不返回
+    //   （「按接聽沒反應」＋ ANR）。`_exitCCTVMode()` 已先釋放過一次，
+    //   這裡是涵蓋其他離開路徑（被刪除、force-logout、系統回收）的兜底。
+    _signaling.hangUp(
+      disconnectSocket: false,
+      disposeLocalStream: widget.isCCTVMode,
+    );
 
     // ★ 2026-08-05 第十八輪（需求 4）：通話畫面離開 → 還原鎖屏行為，讓裝置回到原本的螢幕鎖。
     //   `showOverLockScreen()` 會設 setShowWhenLocked(true) + FLAG_KEEP_SCREEN_ON，
@@ -1131,6 +1470,10 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     _signaling.onHeartbeatMessage = null;
     _signaling.onMonitorRenamed = null;
     _signaling.onMonitorRemoved = null;
+
+    // ★ 2026-08-11 第二十二輪（需求 9）：離開畫面一定要停掉緊急提示音，
+    //   否則掛斷後音效還會繼續在背景播完剩下的秒數。
+    _stopEmergencyTone();
 
     super.dispose();
   }

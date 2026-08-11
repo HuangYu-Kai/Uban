@@ -219,6 +219,18 @@ class Signaling {
       return;
     }
 
+    // ★ 2026-08-11 第二十二輪（需求 8：從監視機跳回長輩端後通話全滅）：
+    //   走到這裡代表 socket 為 null 或**已斷線**。原本的寫法直接用新的 `io.io(...)`
+    //   覆蓋掉 `socket`，那個已斷線的舊 Socket 物件既沒被 `dispose()`、也沒被
+    //   `clearListeners()`，就這樣變成孤兒——它身上仍掛著上一輪註冊的所有 handler
+    //   （`call-request`、`offer`、`force-logout`…），底層 Manager 也還在跑重連排程。
+    //   一旦它自己重連成功，就會用**舊的** sid 收到信令，而畫面上的邏輯早已綁在新
+    //   socket 上：於是「來電通知收得到（FCM 那條路獨立），但 offer/answer 走錯 socket
+    //   → 雙端永遠連不上」，且孤兒 socket 越疊越多（每進出一次監控就多一個），
+    //   背景重連風暴最終拖成 ANR。
+    //   ⚠️ 監控機模式（`elder_screen` CCTV）進出頻繁，是最容易踩到的路徑。
+    _disposeSocket('connect() 建立新連線前清除舊的斷線 socket');
+
     debugPrint("🔌 Creating new socket connection...");
     socket = io.io(serverUrl, io.OptionBuilder()
       .setTransports(['websocket', 'polling'])
@@ -647,7 +659,7 @@ class Signaling {
       avatar: 'https://i.pravatar.cc/150?name=$callerName',  // ★ 動態頭貼，基於名稱生成
       handle: '📞 視訊通話',  // ★ 改進提示文字
       type: 0,  // 0 = audio, 1 = video
-      duration: 45000,  // ★ CallKit 響鈴 45s（獨立於 kCallValidityMs 120s，接聽時限 ≠ FCM 有效期）
+      duration: 45000,  // ★ CallKit 響鈴 45s（獨立於 kCallValidityMs 60s，接聽時限 ≠ FCM 有效期）
       textAccept: '✓ 接聽',  // ★ 加入emoji
       textDecline: '✕ 拒絕',  // ★ 加入emoji
       missedCallNotification: const NotificationParams(
@@ -929,12 +941,14 @@ class Signaling {
       await _processCandidateQueue();
       var answer = await peerConnection?.createAnswer(_constraints);
       await peerConnection?.setLocalDescription(answer!);
-      await _applyVideoEncodingParams();
-      
+
       // ★ 確保發送 answer 時正確指定發起者的 socketId 作為 targetId
       final targetSocketId = data['senderId'] ?? _peerSocketId;
       debugPrint("📤 [Signaling] Emitting answer to $targetSocketId (Call initiated by them)");
-      
+
+      // ★ 2026-08-11 第二十二輪（需求 7）：與 createOffer 同理，**先送 answer 再套編碼參數**。
+      //   `_applyVideoEncodingParams()` 的原生 setParameters 會延後 answer 抵達對端的時間，
+      //   而它與 SDP 內容無關。⚠️ 不要再把它移回 emit 之前。
       socket!.emit('answer', {
         'room': _currentRoomId,
         'targetId': targetSocketId,
@@ -942,6 +956,7 @@ class Signaling {
         'sdp': answer!.sdp,
         'senderId': socket!.id
       });
+      await _applyVideoEncodingParams();
     } catch (e) {
       debugPrint("❌ Accept Error: $e");
     }
@@ -1001,7 +1016,12 @@ class Signaling {
       //   rtcpMuxPolicy require：RTP 與 RTCP 共用同一個埠，候選數量減半。
       //   sdpSemantics unified-plan：與本檔使用 addTrack（第 920 行）的寫法一致，
       //     明確指定以免不同平台預設值不同。
-      'iceCandidatePoolSize': 2,
+      //   ★ 2026-08-11 第二十二輪（需求 7）：iceCandidatePoolSize 2→4。
+      //     池子越大，PeerConnection 建立當下就預先向 STUN/TURN 要到越多候選，
+      //     `createOffer` 時可直接寫進 SDP，少一輪「trickle → 對端 addCandidate」往返。
+      //     4 是保守值（對應 srflx/relay × UDP/TCP 四種組合），再大只是多打 TURN 沒有效益。
+      //     `iceServers` 一個字都不要動（靜態帳號 uban 必須排第一組，見上方 G39 註解）。
+      'iceCandidatePoolSize': 4,
       'bundlePolicy': 'max-bundle',
       'rtcpMuxPolicy': 'require',
       'sdpSemantics': 'unified-plan',
@@ -1166,10 +1186,15 @@ class Signaling {
           debugPrint('ℹ️ [Signaling] 視訊 encodings 尚未就緒，略過編碼參數設定');
           continue;
         }
-        encodings.first.maxBitrate = 2500000; // 2.5 Mbps，720p30 的合理上限
-        encodings.first.maxFramerate = 30;
+        // ★ 2026-08-11 第二十二輪（需求 7：盡量拉到 1080p / 60fps）。
+        //   修改前：maxBitrate = 2500000（2.5 Mbps）、maxFramerate = 30。
+        //   1080p60 的合理上限約 4 Mbps；這只是**上限**，WebRTC 的擁塞控制（GCC）
+        //   仍會依實測頻寬自動降到能跑的位元率，網路差時不會因此塞爆。
+        //   若日後要還原，把下面兩行改回 2500000 / 30 即可，其餘邏輯不必動。
+        encodings.first.maxBitrate = 4000000; // 4 Mbps，1080p60 的合理上限
+        encodings.first.maxFramerate = 60;
         await sender.setParameters(params);
-        debugPrint('🎥 [Signaling] 已套用視訊編碼參數: maxBitrate=2.5Mbps, maxFramerate=30');
+        debugPrint('🎥 [Signaling] 已套用視訊編碼參數: maxBitrate=4Mbps, maxFramerate=60');
       }
     } catch (e) {
       // 設定失敗絕不可影響通話本身，僅記錄。
@@ -1206,8 +1231,15 @@ class Signaling {
       
       RTCSessionDescription offer = await peerConnection!.createOffer(constraints);
       await peerConnection!.setLocalDescription(offer);
-      await _applyVideoEncodingParams();
-      
+
+      // ★ 2026-08-11 第二十二輪（需求 7：縮短接通等待）：**先送 offer、再套編碼參數**。
+      //   原順序是 `setLocalDescription` → `await _applyVideoEncodingParams()` → `emit`，
+      //   而 `_applyVideoEncodingParams()` 會 `await pc.getSenders()` 再逐一
+      //   `await sender.setParameters(params)`——這些都是跨 platform channel 的原生呼叫，
+      //   在中低階 Android 上量測到數百毫秒，等於**白白延後對端開始協商的時間**。
+      //   編碼參數只影響「送出去的畫質」，與 SDP 內容無關（它改的是 sender 的
+      //   encoding 參數，不是 local description），所以移到 emit 之後語意完全等價。
+      //   ⚠️ 不要再把它移回 emit 之前。
       debugPrint("📤 [Signaling] Emitting offer to $targetId");
       socket!.emit('offer', {
           'room': _currentRoomId,
@@ -1217,6 +1249,7 @@ class Signaling {
           'sdp': offer.sdp,
           'isEmergency': isEmergency
       });
+      await _applyVideoEncodingParams();
     } catch (e) {
       debugPrint("❌ [Signaling] createOffer failed: $e");
       rethrow;
@@ -1254,17 +1287,22 @@ class Signaling {
   }
 
   Future<void> openUserMedia(RTCVideoRenderer localVideo, {bool videoEnabled = true}) async {
-    // ★ Task 3：提高畫質與幀率 constraint (1280x720 30fps)
+    // ★ Task 3：提高畫質與幀率 constraint
+    // ★ 2026-08-11 第二十二輪（需求 7）：ideal 由 1280x720@30 提高到 **1920x1080@60**。
+    //   **min 值刻意維持 640x480@24 不變**——`mandatory` 的 min 在 Android 是硬性條件，
+    //   若跟著拉高，攝影機不支援 1080p60 的機型會直接 getUserMedia 失敗（等於無法通話）。
+    //   ideal 只是「希望值」，拿不到就退到裝置支援的最接近解析度，安全。
+    //   若要還原：把 idealWidth/idealHeight/idealFrameRate 改回 1280/720/30。
     final Map<String, dynamic> videoConstraints = videoEnabled
         ? {
             'video': {
               'mandatory': {
                 'minWidth': '640',
-                'idealWidth': '1280',
+                'idealWidth': '1920',
                 'minHeight': '480',
-                'idealHeight': '720',
+                'idealHeight': '1080',
                 'minFrameRate': '24',
-                'idealFrameRate': '30',
+                'idealFrameRate': '60',
               },
               'facingMode': 'user',
               'optional': [],
@@ -1272,6 +1310,20 @@ class Signaling {
             'audio': true,
           }
         : {'video': false, 'audio': true};
+
+    // ★ 2026-08-11 第二十二輪（需求 8：從監視機跳回長輩端後通話全滅）：
+    //   取新的媒體前**必須先釋放舊的**。原本這裡直接 getUserMedia，舊的 `localStream`
+    //   既沒 stop() 也沒 dispose()，於是每經歷一次「進監控 → 退出 → 一般通話」，
+    //   相機／麥克風就多被一個孤兒 stream 占住。Android 的相機是獨占資源，
+    //   累積到某個數量後 getUserMedia 會卡住不返回（不是丟例外，try/catch 攔不到），
+    //   接聽流程停在這一行 → 按了「接聽」沒反應、不跳轉，背景累積無回應的原生呼叫
+    //   最終被系統判定為 ANR（「停止或等待」對話框）。
+    //   ⚠️ 這是本輪的核心修復之一，不要為了「省一次相機重啟」把它拿掉。
+    if (localStream != null) {
+      debugPrint("♻️ [Signaling] openUserMedia：偵測到既有 localStream，先釋放再重新取得");
+      stopMedia();
+    }
+
     var stream = await navigator.mediaDevices.getUserMedia(videoConstraints);
     localVideo.srcObject = stream;
     localStream = stream;
@@ -1362,11 +1414,50 @@ class Signaling {
     }
   }
 
-  void forceDisconnect() {
-    if (socket != null && socket!.connected) {
-      socket?.disconnect();
-      socket = null;
+  /// ★ 2026-08-11 第二十二輪（需求 8）：徹底拆除目前的 Socket 物件。
+  ///
+  /// 順序刻意是 **`clearListeners()` → `dispose()`**：
+  ///   - `clearListeners()` 先把本專案註冊的 handler 全部拔掉，之後 `disconnect()`
+  ///     內部觸發的 `onclose('io client disconnect')` 就不會回打到 `onConnectionLost`
+  ///     之類的畫面邏輯（否則退出監控時會誤跳「連線中斷」）。
+  ///   - `dispose()`（socket_io_client 3.1.4）= `disconnect()` + `clearListeners()`，
+  ///     其中 `disconnect()` 會 `destroy()` 遞減 Manager 的參考計數並關閉底層連線，
+  ///     這才是真正把重連排程停掉、釋放 WebSocket 的一步。
+  /// 兩步各自 try/catch：拆除失敗絕不可以讓呼叫端（登出、退出監控）中斷。
+  ///
+  /// **不要**把它改成只呼叫 `disconnect()`——那是修改前的行為，會留下孤兒 socket。
+  void _disposeSocket(String reason) {
+    final old = socket;
+    socket = null; // 先斷開參考，避免拆除過程中有人又拿去 emit
+    if (old == null) return;
+    debugPrint("🧨 [Signaling] 拆除舊 socket（$reason）");
+    try {
+      old.clearListeners();
+    } catch (e) {
+      debugPrint("⚠️ [Signaling] clearListeners 失敗（續行）: $e");
     }
+    try {
+      old.dispose();
+    } catch (e) {
+      debugPrint("⚠️ [Signaling] socket.dispose 失敗（續行）: $e");
+    }
+  }
+
+  /// 斷線的唯一入口（護欄：不要改用 `socket.disconnect()`，那會失去 FCM 接收能力）。
+  ///
+  /// ★ 2026-08-11 第二十二輪（需求 8）：修改前是
+  /// `if (socket != null && socket!.connected) { socket?.disconnect(); socket = null; }`，
+  /// 有兩個致命點：
+  ///   1. **socket 已斷線時整段是 no-op**——`socket` 欄位仍指著那個舊物件，
+  ///      它的 handler 與重連排程都還活著（監控機退出時正是這個狀態）。
+  ///   2. 即使進得去，也只 `disconnect()` 不 `dispose()`，listener 全部留著。
+  /// 現在一律走 `_disposeSocket()`，並清掉隨連線一起失效的房間／對端狀態。
+  void forceDisconnect() {
+    _disposeSocket('forceDisconnect()');
+    // 這兩個是「本次連線」的狀態，socket 沒了它們就沒有意義；留著會讓下一次
+    // hangUp() 對著早已不存在的房間／對端 emit end-call。
+    _currentRoomId = null;
+    _peerSocketId = null;
   }
 
   bool _isExpiredCallPayload(dynamic payload) {

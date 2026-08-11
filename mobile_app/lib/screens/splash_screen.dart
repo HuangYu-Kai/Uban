@@ -269,7 +269,8 @@ class _SplashScreenState extends State<SplashScreen> {
                 try {
                   final Map<String, dynamic> decoded = jsonDecode(rawPending);
                   final int? ts = int.tryParse('${decoded['timestamp'] ?? ''}');
-                  if (ts == null || (DateTime.now().millisecondsSinceEpoch - ts) <= 120000) {
+                  // ★ 2026-08-11 第二十二輪（需求 10）：寫死的 120000 改用 kCallValidityMs（現為 60s）。
+                  if (ts == null || (DateTime.now().millisecondsSinceEpoch - ts) <= kCallValidityMs) {
                     pendingAcceptedCall.value = decoded.map(
                       (key, value) => MapEntry(key, value?.toString()),
                     );
@@ -284,7 +285,8 @@ class _SplashScreenState extends State<SplashScreen> {
                     final Map<String, dynamic> data = jsonDecode(rawRing);
                     if (data['isAccepted'] == true) {
                       final int? ts = int.tryParse('${data['timestamp'] ?? ''}');
-                      if (ts == null || (DateTime.now().millisecondsSinceEpoch - ts) <= 120000) {
+                      // ★ 2026-08-11 第二十二輪（需求 10）：寫死的 120000 改用 kCallValidityMs（現為 60s）。
+                      if (ts == null || (DateTime.now().millisecondsSinceEpoch - ts) <= kCallValidityMs) {
                         pendingAcceptedCall.value = data.map(
                           (key, value) => MapEntry(key, value?.toString()),
                         );

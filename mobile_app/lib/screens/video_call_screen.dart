@@ -650,6 +650,13 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
           ),
 
           // 2. 頂部資訊欄
+          // ★ 2026-08-11 第二十二輪（需求 4）：CCTV 監控檢視（monitorViewOnly）不顯示
+          //   這一整條資訊欄——裡面的「緊急通話」字樣與紅點通話計時器都是**通話**語意。
+          //   監控是單向看畫面、不是在通話，顯示「緊急通話 + 計時」只會讓家屬誤以為
+          //   正在跟長輩通話（甚至誤以為長輩端也在響）。
+          //   ⚠️ 這是**純顯示**的移除：`_inCall` / `_formattedDuration` / `_callTimer`
+          //   的既有邏輯完全不動（掛斷、逾時、通話紀錄都還依賴它們）。
+          if (!widget.monitorViewOnly)
           Positioned(
             top: MediaQuery.of(context).padding.top + 10,
             left: 20,

@@ -27,6 +27,23 @@ class SessionManager {
     'pending_accepted_call', 'pending_call_room', 'pending_call_id',
   ];
 
+  /// ★ 2026-08-11 第二十二輪（需求 8）：**實際在用**的待處理來電鍵位。
+  ///
+  /// 上面 `_sessionKeys` 裡那三個 `pending_*` 是 snake_case，但全專案真正讀寫的是
+  /// `main.dart` / `splash_screen.dart` 寫入的 **camelCase** 版本
+  /// （`pendingAcceptedCall` / `pendingRingCallData` / `pendingRingCall`）——
+  /// 也就是說，過去登出／退出監控時這三個鍵**從來沒有被清掉**。
+  /// 殘留的 `pendingAcceptedCall` 會在下一次冷啟動被 `main()` 讀出來重建來電，
+  /// 是「從監視機跳回長輩端後，按接聽沒反應／房間對不上」的其中一條來源
+  /// （另一條是孤兒 socket，見 `signaling.dart::_disposeSocket`）。
+  ///
+  /// 刻意**不併進** `_sessionKeys`：`releaseIfBound()` 用 `_sessionKeys` 判斷
+  /// 「這台裝置是否還綁著身分」，把來電鍵混進去會讓「沒登入但殘留一則舊來電」
+  /// 的裝置被誤判成有 session。兩者語意不同，必須分開。
+  static const List<String> _pendingCallKeys = [
+    'pendingAcceptedCall', 'pendingRingCallData', 'pendingRingCall',
+  ];
+
   /// 釋放目前裝置上綁定的 session：
   /// 1. 盡力通知後端註銷 FCM token（[notifyBackend] 為 false 時跳過）
   /// 2. 中斷 Signaling（一律用 forceDisconnect()，不可用 disconnect()）
@@ -74,6 +91,10 @@ class SessionManager {
       for (final key in _sessionKeys) {
         await prefs.remove(key);
       }
+      // ★ 2026-08-11 第二十二輪（需求 8）：連同 camelCase 的待處理來電鍵一起清。
+      for (final key in _pendingCallKeys) {
+        await prefs.remove(key);
+      }
       final deviceRoleKeys =
           prefs.getKeys().where((k) => k.startsWith('device_role_')).toList();
       for (final key in deviceRoleKeys) {
@@ -87,6 +108,11 @@ class SessionManager {
     //   讓下一次判斷（例如 splash_screen 的還原邏輯）誤判。
     try {
       appRole = null;
+      // ★ 2026-08-11 第二十二輪（需求 8）：prefs 清掉了，記憶體裡的 notifier 也要清。
+      //   `pendingAcceptedCall` 是 ValueNotifier，各畫面的 listener 直接讀它的 value，
+      //   不會回頭再讀 prefs；不歸零的話，退出監控後回到長輩主畫面的瞬間，
+      //   舊的 pending 會被 listener 當成新來電消費掉（房間／角色都是上一輪的）。
+      pendingAcceptedCall.value = null;
     } catch (e) {
       debugPrint('⚠️ [SessionManager] 重置 appRole 失敗: $e');
     }

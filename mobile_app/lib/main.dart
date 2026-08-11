@@ -666,10 +666,12 @@ Future<void> _bootstrap() async {
           final int ageMs = ts != null
               ? DateTime.now().millisecondsSinceEpoch - ts
               : -1;
-          // 超過 120s 的舊資料直接丟棄
+          // 超過有效期的舊資料直接丟棄
           // ★ 2026-08-11 第二十一輪（需求 4）：`timestamp` 缺漏同樣視為過期，
           //   理由與上方 pendingAcceptedCall 相同（避免不死的殘留資料）。
-          if (ts == null || ageMs > 120000) {
+          // ★ 2026-08-11 第二十二輪（需求 10）：寫死的 120000 改用 kCallValidityMs
+          //   （現為 60s），避免常數改了這裡卻沒跟著改而留下 2 分鐘的舊來電。
+          if (ts == null || ageMs > kCallValidityMs) {
             debugPrint("🗑️ [Main] Discarding stale pendingRingCallData "
                 "(ts=$ts, age: ${ageMs}ms)");
             await prefs.remove('pendingRingCallData');
