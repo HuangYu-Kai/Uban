@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../theme/app_theme.dart';
 import '../services/api_service.dart';
 import 'elder_screen.dart';
@@ -52,12 +53,39 @@ class _FriendsScreenState extends State<FriendsScreen> {
   }
 
   // 沿用長輩端既有通話入口（ElderScreen），不修改通話邏輯。
-  void _startCall(String friendName, {required bool isVideo}) {
+  //
+  // ★ 2026-08-11 第二十一輪（需求 1）：房間 ID 的解析改為容錯。
+  //   原本是 `widget.roomId ?? widget.userId.toString()`——但 `userId` 是
+  //   `caregiver_id`（資料庫帳號整數 ID），**不是** elder_id。只要上游沒把 roomId
+  //   傳下來（例如 video_call_screen.dart 的 `_buildFallbackHome()` 建構
+  //   ElderHomeScreen 時就沒有帶 roomId），撥出的房名會變成
+  //   `comm_elder_<caregiver_id>`，後端 `_get_family_ids_for_elder()` 查不到任何
+  //   家屬 → log 印「無任何轉發目標」→ 長輩端按下撥打後完全沒有反應。
+  //   改為：roomId 缺漏時回頭讀 prefs 的 `elder_room_id`（登入／配對時寫入的權威值）；
+  //   兩者都沒有就明確告知使用者，絕不拿 caregiver_id 硬湊一個不存在的房間。
+  Future<void> _startCall(String friendName, {required bool isVideo}) async {
+    String? roomId = widget.roomId?.trim();
+    if (roomId == null || roomId.isEmpty) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        roomId = prefs.getString('elder_room_id')?.trim();
+      } catch (e) {
+        debugPrint('⚠️ [FriendsScreen] 讀取 elder_room_id 失敗: $e');
+      }
+    }
+    if (!mounted) return;
+    if (roomId == null || roomId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('找不到您的通話帳號資料，請重新登入後再試')),
+      );
+      return;
+    }
+
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => ElderScreen(
-          roomId: widget.roomId ?? widget.userId.toString(),
+          roomId: roomId!,
           deviceName: widget.userName,
           autoCall: true,
           isVideoCall: isVideo,

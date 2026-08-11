@@ -475,9 +475,16 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   // ★ issue 3 fix: 冷啟動時無上一頁，退回 FamilyMainScreen（帶入真實使用者資料）
   Widget _buildFallbackHome() {
     if (globals.appRole == 'elder') {
+      // ★ 2026-08-11 第二十一輪（需求 1）：補上 roomId。
+      //   原本沒有帶，長輩從這條路徑回到主畫面後，FriendsScreen 拿到的 roomId 是
+      //   null，撥出時就會退回用 caregiver_id 拼房名（`comm_elder_<caregiver_id>`），
+      //   後端查不到對應家屬 → 撥打完全沒反應。`widget.roomId` 就是這通通話的房名
+      //   （可能已帶 `comm_elder_` 前綴），ElderScreen 的 `_getFormattedRoomId()`
+      //   有冪等保護，重複前綴不會發生。
       return ElderHomeScreen(
         userId: _resolvedUserId,
         userName: _resolvedUserName,
+        roomId: widget.roomId,
       );
     }
     return FamilyMainScreen(

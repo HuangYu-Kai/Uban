@@ -541,6 +541,29 @@ Future<void> _showFullScreenCallkit(Map<String, dynamic> data) async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // ★ 2026-08-11 第二十一輪（需求 4）：整段開機初始化包上「總逾時」。
+  //
+  //   `runApp()` 原本在 try/catch **之外**，所以只有「例外」不會擋住它——
+  //   但 Dart 的 try/catch **攔不到卡住**。`Firebase.initializeApp()`、
+  //   `requestPermission()`（會等系統權限對話框）、`LineSDK.setup()`、
+  //   `SharedPreferences` 這些 platform channel 只要有一個不回來，
+  //   `runApp()` 就永遠不會被呼叫 → 停在系統的原生啟動畫面（純白、沒有任何
+  //   動畫、也不可能跳轉），而且每次重開都一樣。這正是使用者回報的症狀。
+  //
+  //   `.timeout()` 不會取消底層工作，只是讓等待方先走：UI 一定會起來，
+  //   初始化則在背景自己完成（Firebase 晚幾秒 ready 也不影響已註冊的
+  //   background handler）。個別高風險 await 另外再各自設較短的逾時。
+  try {
+    await _bootstrap().timeout(const Duration(seconds: 10));
+  } catch (e) {
+    debugPrint('⚠️ [Main] 開機初始化未在 10 秒內完成（逾時或例外），仍繼續啟動 UI: $e');
+  }
+
+  runApp(const MyApp());
+}
+
+Future<void> _bootstrap() async {
   configureHttpOverrides();
 
   // ★ 音訊焦點共存設定：防止背景語音喚醒與音訊播放器搶奪 Audio Focus 造成播音中斷
@@ -557,8 +580,11 @@ void main() async {
     debugPrint('⚠️ [AudioContext Config Fail] $e');
   }
 
+  // ★ 2026-08-11 第二十一輪（需求 4）：以下每個 await 都補上個別逾時。
+  //   包在 try 裡**不等於**安全——try/catch 只攔例外，攔不到永遠不回來的
+  //   platform channel；逾時才會把「卡住」轉成可被 catch 的例外。
   try {
-    await dotenv.load(fileName: '.env');
+    await dotenv.load(fileName: '.env').timeout(const Duration(seconds: 3));
   } catch (_) {}
 
   try {
@@ -566,7 +592,7 @@ void main() async {
     await Future.wait([
       initializeDateFormatting('zh_TW', null),
       initializeDateFormatting('zh', null),
-    ]);
+    ]).timeout(const Duration(seconds: 3));
     Intl.defaultLocale = 'zh_TW';
   } catch (e) {
     debugPrint('Intl initialization failed: $e');
@@ -574,8 +600,10 @@ void main() async {
 
   try {
     // Bug 16: Ensure role is loaded at boot (Check both common keys)
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.reload(); // ★ 2026-07-22：冷啟動時強制從磁碟刷新，確保讀到 BG isolate 最新寫入
+    final prefs = await SharedPreferences.getInstance()
+        .timeout(const Duration(seconds: 5));
+    // ★ 2026-07-22：冷啟動時強制從磁碟刷新，確保讀到 BG isolate 最新寫入
+    await prefs.reload().timeout(const Duration(seconds: 3));
     appRole = prefs.getString('user_role') ?? prefs.getString('saved_role');
     debugPrint("🚀 App Booting. Detected Role: $appRole");
 
@@ -584,8 +612,9 @@ void main() async {
     //   在 APP 已終止時不保證被呼叫）。這裡先把它寫進 pendingAcceptedCall prefs，
     //   下面既有的讀取邏輯就能接手 → Splash → 視訊房間，與 CallKit 路徑一致。
     try {
-      await LocalCallNotification.consumeLaunchPayload();
-      await prefs.reload();
+      await LocalCallNotification.consumeLaunchPayload()
+          .timeout(const Duration(seconds: 3));
+      await prefs.reload().timeout(const Duration(seconds: 3));
     } catch (e) {
       debugPrint("⚠️ [Main] consumeLaunchPayload 失敗: $e");
     }
@@ -596,12 +625,20 @@ void main() async {
         final Map<String, dynamic> decoded = jsonDecode(pendingCallStr);
         // ★ issue 10：App 被滑掉重啟時，丟棄逾時（>60秒）未完成的待接聽通話，
         //   避免冷啟動後直接被導向一通早已結束/被拒絕的舊通話。
+        // ★ 2026-08-11 第二十一輪（需求 4）：`timestamp` 缺漏一律視為「過期」。
+        //   原本 `ts == null` 會退化成 `ageMs = 0`（永遠新鮮），任何一筆沒帶
+        //   timestamp 的殘留資料就會**每次冷啟動都被重新載入**，把使用者永久
+        //   鎖在「無動畫、不跳轉」的畫面上。修好寫入端（見 onEmergencyCall）之後，
+        //   全專案所有寫入點都會帶 timestamp，因此「沒有 timestamp」等同於
+        //   「舊版本殘留的髒資料」——這條同時也是既有裝置的自我修復路徑。
         final int? ts = int.tryParse('${decoded['timestamp'] ?? ''}');
         final int ageMs = ts != null
             ? DateTime.now().millisecondsSinceEpoch - ts
-            : 0;
-        if (ts != null && ageMs > 60000) {
-          debugPrint("🗑️ [Main] Discarding stale pendingAcceptedCall (age: ${ageMs}ms)");
+            : -1;
+        if (ts == null || ageMs > 60000) {
+          debugPrint("🗑️ [Main] Discarding stale pendingAcceptedCall "
+              "(ts=$ts, age: ${ageMs}ms)");
+          await prefs.remove('pendingAcceptedCall');
         } else {
           pendingAcceptedCall.value = decoded.map((key, value) => MapEntry(key, value?.toString()));
           debugPrint("🚨 [Main] Loaded pendingAcceptedCall from SharedPreferences: $pendingCallStr");
@@ -628,10 +665,14 @@ void main() async {
           final int? ts = int.tryParse('${decoded['timestamp'] ?? ''}');
           final int ageMs = ts != null
               ? DateTime.now().millisecondsSinceEpoch - ts
-              : 0;
+              : -1;
           // 超過 120s 的舊資料直接丟棄
-          if (ts != null && ageMs > 120000) {
-            debugPrint("🗑️ [Main] Discarding stale pendingRingCallData (age: ${ageMs}ms)");
+          // ★ 2026-08-11 第二十一輪（需求 4）：`timestamp` 缺漏同樣視為過期，
+          //   理由與上方 pendingAcceptedCall 相同（避免不死的殘留資料）。
+          if (ts == null || ageMs > 120000) {
+            debugPrint("🗑️ [Main] Discarding stale pendingRingCallData "
+                "(ts=$ts, age: ${ageMs}ms)");
+            await prefs.remove('pendingRingCallData');
           } else if (isAccepted) {
             pendingAcceptedCall.value = decoded.map((key, value) => MapEntry(key, value?.toString()));
             debugPrint("🚨 [Main] Fallback: reconstructed pendingAcceptedCall from pendingRingCallData (accepted)");
@@ -655,15 +696,21 @@ void main() async {
       // On Web, skip initialization if FirebaseOptions is missing to prevent crash
       debugPrint("🌐 Web platform detected. Skipping Firebase if no options.");
     } else {
-      await Firebase.initializeApp();
+      await Firebase.initializeApp().timeout(const Duration(seconds: 6));
       // ★ 2026-07-18 修復：背景訊息 handler 必須在 Firebase 初始化後「立即」註冊，
       //   且獨立 try/catch。原本註冊在 LineSDK/Analytics 之後同一個 try 內，
       //   任一項噴錯就會導致 handler 沒註冊 → APP 被殺死時 FCM 無法喚醒 CallKit。
       try {
         FirebaseMessaging.onBackgroundMessage(
             _firebaseMessagingBackgroundHandler);
-        await FirebaseMessaging.instance.requestPermission();
         debugPrint("🔔 FCM background handler registered");
+        // ★ 2026-08-11 第二十一輪（需求 4）：`requestPermission()` 會等系統的
+        //   通知權限對話框，使用者不點就不會回來 → 直接卡死 `runApp()`。
+        //   移到 handler 註冊**之後**並加上逾時：權限對話框照常顯示、使用者
+        //   慢慢點也沒關係，UI 不會被它綁架。
+        await FirebaseMessaging.instance
+            .requestPermission()
+            .timeout(const Duration(seconds: 4));
       } catch (e) {
         debugPrint("⚠️ FCM background handler registration failed: $e");
       }
@@ -677,7 +724,9 @@ void main() async {
 
       // Initialize LINE SDK（非關鍵，失敗不影響來電）
       try {
-        await LineSDK.instance.setup("2009500424");
+        await LineSDK.instance
+            .setup("2009500424")
+            .timeout(const Duration(seconds: 4));
         debugPrint("🟢 LineSDK Initialized in main()");
       } catch (e) {
         debugPrint("⚠️ LineSDK initialization failed: $e");
@@ -686,8 +735,6 @@ void main() async {
   } catch (e) {
     debugPrint("⚠️ Firebase initialization failed or missing: $e");
   }
-
-  runApp(const MyApp());
 }
 
 class MyApp extends StatefulWidget {
@@ -1209,12 +1256,15 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         await prefs.remove('pendingAcceptedCall');
 
         // ★ issue 10：忽略逾時（>60秒）的待接聽通話
+        // ★ 2026-08-11 第二十一輪（需求 4）：`timestamp` 缺漏一律視為過期
+        //   （與 main() 的兩處判斷對齊，理由見該處註解）。
         final int? ts = int.tryParse('${decoded['timestamp'] ?? ''}');
         final int ageMs = ts != null
             ? DateTime.now().millisecondsSinceEpoch - ts
-            : 0;
-        if (ts != null && ageMs > 60000) {
-          debugPrint("🗑️ [Main] Discarding stale pendingAcceptedCall on resume (age: ${ageMs}ms)");
+            : -1;
+        if (ts == null || ageMs > 60000) {
+          debugPrint("🗑️ [Main] Discarding stale pendingAcceptedCall on resume "
+              "(ts=$ts, age: ${ageMs}ms)");
           return;
         }
 
@@ -1685,6 +1735,17 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           'callId': callId,
           'isEmergency': true,
           'senderRole': 'family',
+          // ★ 2026-08-11 第二十一輪（需求 4）：補上 `timestamp`。
+          //   這是**全專案唯一**沒帶 timestamp 的 pendingAcceptedCall 寫入點
+          //   （BG 緊急路徑 :236、CallKit accept :477、備援通知 :218 都有）。
+          //   少了它，`main()` 的過期判斷 `ts != null && ageMs > 60000` 恆為
+          //   false → 這筆資料**永遠不會過期**；而緊急通話結束時也沒有任何路徑
+          //   移除這個 prefs 鍵 → 之後每一次冷啟動都會重新載入同一通早已結束的
+          //   通話 → Splash 立刻 `_fadedOut = true`（沒有開場動畫）並被導去一通
+          //   死掉的通話 → 使用者看到的就是「怎麼重開都是不會動的白畫面」。
+          //   ⚠️ 只補 `timestamp`（本機新鮮度），**不要**補 `issuedAt`/`expiresAt`
+          //   ——護欄 G24 明訂緊急通話刻意不帶那兩個欄位，帶了會被 120s 過期判斷誤殺。
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
         };
         SharedPreferences.getInstance().then((prefs) {
           prefs.setString('pendingAcceptedCall', jsonEncode(pendingCallData));

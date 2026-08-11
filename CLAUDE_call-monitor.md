@@ -5,7 +5,7 @@
 
 # CLAUDE_call-monitor.md — 視訊通話與監控子系統 唯一權威參考
 
-> **最後更新：2026-08-10（第十九輪後）**
+> **最後更新：2026-08-11（第二十一輪後）**
 > 本文件是 Uban 專案「視訊通話 + 監控（CCTV）」全部功能的**單一權威來源**。
 > 相關內容已從 `CLAUDE.md` / `Uban/CLAUDE.md` / `uban-api/CLAUDE.md` 遷移至此，那些檔案只保留指向本檔的指標。
 
@@ -431,9 +431,18 @@ AI 對話、Pinecone 長期記憶、新聞爬蟲、遊戲、寵物、TTS/STT、`
 | **`senderRole`** | 發起方角色 | BG:180/223/255、CallKit:422/435、FG:1585、:1757 | **三個消費端驗證 `senderRole != appRole`** | **角色反轉**：接收方變發起方（護欄 #16） |
 | `callerName` | 來電者顯示名 | BG:222/254、:434、:1756 | dialog 標題 | 顯示「未知來電」 |
 | `issuedAt` / `expiresAt` | 有效期 | 除緊急外全部 | 消費前 120s 過期判斷 | 冷啟動時舊來電被再次接起 |
+| **`timestamp`** | **本機**寫入時刻（ms） | **全部路徑，緊急也要**（BG:236、備援:218、CallKit accept:477、`s.onEmergencyCall` ~:1682） | `main()`:599 與 `_checkPendingCallFromSharedPreferences`:1249 的新鮮度判斷（60s／`pendingRingCallData` 120s） | **這筆 prefs 永生**：缺 `timestamp` 時舊寫法的 `ts != null && age > 窗口` 恆 false → 每次冷啟動都載入同一通死掉的通話 → **APP 永久白屏**（第二十一輪需求 4）。見 **G67** |
 | **`isVideoCall`** | 視訊/語音 | :225/257、:349、:423/436、:1256、:1337、:1758 | `VideoCallScreen(isVideoCall:)` 決定鏡頭初始狀態 | 語音通話會開鏡頭（退化為預設 true） |
 | `isEmergency` | 緊急通話標記 | :177、:1584、:1883、:1932 | 走緊急分支（強制視訊、自動接聽） | 緊急通話當一般通話處理 |
 | `isAccepted` | 僅 `pendingRingCallData` 使用 | :226/258（false）、:437（true） | `false` 時**絕不**自動進房 | 響鈴中就自動進房（護欄 #10） |
+
+> ⚠️ **`timestamp` 與 `issuedAt`/`expiresAt` 是兩件不同的事，不要混用**：
+> 後者是**後端下發**的通話有效期，緊急通話**刻意不帶**（G24，帶了會被 120s 判斷誤殺）；
+> 前者是**純本機**的「這筆 prefs 是什麼時候寫的」，所有路徑（含緊急）都必須帶。
+>
+> 讀取端的判斷式必須是 **`if (ts == null || ageMs > 窗口)` → 視為過期並 `prefs.remove(...)`**。
+> 「缺 `timestamp` 就當新鮮」是第二十一輪需求 4 的根因；
+> 而「讀到過期就移除」這一半是**已中毒裝置的自癒路徑**，比寫入端補欄位更不可省。
 
 ### 3.5 房間 ID 規則
 
@@ -722,6 +731,20 @@ APP 被殺死時接聽，`actionCallAccept` 事件可能發生在 `_setupCallKit
 否則 `main.dart` 把通話畫面 push 到 Splash 之上，Splash 動畫結束的 `pushReplacement(主畫面)`
 又會把最上層的通話畫面洗掉 → 使用者看到「開場動畫 → 主畫面」。
 
+#### 這條兜底鏈本身的兜底（2026-08-11 第二十一輪新增）
+
+這五層全部建立在「APP 有跑起來、Splash 有做出決定」的前提上。第二十一輪的
+「APP 永久白屏」證明這個前提**會失守**，所以另外加了三道與通話無關的保命機制：
+
+| 機制 | 位置 | 作用 |
+|------|------|------|
+| **`runApp()` 無條件執行** | `main.dart::main()` | 開機初始化整段搬進 `_bootstrap()` 並 `.timeout(10s)` 包 try/catch，`runApp` 在 try **之外**。任何 platform channel 卡住都不再擋住 UI。→ **G68** |
+| **每個 `await` 各自逾時** | `_bootstrap()` 內、`splash_screen.dart` 內 | `Firebase.initializeApp()` 6s、`requestPermission()` 4s、`SharedPreferences` 5s、`getPairedElders` 6s、`activeCalls()` 2s…。**Dart 的 try/catch 攔不到「卡住」，只有 `.timeout()` 能把它變成可攔截的例外。** |
+| **Splash 導航看門狗** | `splash_screen.dart` | `_navigated` 一次性互斥 ＋ 15s 看門狗強制決定去向 ＋ 5s 後顯示載入指示（畫在動畫下層）。→ **G69** |
+
+> 另外：L1（`main()`:599）與 resume 路徑（:1249）的新鮮度判斷已改為
+> **「缺 `timestamp` 一律視為過期並移除」**——那筆永生的毒 prefs 正是白屏的根因。見 **G67** 與 §3.4。
+
 ---
 
 ## 5. UI 按鈕與跳轉地圖
@@ -832,14 +855,26 @@ APP 被殺死時接聽，`actionCallAccept` 事件可能發生在 `_setupCallKit
 | 955 | 掛斷 | `_hangUp` | 禁止改為直接 pop |
 | 979 | 撥出 | `_makeCall()`（:594） | **`sendCallRequest` 唯一呼叫點（長輩端）** |
 
-#### `FriendsScreen` 撥出鍵（`friends_screen.dart`:54-67）
+#### `FriendsScreen` 撥出鍵（`friends_screen.dart`:66-95，2026-08-11 第二十一輪改寫）
 
 ```dart
-// 沿用長輩端既有通話入口（ElderScreen），不修改通話邏輯。
-void _startCall(String friendName, {required bool isVideo}) {
+Future<void> _startCall(String friendName, {required bool isVideo}) async {
+  String? roomId = widget.roomId?.trim();
+  if (roomId == null || roomId.isEmpty) {
+    // 上游沒帶就回頭讀 prefs 的權威值（登入／配對時寫入）
+    final prefs = await SharedPreferences.getInstance();
+    roomId = prefs.getString('elder_room_id')?.trim();
+  }
+  if (!mounted) return;
+  if (roomId == null || roomId.isEmpty) {
+    // 🚫 絕不拿 caregiver_id 硬湊一個不存在的房間
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('找不到您的通話帳號資料，請重新登入後再試')));
+    return;
+  }
   Navigator.push(context, MaterialPageRoute(
     builder: (context) => ElderScreen(
-      roomId: widget.roomId ?? widget.userId.toString(),
+      roomId: roomId!,
       deviceName: widget.userName,
       autoCall: true,
       isVideoCall: isVideo,          // ← 整條 isVideoCall 鏈路的源頭
@@ -850,6 +885,16 @@ void _startCall(String friendName, {required bool isVideo}) {
 
 > 「視訊」鍵傳 `isVideo: true`、「電話」鍵傳 `isVideo: false`。
 > **這是全專案唯一決定通話類型的地方。** 加新的撥出入口時記得也要傳。
+>
+> 🚫 **舊寫法 `widget.roomId ?? widget.userId.toString()` 已廢除**（護欄 **G70**）：
+> `FriendsScreen.userId` 是 **`caregiver_id`**（帳號整數 PK）**不是 `elder_id`**。
+> 用它拼出來的 `comm_elder_<caregiver_id>` 是不存在的房間，
+> 後端查不到任何家屬、log 印「無任何轉發目標」、兩端零錯誤 →
+> 「長輩端按了撥打完全沒反應」（第二十一輪需求 1）。
+>
+> **上游責任**：每個建構 `ElderHomeScreen` 的地方都要把 `roomId` 傳下去，
+> 特別是 `video_call_screen.dart::_buildFallbackHome()`（:476）——
+> 它原本沒帶，正是上面那個 null 的來源。
 
 #### 監控（CCTV）相關按鈕 — 2026-08-05 第十七輪新增、2026-08-10 第十九輪擴充
 
@@ -1281,15 +1326,18 @@ monitor_device_id(elder_id, device_name) = zlib.crc32(f"{elder_id}|{device_name.
 
 ## 7. 護欄（合併後的唯一權威清單）
 
-> 目前共 **66 條**（G1–G66）：G1–G36 合併自 `CLAUDE.md`（13 條）與 `Uban/CLAUDE.md`（26 條）並去重、
+> 目前共 **72 條**（G1–G72）：G1–G36 合併自 `CLAUDE.md`（13 條）與 `Uban/CLAUDE.md`（26 條）並去重、
 > 修正矛盾；G37–G46 為 2026-08-05 第十七輪新增（連線可靠性 4 條、監控警報 2 條、安全 4 條）；
 > G47–G52 為 2026-08-05 第十八輪新增（前端 4 條：監控機連線、冷啟動衝刺、鎖屏覆蓋、掛斷提示；
 > 後端 2 條：裝置清單同名去重、CCTV 端點部署）；
 > G53–G57 為 2026-08-10 第十九輪新增（後端 3 條：綁定持久化、階段 0 只補洞、改名五處同步；
 > 前端 2 條：`monitorViewOnly` 是 G8 的例外、監控自動接聽必須靜音但不得省略接聽動作）；
-> **G58–G66 為 2026-08-11 第二十輪新增**（前端 6 條：session 統一釋放、語音喚醒預設關閉、
+> G58–G66 為 2026-08-11 第二十輪新增（前端 6 條：session 統一釋放、語音喚醒預設關閉、
 > 監控檢視無掛斷鍵、音量來源、撥出前等連線、家屬端動態文字寬度約束；
-> 後端 3 條：配對碼持久化、`monitor-removed` 的 emit 順序、`on_end_call` 容忍 `room=None`）。
+> 後端 3 條：配對碼持久化、`monitor-removed` 的 emit 順序、`on_end_call` 容忍 `room=None`）；
+> **G67–G72 為 2026-08-11 第二十一輪新增**（前端 5 條：`pendingAcceptedCall` 的 `timestamp` 契約、
+> `runApp()` 不得被開機初始化擋住、Splash 導航看門狗與互斥、長輩房名不得退回 `caregiver_id`、
+> `_initElderMode` 的逾時與 `onError`；後端 1 條：`session/release` 只能以 `fcm_token` 為鍵）。
 > **G23 已於第十八輪修訂**（改為只約束「要顯示提示時用什麼元件」，是否顯示交由 G50）。
 > **G8 已於第十九輪加註例外**（`monitorViewOnly`，見 G55）。
 > **除非明確知道連鎖影響並能同步改完整條鏈路，不要單點修改。**
@@ -1625,6 +1673,84 @@ RenderFlex 照樣溢位（黃黑斜紋警示）。
 **原因**：`Row` 會**先用無限寬量測非 flex 子元素**，量出來多寬就佔多寬——
 一個 AI 產生的長徽章可以把空間吃光，讓旁邊的 `Expanded` 只剩 0 寬，然後整條溢出。
 第二十輪需求 2 的 12 處修正都是這個形狀。
+⚠️ **第二十一輪補充**：第二十輪漏掉了 `family_interaction_tab.dart::_buildCallSection()`
+（:938 起，深藍漸層 `#1E1B4B → #1E40AF → #0284C7` 那張「視訊通話」卡片）——
+它的內層 `Row`（:990）在外層 `Expanded` 裡放了 **兩個非 flex 子元素**
+（`Text('視訊通話')` ＋ 徽章 `Container`），必定溢出 13px。
+已改為 `Wrap(spacing: 8, runSpacing: 4)`：**`Wrap` 永遠不會溢位**，
+遇到「標題＋徽章」這種寬度都不可控的組合，它比 `Expanded`／`ConstrainedBox` 更省事也更安全。
+
+**G67 — `pendingAcceptedCall` 的每個寫入點都必須帶 `timestamp`；讀取端「缺 `timestamp` 一律視為過期並移除」**
+寫入點目前有四處：`main.dart` BG 緊急路徑（:236）、備援通知路徑（:218）、
+CallKit accept（:477）、`s.onEmergencyCall` 的長輩分支（~:1682）。
+讀取點（`main()` :599、`_checkPendingCallFromSharedPreferences` :1249）的判斷必須是
+`if (ts == null || ageMs > 60000) { await prefs.remove('pendingAcceptedCall'); }`。
+`pendingRingCallData` 同理（窗口 120000ms）。
+🚫 **禁止**把「缺 `timestamp`」當成 `age = 0`（新鮮）。
+🚫 **禁止**在緊急路徑補 `issuedAt`／`expiresAt` —— 那是 G24 明訂的刻意省略，
+`timestamp` 是**另一個、純本機**的新鮮度鍵，兩者不可混為一談。
+**原因**：第二十一輪需求 4「APP 永久白屏」的根因就在這裡。
+`s.onEmergencyCall` 是全專案唯一漏帶 `timestamp` 的寫入點，而缺 `timestamp` 時
+`ts != null && ageMs > 60000` 恆為 false → 這筆資料**永遠不會過期**；
+緊急通話結束時又沒有任何路徑移除該 prefs 鍵 →
+之後**每一次**冷啟動都重新載入同一通早已結束的通話 →
+Splash 立刻 `_fadedOut = true`（沒有開場動畫）並被導去一通死掉的通話 →
+使用者看到的就是「怎麼重開都是不會動的白畫面」。
+「讀取端移除」這一半是**已中毒裝置的自癒路徑**，比「寫入端補欄位」更不可省。
+
+**G68 — `runApp()` 必須無條件執行；開機路徑上的每一個 `await` 都要有 `.timeout()`**
+`main()` 的結構固定為：`_bootstrap().timeout(10s)` 包在 try/catch 裡，
+`runApp(const MyApp())` 在 try/catch **之外、無條件**執行。
+`_bootstrap()` 內部每個 platform channel 呼叫各自帶逾時：
+`dotenv.load` 3s／`initializeDateFormatting` 3s／`SharedPreferences.getInstance()` 5s／
+`prefs.reload()` 3s／`consumeLaunchPayload()` 3s／`Firebase.initializeApp()` 6s／
+`LineSDK.setup()` 4s／`FirebaseMessaging.requestPermission()` 4s。
+🚫 **禁止**把 `runApp()` 移進 try 區塊或任何 `await` 之後而不設逾時。
+🚫 `requestPermission()` **必須**排在 `onBackgroundMessage` 註冊**之後**（它會等系統對話框）。
+**原因**：Dart 的 `try/catch` 攔得到**丟例外**，攔不到**卡住**。
+只要有一個 platform channel 不回來，`runApp()` 就永遠不會被呼叫 →
+畫面停在系統的原生啟動底色（純白、無動畫、無法操作、也不可能跳轉），
+而且每次重開都一樣。`.timeout()` 把「卡住」轉成可攔截的例外
+（它不會取消底層工作，那個 future 仍會繼續跑完，這正是我們要的）。
+`configureHttpOverrides()` 是同步函式，刻意不包。
+
+**G69 — `SplashScreen` 必須有導航看門狗與 `_navigated` 互斥旗標**
+`_navigated`（一次性）＋ `_navWatchdog`（15s）＋ `_slowBootTimer`（5s 後顯示載入指示）。
+所有 `Navigator.pushReplacement` 一律走 `_replaceWith()`；
+`_navigateFamilyHome` 因為要「先 replace 再 push」不能用它，但**必須自己補**
+`if (!mounted || _navigated) return; _navigated = true; _navWatchdog?.cancel();`。
+`dispose()` 要在 `splashActive = false` **之前**取消兩個 timer。
+Splash 內每個 `await`（prefs 3~5s、`ApiService.getPairedElders` 6s、
+`FlutterCallkitIncoming.activeCalls()` 2s）都要有逾時。
+🚫 **禁止**移除 `_navigated` 互斥後只留看門狗：看門狗會與正常路徑競態導致雙重導航。
+**原因**：Splash 是冷啟動唯一的導航決策點，只要它的任何一條 `await` 卡住，
+使用者就永遠停在開場畫面上（動畫跑完淡出後是一片純色，看起來完全等同白屏）。
+`_slowBoot` 指示器刻意畫在動畫**下層**：動畫還不透明時看不到，
+只有在 `_fadedOut` 之後、導航卻還沒發生的那段空窗才露出來。
+
+**G70 — 長輩端的房名不得退回 `caregiver_id`**
+`friends_screen.dart::_startCall`（:66）解析順序固定為
+`widget.roomId` → prefs `elder_room_id` → **明確報錯**（`SnackBar`「找不到您的通話帳號資料」）。
+上游每個建構 `ElderHomeScreen` 的地方都必須把 `roomId` 傳下去，
+包含 `video_call_screen.dart::_buildFallbackHome()`（:476）。
+🚫 **禁止**寫成 `widget.roomId ?? widget.userId.toString()`。
+**原因**：`FriendsScreen.userId` 是 `caregiver_id`（帳號整數 PK），**不是** `elder_id`。
+拿它拼出來的 `comm_elder_<caregiver_id>` 是個不存在的房間，
+後端 `_get_family_ids_for_elder()` 查不到任何家屬 → log 印「無任何轉發目標」→
+長輩按下撥打後**完全沒有反應、兩端零錯誤**（第二十一輪需求 1）。
+房名前綴由 `ElderScreen::_getFormattedRoomId()` 統一補，且是冪等的，
+所以帶著 `comm_elder_` 前綴的值傳下去也安全。
+
+**G71 — `_initElderMode()` 的 `getToken()` 必須有逾時，`.then()` 必須帶 `onError`**
+`elder_screen.dart`：`FirebaseMessaging.instance.getToken()` 包 try/catch ＋ `.timeout(5s)`，
+失敗就以「無 token」繼續進房；`_initElderMode().then(...)` 的第二參數必須是
+`onError:`，且錯誤分支**照樣**呼叫 `tryAutoCall()`。
+🚫 **禁止**讓任何未加逾時的 `await` 擋在 `_signaling.connect()` 之前。
+**原因**：`getToken()` 在網路異常／Google Play 服務異常時可以掛很久。
+它卡住會同時封死兩件事——後面的 `connect()`（:475，於是根本沒進房），
+以及 `.then()` 的 autoCall 鏈（於是 `autoCall: true` 靜默失效）。
+沒有 `onError` 時，`_initElderMode()` 一丟例外就整條 `.then()` 不執行，
+使用者看到的同樣是「按了撥打沒反應」。
 
 ### 7.2 後端護欄
 
@@ -1791,6 +1917,22 @@ FastAPI 會對這些路徑回傳它的預設未匹配回應 —— 字面上的 
 而接聽方在某些路徑下 `_currentRoomId` 是空的（只有 `_peerSocketId`／`_currentCallId`）。
 前端已放寬成「三者其一非空就發」（`signaling.dart`:1300），
 後端就必須能處理 `room=None` 的 `end-call`，否則放寬等於沒放寬。
+
+**G72 — `POST /api/pairing/session/release` 的 `user_fcm_token` 刪除只能以 `fcm_token` 為鍵**
+`pairing.py::release_session` 的 SQL 固定為
+`DELETE FROM user_fcm_token WHERE fcm_token = %s`。
+`room_id` / `user_id` 只能寫進診斷 log，**不得**進入 `WHERE`。
+🚫 **禁止**再加 `AND room_id = %s` 或 `AND user_id = %s` 收窄條件。
+**原因**（第二十輪引入、第二十一輪需求 2 修正）：
+用戶端送的是 prefs 的 `elder_room_id`，那是**裸的 elder id**（例如 `'0001'`）；
+而 `user_fcm_token.room_id` 存的是**帶前綴的 socket 房名**
+（`comm_elder_0001` / `monitor_elder_0001`，寫入點 `socket_app.py`:1456-1463、:1506-1514）。
+兩者永遠對不上 → `rowcount = 0` → FCM token 從未被釋放 →
+長輩重新登入後舊 session 殘留 → 家屬端撥打顯示「無法連線」。
+`user_id` 同樣不可靠：殘留列帶的是**舊帳號**的 user_id。
+`fcm_token` 是這支實體裝置的唯一穩定識別，一律以它為鍵；
+「刪掉這支裝置的所有殘留列」正是 session 釋放要的語意。
+記憶體清理（步驟 2）與 `_broadcast_elder_devices_update`（步驟 3）維持原樣。
 
 ### 7.3 已知的文件錯誤（以程式碼為準）
 
@@ -2451,6 +2593,99 @@ socket.io 對未連線的 socket 是**靜默丟棄**——畫面停在「撥號�
    （`round20-call`／`round20-session`／`round20-backend`）全部以
    `You've hit your session limit` 失敗（第十九輪亦然），實作由 Opus 直接完成。
 2. **需求 ⑥ 的「攝像頭硬體釋放」刻意未做**，理由見上方 ⑥。
+
+---
+
+### 2026-08-11 — 第二十一輪：APP 永久白屏、長輩撥不出、session 殘留、13px 溢位漏網
+
+使用者回報 **4 項**。需求 2 是第二十輪自己引入的缺陷，需求 4 由需求 2 誘發但根因獨立。
+新增護欄 **G67–G72**。
+
+**④ 無論重開幾次 APP 都是「無動畫、不跳轉、無法操作的白屏」（最嚴重，全鏈路四層修）**
+
+根因是一筆**永生的毒資料**：
+
+- `main.dart::s.onEmergencyCall` 的長輩分支（~:1682）寫 `pendingAcceptedCall` 到 prefs 時
+  **沒有帶 `timestamp`** —— 這是全專案唯一漏帶的寫入點
+  （BG 緊急路徑 :236、CallKit accept :477、備援通知 :218 都有）。
+- `main()`（:599）的過期判斷寫成 `ts != null && ageMs > 60000`，缺 `timestamp` 時**恆為 false**
+  → 這筆資料**永遠不會過期**；而緊急通話結束時也沒有任何路徑移除這個 prefs 鍵。
+- 於是**每一次**冷啟動都重新載入同一通早已結束的通話 →
+  Splash 立刻 `_fadedOut = true`（對應「既無動畫」）並被導去一通死掉的通話（對應「也不跳轉」）→
+  永遠如此（對應「無論重新打開 APP 幾次」）。
+
+四層修法（缺一都不夠）：
+
+1. **寫入端**補 `'timestamp': DateTime.now().millisecondsSinceEpoch`。
+   ⚠️ 只補 `timestamp`，**不補** `issuedAt`/`expiresAt`——G24 明訂緊急通話刻意省略那兩個欄位。
+2. **讀取端**（`main()` :599、`pendingRingCallData`、`_checkPendingCallFromSharedPreferences` :1249）
+   一律改成 `ts == null || ageMs > 窗口` → 視為過期並 `prefs.remove(...)`。
+   這一半是**已中毒裝置的自癒路徑**，比第 1 點更重要。
+3. **Splash** 在 `pendingAcceptedCall.value != null` 時 `unawaited(_clearPendingCallPrefs())`，
+   記憶體接手後就清掉 prefs 副本；同時**移除**原本在這裡就 `setState(() => _fadedOut = true)` 的兩處。
+4. **兜底**：`runApp()` 改為無條件執行（`_bootstrap().timeout(10s)` 包 try/catch，
+   `runApp` 在 try **之外**），開機路徑每個 `await` 各自帶逾時；
+   Splash 加 `_navigated` 互斥 ＋ 15s 導航看門狗 ＋ 5s 後才顯示的載入指示。→ **G67 / G68 / G69**
+
+> 關鍵認知：**Dart 的 `try/catch` 攔得到「丟例外」，攔不到「卡住」。**
+> 原本 `runApp()` 雖然在 try/catch 之外，但只要 `Firebase.initializeApp()`、
+> `requestPermission()`（會等系統權限對話框）、`LineSDK.setup()` 任一個不回來，
+> 它就永遠不會被呼叫 → 畫面停在系統原生啟動底色（純白、無動畫、無法操作）。
+> `.timeout()` 把「卡住」轉成可攔截的例外（不取消底層工作，future 仍會跑完，這正是要的）。
+> `requestPermission()` 另外移到 `onBackgroundMessage` 註冊**之後**，
+> 避免使用者不點權限對話框就把整個開機擋死。
+
+**① 長輩端在 APP 內仍打不通家屬端（第二十輪 ⑦ 只修掉一半）**
+
+第二十輪修的是 `sendCallRequest` 不等 socket 連線（G62）。本輪找出**另外四個**獨立缺陷：
+
+- `friends_screen.dart::_startCall` 寫成 `widget.roomId ?? widget.userId.toString()`，
+  而 `userId` 是 **`caregiver_id`**（帳號整數 PK）**不是 elder_id** →
+  roomId 缺漏時撥出的房名變成 `comm_elder_<caregiver_id>`，
+  後端查不到任何家屬、log 印「無任何轉發目標」、兩端零錯誤。
+  改為 `widget.roomId` → prefs `elder_room_id` → **明確報錯**。→ **G70**
+- `video_call_screen.dart::_buildFallbackHome()`（:476）建構 `ElderHomeScreen` 時
+  **沒傳 `roomId`** —— 這就是上面那個 null 的上游來源。已補上 `widget.roomId`
+  （前綴由 `ElderScreen::_getFormattedRoomId()` 冪等處理）。
+- `elder_screen.dart::_initElderMode()`（:470）的 `FirebaseMessaging.instance.getToken()`
+  **沒有逾時**，卡住會同時封死 `_signaling.connect()`（:475）與 `.then()` 的 autoCall 鏈。
+  已加 try/catch ＋ `.timeout(5s)`，失敗就以「無 token」繼續進房。→ **G71**
+- `initState()`（:181）的 `_initElderMode().then((_) => tryAutoCall())` **沒有 `onError`**，
+  一丟例外整條鏈不執行。已改為帶 `onError:` 且錯誤分支**照樣**呼叫 `tryAutoCall()`。
+
+**② 重新登入長輩端後仍有 session 不釋放，家屬端撥打顯示「無法連線」**
+
+這是第二十輪 `POST /api/pairing/session/release` 自己引入的缺陷：
+DELETE 條件寫成 `WHERE fcm_token = %s AND room_id = %s`，
+但用戶端（`session_manager.dart`:38-59）送的是 prefs 的 `elder_room_id` = **裸 elder id**（`'0001'`），
+而 `user_fcm_token.room_id` 存的是**帶前綴的 socket 房名**（`comm_elder_0001`／`monitor_elder_0001`，
+寫入點 `socket_app.py`:1456-1463、:1506-1514）→ 永遠 0 rows → token 從未釋放。
+改為**只以 `fcm_token` 為鍵**；`room_id`／`user_id` 只寫進診斷 log。
+（`user_id` 同樣不可靠——殘留列帶的是**舊帳號**的 user_id。）→ **G72**
+記憶體清理與 `_broadcast_elder_devices_update` 兩個步驟未動。
+
+**③ 家屬端「互動」分頁仍有 13px RenderFlex 溢位徽章壓到視訊通話鍵**
+
+第二十輪的 13 處修正全部沒打到真正溢出的那個 `Row`。
+實際位置是 `family_interaction_tab.dart::_buildCallSection()`（:938 起，
+深藍漸層 `#1E1B4B → #1E40AF → #0284C7`，與截圖底色一致）的內層 `Row`（:990）——
+它在外層 `Expanded` 裡放了**兩個非 flex 子元素**（`Text('視訊通話')` ＋ 徽章 `Container`），
+必定溢出。改用 `Wrap(spacing: 8, runSpacing: 4)`（`Wrap` 永遠不會溢位），順手移除多餘的 `SizedBox`。
+該檔其餘 17 個 `Row` 已逐一稽核，都已有 `Expanded`／`Flexible`。→ **G63 補充**
+
+**驗證**
+
+- `flutter analyze lib` — **0 error**（141 issues；比第二十輪基線 142 少 1，因 `Wrap` 改寫移除一個 `const SizedBox`）
+- `flutter build apk --debug` — **BUILD SUCCESSFUL**
+- `python -m pytest tests/test_call_signaling.py -q` — **15 passed**（不退步）
+- `python -m py_compile routers/pairing.py` — 通過
+
+**本輪的鐵律遵守情形**
+
+「Opus 制定／檢驗、Sonnet 執行」**本輪部分遵守**：需求 ② 的後端修改由 Sonnet 子代理
+`r21-backend` 執行並自驗（15 passed），由 Opus 覆核；
+其餘三項為前端多檔連動、且與需求 ④ 的根因鏈交纏，由 Opus 直接完成。
+（第十九、二十輪的 Sonnet 子代理全數以 `session limit` 失敗，本輪已恢復正常。）
 
 ---
 

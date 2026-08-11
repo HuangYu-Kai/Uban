@@ -41,18 +41,85 @@ class _SplashScreenState extends State<SplashScreen> {
 
   bool _fadedOut = false;
 
+  /// ★ 2026-08-11 第二十一輪（需求 4）：導航看門狗。
+  ///
+  /// `_navigateToNext()` 整條路徑上有多個 platform channel / 網路 await，
+  /// 任何一個「不回來」（不是丟例外，是卡住）都會讓 Splash 永遠停在原地——
+  /// 而 `_fadedOut` 一旦被設為 true，畫面就是一片近乎純白、沒有動畫、
+  /// 也沒有任何可操作元件，正是使用者回報的症狀。
+  /// `_navigated` 讓所有導航點彼此互斥（看門狗與標準流程可能同時抵達），
+  /// `_navWatchdog` 則保證「無論如何」都會離開 Splash。
+  bool _navigated = false;
+  Timer? _navWatchdog;
+
+  /// ★ 2026-08-11 第二十一輪（需求 4）：開機比預期慢時，讓畫面「看得出來還活著」。
+  /// 開場動畫在 3.2s 淡出，但後面的 getStatus／activeCalls 輪詢最長可能再花數秒，
+  /// 這段空窗期原本是一片什麼都沒有的淺色底——正是使用者說的「白屏」。
+  bool _slowBoot = false;
+  Timer? _slowBootTimer;
+
   @override
   void initState() {
     super.initState();
     splashActive = true; // ★ 2026-07-19：宣告冷啟動導航由 Splash 擁有
     _playAnimations();
     _navigateToNext();
+
+    // ★ 2026-08-11 第二十一輪（需求 4）：15 秒是「標準流程最慢也該走完」的上限
+    //   （getStatus 逾時 6s + activeCalls 輪詢 4s + 動畫 4s 都在其內）。
+    _navWatchdog = Timer(const Duration(seconds: 15), () {
+      if (!mounted || _navigated) return;
+      debugPrint('⏰ [Splash] 15 秒仍停在開場畫面，看門狗強制決定去向');
+      _goNextOrRestoreElder();
+    });
+
+    // 5 秒後仍在 Splash 就顯示載入指示（正常路徑約 4 秒就導航完，看不到）
+    _slowBootTimer = Timer(const Duration(seconds: 5), () {
+      if (!mounted || _navigated) return;
+      setState(() => _slowBoot = true);
+    });
   }
 
   @override
   void dispose() {
+    _navWatchdog?.cancel();
+    _slowBootTimer?.cancel();
     splashActive = false;
     super.dispose();
+  }
+
+  /// ★ 2026-08-11 第二十一輪（需求 4）：離開 Splash 的統一入口。
+  /// 回傳 true 表示本次呼叫確實完成了導航；false 表示已經有人先導航過了
+  /// （或 widget 已卸載），呼叫端不需要再做任何事。
+  bool _replaceWith(Widget page) {
+    if (!mounted || _navigated) return false;
+    _navigated = true;
+    _navWatchdog?.cancel();
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => page),
+    );
+    return true;
+  }
+
+  /// ★ 2026-08-11 第二十一輪（需求 4）：待接聽來電被「記憶體」接手後，
+  /// 清掉 prefs 裡的那份副本。
+  ///
+  /// main.dart 刻意保留這三個鍵給 Splash 備援重讀（見該處註解「保留給
+  /// splash_screen 備援讀取」），但通話結束時**沒有任何路徑**會移除它們——
+  /// 只有拒接／取消會清。於是一通正常接起、正常結束的通話會在 prefs 裡
+  /// 留下殘骸，之後每一次冷啟動都被重新載入 → 每次都跳過開場動畫、
+  /// 每次都被導向一通早就不存在的通話。
+  Future<void> _clearPendingCallPrefs() async {
+    try {
+      final prefs = await SharedPreferences.getInstance()
+          .timeout(const Duration(seconds: 3));
+      await prefs.remove('pendingAcceptedCall');
+      await prefs.remove('pendingRingCallData');
+      await prefs.remove('pendingRingCall');
+    } catch (e) {
+      debugPrint('⚠️ [Splash] 清除待接聽來電 prefs 失敗: $e');
+    }
   }
 
   Future<void> _playAnimations() async {
@@ -73,7 +140,13 @@ class _SplashScreenState extends State<SplashScreen> {
       //   這裡改用本機 prefs（第十六輪起 user_role/saved_role 已由 splash 寫回，
       //   是可信來源）直接導航，角色校正改為背景不阻塞執行。
       if (pendingAcceptedCall.value != null) {
-        if (mounted) setState(() => _fadedOut = true);
+        // ★ 2026-08-11 第二十一輪（需求 4）：記憶體已經拿到這通待接聽來電了，
+        //   prefs 的副本就完成任務了，在此清掉（理由見 _clearPendingCallPrefs）。
+        unawaited(_clearPendingCallPrefs());
+        // ★ 2026-08-11 第二十一輪（需求 4）：**不再**在這裡就把動畫關掉。
+        //   `_sprintToPendingCall()` 成功時會立刻 pushReplacement，Splash 本來
+        //   就會被換掉，先淡出沒有意義；失敗時（本機 session 不完整）卻會留下
+        //   一個全白、不會動的畫面陪使用者走完後面整段標準流程。
         final bool sprinted = await _sprintToPendingCall();
         if (sprinted) return;
         debugPrint('⚠️ [Splash] 衝刺通道條件不足，回退標準流程');
@@ -84,14 +157,20 @@ class _SplashScreenState extends State<SplashScreen> {
         await Future.delayed(const Duration(milliseconds: 4000));
       } else {
         debugPrint("🚨 [Splash] 檢測到待接聽來電，跳過開機動畫延遲");
-        // 強制淡出
-        if (mounted) setState(() => _fadedOut = true);
+        // ★ 2026-08-11 第二十一輪（需求 4）：同樣移除這裡的強制淡出。
+        //   要加速的是「不要再等 4 秒」（上面的 if 已經做到），不是「把畫面清空」。
+        //   底下還有 getStatus（最長 6s）與 activeCalls 輪詢（最長 4s），
+        //   先淡出只會讓這段期間變成一片空白。動畫留著，導航一到就自然被取代。
       }
       if (!mounted) return;
 
       // 嘗試獲取登入狀態（已移除 2 秒 .timeout，避免冷啟動 SharedPreferences
       // 初始化 + 磁碟讀取超過 2 秒 → 拋例外 → 誤跳身分頁，讓已登入長輩看似 session 遺失）
-      final prefs = await SharedPreferences.getInstance();
+      // ★ 2026-08-11 第二十一輪（需求 4）：加逾時。刻意**不**改變原本「不因逾時
+      //   誤跳身分頁」的設計——逾時會落到最外層 catch，由 `_goNextOrRestoreElder`
+      //   重讀 prefs 決定去向。
+      final prefs = await SharedPreferences.getInstance()
+          .timeout(const Duration(seconds: 5));
       if (!mounted) return;
 
       final int? userId = prefs.getInt('caregiver_id');
@@ -221,23 +300,23 @@ class _SplashScreenState extends State<SplashScreen> {
               await prefs.remove('pendingRingCall');
             }
 
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(
-                builder: (context) => _resolveElderDestination(
-                  isCCTV: isCCTV,
-                  deviceName: deviceName,
-                  elderRoomId: elderRoomId,
-                  effectiveUserId: effectiveUserId,
-                  effectiveUserName: effectiveUserName,
-                ),
-              ),
-            );
+            _replaceWith(_resolveElderDestination(
+              isCCTV: isCCTV,
+              deviceName: deviceName,
+              elderRoomId: elderRoomId,
+              effectiveUserId: effectiveUserId,
+              effectiveUserName: effectiveUserName,
+            ));
             return;
           }
 
           // 子女端邏輯：直接進入主要儀表板容器
-          final elders = await ApiService.getPairedElders(effectiveUserId);
+          // ★ 2026-08-11 第二十一輪（需求 4）：這是家屬端開機路徑上**唯一**沒有
+          //   逾時的網路往返。後端半死（TCP 連上但不回應）時它會永遠不回來，
+          //   而下方的 catch 攔得到例外、攔不到卡住 → 家屬端永久停在開場畫面。
+          //   逾時後落入 catch → `_goNextOrRestoreElder()` 依本機 session 還原。
+          final elders = await ApiService.getPairedElders(effectiveUserId)
+              .timeout(const Duration(seconds: 6));
           if (!mounted) return;
 
           if (elders.isNotEmpty) {
@@ -245,16 +324,10 @@ class _SplashScreenState extends State<SplashScreen> {
             _navigateFamilyHome(effectiveUserId, effectiveUserName);
           } else {
             // 未綁定任何長輩，進入引導頁
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(
-                builder: (context) =>
-                    FamilyOnboardingScreen(
-                      userId: effectiveUserId,
-                      userName: effectiveUserName,
-                    ),
-              ),
-            );
+            _replaceWith(FamilyOnboardingScreen(
+              userId: effectiveUserId,
+              userName: effectiveUserName,
+            ));
           }
         } catch (e) {
           // 若 API 失敗，使用本地紀錄決定跳轉
@@ -264,18 +337,13 @@ class _SplashScreenState extends State<SplashScreen> {
               final String deviceName = prefs.getString('saved_device_name') ?? effectiveUserName;
               final String elderRoomId = prefs.getString('elder_room_id') ?? effectiveUserId.toString();
 
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => _resolveElderDestination(
-                    isCCTV: isCCTV,
-                    deviceName: deviceName,
-                    elderRoomId: elderRoomId,
-                    effectiveUserId: effectiveUserId,
-                    effectiveUserName: effectiveUserName,
-                  ),
-                ),
-              );
+              _replaceWith(_resolveElderDestination(
+                isCCTV: isCCTV,
+                deviceName: deviceName,
+                elderRoomId: elderRoomId,
+                effectiveUserId: effectiveUserId,
+                effectiveUserName: effectiveUserName,
+              ));
             } else {
               // ★ Issue 3 硬化：effectiveLocalRole 只是進入本函式當下的快照，
               //   API 失敗不代表本機真的不是長輩帳號；改由 _goNextOrRestoreElder
@@ -308,7 +376,8 @@ class _SplashScreenState extends State<SplashScreen> {
   /// 角色校正（第十六輪的 prefs 寫回）改以背景工作進行，不阻塞導航。
   Future<bool> _sprintToPendingCall() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await SharedPreferences.getInstance()
+          .timeout(const Duration(seconds: 3));
       final int? uid = prefs.getInt('caregiver_id');
       final String? uname = prefs.getString('caregiver_name');
       final String? localRole =
@@ -333,18 +402,13 @@ class _SplashScreenState extends State<SplashScreen> {
 
         debugPrint(
             '🚀 [Splash] 衝刺通道：長輩端直接進入通話畫面 (room=$elderRoomId, cctv=$isCCTV)');
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => _resolveElderDestination(
-              isCCTV: isCCTV,
-              deviceName: deviceName,
-              elderRoomId: elderRoomId,
-              effectiveUserId: uid,
-              effectiveUserName: uname,
-            ),
-          ),
-        );
+        _replaceWith(_resolveElderDestination(
+          isCCTV: isCCTV,
+          deviceName: deviceName,
+          elderRoomId: elderRoomId,
+          effectiveUserId: uid,
+          effectiveUserName: uname,
+        ));
         return true;
       }
 
@@ -380,10 +444,7 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   void _goNext() {
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (context) => const IdentificationScreen()),
-    );
+    _replaceWith(const IdentificationScreen());
   }
 
   /// ★ Issue 3 硬化：在導向身分辨識頁（_goNext）之前的最後防線。
@@ -396,7 +457,10 @@ class _SplashScreenState extends State<SplashScreen> {
   /// 同樣還原，理由見函式內註解——身分頁現在會主動釋放 session。
   Future<void> _goNextOrRestoreElder() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      // ★ 2026-08-11 第二十一輪（需求 4）：這是看門狗最後的落腳處，
+      //   絕不能自己也卡住——逾時就往下走到 `_goNext()`（身分辨識頁）。
+      final prefs = await SharedPreferences.getInstance()
+          .timeout(const Duration(seconds: 3));
       final int? uid = prefs.getInt('caregiver_id');
       final String? uname = prefs.getString('caregiver_name');
       final String? role = prefs.getString('user_role');
@@ -417,18 +481,13 @@ class _SplashScreenState extends State<SplashScreen> {
 
         debugPrint('🛡️ [Splash] 偵測到本機長輩 session，改導向長輩主畫面而非身分頁');
 
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => _resolveElderDestination(
-              isCCTV: isCCTV,
-              deviceName: deviceName,
-              elderRoomId: elderRoomId,
-              effectiveUserId: uid ?? 0,
-              effectiveUserName: uname ?? deviceName,
-            ),
-          ),
-        );
+        _replaceWith(_resolveElderDestination(
+          isCCTV: isCCTV,
+          deviceName: deviceName,
+          elderRoomId: elderRoomId,
+          effectiveUserId: uid ?? 0,
+          effectiveUserName: uname ?? deviceName,
+        ));
         return;
       }
 
@@ -466,7 +525,12 @@ class _SplashScreenState extends State<SplashScreen> {
   ///      正好把那個 VideoCallScreen 洗掉 → 使用者只看到家屬主畫面。
   /// 這裡改為由 Splash 確定性地先建主畫面、再疊 VideoCallScreen，杜絕競態。
   void _navigateFamilyHome(int effectiveUserId, String effectiveUserName) {
-    if (!mounted) return;
+    // ★ 2026-08-11 第二十一輪（需求 4）：與 `_replaceWith` 共用同一把互斥鎖。
+    //   本函式是「pushReplacement + 視情況再 push」的組合，不能走 _replaceWith，
+    //   但同樣必須確保只會發生一次（看門狗與標準流程可能同時抵達）。
+    if (!mounted || _navigated) return;
+    _navigated = true;
+    _navWatchdog?.cancel();
     Map<String, String?>? pending = pendingAcceptedCall.value;
     // ★ 2026-07-22 第八輪 Fix 3：角色反轉來電視為無效，直接丟棄。
     if (pending != null && _isPendingRoleReversed(pending)) {
@@ -549,7 +613,11 @@ class _SplashScreenState extends State<SplashScreen> {
       // 設定，停止輪詢以免覆蓋正確資料。
       if (pendingAcceptedCall.value != null) return false;
       try {
-        final activeCalls = await FlutterCallkitIncoming.activeCalls();
+        // ★ 2026-08-11 第二十一輪（需求 4）：加逾時。輪詢次數雖有上限，
+        //   但單次 `activeCalls()` 是 platform channel，原生層卡住就整個流程停擺
+        //   （外層 `catch (_)` 攔得到例外、攔不到卡住）。
+        final activeCalls = await FlutterCallkitIncoming.activeCalls()
+            .timeout(const Duration(seconds: 2));
         if (activeCalls is! List || activeCalls.isEmpty) continue;
         for (final call in activeCalls) {
           if (call is! Map) continue;
@@ -594,21 +662,12 @@ class _SplashScreenState extends State<SplashScreen> {
             'expiresAt': expiresAt,
             'senderRole': senderRole,
           };
-          // 立即跳過動畫淡出
-          if (mounted) setState(() => _fadedOut = true);
           // 直接導航（不等待 4s 動畫）
-          if (mounted) {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(
-                builder: (context) => ElderScreen(
-                  roomId: roomId,
-                  deviceName: deviceName,
-                  initialCallData: pendingAcceptedCall.value,
-                ),
-              ),
-            );
-          }
+          _replaceWith(ElderScreen(
+            roomId: roomId,
+            deviceName: deviceName,
+            initialCallData: pendingAcceptedCall.value,
+          ));
           return true;
         }
       } catch (_) {
@@ -658,7 +717,33 @@ class _SplashScreenState extends State<SplashScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F5), // 介面的預設淺色底
-      body: AnimatedOpacity(
+      body: Stack(
+        children: [
+          // ★ 2026-08-11 第二十一輪（需求 4）：開機異常緩慢時的「還活著」指示。
+          //   刻意放在動畫**下層**（Stack 先畫者在底），動畫還不透明時完全看不到，
+          //   只有在 `_fadedOut` 之後、導航卻還沒發生的那段空窗才會露出來——
+          //   這正是使用者回報「白屏、既無動畫也不跳轉」時看到的畫面。
+          //   正常路徑（動畫結束即導航）根本不會顯示。
+          if (_slowBoot)
+            const Center(
+              child: SizedBox(
+                width: 36,
+                height: 36,
+                child: CircularProgressIndicator(
+                  strokeWidth: 3,
+                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF59B294)),
+                ),
+              ),
+            ),
+          _buildIntroAnimation(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildIntroAnimation() {
+    return IgnorePointer(
+      child: AnimatedOpacity(
         opacity: _fadedOut ? 0.0 : 1.0,
         duration: const Duration(milliseconds: 1000), // 圖標和背景平滑淡出的歷時
         child: TweenAnimationBuilder<double>(

@@ -987,7 +987,19 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
+                      // ★ 2026-08-11 第二十一輪（需求 3）：原本這裡是 Row，兩個子項
+                      //   （fontSize 24 的「視訊通話」標題 + 「即時連線」徽章）都是
+                      //   **非彈性**的，卻放在外層 Row 的 Expanded 裡——可用寬度是
+                      //   螢幕寬扣掉 SliverPadding 32、卡片 padding 48、左側圓形圖示
+                      //   約 71、間距 18、右側箭頭約 36 之後的剩餘量，在一般手機上
+                      //   小於這兩項的自然寬度總和，因此必然 RIGHT OVERFLOW（實測 13px），
+                      //   黃黑斜紋警示條就疊在「視訊通話」按鈕上。
+                      //   改用 Wrap：寬螢幕的排版與原本逐像素相同（同一列、間距 8），
+                      //   窄螢幕則讓徽章自動換行，永遠不會溢位，也不必截斷標題文字。
+                      Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 8,
+                        runSpacing: 4,
                         children: [
                           Text(
                             '視訊通話',
@@ -998,7 +1010,6 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                               letterSpacing: 0.5,
                             ),
                           ),
-                          const SizedBox(width: 8),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                             decoration: BoxDecoration(

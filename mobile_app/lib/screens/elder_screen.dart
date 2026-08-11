@@ -178,10 +178,24 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     // ★ 2026-08-10 第二十輪（D1-c）：改為等待 _initElderMode() 完成（含 socket 連線與
     //   媒體初始化）後才嘗試自動撥號，取代原本固定等待 2 秒的猜測值——2 秒不夠時
     //   會在 socket 尚未連上就呼叫 _makeCall()，導致 sendCallRequest 送不出去。
-    _initElderMode().then((_) {
+    // ★ 2026-08-11 第二十一輪（需求 1）：補上 onError。
+    //   `.then()` 沒有 onError 時，`_initElderMode()` 只要拋出任何例外，
+    //   回呼就整個被跳過 → 自動撥號靜默消失，畫面永遠停在「等待連線...」，
+    //   而且例外會變成無人處理的非同步錯誤，release 版連 log 都看不到。
+    //   初始化失敗不代表不能撥號（socket 可能已在別處連上），一律仍嘗試撥出，
+    //   真的送不出去時 `_makeCall()` 內部會顯示「連線中斷，無法撥出」。
+    void tryAutoCall() {
       if (!mounted || !widget.autoCall || _isInCall) return;
       _makeCall();
-    });
+    }
+
+    _initElderMode().then(
+      (_) => tryAutoCall(),
+      onError: (Object e, StackTrace s) {
+        debugPrint('❌ [ElderScreen] _initElderMode 失敗（仍嘗試撥號）: $e');
+        tryAutoCall();
+      },
+    );
   }
 
   Future<void> _checkPermissions() async {
@@ -467,7 +481,24 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     //   `Signaling.connect()` 內部已有「已連線則只重新 join」的重用分支
     //   （signaling.dart:169-173），不會重新註冊 listener 或覆寫 callback，
     //   因此一律呼叫是安全的，且能確保房間與 deviceMode 永遠正確。
-    final String? fcmToken = await FirebaseMessaging.instance.getToken();
+    // ★ 2026-08-11 第二十一輪（需求 1）根因修復：這行原本是裸的
+    //   `await FirebaseMessaging.instance.getToken()`，既沒有 try/catch 也沒有逾時。
+    //   getToken() 在真機上會拋 `SERVICE_NOT_AVAILABLE` / `AUTHENTICATION_FAILED`，
+    //   或在網路半死時長時間不回。第二十輪把「自動撥號」改成等
+    //   `_initElderMode()` 完成（見 initState 的 .then），於是這一行一旦拋例外或卡住：
+    //     1. 下方的 `_signaling.connect()` 永遠不會執行 → 長輩根本沒進房；
+    //     2. initState 的 .then() 永遠不會觸發 → `_makeCall()` 從未被呼叫。
+    //   結果就是使用者回報的「長輩端在 APP 內按下撥打完全沒反應」。
+    //   FCM token 只影響「對端被殺死時的推播喚醒」，拿不到頂多退回純 socket 通知，
+    //   絕不該連帶把進房與撥號一起擋掉——因此改為容錯取得。
+    String? fcmToken;
+    try {
+      fcmToken = await FirebaseMessaging.instance
+          .getToken()
+          .timeout(const Duration(seconds: 5));
+    } catch (e) {
+      debugPrint('⚠️ [ElderScreen] 取得 FCM token 失敗／逾時，改以無 token 進房: $e');
+    }
     debugPrint(
         "🔌 [ElderScreen] 加入房間 $_formattedRoomId "
         "(mode=${widget.isCCTVMode ? 'monitor' : 'comm'}, "
