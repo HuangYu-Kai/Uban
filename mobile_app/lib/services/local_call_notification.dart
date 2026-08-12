@@ -33,9 +33,35 @@ class LocalCallNotification {
 
   /// 固定通知 ID：同一時間只會有一通來電，用固定 ID 便於 cancel。
   static const int callNotificationId = 8801;
-  static const String _channelId = 'uban_incoming_call_backup';
+
+  /// ★ 2026-08-12 第二十三輪（需求 2「來電音效是系統提醒音效，而非系統來電音效」）：
+  ///
+  /// 舊 channel `uban_incoming_call_backup` 建立時只給了 `playSound: true`、**沒給 `sound:`**，
+  /// 所以 Android 用的是該 channel 的預設「通知音」（短促的一聲提示音），
+  /// 而不是使用者預期的「來電鈴聲」。CallKit 那條路是對的
+  /// （`AndroidParams.ringtonePath: 'system_ringtone_default'`），
+  /// 只有 CallKit 建立失敗時才會落到這個備援，於是聽起來就變成引用錯音效。
+  ///
+  /// ⚠️ **Android 的 channel 一旦建立，音效／重要度就不可再更改**——對既有安裝
+  /// 呼叫 `createNotificationChannel` 傳新的 `sound` 完全沒有效果。
+  /// 因此必須**換一個新的 channel id**，並把舊的刪掉（否則設定頁會殘留一個沒用的項目）。
+  /// 之後若還要再改鈴聲，一樣得再開新 id，不要試圖就地修改。
+  static const String _legacyChannelId = 'uban_incoming_call_backup';
+  static const String _channelId = 'uban_incoming_call_ringtone';
   static const String _channelName = '來電通知（備援）';
   static const String _channelDesc = 'App 被系統關閉時，確保仍能收到視訊來電通知';
+
+  /// 系統預設來電鈴聲（`Settings.System.DEFAULT_RINGTONE_URI`）。
+  /// 搭配 `AudioAttributesUsage.notificationRingtone`，音量才會走「鈴聲」音量軌
+  /// 而不是「通知」音量軌——長輩常把通知音量調很小，走錯音軌等於沒響。
+  static const AndroidNotificationSound _ringtoneSound =
+      UriAndroidNotificationSound('content://settings/system/ringtone');
+
+  /// `Notification.FLAG_INSISTENT`：讓鈴聲**持續重複**直到通知被取消，
+  /// 而不是只響一聲。這是備援通知能像真正來電的關鍵。
+  /// 對應的取消點：接聽／拒接（`cancelNotification: true`）、
+  /// `cancel-call`、`endAllCalls` 之後的 [cancel]，以及下方的 `timeoutAfter`。
+  static final Int32List _insistentFlag = Int32List.fromList(<int>[4]);
 
   /// 動作按鈕 ID（背景 tap handler 依此分辨接聽/拒接）
   static const String actionAcceptId = 'uban_call_accept';
@@ -54,13 +80,22 @@ class LocalCallNotification {
     // 建立高優先級 channel（Android 8+）
     final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
+    // ★ 2026-08-12 第二十三輪：先刪掉沒有鈴聲的舊 channel，再建帶鈴聲的新 channel。
+    //   刪除失敗（例如本來就不存在）不影響後續。
+    try {
+      await androidPlugin?.deleteNotificationChannel(_legacyChannelId);
+    } catch (e) {
+      debugPrint('⚠️ [LocalNotif] 刪除舊 channel 失敗（忽略）: $e');
+    }
     await androidPlugin?.createNotificationChannel(
-      const AndroidNotificationChannel(
+      AndroidNotificationChannel(
         _channelId,
         _channelName,
         description: _channelDesc,
         importance: Importance.max,
         playSound: true,
+        sound: _ringtoneSound,
+        audioAttributesUsage: AudioAttributesUsage.notificationRingtone,
         enableVibration: true,
       ),
     );
@@ -97,6 +132,16 @@ class LocalCallNotification {
         autoCancel: false,
         visibility: NotificationVisibility.public,
         ticker: '視訊來電',
+        // ★ 2026-08-12 第二十三輪（需求 2）：channel 決定 Android 8+ 的音效，
+        //   這裡的 sound / audioAttributesUsage 則負責 Android 7 及以下。兩邊都要給。
+        playSound: true,
+        sound: _ringtoneSound,
+        audioAttributesUsage: AudioAttributesUsage.notificationRingtone,
+        additionalFlags: _insistentFlag, // FLAG_INSISTENT：鈴聲重複直到通知被取消
+        // 安全網：萬一取消鏈路全斷（isolate 被殺、cancel-call 未達），
+        // 也不能讓 FLAG_INSISTENT 的鈴聲無限響下去。與第二十二輪需求 10
+        // 「來電最多等 1 分鐘」同一個預算。
+        timeoutAfter: 60000,
         // ★ 2026-08-02 第十四輪：通知底色向 CallKit 來電 UI 靠攏
         color: const Color(0xFF1A472A),
         colorized: true,

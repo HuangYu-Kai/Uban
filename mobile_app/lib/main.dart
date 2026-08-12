@@ -38,6 +38,8 @@ import 'services/video_call_permission_service.dart';
 import 'services/local_call_notification.dart';
 // ★ 2026-08-05 第十七輪：YOLO／測試跌倒警報的高優先級通知（與來電備援 channel 分開）
 import 'services/cctv_alert_notification.dart';
+// ★ 2026-08-12 第二十三輪：緊急通話提示音的全域單一擁有者（救護車雙音）
+import 'services/emergency_tone.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 final StreamController<String> callKitDeclineStream =
@@ -432,8 +434,37 @@ Future<void> _showFullScreenCallkit(Map<String, dynamic> data) async {
   //   這裡在背景 isolate 註冊短命 listener，攔到拒接/逾時就走無狀態 HTTP
   //   /api/call/decline 通知後端廣播 cancel-call（含 FCM），讓發起方即時停止等待。
   //   若使用者是「接聽」，則不處理（交由冷啟動後的正常流程接手）。
+  //
+  // ★ 2026-08-12 第二十三輪（需求 1「長輩端在 APP 外拒絕按鈕沒有用，只能按接受」）：
+  //   上面這個 listener 從第四輪就存在，但**幾乎沒生效過**。原因不在 listener 本身，
+  //   而在它的壽命：`_showFullScreenCallkit` 一 return，FCM 背景 handler 的 Future 就
+  //   完成 → Android 端 `FlutterFirebaseMessagingBackgroundService` 的 `latch` 放行 →
+  //   JobIntentService 收工 → 背景 FlutterEngine 被銷毀。使用者是在**幾秒後**才按下
+  //   按鈕的，那時 `bgSub` 早就跟著 isolate 一起消失了。
+  //
+  //   「接受」看起來有效、「拒絕」看起來無效，正是這個 bug 的指紋：
+  //   接受由 CallKit **原生層**直接拉起 MainActivity（完全不需要 Dart），
+  //   拒絕卻只有 Dart 這一條路（要送 declineCall 給發起方、要清三個 prefs 鍵）。
+  //
+  //   修法：用一個 Completer 把背景 handler 的 Future 壓住，直到
+  //   接聽／拒接／逾時／通話結束任一發生（或 50 秒上限）才放行。
+  //
+  //   ⚠️ 已知取捨（**刻意接受**，不要「修掉」）：FCM 背景 handler 在 Android 是
+  //   **序列**執行的，保活期間後續 FCM（例如發起方按取消的 `cancel-call`）會排隊等待。
+  //   最壞情況是發起方取消後、被叫端仍響到 CallKit 自己的 45 秒 `duration` 逾時為止。
+  //   這在第二十二輪需求 10 已訂下的「來電最多等 1 分鐘」預算之內，
+  //   而換來的是「拒接從 100% 失效變成可用」，且逾時事件終於送得到發起方
+  //   （第二十三輪需求 3 的雙端逾時對話框，在被殺死情境下就靠這條）。
+  StreamSubscription<CallEvent?>? bgSub;
+  final Completer<void> bgDecision = Completer<void>();
+  void releaseBgHold(String why) {
+    if (!bgDecision.isCompleted) {
+      debugPrint('🏁 [BG-CallKit] 結束背景保活（$why）');
+      bgDecision.complete();
+    }
+  }
+
   if (senderId.isNotEmpty && roomId.isNotEmpty) {
-    late final StreamSubscription<CallEvent?> bgSub;
     bgSub = FlutterCallkitIncoming.onEvent.listen((CallEvent? e) async {
       if (e == null) return;
       if (e.event == Event.actionCallDecline ||
@@ -454,7 +485,8 @@ Future<void> _showFullScreenCallkit(Map<String, dynamic> data) async {
           await prefs.remove('pendingRingCallData');
           await prefs.remove('pendingRingCall');
         } catch (_) {}
-        await bgSub.cancel();
+        await bgSub?.cancel();
+        releaseBgHold('使用者拒接／響鈴逾時');
       } else if (e.event == Event.actionCallAccept) {
         // ★ 2026-07-19 第六輪：冷啟動時主 isolate 的 _setupCallKitListener 可能
         //   還沒註冊就錯過 accept 事件。背景 isolate 在此把接聽資料寫入
@@ -494,9 +526,18 @@ Future<void> _showFullScreenCallkit(Map<String, dynamic> data) async {
           debugPrint('⚠️ [BG-CallKit] 寫入 pendingAcceptedCall 失敗: $err');
         }
         await LocalCallNotification.cancel(); // ★ 第十一輪：接聽時關備援通知
-        await bgSub.cancel();
+        await bgSub?.cancel();
+        releaseBgHold('使用者接聽');
+      } else if (e.event == Event.actionCallEnded) {
+        // ★ 2026-08-12 第二十三輪：通話被原生層／`endAllCalls()` 結束（例如發起方取消）。
+        //   這裡不再送 declineCall——結束方已經知道了，重複送只會製造多重拒絕訊息
+        //   （第八輪護欄 #14 的單通路原則）。只要放行保活即可。
+        await bgSub?.cancel();
+        releaseBgHold('CallKit 通話已結束');
       }
     });
+  } else {
+    releaseBgHold('缺 roomId/senderId，沒有可等待的事件');
   }
 
   // ★ 被殺死狀態可靠性修復：CallKit 在部分裝置會靜默建立失敗，
@@ -536,6 +577,24 @@ Future<void> _showFullScreenCallkit(Map<String, dynamic> data) async {
         } catch (_) {}
       }
     }
+  }
+
+  // ★ 2026-08-12 第二十三輪（需求 1）：背景保活。
+  //   **必須放在最後**——上面的備援探測本身就會 await 最多 3.5 秒，
+  //   把保活擺前面會讓「CallKit 沒建立時補發備援通知」整整晚 50 秒才執行，
+  //   等於把第十三輪護欄 #22 的互斥備援機制廢掉。
+  if (!bgDecision.isCompleted) {
+    debugPrint('⏳ [BG-CallKit] 保持背景 isolate 存活以接住拒接／接聽事件（最多 50s）');
+    try {
+      await bgDecision.future.timeout(const Duration(seconds: 50));
+    } on TimeoutException {
+      debugPrint('⌛ [BG-CallKit] 背景保活達 50s 上限，放行（使用者未操作）');
+    } catch (e) {
+      debugPrint('⚠️ [BG-CallKit] 背景保活等待異常（忽略）: $e');
+    }
+    try {
+      await bgSub?.cancel();
+    } catch (_) {}
   }
 }
 
@@ -1574,6 +1633,26 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           _fcmCallIdCache.removeWhere((key, value) => (currentTime - value) > 5000);
         }
 
+        // ★ 2026-08-12 第二十三輪：長輩端的緊急通話**無條件自動接聽**，
+        //   在此直接短路，不進下面的 dialog 路徑。
+        //   刻意放在 `isResumed` 寬限期**之前**：寬限期存在的理由是「讓 Socket 先彈窗、
+        //   避免同一通來電出現兩個來電 UI」，而緊急通話根本不彈窗，等 1.5 秒只會
+        //   延後長輩進房。重複觸發由 _autoAcceptEmergencyCall 內的
+        //   _lastHandledEmergencyCallId 去重，Socket 先到也不會做第二次。
+        if (isEmergency && myRole == 'elder') {
+          await _autoAcceptEmergencyCall(
+            roomId: (roomId ?? '').toString(),
+            senderId: (senderId ?? '').toString(),
+            callId: callId?.toString(),
+            senderRole: senderRole?.toString(),
+            issuedAt: message.data['issuedAt']?.toString(),
+            expiresAt: message.data['expiresAt']?.toString(),
+            isVideoCallRaw: message.data['isVideoCall'],
+            source: '-FCM',
+          );
+          return;
+        }
+
         // ★ 2026-08-02 第十四輪：前景不再裸 return（那會讓 Socket 也被去重丟棄 →
         //   家屬端在 APP 內完全收不到來電）。改為給 Socket 1.5 秒寬限期；
         //   寬限期屆滿仍未被 Socket 處理，才由 FCM 備援補上 dialog。
@@ -1603,6 +1682,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
               callId: callId,
               isEmergency: isEmergency,
               callerName: message.data['senderName'] ?? message.data['callerName'],
+              senderRole: senderRole?.toString(),
             );
           });
           return;
@@ -1618,6 +1698,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           callId: callId,
           isEmergency: isEmergency,
           callerName: message.data['senderName'] ?? message.data['callerName'],
+          senderRole: senderRole?.toString(),
         );
       }
 
@@ -1641,6 +1722,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           debugPrint('⚠️ [FCM-Fg] endAllCalls 失敗（不影響）: $e');
         }
         await LocalCallNotification.cancel(); // ★ 第十一輪：關備援通知
+        // ★ 2026-08-12 第二十三輪：來電被對方取消時必須停掉緊急提示音，
+        //   否則長輩端會出現「通話早就沒了、救護車聲還在響」（護欄 G77 可停止性）。
+        unawaited(EmergencyTone.instance.stop());
         return;
       }
 
@@ -1718,41 +1802,27 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     
     // ★ 緊急呼叫處理（家屬端與長輩端都需要）
     s.onEmergencyCall = (roomId, senderId, callId, [senderName]) {
-      if (appRole == 'elder') {
-        // ★ Issue 3 修復：去重，防止 Socket.IO + FCM 雙重觸發
-        if (callId != null && callId == _lastHandledEmergencyCallId) {
-          debugPrint("⚠️ [Main] Socket 忽略重複的緊急通話 (callId=$callId)");
-          return;
-        }
-        _lastHandledEmergencyCallId = callId;
-        debugPrint("🚨 [Main] 收到緊急通話 Socket 事件，自動接聽！");
-        if (callId != null && callId.isNotEmpty) {
-          sig.Signaling().lastProcessedCallId = callId;
-          sig.Signaling().lastProcessedCallTime =
-              DateTime.now().millisecondsSinceEpoch;
-        }
-        final pendingCallData = {
-          'roomId': roomId,
-          'senderId': senderId,
-          'callId': callId,
-          'isEmergency': true,
-          'senderRole': 'family',
-          // ★ 2026-08-11 第二十一輪（需求 4）：補上 `timestamp`。
-          //   這是**全專案唯一**沒帶 timestamp 的 pendingAcceptedCall 寫入點
-          //   （BG 緊急路徑 :236、CallKit accept :477、備援通知 :218 都有）。
-          //   少了它，`main()` 的過期判斷 `ts != null && ageMs > 60000` 恆為
-          //   false → 這筆資料**永遠不會過期**；而緊急通話結束時也沒有任何路徑
-          //   移除這個 prefs 鍵 → 之後每一次冷啟動都會重新載入同一通早已結束的
-          //   通話 → Splash 立刻 `_fadedOut = true`（沒有開場動畫）並被導去一通
-          //   死掉的通話 → 使用者看到的就是「怎麼重開都是不會動的白畫面」。
-          //   ⚠️ 只補 `timestamp`（本機新鮮度），**不要**補 `issuedAt`/`expiresAt`
-          //   ——護欄 G24 明訂緊急通話刻意不帶那兩個欄位，帶了會被 120s 過期判斷誤殺。
-          'timestamp': DateTime.now().millisecondsSinceEpoch,
-        };
-        SharedPreferences.getInstance().then((prefs) {
-          prefs.setString('pendingAcceptedCall', jsonEncode(pendingCallData));
-        });
-        pendingAcceptedCall.value = pendingCallData.map((key, value) => MapEntry(key, value?.toString()));
+      // ★ 2026-08-12 第二十三輪：`CallRequestCallback` 塞不下 role/issuedAt/expiresAt，
+      //   由 signaling.dart 在觸發本回呼前寫入 lastEmergencyMeta（純資料欄位，非狀態旗標）。
+      final Map<String, String> meta = s.lastEmergencyMeta;
+      final String? senderRole = meta['role'];
+      // ★ 2026-08-05 第十六輪：不用可能殘留錯誤的 appRole 判角色——payload 的
+      //   發起方角色才是權威（通話只可能 elder↔family），appRole 只作退路。
+      //   長輩機殘留 user_role='family' 時，舊的 `appRole == 'elder'` 永遠不成立，
+      //   緊急通話會掉進 else 分支去彈「接聽／拒絕」——正是使用者回報的症狀。
+      final String? myRole = _deriveMyRoleFromCall(senderRole, appRole);
+      if (myRole == 'elder') {
+        // ★ 2026-08-12 第二十三輪：改走統一的無條件自動接聽收斂點
+        //   （去重、關 CallKit／備援通知／dialog、播救護車提示音、寫 pending 全在裡面）。
+        unawaited(_autoAcceptEmergencyCall(
+          roomId: roomId,
+          senderId: senderId,
+          callId: callId,
+          senderRole: senderRole,
+          issuedAt: meta['issuedAt'],
+          expiresAt: meta['expiresAt'],
+          source: '-Socket',
+        ));
       } else {
         _showIncomingCallDialog(
           roomId,
@@ -1760,12 +1830,15 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           callId: callId,
           isEmergency: true,
           callerName: senderName,
+          senderRole: senderRole,
         );
       }
     };
 
     // 對方取消來電
     s.onCancelCall = (roomId, senderId, callId, [senderName]) {
+      // ★ 2026-08-12 第二十三輪：同 FCM 取消路徑，一併停掉緊急提示音（護欄 G77）。
+      unawaited(EmergencyTone.instance.stop());
       if (_activeCallDialogContext != null) {
         debugPrint(
             "🔕 [Main] Remote canceled call. Dismissing global dialog...");
@@ -1793,8 +1866,138 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     };
   }
 
+  /// ★ 2026-08-12 第二十三輪：緊急通話**無條件自動接聽**的單一收斂點。
+  ///
+  /// 使用者要求：「緊急通話不需要經過長輩同意，無論長輩端在 APP 內或 APP 外還是
+  /// 任何情況，只要家屬端撥打了緊急通話，就由不得長輩端設備接受或拒絕接聽，
+  /// 而是直接打開視訊通話房間」。
+  ///
+  /// 緊急通話有四條互不相干的抵達路徑，先前只有兩條真的自動接聽：
+  ///
+  /// | 通路 | 舊行為 | 現在 |
+  /// |------|--------|------|
+  /// | Socket `emergency-call`（APP 存活） | 自動接聽 ✅ | 改走本函式 |
+  /// | FCM 背景 isolate（APP 被殺死） | 寫 prefs ＋ Intent 喚醒 ✅ | 不變 |
+  /// | **FCM 前景備援**（Socket 掉線／慢） | **彈出接聽／拒絕 dialog ❌** | 改走本函式 |
+  /// | **`_showIncomingCallDialog` 最終防線** | **彈出 dialog ❌** | 改走本函式 |
+  ///
+  /// 後兩條就是「長輩端還看得到拒絕按鈕」的實際來源。
+  ///
+  /// ⚠️ 本函式**刻意不自己導航**：導航統一由 `elder_home_screen` / `splash_screen` /
+  /// main.dart 全域兜底三處消費 `pendingAcceptedCall` 完成。插一條新的導航路徑會與
+  /// 那三層兜底互相打架（第五／六輪就是被這種重複導航洗掉 route 而黑屏）。
+  ///
+  /// ⚠️ 背景 isolate **不可**呼叫本函式（plugin 實例不共用、提示音停不掉），
+  /// 那條路維持既有的「寫 prefs ＋ AndroidIntent 喚醒 → 冷啟動」流程。
+  Future<void> _autoAcceptEmergencyCall({
+    required String roomId,
+    required String senderId,
+    String? callId,
+    String? senderRole,
+    String? issuedAt,
+    String? expiresAt,
+    dynamic isVideoCallRaw,
+    String source = '',
+  }) async {
+    if (roomId.isEmpty || senderId.isEmpty) {
+      debugPrint('⚠️ [Emergency$source] roomId/senderId 為空，無法自動接聽');
+      return;
+    }
+    final String id = (callId ?? '').trim();
+    if (id.isNotEmpty && id == _lastHandledEmergencyCallId) {
+      debugPrint('⚠️ [Emergency$source] 忽略重複的緊急通話 (callId=$id)');
+      return;
+    }
+    if (id.isNotEmpty) _lastHandledEmergencyCallId = id;
+    debugPrint('🚨 [Emergency$source] 緊急通話無條件自動接聽 (callId=$id)');
+
+    // 宣告共用去重 token，讓隨後抵達的另一條通路（Socket ↔ FCM）不再重複處理。
+    _claimCallDedupToken(id.isEmpty ? null : id, isVideoCallRaw: isVideoCallRaw);
+
+    // 關掉「可能已經跳出來」的來電 UI——緊急通話不給選擇，畫面上不該留下按鈕。
+    if (_activeCallDialogContext != null) {
+      try {
+        if (Navigator.canPop(_activeCallDialogContext!)) {
+          Navigator.pop(_activeCallDialogContext!);
+        }
+      } catch (e) {
+        debugPrint('⚠️ [Emergency$source] 關閉來電 dialog 失敗（忽略）: $e');
+      }
+      _activeCallDialogContext = null;
+    }
+    // ★ 第十一輪：endAllCalls 在部分 MIUI 會拋 content-is-null，必須包 try-catch，
+    //   否則整條自動接聽會在這裡中斷（護欄 G21）。
+    try {
+      await FlutterCallkitIncoming.endAllCalls();
+    } catch (e) {
+      debugPrint('⚠️ [Emergency$source] endAllCalls 失敗（不影響）: $e');
+    }
+    try {
+      await LocalCallNotification.cancel();
+    } catch (e) {
+      debugPrint('⚠️ [Emergency$source] 關閉備援通知失敗（不影響）: $e');
+    }
+
+    // 提示音：監視機（CCTV）自動接聽必須完全靜音（護欄 G56）。
+    bool isCctv = false;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      isCctv = prefs.getBool('saved_is_cctv') ?? false;
+    } catch (_) {}
+    if (!isCctv) {
+      // 不 await：提示音是輔助，絕不可讓它延後進房（護欄 G77）。
+      unawaited(EmergencyTone.instance.play());
+    }
+
+    final Map<String, dynamic> pendingCallData = <String, dynamic>{
+      'roomId': roomId,
+      'senderId': senderId,
+      'callId': id,
+      'isEmergency': true,
+      // 護欄 G16：全鏈路帶發起方角色，供消費端防角色反轉。
+      'senderRole':
+          (senderRole == null || senderRole.isEmpty) ? 'family' : senderRole,
+      // ★ 護欄 G22（第二十二輪改寫）：緊急通話的 Socket 與 FCM 兩條路都必須帶
+      //   issuedAt/expiresAt。舊規則「緊急刻意不帶」已被推翻——不帶會讓這筆
+      //   pendingAcceptedCall 永不過期，冷啟動反覆載入早已結束的通話（第二十一輪白屏）。
+      //   後端未帶時退化為空字串，消費端視同「無有效期資訊」，行為與舊版相同。
+      'issuedAt': issuedAt ?? '',
+      'expiresAt': expiresAt ?? '',
+      // 本機新鮮度（與有效期無關），第二十一輪的自癒路徑依賴它。
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+    };
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('pendingAcceptedCall', jsonEncode(pendingCallData));
+    } catch (e) {
+      debugPrint('⚠️ [Emergency$source] 寫入 pendingAcceptedCall 失敗: $e');
+    }
+    // 護欄：Map<String, dynamic> → Map<String, String?> 後才可指派給 ValueNotifier。
+    pendingAcceptedCall.value =
+        pendingCallData.map((key, value) => MapEntry(key, value?.toString()));
+  }
+
   void _showIncomingCallDialog(String roomId, String senderId,
-      {String? callId, bool isEmergency = false, String? callerName}) {
+      {String? callId,
+      bool isEmergency = false,
+      String? callerName,
+      String? senderRole}) {
+    // ★ 2026-08-12 第二十三輪：長輩端緊急通話的**最終防線**。
+    //   不管是哪條通路走到這裡，只要「本機是長輩端 ＋ 這是緊急通話」，
+    //   就一律轉為無條件自動接聽，**永遠不顯示接聽／拒絕按鈕**。
+    //   放在最前面（早於 _activeCallDialogContext 檢查）是刻意的：
+    //   即使畫面上已經有一般來電的 dialog，緊急通話仍要壓過去。
+    if (isEmergency && _deriveMyRoleFromCall(senderRole, appRole) == 'elder') {
+      unawaited(_autoAcceptEmergencyCall(
+        roomId: roomId,
+        senderId: senderId,
+        callId: callId,
+        senderRole: senderRole,
+        source: '-Dialog',
+      ));
+      return;
+    }
+
     if (_activeCallDialogContext != null) {
       debugPrint("⚠️ [Main] Dialog already showing, skipping...");
       return;

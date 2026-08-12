@@ -96,6 +96,17 @@ class Signaling {
   Function(Map<String, dynamic>)? onMonitorRemoved;
   CallRequestCallback? onCancelCall;
   CallRequestCallback? onEmergencyCall;
+  /// ★ 2026-08-12 第二十三輪：與 [onEmergencyCall] 同步配對的**純資料**欄位
+  /// （語意同 [lastCallBusyReason]／`lastProcessedCallId`，不是顯示狀態旗標，護欄 G27）。
+  ///
+  /// `CallRequestCallback` 的簽章是 `(room, senderId, callId, senderName)`，
+  /// 塞不下後端第二十二輪補上的 `role`／`issuedAt`／`expiresAt`。改 typedef 會同時
+  /// 波及 `onCallRequest`／`onCancelCall` 的多個註冊點（main.dart、elder_home_screen、
+  /// family_main_screen…），風險遠大於收益，所以走「觸發前寫入、回呼內同步讀取」。
+  ///
+  /// 內容：`{'role': …, 'issuedAt': …, 'expiresAt': …}`（全部字串，缺就沒有該鍵）。
+  /// 讀取端必須容忍空 Map——舊版後端不會帶這些欄位。
+  Map<String, String> lastEmergencyMeta = const <String, String>{};
   CallAcceptedCallback? onCallAcceptedByRemote;
   CallAcceptedCallback? onCallBusy;
   /// ★ 2026-08-06 第十九輪（需求 3）：與 [onCallBusy] 同步配對的**純資料**欄位。
@@ -437,6 +448,18 @@ class Signaling {
         lastProcessedCallTime = currentTime;
       }
       _currentCallId = data['callId'];
+
+      // ★ 2026-08-12 第二十三輪：把 callback 簽章塞不下的欄位放進 lastEmergencyMeta，
+      //   讓 main.dart 的自動接聽能寫出與 FCM 路徑**完全一致**的 pendingAcceptedCall。
+      //   `role` 是發送方角色，供接收端用 _deriveMyRoleFromCall 反推自己是誰——
+      //   比讀 prefs 的 user_role 可靠（第十六輪：那個鍵會殘留成錯誤角色）。
+      final Map<String, String> meta = <String, String>{};
+      if (senderRole != null && senderRole.isNotEmpty) meta['role'] = senderRole;
+      final String issuedAt = (data['issuedAt'] ?? '').toString();
+      if (issuedAt.isNotEmpty) meta['issuedAt'] = issuedAt;
+      final String expiresAt = (data['expiresAt'] ?? '').toString();
+      if (expiresAt.isNotEmpty) meta['expiresAt'] = expiresAt;
+      lastEmergencyMeta = meta;
 
       if (onEmergencyCall != null) {
         // ★ issue 11：透傳來電者名稱

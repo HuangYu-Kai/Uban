@@ -6,7 +6,6 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_tts/flutter_tts.dart';
-import 'package:audioplayers/audioplayers.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
@@ -14,7 +13,9 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import '../services/signaling.dart';
 import '../services/api_service.dart';
 import '../services/session_manager.dart';
+import '../services/emergency_tone.dart';
 import '../widgets/heartbeat_overlay.dart';
+import '../widgets/call_retry_dialog.dart';
 import 'identification_screen.dart';
 import 'elder_home_screen.dart';
 import '../globals.dart';
@@ -97,10 +98,6 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   /// `socket.off('force-logout', _forceLogoutHandler)` 精準解除，
   /// 避免每進出一次通話／監控畫面就在 singleton socket 上多疊一份殭屍 handler。
   void Function(dynamic)? _forceLogoutHandler;
-
-  /// ★ 2026-08-11 第二十二輪（需求 9）：緊急通話的 7 秒提示音播放器
-  /// （取代舊的「緊急通話，自動接聽中」TTS 語音）。接通或離開畫面時停止並釋放。
-  AudioPlayer? _emergencyTonePlayer;
 
   int? _userId; // ★ issue 3/10：用於安全導航回主畫面時建構 ElderHomeScreen
   String? _prefsUserName; // ★ Issue 1 硬化：真實 caregiver_name，供 _buildFallbackHome 使用
@@ -510,36 +507,18 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   }
 
   /// ★ 2026-08-11 第二十二輪（需求 9）：播放約 7 秒的緊急提示音。
+  /// ★ 2026-08-12 第二十三輪：播放器搬到全域單例 [EmergencyTone]，音檔換成
+  ///   救護車雙音（`sounds/emergency_siren.wav`）。
   ///
-  /// 刻意**不呼叫** `player.setAudioContext(...)`：全域已在 `main.dart` 設定
-  /// `AndroidAudioFocus.none`（護欄 G27），在這裡覆寫成搶焦點會把剛接通的
-  /// 通話語音壓掉，也會打斷長輩端的語音喚醒監聽。
-  /// 播放失敗一律吞掉——提示音只是輔助，**絕不可**讓它擋住接聽流程。
-  Future<void> _playEmergencyTone() async {
-    try {
-      await _stopEmergencyTone();
-      final player = AudioPlayer();
-      _emergencyTonePlayer = player;
-      await player.setReleaseMode(ReleaseMode.stop);
-      await player.play(AssetSource('sounds/emergency_alert.wav'));
-    } catch (e) {
-      debugPrint('⚠️ [ElderScreen] 緊急提示音播放失敗（不影響接聽）: $e');
-    }
-  }
+  /// 搬家的原因：緊急通話會從 Socket／FCM 前景／FCM 背景冷啟動三條路抵達，
+  /// 使用者要求「不論 APP 狀況皆須播放」，所以提示音會在 `main.dart` 收到緊急
+  /// 通話的當下就開始響，本畫面只是**補播**（冷啟動時本畫面才是最早的觸發點）。
+  /// 單例保證三條路只會有一顆播放器，任何一處 `stop()` 都停得掉（護欄 G77）。
+  Future<void> _playEmergencyTone() => EmergencyTone.instance.play();
 
-  /// 停止並釋放緊急提示音播放器。接通（`onPeerConnected`）與離開畫面時都會呼叫，
+  /// 停止並釋放緊急提示音。接通（`onPeerConnected`）與離開畫面時都會呼叫，
   /// 避免「已經看到對方了、提示音還在響」。
-  Future<void> _stopEmergencyTone() async {
-    final player = _emergencyTonePlayer;
-    _emergencyTonePlayer = null;
-    if (player == null) return;
-    try {
-      await player.stop();
-      await player.dispose();
-    } catch (e) {
-      debugPrint('⚠️ [ElderScreen] 停止緊急提示音失敗（忽略）: $e');
-    }
-  }
+  Future<void> _stopEmergencyTone() => EmergencyTone.instance.stop();
 
   Future<void> _initElderMode() async {
     await _localRenderer.initialize();
@@ -1264,23 +1243,64 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       );
       return;
     }
+    _armCallTimeout();
+  }
+
+  /// ★ 2026-08-12 第二十三輪（需求 3）：撥打「世代編號」。
+  ///
+  /// 與家屬端 `video_call_screen.dart::_connectAttempt` 同一套機制：
+  /// `Future.delayed` 無法取消，使用者選「重新撥打」後舊那一顆仍會在原定
+  /// 時間醒來，靠世代比對讓它變成 no-op，否則會冒出第二個逾時對話框。
+  int _callAttempt = 0;
+
+  /// ★ 2026-08-12 第二十三輪（需求 3）：啟動一次 30 秒撥打逾時看門狗。
+  void _armCallTimeout() {
+    final int attempt = ++_callAttempt;
     // ★ 2026-07-18：長輩端主動撥打新增 30 秒逾時。原本完全沒有逾時，
     //   家屬未接時只能靠手動掛斷，被叫方 CallKit 也會一直響。逾時自動取消。
     Future.delayed(const Duration(seconds: 30), () {
-      if (mounted && _status == "正在呼叫家人...") {
-        debugPrint("⏰ [ElderScreen] 撥打逾時，自動取消通話");
-        _signaling.sendCancelCall(_formattedRoomId, role: 'elder');
-        _signaling.hangUp(disconnectSocket: false, disposeLocalStream: false);
-        setState(() {
-          _remoteRenderer.srcObject = null;
-          _status = "對方未接聽";
-          _isInCall = false;
-        });
-        if (!widget.isCCTVMode) {
-          safeNavigateBack(context, _buildFallbackHome());
-        }
-      }
+      if (!mounted) return;
+      if (attempt != _callAttempt) return; // 已重新撥打，這一輪作廢
+      if (_status != "正在呼叫家人...") return;
+      _handleCallTimeout();
     });
+  }
+
+  /// ★ 2026-08-12 第二十三輪（需求 3）：家屬沒有接聽。
+  ///
+  /// 舊行為是把狀態字改成「對方未接聽」後**直接**退回主畫面，長輩根本來不及
+  /// 看清楚發生什麼事，也沒有再撥一次的機會（要重新從主畫面點一次）。
+  /// 改為與家屬端共用的 [showCallRetryDialog]：離開通話，或重新撥打。
+  Future<void> _handleCallTimeout() async {
+    debugPrint("⏰ [ElderScreen] 撥打逾時，自動取消通話");
+    _signaling.sendCancelCall(_formattedRoomId, role: 'elder');
+    _signaling.hangUp(disconnectSocket: false, disposeLocalStream: false);
+    if (!mounted) return;
+    setState(() {
+      _remoteRenderer.srcObject = null;
+      _status = "對方未接聽";
+      _isInCall = false;
+    });
+
+    // ★ CCTV 監控機不彈對話框：它旁邊沒有人可以操作，彈出後會永久卡在畫面上
+    //   （護欄 G56「監控機自動接聽必須完全靜默」的同一精神）。維持原本的
+    //   「留在監控模式、不導航」行為。
+    if (widget.isCCTVMode) return;
+
+    final CallRetryChoice? choice = await showCallRetryDialog(
+      context,
+      title: '家人沒有接聽',
+      message: '要離開通話畫面，還是重新撥打一次？',
+      largeText: true, // 長輩端字級加大
+    );
+    if (!mounted) return;
+
+    if (choice == CallRetryChoice.retry) {
+      // `_makeCall()` 自己會重設 _status / _isInCall 並重新武裝逾時看門狗。
+      _makeCall();
+    } else {
+      safeNavigateBack(context, _buildFallbackHome());
+    }
   }
 
   void _hangUp() {

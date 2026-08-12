@@ -275,6 +275,15 @@ AI 對話、Pinecone 長期記憶、新聞爬蟲、遊戲、寵物、TTS/STT、`
 > ⚠️ `offer`/`answer`/`candidate` **必須** `to=target_sid` 精準轉發，**禁止廣播**。
 > `on_offer`:1941 有一條 `room=room, skip_sid=sid` 的廣播退路，僅在無 `targetId` 時觸發——**新程式碼絕不可依賴它**。
 
+> **`Signaling.lastEmergencyMeta`（2026-08-12 第二十三輪新增）** — `Map<String, String>`，
+> 鍵為 `role` / `issuedAt` / `expiresAt`。`emergency-call` 的 S→C payload 帶得比
+> `CallRequestCallback(roomId, senderId, callId, [senderName])` 的簽章塞得下的多，
+> 而改簽章會牽動全部註冊點。`signaling.dart` 因此在**呼叫 `onEmergencyCall` 之前**先寫入這個欄位，
+> `main.dart::s.onEmergencyCall`（:1807）緊接著讀取。
+> ⚠️ 這是**與 `callId` 同步寫入的純資料欄位，不是狀態旗標**——`Uban/CLAUDE.md` §3.2 的
+> 「不要在 `Signaling` singleton 新增顯示狀態全域旗標」（`isIncomingCallDialogVisible` 事件）
+> 約束的是後者。讀不到時退回空 Map，消費端視同「無有效期資訊」，行為與舊版相同。
+
 #### 監控／裝置事件
 
 | 事件 | 方向 | payload | 後端 | 說明 |
@@ -855,6 +864,15 @@ APP 被殺死時接聽，`actionCallAccept` 事件可能發生在 `_setupCallKit
 > 🚫 **這是純顯示層的隱藏**：`_inCall` / `_callTimer` / `_formattedDuration` 的**計時邏輯完全沒動**
 > （通話記錄與掛斷判斷仍靠它們）。想「順手把計時器也停掉」的人請住手——見 **G74**。
 
+> **等待畫面／逾時 UI（2026-08-12 第二十三輪，需求 3）**
+> `_callConnecting` 期間的遮罩現在**只有一種樣態**：`CircularProgressIndicator` ＋「正在連線中...」。
+> 原本併在同一個 `Stack` 裡的**失敗畫面已整段刪除**（紅色 `Icons.wifi_off` ＋
+> 「連線逾時，請檢查網路連接或稍後再試」＋ 藍色「重試連線」按鈕），
+> 連同只被它讀取的 `_callErrorMessage` 欄位一起移除（原始例外訊息仍在 `debugPrint`）。
+> 取而代之的是 `showCallRetryDialog`（`widgets/call_retry_dialog.dart`），
+> **家屬端與長輩端共用**，兩顆按鈕分別是「離開通話」與「重新撥打」——見 **G84**。
+> `_callFailed`（:82）**保留**：`initState` 的 5 秒 `Timer.periodic` 仍讀它。
+
 #### `ElderScreen` 控制列（`elder_screen.dart`）
 
 | 行 | 功能 | onPressed | 備註 |
@@ -995,7 +1013,15 @@ Future<void> _startCall(String friendName, {required bool isVideo}) async {
 | 層 | 實作 | 樣式來源 |
 |----|------|---------|
 | 主要 | CallKit（`_showFullScreenCallkit` 的 `CallKitParams`） | `backgroundColor: '#1a472a'`、`textAccept`、`textDecline`、`duration: 45000`、`isShowFullLockedScreen: true` |
-| 備援 | `LocalCallNotification.show()` | 向 CallKit 對齊：`✓ 接聽` / `✕ 拒絕`、`color: Color(0xFF1A472A)` + `colorized: true`、`largeIcon` 頭像、`fullScreenIntent`、`category: call`、`Importance.max` |
+| 備援 | `LocalCallNotification.show()` | 向 CallKit 對齊：`✓ 接聽` / `✕ 拒絕`、`color: Color(0xFF1A472A)` + `colorized: true`、`largeIcon` 頭像、`fullScreenIntent`、`category: call`、`Importance.max`、**系統來電鈴聲 ＋ `FLAG_INSISTENT`**（第二十三輪，見 **G83**） |
+
+> **2026-08-12 第二十三輪（需求 2）**：使用者回報「長輩端在 APP 外的來電音效是系統**提醒**音效、
+> 而非系統**來電**音效」。這句話本身就是一個診斷結論——CallKit 宣告的是
+> `ringtonePath: 'system_ringtone_default'`，會發出提醒音的**只可能是備援通知**。
+> 換言之，**那台裝置的 CallKit 原生層是失敗的**，看到的一直是第十三輪的互斥備援。
+> 修法是把備援本身的鈴聲修對（新 channel `uban_incoming_call_ringtone` ＋
+> `content://settings/system/ringtone` ＋ `notificationRingtone` 音軌 ＋ `FLAG_INSISTENT`），
+> **不是**去動 CallKit——見 **G83**。
 
 > **能力上限**：`flutter_local_notifications 18.0.1` **不支援** Android 原生 `Notification.CallStyle`，
 > 備援無法與 CallKit 像素一致。`colorized` 在部分 Android 版本只對 foreground-service 通知生效。
@@ -1378,7 +1404,7 @@ monitor_device_id(elder_id, device_name) = zlib.crc32(f"{elder_id}|{device_name.
 
 ## 7. 護欄（合併後的唯一權威清單）
 
-> 目前共 **80 條**（G1–G80）：G1–G36 合併自 `CLAUDE.md`（13 條）與 `Uban/CLAUDE.md`（26 條）並去重、
+> 目前共 **85 條**（G1–G85）：G1–G36 合併自 `CLAUDE.md`（13 條）與 `Uban/CLAUDE.md`（26 條）並去重、
 > 修正矛盾；G37–G46 為 2026-08-05 第十七輪新增（連線可靠性 4 條、監控警報 2 條、安全 4 條）；
 > G47–G52 為 2026-08-05 第十八輪新增（前端 4 條：監控機連線、冷啟動衝刺、鎖屏覆蓋、掛斷提示；
 > 後端 2 條：裝置清單同名去重、CCTV 端點部署）；
@@ -1394,10 +1420,16 @@ monitor_device_id(elder_id, device_name) = zlib.crc32(f"{elder_id}|{device_name.
 > `monitorViewOnly` 只隱藏顯示不停用計時、CCTV 推幀三層自癒、離開監控的釋放順序與 socket `dispose()`、
 > 緊急通話無條件接聽＋7 秒提示音、「查詢失敗 ≠ 查無裝置」與層級主色單一來源；
 > 後端 2 條：已取消 `call_id` 整通不發、兌換配對碼後必須廣播裝置清單）。
+> **G81–G85 為 2026-08-12 第二十三輪新增**（全部前端：緊急通話自動接聽的四通路單一收斂點、
+> FCM 背景 handler 保活到使用者決定（否則拒接鍵永遠無效）、來電備援通知的鈴聲與 channel
+> 不可就地改音、無人接聽／連線逾時一律用 `showCallRetryDialog` 且重撥不得重跑媒體初始化、
+> 不可取消的 `Future.delayed` 看門狗必須用世代編號守衛）。
 > **G23 已於第十八輪修訂**（改為只約束「要顯示提示時用什麼元件」，是否顯示交由 G50）。
 > **G8 已於第十九輪加註例外**（`monitorViewOnly`，見 G55）。
 > **G22 已於第二十二輪改寫**（緊急通話由「刻意不帶有效期、ttl 3600s」**反轉**為「兩條路都帶、ttl 60s」，見 G73）。
 > **G67 已於第二十二輪修訂**（`pendingRingCallData` 窗口 120000 → 60000；並更正其中誤植的 G24 條號）。
+> **G77 已於第二十三輪擴充**（自動接聽的範圍由「`ElderScreen` 內」擴大到**四條抵達通路**，見 G81；
+> 提示音改為救護車雙音並搬進全域單例 `EmergencyTone`）。
 > **除非明確知道連鎖影響並能同步改完整條鏈路，不要單點修改。**
 
 ### 7.1 前端護欄
@@ -1891,10 +1923,25 @@ Splash 內每個 `await`（prefs 3~5s、`ApiService.getPairedElders` 6s、
 > 退出監控時誤跳「連線中斷」。
 
 **G77 — 緊急通話：無條件自動接聽 + 7 秒提示音，且提示音必須停得掉**
-`elder_screen.dart`：緊急通話一律自動接聽（**不再限於 CCTV 模式**，:448），
-並以 `_playEmergencyTone()`（:518，`AssetSource('sounds/emergency_alert.wav')`）取代
-舊的「緊急通話，自動接聽中」TTS 播報。
-`_stopEmergencyTone()`（:530）**必須**在 `onPeerConnected`（:569）與 `dispose()`（:1474）**兩處**都呼叫。
+`elder_screen.dart`：緊急通話一律自動接聽（**不再限於 CCTV 模式**，:502）。
+> **2026-08-12 第二十三輪擴充**：自動接聽的責任已由 `ElderScreen` **上移**到
+> `main.dart::_autoAcceptEmergencyCall`，四條抵達通路全部收斂在那裡——見 **G81**。
+> `ElderScreen` 這一段是進房**之後**的提示音責任，兩者並存不衝突。
+
+提示音以 `_playEmergencyTone()`（:517）取代舊的「緊急通話，自動接聽中」TTS 播報。
+播放器本身在全域單例 `services/emergency_tone.dart::EmergencyTone.instance`，
+音檔為 `assets/sounds/emergency_siren.wav`（7.00 s、44100 Hz 16-bit mono，
+960/770 Hz **救護車雙音**每 0.5 秒交替；舊的 `emergency_alert.wav` 已刪除）。
+`_stopEmergencyTone()`（:521）**必須**在 `onPeerConnected`（:550）與 `dispose()`（:1496）**兩處**都呼叫；
+`main.dart` 的 FCM `cancel-call`（:1727）與 Socket `onCancelCall`（:1841）也各有一個停止點
+——對端在長輩接起前就取消時，只有這兩處攔得到。
+> **為什麼是單例**：提示音由 `main.dart`（進房前）播、由 `ElderScreen`（進房後）停，
+> 跨兩個 widget。舊寫法把 `AudioPlayer` 放在 `_ElderScreenState` 欄位裡，
+> `main.dart` 拿不到它 → 停不掉 → 響滿 7 秒蓋在通話音訊上。
+> `EmergencyTone` 內部用**遞增世代編號**（`_generation`）作為停止判斷，
+> 因為 `Future.delayed` 無法取消（同 **G85**）。
+> ⚠️ 背景 isolate **不可**呼叫它：plugin 實例不共用，那裡播出去的聲音主 isolate 停不掉。
+> 被殺死狀態的提示音因此是在冷啟動進入 `ElderScreen` 後才開始響——**刻意如此**。
 🚫 **禁止**恢復 TTS 播報（第二十二輪需求 9 使用者明確要求刪除）。
 🚫 **禁止**給這個 `AudioPlayer` 指定會搶音訊焦點的 `AudioContext`——見 **G27**，
 全域已設 `AndroidAudioFocus.none`，單獨覆寫會讓提示音把通話音訊壓掉。
@@ -1916,6 +1963,92 @@ Splash 內每個 `await`（prefs 3~5s、`ApiService.getPairedElders` 6s、
 （`tierLevel` 來自後端訂閱查詢，失敗時是任意字串，拋出去整個分頁白畫面）。
 🚫 **不要**從 `family_dashboard_view.dart` 複製那組舊色票——那是為白底卡片挑的，
 放到 `0xFF1E293B` 深底上黃金會整個糊掉。
+
+**G81 — 緊急通話的自動接聽只能有一個收斂點，且長輩端永遠不得出現接聽／拒絕 UI**
+使用者需求原文：「緊急通話不需要經過長輩同意，無論長輩端在 APP 內或 APP 外還是任何情況，
+就由不得長輩端設備接受或拒絕接聽，而是直接打開視訊通話房間」。
+緊急通話有**四條互不相干的抵達通路**，第二十二輪只修好其中兩條：
+
+| 通路 | 第二十二輪 | 第二十三輪 |
+|------|-----------|-----------|
+| Socket `emergency-call`（APP 存活，`main.dart`:1804） | 自動接聽 ✅ | 改走 `_autoAcceptEmergencyCall` |
+| FCM 背景 isolate（APP 被殺死，`main.dart`:225） | 寫 prefs ＋ `AndroidIntent` 喚醒 ✅ | **不變** |
+| FCM 前景備援（Socket 掉線／慢，`main.dart`:1642） | **彈接聽／拒絕 dialog ❌** | 改走 `_autoAcceptEmergencyCall` |
+| `_showIncomingCallDialog` 最終防線（`main.dart`:1990） | **彈接聽／拒絕 dialog ❌** | 改走 `_autoAcceptEmergencyCall` |
+
+`_autoAcceptEmergencyCall`（`main.dart`:1892）內含：`_lastHandledEmergencyCallId` 去重、
+`_claimCallDedupToken`、關閉既有來電 dialog、`endAllCalls()`、`LocalCallNotification.cancel()`、
+提示音（**`saved_is_cctv==true` 時靜音**，G56）、寫 `pendingAcceptedCall`（prefs ＋ notifier）。
+- 🚫 **禁止**本函式自己導航：導航統一由 `elder_home_screen` / `splash_screen` /
+  `main.dart` 全域兜底三處消費 `pendingAcceptedCall` 完成。多插一條會與那三層打架（第五／六輪黑屏）。
+- 🚫 **禁止**背景 isolate 呼叫它：plugin 實例不共用、提示音停不掉（見 G77）。
+- 🚫 **禁止**把 FCM 前景分支移回 `isResumed` 的 1.5 秒寬限期**之後**：寬限期存在的理由是
+  「讓 Socket 先彈窗、避免兩個來電 UI」，而緊急通話根本不彈窗，等 1.5 秒只是延後長輩進房。
+- 角色判定必須用 `_deriveMyRoleFromCall(senderRole, appRole)`（**payload 優先、`appRole` 只作退路**），
+  不可退回裸 `appRole == 'elder'`——第十六輪的角色雙鍵殘留會讓它恆不成立。
+
+**G82 — FCM 背景 handler 必須保活到使用者做出決定，否則拒接鍵 100% 無效**
+`main.dart::_showFullScreenCallkit`（:458-465、:586-598）：用一個 `Completer` 把背景
+handler 的 Future 壓住，直到**拒接／響鈴逾時／接聽／通話結束**任一發生（或 **50 秒**上限）才放行。
+> **根因**：`bgSub` listener 從第四輪就存在，但它的壽命等於背景 `FlutterEngine` 的壽命。
+> `_showFullScreenCallkit` 一 return → Android `FlutterFirebaseMessagingBackgroundService`
+> 的 `latch` 放行 → `JobIntentService` 收工 → isolate 連同 listener 一起消失。
+> 使用者是**幾秒後**才按按鈕的。「接受有效、拒絕無效」正是這個 bug 的指紋：
+> 接受由 CallKit **原生層**直接拉起 `MainActivity`（完全不需要 Dart），
+> 拒絕卻只有 Dart 這一條路（要送 `declineCall`、要清三個 prefs 鍵）。
+- 🚫 **保活必須放在整個函式的最後**，在備援互斥探測（最多 3.5 秒 `await`）**之後**。
+  擺前面會讓「CallKit 沒建立就補發備援通知」整整晚 50 秒，等於廢掉 G22-era 的互斥機制。
+- ⚠️ **已知取捨，刻意接受，不要「修掉」**：FCM 背景 handler 在 Android 是**序列**執行的，
+  保活期間後續 FCM（例如發起方按取消的 `cancel-call`）會排隊。最壞情況是發起方取消後、
+  被叫端仍響到 CallKit 自己的 45 秒 `duration` 逾時。這在 G73「來電最多等 1 分鐘」的預算內，
+  換來的是「拒接從全滅變成可用」，且逾時事件終於送得到發起方（G84 的雙端對話框靠它）。
+- `actionCallEnded` 分支**只放行保活、不送 `declineCall`**：結束方已經知道了，
+  重複送只會製造多重拒絕訊息（G14 的單通路原則）。
+
+**G83 — 來電備援通知的鈴聲：channel 不可就地改音，`FLAG_INSISTENT` 與 `timeoutAfter` 必須成對**
+`local_call_notification.dart`：channel id 為 `uban_incoming_call_ringtone`（:50），
+建立時 `deleteNotificationChannel('uban_incoming_call_backup')` 刪掉舊 channel（:49/:86）。
+- 🚫 **禁止**改音卻沿用舊 channel id：Android 的 `NotificationChannel` **建立後 sound／importance
+  即不可變**，就地改只會靜默無效——使用者回報「來電音效是系統提醒音效而非來電鈴聲」正是這個。
+  換鈴聲**一定**要換新 id ＋ 刪舊 id（否則舊 channel 留在系統設定裡變成孤兒）。
+- `UriAndroidNotificationSound('content://settings/system/ringtone')`（:58）＝
+  `Settings.System.DEFAULT_RINGTONE_URI`，**必須**與 `AudioAttributesUsage.notificationRingtone`
+  （:98 channel／:139 通知，**兩處都要**）成對出現，音量才走「鈴聲」音量軌而不是「通知」軌。
+- `additionalFlags: _insistentFlag`（:64/:140，`Int32List.fromList(<int>[4])` ＝ `FLAG_INSISTENT`）
+  讓鈴聲**重複播放直到通知被取消**。因此它**必須**與 `timeoutAfter: 60000`（:144）
+  及既有的所有 `LocalCallNotification.cancel()` 呼叫點成對存在，否則會響到天荒地老。
+- ⚠️ `Int32List` 由 `package:flutter/foundation.dart` 轉出，**不要**再 `import 'dart:typed_data'`
+  （會觸發 `unnecessary_import`，analyze 基線就從 141 變 142）。
+
+**G84 — 無人接聽／連線逾時：雙端一律用 `showCallRetryDialog`，且「重新撥打」不得重跑媒體初始化**
+`widgets/call_retry_dialog.dart`（新增）是兩端共用的唯一實作，回傳
+`CallRetryChoice.leave`（離開通話房間 → 回主畫面）或 `.retry`（重送通話封包 → 留在原畫面）。
+| 端 | 觸發點 | 逾時 | 重撥動作 |
+|----|--------|------|---------|
+| 家屬 `video_call_screen.dart` | `_armConnectTimeout`（:298）→ `_handleConnectTimeout`（:313） | 一般 **20s**／緊急 **60s** | `_retryCall`（:385）→ `_sendCallInvite()` ＋ 重新武裝看門狗 |
+| 長輩 `elder_screen.dart` | `_armCallTimeout`（:1256）→ `_handleCallTimeout`（:1268） | **30s** | `_makeCall()`（自行重設狀態與看門狗） |
+
+- 🚫 **禁止**讓「重新撥打」呼叫 `_initCall()`：那是被刪掉的舊「重試連線」按鈕的做法，
+  會整個重跑媒體初始化，重複 `openUserMedia` 在真機上常造成鏡頭被佔用而黑畫面。
+  重撥前的 `hangUp(disconnectSocket: false, disposeLocalStream: false)` 是刻意的——
+  關 peer connection、作廢 `_currentCallId`，但**保住 `localStream`**，所以不必再開一次相機。
+- 🚫 **禁止**改用 `SnackBar`：接「離開」的 `pushAndRemoveUntil` 會當場吞掉它（**G23**）。
+- 對話框 `barrierDismissible: false` ＋ `PopScope(canPop: false)`，且**回傳 `null` 視同離開**——
+  使用者不該被留在一個已經斷線的通話畫面上。
+- **CCTV 監控機（`widget.isCCTVMode`）不彈這個對話框**，直接返回：監視機旁邊沒有人可以按
+  （G56 同一精神），彈了只會變成一個永遠卡在畫面上的 modal。
+- 媒體初始化失敗**不適用**本對話框（重撥變不出相機），走既有的 `_showCallProblemThenGoHome`。
+- 🚫 已刪除的舊 UI（紅色 `Icons.wifi_off` ＋「連線逾時，請檢查網路連接或稍後再試」＋
+  藍色「重試連線」）**不要復活**：它只存在於家屬端、且那顆按鈕做的是錯的事。
+
+**G85 — 不可取消的 `Future.delayed` 看門狗必須用「世代編號」守衛**
+`video_call_screen.dart::_connectAttempt`（:113）、`elder_screen.dart::_callAttempt`（:1247）、
+`emergency_tone.dart::_generation`：武裝時 `final attempt = ++_x;`，回呼裡第一件事是
+`if (attempt != _x) return;`。
+> **原因**：Dart 的 `Future.delayed` **沒有 cancel**。重新撥打後舊的那一輪仍會照時觸發，
+> 沒有守衛就會彈出第二個對話框（或把新撥出的通話當成逾時掛掉）。
+> 🚫 **不要**改用「一個 bool 旗標」代替：連續重撥兩次時第一輪的回呼會把旗標清掉，
+> 第二輪的看門狗跟著失效。編號單調遞增才不會有 ABA 問題。
 
 ### 7.2 後端護欄
 
@@ -3021,6 +3154,117 @@ WebRTC 的擁塞控制（GCC）仍會依實測頻寬自動下修。
 「收尾刪除空白殘留檔」**已遵守**。
 新增的「同步 graphify」鐵律**本輪自己適用**：需求 8 動到 socket 生命週期、需求 10 動到 FCM 欄位
 與 Socket 事件的擋下條件，屬「連接」語意變更，須執行 `/graphify . --update` 後複製到雙端。
+
+---
+
+### 2026-08-12 — 第二十三輪：緊急通話真正的「無條件」、APP 外拒接全滅、來電鈴聲引錯、雙端重撥對話框
+
+使用者分兩次提出，共四項。本輪**全部是前端**，後端一行未動。
+
+**① 緊急通話：自動接聽只做了一半（延續第二十二輪需求 9）**
+
+使用者原話：「緊急通話不需要經過長輩同意，**無論長輩端在 APP 內或 APP 外還是任何情況**，
+就由不得長輩端設備接受或拒絕接聽」。第二十二輪只改了 `elder_screen.dart` 的**進房之後**，
+但「要不要進房」的決定發生在更前面，而**緊急通話有四條互不相干的抵達通路**：
+
+| 通路 | 第二十二輪後 |
+|------|-------------|
+| Socket `emergency-call`（APP 存活） | 自動接聽 ✅ |
+| FCM 背景 isolate（APP 被殺死） | 寫 prefs ＋ Intent 喚醒 ✅ |
+| **FCM 前景備援**（Socket 掉線／慢） | **彈接聽／拒絕 dialog ❌** |
+| **`_showIncomingCallDialog` 最終防線** | **彈接聽／拒絕 dialog ❌** |
+
+後兩條就是「長輩端還看得到拒絕按鈕」的實際來源。修法是把三條 Dart 通路收斂到單一函式
+`main.dart::_autoAcceptEmergencyCall`（:1892），背景 isolate 那條**維持原樣**
+（plugin 實例不共用，那裡播的音停不掉）。FCM 前景分支刻意放在 `isResumed` 1.5 秒寬限期
+**之前**——寬限期是為了「避免兩個來電 UI」，而緊急通話根本不彈窗，等它只是延後進房。→ **G81**
+
+音效同時換掉：`assets/sounds/emergency_siren.wav`（7.00 s、44100 Hz 16-bit mono，
+960/770 Hz 救護車雙音每 0.5 秒交替，程式生成；舊的 `emergency_alert.wav` 已刪除），
+播放器搬進全域單例 `services/emergency_tone.dart`。
+> **為什麼一定要搬單例**：現在是 `main.dart`（進房前）播、`ElderScreen`（進房後）停，
+> 跨兩個 widget。放在 `_ElderScreenState` 欄位裡 `main.dart` 根本拿不到 → 停不掉。
+> 停止點共四處：`onPeerConnected`、`ElderScreen.dispose`、FCM `cancel-call`、Socket `onCancelCall`。→ **G77 擴充**
+
+順帶補上 `Signaling.lastEmergencyMeta`：`emergency-call` 的 payload 帶了 `role`/`issuedAt`/`expiresAt`，
+但 `CallRequestCallback` 的簽章塞不下，改簽章又要牽動全部註冊點。改用「呼叫回呼前先寫欄位」傳遞。
+
+**② APP 外「拒絕」按鈕 100% 無效，只有「接受」能用（需求 1）— 背景 isolate 早就死了**
+
+`bgSub` listener 從第四輪就存在，看起來一直是對的。真正的問題是**它的壽命**：
+`_showFullScreenCallkit` 一 return → FCM 背景 handler 的 Future 完成 →
+Android `FlutterFirebaseMessagingBackgroundService` 的 `latch.await()` 放行 →
+`JobIntentService` 收工 → 背景 `FlutterEngine` 連同 listener 一起銷毀。
+而使用者是**幾秒後**才按下按鈕的。
+
+> **「接受有效、拒絕無效」就是這個 bug 的指紋**：接受由 CallKit **原生層**直接拉起
+> `MainActivity`，完全不需要 Dart；拒絕卻只有 Dart 一條路（送 `declineCall`、清三個 prefs 鍵）。
+> 只要看到「兩顆按鈕一顆有效一顆無效」，第一個該懷疑的就是「無效的那顆是不是需要 Dart」。
+
+修法：`Completer` 把 handler 的 Future 壓住，直到拒接／逾時／接聽／通話結束任一發生
+或 50 秒上限。**保活必須放在整個函式最後**，在備援互斥探測（最多 3.5 秒 `await`）之後，
+否則「CallKit 沒建立就補發備援通知」會晚 50 秒執行，等於廢掉第十三輪的互斥機制。
+`actionCallEnded` 分支只放行、不送 `declineCall`（G14 單通路）。→ **G82**
+> ⚠️ **刻意接受的取捨**：FCM 背景 handler 在 Android 是**序列**執行，保活期間後續 FCM
+> （含發起方的 `cancel-call`）會排隊。最壞情況是取消後被叫端仍響到 CallKit 45 秒逾時，
+> 仍在 G73「最多等 1 分鐘」的預算內。
+
+**③ APP 外來電音效引用錯誤（需求 2）— 這句回報本身就是診斷結論**
+
+使用者說「是系統**提醒**音效而非系統**來電**音效」。CallKit 宣告的是
+`ringtonePath: 'system_ringtone_default'`，會發出提醒音的**只可能是備援通知**——
+反推可知**那台裝置的 CallKit 原生層一直是失敗的**，看到的自始至終是第十三輪的互斥備援。
+所以要修的是備援，不是 CallKit。
+
+改動集中在 `local_call_notification.dart`：`content://settings/system/ringtone`
+（＝`Settings.System.DEFAULT_RINGTONE_URI`）＋ `AudioAttributesUsage.notificationRingtone`
+（channel 與通知**兩處都要**，音量才走鈴聲軌）＋ `FLAG_INSISTENT`（`4`，鈴聲重複到通知被取消）
+＋ `timeoutAfter: 60000`。
+> **關鍵陷阱**：Android 的 `NotificationChannel` **建立後 sound／importance 即不可變**，
+> 就地改音會**靜默無效**。因此 channel id 必須換新（`uban_incoming_call_ringtone`）
+> 並 `deleteNotificationChannel` 掉舊的 `uban_incoming_call_backup`，否則舊 channel
+> 會留在系統設定裡變成孤兒。副作用：曾手動調整過舊 channel 設定的使用者會回到預設值。→ **G83**
+
+**④ 雙端「無人接聽／連線逾時」對話框，並刪掉舊失敗畫面（需求 3）**
+
+新增 `widgets/call_retry_dialog.dart`（`showCallRetryDialog`），兩端共用，
+選項為「離開通話」／「重新撥打」。`video_call_screen.dart` 的
+紅色 `Icons.wifi_off` ＋「連線逾時，請檢查網路連接或稍後再試」＋「重試連線」整段刪除，
+`_callErrorMessage` 欄位一併移除（唯一讀取點就是那個畫面；原始例外訊息仍在 `debugPrint`）。
+
+| 端 | 看門狗 | 逾時 | 重撥動作 |
+|----|--------|------|---------|
+| 家屬 `video_call_screen.dart` | `_armConnectTimeout`:298 → `_handleConnectTimeout`:313 | 一般 20s／緊急 60s | `_retryCall`:385 → `_sendCallInvite()` |
+| 長輩 `elder_screen.dart` | `_armCallTimeout`:1256 → `_handleCallTimeout`:1268 | 30s | `_makeCall()` |
+
+- **重撥只重送通話封包，不重跑 `_initCall()`**。舊的「重試連線」按鈕正是呼叫 `_initCall()`，
+  會重跑媒體初始化，重複 `openUserMedia` 在真機上常造成鏡頭被佔用而黑畫面。
+  `hangUp(disconnectSocket: false, disposeLocalStream: false)` 保住 `localStream`，
+  所以重撥不必再開一次相機。→ **G84**
+- **世代編號守衛**：`Future.delayed` 無法取消，重撥後舊那一輪仍會照時觸發。
+  `_connectAttempt` / `_callAttempt` 單調遞增，回呼開頭比對不符就作廢。
+  用 bool 旗標會有 ABA 問題（連撥兩次時第一輪回呼把旗標清掉）。→ **G85**
+- CCTV 監控機（`widget.isCCTVMode`）**不彈**這個對話框——旁邊沒有人可以按（G56 精神）。
+- 媒體初始化失敗不走這條（重撥變不出相機），維持既有的 `_showCallProblemThenGoHome`。
+- 對話框 `barrierDismissible: false` ＋ `PopScope(canPop: false)`，回傳 `null` 視同離開。
+
+**驗證**
+
+- `flutter analyze lib` — **0 error**（141 issues，與第二十一／二十二輪基線完全相同）
+  > 中途曾升到 142：`Int32List` 由 `package:flutter/foundation.dart` 轉出，
+  > 多寫的 `import 'dart:typed_data'` 觸發 `unnecessary_import`。已移除。
+- `flutter build apk --debug` — **BUILD SUCCESSFUL**（`build/app/outputs/flutter-apk/app-debug.apk`）
+- `python -m pytest tests/test_call_signaling.py -q` — **17 passed**（後端未改動，確認不退步）
+
+**本輪的鐵律遵守情形**
+
+「Opus 制定／檢驗、Sonnet 執行」**本輪未遵守**：所有 Sonnet 子代理在本工作階段開始時
+即因 `session limit` 全數失敗（與第十九、二十、二十二輪同一情況），改由 Opus 直接執行全部實作。
+被迫偏離，已在交付報告中揭露。
+「每輪回寫 `CLAUDE_call-monitor.md`」**已遵守**（本節）。
+「收尾刪除空白殘留檔」**已遵守**。
+「同步 graphify」**適用**：需求 1 動到緊急通話的通路收斂（跳轉語意）、需求 3 新增畫面間的
+對話框與重撥路徑，屬「連接與跳轉」變更。
 
 ---
 

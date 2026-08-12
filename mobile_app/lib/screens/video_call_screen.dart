@@ -12,6 +12,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import '../screens/family_main_screen.dart';
 import '../screens/elder_home_screen.dart';
 import '../globals.dart' as globals;
+import '../widgets/call_retry_dialog.dart';
 
 class VideoCallScreen extends StatefulWidget {
   final String roomId;
@@ -79,7 +80,11 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   bool _callConnecting = true;   // ★ 追蹤通話是否正在連線中
   bool _callConnected = false;   // ★ 追蹤通話是否已成功連線
   bool _callFailed = false;      // ★ 追蹤通話是否連線失敗
-  String _callErrorMessage = ''; // ★ 通話失敗時的錯誤訊息
+  // ★ 2026-08-12 第二十三輪（需求 3）：移除 `_callErrorMessage`。
+  //   它唯一的讀取點是被本輪刪掉的失敗畫面（紅色 wifi_off ＋「重試連線」）；
+  //   失敗原因現在由 `showCallRetryDialog` / `_showCallProblemThenGoHome` 的
+  //   文案直接呈現，原始例外訊息仍保留在 debugPrint。
+  //   `_callFailed` 則**必須留著**——`initState` 的 5 秒 periodic 守衛在讀它。
 
   // ★ 通話計時器
   Timer? _callTimer;
@@ -87,6 +92,14 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
 
   // ★ 通話逾時計時器
   Timer? _callTimeoutTimer;
+
+  /// ★ 2026-08-12 第二十三輪（需求 3）：撥打「世代編號」。
+  ///
+  /// 每呼叫一次 [_armConnectTimeout] 就 +1，逾時回呼裡先比對自己是不是最新世代，
+  /// 不是就直接作廢。沒有這個守衛的話，使用者選「重新撥打」之後會同時存在
+  /// 兩個 `Future.delayed`，第一輪的那個仍會在原定時間彈出第二個逾時對話框
+  /// （`Future.delayed` 無法取消，只能靠世代比對讓它變成 no-op）。
+  int _connectAttempt = 0;
 
   // ★ 情境 3 修復：結束通話後導回主畫面時所需的真實使用者資料（於 _initCall 從 prefs 讀取）
   int _resolvedUserId = 0;
@@ -224,8 +237,15 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
         setState(() {
           _callConnecting = false;
           _callFailed = true;
-          _callErrorMessage = '無法開啟攝像頭或麥克風: $e';
         });
+        // ★ 2026-08-12 第二十三輪（需求 3）：原本這裡只設旗標，靠畫面上那個
+        //   紅色 `wifi_off` 失敗區塊呈現。該區塊已依需求移除，若不補提示，
+        //   鏡頭權限被拒的使用者只會看到永遠轉不停的「正在連線中...」。
+        //   媒體開不起來**不適用**「重新撥打」（重撥一百次也還是沒有鏡頭），
+        //   所以走既有的 `_showCallProblemThenGoHome`（提示 2 秒後回主畫面），
+        //   不彈重撥對話框。
+        _showCallProblemThenGoHome('無法開啟攝像頭或麥克風，請檢查權限設定');
+        return;
       }
     }
 
@@ -263,47 +283,116 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     //   不再無條件開擴音（語音通話預設走聽筒）。
     _signaling.enableSpeakerphone(_isSpeakerOn);
 
-    if (widget.isIncomingCall && widget.sendAcceptOnOpen) {
-      _signaling.sendCallAccept(widget.targetSocketId!, callId: widget.callId);
-    } else if (widget.autoStart) {
-      Future.microtask(() async {
-        int retries = 50; // 最多等待 5 秒
-        while (_signaling.socket?.connected != true && retries > 0) {
-          await Future.delayed(const Duration(milliseconds: 100));
-          retries--;
-        }
-        if (!mounted) return;
+    _sendCallInvite();
+    _armConnectTimeout();
+  }
 
-        if (widget.isEmergency) {
-          _signaling.sendEmergencyCall(widget.roomId, targetId: widget.targetSocketId);
-        } else {
-          // 如果是主動呼叫，先發送 Request 給對方點擊接聽 (確保觸發 FCM 與資料庫記錄)
-          _signaling.sendCallRequest(widget.roomId, role: 'family', targetId: widget.targetSocketId);
-        }
-      });
+  /// ★ 2026-08-12 第二十三輪（需求 3）：送出（或**重**送）一次通話封包。
+  ///
+  /// 從 `_initCall` 抽出來，讓「重新撥打」可以只重跑這一段。
+  /// **不可以**把 `_initCall()` 整個重跑當成重撥——那會再次
+  /// `openUserMedia`，真機上常因鏡頭仍被前一次佔用而拿不到視訊軌變黑畫面
+  /// （原本那顆「重試連線」按鈕就是這樣做的，見 [showCallRetryDialog] 的註解）。
+  void _sendCallInvite() {
+    if (widget.isIncomingCall) {
+      // 接聽方：這裡的「重送封包」是再送一次 call-accept 給發起方。
+      if (widget.sendAcceptOnOpen && widget.targetSocketId != null) {
+        _signaling.sendCallAccept(widget.targetSocketId!, callId: widget.callId);
+      }
+      return;
     }
+    if (!widget.autoStart) return;
 
-    // 緊急通話需等待對端被喚醒與自動接聽，逾時窗拉長避免家屬端誤判自動掛斷
-    final int connectTimeoutSeconds = widget.isEmergency ? 60 : 20;
-    Future.delayed(Duration(seconds: connectTimeoutSeconds), () {
-      if (mounted && _callConnecting && !_callConnected) {
-        // ★ 2026-07-18：逾時未接通時，主動通知對方取消／掛斷，避免被叫方 CallKit
-        //   繼續響到 45 秒。僅撥打方（非來電接聽方）需要送取消。
-        if (!widget.isIncomingCall) {
-          try {
-            _signaling.sendCancelCall(widget.roomId, role: 'family');
-          } catch (e) {
-            debugPrint('⚠️ [VideoCall] timeout sendCancelCall failed: $e');
-          }
-        }
-        _signaling.hangUp(disconnectSocket: false, disposeLocalStream: false);
-        setState(() {
-          _callConnecting = false;
-          _callFailed = true;
-          _callErrorMessage = '連線逾時，請檢查網路連接或稍後再試';
-        });
+    Future.microtask(() async {
+      int retries = 50; // 最多等待 5 秒
+      while (_signaling.socket?.connected != true && retries > 0) {
+        await Future.delayed(const Duration(milliseconds: 100));
+        retries--;
+      }
+      if (!mounted) return;
+
+      if (widget.isEmergency) {
+        _signaling.sendEmergencyCall(widget.roomId, targetId: widget.targetSocketId);
+      } else {
+        // 如果是主動呼叫，先發送 Request 給對方點擊接聽 (確保觸發 FCM 與資料庫記錄)
+        _signaling.sendCallRequest(widget.roomId, role: 'family', targetId: widget.targetSocketId);
       }
     });
+  }
+
+  /// ★ 2026-08-12 第二十三輪（需求 3）：啟動一次連線逾時看門狗。
+  ///
+  /// `Future.delayed` 無法取消，所以用 [_connectAttempt] 世代編號讓過期的那一輪
+  /// 自行作廢；重新撥打時只要再呼叫本方法就會讓舊的那顆失效。
+  void _armConnectTimeout() {
+    // 緊急通話需等待對端被喚醒與自動接聽，逾時窗拉長避免家屬端誤判自動掛斷
+    final int connectTimeoutSeconds = widget.isEmergency ? 60 : 20;
+    final int attempt = ++_connectAttempt;
+    Future.delayed(Duration(seconds: connectTimeoutSeconds), () {
+      if (!mounted) return;
+      if (attempt != _connectAttempt) return; // 已重新撥打，這一輪作廢
+      if (!_callConnecting || _callConnected) return;
+      _handleConnectTimeout();
+    });
+  }
+
+  /// ★ 2026-08-12 第二十三輪（需求 3）：無人接聽／連線逾時。
+  ///
+  /// 舊行為是把 `_callFailed` 設起來、讓畫面中央顯示紅色 `wifi_off` 區塊
+  /// 加一顆「重試連線」按鈕（該按鈕會重跑整個 `_initCall`）。依需求改為
+  /// LINE 式的對話框：離開通話房間，或重新送一次通話封包。
+  ///
+  /// `_callFailed` 這個欄位**刻意保留**——`initState` 的 5 秒 periodic 守衛與
+  /// 媒體初始化失敗路徑都在用它，移除會讓「已經失敗過」失去判斷依據。
+  Future<void> _handleConnectTimeout() async {
+    // ★ 2026-07-18：逾時未接通時，主動通知對方取消／掛斷，避免被叫方 CallKit
+    //   繼續響到 45 秒。僅撥打方（非來電接聽方）需要送取消。
+    if (!widget.isIncomingCall) {
+      try {
+        _signaling.sendCancelCall(widget.roomId, role: 'family');
+      } catch (e) {
+        debugPrint('⚠️ [VideoCall] timeout sendCancelCall failed: $e');
+      }
+    }
+    _signaling.hangUp(disconnectSocket: false, disposeLocalStream: false);
+    if (!mounted) return;
+    setState(() {
+      _callConnecting = false;
+      _callFailed = true;
+    });
+
+    final CallRetryChoice? choice = await showCallRetryDialog(
+      context,
+      title: widget.isIncomingCall ? '通話連線逾時' : '對方沒有接聽',
+      message: widget.isIncomingCall
+          ? '這通來電一直無法接通。要離開通話房間，還是重新嘗試連線？'
+          : '對方一直沒有接聽。要離開通話房間，還是重新撥打一次？',
+    );
+    if (!mounted) return;
+
+    if (choice == CallRetryChoice.retry) {
+      _retryCall();
+    } else {
+      // 含 `null`（理論上不會發生，`barrierDismissible: false` + `PopScope`）——
+      // 任何非 retry 的結果都當作離開，不要把使用者留在死掉的通話畫面上。
+      _goHomeAfterCall();
+    }
+  }
+
+  /// ★ 2026-08-12 第二十三輪（需求 3）：重新撥打。
+  ///
+  /// 只重置通話狀態 + 重送封包 + 重新武裝逾時看門狗；
+  /// **不重跑** `_initCall()`（媒體與 Socket 都還在，重跑會搶鏡頭）。
+  void _retryCall() {
+    debugPrint('🔁 [VideoCall] 使用者選擇重新撥打（第 ${_connectAttempt + 1} 次）');
+    setState(() {
+      _callConnecting = true;
+      _callConnected = false;
+      _callFailed = false;
+      _inCall = false;
+    });
+    _sendCallInvite();
+    _armConnectTimeout();
   }
 
   // ★ 通話計時器
@@ -584,65 +673,27 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                         colors: [Color(0xFF1A1A1A), Colors.black],
                       ),
                     ),
+                    // ★ 2026-08-12 第二十三輪（需求 3）：移除原本的失敗畫面
+                    //   （紅色 `Icons.wifi_off` ＋「連線逾時，請檢查網路連接或稍後再試」
+                    //   ＋藍色「重試連線」按鈕）。無人接聽／連線逾時改由
+                    //   `showCallRetryDialog` 的「離開通話／重新撥打」對話框處理，
+                    //   雙端一致（長輩端在 `elder_screen.dart::_makeCall` 走同一個對話框）。
+                    //   這裡只剩單純的「正在連線中...」，失敗狀態不再有自己的版面。
                     child: Center(
                       child: Column(
+                        mainAxisSize: MainAxisSize.min,
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          if (_callFailed)
-                            Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.wifi_off,
-                                  color: Colors.redAccent,
-                                  size: 48,
-                                ),
-                                const SizedBox(height: 16),
-                                Text(
-                                  _callErrorMessage.isNotEmpty
-                                      ? _callErrorMessage
-                                      : '通話連線失敗',
-                                  style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.8),
-                                    fontSize: 16,
-                                  ),
-                                ),
-                                const SizedBox(height: 24),
-                                ElevatedButton.icon(
-                                  onPressed: () {
-                                    // 重試連線
-                                    setState(() {
-                                      _callConnecting = true;
-                                      _callFailed = false;
-                                      _callErrorMessage = '';
-                                      _callConnected = false;
-                                    });
-                                    _initCall(); // 重新初始化通話
-                                  },
-                                  icon: const Icon(Icons.refresh),
-                                  label: const Text('重試連線'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.blueAccent,
-                                  ),
-                                ),
-                              ],
-                            )
-                          else
-                            Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const CircularProgressIndicator(color: Colors.white70),
-                                const SizedBox(height: 24),
-                                Text(
-                                  "正在連線中...",
-                                  style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.8),
-                                    fontSize: 18,
-                                    letterSpacing: 1.2,
-                                  ),
-                                ),
-                              ],
+                          const CircularProgressIndicator(color: Colors.white70),
+                          const SizedBox(height: 24),
+                          Text(
+                            "正在連線中...",
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.8),
+                              fontSize: 18,
+                              letterSpacing: 1.2,
                             ),
+                          ),
                         ],
                       ),
                     ),
