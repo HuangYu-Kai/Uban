@@ -526,6 +526,120 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
     return '平均每月 ${_currencySymbol(pkg.storeProduct)}${perMonth.toStringAsFixed(digits)}';
   }
 
+  // ---- 免費試用 / 優惠期揭露 ------------------------------------------------
+  //
+  // Apple 與 Google 都要求「購買前」就明確揭露試用期長度與試用結束後的價格，
+  // 沒揭露會被退件。資料有兩個來源，取決於平台：
+  //
+  //   Google Play：`StoreProduct.defaultOption` 的 pricing phases
+  //                （`freePhase` = 金額 0 的那段、`introPhase` = 折扣價那段）
+  //   App Store  ：`StoreProduct.introductoryPrice`
+  //                （`price == 0` 代表免費試用，> 0 代表優惠價）
+  //
+  // 兩邊擇一有值即可；都沒有就完全不顯示，不要憑空生出「無試用」的字樣。
+
+  /// `PeriodUnit` → 中文量詞。抓不到就回空字串，讓呼叫端整段放棄顯示。
+  String _unitText(PeriodUnit unit) {
+    switch (unit) {
+      case PeriodUnit.day:
+        return '天';
+      case PeriodUnit.week:
+        return '週';
+      case PeriodUnit.month:
+        return '個月';
+      case PeriodUnit.year:
+        return '年';
+      case PeriodUnit.unknown:
+        return '';
+    }
+  }
+
+  /// `Period`（Google Play）→「1 週」。單位不明時回 null。
+  String? _periodText(Period period) {
+    final unit = _unitText(period.unit);
+    if (unit.isEmpty || period.value <= 0) return null;
+    return '${period.value} $unit';
+  }
+
+  /// 免費試用長度，例如「1 週」；沒有試用就回 null。
+  String? _freeTrialText(Package pkg) {
+    final product = pkg.storeProduct;
+
+    // Google Play：金額 0 的 pricing phase。
+    final freePhase = product.defaultOption?.freePhase;
+    final freePeriod = freePhase?.billingPeriod;
+    if (freePeriod != null) {
+      final text = _periodText(freePeriod);
+      if (text != null) return text;
+    }
+
+    // App Store：introductoryPrice 且金額為 0。
+    final intro = product.introductoryPrice;
+    if (intro != null && intro.price <= 0) {
+      final unit = _unitText(intro.periodUnit);
+      // cycles 是「以此價格計費幾期」，單位相同故可直接相乘。
+      final cycles = intro.cycles <= 0 ? 1 : intro.cycles;
+      final total = intro.periodNumberOfUnits * cycles;
+      if (unit.isNotEmpty && total > 0) return '$total $unit';
+    }
+    return null;
+  }
+
+  /// 優惠價期間，例如「首 3 個月 NT$99」；沒有優惠價就回 null。
+  String? _introOfferText(Package pkg) {
+    final product = pkg.storeProduct;
+
+    // Google Play：金額 > 0 的 introPhase。
+    final introPhase = product.defaultOption?.introPhase;
+    if (introPhase != null) {
+      final period = introPhase.billingPeriod;
+      final periodText = period == null ? null : _periodText(period);
+      final cycles = introPhase.billingCycleCount ?? 1;
+      if (periodText != null) {
+        final span = cycles > 1 ? '$periodText × $cycles 期' : periodText;
+        return '首 $span ${introPhase.price.formatted}';
+      }
+    }
+
+    // App Store：introductoryPrice 且金額 > 0。
+    final intro = product.introductoryPrice;
+    if (intro != null && intro.price > 0) {
+      final unit = _unitText(intro.periodUnit);
+      final cycles = intro.cycles <= 0 ? 1 : intro.cycles;
+      final total = intro.periodNumberOfUnits * cycles;
+      if (unit.isNotEmpty && total > 0) {
+        return '首 $total $unit ${intro.priceString}';
+      }
+    }
+    return null;
+  }
+
+  /// 方案卡上的短標籤，例如「免費試用 1 週」。沒有優惠就回 null。
+  String? _offerBadgeText(Package pkg) {
+    final free = _freeTrialText(pkg);
+    if (free != null) return '免費試用 $free';
+    final intro = _introOfferText(pkg);
+    if (intro != null) return intro;
+    return null;
+  }
+
+  /// CTA 上方的完整揭露句：試用多久、結束後多少錢、怎麼取消。
+  /// 這是 Apple／Google 審核要看的那一句，沒有優惠期時回 null（整塊不顯示）。
+  String? _offerDisclosure(Package pkg) {
+    final free = _freeTrialText(pkg);
+    final intro = _introOfferText(pkg);
+    if (free == null && intro == null) return null;
+
+    final after = '${pkg.storeProduct.priceString}${_periodSuffix(pkg)}';
+    final head = [
+      if (free != null) '免費試用 $free',
+      if (intro != null) intro,
+    ].join('，接著 ');
+
+    return '$head，之後自動以 $after 續訂。'
+        '可在到期前隨時於 Google Play / App Store 取消，取消後不會扣款。';
+  }
+
   /// 依 packageType 給友善中文名稱（月 / 季 / 年）。
   String _planLabel(Package pkg) {
     switch (pkg.packageType) {
@@ -631,6 +745,7 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
           const SizedBox(height: 24),
           _buildFeatureCard(),
           const SizedBox(height: 28),
+          _buildOfferDisclosure(),
           _buildCta(),
           const SizedBox(height: 12),
           _buildRestoreRow(),
@@ -805,6 +920,7 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
     final product = pkg.storeProduct;
     final saving = _savingPercent(pkg);
     final perMonth = _perMonthText(pkg);
+    final offerBadge = _offerBadgeText(pkg);
 
     return Material(
       color: Colors.transparent,
@@ -866,6 +982,31 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
                           fontSize: 12.5,
                           color: _Palette.mist,
                         ),
+                      ),
+                    ],
+                    if (offerBadge != null) ...[
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.card_giftcard_rounded,
+                            size: 13,
+                            color: _Palette.success,
+                          ),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              offerBadge,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.notoSansTc(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w600,
+                                color: _Palette.success,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ],
@@ -993,6 +1134,52 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
 
   // ---- CTA -----------------------------------------------------------------
 
+  /// 購買前的試用／優惠揭露。Apple 與 Google 都要求在購買按鈕**之前**
+  /// 說明試用期長度與試用後價格，否則審核會被退件。
+  /// 已經是 PRO 或選取的方案沒有優惠期時整塊不顯示（不佔版面）。
+  Widget _buildOfferDisclosure() {
+    final pkg = _selected;
+    if (pkg == null || _effectiveIsPro) return const SizedBox.shrink();
+    final text = _offerDisclosure(pkg);
+    if (text == null) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        decoration: BoxDecoration(
+          color: _Palette.success.withValues(alpha: 0.07),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: _Palette.success.withValues(alpha: 0.28),
+          ),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              Icons.info_outline_rounded,
+              size: 16,
+              color: _Palette.success,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                text,
+                style: GoogleFonts.notoSansTc(
+                  fontSize: 12.5,
+                  height: 1.6,
+                  fontWeight: FontWeight.w600,
+                  color: _Palette.slate,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildCta() {
     final bool alreadyPro = _effectiveIsPro;
     final pkg = _selected;
@@ -1003,7 +1190,11 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
     } else if (pkg == null) {
       label = '請先選擇方案';
     } else {
-      label = '為$_elderLabel開通 · ${pkg.storeProduct.priceString}';
+      // 有免費試用時，按鈕不能只寫價格——那會讓人以為當下就要付這筆錢。
+      final free = _freeTrialText(pkg);
+      label = free != null
+          ? '開始免費試用 $free'
+          : '為$_elderLabel開通 · ${pkg.storeProduct.priceString}';
     }
 
     return SizedBox(
@@ -1063,8 +1254,12 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
   }
 
   Widget _buildFinePrint() {
+    final pkg = _selected;
+    final free = pkg == null ? null : _freeTrialText(pkg);
+
     return Text(
       '訂閱會自動續期，可隨時於 Google Play / App Store 取消。'
+      '${free != null ? '免費試用期結束前取消不會被扣款；未取消則自動轉為付費訂閱。' : ''}'
       '開通後由$_elderLabel的裝置自動解鎖進階功能，不需另外操作。\n'
       '目前為 RevenueCat Test Store 模擬環境，不會實際扣款。',
       textAlign: TextAlign.center,

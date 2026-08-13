@@ -519,6 +519,43 @@ void initPedometer() {
 
 ---
 
+### 2026-08-13 📜 Paywall 補上免費試用揭露（上架必要條件）
+
+> 補掉 08-10 記錄的上架缺口。Apple 與 Google 都要求在**購買前**明確揭露
+> 試用期長度與試用結束後的價格，缺了會被退件。
+
+- **資料來源分兩個平台**，兩邊擇一有值即可，都沒有就整塊不顯示
+  （不會憑空生出「無試用」字樣）：
+  * Google Play — `StoreProduct.defaultOption` 的 pricing phases
+    （`freePhase` = 金額 0 那段、`introPhase` = 折扣價那段）
+  * App Store — `StoreProduct.introductoryPrice`（`price == 0` 是免費試用，> 0 是優惠價）
+- **三個地方同步揭露**：
+  * 方案卡多一行綠色「免費試用 1 週」／「首 3 個月 NT$99」標籤
+  * CTA 上方新增揭露框：「免費試用 1 週，之後自動以 NT$110/季 續訂。可在到期前隨時於
+    Google Play / App Store 取消，取消後不會扣款。」
+  * CTA 文案改為「開始免費試用 1 週」——有試用時只寫價格會讓人以為當下就要付款
+  * 條款小字補上「免費試用期結束前取消不會被扣款；未取消則自動轉為付費訂閱」
+- 單位換算走 `PeriodUnit` → 中文量詞（天／週／個月／年），`unknown` 時整段放棄顯示。
+  iOS 的 `cycles`（以優惠價計費幾期）與 `periodNumberOfUnits` 相乘後才是總長度。
+- 已是 PRO 或選取方案無優惠期時整塊不佔版面。
+
+**🚨 模擬器實測發現：Test Store 根本不帶試用資料，所以測試環境永遠看不到揭露。**
+三個產品的 `StoreProduct` 全是 `introductoryPrice=null`、`defaultOption` 只有一段全價
+（`freePhase=null`、`introPhase=null`）。08-10 在 Test Store 購買視窗看到的
+`Phase: $0.00 for P1W` 是**那個模擬視窗自己畫的**，不在 SDK 給前端的資料裡。
+
+- ✅ 已驗：無資料時整塊乾淨隱藏，不留空框，CTA 維持「為宇璿開通 · $10.99」。
+- ⚠️ 只用假資料驗過版面：方案卡標籤、揭露框、CTA 文案、條款小字四處都正確，
+  但**真正的資料流要等換 `goog_`／`appl_` 金鑰、走 Google Play 內部測試軌再驗一次**。
+
+> ⚠️ **開發者選項的「重設為未訂閱（測試用）」不是真的取消訂閱。**
+> 它只是對後端補送一則 `EXPIRATION` webhook，把 `subscription_status` 翻成未開通，
+> 方便重測 FREE 畫面。**商店不允許 App 以程式取消訂閱**——RevenueCat 那邊的訂閱仍然存在，
+> 下一次續訂 webhook 進來就會再把狀態變回 PRO。真正的取消只能由使用者自己到
+> Google Play / App Store 的訂閱管理頁操作。這顆鈕也只在 debug build 出現。
+
+---
+
 ### 2026-08-10 💳 家屬端訂閱頁改版為正式 Paywall 版面
 
 > 只動 `subscription_test_screen.dart` 的 UI，RevenueCat / 後端邏輯完全未變。
