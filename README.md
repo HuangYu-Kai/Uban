@@ -444,14 +444,45 @@ void initPedometer() {
   iOS 的 `cycles`（以優惠價計費幾期）與 `periodNumberOfUnits` 相乘後才是總長度。
 - 已是 PRO 或選取方案無優惠期時整塊不佔版面。
 
-**🚨 模擬器實測發現：Test Store 根本不帶試用資料，所以測試環境永遠看不到揭露。**
-三個產品的 `StoreProduct` 全是 `introductoryPrice=null`、`defaultOption` 只有一段全價
-（`freePhase=null`、`introPhase=null`）。08-10 在 Test Store 購買視窗看到的
-`Phase: $0.00 for P1W` 是**那個模擬視窗自己畫的**，不在 SDK 給前端的資料裡。
+**🚨 模擬器實測看不到揭露 —— 原因是「測試帳號不符試用資格」，不是沒有試用。**
 
-- ✅ 已驗：無資料時整塊乾淨隱藏，不留空框，CTA 維持「為宇璿開通 · $10.99」。
-- ⚠️ 只用假資料驗過版面：方案卡標籤、揭露框、CTA 文案、條款小字四處都正確，
-  但**真正的資料流要等換 `goog_`／`appl_` 金鑰、走 Google Play 內部測試軌再驗一次**。
+實測到的原始資料（這部分沒有錯）：三個產品的 `StoreProduct` 全是
+`introductoryPrice=null`、`defaultOption` 只有一段全價（`freePhase=null`、`introPhase=null`）、
+**`subscriptionOptions=1`（只有 base plan，沒有任何 offer）**。
+
+- 當時綁的是 `elder_6160`，而他 **07-29 就買過 `sub1month`**
+  （RevenueCat 訂閱者紀錄：`period_type: "normal"`、`test_store`、$4.99）。
+- Google Play／RevenueCat 的語意是「**使用者不符資格的 offer 會被商店端整個過濾掉**」，
+  只剩 base plan 一個 option —— 這正是**老用戶碰上「限新訂閱者」試用**的形狀。
+- ⇒ 拿最不該拿的帳號去測，看起來就像「這個商店不給試用資料」。
+
+**RevenueCat Dashboard 的實際設定（2026-08-13 核對，三個產品完全一致）**：
+
+| 產品 | Duration | Free trial period | Trial eligibility |
+|------|----------|-------------------|-------------------|
+| `sub1month` | Monthly | **1 week** | **Has never made any purchase** |
+| `sub3month` | Three month | **1 week** | **Has never made any purchase** |
+| `sub1year` | Yearly | **1 week** | **Has never made any purchase** |
+
+⚠️ 資格條件是「**從來沒有買過任何東西**」，**不是每個產品各自計算** ——
+所以 `elder_6160` 在 07-29 買過 `sub1month` 之後，**三個方案的試用一次全部失格**，
+與實測「三個產品都沒有 offer」完全吻合。
+
+> ~~原本的結論：「Test Store 根本不帶試用資料，08-10 看到的 `$0.00 for P1W` 是模擬視窗自己畫的」~~
+> —— **已推翻**。保留原文以記錄推理脈絡：當時只用一個帳號測，就把「這個帳號看不到」
+> 誤推成「這個商店給不了」。**驗證優惠／試用類功能時，帳號的資格狀態本身就是變因。**
+
+**兩極都已用真資料在模擬器驗過（2026-08-13）**：
+
+- ✅ **符合資格**（`dev_trialcheck_20260813`，全新 id）：三張方案卡全部出現綠色
+  「🎁 免費試用 7 天」、揭露框顯示「免費試用 7 天，之後自動以 $10.99/季 續訂…」、
+  CTA 轉為「開始免費試用 7 天」、條款小字補上「免費試用期結束前取消不會被扣款」。
+- ✅ **不符資格**（`elder_6160`）：四處全部乾淨隱藏，不留空框，
+  CTA 維持「為宇璿開通 · $10.99」。這是正確行為 —— 不能對一個拿不到試用的人承諾試用。
+
+⚠️ **顯示是「7 天」不是「1 週」**：Dashboard 寫 `1 week`，但 SDK 下發的 `Period` 是
+**day-based（`P7D`，`unit=day, value=7`）**，前端忠實轉成「7 天」。語意相同，
+要改成「1 週」得在前端自己做 7 天 → 1 週的換算，目前**刻意不做**（不擅自改寫商店給的單位）。
 
 > ⚠️ **開發者選項的「重設為未訂閱（測試用）」不是真的取消訂閱。**
 > 它只是對後端補送一則 `EXPIRATION` webhook，把 `subscription_status` 翻成未開通，

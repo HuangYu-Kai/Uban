@@ -299,25 +299,54 @@ Apple / Google 都要求購買前明確揭露試用期長度與試用後價格�
 
 * **Test Store 訂閱僅約 5 分鐘到期**（實測 10:32 購買、`expires_at` 10:37），
   徽章隨後自然消失屬測試環境特性，非缺陷。
-* **🚨 Test Store 拿不到試用資料，免費試用揭露在測試環境永遠不會出現**
-  （2026-08-13 模擬器實測）。三個產品的 `StoreProduct` 全都是：
+* **⚠️ 試用資格會讓揭露整塊消失 —— 用買過東西的帳號測，看起來就像「沒有試用」**
+  （2026-08-13 模擬器實測 + Dashboard 核對）。
+
+  後台三個產品的設定**完全一致**：
+
+  | 產品 | Duration | Free trial period | Trial eligibility |
+  |------|----------|-------------------|-------------------|
+  | `sub1month` | Monthly | 1 week | **Has never made any purchase** |
+  | `sub3month` | Three month | 1 week | **Has never made any purchase** |
+  | `sub1year` | Yearly | 1 week | **Has never made any purchase** |
+
+  資格條件是「**從來沒有買過任何東西**」，**不是每個產品各自計算**。
+  `elder_6160` 於 07-29 買過 `sub1month`（RevenueCat 訂閱者紀錄
+  `period_type: "normal"`、`test_store`、$4.99）→ **三個方案的試用一次全部失格**。
+
+  用該帳號實測時 `StoreProduct` 長這樣：
 
   ```
   introductoryPrice   = null
   defaultOption       = SubscriptionOption(id: testBasePlanId,
                           pricingPhases: [ 只有一段全價 ],
                           freePhase: null, introPhase: null)
-  subscriptionOptions = 1
+  subscriptionOptions = 1        ← 只有 base plan，offer 被商店端整個過濾掉
   ```
 
-  ⚠️ **這推翻了 08-10 的推論**：當時看到 Test Store 購買視窗顯示
-  `sub3month` 帶 `Phase: $0.00 for P1W`，就以為 Paywall 拿得到那筆資料。
-  實際上那是 **Test Store 模擬購買視窗自己畫的**，SDK 的 `StoreProduct`
-  裡根本沒有這些欄位 —— 前端無從揭露。
-  * 「無資料 → 整塊隱藏」這條分支**已在模擬器驗過**（版面乾淨、不留空框、CTA 維持價格文案）。
-  * 「有資料 → 顯示」這條分支只用**暫時假資料**驗過版面（四處都正確），
-    **真正的資料流要等換上 `goog_` / `appl_` 金鑰、用 Google Play 內部測試軌
-    重驗一次**才算數。這是上架前的必驗項。
+  這是 Google Play／RevenueCat 的正常語意（**不符資格的 offer 不會下發**），
+  不是 Test Store 的限制。前端「拿不到資料就整塊不顯示」因此是**正確行為** ——
+  不能對一個拿不到試用的人承諾試用。
+
+  > ~~原本的結論：「Test Store 拿不到試用資料，揭露在測試環境永遠不會出現」~~ —— **已推翻**。
+  > 保留原文以記錄推理脈絡：只用一個帳號測，就把「這個帳號看不到」誤推成「這個商店給不了」。
+  > **驗證優惠／試用類功能時，帳號的資格狀態本身就是變因**，至少要測「符合資格」與
+  > 「不符資格」兩極。08-10 在購買視窗看到的 `$0.00 for P1W` 其實是對的，
+  > 只是當時那個帳號還沒買過東西。
+
+  **兩極都已用真資料在模擬器驗過（2026-08-13）**：
+
+  | 帳號 | 資格 | 結果 |
+  |------|------|------|
+  | `elder_6160`（07-29 買過） | ❌ 不符 | 四處全部隱藏，不留空框，CTA 維持「為宇璿開通 · $10.99」 |
+  | `dev_trialcheck_20260813`（全新） | ✅ 符合 | 三張卡都有「🎁 免費試用 7 天」、揭露框、CTA「開始免費試用 7 天」、條款小字 |
+
+  換帳號不必改程式：訂閱頁 → 開發者選項 → 「切換測試 User」（`_switchUser()` → `Purchases.logIn`）。
+
+  ⚠️ **顯示是「7 天」不是「1 週」**：Dashboard 寫 `1 week`，但 SDK 下發的 `Period` 是
+  **day-based（`P7D`，`unit=day, value=7`）**，`_periodText()` 忠實轉成「7 天」。
+  語意相同。要顯示「1 週」得自己做 7 天 → 1 週的換算，**目前刻意不做** ——
+  商店給什麼單位就顯示什麼，擅自換算等於在揭露文案上加工。
 * ~~後端尚未新增 `tests/test_subscription.py`~~ → 2026-08-10 已補（21 passed），
   見上方「webhook 自 07-30 起全數 500」。
 * Webhook 亂序重送的時間戳保護尚未實作（見 ❼-3）。
