@@ -178,8 +178,18 @@ is_pro = subscription_status.is_active = 1  AND  expires_at > NOW()
 
 ## ❻ UI/UX 視覺美學與無障礙規範 (Aesthetics & Accessibility)
 
-* **家屬端 Paywall**：沿用現有 `SubscriptionTestScreen` 版面（淺色卡片、`GoogleFonts.notoSansTc`、
-  月/季/年 `RadioGroup`、主色 `#0EA5E9`）。
+* **家屬端 Paywall**（`SubscriptionTestScreen`，2026-08-10 改版）：採「官網 Pricing 頁」骨架，
+  配色沿用家屬端既有 slate + sky 色階（見檔內 `_Palette`）：
+  底 `#F8FAFC`、卡片白、主文字 `#0F172A`、次要 `#64748B`、小字 `#94A3B8`、
+  邊框 `#E2E8F0`、強調 `#0284C7`（亮色 `#38BDF8`）、已開通綠 `#16A34A`。
+  區塊順序：Hero 標題 → 目前狀態列 → 月/季/年方案卡 → 「所有方案都包含」特色清單
+  → 深色 CTA（`#0F172A`）→ 條款小字 → 開發者選項（收合）。
+  * 方案卡為**自繪選取卡**（非 `RadioGroup`/`RadioListTile`），選中 2px `#0284C7` 邊框 + 淡藍陰影。
+  * 比價由前端自算：`storeProduct.price ÷ 週期月數` → 「平均每月」；與月繳價相比 → 「省 xx%」，
+    掛在省最多的方案上並預設選取。無月繳方案或週期不明（lifetime / custom）時整個略過比價。
+  * 除錯資訊（App User ID、SDK 權限、後端狀態、切換測試 User、重新整理）一律收在
+    最下方 `ExpansionTile`「開發者選項」內，預設收合。
+  * 特色清單（`_features`）目前僅為 UI 文案，尚未對應真正被鎖住的功能，見 ❽「功能鎖尚未接上」。
 * **長輩端**：僅呈現「已開通 / 未開通」結果，**不出現付費 UI**。
   實作上採「**有才顯示**」而非灰階降級——未開通時整個徽章不出現，
   避免在長輩畫面上製造看不懂的鎖頭或推銷入口（付費決策屬家屬端）。
@@ -233,6 +243,33 @@ is_pro = subscription_status.is_active = 1  AND  expires_at > NOW()
 6. 送 `EXPIRATION` 後重啟長輩端 → 徽章消失、只剩頭像 ✅（確認由後端驅動、非寫死）
 
 **靜態分析**：`flutter analyze` 對本次 4 個異動檔皆無新增問題 ✅
+
+### 🐛 2026-08-10 發現：webhook 自 07-30 起全數 500（已修，待部署驗證）
+
+`revenuecat_webhook()` 第 182 行用 `entitlement_ids`，但賦值那行
+（`entitlement_ids = event.get("entitlement_ids") or []`）在 07-30「Task 6」重構時被誤刪
+（原始 commit `40d0b34` 有）。任何**非 TEST** 且 `app_user_id` 為 `elder_` 開頭的事件
+都會 `NameError` → 500，`subscription_status` 自此不再更新。
+
+**為什麼一直沒被發現**：TEST 事件在第 170 行就 `return`，後台「Send test event」全綠；
+`GET /api/subscription/{elder_id}` 也照常回舊資料，看不出寫入已死。
+線索是 elder_6160 的 `expires_at` 卡在 `2026-07-29 10:57:22`——最後一次成功寫入那天。
+
+**教訓**：❽ 的端到端驗證是用 `curl` 直打 + 一次真實購買完成的，但**沒有留下自動化測試**。
+有那支測試的話，這個 NameError 在重構當下就會被擋住。
+
+**已補**：`uban-api/tests/test_subscription.py`（21 passed）。已用「把那行再刪掉」反證
+會變 **9 failed**。⚠️ 其中 `test_test_event_does_not_touch_db` 特別記錄了
+「TEST 事件碰不到 `entitlement_ids` 那段」——**後台 Send test event 全綠不代表 webhook 正常**。
+
+### 🚨 上架前必補：免費試用揭露
+
+2026-08-10 實測 Test Store 購買視窗顯示 `sub3month` 帶
+`Phase: $0.00 for P1W`（一週免費試用），但 Paywall **完全沒顯示**。
+Apple / Google 都要求購買前明確揭露試用期長度與試用後價格，否則會被退件。
+資料來源：`StoreProduct.introductoryPrice`／`defaultOption` 的 free phase。
+
+---
 
 ### 已知限制與未完成項目
 

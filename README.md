@@ -424,6 +424,86 @@ void initPedometer() {
 > 以下標註 ✍️ 的條目是 2026-08-06 回頭從 git 紀錄補寫的——當時有做但沒寫進日誌。
 > 內容依 commit 訊息重建，細節可能不如當事人寫得完整。
 
+### 2026-08-10 💳 家屬端訂閱頁改版為正式 Paywall 版面
+
+> 只動 `subscription_test_screen.dart` 的 UI，RevenueCat / 後端邏輯完全未變。
+
+- **版面改為「官網 Pricing 頁」骨架、Uban 既有 slate + sky 配色**：
+  Hero 標題 →「目前狀態」列 → 月/季/年方案卡 →「所有方案都包含」特色清單
+  → 深色 CTA → 條款小字 → 開發者選項。
+- **方案卡自算比價**：由 `storeProduct.price` 除以週期月數，顯示「平均每月 NT$xxx」，
+  並與月繳價比較算出「省 xx%」掛在最划算的方案上；預設就選那一個。
+  週期抓不到（lifetime / custom package）時自動略過比價，不會顯示錯誤數字。
+- **`RadioGroup` / `RadioListTile` 換成自繪選取卡**，選中時 2px `#0284C7` 邊框 + 淡藍陰影。
+- **除錯工具收進「開發者選項」ExpansionTile**（預設收合）：App User ID、SDK 權限、
+  後端訂閱狀態、切換測試 User、重新整理狀態。正式使用者第一眼看不到。
+- CTA 在後端已回報 PRO 時轉為綠色「進階照護已開通」並停用，避免重複下單。
+- ⚠️ 特色清單目前是 UI 文案，尚未對應真正被鎖住的功能（功能鎖仍未接）。
+- 開發者選項新增 **「重設為未訂閱（測試用）」**：對後端補送一則 `EXPIRATION` webhook，
+  把該長輩翻回未開通，免等 Test Store 自然到期（約 5 分鐘）就能重測 FREE 畫面。
+  * **只在 debug build 出現**（`kDebugMode` 是編譯期常數，release 版整段被 tree-shake）。
+  * 密鑰走 `--dart-define=REVENUECAT_WEBHOOK_SECRET=xxx`，**defaultValue 一律留空**——
+    這把是後端擋偽造開通用的，編進 APK 等於任何人都能替任意長輩開通 PRO。
+  * **這不是真的取消訂閱**：商店不允許 App 以程式取消，RevenueCat 那邊訂閱仍在，
+    下次續訂 webhook 進來就會再變回 PRO。真正的取消要使用者自己到商店操作。
+- 模擬器實測（Pixel_9a + Test Store）：抓到後台 3 個 product，比價計算正確
+  （季繳每月 $3.66 < 年繳 $3.83，故「省 27%」與預設選取落在季繳）、
+  點擊切換與 CTA 金額連動、401 錯誤處理有明確提示。
+- `flutter analyze lib/screens/family/subscription_test_screen.dart` — **No issues found**。
+
+---
+
+### 2026-08-10 🐛 RevenueCat webhook 自 07-30 起全數 500（`entitlement_ids` 未定義）
+
+> 做上面的訂閱頁驗收時發現。**影響正式環境**：`subscription_status` 從 2026-07-30 之後
+> 就沒有再成功更新過，等於購買後長輩端永遠不會解鎖 PRO。
+
+- **根因**：`uban-api/routers/subscription.py` 的 `revenuecat_webhook()` 在第 182 行使用
+  `entitlement_ids`，但它的賦值 `entitlement_ids = event.get("entitlement_ids") or []`
+  在 2026-07-30「Task 6」重構時被誤刪（原始 commit `40d0b34` 是有的）。
+  → 任何**非 TEST** 且 `app_user_id` 為 `elder_` 開頭的事件都會 `NameError` → 500。
+  TEST 事件在第 170 行就 return，所以後台「Send test event」看起來正常，掩蓋了問題。
+- **佐證**：模擬器查到 elder_6160 的 `expires_at` 停在 `2026-07-29 10:57:22`，
+  正是最後一次端到端驗證那天；`5accbdb`（含此缺陷）已在 `origin/main` 上。
+- **修復**：補回被刪的那一行，並加註解標明不可再移除。`python -m py_compile` 通過。
+- **補上迴歸測試** `uban-api/tests/test_subscription.py`（21 passed）。
+  已用「把那行再刪掉」反證：測試會變成 **9 failed**，涵蓋所有真實事件路徑。
+  * 特別注意 `test_test_event_does_not_touch_db` 的註解：TEST 事件在函式很前面就
+    `return`，**碰不到** `entitlement_ids` 那段——這正是後台「Send test event」
+    全綠卻掩蓋了 bug 的原因。**「TEST 通過」永遠不能當成 webhook 正常的證據。**
+- ⚠️ **尚未驗證線上**：webhook 有設 `REVENUECAT_WEBHOOK_SECRET`（探測回 401，
+  代表防偽造那道防線是好的），無密鑰無法從外部確認；需部署後補一次真實購買驗證。
+
+---
+
+### 2026-08-10 🔧 `main` 自 f3a1070 起編譯不過（已於 08-11 修復）
+
+> `main`（當時 == `a2f14ce`）自 `f3a1070`
+> （Merge branch 'monitor-newtool' into feat/family-side-design）起就**編譯不過**，
+> `flutter analyze lib` 有 **59 個 error**。那次合併沒解乾淨，兩個父版本的內容被
+> 整段疊在一起。任何人從 main 開分支都會繼承。
+
+| 檔案 | 損壞 |
+|------|------|
+| `services/api_service.dart` | 兩處方法被縫錯（`openAudioBridge` 尾巴接到 `getElderMoodInsight` 頭上、`getElderActivityLogs` 收尾被 `checkAudioBridge` 註解切斷），四個方法都解析不出來 |
+| `screens/family/family_interaction_tab.dart` | 兩邊各自新增了一份 `initState`/`didUpdateWidget` 被疊在一起；1354 行起括號大量不配對 |
+| `screens/elder_pairing_display_screen.dart` | `bool isMonitor;` 宣告被吃掉 → 10 處 undefined |
+| `screens/family_main_screen.dart` | `String? _elderSocketId;` 宣告被吃掉（3 處 undefined）、`family_subscription_screen.dart` 的 import 被吃掉 |
+
+- 上述四檔已由 `2284952`（2026-08-11「監控跟部分 bug 修復」）在 `main` 上修復。
+  `payui-update` 分支上另有一套獨立修法，合併時**一律採用 `main` 這邊的版本**。
+- **教訓**：合併衝突若沒解乾淨，`git` 不會有任何警告，只有 `flutter analyze` 會看出來。
+  合併通話／家屬端相關檔案後，**務必跑一次 `flutter analyze lib` 再推**。
+
+### 已知缺口（本次發現，未處理）
+
+- **免費試用沒有揭露**：Test Store 購買視窗顯示 `sub3month` 有 `Phase: $0.00 for P1W`
+  （一週免費試用），但 Paywall 完全沒顯示。Apple / Google 都要求在購買前明確揭露
+  試用期與後續價格，上架前必須補（`StoreProduct.introductoryPrice` /
+  `defaultOption.freePhase` 可取得）。
+
+---
+
 ### 2026-08-06 💬 AI 對話歷史持久化與 YouTube 播放修復 ✍️
 
 - **對話歷史持久化**：AI 聊天記錄改為保存，重開 App 不再從零開始。
