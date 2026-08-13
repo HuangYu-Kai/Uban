@@ -444,6 +444,15 @@ void initPedometer() {
   iOS 的 `cycles`（以優惠價計費幾期）與 `periodNumberOfUnits` 相乘後才是總長度。
 - 已是 PRO 或選取方案無優惠期時整塊不佔版面。
 
+**🚨 模擬器實測發現：Test Store 根本不帶試用資料，所以測試環境永遠看不到揭露。**
+三個產品的 `StoreProduct` 全是 `introductoryPrice=null`、`defaultOption` 只有一段全價
+（`freePhase=null`、`introPhase=null`）。08-10 在 Test Store 購買視窗看到的
+`Phase: $0.00 for P1W` 是**那個模擬視窗自己畫的**，不在 SDK 給前端的資料裡。
+
+- ✅ 已驗：無資料時整塊乾淨隱藏，不留空框，CTA 維持「為宇璿開通 · $10.99」。
+- ⚠️ 只用假資料驗過版面：方案卡標籤、揭露框、CTA 文案、條款小字四處都正確，
+  但**真正的資料流要等換 `goog_`／`appl_` 金鑰、走 Google Play 內部測試軌再驗一次**。
+
 > ⚠️ **開發者選項的「重設為未訂閱（測試用）」不是真的取消訂閱。**
 > 它只是對後端補送一則 `EXPIRATION` webhook，把 `subscription_status` 翻成未開通，
 > 方便重測 FREE 畫面。**商店不允許 App 以程式取消訂閱**——RevenueCat 那邊的訂閱仍然存在，

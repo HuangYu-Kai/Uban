@@ -299,8 +299,25 @@ Apple / Google 都要求購買前明確揭露試用期長度與試用後價格�
 
 * **Test Store 訂閱僅約 5 分鐘到期**（實測 10:32 購買、`expires_at` 10:37），
   徽章隨後自然消失屬測試環境特性，非缺陷。
-* **免費試用揭露尚未在真機驗證**（2026-08-13 補的那段）：程式路徑齊了但只過靜態分析，
-  還沒用 Test Store 實際跑一次確認 `sub3month` 的 `P1W` 有正確顯示成「1 週」。
+* **🚨 Test Store 拿不到試用資料，免費試用揭露在測試環境永遠不會出現**
+  （2026-08-13 模擬器實測）。三個產品的 `StoreProduct` 全都是：
+
+  ```
+  introductoryPrice   = null
+  defaultOption       = SubscriptionOption(id: testBasePlanId,
+                          pricingPhases: [ 只有一段全價 ],
+                          freePhase: null, introPhase: null)
+  subscriptionOptions = 1
+  ```
+
+  ⚠️ **這推翻了 08-10 的推論**：當時看到 Test Store 購買視窗顯示
+  `sub3month` 帶 `Phase: $0.00 for P1W`，就以為 Paywall 拿得到那筆資料。
+  實際上那是 **Test Store 模擬購買視窗自己畫的**，SDK 的 `StoreProduct`
+  裡根本沒有這些欄位 —— 前端無從揭露。
+  * 「無資料 → 整塊隱藏」這條分支**已在模擬器驗過**（版面乾淨、不留空框、CTA 維持價格文案）。
+  * 「有資料 → 顯示」這條分支只用**暫時假資料**驗過版面（四處都正確），
+    **真正的資料流要等換上 `goog_` / `appl_` 金鑰、用 Google Play 內部測試軌
+    重驗一次**才算數。這是上架前的必驗項。
 * ~~後端尚未新增 `tests/test_subscription.py`~~ → 2026-08-10 已補（21 passed），
   見上方「webhook 自 07-30 起全數 500」。
 * Webhook 亂序重送的時間戳保護尚未實作（見 ❼-3）。
