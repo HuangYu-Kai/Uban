@@ -262,12 +262,36 @@ is_pro = subscription_status.is_active = 1  AND  expires_at > NOW()
 會變 **9 failed**。⚠️ 其中 `test_test_event_does_not_touch_db` 特別記錄了
 「TEST 事件碰不到 `entitlement_ids` 那段」——**後台 Send test event 全綠不代表 webhook 正常**。
 
-### 🚨 上架前必補：免費試用揭露
+### ✅ 免費試用揭露（2026-08-10 發現缺口 → 2026-08-13 補上）
 
 2026-08-10 實測 Test Store 購買視窗顯示 `sub3month` 帶
 `Phase: $0.00 for P1W`（一週免費試用），但 Paywall **完全沒顯示**。
 Apple / Google 都要求購買前明確揭露試用期長度與試用後價格，否則會被退件。
-資料來源：`StoreProduct.introductoryPrice`／`defaultOption` 的 free phase。
+
+2026-08-13 已於 `subscription_test_screen.dart` 補上，取值分兩個平台：
+
+| 平台 | 來源 | 免費試用 | 優惠價 |
+|------|------|----------|--------|
+| Google Play | `StoreProduct.defaultOption` | `freePhase.billingPeriod` | `introPhase`（`price.formatted` + `billingCycleCount`） |
+| App Store | `StoreProduct.introductoryPrice` | `price == 0` | `price > 0` |
+
+- 顯示於三處：方案卡標籤、CTA 上方的揭露框、條款小字；CTA 文案本身也改為
+  「開始免費試用 N 週」。
+- iOS 的總長度 = `periodNumberOfUnits × cycles`（單位相同故可直接相乘）；
+  `PeriodUnit.unknown` 時整段放棄顯示，不猜。
+- 兩個來源都沒有值就完全不顯示——**不可**退化成寫死「無免費試用」，
+  那在方案設定改動後會變成錯誤揭露。
+
+### ⚠️ 「重設為未訂閱（測試用）」不是取消訂閱
+
+開發者選項裡那顆鈕只是**對後端補送一則 `EXPIRATION` webhook**，
+把 `subscription_status` 翻成未開通，方便重測 FREE 畫面。
+
+- **商店不允許 App 以程式取消訂閱**：RevenueCat 那邊的訂閱依然存在，
+  下一次續訂 webhook 進來就會把狀態改回 PRO。
+- 真正的取消只能由使用者自己到 Google Play / App Store 的訂閱管理頁操作。
+- 只在 debug build 出現（`kDebugMode` 是編譯期常數，release 版整段被 tree-shake），
+  且需 `--dart-define=REVENUECAT_WEBHOOK_SECRET` 帶密鑰，否則後端回 401。
 
 ---
 
@@ -275,7 +299,10 @@ Apple / Google 都要求購買前明確揭露試用期長度與試用後價格�
 
 * **Test Store 訂閱僅約 5 分鐘到期**（實測 10:32 購買、`expires_at` 10:37），
   徽章隨後自然消失屬測試環境特性，非缺陷。
-* 後端尚未新增 `tests/test_subscription.py`（本輪以 `curl` 手動驗證代替）。
+* **免費試用揭露尚未在真機驗證**（2026-08-13 補的那段）：程式路徑齊了但只過靜態分析，
+  還沒用 Test Store 實際跑一次確認 `sub3month` 的 `P1W` 有正確顯示成「1 週」。
+* ~~後端尚未新增 `tests/test_subscription.py`~~ → 2026-08-10 已補（21 passed），
+  見上方「webhook 自 07-30 起全數 500」。
 * Webhook 亂序重送的時間戳保護尚未實作（見 ❼-3）。
 * **功能鎖尚未接上**：`SubscriptionService` 目前只驅動長輩端金豬徽章，
   尚無任何 PRO 專屬功能被實際鎖定，待定義 PRO 功能清單後補上。
