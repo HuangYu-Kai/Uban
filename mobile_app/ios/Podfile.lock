@@ -1,4 +1,6 @@
 PODS:
+  - app_links (7.0.0):
+    - Flutter
   - AppAuth (1.7.6):
     - AppAuth/Core (= 1.7.6)
     - AppAuth/ExternalUserAgent (= 1.7.6)
@@ -84,6 +86,8 @@ PODS:
   - flutter_line_sdk (2.7.0):
     - Flutter
     - LineSDKSwift (~> 5.13)
+  - flutter_local_notifications (0.0.1):
+    - Flutter
   - flutter_tts (0.0.1):
     - Flutter
   - flutter_webrtc (1.2.0):
@@ -191,6 +195,16 @@ PODS:
   - permission_handler_apple (9.3.0):
     - Flutter
   - PromisesObjC (2.4.0)
+  - purchases_flutter (8.11.0):
+    - Flutter
+    - PurchasesHybridCommon (= 14.3.0)
+  - PurchasesHybridCommon (14.3.0):
+    - RevenueCat (= 5.32.0)
+  - record_ios (1.2.1):
+    - Flutter
+  - RevenueCat (5.32.0)
+  - sensors_plus (0.0.1):
+    - Flutter
   - share_plus (0.0.1):
     - Flutter
   - shared_preferences_foundation (0.0.1):
@@ -213,8 +227,12 @@ PODS:
   - wakelock_plus (0.0.1):
     - Flutter
   - WebRTC-SDK (137.7151.12)
+  - webview_flutter_wkwebview (0.0.1):
+    - Flutter
+    - FlutterMacOS
 
 DEPENDENCIES:
+  - app_links (from `.symlinks/plugins/app_links/ios`)
   - audioplayers_darwin (from `.symlinks/plugins/audioplayers_darwin/darwin`)
   - firebase_analytics (from `.symlinks/plugins/firebase_analytics/ios`)
   - firebase_core (from `.symlinks/plugins/firebase_core/ios`)
@@ -223,6 +241,7 @@ DEPENDENCIES:
   - flutter_callkit_incoming (from `.symlinks/plugins/flutter_callkit_incoming/ios`)
   - flutter_inappwebview_ios (from `.symlinks/plugins/flutter_inappwebview_ios/ios`)
   - flutter_line_sdk (from `.symlinks/plugins/flutter_line_sdk/ios`)
+  - flutter_local_notifications (from `.symlinks/plugins/flutter_local_notifications/ios`)
   - flutter_tts (from `.symlinks/plugins/flutter_tts/ios`)
   - flutter_webrtc (from `.symlinks/plugins/flutter_webrtc/ios`)
   - geocoding_ios (from `.symlinks/plugins/geocoding_ios/ios`)
@@ -233,6 +252,9 @@ DEPENDENCIES:
   - package_info_plus (from `.symlinks/plugins/package_info_plus/ios`)
   - pedometer (from `.symlinks/plugins/pedometer/ios`)
   - permission_handler_apple (from `.symlinks/plugins/permission_handler_apple/ios`)
+  - purchases_flutter (from `.symlinks/plugins/purchases_flutter/ios`)
+  - record_ios (from `.symlinks/plugins/record_ios/ios`)
+  - sensors_plus (from `.symlinks/plugins/sensors_plus/ios`)
   - share_plus (from `.symlinks/plugins/share_plus/ios`)
   - shared_preferences_foundation (from `.symlinks/plugins/shared_preferences_foundation/darwin`)
   - speech_to_text (from `.symlinks/plugins/speech_to_text/darwin`)
@@ -241,6 +263,7 @@ DEPENDENCIES:
   - video_player_avfoundation (from `.symlinks/plugins/video_player_avfoundation/darwin`)
   - volume_controller (from `.symlinks/plugins/volume_controller/ios`)
   - wakelock_plus (from `.symlinks/plugins/wakelock_plus/ios`)
+  - webview_flutter_wkwebview (from `.symlinks/plugins/webview_flutter_wkwebview/darwin`)
 
 SPEC REPOS:
   trunk:
@@ -266,9 +289,13 @@ SPEC REPOS:
     - nanopb
     - OrderedSet
     - PromisesObjC
+    - PurchasesHybridCommon
+    - RevenueCat
     - WebRTC-SDK
 
 EXTERNAL SOURCES:
+  app_links:
+    :path: ".symlinks/plugins/app_links/ios"
   audioplayers_darwin:
     :path: ".symlinks/plugins/audioplayers_darwin/darwin"
   firebase_analytics:
@@ -285,6 +312,8 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/flutter_inappwebview_ios/ios"
   flutter_line_sdk:
     :path: ".symlinks/plugins/flutter_line_sdk/ios"
+  flutter_local_notifications:
+    :path: ".symlinks/plugins/flutter_local_notifications/ios"
   flutter_tts:
     :path: ".symlinks/plugins/flutter_tts/ios"
   flutter_webrtc:
@@ -305,6 +334,12 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/pedometer/ios"
   permission_handler_apple:
     :path: ".symlinks/plugins/permission_handler_apple/ios"
+  purchases_flutter:
+    :path: ".symlinks/plugins/purchases_flutter/ios"
+  record_ios:
+    :path: ".symlinks/plugins/record_ios/ios"
+  sensors_plus:
+    :path: ".symlinks/plugins/sensors_plus/ios"
   share_plus:
     :path: ".symlinks/plugins/share_plus/ios"
   shared_preferences_foundation:
@@ -321,8 +356,11 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/volume_controller/ios"
   wakelock_plus:
     :path: ".symlinks/plugins/wakelock_plus/ios"
+  webview_flutter_wkwebview:
+    :path: ".symlinks/plugins/webview_flutter_wkwebview/darwin"
 
 SPEC CHECKSUMS:
+  app_links: a754cbec3c255bd4bbb4d236ecc06f28cd9a7ce8
   AppAuth: d4f13a8fe0baf391b2108511793e4b479691fb73
   AppCheckCore: cc8fd0a3a230ddd401f326489c99990b013f0c4f
   audioplayers_darwin: 835ced6edd4c9fc8ebb0a7cc9e294a91d99917d5
@@ -342,6 +380,7 @@ SPEC CHECKSUMS:
   flutter_callkit_incoming: cb8138af67cda6dd981f7101a5d709003af21502
   flutter_inappwebview_ios: b89ba3482b96fb25e00c967aae065701b66e9b99
   flutter_line_sdk: 04eef5c68b14dc268672534385fab57fea7baf55
+  flutter_local_notifications: 395056b3175ba4f08480a7c5de30cd36d69827e4
   flutter_tts: 35ac3c7d42412733e795ea96ad2d7e05d0a75113
   flutter_webrtc: 7de9a15705f7deede4413924a2f1409d39796ab5
   geocoding_ios: 33776c9ebb98d037b5e025bb0e7537f6dd19646e
@@ -363,6 +402,11 @@ SPEC CHECKSUMS:
   pedometer: 6806036696085739f36b4e4e5374135e86220a59
   permission_handler_apple: 4ed2196e43d0651e8ff7ca3483a069d469701f2d
   PromisesObjC: f5707f49cb48b9636751c5b2e7d227e43fba9f47
+  purchases_flutter: 3570127ba41583a75e553d68a763367007830eff
+  PurchasesHybridCommon: 7f0944cc5411bdcd1ea5d69affa6a6f9aaf87b13
+  record_ios: 980fd386a97a35987d0fce3dfda4b26a38c90f4c
+  RevenueCat: 7e1d0768fb287c9983173c9b28e39ccbeeb828a9
+  sensors_plus: 6a11ed0c2e1d0bd0b20b4029d3bad27d96e0c65b
   share_plus: 50da8cb520a8f0f65671c6c6a99b3617ed10a58a
   shared_preferences_foundation: 7036424c3d8ec98dfe75ff1667cb0cd531ec82bb
   speech_to_text: 3b313d98516d3d0406cea424782ec25470c59d19
@@ -372,6 +416,7 @@ SPEC CHECKSUMS:
   volume_controller: 3657a1f65bedb98fa41ff7dc5793537919f31b12
   wakelock_plus: e29112ab3ef0b318e58cfa5c32326458be66b556
   WebRTC-SDK: 1762e2de812354d27a8407d1b2c532064ec39fce
+  webview_flutter_wkwebview: 8ebf4fded22593026f7dbff1fbff31ea98573c8d
 
 PODFILE CHECKSUM: ac3601483823c4475bde6464274ca795baf9dead
 

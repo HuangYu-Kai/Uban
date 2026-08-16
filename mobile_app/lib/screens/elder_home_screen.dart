@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'elder_tabs/elder_home_tab.dart';
 import 'friends_screen.dart';
+import 'elder_community_screen.dart';
 import 'elder_chat_screen.dart';
 import 'elder_tabs/elder_profile_tab.dart';
 import '../globals.dart';
@@ -31,7 +32,7 @@ class ElderHomeScreen extends StatefulWidget {
 }
 
 class _ElderHomeScreenState extends State<ElderHomeScreen> {
-  int _selectedIndex = 0; // 0:首頁 1:電話 2:聊天 3:我的
+  int _selectedIndex = 0; // 0:首頁 1:電話 2:社群 3:聊天 4:我的
 
   bool _isNavigatingToCall = false;
 
@@ -92,13 +93,14 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
 
     // ★ 核心修復：強制使用長輩的專屬配對房間號 (elder_id)，且帶有 comm_elder_ 字首，確保與後端格式及權限匹配
     final String rawRoomId = widget.roomId ?? widget.userId.toString();
-    final String roomToJoin = rawRoomId.startsWith('comm_elder_') || rawRoomId.startsWith('monitor_elder_')
+    final String roomToJoin = rawRoomId.startsWith('comm_elder_') ||
+            rawRoomId.startsWith('monitor_elder_')
         ? rawRoomId
         : 'comm_elder_$rawRoomId';
     _connectSocket(roomToJoin);
 
     pendingAcceptedCall.addListener(_onPendingCallChanged);
-    
+
     // 檢查是否有在背景接聽的通話初始化前就傳入的待接聽電話
     Future.delayed(const Duration(milliseconds: 500), () {
       if (mounted) _onPendingCallChanged();
@@ -142,11 +144,11 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
     } catch (e) {
       debugPrint("Error getting FCM token: $e");
     }
-    
+
     Signaling().connect(
-      roomToJoin, 
+      roomToJoin,
       'elder',
-      userId: widget.userId, 
+      userId: widget.userId,
       deviceName: widget.userName,
       fcmToken: fcmToken,
     );
@@ -169,7 +171,8 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
                   color: Colors.green.shade100,
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(Icons.phone_in_talk, color: Colors.green, size: 28),
+                child: const Icon(Icons.phone_in_talk,
+                    color: Colors.green, size: 28),
               ),
               SizedBox(width: 12),
               Text('家屬來電'),
@@ -177,11 +180,13 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
           ),
           content: const Text('您的家人正在呼叫您！', style: TextStyle(fontSize: 18)),
           backgroundColor: Colors.green.shade50,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           actions: [
             ElevatedButton.icon(
               onPressed: () {
-                Signaling().sendCallBusy(senderId, callId: callId, room: roomId);
+                Signaling()
+                    .sendCallBusy(senderId, callId: callId, room: roomId);
                 Navigator.of(dialogContext).pop();
                 _isIncomingCallDialogOpen = false;
               },
@@ -190,7 +195,8 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.red,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
               ),
             ),
             ElevatedButton.icon(
@@ -220,7 +226,8 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
               ),
             ),
           ],
@@ -275,8 +282,11 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
       //   若 senderRole == 'elder'（自身角色），代表是自己這方發出、經 stale state
       //   回流的假來電 → 拒絕並清除，避免誤發接聽讓對端反被叫。
       final String? senderRole = call['senderRole'];
-      if (senderRole != null && senderRole.isNotEmpty && senderRole == appRole) {
-        debugPrint("🚫 [ElderHomeScreen] 忽略角色反轉來電 (senderRole=$senderRole == appRole=$appRole, callId=${call['callId']})");
+      if (senderRole != null &&
+          senderRole.isNotEmpty &&
+          senderRole == appRole) {
+        debugPrint(
+            "🚫 [ElderHomeScreen] 忽略角色反轉來電 (senderRole=$senderRole == appRole=$appRole, callId=${call['callId']})");
         pendingAcceptedCall.value = null;
         return;
       }
@@ -284,7 +294,8 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
       final int? expiresAt = int.tryParse('${call['expiresAt'] ?? ''}');
       final int? issuedAt = int.tryParse('${call['issuedAt'] ?? ''}');
       // ★ 2026-07-20：有效期改用 kCallValidityMs（120s），與後端一致。
-      final bool isExpired = (expiresAt != null && now > expiresAt) || (issuedAt != null && (now - issuedAt) > kCallValidityMs);
+      final bool isExpired = (expiresAt != null && now > expiresAt) ||
+          (issuedAt != null && (now - issuedAt) > kCallValidityMs);
       if (isExpired) {
         debugPrint("⏰ [ElderHomeScreen] 忽略過期待接聽來電 (callId=${call['callId']})");
         pendingAcceptedCall.value = null;
@@ -343,12 +354,17 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
                 userName: widget.userName,
                 roomId: widget.roomId,
               ),
-              // 2 聊天（小雲 AI 聊天）
+              // 2 社群（家人與熟人限定）
+              ElderCommunityScreen(
+                userId: widget.userId,
+                userName: widget.userName,
+              ),
+              // 3 聊天（小雲 AI 聊天）
               ElderChatScreen(
                 userId: widget.userId,
                 userName: widget.userName,
               ),
-              // 3 我的
+              // 4 我的
               ElderProfileTab(
                 userId: widget.userId,
                 userName: widget.userName,
@@ -390,8 +406,9 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
         children: [
           _buildNavItem(0, Icons.home_rounded, '首頁'),
           _buildNavItem(1, Icons.phone_rounded, '電話'),
-          _buildNavItem(2, Icons.chat_bubble_rounded, '聊天'),
-          _buildNavItem(3, Icons.person_rounded, '我的'),
+          _buildNavItem(2, Icons.groups_rounded, '社群'),
+          _buildNavItem(3, Icons.chat_bubble_rounded, '聊天'),
+          _buildNavItem(4, Icons.person_rounded, '我的'),
         ],
       ),
     );
@@ -401,41 +418,42 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> {
     final isSelected = _selectedIndex == index;
     final Color activeColor = const Color(0xFF59B294);
     final Color inactiveColor = const Color(0xFF94A3B8);
-    return GestureDetector(
-      onTap: () => setState(() => _selectedIndex = index),
-      behavior: HitTestBehavior.opaque,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeOutCubic,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? activeColor.withValues(alpha: 0.12)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              size: 34,
-              color: isSelected ? activeColor : inactiveColor,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: GoogleFonts.notoSansTc(
-                fontSize: 18,
-                fontWeight: isSelected ? FontWeight.w900 : FontWeight.w700,
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _selectedIndex = index),
+        behavior: HitTestBehavior.opaque,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOutCubic,
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? activeColor.withValues(alpha: 0.12)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 32,
                 color: isSelected ? activeColor : inactiveColor,
-                height: 1.0,
               ),
-            ),
-          ],
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: GoogleFonts.notoSansTc(
+                  fontSize: 17,
+                  fontWeight: isSelected ? FontWeight.w900 : FontWeight.w700,
+                  color: isSelected ? activeColor : inactiveColor,
+                  height: 1.0,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
-
 }
