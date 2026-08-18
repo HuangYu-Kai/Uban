@@ -94,6 +94,14 @@ class Signaling {
   ///   `SessionManager.releaseSession()` 完整釋放 session（需求 5），
   ///   否則這台裝置之後再也綁不回去。
   Function(Map<String, dynamic>)? onMonitorRemoved;
+  /// ★ 2026-08-18 IPS prototype：後端判定長輩所在樓層區域（zone）發生穩定
+  ///   切換時觸發。payload 見 `services/indoor_position.py::_build_zone_payload`：
+  ///   `{elder_id, device_id, from_zone, to_zone, entered_at,
+  ///   previous_dwell_seconds, timestamp}`。
+  ///   只由家屬端（正在看該長輩的畫面）註冊；後端只廣播給該長輩房間內的
+  ///   family/listener/family-monitor 角色 socket，見
+  ///   `services/socket_app.py::_broadcast_elder_zone_update`。
+  Function(Map<String, dynamic>)? onElderZoneUpdate;
   CallRequestCallback? onCancelCall;
   CallRequestCallback? onEmergencyCall;
   /// ★ 2026-08-12 第二十三輪：與 [onEmergencyCall] 同步配對的**純資料**欄位
@@ -127,6 +135,8 @@ class Signaling {
   String? _currentCallId; // 追蹤當前通話 ID，確保 hangUp 時能傳給後端
   String? lastProcessedCallId; // ★ 問題4修復：記錄最後一個已處理的來電 ID，防止重複
   int lastProcessedCallTime = 0; // ★ 問題4修復：記錄最後一個已處理來電的時間戳，用於去重檢查
+  String? _lastProcessedOfferCallId; // ★ Offer 專用去重，避免與 call-request 共用 lastProcessedCallId 造成接聽後 Offer 被誤丟
+  int _lastProcessedOfferTime = 0;
   // ★ Fix E：記錄目前處理中來電的 callId 與其視訊/語音旗標，供 main.dart 在
   //   同一 isolate 存活的前景 Socket 接聽路徑（如 _showIncomingCallDialog 直接
   //   呼叫 _navigateToVideoCall）查詢。CallKit/FCM 冷啟動路徑改走
@@ -540,23 +550,35 @@ class Signaling {
       }
     });
 
+    // ★ 2026-08-18 IPS prototype（P3-E）：長輩室內定位區域切換推播。
+    //   防呆比照 monitor-removed：payload 不是 Map 就退回空 Map，絕不能讓
+    //   格式異常的推播在 socket handler 內拋出例外。
+    socket!.on('elder-zone-update', (data) {
+      debugPrint("📍 [Signaling] Received elder-zone-update: $data");
+      if (onElderZoneUpdate != null) {
+        onElderZoneUpdate!(data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{});
+      }
+    });
+
     socket!.on('offer', (data) async {
       final senderId = data['senderId'];
       final callId = data['callId'];
       debugPrint('📩 [Signaling] RECEIVED OFFER from $senderId (CallId: $callId)');
       
-      // ★ 問題4修復：檢查是否已在短時間內處理過此 callId（防止重複）
+      // ★ Offer 去重：檢查是否已在短時間內處理過此 Offer（防止 Offer 重複到達）
+      //   ⚠️ 必須使用獨立的 _lastProcessedOfferCallId，不可與 call-request 的 lastProcessedCallId 共用，
+      //   否則長輩端按下接聽後發起端送來的 Offer 會被當成重複的 call-request 直接丟棄！
       final int currentTime = DateTime.now().millisecondsSinceEpoch;
-      if (callId != null && callId == lastProcessedCallId && 
-          (currentTime - lastProcessedCallTime) < 2000) { // 2秒去重窗口
+      if (callId != null && callId == _lastProcessedOfferCallId && 
+          (currentTime - _lastProcessedOfferTime) < 2000) { // 2秒去重窗口
         debugPrint('⚠️ [Signaling] 忽略重複的 offer（CallId 已在 2 秒內處理: $callId）');
         return;
       }
       
-      // ★ 更新最後處理的來電 ID 和時間戳
+      // ★ 更新最後處理的 Offer ID 和時間戳
       if (callId != null) {
-        lastProcessedCallId = callId;
-        lastProcessedCallTime = currentTime;
+        _lastProcessedOfferCallId = callId;
+        _lastProcessedOfferTime = currentTime;
       }
       
       _peerSocketId = senderId;
@@ -780,6 +802,43 @@ class Signaling {
     } else {
       _pendingRooms.add(roomId);
     }
+  }
+
+  /// ★ 2026-08-18 需求 8 根因修復：TARGETED（指名道姓）離開單一房間。
+  ///
+  /// 這是本專案第一次補上「離開房間」的語意——過去全程只有 [joinRoom] /
+  /// [_asyncJoin]，socket.io 端從未呼叫對應的 leave，導致任何加入過的房間
+  /// 都會跟著同一條 socket 連線一輩子。這支方法刻意只離開呼叫端明確指名
+  /// 的 [roomId]，**不會**連帶離開其他房間——[joinRoom] 讓家屬端可以同時
+  /// 以 `'listener'` 角色加入多個長輩的房間（多長輩儀表板同時關注多位
+  /// 長輩），那個功能就是靠同一條 socket 能同時待在多個房間才成立；若這裡
+  /// 做成「加入新房間就自動離開其他房間」，會直接打斷該功能。呼叫端必須
+  /// 自己明確點名要離開哪個房間（見 `family_main_screen.dart::_switchElder`）。
+  void leaveRoom(String roomId) {
+    if (roomId.isEmpty || socket == null || socket!.connected != true) {
+      // socket 已斷線時，伺服器端本來就已經把它移出所有房間，這裡安全地
+      // 什麼都不做（no-op）。
+      return;
+    }
+    debugPrint('🚪 [Signaling] Emitting leave: $roomId');
+    socket!.emit('leave', {'room': roomId});
+    if (roomId == _currentRoomId) {
+      _currentRoomId = null;
+    }
+  }
+
+  /// ★ 2026-08-18 房間洩漏修復：搭配 [leaveRoom] 補上「排隊中」的另一半情境。
+  ///
+  /// [joinRoom] 在 socket 尚未連線時，會把房間先塞進 [_pendingRooms]，
+  /// 等 `onConnect` 觸發後才真正加入（見上方 `socket!.onConnect` 內的
+  /// flush 迴圈）。如果呼叫端（例如 Dashboard 畫面）在連線建立**之前**就
+  /// 已經 dispose，此時呼叫 [leaveRoom] 沒有意義——房間根本還沒加入，
+  /// socket 也可能還是斷線狀態而直接 no-op 返回——但一旦之後連線成功，
+  /// 那個排隊中的房間仍會被照常加入，造成沒有任何畫面在關注的房間洩漏。
+  /// 這支方法只單純把指定 roomId 從排隊清單移除，刻意保持精簡、不動
+  /// [_pendingRooms] 既有的加入/清空邏輯。
+  void cancelPendingRoom(String roomId) {
+    _pendingRooms.remove(roomId);
   }
 
   void updateAppForeground(bool isForeground) {

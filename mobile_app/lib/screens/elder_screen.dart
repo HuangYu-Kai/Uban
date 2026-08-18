@@ -92,6 +92,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   /// 兩個訊號的到達順序不保證（踢線可能先到），所以 `onConnectionLost` 除了讀
   /// 這個旗標，還會再用 REST 清單交叉驗證一次。
   bool _monitorRemoved = false;
+  bool _isExiting = false; // ★ 退出監控/刪除重入防護，避免與 onMonitorRemoved 競爭
 
   /// ★ 2026-08-11 第二十二輪（需求 8）：本畫面註冊在 socket 上的 `force-logout`
   /// 原生監聽。存起來才有辦法在 dispose() 時用
@@ -935,16 +936,15 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       //   現在改為：收到事件 → 走 SessionManager 完整釋放 → pushAndRemoveUntil
       //   回身分選擇頁（護欄：回首頁一律 pushAndRemoveUntil，不可 pop）。
       _signaling.onMonitorRemoved = (data) async {
+        if (_isExiting) return;
         final String eventElderId = (data['elderId'] ?? '').toString();
         final String deviceName = (data['deviceName'] ?? '').toString();
         // 同一長輩底下可能有多台監控設備，必須確認被刪的就是自己。
         if (eventElderId.isNotEmpty && eventElderId != _rawElderId) return;
         if (deviceName.isNotEmpty && deviceName != _currentDeviceName) return;
+        _isExiting = true;
         debugPrint('🗑️ [ElderScreen] 本監視器已被家屬端刪除，釋放 session 並退回身分選擇頁');
         // ★ 2026-08-11 第二十二輪（需求 6）：**先立旗標、再做任何 await**。
-        //   後端是「先 emit monitor-removed、再把這台踢線」，踢線觸發的
-        //   onConnectionLost 極可能在下面 releaseSession() 的 await 期間插進來；
-        //   旗標沒先立好，使用者就會先看到一瞬間的「連線中斷」。
         _monitorRemoved = true;
         if (mounted) setState(() => _status = "該監控機已被刪除");
         // 先釋放 session（含通知後端註銷 FCM token、forceDisconnect、清 prefs），
@@ -1360,6 +1360,8 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     );
 
     if (confirm == true) {
+      if (_isExiting) return;
+      _isExiting = true;
       // ★ 2026-08-10 第二十輪（需求 5）：這裡原本只 remove 七個 prefs 鍵，
       //   漏掉 `access_token`、`user_id`、`elder_room_id`、`device_role_*` 等等，
       //   而且**從不通知後端註銷 FCM token**。後果就是使用者回報的：
@@ -1413,6 +1415,16 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       } catch (e) {
         debugPrint('⚠️ [ElderScreen] 退出監控時刪除設備失敗（不影響登出流程）: $e');
       }
+
+      // ★ 2026-08-18 房間洩漏修復：過去這裡完全沒有主動離開房間，是靠
+      //   releaseSession() 內的 forceDisconnect() 斷線後，後端 on_disconnect
+      //   才把 socket 順帶清出房間——這個依賴關係是隱性的，一旦未來有人
+      //   改動斷線流程使其不再真的斷線，這裡就會悄悄開始累積房間成員而
+      //   不會有任何錯誤訊息。改成顯式呼叫 leaveRoom，離開意圖不再依賴
+      //   斷線的副作用。`_formattedRoomId` 已含正確的
+      //   monitor_elder_/comm_elder_ 前綴（見 initState 賦值處），故沿用
+      //   既有欄位、不重新計算。
+      _signaling.leaveRoom(_formattedRoomId);
 
       // SessionManager 內部已包含 clearSession() + forceDisconnect()，
       // 不需要（也不可以）在這裡再呼叫一次 disconnect()。

@@ -2,9 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+// ★ 2026-08-17 第二十五輪（需求 7）：讀取目前登入家屬的 caregiver_id，
+//   以呼叫 GET /api/alerts/{elder_id} 時帶上後端要求的 user_id 關係驗證。
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/elder.dart';
 import '../../services/api_service.dart';
 import 'alert_center_screen.dart';
+import 'zone_calibration_screen.dart';
 
 /// 🏠 子女端首頁 Tab (全新極光玻璃與 AI 情緒氣象台 + 生活時光牆)
 class FamilyHomeTab extends StatefulWidget {
@@ -16,12 +20,29 @@ class FamilyHomeTab extends StatefulWidget {
   /// 分支整合後這顆按鈕只剩一個 SnackBar、完全不會撥號；改由父層
   /// `FamilyMainScreen` 注入與互動分頁同一條 `VideoCallScreen` 路徑
   /// （帶 `targetSocketId`），避免這裡再自行拼一份房號邏輯而漂移。
+  final List<Map<String, dynamic>> activeAlerts;
   final VoidCallback? onStartVideoCall;
+
+  /// ★ 2026-08-18 IPS prototype：長輩目前所在區域卡片所需資料，全部由父層
+  /// `FamilyMainScreen` 提供，本分頁不自行呼叫 API（與 [activeAlerts] 同一套
+  /// 「父層擁有資料來源」慣例）。
+  /// [monitorDevices] 與傳給 `FamilyInteractionTab` 的是同一份清單（已過濾成
+  /// 只含 `deviceMode=='monitor'` 的裝置），用來判斷「是否已綁定監視機」與
+  /// 取得第一台監視機的 deviceId/deviceName（開啟校準畫面用）。
+  /// [elderZone] 是正規化後的 `{zone, enteredAt, updatedAt}`，null 代表尚無
+  /// 任何定位紀錄。
+  final List<dynamic> monitorDevices;
+  final Map<String, dynamic>? elderZone;
+  final int? userId;
 
   const FamilyHomeTab({
     super.key,
     this.currentElder,
     this.isElderOnline = false,
+    this.activeAlerts = const [],
+    this.monitorDevices = const [],
+    this.elderZone,
+    this.userId,
     this.onNavigateToAlerts,
     this.onStartVideoCall,
   });
@@ -220,6 +241,11 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
 
   Map<String, dynamic>? _moodInsightData;
   List<dynamic> _realLogs = [];
+  // ★ 2026-08-17 第二十五輪（需求 7）：持久化的緊急警報記錄（emergency_alerts 表，
+  //   由 GET /api/alerts/{elder_id} 取得）。根因是「最新警示」原本只讀 _realLogs
+  //   （來自 activity_log 表），但跌倒警報是 yolo_alert_dispatcher 寫進另一張
+  //   emergency_alerts 表，兩張表沒有交集，導致歷史跌倒永遠不會出現在首頁。
+  List<dynamic> _emergencyAlerts = [];
   int _selectedDateFilterIndex = 0; // 0: 今天, 1: 昨天, 2: 歷史月曆
   DateTime? _selectedHistoricalDate;
 
@@ -491,10 +517,21 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     try {
       final insight = await ApiService.getElderMoodInsight(elderIdStr);
       final logs = await ApiService.getElderActivityLogs(elderIdStr, limit: 30);
+      // ★ 2026-08-17 第二十五輪（需求 7）：一併把持久化的跌倒警報（emergency_alerts 表）
+      //   補進來，讓「最新警示」不再只看得到 activity_log。後端 GET /api/alerts/{elder_id}
+      //   要求必填 user_id 做關係驗證，這裡沿用 family_interaction_tab.dart 已用過的
+      //   SharedPreferences 'caregiver_id' 取得目前登入家屬本人的 user_id；
+      //   讀不到就略過此次抓取（保持與既有 try/catch 一致：絕不讓失敗擲出例外）。
+      final prefs = await SharedPreferences.getInstance();
+      final familyUserId = prefs.getInt('caregiver_id');
+      final emergencyAlerts = familyUserId != null
+          ? await ApiService.getEmergencyAlerts(elderIdStr, userId: familyUserId, limit: 30)
+          : <dynamic>[];
       if (mounted) {
         setState(() {
           _moodInsightData = insight;
           _realLogs = logs;
+          _emergencyAlerts = emergencyAlerts;
         });
       }
     } catch (e) {
@@ -519,6 +556,10 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
               delegate: SliverChildListDelegate([
                 // 1. 長輩頂部極光卡片與在線狀態
                 _buildElderHeaderCard(context),
+                const SizedBox(height: 16),
+
+                // 1.5 📍 IPS prototype：長輩目前所在區域
+                _buildZoneCard(context),
                 const SizedBox(height: 16),
 
                 // 2. 🤖 亮點一：AI 長輩情緒氣象台 & 破冰金句卡片
@@ -666,6 +707,275 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
         ],
       ),
     ).animate().fadeIn(duration: 400.ms).slideY(begin: -0.05);
+  }
+
+  // ─── 1.5 📍 IPS prototype：長輩目前所在區域 ───
+  //
+  // 資料完全由父層 FamilyMainScreen 提供（monitorDevices / elderZone），本分頁
+  // 只負責顯示與「開啟校準畫面」的導航，不在此呼叫任何 API。
+  // 四種狀態（皆為平靜文案，不出現原始錯誤訊息、不留永遠轉圈的 loading）：
+  //   1. monitorDevices 為空 → 尚未綁定監視機
+  //   2. elderZone == null 或 elderZone.calibrated != true → 尚未設定區域範圍
+  //      （`calibrated` 是後端 `GET /api/ips/current/{elder_id}` 的權威欄位，
+  //      代表該監視機是否已有非空 zone 多邊形設定；elderZone == null 只代表
+  //      「還沒拿到任何回應」，用同一張提示卡呈現、不另外做 loading 狀態）
+  //   3. calibrated == true 且 elderZone.zone == 'unknown' → 目前不在已設定的區域內
+  //   4. 其餘 → 正常顯示區域名稱與停留時間
+
+  Widget _buildZoneCard(BuildContext context) {
+    final Elder? elder = widget.currentElder;
+    final List<dynamic> monitors = widget.monitorDevices;
+    final dynamic firstMonitor = monitors.isNotEmpty ? monitors.first : null;
+    final int? deviceId = firstMonitor is Map
+        ? int.tryParse((firstMonitor['deviceId'] ?? firstMonitor['id'])?.toString() ?? '')
+        : null;
+    final String deviceName =
+        firstMonitor is Map ? (firstMonitor['deviceName']?.toString() ?? '監視機') : '監視機';
+
+    Widget header() {
+      return Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(colors: [Color(0xFF0EA5E9), Color(0xFF6366F1)]),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(Icons.my_location_rounded, color: Colors.white, size: 22),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            '長輩所在位置',
+            style: GoogleFonts.notoSansTc(
+              fontSize: 17,
+              fontWeight: FontWeight.w900,
+              color: Colors.white,
+            ),
+          ),
+        ],
+      );
+    }
+
+    Widget shell(Widget child) {
+      return Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF1E293B), Color(0xFF0F172A)],
+          ),
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.35), width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.3),
+              blurRadius: 24,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: child,
+      ).animate().fadeIn(duration: 400.ms).slideY(begin: -0.05);
+    }
+
+    // 狀態 1：尚未綁定監視機——不呼叫任何 API，純粹依清單是否為空判斷。
+    if (monitors.isEmpty || deviceId == null) {
+      return shell(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            header(),
+            const SizedBox(height: 14),
+            Text(
+              '尚未綁定監視機',
+              style: GoogleFonts.notoSansTc(
+                fontSize: 14,
+                color: const Color(0xFF94A3B8),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '綁定監視機後即可查看長輩目前所在的區域',
+              style: GoogleFonts.notoSansTc(fontSize: 12, color: const Color(0xFF64748B)),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final Map<String, dynamic>? zone = widget.elderZone;
+    // ★ 權威欄位：後端直接告訴我們「這台監視機是否已有非空 zone 多邊形設定」，
+    //   不要再用 `zone == 'unknown'` 或 `last_seen == null` 反推（兩者都無法
+    //   區分「尚未校準」與「已校準但目前沒偵測到人」）。elderZone 為 null
+    //   （尚未拿到任何回應）比照未校準處理，同一張提示卡。
+    final bool calibrated = zone != null && zone['calibrated'] == true;
+
+    // 狀態 2：裝置已綁定，但尚未校準區域範圍 → 引導前往校準。
+    if (!calibrated) {
+      final int? uid = widget.userId;
+      return shell(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            header(),
+            const SizedBox(height: 14),
+            Text(
+              '尚未設定區域範圍',
+              style: GoogleFonts.notoSansTc(
+                fontSize: 14,
+                color: const Color(0xFF94A3B8),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '請先為「$deviceName」畫出客廳、房間等區域範圍，才能顯示長輩目前所在位置',
+              style: GoogleFonts.notoSansTc(fontSize: 12, color: const Color(0xFF64748B)),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton.icon(
+              onPressed: (elder == null || uid == null)
+                  ? null
+                  : () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ZoneCalibrationScreen(
+                            elderId: elder.elderId ?? elder.id.toString(),
+                            deviceId: deviceId,
+                            deviceName: deviceName,
+                            userId: uid,
+                          ),
+                        ),
+                      );
+                    },
+              icon: const Icon(Icons.draw_rounded, size: 18),
+              label: const Text('前往設定區域'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF38BDF8).withValues(alpha: 0.16),
+                foregroundColor: const Color(0xFF38BDF8),
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // 走到這裡代表 calibrated == true；Dart 的流程分析已經從上面
+    // `zone != null && zone['calibrated'] == true` 的判斷式把 zone 提升為
+    // 非空型別，這裡不需要（也不能再加，會被判定為多餘）`!`。
+    final Map<String, dynamic> zoneData = zone;
+    final String zoneName = (zoneData['zone'] ?? 'unknown').toString();
+    final DateTime? enteredAt = zoneData['enteredAt'] as DateTime?;
+    final DateTime? updatedAt = zoneData['updatedAt'] as DateTime?;
+
+    // 狀態 3：目前不在任何已設定的區域內（人不在鏡頭範圍，或站在未畫定的區域）。
+    if (zoneName == 'unknown') {
+      return shell(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            header(),
+            const SizedBox(height: 14),
+            Text(
+              '目前不在已設定的區域內',
+              style: GoogleFonts.notoSansTc(
+                fontSize: 14,
+                color: const Color(0xFF94A3B8),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '（可能不在鏡頭範圍內，或站在尚未畫定的區域）',
+              style: GoogleFonts.notoSansTc(fontSize: 12, color: const Color(0xFF64748B)),
+            ),
+            if (updatedAt != null) ...[
+              const SizedBox(height: 10),
+              _buildZoneUpdatedHint(updatedAt),
+            ],
+          ],
+        ),
+      );
+    }
+
+    // 狀態 4：正常顯示。
+    return shell(
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          header(),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF10B981).withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFF34D399)),
+                ),
+                child: Text(
+                  zoneName,
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF6EE7B7),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  '已停留 ${_formatZoneDwell(enteredAt)}',
+                  style: GoogleFonts.notoSansTc(fontSize: 13, color: const Color(0xFFCBD5E1)),
+                ),
+              ),
+            ],
+          ),
+          if (updatedAt != null) ...[
+            const SizedBox(height: 10),
+            _buildZoneUpdatedHint(updatedAt),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildZoneUpdatedHint(DateTime updatedAt) {
+    final Duration diff = DateTime.now().difference(updatedAt);
+    final String text;
+    if (diff.inMinutes < 1) {
+      text = '最後更新：剛剛';
+    } else if (diff.inMinutes < 60) {
+      text = '最後更新：${diff.inMinutes} 分鐘前';
+    } else if (diff.inHours < 24) {
+      text = '最後更新：${diff.inHours} 小時前';
+    } else {
+      text = '最後更新：${diff.inDays} 天前';
+    }
+    return Text(
+      text,
+      style: GoogleFonts.notoSansTc(fontSize: 11, color: const Color(0xFF64748B)),
+    );
+  }
+
+  /// 把停留秒數格式化成「剛剛 / N 分鐘 / N 小時 N 分」。
+  String _formatZoneDwell(DateTime? enteredAt) {
+    if (enteredAt == null) return '剛剛';
+    final int seconds = DateTime.now().difference(enteredAt).inSeconds;
+    if (seconds < 90) return '剛剛';
+    final int minutes = seconds ~/ 60;
+    if (minutes < 60) return '$minutes 分鐘';
+    final int hours = minutes ~/ 60;
+    final int remMinutes = minutes % 60;
+    if (remMinutes == 0) return '$hours 小時';
+    return '$hours 小時 $remMinutes 分';
   }
 
   // ─── 2. 🤖 AI 長輩情緒氣象台 & 破冰話題 (方案 B：第一人稱問候 + 快捷動作) ───
@@ -2239,23 +2549,43 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
   }
 
     // ─── 4. 警示預覽 ───
-
-  static const List<Map<String, dynamic>> _mockAlerts = [
-    {
-      'title': '活動量偏低',
-      'desc': '今日步數僅 800 步，低於平均值',
-      'level': 'medium',
-      'icon': Icons.directions_walk_rounded,
-    },
-    {
-      'title': '用藥提醒確認',
-      'desc': '下午 2 點的血壓藥尚未確認服用',
-      'level': 'high',
-      'icon': Icons.medication_rounded,
-    },
-  ];
+    // ★ 2026-08-17 第二十五輪（需求 7）：原本這裡有 `_mockAlerts`（硬編的假警示資料，
+    //   例如「活動量偏低／今日步數僅800步」），三個真實來源都是空時就顯示給真實使用者看，
+    //   等同對家屬謊報虛構的健康警訊。改為三個真實來源皆空時顯示明確的空狀態文案
+    //   （見 `_buildAlertPreview` 尾端），故整個欄位已刪除且不再需要。
 
   Widget _buildAlertPreview(BuildContext context) {
+    // ★ 整合即時跌倒／異常警報（activeAlerts）至首頁「最新警示」
+    final List<Map<String, dynamic>> activeItems = [];
+    final currentElderIdStr = widget.currentElder?.elderId ?? widget.currentElder?.id?.toString();
+    for (final a in widget.activeAlerts) {
+      final aElderId = (a['elder_id'] ?? a['elderId'])?.toString();
+      if (currentElderIdStr != null && aElderId != null && aElderId != currentElderIdStr) {
+        continue; // 隔離不同長輩的警報
+      }
+      final type = (a['alert_type'] ?? a['alertType'] ?? 'fall').toString();
+      final conf = a['confidence'];
+      final confText = conf != null ? ' (信心度 ${(conf * 100).toStringAsFixed(0)}%)' : '';
+      String title = '🚨 跌倒緊急警報';
+      String desc = '監視機偵測到長輩疑似跌倒$confText，請立即確認！';
+      if (type == 'crawl') {
+        title = '⚠️ 疑似爬行警報';
+        desc = '監視機偵測到長輩異常爬行動作$confText，請多加留意。';
+      } else if (type == 'lying_down') {
+        title = '⚠️ 久躺未起警報';
+        desc = '長輩在監視區域久躺不起$confText，建議關懷確認。';
+      } else if (type == 'prolonged_inactivity') {
+        title = '⚠️ 長時間無活動警報';
+        desc = '長輩活動量異常偏低$confText，請留意長輩身體狀況。';
+      }
+      activeItems.add({
+        'title': title,
+        'desc': desc,
+        'level': 'high',
+        'icon': Icons.warning_amber_rounded,
+      });
+    }
+
     final alertItems = _realLogs.where((log) {
       final text = log['content']?.toString() ?? '';
       final etype = log['event_type']?.toString() ?? '';
@@ -2268,7 +2598,62 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
       return {'title': title.isNotEmpty ? title : '健康警示', 'desc': desc, 'level': level, 'icon': icon};
     }).toList();
 
-    final displayAlerts = alertItems.isNotEmpty ? alertItems : _mockAlerts;
+    // ★ 2026-08-17 第二十五輪（需求 7）：把持久化的跌倒警報（_emergencyAlerts，來自
+    //   emergency_alerts 表）也併入「最新警示」。根因見上方欄位宣告處的註解——
+    //   activity_log 與 emergency_alerts 是兩張互不相交的表，故歷史跌倒過去永遠不會
+    //   出現在這裡，只有觸發當下的 activeAlerts 即時 overlay 曾短暫顯示、一關掉/重開
+    //   App 就消失。
+    //   dedupe：同一筆跌倒若「現在仍是即時警報」會同時存在於 activeAlerts（上面的
+    //   activeItems）與剛查回來的 _emergencyAlerts；後端對同一長輩+裝置+alert_type
+    //   且 status='active' 的重複跌倒是 UPSERT、沿用同一個 alert_id（見
+    //   uban-api/routers/alert.py 開頭註解），故用 alert_id 當去重鍵是可靠的。
+    final Set<String> liveAlertIds = widget.activeAlerts
+        .map((a) => (a['alert_id'] ?? a['alertId'])?.toString())
+        .whereType<String>()
+        .toSet();
+
+    final persistedAlertItems = _emergencyAlerts.where((row) {
+      // 沿用上方 activeItems 迴圈同一套「隔離不同長輩警報」規則
+      final rElderId = (row['elder_id'] ?? row['elderId'])?.toString();
+      if (currentElderIdStr != null && rElderId != null && rElderId != currentElderIdStr) {
+        return false;
+      }
+      final rAlertId = (row['alert_id'] ?? row['alertId'])?.toString();
+      if (rAlertId != null && liveAlertIds.contains(rAlertId)) {
+        return false; // 目前仍是即時警報，已由 activeItems 顯示，避免同一筆跌倒重複兩則
+      }
+      return true;
+    }).map((row) {
+      final type = (row['alert_type'] ?? row['alertType'] ?? 'fall').toString();
+      // detected_at 格式比照 `_buildElderLifeFeedSection` 對 timestamp 的處理方式
+      // （substring 取日期/時間），維持全檔一致的時間格式風格。
+      final detectedAt = (row['detected_at'] ?? row['detectedAt'] ?? '').toString();
+      String whenStr = '';
+      if (detectedAt.length >= 16) {
+        whenStr = '${detectedAt.substring(5, 7)}/${detectedAt.substring(8, 10)} ${detectedAt.substring(11, 16)}';
+      }
+      String title = '🚨 跌倒緊急警報';
+      String desc = '監視機曾偵測到長輩疑似跌倒。';
+      if (type == 'crawl') {
+        title = '⚠️ 疑似爬行警報';
+        desc = '監視機曾偵測到長輩異常爬行動作。';
+      } else if (type == 'lying_down') {
+        title = '⚠️ 久躺未起警報';
+        desc = '長輩曾在監視區域久躺不起。';
+      } else if (type == 'prolonged_inactivity') {
+        title = '⚠️ 長時間無活動警報';
+        desc = '長輩曾出現活動量異常偏低。';
+      }
+      if (whenStr.isNotEmpty) {
+        desc = '$desc（發生於 $whenStr）';
+      }
+      return {'title': title, 'desc': desc, 'level': 'high', 'icon': Icons.warning_amber_rounded};
+    }).toList();
+
+    final allCombinedAlerts = [...activeItems, ...persistedAlertItems, ...alertItems];
+    // 上限比照同一支函式（_loadDynamicData）抓取 _realLogs 時已用過的 30 筆，
+    // 避免清單隨歷史警報無限增長；沿用既有數字而非另外發明一個。
+    final displayAlerts = allCombinedAlerts.take(30).toList();
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 8),
       padding: const EdgeInsets.all(22),
@@ -2391,10 +2776,35 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
 
           const SizedBox(height: 16),
 
-          ...displayAlerts.asMap().entries.map((e) => Padding(
-                padding: EdgeInsets.only(bottom: e.key < displayAlerts.length - 1 ? 12 : 0),
-                child: _AlertItem(data: e.value, index: e.key),
-              )),
+          // ★ 2026-08-17 第二十五輪（需求 7）：C3 — 三個真實來源（即時 activeAlerts、
+          //   持久化 persistedAlertItems、activity_log 的 alertItems）都是空時，
+          //   不再顯示 `_mockAlerts` 假資料，改用明確的空狀態文案，
+          //   樣式比照 `_buildElderLifeFeedSection` 的空狀態（Icon + 提示文字）。
+          if (displayAlerts.isEmpty)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Column(
+                  children: [
+                    const Icon(Icons.verified_rounded, color: Colors.white38, size: 44),
+                    const SizedBox(height: 8),
+                    Text(
+                      '目前沒有任何警示',
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: 14,
+                        color: Colors.white60,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            ...displayAlerts.asMap().entries.map((e) => Padding(
+                  padding: EdgeInsets.only(bottom: e.key < displayAlerts.length - 1 ? 12 : 0),
+                  child: _AlertItem(data: e.value, index: e.key),
+                )),
         ],
       ),
     ).animate().fadeIn(delay: 300.ms, duration: 400.ms);

@@ -10,6 +10,7 @@ import '../../services/signaling.dart';
 import '../../services/api_service.dart';
 import '../video_call_screen.dart';
 import 'family_subscription_screen.dart';
+import 'zone_calibration_screen.dart';
 
 class FamilyInteractionTab extends StatefulWidget {
   final Elder? currentElder;
@@ -33,6 +34,7 @@ class FamilyInteractionTab extends StatefulWidget {
   /// ★ 2026-08-10 第十九輪（需求 3）：卡片上刪除／改名成功後通知父層重新整理
   /// 設備清單與訂閱用量。
   final VoidCallback? onDevicesChanged;
+  final Function(dynamic deviceId)? onAlertDismissed;
 
   const FamilyInteractionTab({
     super.key,
@@ -46,6 +48,7 @@ class FamilyInteractionTab extends StatefulWidget {
     this.userId,
     this.elderSocketId,
     this.onDevicesChanged,
+    this.onAlertDismissed,
   });
 
   @override
@@ -821,9 +824,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                       MaterialPageRoute(
                         builder: (context) => VideoCallScreen(
                           roomId: 'comm_elder_$rawId',
-                          // ★ 2026-08-10 第十九輪（需求 4）：補回舊版一直帶著的
-                          //   targetSocketId，避免 SDP 只能靠房間廣播找對象。
-                          targetSocketId: widget.elderSocketId,
+                          targetSocketId: null, // ★ 不綁死單一 socket ID，由後端完整廣播給線上長輩 Socket 與所有長輩 FCM Token
                           autoStart: true,
                           isEmergency: false,
                         ),
@@ -845,8 +846,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                       MaterialPageRoute(
                         builder: (context) => VideoCallScreen(
                           roomId: 'comm_elder_$rawId',
-                          // ★ 2026-08-10 第十九輪（需求 4）：同上，緊急通話也要帶。
-                          targetSocketId: widget.elderSocketId,
+                          targetSocketId: null, // ★ 不綁死單一 socket ID，由後端完整廣播給線上長輩 Socket 與所有長輩 FCM Token
                           autoStart: true,
                           isEmergency: true,
                         ),
@@ -1836,7 +1836,10 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                           monitorViewOnly: true,
                         ),
                       ),
-                    );
+                    ).then((_) {
+                      // ★ 2026-08-16（需求 2）：查看完監視畫面返回後，通知父層清除該設備的警報狀態，還原介面樣式與動畫
+                      widget.onAlertDismissed?.call(deviceId);
+                    });
                   }
                 : null,
             icon: const Icon(Icons.videocam_rounded, size: 18),
@@ -1864,6 +1867,8 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
             onSelected: (value) {
               if (value == 'rename') {
                 _showRenameMonitorDeviceDialog(name.toString());
+              } else if (value == 'zone') {
+                _openZoneCalibration(name.toString(), numericDeviceId);
               } else if (value == 'delete') {
                 _showDeleteMonitorDeviceDialog(name.toString());
               }
@@ -1876,6 +1881,16 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                   leading: Icon(Icons.drive_file_rename_outline_rounded,
                       color: Color(0xFFCBD5E1)),
                   title: Text('重新命名',
+                      style: TextStyle(color: Color(0xFFE2E8F0))),
+                ),
+              ),
+              // ★ 2026-08-18 IPS prototype：開啟該監視機的區域校準畫面。
+              PopupMenuItem<String>(
+                value: 'zone',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.map_rounded, color: Color(0xFFCBD5E1)),
+                  title: Text('設定區域',
                       style: TextStyle(color: Color(0xFFE2E8F0))),
                 ),
               ),
@@ -1900,6 +1915,29 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
     final elder = widget.currentElder;
     if (elder == null) return null;
     return elder.elderId ?? elder.id.toString();
+  }
+
+  /// ★ 2026-08-18 IPS prototype：從監視機卡片的管理選單開啟該裝置的區域校準畫面。
+  /// 這是設定畫面而非通話畫面，直接用一般 `Navigator.push`，不套用通話相關的
+  /// `pushAndRemoveUntil`／`returnByPop` 護欄。
+  void _openZoneCalibration(String deviceName, int? deviceId) {
+    final elderId = _rawElderId;
+    final userId = widget.userId;
+    if (elderId == null || userId == null || deviceId == null) {
+      _toast('缺少長輩或裝置資訊，無法設定區域');
+      return;
+    }
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ZoneCalibrationScreen(
+          elderId: elderId,
+          deviceId: deviceId,
+          deviceName: deviceName,
+          userId: userId,
+        ),
+      ),
+    );
   }
 
   /// ★ 2026-08-10 第十九輪（需求 3）：從卡片直接刪除監視機。

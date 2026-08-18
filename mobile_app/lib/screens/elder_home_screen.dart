@@ -477,14 +477,41 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
                 Navigator.of(dialogContext).pop();
                 _isIncomingCallDialogOpen = false;
 
+                // ★ 2026-08-17 第二十五輪（需求 1）：接聽用的房間號必須來自「這通來電
+                //   實際送達的房間」，也就是本函式的 roomId 參數，而不是
+                //   widget.roomId ?? widget.userId（widget.userId 是「使用者」ID，
+                //   不是「長輩」ID，兩者常不同）。initState（見上方 :106-111）已對
+                //   widget.roomId 做過同一套冪等正規化（補 comm_elder_ 前綴、不重複補），
+                //   這裡必須套用相同正規化，否則 ElderScreen 會 join 到跟來電發起端
+                //   對不上的房間——彈窗雖然接聽了，WebRTC 卻永遠連不上。
+                //   只有 roomId 參數為空字串時才退回舊的 widget 表達式。
+                final String rawAcceptRoomId = roomId.isNotEmpty
+                    ? roomId
+                    : (widget.roomId ?? widget.userId.toString());
+                final String acceptRoomId = rawAcceptRoomId.startsWith('comm_elder_') ||
+                        rawAcceptRoomId.startsWith('monitor_elder_')
+                    ? rawAcceptRoomId
+                    : 'comm_elder_$rawAcceptRoomId';
+
                 // 接聽後跳轉到通話畫面
                 Signaling().sendCallAccept(senderId, callId: callId);
                 Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (context) => ElderScreen(
-                      roomId: widget.roomId ?? widget.userId.toString(),
+                      roomId: acceptRoomId,
                       deviceName: widget.userName,
+                      initialCallData: {
+                        'roomId': acceptRoomId,
+                        'senderId': senderId,
+                        'callId': callId,
+                        // ★ 2026-08-17 第二十五輪（需求 1）：isVideoCallRaw 在本檔從未定義
+                        //   （flutter analyze 判為 compile error：Undefined name
+                        //   'isVideoCallRaw'）——它只存在於 main.dart 的具名參數。正確作法
+                        //   是向 Signaling 查詢這通來電當初登記的視訊旗標（callId 不吻合
+                        //   或查無紀錄時安全預設為 true，見 signaling.dart:162）。
+                        'isVideoCall': Signaling().isVideoCallFor(callId).toString(),
+                      },
                     ),
                   ),
                 ).then((_) {

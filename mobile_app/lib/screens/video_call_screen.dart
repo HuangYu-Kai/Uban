@@ -101,9 +101,10 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   /// （`Future.delayed` 無法取消，只能靠世代比對讓它變成 no-op）。
   int _connectAttempt = 0;
 
-  // ★ 情境 3 修復：結束通話後導回主畫面時所需的真實使用者資料（於 _initCall 從 prefs 讀取）
+  // ★ 情境 3 修復：暫存返回主畫面所需的真實使用者資料（於 _initCall 從 prefs 讀取）
   int _resolvedUserId = 0;
   String _resolvedUserName = '家屬端';
+  String _resolvedUserRole = 'family';
 
   @override
   void initState() {
@@ -206,6 +207,31 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       _signaling.createOffer(targetId: accepterId, isEmergency: widget.isEmergency);
     };
 
+    // ★ 2026-08-17 第二十五輪（需求 6）：使用者角色／ID／名稱解析必須排在媒體初始化
+    //   之前。原本這段（讀 SharedPreferences 判斷 role、算出 _resolvedUserRole／
+    //   _resolvedUserId／_resolvedUserName）排在媒體初始化 try/catch **之後**，但媒體
+    //   初始化失敗時 catch 區塊會呼叫 _showCallProblemThenGoHome() 並 return——這條
+    //   提早 return 的路徑永遠不會執行到角色解析，於是 _resolvedUserRole 停在宣告式
+    //   初值 'family'（:107）。_buildFallbackHome()（:567）依 _resolvedUserRole 決定要不
+    //   要導去 ElderHomeScreen，長輩因此被誤導向 FamilyMainScreen（一個沒有任何綁定
+    //   長輩的家屬端主畫面）。角色必須在任何可能提早 return 的路徑之前解析完成，
+    //   否則 _buildFallbackHome() 會把長輩導到家屬端主畫面。以下邏輯與搬移前逐位元組
+    //   相同，只是提前執行；role/userId/userName 仍在函式本體作用域內，後面
+    //   _signaling.connect(...) 等處照樣讀得到。
+    final prefs = await SharedPreferences.getInstance();
+    final String role = prefs.getString('user_role') ?? prefs.getString('saved_role') ?? globals.appRole ?? 'family';
+    _resolvedUserRole = role;
+    final int? userId = (role == 'elder')
+        ? prefs.getInt('caregiver_id')
+        : (prefs.getInt('user_id') ?? prefs.getInt('caregiver_id'));
+    final String userName = (role == 'elder')
+        ? (prefs.getString('caregiver_name') ?? '長輩')
+        : (prefs.getString('user_name') ?? prefs.getString('caregiver_name') ?? '家屬端');
+
+    // ★ 情境 3 修復：暫存真實使用者資料，供通話結束後重建主畫面使用（避免 userId:0 導致主畫面失效）
+    _resolvedUserId = userId ?? 0;
+    _resolvedUserName = userName;
+
     // ★ 初始化媒體：通話必須有音軌才能建立 WebRTC 連線
     // 我們先開啟媒體，但預設將鏡頭的軌道設為停用 (黑屏)，保護隱私
     try {
@@ -248,20 +274,6 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
         return;
       }
     }
-
-    // ★ 自動讀取使用者 ID 與名稱
-    final prefs = await SharedPreferences.getInstance();
-    final String role = prefs.getString('user_role') ?? 'family';
-    final int? userId = (role == 'elder')
-        ? prefs.getInt('caregiver_id')
-        : (prefs.getInt('user_id') ?? prefs.getInt('caregiver_id'));
-    final String userName = (role == 'elder')
-        ? (prefs.getString('caregiver_name') ?? '長輩')
-        : (prefs.getString('user_name') ?? prefs.getString('caregiver_name') ?? '家屬端');
-
-    // ★ 情境 3 修復：暫存真實使用者資料，供通話結束後重建主畫面使用（避免 userId:0 導致主畫面失效）
-    _resolvedUserId = userId ?? 0;
-    _resolvedUserName = userName;
 
     // ★ 修復：若 Socket 已經連線（從 FamilyMainScreen 傳承下來），則不要重新連線，
     //   否則會導致原本的 callbacks 被覆寫且 SocketId 改變。
@@ -563,7 +575,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
 
   // ★ issue 3 fix: 冷啟動時無上一頁，退回 FamilyMainScreen（帶入真實使用者資料）
   Widget _buildFallbackHome() {
-    if (globals.appRole == 'elder') {
+    if (globals.appRole == 'elder' || _resolvedUserRole == 'elder') {
       // ★ 2026-08-11 第二十一輪（需求 1）：補上 roomId。
       //   原本沒有帶，長輩從這條路徑回到主畫面後，FriendsScreen 拿到的 roomId 是
       //   null，撥出時就會退回用 caregiver_id 拼房名（`comm_elder_<caregiver_id>`），
@@ -603,6 +615,15 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       return null;
     });
     if (widget.returnByPop && Navigator.of(context).canPop()) {
+      // ★ 2026-08-18 房間洩漏修復：CCTV 監控檢視離開時，過去只有 pop() 返回，
+      //   從未告知後端「已離開監控房」，socket 會一直留在 `monitor_elder_<id>`
+      //   房間裡直到整條連線斷線為止；反覆開關監控畫面會不斷疊加房間成員。
+      //   這裡刻意加上 `monitor_elder_` 前綴判斷才呼叫 leaveRoom——`returnByPop`
+      //   是通用旗標，若日後被通話路徑重用，貿然無條件 leaveRoom 會誤離開
+      //   正在進行中的通話房，此處只精準處理監控檢視這一種情境。
+      if (widget.roomId.startsWith('monitor_elder_')) {
+        _signaling.leaveRoom(widget.roomId);
+      }
       Navigator.of(context).pop();
       return;
     }

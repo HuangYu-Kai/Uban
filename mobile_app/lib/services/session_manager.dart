@@ -56,10 +56,17 @@ class SessionManager {
     final prefs = await SharedPreferences.getInstance();
 
     // 步驟 1：讀取通知後端所需資訊，並嘗試呼叫後端釋放 session（含註銷 FCM token）。
+    // ★ 2026-08-17 第二十五輪（需求 4）：兩個 await 都補上 .timeout()。原本沒有逾時，
+    //   若 getToken() 或 ApiService.releaseSession() 卡住不動（不是拋例外、是真的
+    //   HANG 住），外層 try/catch 攔不到「掛住」，步驟 2～4（斷開 Signaling、清 prefs、
+    //   重置 appRole）就永遠排不到——這正是「退出並重置」後裝置仍綁死在舊身分的根因。
+    //   步驟 2～4 是「清理本機狀態」，無論如何都必須執行，絕不能被通知後端這一步卡死。
     if (notifyBackend) {
       try {
         String? fcmToken = prefs.getString('fcm_token');
-        fcmToken ??= await FirebaseMessaging.instance.getToken();
+        fcmToken ??= await FirebaseMessaging.instance
+            .getToken()
+            .timeout(const Duration(seconds: 5));
 
         if (fcmToken != null) {
           final int? userId = prefs.getInt('caregiver_id');
@@ -68,7 +75,7 @@ class SessionManager {
             fcmToken: fcmToken,
             userId: userId,
             roomId: roomId,
-          );
+          ).timeout(const Duration(seconds: 5));
         }
       } catch (e) {
         debugPrint('⚠️ [SessionManager] 通知後端釋放 session 失敗（忽略，繼續清理本機狀態）: $e');

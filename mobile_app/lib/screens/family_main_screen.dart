@@ -88,6 +88,28 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   //   （型別對齊該檔實際宣告：_monitorDevices 為 List<dynamic>、_tierLevel 為 String）
   List<dynamic> _monitorDevices = [];
   final List<Map<String, dynamic>> _activeAlerts = [];
+
+  /// ★ 2026-08-18 IPS prototype：目前長輩的室內定位（zone）狀態，正規化自
+  /// REST `ApiService.getCurrentZone`（快照）與 Socket `elder-zone-update`
+  /// （即時推播）兩種不同形狀的來源，統一成 `{zone, enteredAt, updatedAt,
+  /// calibrated}` 供 `FamilyHomeTab` 顯示。
+  /// `calibrated`（後端 `GET /api/ips/current/{elder_id}` 的權威欄位，代表該
+  /// 監視機是否已有非空的 zone 多邊形設定）才是「要不要顯示前往校準提示」
+  /// 的判斷依據，不要用 `zone == 'unknown'` 或 `last_seen == null` 反推——
+  /// 兩者都無法區分「尚未校準」與「已校準但目前沒偵測到人」。
+  /// Socket 推播不帶 `calibrated`，收到即視為 `true`（見 `_applyZoneUpdate`）。
+  /// null＝「尚未取得任何回應」（elder 剛切換、REST 還沒回來，或還沒收過
+  /// 任何 socket 推播），畫面比照 `calibrated == false` 顯示同一張提示卡，
+  /// 不另外做 loading 狀態。
+  /// 「尚未綁定監視機」則是完全不同的狀態，靠 `_monitorDevices.isEmpty` 判斷，
+  /// 不會落到這裡。
+  Map<String, dynamic>? _elderZone;
+  /// dedupe：避免每次 2.5s socket 輪詢／10s HTTP 交叉驗證重新套用設備清單時
+  /// 都重打一次 `getCurrentZone`。key＝`'elderId:deviceId'`（或 `'elderId:none'`）。
+  /// 只在**成功**取得回應（或確定沒有監視機）時才更新，查詢失敗刻意不更新，
+  /// 讓下一輪 `_applyDeviceList` 自然重試，不會卡死在單次網路抖動上。
+  String? _zoneFetchKey;
+  bool _zoneFetchInFlight = false;
   /// ★ 2026-08-05 第十七輪：去重鍵由「alert_id」改為「alert_id + timestamp」複合鍵。
   ///   後端 `_insert_alert()`（`services/yolo_alert_dispatcher.py`）對同 elder + 同 device +
   ///   同 alert_type 且 `status='active'` 的既有列是 **UPDATE 並沿用原本的 alert_id**，
@@ -276,6 +298,13 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
       debugPrint('📡 [FamilyMainScreen] 收到長輩設備狀態更新: $devices');
       _applyDeviceList(devices);
     };
+
+    // ★ 2026-08-18 IPS prototype：監聽長輩室內定位區域切換推播。
+    _signaling.onElderZoneUpdate = (payload) {
+      if (!mounted) return;
+      debugPrint('📍 [FamilyMainScreen] 收到 elder-zone-update: $payload');
+      _applyZoneUpdate(payload);
+    };
   }
 
   /// ★ 2026-08-10 第十九輪（需求 5 / A4）：設備清單的**唯一**套用點。
@@ -287,6 +316,26 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   /// ⚠️ 不要改成聯集：需求 3「監視機主動退出監控模式要從家屬端清單移除」
   /// 與卡片上的刪除功能都仰賴清單能夠**變短**，聯集會讓已刪除的裝置永遠留著。
   void _applyDeviceList(List<dynamic> devices) {
+      // ★ 2026-08-17 需求 8 修復（Fix B3）：家屬切換長輩後 socket 仍留在舊房間
+      //   （leave_room 不在本輪範圍，見後端 socket_app.py::on_disconnect 旁的說明），
+      //   舊長輩的 elder-devices-update 廣播仍可能送達本頁。後端（B1）已在每筆
+      //   設備補上 elderId，這裡比對「這份清單描述的是不是我正在看的長輩」，
+      //   不是就整包丟棄、不動任何既有 state。
+      //   ⚠️ 舊版後端、或本來就沒有設備的清單不會帶 elderId（一筆都沒有），此時
+      //   必須照舊往下套用——需求 3（監視機退出後清單要立刻變短）依賴空清單仍能
+      //   生效並清空 _monitorDevices，不可因為偵測不到 elderId 就整段跳過。
+      final String? currentElderId = _currentElder?.elderId ?? _currentElder?.id.toString();
+      for (final d in devices) {
+        if (d is Map && d['elderId'] != null) {
+          if (d['elderId'].toString() != currentElderId) {
+            debugPrint(
+                '🚫 [FamilyMainScreen] 忽略非當前長輩的設備清單更新 (payload elderId=${d['elderId']}, 目前長輩=$currentElderId)');
+            return;
+          }
+          break; // 同一次廣播內所有筆的 elderId 一致，找到一筆可判定即可
+        }
+      }
+
       // ★ 2026-08-05 第十七輪：原本的 debounce 每收到一個事件就 cancel + 重排 2500ms，
       //   而輪詢週期也正好是 2500ms（_startDeviceRefreshTimer）、後端還會廣播給房內所有
       //   家屬 socket，於是 debounce 幾乎永遠在 fire 之前就被下一個事件取消 →
@@ -311,11 +360,13 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
           _elderSocketId = onlineSid;
           _monitorDevices = monitors;
         });
+        _maybeFetchInitialZone();
         return;
       }
 
       // 判定為離線：設備清單仍立即更新（清單本身不需要抖動抑制）
       setState(() => _monitorDevices = monitors);
+      _maybeFetchInitialZone();
       if (!_isElderOnline) return; // 本來就離線，無需確認
       _offlineConfirmTimer ??= Timer(const Duration(milliseconds: 2500), () {
         _offlineConfirmTimer = null;
@@ -325,6 +376,119 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
           _elderSocketId = null;
         });
       });
+  }
+
+  /// ★ 2026-08-18 IPS prototype：套用 `elder-zone-update` 推播的**唯一**入口。
+  /// 比照 `_applyDeviceList` 的隔離規則（Round 25/26 修復過的同一類 bug——
+  /// 家屬 socket 收到「別的長輩」的推播）：payload 帶 `elder_id`，只要跟目前
+  /// 正在看的長輩不同就整包丟棄，不更動任何既有 state。
+  /// ⚠️ 刻意不比對 `device_id`——一位長輩可能綁多台監視機，任一台偵測到
+  /// 區域切換都代表長輩「目前」所在位置，故不像 `_monitorDevices` 只認
+  /// 第一台，這裡全部接受。
+  void _applyZoneUpdate(Map<String, dynamic> payload) {
+    final String? currentElderId = _currentElder?.elderId ?? _currentElder?.id.toString();
+    final String? payloadElderId = payload['elder_id']?.toString();
+    if (currentElderId == null || payloadElderId == null || payloadElderId != currentElderId) {
+      debugPrint(
+          '🚫 [FamilyMainScreen] 忽略非當前長輩的 zone 推播 (payload elder_id=$payloadElderId, 目前長輩=$currentElderId)');
+      return;
+    }
+    setState(() {
+      _elderZone = {
+        'zone': (payload['to_zone'] ?? 'unknown').toString(),
+        'enteredAt': _parseUtcIso(payload['entered_at']) ?? DateTime.now(),
+        'updatedAt': DateTime.now(),
+        // ★ payload 不帶 calibrated 欄位（見團隊回覆：一次區域切換推播就代表
+        //   已在追蹤，等同已校準）。整包物件都在這裡重建，若不明確寫 true，
+        //   這個 key 會直接消失、被畫面當成 false 處理，變成「已知的 true
+        //   被 socket 推播降級成 unknown」——明確寫死，不要留給預設值。
+        'calibrated': true,
+      };
+    });
+  }
+
+  /// ★ 2026-08-18 IPS prototype：監視機清單確定後，補一次 zone 初始值。
+  /// 為什麼需要它：`elder-zone-update` 只在區域**切換**時才推播，長輩若長時間
+  /// 待在同一區域，UI 會在切分頁前一直空白，必須主動查一次目前快照。
+  /// 用 `_zoneFetchKey` 去重，避免每次 2.5s socket 輪詢／10s HTTP 交叉驗證
+  /// 重新套用設備清單時都重打一次 API（清單內容沒變就不重查）。
+  void _maybeFetchInitialZone() {
+    final String? elderIdStr = _currentElder?.elderId ?? _currentElder?.id.toString();
+    if (elderIdStr == null) return;
+
+    // ★ 依需求：從 `_monitorDevices` 取第一台監視機的 deviceId，沒有就顯示
+    //   「尚未綁定監視機」狀態、不呼叫 API。`_monitorDevices` 在 `_applyDeviceList`
+    //   已經是「只含 deviceMode=='monitor'」的子集，這裡直接取第一筆即可。
+    final dynamic monitor = _monitorDevices.isNotEmpty ? _monitorDevices.first : null;
+    final int? deviceId = monitor is Map
+        ? int.tryParse((monitor['deviceId'] ?? monitor['id'])?.toString() ?? '')
+        : null;
+    final String key = '$elderIdStr:${deviceId ?? 'none'}';
+
+    if (deviceId == null) {
+      if (key != _zoneFetchKey) {
+        _zoneFetchKey = key;
+        if (mounted) setState(() => _elderZone = null);
+      }
+      return;
+    }
+
+    if (key == _zoneFetchKey || _zoneFetchInFlight) return;
+    _zoneFetchInFlight = true;
+
+    final int userId = widget.userId;
+    ApiService.getCurrentZone(elderIdStr, userId: userId, deviceId: deviceId).then((data) {
+      _zoneFetchInFlight = false;
+      if (!mounted) return;
+      // 競態防護：回應回來時長輩或監視機組合可能已經變了（切長輩／設備清單
+      // 改變），比照 `_refreshMonitorDevicesViaHttp` 的作法，不是目前這組就丟棄。
+      final String? nowElderIdStr = _currentElder?.elderId ?? _currentElder?.id.toString();
+      if ('$nowElderIdStr:$deviceId' != key) return;
+      if (data.isEmpty) return; // 查詢失敗：維持現狀，不覆蓋既有畫面，讓下一輪重試
+      _zoneFetchKey = key;
+      // ★ 後端現在直接給 `calibrated` 權威欄位，不再用 `last_seen` 是否為
+      //   null 反推「有沒有資料」——只要成功回應（非空 Map）就正規化套用，
+      //   校準與否交給 `calibrated`，是否在任何區域內交給 `zone`。
+      setState(() {
+        _elderZone = _zoneStateFromRest(data);
+      });
+    }).catchError((_) {
+      _zoneFetchInFlight = false;
+    });
+  }
+
+  /// ★ 2026-08-18 IPS prototype：把後端 ISO 字串（Python
+  /// `datetime.utcnow().isoformat()`，不含時區尾碼）安全解析成本地 DateTime。
+  /// Dart 的 `DateTime.parse` 對「沒有時區資訊」的字串會直接當成本地時間套用
+  /// 數字，不補 'Z' 會整段解析成錯誤時區。解析失敗一律回傳 null，不拋例外。
+  static DateTime? _parseUtcIso(dynamic raw) {
+    if (raw == null) return null;
+    final String str = raw.toString();
+    if (str.isEmpty) return null;
+    try {
+      final bool hasTz = str.endsWith('Z') || RegExp(r'[+-]\d{2}:?\d{2}$').hasMatch(str);
+      return DateTime.parse(hasTz ? str : '${str}Z').toLocal();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// ★ 2026-08-18 IPS prototype：REST `getCurrentZone` 回傳形狀
+  /// `{zone, dwell_seconds, last_seen, calibrated, elder_id, device_id}` →
+  /// 正規化狀態。
+  /// 後端只給 `dwell_seconds`（查詢當下已停留秒數），沒有 `entered_at`；用
+  /// 「現在－dwell_seconds」反推進入時間，讓卡片用同一套邏輯估算停留時長，
+  /// 與 socket 推播（有真正的 `entered_at`）共用同一份顯示邏輯。
+  /// `calibrated` 是後端的權威欄位（該監視機是否已有非空 zone 多邊形設定），
+  /// 直接透傳，不用 `zone`／`last_seen` 反推。
+  static Map<String, dynamic> _zoneStateFromRest(Map<String, dynamic> data) {
+    final num dwellSeconds = num.tryParse('${data['dwell_seconds'] ?? 0}') ?? 0;
+    return {
+      'zone': (data['zone'] ?? 'unknown').toString(),
+      'enteredAt': DateTime.now().subtract(Duration(seconds: dwellSeconds.round())),
+      'updatedAt': _parseUtcIso(data['last_seen']) ?? DateTime.now(),
+      'calibrated': data['calibrated'] == true,
+    };
   }
 
   /// ★ 2026-08-10 第十九輪（需求 5 / A4）：每 10 秒以 HTTP 交叉驗證設備清單。
@@ -345,7 +509,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
         elderId: elderIdStr,
         userId: userId,
       );
-      if (!mounted || devices.isEmpty) return;
+      if (!mounted) return;
       // 切換長輩的競態：回應回來時已經不是同一位長輩就丟棄
       final current = _currentElder;
       if (current == null ||
@@ -379,7 +543,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
       MaterialPageRoute(
         builder: (_) => VideoCallScreen(
           roomId: 'comm_elder_$rawId',
-          targetSocketId: _elderSocketId,
+          targetSocketId: null, // ★ 不綁死單一 socket ID，由後端完整廣播給線上長輩 Socket 與所有長輩 FCM Token
           autoStart: true,
           isEmergency: false,
         ),
@@ -621,7 +785,18 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+                // ★ 點擊「我知道了」：解除警報狀態，還原介面樣式與動畫
+                if (mounted) {
+                  setState(() {
+                    final String alertDevice = (alert['device_id'] ?? alert['deviceId'])?.toString() ?? '';
+                    _activeAlerts.removeWhere((a) =>
+                        (a['device_id'] ?? a['deviceId'])?.toString() == alertDevice ||
+                        a['alert_id'] == alert['alert_id']);
+                  });
+                }
+              },
               child: const Text('我知道了'),
             ),
             if (canView)
@@ -638,16 +813,21 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                         autoStart: true,
                         // 從彈窗進入的監控檢視同樣用 pop() 返回本頁
                         returnByPop: true,
-                        // ★ 2026-08-10 第十九輪（需求 2）：這裡與互動分頁的
-                        //   「觀看 CCTV」是同一種單向監控檢視，只是入口不同
-                        //   （跌倒警報彈窗）。少了這個旗標會變成同一個功能
-                        //   從不同入口進去行為不一樣：這條路徑仍會開自己的
-                        //   鏡頭、仍有鏡頭按鈕。CCTV 檢視的建構點只有這兩處，
-                        //   兩處都必須傳 true（護欄 G55）。
+                        // ★ 2026-08-10 第十九輪（需求 2）：單向監控檢視
                         monitorViewOnly: true,
                       ),
                     ),
-                  );
+                  ).then((_) {
+                    // ★ 2026-08-16（需求 2）：查看完監視畫面返回後，將該警報移出 _activeAlerts，將遠端監控卡片動畫與紅框還原正常
+                    if (mounted) {
+                      setState(() {
+                        final String alertDevice = (alert['device_id'] ?? alert['deviceId'])?.toString() ?? '';
+                        _activeAlerts.removeWhere((a) =>
+                            (a['device_id'] ?? a['deviceId'])?.toString() == alertDevice ||
+                            a['alert_id'] == alert['alert_id']);
+                      });
+                    }
+                  });
                 },
                 icon: const Icon(Icons.videocam_rounded),
                 label: const Text('查看監視畫面'),
@@ -929,17 +1109,49 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     
     // 1. 掛斷當前通話/釋放連線
     _signaling.hangUp(disposeLocalStream: true);
-    
+
+    // ★ 2026-08-18 需求 8 根因修復：在 _currentElder 被下面的 setState 覆蓋
+    //   成新長輩之前，先明確 leave 舊長輩的 comm/monitor 兩個房間。Round 25
+    //   只靠 _applyDeviceList 的 elderId 過濾擋掉「切換後還看到舊長輩設備」
+    //   的症狀，根因是 socket 從未 leave_room、永遠留在舊房間，後端
+    //   _broadcast_elder_devices_update(舊長輩) 因此持續送達本 socket；
+    //   這裡才是根治，_applyDeviceList 的 elderId 過濾保留作第二道防線。
+    if (_currentElder != null) {
+      final oldElderIdStr = _currentElder!.elderId ?? _currentElder!.id.toString();
+      _signaling.leaveRoom('comm_elder_$oldElderIdStr');
+      // 家屬端可能在查看 CCTV 時額外加入過監控房間；leaveRoom 對「本來就
+      // 沒加入」的房間是 no-op（見該方法文件註解），兩間都 leave 才安全。
+      _signaling.leaveRoom('monitor_elder_$oldElderIdStr');
+    }
+
     // 2. 更新選中的長輩
     await ElderManager().setCurrentElder(elder);
     
-    // 3. 更新本地狀態並重新連線
+    // 3. 更新本地狀態並重設監視機與警報清單（徹底隔離長輩間的設備與警報）
     setState(() {
       _currentElder = elder;
       _isElderOnline = false;
+      _elderSocketId = null;
+      _monitorDevices = [];
+      _activeAlerts.clear();
+      // ★ 2026-08-17 需求 8 修復（Fix B4）：訂閱層級/上限與 CCTV 警報去重集合
+      //   先前只清了在線狀態與設備/警報清單，這三個訂閱欄位會殘留舊長輩的值，
+      //   直到 _loadSubscriptionTier() resolve 前 UI 會短暫顯示前一位長輩的方案；
+      //   _knownAlertKeys 若不清，新長輩的第一筆警報若剛好撞到舊長輩用過的
+      //   複合鍵（alert_id 由後端沿用同一序列、非全域唯一）會被誤判為重複而靜默。
+      _tierLevel = 'free';
+      _tierDisplayName = '一般會員';
+      _devicesMax = 2;
+      _knownAlertKeys.clear();
+      // ★ 2026-08-18 IPS prototype：切長輩時一併清空定位狀態與去重 key，
+      //   否則舊長輩的 zone 會在新長輩資料抵達前短暫殘留在畫面上。
+      _elderZone = null;
+      _zoneFetchKey = null;
+      _zoneFetchInFlight = false;
     });
     
     await _loadElderAndConnect();
+    await _loadSubscriptionTier();
   }
 
   Future<void> _refreshElders() async {
@@ -1252,6 +1464,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     //   持有已 dispose 的 State。
     //   ⚠️ 只清「還是自己那一份」的，理由見欄位宣告處的 pushAndRemoveUntil 說明。
     _signaling.onElderDevicesUpdate = null;
+    _signaling.onElderZoneUpdate = null;
     if (identical(_signaling.onCallRequest, _ownCallRequest)) {
       _signaling.onCallRequest = null;
     }
@@ -1404,8 +1617,15 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
           FamilyHomeTab(
             currentElder: _currentElder,
             isElderOnline: _isElderOnline,
-            // ★ 2026-08-10 第十九輪（需求 4）：首頁「開始撥號」接回真正的通話路徑，
-            //   與互動分頁的「一般視訊通話」完全同一組參數（含 targetSocketId）。
+            activeAlerts: _activeAlerts,
+            // ★ 2026-08-18 IPS prototype：長輩目前所在區域卡片所需資料。
+            //   monitorDevices 沿用與 FamilyInteractionTab 相同的清單，由該分頁
+            //   自行取第一台監視機的 deviceId/deviceName（與本檔 `_maybeFetchInitialZone`
+            //   同一套邏輯），不在此另外拆欄位傳遞。
+            monitorDevices: _monitorDevices,
+            elderZone: _elderZone,
+            userId: widget.userId,
+            // ★ 2026-08-10 第十九輪（需求 4）：首頁「開始撥號」接回真正的通話路徑
             onStartVideoCall: _startNormalVideoCall,
             onNavigateToAlerts: () {
               if (_currentElder != null) {
@@ -1430,8 +1650,16 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
             tierDisplayName: _tierDisplayName,
             tierLevel: _tierLevel,
             userId: widget.userId,
-            // ★ 2026-08-10 第十九輪（需求 4）：撥打通話時要帶目標 socket。
             elderSocketId: _elderSocketId,
+            // ★ 2026-08-16（需求 2）：查看完監視畫面後移除該設備的警報狀態
+            onAlertDismissed: (deviceId) {
+              if (mounted) {
+                setState(() {
+                  _activeAlerts.removeWhere((a) =>
+                      (a['device_id'] ?? a['deviceId'])?.toString() == deviceId.toString());
+                });
+              }
+            },
             // ★ 2026-08-10 第十九輪（需求 3）：卡片刪除／改名後立即重新整理。
             onDevicesChanged: () {
               _refreshMonitorDevicesViaHttp();

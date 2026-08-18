@@ -2228,11 +2228,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     }
   }
 
-  void _navigateToVideoCall(String roomId, String senderId, {String? callId, bool isEmergency = false}) {
+  void _navigateToVideoCall(String roomId, String senderId, {String? callId, bool isEmergency = false}) async {
     // !!!!除非要更新視訊通話邏輯，否則禁止更動!!!!
     // ★ Bug 16 解決方案：如果身分是長輩，絕對不可啟動 VideoCallScreen (那是給家屬用的)。
     // 我們僅儲存 pendingAcceptedCall，讓長輩主畫面 (ElderScreen) 啟動後去接手。
-    if (appRole == 'elder') {
+    final prefs = await SharedPreferences.getInstance();
+    final String effectiveRole = appRole ?? prefs.getString('user_role') ?? prefs.getString('saved_role') ?? '';
+    if (effectiveRole == 'elder') {
       // ★ issue 2/5：此通話可能已由 splash/ElderScreen 透過 SharedPreferences
       //   預先載入並消費過（lastProcessedCallId 已記錄）。此時若再次寫入
       //   pendingAcceptedCall，會在通話結束、回到 ElderHomeScreen 後被誤判為
@@ -2244,7 +2246,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         return;
       }
       debugPrint(
-          "📱 Elder role detected, skipping VideoCallScreen push and caching accepted call.");
+          "📱 Elder role detected ($effectiveRole), skipping VideoCallScreen push and caching accepted call.");
       pendingAcceptedCall.value = <String, String?>{
         'roomId': roomId,
         'senderId': senderId,

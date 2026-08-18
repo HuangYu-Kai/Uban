@@ -1108,7 +1108,17 @@ class ApiService {
         http.MultipartFile.fromBytes('frame', frameBytes, filename: 'frame.png'),
       );
       final streamed = await request.send().timeout(_timeout);
-      return streamed.statusCode == 200;
+      // ★ 2026-08-17 第二十五輪（需求 2）：package:http 的 BaseRequest.send() 內部會建立
+      //   一個 http.Client，只有在 response.stream 被消費完畢時才會呼叫 client.close()
+      //   （send() 回傳前掛的是 onDone(response.stream, client.close)）。這裡原本從未讀取
+      //   streamed.stream，client 與其底層 socket 就永遠不會被釋放——CCTV 推幀迴圈每
+      //   2 秒呼叫一次本方法（見 elder_screen.dart:183），約每分鐘洩漏 30 條連線，直到
+      //   耗盡連線上限後**所有**後續 HTTP 呼叫都會拋錯，也就是「退出監控後登入變成
+      //   『網路連線失敗』，只有砍掉整個 App 才會恢復」的根因。本檔其餘每一處
+      //   request.send() 都有接 http.Response.fromStream(...)（見 :514-515、:756-757、
+      //   :777-778），這裡補齊，不要為了「省一行」把它精簡掉。
+      final response = await http.Response.fromStream(streamed);
+      return response.statusCode == 200;
     } catch (e) {
       debugPrint('⚠️ pushCctvFrame error: $e');
       return false;
@@ -1341,6 +1351,197 @@ class ApiService {
       debugPrint('⚠️ getElderActivityLogs error: $e');
       return [];
     }
+  }
+
+  /// ★ 2026-08-17 第二十五輪（需求 3）：長輩跌倒／緊急警報的**持久歷史記錄**。
+  /// GET /api/alerts/{elder_id}?user_id=...&status=...&limit=...
+  /// （對應後端 `uban-api/routers/alert.py:47`）
+  ///
+  /// 這支端點在今天之前於全專案**零消費者**——Flutter 端從未呼叫過。首頁「最新警示」
+  /// 過去只能靠 [getElderActivityLogs] 讀取完全不同的 `activity_log` 表（一般活動流水
+  /// 記錄），沒有任何管道能取得 `emergency_alerts` 表裡持久化的跌倒／爬行警報
+  /// （含 snapshot_url 快照、acknowledged_by/acknowledged_at 等稽核欄位）。本方法補上
+  /// 這條路徑，讓首頁能顯示**真正的**警示歷史，而不是把一般活動誤當警示呈現。
+  ///
+  /// `user_id` 為後端**必填**參數（用於 `call_security.is_user_linked_to_elder` 關係
+  /// 驗證，非本人或未配對家屬一律回 404 不回 403，避免被拿來列舉），呼叫端務必帶上
+  /// 目前登入者的 user_id。任何失敗（含 404／逾時／解析錯誤）一律吞掉回傳空陣列，
+  /// 絕不拋出——首頁必須照常渲染，警示區塊只是少一筆資料而已。
+  ///
+  /// `elderId` 沿用 [getElderActivityLogs] 的簽章慣例採**位置參數**，`userId` 因為是
+  /// 後端必填、呼叫端不應遺漏，改用具名 `required` 更凸顯它不是可選項。
+  static Future<List<dynamic>> getEmergencyAlerts(
+    String elderId, {
+    required int userId,
+    String? status,
+    int limit = 20,
+  }) async {
+    try {
+      final queryParameters = <String, String>{
+        'user_id': userId.toString(),
+        'limit': limit.toString(),
+      };
+      if (status != null && status.isNotEmpty) {
+        queryParameters['status'] = status;
+      }
+      final uri = Uri.parse('$baseUrl/alerts/$elderId')
+          .replace(queryParameters: queryParameters);
+      final response = await http.get(uri).timeout(_timeout);
+      final data = _safeDecode(response);
+      if (data['status'] == 'success' && data['data'] is Map) {
+        final alerts = data['data']['alerts'];
+        if (alerts is List) return alerts;
+      }
+      return [];
+    } catch (e) {
+      debugPrint('⚠️ getEmergencyAlerts error: $e');
+      return [];
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // IPS（室內定位）— 2026-08-18 新增
+  // 後端完整邏輯見 uban-api/routers/ips.py、uban-api/services/indoor_position.py。
+  // 三支端點皆要求 user_id（家屬的 caregiver_id）與 device_id（監視機
+  // device_id），無配對關係一律回 404（比照本檔其餘校準／監控類端點，不回
+  // 403，避免被用來列舉 elder_id）。
+  // ═══════════════════════════════════════════════════════════
+
+  /// ★ IPS：讀取家屬為某監視機校準過的樓層區域（zone）多邊形設定。
+  /// GET /api/ips/zones/{elder_id}?user_id=&device_id=
+  ///
+  /// 回傳的每筆元素為 `{name, polygon:[[x,y],...]}`，座標為正規化 [0,1]、
+  /// 原點在畫面左上角（見後端 indoor_position.py::validate_zones）。尚未
+  /// 校準過、或任何失敗（含 404 無權）一律回傳空陣列，不拋出——呼叫端
+  /// （校準畫面）看到 `[]` 只會顯示「尚未校準」，不是錯誤畫面。
+  static Future<List<dynamic>> getZoneConfig(
+    String elderId, {
+    required int userId,
+    required int deviceId,
+  }) async {
+    try {
+      final uri = Uri.parse('$baseUrl/ips/zones/$elderId').replace(
+        queryParameters: {
+          'user_id': userId.toString(),
+          'device_id': deviceId.toString(),
+        },
+      );
+      final response = await http.get(uri).timeout(_timeout);
+      final data = _safeDecode(response);
+      if (data['status'] == 'success' && data['data'] is Map) {
+        final zones = data['data']['zones'];
+        if (zones is List) return zones;
+      }
+      return [];
+    } catch (e) {
+      debugPrint('⚠️ getZoneConfig error: $e');
+      return [];
+    }
+  }
+
+  /// ★ IPS：全量覆寫某監視機的樓層區域（zone）多邊形設定（家屬端「校準」
+  /// 流程的落地點）。
+  /// PUT /api/ips/zones/{elder_id}?user_id=&device_id=  body: `{"zones":[...]}`
+  ///
+  /// 全量覆寫、不做局部合併——校準是一次性動作，呼叫端每次都要送出完整
+  /// 清單。範圍較小／較精確的 zone（例如「浴室」）必須排在陣列前面：後端
+  /// `classify_zone` 是 first-match-wins，順序決定歸屬。
+  ///
+  /// 回傳 `null` 代表成功；非 null 為可直接顯示的錯誤原因。做法比照
+  /// [triggerTestFall]：FastAPI 的 HTTPException 一律以 `{"detail": "..."}`
+  /// 回傳，400（座標格式錯誤）與 404（無權）都在這裡被轉成看得懂的中文。
+  static Future<String?> saveZoneConfig(
+    String elderId, {
+    required int userId,
+    required int deviceId,
+    required List<Map<String, dynamic>> zones,
+  }) async {
+    try {
+      final uri = Uri.parse('$baseUrl/ips/zones/$elderId').replace(
+        queryParameters: {
+          'user_id': userId.toString(),
+          'device_id': deviceId.toString(),
+        },
+      );
+      final response = await http
+          .put(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'zones': zones}),
+          )
+          .timeout(_timeout);
+      if (response.statusCode == 200) return null;
+      // FastAPI 的 HTTPException 一律以 {"detail": "..."} 回傳
+      String detail = '儲存失敗（HTTP ${response.statusCode}）';
+      try {
+        final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+        if (decoded is Map && decoded['detail'] != null) {
+          detail = decoded['detail'].toString();
+        }
+      } catch (_) {
+        // body 不是 JSON 就沿用上面的預設訊息
+      }
+      debugPrint('⚠️ saveZoneConfig 被拒: ${response.statusCode} $detail');
+      return detail;
+    } catch (e) {
+      debugPrint('⚠️ saveZoneConfig error: $e');
+      return '無法連線到後端，請確認網路狀態';
+    }
+  }
+
+  /// ★ IPS：查詢長輩目前所在的樓層區域（zone）與已停留秒數。
+  /// GET /api/ips/current/{elder_id}?user_id=&device_id=
+  ///
+  /// 尚無任何 YOLO 推論資料時（IPS_ENABLED=false、或這台監視機從未被推論
+  /// 過）後端回傳 `zone:'unknown', dwell_seconds:0, last_seen:null`——這是
+  /// 合法的「尚無資料」狀態，此處原樣透傳，呼叫端自行判斷 `zone` 是否為
+  /// `'unknown'`。任何失敗（含 404 無權）一律回傳空 Map，呼叫端請將 `{}`
+  /// 視同「尚無資料」。
+  static Future<Map<String, dynamic>> getCurrentZone(
+    String elderId, {
+    required int userId,
+    required int deviceId,
+  }) async {
+    try {
+      final uri = Uri.parse('$baseUrl/ips/current/$elderId').replace(
+        queryParameters: {
+          'user_id': userId.toString(),
+          'device_id': deviceId.toString(),
+        },
+      );
+      final response = await http.get(uri).timeout(_timeout);
+      final data = _safeDecode(response);
+      if (data['status'] == 'success' && data['data'] is Map) {
+        return Map<String, dynamic>.from(data['data']);
+      }
+      return {};
+    } catch (e) {
+      debugPrint('⚠️ getCurrentZone error: $e');
+      return {};
+    }
+  }
+
+  /// ★ IPS：組出監視機最近一次快照畫面的 URL，供校準畫面用 `Image.network`
+  /// （或共用同一個 `ImageProvider`）直接載入，藉此拿到內建的快取與載入
+  /// 進度，不必自己抓 bytes 再轉 `Image.memory`。
+  /// GET /api/ips/snapshot/{elder_id}?user_id=&device_id=
+  ///
+  /// 純字串組裝、不發送請求，因此不需要 try/catch 或 timeout；請求本身
+  /// 何時發生、失敗如何呈現由呼叫端的 `Image` widget 決定。尚無快取影格時
+  /// 後端回 404，呼叫端須自行處理（見 zone_calibration_screen.dart 的
+  /// 空狀態設計）。
+  static String zoneSnapshotUrl(
+    String elderId, {
+    required int userId,
+    required int deviceId,
+  }) {
+    final uri = Uri.parse('$baseUrl/ips/snapshot/$elderId').replace(
+      queryParameters: {
+        'user_id': userId.toString(),
+        'device_id': deviceId.toString(),
+      },
+    );
+    return uri.toString();
   }
 
   /// ★ 2026-08-04 第 7 項：查詢某警報目前是否有有效的音頻橋。

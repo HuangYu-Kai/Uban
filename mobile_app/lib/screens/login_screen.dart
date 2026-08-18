@@ -84,7 +84,7 @@ class _LoginScreenState extends State<LoginScreen> {
         }
       } else {
         // 顯示錯誤訊息
-        final errorMsg = result['error'] ?? result['detail'] ?? '登入失敗';
+        final errorMsg = result['message'] ?? result['error'] ?? result['detail'] ?? '登入失敗';
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(errorMsg)));
       }
     } catch (e) {
