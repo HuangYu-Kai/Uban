@@ -1,4 +1,4 @@
-﻿// lib/screens/family/care_script_editor_screen.dart
+// lib/screens/family/care_script_editor_screen.dart
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -78,18 +78,7 @@ class DailyScheduleScreen extends StatelessWidget {
   }
 }
 
-class HealthReminderScreen extends StatelessWidget {
-  final int elderId;
-  const HealthReminderScreen({super.key, required this.elderId});
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text('健康提醒中心', style: GoogleFonts.notoSansTc())),
-      body: Center(child: Text('Phase 3 將開發', style: GoogleFonts.notoSansTc())),
-    );
-  }
-}
 
 class ContentPushScreen extends StatelessWidget {
   final int elderId;

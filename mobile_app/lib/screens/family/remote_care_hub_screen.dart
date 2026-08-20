@@ -1,9 +1,11 @@
-﻿// lib/screens/family/remote_care_hub_screen.dart
+// lib/screens/family/remote_care_hub_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'placeholder_screens.dart';
+import 'health_reminder_screen.dart';
+import '../family_scripts_view.dart';
 
 /// 🎭 遠端照護中樞
 /// 
@@ -154,7 +156,7 @@ class _RemoteCareHubScreenState extends State<RemoteCareHubScreen> {
                 gradient: LinearGradient(
                   colors: [Color(0xFF8B5CF6), Color(0xFFA78BFA)],
                 ),
-                onTap: () => _navigateTo(CareScriptEditorScreen(elderId: widget.elderId ?? 1)),
+                onTap: () => _navigateTo(const FamilyScriptsView()),
               ),
             ),
             SizedBox(width: 12),
@@ -198,12 +200,12 @@ class _RemoteCareHubScreenState extends State<RemoteCareHubScreen> {
             Expanded(
               child: _buildFeatureCard(
                 title: '每日時間表',
-                subtitle: '規劃作息',
+                subtitle: '規劃作息與劇本時間表',
                 icon: Icons.access_time,
                 gradient: LinearGradient(
                   colors: [Color(0xFF10B981), Color(0xFF34D399)],
                 ),
-                onTap: () => _navigateTo(DailyScheduleScreen(elderId: widget.elderId ?? 1)),
+                onTap: () => _navigateTo(const FamilyScriptsView()),
               ),
             ),
             SizedBox(width: 12),
@@ -215,7 +217,10 @@ class _RemoteCareHubScreenState extends State<RemoteCareHubScreen> {
                 gradient: LinearGradient(
                   colors: [Color(0xFFEF4444), Color(0xFFF87171)],
                 ),
-                onTap: () => _navigateTo(HealthReminderScreen(elderId: widget.elderId ?? 1)),
+                onTap: () => _navigateTo(HealthReminderScreen(
+                  elderId: (widget.elderId ?? 2).toString(),
+                  elderName: widget.elderName,
+                )),
               ),
             ),
           ],

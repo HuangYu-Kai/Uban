@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
-import 'package:share_plus/share_plus.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import '../services/api_service.dart';
 
+/// 🧓 編輯長輩資料頁面 (ElderProfileEditScreen)
+/// 與子女端一致的深色極光主題 (Dark Aurora Theme)
 class ElderProfileEditScreen extends StatefulWidget {
   final Map<String, dynamic> elderData;
   final int? familyId;
@@ -43,7 +45,6 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
   bool _isLoading = true;
   bool _isSaving = false;
   bool _isLocating = false;
-  String? _elderProfileId;
 
   @override
   void initState() {
@@ -80,11 +81,9 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
         } else if (splitIndex != -1) {
           initialCity = location.substring(0, splitIndex + 1);
         } else {
-          // 無法解析，直接使用整個字串作為城市
           initialCity = location;
         }
-      } catch (e) {
-        // 解析失敗，保持空值
+      } catch (_) {
         initialCity = '';
         initialDistrict = '';
       }
@@ -112,14 +111,13 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
       final profile = await ApiService.getElderProfile(elderId);
       if (mounted) {
         setState(() {
-          _elderProfileId = profile['elder_id'];
           _appellationController.text = profile['appellation'] ?? '';
           _aiEmotionTone = (profile['ai_emotion_tone'] ?? 50).toDouble();
           _aiTextVerbosity = (profile['ai_text_verbosity'] ?? 50).toDouble();
           
           String fullLocation = profile['location'] ?? '';
           if (fullLocation.isNotEmpty) {
-             _parseLocation(fullLocation);
+            _parseLocation(fullLocation);
           }
           
           _chronicDiseasesController.text = profile['chronic_diseases'] ?? '';
@@ -203,14 +201,25 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('資料已成功更新 ✨ AI 將採用新的設定')),
+          SnackBar(
+            content: Text(
+              '✨ 長輩資料已成功更新，AI 將採用新設定！',
+              style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold),
+            ),
+            backgroundColor: const Color(0xFF10B981),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          ),
         );
         Navigator.pop(context);
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('儲存失敗: $e')),
+          SnackBar(
+            content: Text('儲存失敗: $e'),
+            backgroundColor: const Color(0xFFEF4444),
+          ),
         );
       }
     } finally {
@@ -253,7 +262,10 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('無法取得位置: $e')),
+          SnackBar(
+            content: Text('無法取得位置: $e'),
+            backgroundColor: const Color(0xFFEF4444),
+          ),
         );
       }
     } finally {
@@ -261,15 +273,15 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
     }
   }
 
-
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF9FAFB),
+      backgroundColor: const Color(0xFF0B132B),
       appBar: _buildAppBar(),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(
+              child: CircularProgressIndicator(color: Color(0xFF38BDF8)),
+            )
           : _buildBody(),
     );
   }
@@ -279,63 +291,79 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
       title: Text(
         '編輯長輩資料',
         style: GoogleFonts.notoSansTc(
-          color: const Color(0xFF1F2937),
-          fontWeight: FontWeight.w800,
-          fontSize: 20,
+          color: Colors.white,
+          fontWeight: FontWeight.w900,
+          fontSize: 18,
         ),
       ),
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFF0F172A),
       elevation: 0,
       centerTitle: true,
       leading: IconButton(
-        icon: const Icon(Icons.close_rounded, color: Color(0xFF4B5563)),
+        icon: const Icon(Icons.close_rounded, color: Color(0xFF94A3B8)),
         onPressed: () => Navigator.pop(context),
       ),
       actions: [
         if (!_isLoading)
           Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: TextButton(
-              onPressed: _isSaving ? null : _saveProfile,
-              child: _isSaving
-                  ? const SizedBox(
+            padding: const EdgeInsets.only(right: 12),
+            child: _isSaving
+                ? const Center(
+                    child: SizedBox(
                       width: 20,
                       height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Text(
-                      '儲存',
-                      style: GoogleFonts.notoSansTc(
-                        color: const Color(0xFF3B82F6),
-                        fontWeight: FontWeight.w800,
-                        fontSize: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Color(0xFF38BDF8),
                       ),
                     ),
-            ),
+                  )
+                : TextButton(
+                    onPressed: _saveProfile,
+                    style: TextButton.styleFrom(
+                      foregroundColor: const Color(0xFF38BDF8),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: Text(
+                      '儲存',
+                      style: GoogleFonts.notoSansTc(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 16,
+                        color: const Color(0xFF38BDF8),
+                      ),
+                    ),
+                  ),
           ),
       ],
+      bottom: PreferredSize(
+        preferredSize: const Size.fromHeight(1),
+        child: Container(color: const Color(0xFF1E293B), height: 1),
+      ),
     );
   }
 
   Widget _buildBody() {
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(20, 10, 20, 40),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // 1. 基本身分資料
           _buildInfoCard(
             title: '基本身分資料',
             icon: Icons.person_rounded,
-            color: const Color(0xFF3B82F6),
+            color: const Color(0xFF38BDF8),
             children: [
               _buildInputLabel('真實姓名'),
               _buildModernTextField(
                 controller: _nameController,
-                hintText: '請輸入長輩姓名',
+                hintText: '請輸入長輩真實姓名',
                 icon: Icons.badge_outlined,
+                accentColor: const Color(0xFF38BDF8),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 18),
               Row(
                 children: [
                   Expanded(
@@ -348,11 +376,12 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
                           hintText: '歲數',
                           icon: Icons.cake_outlined,
                           keyboardType: TextInputType.number,
+                          accentColor: const Color(0xFF38BDF8),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(width: 20),
+                  const SizedBox(width: 16),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -365,16 +394,17 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
                 ],
               ),
             ],
-          ),
-          
-          const SizedBox(height: 24),
-          
+          ).animate().fadeIn(duration: 350.ms),
+
+          const SizedBox(height: 18),
+
+          // 2. 生活地區
           _buildInfoCard(
             title: '生活地區',
             icon: Icons.location_on_rounded,
             color: const Color(0xFF10B981),
             children: [
-              _buildInputLabel('主要居住地 (用於天氣與活動建議)'),
+              _buildInputLabel('主要居住地 (用於天氣查詢與在地生活活動建議)'),
               Row(
                 children: [
                   Expanded(
@@ -382,14 +412,16 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
                       children: [
                         _buildModernTextField(
                           controller: _cityController,
-                          hintText: '縣/市',
+                          hintText: '縣 / 市 (例：台北市)',
                           icon: Icons.location_city_rounded,
+                          accentColor: const Color(0xFF10B981),
                         ),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 10),
                         _buildModernTextField(
                           controller: _districtController,
-                          hintText: '鄉鎮市區',
+                          hintText: '鄉鎮市區 (例：大安區)',
                           icon: Icons.map_rounded,
+                          accentColor: const Color(0xFF10B981),
                         ),
                       ],
                     ),
@@ -399,83 +431,121 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
                 ],
               ),
             ],
-          ),
+          ).animate().fadeIn(delay: 50.ms, duration: 350.ms),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 18),
 
+          // 3. AI 陪伴助手設定
           _buildInfoCard(
-            title: 'AI 陪伴助手設定',
+            title: 'AI 陪伴助手個性設定',
             icon: Icons.auto_awesome_rounded,
             color: const Color(0xFF8B5CF6),
             children: [
-              _buildInputLabel('長輩對 AI 的稱呼 (例：奶奶)'),
+              _buildInputLabel('長輩對 AI 的稱呼 (例：奶奶、阿公、伯伯)'),
               _buildModernTextField(
                 controller: _appellationController,
-                hintText: 'AI 將以此稱呼長輩',
+                hintText: 'AI 將以此親切稱呼長輩',
                 icon: Icons.record_voice_over_rounded,
+                accentColor: const Color(0xFF8B5CF6),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
               _buildPersonalitySlider(
-                label: '陪伴語氣',
+                label: '陪伴語氣風格',
                 value: _aiEmotionTone,
-                leftLabel: '客觀專業',
-                rightLabel: '熱情親切',
+                leftLabel: '客觀冷靜',
+                rightLabel: '熱情親切 (推薦)',
                 onChanged: (v) => setState(() => _aiEmotionTone = v),
                 gradient: const [Color(0xFF6366F1), Color(0xFFEC4899)],
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
               _buildPersonalitySlider(
-                label: '話匣子開關',
+                label: '話匣子開關 (對話長度)',
                 value: _aiTextVerbosity,
                 leftLabel: '簡潔扼要',
-                rightLabel: '滔滔不絕',
+                rightLabel: '滔滔不絕 (聊天陪伴)',
                 onChanged: (v) => setState(() => _aiTextVerbosity = v),
-                gradient: const [Color(0xFF10B981), Color(0xFF3B82F6)],
+                gradient: const [Color(0xFF10B981), Color(0xFF38BDF8)],
               ),
             ],
-          ),
+          ).animate().fadeIn(delay: 100.ms, duration: 350.ms),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 18),
 
+          // 4. 健康與用藥備註
           _buildInfoCard(
             title: '健康與護理備註',
             icon: Icons.health_and_safety_rounded,
             color: const Color(0xFFF59E0B),
             children: [
-              _buildInputLabel('慢性病史或過敏史'),
+              _buildInputLabel('慢性病史或特殊體質注意事項'),
               _buildModernTextArea(
                 controller: _chronicDiseasesController,
-                hintText: '例如：高血壓、對盤尼西林過敏...',
+                hintText: '例如：高血壓、糖尿病、對盤尼西林過敏...',
+                accentColor: const Color(0xFFF59E0B),
               ),
-              const SizedBox(height: 20),
-              _buildInputLabel('每日用藥提醒'),
+              const SizedBox(height: 16),
+              _buildInputLabel('每日用藥與照護提醒'),
               _buildModernTextArea(
                 controller: _medicationNotesController,
-                hintText: '例如：早晚飯後需服用高血壓藥...',
+                hintText: '例如：早晚飯後需服用降血壓藥、每日多喝溫開水...',
+                accentColor: const Color(0xFFF59E0B),
               ),
             ],
-          ),
+          ).animate().fadeIn(delay: 150.ms, duration: 350.ms),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 18),
 
+          // 5. 個人興趣與話題素材
           _buildInfoCard(
-            title: '個人興趣與記憶',
+            title: '專屬興趣與家族回憶素材',
             icon: Icons.favorite_rounded,
-            color: const Color(0xFFEF4444),
+            color: const Color(0xFFEC4899),
             children: [
-              _buildInputLabel('讓 AI 更懂他 (興趣、教職經歷等)'),
+              _buildInputLabel('讓 AI 更懂長輩 (年輕回憶、興趣、經歷等)'),
               _buildModernTextArea(
                 controller: _interestsController,
-                hintText: '例如：喜歡聽鄧麗君、愛聊園藝...',
+                hintText: '例如：喜歡聽鄧麗君與經典老歌、年輕時在大稻埕經商、愛聊園藝與泡茶...',
+                accentColor: const Color(0xFFEC4899),
               ),
             ],
-          ),
+          ).animate().fadeIn(delay: 200.ms, duration: 350.ms),
 
+          const SizedBox(height: 32),
 
+          // 6. 底部儲存按鈕
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _isSaving ? null : _saveProfile,
+              icon: _isSaving
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Icon(Icons.check_circle_rounded, size: 20),
+              label: Text(
+                _isSaving ? '正在儲存變更...' : '確認並儲存長輩資料',
+                style: GoogleFonts.notoSansTc(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF38BDF8),
+                foregroundColor: const Color(0xFF0F172A),
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+            ),
+          ).animate().fadeIn(delay: 250.ms, duration: 350.ms),
 
           if (widget.onUnbind != null) ...[
-            const SizedBox(height: 40),
-            _buildUnbindButton(),
+            const SizedBox(height: 20),
+            _buildUnbindButton().animate().fadeIn(delay: 300.ms, duration: 350.ms),
           ],
         ],
       ),
@@ -490,13 +560,21 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
   }) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF0F172A), Color(0xFF1E293B)],
+        ),
         borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: color.withValues(alpha: 0.35),
+          width: 1.5,
+        ),
         boxShadow: [
           BoxShadow(
-            color: color.withValues(alpha: 0.08),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
+            color: color.withValues(alpha: 0.12),
+            blurRadius: 18,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
@@ -504,32 +582,35 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
             child: Row(
               children: [
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(10),
+                    color: color.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Icon(icon, color: color, size: 22),
+                  child: Icon(icon, color: color, size: 20),
                 ),
                 const SizedBox(width: 12),
                 Text(
                   title,
                   style: GoogleFonts.notoSansTc(
-                    fontSize: 17,
+                    fontSize: 16,
                     fontWeight: FontWeight.w800,
-                    color: const Color(0xFF111827),
+                    color: Colors.white,
                   ),
                 ),
               ],
             ),
           ),
-          Divider(height: 1, color: Colors.grey.withValues(alpha: 0.1)),
+          Container(
+            height: 1,
+            color: const Color(0xFF334155).withValues(alpha: 0.6),
+          ),
           Padding(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(18),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: children,
@@ -542,13 +623,13 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
 
   Widget _buildInputLabel(String label) {
     return Padding(
-      padding: const EdgeInsets.only(left: 4, bottom: 8),
+      padding: const EdgeInsets.only(left: 2, bottom: 8),
       child: Text(
         label,
         style: GoogleFonts.notoSansTc(
-          fontSize: 14,
+          fontSize: 13,
           fontWeight: FontWeight.w700,
-          color: const Color(0xFF6B7280),
+          color: const Color(0xFF94A3B8),
         ),
       ),
     );
@@ -558,22 +639,27 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
     required TextEditingController controller,
     required String hintText,
     required IconData icon,
+    required Color accentColor,
     TextInputType keyboardType = TextInputType.text,
   }) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFFF9FAFB),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        color: const Color(0xFF0B132B),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFF334155)),
       ),
       child: TextField(
         controller: controller,
         keyboardType: keyboardType,
-        style: GoogleFonts.inter(fontSize: 16, color: const Color(0xFF111827), fontWeight: FontWeight.w600),
+        style: GoogleFonts.notoSansTc(
+          fontSize: 15,
+          color: Colors.white,
+          fontWeight: FontWeight.w600,
+        ),
         decoration: InputDecoration(
           hintText: hintText,
-          hintStyle: GoogleFonts.notoSansTc(color: const Color(0xFF9CA3AF), fontSize: 15),
-          prefixIcon: Icon(icon, color: const Color(0xFF9CA3AF), size: 20),
+          hintStyle: GoogleFonts.notoSansTc(color: const Color(0xFF64748B), fontSize: 14),
+          prefixIcon: Icon(icon, color: accentColor.withValues(alpha: 0.8), size: 20),
           border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         ),
@@ -586,14 +672,14 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
       height: 48,
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: const Color(0xFFF9FAFB),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        color: const Color(0xFF0B132B),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFF334155)),
       ),
       child: Row(
         children: [
-          _buildGenderBtn('男', _currentGender == 'M', () => setState(() => _currentGender = 'M')),
-          _buildGenderBtn('女', _currentGender == 'F', () => setState(() => _currentGender = 'F')),
+          _buildGenderBtn('男 👨', _currentGender == 'M', () => setState(() => _currentGender = 'M')),
+          _buildGenderBtn('女 👩', _currentGender == 'F', () => setState(() => _currentGender = 'F')),
         ],
       ),
     );
@@ -607,10 +693,23 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
           duration: const Duration(milliseconds: 200),
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: isSelected ? Colors.white : Colors.transparent,
-            borderRadius: BorderRadius.circular(12),
+            gradient: isSelected
+                ? const LinearGradient(
+                    colors: [Color(0xFF0284C7), Color(0xFF38BDF8)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  )
+                : null,
+            color: isSelected ? null : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
             boxShadow: isSelected
-                ? [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4, offset: const Offset(0, 2))]
+                ? [
+                    BoxShadow(
+                      color: const Color(0xFF0284C7).withValues(alpha: 0.4),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
                 : [],
           ),
           child: Text(
@@ -618,7 +717,7 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
             style: GoogleFonts.notoSansTc(
               fontSize: 14,
               fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-              color: isSelected ? const Color(0xFF3B82F6) : const Color(0xFF6B7280),
+              color: isSelected ? const Color(0xFF0F172A) : const Color(0xFF94A3B8),
             ),
           ),
         ),
@@ -630,18 +729,18 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
     return GestureDetector(
       onTap: _isLocating ? null : _getCurrentLocation,
       child: Container(
-        height: 108,
+        height: 104,
         width: 52,
         decoration: BoxDecoration(
           gradient: const LinearGradient(
-            colors: [Color(0xFF10B981), Color(0xFF059669)],
+            colors: [Color(0xFF059669), Color(0xFF10B981)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(14),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFF10B981).withValues(alpha: 0.3),
+              color: const Color(0xFF10B981).withValues(alpha: 0.35),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -649,7 +748,11 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
         ),
         child: Center(
           child: _isLocating
-              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                )
               : const Icon(Icons.gps_fixed_rounded, color: Colors.white, size: 24),
         ),
       ),
@@ -667,29 +770,49 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: GoogleFonts.notoSansTc(
-            fontSize: 15,
-            fontWeight: FontWeight.w800,
-            color: const Color(0xFF374151),
-          ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              label,
+              style: GoogleFonts.notoSansTc(
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+                color: Colors.white,
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: const Color(0xFF8B5CF6).withValues(alpha: 0.25),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                '${value.toInt()}%',
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: const Color(0xFFA78BFA),
+                ),
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 12),
         Container(
-          height: 12,
+          height: 10,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(6),
             gradient: LinearGradient(colors: gradient),
           ),
           child: SliderTheme(
             data: SliderThemeData(
-              trackHeight: 12,
+              trackHeight: 10,
               activeTrackColor: Colors.transparent,
               inactiveTrackColor: Colors.transparent,
               thumbColor: Colors.white,
               overlayColor: Colors.white.withValues(alpha: 0.2),
-              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 12, elevation: 4),
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 10, elevation: 4),
             ),
             child: Slider(
               value: value,
@@ -699,12 +822,26 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
             ),
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(leftLabel, style: GoogleFonts.notoSansTc(fontSize: 12, color: const Color(0xFF9CA3AF), fontWeight: FontWeight.w600)),
-            Text(rightLabel, style: GoogleFonts.notoSansTc(fontSize: 12, color: const Color(0xFF9CA3AF), fontWeight: FontWeight.w600)),
+            Text(
+              leftLabel,
+              style: GoogleFonts.notoSansTc(
+                fontSize: 11,
+                color: const Color(0xFF64748B),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            Text(
+              rightLabel,
+              style: GoogleFonts.notoSansTc(
+                fontSize: 11,
+                color: const Color(0xFF38BDF8),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ],
         ),
       ],
@@ -714,22 +851,28 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
   Widget _buildModernTextArea({
     required TextEditingController controller,
     required String hintText,
+    required Color accentColor,
   }) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFFF9FAFB),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        color: const Color(0xFF0B132B),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFF334155)),
       ),
       child: TextField(
         controller: controller,
-        maxLines: 4,
-        style: GoogleFonts.notoSansTc(fontSize: 15, color: const Color(0xFF111827), height: 1.5),
+        maxLines: 3,
+        style: GoogleFonts.notoSansTc(
+          fontSize: 14,
+          color: Colors.white,
+          height: 1.5,
+          fontWeight: FontWeight.w500,
+        ),
         decoration: InputDecoration(
           hintText: hintText,
-          hintStyle: GoogleFonts.notoSansTc(color: const Color(0xFF9CA3AF), fontSize: 14),
+          hintStyle: GoogleFonts.notoSansTc(color: const Color(0xFF64748B), fontSize: 13),
           border: InputBorder.none,
-          contentPadding: const EdgeInsets.all(16),
+          contentPadding: const EdgeInsets.all(14),
         ),
       ),
     );
@@ -741,22 +884,23 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
         onTap: widget.onUnbind,
         borderRadius: BorderRadius.circular(16),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           decoration: BoxDecoration(
-            border: Border.all(color: const Color(0xFFFEE2E2)),
+            color: const Color(0xFFEF4444).withValues(alpha: 0.1),
+            border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.4), width: 1.2),
             borderRadius: BorderRadius.circular(16),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.link_off_rounded, color: Color(0xFFEF4444), size: 20),
+              const Icon(Icons.link_off_rounded, color: Color(0xFFEF4444), size: 18),
               const SizedBox(width: 8),
               Text(
                 '解除與此長輩的綁定關係',
                 style: GoogleFonts.notoSansTc(
                   color: const Color(0xFFEF4444),
                   fontWeight: FontWeight.w800,
-                  fontSize: 15,
+                  fontSize: 14,
                 ),
               ),
             ],
