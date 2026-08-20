@@ -35,6 +35,17 @@ class _FamilyDashboardViewState extends State<FamilyDashboardView> {
   bool _isElderOnline = false; // ★ 新增：長輩是否在線上
   final Signaling _signaling = Signaling();
 
+  // ★ Signaling 是全域單例、onCallRequest／onCancelCall／onElderDevicesUpdate
+  //   在單例上各只有一個欄位，最後賦值者獨佔；本畫面 dispose 後若不歸還，
+  //   閉包會持續指向已卸載的 State——onCallRequest 這支尤其嚴重，
+  //   `if (!mounted) return;` 會讓之後每一通來電被靜默吞掉（無 log、無
+  //   UI）。這裡保留自己那份 closure 的參考，dispose 時用 identical() 只
+  //   在「單例上掛的仍是自己這一份」時才清除，避免誤清掉接手畫面（例如
+  //   重新進入本畫面後）的回呼。
+  Function(List<dynamic>)? _ownElderDevicesUpdate;
+  CallRequestCallback? _ownCallRequest;
+  CallRequestCallback? _ownCancelCall;
+
   // ★ Task 6：會員層級徽章
   String _tierLevel = 'free';
   String _tierDisplayName = '一般會員';
@@ -102,7 +113,9 @@ class _FamilyDashboardViewState extends State<FamilyDashboardView> {
     });
 
     // 監聽長輩裝置更新，找出在線的 Socket ID
-    _signaling.onElderDevicesUpdate = (devices) {
+    // ★ 先寫進 _ownElderDevicesUpdate 欄位再指派給單例，讓 dispose() 能用
+    //   identical() 比對「單例上掛的是不是自己這一份」，才敢安全歸還。
+    _ownElderDevicesUpdate = (devices) {
       if (devices.isNotEmpty && mounted) {
         setState(() {
           // 優先找在線的 (isOnline: true)
@@ -122,16 +135,20 @@ class _FamilyDashboardViewState extends State<FamilyDashboardView> {
         });
       }
     };
+    _signaling.onElderDevicesUpdate = _ownElderDevicesUpdate;
 
     // ★ 監聽來電（長輩打給家屬）
-    _signaling.onCallRequest = (roomId, senderId, callId, [senderName]) {
+    // ★ 先寫進 _ownCallRequest 欄位，dispose() 才能用 identical() 安全歸還。
+    _ownCallRequest = (roomId, senderId, callId, [senderName]) {
       if (!mounted) return;
       debugPrint('📞 [FamilyDashboardView] 收到來電: room=$roomId, sender=$senderId, callId=$callId');
       _showIncomingCallDialog(roomId, senderId, callId);
     };
+    _signaling.onCallRequest = _ownCallRequest;
 
     // 監聽取消呼叫
-    _signaling.onCancelCall = (roomId, senderId, callId, [senderName]) {
+    // ★ 先寫進 _ownCancelCall 欄位，dispose() 才能用 identical() 安全歸還。
+    _ownCancelCall = (roomId, senderId, callId, [senderName]) {
       if (!mounted) return;
       debugPrint('🔕 [FamilyDashboardView] 來電取消: room=$roomId');
       // 如果有來電對話框正在顯示，關閉它
@@ -140,6 +157,7 @@ class _FamilyDashboardViewState extends State<FamilyDashboardView> {
         _isIncomingCallDialogOpen = false;
       }
     };
+    _signaling.onCancelCall = _ownCancelCall;
 
     // ★ Task 7d：監聽 YOLO 警報（CCTV 跌倒檢測）
     _signaling.socket?.on('cctv-alert', (data) {
@@ -410,7 +428,18 @@ Future<void> _loadTier() async {
 
   @override
   void dispose() {
-    _signaling.onElderDevicesUpdate = null;
+    // ★ Signaling 是全域單例，只有在單例上掛的仍是自己這一份時才清除
+    //   （identical 比對），避免誤清掉接手畫面（例如重新進入本畫面後）
+    //   剛註冊的回呼。
+    if (identical(_signaling.onElderDevicesUpdate, _ownElderDevicesUpdate)) {
+      _signaling.onElderDevicesUpdate = null;
+    }
+    if (identical(_signaling.onCallRequest, _ownCallRequest)) {
+      _signaling.onCallRequest = null;
+    }
+    if (identical(_signaling.onCancelCall, _ownCancelCall)) {
+      _signaling.onCancelCall = null;
+    }
     super.dispose();
   }
 

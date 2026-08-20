@@ -289,6 +289,17 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     // ★ 第十九輪（D4）：CCTV 目前裝置名稱初始值，改名事件會更新它
     _currentDeviceName = widget.deviceName;
 
+    // ★ 2026-08-20（FIX 2：喚醒畫面不再被 FCM token 卡住）：
+    //   下面 _initElderMode() 會先 await 取得 FCM token（最多 5 秒逾時）才呼叫
+    //   _signaling.connect()，而喚醒畫面的 _checkPendingEmergency() 又排在
+    //   connect() 之後才觸發——網路差時 getToken() 真的會卡滿 5 秒，畫面因此多
+    //   黑 5 秒才亮，但喚醒動作本身根本不需要 token。這裡不等待、不阻塞地提前
+    //   「偷看」一次同樣的 pending_emergency_* 鍵位，命中就先把畫面喚醒；真正的
+    //   接聽（sendCallAccept、prefs 清除、去重判斷）仍完整交給 _initElderMode()
+    //   裡原封不動的 _checkPendingEmergency() 處理一次。詳見
+    //   _earlyWakeForPendingEmergency() 的方法註解。
+    _earlyWakeForPendingEmergency();
+
     // 「電話」與「視訊」共用同一套 call-request 後端邏輯；
     // 唯一差異只在進房時鏡頭預設狀態。
     if (widget.isCCTVMode) {
@@ -343,6 +354,33 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       _checkPendingEmergency();
       _checkPendingAcceptedCall();
+    }
+  }
+
+  /// ★ 2026-08-20（FIX 2）：[_checkPendingEmergency] 的「唯讀偷看」版本，供
+  ///   initState 在 [_initElderMode] 等待 FCM token（最多 5 秒）之前就先呼叫，
+  ///   讓螢幕喚醒不必等 token。刻意只做「讀 prefs → 比對房間 → bringToFront」，
+  ///   **不**移除 prefs、**不**呼叫 [_handleEmergencyAccept]、**不**碰任何通話
+  ///   狀態旗標——pending-emergency 這個呼叫點的 [_handleEmergencyAccept] 沒有帶
+  ///   callId（見下方 [_checkPendingEmergency]），若被呼叫兩次不會被 callId 去重
+  ///   擋下，反而會誤判成「另一通新來電」而把剛接通的緊急通話掛斷重連——正是
+  ///   第十三輪修復過的問題。真正的接聽動作仍完全交給 [_checkPendingEmergency]
+  ///   處理一次，本方法只負責讓畫面提早亮起來。
+  Future<void> _earlyWakeForPendingEmergency() async {
+    final prefs = await SharedPreferences.getInstance();
+    final pendingRoom = prefs.getString('pending_emergency_room');
+    final pendingSender = prefs.getString('pending_emergency_sender');
+    if (pendingRoom == null || pendingSender == null || !mounted) return;
+
+    final bool isMatching =
+        pendingRoom == _formattedRoomId || pendingRoom == widget.roomId;
+    if (!isMatching) return;
+
+    try {
+      final platform = MethodChannel('com.example.app/bring_to_front');
+      await platform.invokeMethod('bringToFront');
+    } catch (e) {
+      debugPrint('⚠️ [ElderScreen] 提前喚醒畫面失敗（稍後仍會由正常接聽流程重試）: $e');
     }
   }
 
@@ -493,6 +531,24 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       debugPrint("Failed to end CallKit calls: $e");
     }
 
+    // ★ 2026-08-19 第二十九輪：喚醒被鎖屏／背景化的長輩畫面（Android 14+）。
+    //   全專案唯一會點亮螢幕、蓋過鎖屏的機制就是這個 MethodChannel
+    //   （`MainActivity.forceBringToFront()` → `showOverLockScreen()`，見 G49），
+    //   而緊急通話過去完全沒有路徑呼叫到它——`_showIncomingCallDialog` 一偵測到
+    //   長輩端緊急通話就直接短路進本函式，從未走過 `_navigateToVideoCall` 那條
+    //   會叫它的路徑。結果是：即使下面 `sendCallAccept` 成功、`_isInCall` 也已經
+    //   變 true，長輩端螢幕未開啟或被鎖屏時畫面仍是黑的／鎖定畫面，只有實體按下
+    //   電源鍵才會發現「原來已經自動接聽了」。
+    //   與 `_handleAcceptedCallFromBackground`（上方 :433-439）用完全相同的
+    //   channel／method／錯誤處理，刻意放在 `sendCallAccept` 之前——即使接聽之後
+    //   失敗，畫面也要先盡量喚醒。
+    try {
+      final platform = MethodChannel('com.example.app/bring_to_front');
+      await platform.invokeMethod('bringToFront');
+    } catch (e) {
+      debugPrint("Bring to front failed (emergency): $e");
+    }
+
     // ★ 2026-08-06 第十九輪（B）：監視機（CCTV）自動接聽必須完全靜音——
     //   家屬端開啟監控不該觸發長輩端的提示音，也不該讓長輩察覺監控端正在觀看。
     // ★ 2026-08-11 第二十二輪（需求 9）：一般緊急通話**移除 TTS 語音播報**
@@ -504,7 +560,23 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     }
 
     // Notify the Family App that we are awake and ready to receive the Offer!
-    _signaling.sendCallAccept(senderId, callId: callId);
+    // ★ 2026-08-19 第二十九輪：冷啟動（Firebase 初始化＋Flutter engine＋
+    //   AndroidIntent 喚醒＋splash＋本畫面掛載）常規性地超過 sendCallAccept
+    //   預設的 10 秒逾時，導致這個 accept 從未送出、家屬端只能乾等 60 秒逾時。
+    //   緊急通話改傳 30 秒 maxWait；sendCallAccept 現在回傳 Future<bool>，
+    //   送不出去時不再靜默——把「緊急通話接通中...」換成誠實的失敗文案，
+    //   避免畫面卡在一個永遠不會連通的假狀態。
+    final bool accepted = await _signaling.sendCallAccept(
+      senderId,
+      callId: callId,
+      maxWait: const Duration(seconds: 30),
+    );
+    if (!mounted) return;
+    if (!accepted) {
+      setState(() {
+        _status = "連線逾時，家屬端可能收不到接聽通知";
+      });
+    }
   }
 
   /// ★ 2026-08-11 第二十二輪（需求 9）：播放約 7 秒的緊急提示音。

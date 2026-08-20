@@ -10,7 +10,7 @@
 > **為什麼拆出來**：主文件曾成長到超過工具單次讀取上限（256 KB），使「動手前必須完整讀過本
 > 文件」這條鐵律在技術上無法遵守；把最舊的輪次移出，讓主文件回落到讀取上限之內。
 >
-> **收錄範圍**：2026-06-05 起至第二十五輪（2026-08-17）。第二十六輪以後仍在
+> **收錄範圍**：2026-06-05 起至第二十七輪（2026-08-18）。第二十八輪以後仍在
 > `CLAUDE_call-monitor.md` §8。
 >
 > **這份是查證用的歷史檔，不是動手前的必讀文件**；必讀的是主文件的 §1–§7、§9、§10。
@@ -20,7 +20,7 @@
 
 ---
 
-## 早期修復年表（第一輪 – 第二十五輪）
+## 早期修復年表（第一輪 – 第二十七輪）
 
 ### 2026-06-05 / 06 — 第一輪：早期通話信令
 雙重 room ID prefix（`comm_elder_comm_elder_X` → `join-failed: 您無權加入此通訊房間`）、
@@ -1126,6 +1126,235 @@ Android `FlutterFirebaseMessagingBackgroundService` 的 `latch.await()` 放行 �
 4（退出監控後仍能登入）、5（重啟後不被 session 綁死）、6（長輩離開視訊房正確回長輩端主畫面）、
 7（跌倒記錄留存於首頁最新警示）、8（切換長輩後不再看到別人的監控機）都需要真機驗收，
 驗收矩陣見 §9.2。
+
+---
+
+### 2026-08-18 — 第二十六輪：leave_room 根治、冷卻只抑制推播、IPS 室內定位試做、後端開機修復
+
+**背景**
+
+第二十五輪需求 8 只在前端用 `elderId` 過濾擋掉了「切換長輩後仍看到舊長輩監控機」的症狀
+（見 G91），本輪回頭補上真因：全專案從未有過任何「離開房間」的語意。同批另查出 Gemini 8/16
+批次遺留的第二個未執行產出——後端因缺少 import 而完全無法啟動。另外把跌倒／爬行／久未活動的
+冷卻機制、以及一個重用既有 YOLO 管線的室內定位（IPS）prototype 一併納入本輪。
+
+**根因與修復**
+
+1. **`leave_room` 根治（第二十五輪需求 8 的根因）**：`on_join`（`socket_app.py`）只有
+   `sio.enter_room`，全專案沒有任何離開房間的動作——家屬端切換長輩後，socket 永遠留在舊長輩的
+   房間，`_broadcast_elder_devices_update(舊長輩)` 因此持續送達。
+   修復：後端新增 `on_leave`（`socket_app.py`:1557，緊接在 `on_join` 之後）——冪等（不在房間內
+   就安全 no-op）、**不斷 socket**、清 `rooms_manager`、把 `room_fcm_tokens` 該筆的 `socketId`
+   設 `None`／`appState` 設 `background` 並以背景執行緒持久化
+   `user_fcm_token.app_state='background'`，離開者是 elder 時廣播裝置更新。前端新增
+   `Signaling.leaveRoom()`（`signaling.dart`:799，緊接在 `joinRoom()` 之後），`_switchElder`
+   （`family_main_screen.dart`:961）在 `setState` 覆蓋 `_currentElder` **之前**離開舊長輩的
+   `comm_elder_*` 與 `monitor_elder_*` 兩個房間。
+   ⚠️ **最關鍵的設計約束**：這是**定向**離開，刻意**不做**「join 新房間就退掉所有舊房間」——
+   `signaling.dart::joinRoom()` 用 role `'listener'`／deviceName `'Dashboard_Listener'` 讓家屬端
+   同時關注多位長輩，一刀切會直接打死該功能。第二十五輪的 `elderId` payload 過濾保留作第二道
+   防線。DB 持久化的理由：`_get_target_sockets_and_tokens` 的第三層（Layer C）是讀 DB 的
+   `user_fcm_token.app_state` 判斷能否靠 FCM 觸達；房間已離開卻在 DB 留著 `foreground`，正是
+   本專案反覆出現的「收不到來電」那一類殘留狀態。→ **G92**
+2. **冷卻期只抑制推播，不抑制記錄**：原本 `_check_fall`／`_check_crawl`／`_check_inactivity`
+   （`yolo_detector_service.py`）在冷卻窗口內直接 `return None`，發生在 dispatch 之前，因此
+   DB、Socket、FCM 全都沒有——15 秒內的**第二次真實跌倒**完全船過水無痕。
+   修復：三個 `_check_*` 在冷卻分支改為回傳同一份結果並帶 `'push_suppressed': True`；
+   `dispatch_yolo_alert`（`services/yolo_alert_dispatcher.py`）新增 `push_suppressed` 參數，
+   **Step 1 的 `_insert_alert` 一律執行**，只跳過 Step 2（Socket）與 Step 3（FCM）；
+   `routers/alert.py` 用 `.get('push_suppressed', False)` 傳遞。
+   兩個必須記住的細節：(a) `last_*_alert_at` **只在未抑制時**更新，否則持續跌倒會不斷重新起算
+   冷卻而永遠推不出去；(b) 冷卻判斷排在分數閘門（`fall_score < 0.55`）**之後**，所以抑制分支
+   只在「此刻真的偵測到」時才回傳 truthy——這也讓 `process_frame` 的 `or` 鏈在跌倒進行中短路於
+   fall，屬正確的優先序（fall 本來就排第一），且人躺定約 14 秒後 `vertical_shift` 衰減、fall
+   停止觸發，crawl／inactivity 自動接手，不會有偵測器被永久餓死。代價是持續事件期間每 2 秒
+   一次 UPSERT（刷新 `detected_at`／`confidence`）。`/api/cctv/test-fall` 維持預設 `False`，
+   手動測試一定推播。→ **G93**
+3. **IPS 室內定位試做（新子系統，prototype）**：新增 `services/indoor_position.py`、
+   `routers/ips.py`、`tests/test_indoor_position.py`、`scripts/migrations/011_ips_zones.sql`；
+   `socket_app.py` 新增 `_broadcast_elder_zone_update`；`routers/alert.py` 的 `POST /cctv/frame`
+   增加**單一**受保護掛勾；`main.py` 註冊 router；`database.py` 補 SQLite 分支建表。
+   做法：重用**既有**的 YOLO 人物偵測 bbox（零新推論、零新硬體），取底邊中點當落地點、正規化後
+   以 point-in-polygon 對應到每台監視機各自校準的區域多邊形。`ZONE_STABLE_FRAMES = 3`（≈6 秒）
+   平滑以壓下邊界抖動、追蹤停留時間、寫 `elder_zone_event`、變更時以 `elder-zone-update` 廣播給
+   家屬。三個 REST 端點全走 `call_security` 且無權回 **404 不是 403**。`IPS_ENABLED` **預設
+   關閉**，關閉時掛勾只是單一布林檢查就返回——零 DB、零運算、零 Socket。完整運作原理、資料表、
+   端點見新增的 §6.12。
+   誠實記下四點限制：① 覆蓋範圍僅限鏡頭視野，人走出畫面時最後已知區域會凍結（無人物的幀直接
+   略過不餵入 tracker）；② 一台相機＝一個房間視角，非多相機融合或三角定位；③ 需要每台相機人工
+   校準區域多邊形，相機移位或更換即失效；④ 精度繼承 YOLO 本身的限制（遮擋、低光、多人重疊）外
+   加大角度俯視時落地點映射的透視誤差。
+   也記下這是為何選相機方案：WiFi RSSI 指紋受 Android 9+ 掃描節流（2 分鐘 4 次）且多數住家訊號
+   源不足；BLE beacon 需每戶額外硬體（列為升級路徑）；UWB 成本與 Android 支援度不划算；IMU 航位
+   推算漂移嚴重且長輩常不帶手機。→ **G95**
+4. **後端開機失敗（Gemini 8/16 批次的第二個未執行產出）**：`routers/ai.py`:1491 的
+   `class FamilyCopilotChatRequest(BaseModel):` 全檔沒有 pydantic import，
+   `NameError: name 'BaseModel' is not defined`，**整個後端無法啟動**。
+   `python -m py_compile routers/ai.py` 會通過，因為它只檢查語法，NameError 發生在 import 時。
+   修復：`routers/ai.py` 補一行 `from pydantic import BaseModel`。同批的 `ai_server.py`、
+   `routers/reminder.py` 經檢查 pydantic import 皆正確，無需改動。
+   這與第二十五輪查出的 Flutter 編譯錯誤是**同一批、同一種病**：宣稱完成但從未執行過。→ **G94**
+
+**新增護欄**
+
+本輪新增 **G92–G95**（完整條文見 §7.2）：
+
+- **G92**（後端）— Socket 房間必須有明確的離開語意；`leave` 必須是**定向**的（只離開呼叫端指名
+  的房間），不得實作成「join 新房間就退掉所有舊房間」，否則會打死 `joinRoom()` 的
+  `Dashboard_Listener` 多長輩訂閱。離開時必須同步清 `rooms_manager`、`room_fcm_tokens` 的
+  `socketId`/`appState`，並持久化 `user_fcm_token.app_state='background'`。
+- **G93**（後端）— 警報冷卻期**只抑制推播，不得抑制記錄**：`dispatch_yolo_alert` 的
+  `_insert_alert` 一律執行，只跳過 Socket 與 FCM；`last_*_alert_at` 只在真正推播時更新。
+- **G94**（後端）— `python -m py_compile` **只驗語法**，不會抓到 `NameError`／缺 import。後端
+  改動的驗證必須包含 import 冒煙測試：`python -c "from main import app"`（注意 `main.py` 最後
+  一行把 `app` 包成 `socketio.ASGIApp`，FastAPI 本體在 `app.other_asgi_app`，要取路由表得走這
+  個屬性）。
+- **G95**（後端）— IPS 掛勾必須維持 `ips_enabled()` 預設關閉＋內層 `try/except` 吞例外，絕不可
+  影響跌倒偵測、警報派送或 `/cctv/frame` 的回應內容與狀態碼；`/cctv/frame` 既有的兩條早退路徑
+  （`yolo_disabled`、`busy_frame_dropped`）不得被合併或改寫。
+
+**驗證**
+
+- `python -m py_compile services/socket_app.py yolo_detector_service.py services/yolo_alert_dispatcher.py routers/alert.py` — exit 0，無輸出。
+- `python -c "from main import app"` — 開機成功，路由表 **186** 條，`/api/ai/chat`、
+  `/api/cctv/frame`、`/api/ips/current/{elder_id}`、`/api/ips/zones/{elder_id}` 皆存在；
+  `011_ips_zones.sql` migration 2/2 完成。
+- `python -m pytest tests/test_call_signaling.py -q` — `17 passed, 44 warnings`。
+- `python -m pytest tests/test_indoor_position.py -q` — `22 passed`。
+- `flutter analyze lib` — **0 error**（142 issues 全為 info/warning）。
+
+⚠️ **範圍提醒**：本輪同樣**僅通過靜態驗證**，leave_room、冷卻改動與 IPS 皆**未在真機實測**。
+本輪未同步 graphify（依使用者指示暫停）。
+
+---
+
+### 2026-08-18 — 第二十七輪：IPS 由試做轉正式、家屬端校準介面與首頁區域顯示
+
+**背景**
+
+第二十六輪以 feature-flag 關閉、純後端 prototype 的形式先落地 IPS（室內定位）。使用者驗收
+後核准將其轉為正式功能，本輪補上後端的正式化守衛、一個供校準用的快照端點，以及 Flutter
+端完整的家屬端校準介面與首頁區域顯示，三者環環相扣——沒有快照端點，家屬端校準介面無圖可
+畫；沒有校準介面，`IPS_ENABLED` 預設開啟也不會有任何 zone 資料產生。
+
+**根因與修復（本輪改動）**
+
+1. **轉正式（後端）**：`services/indoor_position.py::ips_enabled()` 預設由 `false` 改為
+   `true`。環境變數 `IPS_ENABLED` 的語意也跟著改變——不再是「要不要試用」的旗標，而是
+   **緊急關閉用的 kill-switch**：設 `IPS_ENABLED=false` 仍會讓整條 IPS 掛鉤完全停用，回到
+   零 DB、零運算、零廣播的狀態。
+   配套的關鍵守衛：`process_frame_for_zone`（`services/indoor_position.py`:526）一進來就
+   先 `load_zones()`（走 TTL 記憶體快取），該監視機**尚未校準**（zones 為空陣列）就立刻
+   返回——不做 PIL 解碼、不做幾何運算、不更新 tracker、不寫 DB、不發 Socket。推幀節奏是
+   每 2 秒一次，而多數監視機在家屬完成校準之前都會長期處於未校準狀態，這道守衛正是「預設
+   打開仍然安全」的前提。→ **G97**
+2. **新端點：最近一幀快照**：新增 `GET /api/ips/snapshot/{elder_id}?user_id=&device_id=`
+   （`routers/ips.py`），回傳該監視機最近收到的原始影格 bytes；無快取幀回 **404**
+   （`尚未收到該監視機的影格`），授權同樣走 `call_security`，無權回 404 不是 403。
+   `services/indoor_position.py` 新增 `store_last_frame`（:479）／`get_last_frame`（:499），
+   用 `OrderedDict` 做 LRU、鍵為 `elder_id:device_id`、上限
+   `_LAST_FRAME_CACHE_MAX_ENTRIES = 500`——快取的是原始影格 bytes，比 zone JSON 設定重得
+   多，不能無界成長。Content-Type 由檔頭魔數判定（PNG `\x89PNG` / JPEG `\xff\xd8\xff`，
+   判斷不出來預設 JPEG）。
+   ⚠️ **順序陷阱**：`routers/alert.py::push_cctv_frame` 的 IPS 掛鉤（:368
+   `if indoor_position.ips_enabled():`）裡，`store_last_frame`（:370）必須排在
+   `process_frame_for_zone`（:371）**之前**。因為後者在「尚未校準」時會提前返回；若快照
+   寫入排在它後面，未校準的裝置就永遠不會有快照 → 家屬看不到畫面 → 永遠無法校準，形成
+   死結。→ **G96**
+3. **家屬端校準介面（新畫面）**：新檔 `lib/screens/family/zone_calibration_screen.dart`；
+   `lib/services/api_service.dart` 新增 `getZoneConfig` / `saveZoneConfig` /
+   `getCurrentZone` / `zoneSnapshotUrl` 四個方法。
+   設計決定：校準是在**後端快取的靜態快照**上點擊畫多邊形，**不是**在即時 WebRTC 畫面上。
+   理由——即時視訊要處理 `BoxFit` 縮放與 letterbox 才能換算回正規化座標，算錯不會有任何
+   報錯、只會讓區域判定悄悄偏掉；用快照則與偵測器看到的是**同一張影像**。
+   座標映射用 Flutter 內建的 `applyBoxFit(BoxFit.contain, intrinsicSize, box)`（:166）算出
+   letterbox 矩形，與畫面上 `Image(fit: BoxFit.contain)`（:441）用同一套演算法，保證像素級
+   一致；點擊落在矩形外會被拒絕（:179）；正規化為 `(local − rect.origin) / rect.size` 並
+   clamp 到 `[0,1]`（:181-182）。**嚴禁改用 `BoxFit.cover`**——裁切會無聲破壞座標映射。
+   UI 明示「順序決定歸屬：範圍較小的區域要排前面」（`classify_zone` 是 first-match-wins）。
+   快照 404 有專屬空狀態與重試，不顯示破圖。→ **G98**
+4. **家屬端首頁區域顯示與入口**：`signaling.dart` 新增 `elder-zone-update` 監聽（:556）與
+   `onElderZoneUpdate` callback 欄位（:104）。`family_main_screen.dart` 設定
+   `_signaling.onElderZoneUpdate`（:303）、新增 `_elderZone` 狀態、`_applyZoneUpdate`
+   （:388）、`_maybeFetchInitialZone`（:415）；`family_home_tab.dart` 新增
+   `monitorDevices` / `elderZone` / `userId` 三個建構子參數並顯示區域卡片；
+   `family_interaction_tab.dart` 的監控卡片新增「設定區域」入口。
+   三項必須記住的紀律：① `_applyZoneUpdate`（:391）比對 payload 的 `elder_id`，不符即丟棄
+   （與 `_applyDeviceList` 同一套長輩隔離，且更嚴格——任一側為 null 也丟棄）；
+   ② `dispose()`（:1467）必須把 `onElderZoneUpdate` 設回 null（`family_main_screen.dart`
+   過去曾發生 callback 殘留在 `Signaling` singleton 上、跨畫面誤觸發的歷史）；
+   ③ `_switchElder`（:1148 附近）必須清 `_elderZone`（連同 `_zoneFetchKey`／
+   `_zoneFetchInFlight` 一併清）。
+   `_maybeFetchInitialZone` 用去重鍵（`elderId:deviceId`）避免每次 2.5 秒 socket 輪詢／
+   10 秒 HTTP 交叉驗證都重打 API。為什麼需要它：`elder-zone-update` 只在區域**切換**時
+   推播，長輩久待同一區域時 UI 會一直空白。
+5. **文件數字更正**：`D:\114project\CLAUDE.md`:75 與 `D:\114project\Uban\CLAUDE.md`:82
+   兩處過期的「15 passed」已更正為 17（連同上一輪已改的 `uban-api/CLAUDE.md`，全庫已無
+   `15 passed` 殘留）。
+6. **`elder-zone-update` 的 `timestamp` 時區 bug（本輪過程中查出並修復）**：
+   `services/indoor_position.py::_build_zone_payload`（:522）原本寫
+   `int(datetime.datetime.utcnow().timestamp())`。`datetime.utcnow()` 回的是 **naive**
+   datetime，而 `.timestamp()` 會把 naive datetime 當**本地時間**解讀；本機實測
+   `naive.timestamp()` 與真實 UTC epoch 的 delta 恰好 `-28800` 秒（＝-8 小時，正是
+   UTC+8 偏移）——每一則 `elder-zone-update` 推播的 `timestamp` 都被記錄成 8 小時前。
+   當時無可見症狀，因為前端消費的是 `entered_at` 而非 `timestamp`，屬於等下一個消費者
+   踩的定時炸彈。
+   已改為 timezone-aware 的 `datetime.datetime.now(datetime.timezone.utc).timestamp()`，
+   實測 drift 為 **0**。
+   稽核範圍：全檔共 4 處 `utcnow()`／`.timestamp()` 用法，只有這一處是「naive datetime
+   轉 epoch」故有錯；其餘 3 處（`ZoneTracker.update`／`snapshot` 只做時間相減、
+   `store_last_frame` 只存 datetime 物件本身）皆自洽，**刻意不動**。
+   配對的另一面：`family_main_screen.dart::_parseUtcIso`（:464）解析前必須補 `Z`——
+   Python 的 naive `isoformat()` 不帶時區尾碼，Dart 的 `DateTime.parse` 會把無時區字串
+   當**本地時間**解析，是同一顆「naive datetime 跨語言轉換」地雷的另一面。→ **G99**
+7. **`/api/ips/current` 新增 `calibrated` 布林（本輪過程中補上）**：`zone='unknown'`
+   有兩種完全不同的成因——「這台監視機從未校準」與「已校準但目前不在任何區域內（人可能
+   不在鏡頭範圍）」，前端需要顯示兩種不同提示，光看 `zone` 分不出來，原本只能靠
+   `last_seen == null` 去推測。
+   `routers/ips.py::get_current_zone`（:64）的回應新增 `calibrated`，由既有的 TTL 快取
+   `load_zones()` 是否非空推導（`bool(load_zones(...))`），**不另開 DB 查詢路徑**；
+   `zone`、`last_seen` 的語意與型別完全未變，只是多一個 key。
+   `family_home_tab.dart` 改用這個欄位判斷四種狀態（未綁定監視機／未校準／已校準但
+   `zone=='unknown'`／正常顯示），取代原本的推測。
+   一條約束：socket 的 `elder-zone-update` payload **不帶** `calibrated`（一次區域切換
+   推播本身就蘊含已校準），`family_main_screen.dart::_applyZoneUpdate`（:397-406）因此
+   在收到 socket 推播時**明確寫死** `'calibrated': true`，不留給預設值——否則整包物件
+   重建時這個 key 會直接消失、被畫面當成 `false`，變成「已知的 true 被 socket 推播降級
+   成未知」。
+
+**新增護欄**
+
+本輪新增 **G96–G99**（完整條文見 §7.1／§7.2）：
+
+- **G96**（後端）— `/cctv/frame` 的 IPS 掛鉤裡，`store_last_frame` 必須排在
+  `process_frame_for_zone` 之前。順序顛倒會讓未校準裝置永遠拿不到快照，形成「無快照→
+  無法校準→永遠未校準」的死結。
+- **G97**（後端）— IPS 預設開啟後，`process_frame_for_zone` 必須維持「未校準即刻返回」的
+  第一道守衛。推幀每 2 秒一次，移除這道守衛等同對所有未校準監視機做無謂的 PIL 解碼與
+  幾何運算。
+- **G98**（前端）— 區域校準的座標映射必須用 `applyBoxFit(BoxFit.contain, ...)` 與
+  `Image(fit: BoxFit.contain)` 配對，嚴禁 `BoxFit.cover`；點擊須先檢查落在影像矩形內再
+  正規化。裁切或縮放不一致會讓座標無聲偏移，沒有任何編譯期或執行期警告。
+- **G99**（後端）— naive `datetime.utcnow()` 不可直接呼叫 `.timestamp()`：會把 naive
+  datetime 當本地時間解讀，在 UTC+8 讓 epoch 倒退 8 小時。需要 epoch 一律用
+  timezone-aware 的 `datetime.now(timezone.utc)`；純做時間相減或 `isoformat()` 的用法
+  不受影響、不必改。
+
+**驗證**
+
+- `flutter analyze lib` — **0 error**（142 issues 全為 info/warning，與動工前基線相同）。
+- `python -m pytest tests/test_call_signaling.py tests/test_indoor_position.py -q` —
+  `39 passed, 44 warnings`（17 + 22）。
+- `python -c "from main import app"` — 開機成功，路由表 **187** 條，
+  `/api/ips/snapshot/{elder_id}` 存在。
+- `IPS_ENABLED=false` → `ips_enabled()` 回 `False`（kill-switch 實測有效）；不設環境變數
+  → 回 `True`。
+- `_build_zone_payload` 的 `timestamp` 與 `datetime.now(timezone.utc)` 實測 **drift = 0**
+  秒（修正前為 `-28800` 秒）。
+
+⚠️ **範圍提醒**：本輪同樣**僅通過靜態驗證**，IPS 全鏈路（校準 → 推幀 → 區域判定 → 推播 →
+首頁顯示）**未在真機實測**。另外本機因連不到 `uban-mysql` 而落回 SQLite，**MySQL 上的
+`011_ips_zones.sql` 遷移路徑未實際執行過**。本輪未同步 graphify（依使用者指示暫停）。
 
 ---
 

@@ -634,38 +634,21 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
       final code = data['code'];
       final String targetDeviceName = nameCtrl.text.trim();
 
-      // ★ 2026-08-11 第二十二輪（需求 1）：監視機兌換配對碼、綁定完成後，
-      //   家屬端這個「配對碼」彈窗要自己關掉——過去必須手動按「完成」，
-      //   使用者無從得知對面到底綁好了沒。
-      //
-      //   偵測方式是「清單裡出現了新裝置」，來源有兩條、兩條都吃：
-      //     (a) `widget.monitorDevices`——後端在 `resolve_monitor_setup` 兌換成功時
-      //         會廣播 `elder-devices-update`（本輪 B2 補的），父層收到就會刷新。
-      //     (b) HTTP `fetchMonitorDevicesOrNull`——(a) 的 socket 若不在線就靠這條。
-      //   查詢失敗回 `null` 時**不做任何判斷**，避免網路抖動誤判成「綁好了」。
-      final Set<String> namesBefore = widget.monitorDevices
-          .map((d) => (d is Map ? (d['deviceName'] ?? '') : '').toString())
-          .where((n) => n.isNotEmpty)
-          .toSet();
-
+      // ★ 2026-08-19 修正（監控綁定碼假成功 bug）：舊版靠 isBoundIn() 檢查
+      //   「裝置清單裡有沒有出現同名／新裝置」當完成信號，但這個信號是錯的——
+      //   monitor_device_binding 是永久紀錄，且監控設備名稱預設固定為
+      //   「客廳攝影機」，只要長輩之前綁過同名裝置，_get_elder_devices_list
+      //   階段 0 一定會重新吐出那筆舊紀錄，導致彈窗一開、第一個 2 秒輪詢
+      //   tick 就誤判成功並自動關閉，但監控機端其實什麼都還沒輸入。
+      //   正確信號是後端 `monitor_setup_code.used_at`（僅由監控機實際兌換
+      //   配對碼時寫入，見 pairing.py::resolve_monitor_setup），因此改為輪詢
+      //   新端點 GET /api/pairing/monitor_setup/status，不再用裝置清單猜測。
       bool dialogClosed = false;
       BuildContext? codeDialogContext;
 
       void stopPolling() {
         _monitorBindPollTimer?.cancel();
         _monitorBindPollTimer = null;
-      }
-
-      bool isBoundIn(Iterable<dynamic> devices) {
-        for (final d in devices) {
-          if (d is! Map) continue;
-          final name = (d['deviceName'] ?? '').toString();
-          if (name.isEmpty) continue;
-          // 名稱對上就是它；否則只要出現快照以外的新裝置也算綁定成功
-          //（監視機端可能自行改過名稱）。
-          if (name == targetDeviceName || !namesBefore.contains(name)) return true;
-        }
-        return false;
       }
 
       void closeCodeDialogOnBound() {
@@ -681,6 +664,20 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
         widget.onDevicesChanged?.call();
       }
 
+      // 綁定碼在監控機兌換之前就過期：停止輪詢並明確告知需要重新產生代碼，
+      // 否則使用者只會看著彈窗空等到 5 分鐘輪詢上限，不知道該做什麼。
+      void closeCodeDialogOnExpired() {
+        if (dialogClosed) return;
+        dialogClosed = true;
+        stopPolling();
+        final ctx = codeDialogContext;
+        if (ctx != null && ctx.mounted && Navigator.of(ctx).canPop()) {
+          Navigator.of(ctx).pop();
+        }
+        if (!mounted) return;
+        _toast('此綁定碼已過期，請重新產生配對碼');
+      }
+
       stopPolling();
       int ticks = 0;
       _monitorBindPollTimer =
@@ -692,19 +689,19 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
           return;
         }
 
-        if (isBoundIn(widget.monitorDevices)) {
-          closeCodeDialogOnBound();
-          return;
-        }
-
         final userIdForQuery = widget.userId ?? familyId;
-        final devices = await ApiService.fetchMonitorDevicesOrNull(
-          elderId: rawId,
+        final status = await ApiService.getMonitorSetupStatus(
+          code.toString(),
           userId: userIdForQuery,
         );
-        if (devices == null) return; // 查詢失敗：什麼都不做，下一輪再試
-        if (!dialogClosed && mounted && isBoundIn(devices)) {
+        if (status == null) return; // 查詢失敗：不知道結果，下一輪再試
+        if (dialogClosed || !mounted) return;
+
+        if (status['used'] == true) {
+          // 完成信號 = monitor_setup_code.used_at 已寫入，不再依賴裝置清單。
           closeCodeDialogOnBound();
+        } else if (status['expired'] == true) {
+          closeCodeDialogOnExpired();
         }
       });
 

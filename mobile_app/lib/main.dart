@@ -1911,6 +1911,29 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     if (id.isNotEmpty) _lastHandledEmergencyCallId = id;
     debugPrint('🚨 [Emergency$source] 緊急通話無條件自動接聽 (callId=$id)');
 
+    // ★ 2026-08-19 第二十九輪：喚醒被背景化／鎖屏的長輩畫面（Android 14+）。
+    //   全專案唯一會點亮螢幕、蓋過鎖屏的機制是這個 MethodChannel
+    //   （`MainActivity.forceBringToFront()` → `showOverLockScreen()`，見 G49）。
+    //   本函式是緊急通話四條抵達通路（Socket／FCM 前景備援／`_showIncomingCallDialog`
+    //   最終防線）的共同收斂點，過去從未呼叫過它——螢幕未開啟或被鎖屏時，即使下面
+    //   成功寫入 `pendingAcceptedCall`、外部消費者也已把 `_isInCall` 之類的狀態
+    //   轉為進行中，長輩實際看到的仍是黑屏或鎖定畫面，得靠使用者自己按電源鍵才會
+    //   發現「原來已經自動接聽了」。放在去重 guard **之後**、其餘副作用之前，確保
+    //   同一通緊急通話只喚醒一次。
+    //   ⚠️ 與 `elder_screen.dart::_handleAcceptedCallFromBackground`（:433-439）用
+    //   同一個 channel／method；此處刻意改用 `await` + `try/catch`，**不是**
+    //   `_navigateToVideoCall`（:2258-2263）那個未 `await` 的舊寫法——`invokeMethod`
+    //   的 `PlatformException` 是非同步丟出的，不 `await` 就接不到（同步 try/catch
+    //   會變成 dead code，見 G49 與 `video_call_screen.dart::_goHomeAfterCall` 的
+    //   `catchError` 註解）。這裡是「無條件自動接聽」的收斂點，失敗必須確實被吞掉
+    //   並記錄，不可讓自動接聽流程中斷、也不可假裝有 catch 到卻其實沒有。
+    try {
+      const platform = MethodChannel('com.example.app/bring_to_front');
+      await platform.invokeMethod('bringToFront');
+    } catch (e) {
+      debugPrint('⚠️ [Emergency$source] 喚醒畫面失敗（不影響自動接聽）: $e');
+    }
+
     // 宣告共用去重 token，讓隨後抵達的另一條通路（Socket ↔ FCM）不再重複處理。
     _claimCallDedupToken(id.isEmpty ? null : id, isVideoCallRaw: isVideoCallRaw);
 

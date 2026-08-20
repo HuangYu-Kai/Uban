@@ -37,6 +37,13 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
 
+    <!-- ★ 跌倒緊急警報：繞過勿擾模式（DND）所需的「通知政策存取」權限
+         （NotificationChannel.setBypassDnd 的前提）。這是特殊存取權限，不能用
+         一般 runtime permission 對話框跟使用者要，必須由使用者手動到系統設定的
+         「請勿打擾存取權」頁面授予（見 MainActivity.kt 的 openDndAccessSettings）。
+         僅用於跌倒緊急警報，不用於一般通知。 -->
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+
     <application
         android:label="Uban"
         android:name="${applicationName}"

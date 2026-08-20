@@ -1028,6 +1028,42 @@ class ApiService {
     }
   }
 
+  /// ★ 2026-08-19 修正（監控綁定碼假成功 bug）：查詢一組監控設備綁定碼
+  /// 是否已被監控機兌換。GET /api/pairing/monitor_setup/status?code=&user_id=
+  ///
+  /// 舊版彈窗（family_interaction_tab.dart）靠「裝置清單裡有沒有出現同名／
+  /// 新裝置」判斷綁定完成，但 monitor_device_binding 是永久紀錄、裝置名稱又
+  /// 預設固定，導致長輩之前綁過同名裝置時，彈窗開出來的第一個輪詢 tick 就
+  /// 誤判成功。真正的完成信號是後端 `monitor_setup_code.used_at`，本方法就是
+  /// 用來查這個信號。
+  ///
+  /// 回傳 `null` 代表**查詢本身失敗**（網路錯誤、逾時、非 success 回應）——
+  /// 呼叫端應視為「還不知道」，維持現狀等下一輪輪詢重試；回傳 Map 代表拿到
+  /// 明確答案，至少含 `used`（bool）、`device_name`、`used_at`（ISO 字串或
+  /// null）、`expired`（bool）。做法比照 [fetchMonitorDevicesOrNull]：
+  /// null-means-unknown，不可與「查到了、確定還沒兌換」混為一談。
+  static Future<Map<String, dynamic>?> getMonitorSetupStatus(
+    String code, {
+    required int userId,
+  }) async {
+    try {
+      final uri = Uri.parse('$baseUrl/pairing/monitor_setup/status').replace(
+        queryParameters: {
+          'code': code,
+          'user_id': userId.toString(),
+        },
+      );
+      final response = await http.get(uri).timeout(_timeout);
+      final data = _safeDecode(response);
+      if (data['status'] != 'success') return null;
+      final payload = data['data'];
+      return payload is Map ? Map<String, dynamic>.from(payload) : null;
+    } catch (e) {
+      debugPrint('⚠️ getMonitorSetupStatus error: $e');
+      return null;
+    }
+  }
+
   /// ★ 2026-08-10 第二十輪（需求 1、5）：通知後端釋放目前 session，
   ///   後端會據此註銷 FCM token，避免登出後仍收到上一個帳號的來電推播。
   /// 對應後端 POST /api/pairing/session/release。

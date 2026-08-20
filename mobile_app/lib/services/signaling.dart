@@ -45,11 +45,8 @@ class Signaling {
   static const String _turnServer = String.fromEnvironment('TURN_SERVER', defaultValue: '152.69.196.5:3478');
   static const String _turnUser = String.fromEnvironment('TURN_USER', defaultValue: 'uban');
   static const String _turnPass = String.fromEnvironment('TURN_PASS', defaultValue: '115207');
-  
-  static String? _overrideServerUrl;
 
   static String get serverUrl {
-    if (_overrideServerUrl != null) return _overrideServerUrl!;
     if (_serverIp.startsWith('http://') || _serverIp.startsWith('https://')) {
       return _serverIp;
     }
@@ -288,20 +285,17 @@ class Signaling {
   }
 
   void _registerSocketListeners(String roomId, String role, String deviceName, String deviceMode, String? fcmToken) {
-    int connectErrorCount = 0;
     socket!.onConnectError((err) {
       debugPrint('❌ Socket Connect Error: $err (Server: $serverUrl)');
-      connectErrorCount++;
-      if (connectErrorCount >= 2 && _overrideServerUrl == null && serverUrl.contains('ts.net')) {
-        debugPrint('🔄 [Signaling Fallback] Socket Handshake Error. Fallback to local dev server http://10.0.2.2:8000...');
-        _overrideServerUrl = 'http://10.0.2.2:8000';
-        try {
-          socket?.disconnect();
-          socket?.dispose();
-        } catch (_) {}
-        socket = null;
-        connect(roomId, role, userId: _userId, deviceName: _deviceName ?? 'Unknown', deviceMode: _deviceMode ?? 'comm', fcmToken: fcmToken);
-      }
+      // ★ 2026-08-20：這裡原本有一段「連續 2 次握手失敗就改連
+      //   `http://10.0.2.2:8000`」的模擬器時期 fallback。`10.0.2.2` 只在 Android
+      //   模擬器有意義，實機不可路由；且該旗標（`_overrideServerUrl`）是 singleton
+      //   上的 static，全專案沒有任何地方重設回 null，一旦踩到就整個行程永久連不
+      //   上伺服器（Socket 全滅，FCM 仍正常——FCM 走完全獨立的通道，不經過
+      //   serverUrl）。這也違反鐵律 #1（不可硬編 IP／伺服器網址）。
+      //   ⚠️ 不要再加回來；本機開發請改用 `--dart-define=SERVER_IP=10.0.2.2`。
+      //   暫時性握手失敗交給 socket.io 內建的自動重連機制處理即可，不需要在這裡
+      //   額外介入改寫連線位址或拆掉重建 socket。
     });
     socket!.onError((err) => debugPrint('❌ Socket Error: $err'));
 
@@ -324,8 +318,23 @@ class Signaling {
 
     socket!.onConnect((_) async {
       debugPrint('✅ Socket 連線成功 (SID: ${socket!.id})');
-      _asyncJoin(roomId, role, deviceName, deviceMode, fcmToken: fcmToken);
-      
+      // ★ 修正 stale onConnect rejoin（切換長輩後 Socket 重連會加回舊房間）：
+      //   `onConnect` 的閉包參數（roomId/role/deviceName/deviceMode）是 socket
+      //   **第一次建立**時捕捉的，`connect()` 的「重用現有連線」分支（見上方 ♻️ 註解）
+      //   不會重新註冊監聽器，所以切換長輩後這些參數仍指向舊房間；一旦斷線自動重連，
+      //   就會把 socket 加回**舊長輩**的房間，而 Dart 端 `_currentRoomId` 仍宣稱在新
+      //   房間——後端因此在新房間找不到這個 sid，判定不可達而退回 FCM（App 前景收不到
+      //   Socket 來電通知，只剩 FCM 那條路正常，即為此症狀）。
+      //   改用當下的 instance 欄位重新加入；`_currentRoomId` 會在 `leaveRoom()` 時被清
+      //   成 null，故逐一 fallback 回當初捕捉的參數，絕不可把 null 傳進 `_asyncJoin`。
+      _asyncJoin(
+        _currentRoomId ?? roomId,
+        _role ?? role,
+        _deviceName ?? deviceName,
+        _deviceMode ?? deviceMode,
+        fcmToken: fcmToken,
+      );
+
       for (var pendingRoom in _pendingRooms) {
         _asyncJoin(pendingRoom, 'family', 'Dashboard_Listener', 'listener', fcmToken: fcmToken);
       }
@@ -916,10 +925,24 @@ class Signaling {
   }
 
 
-  void sendCallAccept(String targetSocketId, {String? callId}) async {
-    if (socket == null) return;
-    
-    int retries = 100;
+  /// ★ 2026-08-19 第二十九輪：新增 [maxWait]，預設值維持原本的 **10 秒**
+  ///   （100 × 100ms）不變，一般通話（`_handleAcceptedCallFromBackground` 等）行為
+  ///   完全不變。緊急通話的冷啟動（Firebase 初始化＋Flutter engine＋AndroidIntent
+  ///   喚醒＋splash＋`ElderScreen` 掛載）常規性地超過 10 秒，逾時後這個 accept
+  ///   永遠不會補送，家屬端只能乾等 60 秒逾時——呼叫端
+  ///   （見 `elder_screen.dart::_handleEmergencyAccept`）改傳 30 秒。
+  /// 回傳型別由 `void` 改為 `Future<bool>`（true＝確實送出 emit）：既有的
+  ///   fire-and-forget 呼叫端（不理會回傳值）照常編譯、行為不變；
+  ///   只有緊急通話分支會讀這個布林值，逾時未送出時把畫面文案換成誠實的失敗訊息，
+  ///   而不是讓「緊急通話接通中...」永遠卡著。
+  Future<bool> sendCallAccept(
+    String targetSocketId, {
+    String? callId,
+    Duration maxWait = const Duration(seconds: 10),
+  }) async {
+    if (socket == null) return false;
+
+    int retries = (maxWait.inMilliseconds / 100).ceil();
     while (!socket!.connected && retries > 0) {
       await Future.delayed(const Duration(milliseconds: 100));
       retries--;
@@ -928,8 +951,10 @@ class Signaling {
     if (socket!.connected) {
       debugPrint("✅ [Accept] Sending call-accept to $targetSocketId (CallId: $callId)");
       socket!.emit('call-accept', {'targetId': targetSocketId, 'callId': callId});
+      return true;
     } else {
-      debugPrint("❌ [Accept] Socket connection timed out. Could not send accept.");
+      debugPrint("❌ [Accept] Socket connection timed out (${maxWait.inSeconds}s). Could not send accept.");
+      return false;
     }
   }
 

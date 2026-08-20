@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // 添加觸覺反饋
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import 'dart:ui';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -19,6 +20,7 @@ import '../services/api_service.dart';
 import 'video_call_screen.dart';
 import 'caregiver_pairing_screen.dart';
 import 'family_onboarding_screen.dart';
+import 'emergency_permission_guide_screen.dart';
 import 'package:flutter_application_1/utils/app_logger.dart';
 import '../globals.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -132,6 +134,51 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   /// 避免每次 `_loadSubscriptionTier()` 重新整理都再彈一次而干擾使用者。
   bool _overLimitDialogShown = false;
 
+  /// ★ 2026-08-20 新增：家屬端首次進入首頁時，若偵測到是 MIUI 家族裝置，自動
+  /// 導向「鎖屏與背景權限設定」引導頁（`EmergencyPermissionGuideScreen`）一次。
+  ///
+  /// 補的是長輩端那一輪遺留的缺口：「後台彈出介面」主要是給家屬端用的（背景
+  /// 彈出跌倒警報），但先前只有長輩端 `elder_home_screen.dart` 會自動觸發，
+  /// 家屬端只能從設定頁手動找到——需要這項權限最迫切的角色反而看不到自動
+  /// 引導，這裡補上對稱的觸發點。
+  ///
+  /// 與 `elder_home_screen.dart::_maybeShowMiuiPermissionGuide` 共用同一個
+  /// `EmergencyPermissionGuideScreen.prefsSeenKey`（刻意不開新鍵）——同一台
+  /// 裝置只要看過一次引導頁（不論是哪個角色觸發的），另一邊就不會再自動彈。
+  ///
+  /// 為什麼放在這裡（而不是更早的冷啟動路徑）：比照長輩端的作法，刻意放在
+  /// 「已經到達穩定首頁」之後才觸發，用 addPostFrameCallback 確保第一影格
+  /// 已經畫出、Navigator 已經就緒；呼叫本身完全不 await，不會拖慢 initState
+  /// 或擋住 `_initializeElderManagerAndConnect`／`_loadSubscriptionTier` 等
+  /// 既有初始化流程，也完全不碰 `_setupSignalingCallbacks`／
+  /// `_loadElderAndConnect`／`_applyDeviceList`／`_switchElder`／計時器等
+  /// 既有通話與裝置狀態邏輯。
+  ///
+  /// 任何一步失敗（SharedPreferences 不可用、MethodChannel 未實作／拋例外）都
+  /// 直接 return，不顯示引導頁——APP 其餘行為與目前版本完全相同。
+  Future<void> _maybeShowMiuiPermissionGuide() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final alreadySeen =
+          prefs.getBool(EmergencyPermissionGuideScreen.prefsSeenKey) ?? false;
+      if (alreadySeen) return;
+
+      final isMiui = await const MethodChannel(
+        'com.example.app/notification_policy',
+      ).invokeMethod<bool>('isMiuiFamily');
+      if (isMiui != true) return;
+
+      if (!mounted) return;
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => const EmergencyPermissionGuideScreen(),
+        ),
+      );
+    } catch (_) {
+      // 靜默失敗：不顯示引導頁，APP 其餘行為不受影響。
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -144,6 +191,13 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
 
     _initializeElderManagerAndConnect();
     _loadSubscriptionTier();
+
+    // ★ 2026-08-20 新增：MIUI 家族裝置的「鎖定螢幕顯示／後台彈出介面」權限
+    //   引導。等第一影格畫出後才檢查與導航，且完全不 await、不擋任何既有的
+    //   啟動流程；詳見 _maybeShowMiuiPermissionGuide。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _maybeShowMiuiPermissionGuide();
+    });
   }
   
   Future<void> _initializeElderManagerAndConnect() async {
@@ -699,6 +753,15 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     try {
       await CctvAlertNotification.show({
         'elderId': (alert['elder_id'] ?? alert['elderId'] ?? '').toString(),
+        // ★ 2026-08-20：後端 Socket 'cctv-alert' payload 現會帶 elder_name
+        //   （見 yolo_alert_dispatcher.py::_build_push_payload），讓通知文案顯示姓名
+        //   而非 elder_id。這裡是 APP 在前景時的主要路徑（見本方法上方註解——背景／
+        //   被殺死時走的是 main.dart 的 FCM 分支，不經過這裡），若漏接就會讓「前景時
+        //   仍顯示 elder_id」的舊行為在這條路徑上復發。刻意不用 `?? ''` 兜底：
+        //   缺欄位時要讓值維持 null，才能讓 CctvAlertNotification.show() 內建的
+        //   elderName → elderId → 「長輩」三層退回鏈正常運作（空字串會被 `??`
+        //   當成「有值」而卡住，跳過 elderId 那一層退回）。
+        'elderName': (alert['elder_name'] ?? alert['elderName'])?.toString(),
         'alertId': (alert['alert_id'] ?? alert['alertId'] ?? '').toString(),
         'alertType': alertType,
       });

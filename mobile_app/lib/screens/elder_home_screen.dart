@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart';
@@ -8,6 +9,7 @@ import 'elder_chat_screen.dart';
 import 'elder_tabs/elder_profile_tab.dart';
 import '../globals.dart';
 import 'elder_screen.dart';
+import 'emergency_permission_guide_screen.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'dart:convert';
 import '../services/signaling.dart';
@@ -95,6 +97,47 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     } catch (_) {}
   }
 
+  /// ★ 2026-08-20 新增：長輩端首次進入首頁時，若偵測到是 MIUI 家族裝置，自動
+  /// 導向「鎖屏與背景權限設定」引導頁（`EmergencyPermissionGuideScreen`）一次。
+  ///
+  /// 為什麼放在這裡（而不是 splash_screen.dart 或 main.dart）：本專案有多輪
+  /// 因為在冷啟動路徑加東西而導致白屏／無法撥打的故障史（見
+  /// CLAUDE_call-monitor.md §8 第二十一輪），因此刻意放在「已經到達穩定首頁」
+  /// 之後才觸發，且用 addPostFrameCallback 確保第一影格已經畫出、Navigator
+  /// 已經就緒，不影響任何既有的通話／來電／冷啟動判斷邏輯——呼叫本身也完全
+  /// 不 await，不會拖慢 initState 或擋住其他初始化流程。
+  ///
+  /// 家屬端有對稱的觸發點：`family_main_screen.dart::_maybeShowMiuiPermissionGuide`
+  /// （2026-08-20 補上，見該檔說明），兩邊共用同一個 `prefsSeenKey`，任一端顯示
+  /// 過一次後另一端就不會再自動彈。家屬端另外還能從「設定 → 緊急通知權限」
+  /// 手動再次開啟同一個畫面（見 `family_settings_view.dart`）。
+  ///
+  /// 任何一步失敗（SharedPreferences 不可用、MethodChannel 未實作／拋例外）都
+  /// 直接 return，不顯示引導頁——APP 其餘行為與目前版本完全相同，不會因為這個
+  /// 新功能而多出任何啟動風險。
+  Future<void> _maybeShowMiuiPermissionGuide() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final alreadySeen =
+          prefs.getBool(EmergencyPermissionGuideScreen.prefsSeenKey) ?? false;
+      if (alreadySeen) return;
+
+      final isMiui = await const MethodChannel(
+        'com.example.app/notification_policy',
+      ).invokeMethod<bool>('isMiuiFamily');
+      if (isMiui != true) return;
+
+      if (!mounted) return;
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => const EmergencyPermissionGuideScreen(),
+        ),
+      );
+    } catch (_) {
+      // 靜默失敗：不顯示引導頁，APP 其餘行為不受影響。
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -122,6 +165,13 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
 
     // 監聽來自親人的呼叫與推播留言
     _restoreSignalingCallbacks();
+
+    // ★ 2026-08-20 新增：MIUI 家族裝置的「鎖定螢幕顯示／後台彈出介面」權限
+    //   引導。等第一影格畫出後才檢查與導航（此時 Navigator 已就緒），且完全
+    //   不 await、不擋任何既有的啟動流程；詳見 _maybeShowMiuiPermissionGuide。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _maybeShowMiuiPermissionGuide();
+    });
   }
 
   @override
