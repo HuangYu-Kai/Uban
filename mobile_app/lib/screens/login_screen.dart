@@ -97,6 +97,20 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  void _quickFillUserAccount() {
+    setState(() {
+      _emailController.text = 'boyo@uban.com';
+      _passwordController.text = 'robert20040924';
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('⚡ 已帶入 boyo@uban.com，正在登入...'),
+        duration: Duration(seconds: 1),
+      ),
+    );
+    _handleLogin();
+  }
+
   Future<void> _handleGoogleLogin() async {
     setState(() => _isLoading = true);
     try {
@@ -281,6 +295,32 @@ class _LoginScreenState extends State<LoginScreen> {
                             color: Colors.white,
                           ),
                         ),
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              // 快速登入按鈕 (boyo@uban.com)
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: OutlinedButton.icon(
+                  onPressed: _isLoading ? null : _quickFillUserAccount,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF0284C7),
+                    side: const BorderSide(color: Color(0xFF0284C7), width: 1.5),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  icon: const Icon(Icons.flash_on_rounded, color: Color(0xFF0284C7), size: 22),
+                  label: Text(
+                    '⚡ 快速登入 (boyo@uban.com)',
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
               ),
 

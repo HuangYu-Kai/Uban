@@ -48,15 +48,9 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   
   Elder? _currentElder;
   List<Elder> _elders = [];
-  bool _isElderOnline = false;
-
   /// 長輩端「第一台在線設備」的 socket id，由 `_applyDeviceList()` 維護。
   /// 撥打通話時當作 `VideoCallScreen.targetSocketId`，讓 SDP 精準送達而非靠房間廣播。
-  ///
-  /// ⚠️ 這個欄位在分支整合時連同宣告一起遺失（HEAD 上只剩三處賦值、無宣告，
-  ///    整個檔案無法編譯），2026-08-10 第十九輪補回。
-  /// 🚨 跌倒警報要開哪一台監視機時**不可**用它——那要用該裝置自己的 `id`，
-  ///    見 `_presentCctvAlert()` 內的說明。
+  /// 🚨 跌倒警報要開哪一台監視機時**不可**用它——那要用該裝置自己的 `id`。
   String? _elderSocketId;
   Timer? _deviceRefreshTimer;
   // ★ 2026-08-05 第十七輪：原本的 _onlineStateDebounceTimer / _pendingOnlineState

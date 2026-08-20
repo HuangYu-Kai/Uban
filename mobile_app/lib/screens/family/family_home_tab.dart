@@ -1,7 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:record/record.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:audioplayers/audioplayers.dart';
 import '../../models/elder.dart';
 import '../../services/api_service.dart';
 import 'alert_center_screen.dart';
@@ -32,25 +36,65 @@ class FamilyHomeTab extends StatefulWidget {
 
 class _FamilyHomeTabState extends State<FamilyHomeTab> {
   void _showSendCareCardModal(BuildContext context, String elderName) {
-    final List<Map<String, String>> careCards = [
-      {'title': '週末溫馨聚餐卡 🍲', 'desc': '阿公，這個週末一起去吃美味熱呼呼的火鍋好嗎？我訂好餐廳囉！'},
-      {'title': '午後語音茶會卡 🍵', 'desc': '阿公，下午放鬆一下，喝杯溫茶，我待會撥視訊電話給您聊聊昔日故事！'},
-      {'title': '天天開心健康關懷卡 ❤️', 'desc': '祝阿公今天也有個好心情！記得多喝水、動動身體，女兒隨時想念您喔！'},
-    ];
-
-    String selectedCard = careCards[0]['title']!;
-
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: const Color(0xFF0F172A),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       builder: (ctx) {
+        int selectedTabIndex = 0; // 0: AI短句, 1: 原聲對講
+        List<Map<String, String>> dynamicCareMessages = [];
+        bool isLoadingMessages = true;
+        int selectedCardIndex = 0;
+
+        final AudioRecorder audioRecorder = AudioRecorder();
+        final AudioPlayer audioPlayer = AudioPlayer();
+        bool isRecording = false;
+        bool isPlayingPreview = false;
+        String? recordedFilePath;
+        int recordingDuration = 0;
+        Timer? recordingTimer;
+
+        void fetchAiMessages(StateSetter setModalState) async {
+          final elderIdStr = widget.currentElder?.elderId ?? widget.currentElder?.id.toString() ?? '2';
+          try {
+            final res = await ApiService.get("/api/ai/dynamic_care_messages/$elderIdStr");
+            if (res != null && res['status'] == 'success' && res['data'] != null) {
+              final list = List<dynamic>.from(res['data']);
+              setModalState(() {
+                dynamicCareMessages = list.map((item) => {
+                  'title': (item['title'] ?? '貼心問候').toString(),
+                  'desc': (item['text'] ?? '').toString(),
+                }).toList();
+                isLoadingMessages = false;
+              });
+              return;
+            }
+          } catch (_) {}
+
+          setModalState(() {
+            dynamicCareMessages = [
+              {'title': '🍲 溫馨餐點關懷', 'desc': '$elderName，今天晚餐想吃什麼呢？待會順路幫您買過去！'},
+              {'title': '🚗 週末返家約定', 'desc': '$elderName，這週末我們要回家看您喔！準備了您喜歡的茶點！'},
+              {'title': '❤️ 貼心即時問候', 'desc': '$elderName，今天過得好嗎？想撥個電話聽聽您的聲音！'},
+            ];
+            isLoadingMessages = false;
+          });
+        }
+
         return StatefulBuilder(
           builder: (context, setModalState) {
-            return Padding(
+            if (isLoadingMessages && dynamicCareMessages.isEmpty) {
+              fetchAiMessages(setModalState);
+            }
+
+            return Container(
               padding: const EdgeInsets.all(24),
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.75,
+              ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -60,131 +104,354 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                       Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF59E0B).withValues(alpha: 0.2),
+                          color: const Color(0xFF0284C7).withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(14),
                         ),
-                        child: const Icon(Icons.mark_email_unread_rounded, color: Color(0xFFF59E0B), size: 24),
+                        child: Icon(
+                          selectedTabIndex == 0 ? Icons.auto_awesome_rounded : Icons.mic_rounded,
+                          color: const Color(0xFF38BDF8),
+                          size: 24,
+                        ),
                       ),
                       const SizedBox(width: 12),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '傳送親情關懷卡片',
-                            style: GoogleFonts.notoSansTc(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w900,
-                              color: Colors.white,
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              selectedTabIndex == 0 ? '🤖 AI 近況貼心關懷' : '🎙️ 10秒家屬原聲對講',
+                              style: GoogleFonts.notoSansTc(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.white,
+                              ),
                             ),
-                          ),
-                          Text(
-                            '選擇溫馨卡片傳送至 $elderName 的通話視訊機',
-                            style: GoogleFonts.notoSansTc(
-                              fontSize: 12,
-                              color: const Color(0xFF94A3B8),
+                            Text(
+                              selectedTabIndex == 0
+                                  ? '根據 $elderName 近期話題與活動，AI 動態推薦問候'
+                                  : '按住錄音即可傳送子女真實原聲至 $elderName 的裝置',
+                              style: GoogleFonts.notoSansTc(
+                                fontSize: 12,
+                                color: const Color(0xFF94A3B8),
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 18),
-                  ...careCards.map((card) {
-                    final isSel = selectedCard == card['title'];
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: GestureDetector(
-                        onTap: () {
-                          setModalState(() {
-                            selectedCard = card['title']!;
-                          });
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: isSel ? const Color(0xFF38BDF8).withValues(alpha: 0.15) : const Color(0xFF1E293B),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: isSel ? const Color(0xFF38BDF8) : Colors.white12,
-                              width: isSel ? 1.5 : 1,
+                  const SizedBox(height: 16),
+
+                  Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1E293B),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    padding: const EdgeInsets.all(4),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () => setModalState(() => selectedTabIndex = 0),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              decoration: BoxDecoration(
+                                color: selectedTabIndex == 0 ? const Color(0xFF0284C7) : Colors.transparent,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(Icons.auto_awesome_rounded, size: 16, color: Colors.white),
+                                  const SizedBox(width: 6),
+                                  Text('AI 近況短句', style: GoogleFonts.notoSansTc(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white)),
+                                ],
+                              ),
                             ),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                card['title']!,
-                                style: GoogleFonts.notoSansTc(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.bold,
-                                  color: isSel ? const Color(0xFF38BDF8) : Colors.white,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                card['desc']!,
-                                style: GoogleFonts.notoSansTc(
-                                  fontSize: 12,
-                                  color: const Color(0xFFCBD5E1),
-                                ),
-                              ),
-                            ],
                           ),
                         ),
-                      ),
-                    );
-                  }),
-                  const SizedBox(height: 14),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 48,
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF38BDF8),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      ),
-                      onPressed: () async {
-                        final messenger = ScaffoldMessenger.of(context);
-                        Navigator.pop(ctx);
-                        final selectedObj = careCards.firstWhere((c) => c['title'] == selectedCard);
-                        final contentMsg = '【家族心意】收到女兒傳送的「${selectedObj['title']}」：${selectedObj['desc']}';
-
-                        if (widget.currentElder?.id != null) {
-                          try {
-                            await ApiService.logActivity(widget.currentElder!.id, 'interaction', contentMsg);
-                          } catch (_) {}
-                        }
-
-                        if (mounted) {
-                          setState(() {
-                            _realLogs.insert(0, {
-                              'log_id': DateTime.now().millisecondsSinceEpoch,
-                              'event_type': 'interaction',
-                              'content': contentMsg,
-                              'timestamp': DateTime.now().toIso8601String(),
-                            });
-                          });
-
-                          messenger.showSnackBar(
-                            SnackBar(
-                              content: Text('已成功將「$selectedCard」傳送至 $elderName 的裝置！❤️', style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold)),
-                              backgroundColor: const Color(0xFF10B981),
-                              behavior: SnackBarBehavior.floating,
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () => setModalState(() => selectedTabIndex = 1),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              decoration: BoxDecoration(
+                                color: selectedTabIndex == 1 ? const Color(0xFF10B981) : Colors.transparent,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(Icons.mic_rounded, size: 16, color: Colors.white),
+                                  const SizedBox(width: 6),
+                                  Text('原聲錄音對講', style: GoogleFonts.notoSansTc(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white)),
+                                ],
+                              ),
                             ),
-                          );
-                        }
-                      },
-                      icon: const Icon(Icons.send_rounded, color: Colors.white, size: 18),
-                      label: Text(
-                        '確定傳送關懷卡片',
-                        style: GoogleFonts.notoSansTc(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+
+                  if (selectedTabIndex == 0) ...[
+                    if (isLoadingMessages)
+                      const Padding(
+                        padding: EdgeInsets.all(32.0),
+                        child: Center(child: CircularProgressIndicator(color: Color(0xFF38BDF8))),
+                      )
+                    else
+                      ...List.generate(dynamicCareMessages.length, (idx) {
+                        final card = dynamicCareMessages[idx];
+                        final isSel = selectedCardIndex == idx;
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: GestureDetector(
+                            onTap: () => setModalState(() => selectedCardIndex = idx),
+                            child: Container(
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: isSel ? const Color(0xFF0284C7).withValues(alpha: 0.2) : const Color(0xFF1E293B),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: isSel ? const Color(0xFF38BDF8) : Colors.white12,
+                                  width: isSel ? 1.5 : 1,
+                                ),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Text(
+                                        card['title']!,
+                                        style: GoogleFonts.notoSansTc(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.bold,
+                                          color: isSel ? const Color(0xFF38BDF8) : Colors.white,
+                                        ),
+                                      ),
+                                      const Spacer(),
+                                      if (isSel) const Icon(Icons.check_circle_rounded, color: Color(0xFF38BDF8), size: 18),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    card['desc']!,
+                                    style: GoogleFonts.notoSansTc(
+                                      fontSize: 13,
+                                      color: const Color(0xFFCBD5E1),
+                                      height: 1.3,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      }),
+                    const SizedBox(height: 14),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF0284C7),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        ),
+                        onPressed: () async {
+                          final messenger = ScaffoldMessenger.of(context);
+                          Navigator.pop(ctx);
+                          if (dynamicCareMessages.isEmpty) return;
+                          final selectedObj = dynamicCareMessages[selectedCardIndex];
+                          final contentMsg = '【AI 關懷傳送】${selectedObj['title']}：${selectedObj['desc']}';
+
+                          if (widget.currentElder?.id != null) {
+                            try {
+                              await ApiService.logActivity(widget.currentElder!.id, 'interaction', contentMsg);
+                            } catch (_) {}
+                          }
+
+                          if (mounted) {
+                            setState(() {
+                              _realLogs.insert(0, {
+                                'log_id': DateTime.now().millisecondsSinceEpoch,
+                                'event_type': 'interaction',
+                                'content': contentMsg,
+                                'timestamp': DateTime.now().toIso8601String(),
+                              });
+                            });
+
+                            messenger.showSnackBar(
+                              SnackBar(
+                                content: Text('已傳送 AI 貼心關懷「${selectedObj['title']}」至 $elderName 的裝置！❤️', style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold)),
+                                backgroundColor: const Color(0xFF10B981),
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          }
+                        },
+                        icon: const Icon(Icons.send_rounded, color: Colors.white, size: 18),
+                        label: Text(
+                          '推送 AI 貼心問候至長輩端',
+                          style: GoogleFonts.notoSansTc(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white),
                         ),
                       ),
                     ),
-                  ),
+                  ],
+
+                  if (selectedTabIndex == 1) ...[
+                    const SizedBox(height: 12),
+                    Center(
+                      child: Column(
+                        children: [
+                          GestureDetector(
+                            onLongPressStart: (_) async {
+                              if (await audioRecorder.hasPermission()) {
+                                final tempDir = await getTemporaryDirectory();
+                                final filePath = '${tempDir.path}/voice_note_${DateTime.now().millisecondsSinceEpoch}.m4a';
+                                await audioRecorder.start(const RecordConfig(encoder: AudioEncoder.aacLc), path: filePath);
+                                setModalState(() {
+                                  isRecording = true;
+                                  recordedFilePath = filePath;
+                                  recordingDuration = 0;
+                                });
+                                recordingTimer?.cancel();
+                                recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+                                  if (recordingDuration >= 10) {
+                                    timer.cancel();
+                                    audioRecorder.stop().then((path) {
+                                      setModalState(() {
+                                        isRecording = false;
+                                        recordedFilePath = path;
+                                      });
+                                    });
+                                  } else {
+                                    setModalState(() {
+                                      recordingDuration++;
+                                    });
+                                  }
+                                });
+                              }
+                            },
+                            onLongPressEnd: (_) async {
+                              recordingTimer?.cancel();
+                              final path = await audioRecorder.stop();
+                              setModalState(() {
+                                isRecording = false;
+                                recordedFilePath = path;
+                              });
+                            },
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              width: 90,
+                              height: 90,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: isRecording ? const Color(0xFFEF4444) : const Color(0xFF10B981),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: (isRecording ? const Color(0xFFEF4444) : const Color(0xFF10B981)).withValues(alpha: 0.4),
+                                    blurRadius: isRecording ? 20 : 10,
+                                    spreadRadius: isRecording ? 6 : 2,
+                                  )
+                                ],
+                              ),
+                              child: Icon(
+                                isRecording ? Icons.stop_rounded : Icons.mic_rounded,
+                                color: Colors.white,
+                                size: 44,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            isRecording
+                                ? '🎙️ 正在錄音中... (${recordingDuration}s / 10s)'
+                                : recordedFilePath != null
+                                    ? '✅ 錄音完成！長度: $recordingDuration 秒'
+                                    : '👉 按住大按鈕開始錄製 10 秒原聲關懷',
+                            style: GoogleFonts.notoSansTc(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: isRecording ? const Color(0xFFEF4444) : const Color(0xFF38BDF8),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+
+                          if (recordedFilePath != null && !isRecording) ...[
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                OutlinedButton.icon(
+                                  onPressed: () async {
+                                    if (isPlayingPreview) {
+                                      await audioPlayer.stop();
+                                      setModalState(() => isPlayingPreview = false);
+                                    } else {
+                                      setModalState(() => isPlayingPreview = true);
+                                      await audioPlayer.play(DeviceFileSource(recordedFilePath!));
+                                      audioPlayer.onPlayerComplete.listen((_) {
+                                        setModalState(() => isPlayingPreview = false);
+                                      });
+                                    }
+                                  },
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: const Color(0xFF10B981),
+                                    side: const BorderSide(color: Color(0xFF10B981)),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  ),
+                                  icon: Icon(isPlayingPreview ? Icons.pause_rounded : Icons.play_arrow_rounded, size: 20),
+                                  label: Text(isPlayingPreview ? '暫停試聽' : '試聽原聲錄音', style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold)),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: recordedFilePath != null ? const Color(0xFF10B981) : const Color(0xFF64748B),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        ),
+                        onPressed: recordedFilePath == null
+                            ? null
+                            : () async {
+                                final messenger = ScaffoldMessenger.of(context);
+                                Navigator.pop(ctx);
+                                final contentMsg = '【家屬原聲對講】子女傳送了一段 10 秒原聲關懷語音 🎙️';
+
+                                if (widget.currentElder?.id != null) {
+                                  try {
+                                    await ApiService.logActivity(widget.currentElder!.id, 'voice', contentMsg);
+                                  } catch (_) {}
+                                }
+
+                                if (mounted) {
+                                  messenger.showSnackBar(
+                                    SnackBar(
+                                      content: Text('已發送 10 秒家屬原聲關懷至 $elderName 的裝置！🔊', style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold)),
+                                      backgroundColor: const Color(0xFF10B981),
+                                      behavior: SnackBarBehavior.floating,
+                                    ),
+                                  );
+                                }
+                              },
+                        icon: const Icon(Icons.volume_up_rounded, color: Colors.white, size: 18),
+                        label: Text(
+                          '傳送 10 秒原聲語音至長輩端',
+                          style: GoogleFonts.notoSansTc(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white),
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             );
@@ -504,38 +771,87 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
 
   @override
   Widget build(BuildContext context) {
-    return RefreshIndicator(
-      color: const Color(0xFF38BDF8),
-      backgroundColor: const Color(0xFF1E293B),
-      onRefresh: _loadDynamicData,
-      child: CustomScrollView(
-        physics: const BouncingScrollPhysics(
-          parent: AlwaysScrollableScrollPhysics(),
-        ),
-        slivers: [
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
-            sliver: SliverList(
-              delegate: SliverChildListDelegate([
-                // 1. 長輩頂部極光卡片與在線狀態
-                _buildElderHeaderCard(context),
-                const SizedBox(height: 16),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final bool isTabletLandscape = constraints.maxWidth >= 900;
 
-                // 2. 🤖 亮點一：AI 長輩情緒氣象台 & 破冰金句卡片
-                _buildAiMoodRadarCard(context),
-                const SizedBox(height: 16),
-
-                // 3. 📸 亮點二：長輩生活動態時光牆 (Elder Life Feed)
-                _buildElderLifeFeedSection(context),
-                const SizedBox(height: 16),
-
-                // 4. 警示預覽
-                _buildAlertPreview(context),
-              ]),
+        if (isTabletLandscape) {
+          return RefreshIndicator(
+            color: const Color(0xFF38BDF8),
+            backgroundColor: const Color(0xFF1E293B),
+            onRefresh: _loadDynamicData,
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 👈 左欄：即時狀態、AI 情緒氣象台、健康警報 (佔比 42%)
+                  Expanded(
+                    flex: 42,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildElderHeaderCard(context),
+                        const SizedBox(height: 16),
+                        _buildAiMoodRadarCard(context),
+                        const SizedBox(height: 16),
+                        _buildAlertPreview(context),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 20),
+                  // 👉 右欄：動態生活時光牆 (佔比 58%)
+                  Expanded(
+                    flex: 58,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildElderLifeFeedSection(context),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
+          );
+        }
+
+        // 📱 手機模式：單欄流式佈局
+        return RefreshIndicator(
+          color: const Color(0xFF38BDF8),
+          backgroundColor: const Color(0xFF1E293B),
+          onRefresh: _loadDynamicData,
+          child: CustomScrollView(
+            physics: const BouncingScrollPhysics(
+              parent: AlwaysScrollableScrollPhysics(),
+            ),
+            slivers: [
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
+                sliver: SliverList(
+                  delegate: SliverChildListDelegate([
+                    // 1. 長輩頂部極光卡片與在線狀態
+                    _buildElderHeaderCard(context),
+                    const SizedBox(height: 16),
+
+                    // 2. 🤖 亮點一：AI 長輩情緒氣象台 & 破冰金句卡片
+                    _buildAiMoodRadarCard(context),
+                    const SizedBox(height: 16),
+
+                    // 3. 📸 亮點二：長輩生活動態時光牆 (Elder Life Feed)
+                    _buildElderLifeFeedSection(context),
+                    const SizedBox(height: 16),
+
+                    // 4. 警示預覽
+                    _buildAlertPreview(context),
+                  ]),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 

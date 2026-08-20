@@ -9,7 +9,8 @@ import '../../models/elder.dart';
 import '../../services/signaling.dart';
 import '../../services/api_service.dart';
 import '../video_call_screen.dart';
-import 'family_subscription_screen.dart';
+import '../camera_screen.dart';
+import 'family_ai_copilot_screen.dart';
 
 class FamilyInteractionTab extends StatefulWidget {
   final Elder? currentElder;
@@ -18,10 +19,6 @@ class FamilyInteractionTab extends StatefulWidget {
   final List<Map<String, dynamic>> activeAlerts;
   final int devicesMax;
   final String tierDisplayName;
-
-  /// ★ 2026-08-04 第 6 項：訂閱層級代號（free / gold / diamond），
-  /// 供徽章依層級套用不同顏色。顯示文字仍一律使用 [tierDisplayName]
-  /// （一般會員／黃金會員／鑽石會員），代號不直接曝露給使用者。
   final String tierLevel;
   final int? userId;
 
@@ -58,24 +55,10 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
   List<Map<String, dynamic>> _reminders = [];
   bool _isLoadingReminders = false;
 
-  // ★ 2026-08-04 第 7 項：跌倒警報的語音橋狀態。
-  // ⚠️ 這三行宣告在分支整合時遺失（HEAD 上有 11 處使用卻無宣告，整個檔案無法編譯），
-  //    2026-08-10 第十九輪補回。
-  /// 已查過語音橋的 alert_id——同一筆只查一次，失敗也不重試（避免網路問題洗版）。
   final Set<int> _audioBridgeChecked = {};
-  /// 正在開通語音橋的 alert_id，用來把按鈕切成 loading 並防連點。
   final Set<int> _audioBridgePending = {};
-  /// alert_id → 語音橋到期時間字串（後端回傳的 `expire_at` 原文）。
   final Map<int, String> _audioBridgeExpire = {};
-
-  /// ★ 2026-08-11 第二十二輪（需求 1）：配對碼彈窗的「綁定完成」輪詢計時器。
-  /// 宣告成欄位（而非只在 `_showAddMonitorDialog` 的區域變數）是為了讓 [dispose]
-  /// 一定關得掉——使用者可能在配對進行中直接切分頁或退出家屬端。
   Timer? _monitorBindPollTimer;
-
-  // ⚠️ initState / didUpdateWidget 在分支整合時各被複製成兩份
-  //    （第二份原本在 _buildCatChip 之後），Dart 不允許重複定義。
-  //    2026-08-10 第十九輪合併為一份，兩邊的副作用都保留。
   @override
   void initState() {
     super.initState();
@@ -179,19 +162,37 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
     }
   }
 
-  Future<void> _showAddReminderDialog() async {
+  Future<void> _showAddReminderDialog({Map<String, dynamic>? existingReminder}) async {
     if (widget.currentElder == null) return;
     final prefs = await SharedPreferences.getInstance();
-    final familyId = prefs.getInt('caregiver_id');
-    if (familyId == null) return;
+    final familyId = prefs.getInt('caregiver_id') ?? 1;
 
+    final bool isEditing = existingReminder != null;
     final String elderIdStr = widget.currentElder!.elderId ?? widget.currentElder!.id.toString();
-    final TextEditingController titleCtrl = TextEditingController();
-    final TextEditingController noteCtrl = TextEditingController();
+    final TextEditingController titleCtrl = TextEditingController(text: existingReminder?['title'] ?? '');
+    final TextEditingController noteCtrl = TextEditingController(text: existingReminder?['note'] ?? '');
+    
     TimeOfDay selectedTime = TimeOfDay.now();
+    if (isEditing && existingReminder!['time_str'] != null) {
+      try {
+        final parts = existingReminder['time_str'].toString().split(':');
+        if (parts.length >= 2) {
+          selectedTime = TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
+        }
+      } catch (_) {}
+    }
+
     DateTime? selectedDate = DateTime.now();
-    String selectedCategory = 'medication';
-    String selectedRepeat = '每天';
+    if (isEditing && existingReminder!['start_date'] != null && existingReminder['start_date'].toString().isNotEmpty) {
+      try {
+        selectedDate = DateTime.parse(existingReminder['start_date']);
+      } catch (_) {}
+    } else if (isEditing && (existingReminder!['start_date'] == null || existingReminder['start_date'].toString().isEmpty)) {
+      selectedDate = null;
+    }
+
+    String selectedCategory = existingReminder?['category'] ?? 'medication';
+    String selectedRepeat = existingReminder?['repeat_days'] ?? '每天';
 
     final bool? created = await showDialog<bool>(
       context: context,
@@ -228,11 +229,11 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                       color: const Color(0xFF38BDF8).withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: const Icon(Icons.add_alarm_rounded, color: Color(0xFF38BDF8)),
+                    child: Icon(isEditing ? Icons.edit_calendar_rounded : Icons.add_alarm_rounded, color: const Color(0xFF38BDF8)),
                   ),
                   const SizedBox(width: 12),
                   Text(
-                    '新增遠端提醒',
+                    isEditing ? '編輯遠端提醒' : '新增遠端提醒',
                     style: GoogleFonts.notoSansTc(color: Colors.white, fontWeight: FontWeight.bold),
                   ),
                 ],
@@ -277,7 +278,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                         final picked = await showDatePicker(
                           context: context,
                           initialDate: selectedDate ?? DateTime.now(),
-                          firstDate: DateTime.now().subtract(const Duration(days: 1)),
+                          firstDate: DateTime.now().subtract(const Duration(days: 365)),
                           lastDate: DateTime.now().add(const Duration(days: 365)),
                         );
                         if (picked != null) setDialogState(() => selectedDate = picked);
@@ -401,30 +402,45 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                     if (titleCtrl.text.trim().isEmpty) return;
                     final timeStr = "${selectedTime.hour.toString().padLeft(2, '0')}:${selectedTime.minute.toString().padLeft(2, '0')}";
                     final dateStr = selectedDate != null ? "${selectedDate!.year}-${selectedDate!.month.toString().padLeft(2, '0')}-${selectedDate!.day.toString().padLeft(2, '0')}" : null;
-                    final res = await ApiService.post("/api/reminder/", {
-                      "family_id": familyId,
-                      "elder_id": elderIdStr,
-                      "title": titleCtrl.text.trim(),
-                      "category": selectedCategory,
-                      "time_str": timeStr,
-                      "repeat_days": selectedRepeat,
-                      "start_date": dateStr,
-                      "note": noteCtrl.text.trim(),
-                    });
+                    
+                    bool success = false;
+                    if (isEditing) {
+                      success = await ApiService.updateElderReminder(existingReminder['id'], {
+                        "title": titleCtrl.text.trim(),
+                        "category": selectedCategory,
+                        "time_str": timeStr,
+                        "repeat_days": selectedRepeat,
+                        "start_date": dateStr,
+                        "note": noteCtrl.text.trim(),
+                      });
+                    } else {
+                      final res = await ApiService.post("/api/reminder/", {
+                        "family_id": familyId,
+                        "elder_id": elderIdStr,
+                        "title": titleCtrl.text.trim(),
+                        "category": selectedCategory,
+                        "time_str": timeStr,
+                        "repeat_days": selectedRepeat,
+                        "start_date": dateStr,
+                        "note": noteCtrl.text.trim(),
+                      });
+                      success = res != null && res['status'] == 'success';
+                    }
+
                     if (ctx.mounted) {
-                      if (res != null && res['status'] == 'success') {
+                      if (success) {
                         Navigator.pop(ctx, true);
                       } else {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
-                            content: Text('新增提醒失敗: ${res?['message'] ?? '連線失敗'}'),
+                            content: Text(isEditing ? '儲存提醒失敗' : '新增提醒失敗'),
                             backgroundColor: const Color(0xFFEF4444),
                           ),
                         );
                       }
                     }
                   },
-                  child: Text('確認新增', style: GoogleFonts.notoSansTc(color: Colors.white, fontWeight: FontWeight.bold)),
+                  child: Text(isEditing ? '確認儲存' : '確認新增', style: GoogleFonts.notoSansTc(color: Colors.white, fontWeight: FontWeight.bold)),
                 ),
               ],
             );
@@ -557,7 +573,6 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
       ),
     );
   }
-
   @override
   void dispose() {
     // ★ 2026-08-11 第二十二輪（需求 1）：離開分頁時務必停掉配對輪詢，
@@ -572,7 +587,6 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
     if (widget.currentElder == null) return;
     final prefs = await SharedPreferences.getInstance();
     final familyId = prefs.getInt('caregiver_id');
-    if (!mounted) return;   // await 期間畫面可能已被銷毀，先確認再碰 context
     if (familyId == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('無法取得您的帳號 ID')));
       return;
@@ -778,9 +792,10 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
     
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      backgroundColor: const Color(0xFF0F172A),
+      shape: RoundedRectangleBorder(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        side: BorderSide(color: const Color(0xFF0284C7).withValues(alpha: 0.4), width: 1.5),
       ),
       builder: (context) {
         final String rawId = widget.currentElder!.elderId ?? widget.currentElder!.id.toString();
@@ -791,11 +806,11 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
-                  width: 40,
-                  height: 4,
+                  width: 44,
+                  height: 5,
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(2),
+                    color: const Color(0xFF334155),
+                    borderRadius: BorderRadius.circular(3),
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -804,7 +819,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                   style: GoogleFonts.notoSansTc(
                     fontSize: 22,
                     fontWeight: FontWeight.bold,
-                    color: const Color(0xFF1E293B),
+                    color: Colors.white,
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -813,7 +828,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                   title: '一般視訊通話',
                   subtitle: '長輩需手動接聽後建立連線',
                   icon: Icons.video_call_rounded,
-                  color: const Color(0xFF3B82F6),
+                  color: const Color(0xFF38BDF8),
                   onTap: () {
                     Navigator.pop(context);
                     Navigator.push(
@@ -854,6 +869,25 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                     );
                   },
                 ),
+                const SizedBox(height: 16),
+                // 單向視訊監控
+                _buildCallOptionButton(
+                  title: '單向視訊監控',
+                  subtitle: '不打擾長輩，靜音查看即時畫面',
+                  icon: Icons.visibility_rounded,
+                  color: const Color(0xFFA78BFA),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => CameraScreen(
+                          roomId: 'monitor_elder_$rawId',
+                        ),
+                      ),
+                    );
+                  },
+                ),
               ],
             ),
           ),
@@ -869,56 +903,66 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
     required Color color,
     required VoidCallback onTap,
   }) {
-    return InkWell(
-      onTap: () {
-        HapticFeedback.lightImpact();
-        onTap();
-      },
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withValues(alpha: 0.15)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: color,
-                shape: BoxShape.circle,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          HapticFeedback.lightImpact();
+          onTap();
+        },
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1E293B),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: color.withValues(alpha: 0.35), width: 1.2),
+            boxShadow: [
+              BoxShadow(
+                color: color.withValues(alpha: 0.12),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
               ),
-              child: Icon(icon, color: Colors.white, size: 28),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: color,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 14,
-                      color: const Color(0xFF64748B),
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.2),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: color.withValues(alpha: 0.4)),
+                ),
+                child: Icon(icon, color: color, size: 28),
               ),
-            ),
-            Icon(Icons.chevron_right_rounded, color: color.withValues(alpha: 0.7), size: 24),
-          ],
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: 13,
+                        color: const Color(0xFF94A3B8),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded, color: color.withValues(alpha: 0.7), size: 24),
+            ],
+          ),
         ),
       ),
     );
@@ -993,16 +1037,243 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
               _buildCallSection(),
               const SizedBox(height: 20),
 
-              // 2. 留言發送區（快速短句 + 自訂輸入）
+              // 2. 🤖 AI 照護共創助理（對話建立排程與近況速報）
+              _buildAiCopilotSection(),
+              const SizedBox(height: 20),
+
+              // 3. 留言發送區（快速短句 + 自訂輸入）
               _buildMessageSection(),
               const SizedBox(height: 20),
 
-              // 3. 遠端監控區（方案 B：未連接獨立攝影機設備預留）
+              // 4. 遠端監控區（方案 B：未連接獨立攝影機設備預留）
               _buildMonitorSection(),
             ]),
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildAiCopilotSection() {
+    final elderName = widget.currentElder?.displayName ?? '長輩';
+
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(28),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFF38BDF8),
+            Color(0xFF8B5CF6),
+            Color(0xFF10B981),
+          ],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0284C7).withValues(alpha: 0.3),
+            blurRadius: 24,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(1.5),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: const Color(0xFF0F172A),
+          borderRadius: BorderRadius.circular(26.5),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(11),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF0284C7), Color(0xFF6366F1)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF38BDF8).withValues(alpha: 0.35),
+                        blurRadius: 12,
+                      ),
+                    ],
+                  ),
+                  child: const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 22),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            'AI 照護共創助理',
+                            style: GoogleFonts.notoSansTc(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.white,
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.5)),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 6,
+                                  height: 6,
+                                  decoration: const BoxDecoration(
+                                    color: Color(0xFF10B981),
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '就緒',
+                                  style: GoogleFonts.notoSansTc(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    color: const Color(0xFF10B981),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '對話建立排程與近況速報摘要',
+                        style: GoogleFonts.notoSansTc(
+                          fontSize: 12,
+                          color: const Color(0xFF94A3B8),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Text(
+              '與 AI 照護助理對話，可快速獲取 $elderName 的最新動態速報，或直接以自然語言語音建立吃藥與運動排程！',
+              style: GoogleFonts.notoSansTc(
+                fontSize: 13,
+                color: const Color(0xFFCBD5E1),
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                _buildAuroraBadge(Icons.wb_sunny_rounded, '近況速報', const Color(0xFF38BDF8)),
+                const SizedBox(width: 8),
+                _buildAuroraBadge(Icons.edit_calendar_rounded, '對話建立排程', const Color(0xFF10B981)),
+                const SizedBox(width: 8),
+                _buildAuroraBadge(Icons.forum_rounded, '照護諮詢', const Color(0xFFF59E0B)),
+              ],
+            ),
+            const SizedBox(height: 18),
+            Container(
+              width: double.infinity,
+              height: 50,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(18),
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF0284C7), Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF0284C7).withValues(alpha: 0.4),
+                    blurRadius: 14,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(18),
+                  onTap: () {
+                    HapticFeedback.mediumImpact();
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => FamilyAiCopilotScreen(currentElder: widget.currentElder),
+                      ),
+                    ).then((_) {
+                      _fetchReminders();
+                    });
+                  },
+                  child: Center(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 20),
+                        const SizedBox(width: 8),
+                        Text(
+                          '開啟 AI 照護對話助理',
+                          style: GoogleFonts.notoSansTc(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        const Icon(Icons.arrow_forward_rounded, color: Colors.white70, size: 18),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAuroraBadge(IconData icon, String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: color),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: GoogleFonts.notoSansTc(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1460,12 +1731,31 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                             ),
                           ),
                           const SizedBox(height: 6),
-                          IconButton(
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                            icon: const Icon(Icons.delete_outline_rounded, color: Color(0xFFEF4444), size: 21),
-                            tooltip: '刪除提醒',
-                            onPressed: () => _deleteReminder(r['id']),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
+                                icon: const Icon(Icons.edit_note_rounded, color: Color(0xFF38BDF8), size: 24),
+                                tooltip: '編輯提醒',
+                                onPressed: () => _showAddReminderDialog(existingReminder: r),
+                              ),
+                              IconButton(
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
+                                icon: const Icon(Icons.volume_up_rounded, color: Color(0xFF10B981), size: 21),
+                                tooltip: '立即廣播',
+                                onPressed: () => _broadcastReminder(r),
+                              ),
+                              IconButton(
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
+                                icon: const Icon(Icons.delete_outline_rounded, color: Color(0xFFEF4444), size: 21),
+                                tooltip: '刪除提醒',
+                                onPressed: () => _deleteReminder(r['id']),
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -1806,12 +2096,6 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                     fontWeight: hasActiveAlert ? FontWeight.w600 : FontWeight.normal,
                   ),
                 ),
-                // ★ 2026-08-04 第 7 項：僅在有作用中警報時才出現語音通道按鈕。
-                //   平時不顯示 = 權限平時關閉（需求明訂）。
-                if (hasActiveAlert && alertId != null && numericDeviceId != null) ...[
-                  const SizedBox(height: 8),
-                  _buildAudioBridgeButton(alertId, numericDeviceId),
-                ],
               ],
             ),
           ),
@@ -2143,11 +2427,9 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                 color: color,
               ),
             ),
-            const SizedBox(width: 2),
-            Icon(Icons.chevron_right_rounded, size: 16, color: color),
           ],
         ),
       ),
-    );
+    ).animate().fadeIn(delay: 200.ms, duration: 400.ms);
   }
 }

@@ -32,6 +32,7 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
   String? _pairingCode;
   int _secondsLeft = 0;
   bool _isLoading = true;
+  bool isMonitor = false;
   Timer? _statusTimer;
 
   @override
