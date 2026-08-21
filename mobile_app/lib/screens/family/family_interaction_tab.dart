@@ -11,6 +11,7 @@ import '../../services/api_service.dart';
 import '../video_call_screen.dart';
 import '../camera_screen.dart';
 import 'family_ai_copilot_screen.dart';
+import 'family_subscription_screen.dart';
 
 class FamilyInteractionTab extends StatefulWidget {
   final Elder? currentElder;
@@ -2361,7 +2362,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
             onPressed: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => const FamilySubscriptionScreen()),
+                MaterialPageRoute(builder: (_) => FamilySubscriptionScreen()),
               );
             },
             style: TextButton.styleFrom(
@@ -2404,7 +2405,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
       onTap: () {
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => const FamilySubscriptionScreen()),
+          MaterialPageRoute(builder: (_) => FamilySubscriptionScreen()),
         );
       },
       child: Container(

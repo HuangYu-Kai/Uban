@@ -1393,73 +1393,10 @@ class ApiService {
           .get(Uri.parse('$baseUrl/activity/elder/$elderId?limit=$limit'))
           .timeout(_timeout);
       final data = _safeDecode(response);
-      List<dynamic> logs = [];
       if (data['status'] == 'success' && data['data'] is List) {
-        logs = List<dynamic>.from(data['data']);
+        return List<dynamic>.from(data['data']);
       }
-      
-      final now = DateTime.now();
-      final todayStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
-      final yesterday = now.subtract(const Duration(days: 1));
-      final yesterdayStr = "${yesterday.year}-${yesterday.month.toString().padLeft(2, '0')}-${yesterday.day.toString().padLeft(2, '0')}";
-
-      // 若遠端日誌為空或缺少今日對話，補足豐富的多主題展示數據
-      final hasTodayLogs = logs.any((l) => l['timestamp']?.toString().startsWith(todayStr) == true);
-      if (!hasTodayLogs || logs.length < 5) {
-        final mockMultiTopicLogs = [
-          {
-            'log_id': 1001,
-            'user_id': int.tryParse(elderId) ?? 13,
-            'event_type': 'medication',
-            'content': '💊 長輩已完成「08:00 吃降血壓藥」用藥打卡確認',
-            'timestamp': '$todayStr 08:15:20',
-          },
-          {
-            'log_id': 1002,
-            'user_id': int.tryParse(elderId) ?? 13,
-            'event_type': 'activity',
-            'content': '長者詢問：今天去大安森林公園散步走了三圈，流了一點汗好舒服！ | AI 回應：太棒了宇璿！今天早上記步器顯示您已經累積超過 3,850 步囉！運動完記得要多補充溫水，擦乾汗水別著涼了喔！',
-            'timestamp': '$todayStr 08:45:10',
-          },
-          {
-            'log_id': 1003,
-            'user_id': int.tryParse(elderId) ?? 13,
-            'event_type': 'chat',
-            'content': '長者詢問：小嘎，我剛剛在泡茶，想起年輕時在台北大稻埕做布莊學徒的日子，那時候每天都要搬幾十匹布呢！ | AI 回應：哇，宇璿年輕時在大稻埕布莊一定很勤勞！那時候的迪化街是不是非常熱鬧？現在泡茶配著回憶，感覺特別有滋味呢。',
-            'timestamp': '$todayStr 10:15:30',
-          },
-          {
-            'log_id': 1004,
-            'user_id': int.tryParse(elderId) ?? 13,
-            'event_type': 'news_view',
-            'content': '長者詢問：小嘎，今天有沒有什麼熱門的棒球比賽消息？ | AI 回應：宇璿，今天的體育熱門焦點是世界棒球經典賽的最新戰報，台灣隊發揮出色順利晉級，全場球迷都熱血沸騰呢！',
-            'timestamp': '$todayStr 10:50:45',
-          },
-          {
-            'log_id': 1005,
-            'user_id': int.tryParse(elderId) ?? 13,
-            'event_type': 'youtube_query',
-            'content': '長者詢問：小嘎，我想聽幾首鄧麗君的老歌，像是《甜蜜蜜》 | AI 回應：沒問題！為宇璿播放經典老歌《甜蜜蜜》，優美的旋律讓心情放鬆一下～',
-            'timestamp': '$todayStr 11:20:15',
-          },
-          {
-            'log_id': 1006,
-            'user_id': int.tryParse(elderId) ?? 13,
-            'event_type': 'chat',
-            'content': '長者詢問：小嘎，我剛剛吃完午餐，降血壓藥是不是要隔半小時再吃？ | AI 回應：宇璿，降血壓藥飯後隔 20~30 分鐘吃剛剛好喔！記得要配溫開水，吃完後稍作休息，不要太急著站起來走動喔！',
-            'timestamp': '$todayStr 11:55:00',
-          },
-          {
-            'log_id': 1007,
-            'user_id': int.tryParse(elderId) ?? 13,
-            'event_type': 'chat',
-            'content': '長者詢問：小嘎，今天晚餐吃什麼好呢？ | AI 回應：宇璿，今天天氣涼爽，來一碗熱呼呼的香菇雞湯配清炒時蔬很棒喔！營養又暖胃～',
-            'timestamp': '$yesterdayStr 16:30:00',
-          },
-        ];
-        logs = [...mockMultiTopicLogs, ...logs];
-      }
-      return logs;
+      return [];
     } catch (e) {
       debugPrint('⚠️ getElderActivityLogs error: $e');
       return [];

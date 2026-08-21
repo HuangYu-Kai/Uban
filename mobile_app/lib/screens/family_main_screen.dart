@@ -48,6 +48,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   
   Elder? _currentElder;
   List<Elder> _elders = [];
+  bool _isElderOnline = false;
   /// 長輩端「第一台在線設備」的 socket id，由 `_applyDeviceList()` 維護。
   /// 撥打通話時當作 `VideoCallScreen.targetSocketId`，讓 SDP 精準送達而非靠房間廣播。
   /// 🚨 跌倒警報要開哪一台監視機時**不可**用它——那要用該裝置自己的 `id`。
@@ -392,7 +393,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
       if (unboundElderId == null) return;
 
       // 比對當前選中的長輩
-      final currentElderId = _currentElder?.elderId ?? _currentElder?.id?.toString();
+      final currentElderId = _currentElder?.elderId ?? _currentElder?.id.toString();
       final isCurrentElder = unboundElderId == currentElderId;
 
       // 從列表中移除

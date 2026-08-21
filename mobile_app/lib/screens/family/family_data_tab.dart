@@ -1150,14 +1150,6 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
                           fontWeight: FontWeight.w800,
                           color: const Color(0xFFFEF3C7),
                         ),
-=======
-                    Text(
-                      st['title']!,
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        color: const Color(0xFFFEF3C7),
->>>>>>> feat/news-player-fix
                       ),
                     ),
                     const SizedBox(width: 8),
