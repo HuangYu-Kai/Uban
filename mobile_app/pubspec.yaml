@@ -129,6 +129,11 @@ flutter:
   # To add assets to your application, add an assets section, like this:
   assets:
     - assets/images/
+    - assets/images/pet_seq_idle/
+    - assets/images/pet_seq_anticipate/
+    - assets/images/pet_seq_chewing/
+    - assets/images/pet_seq_celebration/
+    - assets/images/pet_seq_sleep/
     - .env
     - assets/models/
     # ★ 2026-08-11 第二十二輪（需求 9）：緊急通話 7 秒提示音，取代原本的 TTS 語音播報。

@@ -17,6 +17,10 @@ import '../../globals.dart';
 import '../../services/session_manager.dart';
 import '../../services/api_service.dart';
 import '../../widgets/google_assistant_overlay.dart';
+import '../pet_companion_studio/models/pet_growth_state.dart';
+import '../pet_companion_studio/pet_studio_screen.dart';
+import '../pet_companion_studio/widgets/animated_piglet_actor.dart';
+import '../pet_companion_studio/widgets/hand_drawn_piglet_actor.dart';
 
 enum _PetMood {
   superHappy, // 活力滿滿 / 達標 / 任務100% / 摸摸
@@ -820,14 +824,12 @@ class _ElderProfileTabState extends State<ElderProfileTab>
         .where((r) => _completedReminderIds.contains(r['id']))
         .length;
 
-    String petAsset;
     String moodLabel;
     IconData moodIcon;
     Color moodThemeColor;
 
     switch (mood) {
       case _PetMood.superHappy:
-        petAsset = 'assets/images/pig_2d_happy_v4.png';
         moodLabel = (totalTasks > 0 && completedTasks >= totalTasks)
             ? '任務全達標 🎉'
             : (progress >= 1.0 ? '步數達成 👑' : '活力滿分 🌟');
@@ -835,27 +837,21 @@ class _ElderProfileTabState extends State<ElderProfileTab>
         moodThemeColor = const Color(0xFFF59E0B);
         break;
       case _PetMood.walking:
-        petAsset = _walkFrame == 1
-            ? 'assets/images/pig_2d_walk_1_v4.png'
-            : 'assets/images/pig_2d_walk_2_v4.png';
         moodLabel = '同行漫步中';
         moodIcon = Icons.directions_walk_rounded;
         moodThemeColor = const Color(0xFF0284C7);
         break;
       case _PetMood.sleeping:
-        petAsset = 'assets/images/pig_2d_sleep_v4.png';
         moodLabel = '乖乖休息中';
         moodIcon = Icons.bedtime_rounded;
         moodThemeColor = const Color(0xFF8B5CF6);
         break;
       case _PetMood.reminding:
-        petAsset = 'assets/images/pig_2d_idle_v4.png';
         moodLabel = '子女排程待辦';
         moodIcon = Icons.notifications_active_rounded;
         moodThemeColor = const Color(0xFFF97316);
         break;
       case _PetMood.content:
-        petAsset = 'assets/images/pig_2d_idle_v4.png';
         moodLabel = '元氣陪伴中';
         moodIcon = Icons.favorite_rounded;
         moodThemeColor = const Color(0xFF059669);
@@ -895,44 +891,28 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                   ),
                 ),
 
-              // 核心小豬寵物本體（帶彈跳與點擊互動）
+              // 核心小豬手繪逐格寵物本體（帶彈跳與點擊互動）
               ScaleTransition(
-                scale: Tween<double>(begin: 1.0, end: 1.15).animate(
+                scale: Tween<double>(begin: 1.0, end: 1.12).animate(
                   CurvedAnimation(
                     parent: _petBounceController,
                     curve: Curves.elasticOut,
                   ),
                 ),
-                child: Container(
-                  width: 125,
-                  height: 125,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: const Color(0xFFFFFFFF),
-                    border: Border.all(
-                      color: moodThemeColor.withValues(alpha: 0.35),
-                      width: 3.0,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: moodThemeColor.withValues(alpha: 0.18),
-                        blurRadius: 16,
-                        offset: const Offset(0, 5),
-                      ),
-                    ],
-                  ),
-                  child: ClipOval(
-                    child: Padding(
-                      padding: const EdgeInsets.all(6.0),
-                      child: Image.asset(
-                        petAsset,
-                        fit: BoxFit.contain,
-                        errorBuilder: (_, __, ___) => const Center(
-                          child: Icon(Icons.pets_rounded,
-                              size: 56, color: Color(0xFF59B294)),
-                        ),
-                      ),
-                    ),
+                child: SizedBox(
+                  width: 170,
+                  height: 170,
+                  child: HandDrawnPigletActor(
+                    size: 160,
+                    mood: mood == _PetMood.superHappy
+                        ? ActorMood.superHappy
+                        : (mood == _PetMood.sleeping
+                            ? ActorMood.sleeping
+                            : (mood == _PetMood.reminding
+                                ? ActorMood.anticipating
+                                : ActorMood.idle)),
+                    onPetHead: _handlePetTap,
+                    onPokeBelly: _handlePetTap,
                   ),
                 ),
               ),
@@ -1054,6 +1034,55 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                 ),
                 const Icon(Icons.arrow_drop_down,
                     size: 16, color: Color(0xFF64748B)),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+
+        // ── 🏡 前往福氣小豬窩按鈕 ──
+        InkWell(
+          onTap: () {
+            HapticFeedback.selectionClick();
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => PetStudioScreen(
+                  initialSteps: currentSteps,
+                  userName: widget.userName,
+                ),
+              ),
+            );
+          },
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFFFEF3C7), Color(0xFFFDE68A)],
+              ),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.5)),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('🏡', style: TextStyle(fontSize: 14)),
+                const SizedBox(width: 5),
+                Text(
+                  '前往福氣小豬窩 🐾',
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w900,
+                    color: const Color(0xFF92400E),
+                  ),
+                ),
               ],
             ),
           ),
