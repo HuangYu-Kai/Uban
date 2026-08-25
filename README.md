@@ -426,6 +426,25 @@ void initPedometer() {
 > 但只寫進 `CLAUDE_call-monitor.md` 沒進本日誌的通話／監控工作）。
 > 內容依 commit diff 與該文件重建，細節可能不如當事人寫得完整。
 
+### 2026-08-24 👥 長輩與家庭溫馨社群系統（雙向時光牆 + 後端資料庫串接 + 照片發佈）
+
+> **封閉式家庭親友圈社群系統**正式前後端打通上線！支援長輩與子女雙向發文、拍照上傳、心情記錄、一鍵送關心 ❤️ 與留言互動。
+> 完整技術設計見 [家庭親友圈社群時光牆技術設計與實作紀錄](docs/technical/COMMUNITY_ARCHITECTURE.md)。
+
+**核心功能與架構亮點**
+- **後端 (uban-api)**：
+  - 新增 `routers/community.py`：包含 `GET /api/community/posts`（自動親屬圈動態解析）、`POST /api/community/posts`（發佈近況）、`POST /api/community/posts/{id}/like`（切換關心 ❤️ 狀態）、`POST /api/community/posts/{id}/comments`（留言回覆）、`POST /api/community/upload`（Multipart 照片上傳至 `/uploads/community/`）。
+  - 自動於 MySQL / SQLite 建立 `community_posts`、`community_comments`、`community_post_likes`（含唯一防重讚鍵）。
+- **前端 — 長輩端 (Flutter)**：
+  - 底部浮動導覽列第 3 頁獨立分頁 `[ 👥 社群 ]`（`ElderCommunityScreen`）。
+  - 專為銀髮族打造的「超大字體 (24pt) + 大卡片 + 常用短語一鍵發文 + 拍照上傳 + 大按鈕關心 ❤️」無障礙介面。
+- **前端 — 家屬端 (Flutter)**：
+  - 互動分頁新增「家庭生活時光牆 👥」綠色旗艦卡片，子女可瀏覽長輩生活動態、傳照片與留言關懷。
+- **資料同步與韌性**：
+  - `CommunityService` 採用混合模式：聯網優先讀寫遠端 DB，離線無縫退守本機 `SharedPreferences` 快取。
+
+---
+
 ### 2026-08-12 🚨 緊急通話真正的「無條件」、APP 外拒接、雙端重撥對話框（第二十三輪）✍️
 
 > 本輪全部是前端，後端一行未動。完整根因鏈見 `CLAUDE_call-monitor.md` §8 第二十三輪。
@@ -735,6 +754,7 @@ Dockerfile 的 webbuild stage 已在乾淨目錄乾跑過（`npm ci` → 複製�
 - **視訊修復**：修好合併後「App 內長輩端無法打給家屬端」。
 
 ---
+
 
 ### 2026-07-29 💳 PRO 進階照護訂閱前後端接通（RevenueCat + 後端單一真相來源）
 
