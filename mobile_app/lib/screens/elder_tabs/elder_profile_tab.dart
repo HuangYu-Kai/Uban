@@ -1320,7 +1320,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     );
   }
 
-  // ── 🐾 旗艦一體化：左側寵物夥伴 ＆ 右側今日步數圓環與健康統計 ─────────────
+  // ── 🐾 旗艦一體化：左側寵物夥伴 ＆ 右側今日步數圓環與健康統計（各佔 50%）─────────────
   Widget _buildUnifiedPetAndGoalCard() {
     final double progress = (currentSteps / dailyStepGoal).clamp(0.0, 1.0);
 
@@ -1345,17 +1345,26 @@ class _ElderProfileTabState extends State<ElderProfileTab>
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // ── 👈 左側：寵物夥伴舞台（放大版小豬＋動態表情＋摸摸愛心＋子女排程打卡）──
+          // ── 👈 左側：寵物夥伴舞台（各佔一半 50%）──
           Expanded(
-            flex: 5,
+            flex: 1,
             child: _buildPetInteractiveStage(progress),
           ),
 
-          const SizedBox(width: 16),
+          // ── 垂直精緻分隔線 ──
+          Container(
+            height: 155,
+            width: 1.5,
+            margin: const EdgeInsets.symmetric(horizontal: 14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(1),
+            ),
+          ),
 
-          // ── 👉 右側：今日步數大圓環 ＋ 步行距離與消耗熱量 ──
+          // ── 👉 右側：今日步數大圓環 ＋ 步行距離與消耗熱量（各佔一半 50%）──
           Expanded(
-            flex: 7,
+            flex: 1,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.center,
@@ -1365,11 +1374,11 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                   alignment: Alignment.center,
                   children: [
                     SizedBox(
-                      width: 165,
-                      height: 165,
+                      width: 150,
+                      height: 150,
                       child: CircularProgressIndicator(
                         value: progress,
-                        strokeWidth: 15,
+                        strokeWidth: 14,
                         backgroundColor: const Color(0xFFF1F5F9),
                         valueColor: const AlwaysStoppedAnimation<Color>(
                             Color(0xFF59B294)),
@@ -1382,7 +1391,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                         Text(
                           '今日步數',
                           style: GoogleFonts.notoSansTc(
-                            fontSize: 15,
+                            fontSize: 14,
                             color: const Color(0xFF64748B),
                             fontWeight: FontWeight.bold,
                           ),
@@ -1390,7 +1399,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                         Text(
                           NumberFormat('#,###').format(currentSteps),
                           style: GoogleFonts.inter(
-                            fontSize: 34,
+                            fontSize: 32,
                             fontWeight: FontWeight.w900,
                             color: const Color(0xFF0F172A),
                             height: 1.1,
@@ -1399,7 +1408,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                         Text(
                           '目標 $dailyStepGoal 步',
                           style: GoogleFonts.notoSansTc(
-                            fontSize: 13,
+                            fontSize: 12,
                             color: const Color(0xFF94A3B8),
                             fontWeight: FontWeight.bold,
                           ),
@@ -1409,7 +1418,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                   ],
                 ),
 
-                const SizedBox(width: 18),
+                const SizedBox(width: 14),
 
                 // 2. 圓環右側：垂直排列「步行距離」與「消耗熱量」
                 Expanded(
@@ -1422,7 +1431,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                         label: '步行距離',
                         value: '${_totalDistance.toStringAsFixed(2)} 公里',
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 10),
                       _buildSideStatCard(
                         icon: Icons.local_fire_department_rounded,
                         iconColor: const Color(0xFFF97316),
