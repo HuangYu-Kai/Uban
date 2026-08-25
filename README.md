@@ -401,6 +401,23 @@ void initPedometer() {
 
 ## 更新日誌
 
+### 2026-08-24 👥 長輩與家庭溫馨社群系統（雙向時光牆 + 後端資料庫串接 + 照片發佈）
+
+> **封閉式家庭親友圈社群系統**正式前後端打通上線！支援長輩與子女雙向發文、拍照上傳、心情記錄、一鍵送關心 ❤️ 與留言互動。
+> 完整技術設計見 [家庭親友圈社群時光牆技術設計與實作紀錄](docs/technical/COMMUNITY_ARCHITECTURE.md)。
+
+**核心功能與架構亮點**
+- **後端 (uban-api)**：
+  - 新增 `routers/community.py`：包含 `GET /api/community/posts`（自動親屬圈動態解析）、`POST /api/community/posts`（發佈近況）、`POST /api/community/posts/{id}/like`（切換關心 ❤️ 狀態）、`POST /api/community/posts/{id}/comments`（留言回覆）、`POST /api/community/upload`（Multipart 照片上傳至 `/uploads/community/`）。
+  - 自動於 MySQL / SQLite 建立 `community_posts`、`community_comments`、`community_post_likes`（含唯一防重讚鍵）。
+- **前端 — 長輩端 (Flutter)**：
+  - 底部浮動導覽列第 3 頁獨立分頁 `[ 👥 社群 ]`（`ElderCommunityScreen`）。
+  - 專為銀髮族打造的「超大字體 (24pt) + 大卡片 + 常用短語一鍵發文 + 拍照上傳 + 大按鈕關心 ❤️」無障礙介面。
+- **前端 — 家屬端 (Flutter)**：
+  - 互動分頁新增「家庭生活時光牆 👥」綠色旗艦卡片，子女可瀏覽長輩生活動態、傳照片與留言關懷。
+- **資料同步與韌性**：
+  - `CommunityService` 採用混合模式：聯網優先讀寫遠端 DB，離線無縫退守本機 `SharedPreferences` 快取。
+
 ### 2026-07-29 💳 PRO 進階照護訂閱前後端接通（RevenueCat + 後端單一真相來源）
 
 > **家屬替長輩訂閱**的完整鏈路打通並通過端到端驗證。分支 `payment-test` 已合併。

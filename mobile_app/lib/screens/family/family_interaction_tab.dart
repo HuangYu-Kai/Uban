@@ -8,6 +8,7 @@ import '../../services/signaling.dart';
 import '../../services/api_service.dart';
 import '../video_call_screen.dart';
 import '../camera_screen.dart';
+import '../elder_community_screen.dart';
 
 class FamilyInteractionTab extends StatefulWidget {
   final Elder? currentElder;
@@ -45,6 +46,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
   Future<void> _showAddMonitorDialog() async {
     if (widget.currentElder == null) return;
     final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
     final familyId = prefs.getInt('caregiver_id');
     if (familyId == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('無法取得您的帳號 ID')));
@@ -391,17 +393,135 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
               _buildCallSection(),
               const SizedBox(height: 20),
 
-              // 2. 留言發送區（快速短句 + 自訂輸入）
+              // 2. 家庭生活社群時光牆（雙向動態互動）
+              _buildCommunitySection(),
+              const SizedBox(height: 20),
+
+              // 3. 留言發送區（快速短句 + 自訂輸入）
               _buildMessageSection(),
               const SizedBox(height: 20),
 
-              // 3. 遠端監控區（方案 B：未連接獨立攝影機設備預留）
+              // 4. 遠端監控區（方案 B：未連接獨立攝影機設備預留）
               _buildMonitorSection(),
             ]),
           ),
         ),
       ],
     );
+  }
+
+  Widget _buildCommunitySection() {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF10B981), Color(0xFF047857)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF10B981).withValues(alpha: 0.25),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () async {
+            HapticFeedback.lightImpact();
+            final prefs = await SharedPreferences.getInstance();
+            if (!mounted) return;
+            final familyId = prefs.getInt('caregiver_id') ?? 2;
+            final userName = prefs.getString('caregiver_name') ?? prefs.getString('user_name') ?? '家人';
+
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => ElderCommunityScreen(
+                  userId: familyId,
+                  userName: userName,
+                  familyId: familyId,
+                ),
+              ),
+            );
+          },
+          borderRadius: BorderRadius.circular(24),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.groups_rounded,
+                    color: Colors.white,
+                    size: 32,
+                  ),
+                ),
+                const SizedBox(width: 18),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            '家庭生活時光牆',
+                            style: GoogleFonts.notoSansTc(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.25),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Text(
+                              '雙向交流',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '瀏覽長輩心情、分享生活照片與留言關心',
+                        style: GoogleFonts.notoSansTc(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.white.withValues(alpha: 0.9),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(
+                  Icons.arrow_forward_ios_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ).animate().fadeIn(duration: 400.ms).slideY(begin: 0.05);
   }
 
   Widget _buildNoElderPlaceholder() {

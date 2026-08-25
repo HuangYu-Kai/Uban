@@ -200,6 +200,18 @@ Scheduled jobs (defined in `main.py`):
 | `pre_generate_news_audio_background` | Daily 03:00 | Pre-generate news TTS |
 | `daily_pond_leaf_job` | Daily 08:00, 15:00 | Memory topic generation |
 
+### 2.7 家庭親友圈社群時光牆 (Community Wall)
+
+長輩與家屬雙向生活動態與照片分享系統：
+- **封閉式隱私**：僅配對家庭成員與親屬可見，後端依 `family_elder_relationship` 自動解析親屬圈。
+- **後端端點** (`routers/community.py`)：`GET /api/community/posts`、`POST /api/community/posts`、`POST /api/community/posts/{id}/like`、`POST /api/community/posts/{id}/comments`、`POST /api/community/upload`。
+- **資料表** (`database.py`)：`community_posts`、`community_comments`、`community_post_likes`。
+- **前端入口**：
+  - 長輩端：底部導覽列第 3 頁 `[ 👥 社群 ]`（`ElderCommunityScreen`，大字體 24pt + 一鍵快捷發文 + 拍照上傳 + 大按鈕關心 ❤️）。
+  - 家屬端：`FamilyInteractionTab` 綠色旗艦卡片 `[ 家庭生活時光牆 ]`。
+- **離線韌性**：`CommunityService` 優先遠端 API，離線退守 `SharedPreferences` 本機快取。
+- 詳細技術規格見 [`docs/technical/COMMUNITY_ARCHITECTURE.md`](docs/technical/COMMUNITY_ARCHITECTURE.md)。
+
 ---
 
 ## 3. Hard Rules
