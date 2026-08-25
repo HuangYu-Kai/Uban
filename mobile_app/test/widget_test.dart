@@ -1,7 +1,15 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('App smoke test', () {
-    expect(1 + 1, equals(2));
+  testWidgets('App smoke test', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: Text('Uban Community Test'),
+        ),
+      ),
+    );
+    expect(find.text('Uban Community Test'), findsOneWidget);
   });
 }
