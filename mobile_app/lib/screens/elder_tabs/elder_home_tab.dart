@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lunar/lunar.dart';
 import 'package:intl/intl.dart';
+import '../almanac/farmer_almanac_screen.dart';
 import '../news_listen_player/news_listen_player_screen.dart';
 import '../../services/api_service.dart';
 import '../../services/subscription_service.dart';
@@ -343,57 +345,99 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     );
   }
 
-  /// 大日期卡片（毛玻璃）。
+  /// 大日期卡片（毛玻璃，點擊跳轉至農民曆與神明誕辰）。
   Widget _buildElderDateCard() {
     return GlassCard(
+      onTap: () {
+        HapticFeedback.lightImpact();
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => FarmerAlmanacScreen(
+              initialDate: DateTime.now(),
+              userName: widget.userName,
+            ),
+          ),
+        );
+      },
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-      child: Row(
+      child: Column(
         children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          Row(
             children: [
-              Text(
-                '$_monthStr$_dateStr日',
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 44,
-                  fontWeight: FontWeight.w900,
-                  color: AppColors.primary,
-                  height: 1.0,
-                ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '$_monthStr$_dateStr日',
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 44,
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.primary,
+                      height: 1.0,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    _dayName,
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 26,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 6),
-              Text(
-                _dayName,
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 26,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.textPrimary,
-                ),
+              const Spacer(),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    _lunarDate,
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _solarTerm,
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.primaryDark,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
-          const Spacer(),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                _lunarDate,
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.textSecondary,
+          const SizedBox(height: 12),
+          // 🏮 農民曆與神明吉凶跳轉提示條
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFEF3C7).withValues(alpha: 0.95),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.4)),
+            ),
+            child: Row(
+              children: [
+                const Text('🏮', style: TextStyle(fontSize: 18)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '點此看今日農民曆・神明誕辰與吉凶',
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 15.5,
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFF92400E),
+                    ),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                _solarTerm,
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.primaryDark,
-                ),
-              ),
-            ],
+                const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Color(0xFF92400E)),
+              ],
+            ),
           ),
         ],
       ),
