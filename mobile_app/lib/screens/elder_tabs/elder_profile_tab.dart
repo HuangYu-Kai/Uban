@@ -869,8 +869,8 @@ class _ElderProfileTabState extends State<ElderProfileTab>
             children: [
               // 外層柔和呼吸光圈
               Container(
-                width: 145,
-                height: 145,
+                width: 100,
+                height: 100,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   gradient: RadialGradient(
@@ -900,10 +900,10 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                   ),
                 ),
                 child: SizedBox(
-                  width: 170,
-                  height: 170,
+                  width: 90,
+                  height: 90,
                   child: HandDrawnPigletActor(
-                    size: 160,
+                    size: 65,
                     mood: mood == _PetMood.superHappy
                         ? ActorMood.superHappy
                         : (mood == _PetMood.sleeping
@@ -964,11 +964,11 @@ class _ElderProfileTabState extends State<ElderProfileTab>
           ),
         ),
 
-        const SizedBox(height: 10),
+        const SizedBox(height: 6),
 
         // 寵物狀態標籤膠囊
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           decoration: BoxDecoration(
             color: moodThemeColor.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(16),
@@ -976,12 +976,12 @@ class _ElderProfileTabState extends State<ElderProfileTab>
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(moodIcon, size: 15, color: moodThemeColor),
-              const SizedBox(width: 5),
+              Icon(moodIcon, size: 14, color: moodThemeColor),
+              const SizedBox(width: 4),
               Text(
                 moodLabel,
                 style: GoogleFonts.notoSansTc(
-                  fontSize: 13,
+                  fontSize: 12,
                   fontWeight: FontWeight.bold,
                   color: moodThemeColor,
                 ),
@@ -990,13 +990,13 @@ class _ElderProfileTabState extends State<ElderProfileTab>
           ),
         ),
 
-        const SizedBox(height: 8),
+        const SizedBox(height: 5),
 
         // ── 📋 子女排程任務打卡入口膠囊 ──
         GestureDetector(
           onTap: _showTasksModal,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
               color: (totalTasks > 0 && completedTasks >= totalTasks)
                   ? const Color(0xFFECFDF5)
@@ -1016,16 +1016,16 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                   (totalTasks > 0 && completedTasks >= totalTasks)
                       ? Icons.check_circle_rounded
                       : Icons.task_alt_rounded,
-                  size: 14,
+                  size: 13,
                   color: (totalTasks > 0 && completedTasks >= totalTasks)
                       ? const Color(0xFF059669)
                       : const Color(0xFF64748B),
                 ),
-                const SizedBox(width: 5),
+                const SizedBox(width: 4),
                 Text(
                   '排程 $completedTasks/$totalTasks 打卡',
                   style: GoogleFonts.notoSansTc(
-                    fontSize: 12,
+                    fontSize: 11.5,
                     fontWeight: FontWeight.bold,
                     color: (totalTasks > 0 && completedTasks >= totalTasks)
                         ? const Color(0xFF065F46)
@@ -1033,12 +1033,12 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                   ),
                 ),
                 const Icon(Icons.arrow_drop_down,
-                    size: 16, color: Color(0xFF64748B)),
+                    size: 15, color: Color(0xFF64748B)),
               ],
             ),
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
 
         // ── 🏡 前往福氣小豬窩按鈕 ──
         InkWell(
