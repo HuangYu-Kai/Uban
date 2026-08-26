@@ -674,7 +674,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
       final speed = 70.0 + rand.nextDouble() * 100.0;
       _petParticles.add(
         _PetHeartParticle(
-          position: Offset(45.0 + (rand.nextDouble() - 0.5) * 24, 45.0),
+          position: Offset(65.0 + (rand.nextDouble() - 0.5) * 36, 65.0),
           velocity: Offset(math.cos(angle) * speed, math.sin(angle) * speed),
           scale: 0.8 + rand.nextDouble() * 0.6,
           opacity: 1.0,
@@ -858,10 +858,11 @@ class _ElderProfileTabState extends State<ElderProfileTab>
         break;
     }
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        GestureDetector(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isWide = constraints.maxWidth >= 280;
+
+        Widget petVisual = GestureDetector(
           onTap: _handlePetTap,
           child: Stack(
             clipBehavior: Clip.none,
@@ -869,8 +870,8 @@ class _ElderProfileTabState extends State<ElderProfileTab>
             children: [
               // 外層柔和呼吸光圈
               Container(
-                width: 100,
-                height: 100,
+                width: isWide ? 145 : 100,
+                height: isWide ? 145 : 100,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   gradient: RadialGradient(
@@ -891,7 +892,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                   ),
                 ),
 
-              // 核心小豬手繪逐格寵物本體（帶彈跳與點擊互動）
+              // 核心小豬手繪逐格寵物本體（大幅放大至 165px 超萌清晰呈現）
               ScaleTransition(
                 scale: Tween<double>(begin: 1.0, end: 1.12).animate(
                   CurvedAnimation(
@@ -900,19 +901,22 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                   ),
                 ),
                 child: SizedBox(
-                  width: 90,
-                  height: 90,
-                  child: HandDrawnPigletActor(
-                    size: 65,
-                    mood: mood == _PetMood.superHappy
-                        ? ActorMood.superHappy
-                        : (mood == _PetMood.sleeping
-                            ? ActorMood.sleeping
-                            : (mood == _PetMood.reminding
-                                ? ActorMood.anticipating
-                                : ActorMood.idle)),
-                    onPetHead: _handlePetTap,
-                    onPokeBelly: _handlePetTap,
+                  width: isWide ? 165 : 100,
+                  height: isWide ? 165 : 100,
+                  child: FittedBox(
+                    fit: BoxFit.contain,
+                    child: HandDrawnPigletActor(
+                      size: isWide ? 135 : 80,
+                      mood: mood == _PetMood.superHappy
+                          ? ActorMood.superHappy
+                          : (mood == _PetMood.sleeping
+                              ? ActorMood.sleeping
+                              : (mood == _PetMood.reminding
+                                  ? ActorMood.anticipating
+                                  : ActorMood.idle)),
+                      onPetHead: _handlePetTap,
+                      onPokeBelly: _handlePetTap,
+                    ),
                   ),
                 ),
               ),
@@ -920,174 +924,200 @@ class _ElderProfileTabState extends State<ElderProfileTab>
               // 右上角狀態小角標 (徽章)
               if (mood == _PetMood.superHappy)
                 Positioned(
-                  top: 2,
-                  right: 2,
+                  top: isWide ? 6 : 2,
+                  right: isWide ? 6 : 2,
                   child: Container(
-                    padding: const EdgeInsets.all(5),
+                    padding: const EdgeInsets.all(6),
                     decoration: const BoxDecoration(
                       color: Color(0xFFF59E0B),
                       shape: BoxShape.circle,
                     ),
                     child: const Icon(Icons.star_rounded,
-                        color: Colors.white, size: 16),
+                        color: Colors.white, size: 18),
                   ),
                 )
               else if (mood == _PetMood.reminding)
                 Positioned(
-                  top: 2,
-                  right: 2,
+                  top: isWide ? 6 : 2,
+                  right: isWide ? 6 : 2,
                   child: Container(
-                    padding: const EdgeInsets.all(5),
+                    padding: const EdgeInsets.all(6),
                     decoration: const BoxDecoration(
                       color: Color(0xFFEF4444),
                       shape: BoxShape.circle,
                     ),
                     child: const Icon(Icons.priority_high_rounded,
-                        color: Colors.white, size: 16),
+                        color: Colors.white, size: 18),
                   ),
                 )
               else if (mood == _PetMood.sleeping)
                 Positioned(
-                  top: 2,
-                  right: 2,
+                  top: isWide ? 6 : 2,
+                  right: isWide ? 6 : 2,
                   child: Container(
-                    padding: const EdgeInsets.all(5),
+                    padding: const EdgeInsets.all(6),
                     decoration: const BoxDecoration(
                       color: Color(0xFF8B5CF6),
                       shape: BoxShape.circle,
                     ),
                     child: const Icon(Icons.nightlight_round,
-                        color: Colors.white, size: 16),
+                        color: Colors.white, size: 18),
                   ),
                 ),
             ],
           ),
-        ),
+        );
 
-        const SizedBox(height: 6),
+        Widget petControls = Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: isWide ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+          children: [
+            // 寵物狀態標籤膠囊
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+              decoration: BoxDecoration(
+                color: moodThemeColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(moodIcon, size: 15, color: moodThemeColor),
+                  const SizedBox(width: 5),
+                  Text(
+                    moodLabel,
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: moodThemeColor,
+                    ),
+                  ),
+                ],
+              ),
+            ),
 
-        // 寵物狀態標籤膠囊
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          decoration: BoxDecoration(
-            color: moodThemeColor.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Row(
+            const SizedBox(height: 8),
+
+            // ── 📋 子女排程任務打卡入口膠囊 ──
+            GestureDetector(
+              onTap: _showTasksModal,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                decoration: BoxDecoration(
+                  color: (totalTasks > 0 && completedTasks >= totalTasks)
+                      ? const Color(0xFFECFDF5)
+                      : const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: (totalTasks > 0 && completedTasks >= totalTasks)
+                        ? const Color(0xFF10B981)
+                        : const Color(0xFFCBD5E1),
+                    width: 1.2,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      (totalTasks > 0 && completedTasks >= totalTasks)
+                          ? Icons.check_circle_rounded
+                          : Icons.task_alt_rounded,
+                      size: 14,
+                      color: (totalTasks > 0 && completedTasks >= totalTasks)
+                          ? const Color(0xFF059669)
+                          : const Color(0xFF64748B),
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      '排程 $completedTasks/$totalTasks 打卡',
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.bold,
+                        color: (totalTasks > 0 && completedTasks >= totalTasks)
+                            ? const Color(0xFF065F46)
+                            : const Color(0xFF334155),
+                      ),
+                    ),
+                    const Icon(Icons.arrow_drop_down,
+                        size: 16, color: Color(0xFF64748B)),
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 8),
+
+            // ── 🏡 前往福氣小豬窩按鈕 ──
+            InkWell(
+              onTap: () {
+                HapticFeedback.selectionClick();
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => PetStudioScreen(
+                      initialSteps: currentSteps,
+                      userName: widget.userName,
+                    ),
+                  ),
+                );
+              },
+              borderRadius: BorderRadius.circular(16),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFFEF3C7), Color(0xFFFDE68A)],
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.5)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
+                      blurRadius: 8,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('🏡', style: TextStyle(fontSize: 15)),
+                    const SizedBox(width: 6),
+                    Text(
+                      '前往福氣小豬窩 🐾',
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w900,
+                        color: const Color(0xFF92400E),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
+
+        if (isWide) {
+          return Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              petVisual,
+              const SizedBox(width: 14),
+              Flexible(child: petControls),
+            ],
+          );
+        } else {
+          return Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(moodIcon, size: 14, color: moodThemeColor),
-              const SizedBox(width: 4),
-              Text(
-                moodLabel,
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: moodThemeColor,
-                ),
-              ),
+              petVisual,
+              const SizedBox(height: 8),
+              petControls,
             ],
-          ),
-        ),
-
-        const SizedBox(height: 5),
-
-        // ── 📋 子女排程任務打卡入口膠囊 ──
-        GestureDetector(
-          onTap: _showTasksModal,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: (totalTasks > 0 && completedTasks >= totalTasks)
-                  ? const Color(0xFFECFDF5)
-                  : const Color(0xFFF1F5F9),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: (totalTasks > 0 && completedTasks >= totalTasks)
-                    ? const Color(0xFF10B981)
-                    : const Color(0xFFCBD5E1),
-                width: 1.2,
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  (totalTasks > 0 && completedTasks >= totalTasks)
-                      ? Icons.check_circle_rounded
-                      : Icons.task_alt_rounded,
-                  size: 13,
-                  color: (totalTasks > 0 && completedTasks >= totalTasks)
-                      ? const Color(0xFF059669)
-                      : const Color(0xFF64748B),
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  '排程 $completedTasks/$totalTasks 打卡',
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.bold,
-                    color: (totalTasks > 0 && completedTasks >= totalTasks)
-                        ? const Color(0xFF065F46)
-                        : const Color(0xFF334155),
-                  ),
-                ),
-                const Icon(Icons.arrow_drop_down,
-                    size: 15, color: Color(0xFF64748B)),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 6),
-
-        // ── 🏡 前往福氣小豬窩按鈕 ──
-        InkWell(
-          onTap: () {
-            HapticFeedback.selectionClick();
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => PetStudioScreen(
-                  initialSteps: currentSteps,
-                  userName: widget.userName,
-                ),
-              ),
-            );
-          },
-          borderRadius: BorderRadius.circular(16),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFFFEF3C7), Color(0xFFFDE68A)],
-              ),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.5)),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
-                  blurRadius: 8,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('🏡', style: TextStyle(fontSize: 14)),
-                const SizedBox(width: 5),
-                Text(
-                  '前往福氣小豬窩 🐾',
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w900,
-                    color: const Color(0xFF92400E),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
+          );
+        }
+      },
     );
   }
 
