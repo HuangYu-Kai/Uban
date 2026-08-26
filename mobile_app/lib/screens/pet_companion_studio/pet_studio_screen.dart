@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'models/pet_food_item.dart';
 import 'models/pet_growth_state.dart';
+import '../elder_home_screen.dart';
 import 'widgets/animated_piglet_actor.dart';
 import 'widgets/food_milestone_tray.dart';
 import 'widgets/hand_drawn_piglet_actor.dart';
@@ -314,10 +315,36 @@ class _PetStudioScreenState extends State<PetStudioScreen>
       ),
       child: Row(
         children: [
-          IconButton(
-            onPressed: () => Navigator.maybePop(context),
-            icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Color(0xFF334155)),
-            tooltip: '返回',
+          InkWell(
+            onTap: () {
+              HapticFeedback.lightImpact();
+              if (Navigator.canPop(context)) {
+                Navigator.pop(context);
+              } else {
+                Navigator.of(context).pushReplacement(
+                  MaterialPageRoute(
+                    builder: (_) => ElderHomeScreen(
+                      userId: 1,
+                      userName: widget.userName,
+                    ),
+                  ),
+                );
+              }
+            },
+            borderRadius: BorderRadius.circular(20),
+            child: Container(
+              padding: const EdgeInsets.all(9),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF1F5F9),
+                shape: BoxShape.circle,
+                border: Border.all(color: const Color(0xFFCBD5E1)),
+              ),
+              child: const Icon(
+                Icons.arrow_back_ios_new_rounded,
+                color: Color(0xFF1E293B),
+                size: 20,
+              ),
+            ),
           ),
           const SizedBox(width: 4),
           Column(
