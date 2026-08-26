@@ -1,4 +1,5 @@
 import 'package:lunar/lunar.dart';
+import 'chinese_converter.dart';
 import 'taiwan_deity_calendar.dart';
 
 /// 單日完整農民曆與吉凶資訊模型
@@ -82,7 +83,7 @@ class DayAlmanacInfo {
 
 /// 農民曆資料計算與白話輔助工具
 class AlmanacDataHelper {
-  /// 宜忌傳統術語之長輩白話小字典
+  /// 宜忌傳統術語之長輩白話小字典（100% 台灣繁體正體中文）
   static const Map<String, String> _yiJiMeanings = {
     '祭祀': '祭拜祖先、到宮廟參香拜拜或向神明祈福',
     '祈福': '祈求神明賜福保佑、消災解厄或許願',
@@ -90,6 +91,7 @@ class AlmanacDataHelper {
     '出行': '出遠門旅遊、搭長途車船或外出公幹',
     '嫁娶': '舉行婚禮、迎娶新娘或登記結婚',
     '納采': '訂婚、下聘禮或提親納吉',
+    '訂盟': '訂定婚約、訂婚儀式或立約互誓',
     '動土': '建築陽宅動工、開挖地基或大翻修',
     '安葬': '舉行喪葬儀式、入土為安或骨灰安厝',
     '破土': '陰宅（墓地）破土動工安葬',
@@ -127,17 +129,57 @@ class AlmanacDataHelper {
     '掃舍': '大掃除、清理家裡灰塵蜘蛛網',
     '安門': '安裝大門或房門',
     '分居': '大家庭分家各自獨立門戶生活',
+    '出火': '將神佛或祖先牌位請出暫時安置',
+    '合帳': '製作或安裝蚊帳、床簾',
+    '安香': '在家中安設神明與祖先香爐',
+    '拆卸': '拆除舊建築物、屋舍或裝潢',
+    '起基': '建築工程挖地基、奠基動土',
+    '定磉': '固定建築柱子下方的柱基石',
+    '蓋屋': '搭建房頂、覆蓋屋瓦或上頂',
+    '掛匾': '懸掛商店招牌或題字匾額',
+    '開池': '開挖魚池、水池或蓄水池',
+    '築堤': '修建防洪堤壩或田埂擋水',
+    '捕魚': '下水捕撈魚蝦海產',
+    '取漁': '收捕魚塭池塘中的漁獲',
+    '乘船': '出海捕魚、渡船或水上遊覽',
+    '渡水': '橫渡江河水域出行',
+    '穿井': '開鑿新水井或鑽深水井',
+    '開生墳': '為健在長輩預先修築壽墳福地',
+    '合壽木': '為長輩預製吉祥壽棺',
+    '修墳': '修繕整理祖先墳墓或修墓碑',
+    '立碑': '為祖先墓地立紀念石碑',
+    '遷墳': '拾骨遷葬或將祖墳遷移新址',
+    '移柩': '出殯前移動靈柩棺木',
+    '啟攢': '拾金撿骨、開棺整理遺骸',
+    '啟鑽': '啟棺拾骨或開穴撿骨安厝',
+    '入殮': '為逝者更衣入棺舉行入殮禮',
+    '成服': '喪家親屬穿上孝服守孝',
+    '除服': '守孝期滿脫去孝服恢復平常',
+    '畋獵': '到野外狩獵或捕獵野生動物',
+    '捕捉': '撲滅農田害蟲或捕捉有害生物',
+    '結網': '編織漁網或修補捕鳥捕魚器具',
+    '割蜜': '採集蜂巢蜂蜜或養蜂取蜜',
+    '掘井': '開挖水井以取得甘泉水源',
+    '設醮': '建醮設壇祈安謝恩大法會',
+    '解除': '沖洗潔淨住宅、禳災解厄化煞',
+    '置產': '購買房屋地皮、添購田產物業',
+    '會親友': '拜訪親戚朋友、宴請嘉賓聚會',
+    '進人口': '收養義子義女、增添家庭成員',
+    '經絡': '安裝紡織機經線、織布作業',
+    '醞釀': '釀造美酒、製作醬油或發酵食品',
+    '問名': '古代六禮之一，詢問女方生辰八字合婚',
   };
 
   /// 取得特定宜忌術語的白話說明
   static String getMeaning(String term) {
-    if (_yiJiMeanings.containsKey(term)) {
-      return _yiJiMeanings[term]!;
+    final traditionalTerm = ChineseConverter.toTraditional(term);
+    if (_yiJiMeanings.containsKey(traditionalTerm)) {
+      return _yiJiMeanings[traditionalTerm]!;
     }
     return '傳統民俗記事，適宜或應謹慎之吉凶事項。';
   }
 
-  /// 根據指定日期計算出完整的 DayAlmanacInfo
+  /// 根據指定日期計算出完整的 DayAlmanacInfo（全繁體正體）
   static DayAlmanacInfo calculateForDate(DateTime date) {
     final lunar = Lunar.fromDate(date);
 
@@ -150,43 +192,55 @@ class AlmanacDataHelper {
         ? TaiwanDeityCalendar.getNextUpcomingDeity(lunarMonth, lunarDay)
         : null;
 
-    // 2. 宜忌清單
-    final yi = lunar.getDayYi();
-    final ji = lunar.getDayJi();
+    // 2. 宜忌清單（100% 繁體化）
+    final yi = ChineseConverter.toTraditionalList(lunar.getDayYi());
+    final ji = ChineseConverter.toTraditionalList(lunar.getDayJi());
 
-    // 3. 節氣與干支
+    // 3. 節氣與干支（100% 繁體化）
     String jieQi = lunar.getJieQi();
     if (jieQi.isEmpty) {
       // 取得前後最近節氣
       jieQi = lunar.getCurrentJieQi()?.getName() ?? '';
     }
+    final solarTerm = ChineseConverter.toTraditional(jieQi);
 
     final solarWeekDayNames = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日'];
     final weekDayStr = solarWeekDayNames[date.weekday - 1];
 
-    final pengZuStr = '${lunar.getPengZuGan()} ${lunar.getPengZuZhi()}';
+    final pengZuStr = ChineseConverter.toTraditional('${lunar.getPengZuGan()} ${lunar.getPengZuZhi()}');
+
+    final shengXiao = ChineseConverter.toTraditional(lunar.getYearShengXiao());
+    final ganZhiYear = ChineseConverter.toTraditional(lunar.getYearInGanZhi());
+    final ganZhiMonth = ChineseConverter.toTraditional(lunar.getMonthInGanZhi());
+    final ganZhiDay = ChineseConverter.toTraditional(lunar.getDayInGanZhi());
+
+    final monthInChinese = ChineseConverter.toTraditional(lunar.getMonthInChinese());
+    final dayInChinese = ChineseConverter.toTraditional(lunar.getDayInChinese());
+
+    final lunarShort = '$monthInChinese月$dayInChinese';
+    final lunarString = '$ganZhiYear($shengXiao)年 農曆$lunarShort';
 
     return DayAlmanacInfo(
       solarDate: date,
       lunar: lunar,
       solarString: '${date.year}年${date.month}月${date.day}日',
       solarWeekDay: weekDayStr,
-      lunarString: '${lunar.getYearInGanZhi()}(${lunar.getYearShengXiao()})年 農曆${lunar.getMonthInChinese()}月${lunar.getDayInChinese()}',
-      lunarShort: '${lunar.getMonthInChinese()}月${lunar.getDayInChinese()}',
-      solarTerm: jieQi,
+      lunarString: lunarString,
+      lunarShort: lunarShort,
+      solarTerm: solarTerm,
       deities: deities,
       upcomingDeity: upcoming,
       yiList: yi,
       jiList: ji,
-      caiShen: lunar.getDayPositionCaiDesc(),
-      xiShen: lunar.getDayPositionXiDesc(),
-      fuShen: lunar.getDayPositionFuDesc(),
-      chongDesc: lunar.getDayChongDesc(),
+      caiShen: ChineseConverter.toTraditional(lunar.getDayPositionCaiDesc()),
+      xiShen: ChineseConverter.toTraditional(lunar.getDayPositionXiDesc()),
+      fuShen: ChineseConverter.toTraditional(lunar.getDayPositionFuDesc()),
+      chongDesc: ChineseConverter.toTraditional(lunar.getDayChongDesc()),
       pengZu: pengZuStr,
-      shengXiao: lunar.getYearShengXiao(),
-      ganZhiYear: lunar.getYearInGanZhi(),
-      ganZhiMonth: lunar.getMonthInGanZhi(),
-      ganZhiDay: lunar.getDayInGanZhi(),
+      shengXiao: shengXiao,
+      ganZhiYear: ganZhiYear,
+      ganZhiMonth: ganZhiMonth,
+      ganZhiDay: ganZhiDay,
     );
   }
 }
