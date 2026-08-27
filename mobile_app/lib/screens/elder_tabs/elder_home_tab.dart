@@ -5,6 +5,7 @@ import 'package:lunar/lunar.dart';
 import 'package:intl/intl.dart';
 import '../almanac/farmer_almanac_screen.dart';
 import '../news_listen_player/news_listen_player_screen.dart';
+import '../../models/almanac_data_helper.dart';
 import '../../services/api_service.dart';
 import '../../services/subscription_service.dart';
 import '../../theme/app_theme.dart';
@@ -347,6 +348,20 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
 
   /// 大日期卡片（毛玻璃，點擊跳轉至農民曆與神明誕辰）。
   Widget _buildElderDateCard() {
+    final now = DateTime.now();
+    final almanac = AlmanacDataHelper.calculateForDate(now);
+
+    // 提煉今日精華摘要（神誕 / 宜忌精簡）
+    String summaryText;
+    if (almanac.hasDeityBirthday) {
+      final deityName = almanac.deities.first.name;
+      summaryText = '🌟 今日【$deityName】・宜 ${almanac.yiList.take(2).join('、')}';
+    } else if (almanac.yiList.isNotEmpty && almanac.jiList.isNotEmpty) {
+      summaryText = '📜 今日農民曆：宜 ${almanac.yiList.take(2).join('、')} ｜ 忌 ${almanac.jiList.take(2).join('、')}';
+    } else {
+      summaryText = '📜 點此查看今日農民曆・神明誕辰與吉凶';
+    }
+
     return GlassCard(
       onTap: () {
         HapticFeedback.lightImpact();
@@ -359,7 +374,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
           ),
         );
       },
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
       child: Column(
         children: [
           Row(
@@ -412,30 +427,38 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          // 🏮 農民曆與神明吉凶跳轉提示條
+          const SizedBox(height: 14),
+          // 🌿 農民曆與神明吉凶資訊導引列（薄荷綠毛玻璃質感，融於首頁主視覺）
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
             decoration: BoxDecoration(
-              color: const Color(0xFFFEF3C7).withValues(alpha: 0.95),
+              color: AppColors.primary.withValues(alpha: 0.09),
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.4)),
+              border: Border.all(
+                color: AppColors.primary.withValues(alpha: 0.22),
+                width: 1.2,
+              ),
             ),
             child: Row(
               children: [
-                const Text('🏮', style: TextStyle(fontSize: 18)),
-                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    '點此看今日農民曆・神明誕辰與吉凶',
+                    summaryText,
                     style: GoogleFonts.notoSansTc(
                       fontSize: 15.5,
-                      fontWeight: FontWeight.w800,
-                      color: const Color(0xFF92400E),
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.primaryDark,
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Color(0xFF92400E)),
+                const SizedBox(width: 6),
+                const Icon(
+                  Icons.arrow_forward_ios_rounded,
+                  size: 13,
+                  color: AppColors.primaryDark,
+                ),
               ],
             ),
           ),
