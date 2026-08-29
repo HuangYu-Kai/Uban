@@ -17,10 +17,10 @@ import '../../globals.dart';
 import '../../services/session_manager.dart';
 import '../../services/api_service.dart';
 import '../../widgets/google_assistant_overlay.dart';
-import '../pet_companion_studio/models/pet_growth_state.dart';
 import '../pet_companion_studio/pet_studio_screen.dart';
 import '../pet_companion_studio/widgets/animated_piglet_actor.dart';
 import '../pet_companion_studio/widgets/hand_drawn_piglet_actor.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 enum _PetMood {
   superHappy, // 活力滿滿 / 達標 / 任務100% / 摸摸
@@ -1869,6 +1869,129 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     );
   }
 
+  /// 🔄 方案 C：隨時後續補綁定家人對話框（Late-Binding）
+  void _showFamilyPairingDialog() {
+    HapticFeedback.lightImpact();
+    final String elderCode = widget.userId.toString().padLeft(4, '0');
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEA580C).withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.family_restroom_rounded,
+                  color: Color(0xFFEA580C), size: 28),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              '家人／照護者綁定',
+              style: GoogleFonts.notoSansTc(
+                fontWeight: FontWeight.bold,
+                fontSize: 22,
+              ),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '請子女開啟手機上的 Uban App，掃描下方 QR Code 或輸入配對碼即可完成連線：',
+                style: GoogleFonts.notoSansTc(
+                  fontSize: 16,
+                  color: const Color(0xFF64748B),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF7ED),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: const Color(0xFFFDBA74), width: 1.5),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.orange.withValues(alpha: 0.08),
+                      blurRadius: 16,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    Text(
+                      elderCode,
+                      style: GoogleFonts.inter(
+                        fontSize: 48,
+                        fontWeight: FontWeight.w900,
+                        color: const Color(0xFFEA580C),
+                        letterSpacing: 6,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    QrImageView(
+                      data: 'UBAN_PAIR:${widget.userId}:$elderCode',
+                      version: QrVersions.auto,
+                      size: 140.0,
+                      backgroundColor: Colors.white,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFECFDF5),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFFA7F3D0)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.check_circle_rounded,
+                        color: Color(0xFF059669), size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '綁定後，子女可遠端排定吃藥，並即時關心您的每日健康與小豬！',
+                        style: GoogleFonts.notoSansTc(
+                          fontSize: 13.5,
+                          color: const Color(0xFF065F46),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(
+              '知道了',
+              style: GoogleFonts.notoSansTc(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: const Color(0xFF59B294),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     currentSteps = _computeFusedSteps();
@@ -1943,9 +2066,21 @@ class _ElderProfileTabState extends State<ElderProfileTab>
 
               const SizedBox(height: 16),
 
-              // ── 快捷操作按鈕列 (整齊排列 / 零滾動 / 大字體) ─────────────────
+              // ── 快捷操作按鈕列 (3大功能 / 零滾動 / 大字體) ─────────────────
               Row(
                 children: [
+                  // 👨‍👩‍👧 方案 C：家人綁定
+                  Expanded(
+                    child: _buildActionCard(
+                      icon: Icons.family_restroom_rounded,
+                      title: '家人綁定',
+                      subtitle: '出示配對碼',
+                      color: const Color(0xFFEA580C),
+                      onTap: _showFamilyPairingDialog,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  // 🤖 語音助理
                   Expanded(
                     child: _buildActionCard(
                       icon: Icons.assistant_rounded,
@@ -1955,7 +2090,8 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                       onTap: _showAiAssistantSettingsDialog,
                     ),
                   ),
-                  const SizedBox(width: 14),
+                  const SizedBox(width: 12),
+                  // 🚪 切換身分
                   Expanded(
                     child: _buildActionCard(
                       icon: Icons.logout_rounded,
