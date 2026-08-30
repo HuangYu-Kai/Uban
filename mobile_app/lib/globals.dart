@@ -57,8 +57,38 @@ bool splashActive = false;
 /// 若無法 pop（例如冷啟動後直接被導向通話畫面，沒有上一頁），
 /// 則導向呼叫端提供的 [fallbackScreen]（通常是長輩/家屬主畫面），
 /// 並清空導航堆疊，避免出現黑屏或無回應畫面。
-void safeNavigateBack(BuildContext context, Widget fallbackScreen) {
-  if (!context.mounted) return;
+///
+/// ★ 2026-08-23：補上「呼叫端路由是否仍是最上層」的防呆。
+/// 通話結束／連線中斷是由多條互相獨立的回呼各自偵測（例如對方掛斷觸發
+/// `onCallEnded`，WebRTC 連線隨即斷開又觸發 `onConnectionLost`，有時還會
+/// 再加上 `onPeerConnectionFailed`），沒有任何集中判斷「這通電話是否已經
+/// 處理過」，於是同一次掛斷可能讓兩、三個回呼都呼叫本函式。第一次呼叫已經
+/// `pop()` 或 `pushAndRemoveUntil()` 把呼叫端的路由換掉，但 State 要到下一個
+/// frame 才真正 dispose，第二次呼叫發生當下 `context.mounted` 仍讀得到
+/// true，若不攔下就會在已經清空過一次的導航堆疊上再操作一次——這正是
+/// 「畫面卡死、白屏或黑屏、完全無法操作」的成因。
+/// `ModalRoute.of(context)?.isCurrent` 是比 `context.mounted` 更早失效的訊號：
+/// `Navigator` 在 push/pop 當下就同步更新路由歷史（`isCurrent` 立刻反映），
+/// 真正的 widget 卸載（連帶讓 `mounted` 變 false）則要等到下一次 build 才
+/// 發生，因此能攔住「同一個 tick 內背靠背呼叫」這種光靠 `mounted` 檢查
+/// 攔不住的情況。
+/// 呼叫端若需要「本畫面只離開一次」更強的畫面內保證（涵蓋不經過
+/// `safeNavigateBack` 的其他離場路徑），仍應自行加畫面內旗標——
+/// 見 `elder_screen.dart::_navigatedAway`，兩層防線互補、不互相取代。
+///
+/// ★ 2026-08-24：回傳 `bool`——`true` 代表本次呼叫確實執行了導航（pop 或
+/// push），`false` 代表因為上面的 `isCurrent` 防呆（或 `context` 已不在畫面
+/// 上）而拒絕動作。**呼叫端的「已經離開」旗標必須鎖在這個回傳值上，不可在
+/// 呼叫前就先鎖**：若先鎖、這裡又回傳 false，代表畫面其實哪裡都沒去，旗標
+/// 卻已經鎖死，會擋住該畫面之後所有其他離場路徑——這正是「連線失敗」對話框
+/// 曾經永久卡死的成因：對話框 `builder` 給的 context 在 `Navigator.pop` 之後
+/// 已不是最上層路由，這裡因而回傳 false，但呼叫端在呼叫前就把旗標鎖住了，
+/// 於是永遠沒有第二次機會離開畫面。
+bool safeNavigateBack(BuildContext context, Widget fallbackScreen) {
+  if (!context.mounted) return false;
+  // ★ 2026-08-23：呼叫端自己的路由若已經不是最上層（代表已被另一個回呼
+  //   搶先導航掉），視為重複呼叫，直接不做事；以下兩個分支的行為完全不變。
+  if (ModalRoute.of(context)?.isCurrent != true) return false;
   final navigator = Navigator.of(context);
   if (navigator.canPop()) {
     navigator.pop();
@@ -68,6 +98,7 @@ void safeNavigateBack(BuildContext context, Widget fallbackScreen) {
       (route) => false,
     );
   }
+  return true;
 }
 
 /// ★ 2026-08-02 第十四輪：解析各通路傳來的 isVideoCall。

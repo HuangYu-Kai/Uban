@@ -10,13 +10,26 @@ import '../../services/signaling.dart';
 import '../../services/api_service.dart';
 import '../video_call_screen.dart';
 import 'family_subscription_screen.dart';
-import 'zone_calibration_screen.dart';
 
 class FamilyInteractionTab extends StatefulWidget {
   final Elder? currentElder;
   final Signaling signaling;
   final List<dynamic> monitorDevices;
   final List<Map<String, dynamic>> activeAlerts;
+
+  /// ★ 2026-08-24 Feature A（監控清單「目前長輩所在此處」高亮）：與傳給
+  /// `FamilyHomeTab` 的是同一份正規化狀態 `{zone, enteredAt, updatedAt,
+  /// present, deviceId}`，由 `FamilyMainScreen._elderZone` 提供，本分頁
+  /// 不自行呼叫任何 API。`deviceId` 為 null、`present` 不是 `true`，或找不到
+  /// 相符的監視機卡片時，單純不顯示「目前所在」高亮，不影響既有的跌倒警報
+  /// 高亮（`hasActiveAlert`，見 `_buildMonitorDeviceCard`；警報優先權更高）。
+  /// `present` 才是「長輩在此」的唯一依據（見
+  /// `family_main_screen.dart::_elderZone` 欄位宣告處的完整說明）——不能只
+  /// 比對 `deviceId`，`_elderZone` 有可能因為過期（長輩早已離開鏡頭）而
+  /// `present == false`，此時即使 `deviceId` 還留著上一次的值也不可以繼續
+  /// 高亮。
+  final Map<String, dynamic>? elderZone;
+
   final int devicesMax;
   final String tierDisplayName;
 
@@ -42,6 +55,7 @@ class FamilyInteractionTab extends StatefulWidget {
     required this.signaling,
     this.monitorDevices = const [],
     this.activeAlerts = const [],
+    this.elderZone,
     this.devicesMax = 2,
     this.tierDisplayName = '一般會員',
     this.tierLevel = 'free',
@@ -1696,6 +1710,26 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
     final hasActiveAlert = deviceAlerts.isNotEmpty;
     final mostSevereAlert = hasActiveAlert ? deviceAlerts.first : null;
 
+    // ★ 2026-08-24 Feature A：長輩目前所在此處的高亮。deviceId 比對邏輯與
+    //   上面的 hasActiveAlert 同款（轉字串比對）。🚨 緊急優先：hasActiveAlert
+    //   時一律顯示跌倒警報樣式，不疊加這個高亮（decoration／徽章／副標題
+    //   三處都先判斷 `!hasActiveAlert`）。
+    //   ⚠️ 「設定區域」校準功能移除後新增 `present` 判斷：只比對 deviceId
+    //   不夠——`_elderZone` 過期（長輩早已離開鏡頭）時 `deviceId` 可能還留著
+    //   上一次的值，`present` 才是後端過期判定後的權威結果，見
+    //   `elderZone` 欄位宣告處的說明。
+    final String? presentDeviceId = widget.elderZone?['deviceId']?.toString();
+    final bool isElderPresent = !hasActiveAlert &&
+        widget.elderZone?['present'] == true &&
+        presentDeviceId != null &&
+        presentDeviceId == deviceId.toString();
+    // ⚠️ 括號是必要的：三元運算子的 `?` 緊接著 null-aware index `?[` 會被
+    //   解析器誤判成巢狀三元運算式的開頭（`widget.elderZone` 被當成內層
+    //   condition），拆成獨立的括號表達式即可消歧義。
+    final String? presentZoneName =
+        isElderPresent ? (widget.elderZone?['zone'])?.toString() : null;
+    final bool showZoneName = presentZoneName != null && presentZoneName != 'unknown';
+
     // ★ 2026-08-04 第 7 項：語音通道按鈕所需的兩個數值。
     //   任一個解析不出來就不顯示按鈕——寧可少一個功能鍵，也不能送出錯誤的
     //   alert_id / device_id 而把語音權限開到別台監視機上。
@@ -1713,19 +1747,29 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
       // ★ 2026-08-11 第二十二輪（需求 5）：暗色系。跌倒警報的紅色高亮**必須保留**
       //   （§7 護欄：警報視覺不可被弱化），只是把淺紅底換成深紅底、邊框轉亮，
       //   在深色卡片上維持同等的「一眼看到」強度。
+      // ★ 2026-08-24 Feature A：新增「長輩目前所在此處」的青色高亮
+      //   （isElderPresent），刻意選跟警報紅、線上綠點都明顯不同的色相；
+      //   三態優先序＝警報 > 目前所在 > 一般（isElderPresent 本身已內建
+      //   `!hasActiveAlert`，這裡的三元判斷只是讓顏色選擇同樣顯式對齊）。
       decoration: BoxDecoration(
-        color: hasActiveAlert ? const Color(0xFF3F1D1D) : const Color(0xFF0F172A),
+        color: hasActiveAlert
+            ? const Color(0xFF3F1D1D)
+            : (isElderPresent ? const Color(0xFF083344) : const Color(0xFF0F172A)),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: hasActiveAlert ? const Color(0xFFF87171) : const Color(0xFF334155),
-          width: hasActiveAlert ? 2.0 : 1.0,
+          color: hasActiveAlert
+              ? const Color(0xFFF87171)
+              : (isElderPresent ? const Color(0xFF38BDF8) : const Color(0xFF334155)),
+          width: (hasActiveAlert || isElderPresent) ? 2.0 : 1.0,
         ),
         boxShadow: [
           BoxShadow(
             color: hasActiveAlert
                 ? Colors.red.withValues(alpha: 0.22)
-                : Colors.black.withValues(alpha: 0.25),
-            blurRadius: hasActiveAlert ? 12 : 8,
+                : (isElderPresent
+                    ? const Color(0xFF38BDF8).withValues(alpha: 0.22)
+                    : Colors.black.withValues(alpha: 0.25)),
+            blurRadius: (hasActiveAlert || isElderPresent) ? 12 : 8,
             offset: const Offset(0, 2),
           ),
         ],
@@ -1787,6 +1831,25 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                           ),
                         ),
                       ),
+                    ] else if (isElderPresent) ...[
+                      // ★ 2026-08-24 Feature A：「長輩在此」徽章，僅在沒有作用中
+                      //   警報時顯示——警報優先權比照上面 hasActiveAlert 分支。
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF06B6D4),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Text(
+                          '長輩在此',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
                     ],
                   ],
                 ),
@@ -1794,13 +1857,19 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                 Text(
                   hasActiveAlert
                       ? '⚠️ ${_alertTypeLabel(mostSevereAlert?['alert_type'] ?? '')}（信心: ${((mostSevereAlert?['confidence'] ?? 0) * 100).toStringAsFixed(0)}%）'
-                      : '監視機模式',
+                      : (isElderPresent
+                          ? '📍 目前長輩所在此處${showZoneName ? ' · $presentZoneName' : ''}'
+                          : '監視機模式'),
                   style: TextStyle(
                     fontSize: 12,
                     color: hasActiveAlert
                         ? const Color(0xFFFCA5A5)
-                        : const Color(0xFF94A3B8),
-                    fontWeight: hasActiveAlert ? FontWeight.w600 : FontWeight.normal,
+                        : (isElderPresent
+                            ? const Color(0xFF7DD3FC)
+                            : const Color(0xFF94A3B8)),
+                    fontWeight: (hasActiveAlert || isElderPresent)
+                        ? FontWeight.w600
+                        : FontWeight.normal,
                   ),
                 ),
                 // ★ 2026-08-04 第 7 項：僅在有作用中警報時才出現語音通道按鈕。
@@ -1831,6 +1900,17 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                           //   鏡頭、不顯示本地預覽、不給鏡頭類按鈕，只留麥克風。
                           //   全專案唯一可以傳 true 的地方（見 §7 G55）。
                           monitorViewOnly: true,
+                          // ★ 2026-08-26：補上 `monitorDeviceName`，讓
+                          //   [Signaling.onMonitorRemoved] 能精準比對「被移除的是不是
+                          //   我正在看的這一台」。`name` 就是這張卡片本身的
+                          //   `device['deviceName']`——與下方 PopupMenuButton 呼叫
+                          //   `_showDeleteMonitorDeviceDialog(name.toString())` 用的是
+                          //   同一個字串，而後端刪除時會把收到的 `device_name`
+                          //   查詢參數（僅 `.strip()`）原樣寫回 `monitor-removed` 的
+                          //   `deviceName` 欄位（見 `routers/pairing.py::delete_monitor_device`），
+                          //   故兩者保證一致。未傳入前，比對退回只認 elderId（見該欄位
+                          //   宣告處），會讓刪除同一長輩底下的「另一台」也誤關本畫面。
+                          monitorDeviceName: name.toString(),
                         ),
                       ),
                     ).then((_) {
@@ -1864,8 +1944,6 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
             onSelected: (value) {
               if (value == 'rename') {
                 _showRenameMonitorDeviceDialog(name.toString());
-              } else if (value == 'zone') {
-                _openZoneCalibration(name.toString(), numericDeviceId);
               } else if (value == 'delete') {
                 _showDeleteMonitorDeviceDialog(name.toString());
               }
@@ -1878,16 +1956,6 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                   leading: Icon(Icons.drive_file_rename_outline_rounded,
                       color: Color(0xFFCBD5E1)),
                   title: Text('重新命名',
-                      style: TextStyle(color: Color(0xFFE2E8F0))),
-                ),
-              ),
-              // ★ 2026-08-18 IPS prototype：開啟該監視機的區域校準畫面。
-              PopupMenuItem<String>(
-                value: 'zone',
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.map_rounded, color: Color(0xFFCBD5E1)),
-                  title: Text('設定區域',
                       style: TextStyle(color: Color(0xFFE2E8F0))),
                 ),
               ),
@@ -1912,29 +1980,6 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
     final elder = widget.currentElder;
     if (elder == null) return null;
     return elder.elderId ?? elder.id.toString();
-  }
-
-  /// ★ 2026-08-18 IPS prototype：從監視機卡片的管理選單開啟該裝置的區域校準畫面。
-  /// 這是設定畫面而非通話畫面，直接用一般 `Navigator.push`，不套用通話相關的
-  /// `pushAndRemoveUntil`／`returnByPop` 護欄。
-  void _openZoneCalibration(String deviceName, int? deviceId) {
-    final elderId = _rawElderId;
-    final userId = widget.userId;
-    if (elderId == null || userId == null || deviceId == null) {
-      _toast('缺少長輩或裝置資訊，無法設定區域');
-      return;
-    }
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ZoneCalibrationScreen(
-          elderId: elderId,
-          deviceId: deviceId,
-          deviceName: deviceName,
-          userId: userId,
-        ),
-      ),
-    );
   }
 
   /// ★ 2026-08-10 第十九輪（需求 3）：從卡片直接刪除監視機。

@@ -47,7 +47,18 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   int _selectedIndex = 0;
   final Signaling _signaling = Signaling();
   bool _isIncomingCallDialogOpen = false;
-  
+
+  /// ★ 2026-08-23：供 `_presentCctvAlert` 判斷「App 目前是否在前景」，只在前景
+  /// 才呼叫 `WakelockPlus.enable()`——`cctv-alert` 是 Socket 事件，連線在 App
+  /// 背景時（尚未被系統殺死）仍可能存活並觸發 `_handleCctvAlert`，並非只有
+  /// 前景才會走到這裡（與同方法上方註解「APP 在背景／被殺死時不會經過這裡」
+  /// 描述的是設計預期、不是程式碼保證的不變式）。若不判斷就直接 enable，
+  /// wakelock 會在背景視窗上掛著沒有實際點亮效果，卻要等到彈窗關閉的
+  /// `.then()` 才 disable——使用者之後切回前景會發現螢幕莫名常亮。
+  /// 初始值為 `resumed`：`initState` 執行當下 App 必然在前景，
+  /// `didChangeAppLifecycleState` 尚未觸發過也不會誤判成背景。
+  AppLifecycleState _lifecycleState = AppLifecycleState.resumed;
+
   Elder? _currentElder;
   List<Elder> _elders = [];
   bool _isElderOnline = false;
@@ -91,20 +102,74 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   List<dynamic> _monitorDevices = [];
   final List<Map<String, dynamic>> _activeAlerts = [];
 
-  /// ★ 2026-08-18 IPS prototype：目前長輩的室內定位（zone）狀態，正規化自
+  /// ★ 2026-08-24（首頁「最新警示」滑動關閉，父層一半）：使用者在
+  /// `FamilyHomeTab` 首頁把警示卡片滑掉／按下已讀鍵時記錄的複合鍵集合，
+  /// 對應 `FamilyHomeTab.dismissedAlertKeys`（該 widget 參數宣告見
+  /// `family/family_home_tab.dart:49`，filter 用法見同檔 `:3009`）。
+  ///
+  /// **必須放在這個 State，不能放在 `FamilyHomeTab` 自己的 State**：
+  /// `FamilyHomeTab` 是 `IndexedStack` 底下的一頁，本畫面每 2.5 秒的裝置／
+  /// 警報輪詢（`_applyDeviceList` 等）都會呼叫 `setState` 觸發整棵樹重建，
+  /// 若集合放在子分頁的 State 裡則每次重建都可能連帶被子分頁自己的
+  /// `_loadDynamicData()`（下拉重新整理／切換長輩時整批重抓 `_realLogs`／
+  /// `_emergencyAlerts`）一併洗掉——這正是 `family_home_tab.dart` 該欄位
+  /// 宣告處的註解說明「刻意由父層持有」的原因，見該檔 :42-48。
+  ///
+  /// **切換長輩時刻意不清空、也不做 per-elder 命名空間**（不比照下方
+  /// `_switchElder()` 對 `_activeAlerts` / `_knownAlertKeys` 的 `.clear()`）：
+  /// 這組複合鍵的組法（`family_home_tab.dart::_buildAlertPreview`）優先用
+  /// `'alert:$alert_id'` / `'log:$log_id'`，兩者的 `alert_id`／`log_id`
+  /// 都是後端**單一資料表**的全域 `INTEGER PRIMARY KEY AUTOINCREMENT`
+  /// （`uban-api/database.py`：`emergency_alerts.alert_id` :266、
+  /// `activity_log.log_id` :430），不同長輩的警示不可能撞到同一個值；
+  /// 缺少該 PK 時的備援複合鍵（`'live:$type:$deviceId:$ts'` 等）內嵌的
+  /// `device_id` 本身就是 `elder_id` 與裝置名稱的 CRC32 雜湊
+  /// （`monitor_identity.py::monitor_device_id`，見
+  /// `CLAUDE_call-monitor.md` §6.9），同樣已經是 per-elder 的值。
+  /// 換句話說，這組 id 的設計本來就讓「長輩 A 的鍵蓋到長輩 B 的警示」這件事
+  /// 在實務上不可能發生，清空反而會違反上一段引用的既有契約
+  /// （子分頁明確要求這個集合要撐過 `didUpdateWidget`，也就是切換長輩那次）。
+  ///
+  /// **刻意不設上限、不做 LRU 淘汰、不寫入 SharedPreferences**：
+  /// 這是單次 App 執行期間的記憶體內狀態（未持久化，冷啟動即歸零），
+  /// 首頁清單本身也只顯示最近 30 筆（`family_home_tab.dart:3013`），
+  /// 使用者一個 session 內能滑掉的筆數遠遠不到需要淘汰的量級；
+  /// 若改用「淘汰最舊一筆」的上限機制，一旦被淘汰的那筆剛好還在目前
+  /// 30 筆的顯示範圍內，等於讓一個已經被使用者明確關閉的警示自己復活
+  /// ——這正是本輪任務要修的問題（滑掉又跳回來），不能為了設上限
+  /// 而重新引入它。
+  final Set<String> _dismissedAlertKeys = {};
+
+  /// ★ 2026-08-18 IPS prototype：目前長輩的室內定位（presence）狀態，正規化自
   /// REST `ApiService.getCurrentZone`（快照）與 Socket `elder-zone-update`
   /// （即時推播）兩種不同形狀的來源，統一成 `{zone, enteredAt, updatedAt,
-  /// calibrated}` 供 `FamilyHomeTab` 顯示。
-  /// `calibrated`（後端 `GET /api/ips/current/{elder_id}` 的權威欄位，代表該
-  /// 監視機是否已有非空的 zone 多邊形設定）才是「要不要顯示前往校準提示」
-  /// 的判斷依據，不要用 `zone == 'unknown'` 或 `last_seen == null` 反推——
-  /// 兩者都無法區分「尚未校準」與「已校準但目前沒偵測到人」。
-  /// Socket 推播不帶 `calibrated`，收到即視為 `true`（見 `_applyZoneUpdate`）。
+  /// present, deviceId}` 供 `FamilyHomeTab` 與 `FamilyInteractionTab` 顯示。
+  ///
+  /// ★ 2026-08-24（「設定區域」校準功能移除）：`present`（後端
+  /// `ZoneTracker.snapshot()` 的過期判定，見
+  /// `indoor_position.py::PRESENCE_STALE_SECONDS`）取代了原本的 `calibrated`，
+  /// 成為「長輩在此」高亮唯一的判斷依據——校準功能移除後多數監視機永遠不會
+  /// 有具名 zone，`calibrated` 已經失去意義。`zone` 欄位仍保留（多半是
+  /// `'unknown'`），只作為附加資訊顯示，不再參與任何狀態判斷。
   /// null＝「尚未取得任何回應」（elder 剛切換、REST 還沒回來，或還沒收過
-  /// 任何 socket 推播），畫面比照 `calibrated == false` 顯示同一張提示卡，
-  /// 不另外做 loading 狀態。
+  /// 任何 socket 推播），畫面比照 `present != true` 顯示同一張「目前未偵測到
+  /// 長輩」提示卡，不另外做 loading 狀態。
   /// 「尚未綁定監視機」則是完全不同的狀態，靠 `_monitorDevices.isEmpty` 判斷，
   /// 不會落到這裡。
+  ///
+  /// 🚨 **過期規則**（`_expireStaleZonePresenceIfNeeded`）：後端只在「偵測到
+  /// 人」時才會推播／回應 `present: true`，長輩離開鏡頭後不會有主動的
+  /// 「離開」事件——`present` 一旦被設為 `true`，必須靠前端自己對
+  /// `updatedAt` 做逾時判斷才會變回 `false`，否則會永遠停在最後一次「在」的
+  /// 結果（這正是本輪要修的 bug：監視機範圍內沒人，清單卻一直顯示「長輩在
+  /// 此」）。見該方法與 `_zonePresenceStaleWindow` 的說明。
+  ///
+  /// `deviceId`（2026-08-24 新增，String?）＝送出這筆 zone 資料的監視機
+  /// device_id，供監控卡片判斷「目前長輩所在此處」要高亮哪一張。兩個來源
+  /// 都叫這個鍵：Socket 見 `indoor_position.py::_build_zone_payload`
+  /// （`'device_id'`，字串）；REST 見 `routers/ips.py::get_current_zone`
+  /// 回應中的 `'device_id'`（int，原樣回傳查詢參數，因此必然等於
+  /// `_maybeFetchInitialZone` 當初查詢的那台監視機）。
   Map<String, dynamic>? _elderZone;
   /// dedupe：避免每次 2.5s socket 輪詢／10s HTTP 交叉驗證重新套用設備清單時
   /// 都重打一次 `getCurrentZone`。key＝`'elderId:deviceId'`（或 `'elderId:none'`）。
@@ -225,6 +290,12 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     // 取樣週期維持 2.5 秒不變；「上線→離線」的抖動抑制改由 _offlineConfirmTimer
     // 單向處理（見 onElderDevicesUpdate），不再讓輪詢週期與 debounce 週期相等而互相取消。
     _deviceRefreshTimer = Timer.periodic(const Duration(milliseconds: 2500), (_) {
+      // ★ 2026-08-24：presence 過期檢查獨立於裝置清單輪詢是否成功送出，放在
+      //   下面的 socket 連線判斷之前——即使 socket 斷線也要繼續判斷
+      //   `_elderZone` 是否已經該過期，網路異常正是「不該再相信舊資料」最
+      //   典型的情況。見 `_expireStaleZonePresenceIfNeeded` 的完整說明。
+      _expireStaleZonePresenceIfNeeded();
+
       final elder = _currentElder;
       if (elder == null || _signaling.socket?.connected != true) return;
       final elderIdStr = elder.elderId ?? elder.id.toString();
@@ -398,10 +469,26 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
       //   改為：清單一律立即套用；只有「上線→離線」這個方向做 2.5 秒確認，
       //   且該計時器只在尚未排程時建立（??=），永遠不因新事件重啟，
       //   保證最遲 2.5 秒一定提交，符合需求的 2.5 秒上限。
-      final bool online = devices.any(_isDeviceOnline);
+      //
+      // ★ 2026-08-24：「長輩在線」與撥號目標（_elderSocketId）都必須只看
+      //   通訊機，監控機不能算——監控機不能接電話，若被當成「在線設備」
+      //   選中，_elderSocketId 會指向監控機，通話會打不通（`_elderSocketId`
+      //   欄位宣告處已有註記：它是「第一台在線設備」，可能就是監控機）。
+      //   `monitors` 本身（監視機卡片自己的在線燈）維持看全部設備不變，
+      //   「這台監視機是否在線」與「長輩本人是否可被聯繫到」是兩個不同的
+      //   問題，這裡只改後者。
+      //   `deviceMode` 缺漏時視為通訊機：本專案裝置只有 comm／monitor 兩種
+      //   模式，monitor 一律由後端／前端顯式標記（見
+      //   CLAUDE_call-monitor.md §6.1）；沒有標記出來的裝置在舊資料與現行
+      //   程式碼路徑裡實際上都是通訊機，寧可誤判成「可撥打」（頂多打不通，
+      //   行為與修復前相同）也不要誤判成「不能撥打」（會讓正常通訊機顯示
+      //   離線，是更嚴重的迴歸）。
+      final List<dynamic> commDevices =
+          devices.where((d) => d is Map && d['deviceMode'] != 'monitor').toList();
+      final bool online = commDevices.any(_isDeviceOnline);
       final List<dynamic> monitors =
           devices.where((d) => d is Map && d['deviceMode'] == 'monitor').toList();
-      final onlineDevice = devices.firstWhere(_isDeviceOnline, orElse: () => {});
+      final onlineDevice = commDevices.firstWhere(_isDeviceOnline, orElse: () => {});
       final String? onlineSid =
           (onlineDevice is Map && onlineDevice.isNotEmpty) ? onlineDevice['id'] as String? : null;
 
@@ -452,18 +539,62 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
         'zone': (payload['to_zone'] ?? 'unknown').toString(),
         'enteredAt': _parseUtcIso(payload['entered_at']) ?? DateTime.now(),
         'updatedAt': DateTime.now(),
-        // ★ payload 不帶 calibrated 欄位（見團隊回覆：一次區域切換推播就代表
-        //   已在追蹤，等同已校準）。整包物件都在這裡重建，若不明確寫 true，
-        //   這個 key 會直接消失、被畫面當成 false 處理，變成「已知的 true
-        //   被 socket 推播降級成 unknown」——明確寫死，不要留給預設值。
-        'calibrated': true,
+        // ★ 2026-08-24（校準功能移除，presence 獨立於具名 zone 運作）：
+        //   後端每偵測到一次人（~2 秒/幀）就會推播一次（見
+        //   indoor_position.py::process_frame_for_zone），能收到這個事件本身
+        //   就代表「剛剛偵測到人」，因此預設 true；仍然讀取 payload 裡的
+        //   `present` 欄位（而非直接寫死），只有明確帶 false 時才採信——
+        //   為未來若改成也會推播「已離開」事件的情況預留退路，不需要再改
+        //   這裡的判斷式。
+        'present': payload['present'] != false,
+        // ★ 2026-08-24（監控卡片「目前長輩所在此處」高亮）：記錄是哪一台
+        //   監視機送出這筆推播。上面的方法註解「刻意不比對 device_id」講的是
+        //   要不要用它篩選／丟棄 payload（不篩選，全部接受）；這裡只是存下來
+        //   供 UI 顯示哪一張卡片要高亮，兩者不衝突。鍵名見
+        //   indoor_position.py::_build_zone_payload 的 'device_id'（字串）。
+        'deviceId': payload['device_id']?.toString(),
       };
     });
   }
 
+  /// presence 的用戶端過期視窗，須與後端
+  /// `indoor_position.py::PRESENCE_STALE_SECONDS`（10 秒）的理由對齊：後端
+  /// 只在「偵測到人」時才推播／回應 `present: true`，長輩離開鏡頭後不會有
+  /// 主動的「離開」事件，必須靠這個視窗由前端自己判斷逾時。`updatedAt` 是
+  /// 本機**收到當下**的時間戳（見 `_applyZoneUpdate` 與 `_zoneStateFromRest`
+  /// 都寫 `DateTime.now()`，不是後端事件時戳），已經隱含了單向網路延遲，
+  /// 不需要再疊加緩衝，故與後端窗口取同一個值。
+  static const Duration _zonePresenceStaleWindow = Duration(seconds: 10);
+
+  /// ★ 2026-08-24：`_elderZone` 的過期檢查——後端只在「偵測到人」時才會
+  /// 推播或回應 `present: true`，長輩離開鏡頭後不會有主動的「離開」事件，
+  /// 若不主動判斷逾時，`_elderZone` 會永遠停在最後一次「在」的結果（本輪
+  /// 要修的 bug：監視機範圍內沒人，清單卻一直顯示「長輩在此」）。
+  ///
+  /// 呼叫時機刻意搭上既有的 `_deviceRefreshTimer`（2.5 秒，見
+  /// `_startDeviceRefreshTimer`），且**不依賴該次輪詢是否成功送出**——即使
+  /// socket 斷線，也要繼續判斷 `_elderZone` 是否已經該過期，網路異常正是
+  /// 「不該再相信舊資料」最典型的情況，見該計時器 callback 內的呼叫點。
+  /// 不另開專屬計時器，避免多一個要在 `dispose()` 記得取消的物件。
+  void _expireStaleZonePresenceIfNeeded() {
+    if (!mounted) return;
+    final Map<String, dynamic>? zone = _elderZone;
+    if (zone == null || zone['present'] != true) return;
+    final DateTime? updatedAt = zone['updatedAt'] as DateTime?;
+    if (updatedAt == null) return;
+    if (DateTime.now().difference(updatedAt) <= _zonePresenceStaleWindow) return;
+    setState(() {
+      _elderZone = {..._elderZone!, 'present': false};
+    });
+  }
+
   /// ★ 2026-08-18 IPS prototype：監視機清單確定後，補一次 zone 初始值。
-  /// 為什麼需要它：`elder-zone-update` 只在區域**切換**時才推播，長輩若長時間
-  /// 待在同一區域，UI 會在切分頁前一直空白，必須主動查一次目前快照。
+  /// 為什麼需要它：`elder-zone-update` 只在後端偵測到人的那一刻才推播（見
+  /// `indoor_position.py::process_frame_for_zone`），App 剛開啟、還沒收過
+  /// 任何一次推播時 UI 會在切分頁前一直空白，必須主動查一次目前快照才知道
+  /// 「現在」是不是在場——這正是 REST 與 Socket 兩條路徑都要走
+  /// `ZoneTracker.snapshot()` 的過期判定的原因（見 `_zoneStateFromRest` 與
+  /// `_applyZoneUpdate` 的說明）。
   /// 用 `_zoneFetchKey` 去重，避免每次 2.5s socket 輪詢／10s HTTP 交叉驗證
   /// 重新套用設備清單時都重打一次 API（清單內容沒變就不重查）。
   void _maybeFetchInitialZone() {
@@ -500,9 +631,9 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
       if ('$nowElderIdStr:$deviceId' != key) return;
       if (data.isEmpty) return; // 查詢失敗：維持現狀，不覆蓋既有畫面，讓下一輪重試
       _zoneFetchKey = key;
-      // ★ 後端現在直接給 `calibrated` 權威欄位，不再用 `last_seen` 是否為
-      //   null 反推「有沒有資料」——只要成功回應（非空 Map）就正規化套用，
-      //   校準與否交給 `calibrated`，是否在任何區域內交給 `zone`。
+      // ★ 2026-08-24：後端直接給 `present` 權威欄位（已內含過期判定，見
+      //   indoor_position.py::ZoneTracker.snapshot），不再需要前端自己用
+      //   `last_seen` 反推——只要成功回應（非空 Map）就正規化套用。
       setState(() {
         _elderZone = _zoneStateFromRest(data);
       });
@@ -528,20 +659,29 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   }
 
   /// ★ 2026-08-18 IPS prototype：REST `getCurrentZone` 回傳形狀
-  /// `{zone, dwell_seconds, last_seen, calibrated, elder_id, device_id}` →
-  /// 正規化狀態。
+  /// `{zone, present, dwell_seconds, last_seen, calibrated, elder_id,
+  /// device_id}` → 正規化狀態。
   /// 後端只給 `dwell_seconds`（查詢當下已停留秒數），沒有 `entered_at`；用
   /// 「現在－dwell_seconds」反推進入時間，讓卡片用同一套邏輯估算停留時長，
   /// 與 socket 推播（有真正的 `entered_at`）共用同一份顯示邏輯。
-  /// `calibrated` 是後端的權威欄位（該監視機是否已有非空 zone 多邊形設定），
-  /// 直接透傳，不用 `zone`／`last_seen` 反推。
+  /// ★ 2026-08-24：`present` 才是權威欄位（後端 `ZoneTracker.snapshot()` 已
+  /// 內含過期判定，見 `indoor_position.py::PRESENCE_STALE_SECONDS`），直接
+  /// 透傳，不再讀取／使用 `calibrated`（校準功能移除後已失去意義，見
+  /// `_elderZone` 欄位宣告處的說明）。REST 是「查詢當下即時算」，這裡故意
+  /// 用嚴格的 `== true`（沒有欄位或非 true 一律當作不在場），不像 Socket
+  /// 推播路徑（`_applyZoneUpdate`）預設 true——兩者語意不同：能收到 Socket
+  /// 推播本身就代表剛偵測到人，但 REST 回應必須誠實反映「現在」的狀態。
+  /// `device_id`（2026-08-24 起一併透傳為 `deviceId`）：呼叫端固定查第一台
+  /// 監視機（見 `_maybeFetchInitialZone`），這裡的值必然等於該查詢用的
+  /// deviceId，只是換一個型別（String?）供監控卡片比對高亮用。
   static Map<String, dynamic> _zoneStateFromRest(Map<String, dynamic> data) {
     final num dwellSeconds = num.tryParse('${data['dwell_seconds'] ?? 0}') ?? 0;
     return {
       'zone': (data['zone'] ?? 'unknown').toString(),
       'enteredAt': DateTime.now().subtract(Duration(seconds: dwellSeconds.round())),
       'updatedAt': _parseUtcIso(data['last_seen']) ?? DateTime.now(),
-      'calibrated': data['calibrated'] == true,
+      'present': data['present'] == true,
+      'deviceId': data['device_id']?.toString(),
     };
   }
 
@@ -733,23 +873,34 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
 
   /// ★ 2026-08-05 第十七輪：家屬端在**前景**時的跌倒警報呈現。
   /// 需求的三件事分別由三個機制負責，任一項失敗都不得影響其餘兩項：
-  ///   - 強制開啟螢幕 → `CctvAlertNotification`（`fullScreenIntent`）＋ `WakelockPlus`（維持亮著）
-  ///   - 彈出通知     → 本方法的 `AlertDialog`（APP 已在前景時系統通知容易被忽略）
-  ///   - 朗讀         → `FlutterTts`
+  ///   - 螢幕      → `WakelockPlus`，**僅在 App 本來就在前景時**維持亮著（見下方
+  ///     `_lifecycleState` 判斷）；`CctvAlertNotification` 負責鎖屏可見＋鬧鐘級
+  ///     音量的高優先級通知。★ 2026-08-23（新鐵律）：`CctvAlertNotification` 的
+  ///     `fullScreenIntent` 已改為 `false`——**家屬端不再強制把 App 拉到鎖定
+  ///     畫面之上**，是否查看交還使用者自行點擊通知決定；緊急程度不變（鬧鐘
+  ///     音量／繞過勿擾／鎖屏可見皆保留）。強制開啟只留給長輩端使用。
+  ///   - 彈出通知  → 本方法的 `AlertDialog`（APP 已在前景時系統通知容易被忽略）
+  ///   - 朗讀      → `FlutterTts`
   /// APP 在背景／被殺死時走的是 `main.dart` 的 FCM `cctv-alert` 分支，不會經過這裡。
   Future<void> _presentCctvAlert(Map<String, dynamic> alert) async {
     final String alertType =
         (alert['alert_type'] ?? alert['alertType'] ?? 'fall').toString();
     final String typeLabel = _alertTypeLabel(alertType);
 
-    // 1) 保持螢幕亮著
-    try {
-      await WakelockPlus.enable();
-    } catch (e) {
-      debugPrint('⚠️ [FamilyMainScreen] WakelockPlus.enable 失敗: $e');
+    // 1) 保持螢幕亮著——僅限 App 本來就在前景時（見 _lifecycleState 欄位說明）。
+    //   背景時開啟對「目前看不見的視窗」沒有實際點亮效果，只會讓 wakelock
+    //   一直掛著，直到使用者切回前景、彈窗關閉的 .then() 才 disable。
+    if (_lifecycleState == AppLifecycleState.resumed) {
+      try {
+        await WakelockPlus.enable();
+      } catch (e) {
+        debugPrint('⚠️ [FamilyMainScreen] WakelockPlus.enable 失敗: $e');
+      }
     }
 
-    // 2) 系統通知（螢幕關閉時由 fullScreenIntent 負責點亮）
+    // 2) 系統通知（★ 2026-08-23 起不再用 fullScreenIntent 強制點亮螢幕/拉起
+    //    App；鎖屏可見＋鬧鐘級音量仍會讓通知在螢幕關閉時顯眼地響，由使用者
+    //    自行點開，見 CctvAlertNotification.show 內的說明）
     try {
       await CctvAlertNotification.show({
         'elderId': (alert['elder_id'] ?? alert['elderId'] ?? '').toString(),
@@ -878,6 +1029,12 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                         returnByPop: true,
                         // ★ 2026-08-10 第十九輪（需求 2）：單向監控檢視
                         monitorViewOnly: true,
+                        // ★ 2026-08-26：`deviceName`（:946）已由 `device['deviceName']`
+                        //   成功比對 `deviceIdStr` 解出（`canView` 為 true 才會走到這個
+                        //   按鈕，等同保證 `device is Map` 成立，不是上面 orElse 的
+                        //   '監視機' 兜底值），可放心傳給 [Signaling.onMonitorRemoved]
+                        //   精準比對，避免同一長輩底下刪除「另一台」監視機時誤關本畫面。
+                        monitorDeviceName: deviceName,
                       ),
                     ),
                   ).then((_) {
@@ -1110,9 +1267,18 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                           onPressed: () async {
                             final confirmed = await _confirmDeleteDevice(name);
                             if (confirmed != true) return;
+                            // ★ 2026-08-26：補上 `userId`。後端
+                            //   `routers/pairing.py::delete_monitor_device` 在
+                            //   `user_id is None` 時直接回 404（見 G45／§3.8）——
+                            //   缺這個參數會讓這顆刪除鍵每次都必然失敗。
+                            //   `widget.userId` 與 `family_interaction_tab.dart`
+                            //   `_showDeleteMonitorDeviceDialog` 能成功刪除時用的是
+                            //   同一顆家屬 user_id，來源相同（`FamilyMainScreen`
+                            //   建構子的 `required this.userId`）。
                             final ok = await ApiService.deleteMonitorDevice(
                               elderId: rawElderId,
                               deviceName: name,
+                              userId: widget.userId,
                             );
                             if (!mounted) return;
                             if (ok) {
@@ -1163,6 +1329,19 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
         ],
       ),
     );
+  }
+
+  /// ★ 2026-08-24（首頁「最新警示」滑動關閉，父層一半）：
+  /// `FamilyHomeTab.onAlertItemDismissed` 的實作——把該複合鍵加入
+  /// `_dismissedAlertKeys`（欄位宣告與完整理由見上方 `_activeAlerts` 附近）
+  /// 並 `setState`，讓 `family_home_tab.dart:3009` 的 `.where(...)` 在下一次
+  /// build 立即排除該筆；之後每 2.5 秒的裝置／警報輪詢觸發的重建也會沿用
+  /// 同一份已更新的集合，不會讓滑掉的警示在下一輪輪詢又跳回來。
+  void _handleAlertItemDismissed(String itemId) {
+    if (!mounted) return;
+    setState(() {
+      _dismissedAlertKeys.add(itemId);
+    });
   }
 
   Future<void> _switchElder(Elder elder) async {
@@ -1290,6 +1469,9 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // ★ 2026-08-23：記錄目前生命週期狀態，供 _presentCctvAlert 判斷是否要
+    //   開 wakelock（見 _lifecycleState 欄位宣告處的說明）。
+    _lifecycleState = state;
     if (state == AppLifecycleState.resumed) {
       _checkPendingAcceptedCall();
     }
@@ -1703,12 +1885,23 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                 );
               }
             },
+            // ★ 2026-08-24（首頁「最新警示」滑動關閉，父層一半）：接上
+            //   FamilyHomeTab 的同名參數（宣告見 family_home_tab.dart:49-52，
+            //   對方那份分頁側程式碼——filter :3009、Dismissible :3173——早已
+            //   就位，只是父層一直沒有傳入非預設值，導致滑掉的警示在下一輪
+            //   2.5 秒輪詢又跳回來）。_dismissedAlertKeys／
+            //   _handleAlertItemDismissed 宣告與完整理由見本檔上方欄位註解。
+            dismissedAlertKeys: _dismissedAlertKeys,
+            onAlertItemDismissed: _handleAlertItemDismissed,
           ),
           FamilyInteractionTab(
             currentElder: _currentElder,
             signaling: _signaling,
             monitorDevices: _monitorDevices,
             activeAlerts: _activeAlerts,
+            // ★ 2026-08-24 Feature A：與傳給 FamilyHomeTab 的是同一份狀態，
+            //   供監控卡片高亮「目前長輩所在此處」。
+            elderZone: _elderZone,
             devicesMax: _devicesMax,
             tierDisplayName: _tierDisplayName,
             tierLevel: _tierLevel,

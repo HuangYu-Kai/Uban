@@ -131,7 +131,13 @@ class _CameraScreenState extends State<CameraScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A), // 使用深色背景營造專業感
       appBar: AppBar(
-        title: Text('即時監控 - ${widget.roomId}'),
+        // ★ roomId 為執行期字串、長度不定；AppBar 標題預設雖會繼承 Material 的
+        //   單行省略號樣式，這裡明講 overflow/maxLines 以防主題覆寫預設值。
+        title: Text(
+          '即時監控 - ${widget.roomId}',
+          overflow: TextOverflow.ellipsis,
+          maxLines: 1,
+        ),
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),

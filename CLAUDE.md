@@ -27,8 +27,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | `lib/screens/splash_screen.dart` | 🟠 中高（冷啟動導航競態） |
 | `lib/screens/camera_screen.dart` / `friends_screen.dart` | 🟠 中（監控入口、撥打入口） |
 
-只改 UI 樣式（顏色、字體、間距）也**必須**先看 `CLAUDE_call-monitor.md` **§5 UI 按鈕與跳轉地圖**——
-那一節就是為了讓只動 UI 的人不必讀完整條信令鏈也能安全改動而寫的。
+只改 UI 樣式（顏色、字體、間距）也**必須**先看 `CLAUDE_call-monitor-ui-map.md`（原
+`CLAUDE_call-monitor.md` §5，2026-08-25 起獨立成檔）——那一份文件就是為了讓只動 UI 的人
+不必讀完整條信令鏈也能安全改動而寫的。
 
 ⚠️ `lib/main.dart.bak` 是過期備份，會污染 grep 結果，**永遠不要編輯它**。
 
@@ -124,9 +125,9 @@ Key service addresses:
 | 有哪些檔案、風險多高、`signaling.dart` 公開介面 | §2 檔案地圖 |
 | Socket 事件 / FCM 欄位 / SharedPreferences 鍵位 | §3 資料契約 |
 | 撥打 → 接聽 → 掛斷 完整流程（含冷啟動五層兜底） | §4 通話生命週期 |
-| **按鈕在哪、按了跳去哪、可以安全改什麼** | §5 UI 按鈕與跳轉地圖 |
+| **按鈕在哪、按了跳去哪、可以安全改什麼** | `CLAUDE_call-monitor-ui-map.md`（原 §5，2026-08-25 起獨立成檔） |
 | 監控機／CCTV／裝置角色指派 | §6 監控子系統 |
-| **100 條護欄（絕對不可單點修改）** | §7 |
+| **118 條護欄（絕對不可單點修改）** | §7 |
 | 這段程式碼為什麼長這樣（27 輪修復年表；最新三輪在 §8，第一至二十四輪在 `CLAUDE_call-monitor-history.md`） | §8 |
 | 出問題了怎麼查（三層 A/B/C 定位法、MIUI 檢查表） | §9 |
 | 改完要做什麼 | §10 修改 SOP |
@@ -180,11 +181,13 @@ Scheduled jobs (defined in `main.py`):
 9. **每次更動完成後必須清除不必要的空白檔案** — 收尾前掃一次工作目錄，刪除本次作業產生的零位元組檔、只剩空白字元的殘留檔、以及空的暫存目錄（例如中途建立後未使用的 stub、被清空但忘了刪的檔案）。**不要刪除**專案本來就需要的空檔案（如 `__init__.py`、`.gitkeep`、`py.typed`、空的 `__init__.dart`）。判斷準則：該檔是否被任何程式碼、設定或建置流程引用；有引用就留下。
 10. **修改連接／跳轉等邏輯時，必須同步更新雙端 graphify 檔案** — 只要動到 Socket 事件、REST 端點、FCM 欄位、畫面跳轉路由、模組間呼叫關係等「連接與跳轉」語意，除了照常回寫 `.md` 文件外，**還要同步更新 `Uban/graphify-out/` 與 `uban-api/graphify-out/`**（兩端內容相同）。做法：於專案根目錄執行 `/graphify . --update`（增量重建，只重掃變更檔），再把 `graphify-out/` 複製到上述兩處覆蓋。純樣式改動（顏色、字體、間距、文案）不觸發本條。
 11. **除非專案結構有重大變更，否則對 graphify 一律採最小變動** — 「重大變更」指新增／刪除模組、大規模搬移目錄；未達此門檻時，一律用 `/graphify . --update` 增量重建（只重掃變更檔），不要做整包重建，不要為了「順手」重跑分群、重編社群標籤或重新產生 HTML，也不要動 `graphify-out/` 底下與本次變更無關的產物。本條**不豁免**第 10 條的同步義務——第 10 條規定「連接／跳轉邏輯變更時必須同步更新雙端 graphify-out」，本條只約束**怎麼做**（增量、最小差異），兩條並不矛盾。使用者可隨時要求**暫停** graphify 更新；暫停期間本條與第 10 條皆暫時不適用，但完成回報時必須明講「本輪未同步 graphify」。
-12. **每輪年表寫進 `CLAUDE_call-monitor.md` §8 之後，必須立刻把最舊一輪搬到 `CLAUDE_call-monitor-history.md`，讓主檔 §8 永遠只留最新三輪** — 原因：主檔一旦超過 **256 KB**，子代理就無法一次讀完，而「動手前必須完整讀過本文件」是通話／監控子系統第一鐵律；文件過大會讓這條鐵律在技術上**無法遵守**（截至本條寫入時主檔約 245 KB，已達上限的 93%）。搬移方式：**逐字搬移，不得改寫或摘要**；以**標題全文**為錨點，不要依賴行號（多代理併發編輯時行號會漂移）；搬完後 `Uban/` 與 `uban-api/` 兩份主檔鏡像、兩份歷史檔鏡像都必須各自維持 **byte-identical**。搬移後要同步更新主檔內**兩處**「搬移門檻提示」的數字（§7 護欄標題下方、§8 開頭指標區塊）——這是全檔**唯一**需要跟著調整的地方，**不要**為此逐一修改內文中上百處的「第 N 輪」引用。⚠️ 真正逼近讀取上限的其實是 §8 以外的內容（資料契約、護欄、UI 地圖、除錯手冊；目前約 217 KB，且隨護欄持續累積而成長）——本條只讓 §8 不再膨脹；若主檔日後仍逼近上限，下一刀要切的是 §7 或 §5，不是修復年表。
+12. **每輪年表寫進 `CLAUDE_call-monitor.md` §8 之後，必須立刻把最舊一輪搬到 `CLAUDE_call-monitor-history.md`，讓主檔 §8 永遠只留最新三輪** — 原因：主檔一旦超過 **256 KB**，子代理就無法一次讀完，而「動手前必須完整讀過本文件」是通話／監控子系統第一鐵律；文件過大會讓這條鐵律在技術上**無法遵守**（截至本條寫入時主檔約 245 KB，已達上限的 93%）。搬移方式：**逐字搬移，不得改寫或摘要**；以**標題全文**為錨點，不要依賴行號（多代理併發編輯時行號會漂移）；搬完後 `Uban/` 與 `uban-api/` 兩份主檔鏡像、兩份歷史檔鏡像都必須各自維持 **byte-identical**。搬移後要同步更新主檔內**兩處**「搬移門檻提示」的數字（§7 護欄標題下方、§8 開頭指標區塊）——這是全檔**唯一**需要跟著調整的地方，**不要**為此逐一修改內文中上百處的「第 N 輪」引用。⚠️ 真正逼近讀取上限的其實是 §8 以外的內容（資料契約、護欄、UI 地圖、除錯手冊；目前約 217 KB，且隨護欄持續累積而成長）——本條只讓 §8 不再膨脹；若主檔日後仍逼近上限，下一刀要切的是 **§7**（§5 已於 2026-08-25 獨立成
+`CLAUDE_call-monitor-ui-map.md`，不再算在主檔內），不是修復年表。
+13. **「強制開啟」只准長輩端使用，家屬端一律禁止** — 在使用者沒有主動操作的情況下把 App 拉到前景或蓋過鎖定畫面（`bringToFront`、`AndroidIntent` 冷啟動、強制把系統音量轉滿），只有長輩端可以保留；家屬端一律不行。理由：長輩身處困境時必須能被聯繫到，不能只靠一般提示音等當事人自行反應；家屬手機若被無故拉到前景或音量被強制轉滿，對懂資訊科技的使用者而言，跟流氓軟體／惡意軟體的行為難以區分。落地：`lib/main.dart` 全檔僅存一處 `AndroidIntent` 啟動，限定在 `role == 'elder' && type == 'emergency-call'` 分支內；`lib/services/signaling.dart:612` 的 `bringToFront` 與強制音量共用同一個 `final bool isElderDevice = _role == 'elder';` 守門——用連線當下的 `_role`，不用 SharedPreferences 的 `user_role`/`saved_role`（那對鍵有第十六輪記載的漂移史，見 `CLAUDE_call-monitor.md`）。**例外**：來電響鈴畫面（CallKit、`fullScreenIntent: true` 的來電通知）雙端皆可保留——使用者必須主動接聽才會進入通話，屬於標準來電 UX，不算未經同意的強制開啟。**不算強制開啟**：`showOverLockScreen`／`setShowWhenLocked` 只是讓使用者自己已經打開的畫面在鎖定畫面上可見，沒有啟動 App，雙端皆可用。家屬端的緊急事件（例如跌倒警報，見 `lib/services/cctv_alert_notification.dart:222`）一律走高優先級通知：鬧鐘音量、繞過勿擾、鎖屏可見（`visibility: NotificationVisibility.public`）皆可保留，但不得 `fullScreenIntent: true`、不得 `AndroidIntent` 啟動、不得無角色判斷地 `bringToFront`，也不得強制改變裝置音量。新增任何會在 App 被殺死／背景時喚起畫面的路徑前，必須確認它有角色守門，且守門要 **fail-closed**（判斷不出角色就不要喚起）。
 
 ### 3.2 通話與監控
 
-**完整規則見 [`CLAUDE_call-monitor.md`](CLAUDE_call-monitor.md) §7（100 條護欄）。**
+**完整規則見 [`CLAUDE_call-monitor.md`](CLAUDE_call-monitor.md) §7（118 條護欄）。**
 以下僅列最高頻的幾條，動手前仍必須讀完整版：
 
 - **Never merge signaling and media tracks** — they are on separate hosts by design

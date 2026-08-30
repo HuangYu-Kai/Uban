@@ -82,6 +82,24 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   /// 每 2 秒一輪的計時器會疊著呼叫，把相機開開關關到真的壞掉。
   bool _cctvRecovering = false;
 
+  /// ★ 2026-08-25：最近一次 `pushCctvFrame` 結果的繁體中文說明，顯示在 CCTV
+  /// 畫面上——使用者無法查後端 log 或呼叫診斷端點，只能站在監視機前面看畫面，
+  /// 故把後端早退原因（`yolo_disabled`／`busy_frame_dropped`…）直接翻成人看得懂
+  /// 的句子。純顯示用途，見 [_recordCctvPushResult]。
+  String _cctvPushStatusText = '尚未推送影格';
+
+  /// 與 [_cctvPushStatusText] 成對的後端原始 reason 字串（或 transportError
+  /// sentinel），小字顯示、方便使用者原樣回報給我們核對。`null` 代表尚無結果，
+  /// 或本次推送 `detected == true`（後端不帶 reason）。
+  String? _cctvPushRawReason;
+
+  /// ★ 2026-08-26：`reason == 'yolo_unavailable'` 時後端一併帶回的
+  /// `load_error`（見 [CctvPushResult.loadError]／`routers/alert.py`）——
+  /// 使用者不是伺服器管理員，查不了 `/cctv/yolo_status` 之類的診斷端點，
+  /// 這是他們唯一拿得到、可以原樣回報給我們核對的「偵測器為什麼沒載入」線索。
+  /// `null` 代表尚無結果，或本次推送的 reason 不是 `yolo_unavailable`。
+  String? _cctvPushLoadError;
+
   /// ★ 2026-08-11 第二十二輪（需求 6）：本監控機是否已被家屬端刪除。
   ///
   /// 後端刪除監控設備時會先 emit `monitor-removed`、再把這台裝置踢線，
@@ -94,11 +112,34 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   bool _monitorRemoved = false;
   bool _isExiting = false; // ★ 退出監控/刪除重入防護，避免與 onMonitorRemoved 競爭
 
-  /// ★ 2026-08-11 第二十二輪（需求 8）：本畫面註冊在 socket 上的 `force-logout`
-  /// 原生監聽。存起來才有辦法在 dispose() 時用
-  /// `socket.off('force-logout', _forceLogoutHandler)` 精準解除，
-  /// 避免每進出一次通話／監控畫面就在 singleton socket 上多疊一份殭屍 handler。
-  void Function(dynamic)? _forceLogoutHandler;
+  /// ★ 2026-08-23：本畫面「離場只做一次」的重入防護。
+  ///
+  /// 起因：對方掛斷時後端 `end-call` 觸發 [Signaling.onCallEnded]，幾乎同一
+  /// 時刻 WebRTC 連線也會斷線觸發 [Signaling.onConnectionLost]（有時還加上
+  /// [Signaling.onPeerConnectionFailed]）——三者是各自獨立偵測到「這通電話
+  /// 結束了」的回呼，不是同一事件的重複觸發，卻都會呼叫 `safeNavigateBack`
+  /// 想清空導航堆疊回到主畫面。第一次呼叫已經把 `ElderScreen` 從堆疊上換
+  /// 掉，但 State 要到下一個 frame 才真正 dispose，第二次呼叫發生當下
+  /// `context.mounted` 仍是 true，若不攔下就會在已經清空過一次的堆疊上再
+  /// 操作一次，輕則多餘重繪、重則直接卡死（白屏／黑屏、無法操作）。
+  ///
+  /// 與 `globals.dart::safeNavigateBack` 新增的 `ModalRoute.isCurrent` 檢查
+  /// 是兩道互補防線：那一層擋的是「路由本身是否還在最上層」的通用防呆，
+  /// 這一層擋的是「本畫面自己是否已經決定要走」的畫面內狀態，任一道生效
+  /// 都足以擋下重入。
+  ///
+  /// 只在**確定即將呼叫** `safeNavigateBack` 的當下才設為 true，因此 CCTV
+  /// 模式永遠不會把它設起——onCallEnded／onCallBusy／onConnectionLost／
+  /// onPeerConnectionFailed／`_handleCallTimeout()`／`_hangUp()` 各自的
+  /// `if (!widget.isCCTVMode)` 守衛，讓 CCTV 分支從不到達這個旗標。
+  ///
+  /// 🚫 刻意**不提供重置**：一旦真的離場，這個 State 實例的生命週期也隨之
+  /// 結束（被 `pop()` 或被 `pushAndRemoveUntil()` 換掉），不存在「同一個
+  /// 實例事後又重新撥打」的情境——`_makeCall()` 僅有的兩個呼叫點（initState
+  /// 的 autoCall、`_handleCallTimeout()` 選擇「重新撥打」）都發生在尚未離場
+  /// 之前。加一個沒有對應合法使用場景的重置，只會多一個「忘記重置」的
+  /// 風險點。
+  bool _navigatedAway = false;
 
   int? _userId; // ★ issue 3/10：用於安全導航回主畫面時建構 ElderHomeScreen
   String? _prefsUserName; // ★ Issue 1 硬化：真實 caregiver_name，供 _buildFallbackHome 使用
@@ -114,6 +155,16 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   /// 是否被各路徑正確設定。任何一條寫入 pendingAcceptedCall 的路徑若漏設，
   /// 都不會再把進行中的通話誤判成新來電而 hangUp（緊急通話瞬間掛斷的直接成因）。
   String? _activeCallId;
+
+  /// ★ 2026-08-25（需求 3）：這個畫面「進場當下」裝置是否處於鎖定狀態——
+  /// 用來分辨「這通電話是從鎖屏／背景喚醒才進來的」還是「使用者本來就已經在
+  /// App 裡」。只有前者結束通話（`dispose()`）時才呼叫原生
+  /// `finishAndRemoveTask`，把整個 App 連同背景 Task 一併關閉、回到裝置的
+  /// 鎖定畫面；長輩自己主動撥出／在 App 內接聽的一般情境完全不受影響。
+  /// CCTV 監控模式恆為 false（見 initState／dispose 對應的 `!widget.isCCTVMode`
+  /// 守衛）。查詢方式見 `MainActivity.kt::isKeyguardLocked()` 的完整說明
+  /// （已知的唯一誤差方向是「低估」，不會錯殺使用中的畫面）。
+  bool _enteredWhileLocked = false;
 
   // ★ 新增：用於生成新格式的房間ID
   late String _formattedRoomId;
@@ -203,7 +254,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
         final buffer = await videoTracks.first
             .captureFrame()
             .timeout(const Duration(seconds: 6));
-        await ApiService.pushCctvFrame(
+        final pushResult = await ApiService.pushCctvFrame(
           elderId: _rawElderId,
           // ★ 第十九輪（D4）：改用 _currentDeviceName（可隨 monitor-renamed 更新），
           //   避免改名後這個每 2 秒跑一次的迴圈仍持續用舊名稱推幀，
@@ -213,9 +264,14 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
         ).timeout(const Duration(seconds: 10));
         _cctvFrameFailStreak = 0;
         _cctvLastFrameOkAt = DateTime.now();
+        // ★ 2026-08-25：只是把這一幀的後端回應寫進畫面狀態，純顯示、不影響
+        //   上面兩行的自癒計數；_recordCctvPushResult 內部自帶 try/catch，
+        //   絕不會讓顯示邏輯反過來拖垮這個迴圈（見 G75）。
+        _recordCctvPushResult(pushResult);
       } catch (e) {
         _cctvFrameFailStreak++;
         debugPrint('⚠️ [CCTV] 影格推送失敗（第 $_cctvFrameFailStreak 次，略過本輪，不中斷迴圈）: $e');
+        _recordCctvPushResult(null);
       } finally {
         // ★ 絕對不可移除：這一行是「畫面停住」的解鎖點。
         _cctvFrameSending = false;
@@ -277,9 +333,104 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     }
   }
 
+  /// ★ 2026-08-25：把 [CctvPushResult] 翻成繁體中文，讓拿著監視機的人不必查
+  /// 後端 log、不必呼叫任何診斷端點，站在裝置前面看畫面就知道「偵測到底有沒有
+  /// 在跑」。純字串轉換，不做任何 I/O 或狀態異動。
+  ///
+  /// `result == null` 代表這一輪整段流程（擷取影格／呼叫 API／外層 10 秒逾時）
+  /// 沒能得出任何結果，與 [ApiService.pushCctvFrame] 內部已知的 HTTP 層失敗
+  /// （[CctvPushResult.transportError]）呈現同一句文案，因為對使用者而言兩者
+  /// 都是「這一幀沒送出去」，差別只在於是否連到後端一事本身有沒有明確答案。
+  String _describeCctvPushResult(CctvPushResult? result) {
+    if (result == null) return '推送失敗';
+    if (result.detected) return '偵測到異常';
+    switch (result.reason) {
+      case 'yolo_disabled':
+        return '後端已停用此監視機的偵測';
+      case 'busy_frame_dropped':
+        return '伺服器忙碌，本幀略過';
+      case 'yolo_unavailable':
+        return '偵測器未載入';
+      case 'no_event':
+        return '偵測中，未發現異常';
+      case 'unknown_elder':
+        return '後端查無此長輩帳號';
+      case 'server_error':
+        return '伺服器內部錯誤';
+      case CctvPushResult.transportError:
+        return '推送失敗';
+      default:
+        return '狀態不明';
+    }
+  }
+
+  /// ★ 2026-08-25：把最新一次推幀結果寫進畫面狀態，供 CCTV 畫面上的小標籤呈現
+  /// （見 build() 內「CCTV 監視中…」旁邊那個 Positioned）。
+  ///
+  /// 🚫 純顯示用途，內部自帶 try/catch 吞掉一切例外（例如 `setState` 剛好在
+  /// dispose 競態下被呼叫）——**絕不能**讓顯示邏輯反過來影響
+  /// [_startCctvFrameLoop] 的三層自癒（見 CLAUDE_call-monitor.md §7 G75）。
+  /// 呼叫端已經在 try 區塊內先完成 `_cctvFrameFailStreak`／`_cctvLastFrameOkAt`
+  /// 的正常記帳才呼叫這裡，即使以下 setState 失敗也不影響那兩者。
+  void _recordCctvPushResult(CctvPushResult? result) {
+    if (!mounted) return;
+    try {
+      final text = _describeCctvPushResult(result);
+      setState(() {
+        _cctvPushStatusText = text;
+        _cctvPushRawReason = result?.reason;
+        // ★ 2026-08-26：同一顆 setState，同一層 try/catch——沿用既有機制，
+        //   不為 loadError 另開一條路徑（見 CLAUDE_call-monitor.md §7 G75，
+        //   顯示邏輯絕不能反過來影響三層自癒推幀迴圈）。
+        _cctvPushLoadError = result?.loadError;
+      });
+    } catch (e) {
+      debugPrint('⚠️ [CCTV] 更新推送狀態顯示失敗（不影響推幀迴圈）: $e');
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+
+    // ★ 2026-08-24：通話畫面「進場」時開啟鎖屏覆蓋，與 dispose()（約 :1555）
+    //   呼叫的 restoreLockScreen 對稱（見 CLAUDE_call-monitor.md §7 G49）。
+    //   緊急通話透過背景 AndroidIntent 強制喚醒時會觸發原生
+    //   onCreate/onNewIntent → showOverLockScreen()，但一般通話若只是把既有
+    //   Activity 從背景恢復（CallKit 接聽，未必有新 Intent），原生端不會再
+    //   次呼叫，於是沿用上一通通話結束時 restoreLockScreen 留下的
+    //   setShowWhenLocked(false)，畫面就無法蓋過鎖定畫面——這正是「一般通話
+    //   房間無法像緊急通話一樣繞過鎖定畫面」的成因。
+    //   🚫 CCTV 監控模式（isCCTVMode）刻意不呼叫：dispose() 對監控模式本來就
+    //   不呼叫 restoreLockScreen（監控機必須維持恆亮才能持續推幀，見
+    //   dispose() 對應註解），若進場時蓋上鎖定畫面卻永遠不會在退出時還原，
+    //   會變成「退出監控後 App 永久蓋在鎖定畫面之上」的隱私缺陷。這次需求
+    //   只提到「一般通話房間」，監控模式維持現狀（不主動蓋鎖定畫面）。
+    //   ⚠️ 這不是「強制開啟」：本畫面是使用者自己的操作（撥打／接聽）已經
+    //   進入的畫面，這裡只讓它能蓋過鎖定畫面顯示，不呼叫 bringToFront，
+    //   也不觸發任何 AndroidIntent——不要把它「升級」成強制喚醒。
+    if (!widget.isCCTVMode) {
+      const MethodChannel('com.example.app/bring_to_front')
+          .invokeMethod('showOverLockScreen')
+          .catchError((e) {
+        debugPrint('⚠️ [ElderScreen] showOverLockScreen 失敗: $e');
+        return null;
+      });
+
+      // ★ 2026-08-25（需求 3）：記錄「進場當下」是否鎖定，供 dispose() 決定
+      //   要不要關閉整個 App（見 _enteredWhileLocked 欄位說明）。與上面的
+      //   showOverLockScreen 同一個 `!isCCTVMode` 守衛——監控模式本來就不蓋
+      //   鎖定畫面，也不該在退出監視機時把整個 App 關掉。
+      const MethodChannel('com.example.app/bring_to_front')
+          .invokeMethod('isKeyguardLocked')
+          .then((locked) {
+        if (mounted) _enteredWhileLocked = locked == true;
+      }).catchError((e) {
+        debugPrint('⚠️ [ElderScreen] isKeyguardLocked 查詢失敗: $e');
+        return null;
+      });
+    }
+
     WidgetsBinding.instance.addObserver(this);
     isAppReady = true;
     _checkPermissions();
@@ -579,6 +730,75 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     }
   }
 
+  /// ★ 2026-08-25（第三十三輪）：一般通話在 ElderScreen 內收到 offer、但畫面上
+  /// 沒有任何已同意紀錄時的接聽／拒絕選擇（見 `onIncomingCall` 回呼註解）。
+  ///
+  /// 畫面與動作刻意比照 `elder_home_screen.dart::_showIncomingCallDialog`——
+  /// 同樣的 AlertDialog、綠色主題、圖示、「拒接」／「接聽」按鈕與
+  /// `barrierDismissible: false`。沒有直接呼叫那個函式，是因為它是另一個
+  /// State（`_ElderHomeScreenState`）的 private 方法，且接聽後還會自行
+  /// `Navigator.push` 到新的 `ElderScreen`——本函式的呼叫情境是「已經身處
+  /// ElderScreen」，不需要也不能重複那段導航，因此另外準備一份外觀對稱、
+  /// 但動作範圍不同的版本，而不是新發明一套不同風格的 UI。
+  Future<bool> _showNormalIncomingCallChoice() async {
+    if (!mounted) return false;
+    bool accepted = false;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade100,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.phone_in_talk, color: Colors.green, size: 28),
+              ),
+              const SizedBox(width: 12),
+              const Text('家屬來電'),
+            ],
+          ),
+          content: const Text('您的家人正在呼叫您！', style: TextStyle(fontSize: 18)),
+          backgroundColor: Colors.green.shade50,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          actions: [
+            ElevatedButton.icon(
+              onPressed: () {
+                accepted = false;
+                Navigator.of(dialogContext).pop();
+              },
+              icon: const Icon(Icons.call_end),
+              label: const Text('拒接', style: TextStyle(fontSize: 16)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              ),
+            ),
+            ElevatedButton.icon(
+              onPressed: () {
+                accepted = true;
+                Navigator.of(dialogContext).pop();
+              },
+              icon: const Icon(Icons.videocam),
+              label: const Text('接聽', style: TextStyle(fontSize: 16)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+    return accepted;
+  }
+
   /// ★ 2026-08-11 第二十二輪（需求 9）：播放約 7 秒的緊急提示音。
   /// ★ 2026-08-12 第二十三輪：播放器搬到全域單例 [EmergencyTone]，音檔換成
   ///   救護車雙音（`sounds/emergency_siren.wav`）。
@@ -672,7 +892,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
         showDialog(
           context: context,
           barrierDismissible: false,
-          builder: (context) => AlertDialog(
+          builder: (dialogContext) => AlertDialog(
             title: const Text('連線失敗'),
             content: Text(
               (reason != null && reason.isNotEmpty)
@@ -682,9 +902,18 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
             actions: [
               ElevatedButton(
                 onPressed: () {
-                  Navigator.pop(context); // 關閉對話框
+                  Navigator.pop(dialogContext); // 關閉對話框
                   // ★ issue 10：安全返回主畫面，避免 pop 後無上一頁造成黑屏
-                  safeNavigateBack(context, _buildFallbackHome());
+                  // ★ 2026-08-23：見 _navigatedAway 欄位宣告處的說明——本畫面只離開一次。
+                  // ★ 2026-08-24：builder 參數改名為 dialogContext，避免遮蔽
+                  //   State 自己的 context——下面改用未被遮蔽的 State context
+                  //   呼叫 safeNavigateBack（對話框已用 dialogContext 關閉，
+                  //   它對應的路由隨即不再是最上層，若誤用它呼叫會恆回傳
+                  //   false），且改成「呼叫後才鎖旗標」：先鎖再呼叫的話，一旦
+                  //   safeNavigateBack 因故拒絕導航，_navigatedAway 會被錯誤
+                  //   鎖死，長輩就永久卡在這個「連線失敗」畫面出不去。
+                  if (_navigatedAway) return;
+                  _navigatedAway = safeNavigateBack(context, _buildFallbackHome());
                 },
                 child: const Text('確定')
               )
@@ -805,7 +1034,10 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
         // ★ 只有非 CCTV 模式才退出畫面
         if (!widget.isCCTVMode) {
           // ★ issue 3/10：通話結束後安全返回，若無上一頁則回到長輩主畫面，避免黑屏
-          safeNavigateBack(context, _buildFallbackHome());
+          // ★ 2026-08-23：onConnectionLost／onPeerConnectionFailed 可能幾乎同時
+          //   觸發，見 _navigatedAway 欄位宣告處的說明——本畫面只離開一次。
+          if (_navigatedAway) return;
+          _navigatedAway = safeNavigateBack(context, _buildFallbackHome());
         }
       }
     };
@@ -822,7 +1054,9 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
           _isInCall = false;
         });
         if (!widget.isCCTVMode) {
-          safeNavigateBack(context, _buildFallbackHome());
+          // ★ 2026-08-23：見 _navigatedAway 欄位宣告處的說明——本畫面只離開一次。
+          if (_navigatedAway) return;
+          _navigatedAway = safeNavigateBack(context, _buildFallbackHome());
         }
       }
     };
@@ -832,7 +1066,9 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       _callTimer?.cancel();
       if (!mounted) return;
 
-      // ── 一般通話路徑：與第二十二輪修改前**完全相同**，不得更動 ──
+      // ── 一般通話路徑：與第二十二輪修改前的業務邏輯（文案／狀態）完全
+      //    相同，不得更動；2026-08-23 僅在離場前補上 _navigatedAway 重入
+      //    防護，見該欄位宣告處的說明 ──
       if (!widget.isCCTVMode) {
         _showElderCallFailToast(kCallFailDisconnected);
         setState(() {
@@ -840,7 +1076,8 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
           _status = "連線中斷";
           _isInCall = false;
         });
-        safeNavigateBack(context, _buildFallbackHome());
+        if (_navigatedAway) return;
+        _navigatedAway = safeNavigateBack(context, _buildFallbackHome());
         return;
       }
 
@@ -877,66 +1114,85 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
           _isInCall = false;
         });
         if (!widget.isCCTVMode) {
-          safeNavigateBack(context, _buildFallbackHome());
+          // ★ 2026-08-23：見 _navigatedAway 欄位宣告處的說明——本畫面只離開一次。
+          if (_navigatedAway) return;
+          _navigatedAway = safeNavigateBack(context, _buildFallbackHome());
         }
       }
     };
 
-    // ★ 2026-08-11 第二十二輪（需求 8）：這是本畫面唯一一個**直接掛在 socket 上**
-    //   的原生監聽（其餘都是 Signaling 的 callback 欄位，dispose() 時設 null 即可解除）。
-    //   過去它註冊後**從不解除**：離開監控機、回到長輩端、再進通話畫面，
-    //   同一個 socket 上就疊了好幾份 force-logout handler，各自持有已 dispose 的
-    //   State 與 BuildContext；一旦後端真的送 force-logout，多份 handler 併發
-    //   remove prefs 並各自 pushAndRemoveUntil，正是使用者回報的
-    //   「在後台徹底死機（ANR）」的成因之一。
-    //   存成欄位，dispose() 時用 socket.off('force-logout', _forceLogoutHandler) 精準移除
-    //   （**不可**用不帶 handler 的 off()，那會把其他地方註冊的同名監聽一併清掉）。
-    _forceLogoutHandler = (_) async {
-      debugPrint('🚪 [ElderScreen] force-logout 觸發');
-      final prefs = await SharedPreferences.getInstance();
-      // ★ Issue 3 硬化：force-logout 只應清除「登入/角色/裝置身分」相關鍵，
-      //   不可用 prefs.clear() 清光全部本機資料，避免波及與登入狀態無關的設定。
-      const List<String> keysToRemove = [
-        'caregiver_id',
-        'caregiver_name',
-        'user_role',
-        'saved_role',
-        'saved_id',
-        'saved_device_name',
-        'saved_is_cctv',
-        'elder_room_id',
-        'access_token',
-        // ★ 2026-07-27 第十三輪：force-logout 是家屬端「強制解綁本裝置」，
-        //   語意上這台裝置已被移除授權，不該還能用「快速登入同一長輩」一鍵登回，
-        //   故連快速登入記憶鍵一併清除。（使用者自己按「切換身分／登出」則保留。）
-        'last_elder_id',
-        'last_elder_name',
-        'last_elder_room_id',
-        'last_elder_device_role',
-      ];
-      for (final key in keysToRemove) {
-        await prefs.remove(key);
-      }
-      final deviceRoleKeys =
-          prefs.getKeys().where((k) => k.startsWith('device_role_')).toList();
-      for (final key in deviceRoleKeys) {
-        await prefs.remove(key);
-      }
-      if (mounted) {
-         Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (context) => const IdentificationScreen()),
-          (route) => false,
-        );
-      }
-    };
-    _signaling.socket?.on('force-logout', _forceLogoutHandler!);
-
+    // ★ 2026-08-23：本畫面過去在這裡直接掛一個 `force-logout` 原生 socket
+    //   監聽（對應 dispose() 內原本的 `socket.off('force-logout',
+    //   _forceLogoutHandler)` 精準解除，該段清理也已一併移除）。但
+    //   `main.dart::handleForceLogout()` 透過 `Signaling.onForceLogout`
+    //   回呼也在處理同一個後端事件——同一個 `force-logout` 事件因此有兩個
+    //   互不知情的接收端，各自 remove prefs、各自 `pushAndRemoveUntil` 到
+    //   不同畫面（這裡曾經是 `IdentificationScreen`，`main.dart` 當時是
+    //   `RoleSelectionScreen`）。兩者幾乎同時觸發時，第二個會在第一個已經
+    //   清空過的導航堆疊上再操作一次，正是使用者回報「長輩端在背景徹底
+    //   死機（ANR）」的成因之一。
+    //   修法：force-logout 只留 `main.dart::handleForceLogout()` 一個唯一
+    //   擁有者——它經由全域 `navigatorKey` 執行，即使本畫面未掛載也能觸發；
+    //   且逐一比對過，它清除的 prefs 鍵集合是本畫面舊版清單的超集（多清了
+    //   `pendingAcceptedCall`／`pendingRingCallData`／`pendingRingCall`／
+    //   `selected_elder_id`／`selected_elder_name`／`selected_elder_room_id`
+    //   六個鍵，沒有任何一邊獨有而對方漏清的鍵），並已把目的地從
+    //   `RoleSelectionScreen` 改成現行入口 `IdentificationScreen`。
+    //   🚫 不要在這裡加回 `_signaling.socket?.on('force-logout', ...)`——
+    //   這正是本次要移除的重複註冊。
     _signaling.onIncomingCall = (callerId, callType) async {
       debugPrint("📞 [ElderScreen] Incoming Offer from $callerId (Type: $callType)");
-      // ★ 只要是在 ElderScreen，就代表已經進入通話準備狀態，一律接聽！
-      if (mounted) setState(() => _isInCall = true);
-      return true;
+      // ★ 2026-08-25（第三十三輪）：舊註解「只要在 ElderScreen 內就代表已經
+      //   進入通話準備狀態，一律接聽」不成立——長輩端可能因為上一通通話、
+      //   CCTV 監控或任何原因已經停留在本畫面，此時收到一般通話的 offer，
+      //   使用者從未被問過是否接聽（尤其螢幕關閉時更不會發現）。
+      //   `callType` 不是新旗標，是 `signaling.dart`（收到 offer 時依這通電話
+      //   登記的 isEmergency 換算）既有就會傳進來的既有參數，只是原本被忽略。
+      //
+      //   緊急通話：維持 G81「長輩端永遠不得出現接聽／拒絕 UI」，行為與改動前
+      //   完全相同——無條件接聽。
+      if (callType == 'emergency') {
+        if (mounted) setState(() => _isInCall = true);
+        return true;
+      }
+
+      // 一般通話：`_isInCall` 為 true 代表這通電話已經在別處被使用者同意過
+      //   （`ElderHomeScreen` 來電對話框／`main.dart` 全域來電對話框／CallKit
+      //   接聽，見 `_handleAcceptedCallFromBackground`／`_checkPendingAcceptedCall`
+      //   都會先設定 `_isInCall = true` 才送 `sendCallAccept`）——這裡只是同一
+      //   通電話後續送達的 WebRTC offer，照常接聽，行為與改動前完全相同。
+      if (_isInCall) {
+        return true;
+      }
+
+      // 走到這裡代表畫面上沒有任何「已同意」的通話紀錄卻收到一般通話的
+      // offer，不可再直接接聽。監控機模式旁邊沒有人可以操作，彈對話框只會
+      // 永久卡住畫面（比照 `_handleCallTimeout` 對 CCTV 模式的既有處理），
+      // 直接回忙線即可，不彈 UI。
+      if (widget.isCCTVMode) {
+        try {
+          _signaling.sendCallBusy(callerId);
+        } catch (e) {
+          debugPrint('⚠️ [ElderScreen] sendCallBusy (CCTV) 失敗: $e');
+        }
+        return false;
+      }
+      if (!mounted) return false;
+
+      // 一般通訊機：讓使用者自己選——沿用 `elder_home_screen.dart` 既有來電
+      // 對話框的外觀與拒接動作（sendCallBusy），見 `_showNormalIncomingCallChoice`
+      // 的函式註解（無法直接呼叫那個 private 方法，故另外準備一份外觀對稱的）。
+      final bool accepted = await _showNormalIncomingCallChoice();
+      if (accepted) {
+        if (mounted) setState(() => _isInCall = true);
+      } else {
+        try {
+          _signaling.sendCallBusy(callerId);
+        } catch (e) {
+          debugPrint('⚠️ [ElderScreen] sendCallBusy 失敗: $e');
+        }
+      }
+      return accepted;
     };
 
     _signaling.onHeartbeatMessage = (message) async {
@@ -1326,6 +1582,25 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   int _callAttempt = 0;
 
   /// ★ 2026-08-12 第二十三輪（需求 3）：啟動一次 30 秒撥打逾時看門狗。
+  ///
+  /// ★ 2026-08-24 稽核記錄：家屬端 `video_call_screen.dart` 曾有「對方已接聽，
+  /// 但 WebRTC 協商還沒談完時逾時窗仍把電話當『沒人接』」的臭蟲（誤送多餘的
+  /// `sendCancelCall`，見該檔 `_remoteAccepted` 欄位的完整說明）。本檔逐行核對
+  /// 後**沒有**同一種毛病，不需要移植同一套修法——下面 `Future.delayed` 裡的
+  /// guard 用的是 `_status != "正在呼叫家人..."`，而 [onCallAcceptedByRemote]
+  /// （:755-759）一收到接聽就同步把 `_status` 改成「連線建立中...」，全檔找過
+  /// 一輪沒有任何其他賦值會把 `_status` 改回「正在呼叫家人...」，所以這顆逾時
+  /// 一旦跨過接聽時刻就會在下面的 guard 自動變成 no-op，`_handleCallTimeout`
+  /// 根本不會被叫到，`sendCancelCall` 自然也不會誤送。
+  ///
+  /// ⚠️ 但這只是「字串比對恰好順帶擋掉了」，不是刻意設計的等價機制，代價是
+  /// 接聽之後若協商真的卡死，**沒有任何逾時會再次介入**——只能等
+  /// `onPeerConnectionFailed`（:935，只有 `onConnectionState==Failed` 才會觸發，
+  /// 見 G37）或使用者自己手動掛斷。這是與家屬端不同、目前刻意不修的殘留缺口：
+  /// 本輪任務只要求「有相同毛病才修」，這裡沒有相同毛病；若日後要補「已接聽
+  /// 但協商卡死」的專屬逾時，可比照家屬端 `_remoteAccepted` +
+  /// `_negotiationTimeoutSeconds` 的模式另外設計，不要直接沿用 `_status`
+  /// 字串比對這條路——那是巧合生效，不是為這個用途設計的。
   void _armCallTimeout() {
     final int attempt = ++_callAttempt;
     // ★ 2026-07-18：長輩端主動撥打新增 30 秒逾時。原本完全沒有逾時，
@@ -1333,6 +1608,9 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     Future.delayed(const Duration(seconds: 30), () {
       if (!mounted) return;
       if (attempt != _callAttempt) return; // 已重新撥打，這一輪作廢
+      // ★ 2026-08-24 稽核：這一行恰好也是「已接聽」的隱性守門——見上方
+      //   本方法的稽核記錄，_status 一旦被 onCallAcceptedByRemote 改掉就不會
+      //   再等於這個字串，本逾時就此失效，不會誤送 cancel-call。
       if (_status != "正在呼叫家人...") return;
       _handleCallTimeout();
     });
@@ -1371,7 +1649,9 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       // `_makeCall()` 自己會重設 _status / _isInCall 並重新武裝逾時看門狗。
       _makeCall();
     } else {
-      safeNavigateBack(context, _buildFallbackHome());
+      // ★ 2026-08-23：見 _navigatedAway 欄位宣告處的說明——本畫面只離開一次。
+      if (_navigatedAway) return;
+      _navigatedAway = safeNavigateBack(context, _buildFallbackHome());
     }
   }
 
@@ -1392,7 +1672,9 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     // ★ 只有非 CCTV 模式才自動回到首頁
     if (!widget.isCCTVMode) {
       // ★ issue 3/10：安全返回，若無上一頁則回到長輩主畫面，避免黑屏
-      safeNavigateBack(context, _buildFallbackHome());
+      // ★ 2026-08-23：見 _navigatedAway 欄位宣告處的說明——本畫面只離開一次。
+      if (_navigatedAway) return;
+      _navigatedAway = safeNavigateBack(context, _buildFallbackHome());
     }
   }
 
@@ -1500,7 +1782,12 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
 
       // SessionManager 內部已包含 clearSession() + forceDisconnect()，
       // 不需要（也不可以）在這裡再呼叫一次 disconnect()。
-      await SessionManager.releaseSession();
+      // ★ 2026-08-26：這是使用者在本裝置上主動按「退出並重置」，語意等同
+      //   長輩自己登出（見 CLAUDE_call-monitor.md §7 G24／G125），保留快速
+      //   登入記憶鍵，讓由長輩通訊帳號登出轉監控設備、再轉回長輩通訊帳號時
+      //   仍能一鍵登回同一長輩。與上面的 onMonitorRemoved（家屬端強制刪除本
+      //   監控機、授權已被收回）不同——那裡維持預設全清，不可套用同樣邏輯。
+      await SessionManager.releaseSession(preserveQuickLogin: true);
 
       if (mounted) {
         Navigator.of(context).pushAndRemoveUntil(
@@ -1513,23 +1800,55 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    // ★ 2026-08-05 第十八輪（需求 4）：通話畫面離開 → 還原鎖屏行為，讓裝置回到原本的螢幕鎖。
+    //   `showOverLockScreen()` 會設 setShowWhenLocked(true) + FLAG_KEEP_SCREEN_ON，
+    //   不還原的話 APP 會永久蓋在鎖定畫面之上、螢幕也永不休眠。
+    //   監控機（CCTV）刻意排除——它本來就必須維持恆亮才能持續推幀。
+    //   這裡涵蓋所有離開路徑（掛斷／對方掛斷／忙線／斷線／連線失敗／撥打逾時），
+    //   它們最終都會讓本 route 被 pop 或 pushAndRemoveUntil 移除而觸發 dispose()。
+    // ★ 2026-08-24：搬到 dispose() 最前面、所有既有陳述式之前（見 CLAUDE_call-monitor.md
+    //   §7 G49）。原本排在 `_signaling.hangUp(...)` 之後，若前面任何一步
+    //   （`_cctvFrameTimer?.cancel()`、renderer.dispose()、`_signaling.hangUp(...)`…）
+    //   同步丟出例外，這段就會被跳過、鎖屏還原不會執行，App 永久蓋在鎖定畫面之上——
+    //   放最前面才不會被後面任何一步擋住。
+    if (!widget.isCCTVMode) {
+      const MethodChannel('com.example.app/bring_to_front')
+          .invokeMethod('restoreLockScreen')
+          .catchError((e) {
+        debugPrint('⚠️ [ElderScreen] restoreLockScreen 失敗: $e');
+        return null;
+      });
+    }
+
+    // ★ 2026-08-25（需求 3）：這通電話是從鎖屏／背景喚醒才進來的
+    //   （_enteredWhileLocked，見欄位宣告處說明）→ 通話結束時不留在 App
+    //   任何畫面，直接關閉整個 App 與背景 Task，回到裝置鎖定畫面。
+    //   🚫 必須排在上面的 restoreLockScreen 之後——先把「蓋過鎖定畫面」的
+    //   視窗旗標清乾淨，App 的最後一幀才不會殘留蓋在鎖定畫面之上。
+    //   `!widget.isCCTVMode` 是防禦性重複守衛：_enteredWhileLocked 依建構
+    //   只會在非 CCTV 模式被設成 true，這裡再檢查一次，監控模式下即使欄位
+    //   萬一被誤設也不會把監視機整個關掉。長輩自己主動撥出／在 App 內接聽
+    //   的一般情境 _enteredWhileLocked 為 false，這裡不會呼叫，結束通話後
+    //   照舊回到 ElderHomeScreen（行為不變）。
+    if (!widget.isCCTVMode && _enteredWhileLocked) {
+      const MethodChannel('com.example.app/bring_to_front')
+          .invokeMethod('finishAndRemoveTask')
+          .catchError((e) {
+        debugPrint('⚠️ [ElderScreen] finishAndRemoveTask 失敗: $e');
+        return null;
+      });
+    }
+
     _callTimer?.cancel();
     _cctvFrameTimer?.cancel();  // ★ 第 7 項：離開監視機畫面必須停止推幀，否則相機釋放後會持續拋例外
     pendingAcceptedCall.removeListener(_onPendingCallChanged);
     _localRenderer.dispose();
     _remoteRenderer.dispose();
-    
-    // ★ 2026-08-11 第二十二輪（需求 8）：解除本畫面掛在 socket 上的原生監聽。
-    //   必須帶上 handler 參數精準移除；不帶參數的 off('force-logout') 會連
-    //   其他地方註冊的同名監聽一起清掉。
-    if (_forceLogoutHandler != null) {
-      try {
-        _signaling.socket?.off('force-logout', _forceLogoutHandler);
-      } catch (e) {
-        debugPrint('⚠️ [ElderScreen] 解除 force-logout 監聽失敗（續行）: $e');
-      }
-      _forceLogoutHandler = null;
-    }
+
+    // ★ 2026-08-23：本畫面已不再自行註冊 `force-logout` 監聽，原本掛在這裡的
+    //   `socket.off('force-logout', _forceLogoutHandler)` 精準解除也隨之移除。
+    //   見 initState 對應位置的說明——唯一擁有者現在是
+    //   `main.dart::handleForceLogout()`。
 
     // ★ 修復：只結束 WebRTC，不要斷開 Socket，這樣回到 ElderHomeScreen 時才能繼續接收推播
     // ★ 2026-08-11 第二十二輪（需求 8）：`disposeLocalStream` 改為**視模式而定**。
@@ -1543,22 +1862,6 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       disconnectSocket: false,
       disposeLocalStream: widget.isCCTVMode,
     );
-
-    // ★ 2026-08-05 第十八輪（需求 4）：通話畫面離開 → 還原鎖屏行為，讓裝置回到原本的螢幕鎖。
-    //   `showOverLockScreen()` 會設 setShowWhenLocked(true) + FLAG_KEEP_SCREEN_ON，
-    //   不還原的話 APP 會永久蓋在鎖定畫面之上、螢幕也永不休眠。
-    //   監控機（CCTV）刻意排除——它本來就必須維持恆亮才能持續推幀。
-    //   這裡涵蓋所有離開路徑（掛斷／對方掛斷／忙線／斷線／連線失敗／撥打逾時），
-    //   它們最終都會讓本 route 被 pop 或 pushAndRemoveUntil 移除而觸發 dispose()。
-    if (!widget.isCCTVMode) {
-      const MethodChannel('com.example.app/bring_to_front')
-          .invokeMethod('restoreLockScreen')
-          .catchError((e) {
-        debugPrint('⚠️ [ElderScreen] restoreLockScreen 失敗: $e');
-        return null;
-      });
-    }
-
 
     // ★ 清空 UI 相關的 callbacks，讓全域的 callbacks 重拾控制權
     _signaling.onCallAcceptedByRemote = null;
@@ -1734,19 +2037,87 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
                   right: 0,
                   child: Center(
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                      // ★ 2026-08-25：新增的推送狀態文字是執行期資料（後端 reason
+                      //   字串長度不定），限制最大寬度＋下面 Text 的
+                      //   maxLines/overflow 雙重保險，避免撐爆版面或造成
+                      //   RenderFlex overflow。
+                      constraints: const BoxConstraints(maxWidth: 300),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                       decoration: BoxDecoration(
                         color: Colors.black.withValues(alpha: 0.45),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: Text(
-                        'CCTV 監視中…',
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.6),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w400,
-                          letterSpacing: 1.0,
-                        ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'CCTV 監視中…',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.6),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w400,
+                              letterSpacing: 1.0,
+                            ),
+                          ),
+                          // ★ 2026-08-25：把每 2 秒一輪 pushCctvFrame 的最新結果翻成
+                          //   中文顯示在這裡（見 _recordCctvPushResult／
+                          //   _describeCctvPushResult）。這是使用者唯一拿得到的
+                          //   推幀診斷資訊來源——他們不是伺服器管理員，查不了
+                          //   /cctv/yolo_status 之類的診斷端點，只能站在監視機
+                          //   前面看畫面。純顯示，不影響 G75 的三層自癒推幀迴圈。
+                          const SizedBox(height: 2),
+                          Text(
+                            _cctvPushStatusText,
+                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.85),
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          // 原始 reason 字串（小字），方便使用者原樣回報給我們核對。
+                          if (_cctvPushRawReason != null)
+                            Text(
+                              _cctvPushRawReason!,
+                              textAlign: TextAlign.center,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.4),
+                                fontSize: 9,
+                              ),
+                            ),
+                          // ★ 2026-08-26：偵測器載入失敗的原因（後端
+                          //   `routers/alert.py` 在 reason == 'yolo_unavailable'
+                          //   時才附上，已由後端 _sanitize_load_error() 折單行、
+                          //   裁切至 200 字並遮蔽 URL 內嵌憑證樣式）。使用者不是
+                          //   伺服器管理員，查不了 /cctv/yolo_status 之類的診斷
+                          //   端點，這行字是他們唯一拿得到、可以原樣回報給我們
+                          //   核對的線索——因此刻意**不**用 maxLines: 1 +
+                          //   ellipsis 單行截斷（那樣會把最關鍵的內容切掉，等於
+                          //   白顯示）。改用較高的 maxLines 讓它自然換行；外層
+                          //   Container 已有 maxWidth: 300 限制寬度，這裡的
+                          //   maxLines: 5 在該寬度、此字級下足以完整顯示後端
+                          //   裁切後的 200 字上限，overflow: ellipsis 只是防禦
+                          //   性上限（正常情況不會觸發），不是主要截斷手段。
+                          //   純顯示、不影響 G75 的三層自癒推幀迴圈。
+                          if (_cctvPushLoadError != null)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: Text(
+                                _cctvPushLoadError!,
+                                textAlign: TextAlign.center,
+                                maxLines: 5,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.55),
+                                  fontSize: 9,
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                     ),
                   ),

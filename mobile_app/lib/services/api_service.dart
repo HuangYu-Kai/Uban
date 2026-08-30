@@ -3,12 +3,47 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+/// ★ 2026-08-25：`POST /api/cctv/frame` 的簡化解析結果，供監視機畫面呈現「這一幀
+/// 後端到底怎麼處理了」。後端在進 YOLO 推論前有好幾個合法的早退點（見
+/// `routers/alert.py::push_cctv_frame`），過去 [ApiService.pushCctvFrame] 只回一個
+/// bool，呼叫端完全看不出「沒有異常」是正常的節流／停用，還是真的推送失敗。
+///
+/// [reason] 沿用後端 `{'detected': ..., 'reason': ...}` 的原始字串（例如
+/// `yolo_disabled`／`busy_frame_dropped`／`yolo_unavailable`／`no_event`／
+/// `unknown_elder`／`server_error`）；`detected == true` 時後端不帶這個欄位，
+/// 此時為 `null`。HTTP 層本身失敗（非 200、逾時、連線例外、回應格式不對）時
+/// 用 [CctvPushResult.failure] 產生的 [transportError] sentinel 值表示——
+/// **不是**後端字彙，純粹讓呼叫端分辨「連後端怎麼想都不知道」與後端明確回覆
+/// 的原因。
+///
+/// ★ 2026-08-26：新增 [loadError]，對應後端 `reason == 'yolo_unavailable'`
+/// 時新帶的 `load_error` 欄位（`routers/alert.py::push_cctv_frame`，內容已由
+/// 後端 `_sanitize_load_error()` 折單行＋裁切＋遮蔽憑證樣式）。這是使用者
+/// （不是伺服器管理員，查不了 `/cctv/yolo_status` 之類的診斷端點）唯一能拿到
+/// 的「偵測器為什麼載入失敗」線索，故原樣保留供畫面顯示、原樣回報。其他
+/// `reason` 值後端不帶這個鍵，此時為 `null`。
+class CctvPushResult {
+  final bool detected;
+  final String? reason;
+  final String? loadError;
+
+  const CctvPushResult({required this.detected, this.reason, this.loadError});
+
+  /// 非後端字彙的 sentinel：HTTP 請求本身失敗（非 200、逾時、連線例外、
+  /// 回應格式不對）時使用。
+  static const String transportError = 'transport_error';
+
+  factory CctvPushResult.failure() =>
+      const CctvPushResult(detected: false, reason: transportError);
+}
+
 class ApiService {
   // --- 動態伺服器 IP 設置 ---
   static const String _serverIp = String.fromEnvironment('SERVER_IP',
       defaultValue: 'localhost-0.tail5abf5e.ts.net');
 
-  // 依據環境動態切換 API 基礎網址（預設 Android 模擬器連線本機: 10.0.2.2:8000）
+  // 依據環境動態切換 API 基礎網址；未帶 --dart-define=SERVER_IP 時預設連線正式
+  // Tailscale 網域（見上方 _serverIp），本機開發請自行帶入你的位址（例如模擬器用 10.0.2.2）
   static String get baseUrl {
     if (_serverIp.startsWith('http://') || _serverIp.startsWith('https://')) {
       return _serverIp.endsWith('/api') ? _serverIp : '$_serverIp/api';
@@ -66,28 +101,14 @@ class ApiService {
           return decoded;
         }
       }
-      // 如果遠端回傳 404 或非 success，降級嘗試本機伺服器
-      if (url.contains('ts.net') || response.statusCode == 404) {
-        final cleanPath = path.startsWith('/api') ? path.substring(4) : path;
-        final fallbackUrl = 'http://10.0.2.2:8000/api$cleanPath';
-        debugPrint('🔄 [ApiService.get Fallback 404/Non-Success] -> $fallbackUrl');
-        final fbRes = await http.get(Uri.parse(fallbackUrl)).timeout(const Duration(seconds: 4));
-        if (fbRes.statusCode == 200) {
-          return _safeDecode(fbRes);
-        }
-      }
+      // ★ 這裡原本有一段降級打 `http://10.0.2.2:8000` 的模擬器時期 fallback。
+      // 觸發條件 `url.contains('ts.net')` 在正式環境恆為真，等於每次非 success
+      // 回應都會白等 4 秒打一個實機不可路由的位址；本專案又刻意用 **404 表示
+      // 「無權存取」**，所以每次授權拒絕都會多花 4 秒。不要再加回來；
+      // 本機開發請用 --dart-define=SERVER_IP=10.0.2.2。
       return _safeDecode(response);
     } catch (e) {
       debugPrint('⚠️ ApiService.get error: $e');
-      try {
-        final cleanPath = path.startsWith('/api') ? path.substring(4) : path;
-        final fallbackUrl = 'http://10.0.2.2:8000/api$cleanPath';
-        debugPrint('🔄 [ApiService.get Fallback Exception] -> $fallbackUrl');
-        final fbRes = await http.get(Uri.parse(fallbackUrl)).timeout(const Duration(seconds: 4));
-        if (fbRes.statusCode == 200) {
-          return _safeDecode(fbRes);
-        }
-      } catch (_) {}
       return null;
     }
   }
@@ -110,34 +131,10 @@ class ApiService {
           return decoded;
         }
       }
-      if (url.contains('ts.net') || response.statusCode == 404) {
-        final cleanPath = path.startsWith('/api') ? path.substring(4) : path;
-        final fallbackUrl = 'http://10.0.2.2:8000/api$cleanPath';
-        debugPrint('🔄 [ApiService.post Fallback 404/Non-Success] -> $fallbackUrl');
-        final fbRes = await http.post(
-          Uri.parse(fallbackUrl),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode(body),
-        ).timeout(const Duration(seconds: 4));
-        if (fbRes.statusCode == 200 || fbRes.statusCode == 201) {
-          return _safeDecode(fbRes);
-        }
-      }
+      // ★ 同 [get] 方法：已移除模擬器時期打 `http://10.0.2.2:8000` 的降級 fallback，不要加回來。
       return _safeDecode(response);
     } catch (e) {
       debugPrint('⚠️ ApiService.post error: $e');
-      try {
-        final cleanPath = path.startsWith('/api') ? path.substring(4) : path;
-        final fallbackUrl = 'http://10.0.2.2:8000/api$cleanPath';
-        final fbRes = await http.post(
-          Uri.parse(fallbackUrl),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode(body),
-        ).timeout(const Duration(seconds: 4));
-        if (fbRes.statusCode == 200 || fbRes.statusCode == 201) {
-          return _safeDecode(fbRes);
-        }
-      } catch (_) {}
       return null;
     }
   }
@@ -397,11 +394,12 @@ class ApiService {
   // AI 相關功能
   // ⚠️ 使用本機 AI Server (localAiBaseUrl) 與自動降級連線備援
   static Future<Map<String, dynamic>> aiChat(int userId, String message, {String? imageUrl}) async {
+    // ★ 已移除兩筆寫死 IP 的候選位址（開發者 LAN IP、模擬器 10.0.2.2）：
+    // 使用者實機連不到，卻仍要各等滿 30 秒逾時才降級到下一個候選。
+    // 新增候選一律走 --dart-define，不要再放字面 IP。
     final List<String> candidateUrls = [
       'https://boyo-desktop.tail531c8a.ts.net/api/ai/chat',
       '$localAiBaseUrl/ai/chat',
-      'http://192.168.31.209:8000/api/ai/chat',
-      'http://10.0.2.2:8000/api/ai/chat',
       '${baseUrl.replaceFirst('/api', '')}/api/ai/chat',
     ];
     final uniqueUrls = candidateUrls.toSet().toList();
@@ -429,11 +427,10 @@ class ApiService {
 
   /// AI 串流聊天（SSE）- 逐 token 回傳，支援多候選 IP 自動降級連線
   static Stream<String> aiChatStream(int userId, String message) async* {
+    // ★ 同 [aiChat]：已移除開發者 LAN IP／模擬器 10.0.2.2 兩筆寫死候選位址。
     final List<String> candidateUrls = [
       'https://boyo-desktop.tail531c8a.ts.net/api/ai/chat/stream',
       '$localAiBaseUrl/ai/chat/stream',
-      'http://192.168.31.209:8000/api/ai/chat/stream',
-      'http://10.0.2.2:8000/api/ai/chat/stream',
       '${baseUrl.replaceFirst('/api', '')}/api/ai/chat/stream',
     ];
     final uniqueUrls = candidateUrls.toSet().toList();
@@ -558,6 +555,31 @@ class ApiService {
               'event_type': type,
               'content': content,
               'extra_data': extraData != null ? jsonEncode(extraData) : null,
+            }),
+          )
+          .timeout(_timeout);
+      return _safeDecode(response);
+    } on TimeoutException {
+      return {'status': 'error', 'message': '連線逾時，請檢查網路'};
+    } catch (e) {
+      return {'status': 'error', 'message': '網路連線失敗: $e'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> sendFamilyMessage({
+    required int familyId,
+    required int elderId,
+    required String content,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/family_message'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'family_id': familyId,
+              'elder_id': elderId,
+              'content': content,
             }),
           )
           .timeout(_timeout);
@@ -1121,13 +1143,24 @@ class ApiService {
   }
 
   /// ★ 2026-08-04 第 7 項：CCTV 監視機推送單一影格給後端做 YOLO 跌倒偵測。
-  /// POST /api/cctv/frame（multipart/form-data）；任何失敗都吞掉只回 false，
-  /// 避免影格推送迴圈因單次網路錯誤而中斷。
+  /// POST /api/cctv/frame（multipart/form-data）；任何失敗都吞掉只回傳
+  /// [CctvPushResult.failure]，避免影格推送迴圈因單次網路錯誤而中斷。
   ///
   /// 檔名為 .png 是因為 flutter_webrtc 1.3.1 的 `captureFrame()` 產出的就是 PNG
   /// （它把畫面寫成暫存 png 再讀回）。後端用 cv2.imdecode 靠魔術位元組判別格式，
   /// 副檔名只是給人看的，但不要改成 .jpg 以免誤導後續維護者。
-  static Future<bool> pushCctvFrame({
+  ///
+  /// ★ 2026-08-25：原本只回 bool，監視機端完全看不出「這一幀為什麼沒有異常」——
+  /// 後端在進 YOLO 推論之前有好幾個合法的早退點（`yolo_disabled`／
+  /// `busy_frame_dropped` 等，見 `routers/alert.py::push_cctv_frame`），呼叫端
+  /// 全部只看到同一個「沒事」。改回傳 [CctvPushResult]，把後端
+  /// `{'detected': ..., 'reason': ...}` 原樣帶出來；目前唯一呼叫端
+  /// （`elder_screen.dart` 的推幀迴圈）本來就是 `await` 後完全不看回傳值，
+  /// 故此變更不影響既有推流行為，是純粹的擴充。
+  ///
+  /// ★ 2026-08-26：`reason == 'yolo_unavailable'` 時後端另外多帶一個
+  /// `load_error` 鍵（見 [CctvPushResult.loadError]），一併解析出來。
+  static Future<CctvPushResult> pushCctvFrame({
     required String elderId,
     required String deviceName,
     required Uint8List frameBytes,
@@ -1153,11 +1186,31 @@ class ApiService {
       //   『網路連線失敗』，只有砍掉整個 App 才會恢復」的根因。本檔其餘每一處
       //   request.send() 都有接 http.Response.fromStream(...)（見 :514-515、:756-757、
       //   :777-778），這裡補齊，不要為了「省一行」把它精簡掉。
+      //   ★ 2026-08-25：下面新增的 JSON 解析全部發生在這一行「之後」，
+      //   即使狀態碼非 200 或內容不是預期形狀，streamed 都已被消費完畢，
+      //   不會因為新增的解析邏輯而讓這條 G88 護欄破功。
       final response = await http.Response.fromStream(streamed);
-      return response.statusCode == 200;
+      if (response.statusCode != 200) {
+        debugPrint('⚠️ pushCctvFrame 非 200: ${response.statusCode}');
+        return CctvPushResult.failure();
+      }
+      // 後端一律包在 {'status': 'success', 'data': {...}} 裡
+      // （schemas/common.py::success_response），實際的 detected/reason 在 data 底下。
+      final decoded = jsonDecode(response.body);
+      final data = decoded is Map ? decoded['data'] : null;
+      if (data is Map) {
+        return CctvPushResult(
+          detected: data['detected'] == true,
+          reason: data['reason'] as String?,
+          // ★ 2026-08-26：只在 reason == 'yolo_unavailable' 時後端才會帶這個
+          //   鍵，其餘情況 data['load_error'] 本就是 null，`as String?` 原樣通過。
+          loadError: data['load_error'] as String?,
+        );
+      }
+      return CctvPushResult.failure();
     } catch (e) {
       debugPrint('⚠️ pushCctvFrame error: $e');
-      return false;
+      return CctvPushResult.failure();
     }
   }
 
@@ -1450,6 +1503,9 @@ class ApiService {
   /// 原點在畫面左上角（見後端 indoor_position.py::validate_zones）。尚未
   /// 校準過、或任何失敗（含 404 無權）一律回傳空陣列，不拋出——呼叫端
   /// （校準畫面）看到 `[]` 只會顯示「尚未校準」，不是錯誤畫面。
+  ///
+  /// ⚠️ 2026-08-25 校準畫面移除後已無呼叫端；後端 `routers/ips.py` 端點刻意
+  /// 保留，使前後端契約維持對稱，供功能復用時免重新設計介面。
   static Future<List<dynamic>> getZoneConfig(
     String elderId, {
     required int userId,
@@ -1486,6 +1542,9 @@ class ApiService {
   /// 回傳 `null` 代表成功；非 null 為可直接顯示的錯誤原因。做法比照
   /// [triggerTestFall]：FastAPI 的 HTTPException 一律以 `{"detail": "..."}`
   /// 回傳，400（座標格式錯誤）與 404（無權）都在這裡被轉成看得懂的中文。
+  ///
+  /// ⚠️ 2026-08-25 校準畫面移除後已無呼叫端；後端 `routers/ips.py` 端點刻意
+  /// 保留，使前後端契約維持對稱，供功能復用時免重新設計介面。
   static Future<String?> saveZoneConfig(
     String elderId, {
     required int userId,
@@ -1564,8 +1623,10 @@ class ApiService {
   ///
   /// 純字串組裝、不發送請求，因此不需要 try/catch 或 timeout；請求本身
   /// 何時發生、失敗如何呈現由呼叫端的 `Image` widget 決定。尚無快取影格時
-  /// 後端回 404，呼叫端須自行處理（見 zone_calibration_screen.dart 的
-  /// 空狀態設計）。
+  /// 後端回 404，呼叫端須自行處理空狀態呈現。
+  ///
+  /// ⚠️ 2026-08-25 校準畫面移除後已無呼叫端；後端 `routers/ips.py` 端點刻意
+  /// 保留，使前後端契約維持對稱，供功能復用時免重新設計介面。
   static String zoneSnapshotUrl(
     String elderId, {
     required int userId,

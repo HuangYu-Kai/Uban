@@ -91,26 +91,33 @@ class _FamilyElderChatScreenState extends State<FamilyElderChatScreen> {
               child: const Icon(Icons.person, color: Colors.orange),
             ),
             const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  widget.elderName,
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black,
+            // ★ 長輩姓名為執行期字串，長度不定；AppBar 的 title 欄位雖然本身有寬度
+            //   上限，但 Row 內未加 Expanded 的子項不會自動縮小，仍會造成 RenderFlex
+            //   overflow，故用 Expanded 包住並讓姓名文字省略號截斷。
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.elderName,
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black,
+                    ),
                   ),
-                ),
-                Text(
-                  '線上',
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 12,
-                    color: Colors.green,
-                    fontWeight: FontWeight.w600,
+                  Text(
+                    '線上',
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 12,
+                      color: Colors.green,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ],
         ),

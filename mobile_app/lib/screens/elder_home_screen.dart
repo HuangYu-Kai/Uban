@@ -662,6 +662,21 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
         return;
       }
 
+      // ★ 2026-08-25（第三十三輪）：main.dart::_autoAcceptEmergencyCall 只會
+      //   關閉它自己追蹤的 _activeCallDialogContext，並不知道本頁是否正巧
+      //   開著自己的一般來電對話框（_showIncomingCallDialog／
+      //   _isIncomingCallDialogOpen，本頁的來電對話框走的是自己的 context，
+      //   main.dart 管不到）。緊急通話「長輩端永遠不得出現接聽／拒絕 UI」
+      //   （G81），這裡順手把它清乾淨——不清的話畫面上雖然會被新 push 的
+      //   ElderScreen 蓋住看不出異狀，但殘留的對話框路由仍卡在導航堆疊裡，
+      //   通話結束返回本頁時會意外重新浮現，對著一通早已結束的舊來電要求
+      //   使用者做選擇。這裡的判斷對一般來電（CallKit／備援通知接聽）也一體
+      //   適用，並非只服務緊急通話。
+      if (_isIncomingCallDialogOpen && Navigator.canPop(context)) {
+        Navigator.of(context).pop();
+        _isIncomingCallDialogOpen = false;
+      }
+
       final currentContext = context;
       Navigator.push(
         currentContext,

@@ -499,11 +499,16 @@ Widget build(BuildContext context) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Column(
+        // ★ 使用者姓名／長輩姓名皆為執行期字串，長度不定；用 Expanded 包住左側整個
+        //   標題區塊，避免長姓名把右側操作列（會員徽章／編輯／切換長輩按鈕）推出
+        //   螢幕造成 RenderFlex overflow。
+        Expanded(child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               '${widget.userName} 您好',
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
               style: GoogleFonts.notoSansTc(
                 fontSize: 28,
                 fontWeight: FontWeight.w800,
@@ -521,12 +526,16 @@ Widget build(BuildContext context) {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                Text(
-                  _elderName ?? '未知',
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 14,
-                    color: const Color(0xFF59B294),
-                    fontWeight: FontWeight.w800,
+                Flexible(
+                  child: Text(
+                    _elderName ?? '未知',
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 14,
+                      color: const Color(0xFF59B294),
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -572,7 +581,8 @@ Widget build(BuildContext context) {
               ],
             ).animate().fadeIn(delay: 200.ms),
           ],
-        ),
+        )),
+        const SizedBox(width: 8),
         // 右側操作列
         Row(
           children: [
@@ -757,18 +767,52 @@ Widget build(BuildContext context) {
                 color: Colors.transparent,
                 child: InkWell(
                   borderRadius: BorderRadius.circular(16),
-                  onTap: () {
+                  onTap: () async {
                     HapticFeedback.lightImpact();
-                    Navigator.pop(ctx);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('已發送：${msg['text']}'),
-                        backgroundColor: const Color(0xFF10B981),
-                        behavior: SnackBarBehavior.floating,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                    );
-                    // TODO: 實際發送消息到長輩端
+                    if (!mounted) return;
+                    final localContext = context;
+
+                    Navigator.pop(localContext);
+
+                    // 實際發送消息到長輩端
+                    if (_elderId != null && _elderRoomId != null) {
+                      final result = await ApiService.sendFamilyMessage(
+                        familyId: widget.userId, // 假設當前用戶就是family_id
+                        elderId: _elderId!,
+                        content: msg['text']!,
+                      );
+
+                      if (!mounted) return;
+                      if (result['status'] == 'success') {
+                        ScaffoldMessenger.of(localContext).showSnackBar(
+                          SnackBar(
+                            content: Text('已發送：${msg['text']}'),
+                            backgroundColor: const Color(0xFF10B981),
+                            behavior: SnackBarBehavior.floating,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                        );
+                      } else {
+                        ScaffoldMessenger.of(localContext).showSnackBar(
+                          SnackBar(
+                            content: Text('發送失敗：${result['message'] ?? '未知錯誤'}'),
+                            backgroundColor: const Color(0xFFEF4444),
+                            behavior: SnackBarBehavior.floating,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                        );
+                      }
+                    } else {
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(localContext).showSnackBar(
+                        SnackBar(
+                          content: Text('請先選擇長輩'),
+                          backgroundColor: const Color(0xFFEF4444),
+                          behavior: SnackBarBehavior.floating,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      );
+                    }
                   },
                   child: Container(
                     width: double.infinity,

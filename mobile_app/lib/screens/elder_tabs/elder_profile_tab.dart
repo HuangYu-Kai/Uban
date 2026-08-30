@@ -685,7 +685,10 @@ class _ElderProfileTabState extends State<ElderProfileTab>
               // ★ 2026-08-10 第二十輪：改走 SessionManager 統一釋放入口，
               //   除了原本清的 device_role_*／saved_is_cctv，
               //   也一併清掉 user_role，避免殘留 'elder' 造成下次冷啟動被誤判為長輩 session。
-              await SessionManager.releaseSession();
+              // ★ 2026-08-25（本輪）：這是長輩自己主動按「登出」，不是家屬遠端強制
+              //   解綁，帶 preserveQuickLogin: true 保留 last_elder_* 快速登入記憶鍵
+              //   （護欄 G24），讓下次可以在配對頁「快速登入同一長輩」一鍵登回。
+              await SessionManager.releaseSession(preserveQuickLogin: true);
 
               if (!mounted) return;
               Navigator.of(context).pushAndRemoveUntil(

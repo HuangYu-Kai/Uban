@@ -38,6 +38,18 @@ class VideoCallScreen extends StatefulWidget {
   /// 仍必須預設開啟。看到這個欄位不要以為它違反 G8 而刪掉。
   final bool monitorViewOnly;
 
+  /// ★ 2026-08-26：`monitorViewOnly` 觀看中的監視機裝置名稱（`deviceName`），
+  /// 供 [Signaling.onMonitorRemoved] 精準比對「被移除的是不是我正在看的這一台」。
+  ///
+  /// 同一長輩底下可能有多台監控設備、共用同一個 `monitor_elder_<elderId>` 房間
+  /// （見 `CLAUDE_call-monitor.md` §3.5），單靠 `roomId` 反推出的 elderId 無法
+  /// 區分「是我這台被移除」還是「同一長輩底下的另一台」。預設 `null`——目前
+  /// 全專案唯一的 `monitorViewOnly: true` 建構點
+  /// （`family/family_interaction_tab.dart::_buildMonitorDeviceCard`）尚未傳入
+  /// 這個欄位，此時比對退回只認 elderId（見 [_initCall] 內 onMonitorRemoved
+  /// 的判斷式），寧可稍微過度觸發也不要漏接「自己這台被移除」的事件。
+  final String? monitorDeviceName;
+
   const VideoCallScreen({
     super.key,
     required this.roomId,
@@ -50,6 +62,7 @@ class VideoCallScreen extends StatefulWidget {
     this.isVideoCall = true, // 預設視訊通話
     this.returnByPop = false,
     this.monitorViewOnly = false,
+    this.monitorDeviceName,
   });
 
   @override
@@ -101,14 +114,118 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   /// （`Future.delayed` 無法取消，只能靠世代比對讓它變成 no-op）。
   int _connectAttempt = 0;
 
+  /// ★ 2026-08-24：對方是否已經按下接聽（`onCallAcceptedByRemote` 已觸發）。
+  ///
+  /// 修的是使用者回報的「明明對方已接聽，撥話端卻顯示需重新撥打、還自動把
+  /// 後端通話 socket 訊號切斷」。根因是舊版 [_armConnectTimeout] 只有一顆
+  /// 「有沒有人接聽」的逾時窗（45s／緊急 60s；第三十二輪原為 20s，見
+  /// [_noAnswerTimeoutSeconds] 的說明），[_callConnecting]／[_callConnected]
+  /// 卻只在 ICE 真正談成（[Signaling.onPeerConnected]，見 G37）才會變化——
+  /// 對方按下接聽到 WebRTC 協商真正談完中間那一段完全沒有計時器知道「已經有人
+  /// 接了」，於是逾時窗照樣在協商途中把電話當「沒人接」而 `sendCancelCall`。
+  ///
+  /// 這個欄位就是那個遺漏的中間狀態：只在 [onCallAcceptedByRemote] 由 false
+  /// 翻成 true，[_retryCall] 重新撥打時歸零（見那裡的註解）。[_armConnectTimeout]
+  /// 依它決定這一輪逾時窗是「等接聽」還是「等協商」，[_handleConnectTimeout]
+  /// 依它決定逾時當下能不能送 `sendCancelCall`、對話框要顯示哪一種文案。
+  /// 不直接讀 `_callConnecting`／`_callConnected` 是因為那兩個刻意只綁定
+  /// `onPeerConnected`（G37 的鐵律），不能借來承載「已接聽」這個更早的中間狀態。
+  bool _remoteAccepted = false;
+
+  /// ★ 2026-08-24：已接聽、等待 WebRTC 協商完成的逾時窗（秒）。
+  ///
+  /// 與「對方沒有接聽」的 45s／60s 逾時窗語意完全不同——對方確定已經在房間
+  /// 裡等，卡住的只會是 TURN 配置／ICE gathering／連通測試。媒體中繼在日本
+  /// Coturn（見 CLAUDE_call-monitor.md §1.1），同文件也記載這段協商「在較差的
+  /// 行動網路上經常超過 15 秒」。30 秒給協商本身約 2 倍餘裕，讓一段慢但仍在
+  /// 正常推進的協商不會被錯殺；同時只有既有「緊急通話等對端甦醒＋自動接聽」
+  /// 60 秒預算的一半——接聽之後只剩純網路協商，理當比整條喚醒鏈短。
+  static const int _negotiationTimeoutSeconds = 30;
+
+  /// ★ 2026-08-25（第三十三輪）：一般通話「等待對方接聽」的逾時窗（秒），即
+  /// [_armConnectTimeout] 在 [_remoteAccepted] 仍是 false 時武裝的那一顆。
+  ///
+  /// 真機量測：socket 傳訊到接話端在網路環境差時就已接近 10 秒，加上使用者
+  /// 看到來電、按下接聽的反應時間，原本的 20 秒窗常在 `call-accept` 送達
+  /// **之前**就先逾時——`_remoteAccepted` 從未變 true，逾時處理落入「沒人
+  /// 接聽」分支送出 `sendCancelCall`，把一通其實正要接通的電話砍斷。
+  ///
+  /// 改採「不等超過對方鈴聲」的既有值，而非另外拍一個新數字：CallKit 響鈴
+  /// `duration` 已經是 45000ms（`signaling.dart:734`，獨立於下面 kCallValidityMs，
+  /// 只決定接聽方的電話響幾秒），對方鈴聲响完（接聽或被 CallKit
+  /// `actionCallTimeout` 判定逾時未接、走 declineCall 通知回撥話端）之後撥話端
+  /// 再等下去沒有意義，此值直接對齊它——45s。
+  /// 同時仍嚴格小於 [globals.kCallValidityMs]（60s，`globals.dart:47`，前後端
+  /// 一致的來電有效期上限，見 G73）：45s 之後這通邀請本來就會被判定過期，
+  /// 撥話端沒有理由等到那個時間點之後。兩個既有常數分別給出「等多久還有
+  /// 意義」與「最多不能等多久」的邊界，45s 同時滿足兩者，不需另外新造數字。
+  /// 🚫 不可超過 60s（[globals.kCallValidityMs]，未同步修改範圍，見任務說明）；
+  /// 🚫 不可用來覆蓋 [_negotiationTimeoutSeconds]（已接聽後的協商窗，語意不同，
+  /// 見 G119）；緊急通話沿用既有 60s，不受本常數影響。
+  static const int _noAnswerTimeoutSeconds = 45;
+
   // ★ 情境 3 修復：暫存返回主畫面所需的真實使用者資料（於 _initCall 從 prefs 讀取）
   int _resolvedUserId = 0;
   String _resolvedUserName = '家屬端';
   String _resolvedUserRole = 'family';
 
+  /// ★ 2026-08-25（需求 3）：這個畫面「進場當下」裝置是否處於鎖定狀態——
+  /// 用來分辨「這通電話是從鎖屏／背景喚醒才進來的」還是「使用者本來就已經在
+  /// App 裡」。只有前者結束通話（`dispose()`）時才呼叫原生
+  /// `finishAndRemoveTask`，把整個 App 連同背景 Task 一併關閉、回到裝置的
+  /// 鎖定畫面；使用者本來就在 App 裡撥出／接聽的一般情境完全不受影響，結束
+  /// 通話後照舊回到 App 主畫面。查詢方式見 `MainActivity.kt::isKeyguardLocked()`
+  /// 的完整說明（已知的唯一誤差方向是「低估」，不會錯殺使用中的畫面）。
+  bool _enteredWhileLocked = false;
+
+  /// ★ 2026-08-26：`onMonitorRemoved` 這份 closure 自己的參考，只在
+  /// [widget.monitorViewOnly] 為 true 時才會賦值（見 [_initCall]）。dispose()
+  /// 用 `identical()` 比對單例上掛的是不是自己這份才歸還，比照
+  /// `family_main_screen.dart` 的 `_ownCallRequest`／`_ownEmergencyCall`
+  /// （G102，2026-08-19 第二十九輪）——無條件 `= null` 會誤清下一個 CCTV
+  /// 觀看畫面剛註冊好的 callback（例如快速切換觀看不同監視機時 dispose／
+  /// initState 交錯執行）。
+  Function(Map<String, dynamic>)? _ownMonitorRemoved;
+
   @override
   void initState() {
     super.initState();
+
+    // ★ 2026-08-24：通話畫面「進場」時開啟鎖屏覆蓋，與 _goHomeAfterCall()
+    //   開頭（約 :612）呼叫的 restoreLockScreen 對稱（見
+    //   CLAUDE_call-monitor.md §7 G49）。緊急通話透過背景 AndroidIntent 強制
+    //   喚醒時會觸發原生 onCreate/onNewIntent → showOverLockScreen()，但一般
+    //   通話經 CallKit 只是把既有 Activity 從背景恢復（未必有新 Intent），
+    //   原生端不會再次呼叫，於是沿用上一通通話結束時 restoreLockScreen 留下
+    //   的 setShowWhenLocked(false)，畫面就無法蓋過鎖定畫面。
+    //   這裡刻意**不分** isEmergency／monitorViewOnly／returnByPop——
+    //   `_goHomeAfterCall()` 的 restoreLockScreen 呼叫本來就沒有這些條件、
+    //   對所有離場路徑一視同仁，進場端維持同樣的對稱關係。
+    //   ⚠️ 這不是「強制開啟」：本畫面是使用者自己的操作（撥打／接聽／查看
+    //   監控）已經進入的畫面，這裡只讓它能蓋過鎖定畫面顯示，不呼叫
+    //   bringToFront，也不觸發任何 AndroidIntent——不要把它「升級」成強制喚醒。
+    const MethodChannel('com.example.app/bring_to_front')
+        .invokeMethod('showOverLockScreen')
+        .catchError((e) {
+      debugPrint('⚠️ [VideoCall] showOverLockScreen 失敗: $e');
+      return null;
+    });
+
+    // ★ 2026-08-25（需求 3）：記錄「進場當下」是否鎖定，供 dispose() 決定要不要
+    //   關閉整個 App（見 _enteredWhileLocked 欄位說明）。monitorViewOnly（觀看
+    //   CCTV）排除在外——那是家屬在已解鎖、前景使用中的 App 裡主動點進去看的
+    //   畫面，不存在「從鎖屏喚醒」這回事，也不應該在退出時把整個 App 關掉。
+    if (!widget.monitorViewOnly) {
+      const MethodChannel('com.example.app/bring_to_front')
+          .invokeMethod('isKeyguardLocked')
+          .then((locked) {
+        if (mounted) _enteredWhileLocked = locked == true;
+      }).catchError((e) {
+        debugPrint('⚠️ [VideoCall] isKeyguardLocked 查詢失敗: $e');
+        return null;
+      });
+    }
+
     // ★ 2026-08-10 第二十輪（需求 9）：決定音量來源預設值。
     //   視訊通話／緊急通話／監控檢視都是「放在面前看」的情境 → 擴音；
     //   一般語音通話是「貼著耳朵講」 → 聽筒。
@@ -204,8 +321,75 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     // ★ 接聽回達後由家屬端觸發 createOffer（唯一入口，防止重複 Offer）
     _signaling.onCallAcceptedByRemote = (accepterId, callId) {
       debugPrint("✅ [VideoCallScreen] Target Accepted ($accepterId), sending Offer...");
-      _signaling.createOffer(targetId: accepterId, isEmergency: widget.isEmergency);
+      // ★ 2026-08-24：對方已接聽 → 逾時語意從「等接聽」切成「等協商」。
+      //   重新呼叫 [_armConnectTimeout]（不是新開一條計時機制）：它會
+      //   `++_connectAttempt`，讓還沒醒來的舊「無人接聽」逾時比對世代編號後
+      //   直接 no-op，再依 `_remoteAccepted` 武裝新的協商逾時窗——沿用既有的
+      //   世代編號防重複機制，不是另外發明一套。`createOffer` 呼叫時機與參數
+      //   完全不動，仍是建立 offer 的唯一入口。
+      _remoteAccepted = true;
+      _armConnectTimeout();
+      // ★ 2026-08-25（修正 relay-only 誤判導致 CCTV 監控「無法連線」的回歸）：
+      //   isEmergency 這個建構參數同時代表「真正的人對人緊急通話」與「CCTV 監控
+      //   檢視」——家屬端「觀看 CCTV」與跌倒警報彈窗都會傳
+      //   `VideoCallScreen(monitorViewOnly: true, isEmergency: true, ...)`（見 G55／
+      //   CLAUDE_call-monitor.md §7）。preferRelay 是簽章分開、只算給 Signaling 的
+      //   訊號，這裡是全專案唯一算它的地方：只有「是緊急通話」且「不是純觀看監控」
+      //   才要 true。
+      //   🚫 不要單傳 widget.isEmergency——那正是當初這個回歸的根因。
+      //   ★ 2026-08-26（回退 relay-only 優化）：signaling.dart 已移除依 preferRelay
+      //   決定 iceTransportPolicy 的邏輯——雙端各自獨立決定會產生不對稱候選集，
+      //   接聽端當年判定要救援時還會 `_candidateQueue.clear()` 把已到達的候選一併
+      //   丟掉；真機回報的四種情境（螢幕開/關 × App 背景存活/被殺死）都出現「雙端
+      //   都已進房、其中一端 ICE 卻失敗」，且失敗端隨情境翻轉（完整原因見
+      //   signaling.dart::_generateDynamicTURNConfig 的註解）。
+      //   下面這行判斷式**刻意保留、不刪**——它是正確且得來不易的訊號（見上方
+      //   isEmergency／monitorViewOnly 的說明），只是現在沒有任何程式碼會讀它，
+      //   對本次通話沒有任何效果，留著只為了讓日後「雙端先協商一致再套用 relay」
+      //   的實作不必重新發現這個區分。🚫 要重新引入 relay-only，必須先讓雙端協商
+      //   一致，不可再各自獨立決定。
+      _signaling.createOffer(
+        targetId: accepterId,
+        isEmergency: widget.isEmergency,
+        preferRelay: widget.isEmergency && !widget.monitorViewOnly,
+      );
     };
+
+    // ★ 2026-08-26：CCTV 觀看畫面（monitorViewOnly）在監視機自行退出或被家屬從
+    //   清單刪除時，必須立刻離開，不能停在一支已經不存在的直播上乾等 WebRTC
+    //   逾時（App 在背景時逾時更久）。後端 routers/pairing.py::delete_monitor_device
+    //   除了原本只通知被踢的監視機本身，現在也會把同一個 `monitor-removed`
+    //   事件廣播給正在觀看的家屬 socket（payload 形狀不變：
+    //   {elderId, deviceName, reason}）。只在 monitorViewOnly 才註冊——
+    //   `onMonitorRemoved` 原本只由 elder_screen.dart（CCTV 模式）使用，
+    //   一般通話（含緊急通話）畫面不該處理這個事件。
+    if (widget.monitorViewOnly) {
+      _ownMonitorRemoved = (data) {
+        if (!mounted) return;
+        final String eventElderId = (data['elderId'] ?? '').toString();
+        final String eventDeviceName = (data['deviceName'] ?? '').toString();
+        // elderId 從 roomId（monitor_elder_<elderId>）反推——這個畫面沒有另外
+        // 保存 elderId，房名是唯一可靠來源，規則與後端 _parse_room_id 一致。
+        final String myElderId = widget.roomId.startsWith('monitor_elder_')
+            ? widget.roomId.substring('monitor_elder_'.length)
+            : widget.roomId;
+        if (eventElderId.isNotEmpty && eventElderId != myElderId) return;
+        // deviceName 比對：同一長輩底下可能有多台監控設備，事件可能是「別台」
+        // 被移除。[widget.monitorDeviceName] 由呼叫端傳入才有得比對（見該欄位
+        // 宣告處），目前唯一的呼叫點尚未傳入時退回只比對 elderId。
+        final String? myDeviceName = widget.monitorDeviceName;
+        if (myDeviceName != null &&
+            myDeviceName.isNotEmpty &&
+            eventDeviceName.isNotEmpty &&
+            eventDeviceName != myDeviceName) {
+          return;
+        }
+        debugPrint('🗑️ [VideoCall] 監控機已離線或被移除，關閉觀看畫面: $data');
+        _stopCallTimer();
+        _showCallProblemThenGoHome('該監控機已離線或被移除');
+      };
+      _signaling.onMonitorRemoved = _ownMonitorRemoved;
+    }
 
     // ★ 2026-08-17 第二十五輪（需求 6）：使用者角色／ID／名稱解析必須排在媒體初始化
     //   之前。原本這段（讀 SharedPreferences 判斷 role、算出 _resolvedUserRole／
@@ -336,9 +520,20 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   ///
   /// `Future.delayed` 無法取消，所以用 [_connectAttempt] 世代編號讓過期的那一輪
   /// 自行作廢；重新撥打時只要再呼叫本方法就會讓舊的那顆失效。
+  ///
+  /// ★ 2026-08-24：同一個方法現在武裝兩種不同語意的逾時窗，由 [_remoteAccepted]
+  ///   決定是哪一種——[onCallAcceptedByRemote] 收到接聽時會再呼叫一次本方法，
+  ///   此時 `_remoteAccepted` 已經是 true，武裝的就是 [_negotiationTimeoutSeconds]
+  ///   那個「等協商」的窗；初次呼叫（`_initCall`／[_retryCall]）時 `_remoteAccepted`
+  ///   仍是 false，武裝的是原本「等接聽」的 45s／60s 窗（見
+  ///   [_noAnswerTimeoutSeconds] 的說明；第三十二輪原為 20s）。
   void _armConnectTimeout() {
-    // 緊急通話需等待對端被喚醒與自動接聽，逾時窗拉長避免家屬端誤判自動掛斷
-    final int connectTimeoutSeconds = widget.isEmergency ? 60 : 20;
+    // 緊急通話需等待對端被喚醒與自動接聽，逾時窗拉長避免家屬端誤判自動掛斷；
+    // 已接聽則改用等協商的專屬窗（見上方欄位註解），不分一般/緊急——接聽之後
+    // 剩下的都是同一種 TURN/ICE 協商，沒有理由分開計算。
+    final int connectTimeoutSeconds = _remoteAccepted
+        ? _negotiationTimeoutSeconds
+        : (widget.isEmergency ? 60 : _noAnswerTimeoutSeconds);
     final int attempt = ++_connectAttempt;
     Future.delayed(Duration(seconds: connectTimeoutSeconds), () {
       if (!mounted) return;
@@ -356,10 +551,27 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   ///
   /// `_callFailed` 這個欄位**刻意保留**——`initState` 的 5 秒 periodic 守衛與
   /// 媒體初始化失敗路徑都在用它，移除會讓「已經失敗過」失去判斷依據。
+  ///
+  /// ★ 2026-08-24：依 [_remoteAccepted] 分成兩種逾時，不可合併：
+  /// - **未接聽**（`_remoteAccepted == false`）：維持原行為，`sendCancelCall`
+  ///   讓對方 CallKit 停止響鈴、`hangUp`、如實顯示「對方沒有接聽」。
+  /// - **已接聽**（`_remoteAccepted == true`）：這通電話在後端與對方眼中都是
+  ///   「已接通、雙方都在房間裡」，此時 `sendCancelCall` 絕對不能送——那正是
+  ///   使用者回報的「撥話端顯示需重新撥打、還自動把後端通話 socket 訊號切斷」。
+  ///   只做本地收尾（`hangUp`），文案改講「連線沒談成」而不是「沒有接聽」，
+  ///   對方明明接了、只是 WebRTC 協商沒談成，「對方沒有接聽」對他們並不真實。
   Future<void> _handleConnectTimeout() async {
+    debugPrint(_remoteAccepted
+        ? '⏱️ [VideoCall] 對方已接聽但協商逾時（>${_negotiationTimeoutSeconds}s），僅本地收尾，不送 cancel-call'
+        : '⏱️ [VideoCall] 逾時無人接聽，送出 cancel-call');
     // ★ 2026-07-18：逾時未接通時，主動通知對方取消／掛斷，避免被叫方 CallKit
     //   繼續響到 45 秒。僅撥打方（非來電接聽方）需要送取消。
-    if (!widget.isIncomingCall) {
+    // ★ 2026-08-24：新增 `!_remoteAccepted` 條件——對方已接聽時不可再送
+    //   cancel-call，理由見上方函式註解。`widget.isIncomingCall` 這條件本身
+    //   不變：接聽方（isIncomingCall==true）從來就不該送 cancel-call（它自己
+    //   從未進入「等接聽」狀態，`_remoteAccepted` 對它恆為 false，這行只是
+    //   讓已接聽的撥話端也被排除，兩個守衛互不影響）。
+    if (!widget.isIncomingCall && !_remoteAccepted) {
       try {
         _signaling.sendCancelCall(widget.roomId, role: 'family');
       } catch (e) {
@@ -373,12 +585,22 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       _callFailed = true;
     });
 
+    final String title;
+    final String message;
+    if (_remoteAccepted) {
+      title = '通話連線失敗';
+      message = '對方已經接聽，但連線一直無法建立。要離開通話房間，還是重新嘗試連線？';
+    } else if (widget.isIncomingCall) {
+      title = '通話連線逾時';
+      message = '這通來電一直無法接通。要離開通話房間，還是重新嘗試連線？';
+    } else {
+      title = '對方沒有接聽';
+      message = '對方一直沒有接聽。要離開通話房間，還是重新撥打一次？';
+    }
     final CallRetryChoice? choice = await showCallRetryDialog(
       context,
-      title: widget.isIncomingCall ? '通話連線逾時' : '對方沒有接聽',
-      message: widget.isIncomingCall
-          ? '這通來電一直無法接通。要離開通話房間，還是重新嘗試連線？'
-          : '對方一直沒有接聽。要離開通話房間，還是重新撥打一次？',
+      title: title,
+      message: message,
     );
     if (!mounted) return;
 
@@ -403,6 +625,11 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       _callFailed = false;
       _inCall = false;
     });
+    // ★ 2026-08-24：重新撥打＝重新送一次通話請求，對方需要重新按接聽，
+    //   因此逾時語意要退回「等接聽」——歸零 `_remoteAccepted`，否則若上一輪
+    //   是「已接聽但協商失敗」才走到這裡，這一輪會誤用協商逾時窗，且真的
+    //   等到沒人接聽也不會送 cancel-call，讓對方 CallKit 白白響到逾時。
+    _remoteAccepted = false;
     _sendCallInvite();
     _armConnectTimeout();
   }
@@ -528,6 +755,44 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
 
   @override
   void dispose() {
+    // ★ 2026-08-24：補上「返回鍵／系統手勢中途離開」時的鎖屏還原（見
+    //   CLAUDE_call-monitor.md §7 G49）。本畫面沒有 PopScope／WillPopScope，
+    //   使用者按返回鍵或手勢返回時，Flutter 會直接把這個 route pop 掉、
+    //   只觸發 dispose()、不會經過下面的 _goHomeAfterCall()——原本只有那裡
+    //   呼叫 restoreLockScreen，這條離場路徑因此被漏掉：initState 進場時已
+    //   setShowWhenLocked(true)，離場沒還原就會讓 App 永久蓋在鎖定畫面之上，
+    //   任何人拿起手機都不必解鎖就看得到畫面內容，是隱私缺陷。
+    //   🚫 這不是要取代 _goHomeAfterCall() 裡那一份，兩處都要保留：
+    //   setShowWhenLocked(false) 是冪等操作，呼叫兩次無害，兩處各自獨立
+    //   呼叫才能讓其中一條路徑被改壞時，另一條仍能守住，不要「順手」把
+    //   _goHomeAfterCall() 那份刪掉或搬過來合併成一份。
+    //   刻意放在 dispose() 最前面、所有既有陳述式之前：這樣不論下面哪一步
+    //   （hangUp、renderer.dispose()…）同步丟出例外，這一行都已經先執行、
+    //   不會被擋在後面。`invokeMethod` 的 PlatformException 是非同步丟出，
+    //   同步 try/catch 接不到，比照既有呼叫點一律用 .catchError()（G49）。
+    const MethodChannel('com.example.app/bring_to_front')
+        .invokeMethod('restoreLockScreen')
+        .catchError((e) {
+      debugPrint('⚠️ [VideoCall] dispose() restoreLockScreen 失敗: $e');
+      return null;
+    });
+
+    // ★ 2026-08-25（需求 3）：這通電話是從鎖屏／背景喚醒才進來的
+    //   （_enteredWhileLocked，見欄位宣告處說明）→ 通話結束時不留在 App
+    //   任何畫面，直接關閉整個 App 與背景 Task，回到裝置鎖定畫面。
+    //   🚫 必須排在上面的 restoreLockScreen 之後——先把「蓋過鎖定畫面」的
+    //   視窗旗標清乾淨，App 的最後一幀才不會殘留蓋在鎖定畫面之上。
+    //   使用者本來就在 App 裡撥出／接聽的一般情境 _enteredWhileLocked 為
+    //   false，這裡不會呼叫，結束通話後照舊回到 App 主畫面（行為不變）。
+    if (_enteredWhileLocked) {
+      const MethodChannel('com.example.app/bring_to_front')
+          .invokeMethod('finishAndRemoveTask')
+          .catchError((e) {
+        debugPrint('⚠️ [VideoCall] finishAndRemoveTask 失敗: $e');
+        return null;
+      });
+    }
+
     _stopCallTimer();
     _callTimeoutTimer?.cancel();
     // ★ 修復：只結束 WebRTC，不要斷開 Socket，這樣回到 FamilyMainScreen 時才能繼續接收推播
@@ -544,6 +809,12 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     _signaling.onConnectionLost = null;
     _signaling.onPeerConnected = null;
     _signaling.onPeerConnectionFailed = null;
+    // ★ 2026-08-26：onMonitorRemoved 只在 widget.monitorViewOnly 時才會被本畫面
+    //   註冊過（見 _initCall），用 identical() 確認單例上掛的仍是自己這份才歸還
+    //   （見 _ownMonitorRemoved 欄位宣告處，G102）。
+    if (identical(_signaling.onMonitorRemoved, _ownMonitorRemoved)) {
+      _signaling.onMonitorRemoved = null;
+    }
 
     _localRenderer.dispose();
     _remoteRenderer.dispose();

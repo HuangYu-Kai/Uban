@@ -198,6 +198,18 @@ class CctvAlertNotification {
           (data['elderName'] ?? data['elderId'] ?? '長輩').toString();
       final String body =
           '${elderName.isEmpty ? '長輩' : elderName} 可能跌倒，請立即查看監視畫面';
+      // ★ 2026-08-23（新鐵律：家屬端不得強制開啟 App）：`fullScreenIntent: true`
+      //   會讓 Android 直接把本 Activity 拉到鎖定畫面之上——等同**未經同意強行
+      //   開啟 App**，對熟悉資安的使用者而言，這與流氓軟體的行為難以區分，
+      //   使用者已明確要求改掉。緊急程度**不變**：鬧鐘級音量
+      //   （`AudioAttributesUsage.alarm`）、繞過勿擾模式（DND-bypass channel，見
+      //   [_notificationPolicyChannel] 一段）、鎖屏可見（下方新增
+      //   `visibility: NotificationVisibility.public`）全部保留——只把「要不要
+      //   開啟 App」這個決定權交還使用者，通知本身仍會在鎖定畫面上以鬧鐘級音量
+      //   響起，使用者一眼看到、想看就自己點開。
+      //   🚨 **強制開啟只允許用於長輩端**（例如 `main.dart` 中 `role == 'elder'`
+      //   分支下、緊急通話用的 `AndroidIntent` 喚醒）——家屬端從今以後一律不得
+      //   比照辦理，本檔（家屬端跌倒警報通知）之後也不可再加回 `fullScreenIntent`。
       final androidDetails = AndroidNotificationDetails(
         _channelId,
         _channelName,
@@ -205,7 +217,12 @@ class CctvAlertNotification {
         importance: Importance.max,
         priority: Priority.max,
         category: AndroidNotificationCategory.alarm,
-        fullScreenIntent: true, // 強制點亮螢幕的機制，需 USE_FULL_SCREEN_INTENT 權限
+        // ★ 2026-08-23：true → false，不再把 Activity 強制拉到鎖定畫面之上；
+        //   改由下面 visibility: public 讓通知內容直接顯示在鎖屏，不需解鎖也看得到。
+        fullScreenIntent: false,
+        // ★ 2026-08-23 新增：明確要求鎖屏公開顯示完整內容，避免降級
+        //   fullScreenIntent 後，通知在部分裝置的鎖屏預設值下被摘要或隱藏。
+        visibility: NotificationVisibility.public,
         ongoing: false,
         playSound: true,
         sound: _sirenSound,

@@ -85,6 +85,68 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    /**
+     * ★ issue 3（app 卡死在背景，需一鍵清除才殺得掉）／需求 3（鎖屏通話結束後
+     * 不得再留在 App 任何畫面）共用的收尾動作。
+     *
+     * `finish()` 只會結束目前這個 Activity；本 App 是 `launchMode="singleTask"`
+     * 且全程只有 `MainActivity` 一個 Activity，`finish()` 之後 Task 紀錄仍留在
+     * Recents（顯示最後一幀畫面），必須額外呼叫 `finishAndRemoveTask()` 才會
+     * 連 Task 一併從 Recents 移除、讓系統依正常規則回收行程。
+     *
+     * `isTaskRoot` 是防呆：只有當這個 Activity 是 Task 的根（本 App 目前恆
+     * 成立）才動用會牽動整個 Task 的 `finishAndRemoveTask()`；理論上不成立時
+     * （例如日後新增第二個 Activity）退回單純 `finish()`，不誤殺整個 Task。
+     */
+    private fun finishAndRemoveTaskCompat() {
+        if (isTaskRoot) {
+            finishAndRemoveTask()
+        } else {
+            super.finish()
+        }
+    }
+
+    // ★ issue 9：使用者連續按返回鍵離開 App 時，走的是 Flutter 框架在 Navigator
+    //   彈到底時自動觸發的 `SystemNavigator.pop()`（`pet_room_view.dart` 等畫面
+    //   顯式呼叫的同一個平台方法也是同一條路），兩者最終都落到
+    //   `Activity.finishAfterTransition()` → `finish()`。
+    //   在這裡統一攔截 `finish()` 本身，讓「不管是哪條路徑觸發的結束」都改走
+    //   `finishAndRemoveTaskCompat()`，不必逐一去改 Dart 端每個呼叫點（其中
+    //   `pet_room_view.dart` 不在本次可改動範圍內）。
+    //   單一 Activity 架構下，`finish()` 沒有任何合理情境需要「Activity 結束但
+    //   Task 留著」，所以這裡不做額外條件判斷、對所有 `finish()` 呼叫一視同仁。
+    override fun finish() {
+        finishAndRemoveTaskCompat()
+    }
+
+    /**
+     * ★ 需求 3：判斷「這個當下」keyguard 是否仍處於鎖定狀態。
+     *
+     * 用途：Dart 端（`video_call_screen.dart` / `elder_screen.dart`）在通話畫面
+     * `initState()` 呼叫一次並記住結果，藉此分辨「這通電話是從鎖屏／背景喚醒
+     * 才進來的」還是「使用者本來就已經在 App 裡」——只有前者才在通話結束時
+     * 呼叫 [finishAndRemoveTaskCompat]。
+     *
+     * 對已設定 PIN／圖形／指紋等安全鎖的裝置，這個判斷相當可靠：
+     * [showOverLockScreen] 只會把畫面「蓋上去」、不會主動解鎖（見該函式與
+     * `CLAUDE_call-monitor.md` G49），所以即使通話畫面已經蓋在鎖定畫面之上，
+     * `isKeyguardLocked` 仍會如實回報「鎖定中」。
+     *
+     * 已知誤差僅在**沒有**設定安全鎖的裝置：那類裝置 [showOverLockScreen] 會
+     * 呼叫 `requestDismissKeyguard()` 主動收起 keyguard，若 Dart 端查詢的時間點
+     * 晚於那次收起，可能讀到「未鎖定」而低估。這個誤差方向是安全的——頂多
+     * 沒把 App 收掉，不會錯殺使用者正在使用中的畫面。
+     */
+    private fun isKeyguardLocked(): Boolean {
+        return try {
+            val keyguardManager = getSystemService(android.content.Context.KEYGUARD_SERVICE) as android.app.KeyguardManager
+            keyguardManager.isKeyguardLocked
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
     private fun forceBringToFront() {
         showOverLockScreen()
         // ★ issue 1：launchMode 已改為 singleTask，且 Manifest 移除了
@@ -138,6 +200,13 @@ class MainActivity : FlutterActivity() {
                     }
                     "restoreLockScreen" -> {
                         restoreLockScreen()
+                        result.success(true)
+                    }
+                    "isKeyguardLocked" -> {
+                        result.success(isKeyguardLocked())
+                    }
+                    "finishAndRemoveTask" -> {
+                        finishAndRemoveTaskCompat()
                         result.success(true)
                     }
                     else -> result.notImplemented()
