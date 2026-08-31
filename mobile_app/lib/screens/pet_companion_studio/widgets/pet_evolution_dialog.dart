@@ -45,10 +45,10 @@ class PetEvolutionDialog extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // 慶祝彩帶 Icon
+            // 新階段外觀圖
             Container(
-              width: 80,
-              height: 80,
+              width: 100,
+              height: 100,
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
                   colors: [Color(0xFFFEF3C7), Color(0xFFFDE68A)],
@@ -57,9 +57,11 @@ class PetEvolutionDialog extends StatelessWidget {
                 border: Border.all(color: const Color(0xFFF59E0B), width: 2),
               ),
               child: Center(
-                child: Text(
-                  newStage.icon,
-                  style: const TextStyle(fontSize: 44),
+                child: Image.asset(
+                  newStage.imageAssetPath,
+                  width: 80,
+                  height: 80,
+                  fit: BoxFit.contain,
                 ),
               ),
             ),
@@ -67,7 +69,7 @@ class PetEvolutionDialog extends StatelessWidget {
 
             // 標題
             Text(
-              '🎉 叮咚！小豬長大升級囉！',
+              '🎉 叮咚！小豬長大長肉囉！',
               style: GoogleFonts.notoSansTc(
                 fontSize: 23,
                 fontWeight: FontWeight.w900,
@@ -85,7 +87,7 @@ class PetEvolutionDialog extends StatelessWidget {
                 border: Border.all(color: const Color(0xFFFCD34D), width: 1.5),
               ),
               child: Text(
-                '升級為【Lv.${newStage.level} ${newStage.title}】',
+                '變身為【${newStage.title}】',
                 style: GoogleFonts.notoSansTc(
                   fontSize: 18.5,
                   fontWeight: FontWeight.w900,

@@ -115,9 +115,9 @@ class PetGrowthScaleCard extends StatelessWidget {
                         children: [
                           Flexible(
                             child: Text(
-                              'Lv.${stage.level} ${stage.title}',
+                              stage.title,
                               style: GoogleFonts.notoSansTc(
-                                fontSize: 17,
+                                fontSize: 18,
                                 fontWeight: FontWeight.w900,
                                 color: const Color(0xFF78350F),
                               ),
@@ -145,11 +145,11 @@ class PetGrowthScaleCard extends StatelessWidget {
                       const SizedBox(height: 2),
                       Text(
                         stage == PetGrowthStage.goldenFortunePig
-                            ? '已達成最高神獸型態！福澤全家 🌟'
-                            : '再長 ${growthState.gramsToNextStage}g 升級下一階段',
+                            ? '已達成最高祥瑞神獸型態！🌟'
+                            : '再長 ${growthState.kgToNextStageFormatted} 變身下一階段',
                         style: GoogleFonts.notoSansTc(
                           fontSize: 13,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.w700,
                           color: const Color(0xFF92400E),
                         ),
                       ),

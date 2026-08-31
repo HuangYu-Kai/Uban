@@ -2,82 +2,82 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 
-/// 🐷 小豬五大圓潤成長階段
+/// 🐷 小豬五大圓潤成長階段 (對應長輩身體數據 ✕ 純重量 kg)
 enum PetGrowthStage {
   miniMochi(
-    level: 1,
     title: '一口小粉糰',
     minWeightGrams: 0,
-    maxWeightGrams: 500,
+    maxWeightGrams: 15000,
     icon: '🥟',
-    description: '剛出生像顆粉嫩小麻糬，頭頂的小橡實帽比腦袋還大～',
-    accessory: '小橡實帽',
+    imageAssetPath: 'assets/images/pet_stages/pig_stage_1.png',
+    description: '身形苗條精瘦的小乳豬，剛加入健康生活，散步步數 0~3 萬步！',
+    accessory: '小橡實帽 🌰',
   ),
   chubbyPig(
-    level: 2,
-    title: '圓滾小福豬',
-    minWeightGrams: 500,
-    maxWeightGrams: 2000,
+    title: '元氣小福豬',
+    minWeightGrams: 15000,
+    maxWeightGrams: 35000,
     icon: '🍙',
-    description: '肚子圓了一圈，腮幫子鼓鼓的，摸起來Q彈飽滿！',
-    accessory: '小橡實帽',
+    imageAssetPath: 'assets/images/pet_stages/pig_stage_2.png',
+    description: '臉頰微鼓、步伐輕盈，散步習慣逐漸養成，累計步數達 3~9 萬步！',
+    accessory: '活力小草帽 👒',
   ),
   plumpPig(
-    level: 3,
     title: '白胖肉肉豬',
-    minWeightGrams: 2000,
-    maxWeightGrams: 5000,
+    minWeightGrams: 35000,
+    maxWeightGrams: 65000,
     icon: '🍮',
-    description: '吃得白白胖胖、健康有福氣，戴上了長輩專屬小金鈴！',
+    imageAssetPath: 'assets/images/pet_stages/pig_stage_3.png',
+    description: '肚子圓滾滾、Q彈飽滿！連續規律吃藥且日均步數達標，長輩福氣滿滿！',
     accessory: '吉祥小金鈴 🔔',
   ),
   auspiciousIngot(
-    level: 4,
     title: '富貴大元寶',
-    minWeightGrams: 5000,
-    maxWeightGrams: 10000,
+    minWeightGrams: 65000,
+    maxWeightGrams: 90000,
     icon: '🏮',
-    description: '體態圓潤如金元寶，身穿吉祥大紅肚兜，走起路來福氣生風！',
+    imageAssetPath: 'assets/images/pet_stages/pig_stage_4.png',
+    description: '體態圓潤如金元寶，日均步數破 6,000 步的長者健步達人！',
     accessory: '富貴紅肚兜 🏮',
   ),
   goldenFortunePig(
-    level: 5,
-    title: '福氣招財金豬',
-    minWeightGrams: 10000,
+    title: '招財金光大富豬',
+    minWeightGrams: 90000,
     maxWeightGrams: 999999,
     icon: '👑',
-    description: '【終極祥瑞神獸】全身散發溫暖金光，腳踏祥雲，福壽安康！',
+    imageAssetPath: 'assets/images/pet_stages/pig_stage_5.png',
+    description: '【終極祥瑞神獸】渾身福氣特大圓球，散發溫暖金光，全家福壽安康！',
     accessory: '祥雲金光光環 🌟',
   );
 
-  final int level;
   final String title;
   final int minWeightGrams;
   final int maxWeightGrams;
   final String icon;
+  final String imageAssetPath;
   final String description;
   final String accessory;
 
   const PetGrowthStage({
-    required this.level,
     required this.title,
     required this.minWeightGrams,
     required this.maxWeightGrams,
     required this.icon,
+    required this.imageAssetPath,
     required this.description,
     required this.accessory,
   });
 
   static PetGrowthStage fromWeight(int grams) {
-    if (grams < 500) return PetGrowthStage.miniMochi;
-    if (grams < 2000) return PetGrowthStage.chubbyPig;
-    if (grams < 5000) return PetGrowthStage.plumpPig;
-    if (grams < 10000) return PetGrowthStage.auspiciousIngot;
+    if (grams < 15000) return PetGrowthStage.miniMochi;
+    if (grams < 35000) return PetGrowthStage.chubbyPig;
+    if (grams < 65000) return PetGrowthStage.plumpPig;
+    if (grams < 90000) return PetGrowthStage.auspiciousIngot;
     return PetGrowthStage.goldenFortunePig;
   }
 }
 
-/// 🏡 小豬整體狀態模型
+/// 🏡 小豬整體狀態模型 (純重量 kg 制)
 class PetGrowthState {
   final int weightGrams;
   final int vitality;
@@ -97,11 +97,17 @@ class PetGrowthState {
 
   PetGrowthStage get stage => PetGrowthStage.fromWeight(weightGrams);
 
+  /// 格式化體重（純 kg）
   String get weightFormatted {
-    if (weightGrams < 1000) {
-      return '$weightGrams g';
-    }
-    return '${(weightGrams / 1000.0).toStringAsFixed(2)} kg';
+    final double kg = weightGrams / 1000.0;
+    return '${kg.toStringAsFixed(1)} kg';
+  }
+
+  /// 距離下一階段還差多少 kg
+  String get kgToNextStageFormatted {
+    if (stage == PetGrowthStage.goldenFortunePig) return '已達成最高形態';
+    final double diffKg = (stage.maxWeightGrams - weightGrams) / 1000.0;
+    return '${diffKg.toStringAsFixed(1)} kg';
   }
 
   double get stageProgress {

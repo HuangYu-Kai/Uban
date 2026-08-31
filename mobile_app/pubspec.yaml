@@ -129,6 +129,7 @@ flutter:
   # To add assets to your application, add an assets section, like this:
   assets:
     - assets/images/
+    - assets/images/pet_stages/
     - assets/images/pet_seq_idle/
     - assets/images/pet_seq_anticipate/
     - assets/images/pet_seq_chewing/

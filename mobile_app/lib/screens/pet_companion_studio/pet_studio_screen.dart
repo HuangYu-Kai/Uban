@@ -158,7 +158,7 @@ class _PetStudioScreenState extends State<PetStudioScreen>
 
       // 檢查是否突破成長階段
       final newStage = newState.stage;
-      if (newStage.level > oldStage.level) {
+      if (newStage.index > oldStage.index) {
         Future.delayed(const Duration(milliseconds: 600), () {
           if (mounted) {
             PetEvolutionDialog.show(context, newStage, userName: widget.userName);
@@ -207,12 +207,12 @@ class _PetStudioScreenState extends State<PetStudioScreen>
     _spawnHearts(const Offset(350, 450), color: const Color(0xFF10B981), count: 16);
     final newState = _growthState.copyWith(
       vitality: (_growthState.vitality + 20).clamp(0, 100),
-      weightGrams: _growthState.weightGrams + 80,
+      weightGrams: _growthState.weightGrams + 500, // +0.5 kg
     );
     setState(() {
       _growthState = newState;
       _actorMood = ActorMood.superHappy;
-      _speechText = '太棒了！${widget.userName}準時吃藥照顧身體，小豬陪您健健康康！💊💪 (體重 +80g ⚖️)';
+      _speechText = '太棒了！${widget.userName}準時吃藥照顧身體，小豬陪您健健康康！💊💪 (體重 +0.5 kg ⚖️)';
     });
     PetStorageService.saveState(newState);
 
@@ -228,12 +228,12 @@ class _PetStudioScreenState extends State<PetStudioScreen>
     final newState = _growthState.copyWith(
       isCrownUnlocked: true,
       vitality: 100,
-      weightGrams: _growthState.weightGrams + 300,
+      weightGrams: _growthState.weightGrams + 1200, // +1.2 kg
     );
     setState(() {
       _growthState = newState;
       _actorMood = ActorMood.celebratingGoal;
-      _speechText = '👑 哇！今日 8,000 步全達成！${widget.userName}是全家人的健康冠軍！🏆✨';
+      _speechText = '👑 哇！今日 8,000 步全達成！${widget.userName}是全家人的健康冠軍！🏆✨ (體重 +1.2 kg ⚖️)';
     });
     PetStorageService.saveState(newState);
 
