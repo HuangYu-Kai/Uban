@@ -252,11 +252,17 @@ class _FamilyMarketplaceViewState extends State<FamilyMarketplaceView> {
                     ),
                     Row(
                       children: [
-                        Text(
-                          '作者：$author',
-                          style: GoogleFonts.notoSansTc(
-                            fontSize: 12,
-                            color: Colors.grey,
+                        // ★ 作者名稱為執行期字串，長度不定；用 Flexible 包住並讓文字
+                        //   省略號截斷，避免和後面的「專家認證」徽章搶版面溢位。
+                        Flexible(
+                          child: Text(
+                            '作者：$author',
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                            style: GoogleFonts.notoSansTc(
+                              fontSize: 12,
+                              color: Colors.grey,
+                            ),
                           ),
                         ),
                         if (isExpert) ...[

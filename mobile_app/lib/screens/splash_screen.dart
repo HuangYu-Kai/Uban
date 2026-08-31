@@ -13,6 +13,7 @@ import '../globals.dart'; // ★ 新增
 import 'elder_screen.dart'; // ★ 新增
 import 'video_call_screen.dart'; // ★ 2026-07-19：家屬冷啟動待接聽來電直接進視訊房
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart'; // ★ 2026-07-23：splash activeCalls 輪詢
+import 'privacy_policy_screen.dart'; // ★ 2026-08-23：首次安裝隱私權政策關卡
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -445,8 +446,47 @@ class _SplashScreenState extends State<SplashScreen> {
     }());
   }
 
-  void _goNext() {
-    _replaceWith(const IdentificationScreen());
+  /// ★ 2026-08-23：新增「首次安裝」隱私權政策關卡。
+  ///
+  /// 安全性論證——本函式為何絕不會搶在待接聽來電之前導航：
+  /// `_goNext()` 只有唯一呼叫點，在 `_goNextOrRestoreElder()` 的尾端；而
+  /// `_goNextOrRestoreElder()` 本身只在下列情況被呼叫：
+  ///   1. `_navigateToNext()` 開頭的冷啟動衝刺通道（`_sprintToPendingCall()`）
+  ///      已經跑過——若 `pendingAcceptedCall.value != null` 且衝刺成功，
+  ///      該處已 `return`，不會走到這裡；
+  ///   2. 標準流程判斷「本機未登入」或 API／本機 session 都判斷不出角色時；
+  ///   3. 15 秒導航看門狗逾時，但看門狗同樣是呼叫 `_goNextOrRestoreElder()`，
+  ///      而它自己也會先重讀 prefs、偵測到長輩/家屬 session 就改道，不會落
+  ///      到 `_goNext()`。
+  /// 換言之，能走到 `_goNext()` 的唯一情境是「無待接聽來電、且判斷不出
+  /// 任何本機 session」——這正是全新安裝、尚未選擇身分的狀態，也是唯一
+  /// 需要顯示隱私權政策的時機。
+  ///
+  /// 同意後由 `PrivacyPolicyScreen` 自行 `pushAndRemoveUntil` 到
+  /// `IdentificationScreen`；之後每次啟動 prefs 都已標記為同意，直接落入
+  /// 下方 `accepted == true` 分支，符合「僅需初始開啟需要即可」。
+  Future<void> _goNext() async {
+    final bool accepted = await _hasAcceptedPrivacyPolicy();
+    if (!mounted || _navigated) return;
+    if (accepted) {
+      _replaceWith(const IdentificationScreen());
+    } else {
+      _replaceWith(const PrivacyPolicyScreen());
+    }
+  }
+
+  /// 讀取失敗時保守地視為「尚未同意」（顯示政策畫面而非直接放行）。
+  /// 這裡不像通話路徑有「卡住使用者」的風險：政策畫面只有一顆「我已閱讀
+  /// 並同意」按鈕即可繼續，最壞情況只是多看一次，不會卡關。
+  Future<bool> _hasAcceptedPrivacyPolicy() async {
+    try {
+      final prefs = await SharedPreferences.getInstance()
+          .timeout(const Duration(seconds: 3));
+      return prefs.getBool(PrivacyPolicyScreen.prefsKey) ?? false;
+    } catch (e) {
+      debugPrint('⚠️ [Splash] 讀取隱私權政策同意狀態失敗，保守顯示政策畫面: $e');
+      return false;
+    }
   }
 
   /// ★ Issue 3 硬化：在導向身分辨識頁（_goNext）之前的最後防線。
@@ -510,7 +550,7 @@ class _SplashScreenState extends State<SplashScreen> {
     } catch (e) {
       debugPrint('⚠️ [Splash] _goNextOrRestoreElder 重讀 prefs 失敗: $e');
     }
-    if (mounted) _goNext();
+    if (mounted) await _goNext();
   }
 
   /// ★ issue 2/10：決定長輩端啟動後要進入哪個畫面。

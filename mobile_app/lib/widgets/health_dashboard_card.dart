@@ -74,27 +74,34 @@ class _HealthDashboardCardState extends State<HealthDashboardCard>
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '${widget.elderName} 的健康狀態',
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        color: const Color(0xFF0F172A),
+                // ★ 長輩姓名為執行期字串，長度不定；用 Expanded 包住標題區塊，
+                //   避免長姓名把右側脈衝指示器推出螢幕造成 RenderFlex overflow。
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${widget.elderName} 的健康狀態',
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                        style: GoogleFonts.notoSansTc(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF0F172A),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '實時監測中',
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 12,
-                        color: const Color(0xFF64748B),
+                      const SizedBox(height: 4),
+                      Text(
+                        '實時監測中',
+                        style: GoogleFonts.notoSansTc(
+                          fontSize: 12,
+                          color: const Color(0xFF64748B),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
+                const SizedBox(width: 8),
                 _buildPulseIndicator(),
               ],
             ),

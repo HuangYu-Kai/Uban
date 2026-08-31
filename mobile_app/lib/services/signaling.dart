@@ -26,6 +26,10 @@ const String kCallFailDeclined = '對方暫時無法接聽';   // 對方按下�
 const String kCallFailBusy = '對方正在通話中';         // 對方正在另一通通話中
 const String kCallFailDisconnected = '連線中斷';       // 通話中連線掉了
 const String kCallFailUnreachable = '無法連線';        // ICE 或伺服器層面根本連不上
+/// ★ 2026-08-26（closing a hangup/accept race）：後端 on_call_accept 拒絕一通
+/// 已被 _mark_call_cancelled 標記的延遲接聽時所用的文案——對方並非「正在通話中」
+/// 或「拒接」，而是這通電話早已被撥話端結束，用既有兩個文案都不準確。
+const String kCallFailCallCancelled = '來電已被取消';   // 撥話端已掛斷／取消此通話
 
 /// 把 `call-busy` 帶回來的 reason 轉成給使用者看的文案。
 /// 未知或缺漏一律退回「拒接」文案（安全預設：不會謊稱對方在通話中）。
@@ -35,6 +39,8 @@ String callBusyMessageFor(String reason) {
       return kCallFailBusy;
     case 'server-error':
       return kCallFailUnreachable;
+    case 'cancelled':
+      return kCallFailCallCancelled;
     default:
       return kCallFailDeclined;
   }
@@ -45,11 +51,8 @@ class Signaling {
   static const String _turnServer = String.fromEnvironment('TURN_SERVER', defaultValue: '152.69.196.5:3478');
   static const String _turnUser = String.fromEnvironment('TURN_USER', defaultValue: 'uban');
   static const String _turnPass = String.fromEnvironment('TURN_PASS', defaultValue: '115207');
-  
-  static String? _overrideServerUrl;
 
   static String get serverUrl {
-    if (_overrideServerUrl != null) return _overrideServerUrl!;
     if (_serverIp.startsWith('http://') || _serverIp.startsWith('https://')) {
       return _serverIp;
     }
@@ -83,7 +86,11 @@ class Signaling {
   CallRequestCallback? onCallRequest;
   /// ★ 2026-08-04：後端推送 force-logout（家屬端解除本長輩綁定）時觸發。
   ///   由 main.dart 註冊，負責清除 session 並導航回身分選擇介面。
-  void Function()? onForceLogout;
+  /// ★ 2026-08-31 第三十七輪：新增選填具名參數 reason（例如 pairing.py 解綁
+  ///   路徑帶的 'elder-unbound'），供 main.dart::handleForceLogout 判斷是否
+  ///   清除 last_elder_* 快速登入記憶鍵（護欄 G24／G125）。payload 沒帶
+  ///   reason 時（例如 on_delete_device 目前的踢線路徑）維持 null。
+  void Function({String? reason})? onForceLogout;
   /// ★ 2026-08-06 第十九輪（D4）：後端監視機被家屬端改名時觸發。
   ///   payload: {elderId, oldDeviceName, newDeviceName, deviceId}。
   ///   只由 CCTV 模式的畫面（elder_screen.dart）註冊，一般通訊模式沒有這個概念。
@@ -94,6 +101,14 @@ class Signaling {
   ///   `SessionManager.releaseSession()` 完整釋放 session（需求 5），
   ///   否則這台裝置之後再也綁不回去。
   Function(Map<String, dynamic>)? onMonitorRemoved;
+  /// ★ 2026-08-18 IPS prototype：後端判定長輩所在樓層區域（zone）發生穩定
+  ///   切換時觸發。payload 見 `services/indoor_position.py::_build_zone_payload`：
+  ///   `{elder_id, device_id, from_zone, to_zone, entered_at,
+  ///   previous_dwell_seconds, timestamp}`。
+  ///   只由家屬端（正在看該長輩的畫面）註冊；後端只廣播給該長輩房間內的
+  ///   family/listener/family-monitor 角色 socket，見
+  ///   `services/socket_app.py::_broadcast_elder_zone_update`。
+  Function(Map<String, dynamic>)? onElderZoneUpdate;
   CallRequestCallback? onCancelCall;
   CallRequestCallback? onEmergencyCall;
   /// ★ 2026-08-12 第二十三輪：與 [onEmergencyCall] 同步配對的**純資料**欄位
@@ -125,8 +140,23 @@ class Signaling {
   String? _currentRoomId;
   String? _peerSocketId;
   String? _currentCallId; // 追蹤當前通話 ID，確保 hangUp 時能傳給後端
+  /// ★ 2026-08-26（修正緊急通話經 call-accept fallback 遺失 isEmergency／preferRelay）：
+  /// 與 [_currentCallId] 同步寫入的「這通『本機主動發起』的通話是否為緊急」純資料
+  /// 欄位（護欄 G27：不是顯示狀態，純資料且讀不到就退回安全預設）。
+  /// 寫入點：[sendEmergencyCall]（寫 true）／[sendCallRequest]（寫 false），
+  /// 與 `_currentCallId` 被寫成同一個 callId 的同一時刻一起寫入。
+  /// 比照 [incomingCallIsVideoCallId]／[incomingCallIsVideo] 的「callId 綁定
+  /// 資料欄位」模式：用 callId 而非直接覆寫值本身做防護——下一通
+  /// sendEmergencyCall／sendCallRequest 一送出就會用新 callId 覆寫這兩個欄位，
+  /// 舊值即使還殘留在記憶體裡，也會因 callId 對不上而永遠讀不到，不需要另外
+  /// 找時機清空。查詢一律經 [isOutgoingCallEmergencyFor]，callId 不吻合時的
+  /// 安全預設與理由見該函式註解。
+  String? _outgoingCallEmergencyForCallId;
+  bool _outgoingCallIsEmergency = false;
   String? lastProcessedCallId; // ★ 問題4修復：記錄最後一個已處理的來電 ID，防止重複
   int lastProcessedCallTime = 0; // ★ 問題4修復：記錄最後一個已處理來電的時間戳，用於去重檢查
+  String? _lastProcessedOfferCallId; // ★ Offer 專用去重，避免與 call-request 共用 lastProcessedCallId 造成接聽後 Offer 被誤丟
+  int _lastProcessedOfferTime = 0;
   // ★ Fix E：記錄目前處理中來電的 callId 與其視訊/語音旗標，供 main.dart 在
   //   同一 isolate 存活的前景 Socket 接聽路徑（如 _showIncomingCallDialog 直接
   //   呼叫 _navigateToVideoCall）查詢。CallKit/FCM 冷啟動路徑改走
@@ -160,6 +190,34 @@ class Signaling {
   bool isVideoCallFor(String? callId) {
     if (callId != null && callId.isNotEmpty && callId == incomingCallIsVideoCallId) {
       return incomingCallIsVideo;
+    }
+    return true;
+  }
+
+  /// ★ 2026-08-26：查詢「本機主動發起、callId 為 [callId] 的通話」是不是緊急通話。
+  /// 供 'call-accept' 的 fallback（見該 handler 內說明）在沒有 UI 層
+  /// onCallAcceptedByRemote 時，補回 createOffer 需要的 isEmergency 引數。
+  ///
+  /// callId 為 null／空字串，或與 [_outgoingCallEmergencyForCallId] 不吻合
+  /// （未知、跨通、或本機從未主動發起過任何通話）一律回傳安全預設 **true**。
+  ///
+  /// 預設選 true 是刻意的安全判斷，不是照抄 [isVideoCallFor] 預設 true 的表面
+  /// 一致——這裡兩種預設錯誤的後果並不對稱：
+  ///   - 預設 false（誤判為一般通話）：直接重現本次要修的 bug——長輩在真正的
+  ///     緊急情況下被彈出接聽／拒絕提示，牴觸 G81「長輩端永遠不得出現接聽／
+  ///     拒絕 UI」；長輩可能根本沒有餘裕點下那個提示，等同讓緊急通話卡死。
+  ///   - 預設 true（誤判為緊急通話）：頂多讓一般通話少跳一次接聽提示、在長輩
+  ///     端多一次 bringToFront／強制音量（且僅限 `_role == 'elder'` 才會觸發，
+  ///     見 'offer' handler 的 isElderDevice 守門，家屬端完全不受影響）——是
+  ///     UX 上多做了一點，不是安全問題。
+  /// 兩害相權，true 的代價遠小於 false，且與本檔既有哲學一致：'offer' handler
+  /// 內 onIncomingCall 為空時，也是 `if (isEmergency) shouldAnswer = true;`
+  /// 這種「不確定就偏向讓長輩端能被聯繫到」的判斷（:691-692）。
+  bool isOutgoingCallEmergencyFor(String? callId) {
+    if (callId != null &&
+        callId.isNotEmpty &&
+        callId == _outgoingCallEmergencyForCallId) {
+      return _outgoingCallIsEmergency;
     }
     return true;
   }
@@ -278,20 +336,17 @@ class Signaling {
   }
 
   void _registerSocketListeners(String roomId, String role, String deviceName, String deviceMode, String? fcmToken) {
-    int connectErrorCount = 0;
     socket!.onConnectError((err) {
       debugPrint('❌ Socket Connect Error: $err (Server: $serverUrl)');
-      connectErrorCount++;
-      if (connectErrorCount >= 2 && _overrideServerUrl == null && serverUrl.contains('ts.net')) {
-        debugPrint('🔄 [Signaling Fallback] Socket Handshake Error. Fallback to local dev server http://10.0.2.2:8000...');
-        _overrideServerUrl = 'http://10.0.2.2:8000';
-        try {
-          socket?.disconnect();
-          socket?.dispose();
-        } catch (_) {}
-        socket = null;
-        connect(roomId, role, userId: _userId, deviceName: _deviceName ?? 'Unknown', deviceMode: _deviceMode ?? 'comm', fcmToken: fcmToken);
-      }
+      // ★ 2026-08-20：這裡原本有一段「連續 2 次握手失敗就改連
+      //   `http://10.0.2.2:8000`」的模擬器時期 fallback。`10.0.2.2` 只在 Android
+      //   模擬器有意義，實機不可路由；且該旗標（`_overrideServerUrl`）是 singleton
+      //   上的 static，全專案沒有任何地方重設回 null，一旦踩到就整個行程永久連不
+      //   上伺服器（Socket 全滅，FCM 仍正常——FCM 走完全獨立的通道，不經過
+      //   serverUrl）。這也違反鐵律 #1（不可硬編 IP／伺服器網址）。
+      //   ⚠️ 不要再加回來；本機開發請改用 `--dart-define=SERVER_IP=10.0.2.2`。
+      //   暫時性握手失敗交給 socket.io 內建的自動重連機制處理即可，不需要在這裡
+      //   額外介入改寫連線位址或拆掉重建 socket。
     });
     socket!.onError((err) => debugPrint('❌ Socket Error: $err'));
 
@@ -314,8 +369,23 @@ class Signaling {
 
     socket!.onConnect((_) async {
       debugPrint('✅ Socket 連線成功 (SID: ${socket!.id})');
-      _asyncJoin(roomId, role, deviceName, deviceMode, fcmToken: fcmToken);
-      
+      // ★ 修正 stale onConnect rejoin（切換長輩後 Socket 重連會加回舊房間）：
+      //   `onConnect` 的閉包參數（roomId/role/deviceName/deviceMode）是 socket
+      //   **第一次建立**時捕捉的，`connect()` 的「重用現有連線」分支（見上方 ♻️ 註解）
+      //   不會重新註冊監聽器，所以切換長輩後這些參數仍指向舊房間；一旦斷線自動重連，
+      //   就會把 socket 加回**舊長輩**的房間，而 Dart 端 `_currentRoomId` 仍宣稱在新
+      //   房間——後端因此在新房間找不到這個 sid，判定不可達而退回 FCM（App 前景收不到
+      //   Socket 來電通知，只剩 FCM 那條路正常，即為此症狀）。
+      //   改用當下的 instance 欄位重新加入；`_currentRoomId` 會在 `leaveRoom()` 時被清
+      //   成 null，故逐一 fallback 回當初捕捉的參數，絕不可把 null 傳進 `_asyncJoin`。
+      _asyncJoin(
+        _currentRoomId ?? roomId,
+        _role ?? role,
+        _deviceName ?? deviceName,
+        _deviceMode ?? deviceMode,
+        fcmToken: fcmToken,
+      );
+
       for (var pendingRoom in _pendingRooms) {
         _asyncJoin(pendingRoom, 'family', 'Dashboard_Listener', 'listener', fcmToken: fcmToken);
       }
@@ -471,17 +541,60 @@ class Signaling {
 
     // 對方接聽監聽
     socket!.on('call-accept', (data) {
+      // ★ 2026-08-26（closing a hangup/accept race）：本機若已經對這個 callId
+      //   執行過 hangUp()、或收到過 cancel-call／end-call／call-busy（三者都會
+      //   把 callId 寫進 _invalidCallIds，比照 call-request/cancel-call/
+      //   emergency-call 監聽器既有的檢查方式），代表撥話端這裡早就已經離開這
+      //   通電話。後端 socket_app.py::on_call_accept 現在也會擋（_is_call_cancelled
+      //   檢查），但兩端各自送出 end-call／call-accept 的時間點分屬不同連線，
+      //   伺服器無法保證誰先處理——這裡是本機知道得最快、完全不靠網路往返的
+      //   第二層防線。忽略它，避免落入下面的 fallback 分支在沒有任何通話畫面
+      //   （onCallAcceptedByRemote 已隨上一個畫面 dispose 而歸還/設為 null）的
+      //   情況下悄悄呼叫 createOffer()，建立一個沒有畫面對應、也沒人會去關閉的
+      //   PeerConnection（收話端看得到撥話端影像，但撥話端根本沒進通話房間的
+      //   根因之一）。
+      final String acceptCallId = (data['callId'] ?? '').toString();
+      if (acceptCallId.isNotEmpty && _invalidCallIds.contains(acceptCallId)) {
+        debugPrint('⛔ [Signaling] Ignore call-accept for invalidated call (callId=$acceptCallId)');
+        return;
+      }
       debugPrint("📞 [Signaling] Received call-accept (AccepterId: ${data['accepterId']}, CallId: ${data['callId']})");
       _peerSocketId = data['accepterId'];
       _currentCallId = data['callId'];
-      
+
       if (onCallAcceptedByRemote != null) {
         onCallAcceptedByRemote!(data['accepterId'], data['callId']);
       } else {
-        // ★ 如果沒有 UI 層處理，才自動發送 Offer（防止重複 Offer）
+        // ★ 2026-08-26（修正緊急通話經此 fallback 遺失 isEmergency／preferRelay）：
+        //   UI 層（VideoCallScreen.onCallAcceptedByRemote）尚未註冊時，這裡是唯一
+        //   還會發 Offer 的地方。過去無條件呼叫 createOffer(targetId: ...)，
+        //   isEmergency／preferRelay 都吃函式預設值 false——長輩端因此在真正的
+        //   緊急通話時仍被彈出「是否接聽」的提示，直接牴觸 G81。
+        //   isEmergency：查表補回本機主動發起這通話當下記錄的旗標（見
+        //   [isOutgoingCallEmergencyFor]；callId 對不上時的安全預設一律視為
+        //   緊急，理由見該函式註解）。
+        //   preferRelay：刻意固定傳 false，不要跟著 isEmergency 一起鏡射為
+        //   true——signaling.dart 這一層完全不知道 monitorViewOnly（CCTV 監控
+        //   檢視一樣會呼叫 sendEmergencyCall，見
+        //   family_main_screen.dart:1023-1032 的 `VideoCallScreen(isEmergency:
+        //   true, monitorViewOnly: true, ...)`），只有 VideoCallScreen 自己
+        //   才分得出「真緊急通話」與「CCTV 監控」（見 video_call_screen.dart:323
+        //   的 `widget.isEmergency && !widget.monitorViewOnly`）。這裡把
+        //   preferRelay 誤設 true 本身現在不會造成任何後果——2026-08-26 起
+        //   iceTransportPolicy 已回退為無條件 'all'（見 _generateDynamicTURNConfig
+        //   註解），preferRelay 全專案暫時不驅動任何行為。這裡仍固定傳 false，
+        //   是為了日後重新接上這個訊號時不必回頭排查這條 fallback 路徑，
+        //   維持本檔既有的「不確定時一律退回安全值」慣例。
+        final String? acceptedCallId = data['callId']?.toString();
+        final bool fallbackIsEmergency = isOutgoingCallEmergencyFor(acceptedCallId);
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          debugPrint("🔄 [Signaling] No UI handler, auto-starting createOffer to ${data['accepterId']}");
-          createOffer(targetId: data['accepterId']);
+          debugPrint("🔄 [Signaling] No UI handler, auto-starting createOffer to "
+              "${data['accepterId']} (isEmergency=$fallbackIsEmergency)");
+          createOffer(
+            targetId: data['accepterId'],
+            isEmergency: fallbackIsEmergency,
+            preferRelay: false,
+          );
         });
       }
     });
@@ -514,9 +627,16 @@ class Signaling {
     // ★ 2026-08-04：force-logout 必須在此註冊。原本寫在 main.dart 的
     //   `s.socket?.on('force-logout', ...)` 於 initState 執行，當時 socket 仍為 null，
     //   `?.` 短路導致從未掛上；即使掛上，connect() 重建 socket 物件後也會失效。
-    socket!.on('force-logout', (_) {
-      debugPrint("🚪 [Signaling] Received force-logout (家屬端已解除綁定)");
-      if (onForceLogout != null) onForceLogout!();
+    socket!.on('force-logout', (data) {
+      // ★ 2026-08-31 第三十七輪：payload 現在可能帶 reason（例如
+      //   pairing.py 解綁路徑的 'elder-unbound'）。防呆比照 monitor-removed／
+      //   elder-zone-update：不是 Map 就當作沒有 reason，不可讓格式異常的
+      //   推播拋出例外。
+      final Map<String, dynamic> payload =
+          data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
+      final String? reason = payload['reason']?.toString();
+      debugPrint("🚪 [Signaling] Received force-logout reason=$reason");
+      if (onForceLogout != null) onForceLogout!(reason: reason);
     });
 
     // ★ 2026-08-06 第十九輪（D4）：監視機被家屬端改名時，即時同步通知該監視機本身。
@@ -540,35 +660,65 @@ class Signaling {
       }
     });
 
+    // ★ 2026-08-18 IPS prototype（P3-E）：長輩室內定位區域切換推播。
+    //   防呆比照 monitor-removed：payload 不是 Map 就退回空 Map，絕不能讓
+    //   格式異常的推播在 socket handler 內拋出例外。
+    socket!.on('elder-zone-update', (data) {
+      debugPrint("📍 [Signaling] Received elder-zone-update: $data");
+      if (onElderZoneUpdate != null) {
+        onElderZoneUpdate!(data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{});
+      }
+    });
+
     socket!.on('offer', (data) async {
       final senderId = data['senderId'];
       final callId = data['callId'];
       debugPrint('📩 [Signaling] RECEIVED OFFER from $senderId (CallId: $callId)');
       
-      // ★ 問題4修復：檢查是否已在短時間內處理過此 callId（防止重複）
+      // ★ Offer 去重：檢查是否已在短時間內處理過此 Offer（防止 Offer 重複到達）
+      //   ⚠️ 必須使用獨立的 _lastProcessedOfferCallId，不可與 call-request 的 lastProcessedCallId 共用，
+      //   否則長輩端按下接聽後發起端送來的 Offer 會被當成重複的 call-request 直接丟棄！
       final int currentTime = DateTime.now().millisecondsSinceEpoch;
-      if (callId != null && callId == lastProcessedCallId && 
-          (currentTime - lastProcessedCallTime) < 2000) { // 2秒去重窗口
+      if (callId != null && callId == _lastProcessedOfferCallId && 
+          (currentTime - _lastProcessedOfferTime) < 2000) { // 2秒去重窗口
         debugPrint('⚠️ [Signaling] 忽略重複的 offer（CallId 已在 2 秒內處理: $callId）');
         return;
       }
       
-      // ★ 更新最後處理的來電 ID 和時間戳
+      // ★ 更新最後處理的 Offer ID 和時間戳
       if (callId != null) {
-        lastProcessedCallId = callId;
-        lastProcessedCallTime = currentTime;
+        _lastProcessedOfferCallId = callId;
+        _lastProcessedOfferTime = currentTime;
       }
       
       _peerSocketId = senderId;
       _candidateQueue.clear();
 
       bool isEmergency = data['isEmergency'] == true;
-      if (isEmergency && !kIsWeb) {
+      // ★ 2026-08-24（使用者裁定）：「強制開啟」——這裡指喚醒 App 到前景（bringToFront）
+      //   與強制拉滿系統音量——只允許用於長輩端，絕不可用於家屬端。家屬手機被無故拉到
+      //   前台或音量被強制轉滿，對任何懂技術的使用者而言都像是惡意軟體行為；長輩端保留
+      //   這兩個行為，是因為身處困境的長輩必須能被聯繫到，不能只靠一般提示音等當事人
+      //   自行反應。音量強制與 bringToFront 判為同一類「未經同意的裝置控制」，一併收斂
+      //   進同一個守門條件，不單獨放行音量——家屬那端唯一允許保留的介入是來電響鈴畫面
+      //   （CallKit／全螢幕來電通知），使用者已明確將其列為例外，不受本次變更影響，
+      //   也不在這個 offer handler 的管轄範圍內。
+      //   角色來源用本連線的 `_role` 欄位（:224，早於 :259 註冊本 'offer' 監聽器前就已
+      //   寫入），不用 SharedPreferences 的 user_role/saved_role——後者有第十六輪記載的
+      //   雙鍵漂移史（見 CLAUDE_call-monitor.md），`_role` 是這條連線當下真正在用的角色，
+      //   不受殘留 prefs 影響，且理論上到這裡一定已賦值。查不到（理論上不會發生）一律
+      //   視為非長輩、不觸發——寧可長輩端這條路徑少一次自動亮螢幕／轉音量（一般來電
+      //   已有 G102–G106 的喚醒與各層兜底，緊急通話仍會走完整通話流程，只是不強制亮
+      //   螢幕），也不能在家屬端重現這次要移除的違規行為。
+      final bool isElderDevice = _role == 'elder';
+      if (isEmergency && !kIsWeb && isElderDevice) {
         try { await platform.invokeMethod('bringToFront'); } catch (e) { debugPrint('BringToFront error: $e'); }
-        try { 
+        try {
           VolumeController.instance.showSystemUI = false;
-          VolumeController.instance.setVolume(1.0); 
+          VolumeController.instance.setVolume(1.0);
         } catch (e) { debugPrint('Volume control error: $e'); }
+      } else if (isEmergency && !kIsWeb) {
+        debugPrint('⏭️ [Signaling] 略過 bring-to-front／強制音量（非長輩端，_role=$_role）');
       }
 
       bool shouldAnswer = false;
@@ -782,6 +932,43 @@ class Signaling {
     }
   }
 
+  /// ★ 2026-08-18 需求 8 根因修復：TARGETED（指名道姓）離開單一房間。
+  ///
+  /// 這是本專案第一次補上「離開房間」的語意——過去全程只有 [joinRoom] /
+  /// [_asyncJoin]，socket.io 端從未呼叫對應的 leave，導致任何加入過的房間
+  /// 都會跟著同一條 socket 連線一輩子。這支方法刻意只離開呼叫端明確指名
+  /// 的 [roomId]，**不會**連帶離開其他房間——[joinRoom] 讓家屬端可以同時
+  /// 以 `'listener'` 角色加入多個長輩的房間（多長輩儀表板同時關注多位
+  /// 長輩），那個功能就是靠同一條 socket 能同時待在多個房間才成立；若這裡
+  /// 做成「加入新房間就自動離開其他房間」，會直接打斷該功能。呼叫端必須
+  /// 自己明確點名要離開哪個房間（見 `family_main_screen.dart::_switchElder`）。
+  void leaveRoom(String roomId) {
+    if (roomId.isEmpty || socket == null || socket!.connected != true) {
+      // socket 已斷線時，伺服器端本來就已經把它移出所有房間，這裡安全地
+      // 什麼都不做（no-op）。
+      return;
+    }
+    debugPrint('🚪 [Signaling] Emitting leave: $roomId');
+    socket!.emit('leave', {'room': roomId});
+    if (roomId == _currentRoomId) {
+      _currentRoomId = null;
+    }
+  }
+
+  /// ★ 2026-08-18 房間洩漏修復：搭配 [leaveRoom] 補上「排隊中」的另一半情境。
+  ///
+  /// [joinRoom] 在 socket 尚未連線時，會把房間先塞進 [_pendingRooms]，
+  /// 等 `onConnect` 觸發後才真正加入（見上方 `socket!.onConnect` 內的
+  /// flush 迴圈）。如果呼叫端（例如 Dashboard 畫面）在連線建立**之前**就
+  /// 已經 dispose，此時呼叫 [leaveRoom] 沒有意義——房間根本還沒加入，
+  /// socket 也可能還是斷線狀態而直接 no-op 返回——但一旦之後連線成功，
+  /// 那個排隊中的房間仍會被照常加入，造成沒有任何畫面在關注的房間洩漏。
+  /// 這支方法只單純把指定 roomId 從排隊清單移除，刻意保持精簡、不動
+  /// [_pendingRooms] 既有的加入/清空邏輯。
+  void cancelPendingRoom(String roomId) {
+    _pendingRooms.remove(roomId);
+  }
+
   void updateAppForeground(bool isForeground) {
     _isAppForeground = isForeground;
     if (socket != null && socket!.connected) {
@@ -833,6 +1020,10 @@ class Signaling {
     }
 
     _currentCallId = effectiveCallId;
+    // ★ 2026-08-26：與 _currentCallId 同步記錄這通是「非緊急」，供 call-accept
+    //   fallback 在沒有 UI 層時查詢（見 [isOutgoingCallEmergencyFor] 欄位說明）。
+    _outgoingCallEmergencyForCallId = effectiveCallId;
+    _outgoingCallIsEmergency = false;
     // issuedAt 在確認連線後才取，避免等待連線的時間白白吃掉 120 秒有效期。
     final int issuedAt = DateTime.now().millisecondsSinceEpoch;
     socket!.emit('call-request', {
@@ -857,10 +1048,24 @@ class Signaling {
   }
 
 
-  void sendCallAccept(String targetSocketId, {String? callId}) async {
-    if (socket == null) return;
-    
-    int retries = 100;
+  /// ★ 2026-08-19 第二十九輪：新增 [maxWait]，預設值維持原本的 **10 秒**
+  ///   （100 × 100ms）不變，一般通話（`_handleAcceptedCallFromBackground` 等）行為
+  ///   完全不變。緊急通話的冷啟動（Firebase 初始化＋Flutter engine＋AndroidIntent
+  ///   喚醒＋splash＋`ElderScreen` 掛載）常規性地超過 10 秒，逾時後這個 accept
+  ///   永遠不會補送，家屬端只能乾等 60 秒逾時——呼叫端
+  ///   （見 `elder_screen.dart::_handleEmergencyAccept`）改傳 30 秒。
+  /// 回傳型別由 `void` 改為 `Future<bool>`（true＝確實送出 emit）：既有的
+  ///   fire-and-forget 呼叫端（不理會回傳值）照常編譯、行為不變；
+  ///   只有緊急通話分支會讀這個布林值，逾時未送出時把畫面文案換成誠實的失敗訊息，
+  ///   而不是讓「緊急通話接通中...」永遠卡著。
+  Future<bool> sendCallAccept(
+    String targetSocketId, {
+    String? callId,
+    Duration maxWait = const Duration(seconds: 10),
+  }) async {
+    if (socket == null) return false;
+
+    int retries = (maxWait.inMilliseconds / 100).ceil();
     while (!socket!.connected && retries > 0) {
       await Future.delayed(const Duration(milliseconds: 100));
       retries--;
@@ -869,8 +1074,10 @@ class Signaling {
     if (socket!.connected) {
       debugPrint("✅ [Accept] Sending call-accept to $targetSocketId (CallId: $callId)");
       socket!.emit('call-accept', {'targetId': targetSocketId, 'callId': callId});
+      return true;
     } else {
-      debugPrint("❌ [Accept] Socket connection timed out. Could not send accept.");
+      debugPrint("❌ [Accept] Socket connection timed out (${maxWait.inSeconds}s). Could not send accept.");
+      return false;
     }
   }
 
@@ -922,6 +1129,10 @@ class Signaling {
   void sendEmergencyCall(String room, {String? targetId, String? callId, String role = 'family'}) {
     final String effectiveCallId = callId ?? const Uuid().v4();
     _currentCallId = effectiveCallId;
+    // ★ 2026-08-26：與 _currentCallId 同步記錄這通是「緊急」，供 call-accept
+    //   fallback 在沒有 UI 層時查詢（見 [isOutgoingCallEmergencyFor] 欄位說明）。
+    _outgoingCallEmergencyForCallId = effectiveCallId;
+    _outgoingCallIsEmergency = true;
     final int issuedAt = DateTime.now().millisecondsSinceEpoch;
     socket!.emit('emergency-call', {
       'room': room,
@@ -948,10 +1159,25 @@ class Signaling {
       peerConnection = null;
     }
     _candidateQueue.clear();
-    await _createPeerConnection(useLocalStream: useLocalStream);
+    // ★ isEmergency 與 preferRelay 語意上是分開的兩件事，讀取時不可合併：isEmergency
+    //   涵蓋響鈴／自動接聽／強制開鏡頭／bringToFront 等一大票既有行為（見上面
+    //   'offer' handler 對它的用法、下方緊急視訊軌道），CCTV 監控
+    //   （startMonitoring、VideoCallScreen(monitorViewOnly:true, isEmergency:true)）
+    //   也會讓它是 true——不能拿 isEmergency 決定要不要套用 relay-only（G123）。
+    //   preferRelay 是唯一只承載「要不要嘗試 relay-only」這個意思的訊號，由發起端在
+    //   offer payload 額外帶來（見 [createOffer]／[startMonitoring]）。
+    //   ★ 2026-08-26（回退 relay-only 優化）：preferRelay 目前只會被讀出、透傳給
+    //   [_createPeerConnection]，不再驅動任何行為——iceTransportPolicy 已無條件
+    //   收斂為 'all'，完整原因見 [_generateDynamicTURNConfig] 的註解。這裡仍然分開
+    //   讀取兩個欄位，是為了不要重蹈覆轍：一旦又把它們合併，日後重新接上 preferRelay
+    //   時會立刻重現 G123 那個「監控被誤判為緊急」的老問題。
+    final bool isEmergency = data['isEmergency'] == true;
+    final bool preferRelay = data['preferRelay'] == true;
 
-    // ★ Fix: 緊急通話強制啟用本機視訊軌道
-    if (data['isEmergency'] == true && localStream != null) {
+    await _createPeerConnection(useLocalStream: useLocalStream, preferRelay: preferRelay);
+
+    // ★ Fix: 緊急通話強制啟用本機視訊軌道（isEmergency 原意不變，見上方註解）
+    if (isEmergency && localStream != null) {
       debugPrint("🚨 [Signaling] Emergency call: enabling local video tracks before answer");
       for (var track in localStream!.getVideoTracks()) {
         track.enabled = true;
@@ -992,8 +1218,15 @@ class Signaling {
     _candidateQueue.clear();
   }
 
-  // ★ 根據 elder_id 生成動態的 TURN 憑證
-  Map<String, dynamic> _generateDynamicTURNConfig() {
+  // ★ 根據 elder_id 生成動態的 TURN 憑證清單。
+  // ★ 2026-08-25（緊急通話 TURN 連線速度）：抽出成獨立方法，原意是讓
+  //   [_generateDynamicTURNConfig]（實際通話用）與當時新增的背景健康探測方法
+  //   共用同一份 iceServers，探測結果才代表得準實際通話會遇到的伺服器與憑證。
+  //   ★ 2026-08-26 回退 relay-only 優化時，那個背景健康探測方法已一併移除（完整
+  //   原因見下方 [_generateDynamicTURNConfig] 內的註解），目前僅
+  //   [_generateDynamicTURNConfig] 呼叫本方法；內容與行為跟重構前逐字相同，只是
+  //   仍保留搬出獨立方法的寫法。
+  List<Map<String, dynamic>> _buildIceServers() {
     String turnUsername = _turnUser;
 
     // 如果有 elder_id，根據 elder_id 生成隔離用的使用者名稱（僅供除錯輸出）
@@ -1010,26 +1243,30 @@ class Signaling {
       debugPrint("⚠️ [TURN] 未找到 elder_id，使用預設 TURN 憑證");
     }
 
-    return {
-      'iceServers': [
-        {'urls': 'stun:stun.l.google.com:19302'},
+    return [
+      {'urls': 'stun:stun.l.google.com:19302'},
+      {
+        // ★ 2026-08-05 第十七輪：Coturn 實際只有靜態帳號 uban（README.md:338-343，
+        //   lt-cred-mech + user=uban:115207）。原本只送 `uban_elder_<id>` 會被回 401，
+        //   拿不到任何 relay 候選；同網域靠 srflx 還能通，跨網域對稱 NAT 就必然
+        //   「SDP 談成、ICE 配不出 pair」→ 有通話計時卻零影音。靜態帳號必須放第一組。
+        'urls': ['turn:$_turnServer', 'turn:$_turnServer?transport=tcp'],
+        'username': _turnUser,
+        'credential': _turnPass,
+      },
+      // 若日後 Coturn 真的開了 per-elder 帳號，這組會被一併嘗試，不影響上面那組。
+      if (_elderId != null && _elderId!.isNotEmpty)
         {
-          // ★ 2026-08-05 第十七輪：Coturn 實際只有靜態帳號 uban（README.md:338-343，
-          //   lt-cred-mech + user=uban:115207）。原本只送 `uban_elder_<id>` 會被回 401，
-          //   拿不到任何 relay 候選；同網域靠 srflx 還能通，跨網域對稱 NAT 就必然
-          //   「SDP 談成、ICE 配不出 pair」→ 有通話計時卻零影音。靜態帳號必須放第一組。
           'urls': ['turn:$_turnServer', 'turn:$_turnServer?transport=tcp'],
-          'username': _turnUser,
+          'username': '${_turnUser}_elder_$_elderId',
           'credential': _turnPass,
         },
-        // 若日後 Coturn 真的開了 per-elder 帳號，這組會被一併嘗試，不影響上面那組。
-        if (_elderId != null && _elderId!.isNotEmpty)
-          {
-            'urls': ['turn:$_turnServer', 'turn:$_turnServer?transport=tcp'],
-            'username': '${_turnUser}_elder_$_elderId',
-            'credential': _turnPass,
-          },
-      ],
+    ];
+  }
+
+  Map<String, dynamic> _generateDynamicTURNConfig() {
+    return {
+      'iceServers': _buildIceServers(),
       // ★ 2026-08-04 第 3 項：縮短連線建立時間。以下四項都不改變媒體路徑，
       //   只影響 ICE 協商的效率，與雙軌設計（信令走 Tailscale、媒體走 Coturn）無關。
       //   iceCandidatePoolSize：PeerConnection 一建立就預先蒐集候選位址，
@@ -1048,11 +1285,42 @@ class Signaling {
       'bundlePolicy': 'max-bundle',
       'rtcpMuxPolicy': 'require',
       'sdpSemantics': 'unified-plan',
+      // ★ 2026-08-26（回退 relay-only 優化，還原成本次優化之前的行為）：
+      //   iceTransportPolicy 無條件 'all'。2026-08-25 一度改成依「呼叫端是否要求
+      //   relay」與「這台裝置自己快取的 TURN relay 健康度」收斂成 'relay'，並在
+      //   送出 offer／answer 前各自加一道「1.5 秒等 relay 候選、拿不到就整顆
+      //   PeerConnection 作廢重建」的可行性安全網，相關的健康快取、背景探測、
+      //   等待器等輔助程式碼已一併移除。
+      //   真機回報四種情境（螢幕開/關 × App 背景存活/被殺死）都出現「雙端都已
+      //   進了通話房，其中一端 ICE 卻失敗、顯示『無法連線』」，且失敗的是哪一端
+      //   會隨情境翻轉。追出的機制是：健康快取只存在單一裝置上，兩端各自獨立判斷、
+      //   互不通氣——剛冷啟動、快取是空的那一端解析成 'all'，另一端解析成
+      //   'relay'，於是同一通話兩端套用不同的 iceTransportPolicy，收集到不對稱的
+      //   candidate 集合；接聽端判定 relay 不可行要重建時，還會清空候選佇列並關閉
+      //   舊 PeerConnection——連同已經到達、原本可以配對成功的遠端候選一起丟掉。
+      //   Doze 模式下螢幕關閉會拖慢 TURN allocation，這解釋了「失敗的是哪一端」
+      //   為何隨螢幕開關與背景/被殺死狀態翻轉。
+      //   加速緊急通話連線的立意沒有錯，但這個機制在真機上會讓通話「有時完全連不
+      //   上」——在緊急通話這條路徑，「連得上但慢」必須優先於「快但有時連不上」，
+      //   所以整套機制被移除，不是再加第三層補償。
+      //   `preferRelay` 參數在 createOffer／_createPeerConnection／_acceptCall 與
+      //   offer payload 裡刻意保留（見各自簽章與 video_call_screen.dart:345 的
+      //   `widget.isEmergency && !widget.monitorViewOnly`）——那個訊號本身是對的、
+      //   得來不易（G123：isEmergency 同時代表「真正的緊急通話」與「CCTV 監控
+      //   檢視」，必須排除監控才能算出 preferRelay），錯的是「兩端各自獨立決定」
+      //   這個做法。**目前 preferRelay 不驅動任何行為**，純粹是給日後「先讓雙端
+      //   協商一致（例如經 socket_app.py 交換後再套用）再收斂成 relay」的實作
+      //   保留訊號，不必重新發現這個 isEmergency／monitorViewOnly 的區分。
+      //   🚫 要重新引入 relay-only，必須先讓雙端協商一致，不可再各自獨立決定。
+      'iceTransportPolicy': 'all',
     };
   }
 
-  Future<void> _createPeerConnection({required bool useLocalStream}) async {
-    // ★ 使用基於 elder_id 的動態 TURN 配置
+  Future<void> _createPeerConnection({required bool useLocalStream, bool preferRelay = false}) async {
+    // ★ 2026-08-26（回退 relay-only 優化）：iceTransportPolicy 現在無條件 'all'，
+    //   完整原因見 [_generateDynamicTURNConfig] 內的註解。[preferRelay] 參數仍保留
+    //   在簽章上（呼叫端：[createOffer]／[_acceptCall]），但目前不會被讀取、不影響
+    //   這裡組出的 TURN 設定——純粹是為了讓呼叫端不必跟著這次回退一起改動。
     final config = _generateDynamicTURNConfig();
     debugPrint("📍 [WebRTC] Creating PeerConnection with config: $config");
     peerConnection = await createPeerConnection(config);
@@ -1103,7 +1371,7 @@ class Signaling {
       final candidateStr = candidate.candidate ?? 'NULL';
       final displayStr = candidateStr.length > 25 ? candidateStr.substring(0, 25) : candidateStr;
       debugPrint("🧊 ICE Candidate #$iceGatheringCount: $displayStr...");
-      
+
       if (socket != null) {
         var payload = {
           'room': _currentRoomId,
@@ -1124,7 +1392,7 @@ class Signaling {
         debugPrint("⚠️ [Signaling] Socket not connected, cannot emit ICE candidate");
       }
     };
-    
+
     peerConnection!.onTrack = (event) {
       debugPrint("🛤️ [Signaling] Received Remote Track: kind=${event.track.kind}, enabled=${event.track.enabled}");
       // ★ 2026-08-05 第十七輪：只有真的收到 remote track 才啟動媒體看門狗——
@@ -1225,13 +1493,26 @@ class Signaling {
     }
   }
 
-  Future<void> createOffer({String? targetId, bool isEmergency = false, bool useLocalStream = true}) async {
+  /// [isEmergency] 維持原意不變：響鈴/自動接聽/前端 UI（見
+  /// `video_call_screen.dart` 對這個欄位的其他用法），會原封不動送進 offer
+  /// payload 給對端。[preferRelay] 是 2026-08-25 新增的訊號，語意上與 isEmergency
+  /// 完全獨立——**只**代表「要不要嘗試 iceTransportPolicy=relay 快速路徑」。
+  /// ★ 2026-08-26（回退 relay-only 優化）：**目前不會被讀取**——iceTransportPolicy
+  /// 已無條件收斂成 'all'（見 [_generateDynamicTURNConfig] 的完整說明），這個參數
+  /// 傳什麼都不影響本次通話。簽章與呼叫端（`video_call_screen.dart:345`）維持不動，
+  /// 只是不再讓任何一端各自根據它獨立決定 transport policy。
+  Future<void> createOffer({
+    String? targetId,
+    bool isEmergency = false,
+    bool useLocalStream = true,
+    bool preferRelay = false,
+  }) async {
     // ⭐ 防止重複調用 createOffer
     if (_isCreatingOffer) {
       debugPrint("⚠️ [Signaling] createOffer already in progress, skipping");
       return;
     }
-    
+
     try {
       _isCreatingOffer = true;
       // ★ 先關閉舊連線，避免通訊通道疊加
@@ -1242,16 +1523,19 @@ class Signaling {
       _candidateQueue.clear();
       debugPrint("🚀 [Signaling] Creating WebRTC Offer... (useLocalStream: $useLocalStream)");
       _peerSocketId = targetId;
-      await _createPeerConnection(useLocalStream: useLocalStream);
-      
+      // ★ 2026-08-26（回退 relay-only 優化）：preferRelay 仍會往下傳，但
+      //   _createPeerConnection／_generateDynamicTURNConfig 現在不再讀它，
+      //   iceTransportPolicy 無條件是 'all'，完整原因見 _generateDynamicTURNConfig 註解。
+      await _createPeerConnection(useLocalStream: useLocalStream, preferRelay: preferRelay);
+
       // ⏳ 等待 DTLS 材料生成（優化連線速度：50ms）
       await Future.delayed(const Duration(milliseconds: 50));
-      
+
       // 建立 Offer 時帶入 constraints，確保雙向或單向通訊
-      final constraints = useLocalStream 
-          ? _constraints 
+      final constraints = useLocalStream
+          ? _constraints
           : {'mandatory': {'OfferToReceiveAudio': true, 'OfferToReceiveVideo': true}};
-      
+
       RTCSessionDescription offer = await peerConnection!.createOffer(constraints);
       await peerConnection!.setLocalDescription(offer);
 
@@ -1270,7 +1554,10 @@ class Signaling {
           'senderId': socket!.id,
           'type': 'offer',
           'sdp': offer.sdp,
-          'isEmergency': isEmergency
+          'isEmergency': isEmergency,
+          // ★ 2026-08-26：preferRelay 原封不動透傳給對端，但目前雙端都不會拿它
+          //   做任何決策（見上方欄位註解），純粹保留給日後的雙端協商實作。
+          'preferRelay': preferRelay,
       });
       await _applyVideoEncodingParams();
     } catch (e) {
@@ -1289,7 +1576,14 @@ class Signaling {
     }
     _candidateQueue.clear();
     _peerSocketId = targetId;
-    await _createPeerConnection(useLocalStream: false);
+    // ★ 2026-08-25：明確傳 preferRelay:false——監控是 recvonly 觀看，不是真正的
+    //   人對人緊急通話，不該套用 relay-only 快速路徑。過去這裡依賴
+    //   _createPeerConnection 的 isEmergency 預設值 false「湊巧」正確，但下面
+    //   offer payload 的 isEmergency 卻是 true（讓被監控端在沒有 call-request
+    //   交握下自動接聽），對端 _acceptCall 過去直接把那個 isEmergency 塞進
+    //   relay 決策，導致監控也被誤套用 relay-only、零候選、瞬間「無法連線」——
+    //   這正是本次要修的回歸。preferRelay 才是雙端都遵守的唯一訊號。
+    await _createPeerConnection(useLocalStream: false, preferRelay: false);
     await peerConnection!.addTransceiver(
       kind: RTCRtpMediaType.RTCRtpMediaTypeVideo,
       init: RTCRtpTransceiverInit(direction: TransceiverDirection.RecvOnly),
@@ -1305,7 +1599,10 @@ class Signaling {
       'room': _currentRoomId,
       'type': 'offer',
       'sdp': offer.sdp,
-      'isEmergency': true, 
+      // isEmergency 保留 true 不動——監控靠它讓被監控端自動接聽（見 'offer'
+      // handler :657-680 附近），與下面的 preferRelay 語意完全分開。
+      'isEmergency': true,
+      'preferRelay': false,
     });
   }
 
@@ -1414,15 +1711,40 @@ class Signaling {
     //   仍觸發 12 秒後的 getStats() 檢查。
     _mediaWatchdogTimer?.cancel();
     _mediaWatchdogTimer = null;
-    if (peerConnection != null) {
-      // ★ 在關閉之前確保所有 track 都被移除和停止
-      for (var sender in await peerConnection!.getSenders()) {
-        await peerConnection!.removeTrack(sender);
-      }
-      await peerConnection!.close();
-      peerConnection = null;
+    final RTCPeerConnection? pc = peerConnection;
+    if (pc == null) {
+      _peerSocketId = null;
+      return;
     }
-    _peerSocketId = null;
+    // ★ 2026-08-26（closing a hangup/accept race）：hangUp()／call-busy 監聽／
+    //   clearSession() 都是 fire-and-forget 呼叫本函式（不 await），本函式內
+    //   任何一步原生呼叫（getSenders/removeTrack/close）拋例外都會變成無人
+    //   接手的 Future error，且會讓下面的 `peerConnection = null` 整段執行
+    //   不到——這支已經拆了一半 track 的 PeerConnection 從此變成一個 app 自己
+    //   都拿不回參考、也不會再嘗試關閉的孤兒物件，可能持續佔用底層連線與媒體
+    //   軌道，繼續把本地視訊送到對端。包 try/catch 確保無論哪一步失敗，都不
+    //   擋住最終把 `peerConnection` 歸零；`identical()` 守衛則避免這裡（可能
+    //   延遲執行的）歸零動作，錯誤地清掉在等待期間被別的呼叫（例如
+    //   createOffer() 重建新連線）換上的新 PeerConnection／新對端 socket id。
+    try {
+      // ★ 在關閉之前確保所有 track 都被移除和停止；單一 sender 失敗不可擋住
+      // 其餘 sender 與後續的 close()（比照 G21 的「每段各自 try/catch」原則）。
+      for (var sender in await pc.getSenders()) {
+        try {
+          await pc.removeTrack(sender);
+        } catch (e) {
+          debugPrint("⚠️ [Signaling] _closePeerConnection removeTrack 失敗（續行）: $e");
+        }
+      }
+      await pc.close();
+    } catch (e) {
+      debugPrint("⚠️ [Signaling] _closePeerConnection 關閉失敗（續行，仍清空參考）: $e");
+    } finally {
+      if (identical(peerConnection, pc)) {
+        peerConnection = null;
+        _peerSocketId = null;
+      }
+    }
   }
 
   void stopMedia() {

@@ -28,7 +28,7 @@ import 'screens/video_call_screen.dart';
 import 'screens/splash_screen.dart';
 import 'screens/elder_home_screen.dart';
 import 'screens/identification_screen.dart';
-import 'screens/role_selection_screen.dart';
+import 'screens/privacy_policy_screen.dart';
 
 // Utils & Globals
 import 'globals.dart';
@@ -176,20 +176,34 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     //   讓下次冷啟動時 Splash → main() 看到空 prefs → 跳轉到 IdentificationScreen。
     //   背景 handler 無法導航（獨立 isolate），只能清 prefs；導航由冷啟動路徑接手。
     if (type == 'force-logout') {
-      debugPrint('🚪 [BG] 收到 force-logout，清除背景 session 鍵');
+      // ★ 2026-08-31 第三十七輪：last_elder_* 快速登入記憶鍵只有在遠端「真的
+      //   解除長輩綁定」（reason == 'elder-unbound'，見 pairing.py 解綁路徑）
+      //   時才可以清（護欄 G24／G125）。監控機刪除裝置轉回長輩帳號時
+      //   （`_exitCCTVMode` → `deleteMonitorDevice` → 後端對同一裝置送
+      //   force-logout）reason 不是 'elder-unbound'（或缺漏），這裡若照舊
+      //   無條件清除，會把裝置自己剛用 `preserveQuickLogin: true` 保住的
+      //   鍵繞一圈清掉——正是第三十七輪使用者回報「登出轉監控再轉回無法
+      //   快速登入」的根因。讀不到 / 未知值一律視為「保留」。
+      final reason = (message.data['reason'] ?? '').toString();
+      debugPrint('🚪 [BG] 收到 force-logout，清除背景 session 鍵（reason=$reason）');
       try {
         final bgPrefs = await SharedPreferences.getInstance();
         const keysToRemove = [
           'caregiver_id', 'caregiver_name', 'user_role', 'saved_role',
           'saved_id', 'saved_device_name', 'saved_is_cctv', 'elder_room_id',
           'access_token',
-          'last_elder_id', 'last_elder_name', 'last_elder_room_id', 'last_elder_device_role',
           'pendingAcceptedCall', 'pendingRingCallData', 'pendingRingCall',
         ];
         for (final key in keysToRemove) { await bgPrefs.remove(key); }
+        if (reason == 'elder-unbound') {
+          const quickLoginKeys = [
+            'last_elder_id', 'last_elder_name', 'last_elder_room_id', 'last_elder_device_role',
+          ];
+          for (final key in quickLoginKeys) { await bgPrefs.remove(key); }
+        }
         final deviceRoleKeys = bgPrefs.getKeys().where((k) => k.startsWith('device_role_')).toList();
         for (final key in deviceRoleKeys) { await bgPrefs.remove(key); }
-        debugPrint('🚪 [BG] force-logout 清除完成（${keysToRemove.length + deviceRoleKeys.length} 鍵）');
+        debugPrint('🚪 [BG] force-logout 清除完成');
       } catch (e) {
         debugPrint('❌ [BG] force-logout 清除失敗: $e');
       }
@@ -326,26 +340,16 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       // Continue to show notification even if prefs processing fails
     }
 
-    // 其餘情況（例如家屬端收到緊急來電）：彈出全螢幕 CallKit 並強制將 App 帶到前台
-    try {
-      if (defaultTargetPlatform == TargetPlatform.android) {
-        final AndroidIntent intent = AndroidIntent(
-          action: 'android.intent.action.MAIN',
-          package: 'com.example.flutter_application_1',
-          componentName: 'com.example.flutter_application_1.MainActivity',
-          flags: <int>[
-            0x10000000, // FLAG_ACTIVITY_NEW_TASK
-            0x00020000, // FLAG_ACTIVITY_REORDER_TO_FRONT
-            0x20000000, // FLAG_ACTIVITY_SINGLE_TOP
-          ],
-        );
-        await intent.launch();
-      }
-    } catch (e, stackTrace) {
-      debugPrint('❌ [BG] AndroidIntent error (call-request bringToFront): $e');
-      debugPrint('📍 Stack trace: $stackTrace');
-    }
-
+    // 其餘情況（能落到這裡的只剩「家屬端收到緊急來電」——elder+emergency-call、
+    // elder+call-request、!elder+call-request 三種組合都已在上面提前 return）。
+    // ★ 2026-08-24（使用者裁定）：「強制開啟」（AndroidIntent 直接把 App 拉到前景）
+    //   只允許用於長輩端，絕不可用於家屬端——家屬手機無故被拉到前台，對任何懂技術的
+    //   使用者而言都像是惡意軟體行為；長輩端保留這個行為，是因為身處困境的長輩必須
+    //   能被聯繫到，不能只靠當事人自行手動解鎖、開啟 App。因此這裡移除了 AndroidIntent
+    //   強制喚醒，只保留下面的來電響鈴畫面（CallKit 全螢幕來電通知）——使用者已明確
+    //   將「來電響鈴畫面」列為刻意保留的例外，不受本次變更影響。
+    // 🔁 若日後要把家屬端的緊急來電也降級成一般被動通知（不再彈全螢幕來電畫面），
+    //   要改的就是下面這一行 _showFullScreenCallkit(...)。
     await _showFullScreenCallkit(message.data);
   } catch (e, stackTrace) {
     debugPrint('❌ [BG] Unexpected error in firebaseMessagingBackgroundHandler: $e');
@@ -810,6 +814,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   final Map<String, int> _fcmCallIdCache = {}; // 記錄已處理的 callId 和時間戳
   final _appLinks = AppLinks();
   StreamSubscription<Uri>? _linkSubscription;
+  // ★ [本輪]：移機復原代碼的「待消費」暫存與其輪詢計時器。
+  //   理由見 _scheduleRecoveryCodeFallback 的函式註解。
+  String? _pendingRecoveryCode;
+  Timer? _recoveryPollTimer;
 
   @override
   void initState() {
@@ -826,10 +834,21 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     _setupSignalingListener();
     sig.Signaling().updateAppForeground(true);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final context = navigatorKey.currentContext;
-      if (context != null) {
-        VideoCallPermissionService.requestOnFirstUse(context);
-      }
+      // ★ 2026-08-31 第三十七輪：原本在此無條件請求權限，但 splash 的
+      //   `_replaceWith` 用 Navigator.pushReplacement——它移除的是堆疊最上層的
+      //   route，正好把本服務的「權限不足」對話框整個換成 PrivacyPolicyScreen，
+      //   `await showDialog` 靜默返回、無例外。使用者因此看不到權限警告，
+      //   首次使用也拿不到相機/麥克風 → 第一通通話雙端都連不上。
+      //   改為只在「已同意隱私權政策」時才在此請求；未同意時由
+      //   PrivacyPolicyScreen 在同意後自行呼叫，順序也才正確（先同意再要權限）。
+      SharedPreferences.getInstance().then((prefs) {
+        final accepted = prefs.getBool(PrivacyPolicyScreen.prefsKey) ?? false;
+        if (!accepted) return;
+        final ctx = navigatorKey.currentContext;
+        if (ctx != null) VideoCallPermissionService.requestOnFirstUse(ctx);
+      }).catchError((e) {
+        debugPrint('⚠️ [Main] 讀取隱私權同意狀態失敗，略過首次權限請求: $e');
+      });
       
       // ★ Issue 8：請求懸浮視窗權限（讓來電通知覆蓋其他 APP）
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
@@ -851,6 +870,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   @override
   void dispose() {
     _linkSubscription?.cancel();
+    _recoveryPollTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -881,12 +901,75 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       final code = uri.queryParameters['code'];
       if (code != null) {
         debugPrint('🔑 Extracted recovery code: $code');
-        // 延遲 300ms 確保 App 已完全回到前景並穩定渲染，再彈出 Dialog
-        Future.delayed(const Duration(milliseconds: 300), () {
-          _showRecoveryConfirmationDialog(code);
-        });
+        // ★ [本輪]：固定 300ms 延遲是跟 Splash 冷啟動導航的一場必輸賭局，
+        //   改成等 splashActive 確定結束（且冷啟動全程沒出現待接聽來電）才
+        //   消費，理由見 _scheduleRecoveryCodeFallback 的函式註解。
+        _scheduleRecoveryCodeFallback(code);
       }
     }
+  }
+
+  /// ★ [本輪]：復原代碼必須等 Splash 冷啟動導航「塵埃落定」後才消費，不能賭
+  /// 固定延遲。
+  ///
+  /// 舊版 `Future.delayed(300ms, () => _showRecoveryConfirmationDialog(code))`
+  /// 賭的是「300ms 後 App 一定已經穩定顯示」，這個假設在冷啟動時不成立：
+  /// Deep Link 本身要等 `initState` 排定的 1500ms 才開始處理（見
+  /// `_initDeepLinks` 的呼叫點），而 `splash_screen.dart` 沒有待接聽來電時的
+  /// 標準路徑光是開場動畫就至少 4000ms 才會第一次 `pushReplacement`／
+  /// `pushAndRemoveUntil`——300ms 後對話框幾乎必定在 Splash 都還沒換頁時，
+  /// 就用 `navigatorKey` 那個 root Navigator 彈出。Splash 稍後呼叫
+  /// `_replaceWith`／`_navigateFamilyHome`／`_goNext` 時，
+  /// `Navigator.pushReplacement` 換掉的是「這個 Navigator 當下最上層的
+  /// route」——這時最上層是復原對話框、不是 Splash 自己的 route，於是對話框
+  /// 被換頁悄悄打斷、Splash 的 route 反而留在底下沒被換掉，使用者看到的就是
+  /// 「App 打開了，卡在身分選擇介面，復原流程什麼反應都沒有」。
+  ///
+  /// 改走與 `pendingAcceptedCall` 同一種「資料先存、確定性訊號才消費」模式，
+  /// 比照既有的 `_scheduleAcceptedCallFallback` 輪詢 `splashActive`：
+  /// `splashActive` 只會在 `SplashScreen.dispose()` 變 false，而 `dispose()`
+  /// 只會在 Splash 完成一次 `pushReplacement`／`pushAndRemoveUntil`、新畫面
+  /// 接手之後才觸發，所以「`splashActive == false`」是「Splash 整段導航（含
+  /// 所有待接聽來電分支）已經跑完」的確定性訊號，不是又猜一個「這次應該夠長
+  /// 了吧」的延遲。
+  ///
+  /// 🚨 絕對限制（不得違反）：輪詢期間只要**曾經**觀察到
+  /// `pendingAcceptedCall.value != null`（不論一般來電或緊急通話，也不論到了
+  /// 要顯示對話框那一刻它是否已被目的地畫面消費掉、變回 null），本次啟動就
+  /// **完全放棄**彈出復原對話框、直接丟棄這份代碼——通話永遠優先，復原提示
+  /// 留到「下一次啟動」使用者重新點一次連結即可。這裡不重試、不排隊：漏接一通
+  /// 緊急來電遠比晚一點看到復原提示嚴重得多。
+  void _scheduleRecoveryCodeFallback(String code) {
+    _recoveryPollTimer?.cancel();
+    _pendingRecoveryCode = code;
+    const int maxTicks = 100; // 100 × 200ms = 20s，高於 Splash 15 秒導航看門狗上限
+    int tick = 0;
+    bool sawPendingCall = pendingAcceptedCall.value != null;
+    _recoveryPollTimer =
+        Timer.periodic(const Duration(milliseconds: 200), (timer) {
+      tick++;
+      // 代碼已被覆蓋（例如熱啟動時又收到一次同類連結），這一輪作廢。
+      if (_pendingRecoveryCode != code) {
+        timer.cancel();
+        return;
+      }
+      if (pendingAcceptedCall.value != null) {
+        sawPendingCall = true;
+      }
+      // Splash 仍在導航中，讓位等待——不論是否曾出現待接聽來電都不搶在它前面。
+      if (splashActive && tick < maxTicks) {
+        return;
+      }
+      timer.cancel();
+      if (_pendingRecoveryCode != code) return;
+      _pendingRecoveryCode = null;
+      if (sawPendingCall || pendingAcceptedCall.value != null) {
+        debugPrint(
+            '⏸️ [Main] 本次冷啟動偵測到待接聽來電/緊急通話，放棄彈出復原對話框（見函式註解），下次啟動請重新點擊連結');
+        return;
+      }
+      _showRecoveryConfirmationDialog(code);
+    });
   }
 
   Widget _buildIllustration(String elderName, String familyName) {
@@ -1731,21 +1814,26 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       // ★ 2026-07-30 第十四輪：FCM 前景 force-logout 處理。
       //   當長輩在前景（如 ElderHomeScreen）收到 FCM force-logout → 清除 session 並導航。
       if (message.data['type'] == 'force-logout') {
-        debugPrint('🚪 [FCM-Fg] 收到 force-logout，執行 handleForceLogout');
-        _MyAppState.handleForceLogout();
+        // ★ 2026-08-31 第三十七輪：把 reason 一併帶給 handleForceLogout，
+        //   決定 last_elder_* 快速登入記憶鍵該不該清（G24／G125，詳見該函式）。
+        final reason = (message.data['reason'] ?? '').toString();
+        debugPrint('🚪 [FCM-Fg] 收到 force-logout，執行 handleForceLogout（reason=$reason）');
+        _MyAppState.handleForceLogout(reason: reason.isEmpty ? null : reason);
         return;
       }
     });
   }
 
-  static Future<void> handleForceLogout() async {
+  /// ★ 2026-08-31 第三十七輪：新增選填 [reason]，由呼叫端（FCM 前景／Socket）
+  ///   從 force-logout payload 帶入。用途見下方 last_elder_* 清除邏輯的註解。
+  static Future<void> handleForceLogout({String? reason}) async {
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     if (nowMs - _lastForceLogoutMs < 3000) {
       debugPrint('🚪 [Main] force-logout 已於 ${nowMs - _lastForceLogoutMs}ms 前處理過，忽略重複觸發（防黑屏）');
       return;
     }
     _lastForceLogoutMs = nowMs;
-    debugPrint('🚪 [Main] 執行 handleForceLogout：清除 session 並退回身分選擇介面');
+    debugPrint('🚪 [Main] 執行 handleForceLogout：清除 session 並退回身分選擇介面（reason=$reason）');
     try {
       sig.Signaling().clearSession();
       sig.Signaling().forceDisconnect();
@@ -1755,12 +1843,28 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         'caregiver_id', 'caregiver_name', 'user_role', 'saved_role',
         'saved_id', 'saved_device_name', 'saved_is_cctv', 'elder_room_id',
         'access_token',
-        'last_elder_id', 'last_elder_name', 'last_elder_room_id', 'last_elder_device_role',
         'pendingAcceptedCall', 'pendingRingCallData', 'pendingRingCall',
         'selected_elder_id', 'selected_elder_name', 'selected_elder_room_id',
       ];
       for (final key in keysToRemove) {
         await prefs.remove(key);
+      }
+      // ★ 2026-08-31 第三十七輪：last_elder_* 快速登入記憶鍵只有在遠端「真的
+      //   解除長輩綁定」（reason == 'elder-unbound'）時才清（護欄 G24／
+      //   G125：這四個鍵只是「上次登入的長輩是誰」的便利記憶，使用者主動
+      //   登出／監控機刪除裝置轉回長輩帳號都不該清）。這裡收到的
+      //   force-logout 涵蓋兩種情境：家屬端解除長輩綁定（pairing.py 帶
+      //   reason='elder-unbound'）與監控機刪除裝置踢回自己
+      //   （`on_delete_device` 帶 reason='device-removed'）。
+      //   reason 缺漏或不是 'elder-unbound' 一律保留，這正是第三十七輪
+      //   使用者回報「登出轉監控再轉回無法快速登入同一長輩」的修復。
+      if (reason == 'elder-unbound') {
+        const quickLoginKeys = [
+          'last_elder_id', 'last_elder_name', 'last_elder_room_id', 'last_elder_device_role',
+        ];
+        for (final key in quickLoginKeys) {
+          await prefs.remove(key);
+        }
       }
       final devRoleKeys = prefs.getKeys().where((k) => k.startsWith('device_role_')).toList();
       for (final key in devRoleKeys) {
@@ -1770,12 +1874,20 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       appRole = null;
 
       if (navigatorKey.currentState != null) {
+        // ★ 2026-08-23：目的地由 RoleSelectionScreen 改為 IdentificationScreen——
+        //   後者才是現行系統入口（見 family_dashboard_screen.dart:8 的說明），
+        //   RoleSelectionScreen 是已被取代的舊畫面。這裡同時也是
+        //   force-logout 事件唯一的導航擁有者：elder_screen.dart 原本另外
+        //   掛了一份重複的 force-logout 監聽，兩者幾乎同時觸發時會各自
+        //   pushAndRemoveUntil 到不同畫面，在已經清空一次的堆疊上再操作
+        //   一次 → 背景徹底死機（ANR）／白屏。已將該重複監聽移除，這裡
+        //   經由全域 navigatorKey 執行、即使 ElderScreen 未掛載也能觸發。
         navigatorKey.currentState!.pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
+          MaterialPageRoute(builder: (_) => const IdentificationScreen()),
           (route) => false,
         );
       }
-      debugPrint('🚪 [Main] handleForceLogout 完成，已成功退回 RoleSelectionScreen');
+      debugPrint('🚪 [Main] handleForceLogout 完成，已成功退回 IdentificationScreen');
     } catch (e) {
       debugPrint('❌ [Main] handleForceLogout 失敗: $e');
     }
@@ -1849,10 +1961,48 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       }
     };
 
-    // WebRTC Offer 自動答應 (因為已經在 CallRequest 階段按過接聽了)
+    // ★ 2026-08-25（第三十三輪）：WebRTC Offer 的全域預設處理。
+    //   這是「更專屬的畫面」尚未接手 onIncomingCall 時的**唯一**防線——長輩端
+    //   停留在 ElderHomeScreen（尚未進 ElderScreen）、或 ElderScreen 剛掛載但
+    //   _initElderMode() 還卡在等 FCM token（最多 5 秒）／媒體初始化那幾秒
+    //   空窗（見 elder_screen.dart::_initElderMode 內 onIncomingCall 註冊時機
+    //   的說明），凡是這段期間抵達的 offer 全部會落到這裡。
+    //   舊版無條件 `return true`——不分角色、不分這通電話是否真的被同意過，
+    //   只要 offer 送達就一律放行，等同「預設允許接聽」。這正是使用者回報
+    //   「長輩端鎖定螢幕時收到一般來電，沒有經過任何人為操作就直接進入
+    //   視訊房間」的可疑根因：offer 一送達，這個全域預設值就會讓它長驅直入，
+    //   不管長輩端當下有沒有做過任何選擇。
     s.onIncomingCall = (callerId, callType) async {
       debugPrint(
-          "📞 [Main] Global Incoming Offer from $callerId (Type: $callType). Auto-accepting...");
+          "📞 [Main] Global Incoming Offer from $callerId (Type: $callType).");
+      // 緊急通話：G81 規定長輩端任何情況下都不得出現接聽／拒絕 UI，這裡與
+      // elder_screen.dart::onIncomingCall 的判斷一致，無條件放行。
+      if (callType == 'emergency') {
+        return true;
+      }
+      // 長輩端的一般通話：lastProcessedCallId 是 signaling.dart 對「一般
+      // 來電」唯一的去重／已知來電 token，只會在收到 call-request 時寫入
+      // （見 signaling.dart :424-425）。若本機在這個 session 從未處理過任何
+      // call-request，代表這通 offer 完全沒有對應到 ElderHomeScreen 的來電
+      // 對話框、CallKit 或備援通知——沒有任何使用者互動的證據，不可比照舊版
+      // 直接放行，否則就是「預設允許接聽」原地重現。
+      // ★ 若 lastProcessedCallId 非空，代表本機確實處理過某次 call-request
+      //   （很可能就是這一通），沿用既有假設放行——這與 signaling.dart 在
+      //   onIncomingCall 為 null 時使用的 isKnownAcceptedCall 判斷是同一套
+      //   標準，不會讓已經合法接聽（透過對話框、CallKit 或備援通知）的來電
+      //   在這裡被誤擋，也就不會在「已同意但畫面剛好還沒準備好」的空窗期
+      //   造成漏接或重複詢問。
+      if (appRole == 'elder' &&
+          (sig.Signaling().lastProcessedCallId?.isEmpty ?? true)) {
+        debugPrint(
+            "⚠️ [Main] 長輩端收到沒有對應 call-request 紀錄的一般來電 offer，拒絕（避免未經同意就進房）");
+        try {
+          sig.Signaling().sendCallBusy(callerId);
+        } catch (e) {
+          debugPrint("⚠️ [Main] sendCallBusy 失敗（忽略）: $e");
+        }
+        return false;
+      }
       return true;
     };
 
@@ -1860,9 +2010,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     //   舊寫法 `s.socket?.on('force-logout', ...)` 在 initState 執行時 socket 為 null，
     //   `?.` 短路使 handler 從未註冊；實際的 socket 監聽已移入
     //   signaling.dart::_registerSocketListeners()，該處保證在 socket 建立後執行。
-    s.onForceLogout = () {
-      debugPrint('🚪 [Main-Socket] 收到 force-logout，全域處理');
-      _MyAppState.handleForceLogout();
+    s.onForceLogout = ({String? reason}) {
+      debugPrint('🚪 [Main-Socket] 收到 force-logout，全域處理（reason=$reason）');
+      _MyAppState.handleForceLogout(reason: reason);
     };
   }
 
@@ -1910,6 +2060,29 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     }
     if (id.isNotEmpty) _lastHandledEmergencyCallId = id;
     debugPrint('🚨 [Emergency$source] 緊急通話無條件自動接聽 (callId=$id)');
+
+    // ★ 2026-08-19 第二十九輪：喚醒被背景化／鎖屏的長輩畫面（Android 14+）。
+    //   全專案唯一會點亮螢幕、蓋過鎖屏的機制是這個 MethodChannel
+    //   （`MainActivity.forceBringToFront()` → `showOverLockScreen()`，見 G49）。
+    //   本函式是緊急通話四條抵達通路（Socket／FCM 前景備援／`_showIncomingCallDialog`
+    //   最終防線）的共同收斂點，過去從未呼叫過它——螢幕未開啟或被鎖屏時，即使下面
+    //   成功寫入 `pendingAcceptedCall`、外部消費者也已把 `_isInCall` 之類的狀態
+    //   轉為進行中，長輩實際看到的仍是黑屏或鎖定畫面，得靠使用者自己按電源鍵才會
+    //   發現「原來已經自動接聽了」。放在去重 guard **之後**、其餘副作用之前，確保
+    //   同一通緊急通話只喚醒一次。
+    //   ⚠️ 與 `elder_screen.dart::_handleAcceptedCallFromBackground`（:433-439）用
+    //   同一個 channel／method；此處刻意改用 `await` + `try/catch`，**不是**
+    //   `_navigateToVideoCall`（:2258-2263）那個未 `await` 的舊寫法——`invokeMethod`
+    //   的 `PlatformException` 是非同步丟出的，不 `await` 就接不到（同步 try/catch
+    //   會變成 dead code，見 G49 與 `video_call_screen.dart::_goHomeAfterCall` 的
+    //   `catchError` 註解）。這裡是「無條件自動接聽」的收斂點，失敗必須確實被吞掉
+    //   並記錄，不可讓自動接聽流程中斷、也不可假裝有 catch 到卻其實沒有。
+    try {
+      const platform = MethodChannel('com.example.app/bring_to_front');
+      await platform.invokeMethod('bringToFront');
+    } catch (e) {
+      debugPrint('⚠️ [Emergency$source] 喚醒畫面失敗（不影響自動接聽）: $e');
+    }
 
     // 宣告共用去重 token，讓隨後抵達的另一條通路（Socket ↔ FCM）不再重複處理。
     _claimCallDedupToken(id.isEmpty ? null : id, isVideoCallRaw: isVideoCallRaw);
@@ -2110,6 +2283,31 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           FlutterCallkitIncoming.endAllCalls();
           return;
         }
+        // ★ 2026-08-26：接聽當下立刻蓋鎖屏，不等通話畫面 initState。
+        //   舊行為：這裡只寫 pendingAcceptedCall，畫面真正蓋過鎖定畫面要等
+        //   VideoCallScreen／ElderScreen 的 initState 呼叫 showOverLockScreen——
+        //   也就是要等本 listener 導航、route 掛載完成之後，中間約有 2 秒空窗；
+        //   緊急通話則是原生 onCreate/onNewIntent 早就蓋好（見 G49），兩者體驗
+        //   不對稱。改成在這裡（Dart 能動手的最早時機）先蓋一次，通話畫面
+        //   initState 那次呼叫**仍保留、不要刪**——`showOverLockScreen` 只是
+        //   重設 window flag，冪等、呼叫兩次無副作用，且仍需覆蓋不經過本
+        //   handler 的路徑（例如冷啟動 §4.8 兜底鏈）。
+        //   位置：放在過期檢查「之後」——過期的接聽不該蓋鎖屏；放在
+        //   pendingAcceptedCall 賦值「之前」——用不 await 的 `.catchError()`
+        //   （`invokeMethod` 的 `PlatformException` 是非同步丟出的，同步例外
+        //   本來就到不了這裡，因此原生端出錯絕不會擋住下面的賦值：漏接聽比
+        //   鎖屏晚兩秒嚴重得多）。
+        //   🚫 呼叫的是 `showOverLockScreen`，不是 `bringToFront`：本
+        //   listener 長輩／家屬雙端共用，而「強制開啟」只准長輩端（CLAUDE.md
+        //   3.1 第 13 條）。這裡只是讓使用者剛剛自己按下的接聽動作所開啟的
+        //   畫面能蓋過鎖定畫面，不主動解鎖、也不啟動 App，不算強制開啟——
+        //   不要加 `bringToFront` 或 `AndroidIntent` 進來。
+        const MethodChannel('com.example.app/bring_to_front')
+            .invokeMethod('showOverLockScreen')
+            .catchError((e) {
+          debugPrint('⚠️ [CallKit] showOverLockScreen 失敗: $e');
+          return null;
+        });
         if (callId != null && callId.isNotEmpty) {
           sig.Signaling().lastProcessedCallId = callId;
           sig.Signaling().lastProcessedCallTime = DateTime.now().millisecondsSinceEpoch;
@@ -2228,11 +2426,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     }
   }
 
-  void _navigateToVideoCall(String roomId, String senderId, {String? callId, bool isEmergency = false}) {
+  void _navigateToVideoCall(String roomId, String senderId, {String? callId, bool isEmergency = false}) async {
     // !!!!除非要更新視訊通話邏輯，否則禁止更動!!!!
     // ★ Bug 16 解決方案：如果身分是長輩，絕對不可啟動 VideoCallScreen (那是給家屬用的)。
     // 我們僅儲存 pendingAcceptedCall，讓長輩主畫面 (ElderScreen) 啟動後去接手。
-    if (appRole == 'elder') {
+    final prefs = await SharedPreferences.getInstance();
+    final String effectiveRole = appRole ?? prefs.getString('user_role') ?? prefs.getString('saved_role') ?? '';
+    if (effectiveRole == 'elder') {
       // ★ issue 2/5：此通話可能已由 splash/ElderScreen 透過 SharedPreferences
       //   預先載入並消費過（lastProcessedCallId 已記錄）。此時若再次寫入
       //   pendingAcceptedCall，會在通話結束、回到 ElderHomeScreen 後被誤判為
@@ -2244,7 +2444,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         return;
       }
       debugPrint(
-          "📱 Elder role detected, skipping VideoCallScreen push and caching accepted call.");
+          "📱 Elder role detected ($effectiveRole), skipping VideoCallScreen push and caching accepted call.");
       pendingAcceptedCall.value = <String, String?>{
         'roomId': roomId,
         'senderId': senderId,

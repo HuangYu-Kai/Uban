@@ -165,7 +165,12 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
     if (!mounted) return;
 
     if (isMonitor) {
-      Navigator.pushReplacement(
+      // ★ 必須用 pushAndRemoveUntil 清空堆疊，理由同 role_selection_screen.dart
+      //   的說明：本畫面是從 IdentificationScreen 用 Navigator.push 進來的，
+      //   若在此僅 pushReplacement，IdentificationScreen 會留在 ElderScreen
+      //   底下；監控機模式的長輩在通話畫面內掛斷時，
+      //   globals.dart::safeNavigateBack 會 pop 優先而誤降落在身分選擇頁。
+      Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(
           builder: (context) => ElderScreen(
@@ -174,6 +179,7 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
             deviceName: deviceName,
           ),
         ),
+        (route) => false,
       );
     } else {
       Navigator.pushReplacement(

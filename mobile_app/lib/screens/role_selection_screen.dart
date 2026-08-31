@@ -103,7 +103,12 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
         final deviceName = prefs.getString('saved_device_name') ?? '預設設備';
         final isCCTV = prefs.getBool('saved_is_cctv') ?? false;
         if (mounted) {
-          Navigator.pushReplacement(
+          // ★ 必須用 pushAndRemoveUntil 清空堆疊。用 pushReplacement 只換掉
+          //   RoleSelectionScreen 自己，IdentificationScreen 會留在底下；
+          //   globals.dart::safeNavigateBack 是 pop 優先，長輩在 App 內掛斷後
+          //   就會 pop 回身分選擇頁（App 外冷啟動因為堆疊只有一頁反而正常，
+          //   這就是該症狀「App 內壞、App 外好」的來源）。
+          Navigator.pushAndRemoveUntil(
             context,
             MaterialPageRoute(
               builder: (context) => ElderScreen(
@@ -112,6 +117,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                 deviceName: deviceName,
               ),
             ),
+            (route) => false,
           );
           return;
         }
@@ -153,7 +159,8 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
           appRole = 'elder';
           
           if (mounted) {
-            Navigator.pushReplacement(
+            // ★ 需用 pushAndRemoveUntil 清空堆疊，理由同 _checkLoginStatus 內的說明。
+            Navigator.pushAndRemoveUntil(
               context,
               MaterialPageRoute(
                 builder: (context) => ElderScreen(
@@ -162,6 +169,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                   deviceName: result['device_name'],
                 ),
               ),
+              (route) => false,
             );
           }
         } else {
@@ -235,7 +243,8 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
       appRole = 'elder';
 
       if (mounted) {
-        Navigator.pushReplacement(
+        // ★ 需用 pushAndRemoveUntil 清空堆疊，理由同 _checkLoginStatus 內的說明。
+        Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(
             builder: (context) => ElderScreen(
@@ -244,6 +253,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
               deviceName: deviceName,
             ),
           ),
+          (route) => false,
         );
       }
     }

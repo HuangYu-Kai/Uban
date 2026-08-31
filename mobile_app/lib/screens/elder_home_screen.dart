@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart';
@@ -9,6 +10,7 @@ import 'elder_chat_screen.dart';
 import 'elder_tabs/elder_profile_tab.dart';
 import '../globals.dart';
 import 'elder_screen.dart';
+import 'emergency_permission_guide_screen.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'dart:convert';
 import '../services/signaling.dart';
@@ -96,6 +98,47 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     } catch (_) {}
   }
 
+  /// ★ 2026-08-20 新增：長輩端首次進入首頁時，若偵測到是 MIUI 家族裝置，自動
+  /// 導向「鎖屏與背景權限設定」引導頁（`EmergencyPermissionGuideScreen`）一次。
+  ///
+  /// 為什麼放在這裡（而不是 splash_screen.dart 或 main.dart）：本專案有多輪
+  /// 因為在冷啟動路徑加東西而導致白屏／無法撥打的故障史（見
+  /// CLAUDE_call-monitor.md §8 第二十一輪），因此刻意放在「已經到達穩定首頁」
+  /// 之後才觸發，且用 addPostFrameCallback 確保第一影格已經畫出、Navigator
+  /// 已經就緒，不影響任何既有的通話／來電／冷啟動判斷邏輯——呼叫本身也完全
+  /// 不 await，不會拖慢 initState 或擋住其他初始化流程。
+  ///
+  /// 家屬端有對稱的觸發點：`family_main_screen.dart::_maybeShowMiuiPermissionGuide`
+  /// （2026-08-20 補上，見該檔說明），兩邊共用同一個 `prefsSeenKey`，任一端顯示
+  /// 過一次後另一端就不會再自動彈。家屬端另外還能從「設定 → 緊急通知權限」
+  /// 手動再次開啟同一個畫面（見 `family_settings_view.dart`）。
+  ///
+  /// 任何一步失敗（SharedPreferences 不可用、MethodChannel 未實作／拋例外）都
+  /// 直接 return，不顯示引導頁——APP 其餘行為與目前版本完全相同，不會因為這個
+  /// 新功能而多出任何啟動風險。
+  Future<void> _maybeShowMiuiPermissionGuide() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final alreadySeen =
+          prefs.getBool(EmergencyPermissionGuideScreen.prefsSeenKey) ?? false;
+      if (alreadySeen) return;
+
+      final isMiui = await const MethodChannel(
+        'com.example.app/notification_policy',
+      ).invokeMethod<bool>('isMiuiFamily');
+      if (isMiui != true) return;
+
+      if (!mounted) return;
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => const EmergencyPermissionGuideScreen(),
+        ),
+      );
+    } catch (_) {
+      // 靜默失敗：不顯示引導頁，APP 其餘行為不受影響。
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -123,6 +166,13 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
 
     // 監聽來自親人的呼叫與推播留言
     _restoreSignalingCallbacks();
+
+    // ★ 2026-08-20 新增：MIUI 家族裝置的「鎖定螢幕顯示／後台彈出介面」權限
+    //   引導。等第一影格畫出後才檢查與導航（此時 Navigator 已就緒），且完全
+    //   不 await、不擋任何既有的啟動流程；詳見 _maybeShowMiuiPermissionGuide。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _maybeShowMiuiPermissionGuide();
+    });
   }
 
   @override
@@ -482,14 +532,41 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
                 Navigator.of(dialogContext).pop();
                 _isIncomingCallDialogOpen = false;
 
+                // ★ 2026-08-17 第二十五輪（需求 1）：接聽用的房間號必須來自「這通來電
+                //   實際送達的房間」，也就是本函式的 roomId 參數，而不是
+                //   widget.roomId ?? widget.userId（widget.userId 是「使用者」ID，
+                //   不是「長輩」ID，兩者常不同）。initState（見上方 :106-111）已對
+                //   widget.roomId 做過同一套冪等正規化（補 comm_elder_ 前綴、不重複補），
+                //   這裡必須套用相同正規化，否則 ElderScreen 會 join 到跟來電發起端
+                //   對不上的房間——彈窗雖然接聽了，WebRTC 卻永遠連不上。
+                //   只有 roomId 參數為空字串時才退回舊的 widget 表達式。
+                final String rawAcceptRoomId = roomId.isNotEmpty
+                    ? roomId
+                    : (widget.roomId ?? widget.userId.toString());
+                final String acceptRoomId = rawAcceptRoomId.startsWith('comm_elder_') ||
+                        rawAcceptRoomId.startsWith('monitor_elder_')
+                    ? rawAcceptRoomId
+                    : 'comm_elder_$rawAcceptRoomId';
+
                 // 接聽後跳轉到通話畫面
                 Signaling().sendCallAccept(senderId, callId: callId);
                 Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (context) => ElderScreen(
-                      roomId: widget.roomId ?? widget.userId.toString(),
+                      roomId: acceptRoomId,
                       deviceName: widget.userName,
+                      initialCallData: {
+                        'roomId': acceptRoomId,
+                        'senderId': senderId,
+                        'callId': callId,
+                        // ★ 2026-08-17 第二十五輪（需求 1）：isVideoCallRaw 在本檔從未定義
+                        //   （flutter analyze 判為 compile error：Undefined name
+                        //   'isVideoCallRaw'）——它只存在於 main.dart 的具名參數。正確作法
+                        //   是向 Signaling 查詢這通來電當初登記的視訊旗標（callId 不吻合
+                        //   或查無紀錄時安全預設為 true，見 signaling.dart:162）。
+                        'isVideoCall': Signaling().isVideoCallFor(callId).toString(),
+                      },
                     ),
                   ),
                 ).then((_) {
@@ -592,6 +669,21 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
       if (!mounted) {
         _isNavigatingToCall = false;
         return;
+      }
+
+      // ★ 2026-08-25（第三十三輪）：main.dart::_autoAcceptEmergencyCall 只會
+      //   關閉它自己追蹤的 _activeCallDialogContext，並不知道本頁是否正巧
+      //   開著自己的一般來電對話框（_showIncomingCallDialog／
+      //   _isIncomingCallDialogOpen，本頁的來電對話框走的是自己的 context，
+      //   main.dart 管不到）。緊急通話「長輩端永遠不得出現接聽／拒絕 UI」
+      //   （G81），這裡順手把它清乾淨——不清的話畫面上雖然會被新 push 的
+      //   ElderScreen 蓋住看不出異狀，但殘留的對話框路由仍卡在導航堆疊裡，
+      //   通話結束返回本頁時會意外重新浮現，對著一通早已結束的舊來電要求
+      //   使用者做選擇。這裡的判斷對一般來電（CallKit／備援通知接聽）也一體
+      //   適用，並非只服務緊急通話。
+      if (_isIncomingCallDialogOpen && Navigator.canPop(context)) {
+        Navigator.of(context).pop();
+        _isIncomingCallDialogOpen = false;
       }
 
       final currentContext = context;

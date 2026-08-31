@@ -19,6 +19,20 @@ class FamilyInteractionTab extends StatefulWidget {
   final Signaling signaling;
   final List<dynamic> monitorDevices;
   final List<Map<String, dynamic>> activeAlerts;
+
+  /// ★ 2026-08-24 Feature A（監控清單「目前長輩所在此處」高亮）：與傳給
+  /// `FamilyHomeTab` 的是同一份正規化狀態 `{zone, enteredAt, updatedAt,
+  /// present, deviceId}`，由 `FamilyMainScreen._elderZone` 提供，本分頁
+  /// 不自行呼叫任何 API。`deviceId` 為 null、`present` 不是 `true`，或找不到
+  /// 相符的監視機卡片時，單純不顯示「目前所在」高亮，不影響既有的跌倒警報
+  /// 高亮（`hasActiveAlert`，見 `_buildMonitorDeviceCard`；警報優先權更高）。
+  /// `present` 才是「長輩在此」的唯一依據（見
+  /// `family_main_screen.dart::_elderZone` 欄位宣告處的完整說明）——不能只
+  /// 比對 `deviceId`，`_elderZone` 有可能因為過期（長輩早已離開鏡頭）而
+  /// `present == false`，此時即使 `deviceId` 還留著上一次的值也不可以繼續
+  /// 高亮。
+  final Map<String, dynamic>? elderZone;
+
   final int devicesMax;
   final String tierDisplayName;
   final String tierLevel;
@@ -32,6 +46,7 @@ class FamilyInteractionTab extends StatefulWidget {
   /// ★ 2026-08-10 第十九輪（需求 3）：卡片上刪除／改名成功後通知父層重新整理
   /// 設備清單與訂閱用量。
   final VoidCallback? onDevicesChanged;
+  final Function(dynamic deviceId)? onAlertDismissed;
 
   const FamilyInteractionTab({
     super.key,
@@ -39,12 +54,14 @@ class FamilyInteractionTab extends StatefulWidget {
     required this.signaling,
     this.monitorDevices = const [],
     this.activeAlerts = const [],
+    this.elderZone,
     this.devicesMax = 2,
     this.tierDisplayName = '一般會員',
     this.tierLevel = 'free',
     this.userId,
     this.elderSocketId,
     this.onDevicesChanged,
+    this.onAlertDismissed,
   });
 
   @override
@@ -648,38 +665,21 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
       final code = data['code'];
       final String targetDeviceName = nameCtrl.text.trim();
 
-      // ★ 2026-08-11 第二十二輪（需求 1）：監視機兌換配對碼、綁定完成後，
-      //   家屬端這個「配對碼」彈窗要自己關掉——過去必須手動按「完成」，
-      //   使用者無從得知對面到底綁好了沒。
-      //
-      //   偵測方式是「清單裡出現了新裝置」，來源有兩條、兩條都吃：
-      //     (a) `widget.monitorDevices`——後端在 `resolve_monitor_setup` 兌換成功時
-      //         會廣播 `elder-devices-update`（本輪 B2 補的），父層收到就會刷新。
-      //     (b) HTTP `fetchMonitorDevicesOrNull`——(a) 的 socket 若不在線就靠這條。
-      //   查詢失敗回 `null` 時**不做任何判斷**，避免網路抖動誤判成「綁好了」。
-      final Set<String> namesBefore = widget.monitorDevices
-          .map((d) => (d is Map ? (d['deviceName'] ?? '') : '').toString())
-          .where((n) => n.isNotEmpty)
-          .toSet();
-
+      // ★ 2026-08-19 修正（監控綁定碼假成功 bug）：舊版靠 isBoundIn() 檢查
+      //   「裝置清單裡有沒有出現同名／新裝置」當完成信號，但這個信號是錯的——
+      //   monitor_device_binding 是永久紀錄，且監控設備名稱預設固定為
+      //   「客廳攝影機」，只要長輩之前綁過同名裝置，_get_elder_devices_list
+      //   階段 0 一定會重新吐出那筆舊紀錄，導致彈窗一開、第一個 2 秒輪詢
+      //   tick 就誤判成功並自動關閉，但監控機端其實什麼都還沒輸入。
+      //   正確信號是後端 `monitor_setup_code.used_at`（僅由監控機實際兌換
+      //   配對碼時寫入，見 pairing.py::resolve_monitor_setup），因此改為輪詢
+      //   新端點 GET /api/pairing/monitor_setup/status，不再用裝置清單猜測。
       bool dialogClosed = false;
       BuildContext? codeDialogContext;
 
       void stopPolling() {
         _monitorBindPollTimer?.cancel();
         _monitorBindPollTimer = null;
-      }
-
-      bool isBoundIn(Iterable<dynamic> devices) {
-        for (final d in devices) {
-          if (d is! Map) continue;
-          final name = (d['deviceName'] ?? '').toString();
-          if (name.isEmpty) continue;
-          // 名稱對上就是它；否則只要出現快照以外的新裝置也算綁定成功
-          //（監視機端可能自行改過名稱）。
-          if (name == targetDeviceName || !namesBefore.contains(name)) return true;
-        }
-        return false;
       }
 
       void closeCodeDialogOnBound() {
@@ -695,6 +695,20 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
         widget.onDevicesChanged?.call();
       }
 
+      // 綁定碼在監控機兌換之前就過期：停止輪詢並明確告知需要重新產生代碼，
+      // 否則使用者只會看著彈窗空等到 5 分鐘輪詢上限，不知道該做什麼。
+      void closeCodeDialogOnExpired() {
+        if (dialogClosed) return;
+        dialogClosed = true;
+        stopPolling();
+        final ctx = codeDialogContext;
+        if (ctx != null && ctx.mounted && Navigator.of(ctx).canPop()) {
+          Navigator.of(ctx).pop();
+        }
+        if (!mounted) return;
+        _toast('此綁定碼已過期，請重新產生配對碼');
+      }
+
       stopPolling();
       int ticks = 0;
       _monitorBindPollTimer =
@@ -706,19 +720,19 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
           return;
         }
 
-        if (isBoundIn(widget.monitorDevices)) {
-          closeCodeDialogOnBound();
-          return;
-        }
-
         final userIdForQuery = widget.userId ?? familyId;
-        final devices = await ApiService.fetchMonitorDevicesOrNull(
-          elderId: rawId,
+        final status = await ApiService.getMonitorSetupStatus(
+          code.toString(),
           userId: userIdForQuery,
         );
-        if (devices == null) return; // 查詢失敗：什麼都不做，下一輪再試
-        if (!dialogClosed && mounted && isBoundIn(devices)) {
+        if (status == null) return; // 查詢失敗：不知道結果，下一輪再試
+        if (dialogClosed || !mounted) return;
+
+        if (status['used'] == true) {
+          // 完成信號 = monitor_setup_code.used_at 已寫入，不再依賴裝置清單。
           closeCodeDialogOnBound();
+        } else if (status['expired'] == true) {
+          closeCodeDialogOnExpired();
         }
       });
 
@@ -839,9 +853,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                       MaterialPageRoute(
                         builder: (context) => VideoCallScreen(
                           roomId: 'comm_elder_$rawId',
-                          // ★ 2026-08-10 第十九輪（需求 4）：補回舊版一直帶著的
-                          //   targetSocketId，避免 SDP 只能靠房間廣播找對象。
-                          targetSocketId: widget.elderSocketId,
+                          targetSocketId: null, // ★ 不綁死單一 socket ID，由後端完整廣播給線上長輩 Socket 與所有長輩 FCM Token
                           autoStart: true,
                           isEmergency: false,
                         ),
@@ -863,8 +875,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                       MaterialPageRoute(
                         builder: (context) => VideoCallScreen(
                           roomId: 'comm_elder_$rawId',
-                          // ★ 2026-08-10 第十九輪（需求 4）：同上，緊急通話也要帶。
-                          targetSocketId: widget.elderSocketId,
+                          targetSocketId: null, // ★ 不綁死單一 socket ID，由後端完整廣播給線上長輩 Socket 與所有長輩 FCM Token
                           autoStart: true,
                           isEmergency: true,
                         ),
@@ -2110,6 +2121,26 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
     final hasActiveAlert = deviceAlerts.isNotEmpty;
     final mostSevereAlert = hasActiveAlert ? deviceAlerts.first : null;
 
+    // ★ 2026-08-24 Feature A：長輩目前所在此處的高亮。deviceId 比對邏輯與
+    //   上面的 hasActiveAlert 同款（轉字串比對）。🚨 緊急優先：hasActiveAlert
+    //   時一律顯示跌倒警報樣式，不疊加這個高亮（decoration／徽章／副標題
+    //   三處都先判斷 `!hasActiveAlert`）。
+    //   ⚠️ 「設定區域」校準功能移除後新增 `present` 判斷：只比對 deviceId
+    //   不夠——`_elderZone` 過期（長輩早已離開鏡頭）時 `deviceId` 可能還留著
+    //   上一次的值，`present` 才是後端過期判定後的權威結果，見
+    //   `elderZone` 欄位宣告處的說明。
+    final String? presentDeviceId = widget.elderZone?['deviceId']?.toString();
+    final bool isElderPresent = !hasActiveAlert &&
+        widget.elderZone?['present'] == true &&
+        presentDeviceId != null &&
+        presentDeviceId == deviceId.toString();
+    // ⚠️ 括號是必要的：三元運算子的 `?` 緊接著 null-aware index `?[` 會被
+    //   解析器誤判成巢狀三元運算式的開頭（`widget.elderZone` 被當成內層
+    //   condition），拆成獨立的括號表達式即可消歧義。
+    final String? presentZoneName =
+        isElderPresent ? (widget.elderZone?['zone'])?.toString() : null;
+    final bool showZoneName = presentZoneName != null && presentZoneName != 'unknown';
+
     // ★ 2026-08-04 第 7 項：語音通道按鈕所需的兩個數值。
     //   任一個解析不出來就不顯示按鈕——寧可少一個功能鍵，也不能送出錯誤的
     //   alert_id / device_id 而把語音權限開到別台監視機上。
@@ -2127,19 +2158,29 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
       // ★ 2026-08-11 第二十二輪（需求 5）：暗色系。跌倒警報的紅色高亮**必須保留**
       //   （§7 護欄：警報視覺不可被弱化），只是把淺紅底換成深紅底、邊框轉亮，
       //   在深色卡片上維持同等的「一眼看到」強度。
+      // ★ 2026-08-24 Feature A：新增「長輩目前所在此處」的青色高亮
+      //   （isElderPresent），刻意選跟警報紅、線上綠點都明顯不同的色相；
+      //   三態優先序＝警報 > 目前所在 > 一般（isElderPresent 本身已內建
+      //   `!hasActiveAlert`，這裡的三元判斷只是讓顏色選擇同樣顯式對齊）。
       decoration: BoxDecoration(
-        color: hasActiveAlert ? const Color(0xFF3F1D1D) : const Color(0xFF0F172A),
+        color: hasActiveAlert
+            ? const Color(0xFF3F1D1D)
+            : (isElderPresent ? const Color(0xFF083344) : const Color(0xFF0F172A)),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: hasActiveAlert ? const Color(0xFFF87171) : const Color(0xFF334155),
-          width: hasActiveAlert ? 2.0 : 1.0,
+          color: hasActiveAlert
+              ? const Color(0xFFF87171)
+              : (isElderPresent ? const Color(0xFF38BDF8) : const Color(0xFF334155)),
+          width: (hasActiveAlert || isElderPresent) ? 2.0 : 1.0,
         ),
         boxShadow: [
           BoxShadow(
             color: hasActiveAlert
                 ? Colors.red.withValues(alpha: 0.22)
-                : Colors.black.withValues(alpha: 0.25),
-            blurRadius: hasActiveAlert ? 12 : 8,
+                : (isElderPresent
+                    ? const Color(0xFF38BDF8).withValues(alpha: 0.22)
+                    : Colors.black.withValues(alpha: 0.25)),
+            blurRadius: (hasActiveAlert || isElderPresent) ? 12 : 8,
             offset: const Offset(0, 2),
           ),
         ],
@@ -2201,6 +2242,25 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                           ),
                         ),
                       ),
+                    ] else if (isElderPresent) ...[
+                      // ★ 2026-08-24 Feature A：「長輩在此」徽章，僅在沒有作用中
+                      //   警報時顯示——警報優先權比照上面 hasActiveAlert 分支。
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF06B6D4),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Text(
+                          '長輩在此',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
                     ],
                   ],
                 ),
@@ -2208,13 +2268,19 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                 Text(
                   hasActiveAlert
                       ? '⚠️ ${_alertTypeLabel(mostSevereAlert?['alert_type'] ?? '')}（信心: ${((mostSevereAlert?['confidence'] ?? 0) * 100).toStringAsFixed(0)}%）'
-                      : '監視機模式',
+                      : (isElderPresent
+                          ? '📍 目前長輩所在此處${showZoneName ? ' · $presentZoneName' : ''}'
+                          : '監視機模式'),
                   style: TextStyle(
                     fontSize: 12,
                     color: hasActiveAlert
                         ? const Color(0xFFFCA5A5)
-                        : const Color(0xFF94A3B8),
-                    fontWeight: hasActiveAlert ? FontWeight.w600 : FontWeight.normal,
+                        : (isElderPresent
+                            ? const Color(0xFF7DD3FC)
+                            : const Color(0xFF94A3B8)),
+                    fontWeight: (hasActiveAlert || isElderPresent)
+                        ? FontWeight.w600
+                        : FontWeight.normal,
                   ),
                 ),
               ],
@@ -2239,9 +2305,23 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                           //   鏡頭、不顯示本地預覽、不給鏡頭類按鈕，只留麥克風。
                           //   全專案唯一可以傳 true 的地方（見 §7 G55）。
                           monitorViewOnly: true,
+                          // ★ 2026-08-26：補上 `monitorDeviceName`，讓
+                          //   [Signaling.onMonitorRemoved] 能精準比對「被移除的是不是
+                          //   我正在看的這一台」。`name` 就是這張卡片本身的
+                          //   `device['deviceName']`——與下方 PopupMenuButton 呼叫
+                          //   `_showDeleteMonitorDeviceDialog(name.toString())` 用的是
+                          //   同一個字串，而後端刪除時會把收到的 `device_name`
+                          //   查詢參數（僅 `.strip()`）原樣寫回 `monitor-removed` 的
+                          //   `deviceName` 欄位（見 `routers/pairing.py::delete_monitor_device`），
+                          //   故兩者保證一致。未傳入前，比對退回只認 elderId（見該欄位
+                          //   宣告處），會讓刪除同一長輩底下的「另一台」也誤關本畫面。
+                          monitorDeviceName: name.toString(),
                         ),
                       ),
-                    );
+                    ).then((_) {
+                      // ★ 2026-08-16（需求 2）：查看完監視畫面返回後，通知父層清除該設備的警報狀態，還原介面樣式與動畫
+                      widget.onAlertDismissed?.call(deviceId);
+                    });
                   }
                 : null,
             icon: const Icon(Icons.videocam_rounded, size: 18),

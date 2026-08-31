@@ -273,30 +273,38 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF38BDF8).withValues(alpha: 0.15),
-                          shape: BoxShape.circle,
+                  // ★ AI 名稱為使用者可自訂字串，長度不定；用 Expanded 包住左側
+                  //   區塊並讓標題文字省略號截斷，避免把右側關閉鈕推出螢幕。
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF38BDF8).withValues(alpha: 0.15),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.graphic_eq_rounded,
+                            color: Color(0xFF38BDF8),
+                            size: 24,
+                          ),
                         ),
-                        child: const Icon(
-                          Icons.graphic_eq_rounded,
-                          color: Color(0xFF38BDF8),
-                          size: 24,
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Uban AI 陪伴助理 • ${widget.aiName}',
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                            style: GoogleFonts.notoSansTc(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        'Uban AI 陪伴助理 • ${widget.aiName}',
-                        style: GoogleFonts.notoSansTc(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                   IconButton(
                     icon: const Icon(Icons.close_rounded, color: Colors.white70),

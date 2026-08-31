@@ -206,25 +206,34 @@ class _RedesignedAiChatScreenState extends State<RedesignedAiChatScreen>
             ),
           ),
           const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                _getPersonaName(),
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: const Color(0xFF0F172A),
+          // ★ 長輩姓名為執行期字串，長度不定；AppBar 的 title 欄位本身有寬度上限，
+          //   但 Row 內未加 Expanded 的子項不會自動縮小，仍會造成 RenderFlex
+          //   overflow，故用 Expanded 包住並讓兩行文字省略號截斷。
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _getPersonaName(),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF0F172A),
+                  ),
                 ),
-              ),
-              Text(
-                '${widget.elderName ?? '聊天中'} · 在線',
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 11,
-                  color: const Color(0xFF94A3B8),
+                Text(
+                  '${widget.elderName ?? '聊天中'} · 在線',
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 11,
+                    color: const Color(0xFF94A3B8),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ),

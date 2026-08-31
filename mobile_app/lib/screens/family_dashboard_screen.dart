@@ -27,7 +27,22 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> with Widg
   StreamSubscription? _declineSub;
   String? _currentDialogRoomId;
   BuildContext? _dialogContext;
-  
+
+  // ★ Signaling 是全域單例、onCallRequest／onCancelCall 各只有一個欄位，
+  //   最後賦值者獨佔；本畫面 dispose 後若不歸還，閉包會持續指向已卸載的
+  //   State，之後每一通來電都會被 `if (!mounted) return;` 靜默吞掉（無
+  //   log、無 UI）。這裡保留自己那份 closure 的參考，dispose 時用
+  //   identical() 只在「單例上掛的仍是自己這一份」時才清除，避免誤清掉
+  //   接手畫面（例如重新進入本畫面後）的回呼。
+  CallRequestCallback? _ownCallRequest;
+  CallRequestCallback? _ownCancelCall;
+
+  // ★ 2026-08-18 房間洩漏修復：記錄本畫面透過 joinRoom() 額外加入的
+  //   `comm_elder_<id>` 監聽房間（第一位長輩的房間是由 connect() 建立、
+  //   歸 _currentRoomId 管，不算在這裡）。dispose() 時要逐一離開，否則
+  //   同一條 family socket 只要看過越多長輩，就會永久疊加越多房間成員。
+  final Set<String> _joinedListenerRooms = {};
+
   // 移除阻擋多重對話框的 bool
 
   @override
@@ -149,11 +164,14 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> with Widg
       final String room = 'comm_elder_${elder['elder_id']}';
       if (room != firstRoom) {
         _signaling.joinRoom(room, userId: actualUserId);
+        _joinedListenerRooms.add(room); // ★ 房間洩漏修復：記下來，dispose() 時才知道要離開哪些房間
       }
     }
 
     // 3. 處理響鈴 (使用當前的 Context)
-    _signaling.onCallRequest = (roomId, senderId, callId, [senderName]) {
+    // ★ 先寫進 _ownCallRequest 欄位再指派給單例，讓 dispose() 能用 identical()
+    //   比對「單例上掛的是不是自己這一份」，才敢安全歸還。
+    _ownCallRequest = (roomId, senderId, callId, [senderName]) {
       if (!mounted) return;
 
       // Remove any existing dialogs to prevent multiple stacking, or if the user cancels
@@ -191,7 +209,8 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> with Widg
             _dialogContext = dialogContext;
             
             // Register cancel-call listener tightly to this dialog's lifecycle
-            _signaling.onCancelCall = (cancelRoomId, cancelSenderId, cancelCallId, [cancelSenderName]) {
+            // ★ 同樣先寫進 _ownCancelCall 欄位，dispose() 才能用 identical() 安全歸還。
+            _ownCancelCall = (cancelRoomId, cancelSenderId, cancelCallId, [cancelSenderName]) {
                 if (roomId == cancelRoomId && isDialogOpen && mounted) {
                     Navigator.of(dialogContext).pop();
                     isDialogOpen = false;
@@ -199,6 +218,7 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> with Widg
                     _dialogContext = null;
                 }
             };
+            _signaling.onCancelCall = _ownCancelCall;
 
             return Dialog(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
@@ -434,12 +454,37 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> with Widg
       },
       );
     };
+    _signaling.onCallRequest = _ownCallRequest;
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _declineSub?.cancel();
+
+    // ★ Signaling 是全域單例、onCallRequest／onCancelCall 只有一個欄位，最後
+    //   賦值者獨佔；只在「單例上掛的仍是自己這一份」時才清除（identical
+    //   比對），避免誤清掉接手畫面（例如重新進入本畫面後）剛註冊的回呼。
+    if (identical(_signaling.onCallRequest, _ownCallRequest)) {
+      _signaling.onCallRequest = null;
+    }
+    if (identical(_signaling.onCancelCall, _ownCancelCall)) {
+      _signaling.onCancelCall = null;
+    }
+
+    // ★ 2026-08-18 房間洩漏修復：離開本畫面額外加入的每個監聽房間。
+    //   對每個房間同時呼叫 leaveRoom（已加入的情況）與 cancelPendingRoom
+    //   （socket 尚未連線、房間還卡在 _pendingRooms 排隊中的情況）——
+    //   兩者都是安全的 no-op（房間不存在/不在排隊中就什麼都不做），
+    //   不需要額外狀態去區分「這個房間到底加入了沒」，寫法可以保持精簡。
+    //   必須排在 clearSession() 之前：clearSession 可能導致 socket 斷線，
+    //   之後才呼叫 leaveRoom 會直接被 no-op 掉。
+    for (final room in _joinedListenerRooms) {
+      _signaling.leaveRoom(room);
+      _signaling.cancelPendingRoom(room);
+    }
+    _joinedListenerRooms.clear();
+
     _signaling.clearSession();
     super.dispose();
   }

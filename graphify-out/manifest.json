@@ -1,34 +1,4 @@
 {
-  ".claude/settings.json": {
-    "mtime": 1785706356.2838278,
-    "ast_hash": "",
-    "semantic_hash": ""
-  },
-  ".claude/settings.local.json": {
-    "mtime": 1784963020.2026958,
-    "ast_hash": "",
-    "semantic_hash": ""
-  },
-  ".vscode/settings.json": {
-    "mtime": 1779430679.7041807,
-    "ast_hash": "",
-    "semantic_hash": ""
-  },
-  ".vscode/tasks.json": {
-    "mtime": 1779204170.9809072,
-    "ast_hash": "",
-    "semantic_hash": ""
-  },
-  "Uban/.claude/settings.local.json": {
-    "mtime": 1784142754.8606334,
-    "ast_hash": "",
-    "semantic_hash": ""
-  },
-  "Uban/.impeccable/config.local.json": {
-    "mtime": 1784142751.2058587,
-    "ast_hash": "",
-    "semantic_hash": ""
-  },
   "Uban/grant_permissions.ps1": {
     "mtime": 1786025000.8614993,
     "ast_hash": "8341f98922fdbe43c437c220786270ac",
@@ -40,9 +10,9 @@
     "semantic_hash": "f68c35ed6d3e8ab0f814ac77ad1e8aba"
   },
   "Uban/mobile_app/android/app/src/main/kotlin/com/example/flutter_application_1/MainActivity.kt": {
-    "mtime": 1786025000.8907993,
-    "ast_hash": "60d1a28b8a0220741c1a539eda39ce44",
-    "semantic_hash": "60d1a28b8a0220741c1a539eda39ce44"
+    "mtime": 1787605121.0315359,
+    "ast_hash": "28b765e38ef6d29b936db5089b22ddde",
+    "semantic_hash": "28b765e38ef6d29b936db5089b22ddde"
   },
   "Uban/mobile_app/android/build.gradle.kts": {
     "mtime": 1779806404.91149,
@@ -64,16 +34,6 @@
     "ast_hash": "9e1de9c329a3fe4931876063de95132b",
     "semantic_hash": "9e1de9c329a3fe4931876063de95132b"
   },
-  "Uban/mobile_app/ios/Runner/Assets.xcassets/AppIcon.appiconset/Contents.json": {
-    "mtime": 1779430634.546779,
-    "ast_hash": "",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/ios/Runner/Assets.xcassets/LaunchImage.imageset/Contents.json": {
-    "mtime": 1779430634.561784,
-    "ast_hash": "",
-    "semantic_hash": ""
-  },
   "Uban/mobile_app/ios/Runner/Runner-Bridging-Header.h": {
     "mtime": 1779430634.5647993,
     "ast_hash": "7ad7b5cea096132de13ba526b2b9efbe",
@@ -90,14 +50,14 @@
     "semantic_hash": "45f5ed49dc972449c565e105c59e937e"
   },
   "Uban/mobile_app/lib/globals.dart": {
-    "mtime": 1786468963.5718088,
-    "ast_hash": "7974b1fc64d1bfbda5a1728d307073e4",
-    "semantic_hash": ""
+    "mtime": 1787508745.6231415,
+    "ast_hash": "19cc28c5179d7c70e99491fc9b211156",
+    "semantic_hash": "19cc28c5179d7c70e99491fc9b211156"
   },
   "Uban/mobile_app/lib/main.dart": {
-    "mtime": 1786480695.1947505,
-    "ast_hash": "28fa57600089201de6cc1baa7dd34ae1",
-    "semantic_hash": ""
+    "mtime": 1787750856.8266158,
+    "ast_hash": "defe3a71205e964bdf3b7a6ce7824626",
+    "semantic_hash": "defe3a71205e964bdf3b7a6ce7824626"
   },
   "Uban/mobile_app/lib/main_test_thirdparty_login.dart": {
     "mtime": 1779430634.5677965,
@@ -160,9 +120,9 @@
     "semantic_hash": "fdaf0267e71ae64fb239de0f5410c5a0"
   },
   "Uban/mobile_app/lib/screens/camera_screen.dart": {
-    "mtime": 1785291831.979139,
-    "ast_hash": "2f607da97909f52363d47cfc2d0fea2e",
-    "semantic_hash": "2f607da97909f52363d47cfc2d0fea2e"
+    "mtime": 1787491698.8490355,
+    "ast_hash": "bd39b483b1b874817ecf3d28534fe777",
+    "semantic_hash": "bd39b483b1b874817ecf3d28534fe777"
   },
   "Uban/mobile_app/lib/screens/caregiver_pairing_screen.dart": {
     "mtime": 1785291831.995761,
@@ -185,14 +145,14 @@
     "semantic_hash": "c02fcfda23c333084fbd74c500571d74"
   },
   "Uban/mobile_app/lib/screens/elder_home_screen.dart": {
-    "mtime": 1786468963.5750666,
-    "ast_hash": "bab423132b78bc83071a75222ed24085",
-    "semantic_hash": ""
+    "mtime": 1787672328.908106,
+    "ast_hash": "495ec2e6eae401857a3b06e57064f021",
+    "semantic_hash": "495ec2e6eae401857a3b06e57064f021"
   },
   "Uban/mobile_app/lib/screens/elder_pairing_display_screen.dart": {
-    "mtime": 1786444016.4147482,
-    "ast_hash": "2ba2eeaa3e145c75a4ae6b1b8d7b8841",
-    "semantic_hash": "2ba2eeaa3e145c75a4ae6b1b8d7b8841"
+    "mtime": 1787224742.7652085,
+    "ast_hash": "cb87a5de353ebf5a243dad2309dce453",
+    "semantic_hash": "cb87a5de353ebf5a243dad2309dce453"
   },
   "Uban/mobile_app/lib/screens/elder_profile_edit_screen.dart": {
     "mtime": 1780508662.2908542,
@@ -200,9 +160,9 @@
     "semantic_hash": "5cb5de7e9fd0c78ce8ff50856dd68126"
   },
   "Uban/mobile_app/lib/screens/elder_screen.dart": {
-    "mtime": 1786481305.3559203,
-    "ast_hash": "d3426ad321e5991a8e8ba1f0c2491bee",
-    "semantic_hash": ""
+    "mtime": 1787749065.1344056,
+    "ast_hash": "e98167548da0934d90243a70340212c3",
+    "semantic_hash": "e98167548da0934d90243a70340212c3"
   },
   "Uban/mobile_app/lib/screens/elder_selection_screen.dart": {
     "mtime": 1779882644.1801744,
@@ -220,9 +180,14 @@
     "semantic_hash": "2bdb74759af26b3085071de0b825529a"
   },
   "Uban/mobile_app/lib/screens/elder_tabs/elder_profile_tab.dart": {
-    "mtime": 1786444016.4378674,
-    "ast_hash": "4c3c024f0d536f0e602b24f2b2d13b95",
-    "semantic_hash": "4c3c024f0d536f0e602b24f2b2d13b95"
+    "mtime": 1787672640.6153924,
+    "ast_hash": "4407a1573550c3aecb314f5280e18a6c",
+    "semantic_hash": "4407a1573550c3aecb314f5280e18a6c"
+  },
+  "Uban/mobile_app/lib/screens/emergency_permission_guide_screen.dart": {
+    "mtime": 1787205151.248724,
+    "ast_hash": "694ddf8cba4f5349fab65ef2ea6a90d2",
+    "semantic_hash": "694ddf8cba4f5349fab65ef2ea6a90d2"
   },
   "Uban/mobile_app/lib/screens/enhanced_family_ai_chat_screen.dart": {
     "mtime": 1779430634.5908341,
@@ -260,19 +225,19 @@
     "semantic_hash": "97275215cf3102b6ba1098c8ca66dd52"
   },
   "Uban/mobile_app/lib/screens/family/family_home_tab.dart": {
-    "mtime": 1786444016.4944663,
-    "ast_hash": "ae41221a902405539ebc7c06e302dc81",
-    "semantic_hash": "ae41221a902405539ebc7c06e302dc81"
+    "mtime": 1787575268.588282,
+    "ast_hash": "7a056435c9ff77bc2b4ad5bfcedd401f",
+    "semantic_hash": "7a056435c9ff77bc2b4ad5bfcedd401f"
   },
   "Uban/mobile_app/lib/screens/family/family_interaction_tab.dart": {
-    "mtime": 1786468963.5780742,
-    "ast_hash": "2deef9e134769d63695ecb6e1f508447",
-    "semantic_hash": ""
+    "mtime": 1787708413.2213402,
+    "ast_hash": "bd44d5deee9cd3ecd0b26ef21df17127",
+    "semantic_hash": "bd44d5deee9cd3ecd0b26ef21df17127"
   },
   "Uban/mobile_app/lib/screens/family/family_settings_view.dart": {
-    "mtime": 1786444016.5111053,
-    "ast_hash": "2d043acdd90503b21a48e908096a733d",
-    "semantic_hash": "2d043acdd90503b21a48e908096a733d"
+    "mtime": 1787205237.1589081,
+    "ast_hash": "0ed73cac1dd83b530e8911fac4f7a3d0",
+    "semantic_hash": "0ed73cac1dd83b530e8911fac4f7a3d0"
   },
   "Uban/mobile_app/lib/screens/family/family_subscription_screen.dart": {
     "mtime": 1786444016.530295,
@@ -335,29 +300,29 @@
     "semantic_hash": "f173c8d8ce69206fdf544ce7f06be64a"
   },
   "Uban/mobile_app/lib/screens/family_dashboard_screen.dart": {
-    "mtime": 1786444016.5648954,
-    "ast_hash": "06f2742809cb2ceb5902abaa09462444",
-    "semantic_hash": "06f2742809cb2ceb5902abaa09462444"
+    "mtime": 1787099140.8997526,
+    "ast_hash": "58cbd3a81670c543a531fb5a51d1860c",
+    "semantic_hash": "58cbd3a81670c543a531fb5a51d1860c"
   },
   "Uban/mobile_app/lib/screens/family_dashboard_view.dart": {
-    "mtime": 1786025001.3026466,
-    "ast_hash": "a449be7629233caa1d5bff8886376359",
-    "semantic_hash": "a449be7629233caa1d5bff8886376359"
+    "mtime": 1788003585.5024087,
+    "ast_hash": "3023eba49fdc50bcb75bf93bbab12b49",
+    "semantic_hash": "3023eba49fdc50bcb75bf93bbab12b49"
   },
   "Uban/mobile_app/lib/screens/family_elder_chat_screen.dart": {
-    "mtime": 1785291832.1255112,
-    "ast_hash": "d8a0afa9e0a0100dc7ed972bd140e779",
-    "semantic_hash": "d8a0afa9e0a0100dc7ed972bd140e779"
+    "mtime": 1787491627.7987154,
+    "ast_hash": "a00975bb8e438e3b39889d135b94fce1",
+    "semantic_hash": "a00975bb8e438e3b39889d135b94fce1"
   },
   "Uban/mobile_app/lib/screens/family_main_screen.dart": {
-    "mtime": 1786444016.584638,
-    "ast_hash": "08aee894f7f64b27058c494e2ad4affe",
-    "semantic_hash": "08aee894f7f64b27058c494e2ad4affe"
+    "mtime": 1787708429.3275428,
+    "ast_hash": "efe03a1f704acb9fbac3b9671aa0bc8d",
+    "semantic_hash": "efe03a1f704acb9fbac3b9671aa0bc8d"
   },
   "Uban/mobile_app/lib/screens/family_marketplace_view.dart": {
-    "mtime": 1779430634.5998561,
-    "ast_hash": "d99c105a3838f39737a14eb66dea1484",
-    "semantic_hash": "d99c105a3838f39737a14eb66dea1484"
+    "mtime": 1787491888.0410542,
+    "ast_hash": "8b661b70dad6851e4b90afcf0a992aa5",
+    "semantic_hash": "8b661b70dad6851e4b90afcf0a992aa5"
   },
   "Uban/mobile_app/lib/screens/family_onboarding_screen.dart": {
     "mtime": 1785291832.153502,
@@ -395,14 +360,14 @@
     "semantic_hash": "7ebaf73572e670423af3de98d3844d21"
   },
   "Uban/mobile_app/lib/screens/login_screen.dart": {
-    "mtime": 1786025001.3720975,
-    "ast_hash": "239ebc213bf0ba3133e5ab31bbf83fae",
-    "semantic_hash": "239ebc213bf0ba3133e5ab31bbf83fae"
+    "mtime": 1786893739.2882662,
+    "ast_hash": "9c4352af2fd6829c9404243645952185",
+    "semantic_hash": "9c4352af2fd6829c9404243645952185"
   },
   "Uban/mobile_app/lib/screens/monitor_pairing_screen.dart": {
-    "mtime": 1786444016.6496341,
-    "ast_hash": "38ee6ac8455fff16ce20224539f3d558",
-    "semantic_hash": "38ee6ac8455fff16ce20224539f3d558"
+    "mtime": 1787824972.4730482,
+    "ast_hash": "80ee004c9cec72d61da67b7e88d62649",
+    "semantic_hash": "80ee004c9cec72d61da67b7e88d62649"
   },
   "Uban/mobile_app/lib/screens/news_listen_player/news_article_screen.dart": {
     "mtime": 1779806410.0492315,
@@ -459,6 +424,11 @@
     "ast_hash": "81890cf48cd517d49f5e2b8c36882491",
     "semantic_hash": "81890cf48cd517d49f5e2b8c36882491"
   },
+  "Uban/mobile_app/lib/screens/privacy_policy_screen.dart": {
+    "mtime": 1787491828.4318287,
+    "ast_hash": "142c14045a33f6c036b644f5cb44a11b",
+    "semantic_hash": "142c14045a33f6c036b644f5cb44a11b"
+  },
   "Uban/mobile_app/lib/screens/qr_scanner_screen.dart": {
     "mtime": 1779430634.6141033,
     "ast_hash": "4c50660abc7ff1d366da6fbbdf421be0",
@@ -470,9 +440,9 @@
     "semantic_hash": "d5830637eee2cc7c6618fd1def1afb3c"
   },
   "Uban/mobile_app/lib/screens/redesigned_ai_chat_screen.dart": {
-    "mtime": 1785291873.1876721,
-    "ast_hash": "e64881d1363871a845eb8f7d1f53da7e",
-    "semantic_hash": "e64881d1363871a845eb8f7d1f53da7e"
+    "mtime": 1787491664.1482291,
+    "ast_hash": "843e261236a484f653cafcfda0b7d7a2",
+    "semantic_hash": "843e261236a484f653cafcfda0b7d7a2"
   },
   "Uban/mobile_app/lib/screens/redesigned_family_agent_view.dart": {
     "mtime": 1779430634.616532,
@@ -485,9 +455,9 @@
     "semantic_hash": "c639ccd67485c2a2d4f978317a927ac4"
   },
   "Uban/mobile_app/lib/screens/role_selection_screen.dart": {
-    "mtime": 1786025001.4119215,
-    "ast_hash": "efac5b2e63b8e00507a365122e96740e",
-    "semantic_hash": "efac5b2e63b8e00507a365122e96740e"
+    "mtime": 1787224739.6436782,
+    "ast_hash": "f4d218b49ea8782499ebc6332f4d6578",
+    "semantic_hash": "f4d218b49ea8782499ebc6332f4d6578"
   },
   "Uban/mobile_app/lib/screens/socketio_test_screen.dart": {
     "mtime": 1785679985.9893842,
@@ -495,9 +465,9 @@
     "semantic_hash": "0ba1c873edb60ee9ddc02c0504f21a0a"
   },
   "Uban/mobile_app/lib/screens/splash_screen.dart": {
-    "mtime": 1786468963.5790772,
-    "ast_hash": "b432d1a1af951f7002436f69b7543f6b",
-    "semantic_hash": ""
+    "mtime": 1787491083.2206166,
+    "ast_hash": "c8de7b29fb17d2d80dfaa5d1fb71d212",
+    "semantic_hash": "c8de7b29fb17d2d80dfaa5d1fb71d212"
   },
   "Uban/mobile_app/lib/screens/test_home_page.dart": {
     "mtime": 1779430634.6205626,
@@ -510,9 +480,9 @@
     "semantic_hash": "cc850f8bd5cec505dfa07020d76db80f"
   },
   "Uban/mobile_app/lib/screens/video_call_screen.dart": {
-    "mtime": 1786481250.530408,
-    "ast_hash": "22dd395d4a006be682785adacde46ed5",
-    "semantic_hash": ""
+    "mtime": 1787749382.3719747,
+    "ast_hash": "12c7278a14cf1b7629bc9c8f5767b97a",
+    "semantic_hash": "12c7278a14cf1b7629bc9c8f5767b97a"
   },
   "Uban/mobile_app/lib/screens/weather_screen.dart": {
     "mtime": 1779430634.6225483,
@@ -595,9 +565,9 @@
     "semantic_hash": "7d057177797f597a8d7f7dd9d5a7a4b5"
   },
   "Uban/mobile_app/lib/services/api_service.dart": {
-    "mtime": 1786468963.5834422,
-    "ast_hash": "fb764fd2a15554fca3ed7ede5af23eaa",
-    "semantic_hash": ""
+    "mtime": 1788003186.66339,
+    "ast_hash": "00549cf380ad1a54357a23d921f6483a",
+    "semantic_hash": "00549cf380ad1a54357a23d921f6483a"
   },
   "Uban/mobile_app/lib/services/auth_service.dart": {
     "mtime": 1779430634.63256,
@@ -610,9 +580,9 @@
     "semantic_hash": "d0e076c57272d67b0e1261353e3e9a58"
   },
   "Uban/mobile_app/lib/services/cctv_alert_notification.dart": {
-    "mtime": 1786025001.4568994,
-    "ast_hash": "3d85d24f1c1b9f5e2c9a0f4b603d66fa",
-    "semantic_hash": "3d85d24f1c1b9f5e2c9a0f4b603d66fa"
+    "mtime": 1787491028.577401,
+    "ast_hash": "8ae468a9773669654b07271d3234aef8",
+    "semantic_hash": "8ae468a9773669654b07271d3234aef8"
   },
   "Uban/mobile_app/lib/services/contribution_service.dart": {
     "mtime": 1779430634.6335492,
@@ -633,6 +603,11 @@
     "mtime": 1786025001.4739487,
     "ast_hash": "592f1e5d24807efa8c49bd30b5f66323",
     "semantic_hash": "592f1e5d24807efa8c49bd30b5f66323"
+  },
+  "Uban/mobile_app/lib/services/emergency_tone.dart": {
+    "mtime": 1786529079.539299,
+    "ast_hash": "1ddb80a01c7a748ee004848008644597",
+    "semantic_hash": "1ddb80a01c7a748ee004848008644597"
   },
   "Uban/mobile_app/lib/services/emotion_storage_service.dart": {
     "mtime": 1779430634.6365452,
@@ -660,9 +635,9 @@
     "semantic_hash": "8be70abcd8ad5b4ad126e1ed4ac44447"
   },
   "Uban/mobile_app/lib/services/local_call_notification.dart": {
-    "mtime": 1786481550.431276,
+    "mtime": 1786529079.5409386,
     "ast_hash": "464ef4eda1c4714aedd5ed4cf2b1b61c",
-    "semantic_hash": ""
+    "semantic_hash": "464ef4eda1c4714aedd5ed4cf2b1b61c"
   },
   "Uban/mobile_app/lib/services/predictive_alert_service.dart": {
     "mtime": 1779430634.637587,
@@ -675,14 +650,14 @@
     "semantic_hash": "b017a90444cfde56b79aab27b2f8bb1b"
   },
   "Uban/mobile_app/lib/services/session_manager.dart": {
-    "mtime": 1786468963.5844429,
-    "ast_hash": "1136a035dcc536210ae34925d4cd4d88",
-    "semantic_hash": ""
+    "mtime": 1787750820.4997206,
+    "ast_hash": "c6c4ad9fc364dc9ec8b60fe303185391",
+    "semantic_hash": "c6c4ad9fc364dc9ec8b60fe303185391"
   },
   "Uban/mobile_app/lib/services/signaling.dart": {
-    "mtime": 1786480046.3123434,
-    "ast_hash": "344781d5a4b30d94d1ff6c79b6b6d0f4",
-    "semantic_hash": ""
+    "mtime": 1787825196.3983295,
+    "ast_hash": "4b47093d7f085447b2f02324c78b1cbf",
+    "semantic_hash": "4b47093d7f085447b2f02324c78b1cbf"
   },
   "Uban/mobile_app/lib/services/smart_notification_service.dart": {
     "mtime": 1779430634.6406498,
@@ -739,6 +714,11 @@
     "ast_hash": "1b09202451050040d3dc0b1e62128a47",
     "semantic_hash": "1b09202451050040d3dc0b1e62128a47"
   },
+  "Uban/mobile_app/lib/widgets/call_retry_dialog.dart": {
+    "mtime": 1786529079.544036,
+    "ast_hash": "58ce83b6cdd30b43eed3eeeabf790d36",
+    "semantic_hash": "58ce83b6cdd30b43eed3eeeabf790d36"
+  },
   "Uban/mobile_app/lib/widgets/desktop_pet.dart": {
     "mtime": 1779806405.6886468,
     "ast_hash": "87f50e7d1560963ba96e65bc2c24b871",
@@ -765,9 +745,9 @@
     "semantic_hash": "6e55560c3b543931a7dd341fdc5e9cb1"
   },
   "Uban/mobile_app/lib/widgets/google_assistant_overlay.dart": {
-    "mtime": 1786025001.565539,
-    "ast_hash": "ad1f917aea58c71a3215b427a095a646",
-    "semantic_hash": "ad1f917aea58c71a3215b427a095a646"
+    "mtime": 1787491167.4415123,
+    "ast_hash": "a94c4a68812c3244b859a5f8e4dc9285",
+    "semantic_hash": "a94c4a68812c3244b859a5f8e4dc9285"
   },
   "Uban/mobile_app/lib/widgets/health_anomaly_alert_card.dart": {
     "mtime": 1779430634.6496606,
@@ -775,9 +755,9 @@
     "semantic_hash": "b8db9f696ba4f045862501e7277ab2dc"
   },
   "Uban/mobile_app/lib/widgets/health_dashboard_card.dart": {
-    "mtime": 1779430634.6506584,
-    "ast_hash": "dc118f1f73bf6ca99bdeb68bfcaf803d",
-    "semantic_hash": "dc118f1f73bf6ca99bdeb68bfcaf803d"
+    "mtime": 1787491175.9043815,
+    "ast_hash": "d2127a1b2e41216db841494a9b7e81dc",
+    "semantic_hash": "d2127a1b2e41216db841494a9b7e81dc"
   },
   "Uban/mobile_app/lib/widgets/heartbeat_overlay.dart": {
     "mtime": 1779430634.6506584,
@@ -848,11 +828,6 @@
     "mtime": 1779430634.6645665,
     "ast_hash": "4b52e0b89ebfef9baf45b04548c463d6",
     "semantic_hash": "4b52e0b89ebfef9baf45b04548c463d6"
-  },
-  "Uban/mobile_app/macos/Runner/Assets.xcassets/AppIcon.appiconset/Contents.json": {
-    "mtime": 1779430634.6665652,
-    "ast_hash": "",
-    "semantic_hash": ""
   },
   "Uban/mobile_app/macos/Runner/MainFlutterWindow.swift": {
     "mtime": 1779430634.676563,
@@ -990,9 +965,9 @@
     "semantic_hash": "4d9019aca8d7331568a41675ff7d55c3"
   },
   "uban-api/ai_server.py": {
-    "mtime": 1786360538.2692611,
-    "ast_hash": "7f234b74f8d7a3805b0d0019856a83d1",
-    "semantic_hash": "7f234b74f8d7a3805b0d0019856a83d1"
+    "mtime": 1787203914.5587587,
+    "ast_hash": "32801cc6406ffad5fe3f3cbfa815795c",
+    "semantic_hash": "32801cc6406ffad5fe3f3cbfa815795c"
   },
   "uban-api/auth.py": {
     "mtime": 1784473540.6638546,
@@ -1005,9 +980,9 @@
     "semantic_hash": "1a7e25910309d44ee321dcc25785ebdb"
   },
   "uban-api/database.py": {
-    "mtime": 1786364214.993524,
-    "ast_hash": "efb29c1f3246bf50fc3c8826cca5a724",
-    "semantic_hash": "efb29c1f3246bf50fc3c8826cca5a724"
+    "mtime": 1787571497.3073118,
+    "ast_hash": "f28268d44026227573771c8f9e219533",
+    "semantic_hash": "f28268d44026227573771c8f9e219533"
   },
   "uban-api/inspect_db.py": {
     "mtime": 1784473540.6708574,
@@ -1015,9 +990,9 @@
     "semantic_hash": "0e3bd502176a657956a30d94321b5e8f"
   },
   "uban-api/main.py": {
-    "mtime": 1786397412.5312755,
-    "ast_hash": "102170041ecf7eb8d8344705938d2f4c",
-    "semantic_hash": "102170041ecf7eb8d8344705938d2f4c"
+    "mtime": 1787673034.9822185,
+    "ast_hash": "47dd4c3e7dfa26a71331666a30eda3f7",
+    "semantic_hash": "47dd4c3e7dfa26a71331666a30eda3f7"
   },
   "uban-api/routers/__init__.py": {
     "mtime": 1784473540.6743784,
@@ -1030,19 +1005,24 @@
     "semantic_hash": "38b37ba6ae9765090a6008b34fe641fd"
   },
   "uban-api/routers/ai.py": {
-    "mtime": 1786021595.6323113,
-    "ast_hash": "d2fa19f6fce2c9f21af80b6241458290",
-    "semantic_hash": "d2fa19f6fce2c9f21af80b6241458290"
+    "mtime": 1787203914.563508,
+    "ast_hash": "3301728e3b94ce826d2d09a85bb6cdd7",
+    "semantic_hash": "3301728e3b94ce826d2d09a85bb6cdd7"
   },
   "uban-api/routers/alert.py": {
-    "mtime": 1785889250.164479,
-    "ast_hash": "85b4428262459902e25d786a7694541f",
-    "semantic_hash": "85b4428262459902e25d786a7694541f"
+    "mtime": 1787748998.1784399,
+    "ast_hash": "179a7546ac1f7c0e7ddef34abd52b99d",
+    "semantic_hash": "179a7546ac1f7c0e7ddef34abd52b99d"
   },
   "uban-api/routers/auth.py": {
     "mtime": 1784473540.677385,
     "ast_hash": "fbfaeceec72b9f14373340da944b4c09",
     "semantic_hash": "fbfaeceec72b9f14373340da944b4c09"
+  },
+  "uban-api/routers/community.py": {
+    "mtime": 1787571497.3672438,
+    "ast_hash": "b826c5fa060054ad603289c98496ab20",
+    "semantic_hash": "b826c5fa060054ad603289c98496ab20"
   },
   "uban-api/routers/family_message.py": {
     "mtime": 1784473540.677385,
@@ -1069,15 +1049,20 @@
     "ast_hash": "eec43ff20765116a4d0d49208157d934",
     "semantic_hash": "eec43ff20765116a4d0d49208157d934"
   },
+  "uban-api/routers/ips.py": {
+    "mtime": 1787002631.57955,
+    "ast_hash": "2b931b9ff0a6f4b93a476e05d458ccdd",
+    "semantic_hash": "2b931b9ff0a6f4b93a476e05d458ccdd"
+  },
   "uban-api/routers/news.py": {
     "mtime": 1784473540.6793785,
     "ast_hash": "76fe733babaca38a2356e9a7d821f3fe",
     "semantic_hash": "76fe733babaca38a2356e9a7d821f3fe"
   },
   "uban-api/routers/pairing.py": {
-    "mtime": 1786460352.3111157,
-    "ast_hash": "d76350d845a7fc5adbf580c70633aed9",
-    "semantic_hash": ""
+    "mtime": 1787707497.622478,
+    "ast_hash": "e486f19c6fba64763d29b1f306ad3407",
+    "semantic_hash": "e486f19c6fba64763d29b1f306ad3407"
   },
   "uban-api/routers/relationship.py": {
     "mtime": 1784473540.6803782,
@@ -1085,9 +1070,9 @@
     "semantic_hash": "2cc498efd1cb441e566729fa97efc324"
   },
   "uban-api/routers/reminder.py": {
-    "mtime": 1786397412.552308,
-    "ast_hash": "92431ee7a3380a034a4108828862f68b",
-    "semantic_hash": "92431ee7a3380a034a4108828862f68b"
+    "mtime": 1787203914.57956,
+    "ast_hash": "3ea4bfc0b298a2b2269f817fb8c4c645",
+    "semantic_hash": "3ea4bfc0b298a2b2269f817fb8c4c645"
   },
   "uban-api/routers/subscription.py": {
     "mtime": 1786397412.5990293,
@@ -1304,16 +1289,6 @@
     "ast_hash": "2a0073e66cb30cb004b337f66ec8c92d",
     "semantic_hash": "2a0073e66cb30cb004b337f66ec8c92d"
   },
-  "uban-api/scripts/migrations/001_institution.sql": {
-    "mtime": 1785771864.338541,
-    "ast_hash": "",
-    "semantic_hash": ""
-  },
-  "uban-api/scripts/migrations/010_add_start_date_to_remote_reminders.sql": {
-    "mtime": 1786397412.623428,
-    "ast_hash": "",
-    "semantic_hash": ""
-  },
   "uban-api/scripts/patch_cosyvoice.sh": {
     "mtime": 1784473540.6961012,
     "ast_hash": "dc7f07842d36b940226cfa9422243905",
@@ -1354,6 +1329,11 @@
     "ast_hash": "abd80a6877c2b7ae8aba9875e4c73d27",
     "semantic_hash": "abd80a6877c2b7ae8aba9875e4c73d27"
   },
+  "uban-api/services/indoor_position.py": {
+    "mtime": 1787575442.2977228,
+    "ast_hash": "cd2320526c1536cfb377d1da9bd6627a",
+    "semantic_hash": "cd2320526c1536cfb377d1da9bd6627a"
+  },
   "uban-api/services/monitor_identity.py": {
     "mtime": 1785817334.9494972,
     "ast_hash": "be5230165bb6cf42938f35f97289cb88",
@@ -1375,14 +1355,14 @@
     "semantic_hash": "a6e6b6a430e2e9526be07fb93ebffc51"
   },
   "uban-api/services/socket_app.py": {
-    "mtime": 1786460248.2911832,
-    "ast_hash": "bea24ad4a125135d6ea65881b6ffe4b4",
-    "semantic_hash": ""
+    "mtime": 1787750556.7454789,
+    "ast_hash": "282a3ccbf17df35676c78cf427749d3c",
+    "semantic_hash": "282a3ccbf17df35676c78cf427749d3c"
   },
   "uban-api/services/stt_service.py": {
-    "mtime": 1784473540.7011163,
-    "ast_hash": "68a0d6186d2d2150202535a1d5ad9fed",
-    "semantic_hash": "68a0d6186d2d2150202535a1d5ad9fed"
+    "mtime": 1787571497.3848548,
+    "ast_hash": "3603aa499a1cf145b85ea73edbb01796",
+    "semantic_hash": "3603aa499a1cf145b85ea73edbb01796"
   },
   "uban-api/services/stt_service_gemma4.py": {
     "mtime": 1784473540.7011163,
@@ -1410,9 +1390,9 @@
     "semantic_hash": "aa6d2ede473bf21167cce08ff906c6fb"
   },
   "uban-api/services/yolo_alert_dispatcher.py": {
-    "mtime": 1785870335.4364467,
-    "ast_hash": "9b1d75f796b6ef7fdaac460ca30199a9",
-    "semantic_hash": "9b1d75f796b6ef7fdaac460ca30199a9"
+    "mtime": 1787206249.4306653,
+    "ast_hash": "28603a07d8d4cc987e8f5a4464aa69b3",
+    "semantic_hash": "28603a07d8d4cc987e8f5a4464aa69b3"
   },
   "uban-api/stt_controller.py": {
     "mtime": 1784473540.718161,
@@ -1442,7 +1422,7 @@
   "uban-api/tests/test_call_signaling.py": {
     "mtime": 1786460428.0118742,
     "ast_hash": "3c2aa678bda53b30ea36042036780214",
-    "semantic_hash": ""
+    "semantic_hash": "3c2aa678bda53b30ea36042036780214"
   },
   "uban-api/tests/test_e2e_pond_leaf.py": {
     "mtime": 1784473540.7211769,
@@ -1453,6 +1433,11 @@
     "mtime": 1784473540.7211769,
     "ast_hash": "6be23d7564c68dfded5156b2853fbb17",
     "semantic_hash": "6be23d7564c68dfded5156b2853fbb17"
+  },
+  "uban-api/tests/test_indoor_position.py": {
+    "mtime": 1786984570.3876781,
+    "ast_hash": "38fb9553899e69e06cbd75615bbbf82f",
+    "semantic_hash": "38fb9553899e69e06cbd75615bbbf82f"
   },
   "uban-api/tests/test_institution.py": {
     "mtime": 1786021595.719092,
@@ -1610,783 +1595,408 @@
     "semantic_hash": "ebd798f13b2e36812de3e3b5ba4102f5"
   },
   "uban-api/yolo_detector_service.py": {
-    "mtime": 1785349679.104166,
-    "ast_hash": "268da099df05bfae33eccf7c201a9862",
-    "semantic_hash": "268da099df05bfae33eccf7c201a9862"
-  },
-  "uban-api/assets/kobe.wav": {
-    "mtime": 1784473540.6426992,
-    "ast_hash": "050d16daf786588830609e88da829873",
-    "semantic_hash": "050d16daf786588830609e88da829873"
-  },
-  "uban-api/assets/voice_materials/hahaha.wav": {
-    "mtime": 1784473540.644888,
-    "ast_hash": "d75cdbaca2fbb6e3875c0aed5cd66141",
-    "semantic_hash": "d75cdbaca2fbb6e3875c0aed5cd66141"
-  },
-  "uban-api/assets/voice_materials/kobe_v2_emotion_0396.wav": {
-    "mtime": 1784473540.657433,
-    "ast_hash": "c269d0cffddcc18b724beefc217b4f1e",
-    "semantic_hash": "c269d0cffddcc18b724beefc217b4f1e"
-  },
-  "uban-api/assets/voice_materials/mamba_out.wav": {
-    "mtime": 1784473540.6584322,
-    "ast_hash": "939c17976e4b4a546da698dd4966d02b",
-    "semantic_hash": "939c17976e4b4a546da698dd4966d02b"
-  },
-  "uban-api/assets/voice_materials/man.wav": {
-    "mtime": 1784473540.6604304,
-    "ast_hash": "6a96c45c3cd49f7647964a3febd52739",
-    "semantic_hash": "6a96c45c3cd49f7647964a3febd52739"
-  },
-  "uban-api/assets/voice_materials/what_can_i_say.wav": {
-    "mtime": 1784473540.6638546,
-    "ast_hash": "f64f1d01eccd86180a7ef04cc48b7583",
-    "semantic_hash": "f64f1d01eccd86180a7ef04cc48b7583"
-  },
-  ".github/copilot-instructions.md": {
-    "mtime": 1785785944.656425,
-    "ast_hash": "8cc4b4b25a3cf95523ee01a2544d9ecc",
-    "semantic_hash": ""
-  },
-  "AGENTS.md": {
-    "mtime": 1785785516.219808,
-    "ast_hash": "938dbb27cf938d3bec1fb17658008b3e",
-    "semantic_hash": ""
-  },
-  "CLAUDE.md": {
-    "mtime": 1786463168.427135,
-    "ast_hash": "4dbe2494af389175990a6d43aad70ceb",
-    "semantic_hash": ""
-  },
-  "FIXES_SUMMARY.md": {
-    "mtime": 1785785519.9287574,
-    "ast_hash": "78f18751067ccd270ec52a55aa2addfa",
-    "semantic_hash": ""
-  },
-  "README.md": {
-    "mtime": 1785785518.957679,
-    "ast_hash": "32fbdfd57343c76f341a371681828eb3",
-    "semantic_hash": ""
-  },
-  "Uban/CLAUDE.md": {
-    "mtime": 1786468963.5625656,
-    "ast_hash": "7ce8920f2640377b299e9d63c519bc30",
-    "semantic_hash": ""
+    "mtime": 1787749589.7995205,
+    "ast_hash": "3572feefd0f576faf2fd69602104937c",
+    "semantic_hash": "3572feefd0f576faf2fd69602104937c"
   },
   "Uban/CLAUDE_call-monitor.md": {
-    "mtime": 1786482168.029376,
-    "ast_hash": "bdd202b8a77af8766e4cea00b95d5d4e",
-    "semantic_hash": ""
-  },
-  "Uban/QUICK_START_TESTING.md": {
-    "mtime": 1786025000.6963432,
-    "ast_hash": "dc81e707ec25fc013dd4168b6980c224",
-    "semantic_hash": ""
-  },
-  "Uban/README.md": {
-    "mtime": 1786025000.7189026,
-    "ast_hash": "366af6fb6d4298f9ad47df3628781fa9",
-    "semantic_hash": ""
-  },
-  "Uban/UI_REDESIGN_PLAN.md": {
-    "mtime": 1786025000.7452278,
-    "ast_hash": "60a74d75dcb3a339704d092759ec7e6e",
-    "semantic_hash": ""
-  },
-  "Uban/docs/general/ULTIMATE_PET_PROPOSAL.md": {
-    "mtime": 1779806410.0287347,
-    "ast_hash": "29204f877484a6104f18268e27bf43c9",
-    "semantic_hash": ""
-  },
-  "Uban/docs/general/ai_work_log.md": {
-    "mtime": 1779806410.0287347,
-    "ast_hash": "1f75e91a3952ff03ed325816467d80b3",
-    "semantic_hash": ""
-  },
-  "Uban/docs/general/archive_walkthrough.md": {
-    "mtime": 1779806410.0297344,
-    "ast_hash": "5d9f06da7f8dbaa1570f1062d59ab314",
-    "semantic_hash": ""
-  },
-  "Uban/docs/general/feedgawa_intro.md": {
-    "mtime": 1779806410.0297344,
-    "ast_hash": "4560785db40fcc850d838538b98e9f4c",
-    "semantic_hash": ""
-  },
-  "Uban/docs/general/mascot_guide.md": {
-    "mtime": 1779806410.030735,
-    "ast_hash": "f792af4f37998ddd5aca0bf2ff7b9ea9",
-    "semantic_hash": ""
-  },
-  "Uban/docs/general/monitor_device_guide.md": {
-    "mtime": 1786025000.7696633,
-    "ast_hash": "e07f640f1050c2cb7a3dc5d021fee274",
-    "semantic_hash": ""
-  },
-  "Uban/docs/general/proposal.md": {
-    "mtime": 1779806410.0317354,
-    "ast_hash": "ff7abddd40f347a1738f24b5958d0ca3",
-    "semantic_hash": ""
-  },
-  "Uban/docs/general/walkthrough.md": {
-    "mtime": 1779806410.0317354,
-    "ast_hash": "d70ced038cad98392ee119fd92943804",
-    "semantic_hash": ""
+    "mtime": 1787827290.8634233,
+    "ast_hash": "8d1c17026efb2c79f02e4fd06d6bd5ad",
+    "semantic_hash": "8d1c17026efb2c79f02e4fd06d6bd5ad"
   },
   "Uban/docs/general/webrtc_test.html": {
     "mtime": 1779806410.032735,
     "ast_hash": "ab5ff14cf3cd22c6adb1902daf7cc507",
-    "semantic_hash": ""
-  },
-  "Uban/docs/technical/CALL_FIX_LOG.md": {
-    "mtime": 1786025000.7996001,
-    "ast_hash": "3cd3325eb8a9972f4b33e9ff4a72ae1a",
-    "semantic_hash": ""
-  },
-  "Uban/docs/technical/DIARY_DIRECTORY_AND_RAG_LEAF.md": {
-    "mtime": 1779882628.3331459,
-    "ast_hash": "5903fcf44391debfc06747b0efd4edc2",
-    "semantic_hash": ""
-  },
-  "Uban/docs/technical/DOCUMENTATION_GUIDELINE.md": {
-    "mtime": 1779806410.0337343,
-    "ast_hash": "f07bf30444b78f13a0c1f92f9448da5d",
-    "semantic_hash": ""
-  },
-  "Uban/docs/technical/INSTITUTION_PORTAL.md": {
-    "mtime": 1786025000.8245027,
-    "ast_hash": "53a55389447dc4431f79b05467d36d1d",
-    "semantic_hash": ""
-  },
-  "Uban/docs/technical/NEWS_LISTEN_PLAYER.md": {
-    "mtime": 1779806410.0337343,
-    "ast_hash": "faafe8eef346659c582599eb703bc88f",
-    "semantic_hash": ""
-  },
-  "Uban/docs/technical/OLLAMA_LATENCY_REPORT.md": {
-    "mtime": 1779806410.0337343,
-    "ast_hash": "855b9865c98f7c0d37107d56f1266cad",
-    "semantic_hash": ""
-  },
-  "Uban/docs/technical/SUBSCRIPTION_ARCHITECTURE.md": {
-    "mtime": 1786025000.8445878,
-    "ast_hash": "73589df9ebb51db3bca126155179273d",
-    "semantic_hash": ""
-  },
-  "Uban/docs/technical/YUNI_CHAT_MANUAL.md": {
-    "mtime": 1779806410.0347335,
-    "ast_hash": "654180fa34ff31fd4ea8433b480404e3",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/.claude/agent-memory/call-monitor-fixer/MEMORY.md": {
-    "mtime": 1786025000.8853438,
-    "ast_hash": "6204afc22b54ef94f197ec9b45860e3e",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/analysis_options.yaml": {
-    "mtime": 1779430633.5371892,
-    "ast_hash": "9e65f4b9beebb674c0dc252f70a5c177",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/assets/ASSET_STYLE_GUIDE.md": {
-    "mtime": 1779430633.55619,
-    "ast_hash": "387167848923431b88d3eee1790fbb3f",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/devtools_options.yaml": {
-    "mtime": 1779430634.535783,
-    "ast_hash": "1b16e156b9f8b9f43ca52a78a6f72e80",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/ios/Runner/Assets.xcassets/LaunchImage.imageset/README.md": {
-    "mtime": 1779430634.562784,
-    "ast_hash": "f7ee1b402881509d197f34963e569927",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/lib/models/EMOTION_DATA_USAGE.md": {
-    "mtime": 1779430634.5677965,
-    "ast_hash": "da3515e0dc5e771b0111e1ed7eef4ef9",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/lib/screens/family/placeholder.txt": {
-    "mtime": 1779430634.5928867,
-    "ast_hash": "4dc2fbdcef476c0af81a635a86bb209b",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/linux/CMakeLists.txt": {
-    "mtime": 1779430634.6556163,
-    "ast_hash": "c4e2744d90f509ca382faefcd2e40ac3",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/linux/flutter/CMakeLists.txt": {
-    "mtime": 1779430634.6575463,
-    "ast_hash": "2195470ce31675d31db5a37590d011f6",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/linux/runner/CMakeLists.txt": {
-    "mtime": 1779430634.6585448,
-    "ast_hash": "30cc1614b16214b66c014af09ba699eb",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/pubspec.yaml": {
-    "mtime": 1786480011.0410092,
-    "ast_hash": "e2f75ba371ac0b43b98aa9f35fe462ba",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/web/index.html": {
-    "mtime": 1779430634.6910846,
-    "ast_hash": "d77228a29561820573ea11ee69c9d226",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/windows/CMakeLists.txt": {
-    "mtime": 1779430634.6921115,
-    "ast_hash": "7c2ef2faec4db8c45edb40f097ac88cc",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/windows/flutter/CMakeLists.txt": {
-    "mtime": 1779430634.6931,
-    "ast_hash": "bbf66fed5180bd9ae8198b8d7c4a0001",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/windows/runner/CMakeLists.txt": {
-    "mtime": 1779430634.6952033,
-    "ast_hash": "028602ab9754bffe716659ada7590d29",
-    "semantic_hash": ""
-  },
-  "Uban/news/README.md": {
-    "mtime": 1779430634.7010868,
-    "ast_hash": "cda70f935c325e7d7f496e6467022486",
-    "semantic_hash": ""
-  },
-  "Uban/news/requirements.txt": {
-    "mtime": 1779430634.7030847,
-    "ast_hash": "9ff8dc8aa66293413f235c98e1df2fdd",
-    "semantic_hash": ""
-  },
-  "Uban/news/templates/index.html": {
-    "mtime": 1779430634.7030847,
-    "ast_hash": "3140ffddcdff86d370640ea836994454",
-    "semantic_hash": ""
-  },
-  "uban-api/.github/workflows/deploy.yml": {
-    "mtime": 1786021595.5434885,
-    "ast_hash": "67baf04dc833f493947521b7fb358a9c",
-    "semantic_hash": ""
-  },
-  "uban-api/CLAUDE.md": {
-    "mtime": 1786463190.1498237,
-    "ast_hash": "7134329cf0f199a54ccdadaaf2e51d11",
-    "semantic_hash": ""
-  },
-  "uban-api/CLAUDE_call-monitor.md": {
-    "mtime": 1786482180.6689336,
-    "ast_hash": "a41f6951e1b6e9cdf33de2505ff78f27",
-    "semantic_hash": ""
-  },
-  "uban-api/DATABASE_SCHEMA_CRITICAL.md": {
-    "mtime": 1784473540.636717,
-    "ast_hash": "951b4e432f558e068c7bda59b36f8bdd",
-    "semantic_hash": ""
-  },
-  "uban-api/docs/DATABASE.md": {
-    "mtime": 1784473540.6668687,
-    "ast_hash": "b562b2f6864054a0a1d3136b9f3b4ce1",
-    "semantic_hash": ""
-  },
-  "uban-api/docs/archive_walkthrough.md": {
-    "mtime": 1785785800.5110872,
-    "ast_hash": "0de248dbb1dd5c3619c1dfe97c3a4585",
-    "semantic_hash": ""
-  },
-  "uban-api/docs/html_tools/kobe_cutter.html": {
-    "mtime": 1784473540.6688528,
-    "ast_hash": "854bf490b7e69d846a059bdf0b163ee5",
-    "semantic_hash": ""
-  },
-  "uban-api/docs/html_tools/tts_tester.html": {
-    "mtime": 1784473540.6698525,
-    "ast_hash": "8ccea2760a241410a158184f87820164",
-    "semantic_hash": ""
-  },
-  "uban-api/docs/html_tools/vram_simulator.html": {
-    "mtime": 1784473540.6708574,
-    "ast_hash": "6f5b77edffaa8314e67ed7fad1092fa6",
-    "semantic_hash": ""
-  },
-  "uban-api/readme.md": {
-    "mtime": 1786021595.5830626,
-    "ast_hash": "c0f4e84d7a2efdcfcf966ee053ff188c",
-    "semantic_hash": ""
-  },
-  "uban-api/requirements.txt": {
-    "mtime": 1786021623.501296,
-    "ast_hash": "1068fb8fbb7498f783ea6e9cfe2c293e",
-    "semantic_hash": ""
-  },
-  "uban-api/server/agent/SOUL.md": {
-    "mtime": 1784473540.6971018,
-    "ast_hash": "6a6726526060dda26b839823f53934fb",
-    "semantic_hash": ""
-  },
-  "uban-api/uban-admin/README.md": {
-    "mtime": 1786021595.7315686,
-    "ast_hash": "475d6126915db523b2458d1568ccd566",
-    "semantic_hash": ""
-  },
-  "uban-api/uban-admin/index.html": {
-    "mtime": 1785771864.4861338,
-    "ast_hash": "3137e08c50ac69edd1b95b7f6ada6ba1",
-    "semantic_hash": ""
-  },
-  "Uban/Uban System Documents/\u4e8c\u6280\u7b2c115207\u7d44-Uban-\u7cfb\u7d71\u624b\u518a.pdf": {
-    "mtime": 1785291872.8860307,
-    "ast_hash": "1555c1bb7841072c53a78ac671b0d26b",
-    "semantic_hash": ""
-  },
-  "Uban/Uban System Documents/\u4e8c\u6280\u7b2c115207\u7d44-Uban-\u7cfb\u7d71\u7c21\u4ecb.pdf": {
-    "mtime": 1785291872.8922486,
-    "ast_hash": "a9bdb16486117efdcda8b80b3589789c",
-    "semantic_hash": ""
-  },
-  "Uban/meeting records/\u4e8c\u6280115207\u7d440716~0723\u6703\u8b70\u7d00\u9304.pdf": {
-    "mtime": 1785291872.9319847,
-    "ast_hash": "450e01ef0be7d8f51bf9d6d691e7e45b",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/android/app/src/main/res/mipmap-hdpi/ic_launcher.png": {
-    "mtime": 1779430633.5411901,
-    "ast_hash": "13e9c72ec37fac220397aa819fa1ef2d",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/android/app/src/main/res/mipmap-hdpi/launcher_icon.png": {
-    "mtime": 1779430633.54219,
-    "ast_hash": "08e0a1f95fbddd96098855f54887b688",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/android/app/src/main/res/mipmap-mdpi/ic_launcher.png": {
-    "mtime": 1779430633.54219,
-    "ast_hash": "6270344430679711b81476e29878caa7",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/android/app/src/main/res/mipmap-mdpi/launcher_icon.png": {
-    "mtime": 1779430633.54219,
-    "ast_hash": "7ff9100e8a192e068bef20abf984cb0b",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/android/app/src/main/res/mipmap-xhdpi/ic_launcher.png": {
-    "mtime": 1779430633.5431933,
-    "ast_hash": "a0a8db5985280b3679d99a820ae2db79",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/android/app/src/main/res/mipmap-xhdpi/launcher_icon.png": {
-    "mtime": 1779430633.544198,
-    "ast_hash": "b7687efa966fa1aa0012173d13ab88a6",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png": {
-    "mtime": 1779430633.5451972,
-    "ast_hash": "afe1b655b9f32da22f9a4301bb8e6ba8",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/android/app/src/main/res/mipmap-xxhdpi/launcher_icon.png": {
-    "mtime": 1779430633.5461931,
-    "ast_hash": "411831504d100df7a703bdc36556449c",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png": {
-    "mtime": 1779430633.5471888,
-    "ast_hash": "57838d52c318faff743130c3fcfae0c6",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/android/app/src/main/res/mipmap-xxxhdpi/launcher_icon.png": {
-    "mtime": 1779430633.5471888,
-    "ast_hash": "af91d32625102320ed0c50272c2c3959",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/assets/images/app_icon.png": {
-    "mtime": 1779430633.6634617,
-    "ast_hash": "cfe22c92aed68cb291e26bd6cfd416a6",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/assets/images/elder_illustration.png": {
-    "mtime": 1779430633.6644678,
-    "ast_hash": "a5d7f8c3e2af9699945f3a5b9127892a",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/assets/images/family_call.png": {
-    "mtime": 1779430633.6654668,
-    "ast_hash": "758f32a7f6ced4dc2354a0287f937a77",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/assets/images/family_illustration.png": {
-    "mtime": 1779430633.6654668,
-    "ast_hash": "70e7119d70d394711ac0e168da59843f",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/assets/images/gramophone.png": {
-    "mtime": 1779430633.6664677,
-    "ast_hash": "6e5c735225c8bb2538fae5140e81f126",
-    "semantic_hash": ""
+    "semantic_hash": "ab5ff14cf3cd22c6adb1902daf7cc507"
   },
   "Uban/mobile_app/assets/images/koi_fish.png": {
     "mtime": 1779806404.9262505,
     "ast_hash": "5bee9b0c56dcfbb62c9626094a7bddd2",
-    "semantic_hash": ""
+    "semantic_hash": "5bee9b0c56dcfbb62c9626094a7bddd2"
   },
   "Uban/mobile_app/assets/images/lotus_leaf.png": {
     "mtime": 1779806404.935683,
     "ast_hash": "77db70010366ab8c0072ab55aa2d5d5b",
-    "semantic_hash": ""
+    "semantic_hash": "77db70010366ab8c0072ab55aa2d5d5b"
   },
   "Uban/mobile_app/assets/images/memoir_card.png": {
     "mtime": 1785291831.7778633,
     "ast_hash": "fab97b28ab209e387a62f8d3919cbd7f",
-    "semantic_hash": ""
+    "semantic_hash": "fab97b28ab209e387a62f8d3919cbd7f"
   },
   "Uban/mobile_app/assets/images/morning_bg.png": {
     "mtime": 1779430633.6781855,
     "ast_hash": "a07c8bbda6c64fedb6c624fa705b60fd",
-    "semantic_hash": ""
+    "semantic_hash": "a07c8bbda6c64fedb6c624fa705b60fd"
   },
   "Uban/mobile_app/assets/images/new_homepage_pig.png": {
     "mtime": 1785291831.7878857,
     "ast_hash": "9a1ab0528676ae19533dc9e89e1a2bce",
-    "semantic_hash": ""
+    "semantic_hash": "9a1ab0528676ae19533dc9e89e1a2bce"
   },
   "Uban/mobile_app/assets/images/newspaper.png": {
     "mtime": 1779430633.6791914,
     "ast_hash": "9a5ad50836bcd3fa2d38dcff34cb2708",
-    "semantic_hash": ""
+    "semantic_hash": "9a5ad50836bcd3fa2d38dcff34cb2708"
   },
   "Uban/mobile_app/assets/images/pet_garden.png": {
     "mtime": 1779430633.680192,
     "ast_hash": "7fcf79b89dffdb103cb5237fccc7e915",
-    "semantic_hash": ""
+    "semantic_hash": "7fcf79b89dffdb103cb5237fccc7e915"
   },
   "Uban/mobile_app/assets/images/pet_room_panorama.png": {
     "mtime": 1779806404.9845486,
     "ast_hash": "fb7c2782c389792b9c1bdaa2cefd2757",
-    "semantic_hash": ""
+    "semantic_hash": "fb7c2782c389792b9c1bdaa2cefd2757"
   },
   "Uban/mobile_app/assets/images/pig_2d_happy_v4.png": {
     "mtime": 1779430633.7221875,
     "ast_hash": "37a8d7d0fd4c520e2763a5769d56783d",
-    "semantic_hash": ""
+    "semantic_hash": "37a8d7d0fd4c520e2763a5769d56783d"
   },
   "Uban/mobile_app/assets/images/pig_2d_idle_v4.png": {
     "mtime": 1779430633.7252767,
     "ast_hash": "78559f969a1627121f1aab82a938459c",
-    "semantic_hash": ""
+    "semantic_hash": "78559f969a1627121f1aab82a938459c"
   },
   "Uban/mobile_app/assets/images/pig_2d_picked_v4.png": {
     "mtime": 1779430633.7302966,
     "ast_hash": "d2993ca1c1404035b3f1307c01d583cb",
-    "semantic_hash": ""
+    "semantic_hash": "d2993ca1c1404035b3f1307c01d583cb"
   },
   "Uban/mobile_app/assets/images/pig_2d_picked_v5.png": {
     "mtime": 1779430633.7382512,
     "ast_hash": "8132c7190d627ba6e2dde61167f1f4b9",
-    "semantic_hash": ""
+    "semantic_hash": "8132c7190d627ba6e2dde61167f1f4b9"
   },
   "Uban/mobile_app/assets/images/pig_2d_sleep_v4.png": {
     "mtime": 1779430633.7432823,
     "ast_hash": "e57a2825dbc700bf59a842e01642cd7f",
-    "semantic_hash": ""
+    "semantic_hash": "e57a2825dbc700bf59a842e01642cd7f"
   },
   "Uban/mobile_app/assets/images/pig_2d_walk_1_v4.png": {
     "mtime": 1779430633.750284,
     "ast_hash": "23c8a190c6935fd305b11f4c7290ad28",
-    "semantic_hash": ""
+    "semantic_hash": "23c8a190c6935fd305b11f4c7290ad28"
   },
   "Uban/mobile_app/assets/images/pig_2d_walk_2_v4.png": {
     "mtime": 1779430633.755191,
     "ast_hash": "32b9cfad74a1880f35a72fba52e4ee01",
-    "semantic_hash": ""
+    "semantic_hash": "32b9cfad74a1880f35a72fba52e4ee01"
   },
   "Uban/mobile_app/assets/images/pig_badge_bronze.png": {
     "mtime": 1785291831.8061376,
     "ast_hash": "ffe21c44aea0a41ac8fb696b5f25a1ab",
-    "semantic_hash": ""
+    "semantic_hash": "ffe21c44aea0a41ac8fb696b5f25a1ab"
   },
   "Uban/mobile_app/assets/images/pig_badge_gold.png": {
     "mtime": 1785291831.8277802,
     "ast_hash": "9106dc52f4c1bebe0634be3fdc08438b",
-    "semantic_hash": ""
+    "semantic_hash": "9106dc52f4c1bebe0634be3fdc08438b"
   },
   "Uban/mobile_app/assets/images/pig_badge_silver.png": {
     "mtime": 1785291831.8481717,
     "ast_hash": "b2d2f2519a3253d89c4911767ca6fc65",
-    "semantic_hash": ""
+    "semantic_hash": "b2d2f2519a3253d89c4911767ca6fc65"
   },
   "Uban/mobile_app/assets/images/pig_mascot.png": {
     "mtime": 1779430633.7581904,
     "ast_hash": "a207540687d1dac5e7e46e7ab4a76835",
-    "semantic_hash": ""
+    "semantic_hash": "a207540687d1dac5e7e46e7ab4a76835"
   },
   "Uban/mobile_app/assets/images/pig_mascot_transparent.png": {
     "mtime": 1779430633.760228,
     "ast_hash": "35e1e6d01b6e7084cec42108c165431c",
-    "semantic_hash": ""
+    "semantic_hash": "35e1e6d01b6e7084cec42108c165431c"
+  },
+  ".aider.chat.history.md": {
+    "mtime": 1788001782.9293835,
+    "ast_hash": "6b78ac729eb162a3932d104cd0d3d14b",
+    "semantic_hash": "6b78ac729eb162a3932d104cd0d3d14b"
+  },
+  "CLAUDE.md": {
+    "mtime": 1787608655.3943467,
+    "ast_hash": "be3c6cede7d7df97cbcba26655989f9e",
+    "semantic_hash": "be3c6cede7d7df97cbcba26655989f9e"
+  },
+  "FIXES_SUMMARY.md": {
+    "mtime": 1785785519.9287574,
+    "ast_hash": "78f18751067ccd270ec52a55aa2addfa",
+    "semantic_hash": "78f18751067ccd270ec52a55aa2addfa"
+  },
+  "README.md": {
+    "mtime": 1785785518.957679,
+    "ast_hash": "32fbdfd57343c76f341a371681828eb3",
+    "semantic_hash": "32fbdfd57343c76f341a371681828eb3"
+  },
+  "Uban/CLAUDE.md": {
+    "mtime": 1787608663.3496437,
+    "ast_hash": "3c922e828260e1f8fa6ba8e9fb4a8178",
+    "semantic_hash": "3c922e828260e1f8fa6ba8e9fb4a8178"
+  },
+  "Uban/CLAUDE_call-monitor-history.md": {
+    "mtime": 1787826307.3588822,
+    "ast_hash": "56453a7978bc3eaed1264c7504bbc0f6",
+    "semantic_hash": "56453a7978bc3eaed1264c7504bbc0f6"
+  },
+  "Uban/README.md": {
+    "mtime": 1786025000.7189026,
+    "ast_hash": "366af6fb6d4298f9ad47df3628781fa9",
+    "semantic_hash": "366af6fb6d4298f9ad47df3628781fa9"
+  },
+  "Uban/UI_REDESIGN_PLAN.md": {
+    "mtime": 1786025000.7452278,
+    "ast_hash": "60a74d75dcb3a339704d092759ec7e6e",
+    "semantic_hash": "60a74d75dcb3a339704d092759ec7e6e"
+  },
+  "Uban/mobile_app/assets/ASSET_STYLE_GUIDE.md": {
+    "mtime": 1779430633.55619,
+    "ast_hash": "387167848923431b88d3eee1790fbb3f",
+    "semantic_hash": "387167848923431b88d3eee1790fbb3f"
+  },
+  "Uban/mobile_app/ios/Runner/Assets.xcassets/LaunchImage.imageset/README.md": {
+    "mtime": 1779430634.562784,
+    "ast_hash": "f7ee1b402881509d197f34963e569927",
+    "semantic_hash": "f7ee1b402881509d197f34963e569927"
+  },
+  "Uban/mobile_app/lib/models/EMOTION_DATA_USAGE.md": {
+    "mtime": 1779430634.5677965,
+    "ast_hash": "da3515e0dc5e771b0111e1ed7eef4ef9",
+    "semantic_hash": "da3515e0dc5e771b0111e1ed7eef4ef9"
+  },
+  "Uban/mobile_app/lib/screens/family/placeholder.txt": {
+    "mtime": 1779430634.5928867,
+    "ast_hash": "4dc2fbdcef476c0af81a635a86bb209b",
+    "semantic_hash": "4dc2fbdcef476c0af81a635a86bb209b"
+  },
+  "Uban/mobile_app/linux/CMakeLists.txt": {
+    "mtime": 1779430634.6556163,
+    "ast_hash": "c4e2744d90f509ca382faefcd2e40ac3",
+    "semantic_hash": "c4e2744d90f509ca382faefcd2e40ac3"
+  },
+  "Uban/mobile_app/linux/flutter/CMakeLists.txt": {
+    "mtime": 1779430634.6575463,
+    "ast_hash": "2195470ce31675d31db5a37590d011f6",
+    "semantic_hash": "2195470ce31675d31db5a37590d011f6"
+  },
+  "Uban/mobile_app/linux/runner/CMakeLists.txt": {
+    "mtime": 1779430634.6585448,
+    "ast_hash": "30cc1614b16214b66c014af09ba699eb",
+    "semantic_hash": "30cc1614b16214b66c014af09ba699eb"
+  },
+  "Uban/mobile_app/windows/CMakeLists.txt": {
+    "mtime": 1779430634.6921115,
+    "ast_hash": "7c2ef2faec4db8c45edb40f097ac88cc",
+    "semantic_hash": "7c2ef2faec4db8c45edb40f097ac88cc"
+  },
+  "Uban/mobile_app/windows/flutter/CMakeLists.txt": {
+    "mtime": 1779430634.6931,
+    "ast_hash": "bbf66fed5180bd9ae8198b8d7c4a0001",
+    "semantic_hash": "bbf66fed5180bd9ae8198b8d7c4a0001"
+  },
+  "Uban/mobile_app/windows/runner/CMakeLists.txt": {
+    "mtime": 1779430634.6952033,
+    "ast_hash": "028602ab9754bffe716659ada7590d29",
+    "semantic_hash": "028602ab9754bffe716659ada7590d29"
+  },
+  "Uban/news/README.md": {
+    "mtime": 1779430634.7010868,
+    "ast_hash": "cda70f935c325e7d7f496e6467022486",
+    "semantic_hash": "cda70f935c325e7d7f496e6467022486"
+  },
+  "Uban/news/requirements.txt": {
+    "mtime": 1779430634.7030847,
+    "ast_hash": "9ff8dc8aa66293413f235c98e1df2fdd",
+    "semantic_hash": "9ff8dc8aa66293413f235c98e1df2fdd"
+  },
+  "Uban/news/templates/index.html": {
+    "mtime": 1779430634.7030847,
+    "ast_hash": "3140ffddcdff86d370640ea836994454",
+    "semantic_hash": "3140ffddcdff86d370640ea836994454"
+  },
+  "uban-api/CLAUDE.md": {
+    "mtime": 1787608656.9404953,
+    "ast_hash": "d37f6a457bfa36f363ca1c0aff46609d",
+    "semantic_hash": "d37f6a457bfa36f363ca1c0aff46609d"
+  },
+  "uban-api/CLAUDE_call-monitor-history.md": {
+    "mtime": 1787709753.5406296,
+    "ast_hash": "2d8587728609ee4de6df4f2de7c3ca7d",
+    "semantic_hash": "2d8587728609ee4de6df4f2de7c3ca7d"
+  },
+  "uban-api/CLAUDE_call-monitor.md": {
+    "mtime": 1787709753.5396152,
+    "ast_hash": "eafb1ca4abf7a55817d92c5a69c73342",
+    "semantic_hash": "eafb1ca4abf7a55817d92c5a69c73342"
+  },
+  "Uban/mobile_app/assets/images/app_icon.png": {
+    "mtime": 1779430633.6634617,
+    "ast_hash": "cfe22c92aed68cb291e26bd6cfd416a6",
+    "semantic_hash": "cfe22c92aed68cb291e26bd6cfd416a6"
+  },
+  "Uban/mobile_app/assets/images/elder_illustration.png": {
+    "mtime": 1779430633.6644678,
+    "ast_hash": "a5d7f8c3e2af9699945f3a5b9127892a",
+    "semantic_hash": "a5d7f8c3e2af9699945f3a5b9127892a"
+  },
+  "Uban/mobile_app/assets/images/family_call.png": {
+    "mtime": 1779430633.6654668,
+    "ast_hash": "758f32a7f6ced4dc2354a0287f937a77",
+    "semantic_hash": "758f32a7f6ced4dc2354a0287f937a77"
+  },
+  "Uban/mobile_app/assets/images/family_illustration.png": {
+    "mtime": 1779430633.6654668,
+    "ast_hash": "70e7119d70d394711ac0e168da59843f",
+    "semantic_hash": "70e7119d70d394711ac0e168da59843f"
+  },
+  "Uban/mobile_app/assets/images/gramophone.png": {
+    "mtime": 1779430633.6664677,
+    "ast_hash": "6e5c735225c8bb2538fae5140e81f126",
+    "semantic_hash": "6e5c735225c8bb2538fae5140e81f126"
   },
   "Uban/mobile_app/assets/images/pig_mascot_v2.png": {
     "mtime": 1779430633.7632933,
     "ast_hash": "a207540687d1dac5e7e46e7ab4a76835",
-    "semantic_hash": ""
+    "semantic_hash": "a207540687d1dac5e7e46e7ab4a76835"
   },
   "Uban/mobile_app/assets/images/pig_mascot_v3.png": {
     "mtime": 1779430633.76629,
     "ast_hash": "ac8f8b702b8a1fd17acbe43786575d41",
-    "semantic_hash": ""
+    "semantic_hash": "ac8f8b702b8a1fd17acbe43786575d41"
   },
   "Uban/mobile_app/assets/images/pig_summary_expert.png": {
     "mtime": 1779806404.993662,
     "ast_hash": "74a33de4d5e1e93a0b7c55a2335b32e4",
-    "semantic_hash": ""
+    "semantic_hash": "74a33de4d5e1e93a0b7c55a2335b32e4"
   },
   "Uban/mobile_app/assets/images/schedule_card.png": {
     "mtime": 1785291831.8738823,
     "ast_hash": "0f2ebdd23dec023836344f1d50ef5c33",
-    "semantic_hash": ""
+    "semantic_hash": "0f2ebdd23dec023836344f1d50ef5c33"
   },
   "Uban/mobile_app/assets/images/user_avatar.png": {
     "mtime": 1785291831.899165,
     "ast_hash": "ba19a0b2d29fc050638d8c30fd58a771",
-    "semantic_hash": ""
+    "semantic_hash": "ba19a0b2d29fc050638d8c30fd58a771"
   },
   "Uban/mobile_app/assets/images/video_call_card.png": {
     "mtime": 1785291831.9118114,
     "ast_hash": "afe99326149d0bcb25dd153980673086",
-    "semantic_hash": ""
+    "semantic_hash": "afe99326149d0bcb25dd153980673086"
   },
   "Uban/mobile_app/assets/images/weather_date_card.png": {
     "mtime": 1785291831.9218946,
     "ast_hash": "1f87839994fe51faf5f2af984f6a830b",
-    "semantic_hash": ""
+    "semantic_hash": "1f87839994fe51faf5f2af984f6a830b"
   },
   "Uban/mobile_app/assets/images/zen_pond_bg.png": {
     "mtime": 1779806405.0102212,
     "ast_hash": "a382350fa82d2caf19283e3c3f7da0a5",
-    "semantic_hash": ""
+    "semantic_hash": "a382350fa82d2caf19283e3c3f7da0a5"
   },
   "Uban/mobile_app/assets/images/zen_pond_card.png": {
     "mtime": 1785291831.9294362,
     "ast_hash": "5e09302f806b3ba870caa2ab85d88b36",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-1024x1024@1x.png": {
-    "mtime": 1779430634.5517778,
-    "ast_hash": "0bdf55ad320c3be905af31fb0986c395",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-20x20@1x.png": {
-    "mtime": 1779430634.5517778,
-    "ast_hash": "80ae5641c5c0d2ead3f6feab866c5c21",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-20x20@2x.png": {
-    "mtime": 1779430634.5528736,
-    "ast_hash": "a59fb83ea5c152ccea0babba485caa2e",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-20x20@3x.png": {
-    "mtime": 1779430634.5528736,
-    "ast_hash": "e7ae021dfac6c2bce322d007bfe276a0",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-29x29@1x.png": {
-    "mtime": 1779430634.5528736,
-    "ast_hash": "f9a98d0a9cfc682cacaa7c6cc46da4af",
-    "semantic_hash": ""
+    "semantic_hash": "5e09302f806b3ba870caa2ab85d88b36"
   },
   "Uban/mobile_app/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-29x29@2x.png": {
     "mtime": 1779430634.5538242,
     "ast_hash": "ac45b502bd9bf41097d51b21db4fc0fb",
-    "semantic_hash": ""
+    "semantic_hash": "ac45b502bd9bf41097d51b21db4fc0fb"
   },
   "Uban/mobile_app/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-29x29@3x.png": {
     "mtime": 1779430634.5538242,
     "ast_hash": "ee87f5270a0d829611d9436038bc40b2",
-    "semantic_hash": ""
+    "semantic_hash": "ee87f5270a0d829611d9436038bc40b2"
   },
   "Uban/mobile_app/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-40x40@1x.png": {
     "mtime": 1779430634.5547867,
     "ast_hash": "a59fb83ea5c152ccea0babba485caa2e",
-    "semantic_hash": ""
+    "semantic_hash": "a59fb83ea5c152ccea0babba485caa2e"
   },
   "Uban/mobile_app/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-40x40@2x.png": {
     "mtime": 1779430634.5547867,
     "ast_hash": "beb0ac877f342d15b497394ff56f3ca5",
-    "semantic_hash": ""
+    "semantic_hash": "beb0ac877f342d15b497394ff56f3ca5"
   },
   "Uban/mobile_app/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-40x40@3x.png": {
     "mtime": 1779430634.5557842,
     "ast_hash": "7fa258e4b17c8b4a06b85086ec049fec",
-    "semantic_hash": ""
+    "semantic_hash": "7fa258e4b17c8b4a06b85086ec049fec"
   },
   "Uban/mobile_app/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-50x50@1x.png": {
     "mtime": 1779430634.5557842,
     "ast_hash": "d8bab45b39c77e20f0056ae6ddea2285",
-    "semantic_hash": ""
+    "semantic_hash": "d8bab45b39c77e20f0056ae6ddea2285"
   },
   "Uban/mobile_app/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-50x50@2x.png": {
     "mtime": 1779430634.5567813,
     "ast_hash": "d2bb5af88e8a950a8dbb78b1a55d37af",
-    "semantic_hash": ""
+    "semantic_hash": "d2bb5af88e8a950a8dbb78b1a55d37af"
   },
   "Uban/mobile_app/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-57x57@1x.png": {
     "mtime": 1779430634.557777,
     "ast_hash": "cc996efa3216898928d5dfdccb737cb0",
-    "semantic_hash": ""
+    "semantic_hash": "cc996efa3216898928d5dfdccb737cb0"
   },
   "Uban/mobile_app/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-57x57@2x.png": {
     "mtime": 1779430634.557777,
     "ast_hash": "9323f292309b1e8b029fa4f665ebdda5",
-    "semantic_hash": ""
+    "semantic_hash": "9323f292309b1e8b029fa4f665ebdda5"
   },
   "Uban/mobile_app/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-60x60@2x.png": {
     "mtime": 1779430634.557777,
     "ast_hash": "7fa258e4b17c8b4a06b85086ec049fec",
-    "semantic_hash": ""
+    "semantic_hash": "7fa258e4b17c8b4a06b85086ec049fec"
   },
   "Uban/mobile_app/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-60x60@3x.png": {
     "mtime": 1779430634.5587778,
     "ast_hash": "7def2d149cfe1f149b3451dc9c9947a2",
-    "semantic_hash": ""
+    "semantic_hash": "7def2d149cfe1f149b3451dc9c9947a2"
   },
   "Uban/mobile_app/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-72x72@1x.png": {
     "mtime": 1779430634.5587778,
     "ast_hash": "08e0a1f95fbddd96098855f54887b688",
-    "semantic_hash": ""
+    "semantic_hash": "08e0a1f95fbddd96098855f54887b688"
   },
   "Uban/mobile_app/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-72x72@2x.png": {
     "mtime": 1779430634.5587778,
     "ast_hash": "411831504d100df7a703bdc36556449c",
-    "semantic_hash": ""
+    "semantic_hash": "411831504d100df7a703bdc36556449c"
   },
   "Uban/mobile_app/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-76x76@1x.png": {
     "mtime": 1779430634.5597856,
     "ast_hash": "6f13f1ace44b7a81ff37c6a9559e6744",
-    "semantic_hash": ""
+    "semantic_hash": "6f13f1ace44b7a81ff37c6a9559e6744"
   },
   "Uban/mobile_app/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-76x76@2x.png": {
     "mtime": 1779430634.5607846,
     "ast_hash": "0f41ef02142aad2fe18f8ff0c52d7e4f",
-    "semantic_hash": ""
+    "semantic_hash": "0f41ef02142aad2fe18f8ff0c52d7e4f"
   },
   "Uban/mobile_app/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-83.5x83.5@2x.png": {
     "mtime": 1779430634.5607846,
     "ast_hash": "8f64a8c5bcf6498aa030706e7cd926f8",
-    "semantic_hash": ""
+    "semantic_hash": "8f64a8c5bcf6498aa030706e7cd926f8"
   },
   "Uban/mobile_app/ios/Runner/Assets.xcassets/LaunchImage.imageset/LaunchImage.png": {
     "mtime": 1779430634.561784,
     "ast_hash": "978c1bee49d7ad5fc1a4d81099b13e18",
-    "semantic_hash": ""
+    "semantic_hash": "978c1bee49d7ad5fc1a4d81099b13e18"
   },
   "Uban/mobile_app/ios/Runner/Assets.xcassets/LaunchImage.imageset/LaunchImage@2x.png": {
     "mtime": 1779430634.562784,
     "ast_hash": "978c1bee49d7ad5fc1a4d81099b13e18",
-    "semantic_hash": ""
+    "semantic_hash": "978c1bee49d7ad5fc1a4d81099b13e18"
   },
   "Uban/mobile_app/ios/Runner/Assets.xcassets/LaunchImage.imageset/LaunchImage@3x.png": {
     "mtime": 1779430634.562784,
     "ast_hash": "978c1bee49d7ad5fc1a4d81099b13e18",
-    "semantic_hash": ""
+    "semantic_hash": "978c1bee49d7ad5fc1a4d81099b13e18"
   },
   "Uban/mobile_app/macos/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_1024.png": {
     "mtime": 1779430634.668561,
     "ast_hash": "c9becc9105f8cabce934d20c7bfb6aac",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/macos/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_128.png": {
-    "mtime": 1779430634.668561,
-    "ast_hash": "3ded30823804caaa5ccc944067c54a36",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/macos/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_16.png": {
-    "mtime": 1779430634.6695607,
-    "ast_hash": "8bf511604bc6ed0a6aeb380c5113fdcf",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/macos/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_256.png": {
-    "mtime": 1779430634.670567,
-    "ast_hash": "dfe2c93d1536ae02f085cc63faa3430e",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/macos/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_32.png": {
-    "mtime": 1779430634.6716,
-    "ast_hash": "8e0ae58e362a6636bdfccbc04da2c58c",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/macos/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_512.png": {
-    "mtime": 1779430634.672588,
-    "ast_hash": "0ad44039155424738917502c69667699",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/macos/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_64.png": {
-    "mtime": 1779430634.672588,
-    "ast_hash": "04e7b6ef05346c70b663ca1d97de3ad5",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/web/favicon.png": {
-    "mtime": 1779430634.686091,
-    "ast_hash": "52e4dc2ec95407fc737a042cffd3b416",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/web/icons/Icon-192.png": {
-    "mtime": 1779430634.6870916,
-    "ast_hash": "af91d32625102320ed0c50272c2c3959",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/web/icons/Icon-512.png": {
-    "mtime": 1779430634.6890895,
-    "ast_hash": "875f079e88e3c08469f1b91908306115",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/web/icons/Icon-maskable-192.png": {
-    "mtime": 1779430634.6900868,
-    "ast_hash": "af91d32625102320ed0c50272c2c3959",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/web/icons/Icon-maskable-512.png": {
-    "mtime": 1779430634.6910846,
-    "ast_hash": "875f079e88e3c08469f1b91908306115",
-    "semantic_hash": ""
-  },
-  "uban-api/static/images/pet_room_360.png": {
-    "mtime": 1784473540.7116382,
-    "ast_hash": "835e7f54c3ef29a33fee8c01d3c81d68",
-    "semantic_hash": ""
-  },
-  "uban-api/static/images/pet_room_360_lite.jpg": {
-    "mtime": 1784473540.7141545,
-    "ast_hash": "c34ff2592af3d0f4ba1651dd060f7a87",
-    "semantic_hash": ""
-  },
-  "uban-api/uban-admin/public/favicon.svg": {
-    "mtime": 1785771864.532233,
-    "ast_hash": "7e840862161341271697daa99a40d76b",
-    "semantic_hash": ""
-  },
-  "uban-api/uban-admin/public/icons.svg": {
-    "mtime": 1785771864.545416,
-    "ast_hash": "21c7473c592c67dc87223d49892c8f0a",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/lib/services/emergency_tone.dart": {
-    "mtime": 1786479706.345271,
-    "ast_hash": "9f9c5d8f2fc9e24b062edc75ff4819fa",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/lib/widgets/call_retry_dialog.dart": {
-    "mtime": 1786481062.4689205,
-    "ast_hash": "6da8625e40359598b51764933ecc6729",
-    "semantic_hash": ""
-  },
-  "Uban/mobile_app/assets/sounds/emergency_siren.wav": {
-    "mtime": 1786479673.9198475,
-    "ast_hash": "4da490dabb9e9c8ca491b2c7aed88fae",
-    "semantic_hash": ""
+    "semantic_hash": "c9becc9105f8cabce934d20c7bfb6aac"
   }
 }

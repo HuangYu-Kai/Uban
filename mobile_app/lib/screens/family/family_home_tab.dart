@@ -6,9 +6,22 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:record/record.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:audioplayers/audioplayers.dart';
+// ★ 2026-08-17 第二十五輪（需求 7）：讀取目前登入家屬的 caregiver_id，
+//   以呼叫 GET /api/alerts/{elder_id} 時帶上後端要求的 user_id 關係驗證。
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/elder.dart';
 import '../../services/api_service.dart';
 import 'alert_center_screen.dart';
+// ★ 2026-08-24（首頁「最新警示」互動化）：排程／健康提醒類警示點擊後的
+//   跳轉目的地，重用既有的 DailyScheduleScreen / HealthReminderScreen
+//   （已在 remote_care_hub_screen.dart 掛過的真實畫面，非本輪新造）。
+import 'placeholder_screens.dart';
+// ★ 2026-08-31 合併修正：`HealthReminderScreen` 原本在 placeholder_screens.dart，
+//   main 端（bf58d18）已把它實作成獨立的真實畫面並從 placeholder 移除。
+//   兩支各自都能編譯，合併後才變成「呼叫點指向已不存在的類別」——
+//   自動合併不會報衝突，flutter analyze 也放行，只有 build 會爆。
+//   改指向 main 的真實畫面（順帶把 placeholder 的「Phase 3 將開發」升級成實作）。
+import 'health_reminder_screen.dart';
 
 /// 🏠 子女端首頁 Tab (全新極光玻璃與 AI 情緒氣象台 + 生活時光牆)
 class FamilyHomeTab extends StatefulWidget {
@@ -20,14 +33,53 @@ class FamilyHomeTab extends StatefulWidget {
   /// 分支整合後這顆按鈕只剩一個 SnackBar、完全不會撥號；改由父層
   /// `FamilyMainScreen` 注入與互動分頁同一條 `VideoCallScreen` 路徑
   /// （帶 `targetSocketId`），避免這裡再自行拼一份房號邏輯而漂移。
+  final List<Map<String, dynamic>> activeAlerts;
   final VoidCallback? onStartVideoCall;
+
+  /// ★ 2026-08-18 IPS prototype：長輩目前所在區域卡片所需資料，全部由父層
+  /// `FamilyMainScreen` 提供，本分頁不自行呼叫 API（與 [activeAlerts] 同一套
+  /// 「父層擁有資料來源」慣例）。
+  /// [monitorDevices] 與傳給 `FamilyInteractionTab` 的是同一份清單（已過濾成
+  /// 只含 `deviceMode=='monitor'` 的裝置），用來判斷「是否已綁定監視機」與
+  /// 取得第一台監視機的 deviceId/deviceName（開啟校準畫面用）。
+  /// [elderZone] 是正規化後的 `{zone, enteredAt, updatedAt}`，null 代表尚無
+  /// 任何定位紀錄。
+  final List<dynamic> monitorDevices;
+  final Map<String, dynamic>? elderZone;
+  final int? userId;
+
+  /// ★ 2026-08-24（首頁「最新警示」互動化）：已被使用者滑掉／按下已讀鍵的
+  /// 警示複合鍵集合（組法見 [_buildAlertPreview] 內的 `id`）。刻意由父層
+  /// `FamilyMainScreen` 持有並傳入，不放在本分頁自己的 State——本分頁的
+  /// `_realLogs` / `_emergencyAlerts` 會在下拉重新整理（`RefreshIndicator`）
+  /// 或切換長輩（`didUpdateWidget`）時整批從後端重新取得，若「已關閉」清單
+  /// 存在自己的 State 裡會被那兩條路徑一起洗掉、已關閉的警示又跑回來；
+  /// 放在父層才不受那兩次重新整理影響。
+  final Set<String> dismissedAlertKeys;
+
+  /// 使用者滑掉或按下關閉鍵時回呼，通知父層把該複合鍵加進上面那個集合。
+  final ValueChanged<String>? onAlertItemDismissed;
+
+  /// 點擊「最新警示」清單中 CCTV／跌倒類警示時，開啟該監視機的監控檢視。
+  /// 由父層實作並注入——父層持有 `_monitorDevices` 與 `_currentElder`，
+  /// 才能組出與 `_presentCctvAlert()`「查看監視畫面」鍵相同的
+  /// `VideoCallScreen(monitorViewOnly: true)` 建構參數（見 G55），本分頁
+  /// 不重新拼一份、也不直接 import `video_call_screen.dart`。
+  final ValueChanged<String?>? onOpenMonitorView;
 
   const FamilyHomeTab({
     super.key,
     this.currentElder,
     this.isElderOnline = false,
+    this.activeAlerts = const [],
+    this.monitorDevices = const [],
+    this.elderZone,
+    this.userId,
     this.onNavigateToAlerts,
     this.onStartVideoCall,
+    this.dismissedAlertKeys = const {},
+    this.onAlertItemDismissed,
+    this.onOpenMonitorView,
   });
 
   @override
@@ -487,6 +539,11 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
 
   Map<String, dynamic>? _moodInsightData;
   List<dynamic> _realLogs = [];
+  // ★ 2026-08-17 第二十五輪（需求 7）：持久化的緊急警報記錄（emergency_alerts 表，
+  //   由 GET /api/alerts/{elder_id} 取得）。根因是「最新警示」原本只讀 _realLogs
+  //   （來自 activity_log 表），但跌倒警報是 yolo_alert_dispatcher 寫進另一張
+  //   emergency_alerts 表，兩張表沒有交集，導致歷史跌倒永遠不會出現在首頁。
+  List<dynamic> _emergencyAlerts = [];
   int _selectedDateFilterIndex = 0; // 0: 今天, 1: 昨天, 2: 歷史月曆
   DateTime? _selectedHistoricalDate;
 
@@ -758,10 +815,21 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     try {
       final insight = await ApiService.getElderMoodInsight(elderIdStr);
       final logs = await ApiService.getElderActivityLogs(elderIdStr, limit: 30);
+      // ★ 2026-08-17 第二十五輪（需求 7）：一併把持久化的跌倒警報（emergency_alerts 表）
+      //   補進來，讓「最新警示」不再只看得到 activity_log。後端 GET /api/alerts/{elder_id}
+      //   要求必填 user_id 做關係驗證，這裡沿用 family_interaction_tab.dart 已用過的
+      //   SharedPreferences 'caregiver_id' 取得目前登入家屬本人的 user_id；
+      //   讀不到就略過此次抓取（保持與既有 try/catch 一致：絕不讓失敗擲出例外）。
+      final prefs = await SharedPreferences.getInstance();
+      final familyUserId = prefs.getInt('caregiver_id');
+      final emergencyAlerts = familyUserId != null
+          ? await ApiService.getEmergencyAlerts(elderIdStr, userId: familyUserId, limit: 30)
+          : <dynamic>[];
       if (mounted) {
         setState(() {
           _moodInsightData = insight;
           _realLogs = logs;
+          _emergencyAlerts = emergencyAlerts;
         });
       }
     } catch (e) {
@@ -793,6 +861,16 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _buildElderHeaderCard(context),
+                        const SizedBox(height: 16),
+                        // ★ 2026-08-31 合併保留（monitor-newtool）：IPS 長輩目前所在區域。
+                        //   平板雙欄是 main 新增的版面，monitor 分支當時只有單欄，
+                        //   自動合併會把這兩張卡片整組丟掉——必須在雙欄與單欄兩處都掛上，
+                        //   否則家屬端看不到「長輩在此」與跌倒警報高亮。
+                        _buildZoneCard(context),
+                        const SizedBox(height: 16),
+                        // ★ 2026-08-31 合併保留（monitor-newtool）：
+                        //   監控設備狀態（含跌倒警報紅色高亮，Feature B，2026-08-24）
+                        _buildMonitorDeviceStatus(context),
                         const SizedBox(height: 16),
                         _buildAiMoodRadarCard(context),
                         const SizedBox(height: 16),
@@ -833,6 +911,16 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                   delegate: SliverChildListDelegate([
                     // 1. 長輩頂部極光卡片與在線狀態
                     _buildElderHeaderCard(context),
+                    const SizedBox(height: 16),
+
+                    // 1.5 📍 IPS prototype：長輩目前所在區域
+                    // ★ 2026-08-31 合併補回（monitor-newtool）：這一段落在衝突區之外，
+                    //   自動合併整段取了 main 版本、把 1.5／1.6 兩張卡片靜默丟掉。
+                    _buildZoneCard(context),
+                    const SizedBox(height: 16),
+
+                    // 1.6 📷 監控設備狀態（含跌倒警報高亮，Feature B，2026-08-24）
+                    _buildMonitorDeviceStatus(context),
                     const SizedBox(height: 16),
 
                     // 2. 🤖 亮點一：AI 長輩情緒氣象台 & 破冰金句卡片
@@ -982,6 +1070,485 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
         ],
       ),
     ).animate().fadeIn(duration: 400.ms).slideY(begin: -0.05);
+  }
+
+  // ─── 1.5 📍 長輩目前是否在監視機前 ───
+  //
+  // ★ 2026-08-24：「設定區域」校準功能已移除（校準畫面檔案已刪除、
+  //   監控卡片選單的「設定區域」入口收掉，見
+  //   family_interaction_tab.dart::_buildMonitorDeviceCard 的管理選單），
+  //   不再有任何管道能產生具名的 zone 多邊形，因此這裡不再顯示房間名稱、
+  //   也不再有「尚未校準」的引導提示——那個提示已經沒有出口可以被滿足
+  //   （按下去也沒有畫面可去）。改成單純呈現「監視機前是否偵測到人」，
+  //   資料來源是後端 `present` 欄位（見
+  //   `uban-api/services/indoor_position.py::ZoneTracker.snapshot` 的過期
+  //   判定），不再看 `calibrated` 或具名 `zone`。
+  //
+  // 資料完全由父層 FamilyMainScreen 提供（monitorDevices / elderZone），本分頁
+  // 不呼叫任何 API、不做任何導航。
+  // 三種狀態（皆為平靜文案，不出現原始錯誤訊息、不留永遠轉圈的 loading）：
+  //   1. monitorDevices 為空 → 尚未綁定監視機
+  //   2. elderZone == null 或 elderZone.present != true → 目前未偵測到長輩
+  //      （涵蓋「從未偵測過」與「曾經偵測到、但已經過期」——兩者對使用者
+  //      而言是同一件事：現在沒看到人，不需要細分）
+  //   3. elderZone.present == true → 監視機前偵測到長輩，顯示已持續時間
+
+  Widget _buildZoneCard(BuildContext context) {
+    final List<dynamic> monitors = widget.monitorDevices;
+    final dynamic firstMonitor = monitors.isNotEmpty ? monitors.first : null;
+    final int? deviceId = firstMonitor is Map
+        ? int.tryParse((firstMonitor['deviceId'] ?? firstMonitor['id'])?.toString() ?? '')
+        : null;
+    final String deviceName =
+        firstMonitor is Map ? (firstMonitor['deviceName']?.toString() ?? '監視機') : '監視機';
+
+    Widget header() {
+      return Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(colors: [Color(0xFF0EA5E9), Color(0xFF6366F1)]),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(Icons.my_location_rounded, color: Colors.white, size: 22),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            '長輩所在位置',
+            style: GoogleFonts.notoSansTc(
+              fontSize: 17,
+              fontWeight: FontWeight.w900,
+              color: Colors.white,
+            ),
+          ),
+        ],
+      );
+    }
+
+    Widget shell(Widget child) {
+      return Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF1E293B), Color(0xFF0F172A)],
+          ),
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.35), width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.3),
+              blurRadius: 24,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: child,
+      ).animate().fadeIn(duration: 400.ms).slideY(begin: -0.05);
+    }
+
+    // 狀態 1：尚未綁定監視機——不呼叫任何 API，純粹依清單是否為空判斷。
+    if (monitors.isEmpty || deviceId == null) {
+      return shell(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            header(),
+            const SizedBox(height: 14),
+            Text(
+              '尚未綁定監視機',
+              style: GoogleFonts.notoSansTc(
+                fontSize: 14,
+                color: const Color(0xFF94A3B8),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '綁定監視機後即可查看長輩目前所在的區域',
+              style: GoogleFonts.notoSansTc(fontSize: 12, color: const Color(0xFF64748B)),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final Map<String, dynamic>? zone = widget.elderZone;
+    // ★ 2026-08-24：`present` 是後端過期判定後的權威欄位（見
+    //   indoor_position.py::ZoneTracker.snapshot 與 PRESENCE_STALE_SECONDS），
+    //   直接使用，不再用 `zone == 'unknown'` 或 `last_seen == null` 反推。
+    //   elderZone 為 null（尚未拿到任何回應）比照「目前未偵測到」處理，
+    //   同一張提示卡、不另外做 loading 狀態。
+    final bool present = zone != null && zone['present'] == true;
+
+    // 狀態 2：裝置已綁定，但目前沒有偵測到長輩。
+    if (!present) {
+      final DateTime? lastUpdatedAt = zone?['updatedAt'] as DateTime?;
+      return shell(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            header(),
+            const SizedBox(height: 14),
+            Text(
+              '目前未偵測到長輩',
+              style: GoogleFonts.notoSansTc(
+                fontSize: 14,
+                color: const Color(0xFF94A3B8),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '「$deviceName」目前鏡頭前沒有偵測到人',
+              style: GoogleFonts.notoSansTc(fontSize: 12, color: const Color(0xFF64748B)),
+            ),
+            if (lastUpdatedAt != null) ...[
+              const SizedBox(height: 10),
+              _buildZoneUpdatedHint(lastUpdatedAt),
+            ],
+          ],
+        ),
+      );
+    }
+
+    // 走到這裡代表 present == true；Dart 的流程分析已經從上面
+    // `zone != null && zone['present'] == true` 的判斷式把 zone 提升為
+    // 非空型別，這裡不需要（也不能再加，會被判定為多餘）`!`。
+    final Map<String, dynamic> zoneData = zone;
+    final DateTime? enteredAt = zoneData['enteredAt'] as DateTime?;
+    final DateTime? updatedAt = zoneData['updatedAt'] as DateTime?;
+
+    // 狀態 3：目前偵測到長輩。校準功能移除後不再有具名區域可顯示，只呈現
+    // 「偵測到」徽章與已持續時間，不顯示房間名稱。
+    return shell(
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          header(),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF10B981).withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFF34D399)),
+                ),
+                child: Text(
+                  '偵測到長輩',
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF6EE7B7),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  '已持續 ${_formatZoneDwell(enteredAt)}',
+                  style: GoogleFonts.notoSansTc(fontSize: 13, color: const Color(0xFFCBD5E1)),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          if (updatedAt != null) ...[
+            const SizedBox(height: 10),
+            _buildZoneUpdatedHint(updatedAt),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildZoneUpdatedHint(DateTime updatedAt) {
+    final Duration diff = DateTime.now().difference(updatedAt);
+    final String text;
+    if (diff.inMinutes < 1) {
+      text = '最後更新：剛剛';
+    } else if (diff.inMinutes < 60) {
+      text = '最後更新：${diff.inMinutes} 分鐘前';
+    } else if (diff.inHours < 24) {
+      text = '最後更新：${diff.inHours} 小時前';
+    } else {
+      text = '最後更新：${diff.inDays} 天前';
+    }
+    return Text(
+      text,
+      style: GoogleFonts.notoSansTc(fontSize: 11, color: const Color(0xFF64748B)),
+    );
+  }
+
+  /// 把停留秒數格式化成「剛剛 / N 分鐘 / N 小時 N 分」。
+  String _formatZoneDwell(DateTime? enteredAt) {
+    if (enteredAt == null) return '剛剛';
+    final int seconds = DateTime.now().difference(enteredAt).inSeconds;
+    if (seconds < 90) return '剛剛';
+    final int minutes = seconds ~/ 60;
+    if (minutes < 60) return '$minutes 分鐘';
+    final int hours = minutes ~/ 60;
+    final int remMinutes = minutes % 60;
+    if (remMinutes == 0) return '$hours 小時';
+    return '$hours 小時 $remMinutes 分';
+  }
+
+  // ─── 1.6 📷 監控設備狀態（含跌倒警報高亮）───
+  //
+  // ★ 2026-08-24 Feature B：family_interaction_tab.dart 的監控卡片本來就有
+  // hasActiveAlert 高亮（深紅底 + 亮紅框，見該檔 _buildMonitorDeviceCard，
+  // :1690-1721），但家屬預設落地的這個首頁分頁完全沒有對應機制——
+  // widget.activeAlerts 在這裡本來只餵給 _buildAlertPreview 的純文字清單，
+  // 使用者回報「看不到紅色警示」正是因為如此。這裡新增一份監控設備清單，
+  // 套用與互動分頁**完全相同**的顏色與 device_id 比對邏輯。
+  //
+  // 顏色與比對邏輯刻意用鏡射、不抽共用元件：兩個分頁目前互不 import，各自
+  // 只從 FamilyMainScreen 拿處理好的資料；抽共用元件得讓其中一個分頁 import
+  // 另一個分頁檔案，是這個檔案目前沒有的新耦合模式，與「僅限版面與呈現」的
+  // 本輪改動範圍不成比例。改採風險較低的鏡射方案，在此註記重複來源：
+  // 顏色常數與 hasActiveAlert 判斷式對應 family_interaction_tab.dart 的
+  // _buildMonitorDeviceCard（:1690-1721）；警報類型中文標籤對應同檔 :2063 的
+  // _alertTypeLabel（下方 _shortAlertTypeLabel 特意不同名——本檔
+  // _buildAlertPreview 已有一套用長句子描述各警報類型的既有文案，同名容易
+  // 造成「這裡改了、那裡沒改」的錯覺）。
+  //
+  // 純呈現：不含「觀看 CCTV」等互動按鈕、不新增任何導航路徑或 API 呼叫。
+  Widget _buildMonitorDeviceStatus(BuildContext context) {
+    final List<dynamic> monitors = widget.monitorDevices;
+    if (monitors.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF1E293B), Color(0xFF0F172A)],
+        ),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.35), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.3),
+            blurRadius: 24,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(colors: [Color(0xFF0EA5E9), Color(0xFF6366F1)]),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(Icons.videocam_rounded, color: Colors.white, size: 22),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                '監控設備狀態',
+                style: GoogleFonts.notoSansTc(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          ...monitors.map(
+            (d) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _buildMonitorStatusCard(d),
+            ),
+          ),
+        ],
+      ),
+    ).animate().fadeIn(duration: 400.ms).slideY(begin: -0.05);
+  }
+
+  /// 單一監視機的精簡狀態卡（純呈現，無「觀看 CCTV」等互動按鈕）。
+  /// hasActiveAlert 判斷與顏色**鏡射** family_interaction_tab.dart::
+  /// _buildMonitorDeviceCard（:1690-1721），見上方 _buildMonitorDeviceStatus
+  /// 開頭註解的重複來源說明。
+  Widget _buildMonitorStatusCard(dynamic device) {
+    if (device is! Map) return const SizedBox.shrink();
+    final String name = (device['deviceName'] ?? 'Unnamed').toString();
+    final bool isOnline = device['isOnline'] == true;
+    final dynamic deviceId = device['deviceId'] ?? device['id'];
+
+    final deviceAlerts = widget.activeAlerts
+        .where((a) => (a['device_id'] ?? a['deviceId'])?.toString() == deviceId?.toString())
+        .toList();
+    final bool hasActiveAlert = deviceAlerts.isNotEmpty;
+    final Map<String, dynamic>? mostSevereAlert = hasActiveAlert ? deviceAlerts.first : null;
+    final String elderName = widget.currentElder?.displayName ?? '長輩';
+    final String alertType =
+        (mostSevereAlert?['alert_type'] ?? mostSevereAlert?['alertType'] ?? 'fall').toString();
+
+    // ★ 2026-08-24 Feature B：把 family_interaction_tab.dart::_buildMonitorDeviceCard
+    //   （:1709-1721）的「長輩目前所在此處」青色高亮鏡射到首頁這張精簡卡片，
+    //   讓兩個分頁的視覺狀態一致（該分頁先前只搬了 hasActiveAlert 的紅色高亮，
+    //   漏了這個）。deviceId 比對邏輯、三態優先序（警報 > 目前所在 > 一般）與色票
+    //   逐一對齊同一個函式，避免兩處各自維護一份而再度漂移。
+    final String? presentDeviceId = widget.elderZone?['deviceId']?.toString();
+    final bool isElderPresent =
+        !hasActiveAlert && presentDeviceId != null && presentDeviceId == deviceId?.toString();
+    // ⚠️ 括號是必要的：三元運算子的 `?` 緊接著 null-aware index `?[` 會被解析器
+    //   誤判成巢狀三元運算式的開頭，見 family_interaction_tab.dart:1716-1720 的
+    //   同一個註記與寫法。
+    final String? presentZoneName =
+        isElderPresent ? (widget.elderZone?['zone'])?.toString() : null;
+    final bool showZoneName = presentZoneName != null && presentZoneName != 'unknown';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 18),
+      decoration: BoxDecoration(
+        color: hasActiveAlert
+            ? const Color(0xFF3F1D1D)
+            : (isElderPresent ? const Color(0xFF083344) : const Color(0xFF0F172A)),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: hasActiveAlert
+              ? const Color(0xFFF87171)
+              : (isElderPresent ? const Color(0xFF38BDF8) : const Color(0xFF334155)),
+          width: (hasActiveAlert || isElderPresent) ? 2.0 : 1.0,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: hasActiveAlert
+                ? Colors.red.withValues(alpha: 0.22)
+                : (isElderPresent
+                    ? const Color(0xFF38BDF8).withValues(alpha: 0.22)
+                    : Colors.black.withValues(alpha: 0.25)),
+            blurRadius: (hasActiveAlert || isElderPresent) ? 12 : 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(
+              color: isOnline ? const Color(0xFF34D399) : const Color(0xFF475569),
+              shape: BoxShape.circle,
+              boxShadow: isOnline
+                  ? [
+                      BoxShadow(
+                        color: const Color(0xFF34D399).withValues(alpha: 0.5),
+                        blurRadius: 6,
+                      ),
+                    ]
+                  : null,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        isOnline ? name : '(離線) $name',
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: isOnline ? const Color(0xFFE2E8F0) : const Color(0xFF64748B),
+                        ),
+                      ),
+                    ),
+                    if (hasActiveAlert) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.red.shade500,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          _shortAlertTypeLabel(alertType),
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ] else if (isElderPresent) ...[
+                      // ★ 2026-08-24 Feature B：「長輩在此」徽章，僅在沒有作用中
+                      //   警報時顯示——結構性 else-if，不只是條件順序，鏡射
+                      //   family_interaction_tab.dart:1824-1843。
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF06B6D4),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Text(
+                          '長輩在此',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  hasActiveAlert
+                      ? '⚠️ $elderName ${_shortAlertTypeLabel(alertType)}，請立即查看監視畫面'
+                      : (isElderPresent
+                          ? '📍 目前長輩所在此處${showZoneName ? ' · $presentZoneName' : ''}'
+                          : (isOnline ? '線上監控中' : '離線')),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 2,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: hasActiveAlert
+                        ? const Color(0xFFFCA5A5)
+                        : (isElderPresent ? const Color(0xFF7DD3FC) : const Color(0xFF94A3B8)),
+                    fontWeight: (hasActiveAlert || isElderPresent)
+                        ? FontWeight.w600
+                        : FontWeight.normal,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 警報類型中文標籤，鏡射 family_interaction_tab.dart::_alertTypeLabel
+  /// （:2063）的對照表。另外命名（而非同名 `_alertTypeLabel`）是因為本檔
+  /// `_buildAlertPreview` 已有一套用長句子描述各警報類型的既有文案，避免
+  /// 同名造成「這裡改了、那裡沒改」的錯覺。
+  String _shortAlertTypeLabel(String type) {
+    const map = {
+      'fall': '跌倒',
+      'prolonged_inactivity': '久未活動',
+      'lying_down': '倒地',
+      'crawl': '爬行',
+    };
+    return map[type] ?? type;
   }
 
   // ─── 2. 🤖 AI 長輩情緒氣象台 & 破冰話題 (方案 B：第一人稱問候 + 快捷動作) ───
@@ -1522,41 +2089,52 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFF38BDF8), Color(0xFF818CF8)],
+              // ★ 用 Expanded 包住左側區塊：長輩姓名為執行期字串，長度不定，
+              //   沒有 Expanded 時右側「即時同步」徽章會被推出螢幕造成 RenderFlex overflow。
+              Expanded(
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF38BDF8), Color(0xFF818CF8)],
+                        ),
+                        borderRadius: BorderRadius.circular(14),
                       ),
-                      borderRadius: BorderRadius.circular(14),
+                      child: const Icon(Icons.grid_view_rounded, color: Colors.white, size: 24),
                     ),
-                    child: const Icon(Icons.grid_view_rounded, color: Colors.white, size: 24),
-                  ),
-                  const SizedBox(width: 12),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '$name 動態時光牆',
-                        style: GoogleFonts.notoSansTc(
-                          fontSize: 19,
-                          fontWeight: FontWeight.w900,
-                          color: Colors.white,
-                        ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '$name 動態時光牆',
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                            style: GoogleFonts.notoSansTc(
+                              fontSize: 19,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.white,
+                            ),
+                          ),
+                          Text(
+                            '目前共 ${activeFilteredItems.length} 筆生活足跡',
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                            style: GoogleFonts.notoSansTc(
+                              fontSize: 12,
+                              color: const Color(0xFF94A3B8),
+                            ),
+                          ),
+                        ],
                       ),
-                      Text(
-                        '目前共 ${activeFilteredItems.length} 筆生活足跡',
-                        style: GoogleFonts.notoSansTc(
-                          fontSize: 12,
-                          color: const Color(0xFF94A3B8),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+                    ),
+                  ],
+                ),
               ),
+              const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
@@ -2555,23 +3133,60 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
   }
 
     // ─── 4. 警示預覽 ───
-
-  static const List<Map<String, dynamic>> _mockAlerts = [
-    {
-      'title': '活動量偏低',
-      'desc': '今日步數僅 800 步，低於平均值',
-      'level': 'medium',
-      'icon': Icons.directions_walk_rounded,
-    },
-    {
-      'title': '用藥提醒確認',
-      'desc': '下午 2 點的血壓藥尚未確認服用',
-      'level': 'high',
-      'icon': Icons.medication_rounded,
-    },
-  ];
+    // ★ 2026-08-17 第二十五輪（需求 7）：原本這裡有 `_mockAlerts`（硬編的假警示資料，
+    //   例如「活動量偏低／今日步數僅800步」），三個真實來源都是空時就顯示給真實使用者看，
+    //   等同對家屬謊報虛構的健康警訊。改為三個真實來源皆空時顯示明確的空狀態文案
+    //   （見 `_buildAlertPreview` 尾端），故整個欄位已刪除且不再需要。
 
   Widget _buildAlertPreview(BuildContext context) {
+    // ★ 整合即時跌倒／異常警報（activeAlerts）至首頁「最新警示」
+    final List<Map<String, dynamic>> activeItems = [];
+    final currentElderIdStr = widget.currentElder?.elderId ?? widget.currentElder?.id?.toString();
+    for (final a in widget.activeAlerts) {
+      final aElderId = (a['elder_id'] ?? a['elderId'])?.toString();
+      if (currentElderIdStr != null && aElderId != null && aElderId != currentElderIdStr) {
+        continue; // 隔離不同長輩的警報
+      }
+      final type = (a['alert_type'] ?? a['alertType'] ?? 'fall').toString();
+      final conf = a['confidence'];
+      final confText = conf != null ? ' (信心度 ${(conf * 100).toStringAsFixed(0)}%)' : '';
+      String title = '🚨 跌倒緊急警報';
+      String desc = '監視機偵測到長輩疑似跌倒$confText，請立即確認！';
+      if (type == 'crawl') {
+        title = '⚠️ 疑似爬行警報';
+        desc = '監視機偵測到長輩異常爬行動作$confText，請多加留意。';
+      } else if (type == 'lying_down') {
+        title = '⚠️ 久躺未起警報';
+        desc = '長輩在監視區域久躺不起$confText，建議關懷確認。';
+      } else if (type == 'prolonged_inactivity') {
+        title = '⚠️ 長時間無活動警報';
+        desc = '長輩活動量異常偏低$confText，請留意長輩身體狀況。';
+      }
+      final String? liveDeviceId = (a['device_id'] ?? a['deviceId'])?.toString();
+      // ★ 2026-08-24（首頁「最新警示」互動化）：滑動關閉／點擊跳轉所需的穩定
+      //   識別鍵與路由資訊。id 優先用 alert_id——後端對同一長輩+裝置+alert_type
+      //   的重複警報是 UPSERT、沿用同一個 alert_id（見下方既有去重註解），這樣
+      //   同一筆警報不論之後是仍「即時」還是變成「歷史」，關閉鍵都一致，不會
+      //   關掉了還在另一個來源重新冒出來。alert_id 缺漏時退回
+      //   type+device+timestamp 複合鍵，絕不用清單 index（dismiss 後其餘項目
+      //   index 會前移，index 當鍵會關錯項目）。
+      final String? liveAlertIdRaw = (a['alert_id'] ?? a['alertId'])?.toString();
+      final String? liveTs = (a['timestamp'] ?? a['ts'])?.toString();
+      final String liveItemId = (liveAlertIdRaw != null && liveAlertIdRaw.isNotEmpty)
+          ? 'alert:$liveAlertIdRaw'
+          : 'live:$type:${liveDeviceId ?? ''}:${liveTs ?? ''}';
+      activeItems.add({
+        'id': liveItemId,
+        'title': title,
+        'desc': desc,
+        'level': 'high',
+        'icon': Icons.warning_amber_rounded,
+        // CCTV／跌倒類警示一律導去監控檢視，見 _navigationFor。
+        'routeType': 'monitor',
+        'deviceId': liveDeviceId,
+      });
+    }
+
     final alertItems = _realLogs.where((log) {
       final text = log['content']?.toString() ?? '';
       final etype = log['event_type']?.toString() ?? '';
@@ -2581,10 +3196,110 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
       final title = desc.split('|').first.replaceAll(RegExp(r'【.*?】'), '').trim();
       final level = desc.contains('用藥') || desc.contains('未確認') ? 'high' : 'medium';
       final icon = desc.contains('用藥') ? Icons.medication_rounded : Icons.directions_walk_rounded;
-      return {'title': title.isNotEmpty ? title : '健康警示', 'desc': desc, 'level': level, 'icon': icon};
+      // ★ 2026-08-24：activity_log 沒有結構化的警示分類欄位，只能用既有的
+      //   文字關鍵字反推跳轉目的地——與上面 icon/level 判斷同一套關鍵字來源，
+      //   避免另外發明一套分類邏輯。沒把握對應到哪個畫面時 routeType 留 null
+      //   （_navigationFor 會回傳 null → 不可點擊），不要亂猜跳轉去錯的畫面。
+      String? routeType;
+      if (desc.contains('用藥') || desc.contains('服藥') || desc.contains('醫囑')) {
+        routeType = 'health';
+      } else if (desc.contains('提醒') || desc.contains('排程') || desc.contains('行程')) {
+        routeType = 'schedule';
+      }
+      final String? logIdRaw = log['log_id']?.toString();
+      final String? logTs = log['timestamp']?.toString();
+      final String logItemId = (logIdRaw != null && logIdRaw.isNotEmpty)
+          ? 'log:$logIdRaw'
+          : 'log-fallback:${logTs ?? ''}:${desc.hashCode}';
+      return {
+        'id': logItemId,
+        'title': title.isNotEmpty ? title : '健康警示',
+        'desc': desc,
+        'level': level,
+        'icon': icon,
+        'routeType': routeType,
+      };
     }).toList();
 
-    final displayAlerts = alertItems.isNotEmpty ? alertItems : _mockAlerts;
+    // ★ 2026-08-17 第二十五輪（需求 7）：把持久化的跌倒警報（_emergencyAlerts，來自
+    //   emergency_alerts 表）也併入「最新警示」。根因見上方欄位宣告處的註解——
+    //   activity_log 與 emergency_alerts 是兩張互不相交的表，故歷史跌倒過去永遠不會
+    //   出現在這裡，只有觸發當下的 activeAlerts 即時 overlay 曾短暫顯示、一關掉/重開
+    //   App 就消失。
+    //   dedupe：同一筆跌倒若「現在仍是即時警報」會同時存在於 activeAlerts（上面的
+    //   activeItems）與剛查回來的 _emergencyAlerts；後端對同一長輩+裝置+alert_type
+    //   且 status='active' 的重複跌倒是 UPSERT、沿用同一個 alert_id（見
+    //   uban-api/routers/alert.py 開頭註解），故用 alert_id 當去重鍵是可靠的。
+    final Set<String> liveAlertIds = widget.activeAlerts
+        .map((a) => (a['alert_id'] ?? a['alertId'])?.toString())
+        .whereType<String>()
+        .toSet();
+
+    final persistedAlertItems = _emergencyAlerts.where((row) {
+      // 沿用上方 activeItems 迴圈同一套「隔離不同長輩警報」規則
+      final rElderId = (row['elder_id'] ?? row['elderId'])?.toString();
+      if (currentElderIdStr != null && rElderId != null && rElderId != currentElderIdStr) {
+        return false;
+      }
+      final rAlertId = (row['alert_id'] ?? row['alertId'])?.toString();
+      if (rAlertId != null && liveAlertIds.contains(rAlertId)) {
+        return false; // 目前仍是即時警報，已由 activeItems 顯示，避免同一筆跌倒重複兩則
+      }
+      return true;
+    }).map((row) {
+      final type = (row['alert_type'] ?? row['alertType'] ?? 'fall').toString();
+      // detected_at 格式比照 `_buildElderLifeFeedSection` 對 timestamp 的處理方式
+      // （substring 取日期/時間），維持全檔一致的時間格式風格。
+      final detectedAt = (row['detected_at'] ?? row['detectedAt'] ?? '').toString();
+      String whenStr = '';
+      if (detectedAt.length >= 16) {
+        whenStr = '${detectedAt.substring(5, 7)}/${detectedAt.substring(8, 10)} ${detectedAt.substring(11, 16)}';
+      }
+      String title = '🚨 跌倒緊急警報';
+      String desc = '監視機曾偵測到長輩疑似跌倒。';
+      if (type == 'crawl') {
+        title = '⚠️ 疑似爬行警報';
+        desc = '監視機曾偵測到長輩異常爬行動作。';
+      } else if (type == 'lying_down') {
+        title = '⚠️ 久躺未起警報';
+        desc = '長輩曾在監視區域久躺不起。';
+      } else if (type == 'prolonged_inactivity') {
+        title = '⚠️ 長時間無活動警報';
+        desc = '長輩曾出現活動量異常偏低。';
+      }
+      if (whenStr.isNotEmpty) {
+        desc = '$desc（發生於 $whenStr）';
+      }
+      final String? persistedDeviceId = (row['device_id'] ?? row['deviceId'])?.toString();
+      final String? persistedAlertIdRaw = (row['alert_id'] ?? row['alertId'])?.toString();
+      // 同一套 id 組法，見上方 activeItems 迴圈的註解——刻意與即時來源共用
+      // 'alert:$id' 前綴，同一筆警報無論來自哪個來源都對到同一把關閉鍵。
+      final String persistedItemId = (persistedAlertIdRaw != null && persistedAlertIdRaw.isNotEmpty)
+          ? 'alert:$persistedAlertIdRaw'
+          : 'persisted:$type:${persistedDeviceId ?? ''}:$detectedAt';
+      return {
+        'id': persistedItemId,
+        'title': title,
+        'desc': desc,
+        'level': 'high',
+        'icon': Icons.warning_amber_rounded,
+        'routeType': 'monitor',
+        'deviceId': persistedDeviceId,
+      };
+    }).toList();
+
+    final allCombinedAlerts = [...activeItems, ...persistedAlertItems, ...alertItems];
+    // ★ 2026-08-24：濾掉已被使用者滑掉／按下已讀鍵的項目。刻意放在三個來源
+    //   合併之後、take(30) 之前執行——即使 _loadDynamicData()（下拉重新整理
+    //   或切換長輩）把 _realLogs / _emergencyAlerts 整批從後端重新抓回來，
+    //   這裡仍用父層持有、不受那次重新整理影響的 dismissedAlertKeys 再濾一次，
+    //   已關閉的項目不會被重新整理復活（見 widget.dismissedAlertKeys 欄位註解）。
+    final visibleAlerts = allCombinedAlerts
+        .where((item) => !widget.dismissedAlertKeys.contains(item['id']))
+        .toList();
+    // 上限比照同一支函式（_loadDynamicData）抓取 _realLogs 時已用過的 30 筆，
+    // 避免清單隨歷史警報無限增長；沿用既有數字而非另外發明一個。
+    final displayAlerts = visibleAlerts.take(30).toList();
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 8),
       padding: const EdgeInsets.all(22),
@@ -2707,13 +3422,133 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
 
           const SizedBox(height: 16),
 
-          ...displayAlerts.asMap().entries.map((e) => Padding(
+          // ★ 2026-08-17 第二十五輪（需求 7）：C3 — 三個真實來源（即時 activeAlerts、
+          //   持久化 persistedAlertItems、activity_log 的 alertItems）都是空時，
+          //   不再顯示 `_mockAlerts` 假資料，改用明確的空狀態文案，
+          //   樣式比照 `_buildElderLifeFeedSection` 的空狀態（Icon + 提示文字）。
+          if (displayAlerts.isEmpty)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Column(
+                  children: [
+                    const Icon(Icons.verified_rounded, color: Colors.white38, size: 44),
+                    const SizedBox(height: 8),
+                    Text(
+                      '目前沒有任何警示',
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: 14,
+                        color: Colors.white60,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            ...displayAlerts.asMap().entries.map((e) {
+              final Map<String, dynamic> item = e.value;
+              final String itemId = item['id'] as String;
+              // ★ 2026-08-24：swipe 與明確關閉鍵共用同一個 handler，兩者效果
+              //   完全相同（僅通知父層 FamilyMainScreen 把 itemId 記入
+              //   dismissedAlertKeys，見 widget.onAlertItemDismissed 欄位註解）。
+              void handleDismiss() {
+                HapticFeedback.lightImpact();
+                widget.onAlertItemDismissed?.call(itemId);
+              }
+              return Padding(
                 padding: EdgeInsets.only(bottom: e.key < displayAlerts.length - 1 ? 12 : 0),
-                child: _AlertItem(data: e.value, index: e.key),
-              )),
+                child: Dismissible(
+                  // ★ 穩定複合鍵（見上方三個來源迴圈的 id 組法），絕不用
+                  //   e.key（清單 index）——dismiss 後其餘項目 index 會前移。
+                  key: ValueKey(itemId),
+                  direction: DismissDirection.endToStart,
+                  background: _buildAlertDismissBackground(),
+                  onDismissed: (_) => handleDismiss(),
+                  child: _AlertItem(
+                    data: item,
+                    index: e.key,
+                    onDismiss: handleDismiss,
+                    onTap: _navigationForAlertItem(item, context),
+                  ),
+                ),
+              );
+            }),
         ],
       ),
     ).animate().fadeIn(delay: 300.ms, duration: 400.ms);
+  }
+
+  /// 「最新警示」項目向左滑動時，底下露出的「已讀／關閉」提示背景。
+  Widget _buildAlertDismissBackground() {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF334155),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      alignment: Alignment.centerRight,
+      padding: const EdgeInsets.symmetric(horizontal: 22),
+      child: const Icon(Icons.done_all_rounded, color: Colors.white70, size: 24),
+    );
+  }
+
+  /// 依警示的 `routeType` 決定點擊要跳轉去哪；沒有把握對應到哪個畫面
+  /// （`routeType` 為 null，或缺少必要參數）就回傳 null——`_AlertItem` 會因此
+  /// 隱藏箭頭圖示、整張卡片不可點擊。寧可少一個功能鍵，也不要亂猜跳轉去
+  /// 錯的畫面（見任務需求：「若一個型別沒有合理目的地，就讓它不可點擊」）。
+  ///
+  /// - `monitor`（CCTV／跌倒類）→ 委由父層 `onOpenMonitorView` 開啟監控檢視，
+  ///   父層才有 `_monitorDevices` 可組出 `VideoCallScreen(monitorViewOnly: true)`
+  ///   所需的 targetSocketId（見 widget.onOpenMonitorView 欄位註解、G55）。
+  /// - `schedule` / `health` → 直接在本分頁導向既有的 `DailyScheduleScreen` /
+  ///   `HealthReminderScreen`（`placeholder_screens.dart`，已在
+  ///   `remote_care_hub_screen.dart` 掛過的既有畫面，非本輪新造），兩者皆為
+  ///   自足元件（只需 elderId），不涉及通話／訊令狀態，故不必比照 monitor
+  ///   走父層回呼。
+  VoidCallback? _navigationForAlertItem(Map<String, dynamic> item, BuildContext context) {
+    final String? routeType = item['routeType'] as String?;
+    switch (routeType) {
+      case 'monitor':
+        final String? deviceId = item['deviceId'] as String?;
+        if (deviceId == null || deviceId.isEmpty || widget.onOpenMonitorView == null) {
+          return null;
+        }
+        return () {
+          HapticFeedback.lightImpact();
+          widget.onOpenMonitorView!(deviceId);
+        };
+      case 'schedule':
+        final elder = widget.currentElder;
+        if (elder == null) return null;
+        return () {
+          HapticFeedback.lightImpact();
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => DailyScheduleScreen(elderId: elder.id)),
+          );
+        };
+      case 'health':
+        final elder = widget.currentElder;
+        if (elder == null) return null;
+        return () {
+          HapticFeedback.lightImpact();
+          Navigator.push(
+            context,
+            // ★ 2026-08-31 合併修正：main 的真實 HealthReminderScreen 收 String elderId
+            //   （placeholder 版收 int），比照 remote_care_hub_screen.dart:220 的
+            //   權威用法 `elderId: (...).toString()` 轉型，並一併帶入姓名。
+            MaterialPageRoute(
+              builder: (_) => HealthReminderScreen(
+                elderId: elder.id.toString(),
+                elderName: elder.displayName,
+              ),
+            ),
+          );
+        };
+      default:
+        return null;
+    }
   }
 }
 
@@ -2748,7 +3583,9 @@ class _PulseDot extends StatelessWidget {
 class _AlertItem extends StatelessWidget {
   final Map<String, dynamic> data;
   final int index;
-  const _AlertItem({required this.data, required this.index});
+  final VoidCallback? onDismiss;
+  final VoidCallback? onTap;
+  const _AlertItem({required this.data, required this.index, this.onDismiss, this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -2785,7 +3622,7 @@ class _AlertItem extends StatelessWidget {
         borderSide = BorderSide(color: const Color(0xFF0284C7).withValues(alpha: 0.5), width: 1.2);
     }
 
-    return Container(
+    final card = Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: cardBgColor,
@@ -2819,6 +3656,8 @@ class _AlertItem extends StatelessWidget {
               children: [
                 Text(
                   data['title'] as String,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: GoogleFonts.notoSansTc(
                     fontSize: 16,
                     fontWeight: FontWeight.w800,
@@ -2828,6 +3667,8 @@ class _AlertItem extends StatelessWidget {
                 const SizedBox(height: 3),
                 Text(
                   data['desc'] as String,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                   style: GoogleFonts.notoSansTc(
                     fontSize: 13.5,
                     color: descColor,
@@ -2838,14 +3679,43 @@ class _AlertItem extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(width: 8),
-          Icon(
-            Icons.chevron_right_rounded,
-            color: levelColor,
-            size: 22,
-          ),
+          // 只有能導向明確目的地時才顯示箭頭；onTap 為 null（見
+          // _navigationForAlertItem）代表沒有合理跳轉，不畫箭頭以免誤導。
+          if (onTap != null) ...[
+            const SizedBox(width: 8),
+            Icon(
+              Icons.chevron_right_rounded,
+              color: levelColor,
+              size: 22,
+            ),
+          ],
+          // 手動「已讀關閉」鍵，效果與向左滑動（Dismissible.onDismissed）
+          // 完全相同，兩者都呼叫呼叫端同一個 handleDismiss。
+          if (onDismiss != null) ...[
+            const SizedBox(width: 4),
+            GestureDetector(
+              onTap: onDismiss,
+              behavior: HitTestBehavior.opaque,
+              child: Padding(
+                padding: const EdgeInsets.all(8),
+                child: Icon(
+                  Icons.close_rounded,
+                  color: descColor.withValues(alpha: 0.7),
+                  size: 16,
+                ),
+              ),
+            ),
+          ],
         ],
       ),
+    );
+
+    // 用 InkWell 包住卡片本體：onTap 為 null 時 InkWell 會自動判定為
+    // disabled（不畫漣漪、不進 pressed 狀態），不必額外寫條件式分支。
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: card,
     ).animate(delay: (index * 80).ms).fadeIn().slideX(begin: 0.05);
   }
 }
