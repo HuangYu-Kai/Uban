@@ -127,7 +127,7 @@ Key service addresses:
 | 撥打 → 接聽 → 掛斷 完整流程（含冷啟動五層兜底） | §4 通話生命週期 |
 | **按鈕在哪、按了跳去哪、可以安全改什麼** | `CLAUDE_call-monitor-ui-map.md`（原 §5，2026-08-25 起獨立成檔） |
 | 監控機／CCTV／裝置角色指派 | §6 監控子系統 |
-| **137 條護欄（絕對不可單點修改）** | §7 |
+| **138 條護欄（絕對不可單點修改）** | §7 |
 | 這段程式碼為什麼長這樣（37 輪修復年表；近期輪次在 §8，第一至三十五輪在 `CLAUDE_call-monitor-history.md`） | §8 |
 | 出問題了怎麼查（三層 A/B/C 定位法、MIUI 檢查表） | §9 |
 | 改完要做什麼 | §10 修改 SOP |
@@ -199,7 +199,7 @@ Scheduled jobs (defined in `main.py`):
 
 ### 3.2 通話與監控
 
-**完整規則見 [`CLAUDE_call-monitor.md`](CLAUDE_call-monitor.md) §7（137 條護欄）。**
+**完整規則見 [`CLAUDE_call-monitor.md`](CLAUDE_call-monitor.md) §7（138 條護欄）。**
 以下僅列最高頻的幾條，動手前仍必須讀完整版：
 
 - **Never merge signaling and media tracks** — they are on separate hosts by design
@@ -231,7 +231,7 @@ Flutter 前端在 `Uban/mobile_app/` 下沒有更細的 CLAUDE.md，本檔即為
 
 ## 5. 變更歷史
 
-通話與監控子系統的完整修復年表（2026-06-05 起，已累積 37 輪）已逐條核對，內容全數存在於
+通話與監控子系統的完整修復年表（2026-06-05 起，已累積 38 輪）已逐條核對，內容全數存在於
 [`CLAUDE_call-monitor.md`](CLAUDE_call-monitor.md) §8（近期輪次）與
 [`CLAUDE_call-monitor-history.md`](CLAUDE_call-monitor-history.md)（第一至三十五輪，含本節原本
 記載的全部早期輪次），故不再於本檔重複列出。部分項目在遷移後已修正過期或錯誤的敘述（例如不

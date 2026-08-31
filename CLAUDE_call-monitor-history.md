@@ -10,7 +10,7 @@
 > **為什麼拆出來**：主文件曾成長到超過工具單次讀取上限（256 KB），使「動手前必須完整讀過本
 > 文件」這條鐵律在技術上無法遵守；把最舊的輪次移出，讓主文件回落到讀取上限之內。
 >
-> **收錄範圍**：2026-06-05 起至**第三十五輪**（2026-08-26）。第三十六輪以後仍在
+> **收錄範圍**：2026-06-05 起至**第三十六輪**（2026-08-26）。第三十七輪以後仍在
 > `CLAUDE_call-monitor.md` §8。
 >
 > **這份是查證用的歷史檔，不是動手前的必讀文件**；必讀的是主文件的 §1–§7、§9、§10。
@@ -20,7 +20,7 @@
 
 ---
 
-## 早期修復年表（第一輪 – 第三十五輪）
+## 早期修復年表（第一輪 – 第三十六輪）
 
 ### 2026-06-05 / 06 — 第一輪：早期通話信令
 雙重 room ID prefix（`comm_elder_comm_elder_X` → `join-failed: 您無權加入此通訊房間`）、
@@ -2176,6 +2176,110 @@ isEmergency／preferRelay）」的修正記錄、`session_manager.dart` 的
 實地判準。
 
 連接／跳轉語意變更的 graphify 同步狀態由對應的實作子代理負責，不在本次文件任務範圍內。
+
+---
+
+### 2026-08-26 — 第三十六輪：真機八項回報 —— relay 全面回退、YOLO 修復從未落地、掛斷競態
+
+**背景**
+
+使用者真機八項回報。最重要的一項：三輪疊加的 relay-only 優化在真機四種情境下仍讓
+緊急通話連不上，整組回退；另查出上一輪記載的 YOLO 修復其實從未接上、掛斷後對方才
+接聽會留下無 UI 的殭屍連線、快速登入與移機深連結仍殘留問題。以下依
+[回歸回退]／[監控]／[通話]／[Session] 分類記錄。
+
+**根因與修復**
+
+**[回歸回退] — 本輪最重要的一項**
+
+1. **relay-only 全面回退**（`signaling.dart` / `video_call_screen.dart`）：第三十三
+   ～三十五輪三輪疊加 `iceTransportPolicy: 'relay'`、`preferRelay` 解耦、offer 前
+   relay 候選檢查＋重建安全網，**真機仍然失效**：四種情境（螢幕開／關 × App 存活／
+   被殺死）下雙端都進房，但其中一端 ICE 失敗，失敗端還會翻轉。
+   根因是設計層面的，非實作瑕疵：兩端各自讀本機 TURN 快取、各自決定 policy，各自
+   探測失敗就重建 PeerConnection 並清掉已到達的遠端候選，失敗端隨網路／Doze 狀態
+   翻轉。要做對須讓兩端在 commit 前協商一致，代價與收益不成比例，因此整組回退。
+   修復：整組移除（8 欄位、4 方法、`onConnect` 探測觸發、兩端可行性重建、
+   `onIceGatheringState` handler），`iceTransportPolicy` 回到無條件 `'all'`。
+   `preferRelay` 參數刻意保留但接到空處——它正確區分「真人通話」與「CCTV 監控」，
+   刪掉會讓下次重做的人重踩一次坑。→ **G131**
+
+**[監控]**
+
+2. **YOLO 權重路徑修復從未落地**（`yolo_detector_service.py`）：第三十五輪記載已
+   完成，實際上只有 docstring 與兩個未被引用的常數落地，`_load_model()` 本體仍是
+   `YOLO("yolov8n.pt")`——部署出去的是**修復的說明，不是修復本身**。本輪真正接
+   上：`YOLO_WEIGHTS_PATH`（選填）→ `os.path.abspath()` → `os.path.isfile()`
+   預檢，不存在就設 `_load_error` 並 return，絕不呼叫 `YOLO(...)`。
+   ⚠️ 上一輪「實測」在 `uban-api/`（權重檔所在目錄）執行，舊相對路徑在那裡本來就
+   會成功，測試設計上不可能失敗；換一個工作目錄立刻看到連網下載。→ **G132**
+
+3. **載入失敗原因送到監控機螢幕**（`routers/alert.py` / `api_service.dart` /
+   `elder_screen.dart`）：`_load_error` 先前只寫伺服器日誌，使用者碰不到，連續三
+   輪卡在「知道失敗、不知道為什麼」。`POST /api/cctv/frame` 的 `yolo_unavailable`
+   分支一併回傳，前端 `CctvPushResult` 顯示在 CCTV 畫面。未分類的 `str(e)` 限長
+   200 字元、壓單行、redact 帳密；完整原文仍寫伺服器日誌。
+
+**[通話]**
+
+4. **掛斷後對方才接聽：後端從未阻斷**（`socket_app.py` / `signaling.dart`）：網路
+   慢導致通知遲到，撥話端掛斷、收話端才接聽並重撥後，**只有收話端進房，卻看得到
+   撥話端無聲的視訊**。缺口：(a) `on_cancel_call` 有 `_mark_call_cancelled`，
+   **`on_end_call` 沒有**；(b) **`on_call_accept` 從未查詢
+   `_cancelled_call_ids`**。修復：`on_end_call` 補標記；`on_call_accept` 轉發前查
+   驗，以 `call-busy`（`reason: 'cancelled'`）回覆**收話端**。已查證
+   offer/answer/ice-candidate 不帶 `callId`，擋住 `call-accept` 即完整收斂點。
+   → **G133**
+
+5. **無 UI 的 PeerConnection 洩漏**（`signaling.dart`）：真因是 `call-accept`
+   fallback 在 `onCallAcceptedByRemote` 為 null（畫面已 dispose）時仍靜默呼叫
+   `createOffer()`，建立無畫面的連線；已補上 `_invalidCallIds` 查驗，並為
+   `_closePeerConnection()` 加 try/catch＋`identical()` 守衛，避免中途拋出留下
+   永遠半拆解的連線。→ **G134**
+
+**[Session]**
+
+6. **快速登入仍然遺失**（`session_manager.dart`）：第三十四／三十五輪已讓
+   `_handleLogout`／`_exitCCTVMode` 傳 `preserveQuickLogin: true`，症狀依舊。稽核
+   未能指認具體 writer，改採涵蓋整類問題的修法：`releaseIfBound()` 改傳
+   `preserveQuickLogin: true`——保險絲不該重新決定上游政策。已查證不影響家屬端強
+   制解綁（`handleForceLogout` 走自己的手動清除，不經過 `releaseIfBound()`）。
+
+7. **移機助手連結卡在身分選擇頁**（`main.dart`）：`/recovery` 改 `intent://` 後
+   App 確實被喚起，但復原碼未被處理——確認對話框的 `Future.delayed(300ms)` 被同
+   時間 Splash 的 `pushAndRemoveUntil` 連路由一起移除。修復：復原碼暫存，200ms
+   輪詢等 `splashActive` 轉 false 才消費；每次輪詢都 latch，看過待接來電就放棄復
+   原碼（漏接來電比復原提示遲到嚴重）。
+
+8. **`monitor_pairing_screen.dart` 導航堆疊殘留**（第三十一輪漏掉的同型呼叫點）：
+   配對成功後 `pushReplacement` 把 `IdentificationScreen` 留在底下，改用
+   `pushAndRemoveUntil`。
+
+**尚未收斂**
+
+- 初次通話 WebRTC 連不上、第二通才正常（延續自第三十五輪）：relay 與 TURN 探測已
+  移除，症狀是否消失待實機確認；剩餘假設為 `_elderSocketId` 由 2.5 秒輪詢填入，
+  太早撥出可能指向 null 或舊 sid。
+- 長輩端背景存活時，緊急通話只喚醒 App、不進視訊房間（延續自第三十四輪）。
+
+**新增護欄**
+
+本輪新增 **G131–G134**（前端 G131、G134；跨端 G132；後端 G133；條文見 §7.1／
+§7.2）。§7 開頭護欄總數同步更新為 **134**。
+
+**驗證**
+
+- `flutter analyze lib` — **0 error**（141 項 info/warning 為既有技術債）。
+- `python -m py_compile services/socket_app.py routers/alert.py yolo_detector_service.py`
+  — exit 0。
+- `python -c "from main import app; print('IMPORT_OK')"` — **IMPORT_OK**。
+- `pytest tests/test_call_signaling.py -q` — **17 passed**。
+- YOLO 權重載入從 `D:\114project`（非 `uban-api`）執行 — `loaded=True
+  err=None`，輸出無任何「Downloading」。
+
+⚠️ 以上為靜態關卡與開發機測試，緊急通話四種情境與監控機畫面狀態仍須實機驗收。連
+接／跳轉語意變更的 graphify 同步狀態由對應的實作子代理負責，不在本次文件任務範圍
+內。
 
 ---
 

@@ -65,13 +65,34 @@ class CareScriptService {
   // ========================================
 
   /// 立即執行劇本
+  ///
+  /// ★ 2026-08-31 第三十八輪：`sendHeartbeat` 回傳型別改為 `Future<bool>` 後，
+  /// 這裡不再無條件把「已執行」寫入 `care_scripts.last_executed_at` 與
+  /// `execution_history`——socket 未連線時 `sendHeartbeat` 回傳 `false`，
+  /// 訊息其實沒送出，卻仍記一筆成功執行，會讓「今天已執行過」的每日一次
+  /// 去重（見 `checkAndExecuteScheduledScripts`）誤判成已送達，當天不再重試。
+  /// 刻意不改本方法的回傳型別（仍是 `Future<void>`）：唯一呼叫端
+  /// `checkAndExecuteScheduledScripts` 目前不消費回傳值，維持簽章不變才不會
+  /// 牽動它。
   Future<void> executeScriptNow(CareScript script) async {
-    await _signaling.sendHeartbeat(
+    final bool sent = await _signaling.sendHeartbeat(
       script.elderId,
       script.message,
       audioPath: script.customAudioPath,
       playSound: script.enableVoice,
     );
+
+    if (!sent) {
+      await _db.logExecution(
+        type: 'care_script',
+        relatedId: script.id,
+        elderId: script.elderId,
+        status: 'failed',
+        details: 'Heartbeat not sent: socket not connected',
+      );
+      debugPrint('⚠️ [CareScriptService] Heartbeat not sent for script: ${script.id}（socket 未連線）');
+      return;
+    }
 
     // 記錄執行
     await _db.update(

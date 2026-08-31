@@ -161,16 +161,28 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
     final title = r['title'] ?? '提醒事項';
     final note = r['note'] != null && r['note'].toString().isNotEmpty ? "（${r['note']}）" : "";
     try {
-      await widget.signaling.sendHeartbeat(
+      final bool sent = await widget.signaling.sendHeartbeat(
         widget.currentElder!.id,
         "⏰ 遠端提醒廣播：$title$note",
         playSound: true,
       );
-      if (mounted) {
+      if (!mounted) return;
+      if (sent) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('已即時推送廣播「$title」至長輩端平板 🔔'),
             backgroundColor: const Color(0xFF10B981),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      } else {
+        // ★ 2026-08-31 第三十八輪：sendHeartbeat 在 socket 未連線時回傳 false，
+        //   之前無條件顯示成功提示（謊報成功），改為顯示失敗提示。
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('目前未連線，請稍後再試'),
+            backgroundColor: const Color(0xFFEF4444),
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
@@ -997,18 +1009,30 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
     HapticFeedback.lightImpact();
 
     try {
-      await widget.signaling.sendHeartbeat(
+      final bool sent = await widget.signaling.sendHeartbeat(
         widget.currentElder!.id,
         messageText,
         playSound: true,
       );
 
-      if (mounted) {
+      if (!mounted) return;
+      if (sent) {
         _messageController.clear();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('已傳送留言給 ${widget.currentElder!.displayName} ✨'),
             backgroundColor: const Color(0xFF10B981),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      } else {
+        // ★ 2026-08-31 第三十八輪：sendHeartbeat 在 socket 未連線時回傳 false，
+        //   之前無條件顯示成功提示（謊報成功），改為顯示失敗提示；訊息保留在輸入框，不清空。
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('目前未連線，請稍後再試'),
+            backgroundColor: const Color(0xFFEF4444),
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),

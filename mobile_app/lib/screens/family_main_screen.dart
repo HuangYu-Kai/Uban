@@ -866,6 +866,63 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     }
   }
 
+  /// 開啟指定監視機的 CCTV 單向檢視（G55 兩個 `monitorViewOnly: true` 建構點之一）。
+  ///
+  /// ★ 2026-08-31 第三十八輪：抽成共用方法，供兩條入口使用，避免各拼一份而漂移——
+  ///   1. `_presentCctvAlert()` 的「查看監視畫面」鍵（跌倒警報彈窗）
+  ///   2. `FamilyHomeTab.onOpenMonitorView`（首頁「最新警示」清單的 CCTV／跌倒項目）
+  ///   第 2 條在此之前**從未被接上**：`FamilyHomeTab` 宣告了該回呼、消費端也寫好了，
+  ///   但本檔建構 `FamilyHomeTab` 時沒傳，於是那類警示永遠不可點擊。
+  ///
+  /// [deviceIdStr]：該監視機的 `deviceId`／`id`。
+  /// [elderIdOverride]：警報彈窗傳入警報自己的 `elder_id`；省略時用目前選中的長輩。
+  /// [onReturn]：監控畫面關閉後回呼（彈窗用它清掉該裝置的警報高亮）。
+  void _openMonitorViewForDevice(
+    String deviceIdStr, {
+    String? elderIdOverride,
+    VoidCallback? onReturn,
+  }) {
+    // 🚨 一定要用該裝置自己的 `id`，不可用 `_elderSocketId`（那是「第一台在線設備」，
+    //    很可能是通訊機而不是這台監視機，送過去會連到錯的裝置）。
+    final dynamic device = _monitorDevices.firstWhere(
+      (d) => d is Map && (d['deviceId'] ?? d['id'])?.toString() == deviceIdStr,
+      orElse: () => null,
+    );
+    final String viewSocketId =
+        (device is Map ? (device['id'] as String? ?? '') : '');
+    // 解析不出線上的來源設備就直接返回——寧可沒反應，也不要帶著空的
+    // targetSocketId 進房而卡在「連線中」（與彈窗的 canView 同一判準）。
+    if (viewSocketId.isEmpty || !_isDeviceOnline(device)) return;
+    final String deviceName =
+        (device is Map ? (device['deviceName'] ?? '監視機') : '監視機').toString();
+    final String rawElderId =
+        (elderIdOverride != null && elderIdOverride.isNotEmpty)
+            ? elderIdOverride
+            : (_currentElder?.elderId ?? _currentElder?.id.toString() ?? '');
+    if (rawElderId.isEmpty) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => VideoCallScreen(
+          roomId: 'monitor_elder_$rawElderId',
+          targetSocketId: viewSocketId,
+          isEmergency: true,
+          autoStart: true,
+          // 監控檢視一律用 pop() 返回本頁
+          returnByPop: true,
+          // ★ 第十九輪（需求 2）：單向監控檢視（G55）
+          monitorViewOnly: true,
+          // 傳裝置名給 Signaling.onMonitorRemoved 精準比對，避免刪除
+          // 同一長輩底下「另一台」監視機時誤關本畫面。
+          monitorDeviceName: deviceName,
+        ),
+      ),
+    ).then((_) {
+      if (mounted) onReturn?.call();
+    });
+  }
+
   /// ★ 2026-08-05 第十七輪：家屬端在**前景**時的跌倒警報呈現。
   /// 需求的三件事分別由三個機制負責，任一項失敗都不得影響其餘兩項：
   ///   - 螢幕      → `WakelockPlus`，**僅在 App 本來就在前景時**維持亮著（見下方
@@ -947,7 +1004,6 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     final bool canView = viewSocketId.isNotEmpty && _isDeviceOnline(device);
     final String rawElderId =
         (alert['elder_id'] ?? alert['elderId'] ?? '').toString();
-    final String monitorRoomId = 'monitor_elder_$rawElderId';
 
     final double? conf = double.tryParse(
         (alert['confidence'] ?? '').toString());
@@ -1012,37 +1068,22 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
               ElevatedButton.icon(
                 onPressed: () {
                   Navigator.of(dialogContext).pop();
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => VideoCallScreen(
-                        roomId: monitorRoomId,
-                        targetSocketId: viewSocketId,
-                        isEmergency: true,
-                        autoStart: true,
-                        // 從彈窗進入的監控檢視同樣用 pop() 返回本頁
-                        returnByPop: true,
-                        // ★ 2026-08-10 第十九輪（需求 2）：單向監控檢視
-                        monitorViewOnly: true,
-                        // ★ 2026-08-26：`deviceName`（:946）已由 `device['deviceName']`
-                        //   成功比對 `deviceIdStr` 解出（`canView` 為 true 才會走到這個
-                        //   按鈕，等同保證 `device is Map` 成立，不是上面 orElse 的
-                        //   '監視機' 兜底值），可放心傳給 [Signaling.onMonitorRemoved]
-                        //   精準比對，避免同一長輩底下刪除「另一台」監視機時誤關本畫面。
-                        monitorDeviceName: deviceName,
-                      ),
-                    ),
-                  ).then((_) {
-                    // ★ 2026-08-16（需求 2）：查看完監視畫面返回後，將該警報移出 _activeAlerts，將遠端監控卡片動畫與紅框還原正常
-                    if (mounted) {
+                  // ★ 2026-08-31 第三十八輪：改呼叫共用方法 _openMonitorViewForDevice，
+                  //   與 FamilyHomeTab.onOpenMonitorView 共用同一份 VideoCallScreen
+                  //   建構參數（G55），行為與抽出前逐字相同。
+                  _openMonitorViewForDevice(
+                    deviceIdStr,
+                    elderIdOverride: rawElderId,
+                    onReturn: () {
+                      // ★ 2026-08-16（需求 2）：查看完監視畫面返回後，將該警報移出 _activeAlerts，將遠端監控卡片動畫與紅框還原正常
                       setState(() {
                         final String alertDevice = (alert['device_id'] ?? alert['deviceId'])?.toString() ?? '';
                         _activeAlerts.removeWhere((a) =>
                             (a['device_id'] ?? a['deviceId'])?.toString() == alertDevice ||
                             a['alert_id'] == alert['alert_id']);
                       });
-                    }
-                  });
+                    },
+                  );
                 },
                 icon: const Icon(Icons.videocam_rounded),
                 label: const Text('查看監視畫面'),
@@ -1888,6 +1929,14 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
             //   _handleAlertItemDismissed 宣告與完整理由見本檔上方欄位註解。
             dismissedAlertKeys: _dismissedAlertKeys,
             onAlertItemDismissed: _handleAlertItemDismissed,
+            // ★ 2026-08-31 第三十八輪：首頁「最新警示」的 CCTV／跌倒項目點擊入口。
+            //   在此之前本參數從未被傳入，導致該類警示永遠不可點擊（見
+            //   _openMonitorViewForDevice 的說明）。與跌倒警報彈窗共用同一組
+            //   VideoCallScreen 建構參數（G55）。
+            onOpenMonitorView: (deviceId) {
+              if (deviceId == null || deviceId.isEmpty) return;
+              _openMonitorViewForDevice(deviceId);
+            },
           ),
           FamilyInteractionTab(
             currentElder: _currentElder,

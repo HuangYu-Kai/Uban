@@ -1820,14 +1820,20 @@ class Signaling {
   // ========================================
 
   /// 發送主動關心訊息（Heartbeat）給長輩端
-  /// 
+  ///
   /// [elderId] 長輩的資料庫 ID
   /// [message] 關心訊息內容
   /// [audioPath] 可選：自定義語音檔案路徑
   /// [playSound] 是否播放提示音
   /// [musicUrl] 可選：播放背景音樂 URL
   /// [actionButtons] 可選：互動按鈕列表
-  Future<void> sendHeartbeat(
+  ///
+  /// ★ 2026-08-31 第三十八輪：回傳型別由 `Future<void>` 改為 `Future<bool>`——
+  /// socket 未連線時原本靜默 return，呼叫端 `await` 完仍會無條件顯示成功提示
+  /// （謊報成功）。現在未連線回傳 `false`，成功 emit 後回傳 `true`，讓呼叫端
+  /// 能據此決定要顯示成功還是失敗提示。除了回傳型別與 return 值，方法內其餘
+  /// 邏輯不變。
+  Future<bool> sendHeartbeat(
     int elderId,
     String message, {
     String? audioPath,
@@ -1837,7 +1843,7 @@ class Signaling {
   }) async {
     if (socket == null || !socket!.connected) {
       debugPrint("❌ [Signaling] Socket not connected, cannot send heartbeat");
-      return;
+      return false;
     }
 
     final payload = {
@@ -1852,6 +1858,7 @@ class Signaling {
 
     socket!.emit('send-heartbeat', payload);
     debugPrint("💓 [Signaling] Sent heartbeat to elder $elderId: $message");
+    return true;
   }
 
   /// 推送內容給長輩端
