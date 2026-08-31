@@ -86,7 +86,11 @@ class Signaling {
   CallRequestCallback? onCallRequest;
   /// ★ 2026-08-04：後端推送 force-logout（家屬端解除本長輩綁定）時觸發。
   ///   由 main.dart 註冊，負責清除 session 並導航回身分選擇介面。
-  void Function()? onForceLogout;
+  /// ★ 2026-08-31 第三十七輪：新增選填具名參數 reason（例如 pairing.py 解綁
+  ///   路徑帶的 'elder-unbound'），供 main.dart::handleForceLogout 判斷是否
+  ///   清除 last_elder_* 快速登入記憶鍵（護欄 G24／G125）。payload 沒帶
+  ///   reason 時（例如 on_delete_device 目前的踢線路徑）維持 null。
+  void Function({String? reason})? onForceLogout;
   /// ★ 2026-08-06 第十九輪（D4）：後端監視機被家屬端改名時觸發。
   ///   payload: {elderId, oldDeviceName, newDeviceName, deviceId}。
   ///   只由 CCTV 模式的畫面（elder_screen.dart）註冊，一般通訊模式沒有這個概念。
@@ -623,9 +627,16 @@ class Signaling {
     // ★ 2026-08-04：force-logout 必須在此註冊。原本寫在 main.dart 的
     //   `s.socket?.on('force-logout', ...)` 於 initState 執行，當時 socket 仍為 null，
     //   `?.` 短路導致從未掛上；即使掛上，connect() 重建 socket 物件後也會失效。
-    socket!.on('force-logout', (_) {
-      debugPrint("🚪 [Signaling] Received force-logout (家屬端已解除綁定)");
-      if (onForceLogout != null) onForceLogout!();
+    socket!.on('force-logout', (data) {
+      // ★ 2026-08-31 第三十七輪：payload 現在可能帶 reason（例如
+      //   pairing.py 解綁路徑的 'elder-unbound'）。防呆比照 monitor-removed／
+      //   elder-zone-update：不是 Map 就當作沒有 reason，不可讓格式異常的
+      //   推播拋出例外。
+      final Map<String, dynamic> payload =
+          data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
+      final String? reason = payload['reason']?.toString();
+      debugPrint("🚪 [Signaling] Received force-logout reason=$reason");
+      if (onForceLogout != null) onForceLogout!(reason: reason);
     });
 
     // ★ 2026-08-06 第十九輪（D4）：監視機被家屬端改名時，即時同步通知該監視機本身。

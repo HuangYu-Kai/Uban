@@ -28,6 +28,7 @@ import 'screens/video_call_screen.dart';
 import 'screens/splash_screen.dart';
 import 'screens/elder_home_screen.dart';
 import 'screens/identification_screen.dart';
+import 'screens/privacy_policy_screen.dart';
 
 // Utils & Globals
 import 'globals.dart';
@@ -175,20 +176,34 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     //   讓下次冷啟動時 Splash → main() 看到空 prefs → 跳轉到 IdentificationScreen。
     //   背景 handler 無法導航（獨立 isolate），只能清 prefs；導航由冷啟動路徑接手。
     if (type == 'force-logout') {
-      debugPrint('🚪 [BG] 收到 force-logout，清除背景 session 鍵');
+      // ★ 2026-08-31 第三十七輪：last_elder_* 快速登入記憶鍵只有在遠端「真的
+      //   解除長輩綁定」（reason == 'elder-unbound'，見 pairing.py 解綁路徑）
+      //   時才可以清（護欄 G24／G125）。監控機刪除裝置轉回長輩帳號時
+      //   （`_exitCCTVMode` → `deleteMonitorDevice` → 後端對同一裝置送
+      //   force-logout）reason 不是 'elder-unbound'（或缺漏），這裡若照舊
+      //   無條件清除，會把裝置自己剛用 `preserveQuickLogin: true` 保住的
+      //   鍵繞一圈清掉——正是第三十七輪使用者回報「登出轉監控再轉回無法
+      //   快速登入」的根因。讀不到 / 未知值一律視為「保留」。
+      final reason = (message.data['reason'] ?? '').toString();
+      debugPrint('🚪 [BG] 收到 force-logout，清除背景 session 鍵（reason=$reason）');
       try {
         final bgPrefs = await SharedPreferences.getInstance();
         const keysToRemove = [
           'caregiver_id', 'caregiver_name', 'user_role', 'saved_role',
           'saved_id', 'saved_device_name', 'saved_is_cctv', 'elder_room_id',
           'access_token',
-          'last_elder_id', 'last_elder_name', 'last_elder_room_id', 'last_elder_device_role',
           'pendingAcceptedCall', 'pendingRingCallData', 'pendingRingCall',
         ];
         for (final key in keysToRemove) { await bgPrefs.remove(key); }
+        if (reason == 'elder-unbound') {
+          const quickLoginKeys = [
+            'last_elder_id', 'last_elder_name', 'last_elder_room_id', 'last_elder_device_role',
+          ];
+          for (final key in quickLoginKeys) { await bgPrefs.remove(key); }
+        }
         final deviceRoleKeys = bgPrefs.getKeys().where((k) => k.startsWith('device_role_')).toList();
         for (final key in deviceRoleKeys) { await bgPrefs.remove(key); }
-        debugPrint('🚪 [BG] force-logout 清除完成（${keysToRemove.length + deviceRoleKeys.length} 鍵）');
+        debugPrint('🚪 [BG] force-logout 清除完成');
       } catch (e) {
         debugPrint('❌ [BG] force-logout 清除失敗: $e');
       }
@@ -819,10 +834,21 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     _setupSignalingListener();
     sig.Signaling().updateAppForeground(true);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final context = navigatorKey.currentContext;
-      if (context != null) {
-        VideoCallPermissionService.requestOnFirstUse(context);
-      }
+      // ★ 2026-08-31 第三十七輪：原本在此無條件請求權限，但 splash 的
+      //   `_replaceWith` 用 Navigator.pushReplacement——它移除的是堆疊最上層的
+      //   route，正好把本服務的「權限不足」對話框整個換成 PrivacyPolicyScreen，
+      //   `await showDialog` 靜默返回、無例外。使用者因此看不到權限警告，
+      //   首次使用也拿不到相機/麥克風 → 第一通通話雙端都連不上。
+      //   改為只在「已同意隱私權政策」時才在此請求；未同意時由
+      //   PrivacyPolicyScreen 在同意後自行呼叫，順序也才正確（先同意再要權限）。
+      SharedPreferences.getInstance().then((prefs) {
+        final accepted = prefs.getBool(PrivacyPolicyScreen.prefsKey) ?? false;
+        if (!accepted) return;
+        final ctx = navigatorKey.currentContext;
+        if (ctx != null) VideoCallPermissionService.requestOnFirstUse(ctx);
+      }).catchError((e) {
+        debugPrint('⚠️ [Main] 讀取隱私權同意狀態失敗，略過首次權限請求: $e');
+      });
       
       // ★ Issue 8：請求懸浮視窗權限（讓來電通知覆蓋其他 APP）
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
@@ -1788,21 +1814,26 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       // ★ 2026-07-30 第十四輪：FCM 前景 force-logout 處理。
       //   當長輩在前景（如 ElderHomeScreen）收到 FCM force-logout → 清除 session 並導航。
       if (message.data['type'] == 'force-logout') {
-        debugPrint('🚪 [FCM-Fg] 收到 force-logout，執行 handleForceLogout');
-        _MyAppState.handleForceLogout();
+        // ★ 2026-08-31 第三十七輪：把 reason 一併帶給 handleForceLogout，
+        //   決定 last_elder_* 快速登入記憶鍵該不該清（G24／G125，詳見該函式）。
+        final reason = (message.data['reason'] ?? '').toString();
+        debugPrint('🚪 [FCM-Fg] 收到 force-logout，執行 handleForceLogout（reason=$reason）');
+        _MyAppState.handleForceLogout(reason: reason.isEmpty ? null : reason);
         return;
       }
     });
   }
 
-  static Future<void> handleForceLogout() async {
+  /// ★ 2026-08-31 第三十七輪：新增選填 [reason]，由呼叫端（FCM 前景／Socket）
+  ///   從 force-logout payload 帶入。用途見下方 last_elder_* 清除邏輯的註解。
+  static Future<void> handleForceLogout({String? reason}) async {
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     if (nowMs - _lastForceLogoutMs < 3000) {
       debugPrint('🚪 [Main] force-logout 已於 ${nowMs - _lastForceLogoutMs}ms 前處理過，忽略重複觸發（防黑屏）');
       return;
     }
     _lastForceLogoutMs = nowMs;
-    debugPrint('🚪 [Main] 執行 handleForceLogout：清除 session 並退回身分選擇介面');
+    debugPrint('🚪 [Main] 執行 handleForceLogout：清除 session 並退回身分選擇介面（reason=$reason）');
     try {
       sig.Signaling().clearSession();
       sig.Signaling().forceDisconnect();
@@ -1812,12 +1843,28 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         'caregiver_id', 'caregiver_name', 'user_role', 'saved_role',
         'saved_id', 'saved_device_name', 'saved_is_cctv', 'elder_room_id',
         'access_token',
-        'last_elder_id', 'last_elder_name', 'last_elder_room_id', 'last_elder_device_role',
         'pendingAcceptedCall', 'pendingRingCallData', 'pendingRingCall',
         'selected_elder_id', 'selected_elder_name', 'selected_elder_room_id',
       ];
       for (final key in keysToRemove) {
         await prefs.remove(key);
+      }
+      // ★ 2026-08-31 第三十七輪：last_elder_* 快速登入記憶鍵只有在遠端「真的
+      //   解除長輩綁定」（reason == 'elder-unbound'）時才清（護欄 G24／
+      //   G125：這四個鍵只是「上次登入的長輩是誰」的便利記憶，使用者主動
+      //   登出／監控機刪除裝置轉回長輩帳號都不該清）。這裡收到的
+      //   force-logout 涵蓋兩種情境：家屬端解除長輩綁定（pairing.py 帶
+      //   reason='elder-unbound'）與監控機刪除裝置踢回自己
+      //   （`on_delete_device` 帶 reason='device-removed'）。
+      //   reason 缺漏或不是 'elder-unbound' 一律保留，這正是第三十七輪
+      //   使用者回報「登出轉監控再轉回無法快速登入同一長輩」的修復。
+      if (reason == 'elder-unbound') {
+        const quickLoginKeys = [
+          'last_elder_id', 'last_elder_name', 'last_elder_room_id', 'last_elder_device_role',
+        ];
+        for (final key in quickLoginKeys) {
+          await prefs.remove(key);
+        }
       }
       final devRoleKeys = prefs.getKeys().where((k) => k.startsWith('device_role_')).toList();
       for (final key in devRoleKeys) {
@@ -1963,9 +2010,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     //   舊寫法 `s.socket?.on('force-logout', ...)` 在 initState 執行時 socket 為 null，
     //   `?.` 短路使 handler 從未註冊；實際的 socket 監聽已移入
     //   signaling.dart::_registerSocketListeners()，該處保證在 socket 建立後執行。
-    s.onForceLogout = () {
-      debugPrint('🚪 [Main-Socket] 收到 force-logout，全域處理');
-      _MyAppState.handleForceLogout();
+    s.onForceLogout = ({String? reason}) {
+      debugPrint('🚪 [Main-Socket] 收到 force-logout，全域處理（reason=$reason）');
+      _MyAppState.handleForceLogout(reason: reason);
     };
   }
 

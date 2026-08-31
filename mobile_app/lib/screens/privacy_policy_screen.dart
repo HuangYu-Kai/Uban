@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/video_call_permission_service.dart';
 import 'identification_screen.dart';
 
 /// ★ 2026-08-23：首次安裝的隱私權政策關卡。
@@ -89,6 +90,14 @@ class _PrivacyPolicyScreenState extends State<PrivacyPolicyScreen> {
       // ★ 寫入失敗不阻擋使用者：本頁不是通話路徑，沒有「卡住」的風險。
       //   最壞情況只是下次啟動再看到一次本頁，不會讓 App 無法使用。
       debugPrint('⚠️ [PrivacyPolicy] 寫入同意狀態失敗（不影響繼續使用）: $e');
+    }
+
+    // ★ 2026-08-31 第三十七輪：權限請求移到這裡——同意隱私權政策之後才要權限，
+    //   順序正確，也避免了 splash 的 pushReplacement 把權限對話框換掉
+    //   （詳見 main.dart 對應註解）。await 到完成再導航，確保對話框不會被
+    //   接下來的 pushAndRemoveUntil 取代。
+    if (mounted) {
+      await VideoCallPermissionService.requestOnFirstUse(context);
     }
 
     if (!mounted) return;
