@@ -81,6 +81,15 @@ class _HandDrawnPigletActorState extends State<HandDrawnPigletActor>
     _syncMoodControllers();
   }
 
+  /// 兼容 Flutter Hot Reload 舊版殘留監聽，防止熱重載時報錯
+  void _onFrameTick() {}
+
+  @override
+  void reassemble() {
+    super.reassemble();
+    _syncMoodControllers();
+  }
+
   @override
   void didUpdateWidget(covariant HandDrawnPigletActor oldWidget) {
     super.didUpdateWidget(oldWidget);
