@@ -17,6 +17,7 @@ import '../../globals.dart';
 import '../../services/session_manager.dart';
 import '../../services/api_service.dart';
 import '../../widgets/google_assistant_overlay.dart';
+import '../pet_companion_studio/models/pet_growth_state.dart';
 import '../pet_companion_studio/pet_studio_screen.dart';
 import '../pet_companion_studio/widgets/animated_piglet_actor.dart';
 import '../pet_companion_studio/widgets/hand_drawn_piglet_actor.dart';
@@ -108,6 +109,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
   late AnimationController _petBounceController;
   final List<_PetHeartParticle> _petParticles = [];
   bool _isPetHappy = false;
+  PetGrowthState? _petGrowthState;
 
   // ── 📋 子女排程生活任務 ──────────────────────────────────
   List<Map<String, dynamic>> _reminders = [];
@@ -117,13 +119,21 @@ class _ElderProfileTabState extends State<ElderProfileTab>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    precacheImage(const AssetImage('assets/images/pig_2d_idle_v4.png'), context);
-    precacheImage(const AssetImage('assets/images/pig_2d_walk_1_v4.png'), context);
-    precacheImage(const AssetImage('assets/images/pig_2d_walk_2_v4.png'), context);
-    precacheImage(const AssetImage('assets/images/pig_2d_happy_v4.png'), context);
-    precacheImage(const AssetImage('assets/images/pig_2d_sleep_v4.png'), context);
-    precacheImage(const AssetImage('assets/images/pig_2d_picked_v4.png'), context);
+    precacheImage(const AssetImage('assets/images/pet_stages/pig_stage_1.png'), context);
+    precacheImage(const AssetImage('assets/images/pet_stages/pig_stage_2.png'), context);
+    precacheImage(const AssetImage('assets/images/pet_stages/pig_stage_3.png'), context);
+    precacheImage(const AssetImage('assets/images/pet_stages/pig_stage_4.png'), context);
+    precacheImage(const AssetImage('assets/images/pet_stages/pig_stage_5.png'), context);
     precacheImage(const AssetImage('assets/images/pig_mascot.png'), context);
+  }
+
+  Future<void> _loadPetGrowthState() async {
+    final state = await PetStorageService.loadState(currentSensorSteps: currentSteps);
+    if (mounted) {
+      setState(() {
+        _petGrowthState = state;
+      });
+    }
   }
 
   @override
@@ -161,6 +171,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     _autoStartTracking();
     _startStepTracking();
     _loadElderReminders();
+    _loadPetGrowthState();
   }
 
   @override
@@ -907,6 +918,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                     fit: BoxFit.contain,
                     child: HandDrawnPigletActor(
                       size: isWide ? 135 : 80,
+                      stage: _petGrowthState?.stage ?? PetGrowthStage.miniMochi,
                       mood: mood == _PetMood.superHappy
                           ? ActorMood.superHappy
                           : (mood == _PetMood.sleeping
@@ -1049,9 +1061,9 @@ class _ElderProfileTabState extends State<ElderProfileTab>
 
             // ── 🏡 前往福氣小豬窩按鈕 ──
             InkWell(
-              onTap: () {
+              onTap: () async {
                 HapticFeedback.selectionClick();
-                Navigator.of(context).push(
+                await Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (_) => PetStudioScreen(
                       initialSteps: currentSteps,
@@ -1059,6 +1071,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                     ),
                   ),
                 );
+                _loadPetGrowthState();
               },
               borderRadius: BorderRadius.circular(16),
               child: Container(

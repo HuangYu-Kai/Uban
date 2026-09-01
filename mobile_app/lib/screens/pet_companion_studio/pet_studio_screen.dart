@@ -471,6 +471,7 @@ class _PetStudioScreenState extends State<PetStudioScreen>
                   children: [
                     HandDrawnPigletActor(
                       mood: _actorMood,
+                      stage: _growthState.stage,
                       onFoodAccepted: _handleFeedFood,
                       onPetHead: _handlePetHead,
                       onPokeBelly: _handlePokeBelly,
@@ -534,6 +535,7 @@ class _PetStudioScreenState extends State<PetStudioScreen>
           // 上半部舞台
           HandDrawnPigletActor(
             mood: _actorMood,
+            stage: _growthState.stage,
             onFoodAccepted: _handleFeedFood,
             onPetHead: _handlePetHead,
             onPokeBelly: _handlePokeBelly,
