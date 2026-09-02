@@ -451,7 +451,6 @@ class _PetStudioScreenState extends State<PetStudioScreen>
       ),
     );
   }
-  }
 
   // ── 🖥️ 橫螢幕佈局（左右 50/50 雙欄並排）──
   Widget _buildLandscapeLayout() {
