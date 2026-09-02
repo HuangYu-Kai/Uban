@@ -1,12 +1,14 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../models/pet_food_item.dart';
 import '../models/pet_growth_state.dart';
+import '../models/piglet_sequence_manifest.dart';
 import 'animated_piglet_actor.dart';
 
-/// 🐷 手繪油畫正面小豬角色組件（繪本微動態 ✕ 溫暖手作美學）
+/// 🐷 手繪油畫正面小豬逐格幀動畫組件（逐格幀播放 ✕ 100% 組員水彩油畫手作風）
 class HandDrawnPigletActor extends StatefulWidget {
   final ActorMood mood;
   final PetGrowthStage stage;
@@ -35,10 +37,13 @@ class HandDrawnPigletActor extends StatefulWidget {
 
 class _HandDrawnPigletActorState extends State<HandDrawnPigletActor>
     with TickerProviderStateMixin {
-  // 互動單次彈跳控制器 (450ms 單次靈動彈跳)
+  // 逐格幀控制器
+  int _currentFrameIndex = 0;
+  Timer? _sequenceTimer;
+  PigletSequenceType _currentSeqType = PigletSequenceType.idle;
+
+  // 互動單次彈跳控制器 (450ms)
   late AnimationController _interactiveBounceController;
-  // 進食單次歡喜控制器 (650ms 餵食後靈動開飯動態)
-  late AnimationController _feedActionController;
   // 祥瑞光環控制器 (8.0秒極柔和旋轉)
   late AnimationController _auraController;
 
@@ -53,49 +58,79 @@ class _HandDrawnPigletActorState extends State<HandDrawnPigletActor>
       duration: const Duration(milliseconds: 450),
     );
 
-    _feedActionController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 650),
-    );
-
     _auraController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 8000),
     )..repeat();
 
-    _syncMood();
+    _startSequenceForMood(widget.mood);
   }
-
-  void _onFrameTick() {}
 
   @override
   void reassemble() {
     super.reassemble();
-    _syncMood();
+    _startSequenceForMood(widget.mood);
   }
 
   @override
   void didUpdateWidget(covariant HandDrawnPigletActor oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.mood != oldWidget.mood) {
-      _syncMood();
+      _startSequenceForMood(widget.mood);
     }
   }
 
-  void _syncMood() {
-    if (widget.mood == ActorMood.chewing) {
-      _feedActionController.forward(from: 0.0);
+  void _startSequenceForMood(ActorMood mood) {
+    _sequenceTimer?.cancel();
+
+    PigletSequenceType newSeq;
+    switch (mood) {
+      case ActorMood.chewing:
+        newSeq = PigletSequenceType.chewing;
+        break;
+      case ActorMood.anticipating:
+        newSeq = PigletSequenceType.anticipate;
+        break;
+      case ActorMood.superHappy:
+      case ActorMood.celebratingGoal:
+        newSeq = PigletSequenceType.celebration;
+        _interactiveBounceController.forward(from: 0.0);
+        break;
+      case ActorMood.sleeping:
+        newSeq = PigletSequenceType.sleep;
+        break;
+      case ActorMood.idle:
+      default:
+        newSeq = PigletSequenceType.idle;
+        break;
     }
-    if (widget.mood == ActorMood.superHappy ||
-        widget.mood == ActorMood.celebratingGoal) {
-      _interactiveBounceController.forward(from: 0.0);
-    }
+
+    _currentSeqType = newSeq;
+    _currentFrameIndex = 0;
+
+    final info = PigletSequenceManifest.getInfo(newSeq);
+    final int frameIntervalMs = (info.frameDuration.inMilliseconds / info.frameCount).round();
+
+    _sequenceTimer = Timer.periodic(Duration(milliseconds: frameIntervalMs), (timer) {
+      if (!mounted) return;
+      setState(() {
+        if (info.isLooping) {
+          _currentFrameIndex = (_currentFrameIndex + 1) % info.frameCount;
+        } else {
+          if (_currentFrameIndex < info.frameCount - 1) {
+            _currentFrameIndex++;
+          } else {
+            _sequenceTimer?.cancel();
+          }
+        }
+      });
+    });
   }
 
   @override
   void dispose() {
+    _sequenceTimer?.cancel();
     _interactiveBounceController.dispose();
-    _feedActionController.dispose();
     _auraController.dispose();
     super.dispose();
   }
@@ -103,13 +138,34 @@ class _HandDrawnPigletActorState extends State<HandDrawnPigletActor>
   void _handleTap() {
     HapticFeedback.lightImpact();
     _interactiveBounceController.forward(from: 0.0);
+    _startSequenceForMood(ActorMood.superHappy);
+    Timer(const Duration(milliseconds: 1500), () {
+      if (mounted && widget.mood == ActorMood.idle) {
+        _startSequenceForMood(ActorMood.idle);
+      }
+    });
     widget.onPetHead?.call();
   }
 
   void _handleLongPress() {
     HapticFeedback.mediumImpact();
     _interactiveBounceController.forward(from: 0.0);
+    _startSequenceForMood(ActorMood.anticipating);
+    Timer(const Duration(milliseconds: 1500), () {
+      if (mounted && widget.mood == ActorMood.idle) {
+        _startSequenceForMood(ActorMood.idle);
+      }
+    });
     widget.onPokeBelly?.call();
+  }
+
+  String get _currentFramePath {
+    final info = PigletSequenceManifest.getInfo(_currentSeqType);
+    final paths = info.framePaths;
+    if (_currentFrameIndex >= 0 && _currentFrameIndex < paths.length) {
+      return paths[_currentFrameIndex];
+    }
+    return widget.stage.imageAssetPath;
   }
 
   Color get _themeColor {
@@ -130,15 +186,22 @@ class _HandDrawnPigletActorState extends State<HandDrawnPigletActor>
     return DragTarget<PetFoodItem>(
       onWillAcceptWithDetails: (details) {
         setState(() => _isDragHovering = true);
+        _startSequenceForMood(ActorMood.anticipating);
         HapticFeedback.selectionClick();
         return true;
       },
       onLeave: (data) {
         setState(() => _isDragHovering = false);
+        _startSequenceForMood(widget.mood);
       },
       onAcceptWithDetails: (details) {
         setState(() => _isDragHovering = false);
-        _feedActionController.forward(from: 0.0);
+        _startSequenceForMood(ActorMood.chewing);
+        Timer(const Duration(milliseconds: 2500), () {
+          if (mounted && widget.mood == ActorMood.idle) {
+            _startSequenceForMood(ActorMood.idle);
+          }
+        });
         widget.onFoodAccepted?.call(details.data);
       },
       builder: (context, candidateData, rejectedData) {
@@ -198,16 +261,11 @@ class _HandDrawnPigletActorState extends State<HandDrawnPigletActor>
                 Positioned(
                   bottom: 24,
                   child: AnimatedBuilder(
-                    animation: Listenable.merge([
-                      _interactiveBounceController,
-                      _feedActionController,
-                    ]),
+                    animation: _interactiveBounceController,
                     builder: (context, child) {
                       double jump = 0.0;
                       if (_interactiveBounceController.isAnimating) {
                         jump = math.sin(_interactiveBounceController.value * math.pi);
-                      } else if (_feedActionController.isAnimating) {
-                        jump = math.sin(_feedActionController.value * math.pi * 2).abs() * 0.5;
                       }
 
                       final double shadowScale = (1.0 - jump * 0.25).clamp(0.7, 1.0);
@@ -266,27 +324,18 @@ class _HandDrawnPigletActorState extends State<HandDrawnPigletActor>
                     ),
                   ),
 
-                // ── D. 核心油畫手繪小豬（保留 100% 原始純美畫作，無拉扯變形）──
+                // ── D. 核心油畫手繪小豬（逐格幀動畫 + 觸發時輕躍）──
                 Positioned(
                   bottom: 22,
                   child: AnimatedBuilder(
-                    animation: Listenable.merge([
-                      _interactiveBounceController,
-                      _feedActionController,
-                    ]),
+                    animation: _interactiveBounceController,
                     builder: (context, child) {
                       double translateY = 0.0;
 
-                      // 1. 點擊摸摸時：愉悅的單次輕快小跳躍 (Curves.easeOutCubic)
+                      // 點擊摸摸時：愉悅的單次輕快小跳躍
                       if (_interactiveBounceController.isAnimating) {
                         final double t = _interactiveBounceController.value;
                         translateY = -math.sin(t * math.pi) * 16.0;
-                      }
-
-                      // 2. 餵食投餵時：開心的雙次歡樂輕躍
-                      if (_feedActionController.isAnimating) {
-                        final double t = _feedActionController.value;
-                        translateY = -math.sin(t * math.pi * 2).abs() * 10.0;
                       }
 
                       return Transform.translate(
@@ -301,9 +350,9 @@ class _HandDrawnPigletActorState extends State<HandDrawnPigletActor>
                         clipBehavior: Clip.none,
                         alignment: Alignment.center,
                         children: [
-                          // 🐷 正面油畫手繪小豬（原生最高清畫質呈現，不變形）
+                          // 🐷 正面油畫手繪小豬（逐格幀高清透明呈現，不變形）
                           Image.asset(
-                            stage.imageAssetPath,
+                            _currentFramePath,
                             width: actorSize,
                             height: actorSize,
                             fit: BoxFit.contain,

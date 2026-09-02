@@ -266,21 +266,31 @@ class _PetStudioScreenState extends State<PetStudioScreen>
     return Scaffold(
       backgroundColor: const Color(0xFFFAF7F2),
       body: SafeArea(
-        child: Stack(
-          children: [
-            // 粒子繪製層
-            Positioned.fill(
-              child: CustomPaint(
-                painter: PetParticleCanvas(_particles),
-              ),
-            ),
+        child: OrientationBuilder(
+          builder: (context, orientation) {
+            final bool isLandscape = orientation == Orientation.landscape;
 
-            // 自適應佈局 (Landscape ✕ Portrait)
-            OrientationBuilder(
-              builder: (context, orientation) {
-                final bool isLandscape = orientation == Orientation.landscape;
+            return Stack(
+              children: [
+                // 🌻 1. 戶外陽光小菜園油畫手繪背景層
+                Positioned.fill(
+                  child: Image.asset(
+                    isLandscape
+                        ? 'assets/images/piglet_garden_bg_landscape.jpg'
+                        : 'assets/images/piglet_garden_bg_portrait.jpg',
+                    fit: BoxFit.cover,
+                  ),
+                ),
 
-                return Column(
+                // 2. 粒子繪製層
+                Positioned.fill(
+                  child: CustomPaint(
+                    painter: PetParticleCanvas(_particles),
+                  ),
+                ),
+
+                // 3. 自適應主要內容層 (Landscape ✕ Portrait)
+                Column(
                   children: [
                     _buildHeader(isLandscape),
                     Expanded(
@@ -289,10 +299,10 @@ class _PetStudioScreenState extends State<PetStudioScreen>
                           : _buildPortraitLayout(),
                     ),
                   ],
-                );
-              },
-            ),
-          ],
+                ),
+              ],
+            );
+          },
         ),
       ),
     );

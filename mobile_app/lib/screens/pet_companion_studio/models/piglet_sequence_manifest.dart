@@ -33,40 +33,40 @@ class PigletSequenceManifest {
   static const PigletSequenceInfo idle = PigletSequenceInfo(
     type: PigletSequenceType.idle,
     directory: 'assets/images/pet_seq_idle',
-    frameCount: 12,
-    frameDuration: Duration(milliseconds: 2800),
+    frameCount: 4,
+    frameDuration: Duration(milliseconds: 2400),
     isLooping: true,
   );
 
   static const PigletSequenceInfo anticipate = PigletSequenceInfo(
     type: PigletSequenceType.anticipate,
     directory: 'assets/images/pet_seq_anticipate',
-    frameCount: 8,
-    frameDuration: Duration(milliseconds: 1000),
+    frameCount: 4,
+    frameDuration: Duration(milliseconds: 800),
     isLooping: true,
   );
 
   static const PigletSequenceInfo chewing = PigletSequenceInfo(
     type: PigletSequenceType.chewing,
     directory: 'assets/images/pet_seq_chewing',
-    frameCount: 8,
-    frameDuration: Duration(milliseconds: 1200),
+    frameCount: 4,
+    frameDuration: Duration(milliseconds: 1000),
     isLooping: true,
   );
 
   static const PigletSequenceInfo celebration = PigletSequenceInfo(
     type: PigletSequenceType.celebration,
     directory: 'assets/images/pet_seq_celebration',
-    frameCount: 12,
-    frameDuration: Duration(milliseconds: 1400),
+    frameCount: 4,
+    frameDuration: Duration(milliseconds: 1000),
     isLooping: false,
   );
 
   static const PigletSequenceInfo sleep = PigletSequenceInfo(
     type: PigletSequenceType.sleep,
     directory: 'assets/images/pet_seq_sleep',
-    frameCount: 8,
-    frameDuration: Duration(milliseconds: 3200),
+    frameCount: 4,
+    frameDuration: Duration(milliseconds: 2800),
     isLooping: true,
   );
 
