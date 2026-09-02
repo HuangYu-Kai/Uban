@@ -265,45 +265,99 @@ class _PetStudioScreenState extends State<PetStudioScreen>
 
     return Scaffold(
       backgroundColor: const Color(0xFFFAF7F2),
-      body: SafeArea(
-        child: OrientationBuilder(
-          builder: (context, orientation) {
-            final bool isLandscape = orientation == Orientation.landscape;
+      body: OrientationBuilder(
+        builder: (context, orientation) {
+          final bool isLandscape = orientation == Orientation.landscape;
 
-            return Stack(
-              children: [
-                // 🌻 1. 戶外陽光小菜園油畫手繪背景層
-                Positioned.fill(
-                  child: Image.asset(
-                    isLandscape
-                        ? 'assets/images/piglet_garden_bg_landscape.jpg'
-                        : 'assets/images/piglet_garden_bg_portrait.jpg',
-                    fit: BoxFit.cover,
-                  ),
+          return Stack(
+            children: [
+              // 🌻 1. 全螢幕戶外陽光小菜園油畫手繪背景層
+              Positioned.fill(
+                child: Image.asset(
+                  isLandscape
+                      ? 'assets/images/piglet_garden_bg_landscape.jpg'
+                      : 'assets/images/piglet_garden_bg_portrait.jpg',
+                  fit: BoxFit.cover,
                 ),
+              ),
 
-                // 2. 粒子繪製層
-                Positioned.fill(
-                  child: CustomPaint(
-                    painter: PetParticleCanvas(_particles),
-                  ),
+              // 2. 粒子繪製層（花瓣與愛心光芒）
+              Positioned.fill(
+                child: CustomPaint(
+                  painter: PetParticleCanvas(_particles),
                 ),
+              ),
 
-                // 3. 自適應主要內容層 (Landscape ✕ Portrait)
-                Column(
-                  children: [
-                    _buildHeader(isLandscape),
-                    Expanded(
-                      child: isLandscape
-                          ? _buildLandscapeLayout()
-                          : _buildPortraitLayout(),
+              // 3. 🐷 核心小豬舞台：置中於陽光白三葉草草皮正中央
+              Positioned.fill(
+                child: Center(
+                  child: Padding(
+                    padding: EdgeInsets.only(
+                      top: isLandscape ? 40 : 120,
+                      bottom: isLandscape ? 0 : 40,
                     ),
-                  ],
+                    child: HandDrawnPigletActor(
+                      mood: _actorMood,
+                      stage: _growthState.stage,
+                      onFoodAccepted: _handleFeedFood,
+                      onPetHead: _handlePetHead,
+                      onPokeBelly: _handlePokeBelly,
+                      speechText: _speechText,
+                      isCrownUnlocked: _growthState.isCrownUnlocked,
+                      size: isLandscape ? 320 : 280,
+                    ),
+                  ),
                 ),
-              ],
-            );
-          },
-        ),
+              ),
+
+              // 4. 頂部簡約懸浮返回按鈕
+              Positioned(
+                top: MediaQuery.of(context).padding.top + 12,
+                left: 16,
+                child: SafeArea(
+                  child: InkWell(
+                    onTap: () {
+                      HapticFeedback.lightImpact();
+                      if (Navigator.canPop(context)) {
+                        Navigator.pop(context);
+                      } else {
+                        Navigator.of(context).pushReplacement(
+                          MaterialPageRoute(
+                            builder: (_) => ElderHomeScreen(
+                              userId: 1,
+                              userName: widget.userName,
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(24),
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFFDF8).withValues(alpha: 0.90),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: const Color(0xFFEADBCE), width: 1.5),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF78350F).withValues(alpha: 0.12),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.arrow_back_ios_new_rounded,
+                        color: Color(0xFF451A03),
+                        size: 22,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

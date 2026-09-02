@@ -214,50 +214,7 @@ class _HandDrawnPigletActorState extends State<HandDrawnPigletActor>
             child: Stack(
               alignment: Alignment.center,
               children: [
-                // ── A. 溫暖編織羊毛地毯（手作繪本基座）──
-                Positioned(
-                  bottom: 14,
-                  child: Container(
-                    width: actorSize * 1.16,
-                    height: actorSize * 0.44,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFAF7F0),
-                      borderRadius: BorderRadius.all(
-                        Radius.elliptical(actorSize * 1.16, actorSize * 0.44),
-                      ),
-                      border: Border.all(
-                        color: _isDragHovering
-                            ? const Color(0xFFF59E0B)
-                            : const Color(0xFFEADBCE),
-                        width: _isDragHovering ? 2.8 : 1.8,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color(0xFF78350F).withValues(alpha: 0.06),
-                          blurRadius: 18,
-                          offset: const Offset(0, 6),
-                        ),
-                      ],
-                    ),
-                    child: Center(
-                      child: Container(
-                        width: actorSize * 0.94,
-                        height: actorSize * 0.32,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.all(
-                            Radius.elliptical(actorSize * 0.94, actorSize * 0.32),
-                          ),
-                          border: Border.all(
-                            color: const Color(0xFFE8DCCA),
-                            width: 1.2,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-
-                // ── B. 貼地柔和接觸陰影（隨跳躍自然縮放）──
+                // ── A. 貼地柔和接觸陰影（自然融入草地）──
                 Positioned(
                   bottom: 24,
                   child: AnimatedBuilder(
