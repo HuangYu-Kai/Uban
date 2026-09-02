@@ -10,7 +10,7 @@
 > **為什麼拆出來**：主文件曾成長到超過工具單次讀取上限（256 KB），使「動手前必須完整讀過本
 > 文件」這條鐵律在技術上無法遵守；把最舊的輪次移出，讓主文件回落到讀取上限之內。
 >
-> **收錄範圍**：2026-06-05 起至**第三十六輪**（2026-08-26）。第三十七輪以後仍在
+> **收錄範圍**：2026-06-05 起至**第三十九輪**（2026-09-01）。第四十輪以後仍在
 > `CLAUDE_call-monitor.md` §8。
 >
 > **這份是查證用的歷史檔，不是動手前的必讀文件**；必讀的是主文件的 §1–§7、§9、§10。
@@ -20,7 +20,7 @@
 
 ---
 
-## 早期修復年表（第一輪 – 第三十六輪）
+## 早期修復年表（第一輪 – 第三十九輪）
 
 ### 2026-06-05 / 06 — 第一輪：早期通話信令
 雙重 room ID prefix（`comm_elder_comm_elder_X` → `join-failed: 您無權加入此通訊房間`）、
@@ -2280,6 +2280,339 @@ isEmergency／preferRelay）」的修正記錄、`session_manager.dart` 的
 ⚠️ 以上為靜態關卡與開發機測試，緊急通話四種情境與監控機畫面狀態仍須實機驗收。連
 接／跳轉語意變更的 graphify 同步狀態由對應的實作子代理負責，不在本次文件任務範圍
 內。
+
+---
+
+### 2026-08-31 — 第三十七輪：真機五項回報 —— YOLO 訊息說謊、權限對話框被隱私權畫面換掉、force-logout 清掉快速登入
+
+**背景**
+
+使用者真機五項回報，外加一項延續自第三十四輪、本輪未處理的舊懸案。其中兩項是
+「顯示的錯誤原因跟真正根因對不上」的診斷類回報（YOLO 載入失敗訊息、監控清單
+高光）；一項（權限對話框被隱私權畫面換掉）牽出同一根因的另一個症狀（第一次使用
+App 時雙端 WebRTC 可能連不上），故合併記錄；一項（force-logout 清掉快速登入）
+是使用者第三次回報同一症狀、前兩輪（第三十四、三十五輪）都沒能根治的舊案。以下
+依 [監控]／[啟動]／[通話]／[Session] 分類記錄。
+
+**根因與修復**
+
+1. **[監控] YOLO 載入失敗訊息在說謊**（`yolo_detector_service.py`、`Dockerfile`、
+   `routers/alert.py`）：使用者監控機畫面顯示「偵測器未載入 / yolo_unavailable /
+   **ultralytics 未安裝**」，但 `requirements.txt:72` **確實有**
+   `ultralytics>=8.4.105`。根因是 `_load_model()` 的 `except ImportError:` 把例
+   外物件整個丟掉，硬寫固定字串 `'ultralytics 未安裝'`。`requirements.txt` 自己
+   的註解（第 60-61 行）就寫著 ultralytics 硬相依 opencv-python(>=4.6)；
+   `from ultralytics import YOLO` 會連帶 `import cv2`，非 headless 的 opencv 需
+   要系統庫 `libGL.so.1`，pytorch 基底映像沒有 → 拋的**也是** `ImportError` →
+   被同一個 except 接住、標成「套件沒裝」。**套件裝了，是它的相依 import 失
+   敗。** 這與第三十五／三十六輪的 CUDA `.numpy()` 是**同一種失敗模式**：例外
+   處理器把失敗原因標錯，害診斷連續多輪走錯方向。
+   修復：(a) `except ImportError as e` → `self._load_error = f'ultralytics 匯
+   入失敗: {e}'`，保留原始訊息；(b) `Dockerfile` 在 pip 安裝層之前新增獨立的
+   一層 `apt-get install libgl1 libglib2.0-0`（純新增，既有的
+   `sed -i -E '/torch|.../d'` 與 pip 安裝順序逐字未動，那行有第十九輪記載的
+   歷史原因，不可調整）；(c) `routers/alert.py::_sanitize_load_error()` 的模
+   組註解原本聲稱「ImportError 分支是固定字串、內容受我們控制、安全」，被 (a)
+   推翻，一併更正。
+   **刻意不做**：沒有 `pip uninstall opencv-python` 或強制重裝 headless 版
+   ——ultralytics 對它有硬相依，移除可能讓 pip 相依檢查失敗而中斷建置，
+   `deploy.yml` 的 `set -e` 會讓部署中止、舊容器繼續服務舊程式碼（第十九輪記
+   載過的根因）。裝系統庫是純加法。→ **G135**
+
+2. **[啟動] 隱私權畫面把權限對話框整個換掉**（`main.dart`、
+   `privacy_policy_screen.dart`）：使用者回報「初始安裝的權限開啟警告被跳出的
+   隱私權覆蓋」。根因：`main.dart` 啟動的 `addPostFrameCallback` 原本無條件呼
+   叫 `VideoCallPermissionService.requestOnFirstUse(context)`，該服務在關鍵權
+   限缺失時會 `showDialog`（`barrierDismissible: false`）。同時
+   `splash_screen.dart::_goNext()` 呼叫 `_replaceWith(PrivacyPolicyScreen())`，
+   而 `_replaceWith` 用的是 **`Navigator.pushReplacement`——它移除的是導航堆
+   疊最上層那個 route**，正好就是那個對話框。`await showDialog` 靜默返回、不
+   拋任何例外，程式碼完全無感。順序本身也是錯的：在使用者看到隱私權政策**之
+   前**就先跳系統權限請求。
+   修復：`main.dart` 改成只在「已同意隱私權政策」時才請求（讀 prefs 失敗一律
+   略過，保守）；`privacy_policy_screen.dart` 在寫入同意狀態後、
+   `pushAndRemoveUntil` **之前** `await requestOnFirstUse(context)`，await 完
+   成後重新檢查 `mounted` 才導航。→ **G136**
+
+3. **[通話] 第一次使用 App 時雙端 WebRTC 連不上**（與第 2 項同一根因）：使用者
+   回報「長輩端發起通話時，第一次使用 App 時雙端的 WebRTC 可能會無法連線」。
+   根因就是第 2 項：首次使用拿不到相機／麥克風 → `openUserMedia` 沒有軌道 →
+   WebRTC 連不上；第二次啟動權限已在才正常。**為什麼是「雙端」**：家屬端
+   `video_call_screen.dart` **完全沒有自己請求權限**，唯一來源就是被換掉的那
+   個 `requestOnFirstUse`；長輩端 `elder_screen.dart:436` 雖有
+   `_checkPermissions()`，但**沒有 `await`**（fire-and-forget），`initState`
+   繼續往下跑去開媒體，與系統權限對話框賽跑。「可能」正是因為這是競態，取決
+   於使用者多快按下允許。
+   **本輪刻意不動長輩端那個未 await 的呼叫**（記為已知潛在風險）：
+   `elder_screen` 是 🔴 極高風險、冷啟動接聽路徑有五層兜底，在 `initState` 加
+   `await` 會擋住整條鏈，正是本專案反覆踩到的單點修改。修好第 2 項後，權限在
+   隱私權同意當下就取得，任何通話發生時 `_checkPermissions()` 已是 no-op，競
+   態不會觸發。若日後有證據顯示它仍會觸發，再處理。→ 併入 **G136**
+
+4. **[Session] 監控機退出後失去快速登入**（`socket_app.py`、`main.dart`、
+   `signaling.dart`）：使用者第三次回報：「由長輩通訊帳號登出轉換成監控設
+   備，再轉換回長輩通訊帳號時已無先前長輩帳號的 session 留存」（前兩輪即第
+   三十四、三十五輪都動過同類問題，症狀依舊）。根因是一個**自造的迴圈**：
+   `elder_screen.dart::_exitCCTVMode` 先呼叫 `ApiService.deleteMonitorDevice(...)`、
+   **之後**才 `SessionManager.releaseSession(preserveQuickLogin: true)`（順序
+   刻意，有註解記載）。後端 `on_delete_device` 收到刪除請求後，**對這台裝置
+   自己送出 force-logout**（Socket + FCM 雙路），而 `main.dart` 兩個
+   force-logout 處理器的清除清單裡**包含 `last_elder_*` 四個鍵**。裝置刻意用
+   `preserveQuickLogin: true` 保住的鍵，被自己送出的刪除請求繞一圈回來清掉。
+   修復：後端 `on_delete_device` 的兩個送出點都加 `reason: 'device-removed'`
+   （`routers/pairing.py` 的解綁路徑早已帶 `reason: 'elder-unbound'`，未
+   動）；前端 `Signaling.onForceLogout` 簽章改為
+   `void Function({String? reason})`、Socket handler 加 `data is Map` 防呆解
+   析 reason；`handleForceLogout({String? reason})` 與背景 FCM handler 都改
+   成**只有 `reason == 'elder-unbound'` 才清 `last_elder_*`**。
+   **判斷方向刻意保守**：reason 讀不到／空／未知值一律**保留**快速登入鍵。理
+   由：這四個鍵只是「上次登入的長輩是誰」的便利記憶，清掉會造成實際回報的困
+   擾；`elder-unbound` 是唯一明確該清的情境。session 本體（`caregiver_id`／
+   `access_token`／`user_role` 等）**不受影響，一律照舊全清**。→ **G137**
+
+5. **[監控] 監控機列表的兩種高光 —— 本輪零改動**（`family_interaction_tab.dart`）：
+   使用者要求「人在監控畫面時給該監控機高光」與「跌倒警報要有紅色緊急高
+   光」。查證結果：`_buildMonitorDeviceCard`（約 line 1700-1780）**兩種高光
+   都已完整實作且接線正確**——`hasActiveAlert` → 卡片底色 `0xFF3F1D1D` 深紅
+   ＋紅底警報徽章；`isElderPresent` → 底色 `0xFF083344` 青色＋「長輩在此」徽
+   章；三態優先序為 警報 > 目前所在 > 一般。`activeAlerts` 有從
+   `family_main_screen.dart`（`_handleCctvAlert` 寫入）傳入，`device_id` /
+   `deviceId` 兩種欄位名都有處理。**這兩項是被 YOLO 沒跑起來卡住的**
+   （`present` 與警報都來自偵測結果），不是 UI 缺失。ultralytics 一旦 import
+   成功即會亮。**下一輪若使用者仍回報看不到高光，先確認 YOLO 是否已真的在
+   跑，不要去改那個檔案。**
+
+**尚未收斂**
+
+- 長輩端 App **背景存活**時收到緊急通話，只會喚醒 App 而**不會進入房間**。第
+  三十四輪查出但未解，本輪未處理。
+
+**新增護欄**
+
+本輪新增 **G135–G137**（後端 G135；前端 G136；跨端 G137；條文見 §7.1／
+§7.2）。§7 開頭護欄總數同步更新為 **137**。
+
+**驗證**
+
+- 程式碼由實作子代理完成並驗收通過；文件代理另行以 `grep`／`Read` 對照原始碼
+  逐項核對五項回報的關鍵事實，包括 `yolo_detector_service.py::_load_model()`
+  的 `except ImportError as e` 與 `f'ultralytics 匯入失敗: {e}'`、
+  `Dockerfile` 新增的 `libgl1 libglib2.0-0` 安裝層、`main.dart` 改為讀取隱私
+  權同意狀態後才呼叫 `requestOnFirstUse`、`privacy_policy_screen.dart` 在
+  `pushAndRemoveUntil` 前 `await` 該呼叫、`socket_app.py::on_delete_device`
+  與 `routers/pairing.py` 的 `force-logout` emit 均已帶上對應的 `reason`、
+  `signaling.dart::onForceLogout` 簽章與 `main.dart::handleForceLogout` 的
+  `reason == 'elder-unbound'` 判斷、
+  `family_interaction_tab.dart::_buildMonitorDeviceCard` 的 `hasActiveAlert`
+  ／`isElderPresent` 高光邏輯，均確認存在且與本輪敘述一致。
+- `flutter analyze lib` — **0 error**（144 項 info/warning，較上一輪 141 項
+  略增，屬既有技術債變動，非本輪新增邏輯錯誤）。
+- 後端 `py_compile`／`pytest tests/test_call_signaling.py`／
+  `flutter build apk` 等完整驗收由實作子代理於各自任務中完成，不在本次文件
+  任務重跑範圍內。
+
+連接／跳轉語意變更的 graphify 同步狀態由對應的實作子代理負責，不在本次文件任
+務範圍內。
+
+---
+
+### 2026-08-31 — 第三十八輪：合併後全面稽核 —— 首頁監控警示不可點擊、關心訊息假成功
+
+**背景**
+
+`monitor-newtool` 分支合併進 `main` 之後的全面稽核，非使用者回報。用四類跨層掃描找出
+缺口：回呼參數是否真的被傳入、Socket 事件契約前後端是否對得上、REST 端點是否雙端都存
+在、符號重定位（重構後呼叫端是否跟著更新）。掃描另外兩類結果乾淨：前端監聽的 Socket
+事件後端全部都有發（0 個孤兒監聽）；前端 8 條 REST 呼叫全部對得上後端路由。以下依
+[前端]／[後端] 分類記錄兩項缺口，另有一項零改動的附帶發現。
+
+**根因與修復**
+
+1. **[前端] `onOpenMonitorView` 從未被傳入，首頁「最新警示」CCTV／跌倒項目不可點
+   擊**（`family_main_screen.dart`、`family_home_tab.dart`）：`FamilyHomeTab` 宣告了
+   `final ValueChanged<String?>? onOpenMonitorView;`（`family_home_tab.dart:68`），消
+   費端 `_navigationForAlertItem()` 也已寫好判斷邏輯，但 `family_main_screen.dart`
+   建構 `FamilyHomeTab(...)` 時**從未傳入這個參數**，`if (... ||
+   widget.onOpenMonitorView == null) return null;` 因此永遠成立——功能宣告了、消費端
+   也寫好了，卻靜默不存在。
+   ⚠️ 這**不是**合併衝突造成的：`monitor-newtool` 與 `origin/main` 兩支合併前都沒傳
+   這個參數，是功能寫了一半、父層從未接上。
+   修復：把原本內嵌在 `_presentCctvAlert()`「查看監視畫面」鍵裡的
+   `VideoCallScreen(monitorViewOnly: true, ...)` 建構邏輯抽成共用方法
+   `_openMonitorViewForDevice(String deviceIdStr, {String? elderIdOverride,
+   VoidCallback? onReturn})`；`_presentCctvAlert()` 改呼叫共用方法，原本清警報的
+   `.then()` 邏輯逐字搬進 `onReturn`；建構 `FamilyHomeTab` 處補上 `onOpenMonitorView:`
+   指向同一個共用方法。**刻意不新增第三個 `monitorViewOnly: true` 建構點**——抽出後
+   全專案仍是**兩個**（`family_interaction_tab.dart:2331`、
+   `family_main_screen.dart:915`），符合 G55。`rawElderId` 沿用權威推導
+   `_currentElder?.elderId ?? _currentElder?.id.toString()`；`elderIdOverride` 讓警
+   報彈窗傳入警報自己的 `elder_id`；解析不到線上裝置就直接 `return`，不帶空的
+   `targetSocketId` 進房（與彈窗原本的 `canView` 判準一致）。→ **G138**
+
+2. **[後端] `send-heartbeat` 沒有 handler，前端一律顯示假成功**（`socket_app.py`、
+   `signaling.dart`、`family_interaction_tab.dart`、`care_script_service.dart`）：家
+   屬按「遠端提醒廣播」「傳送留言」、或照護劇本立即執行時，
+   `signaling.dart::sendHeartbeat()` 會 emit `send-heartbeat`，但
+   `services/socket_app.py` 的 18 個 handler 裡**沒有這一個**，Socket.IO 端把未註冊
+   事件靜默丟棄；前端不管實際送達與否一律跳綠色成功提示（「已即時推送廣播…至長輩端
+   平板 🔔」），長輩端其實什麼都沒收到。
+   修復：後端新增 `@sio.on('send-heartbeat')` / `on_send_heartbeat`
+   （`socket_app.py:2760`，純新增 54 行），轉發為長輩端已在監聽的
+   `heartbeat-message`，payload 形狀 `{'reply': <字串>}` 與 `main.py` 排程
+   `heartbeat_job` 一致；目標查找**重用** `_get_target_sockets_and_tokens(room,
+   'elder', sid)`（函式本體零改動）——前端送的 `elderId` 是 `Elder.id`（DB
+   user_id），房名可能用 4 位數 `elder_id`，只有這個函式的三層查找能同時涵蓋兩種情
+   形。刻意只送在線 socket、不補 FCM 離線推播，與既有排程 job 行為一致。
+   前端 `sendHeartbeat` 回傳型別由 `Future<void>` 改為 **`Future<bool>`**：socket 未
+   連線時回 `false`。三個呼叫端接住結果——`family_interaction_tab.dart:164/1012` 失
+   敗時改顯示錯誤提示（不再謊報成功）；`care_script_service.dart:78` 失敗時**不寫
+   入** `last_executed_at`、改記一筆 `status: 'failed'`（否則每日一次去重會誤判「今
+   天已執行」，當天不再重試），該方法簽章仍維持 `Future<void>` 以免牽動唯一呼叫端。
+   ⚠️ `send-heartbeat` 屬「AI／關懷推播子系統」，**不歸本文件管轄**（見 §3.1「不屬
+   本文件管轄」清單，該清單已列有此事件，本輪未變更清單本身）；本輪只是同一次稽核
+   順帶掃出、修復落在後端與前端呼叫端，記錄於此供後續查閱根因。
+
+**附帶發現（本輪未處理）**
+
+`signaling.dart` 的 `pushContent`、`requestElderChat` 兩個方法**零呼叫點**，後端也無對
+應 handler（同屬「AI／關懷推播子系統」死碼，不歸本文件管轄）。與已知的 `_configuration`
+（`signaling.dart:232`）、`_showCallkitIncoming`（`signaling.dart:814`）同屬死碼，本輪
+刻意未刪，留給日後清理死碼時一併處理。
+
+**新增護欄**
+
+本輪新增 **G138**（前端；條文見 §7.1）。§7 開頭護欄總數同步更新為 **138**。
+
+**驗證**
+
+- `flutter analyze lib` — **0 error**（142 issues，較上一輪 144 項略降，屬既有技術債
+  變動，非本輪新增邏輯錯誤）。
+- `flutter build apk --debug` — 成功。
+- 後端 `pytest tests/test_call_signaling.py -q` — **17 passed**。
+- `python -c "from main import app"` — import 冒煙測試通過（見 **G94**）。
+- 文件代理另以 `grep`／`Read` 對照原始碼核對本輪敘述的關鍵事實，包括
+  `family_home_tab.dart:68` 的 `onOpenMonitorView` 宣告、`family_main_screen.dart`
+  新增的 `_openMonitorViewForDevice` 與其在 `_presentCctvAlert()`／`FamilyHomeTab`
+  建構處的兩個呼叫點、`socket_app.py:2760` 新增的 `on_send_heartbeat`、
+  `sendHeartbeat` 回傳型別改為 `Future<bool>`，均確認存在且與本輪敘述一致。
+
+連接／跳轉語意變更的 graphify 同步狀態由對應的實作子代理負責，不在本次文件任務範圍
+內。
+
+---
+
+### 2026-09-01 — 第三十九輪：合併後首次實機 —— YOLO 走動誤判、監控狀態卡住、跨端過期契約
+
+**背景**
+
+`monitor-newtool` 併入 `main` 並 push 後的第一次實機測試，非上一輪的靜態稽核可比。使用
+者六項回報，重點在第 2–6 項；第 1 項（溢位截圖）經使用者補充畫面位置後修復，見下
+方「根因與修復」第 6 項。好消息：第三十七輪的 YOLO `libGL` 修復經本輪實機確認有
+效，YOLO 已能正常偵測，三輪懸案結案。
+
+**根因與修復**
+
+1. **（Session）長輩登出後無法快速登入，第四次回報**：已排除
+   `SessionManager.releaseSession(preserveQuickLogin: true)` 保留邏輯（`_sessionKeys`
+   與 `_quickLoginKeys` 確實分離，見 `session_manager.dart`）、長輩端登出按鈕確實帶該
+   參數、`_rememberLastElder` 寫入路徑完整、後端 `POST /api/pairing/session/release`
+   不 emit 任何事件。找到的確定缺陷：`caregiver_pairing_screen.dart:109` 的
+   `_handleLogout()` 用 `prefs.clear()`——`session_manager.dart` 明文禁用、規定所有登
+   出必須走 `SessionManager`，這是漏網之魚。它會清空整個 SharedPreferences（含
+   `last_elder_*`），使用者常用同一支手機輪流測試兩種身分。已改走
+   `SessionManager.releaseSession()`（不帶 `preserveQuickLogin`，家屬端登出本就該全
+   清）。**仍不確定這是唯一原因**，已同時把 `elder_pairing_display_screen.dart:288`
+   `_quickLoginSameElder()` 失敗時（:367）的 SnackBar 改成帶事實的診斷（顯示
+   `last_id`／`last_name` 有無與 `role` 實際值，**不顯示** id 與姓名），供下次實機一
+   句話定位。
+
+2. **（監控）走動被判成跌倒、信心 100%**：`yolo_detector_service.py::_check_fall`
+   （:507）的兩條計分路徑是「或」，純垂直位移那條完全不檢查 bbox 形狀——朝鏡頭走近
+   ／走遠時 bbox 高度隨透視改變，質心垂直位移正規化後可衝過 `FALL_VERTICAL_RATIO=
+   0.30`，單獨給到 `min(1.0, shift*2.0)`=1.0。修法是結構性的、不是調數字：把
+   `is_wide_sustained`（持續寬扁 bbox）從加碼條件改成兩條路徑共同的**必要前提**，整
+   段計分包進 `if is_wide_sustained:`。走動時 bbox 全程直立 → 計分區塊整段不執行，
+   不論垂直位移多大都是 0 分。**五個門檻數值一個都沒動**，真跌倒仍在同一 14 秒窗口
+   判出。新增 `tests/test_yolo_detector.py`，用「舊版會給 100%」的走動數值把回歸釘
+   死。→ **G139**
+
+3. **（監控）首頁監控設備狀態卡住不動**：`family_home_tab.dart`（現行 :1414-1417）
+   的 `isElderPresent` 判斷漏了 `elderZone['present'] == true` 這一條，只比對
+   deviceId——`_elderZone` 一旦有過 deviceId 就永遠顯示「長輩在此」，長輩離開鏡頭也
+   不恢復。`family_interaction_tab.dart:2157` 的四條件版本才是對的。諷刺的是首頁那
+   段註解宣稱「與互動分頁逐一對齊」，實際沒對齊，已一併修正該註解，否則下一個人會
+   信它而不去檢查。已補齊成與互動分頁完全一致的四個條件。
+
+4. **（監控）在場狀態更新間隔依會員層級**（免費 15s／黃金 7s／鑽石 3s）：後端
+   `services/indoor_position.py` 新增 `_presence_broadcast_due()`，**只節流 presence
+   心跳**（`transition is None`），真正的區域轉換一律立即推播。層級查詢重用
+   `routers/subscription.py::resolve_tier_for_user()`（既有端點零改動），60 秒快
+   取；查無層級 **fail-safe 退回 free**（最保守），有專門測試鎖方向。🚨 **關鍵設計
+   點**：節流只套在「往外推播」，**不可套在偵測**——`indoor_position.py` 用
+   `last_seen` 判斷後端自己那側的在場狀態，若偵測降到 15 秒，`last_seen` 會過期、
+   後端先自己判定「不在場」，整條鏈路會壞（→ **G141**）。監控機推幀維持每 2 秒不
+   變。🚨 **跨端阻塞（子代理主動發現，不在原始需求內）**：`family_main_screen.dart`
+   原本寫死 `_zonePresenceStaleWindow=10 秒`，與後端 `PRESENCE_STALE_SECONDS=10` 是
+   刻意對齊的跨端契約；後端節流成 15 秒後，免費層級每個週期必有 5 秒被誤判成「不在
+   場」→「長輩在此」燈號規律閃爍。裁決：**過期秒數改由後端在 payload 送**（新欄位
+   `presence_stale_after_ms` = 節流間隔 ×2、下限 10 秒 → 免費 30000／黃金 14000／
+   鑽石 10000），前端不再自己寫死，收不到該欄位時退回 10 秒（向後相容）。**刻意不
+   採用**「把 10 秒改成固定 20 秒」——鑽石會員（3 秒更新）反而要等 20 秒才知道長輩
+   離開，付費層級變得更遲鈍，方向是反的；**也不採用**「前端自己再做一套層級判斷」
+   ——重複的跨端常數正是這次漂移的成因。→ **G140**
+
+5. **（監控）無活動警報辨別坐立／橫躺**（坐立 2 小時、橫躺／趴臥 15 秒）：舊的單一
+   窗口 `INACTIVITY_WINDOW_FRAMES=24`（48 秒）物理上放不下相差近 500 倍的兩種尺度
+   （`state.history` 是 `deque(maxlen=32)`，也存不下 2 小時）。拆成兩件事：短窗口
+   （`INACTIVITY_STILLNESS_CHECK_FRAMES=4`≈8 秒）只判「這一刻算不算靜止」；
+   `DeviceState` 新增 `inactivity_still_since`／`inactivity_still_posture`，跨呼叫
+   持續存在，用真實經過秒數比對。姿勢分類沿用 `FALL_WIDE_BBOX_RATIO=1.6`（同一支攝
+   影機幾何）：`w/h>1.6 → lying(15s)`，否則 `sitting(2h)`。**姿勢改變即重設計時
+   器**：坐→躺重設成 15 秒門檻（姿勢惡化要快抓）；躺→坐重設成 2 小時（使用者展現
+   了行動能力）。移動超過 `INACTIVITY_MOVEMENT_RATIO=0.15` 才整個清空。
+
+6. **（前端）家屬端標籤主介面溢位（item 1）**：使用者原僅提供裁切過的截圖，本輪
+   追問後補充「幾乎都只出現在家屬端的標籤主介面上，如首頁、互動等」，掃描範圍由
+   全 App 213 處風險 `Row` 縮到 `family_home_tab.dart`、
+   `family_interaction_tab.dart` 兩檔，找出「`Row` 內含長度不可控動態字串、整列
+   卻無 `Expanded`／`Flexible`」共 11 處候選。實際修 **5 處**（新增 5 個
+   `Flexible`、4 個 `overflow: TextOverflow.ellipsis`）；其餘候選逐一判讀後**刻
+   意跳過**——旁邊只有小圖示、或文字長度有明確上限的短標籤不會溢位，寧可少改一
+   處也不動不需要動的地方（新鐵律第 14 條「不要一次全部修改」的落實）。最可疑
+   兩處：`family_home_tab` 的 `'$locDisplay • 今日累積 $stepDisplay 步'`（長輩所
+   在地為使用者自訂、長度不可控）、`family_interaction_tab` 的
+   `widget.tierDisplayName`（會員層級顯示名稱長度不一）。**但書**：沒有實機無
+   法指認使用者當初看到的究竟是哪一處，兩分頁裡長度不可控的都已補上防護，仍待
+   實機確認。監控卡片三態高光色票（`0xFF3F1D1D`／`0xFF083344`／`0xFF0F172A`）
+   與 `isElderPresent` 判斷式皆未被波及（已逐一核對）。
+
+**仍然開著／已知風險（下一個接手者最需要的）**
+
+1. **item 3 的真實表現只能實機驗證**——測試釘住的是邏輯邊界（走動不中、真跌倒
+   中），真實影像下的門檻是否合適仍待確認；8 秒靜止確認窗口在真實光線／遮蔽條件下
+   是否夠穩，同樣未經實機驗證。
+2. **短暫遮蔽不會重設計時器**——`process_frame()` 對沒偵測到人的幀不呼叫
+   `_check_inactivity`，`still_since` 原地不動，恢復後會把空檔算進經過時間。這是刻
+   意的（被擋住通常仍是同一姿勢），但假設未經實機驗證；真正的斷線由
+   `main.py::yolo_monitor_job` 的 `reset_device()` 兜底。
+3. **`DeviceState` 在行程記憶體、不落地**，服務重啟會讓已累積的 2 小時計時歸零。舊
+   版即如此，但 2 小時比舊版 48 秒**更容易被一次重啟打斷**。
+4. **item 2（Session）仍不確定已根治**：`prefs.clear()` 是本輪查到的確定缺陷，但
+   已加的診斷 SnackBar 是為了「若還會發生，下次一句話定位」而備的，不是「已確認根
+   治」的證據。
+
+**新增護欄**
+
+本輪新增 **G139–G141**（後端 G139、G141；跨端 G140；條文見 §7.2）。§7 開頭護欄總數
+同步更新為 **141**。
+
+**驗證**
+
+- `flutter analyze lib` — **0 error**（142 issues）。
+- `flutter build apk --debug` — 成功。
+- 後端 `pytest tests/test_indoor_position.py tests/test_yolo_detector.py
+  tests/test_call_signaling.py -q` — **57 passed**。
+- `python -c "from main import app"` — import 冒煙測試通過（見 **G94**）。
 
 ---
 

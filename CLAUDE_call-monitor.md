@@ -298,7 +298,7 @@ AI 對話、Pinecone 長期記憶、新聞爬蟲、遊戲、寵物、TTS/STT、`
 | `cctv-alert-ack` | C→S | `alert_id`、`user_id` | `on_cctv_alert_ack`:2083 | 回應 YOLO 告警；回 `cctv-alert-ack-success/failed` |
 | `audio-bridge-request` | C→S | — | `on_audio_bridge_request`:2109 | 回 `audio-bridge-response` |
 | `leave` | C→S | `room` | `socket_app.py::on_leave` | **2026-08-18 第二十六輪新增**。定向離開單一房間；冪等（不在房間內即安全 no-op）；**不斷 socket**。見護欄 **G92** |
-| `elder-zone-update` | S→C | `elder_id`、`device_id`、`from_zone`、`to_zone`、`entered_at`、`previous_dwell_seconds`、`timestamp` | `socket_app.py::_broadcast_elder_zone_update` | **2026-08-18 第二十六輪新增**，第二十七輪轉正式（見 §6.12）。`IPS_ENABLED` 現為 kill-switch，預設開啟。見護欄 **G95**／**G97** |
+| `elder-zone-update` | S→C | `elder_id`、`device_id`、`from_zone`、`to_zone`、`entered_at`、`previous_dwell_seconds`、`timestamp`、**`presence_stale_after_ms`（毫秒，2026-09-01 第三十九輪新增，見 §6.12）** | `socket_app.py::_broadcast_elder_zone_update` | **2026-08-18 第二十六輪新增**，第二十七輪轉正式（見 §6.12）。`IPS_ENABLED` 現為 kill-switch，預設開啟。**推播頻率 2026-09-01 起依會員層級節流**（`transition` 有值時仍立即推播，不受節流影響），見護欄 **G95**／**G97**／**G140**／**G141** |
 
 > **`force-logout` 的 `reason` 欄位（2026-08-31 第三十七輪新增）** — 選填字串，兩個送出點各自帶
 > 固定值：`'elder-unbound'`（家屬端解除長輩綁定，來自 `routers/pairing.py`:1361/1369）與
@@ -1115,8 +1115,9 @@ routers/alert.py::push_cctv_frame（既有 CCTV 推幀端點，見 §6.9）
        ├─ 穩定切換（`transition` 非 `None`）才：寫入 `elder_zone_event`——**這是唯一仍保留
        │    「只在切換時才做」語意的步驟**
        └─ 【無論是否校準、是否切換，只要這幀偵測到人】`zone_tracker.snapshot()` 組 payload →
-            以 `elder-zone-update` 廣播給家屬——**廣播本身與「是否切換」已脫鉤**，見下方
-            「Socket 事件」
+            穩定切換（`transition` 非 `None`）一律立即以 `elder-zone-update` 廣播；純
+            presence 心跳（`transition` 為 `None`）**2026-09-01 起依會員層級節流**才送，
+            見下方「Socket 事件」與護欄 **G140**／**G141**
 ```
 
 > ⚠️ **順序陷阱（G96，2026-08-18 第二十七輪）**：`store_last_frame` 必須排在
@@ -1176,11 +1177,19 @@ routers/alert.py::push_cctv_frame（既有 CCTV 推幀端點，見 §6.9）
 （`_build_zone_payload`:522）曾有 naive datetime 轉 epoch 的時區 bug（UTC+8 環境下倒退
 8 小時），2026-08-18 第二十七輪已修正，見護欄 **G99**；payload **不帶** `calibrated`，
 消費端應視收到推播為已校準（見上方「家屬端操作流程」與 `family_main_screen.dart`）。
-⚠️ **2026-08-25 起廣播頻率不再綁定「穩定切換」，且不分是否校準**：只要偵測到人就會廣播，
-約每 2 秒一次；`transition` 欄位大多數時候是 `None`，只有真的發生穩定切換才非空。🚫 **不要**
-假設收到 `elder-zone-update` 就代表剛發生區域切換——要看 `transition` 是否有值，不能只看
+⚠️ **2026-08-25 起廣播頻率不再綁定「穩定切換」，且不分是否校準**：只要偵測到人就會嘗試
+廣播；`transition` 欄位大多數時候是 `None`，只有真的發生穩定切換才非空。🚫 **不要**假設
+收到 `elder-zone-update` 就代表剛發生區域切換——要看 `transition` 是否有值，不能只看
 「有沒有收到事件」。唯一仍保留「只在切換時才做」語意的是 **DB 寫入**；未校準裝置的
 `transition` 永遠是 `None`，因此永遠不寫 DB，但仍持續收到廣播。
+⚠️ **2026-09-01 第三十九輪起：「偵測」與「往外推播」的頻率分家**——偵測仍是每 2 秒一次
+（推幀節奏不變），但**推播**只在 `transition` 非 `None` 時立即送；`transition` 為
+`None`（純 presence 心跳，佔絕大多數）時改依會員層級節流（`_presence_broadcast_due()`：
+免費 15s／黃金 7s／鑽石 3s），**不再是固定約 2 秒**。payload 新增
+`presence_stale_after_ms`（節流間隔 ×2、下限 10 秒，`_presence_stale_after_ms()`），
+告訴前端這筆資料多久沒更新算過期；前端 `_zonePresenceStaleWindow` 改讀此欄位，缺漏時
+退回 10 秒（向後相容）。後端自己判斷在場用的 `PRESENCE_STALE_SECONDS`／`last_seen`
+不受節流影響，繼續每幀更新，見護欄 **G140**／**G141**。
 
 **開關**：`IPS_ENABLED`（`uban-api/.env`），**2026-08-18 第二十七輪轉正式後預設開啟**——
 環境變數語意也跟著改變：不再是「要不要試用」的旗標，而是**緊急關閉用的 kill-switch**。設
@@ -1216,11 +1225,11 @@ IMU 航位推算漂移嚴重，且長輩常不隨身攜帶手機。相機方案�
 
 ## 7. 護欄（合併後的唯一權威清單）
 
-> 📌 **搬移門檻提示**：本文件中出現的「第 N 輪」，**N ≤ 36** 者其年表條目已遷至
-> `CLAUDE_call-monitor-history.md`；**N ≥ 37** 仍在本檔 §8。此門檻會隨每輪搬移而持續調高，
+> 📌 **搬移門檻提示**：本文件中出現的「第 N 輪」，**N ≤ 39** 者其年表條目已遷至
+> `CLAUDE_call-monitor-history.md`；**N ≥ 40** 仍在本檔 §8。此門檻會隨每輪搬移而持續調高，
 > 調整時只需要更新這兩處（本節與 §8 開頭）的數字。
 
-> 目前共 **138 條**（G1–G138）：G1–G36 合併自 `CLAUDE.md`（13 條）與 `Uban/CLAUDE.md`（26 條）並去重、
+> 目前共 **145 條**（G1–G145）：G1–G36 合併自 `CLAUDE.md`（13 條）與 `Uban/CLAUDE.md`（26 條）並去重、
 > 修正矛盾；G37–G46 為 2026-08-05 第十七輪新增（連線可靠性 4 條、監控警報 2 條、安全 4 條）；
 > G47–G52 為 2026-08-05 第十八輪新增（前端 4 條：監控機連線、冷啟動衝刺、鎖屏覆蓋、掛斷提示；
 > 後端 2 條：裝置清單同名去重、CCTV 端點部署）；
@@ -1284,6 +1293,12 @@ IMU 航位推算漂移嚴重，且長輩常不隨身攜帶手機。相機方案�
 > **G135–G137 為 2026-08-31 第三十七輪新增**（後端 G135；前端 G136；跨端 G137；內容見
 > 本輪年表「新增護欄」小節與 §7.1／§7.2 條文）。
 > **G138 為 2026-08-31 第三十八輪新增**（前端；內容見本輪年表「新增護欄」小節與 §7.1 條文）。
+> **G139–G141 為 2026-09-01 第三十九輪新增**（後端 G139、G141；跨端 G140；內容見
+> 本輪年表「新增護欄」小節與 §7.2 條文）。
+> **G142–G145 為 2026-09-02 第四十輪新增**（全部前端：溢位判準改為「字級 × 同列元素
+> 數」而非字串是否動態、CCTV 檢視「正在觀看哪一台」狀態只能放畫面 State、通話取消／
+> 逾時必須同時清 CallKit／備援通知／pending prefs 三面、寫入 `user_role='elder'` 的
+> 登入路徑必須同時寫 `last_elder_*`；內容見本輪年表「新增護欄」小節與 §7.1 條文）。
 > **G23 已於第十八輪修訂**（改為只約束「要顯示提示時用什麼元件」，是否顯示交由 G50）。
 > **G8 已於第十九輪加註例外**（`monitorViewOnly`，見 G55）。
 > **G22 已於第二十二輪改寫**（緊急通話由「刻意不帶有效期、ttl 3600s」**反轉**為「兩條路都帶、ttl 60s」，見 G73）。
@@ -2240,6 +2255,50 @@ route 位置。
 > 同一次稽核用「宣告了回呼、但所有建構點都沒傳」這條規則掃全 App，只有這一個中標；可
 > 作為日後的檢查手法。
 
+**G142 — 溢位判準是「字級 × 同列元素數」，不是「字串是否動態」**
+同列有 ≥18pt 標題又有徽章／箭頭／按鈕時，標題就必須包 `Flexible` +
+`overflow: TextOverflow.ellipsis`；短字級標籤、已包在 `Expanded` 內、或同列無其他
+元素的獨立標題可以跳過。
+🚫 **禁止**用「字面字串長度有上限」當跳過理由——第三十九輪的溢位掃描就是用這個判
+準漏掉「家庭生活時光牆」（22pt）與「AI 照護共創助理」（18pt + 徽章）兩處，使用者
+實機截圖直接證實溢位。
+⚠️ 本條不豁免鐵律 14「不得一次全改」——找到一處、精準修一處，並記錄為什麼跳過其
+餘的。
+> **原因**：第四十輪使用者截圖點出家屬端互動分頁卡片溢位，經複查全部 14 處
+> `fontSize>=18` 才發現上一輪的跳過理由本身就是錯的。
+
+**G143 — CCTV 檢視的「正在觀看哪一台」狀態只能放畫面 State，不得放進 `Signaling` 單例**
+`family_main_screen.dart` 的 `_viewingMonitorDeviceId` 在 `_openMonitorViewForDevice()`
+（G138 認定的唯一 CCTV 檢視建構點）push 前設值、`.then()` 內清空；跌倒警報彈窗的
+「查看監視畫面」鍵只在**同一台**裝置時隱藏，不同台仍要能點進去。
+🚫 **禁止**把這類「使用者正在看哪個畫面」的旗標放進 `Signaling` singleton——
+`isIncomingCallDialogVisible` 已有導致長輩端冷啟動失敗而被回退的事故史；需要跨路
+徑協調時比照 `_activeCallId` 的模式：與具體識別碼綁定、讀不到就退回安全預設。
+> **原因**：第四十輪新增「已在觀看該監視機時不再顯示查看鍵」，選擇畫面 State 而非
+> 全域旗標是刻意的架構決策，避免重蹈覆轍。
+
+**G144 — 任何「通話被取消／逾時」的處理點，必須同時清 CallKit／備援通知／pending prefs 三面**
+CallKit 用 `endAllCalls()`（包 try/catch）、備援通知用
+`LocalCallNotification.cancel()`、再清三個 pending prefs 鍵——少一個就會留下響不停
+或殘留的殭屍通知／狀態。
+🚫 **禁止**只改 `Signaling` 的全域回呼欄位就視為完工——畫面層（例如
+`elder_home_screen.dart` 對長輩端的覆寫版）若也定義了同名回呼，會蓋掉全域版，兩份
+都要正確處理三面清除。
+> **原因**：第四十輪查出 `main.dart` 的 `onCancelCall` 與 `elder_home_screen.dart`
+> 的長輩端覆寫版都只停提示音、關 App 內對話框，未關 CallKit 響鈴畫面也未關備援通
+> 知，導致撥出端逾時後收話端的來電通知留在畫面上。
+
+**G145 — 任何寫入 `user_role='elder'` 的登入路徑，都必須同時寫 `last_elder_*`**
+快速登入的還原邏輯只讀 `last_elder_*` 這組鍵；新增或修改登入入口（包含開發用的快速
+登入按鈕、深連結／復原代碼登入等）時，只要該路徑會把使用者設為長輩身分，就必須同
+步呼叫 `_rememberLastElder(...)` 並寫入 `last_elder_device_role`。
+🚫 **禁止**只在「清除端」修快速登入問題就視為根治——漏寫的是「寫入端」，症狀卻只
+在「清除後登不回去」才會被看見，容易讓人誤判成清除邏輯的 bug 而修錯地方。
+> **原因**：這是本輪耗時最久的一項——第三十五、三十七、三十九輪各自修對了一個清
+> 除端的真 bug，但使用者實際走的登入路徑（開發用「登入宇璿」按鈕）從未寫入這組
+> 鍵，前後拖了五輪才靠畫面診斷定位。全專案掃出的第三條缺口（深連結復原登入）已一
+> 併補上。
+
 ### 7.2 後端護欄
 
 **G29 — `socket_app.py` 的終止廣播**
@@ -2699,6 +2758,41 @@ ultralytics 對它有硬相依，移除可能讓 pip 相依檢查失敗而中斷
 > 一台裝置，被前端當成「長輩關係解除」而把剛保留的快速登入鍵清掉——這是使用者第
 > 三次回報同一症狀，前兩輪（第三十四、三十五輪）都沒能根治。
 
+**G139 — 跌倒判定必須以「持續寬扁 bbox」為必要前提，不得只靠垂直位移**
+`yolo_detector_service.py::_check_fall`（:507）的兩條計分路徑（純垂直位移／寬扁佐證）
+原本是「或」，純垂直位移完全不檢查 bbox 形狀：朝鏡頭走近／走遠時 bbox 高度隨透視改
+變，質心垂直位移正規化後可衝過 `FALL_VERTICAL_RATIO=0.30` 並獨自給到滿分信心。
+✅ `is_wide_sustained`（`FALL_WIDE_BBOX_RATIO=1.6` 持續 `FALL_SUSTAINED_WIDE_MIN_FRAMES`
+幀的寬扁 bbox）改為兩條計分路徑共同的**必要前提**，整段計分包在
+`if is_wide_sustained:` 之下；走動時 bbox 全程直立，計分區塊整段不執行。
+🚫 **禁止**把 `is_wide_sustained` 退回成加碼條件，或新增任何不先檢查 bbox 形狀就能
+單獨給高分的位移路徑。✅ 要調靈敏度一律動門檻數值，不要動這個結構。
+> **原因**：第三十九輪查出走動朝鏡頭方向移動時被判成跌倒、信心 100%。五個門檻數值
+> 一個都沒動，真跌倒仍在同一 14 秒窗口判出；`tests/test_yolo_detector.py` 已把「舊版
+> 會給 100%」的走動情境釘成回歸測試。
+
+**G140 — presence 的「多久算過期」由後端送，前端不得寫死**
+`elder-zone-update` payload 新增 `presence_stale_after_ms`（`indoor_position.py::
+_presence_stale_after_ms`，節流間隔 ×2、下限 10 秒），家屬端 `_zonePresenceStaleWindow`
+（`family_main_screen.dart::_resolveStaleWindow`）須改讀這個欄位，不可自行寫死常數。
+✅ 新增任何依會員層級／情境變動的推播節流時，一併把對應的過期提示放進 payload，讓
+前端跟著算。🚫 **禁止**在前端依層級自行複製一套節流秒數表——重複的跨端常數必然漂
+移。附註：前端收不到欄位時退回 10 秒是**向後相容的刻意設計**，不是遺漏。
+> **原因**：presence 心跳節流依會員層級分級（G141）後，前端原本寫死的 10 秒與後端
+> 節流間隔不再對齊，免費層級會規律性地被前端誤判「不在場」又「在此」來回閃爍。
+
+**G141 — 節流只能套在「往外推播」，不可套在偵測**
+`indoor_position.py::_presence_broadcast_due()` 只節流沒有 zone 轉換
+（`transition is None`）時的推播；真正的區域轉換一律無條件立即送出，不查節流門。
+✅ 監控機推幀頻率（每 2 秒）維持不變，被節流的只是「要不要把這次心跳送給家屬」這個
+決定本身；後端自己判斷在場用的 `PRESENCE_STALE_SECONDS`／`last_seen` 完全不受影響，
+繼續每幀更新。
+🚫 **禁止**把推播節流的間隔拿去取代或延後 `last_seen` 的更新頻率——`last_seen` 是後
+端自己那側判定在場的依據，一旦跟著變慢，後端會先於前端自行判定「不在場」，整條鏈路
+在源頭就壞掉。
+> **原因**：第三十九輪新增依層級節流時的設計裁決，避免「省流量」的節流意外波及偵測
+> 本身這條完全不同性質的路徑。
+
 ### 7.3 已知的文件錯誤（以程式碼為準）
 
 > 這些是歷史文件與現行程式碼不符之處。已在本文件中修正，此處保留記錄以免後續 AI 又被舊敘述誤導。
@@ -2768,222 +2862,130 @@ ultralytics 對它有硬相依，移除可能讓 pip 相依檢查失敗而中斷
 > `CLAUDE_call-monitor-history.md`（逐字搬移，編號與內容不變）。目前確切從第幾輪開始接續，
 > 一律以下方「📌 搬移門檻提示」為準——此處不重複標注輪次名稱，避免兩處各自漂移。
 >
-> 📌 **搬移門檻提示**：本文件中出現的「第 N 輪」，**N ≤ 36** 者其年表條目已遷至
-> `CLAUDE_call-monitor-history.md`；**N ≥ 37** 仍在本檔 §8。此門檻會隨每輪搬移而持續調高，
+> 📌 **搬移門檻提示**：本文件中出現的「第 N 輪」，**N ≤ 39** 者其年表條目已遷至
+> `CLAUDE_call-monitor-history.md`；**N ≥ 40** 仍在本檔 §8。此門檻會隨每輪搬移而持續調高，
 > 調整時只需要更新這兩處（本節與 §8 開頭）的數字。
 
-### 2026-08-31 — 第三十七輪：真機五項回報 —— YOLO 訊息說謊、權限對話框被隱私權畫面換掉、force-logout 清掉快速登入
+### 2026-09-02 — 第四十輪：真機五項回報 —— 溢位判準錯誤、拒接無反應、取消通話未清通知、快速登入的第三條缺口
 
 **背景**
 
-使用者真機五項回報，外加一項延續自第三十四輪、本輪未處理的舊懸案。其中兩項是
-「顯示的錯誤原因跟真正根因對不上」的診斷類回報（YOLO 載入失敗訊息、監控清單
-高光）；一項（權限對話框被隱私權畫面換掉）牽出同一根因的另一個症狀（第一次使用
-App 時雙端 WebRTC 可能連不上），故合併記錄；一項（force-logout 清掉快速登入）
-是使用者第三次回報同一症狀、前兩輪（第三十四、三十五輪）都沒能根治的舊案。以下
-依 [監控]／[啟動]／[通話]／[Session] 分類記錄。
+第三十九輪修復後的第一次實機測試，使用者五項回報。**一個重要事實先記在前面**：第
+三十九輪加的畫面診斷字串（`last_id=有/無　last_name=有/無　role=…`）一次就定位了拖
+了五輪的 item 5 根因——這是「診斷做進畫面、且要帶事實不要帶標籤」這條原則的第二
+次成功驗證（第一次是第三十五輪的 YOLO）。
 
 **根因與修復**
 
-1. **[監控] YOLO 載入失敗訊息在說謊**（`yolo_detector_service.py`、`Dockerfile`、
-   `routers/alert.py`）：使用者監控機畫面顯示「偵測器未載入 / yolo_unavailable /
-   **ultralytics 未安裝**」，但 `requirements.txt:72` **確實有**
-   `ultralytics>=8.4.105`。根因是 `_load_model()` 的 `except ImportError:` 把例
-   外物件整個丟掉，硬寫固定字串 `'ultralytics 未安裝'`。`requirements.txt` 自己
-   的註解（第 60-61 行）就寫著 ultralytics 硬相依 opencv-python(>=4.6)；
-   `from ultralytics import YOLO` 會連帶 `import cv2`，非 headless 的 opencv 需
-   要系統庫 `libGL.so.1`，pytorch 基底映像沒有 → 拋的**也是** `ImportError` →
-   被同一個 except 接住、標成「套件沒裝」。**套件裝了，是它的相依 import 失
-   敗。** 這與第三十五／三十六輪的 CUDA `.numpy()` 是**同一種失敗模式**：例外
-   處理器把失敗原因標錯，害診斷連續多輪走錯方向。
-   修復：(a) `except ImportError as e` → `self._load_error = f'ultralytics 匯
-   入失敗: {e}'`，保留原始訊息；(b) `Dockerfile` 在 pip 安裝層之前新增獨立的
-   一層 `apt-get install libgl1 libglib2.0-0`（純新增，既有的
-   `sed -i -E '/torch|.../d'` 與 pip 安裝順序逐字未動，那行有第十九輪記載的
-   歷史原因，不可調整）；(c) `routers/alert.py::_sanitize_load_error()` 的模
-   組註解原本聲稱「ImportError 分支是固定字串、內容受我們控制、安全」，被 (a)
-   推翻，一併更正。
-   **刻意不做**：沒有 `pip uninstall opencv-python` 或強制重裝 headless 版
-   ——ultralytics 對它有硬相依，移除可能讓 pip 相依檢查失敗而中斷建置，
-   `deploy.yml` 的 `set -e` 會讓部署中止、舊容器繼續服務舊程式碼（第十九輪記
-   載過的根因）。裝系統庫是純加法。→ **G135**
+1a. **[前端] 溢位仍在——上一輪的判準是錯的**（`family_interaction_tab.dart`）：使
+    用者實機截圖，家屬端互動分頁「家庭生活時光牆」卡片右側 `RIGHT OVERFLOWED BY 23
+    PIXELS`。上一輪的掃描把它標成「字面字串（長度有上限）」而跳過——**這個判準是
+    錯的**：`'家庭生活時光牆'` 七個中文字在 `fontSize: 22` / `FontWeight.w900` 下，
+    加上徽章與右側箭頭，在 360dp 手機上就是塞不下。字面字串不等於安全；字級與同列
+    元素數量才是判準。
+    新判準：**同列有 ≥18pt 標題且還有其他元素（徽章／箭頭／按鈕）時，標題就必須可
+    收縮**。依此複查兩個分頁全部 14 處 `fontSize>=18`，修 **2 處**：
+    `'家庭生活時光牆'`（22pt）與**新發現的** `'AI 照護共創助理'`（18pt + 「就緒」徽
+    章，與前者同構、上一輪一併漏掉）。其餘 12 處逐一核對後**刻意跳過**並記錄理
+    由：獨立標題無同列元素、已包在 `Expanded` 內、`'視訊通話'`（第二十一輪已用
+    `Wrap` 修過）、時間字串長度固定。→ **G142**
 
-2. **[啟動] 隱私權畫面把權限對話框整個換掉**（`main.dart`、
-   `privacy_policy_screen.dart`）：使用者回報「初始安裝的權限開啟警告被跳出的
-   隱私權覆蓋」。根因：`main.dart` 啟動的 `addPostFrameCallback` 原本無條件呼
-   叫 `VideoCallPermissionService.requestOnFirstUse(context)`，該服務在關鍵權
-   限缺失時會 `showDialog`（`barrierDismissible: false`）。同時
-   `splash_screen.dart::_goNext()` 呼叫 `_replaceWith(PrivacyPolicyScreen())`，
-   而 `_replaceWith` 用的是 **`Navigator.pushReplacement`——它移除的是導航堆
-   疊最上層那個 route**，正好就是那個對話框。`await showDialog` 靜默返回、不
-   拋任何例外，程式碼完全無感。順序本身也是錯的：在使用者看到隱私權政策**之
-   前**就先跳系統權限請求。
-   修復：`main.dart` 改成只在「已同意隱私權政策」時才請求（讀 prefs 失敗一律
-   略過，保守）；`privacy_policy_screen.dart` 在寫入同意狀態後、
-   `pushAndRemoveUntil` **之前** `await requestOnFirstUse(context)`，await 完
-   成後重新檢查 `mounted` 才導航。→ **G136**
+1b. **[前端] 移除「單向視訊監控」入口**：依使用者要求移除。刪除前已確認監控能力不
+    會消失——它是 `CameraScreen` 的**全專案唯一建構點**，互動分頁監控卡片「觀看
+    CCTV」讀同一份 `elder-devices-update` 清單，且功能更完整（可選特定裝置、走完
+    整 `VideoCallScreen(monitorViewOnly: true)` 生命週期）。刪除後 G138 認定的兩個
+    CCTV 檢視建構點**仍是兩個**，未受影響。一併移除變成無用的
+    `import '../camera_screen.dart'`。
+    **附帶記錄**：`camera_screen.dart` 現在是全專案**零呼叫的死碼類別**（非零位元
+    組殘留檔，不屬鐵律 #9 範圍），本輪**刻意未刪**，留待獨立清理。
 
-3. **[通話] 第一次使用 App 時雙端 WebRTC 連不上**（與第 2 項同一根因）：使用者
-   回報「長輩端發起通話時，第一次使用 App 時雙端的 WebRTC 可能會無法連線」。
-   根因就是第 2 項：首次使用拿不到相機／麥克風 → `openUserMedia` 沒有軌道 →
-   WebRTC 連不上；第二次啟動權限已在才正常。**為什麼是「雙端」**：家屬端
-   `video_call_screen.dart` **完全沒有自己請求權限**，唯一來源就是被換掉的那
-   個 `requestOnFirstUse`；長輩端 `elder_screen.dart:436` 雖有
-   `_checkPermissions()`，但**沒有 `await`**（fire-and-forget），`initState`
-   繼續往下跑去開媒體，與系統權限對話框賽跑。「可能」正是因為這是競態，取決
-   於使用者多快按下允許。
-   **本輪刻意不動長輩端那個未 await 的呼叫**（記為已知潛在風險）：
-   `elder_screen` 是 🔴 極高風險、冷啟動接聽路徑有五層兜底，在 `initState` 加
-   `await` 會擋住整條鏈，正是本專案反覆踩到的單點修改。修好第 2 項後，權限在
-   隱私權同意當下就取得，任何通話發生時 `_checkPermissions()` 已是 no-op，競
-   態不會觸發。若日後有證據顯示它仍會觸發，再處理。→ 併入 **G136**
+2. **[前端] 已在觀看該監視機時，警報不再給「查看監視畫面」鍵**
+   （`family_main_screen.dart`）：新增 `String? _viewingMonitorDeviceId`，在
+   `_openMonitorViewForDevice()`（G138 認定的唯一 CCTV 檢視建構點）push 前設值、
+   `.then()` 內清空——兩個入口都經過它，狀態必然同步。`_presentCctvAlert()` 的
+   `canView` 加 `!alreadyViewingThisDevice`（只比對**同一台**，不同台的警報仍要能
+   點進去）。通知、TTS 朗讀、`_activeAlerts` 插入、卡片紅色高亮、「我知道了」鍵**
+   全部不動**。
+   🚫 狀態刻意放在畫面自己的 State，**不放進 `Signaling` singleton**——那條護欄有
+   實際事故史（`isIncomingCallDialogVisible` 曾致長輩端冷啟動失敗被回退）。→
+   **G143**
 
-4. **[Session] 監控機退出後失去快速登入**（`socket_app.py`、`main.dart`、
-   `signaling.dart`）：使用者第三次回報：「由長輩通訊帳號登出轉換成監控設
-   備，再轉換回長輩通訊帳號時已無先前長輩帳號的 session 留存」（前兩輪即第
-   三十四、三十五輪都動過同類問題，症狀依舊）。根因是一個**自造的迴圈**：
-   `elder_screen.dart::_exitCCTVMode` 先呼叫 `ApiService.deleteMonitorDevice(...)`、
-   **之後**才 `SessionManager.releaseSession(preserveQuickLogin: true)`（順序
-   刻意，有註解記載）。後端 `on_delete_device` 收到刪除請求後，**對這台裝置
-   自己送出 force-logout**（Socket + FCM 雙路），而 `main.dart` 兩個
-   force-logout 處理器的清除清單裡**包含 `last_elder_*` 四個鍵**。裝置刻意用
-   `preserveQuickLogin: true` 保住的鍵，被自己送出的刪除請求繞一圈回來清掉。
-   修復：後端 `on_delete_device` 的兩個送出點都加 `reason: 'device-removed'`
-   （`routers/pairing.py` 的解綁路徑早已帶 `reason: 'elder-unbound'`，未
-   動）；前端 `Signaling.onForceLogout` 簽章改為
-   `void Function({String? reason})`、Socket handler 加 `data is Map` 防呆解
-   析 reason；`handleForceLogout({String? reason})` 與背景 FCM handler 都改
-   成**只有 `reason == 'elder-unbound'` 才清 `last_elder_*`**。
-   **判斷方向刻意保守**：reason 讀不到／空／未知值一律**保留**快速登入鍵。理
-   由：這四個鍵只是「上次登入的長輩是誰」的便利記憶，清掉會造成實際回報的困
-   擾；`elder-unbound` 是唯一明確該清的情境。session 本體（`caregiver_id`／
-   `access_token`／`user_role` 等）**不受影響，一律照舊全清**。→ **G137**
+3. **[前端] 長輩在 App 外按拒聽無反應——未找到確定斷點，刻意不硬改**：兩條路徑都
+   追完——CallKit（`bgSub`，G82 的 50 秒 Completer 保活**完整存在**）與備援通知
+   （`_handleDecline`，結構完全符合 G21）。四個懷疑方向逐一證偽：①兩個 CallKit
+   監聽器不會互相抵銷，最多讓後端收到重複拒接訊號；②`cancelNotification: true`
+   只是 NotificationManager 移除通知，與背景 isolate 生命週期無關；③後端
+   `api_decline_call` 欄位與前端完全一致；④背景 isolate 初始化與 try/catch 結構皆
+   符合護欄。**兩條路徑的程式碼本身都是對的。**
+   在無法證實斷點的情況下改全專案風險最高的拒接邏輯，錯一行就是回歸——因此**刻意
+   不改核心邏輯**，改為：`ApiService.declineCall` 回傳型別擴充為 `Future<bool>`
+   （既有 5 個呼叫點不看回傳值、不受影響），新增
+   `LocalCallNotification.showDeclineFeedback()` 用**獨立通知 ID 8802**（與來電通
+   知的 8801 完全隔開，不影響 `FLAG_INSISTENT` 與鈴聲）顯示「已拒接來電」／「拒接
+   時發生問題，請確認網路連線」。這同時覆蓋兩種可能：若原本是「送出去了但毫無視覺
+   確認、體感等於沒反應」，這就是完整解方；若真的沒送出，下次實機會看到失敗通知
+   ——或**連通知都不出現**，那就證實系統在 Dart 碰到 HTTP 前就把 isolate 收工了。
+   🔴 **本輪最有價值的新發現（務必寫入懷疑清單）**：**通知動作按鈕的背景執行預
+   算，與 FCM 背景 handler 不是同一等級的保證。** 本專案曾為 CallKit 特別做過
+   G82 的 50 秒 Completer 保活，但**備援通知的動作按鈕從來沒有等價機制**。若實機
+   證實是它，下一輪要往 **WorkManager／前景服務**方向走。
 
-5. **[監控] 監控機列表的兩種高光 —— 本輪零改動**（`family_interaction_tab.dart`）：
-   使用者要求「人在監控畫面時給該監控機高光」與「跌倒警報要有紅色緊急高
-   光」。查證結果：`_buildMonitorDeviceCard`（約 line 1700-1780）**兩種高光
-   都已完整實作且接線正確**——`hasActiveAlert` → 卡片底色 `0xFF3F1D1D` 深紅
-   ＋紅底警報徽章；`isElderPresent` → 底色 `0xFF083344` 青色＋「長輩在此」徽
-   章；三態優先序為 警報 > 目前所在 > 一般。`activeAlerts` 有從
-   `family_main_screen.dart`（`_handleCctvAlert` 寫入）傳入，`device_id` /
-   `deviceId` 兩種欄位名都有處理。**這兩項是被 YOLO 沒跑起來卡住的**
-   （`present` 與警報都來自偵測結果），不是 UI 缺失。ultralytics 一旦 import
-   成功即會亮。**下一輪若使用者仍回報看不到高光，先確認 YOLO 是否已真的在
-   跑，不要去改那個檔案。**
+4. **[前端] 撥打端逾時後，收話端來電通知沒被關掉**（`main.dart`、
+   `elder_home_screen.dart`）：根因是 `main.dart` 的 `s.onCancelCall` 與
+   `elder_home_screen.dart` 的長輩端覆寫版，**都只停緊急提示音、關 App 內對話
+   框**——沒關 CallKit 響鈴畫面、也沒關備援通知。
+   修復：兩處都補上 `endAllCalls()`（包 try/catch）、
+   `LocalCallNotification.cancel()`、清三個 pending 鍵，寫法**沿用既有 FCM
+   cancel-call handler 的模式**，未發明新機制。FCM 兩條路（背景／前景）經核對**本
+   來就完整**，未改動。→ **G144**
 
-**尚未收斂**
+5. **[前端] 快速登入——拖了五輪的真正根因**（`main.dart`）：第三十九輪加的畫面診
+   斷顯示 `last_id=無　last_name=無　role=(無)`，三個全空 → **不是被清掉，是從來
+   沒寫入**。
+   根因：使用者一直用開發用的「**登入宇璿**」按鈕登入，該路徑只寫
+   `caregiver_id`／`caregiver_name`／`user_role`／`elder_room_id`，**完全沒呼叫
+   `_rememberLastElder`**。
+   **為什麼拖了五輪**：第三十五輪修 `preserveQuickLogin`、第三十七輪修
+   force-logout 的 reason 判斷、第三十九輪修 `prefs.clear()`——**每一個都是真 bug
+   也都該修**，但全部在「清除端」；使用者那條路徑根本沒東西可清。**修對的 bug 不
+   等於修對的路徑。**
+   修復：宇璿路徑補寫 `_rememberLastElder(...)` 與 `last_elder_device_role='comm'`
+   （與該路徑已寫死的 `saved_is_cctv=false` 一致）。刻意**不改走**
+   `loginAndPersist()`——它最終會呼叫 `_promptModeAndNavigate()`，在
+   `device_role_$room` 為 null 時會打 `hasCommDevice()` 並彈出角色選擇對話框，牴
+   觸宇璿鍵「固定通話機、跳過對話框」的既有設計。
+   並掃了全專案其餘 `user_role='elder'` 寫入點，找到**第三條缺口**：`main.dart::
+   _showRecoveryConfirmationDialog`（深連結／復原代碼登入）同樣沒寫
+   `last_elder_*`——而復原情境正是「換機／App 剛重灌」，該鍵必然為空，不補會讓使
+   用者復原後第一次登出再踩一次。已補。
+   已確認**不需要**補的：`monitor_pairing_screen.dart`（監控機綁定碼流程與快速登
+   入按鈕平行、永不相交）、`role_selection_screen.dart`（用獨立的
+   `saved_role`/`saved_id` 續登機制，且全專案查無建構點、是不可達死碼）。→
+   **G145**
 
-- 長輩端 App **背景存活**時收到緊急通話，只會喚醒 App 而**不會進入房間**。第
-  三十四輪查出但未解，本輪未處理。
+**順帶修復（不在使用者回報內）**
 
-**新增護欄**
+`main.dart` 有**三處**裸的 `FlutterCallkitIncoming.endAllCalls()` 沒包
+try/catch，其中兩處在 `_checkInitialCall()` 的**冷啟動路徑**上。該方法有第十一輪
+記載的 `content is null` 崩潰史，全檔其餘五處都有 try/catch（兩處註解還明寫「必須
+包」），所以這三處是漏網不是例外。已全部補上，**全檔零裸呼叫**。
+清掉數個 shell 轉義失誤產生的零位元組垃圾檔。
 
-本輪新增 **G135–G137**（後端 G135；前端 G136；跨端 G137；條文見 §7.1／
-§7.2）。§7 開頭護欄總數同步更新為 **137**。
+**仍然開著**
 
-**驗證**
-
-- 程式碼由實作子代理完成並驗收通過；文件代理另行以 `grep`／`Read` 對照原始碼
-  逐項核對五項回報的關鍵事實，包括 `yolo_detector_service.py::_load_model()`
-  的 `except ImportError as e` 與 `f'ultralytics 匯入失敗: {e}'`、
-  `Dockerfile` 新增的 `libgl1 libglib2.0-0` 安裝層、`main.dart` 改為讀取隱私
-  權同意狀態後才呼叫 `requestOnFirstUse`、`privacy_policy_screen.dart` 在
-  `pushAndRemoveUntil` 前 `await` 該呼叫、`socket_app.py::on_delete_device`
-  與 `routers/pairing.py` 的 `force-logout` emit 均已帶上對應的 `reason`、
-  `signaling.dart::onForceLogout` 簽章與 `main.dart::handleForceLogout` 的
-  `reason == 'elder-unbound'` 判斷、
-  `family_interaction_tab.dart::_buildMonitorDeviceCard` 的 `hasActiveAlert`
-  ／`isElderPresent` 高光邏輯，均確認存在且與本輪敘述一致。
-- `flutter analyze lib` — **0 error**（144 項 info/warning，較上一輪 141 項
-  略增，屬既有技術債變動，非本輪新增邏輯錯誤）。
-- 後端 `py_compile`／`pytest tests/test_call_signaling.py`／
-  `flutter build apk` 等完整驗收由實作子代理於各自任務中完成，不在本次文件
-  任務重跑範圍內。
-
-連接／跳轉語意變更的 graphify 同步狀態由對應的實作子代理負責，不在本次文件任
-務範圍內。
-
----
-
-### 2026-08-31 — 第三十八輪：合併後全面稽核 —— 首頁監控警示不可點擊、關心訊息假成功
-
-**背景**
-
-`monitor-newtool` 分支合併進 `main` 之後的全面稽核，非使用者回報。用四類跨層掃描找出
-缺口：回呼參數是否真的被傳入、Socket 事件契約前後端是否對得上、REST 端點是否雙端都存
-在、符號重定位（重構後呼叫端是否跟著更新）。掃描另外兩類結果乾淨：前端監聽的 Socket
-事件後端全部都有發（0 個孤兒監聽）；前端 8 條 REST 呼叫全部對得上後端路由。以下依
-[前端]／[後端] 分類記錄兩項缺口，另有一項零改動的附帶發現。
-
-**根因與修復**
-
-1. **[前端] `onOpenMonitorView` 從未被傳入，首頁「最新警示」CCTV／跌倒項目不可點
-   擊**（`family_main_screen.dart`、`family_home_tab.dart`）：`FamilyHomeTab` 宣告了
-   `final ValueChanged<String?>? onOpenMonitorView;`（`family_home_tab.dart:68`），消
-   費端 `_navigationForAlertItem()` 也已寫好判斷邏輯，但 `family_main_screen.dart`
-   建構 `FamilyHomeTab(...)` 時**從未傳入這個參數**，`if (... ||
-   widget.onOpenMonitorView == null) return null;` 因此永遠成立——功能宣告了、消費端
-   也寫好了，卻靜默不存在。
-   ⚠️ 這**不是**合併衝突造成的：`monitor-newtool` 與 `origin/main` 兩支合併前都沒傳
-   這個參數，是功能寫了一半、父層從未接上。
-   修復：把原本內嵌在 `_presentCctvAlert()`「查看監視畫面」鍵裡的
-   `VideoCallScreen(monitorViewOnly: true, ...)` 建構邏輯抽成共用方法
-   `_openMonitorViewForDevice(String deviceIdStr, {String? elderIdOverride,
-   VoidCallback? onReturn})`；`_presentCctvAlert()` 改呼叫共用方法，原本清警報的
-   `.then()` 邏輯逐字搬進 `onReturn`；建構 `FamilyHomeTab` 處補上 `onOpenMonitorView:`
-   指向同一個共用方法。**刻意不新增第三個 `monitorViewOnly: true` 建構點**——抽出後
-   全專案仍是**兩個**（`family_interaction_tab.dart:2331`、
-   `family_main_screen.dart:915`），符合 G55。`rawElderId` 沿用權威推導
-   `_currentElder?.elderId ?? _currentElder?.id.toString()`；`elderIdOverride` 讓警
-   報彈窗傳入警報自己的 `elder_id`；解析不到線上裝置就直接 `return`，不帶空的
-   `targetSocketId` 進房（與彈窗原本的 `canView` 判準一致）。→ **G138**
-
-2. **[後端] `send-heartbeat` 沒有 handler，前端一律顯示假成功**（`socket_app.py`、
-   `signaling.dart`、`family_interaction_tab.dart`、`care_script_service.dart`）：家
-   屬按「遠端提醒廣播」「傳送留言」、或照護劇本立即執行時，
-   `signaling.dart::sendHeartbeat()` 會 emit `send-heartbeat`，但
-   `services/socket_app.py` 的 18 個 handler 裡**沒有這一個**，Socket.IO 端把未註冊
-   事件靜默丟棄；前端不管實際送達與否一律跳綠色成功提示（「已即時推送廣播…至長輩端
-   平板 🔔」），長輩端其實什麼都沒收到。
-   修復：後端新增 `@sio.on('send-heartbeat')` / `on_send_heartbeat`
-   （`socket_app.py:2760`，純新增 54 行），轉發為長輩端已在監聽的
-   `heartbeat-message`，payload 形狀 `{'reply': <字串>}` 與 `main.py` 排程
-   `heartbeat_job` 一致；目標查找**重用** `_get_target_sockets_and_tokens(room,
-   'elder', sid)`（函式本體零改動）——前端送的 `elderId` 是 `Elder.id`（DB
-   user_id），房名可能用 4 位數 `elder_id`，只有這個函式的三層查找能同時涵蓋兩種情
-   形。刻意只送在線 socket、不補 FCM 離線推播，與既有排程 job 行為一致。
-   前端 `sendHeartbeat` 回傳型別由 `Future<void>` 改為 **`Future<bool>`**：socket 未
-   連線時回 `false`。三個呼叫端接住結果——`family_interaction_tab.dart:164/1012` 失
-   敗時改顯示錯誤提示（不再謊報成功）；`care_script_service.dart:78` 失敗時**不寫
-   入** `last_executed_at`、改記一筆 `status: 'failed'`（否則每日一次去重會誤判「今
-   天已執行」，當天不再重試），該方法簽章仍維持 `Future<void>` 以免牽動唯一呼叫端。
-   ⚠️ `send-heartbeat` 屬「AI／關懷推播子系統」，**不歸本文件管轄**（見 §3.1「不屬
-   本文件管轄」清單，該清單已列有此事件，本輪未變更清單本身）；本輪只是同一次稽核
-   順帶掃出、修復落在後端與前端呼叫端，記錄於此供後續查閱根因。
-
-**附帶發現（本輪未處理）**
-
-`signaling.dart` 的 `pushContent`、`requestElderChat` 兩個方法**零呼叫點**，後端也無對
-應 handler（同屬「AI／關懷推播子系統」死碼，不歸本文件管轄）。與已知的 `_configuration`
-（`signaling.dart:232`）、`_showCallkitIncoming`（`signaling.dart:814`）同屬死碼，本輪
-刻意未刪，留給日後清理死碼時一併處理。
+1. **item 3 未確定根因**：已加畫面回饋，待實機三選一定位（見上）。
+2. **通知動作按鈕的背景執行預算假設**未經實機驗證。
+3. 第三十九輪的 YOLO 調校（走動誤判、姿勢計時）**仍待實機驗證**。
+4. `camera_screen.dart` 成為零呼叫死碼，待獨立清理。
 
 **新增護欄**
 
-本輪新增 **G138**（前端；條文見 §7.1）。§7 開頭護欄總數同步更新為 **138**。
+本輪新增 **G142–G145**（前端；條文見 §7.1）。§7 開頭護欄總數同步更新為 **145**。
 
 **驗證**
 
-- `flutter analyze lib` — **0 error**（142 issues，較上一輪 144 項略降，屬既有技術債
-  變動，非本輪新增邏輯錯誤）。
+- `flutter analyze lib` — **0 error**（142 issues，與基準一致）。
 - `flutter build apk --debug` — 成功。
-- 後端 `pytest tests/test_call_signaling.py -q` — **17 passed**。
-- `python -c "from main import app"` — import 冒煙測試通過（見 **G94**）。
-- 文件代理另以 `grep`／`Read` 對照原始碼核對本輪敘述的關鍵事實，包括
-  `family_home_tab.dart:68` 的 `onOpenMonitorView` 宣告、`family_main_screen.dart`
-  新增的 `_openMonitorViewForDevice` 與其在 `_presentCctvAlert()`／`FamilyHomeTab`
-  建構處的兩個呼叫點、`socket_app.py:2760` 新增的 `on_send_heartbeat`、
-  `sendHeartbeat` 回傳型別改為 `Future<bool>`，均確認存在且與本輪敘述一致。
 
 連接／跳轉語意變更的 graphify 同步狀態由對應的實作子代理負責，不在本次文件任務範圍
 內。

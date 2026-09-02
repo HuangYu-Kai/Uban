@@ -5,7 +5,7 @@ import 'qr_scanner_screen.dart';
 import 'elder_selection_screen.dart';
 import 'login_screen.dart';
 import '../services/auth_service.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import '../services/session_manager.dart';
 
 class CaregiverPairingScreen extends StatefulWidget {
   final int familyId;
@@ -105,8 +105,16 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
   }
 
   Future<void> _handleLogout() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.clear(); // 清除所有登入資訊
+    // ★ 2026-09-01 第三十九輪 item 2：改走 SessionManager.releaseSession()，
+    //   不可再用 prefs.clear()——那會把整個 SharedPreferences 洗空，連字體
+    //   大小、通知偏好、wake_word_enabled 等與帳號無關的設定、以及長輩端
+    //   保留的 last_elder_* 快速登入記憶鍵（護欄 G24／G125）都一併清掉。
+    //   使用者常用同一支手機輪流測試家屬端與長輩端，這裡呼叫 prefs.clear()
+    //   會導致「長輩登出後無法快速登入同一長輩」。
+    //   不帶 preserveQuickLogin（維持預設 false＝全清）：那個參數只給長輩
+    //   自己登出時保留記憶用，家屬端登出語意上是「這台裝置的授權已收回」，
+    //   本就該全清，見 session_manager.dart 的參數註解。
+    await SessionManager.releaseSession();
 
     // 同步登出第三方
     await AuthService.signOutGoogle();

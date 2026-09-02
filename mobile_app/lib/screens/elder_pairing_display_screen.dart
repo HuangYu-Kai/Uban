@@ -354,8 +354,25 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
     if (!mounted) return;
 
     if (elderId == null || elderName == null || role != 'elder') {
+      // ★ 2026-09-01 第三十九輪 item 2：使用者不是伺服器管理者、讀不到 log，
+      //   只能看畫面（見專案既有原則）——原本只顯示一句模糊提示，看不出是
+      //   哪個鍵沒了。這裡改列出實際讀到的鍵狀態，方便使用者一次回報清楚。
+      //   ⚠️ 只顯示「有／無」與角色字串，不印 elder_id／姓名等內容，避免
+      //   在畫面上外洩個資。獨立重讀 last_elder_id/name（而非沿用上面迴圈裡
+      //   的區域變數 lastId/lastName），確保不論是否曾嘗試過 fallback 分支，
+      //   這裡看到的都是 prefs 當下的真實狀態。
+      final bool hasLastId = prefs.getInt('last_elder_id') != null;
+      final bool hasLastName = prefs.getString('last_elder_name') != null;
+      final String roleDisplay = role ?? '(無)';
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('尚未找到可快速登入的長輩帳號，請先完成一次配對')),
+        SnackBar(
+          content: Text(
+            '尚未找到可快速登入的長輩帳號，請先完成一次配對\n'
+            '（診斷：last_id=${hasLastId ? '有' : '無'}　'
+            'last_name=${hasLastName ? '有' : '無'}　'
+            'role=$roleDisplay）',
+          ),
+        ),
       );
       return;
     }
@@ -444,6 +461,25 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
       // 強制設為通話機（不需要對話框）
       await prefs.setBool('saved_is_cctv', false);
       await prefs.setString('saved_device_name', '$elderName的設備');
+
+      // ★ 第四十輪（item 5）：補寫「登出不清除」的快速登入記憶鍵。這顆按鈕原本是
+      //   全專案唯一一條「寫入 user_role='elder' 卻不呼叫 _rememberLastElder」的
+      //   登入路徑——長輩用它登入後登出，last_elder_* 四個鍵從未被寫入過，快速
+      //   登入永遠顯示「尚未找到可快速登入的長輩帳號」（診斷字串會印出 last_id=無
+      //   last_name=無 role=(無)）。
+      //   ⚠️ 刻意不改走 loginAndPersist()：那條路徑最終會呼叫
+      //   _promptModeAndNavigate()，savedRole 為 null（例如全新裝置、或
+      //   device_role_$room 被登出清掉）時會打 ApiService.hasCommDevice 甚至彈出
+      //   「設備角色選擇」對話框，與這顆按鈕「固定通話機、跳過對話框直接進長輩
+      //   首頁」的既有設計牴觸。故直接在這裡補寫，角色固定為 'comm'——與上面
+      //   已寫死的 saved_is_cctv=false 一致，這顆按鈕本來就不會走到監控機分支。
+      await _rememberLastElder(
+        prefs,
+        elderId: elderId,
+        elderName: elderName,
+        elderRoomId: elderRoomId,
+      );
+      await prefs.setString('last_elder_device_role', 'comm');
 
       if (!mounted) return;
 

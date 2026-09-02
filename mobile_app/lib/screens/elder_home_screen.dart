@@ -19,6 +19,22 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import '../widgets/google_assistant_overlay.dart';
+// ★ 第四十輪（item 4）：onCancelCall 現在也要關備援本機通知，見下方說明。
+import '../services/local_call_notification.dart';
+
+/// ★ 第四十輪（item 4）：取消來電時清除待處理通話 prefs 的共用邏輯。
+/// 與 `main.dart::_clearPendingCallPrefsOnCancel` 同一邏輯（該函式對本檔
+/// library-private，無法跨檔重用，故在此複製一份，比照專案既有的「同一段
+/// 三鍵清除邏輯在多處各自複製一份」慣例，見 `CLAUDE_call-monitor.md` §3.4）。
+/// 不論 callId 是否吻合都無條件清除——裝置同一時間只會有一通待處理來電。
+Future<void> _clearPendingCallPrefsOnCancel() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('pendingAcceptedCall');
+    await prefs.remove('pendingRingCallData');
+    await prefs.remove('pendingRingCall');
+  } catch (_) {}
+}
 
 class ElderHomeScreen extends StatefulWidget {
   final int userId;
@@ -446,6 +462,12 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
       _showIncomingCallDialog(roomId, senderId, callId);
     };
     // ★ issue 4 fix: 監聽家屬取消來電，關閉彈窗
+    // ★ 第四十輪（item 4）：`Signaling` 的回呼欄位只有一份，長輩停在本畫面時
+    //   本檔這份會覆蓋 main.dart 的全域版本（見 CLAUDE_call-monitor.md §2.3），
+    //   所以這裡也要補上同一份缺口——舊版只關 App 內彈窗，沒關 CallKit 來電
+    //   畫面／備援本機通知，家屬撥打逾時取消後，長輩端可能還留著響鈴中的
+    //   CallKit／備援通知。endAllCalls() 沿用 main.dart 既有 try/catch 慣例
+    //   （MIUI 會拋 content-is-null）。
     Signaling().onCancelCall = (roomId, senderId, callId, [senderName]) {
       if (!mounted) return;
       debugPrint('🔕 [ElderHomeScreen] 家屬取消來電，關閉彈窗');
@@ -453,6 +475,13 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
         Navigator.of(context).pop();
         _isIncomingCallDialogOpen = false;
       }
+      try {
+        FlutterCallkitIncoming.endAllCalls();
+      } catch (e) {
+        debugPrint('⚠️ [ElderHomeScreen] endAllCalls 失敗（不影響）: $e');
+      }
+      unawaited(LocalCallNotification.cancel());
+      unawaited(_clearPendingCallPrefsOnCancel());
     };
 
     // 監聽家屬發送的主動關心留言 (Heartbeat)

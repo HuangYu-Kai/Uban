@@ -325,7 +325,15 @@ class ApiService {
   /// ★ 2026-07-18：無狀態拒接／取消 HTTP 備援。
   ///   背景/被殺死狀態下沒有 Socket 連線，或 Socket 剛好斷線時，改走此 REST
   ///   端點通知後端廣播 call-busy/cancel-call（含 FCM），確保雙端同步終止。
-  static Future<void> declineCall({
+  ///
+  /// ★ 第四十輪（item 3）：回傳型別由 `Future<void>` 改為 `Future<bool>`——
+  ///   內部仍然整段 try/catch、絕不 rethrow（既有呼叫端全部不看回傳值，行為
+  ///   不受影響），只是額外把「有沒有真的送出去」讓呼叫端知道。背景／被殺死
+  ///   狀態下按拒接，使用者唯一看得到的畫面只有通知列，這個布林值是
+  ///   `local_call_notification.dart::showDeclineFeedback` 判斷要顯示「已
+  ///   拒接」還是「發生問題」的唯一依據。比照 `sendHeartbeat`（第三十八輪）／
+  ///   `sendCallAccept`（G106）已經用過的同一種擴充方式。
+  static Future<bool> declineCall({
     required String roomId,
     required String senderId,
     String? callId,
@@ -343,8 +351,10 @@ class ApiService {
           )
           .timeout(const Duration(seconds: 8));
       debugPrint('✅ [ApiService] declineCall sent (room=$roomId, call=$callId)');
+      return true;
     } catch (e) {
       debugPrint('⚠️ [ApiService] declineCall failed: $e');
+      return false;
     }
   }
 

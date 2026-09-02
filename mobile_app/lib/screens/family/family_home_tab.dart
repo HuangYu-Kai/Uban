@@ -42,8 +42,12 @@ class FamilyHomeTab extends StatefulWidget {
   /// [monitorDevices] 與傳給 `FamilyInteractionTab` 的是同一份清單（已過濾成
   /// 只含 `deviceMode=='monitor'` 的裝置），用來判斷「是否已綁定監視機」與
   /// 取得第一台監視機的 deviceId/deviceName（開啟校準畫面用）。
-  /// [elderZone] 是正規化後的 `{zone, enteredAt, updatedAt}`，null 代表尚無
-  /// 任何定位紀錄。
+  /// [elderZone] 是正規化後的 `{zone, enteredAt, updatedAt, present, deviceId}`，
+  /// null 代表尚無任何定位紀錄。
+  /// ⚠️ 2026-09-01 第三十九輪：原本這句漏列 `present`／`deviceId`，是
+  /// `_buildMonitorStatusCard` 當初移植 Feature B 時只搬 `deviceId`比對、漏了
+  /// `present` 判斷的源頭之一——完整欄位清單與各欄位語意見
+  /// `family_interaction_tab.dart` 對應欄位宣告處的說明，兩處欄位形狀必須一致。
   final List<dynamic> monitorDevices;
   final Map<String, dynamic>? elderZone;
   final int? userId;
@@ -276,12 +280,19 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                                 children: [
                                   Row(
                                     children: [
-                                      Text(
-                                        card['title']!,
-                                        style: GoogleFonts.notoSansTc(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.bold,
-                                          color: isSel ? const Color(0xFF38BDF8) : Colors.white,
+                                      // ★ 2026-09-01 第三十九輪（RenderFlex 溢位修復）：card['title']
+                                      // 來自 AI 動態關懷訊息（後端 /api/ai/dynamic_care_messages 或
+                                      // 內建 fallback），長度不可控；旁邊還有 Spacer 會把剩餘寬度
+                                      // 吃到 0，標題過長時原本會整條溢出，故包 Flexible 可收縮。
+                                      Flexible(
+                                        child: Text(
+                                          card['title']!,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: GoogleFonts.notoSansTc(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.bold,
+                                            color: isSel ? const Color(0xFF38BDF8) : Colors.white,
+                                          ),
                                         ),
                                       ),
                                       const Spacer(),
@@ -1039,7 +1050,11 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                       children: [
                         const Icon(Icons.location_on_rounded, size: 14, color: Color(0xFF94A3B8)),
                         const SizedBox(width: 4),
-                        Builder(builder: (context) {
+                        // ★ 2026-09-01 第三十九輪（RenderFlex 溢位修復）：locDisplay 是長輩
+                        // 所在地，屬使用者自訂欄位，長度不可控；再串上步數文字後最容易在窄
+                        // 螢幕或大字級設定下溢出，故包 Flexible 並加 ellipsis 可收縮。
+                        Flexible(
+                          child: Builder(builder: (context) {
                           int totalSteps = 0;
                           for (final item in _realLogs) {
                             final text = item['content']?.toString() ?? '';
@@ -1054,12 +1069,14 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
 
                           return Text(
                             '$locDisplay • 今日累積 $stepDisplay 步',
+                            overflow: TextOverflow.ellipsis,
                             style: GoogleFonts.notoSansTc(
                               fontSize: 13,
                               color: const Color(0xFFCBD5E1),
                             ),
                           );
-                        }),
+                          }),
+                        ),
                       ],
                     ),
                   ],
@@ -1397,11 +1414,20 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     // ★ 2026-08-24 Feature B：把 family_interaction_tab.dart::_buildMonitorDeviceCard
     //   （:1709-1721）的「長輩目前所在此處」青色高亮鏡射到首頁這張精簡卡片，
     //   讓兩個分頁的視覺狀態一致（該分頁先前只搬了 hasActiveAlert 的紅色高亮，
-    //   漏了這個）。deviceId 比對邏輯、三態優先序（警報 > 目前所在 > 一般）與色票
-    //   逐一對齊同一個函式，避免兩處各自維護一份而再度漂移。
+    //   漏了這個）。三態優先序（警報 > 目前所在 > 一般）與色票已對齊同一個函式。
+    // ⚠️ 2026-09-01 第三十九輪修正：上面「逐一對齊」曾經是假的——這裡當初只搬了
+    //   deviceId 比對，漏搬了 `widget.elderZone?['present'] == true` 這個條件
+    //   （對照 family_interaction_tab.dart:2157-2160），導致 `_elderZone` 過期
+    //   （長輩早已離開鏡頭）時 deviceId 仍留著上一次的值，這張首頁卡片就永遠卡在
+    //   「長輩在此」不會恢復——這正是使用者回報的「監控設備狀態卡住不動」。
+    //   `present` 才是後端過期判定後的權威結果，理由同 family_interaction_tab.dart
+    //   :2152-2155 的說明。現已補回該條件；日後修改任一處都要同步檢查另一處，
+    //   這裡已經漂移過一次。
     final String? presentDeviceId = widget.elderZone?['deviceId']?.toString();
-    final bool isElderPresent =
-        !hasActiveAlert && presentDeviceId != null && presentDeviceId == deviceId?.toString();
+    final bool isElderPresent = !hasActiveAlert &&
+        widget.elderZone?['present'] == true &&
+        presentDeviceId != null &&
+        presentDeviceId == deviceId?.toString();
     // ⚠️ 括號是必要的：三元運算子的 `?` 緊接著 null-aware index `?[` 會被解析器
     //   誤判成巢狀三元運算式的開頭，見 family_interaction_tab.dart:1716-1720 的
     //   同一個註記與寫法。
@@ -3329,7 +3355,13 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
+              // ★ 2026-09-01 第三十九輪（RenderFlex 溢位修復）：外層是
+              // mainAxisAlignment.spaceBetween，這一側（icon+標題+計數徽章）與
+              // 右側「查看全部」都是非 flex 子元素，兩者實際寬度加總在窄螢幕或
+              // 系統字級放大時會超出卡片可用寬度，此為使用者回報 23px 溢位最可疑
+              // 的一處。包 Flexible 讓這一側可收縮，內層標題另加 ellipsis 承接。
+              Flexible(
+                child: Row(
                 children: [
                   Container(
                     padding: const EdgeInsets.all(10),
@@ -3352,13 +3384,16 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  Text(
-                    '最新警示',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 19,
-                      fontWeight: FontWeight.w900,
-                      color: Colors.white,
-                      letterSpacing: 0.5,
+                  Flexible(
+                    child: Text(
+                      '最新警示',
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: 19,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                        letterSpacing: 0.5,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -3384,6 +3419,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                     ),
                   ),
                 ],
+                ),
               ),
               GestureDetector(
                 onTap: () {

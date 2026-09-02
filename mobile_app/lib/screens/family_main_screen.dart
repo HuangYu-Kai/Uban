@@ -184,6 +184,12 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   ///   （`isIncomingCallDialogVisible`）曾導致長輩端冷啟動失敗而被整輪回退。
   bool _cctvAlertDialogOpen = false;
 
+  /// ★ 第四十輪（item 2）：目前正在觀看哪一台監視機的 CCTV 即時畫面（只記
+  ///   `deviceId`，未在觀看時為 `null`）。供 `_presentCctvAlert()` 判斷「同一台
+  ///   監視機已經在看了，不必再給查看鍵」。同樣刻意不放進 `Signaling`
+  ///   singleton——理由同上一則註解，這是本畫面自己的 State。
+  String? _viewingMonitorDeviceId;
+
   /// 警報朗讀用的 TTS，只建立一次（不要每次警報都 new），`dispose()` 時 stop。
   FlutterTts? _alertTts;
   String _tierLevel = 'free';
@@ -529,6 +535,10 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
           '🚫 [FamilyMainScreen] 忽略非當前長輩的 zone 推播 (payload elder_id=$payloadElderId, 目前長輩=$currentElderId)');
       return;
     }
+    // ★ 2026-09-01（第三十九輪 item 5 前端半邊）：每次推播都重新解析過期
+    //   視窗提示。不需要包進下面的 setState——這個值不直接影響 build()，
+    //   只被 _expireStaleZonePresenceIfNeeded() 這個計時器回呼讀取。
+    _zonePresenceStaleWindow = _resolveStaleWindow(payload);
     setState(() {
       _elderZone = {
         'zone': (payload['to_zone'] ?? 'unknown').toString(),
@@ -552,14 +562,68 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     });
   }
 
-  /// presence 的用戶端過期視窗，須與後端
-  /// `indoor_position.py::PRESENCE_STALE_SECONDS`（10 秒）的理由對齊：後端
-  /// 只在「偵測到人」時才推播／回應 `present: true`，長輩離開鏡頭後不會有
-  /// 主動的「離開」事件，必須靠這個視窗由前端自己判斷逾時。`updatedAt` 是
-  /// 本機**收到當下**的時間戳（見 `_applyZoneUpdate` 與 `_zoneStateFromRest`
-  /// 都寫 `DateTime.now()`，不是後端事件時戳），已經隱含了單向網路延遲，
-  /// 不需要再疊加緩衝，故與後端窗口取同一個值。
-  static const Duration _zonePresenceStaleWindow = Duration(seconds: 10);
+  /// presence 的用戶端過期視窗——**不再是前端寫死的常數**，改由後端在
+  /// `elder-zone-update` 推播（`_applyZoneUpdate`）與 `getCurrentZone` REST
+  /// 回應（`_maybeFetchInitialZone`）裡動態指定，前端只保留「payload 沒帶
+  /// 該欄位時」的向後相容預設值。實際解析邏輯見 [_resolveStaleWindow]。
+  ///
+  /// ★ 2026-09-01（第三十九輪 item 5 前端半邊）：後端「在場心跳」的推播
+  /// 頻率已依訂閱層級節流（免費 15 秒／黃金 7 秒／鑽石 3 秒，見
+  /// `indoor_position.py::_PRESENCE_TIER_INTERVALS_S`）。這個過期視窗若繼續
+  /// 寫死 10 秒，免費層級每個節流週期都會有 5 秒被誤判成「已離開」——
+  /// 「長輩在此」燈號規律閃爍（長輩本人並未離開）；黃金層級 7 秒雖壓線在
+  /// 10 秒內，網路一抖動也會偶爾閃。
+  ///
+  /// **不採用**前端自己另外維護一份「層級 → 視窗秒數」對照表：節流秒數本來
+  /// 就只由後端決定（未來調整定價或節流秒數，只改得動後端那一份），前端
+  /// 重複一份必然會再度漂移——這正是這次 bug 的成因，複製第二份只是把同一
+  /// 個錯誤犯兩次。改成「後端算好毫秒數直接送過來，前端只負責用、不負責
+  /// 算」，讓這個數字只有一個權威來源。
+  ///
+  /// ⚠️ 截至本輪 `uban-api` 後端變動：`indoor_position.py` 模組 docstring
+  /// （2026-09-01 段落）明確記載這個欄位**尚未送出**——節流本身已上線，但
+  /// 「把過期視窗一併送給前端」被後端那位代理明確排除在本輪範圍外，回報給
+  /// 協調者定奪。因此目前實務上仍會落在下面的 10 秒預設，本輪要修的閃爍
+  /// 問題在後端補上這個欄位之前**不會**消失；前端這一半已經就緒，欄位一到
+  /// 就會生效，屆時不需要再改這個檔案。
+  Duration _zonePresenceStaleWindow = const Duration(seconds: 10);
+
+  /// [_zonePresenceStaleWindow] 沒有任何有效後端提示時的向後相容預設值——
+  /// 與變更前的寫死常數同值，確保舊版後端／漏帶欄位的推播行為與修改前
+  /// 完全一致（見 [_resolveStaleWindow] 的說明）。
+  static const Duration _staleWindowDefault = Duration(seconds: 10);
+
+  /// 過期視窗提示的合理值域（毫秒）。下限 5 秒、上限 120 秒，理由見
+  /// [_resolveStaleWindow]。
+  static const int _staleWindowHintMinMs = 5000;
+  static const int _staleWindowHintMaxMs = 120000;
+
+  /// 從 `elder-zone-update` 推播或 `getCurrentZone` REST 回應解析後端送來的
+  /// 過期視窗提示，解出 [_zonePresenceStaleWindow] 這一輪該採用的值。
+  ///
+  /// 鍵名同時嘗試 `presenceStaleAfterMs`（與後端協調用的暫定名稱，見本輪
+  /// 交付說明）與 `presence_stale_after_ms`（這個 payload 其餘欄位——
+  /// `from_zone`／`to_zone`／`previous_dwell_seconds`／`device_id`——一律
+  /// snake_case，後端若比照既有慣例命名，字面上更可能是這個）；兩者都試，
+  /// 避免日後補欄位時只是猜錯命名慣例又讓這個機制多空轉一輪。
+  ///
+  /// 防呆（依需求）：
+  ///   - 欄位缺漏、型別無法解析成數字 → 退回 10 秒預設。
+  ///   - 數值小於下限 5 秒 → 視為不可信，同樣退回 10 秒預設，不直接採信。
+  ///   - 數值大於上限 120 秒 → 鉗制到 120 秒，而不是整個丟棄——避免異常大
+  ///     的值讓「長輩在此」燈號永遠不會過期，但仍承認後端確實想要一個比
+  ///     預設更寬鬆的視窗。
+  static Duration _resolveStaleWindow(Map<String, dynamic> payload) {
+    final dynamic raw =
+        payload['presenceStaleAfterMs'] ?? payload['presence_stale_after_ms'];
+    if (raw == null) return _staleWindowDefault;
+    final num? ms = num.tryParse(raw.toString());
+    if (ms == null || ms < _staleWindowHintMinMs) return _staleWindowDefault;
+    if (ms > _staleWindowHintMaxMs) {
+      return const Duration(milliseconds: _staleWindowHintMaxMs);
+    }
+    return Duration(milliseconds: ms.round());
+  }
 
   /// ★ 2026-08-24：`_elderZone` 的過期檢查——後端只在「偵測到人」時才會
   /// 推播或回應 `present: true`，長輩離開鏡頭後不會有主動的「離開」事件，
@@ -626,6 +690,14 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
       if ('$nowElderIdStr:$deviceId' != key) return;
       if (data.isEmpty) return; // 查詢失敗：維持現狀，不覆蓋既有畫面，讓下一輪重試
       _zoneFetchKey = key;
+      // ★ 2026-09-01（第三十九輪 item 5 前端半邊，後端補完後更新）：REST
+      //   路徑的 `getCurrentZone`（routers/ips.py）現在也會送
+      //   `presence_stale_after_ms`——與 Socket `elder-zone-update` payload
+      //   同一套計算（見 `indoor_position.py::resolve_presence_stale_after_ms`）。
+      //   這裡解析它是為了讓 App 冷啟動、還沒收到任何 Socket 推播前的第一次
+      //   畫面就拿到正確的過期視窗，不必等第一次推播才校正；欄位缺漏時仍照
+      //   [_resolveStaleWindow] 的規則退回 10 秒預設。
+      _zonePresenceStaleWindow = _resolveStaleWindow(data);
       // ★ 2026-08-24：後端直接給 `present` 權威欄位（已內含過期判定，見
       //   indoor_position.py::ZoneTracker.snapshot），不再需要前端自己用
       //   `last_seen` 反推——只要成功回應（非空 Map）就正規化套用。
@@ -901,6 +973,10 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
             : (_currentElder?.elderId ?? _currentElder?.id.toString() ?? '');
     if (rawElderId.isEmpty) return;
 
+    // ★ 第四十輪（item 2）：記錄目前正在看哪一台，供 _presentCctvAlert() 判斷是否
+    //   要隱藏「查看監視畫面」鍵——已經在看同一台的即時畫面，再給一顆鍵是多餘的干擾。
+    _viewingMonitorDeviceId = deviceIdStr;
+
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -919,6 +995,8 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
         ),
       ),
     ).then((_) {
+      // 離開監控檢視，清除「正在觀看」標記，讓該裝置之後的警報恢復顯示查看鍵。
+      _viewingMonitorDeviceId = null;
       if (mounted) onReturn?.call();
     });
   }
@@ -1001,7 +1079,14 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
         (device is Map ? (device['id'] as String? ?? '') : '');
     // 解析不出線上的來源設備就不給「查看監視畫面」鍵——寧可少一個功能鍵，
     // 也不要帶著空的 targetSocketId 進房而卡在連線中。
-    final bool canView = viewSocketId.isNotEmpty && _isDeviceOnline(device);
+    // ★ 第四十輪（item 2）：若已經在觀看「同一台」監視機的 CCTV 即時畫面，也不給這顆
+    //   鍵——使用者已經看到即時狀況了，再彈一顆「查看監視畫面」只是多餘的干擾。只比對
+    //   同一台，別台監視機的警報仍要給鍵（不影響通知／朗讀／卡片高亮，只動這顆按鈕）。
+    final bool alreadyViewingThisDevice =
+        deviceIdStr.isNotEmpty && _viewingMonitorDeviceId == deviceIdStr;
+    final bool canView = viewSocketId.isNotEmpty &&
+        _isDeviceOnline(device) &&
+        !alreadyViewingThisDevice;
     final String rawElderId =
         (alert['elder_id'] ?? alert['elderId'] ?? '').toString();
 

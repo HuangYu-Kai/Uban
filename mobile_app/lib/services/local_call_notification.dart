@@ -34,6 +34,10 @@ class LocalCallNotification {
   /// 固定通知 ID：同一時間只會有一通來電，用固定 ID 便於 cancel。
   static const int callNotificationId = 8801;
 
+  /// ★ 第四十輪（item 3）：拒接回饋通知的固定 ID，刻意與 [callNotificationId]
+  /// 不同，避免互相覆蓋／提前取消對方。
+  static const int _declineFeedbackNotificationId = 8802;
+
   /// ★ 2026-08-12 第二十三輪（需求 2「來電音效是系統提醒音效，而非系統來電音效」）：
   ///
   /// 舊 channel `uban_incoming_call_backup` 建立時只給了 `playSound: true`、**沒給 `sound:`**，
@@ -188,6 +192,69 @@ class LocalCallNotification {
     }
   }
 
+  /// ★ 第四十輪（item 3「長輩在 APP 外的來電通知，按拒聽無反應」）：
+  /// 拒接流程走完後的輕量回饋通知。
+  ///
+  /// 背景：長輩在 APP 外（CallKit 或本備援通知）按下拒接時，`declineCall`
+  /// 走的是背景 isolate + 無狀態 HTTP，使用者當下完全看不到任何結果——沒有
+  /// 前景 UI 可以顯示 SnackBar／Dialog，唯一看得到的畫面就是通知列本身。
+  /// 這正是使用者回報「按拒聽無反應」的直接成因之一：即使 declineCall
+  /// 確實送達，使用者也無從得知，體感上與「什麼都沒發生」無法區分。
+  ///
+  /// 這裡用一則低優先級、免打擾、會自動消失的獨立通知回報結果，兩個目的：
+  /// ① 對使用者而言，這本身就是「有反應」的直接證據；
+  /// ② 對下一次實機測試而言，能直接看出斷在「declineCall 有沒有真的送出」
+  ///   還是後續環節（家屬端接收／後端轉發）——不必再靠臆測或 adb logcat。
+  ///
+  /// 🚫 呼叫端只在使用者**主動**按下拒接時呼叫（`Event.actionCallDecline`／
+  /// 本備援通知的「✕ 拒絕」鍵）——響鈴逾時（`actionCallTimeout`）不是使用者
+  /// 的動作，不應該冒出一則「已拒接」字樣造成誤導。
+  ///
+  /// 用獨立 channel／通知 ID，不影響既有的來電通知（[callNotificationId]）
+  /// 與其 `FLAG_INSISTENT`／鈴聲設定（G83），也不佔用 [callNotificationId]
+  /// 本身，避免互相取消。
+  static Future<void> showDeclineFeedback({required bool success}) async {
+    if (kIsWeb) return;
+    try {
+      await _ensureInit();
+      final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      const channelId = 'uban_call_decline_feedback';
+      const channelName = '拒接回饋';
+      await androidPlugin?.createNotificationChannel(
+        const AndroidNotificationChannel(
+          channelId,
+          channelName,
+          description: '拒接來電後的輕量結果提示',
+          importance: Importance.low,
+          playSound: false,
+          enableVibration: false,
+        ),
+      );
+      final androidDetails = AndroidNotificationDetails(
+        channelId,
+        channelName,
+        channelDescription: '拒接來電後的輕量結果提示',
+        importance: Importance.low,
+        priority: Priority.low,
+        playSound: false,
+        ongoing: false,
+        autoCancel: true,
+        // 成功時短暫顯示即可；失敗時留久一點，較有機會被使用者或旁人看到。
+        timeoutAfter: success ? 6000 : 20000,
+      );
+      await _plugin.show(
+        _declineFeedbackNotificationId,
+        success ? '已拒接來電' : '拒接時發生問題',
+        success ? '已通知對方您無法接聽' : '請確認網路連線後再試一次',
+        NotificationDetails(android: androidDetails),
+      );
+      debugPrint('📮 [LocalNotif] 已顯示拒接回饋通知 (success=$success)');
+    } catch (e) {
+      debugPrint('⚠️ [LocalNotif] 顯示拒接回饋通知失敗: $e');
+    }
+  }
+
   /// ★ 2026-07-27 第十三輪：冷啟動消費「點擊備援通知而啟動 APP」的 payload。
   ///
   /// APP 被系統殺死時，使用者點擊通知本體會直接啟動 APP，此時
@@ -288,10 +355,14 @@ Future<void> _handleDecline(String? payload) async {
 
   // ★ 2026-08-02 第十四輪：三段各自獨立 try/catch，任一段失敗都不得阻斷其餘兩段。
   //   先發 declineCall（最重要、只依賴 HTTP），再清 prefs，最後關通知。
+  // ★ 第四十輪（item 3）：追蹤 declineCall 是否真的送出成功，供最後一段的
+  //   拒接回饋通知使用；沒有 roomId/senderId 而整段跳過時視為失敗（沒有
+  //   任何東西被送出，回饋通知應該老實反映這一點）。
+  bool declineSucceeded = false;
   try {
     if (roomId.isNotEmpty && senderId.isNotEmpty) {
       debugPrint('🔕 [LocalNotif] 拒接 → HTTP declineCall (callId=$callId)');
-      await ApiService.declineCall(
+      declineSucceeded = await ApiService.declineCall(
         roomId: roomId,
         senderId: senderId,
         callId: callId.isEmpty ? null : callId,
@@ -316,5 +387,13 @@ Future<void> _handleDecline(String? payload) async {
     await LocalCallNotification.cancel();
   } catch (e) {
     debugPrint('⚠️ [LocalNotif] 拒接關閉通知失敗: $e');
+  }
+
+  // ★ 第四十輪（item 3）：見 showDeclineFeedback 的說明——這是使用者在
+  //   本備援通知按下「✕ 拒絕」後，唯一看得到的執行結果回饋。
+  try {
+    await LocalCallNotification.showDeclineFeedback(success: declineSucceeded);
+  } catch (e) {
+    debugPrint('⚠️ [LocalNotif] 顯示拒接回饋通知失敗: $e');
   }
 }

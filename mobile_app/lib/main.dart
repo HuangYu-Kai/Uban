@@ -83,6 +83,22 @@ String? _deriveMyRoleFromCall(dynamic senderRoleRaw, String? localRole) {
   return localRole;
 }
 
+/// ★ 第四十輪（item 4）：取消來電時清除待處理通話 prefs 的共用邏輯。
+///
+/// 比照 BG FCM 取消路徑（`_firebaseMessagingBackgroundHandler` 的
+/// `type == 'cancel-call'` 分支）與 `_sendDeclineEvent` 既有的做法：不論
+/// callId 是否吻合都無條件清除——裝置同一時間只會有一通待處理來電，
+/// 殘留比清空更危險（見 `CLAUDE_call-monitor.md` §3.4「毒 prefs」，
+/// 第二十一輪 APP 永久白屏正是這類殘留造成）。
+Future<void> _clearPendingCallPrefsOnCancel() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('pendingAcceptedCall');
+    await prefs.remove('pendingRingCallData');
+    await prefs.remove('pendingRingCall');
+  } catch (_) {}
+}
+
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -475,7 +491,9 @@ Future<void> _showFullScreenCallkit(Map<String, dynamic> data) async {
           e.event == Event.actionCallTimeout) {
         debugPrint('🔕 [BG-CallKit] ${e.event} → HTTP declineCall (call=$callId)');
         await LocalCallNotification.cancel(); // ★ 第十一輪：拒接時關備援通知
-        await ApiService.declineCall(
+        // ★ 第四十輪（item 3）：declineCall 現在回傳 Future<bool>，用來判斷
+        //   下方要不要顯示「已拒接」回饋通知（見 showDeclineFeedback 說明）。
+        final bool declineOk = await ApiService.declineCall(
           roomId: roomId,
           senderId: senderId,
           callId: callId,
@@ -489,6 +507,16 @@ Future<void> _showFullScreenCallkit(Map<String, dynamic> data) async {
           await prefs.remove('pendingRingCallData');
           await prefs.remove('pendingRingCall');
         } catch (_) {}
+        // ★ 第四十輪（item 3「長輩在 APP 外的來電通知，按拒聽無反應」）：
+        //   只在使用者「主動按下拒接」時顯示回饋，響鈴逾時
+        //   （actionCallTimeout）不是使用者的動作，不冒出「已拒接」字樣。
+        //   這是使用者在 CallKit 被殺死狀態下按拒接後，唯一看得到的執行
+        //   結果回饋——沒有前景 UI，也不確定 declineCall 是否真的送達。
+        if (e.event == Event.actionCallDecline) {
+          try {
+            await LocalCallNotification.showDeclineFeedback(success: declineOk);
+          } catch (_) {}
+        }
         await bgSub?.cancel();
         releaseBgHold('使用者拒接／響鈴逾時');
       } else if (e.event == Event.actionCallAccept) {
@@ -1315,6 +1343,33 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                                     if (elderIdUuid != null) {
                                       await prefs.setString('elder_room_id', elderIdUuid);
                                     }
+                                    // ★ 第四十輪（item 5）：補寫「登出不清除」的快速登入
+                                    //   記憶鍵（last_elder_*，見
+                                    //   elder_pairing_display_screen.dart 的
+                                    //   _rememberLastElder）。復原代碼的使用情境本來就是
+                                    //   「換機／App 剛重灌」——這台裝置上 last_elder_*
+                                    //   必然是空的；不補的話，使用者用復原連結登入成功、
+                                    //   之後第一次登出就會踩到「無法快速登入同一長輩」
+                                    //   （第三十九輪回報：畫面診斷顯示 last_id=無
+                                    //   last_name=無 role=(無)）。
+                                    await prefs.setInt('last_elder_id', elderUserId);
+                                    await prefs.setString('last_elder_name', name);
+                                    if (elderIdUuid != null && elderIdUuid.isNotEmpty) {
+                                      await prefs.setString(
+                                          'last_elder_room_id', elderIdUuid);
+                                    }
+                                    // ⚠️ 刻意不寫 last_elder_device_role：與
+                                    //   elder_pairing_display_screen.dart 的「登入宇璿」
+                                    //   按鈕不同，本流程沒有在任何地方明確寫死
+                                    //   saved_is_cctv（全 main.dart 對這個鍵只讀不寫，
+                                    //   ElderHomeScreen.initState 也不會呼叫
+                                    //   hasCommDevice 或讀寫這個鍵），沒有足夠把握斷言
+                                    //   這台裝置這次登入一定是通話機——寫錯值會讓通話機
+                                    //   被記成監控機，觸發 monitor-wakeup 被靜默丟棄、
+                                    //   長輩被殺死收不到來電那條 bug 鏈（見
+                                    //   CLAUDE_call-monitor.md §6.4、第九輪）。缺這個鍵
+                                    //   時 _quickLoginSameElder 的還原邏輯會安全地退回
+                                    //   重新呼叫 hasCommDevice 判定，代價遠比寫錯低。
                                     appRole = 'elder';
 
                                     if (navigatorKey.currentState != null) {
@@ -1500,7 +1555,15 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
               (issued != null && (now - issued) > kCallValidityMs);
           if (isExpired) {
             debugPrint("⏰ [Main] _checkInitialCall: 已接聽通話已過期 (callId=$callId)，忽略並關閉");
-            FlutterCallkitIncoming.endAllCalls();
+            // ★ 第四十輪：endAllCalls() 在 MIUI 被殺死背景會拋
+            //   PlatformException(content is null)（第十一輪記載），原本是裸呼叫；
+            //   這裡又在冷啟動路徑上（_checkInitialCall 跑在 App 啟動流程裡），
+            //   拋出未接住會打斷整條冷啟動接聽鏈，比 cancel-call 那條殺傷力更大。
+            try {
+              FlutterCallkitIncoming.endAllCalls();
+            } catch (e) {
+              debugPrint('⚠️ [Main] _checkInitialCall: endAllCalls 失敗（不影響後續）: $e');
+            }
             continue;
           }
 
@@ -1580,7 +1643,15 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           final int? issued = int.tryParse(issStr ?? '');
           if ((exp != null && now > exp) ||
               (issued != null && (now - issued) > kCallValidityMs)) {
-            FlutterCallkitIncoming.endAllCalls();
+            // ★ 第四十輪：endAllCalls() 在 MIUI 被殺死背景會拋
+            //   PlatformException(content is null)（第十一輪記載），原本是裸呼叫；
+            //   本函式也在冷啟動接聽兜底鏈上（與 _checkInitialCall 同類修復），
+            //   拋出未接住會打斷整條背景輪詢。
+            try {
+              FlutterCallkitIncoming.endAllCalls();
+            } catch (e) {
+              debugPrint('⚠️ [ExtendedPoll] endAllCalls 失敗（不影響後續）: $e');
+            }
             continue;
           }
 
@@ -1959,6 +2030,21 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         }
         _activeCallDialogContext = null;
       }
+      // ★ 第四十輪（item 4「撥打端逾時後，收話端的來電通知沒被關掉」）：
+      //   舊版本函式只關 App 內對話框，沒關 CallKit 來電畫面／備援本機通知。
+      //   `signaling.dart` 收到 socket `cancel-call` 時已經把 callId 記進
+      //   `_invalidCallIds`（:477，早於呼叫本回呼），這裡不需要重複標記。
+      //   做法比照 FCM 前景取消路徑（`_setupForegroundMessaging` 內
+      //   `type == 'cancel-call'` 分支）：endAllCalls() 沿用既有 try/catch
+      //   慣例（MIUI 會拋 content-is-null），並一併清掉可能殘留的待處理
+      //   來電 prefs（見 _clearPendingCallPrefsOnCancel 註解）。
+      try {
+        FlutterCallkitIncoming.endAllCalls();
+      } catch (e) {
+        debugPrint('⚠️ [Main-Socket] endAllCalls 失敗（不影響）: $e');
+      }
+      unawaited(LocalCallNotification.cancel());
+      unawaited(_clearPendingCallPrefsOnCancel());
     };
 
     // ★ 2026-08-25（第三十三輪）：WebRTC Offer 的全域預設處理。
@@ -2280,7 +2366,16 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         final isExpired = (exp != null && now > exp) || (issued != null && (now - issued) > kCallValidityMs);
         if (isExpired) {
           debugPrint("⏰ [CallKit] Ignore expired accept (callId=$callId)");
-          FlutterCallkitIncoming.endAllCalls();
+          // ★ 第四十輪：endAllCalls() 在 MIUI 被殺死背景會拋
+          //   PlatformException(content is null)（第十一輪記載），原本是裸呼叫；
+          //   這裡在 _setupCallKitListener 的常駐監聽器裡（🔴 極高風險，全 App
+          //   接聽事件的主要入口），拋出未接住有機會影響這個 listener 之後的
+          //   事件處理。
+          try {
+            FlutterCallkitIncoming.endAllCalls();
+          } catch (e) {
+            debugPrint('⚠️ [CallKit] endAllCalls 失敗（不影響）: $e');
+          }
           return;
         }
         // ★ 2026-08-26：接聽當下立刻蓋鎖屏，不等通話畫面 initState。

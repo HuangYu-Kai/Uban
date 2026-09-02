@@ -9,7 +9,6 @@ import '../../models/elder.dart';
 import '../../services/signaling.dart';
 import '../../services/api_service.dart';
 import '../video_call_screen.dart';
-import '../camera_screen.dart';
 import 'family_ai_copilot_screen.dart';
 import 'family_subscription_screen.dart';
 import '../elder_community_screen.dart';
@@ -895,25 +894,13 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                     );
                   },
                 ),
-                const SizedBox(height: 16),
-                // 單向視訊監控
-                _buildCallOptionButton(
-                  title: '單向視訊監控',
-                  subtitle: '不打擾長輩，靜音查看即時畫面',
-                  icon: Icons.visibility_rounded,
-                  color: const Color(0xFFA78BFA),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => CameraScreen(
-                          roomId: 'monitor_elder_$rawId',
-                        ),
-                      ),
-                    );
-                  },
-                ),
+                // ★ 第四十輪（item 1b）：移除「單向視訊監控」選項（原本呼叫
+                //   CameraScreen，roomId: 'monitor_elder_$rawId'，只取房內第一台
+                //   monitor 裝置，無法選擇特定裝置）。監控檢視能力並未消失——
+                //   互動分頁監控卡片的「觀看 CCTV」（_buildMonitorDeviceCard →
+                //   VideoCallScreen(monitorViewOnly: true)，見 CLAUDE_call-monitor.md
+                //   G55／G138）走的是同一份 elder-devices-update 設備清單，且能精準
+                //   指定裝置，功能完整覆蓋此處移除的項目。
               ],
             ),
           ),
@@ -1156,13 +1143,18 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                     children: [
                       Row(
                         children: [
-                          Text(
-                            'AI 照護共創助理',
-                            style: GoogleFonts.notoSansTc(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w900,
-                              color: Colors.white,
-                              letterSpacing: 0.3,
+                          // ★ 第四十輪（item 1a）：與「家庭生活時光牆」同型的溢位風險——
+                          //   同列有 ≥18pt 標題 + 徽章即需可收縮，字面字串不是安全的判準。
+                          Flexible(
+                            child: Text(
+                              'AI 照護共創助理',
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.notoSansTc(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.white,
+                                letterSpacing: 0.3,
+                              ),
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -1382,12 +1374,19 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                     children: [
                       Row(
                         children: [
-                          Text(
-                            '家庭生活時光牆',
-                            style: GoogleFonts.notoSansTc(
-                              fontSize: 22,
-                              fontWeight: FontWeight.w900,
-                              color: Colors.white,
+                          // ★ 第四十輪（item 1a）：字面字串不等於安全——'家庭生活時光牆'
+                          //   七個中文字在 22pt / w900 下，加上同列的「雙向交流」徽章與
+                          //   外層固定寬度的箭頭圖示，在 360dp 寬手機上就會右側溢位。
+                          //   字級與同列元素數量才是判準，不是字串是否為動態內容。
+                          Flexible(
+                            child: Text(
+                              '家庭生活時光牆',
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.notoSansTc(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.white,
+                              ),
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -2644,12 +2643,20 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
           children: [
             Icon(Icons.workspace_premium_rounded, size: 16, color: color),
             const SizedBox(width: 6),
-            Text(
-              widget.tierDisplayName,
-              style: GoogleFonts.notoSansTc(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: color,
+            // ★ 2026-09-01 第三十九輪（RenderFlex 溢位修復）：tierDisplayName 是
+            // 會員層級顯示名稱，長度不可控（一般／黃金／鑽石之外，未知層級或未來
+            // 新增的層級名稱長度無法保證），包 Flexible 可收縮。此 Row 位於
+            // Column 之下（非另一個 Row 的非 flex 手足），寬度約束是有界的，
+            // 包 Flexible 不會有 G63 所警告的無界寬度 assertion 風險。
+            Flexible(
+              child: Text(
+                widget.tierDisplayName,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.notoSansTc(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: color,
+                ),
               ),
             ),
           ],
