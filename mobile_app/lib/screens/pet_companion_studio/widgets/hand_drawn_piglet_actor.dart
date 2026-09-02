@@ -367,44 +367,6 @@ class _HandDrawnPigletActorState extends State<HandDrawnPigletActor>
                                 ),
                               ),
                             ),
-
-                          // 👑 達標專屬金色手作榮譽皇冠
-                          if (widget.isCrownUnlocked || widget.mood == ActorMood.celebratingGoal)
-                            Positioned(
-                              top: -10,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
-                                decoration: BoxDecoration(
-                                  gradient: const LinearGradient(
-                                    colors: [Color(0xFFFBBF24), Color(0xFFD97706)],
-                                  ),
-                                  borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(color: const Color(0xFFFEF3C7), width: 1.5),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: const Color(0xFFB45309).withValues(alpha: 0.35),
-                                      blurRadius: 10,
-                                      offset: const Offset(0, 4),
-                                    ),
-                                  ],
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Text('👑', style: TextStyle(fontSize: 14)),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      '健康達標榮耀',
-                                      style: GoogleFonts.notoSansTc(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w900,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
                         ],
                       ),
                     ),

@@ -293,8 +293,8 @@ class _PetStudioScreenState extends State<PetStudioScreen>
                 child: Center(
                   child: Padding(
                     padding: EdgeInsets.only(
-                      top: isLandscape ? 40 : 120,
-                      bottom: isLandscape ? 0 : 40,
+                      top: isLandscape ? 70 : 100,
+                      bottom: isLandscape ? 10 : 30,
                     ),
                     child: HandDrawnPigletActor(
                       mood: _actorMood,
@@ -304,7 +304,7 @@ class _PetStudioScreenState extends State<PetStudioScreen>
                       onPokeBelly: _handlePokeBelly,
                       speechText: _speechText,
                       isCrownUnlocked: _growthState.isCrownUnlocked,
-                      size: isLandscape ? 320 : 280,
+                      size: isLandscape ? 380 : 300,
                     ),
                   ),
                 ),
