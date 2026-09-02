@@ -35,15 +35,11 @@ class HandDrawnPigletActor extends StatefulWidget {
 
 class _HandDrawnPigletActorState extends State<HandDrawnPigletActor>
     with TickerProviderStateMixin {
-  // 自然呼吸控制器 (3.2秒平滑循環)
-  late AnimationController _breatheController;
-  // 進食歡喜微動態 (600ms 平滑微點頭)
-  late AnimationController _eatController;
-  // 撫摸彈性回饋控制器 (480ms 彈簧曲線)
-  late AnimationController _springTouchController;
-  // 達標慶祝跳躍控制器 (800ms)
-  late AnimationController _celebrateController;
-  // 祥瑞神獸光暈控制器 (6.0秒舒緩旋轉)
+  // 互動單次彈跳控制器 (450ms 單次靈動彈跳)
+  late AnimationController _interactiveBounceController;
+  // 進食單次歡喜控制器 (650ms 餵食後靈動開飯動態)
+  late AnimationController _feedActionController;
+  // 祥瑞光環控制器 (8.0秒極柔和旋轉)
   late AnimationController _auraController;
 
   bool _isDragHovering = false;
@@ -52,29 +48,19 @@ class _HandDrawnPigletActorState extends State<HandDrawnPigletActor>
   void initState() {
     super.initState();
 
-    _breatheController = AnimationController(
+    _interactiveBounceController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 3200),
-    )..repeat();
-
-    _eatController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 600),
+      duration: const Duration(milliseconds: 450),
     );
 
-    _springTouchController = AnimationController(
+    _feedActionController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 480),
-    );
-
-    _celebrateController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 800),
+      duration: const Duration(milliseconds: 650),
     );
 
     _auraController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 6000),
+      duration: const Duration(milliseconds: 8000),
     )..repeat();
 
     _syncMood();
@@ -98,40 +84,31 @@ class _HandDrawnPigletActorState extends State<HandDrawnPigletActor>
 
   void _syncMood() {
     if (widget.mood == ActorMood.chewing) {
-      _eatController.repeat();
-    } else {
-      _eatController.stop();
-      _eatController.reset();
+      _feedActionController.forward(from: 0.0);
     }
-
     if (widget.mood == ActorMood.superHappy ||
         widget.mood == ActorMood.celebratingGoal) {
-      _celebrateController.repeat();
-    } else {
-      _celebrateController.stop();
-      _celebrateController.reset();
+      _interactiveBounceController.forward(from: 0.0);
     }
   }
 
   @override
   void dispose() {
-    _breatheController.dispose();
-    _eatController.dispose();
-    _springTouchController.dispose();
-    _celebrateController.dispose();
+    _interactiveBounceController.dispose();
+    _feedActionController.dispose();
     _auraController.dispose();
     super.dispose();
   }
 
   void _handleTap() {
     HapticFeedback.lightImpact();
-    _springTouchController.forward(from: 0.0);
+    _interactiveBounceController.forward(from: 0.0);
     widget.onPetHead?.call();
   }
 
   void _handleLongPress() {
     HapticFeedback.mediumImpact();
-    _springTouchController.forward(from: 0.0);
+    _interactiveBounceController.forward(from: 0.0);
     widget.onPokeBelly?.call();
   }
 
@@ -161,6 +138,7 @@ class _HandDrawnPigletActorState extends State<HandDrawnPigletActor>
       },
       onAcceptWithDetails: (details) {
         setState(() => _isDragHovering = false);
+        _feedActionController.forward(from: 0.0);
         widget.onFoodAccepted?.call(details.data);
       },
       builder: (context, candidateData, rejectedData) {
@@ -173,7 +151,7 @@ class _HandDrawnPigletActorState extends State<HandDrawnPigletActor>
             child: Stack(
               alignment: Alignment.center,
               children: [
-                // ── A. 手作天然棉麻編織地墊（溫暖繪本感）──
+                // ── A. 溫暖編織羊毛地毯（手作繪本基座）──
                 Positioned(
                   bottom: 14,
                   child: Container(
@@ -193,8 +171,8 @@ class _HandDrawnPigletActorState extends State<HandDrawnPigletActor>
                       boxShadow: [
                         BoxShadow(
                           color: const Color(0xFF78350F).withValues(alpha: 0.06),
-                          blurRadius: 20,
-                          offset: const Offset(0, 8),
+                          blurRadius: 18,
+                          offset: const Offset(0, 6),
                         ),
                       ],
                     ),
@@ -216,44 +194,41 @@ class _HandDrawnPigletActorState extends State<HandDrawnPigletActor>
                   ),
                 ),
 
-                // ── B. 柔和貼地接觸陰影（隨動作自然呼吸放縮）──
+                // ── B. 貼地柔和接觸陰影（隨跳躍自然縮放）──
                 Positioned(
-                  bottom: 26,
+                  bottom: 24,
                   child: AnimatedBuilder(
                     animation: Listenable.merge([
-                      _breatheController,
-                      _celebrateController,
-                      _springTouchController,
+                      _interactiveBounceController,
+                      _feedActionController,
                     ]),
                     builder: (context, child) {
-                      double jumpFactor = 0.0;
-                      if (widget.mood == ActorMood.superHappy ||
-                          widget.mood == ActorMood.celebratingGoal) {
-                        jumpFactor = math.sin(_celebrateController.value * math.pi);
-                      }
-                      if (_springTouchController.isAnimating) {
-                        jumpFactor += (1.0 - _springTouchController.value) * 0.2;
+                      double jump = 0.0;
+                      if (_interactiveBounceController.isAnimating) {
+                        jump = math.sin(_interactiveBounceController.value * math.pi);
+                      } else if (_feedActionController.isAnimating) {
+                        jump = math.sin(_feedActionController.value * math.pi * 2).abs() * 0.5;
                       }
 
-                      final double shadowScale = (1.0 - jumpFactor * 0.3).clamp(0.65, 1.1);
-                      final double shadowOpacity = (0.20 - jumpFactor * 0.10).clamp(0.06, 0.22);
+                      final double shadowScale = (1.0 - jump * 0.25).clamp(0.7, 1.0);
+                      final double shadowOpacity = (0.18 - jump * 0.08).clamp(0.06, 0.20);
 
                       return Container(
-                        width: (actorSize * 0.66) * shadowScale,
+                        width: (actorSize * 0.68) * shadowScale,
                         height: (actorSize * 0.16) * shadowScale,
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.all(
                             Radius.elliptical(
-                              (actorSize * 0.66) * shadowScale,
+                              (actorSize * 0.68) * shadowScale,
                               (actorSize * 0.16) * shadowScale,
                             ),
                           ),
                           boxShadow: [
                             BoxShadow(
                               color: const Color(0xFF4A3E3D).withValues(alpha: shadowOpacity),
-                              blurRadius: 10 + jumpFactor * 12,
+                              blurRadius: 10 + jump * 8,
                               spreadRadius: 1,
-                              offset: const Offset(0, 4),
+                              offset: const Offset(0, 3),
                             ),
                           ],
                         ),
@@ -262,11 +237,10 @@ class _HandDrawnPigletActorState extends State<HandDrawnPigletActor>
                   ),
                 ),
 
-                // ── C. 祥瑞金光光暈（僅在神獸階段或達標慶祝時舒緩飄散）──
-                if (stage == PetGrowthStage.goldenFortunePig ||
-                    widget.mood == ActorMood.celebratingGoal)
+                // ── C. 祥瑞金光光暈（第 5 階專屬）──
+                if (stage == PetGrowthStage.goldenFortunePig)
                   Positioned(
-                    bottom: 28,
+                    bottom: 26,
                     child: AnimatedBuilder(
                       animation: _auraController,
                       builder: (context, child) {
@@ -279,8 +253,8 @@ class _HandDrawnPigletActorState extends State<HandDrawnPigletActor>
                               shape: BoxShape.circle,
                               gradient: RadialGradient(
                                 colors: [
-                                  const Color(0xFFFDE68A).withValues(alpha: 0.38),
-                                  const Color(0xFFF59E0B).withValues(alpha: 0.12),
+                                  const Color(0xFFFDE68A).withValues(alpha: 0.32),
+                                  const Color(0xFFF59E0B).withValues(alpha: 0.08),
                                   Colors.transparent,
                                 ],
                                 stops: const [0.25, 0.65, 1.0],
@@ -292,71 +266,31 @@ class _HandDrawnPigletActorState extends State<HandDrawnPigletActor>
                     ),
                   ),
 
-                // ── D. 核心油畫手繪小豬本體（自然繪本微動態）──
+                // ── D. 核心油畫手繪小豬（保留 100% 原始純美畫作，無拉扯變形）──
                 Positioned(
                   bottom: 22,
                   child: AnimatedBuilder(
                     animation: Listenable.merge([
-                      _breatheController,
-                      _eatController,
-                      _celebrateController,
-                      _springTouchController,
+                      _interactiveBounceController,
+                      _feedActionController,
                     ]),
                     builder: (context, child) {
-                      // 1. 自然平滑呼吸（使用底端為錨點，肚肚微幅舒緩起伏）
-                      final double breathPhase = _breatheController.value * 2 * math.pi;
-                      final double breathSine = math.sin(breathPhase);
-                      
-                      double translateY = breathSine * -2.2;
-                      double scaleY = 1.0 + breathSine * 0.012;
-                      double scaleX = 1.0 - breathSine * 0.008;
-                      double rotation = 0.0;
+                      double translateY = 0.0;
 
-                      // 2. 吃東西時的歡喜微點頭
-                      if (widget.mood == ActorMood.chewing) {
-                        final double eatPhase = _eatController.value * 2 * math.pi;
-                        final double eatSine = math.sin(eatPhase);
-                        translateY += eatSine * -3.0;
-                        rotation += math.sin(eatPhase) * 0.02;
+                      // 1. 點擊摸摸時：愉悅的單次輕快小跳躍 (Curves.easeOutCubic)
+                      if (_interactiveBounceController.isAnimating) {
+                        final double t = _interactiveBounceController.value;
+                        translateY = -math.sin(t * math.pi) * 16.0;
                       }
 
-                      // 3. 達標與超級開心時的輕快小跳躍
-                      if (widget.mood == ActorMood.superHappy ||
-                          widget.mood == ActorMood.celebratingGoal) {
-                        final double hopPhase = _celebrateController.value * math.pi;
-                        final double hopSine = math.sin(hopPhase);
-                        translateY -= hopSine * 14.0;
-                        rotation += math.sin(_celebrateController.value * 2 * math.pi) * 0.04;
+                      // 2. 餵食投餵時：開心的雙次歡樂輕躍
+                      if (_feedActionController.isAnimating) {
+                        final double t = _feedActionController.value;
+                        translateY = -math.sin(t * math.pi * 2).abs() * 10.0;
                       }
 
-                      // 4. 期待投餵時的微往前傾
-                      if (_isDragHovering || widget.mood == ActorMood.anticipating) {
-                        translateY -= 4.0;
-                        scaleY *= 1.03;
-                        scaleX *= 1.03;
-                      }
-
-                      // 5. 睡眠時的放鬆微傾與深沉呼吸
-                      if (widget.mood == ActorMood.sleeping) {
-                        rotation = -0.05;
-                        translateY += 3.0;
-                        scaleY = 0.98 + breathSine * 0.015;
-                      }
-
-                      // 6. 點擊摸摸時的柔軟彈性反饋
-                      if (_springTouchController.isAnimating) {
-                        final double touchVal = math.sin(_springTouchController.value * math.pi);
-                        translateY += touchVal * 3.5;
-                        scaleY -= touchVal * 0.03;
-                        scaleX += touchVal * 0.03;
-                      }
-
-                      return Transform(
-                        alignment: Alignment.bottomCenter,
-                        transform: Matrix4.identity()
-                          ..translate(0.0, translateY)
-                          ..rotateZ(rotation)
-                          ..scale(scaleX, scaleY),
+                      return Transform.translate(
+                        offset: Offset(0.0, translateY),
                         child: child,
                       );
                     },
@@ -367,7 +301,7 @@ class _HandDrawnPigletActorState extends State<HandDrawnPigletActor>
                         clipBehavior: Clip.none,
                         alignment: Alignment.center,
                         children: [
-                          // 🐷 正面油畫手繪小豬（保留原汁原味筆觸）
+                          // 🐷 正面油畫手繪小豬（原生最高清畫質呈現，不變形）
                           Image.asset(
                             stage.imageAssetPath,
                             width: actorSize,
@@ -377,48 +311,54 @@ class _HandDrawnPigletActorState extends State<HandDrawnPigletActor>
                             gaplessPlayback: true,
                           ),
 
-                          // 💤 睡眠時飄散的夢鄉手繪氣泡
-                          if (widget.mood == ActorMood.sleeping)
+                          // ✨ 餵食時飄起的美味香氣標籤
+                          if (widget.mood == ActorMood.chewing)
                             Positioned(
-                              top: 6,
-                              right: 22,
-                              child: AnimatedBuilder(
-                                animation: _breatheController,
-                                builder: (context, _) {
-                                  final double floatVal = _breatheController.value;
-                                  return Opacity(
-                                    opacity: (0.4 + floatVal * 0.6).clamp(0.0, 1.0),
-                                    child: Transform.translate(
-                                      offset: Offset(floatVal * 6, -floatVal * 14),
-                                      child: const Text(
-                                        '💤',
-                                        style: TextStyle(fontSize: 24),
-                                      ),
+                              top: 12,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFFFDF8),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(color: const Color(0xFFEADBCE), width: 1.2),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: const Color(0xFF78350F).withValues(alpha: 0.08),
+                                      blurRadius: 8,
                                     ),
-                                  );
-                                },
+                                  ],
+                                ),
+                                child: const Text(
+                                  '😋 大口吃好料～',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF78350F),
+                                  ),
+                                ),
                               ),
                             ),
 
-                          // ✨ 吃東西時飄起的美味愛心與香氣
-                          if (widget.mood == ActorMood.chewing)
+                          // 💤 睡覺時安靜的夢鄉標籤
+                          if (widget.mood == ActorMood.sleeping)
                             Positioned(
-                              top: 10,
-                              child: AnimatedBuilder(
-                                animation: _eatController,
-                                builder: (context, _) {
-                                  final double chewVal = _eatController.value;
-                                  return Opacity(
-                                    opacity: (1.0 - chewVal).clamp(0.0, 1.0),
-                                    child: Transform.translate(
-                                      offset: Offset(0, -chewVal * 18),
-                                      child: const Text(
-                                        '😋 ✨',
-                                        style: TextStyle(fontSize: 20),
-                                      ),
-                                    ),
-                                  );
-                                },
+                              top: 8,
+                              right: 20,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF5F3FF),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: const Color(0xFFDDD6FE), width: 1.2),
+                                ),
+                                child: const Text(
+                                  '💤 呼呼大睡中',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF6D28D9),
+                                  ),
+                                ),
                               ),
                             ),
 
