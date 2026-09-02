@@ -258,13 +258,13 @@ class _PetStudioScreenState extends State<PetStudioScreen>
   Widget build(BuildContext context) {
     if (_isLoading) {
       return const Scaffold(
-        backgroundColor: Color(0xFFFAFAF7),
-        body: Center(child: CircularProgressIndicator(color: Color(0xFF59B294))),
+        backgroundColor: Color(0xFFFAF7F2),
+        body: Center(child: CircularProgressIndicator(color: Color(0xFFD97706))),
       );
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFFAFAF7),
+      backgroundColor: const Color(0xFFFAF7F2),
       body: SafeArea(
         child: Stack(
           children: [
@@ -303,13 +303,13 @@ class _PetStudioScreenState extends State<PetStudioScreen>
     return Container(
       padding: EdgeInsets.symmetric(horizontal: isLandscape ? 20 : 14, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.95),
-        border: const Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
+        color: const Color(0xFFFFFDF8),
+        border: const Border(bottom: BorderSide(color: Color(0xFFEADBCE), width: 1.5)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
+            color: const Color(0xFF78350F).withValues(alpha: 0.04),
             blurRadius: 10,
-            offset: const Offset(0, 2),
+            offset: const Offset(0, 3),
           ),
         ],
       ),
@@ -335,36 +335,36 @@ class _PetStudioScreenState extends State<PetStudioScreen>
             child: Container(
               padding: const EdgeInsets.all(9),
               decoration: BoxDecoration(
-                color: const Color(0xFFF1F5F9),
+                color: const Color(0xFFF7F2E7),
                 shape: BoxShape.circle,
-                border: Border.all(color: const Color(0xFFCBD5E1)),
+                border: Border.all(color: const Color(0xFFE5D9C5), width: 1.2),
               ),
               child: const Icon(
                 Icons.arrow_back_ios_new_rounded,
-                color: Color(0xFF1E293B),
+                color: Color(0xFF451A03),
                 size: 20,
               ),
             ),
           ),
-          const SizedBox(width: 4),
+          const SizedBox(width: 8),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 '🏡 福氣小豬窩',
                 style: GoogleFonts.notoSansTc(
-                  fontSize: isLandscape ? 22 : 19,
+                  fontSize: isLandscape ? 21 : 18.5,
                   fontWeight: FontWeight.w900,
-                  color: const Color(0xFF0F172A),
+                  color: const Color(0xFF451A03),
                 ),
               ),
               if (isLandscape)
                 Text(
                   '散步賺好料，把小豬餵得白白胖胖健康有福氣～',
                   style: GoogleFonts.notoSansTc(
-                    fontSize: 13.5,
+                    fontSize: 13,
                     fontWeight: FontWeight.w600,
-                    color: const Color(0xFF64748B),
+                    color: const Color(0xFF854D0E),
                   ),
                 ),
             ],
@@ -377,17 +377,17 @@ class _PetStudioScreenState extends State<PetStudioScreen>
             decoration: BoxDecoration(
               color: const Color(0xFFEFF6FF),
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: const Color(0xFFBFDBFE), width: 1.5),
+              border: Border.all(color: const Color(0xFFBFDBFE), width: 1.2),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text('🐾', style: TextStyle(fontSize: 16)),
-                const SizedBox(width: 5),
+                const Text('🐾', style: TextStyle(fontSize: 14)),
+                const SizedBox(width: 4),
                 Text(
                   '${_growthState.todaySteps} 步',
                   style: GoogleFonts.inter(
-                    fontSize: 14.5,
+                    fontSize: 14,
                     fontWeight: FontWeight.w800,
                     color: const Color(0xFF1D4ED8),
                   ),
@@ -395,25 +395,25 @@ class _PetStudioScreenState extends State<PetStudioScreen>
               ],
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 8),
 
           // 2. ⚡ 每日活力
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
             decoration: BoxDecoration(
-              color: const Color(0xFFECFDF5),
+              color: const Color(0xFFF0FDF4),
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: const Color(0xFFA7F3D0), width: 1.5),
+              border: Border.all(color: const Color(0xFFBBF7D0), width: 1.2),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.bolt_rounded, size: 18, color: Color(0xFF059669)),
-                const SizedBox(width: 3),
+                const Icon(Icons.bolt_rounded, size: 17, color: Color(0xFF059669)),
+                const SizedBox(width: 2),
                 Text(
                   '${_growthState.vitality}%',
                   style: GoogleFonts.inter(
-                    fontSize: 14.5,
+                    fontSize: 14,
                     fontWeight: FontWeight.w800,
                     color: const Color(0xFF047857),
                   ),
@@ -421,29 +421,27 @@ class _PetStudioScreenState extends State<PetStudioScreen>
               ],
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 8),
 
           // 3. 🐷 圓潤成長度 (體重)
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFFFFFBEB), Color(0xFFFEF3C7)],
-              ),
+              color: const Color(0xFFFEF9C3),
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: const Color(0xFFFCD34D), width: 1.5),
+              border: Border.all(color: const Color(0xFFFDE047), width: 1.2),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(_growthState.stage.icon, style: const TextStyle(fontSize: 16)),
-                const SizedBox(width: 6),
+                Text(_growthState.stage.icon, style: const TextStyle(fontSize: 15)),
+                const SizedBox(width: 5),
                 Text(
                   '${_growthState.stage.title} · ${_growthState.weightFormatted}',
                   style: GoogleFonts.notoSansTc(
-                    fontSize: 14.5,
+                    fontSize: 14,
                     fontWeight: FontWeight.w900,
-                    color: const Color(0xFF92400E),
+                    color: const Color(0xFF78350F),
                   ),
                 ),
               ],
@@ -452,6 +450,7 @@ class _PetStudioScreenState extends State<PetStudioScreen>
         ],
       ),
     );
+  }
   }
 
   // ── 🖥️ 橫螢幕佈局（左右 50/50 雙欄並排）──
@@ -570,18 +569,19 @@ class _PetStudioScreenState extends State<PetStudioScreen>
     );
   }
 
-  // ── 即時互動測試面板 ──
+  // ── 即時生活互動面板 ──
   Widget _buildActionControlPanel() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: const Color(0xFFFFFDF8),
         borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFEADBCE), width: 1.8),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF1E293B).withValues(alpha: 0.04),
+            color: const Color(0xFF78350F).withValues(alpha: 0.05),
             blurRadius: 16,
-            offset: const Offset(0, 4),
+            offset: const Offset(0, 5),
           ),
         ],
       ),
@@ -590,45 +590,49 @@ class _PetStudioScreenState extends State<PetStudioScreen>
         children: [
           Row(
             children: [
-              const Text('🌟', style: TextStyle(fontSize: 22)),
+              const Text('🌟', style: TextStyle(fontSize: 20)),
               const SizedBox(width: 8),
               Text(
                 '即時生活互動',
                 style: GoogleFonts.notoSansTc(
                   fontSize: 17,
                   fontWeight: FontWeight.w900,
-                  color: const Color(0xFF0F172A),
+                  color: const Color(0xFF451A03),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 12),
           Wrap(
-            spacing: 12,
-            runSpacing: 12,
+            spacing: 10,
+            runSpacing: 10,
             children: [
               _buildActionButton(
                 label: '摸摸小豬頭',
                 icon: Icons.touch_app_rounded,
-                color: const Color(0xFFEC4899),
+                color: const Color(0xFFDB2777),
+                bgColor: const Color(0xFFFDF2F8),
                 onTap: _handlePetHead,
               ),
               _buildActionButton(
                 label: '戳戳圓肚子',
                 icon: Icons.sentiment_very_satisfied_rounded,
-                color: const Color(0xFFF59E0B),
+                color: const Color(0xFFD97706),
+                bgColor: const Color(0xFFFFFBEB),
                 onTap: _handlePokeBelly,
               ),
               _buildActionButton(
                 label: '按時吃藥打卡',
                 icon: Icons.medication_rounded,
-                color: const Color(0xFF10B981),
+                color: const Color(0xFF059669),
+                bgColor: const Color(0xFFF0FDF4),
                 onTap: _handleMedicineCheckIn,
               ),
               _buildActionButton(
                 label: '8000步達標慶典',
                 icon: Icons.emoji_events_rounded,
-                color: const Color(0xFF8B5CF6),
+                color: const Color(0xFF7C3AED),
+                bgColor: const Color(0xFFF5F3FF),
                 onTap: _triggerCelebration8000,
               ),
             ],
@@ -642,6 +646,7 @@ class _PetStudioScreenState extends State<PetStudioScreen>
     required String label,
     required IconData icon,
     required Color color,
+    required Color bgColor,
     required VoidCallback onTap,
   }) {
     return GestureDetector(
@@ -651,21 +656,21 @@ class _PetStudioScreenState extends State<PetStudioScreen>
         onTap();
       },
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
         decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: color.withValues(alpha: 0.3), width: 1.5),
+          color: bgColor,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: color.withValues(alpha: 0.35), width: 1.5),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 21, color: color),
-            const SizedBox(width: 8),
+            Icon(icon, size: 20, color: color),
+            const SizedBox(width: 7),
             Text(
               label,
               style: GoogleFonts.notoSansTc(
-                fontSize: 15,
+                fontSize: 14.5,
                 fontWeight: FontWeight.w800,
                 color: color,
               ),
@@ -681,13 +686,14 @@ class _PetStudioScreenState extends State<PetStudioScreen>
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: const Color(0xFFFFFDF8),
         borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFEADBCE), width: 1.8),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF1E293B).withValues(alpha: 0.04),
+            color: const Color(0xFF78350F).withValues(alpha: 0.05),
             blurRadius: 16,
-            offset: const Offset(0, 4),
+            offset: const Offset(0, 5),
           ),
         ],
       ),
@@ -699,14 +705,14 @@ class _PetStudioScreenState extends State<PetStudioScreen>
             children: [
               Row(
                 children: [
-                  const Icon(Icons.directions_walk_rounded, color: Color(0xFF0284C7), size: 22),
+                  const Icon(Icons.directions_walk_rounded, color: Color(0xFF0369A1), size: 22),
                   const SizedBox(width: 8),
                   Text(
                     '步數模擬器 (拖曳滑桿解鎖對應美食)',
                     style: GoogleFonts.notoSansTc(
                       fontSize: 15,
                       fontWeight: FontWeight.w800,
-                      color: const Color(0xFF0F172A),
+                      color: const Color(0xFF451A03),
                     ),
                   ),
                 ],
@@ -716,7 +722,7 @@ class _PetStudioScreenState extends State<PetStudioScreen>
                 style: GoogleFonts.inter(
                   fontSize: 16,
                   fontWeight: FontWeight.w900,
-                  color: const Color(0xFF0284C7),
+                  color: const Color(0xFF0369A1),
                 ),
               ),
             ],
@@ -724,9 +730,9 @@ class _PetStudioScreenState extends State<PetStudioScreen>
           SliderTheme(
             data: SliderTheme.of(context).copyWith(
               activeTrackColor: const Color(0xFF0284C7),
-              inactiveTrackColor: const Color(0xFFE2E8F0),
+              inactiveTrackColor: const Color(0xFFE5D9C5),
               thumbColor: const Color(0xFF0284C7),
-              overlayColor: const Color(0xFF0284C7).withValues(alpha: 0.2),
+              overlayColor: const Color(0xFF0284C7).withValues(alpha: 0.15),
               trackHeight: 6,
             ),
             child: Slider(

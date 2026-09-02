@@ -70,16 +70,14 @@ class PetGrowthScaleCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(24),
       child: Container(
         constraints: const BoxConstraints(maxWidth: 480),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFFFFFBEB), Color(0xFFFEF3C7)],
-          ),
+          color: const Color(0xFFFFFDF8),
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: const Color(0xFFFCD34D), width: 2),
+          border: Border.all(color: const Color(0xFFEADBCE), width: 1.8),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
+              color: const Color(0xFF78350F).withValues(alpha: 0.06),
               blurRadius: 16,
               offset: const Offset(0, 5),
             ),
@@ -92,16 +90,10 @@ class PetGrowthScaleCard extends StatelessWidget {
             Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(7),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
+                  padding: const EdgeInsets.all(8),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFFEF3C7),
                     shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFFF59E0B).withValues(alpha: 0.2),
-                        blurRadius: 6,
-                      ),
-                    ],
                   ),
                   child: Text(stage.icon, style: const TextStyle(fontSize: 22)),
                 ),
@@ -117,9 +109,9 @@ class PetGrowthScaleCard extends StatelessWidget {
                             child: Text(
                               stage.title,
                               style: GoogleFonts.notoSansTc(
-                                fontSize: 18,
+                                fontSize: 17.5,
                                 fontWeight: FontWeight.w900,
-                                color: const Color(0xFF78350F),
+                                color: const Color(0xFF451A03),
                               ),
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -128,15 +120,15 @@ class PetGrowthScaleCard extends StatelessWidget {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFF59E0B),
+                              color: const Color(0xFFFDE68A),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
                               stage.accessory,
                               style: GoogleFonts.notoSansTc(
                                 fontSize: 11.5,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
+                                fontWeight: FontWeight.w800,
+                                color: const Color(0xFF78350F),
                               ),
                             ),
                           ),
@@ -146,11 +138,11 @@ class PetGrowthScaleCard extends StatelessWidget {
                       Text(
                         stage == PetGrowthStage.goldenFortunePig
                             ? '已達成最高祥瑞神獸型態！🌟'
-                            : '再長 ${growthState.kgToNextStageFormatted} 變身下一階段',
+                            : '再長 ${growthState.kgToNextStageFormatted} 變身下一階段 🌾',
                         style: GoogleFonts.notoSansTc(
                           fontSize: 13,
                           fontWeight: FontWeight.w700,
-                          color: const Color(0xFF92400E),
+                          color: const Color(0xFF854D0E),
                         ),
                       ),
                     ],
@@ -161,21 +153,21 @@ class PetGrowthScaleCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: const Color(0xFFFEF9C3),
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFFFDE68A), width: 1.5),
+                    border: Border.all(color: const Color(0xFFFDE047), width: 1.2),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Text('⚖️', style: TextStyle(fontSize: 15)),
+                      const Text('⚖️', style: TextStyle(fontSize: 14)),
                       const SizedBox(width: 5),
                       Text(
                         growthState.weightFormatted,
                         style: GoogleFonts.inter(
-                          fontSize: 16.5,
+                          fontSize: 16,
                           fontWeight: FontWeight.w900,
-                          color: const Color(0xFFB45309),
+                          color: const Color(0xFF78350F),
                         ),
                       ),
                     ],
@@ -184,7 +176,7 @@ class PetGrowthScaleCard extends StatelessWidget {
               ],
             ),
 
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
 
             // 成長進度條
             ClipRRect(
@@ -192,8 +184,8 @@ class PetGrowthScaleCard extends StatelessWidget {
               child: LinearProgressIndicator(
                 value: progress,
                 minHeight: 8,
-                backgroundColor: const Color(0xFFFDE68A),
-                valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFF59E0B)),
+                backgroundColor: const Color(0xFFF1E9DA),
+                valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFD97706)),
               ),
             ),
           ],

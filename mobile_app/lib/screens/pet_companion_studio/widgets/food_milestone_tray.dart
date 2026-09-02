@@ -19,14 +19,18 @@ class FoodMilestoneTray extends StatelessWidget {
     final foods = PetFoodItem.milestoneMenu;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(28),
+        color: const Color(0xFFFFFDF8),
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(
+          color: const Color(0xFFEADBCE),
+          width: 1.8,
+        ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF1E293B).withValues(alpha: 0.04),
-            blurRadius: 20,
+            color: const Color(0xFF78350F).withValues(alpha: 0.05),
+            blurRadius: 18,
             offset: const Offset(0, 6),
           ),
         ],
@@ -42,24 +46,20 @@ class FoodMilestoneTray extends StatelessWidget {
               Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.all(9),
+                    padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF59B294).withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(14),
+                      color: const Color(0xFFFEF3C7),
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(
-                      Icons.restaurant_menu_rounded,
-                      color: Color(0xFF059669),
-                      size: 22,
-                    ),
+                    child: const Text('🥣', style: TextStyle(fontSize: 20)),
                   ),
                   const SizedBox(width: 10),
                   Text(
-                    '步數能量美食盤 (長按拖曳或點擊餵食)',
+                    '步數能量美食盤 (長按拖曳或點擊投餵)',
                     style: GoogleFonts.notoSansTc(
-                      fontSize: 18,
+                      fontSize: 17.5,
                       fontWeight: FontWeight.w900,
-                      color: const Color(0xFF0F172A),
+                      color: const Color(0xFF451A03),
                     ),
                   ),
                 ],
@@ -67,16 +67,24 @@ class FoodMilestoneTray extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF1F5F9),
+                  color: const Color(0xFFF7F2E7),
                   borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFFE5D9C5), width: 1.2),
                 ),
-                child: Text(
-                  '今日步數: $currentSteps 步',
-                  style: GoogleFonts.inter(
-                    fontSize: 14.5,
-                    fontWeight: FontWeight.w800,
-                    color: const Color(0xFF475569),
-                  ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('🐾', style: TextStyle(fontSize: 14)),
+                    const SizedBox(width: 4),
+                    Text(
+                      '今日 $currentSteps 步',
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: const Color(0xFF78350F),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -84,9 +92,9 @@ class FoodMilestoneTray extends StatelessWidget {
 
           const SizedBox(height: 14),
 
-          // 8 階美食橫向滑動盤 (大觸控卡片)
+          // 8 階美食橫向滑動盤
           SizedBox(
-            height: 172,
+            height: 176,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               physics: const BouncingScrollPhysics(),
@@ -113,26 +121,26 @@ class FoodMilestoneTray extends StatelessWidget {
     bool isFed,
   ) {
     final Widget cardContent = Container(
-      width: 136,
+      width: 138,
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
       decoration: BoxDecoration(
         color: isUnlocked
-            ? (isFed ? const Color(0xFFF8FAFC) : Colors.white)
-            : const Color(0xFFF1F5F9),
+            ? (isFed ? const Color(0xFFF9FAF7) : Colors.white)
+            : const Color(0xFFF5EFEB),
         borderRadius: BorderRadius.circular(22),
         border: Border.all(
           color: isUnlocked
               ? (isFed
                   ? const Color(0xFFE2E8F0)
-                  : item.themeColor.withValues(alpha: 0.45))
-              : const Color(0xFFE2E8F0),
-          width: isUnlocked && !isFed ? 2.2 : 1.2,
+                  : item.themeColor.withValues(alpha: 0.55))
+              : const Color(0xFFE8DFD8),
+          width: isUnlocked && !isFed ? 2.0 : 1.2,
         ),
         boxShadow: isUnlocked && !isFed
             ? [
                 BoxShadow(
-                  color: item.themeColor.withValues(alpha: 0.15),
-                  blurRadius: 10,
+                  color: item.themeColor.withValues(alpha: 0.16),
+                  blurRadius: 12,
                   offset: const Offset(0, 4),
                 ),
               ]
@@ -150,8 +158,8 @@ class FoodMilestoneTray extends StatelessWidget {
                 height: 60,
                 decoration: BoxDecoration(
                   color: isUnlocked
-                      ? item.themeColor.withValues(alpha: 0.12)
-                      : const Color(0xFFE2E8F0),
+                      ? item.themeColor.withValues(alpha: 0.14)
+                      : const Color(0xFFE7DFD5),
                   shape: BoxShape.circle,
                 ),
                 child: Center(
@@ -171,7 +179,7 @@ class FoodMilestoneTray extends StatelessWidget {
                   child: Container(
                     padding: const EdgeInsets.all(3.5),
                     decoration: const BoxDecoration(
-                      color: Color(0xFF10B981),
+                      color: Color(0xFF059669),
                       shape: BoxShape.circle,
                     ),
                     child: const Icon(
@@ -188,7 +196,7 @@ class FoodMilestoneTray extends StatelessWidget {
                   child: Container(
                     padding: const EdgeInsets.all(3.5),
                     decoration: const BoxDecoration(
-                      color: Color(0xFF64748B),
+                      color: Color(0xFF94A3B8),
                       shape: BoxShape.circle,
                     ),
                     child: const Icon(
@@ -207,19 +215,19 @@ class FoodMilestoneTray extends StatelessWidget {
           Text(
             item.name,
             style: GoogleFonts.notoSansTc(
-              fontSize: 15.5,
-              fontWeight: FontWeight.bold,
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
               color: isUnlocked
-                  ? (isFed ? const Color(0xFF94A3B8) : const Color(0xFF0F172A))
+                  ? (isFed ? const Color(0xFF94A3B8) : const Color(0xFF451A03))
                   : const Color(0xFF94A3B8),
             ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
 
-          const SizedBox(height: 4),
+          const SizedBox(height: 5),
 
-          // 增重回饋與步數狀態
+          // 增重回饋與步數標籤
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -230,35 +238,33 @@ class FoodMilestoneTray extends StatelessWidget {
                       ? const Color(0xFFECFDF5)
                       : (isUnlocked
                           ? item.themeColor.withValues(alpha: 0.12)
-                          : const Color(0xFFE2E8F0)),
+                          : const Color(0xFFE7DFD5)),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
-                  isFed
-                      ? '已飽足'
-                      : (isUnlocked ? '${item.stepMilestone}步' : '${item.stepMilestone}步'),
+                  isFed ? '已飽足' : '${item.stepMilestone}步',
                   style: GoogleFonts.notoSansTc(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w800,
                     color: isFed
                         ? const Color(0xFF059669)
-                        : (isUnlocked ? item.themeColor : const Color(0xFF64748B)),
+                        : (isUnlocked ? item.themeColor : const Color(0xFF78716C)),
                   ),
                 ),
               ),
-              const SizedBox(width: 5),
+              const SizedBox(width: 4),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2.5),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFFF1F2),
+                  color: const Color(0xFFFEF3C7),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
                   '+${item.weightGainGrams}g',
-                  style: GoogleFonts.inter(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    color: const Color(0xFFE11D48),
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w900,
+                    color: const Color(0xFFB45309),
                   ),
                 ),
               ),
@@ -281,16 +287,17 @@ class FoodMilestoneTray extends StatelessWidget {
       feedback: Material(
         color: Colors.transparent,
         child: Transform.scale(
-          scale: 1.15,
+          scale: 1.18,
           child: Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: const Color(0xFFFFFDF8),
               shape: BoxShape.circle,
+              border: Border.all(color: item.themeColor, width: 2.2),
               boxShadow: [
                 BoxShadow(
-                  color: item.themeColor.withValues(alpha: 0.4),
-                  blurRadius: 20,
+                  color: item.themeColor.withValues(alpha: 0.35),
+                  blurRadius: 18,
                   offset: const Offset(0, 8),
                 ),
               ],

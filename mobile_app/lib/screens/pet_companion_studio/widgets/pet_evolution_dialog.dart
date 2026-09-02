@@ -31,12 +31,12 @@ class PetEvolutionDialog extends StatelessWidget {
         constraints: const BoxConstraints(maxWidth: 440),
         padding: const EdgeInsets.all(28),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: const Color(0xFFFFFDF8),
           borderRadius: BorderRadius.circular(32),
-          border: Border.all(color: const Color(0xFFFBBF24), width: 3),
+          border: Border.all(color: const Color(0xFFEADBCE), width: 2.2),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFFF59E0B).withValues(alpha: 0.35),
+              color: const Color(0xFF78350F).withValues(alpha: 0.15),
               blurRadius: 30,
               offset: const Offset(0, 10),
             ),
@@ -45,35 +45,40 @@ class PetEvolutionDialog extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // 新階段外觀圖
+            // 新階段外觀圖 (組員油畫正面大圖)
             Container(
-              width: 100,
-              height: 100,
+              width: 140,
+              height: 140,
               decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFFFEF3C7), Color(0xFFFDE68A)],
-                ),
+                color: const Color(0xFFFAF7F0),
                 shape: BoxShape.circle,
-                border: Border.all(color: const Color(0xFFF59E0B), width: 2),
+                border: Border.all(color: const Color(0xFFEADBCE), width: 2),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF78350F).withValues(alpha: 0.08),
+                    blurRadius: 14,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
               ),
               child: Center(
                 child: Image.asset(
                   newStage.imageAssetPath,
-                  width: 80,
-                  height: 80,
+                  width: 115,
+                  height: 115,
                   fit: BoxFit.contain,
                 ),
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 18),
 
             // 標題
             Text(
               '🎉 叮咚！小豬長大長肉囉！',
               style: GoogleFonts.notoSansTc(
-                fontSize: 23,
+                fontSize: 22,
                 fontWeight: FontWeight.w900,
-                color: const Color(0xFF78350F),
+                color: const Color(0xFF451A03),
               ),
             ),
             const SizedBox(height: 10),
@@ -84,14 +89,14 @@ class PetEvolutionDialog extends StatelessWidget {
               decoration: BoxDecoration(
                 color: const Color(0xFFFEF3C7),
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: const Color(0xFFFCD34D), width: 1.5),
+                border: Border.all(color: const Color(0xFFFDE68A), width: 1.5),
               ),
               child: Text(
                 '變身為【${newStage.title}】',
                 style: GoogleFonts.notoSansTc(
-                  fontSize: 18.5,
+                  fontSize: 18,
                   fontWeight: FontWeight.w900,
-                  color: const Color(0xFF92400E),
+                  color: const Color(0xFF78350F),
                 ),
               ),
             ),
@@ -102,9 +107,9 @@ class PetEvolutionDialog extends StatelessWidget {
               '在 $userName 的悉心散步與營養餵養下，小豬吃得白白胖胖、健康有福相！',
               textAlign: TextAlign.center,
               style: GoogleFonts.notoSansTc(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: const Color(0xFF475569),
+                fontSize: 15.5,
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF57534E),
                 height: 1.5,
               ),
             ),
@@ -127,7 +132,7 @@ class PetEvolutionDialog extends StatelessWidget {
                     child: Text(
                       '解鎖外觀：${newStage.accessory}',
                       style: GoogleFonts.notoSansTc(
-                        fontSize: 15,
+                        fontSize: 14.5,
                         fontWeight: FontWeight.w800,
                         color: const Color(0xFF166534),
                       ),
@@ -141,16 +146,16 @@ class PetEvolutionDialog extends StatelessWidget {
             // 確認按鈕
             SizedBox(
               width: double.infinity,
-              height: 54,
+              height: 52,
               child: ElevatedButton(
                 onPressed: () {
                   HapticFeedback.mediumImpact();
                   Navigator.of(context).pop();
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFF59E0B),
+                  backgroundColor: const Color(0xFFD97706),
                   foregroundColor: Colors.white,
-                  elevation: 4,
+                  elevation: 3,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(18),
                   ),
@@ -158,7 +163,7 @@ class PetEvolutionDialog extends StatelessWidget {
                 child: Text(
                   '開開心心收下 ✨',
                   style: GoogleFonts.notoSansTc(
-                    fontSize: 18,
+                    fontSize: 17.5,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
