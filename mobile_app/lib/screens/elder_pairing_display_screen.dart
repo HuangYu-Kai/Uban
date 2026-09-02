@@ -466,10 +466,26 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
     }
   }
 
-  @override
-  void dispose() {
-    _statusTimer?.cancel();
-    super.dispose();
+  /// 🌟 方案 A：長者自主陪伴模式（單人即用，完全無需子女即可使用）
+  Future<void> _startAutonomousMode() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final int elderId = prefs.getInt('last_elder_id') ?? 2;
+      final String elderName = prefs.getString('last_elder_name') ?? '長輩朋友';
+      final String elderRoomId = prefs.getString('last_elder_room_id') ?? '6160';
+
+      await prefs.setBool('is_autonomous_mode', true);
+      await loginAndPersist(
+        elderId: elderId,
+        elderName: elderName,
+        elderRoomId: elderRoomId,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('進入自主模式失敗：$e')),
+      );
+    }
   }
 
   @override
@@ -486,10 +502,10 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
                 children: [
                   const Icon(
                     Icons.qr_code_scanner_rounded,
-                    size: 100,
+                    size: 80,
                     color: Colors.orange,
                   ),
-                  const SizedBox(height: 40),
+                  const SizedBox(height: 24),
                   Text(
                     '等待家人配對',
                     style: GoogleFonts.notoSansTc(
@@ -498,13 +514,13 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
                       color: const Color(0xFF333333),
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
                   const Text(
-                    '請子女開啟手機上的 UBan App\n並輸入下方的 4 位數配對碼',
+                    '請子女開啟手機上的 Uban App\n並掃描下方 QR Code 或輸入配對碼',
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 18, color: Colors.grey),
                   ),
-                  const SizedBox(height: 48),
+                  const SizedBox(height: 32),
                   if (_isLoading)
                     const CircularProgressIndicator()
                   else if (_pairingCode != null)
@@ -518,9 +534,9 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
                         borderRadius: BorderRadius.circular(32),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.1),
-                            blurRadius: 30,
-                            offset: const Offset(0, 15),
+                            color: Colors.black.withValues(alpha: 0.08),
+                            blurRadius: 24,
+                            offset: const Offset(0, 10),
                           ),
                         ],
                       ),
@@ -530,86 +546,90 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
                             child: Text(
                               _pairingCode!,
                               style: GoogleFonts.inter(
-                                fontSize: 72,
+                                fontSize: 64,
                                 fontWeight: FontWeight.w900,
                                 color: Colors.orange,
                                 letterSpacing: 8,
                               ),
                             ),
                           ),
-                          const SizedBox(height: 20),
+                          const SizedBox(height: 16),
                           QrImageView(
                             data: _pairingCode!,
                             version: QrVersions.auto,
-                            size: 160.0,
+                            size: 150.0,
                             backgroundColor: Colors.white,
                           ),
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 12),
                           Text(
-                            '倒數: $_secondsLeft 秒',
+                            '配對倒數: $_secondsLeft 秒',
                             style: const TextStyle(
                               color: Colors.redAccent,
                               fontWeight: FontWeight.bold,
+                              fontSize: 14,
                             ),
                           ),
                         ],
                       ),
                     ),
-                  const SizedBox(height: 48),
-                  TextButton(
-                    onPressed: _requestNewCode,
-                    child: const Text('更換代碼', style: TextStyle(fontSize: 18)),
-                  ),
-                  const SizedBox(height: 8),
-                  ElevatedButton.icon(
-                    onPressed: _quickLoginSameElder,
-                    icon: const Icon(Icons.login_rounded),
-                    label: Text(_devBypassLogin ? '快速登入固定測試長輩' : '快速登入同一長輩'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF59B294),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 12,
+                  const SizedBox(height: 32),
+
+                  // 🌟 方案 A：長者自主模式按鈕（極致醒目、長輩友善）
+                  Container(
+                    width: double.infinity,
+                    constraints: const BoxConstraints(maxWidth: 420),
+                    child: ElevatedButton.icon(
+                      onPressed: _startAutonomousMode,
+                      icon: const Icon(Icons.auto_awesome_rounded, size: 24),
+                      label: Text(
+                        '🌟 我自己使用（直接進入體驗）',
+                        style: GoogleFonts.notoSansTc(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w900,
+                        ),
                       ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  ElevatedButton.icon(
-                    onPressed: _quickLoginGawaDemo,
-                    icon: const Icon(Icons.elderly_rounded),
-                    label: const Text('登入gawa'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF2E7D78),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 12,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF59B294),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        elevation: 4,
                       ),
                     ),
                   ),
                   const SizedBox(height: 10),
-                  ElevatedButton.icon(
-                    onPressed: _quickLoginYuxuanDemo,
-                    icon: const Icon(Icons.elderly_rounded),
-                    label: const Text('登入宇璿'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFE67E22), // 橘色代表宇璿
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 12,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
+                  Text(
+                    '💡 沒有家人在身旁？點此直接享受 AI 伴侶、農民曆與小豬養成！日後可隨時補綁家人。',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 14,
+                      color: const Color(0xFF64748B),
+                      fontWeight: FontWeight.w600,
                     ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // 次要操作區
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      TextButton.icon(
+                        onPressed: _requestNewCode,
+                        icon: const Icon(Icons.refresh_rounded, size: 18),
+                        label: const Text('更換代碼', style: TextStyle(fontSize: 16)),
+                      ),
+                      const SizedBox(width: 16),
+                      TextButton.icon(
+                        onPressed: _quickLoginSameElder,
+                        icon: const Icon(Icons.history_rounded, size: 18),
+                        label: Text(
+                          _devBypassLogin ? '快速登入測試長輩' : '登入上次長輩',
+                          style: const TextStyle(fontSize: 16),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),

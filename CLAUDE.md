@@ -174,6 +174,13 @@ Scheduled jobs (defined in `main.py`):
 - **離線韌性**：`CommunityService` 優先遠端 API，離線退守 `SharedPreferences` 本機快取。
 - 詳細技術規格見 [`docs/technical/COMMUNITY_ARCHITECTURE.md`](docs/technical/COMMUNITY_ARCHITECTURE.md)。
 
+### 2.8 寵物福氣小豬手繪藝術風格與 Prompt 生成規範 (Pet Art Style Guide)
+
+小豬寵物系統統一採用**「溫暖手作繪本厚塗油畫風（Handcrafted Storybook Impasto Oil & Gouache）」**：
+- **視覺特徵**：油畫厚塗顏料堆疊質感（Impasto）、柔和紙張纖維肌理、莫蘭迪燕麥奶油/蜜桃淺粉/草綠色盤、無銳角極致圓潤呆萌形體。
+- **5 階段正面資產**：`mobile_app/assets/images/pet_stages/pig_stage_{1..5}.png`。
+- **生成與擴充 Prompt 規範**：必須遵循 [`docs/general/ART_STYLE_GUIDE_PIGLET.md`](docs/general/ART_STYLE_GUIDE_PIGLET.md) 中的 Master Formula 與負向提示詞，禁止生成 3D CGI、塑膠感或高對比向量圖。
+
 ---
 
 ## 3. Hard Rules
