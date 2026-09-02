@@ -13,7 +13,7 @@ void main() {
     });
 
     test('首次開啟會建立歡迎貼文', () async {
-      final posts = await service.getPosts(userId: 7, userName: '阿福');
+      final posts = await service.getPosts(userId: 701, userName: '阿福');
 
       expect(posts, hasLength(2));
       expect(posts.first.content, contains('阿福'));
@@ -21,23 +21,23 @@ void main() {
 
     test('可以新增並保存貼文', () async {
       await service.createPost(
-        userId: 7,
+        userId: 702,
         userName: '阿福',
         content: '今天去公園散步。',
         mood: '😊',
       );
 
-      final posts = await service.getPosts(userId: 7, userName: '阿福');
+      final posts = await service.getPosts(userId: 702, userName: '阿福');
       expect(posts.first.authorName, '阿福');
       expect(posts.first.content, '今天去公園散步。');
     });
 
     test('按讚與留言會正確更新', () async {
-      var posts = await service.getPosts(userId: 7, userName: '阿福');
+      var posts = await service.getPosts(userId: 703, userName: '阿福');
       final post = posts.first;
 
       posts = await service.toggleLike(
-        userId: 7,
+        userId: 703,
         userName: '阿福',
         postId: post.id,
       );
@@ -45,7 +45,7 @@ void main() {
       expect(posts.first.likeCount, post.likeCount + 1);
 
       posts = await service.addComment(
-        userId: 7,
+        userId: 703,
         userName: '阿福',
         postId: post.id,
         message: '謝謝關心！',

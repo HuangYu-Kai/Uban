@@ -11,7 +11,6 @@ import '../models/community_post.dart';
 import '../services/api_service.dart';
 import '../services/community_service.dart';
 import '../theme/app_theme.dart';
-import 'widgets/pet_community_header.dart';
 import 'widgets/pet_reward_dialog.dart';
 import 'widgets/polaroid_post_card.dart';
 
@@ -858,11 +857,6 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen> {
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 132),
                   children: [
-                    // 頂部小嘎寵物陪伴看板
-                    PetCommunityHeader(
-                      elderName: widget.userName,
-                      latestPostCount: _posts.length,
-                    ),
                     _buildPrivacyCard(),
                     const SizedBox(height: 14),
                     _buildCreatePostButton(),
