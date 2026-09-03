@@ -372,70 +372,20 @@ class _PetStudioScreenState extends State<PetStudioScreen>
                 ),
               ),
 
-              // 🧺 5. 右下角田園蔬果籃互動入口（點擊開啟食匣抽屜）
+              // 🧺 5. 直接點擊背景右下角手繪蔬果箱（無外加按鈕，純淨隱形互動熱區）
               Positioned(
-                right: isLandscape ? 36 : 16,
-                bottom: isLandscape ? 30 : 20,
-                child: SafeArea(
-                  child: GestureDetector(
-                    onTap: () {
-                      HapticFeedback.lightImpact();
-                      setState(() {
-                        _isFeedingSheetOpen = true;
-                      });
-                    },
-                    child: Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: isLandscape ? 18 : 14,
-                        vertical: isLandscape ? 12 : 10,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFFDF8).withValues(alpha: 0.94),
-                        borderRadius: BorderRadius.circular(24),
-                        border: Border.all(
-                          color: const Color(0xFFEADBCE),
-                          width: 2.0,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(0xFF78350F).withValues(alpha: 0.16),
-                            blurRadius: 18,
-                            offset: const Offset(0, 5),
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Text('🧺', style: TextStyle(fontSize: 22)),
-                          const SizedBox(width: 8),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                '田園食匣',
-                                style: GoogleFonts.notoSansTc(
-                                  fontSize: isLandscape ? 16 : 14,
-                                  fontWeight: FontWeight.w900,
-                                  color: const Color(0xFF451A03),
-                                  letterSpacing: 0.5,
-                                ),
-                              ),
-                              Text(
-                                '餵食小豬',
-                                style: GoogleFonts.notoSansTc(
-                                  fontSize: isLandscape ? 11.5 : 10.5,
-                                  fontWeight: FontWeight.w600,
-                                  color: const Color(0xFF78350F).withValues(alpha: 0.8),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+                right: 0,
+                bottom: 0,
+                width: isLandscape ? 460 : 260,
+                height: isLandscape ? 250 : 180,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    setState(() {
+                      _isFeedingSheetOpen = true;
+                    });
+                  },
                 ),
               ),
 
