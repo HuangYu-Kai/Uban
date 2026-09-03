@@ -135,6 +135,7 @@ flutter:
     - assets/images/pet_seq_chewing/
     - assets/images/pet_seq_celebration/
     - assets/images/pet_seq_sleep/
+    - assets/images/pet_foods/
     - .env
     - assets/models/
     # ★ 2026-08-11 第二十二輪（需求 9）：緊急通話 7 秒提示音，取代原本的 TTS 語音播報。

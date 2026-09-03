@@ -8,6 +8,7 @@ import 'models/pet_growth_state.dart';
 import '../elder_home_screen.dart';
 import 'widgets/animated_piglet_actor.dart';
 import 'widgets/food_milestone_tray.dart';
+import 'widgets/garden_feeding_sheet.dart';
 import 'widgets/hand_drawn_piglet_actor.dart';
 import 'widgets/pet_evolution_dialog.dart';
 import 'widgets/pet_growth_scale_card.dart';
@@ -33,8 +34,20 @@ class _PetStudioScreenState extends State<PetStudioScreen>
   bool _isLoading = true;
 
   ActorMood _actorMood = ActorMood.idle;
-  String _speechText = '早安！今天天氣很好，帶小豬散步賺美食吧～😊';
+  String _speechText = '';
   Timer? _moodResetTimer;
+
+  // 🧺 食物庫存與抽屜開關
+  bool _isFeedingSheetOpen = false;
+  final Map<String, int> _foodInventory = {
+    'carrot': -1, // 常駐無限
+    'apple': 3,
+    'cabbage': 2,
+    'sweet_potato': 2,
+    'corn': 1,
+    'watermelon': 1,
+    'peach_cake': 1,
+  };
 
   // 粒子系統
   final List<StudioParticle> _particles = [];
@@ -121,8 +134,9 @@ class _PetStudioScreenState extends State<PetStudioScreen>
 
   // ── 核心餵食邏輯 ──
   void _handleFeedFood(PetFoodItem food) {
-    if (_growthState.fedFoodIds.contains(food.id)) {
-      _showSnackToast('小豬已經品嚐過囉～去散步解鎖下一道吧！😋');
+    final currentCount = _foodInventory[food.id] ?? food.initialCount;
+    if (!food.isUnlimited && currentCount <= 0) {
+      _showSnackToast('【${food.name}】已經吃完囉～多散步解鎖新食材吧！🌾');
       return;
     }
 
@@ -142,10 +156,13 @@ class _PetStudioScreenState extends State<PetStudioScreen>
     setState(() {
       _growthState = newState;
       _actorMood = ActorMood.chewing;
-      _speechText = '${food.reactionQuote} (體重 +${food.weightGainGrams}g ⚖️)';
+      if (!food.isUnlimited && currentCount > 0) {
+        _foodInventory[food.id] = currentCount - 1;
+      }
     });
 
-    _spawnWeightParticles(const Offset(350, 480), food.weightGainGrams);
+    _showSnackToast('小豬大口吃下了【${food.name}】！活力 +${food.vitalityGain} ✨');
+    _spawnHearts(const Offset(350, 480), color: food.themeColor, count: 20);
     PetStorageService.saveState(newState);
 
     _moodResetTimer?.cancel();
@@ -153,7 +170,6 @@ class _PetStudioScreenState extends State<PetStudioScreen>
       if (!mounted) return;
       setState(() {
         _actorMood = ActorMood.superHappy;
-        _speechText = '肚皮圓滾滾好滿足～謝謝${widget.userName}！😋❤️';
       });
 
       // 檢查是否突破成長階段
@@ -355,6 +371,90 @@ class _PetStudioScreenState extends State<PetStudioScreen>
                   ),
                 ),
               ),
+
+              // 🧺 5. 右下角田園蔬果籃互動入口（點擊開啟食匣抽屜）
+              Positioned(
+                right: isLandscape ? 36 : 16,
+                bottom: isLandscape ? 30 : 20,
+                child: SafeArea(
+                  child: GestureDetector(
+                    onTap: () {
+                      HapticFeedback.lightImpact();
+                      setState(() {
+                        _isFeedingSheetOpen = true;
+                      });
+                    },
+                    child: Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: isLandscape ? 18 : 14,
+                        vertical: isLandscape ? 12 : 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFFDF8).withValues(alpha: 0.94),
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(
+                          color: const Color(0xFFEADBCE),
+                          width: 2.0,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF78350F).withValues(alpha: 0.16),
+                            blurRadius: 18,
+                            offset: const Offset(0, 5),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text('🧺', style: TextStyle(fontSize: 22)),
+                          const SizedBox(width: 8),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                '田園食匣',
+                                style: GoogleFonts.notoSansTc(
+                                  fontSize: isLandscape ? 16 : 14,
+                                  fontWeight: FontWeight.w900,
+                                  color: const Color(0xFF451A03),
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                              Text(
+                                '餵食小豬',
+                                style: GoogleFonts.notoSansTc(
+                                  fontSize: isLandscape ? 11.5 : 10.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: const Color(0xFF78350F).withValues(alpha: 0.8),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+              // 🧺 6. 自適應半透明食匣抽屜（橫螢幕滑自右側、直螢幕升自底部）
+              if (_isFeedingSheetOpen)
+                Positioned.fill(
+                  child: GardenFeedingSheet(
+                    isLandscape: isLandscape,
+                    foodInventory: _foodInventory,
+                    onFeedFood: (food) {
+                      _handleFeedFood(food);
+                    },
+                    onClose: () {
+                      setState(() {
+                        _isFeedingSheetOpen = false;
+                      });
+                    },
+                  ),
+                ),
             ],
           );
         },
