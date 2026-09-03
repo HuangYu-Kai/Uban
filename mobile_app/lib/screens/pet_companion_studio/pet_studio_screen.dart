@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'models/pet_food_item.dart';
 import 'models/pet_growth_state.dart';
 import '../elder_home_screen.dart';
+import 'services/garden_ambient_audio_service.dart';
 import 'widgets/animated_piglet_actor.dart';
 import 'widgets/food_milestone_tray.dart';
 import 'widgets/garden_feeding_sheet.dart';
@@ -37,6 +38,8 @@ class _PetStudioScreenState extends State<PetStudioScreen>
   String _speechText = '';
   Timer? _moodResetTimer;
 
+  final GardenAmbientAudioService _audioService = GardenAmbientAudioService();
+
   // 🧺 食物庫存與抽屜開關
   bool _isFeedingSheetOpen = false;
   final Map<String, int> _foodInventory = {
@@ -67,6 +70,7 @@ class _PetStudioScreenState extends State<PetStudioScreen>
     );
 
     _loadSavedData();
+    _audioService.initAndStartAmbience();
 
     _particleAnimController = AnimationController(
       vsync: this,
@@ -89,6 +93,7 @@ class _PetStudioScreenState extends State<PetStudioScreen>
   void dispose() {
     _moodResetTimer?.cancel();
     _particleAnimController.dispose();
+    _audioService.dispose();
     super.dispose();
   }
 
@@ -297,14 +302,7 @@ class _PetStudioScreenState extends State<PetStudioScreen>
                 ),
               ),
 
-              // 2. 粒子繪製層（花瓣與愛心光芒）
-              Positioned.fill(
-                child: CustomPaint(
-                  painter: PetParticleCanvas(_particles),
-                ),
-              ),
-
-              // 3. 🐷 核心小豬舞台：置中於陽光白三葉草草皮正中央
+              // 2. 🐷 核心小豬舞台：置中於陽光白三葉草草皮正中央
               Positioned.fill(
                 child: Center(
                   child: Padding(
@@ -326,7 +324,33 @@ class _PetStudioScreenState extends State<PetStudioScreen>
                 ),
               ),
 
-              // 4. 頂部簡約懸浮返回按鈕
+              // 3. 粒子繪製層（投餵時的愛心與星芒光芒）
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: CustomPaint(
+                    painter: PetParticleCanvas(_particles),
+                  ),
+                ),
+              ),
+
+              // 🧺 4. 直接點擊背景右下角手繪蔬果箱（無外加按鈕，純淨隱形互動熱區）
+              Positioned(
+                right: 0,
+                bottom: 0,
+                width: isLandscape ? 460 : 260,
+                height: isLandscape ? 250 : 180,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    setState(() {
+                      _isFeedingSheetOpen = true;
+                    });
+                  },
+                ),
+              ),
+
+              // 5. 頂部簡約懸浮返回按鈕
               Positioned(
                 top: MediaQuery.of(context).padding.top + 12,
                 left: 16,
@@ -369,23 +393,6 @@ class _PetStudioScreenState extends State<PetStudioScreen>
                       ),
                     ),
                   ),
-                ),
-              ),
-
-              // 🧺 5. 直接點擊背景右下角手繪蔬果箱（無外加按鈕，純淨隱形互動熱區）
-              Positioned(
-                right: 0,
-                bottom: 0,
-                width: isLandscape ? 460 : 260,
-                height: isLandscape ? 250 : 180,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () {
-                    HapticFeedback.lightImpact();
-                    setState(() {
-                      _isFeedingSheetOpen = true;
-                    });
-                  },
                 ),
               ),
 
