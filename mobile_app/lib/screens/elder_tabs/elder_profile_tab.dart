@@ -933,7 +933,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
           onTap: _openPetStudio,
           borderRadius: BorderRadius.circular(28),
           child: Container(
-            padding: EdgeInsets.all(isLandscape ? 16 : 20),
+            padding: EdgeInsets.all(isLandscape ? 14 : 20),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(28),
               border: Border.all(color: const Color(0xFFEADBCE), width: 1.8),
@@ -1043,7 +1043,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                   ],
                 ),
 
-                SizedBox(height: isLandscape ? 8 : 14),
+                SizedBox(height: isLandscape ? 6 : 14),
 
                 // ── B. 核心小豬正面手繪油畫舞台（移除點擊彈跳動畫，點擊全卡直接進入小豬的家）──
                 IgnorePointer(
@@ -1053,8 +1053,8 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                     children: [
                       // 呼吸背景微暈
                       Container(
-                        width: isLandscape ? 160 : 200,
-                        height: isLandscape ? 160 : 200,
+                        width: isLandscape ? 120 : 200,
+                        height: isLandscape ? 120 : 200,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           gradient: RadialGradient(
@@ -1077,7 +1077,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
 
                       // 小豬油畫主角與對話氣泡
                       HandDrawnPigletActor(
-                        size: isLandscape ? 165 : 195,
+                        size: isLandscape ? 120 : 195,
                         stage: currentGrowthState.stage,
                         mood: mood == _PetMood.superHappy
                             ? ActorMood.superHappy
@@ -1092,13 +1092,15 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                   ),
                 ),
 
-                SizedBox(height: isLandscape ? 8 : 14),
+                SizedBox(height: isLandscape ? 6 : 14),
 
                 // ── C. 體重秤與成長階段卡（PetGrowthScaleCard，透過外層卡片統一跳轉）──
                 IgnorePointer(
-                  child: PetGrowthScaleCard(
-                    growthState: currentGrowthState,
-                    isCompact: false,
+                  child: Center(
+                    child: PetGrowthScaleCard(
+                      growthState: currentGrowthState,
+                      isCompact: isLandscape,
+                    ),
                   ),
                 ),
               ],
@@ -1113,8 +1115,8 @@ class _ElderProfileTabState extends State<ElderProfileTab>
   Widget _buildVitalityStepGoalsCard(double progress, {bool isLandscape = false}) {
     return Container(
       padding: EdgeInsets.symmetric(
-        horizontal: isLandscape ? 16 : 20,
-        vertical: isLandscape ? 12 : 20,
+        horizontal: isLandscape ? 14 : 20,
+        vertical: isLandscape ? 10 : 20,
       ),
       decoration: BoxDecoration(
         color: const Color(0xFFFFFDF9),
@@ -1179,7 +1181,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
             ],
           ),
 
-          SizedBox(height: isLandscape ? 10 : 16),
+          SizedBox(height: isLandscape ? 8 : 16),
 
           // ── 步數大圓環 ＋ 4-in-1 健康指標 ──
           Row(
@@ -1190,11 +1192,11 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                 alignment: Alignment.center,
                 children: [
                   SizedBox(
-                    width: isLandscape ? 86 : 110,
-                    height: isLandscape ? 86 : 110,
+                    width: isLandscape ? 72 : 110,
+                    height: isLandscape ? 72 : 110,
                     child: CircularProgressIndicator(
                       value: progress,
-                      strokeWidth: isLandscape ? 8 : 10,
+                      strokeWidth: isLandscape ? 6.5 : 10,
                       backgroundColor: const Color(0xFFF1EBE1),
                       valueColor:
                           const AlwaysStoppedAnimation<Color>(Color(0xFF59B294)),
@@ -1207,7 +1209,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                       Text(
                         '今日步數',
                         style: GoogleFonts.notoSansTc(
-                          fontSize: isLandscape ? 10.5 : 12,
+                          fontSize: isLandscape ? 10 : 12,
                           color: const Color(0xFF8C6D58),
                           fontWeight: FontWeight.bold,
                         ),
@@ -1215,7 +1217,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                       Text(
                         NumberFormat('#,###').format(currentSteps),
                         style: GoogleFonts.inter(
-                          fontSize: isLandscape ? 18 : 22,
+                          fontSize: isLandscape ? 16 : 22,
                           fontWeight: FontWeight.w900,
                           color: const Color(0xFF451A03),
                           height: 1.1,
@@ -1224,7 +1226,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                       Text(
                         '${(progress * 100).toInt()}% 達成',
                         style: GoogleFonts.notoSansTc(
-                          fontSize: isLandscape ? 10 : 11.5,
+                          fontSize: isLandscape ? 9.5 : 11.5,
                           color: const Color(0xFF59B294),
                           fontWeight: FontWeight.w800,
                         ),
@@ -1234,7 +1236,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                 ],
               ),
 
-              SizedBox(width: isLandscape ? 12 : 14),
+              SizedBox(width: isLandscape ? 10 : 14),
 
               // 4-in-1 指標格
               Expanded(
@@ -1263,7 +1265,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                         ),
                       ],
                     ),
-                    SizedBox(height: isLandscape ? 6 : 8),
+                    SizedBox(height: isLandscape ? 4 : 8),
                     Row(
                       children: [
                         Expanded(
@@ -1310,7 +1312,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     return Container(
       padding: EdgeInsets.symmetric(
         horizontal: isLandscape ? 8 : 10,
-        vertical: isLandscape ? 6 : 8,
+        vertical: isLandscape ? 4.5 : 8,
       ),
       decoration: BoxDecoration(
         color: const Color(0xFFFAF7F2),
@@ -1320,14 +1322,14 @@ class _ElderProfileTabState extends State<ElderProfileTab>
       child: Row(
         children: [
           Container(
-            padding: EdgeInsets.all(isLandscape ? 5 : 6),
+            padding: EdgeInsets.all(isLandscape ? 4 : 6),
             decoration: BoxDecoration(
               color: iconColor.withValues(alpha: 0.12),
               shape: BoxShape.circle,
             ),
-            child: Icon(icon, color: iconColor, size: isLandscape ? 16 : 18),
+            child: Icon(icon, color: iconColor, size: isLandscape ? 15 : 18),
           ),
-          SizedBox(width: isLandscape ? 6 : 8),
+          SizedBox(width: isLandscape ? 5 : 8),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1336,7 +1338,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                 Text(
                   label,
                   style: GoogleFonts.notoSansTc(
-                    fontSize: isLandscape ? 10.5 : 11.5,
+                    fontSize: isLandscape ? 10 : 11.5,
                     color: const Color(0xFF78350F),
                     fontWeight: FontWeight.bold,
                   ),
@@ -1344,7 +1346,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                 Text(
                   value,
                   style: GoogleFonts.inter(
-                    fontSize: isLandscape ? 13 : 14.5,
+                    fontSize: isLandscape ? 12 : 14.5,
                     fontWeight: FontWeight.w900,
                     color: const Color(0xFF451A03),
                   ),
@@ -1371,8 +1373,8 @@ class _ElderProfileTabState extends State<ElderProfileTab>
 
     return Container(
       padding: EdgeInsets.symmetric(
-        horizontal: isLandscape ? 16 : 20,
-        vertical: isLandscape ? 12 : 20,
+        horizontal: isLandscape ? 14 : 20,
+        vertical: isLandscape ? 10 : 20,
       ),
       decoration: BoxDecoration(
         color: const Color(0xFFFFFDF9),
@@ -1483,7 +1485,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               itemCount: activeReminders.length,
-              separatorBuilder: (_, __) => SizedBox(height: isLandscape ? 6 : 10),
+              separatorBuilder: (_, __) => SizedBox(height: isLandscape ? 4 : 10),
               itemBuilder: (context, index) {
                 final r = activeReminders[index];
                 final int rId = r['id'] as int;
@@ -1511,8 +1513,8 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 250),
                       padding: EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: isLandscape ? 6 : 12,
+                        horizontal: 10,
+                        vertical: isLandscape ? 3.5 : 12,
                       ),
                       decoration: BoxDecoration(
                         color: isDone
@@ -1530,8 +1532,8 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                         children: [
                           // 類別 Emoji 圖標
                           Container(
-                            width: isLandscape ? 38 : 44,
-                            height: isLandscape ? 38 : 44,
+                            width: isLandscape ? 30 : 44,
+                            height: isLandscape ? 30 : 44,
                             decoration: BoxDecoration(
                               color: catBg,
                               shape: BoxShape.circle,
@@ -1539,11 +1541,11 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                             child: Center(
                               child: Text(
                                 catEmoji,
-                                style: TextStyle(fontSize: isLandscape ? 18 : 22),
+                                style: TextStyle(fontSize: isLandscape ? 15 : 22),
                               ),
                             ),
                           ),
-                          const SizedBox(width: 10),
+                          const SizedBox(width: 8),
                           // 內容文字
                           Expanded(
                             child: Column(
@@ -1553,7 +1555,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                                   children: [
                                     Container(
                                       padding: const EdgeInsets.symmetric(
-                                          horizontal: 7, vertical: 2),
+                                          horizontal: 6, vertical: 1.5),
                                       decoration: BoxDecoration(
                                         color: isDone
                                             ? const Color(0xFFDCFCE7)
@@ -1563,7 +1565,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                                       child: Text(
                                         r['time_str'] ?? '',
                                         style: GoogleFonts.inter(
-                                          fontSize: isLandscape ? 11.5 : 12.5,
+                                          fontSize: isLandscape ? 10.5 : 12.5,
                                           fontWeight: FontWeight.w800,
                                           color: isDone
                                               ? const Color(0xFF15803D)
@@ -1571,12 +1573,12 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                                         ),
                                       ),
                                     ),
-                                    const SizedBox(width: 8),
+                                    const SizedBox(width: 6),
                                     Flexible(
                                       child: Text(
                                         r['title'] ?? '',
                                         style: GoogleFonts.notoSansTc(
-                                          fontSize: isLandscape ? 15 : 16.5,
+                                          fontSize: isLandscape ? 13.5 : 16.5,
                                           fontWeight: FontWeight.w900,
                                           color: isDone
                                               ? const Color(0xFF166534)
@@ -1591,11 +1593,11 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                                   ],
                                 ),
                                 if ((r['note'] ?? '').toString().isNotEmpty) ...[
-                                  const SizedBox(height: 2),
+                                  const SizedBox(height: 1),
                                   Text(
                                     r['note'],
                                     style: GoogleFonts.notoSansTc(
-                                      fontSize: isLandscape ? 11.5 : 13,
+                                      fontSize: isLandscape ? 10.5 : 13,
                                       color: isDone
                                           ? const Color(0xFF15803D)
                                           : const Color(0xFF78350F),
@@ -1608,18 +1610,18 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                               ],
                             ),
                           ),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: 6),
                           // ── 大字體觸控打卡核選扭 ──
                           Container(
                             padding: EdgeInsets.symmetric(
-                              horizontal: isLandscape ? 10 : 12,
-                              vertical: isLandscape ? 5 : 7,
+                              horizontal: isLandscape ? 8 : 12,
+                              vertical: isLandscape ? 3.5 : 7,
                             ),
                             decoration: BoxDecoration(
                               color: isDone
                                   ? const Color(0xFF10B981)
                                   : Colors.white,
-                              borderRadius: BorderRadius.circular(14),
+                              borderRadius: BorderRadius.circular(12),
                               border: Border.all(
                                 color: isDone
                                     ? const Color(0xFF059669)
@@ -1644,16 +1646,16 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                                   isDone
                                       ? Icons.check_circle_rounded
                                       : Icons.touch_app_rounded,
-                                  size: isLandscape ? 14 : 16,
+                                  size: isLandscape ? 13 : 16,
                                   color: isDone
                                       ? Colors.white
                                       : const Color(0xFF92400E),
                                 ),
-                                const SizedBox(width: 4),
+                                const SizedBox(width: 3),
                                 Text(
                                   isDone ? '已打卡' : '打卡',
                                   style: GoogleFonts.notoSansTc(
-                                    fontSize: isLandscape ? 12 : 13,
+                                    fontSize: isLandscape ? 11 : 13,
                                     fontWeight: FontWeight.w900,
                                     color: isDone
                                         ? Colors.white
@@ -1671,13 +1673,13 @@ class _ElderProfileTabState extends State<ElderProfileTab>
               },
             ),
 
-          SizedBox(height: isLandscape ? 8 : 14),
+          SizedBox(height: isLandscape ? 6 : 14),
 
           // 溫馨提示字卡
           Container(
             padding: EdgeInsets.symmetric(
               horizontal: isLandscape ? 12 : 14,
-              vertical: isLandscape ? 6 : 9,
+              vertical: isLandscape ? 5 : 9,
             ),
             decoration: BoxDecoration(
               color: const Color(0xFFFFFBEB),
@@ -1710,8 +1712,8 @@ class _ElderProfileTabState extends State<ElderProfileTab>
   Widget _buildStorybookHeader(String greetingTitle, {bool isLandscape = false}) {
     return Container(
       padding: EdgeInsets.symmetric(
-        horizontal: isLandscape ? 18 : 20,
-        vertical: isLandscape ? 9 : 14,
+        horizontal: isLandscape ? 16 : 20,
+        vertical: isLandscape ? 7 : 14,
       ),
       decoration: BoxDecoration(
         color: const Color(0xFFFFFDF9),
@@ -1728,8 +1730,8 @@ class _ElderProfileTabState extends State<ElderProfileTab>
       child: Row(
         children: [
           Container(
-            width: isLandscape ? 46 : 58,
-            height: isLandscape ? 46 : 58,
+            width: isLandscape ? 38 : 58,
+            height: isLandscape ? 38 : 58,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: const Color(0xFF59B294).withValues(alpha: 0.15),
@@ -1743,10 +1745,10 @@ class _ElderProfileTabState extends State<ElderProfileTab>
               ],
             ),
             child: Center(
-              child: Text('👴', style: TextStyle(fontSize: isLandscape ? 26 : 32)),
+              child: Text('👴', style: TextStyle(fontSize: isLandscape ? 22 : 32)),
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1757,7 +1759,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                     Text(
                       '$greetingTitle，${widget.userName}',
                       style: GoogleFonts.notoSansTc(
-                        fontSize: isLandscape ? 21 : 25,
+                        fontSize: isLandscape ? 18.5 : 25,
                         fontWeight: FontWeight.w900,
                         color: const Color(0xFF451A03),
                         letterSpacing: -0.5,
@@ -2052,22 +2054,22 @@ class _ElderProfileTabState extends State<ElderProfileTab>
   }) {
     return Material(
       color: const Color(0xFFFFFDF9),
-      borderRadius: BorderRadius.circular(isLandscape ? 18 : 24),
+      borderRadius: BorderRadius.circular(isLandscape ? 16 : 24),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(isLandscape ? 18 : 24),
+        borderRadius: BorderRadius.circular(isLandscape ? 16 : 24),
         child: Container(
           padding: EdgeInsets.symmetric(
-            horizontal: isLandscape ? 12 : 16,
-            vertical: isLandscape ? 9 : 16,
+            horizontal: isLandscape ? 10 : 16,
+            vertical: isLandscape ? 7 : 16,
           ),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(isLandscape ? 18 : 24),
+            borderRadius: BorderRadius.circular(isLandscape ? 16 : 24),
             border: Border.all(color: const Color(0xFFEADBCE), width: 1.5),
             boxShadow: [
               BoxShadow(
                 color: const Color(0xFF78350F).withValues(alpha: 0.05),
-                blurRadius: 12,
+                blurRadius: 10,
                 offset: const Offset(0, 3),
               ),
             ],
@@ -2075,14 +2077,14 @@ class _ElderProfileTabState extends State<ElderProfileTab>
           child: Row(
             children: [
               Container(
-                padding: EdgeInsets.all(isLandscape ? 8 : 12),
+                padding: EdgeInsets.all(isLandscape ? 6 : 12),
                 decoration: BoxDecoration(
                   color: color.withValues(alpha: 0.12),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(icon, color: color, size: isLandscape ? 20 : 26),
+                child: Icon(icon, color: color, size: isLandscape ? 18 : 26),
               ),
-              SizedBox(width: isLandscape ? 8 : 12),
+              SizedBox(width: isLandscape ? 6 : 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -2091,7 +2093,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                     Text(
                       title,
                       style: GoogleFonts.notoSansTc(
-                        fontSize: isLandscape ? 15.5 : 18,
+                        fontSize: isLandscape ? 13.5 : 18,
                         fontWeight: FontWeight.w900,
                         color: const Color(0xFF451A03),
                       ),
@@ -2102,7 +2104,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                     Text(
                       subtitle,
                       style: GoogleFonts.notoSansTc(
-                        fontSize: isLandscape ? 12 : 13.5,
+                        fontSize: isLandscape ? 11 : 13.5,
                         fontWeight: FontWeight.bold,
                         color: color,
                       ),
@@ -2114,7 +2116,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
               ),
               Icon(
                 Icons.arrow_forward_ios_rounded,
-                size: isLandscape ? 13 : 15,
+                size: isLandscape ? 11 : 15,
                 color: const Color(0xFFD4C5B9),
               ),
             ],
@@ -2268,10 +2270,10 @@ class _ElderProfileTabState extends State<ElderProfileTab>
         child: SingleChildScrollView(
           physics: const BouncingScrollPhysics(),
           padding: EdgeInsets.fromLTRB(
-            18,
-            isLandscape ? 10 : 16,
-            18,
-            isLandscape ? 106 : 110,
+            16,
+            isLandscape ? 6 : 16,
+            16,
+            isLandscape ? 104 : 110,
           ),
           child: LayoutBuilder(
             builder: (context, constraints) {
@@ -2283,73 +2285,76 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                     // 1. 溫馨早午晚標頭
                     _buildStorybookHeader(greetingTitle, isLandscape: true),
 
-                    const SizedBox(height: 10),
+                    SizedBox(height: isLandscape ? 6 : 10),
 
-                    // 2. 雙欄核心內容區
+                    // 2. 雙欄核心內容區（左：夥伴與健康雙環，右：排程打卡與快捷操作）
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // 👈 左欄：手繪小豬生活舞台 ＆ 成長里程碑 (佔 50%)
+                        // 👈 左欄：手繪小豬生活舞台 ＆ 今日健康活力雙環 (佔 50%)
                         Expanded(
                           flex: 5,
-                          child: _buildStorybookPetStageCard(isLandscape: true),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _buildStorybookPetStageCard(isLandscape: true),
+                              const SizedBox(height: 8),
+                              _buildVitalityStepGoalsCard(progress, isLandscape: true),
+                            ],
+                          ),
                         ),
 
-                        const SizedBox(width: 14),
+                        const SizedBox(width: 12),
 
-                        // 👉 右欄：今日生活用藥打卡手帳 ＆ 健康活力雙環 (佔 50%)
+                        // 👉 右欄：今日生活用藥打卡手帳 ＆ 底部快捷操作列 (佔 50%)
                         Expanded(
                           flex: 5,
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               _buildTodayTasksHandmadeSection(isLandscape: true),
-                              const SizedBox(height: 10),
-                              _buildVitalityStepGoalsCard(progress, isLandscape: true),
+                              const SizedBox(height: 8),
+                              // 底部快捷操作列（橫排三鍵）
+                              Row(
+                                children: [
+                                  // 👨‍👩‍👧 家人綁定
+                                  Expanded(
+                                    child: _buildActionCard(
+                                      icon: Icons.family_restroom_rounded,
+                                      title: '家人綁定',
+                                      subtitle: '出示配對碼',
+                                      color: const Color(0xFFEA580C),
+                                      onTap: _showFamilyPairingDialog,
+                                      isLandscape: true,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  // 🤖 語音助理
+                                  Expanded(
+                                    child: _buildActionCard(
+                                      icon: Icons.assistant_rounded,
+                                      title: '語音助理',
+                                      subtitle: 'Hey 嘎蛙',
+                                      color: const Color(0xFF0284C7),
+                                      onTap: _showAiAssistantSettingsDialog,
+                                      isLandscape: true,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  // 🚪 切換身分
+                                  Expanded(
+                                    child: _buildActionCard(
+                                      icon: Icons.logout_rounded,
+                                      title: '切換身分',
+                                      subtitle: '登出系統',
+                                      color: const Color(0xFFEF4444),
+                                      onTap: _handleLogout,
+                                      isLandscape: true,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ],
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 10),
-
-                    // 3. 底部快捷操作列
-                    Row(
-                      children: [
-                        // 👨‍👩‍👧 家人綁定
-                        Expanded(
-                          child: _buildActionCard(
-                            icon: Icons.family_restroom_rounded,
-                            title: '家人綁定',
-                            subtitle: '出示配對碼',
-                            color: const Color(0xFFEA580C),
-                            onTap: _showFamilyPairingDialog,
-                            isLandscape: true,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        // 🤖 語音助理
-                        Expanded(
-                          child: _buildActionCard(
-                            icon: Icons.assistant_rounded,
-                            title: '語音助理',
-                            subtitle: 'Hey 嘎蛙',
-                            color: const Color(0xFF0284C7),
-                            onTap: _showAiAssistantSettingsDialog,
-                            isLandscape: true,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        // 🚪 切換身分
-                        Expanded(
-                          child: _buildActionCard(
-                            icon: Icons.logout_rounded,
-                            title: '切換身分',
-                            subtitle: '登出系統',
-                            color: const Color(0xFFEF4444),
-                            onTap: _handleLogout,
-                            isLandscape: true,
                           ),
                         ),
                       ],
