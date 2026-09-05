@@ -20,13 +20,22 @@ class ElderCommunityScreen extends StatefulWidget {
   final String userName;
   final int? familyId;
 
-  // ★ 第四十二輪：長輩端「社群」分頁加「家人／朋友」頂部標籤。預設 false，
-  //   家屬端（family_interaction_tab.dart:1360）呼叫時完全不傳這個參數，
-  //   行為與改動前逐位元組相同（單一畫面、無 TabBar，零回歸）。只有長輩端
-  //   首頁（elder_home_screen.dart）的「社群」分頁傳 true，才會多出「朋友」
-  //   標籤，內容重用既有的 FriendFeedBody（elder_friend_feed_screen.dart），
-  //   不重寫、也不與家庭圈資料混用。
+  // ★ 第四十二輪：長輩端「社群」分頁加「家人／朋友」頂部標籤。第五項需求
+  //   （家屬好友系統）起，家屬端也跟進同一套頂部標籤——目前長輩端首頁
+  //   （elder_home_screen.dart）與家屬端（family_interaction_tab.dart::
+  //   _buildCommunitySection）皆已傳 true。不傳（預設 false）時維持改動前
+  //   的單一畫面、無 TabBar 行為，零回歸；這個預設值仍保留給未來其他未跟進
+  //   的呼叫端。
   final bool showFriendTab;
+
+  // ★ 第五項需求（家屬好友系統）：把「朋友」標籤旁邊那個標籤（本來寫死
+  //   '家人'）的文字，與朋友標籤要渲染的內容都做成可注入。兩者預設值
+  //   等同改動前的長輩端寫死行為——長輩端呼叫點不傳這兩個參數，標籤文字
+  //   固定「家人」、內容固定 FriendFeedBody(userId, userName)，100% 不變。
+  //   家屬端呼叫時傳入 familyTabLabel: '家庭' 與自己的 FamilyFriendFeedBody，
+  //   長輩朋友圈／家屬朋友圈兩邊資料完全不互通。
+  final String familyTabLabel;
+  final Widget? friendTabContent;
 
   // ★ 第四十一輪（item 2）：新手指引用的高光目標 GlobalKey，全部選填。由上層
   //   ElderHomeScreen 持有並傳入，傳 null 時完全不影響現有畫面。
@@ -43,6 +52,8 @@ class ElderCommunityScreen extends StatefulWidget {
     required this.userName,
     this.familyId,
     this.showFriendTab = false,
+    this.familyTabLabel = '家人',
+    this.friendTabContent,
     this.privacyCardKey,
     this.createPostButtonKey,
     this.firstPostLikeKey,
@@ -920,12 +931,12 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen>
             fontSize: 20,
             fontWeight: FontWeight.w700,
           ),
-          tabs: const [
+          tabs: [
             Tab(
-              icon: Icon(Icons.family_restroom_rounded, size: 28),
-              text: '家人',
+              icon: const Icon(Icons.family_restroom_rounded, size: 28),
+              text: widget.familyTabLabel,
             ),
-            Tab(
+            const Tab(
               icon: Icon(Icons.groups_rounded, size: 28),
               text: '朋友',
             ),
@@ -936,10 +947,13 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen>
         controller: _tabController,
         children: [
           familyContent,
-          // 朋友標籤：100% 重用 FriendFeedBody（elder_friend_feed_screen.dart），
-          // 與「電話 → 朋友 → 朋友圈」（ElderFriendFeedScreen）共用同一份邏輯，
-          // 只是這裡不再包一層自己的 Scaffold／AppBar。
-          FriendFeedBody(userId: widget.userId, userName: widget.userName),
+          // 朋友標籤：預設（friendTabContent 為 null，長輩端呼叫點的現況）
+          // 100% 重用 FriendFeedBody（elder_friend_feed_screen.dart），與
+          // 「電話 → 朋友 → 朋友圈」（ElderFriendFeedScreen）共用同一份邏輯，
+          // 行為與改動前逐位元組相同；家屬端傳入 friendTabContent
+          // （FamilyFriendFeedBody）時改顯示家屬自己的朋友圈。
+          widget.friendTabContent ??
+              FriendFeedBody(userId: widget.userId, userName: widget.userName),
         ],
       ),
     );

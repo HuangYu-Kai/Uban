@@ -12,6 +12,7 @@ import '../video_call_screen.dart';
 import 'family_ai_copilot_screen.dart';
 import 'family_subscription_screen.dart';
 import '../elder_community_screen.dart';
+import 'family_friend_feed_body.dart';
 
 class FamilyInteractionTab extends StatefulWidget {
   final Elder? currentElder;
@@ -208,7 +209,18 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
   Future<void> _showAddReminderDialog({Map<String, dynamic>? existingReminder}) async {
     if (widget.currentElder == null) return;
     final prefs = await SharedPreferences.getInstance();
-    final familyId = prefs.getInt('caregiver_id') ?? 1;
+    if (!mounted) return;
+    // ★ 第五項需求（家屬好友系統）順手修復：原本讀不到 caregiver_id 時會
+    // 兜底成寫死的 family_id 1，導致新增的提醒被歸屬到別人的帳號。讀不到就
+    // 顯示明確錯誤並不開對話框，不得用猜測值兜底（比照下方 _buildCommunitySection
+    // 已修過的同型別寫法）。
+    final familyId = prefs.getInt('caregiver_id');
+    if (familyId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('無法取得您的帳號 ID，請重新登入後再試')),
+      );
+      return;
+    }
 
     final bool isEditing = existingReminder != null;
     final String elderIdStr = widget.currentElder!.elderId ?? widget.currentElder!.id.toString();
@@ -1371,6 +1383,16 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                   userId: familyId,
                   userName: userName,
                   familyId: familyId,
+                  // ★ 第五項需求（家屬好友系統）：家屬跟進長輩端的「家庭／朋友」
+                  // 頂部標籤——第一個標籤文字改成「家庭」（長輩端維持「家人」不變，
+                  // 見 ElderCommunityScreen.familyTabLabel 預設值），朋友標籤內容
+                  // 換成家屬自己的 FamilyFriendFeedBody，與長輩朋友圈資料互不相通。
+                  showFriendTab: true,
+                  familyTabLabel: '家庭',
+                  friendTabContent: FamilyFriendFeedBody(
+                    familyId: familyId,
+                    familyName: userName,
+                  ),
                 ),
               ),
             );
