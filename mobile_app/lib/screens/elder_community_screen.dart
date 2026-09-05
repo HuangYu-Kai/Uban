@@ -19,11 +19,24 @@ class ElderCommunityScreen extends StatefulWidget {
   final String userName;
   final int? familyId;
 
+  // ★ 第四十一輪（item 2）：新手指引用的高光目標 GlobalKey，全部選填。由上層
+  //   ElderHomeScreen 持有並傳入，傳 null 時完全不影響現有畫面。
+  //   firstPostLikeKey / firstPostCommentKey 只點亮「大家的近況」清單第一則
+  //   貼文的按鈕（清單可能是空的，該步驟會自動退化為置中卡片）。
+  final GlobalKey? privacyCardKey;
+  final GlobalKey? createPostButtonKey;
+  final GlobalKey? firstPostLikeKey;
+  final GlobalKey? firstPostCommentKey;
+
   const ElderCommunityScreen({
     super.key,
     required this.userId,
     required this.userName,
     this.familyId,
+    this.privacyCardKey,
+    this.createPostButtonKey,
+    this.firstPostLikeKey,
+    this.firstPostCommentKey,
   });
 
   @override
@@ -864,11 +877,22 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen> {
                     Text('大家的近況', style: ElderScale.sectionTitle),
                     const SizedBox(height: 12),
                     if (_posts.isEmpty) _buildEmptyState(),
-                    ..._posts.map((post) => PolaroidPostCard(
-                          post: post,
-                          onLike: () => _toggleLike(post),
-                          onComment: () => _showComments(post),
-                        )),
+                    // ★ 第四十一輪（item 2）：改用 asMap().entries 取得 index，
+                    //   只在第一則貼文（index == 0）傳入教學高光用的 key，
+                    //   其餘貼文不受影響、渲染順序與內容完全未變。
+                    ..._posts.asMap().entries.map((entry) {
+                      final int index = entry.key;
+                      final CommunityPost post = entry.value;
+                      return PolaroidPostCard(
+                        post: post,
+                        onLike: () => _toggleLike(post),
+                        onComment: () => _showComments(post),
+                        likeButtonKey:
+                            index == 0 ? widget.firstPostLikeKey : null,
+                        commentButtonKey:
+                            index == 0 ? widget.firstPostCommentKey : null,
+                      );
+                    }),
                   ],
                 ),
               ),
@@ -878,6 +902,7 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen> {
 
   Widget _buildPrivacyCard() {
     return Container(
+      key: widget.privacyCardKey,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppColors.primaryDark,
@@ -902,6 +927,7 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen> {
     return SizedBox(
       height: ElderScale.buttonHeight,
       child: GestureDetector(
+        key: widget.createPostButtonKey,
         behavior: HitTestBehavior.opaque,
         onTap: _showCreatePostSheet,
         child: Container(

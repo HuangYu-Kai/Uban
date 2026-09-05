@@ -20,10 +20,19 @@ class ElderChatScreen extends StatefulWidget {
   final int userId;
   final String userName;
 
+  // ★ 第四十一輪（item 2）：新手指引用的高光目標 GlobalKey，全部選填。由
+  //   上層 ElderHomeScreen 持有並傳入，傳 null 時完全不影響現有畫面。
+  final GlobalKey? voiceToggleKey;
+  final GlobalKey? inputAreaKey;
+  final GlobalKey? languageToggleKey;
+
   const ElderChatScreen({
     super.key,
     required this.userId,
     required this.userName,
+    this.voiceToggleKey,
+    this.inputAreaKey,
+    this.languageToggleKey,
   });
 
   @override
@@ -590,7 +599,7 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
           ),
           Row(
             children: [
-              _buildLanguageToggle(),
+              _buildLanguageToggle(key: widget.languageToggleKey),
               const SizedBox(width: 2),
               IconButton(
                 icon: const Icon(Icons.refresh_rounded, color: Colors.grey, size: 24),
@@ -609,8 +618,9 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
     );
   }
 
-  Widget _buildLanguageToggle() {
+  Widget _buildLanguageToggle({Key? key}) {
     return Container(
+      key: key,
       width: 130,
       height: 40,
       decoration: BoxDecoration(
@@ -975,6 +985,7 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
         children: [
           // 切換：語音 / 鍵盤
           GestureDetector(
+            key: widget.voiceToggleKey,
             onTap: () => setState(() => _voiceMode = !_voiceMode),
             behavior: HitTestBehavior.opaque,
             child: Container(
@@ -1000,7 +1011,10 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
           ),
           const SizedBox(width: 10),
           Expanded(
-            child: _voiceMode ? _buildHoldToTalkBar() : _buildTextField(),
+            child: KeyedSubtree(
+              key: widget.inputAreaKey,
+              child: _voiceMode ? _buildHoldToTalkBar() : _buildTextField(),
+            ),
           ),
           if (!_voiceMode) ...[
             const SizedBox(width: 10),

@@ -16,6 +16,7 @@ import '../identification_screen.dart';
 import '../../globals.dart';
 import '../../services/session_manager.dart';
 import '../../services/api_service.dart';
+import '../../services/friend_service.dart';
 import '../../widgets/google_assistant_overlay.dart';
 import '../pet_companion_studio/models/pet_growth_state.dart';
 import '../pet_companion_studio/pet_studio_screen.dart';
@@ -51,10 +52,21 @@ class ElderProfileTab extends StatefulWidget {
   final int userId;
   final String userName;
 
+  // ★ 第四十一輪（item 2）：新手指引用的高光目標 GlobalKey，全部選填。由
+  //   上層 ElderHomeScreen 持有並傳入，傳 null 時完全不影響現有畫面。
+  final GlobalKey? petKey;
+  final GlobalKey? tasksKey;
+  final GlobalKey? familyPairingKey;
+  final GlobalKey? aiAssistantKey;
+
   const ElderProfileTab({
     super.key,
     required this.userId,
     required this.userName,
+    this.petKey,
+    this.tasksKey,
+    this.familyPairingKey,
+    this.aiAssistantKey,
   });
 
   @override
@@ -111,6 +123,10 @@ class _ElderProfileTabState extends State<ElderProfileTab>
   bool _isPetHappy = false;
   PetGrowthState? _petGrowthState;
 
+  // ★ 第四十一輪（item 3）：朋友圈好友 ID（見 _buildMyFriendIdCard）。null 代表
+  // 尚未載入完成或載入失敗，卡片自己處理 loading／錯誤態，不影響本畫面其餘邏輯。
+  String? _myFriendElderId;
+
   // ── 📋 子女排程生活任務 ──────────────────────────────────
   List<Map<String, dynamic>> _reminders = [];
   Set<int> _completedReminderIds = {};
@@ -133,6 +149,15 @@ class _ElderProfileTabState extends State<ElderProfileTab>
       setState(() {
         _petGrowthState = state;
       });
+    }
+  }
+
+  // ★ 第四十一輪（item 3）：讀取朋友圈好友 ID。權威來源是後端 elder_profile
+  // 表（見 FriendService.resolveMyElderId 的說明），不可用 userId 補零臆測。
+  Future<void> _loadMyFriendElderId() async {
+    final id = await FriendService.resolveMyElderId(widget.userId);
+    if (mounted) {
+      setState(() => _myFriendElderId = id);
     }
   }
 
@@ -172,6 +197,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     _startStepTracking();
     _loadElderReminders();
     _loadPetGrowthState();
+    _loadMyFriendElderId();
   }
 
   @override
@@ -874,6 +900,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
         final isWide = constraints.maxWidth >= 280;
 
         Widget petVisual = GestureDetector(
+          key: widget.petKey,
           onTap: _handlePetTap,
           child: Stack(
             clipBehavior: Clip.none,
@@ -1012,6 +1039,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
 
             // ── 📋 子女排程任務打卡入口膠囊 ──
             GestureDetector(
+              key: widget.tasksKey,
               onTap: _showTasksModal,
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
@@ -1811,6 +1839,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
   }
 
   Widget _buildActionCard({
+    Key? key,
     required IconData icon,
     required String title,
     required String subtitle,
@@ -1818,6 +1847,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     required VoidCallback onTap,
   }) {
     return Material(
+      key: key,
       color: Colors.white,
       borderRadius: BorderRadius.circular(24),
       child: InkWell(
@@ -1886,121 +1916,329 @@ class _ElderProfileTabState extends State<ElderProfileTab>
   }
 
   /// 🔄 方案 C：隨時後續補綁定家人對話框（Late-Binding）
+  ///
+  /// ★ 第四十二輪修復：原本用 `widget.userId.toString().padLeft(4, '0')` 假裝是
+  /// 配對碼、塞進自製的 `UBAN_PAIR:` QR 格式——但後端 `elder_id`（配對用）與
+  /// `user_id` 是兩個獨立欄位，這個數字跟真正配對碼毫無關聯；家屬照著畫面輸入
+  /// 必定失敗，甚至可能誤撞到別人正在使用中的真配對碼。`UBAN_PAIR:` 格式全
+  /// 專案也沒有任何地方消費，家屬端 QR 掃碼（`QrScannerScreen`）拿到的是裸字
+  /// 串直接當配對碼送出。改成照抄 `elder_pairing_display_screen.dart::
+  /// _requestNewCode()` 的做法：打 `ApiService.requestPairingCode()` 取得
+  /// 後端產生的限時真配對碼，QR 改回裸碼（無前綴），並比照該畫面顯示
+  /// `expires_in_seconds` 倒數秒數。取碼失敗只顯示白話錯誤＋重試鍵，絕不用
+  /// 猜測值兜底——寧可沒有號碼，也不要給一個錯的。
   void _showFamilyPairingDialog() {
     HapticFeedback.lightImpact();
-    final String elderCode = widget.userId.toString().padLeft(4, '0');
+
+    // 對話框可能按「重新取得配對碼」重試多次；用可重指派的 Future 搭配
+    // StatefulBuilder，讓每次重試都能重新觸發載入並 rebuild。
+    Future<Map<String, dynamic>> pairingCodeFuture =
+        ApiService.requestPairingCode();
+
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: const Color(0xFFEA580C).withValues(alpha: 0.12),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.family_restroom_rounded,
-                  color: Color(0xFFEA580C), size: 28),
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEA580C).withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.family_restroom_rounded,
+                      color: Color(0xFFEA580C), size: 28),
+                ),
+                const SizedBox(width: 12),
+                Flexible(
+                  child: Text(
+                    '家人／照護者綁定',
+                    style: GoogleFonts.notoSansTc(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 22,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 12),
-            Text(
-              '家人／照護者綁定',
-              style: GoogleFonts.notoSansTc(
-                fontWeight: FontWeight.bold,
-                fontSize: 22,
-              ),
-            ),
-          ],
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                '請子女開啟手機上的 Uban App，掃描下方 QR Code 或輸入配對碼即可完成連線：',
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 16,
-                  color: const Color(0xFF64748B),
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFF7ED),
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: const Color(0xFFFDBA74), width: 1.5),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.orange.withValues(alpha: 0.08),
-                      blurRadius: 16,
-                      offset: const Offset(0, 6),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '請子女開啟手機上的 Uban App，掃描下方 QR Code 或輸入配對碼即可完成連線：',
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 16,
+                      color: const Color(0xFF64748B),
+                      fontWeight: FontWeight.w600,
                     ),
-                  ],
-                ),
-                child: Column(
-                  children: [
-                    Text(
-                      elderCode,
-                      style: GoogleFonts.inter(
-                        fontSize: 48,
-                        fontWeight: FontWeight.w900,
-                        color: const Color(0xFFEA580C),
-                        letterSpacing: 6,
-                      ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '💡 這是給家人綁定用的臨時配對碼，過期即失效，和您的「好友 ID」不是同一組號碼喔',
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 13,
+                      color: const Color(0xFF94A3B8),
+                      fontWeight: FontWeight.w600,
                     ),
-                    const SizedBox(height: 12),
-                    QrImageView(
-                      data: 'UBAN_PAIR:${widget.userId}:$elderCode',
-                      version: QrVersions.auto,
-                      size: 140.0,
-                      backgroundColor: Colors.white,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFECFDF5),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: const Color(0xFFA7F3D0)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.check_circle_rounded,
-                        color: Color(0xFF059669), size: 20),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        '綁定後，子女可遠端排定吃藥，並即時關心您的每日健康與小豬！',
-                        style: GoogleFonts.notoSansTc(
-                          fontSize: 13.5,
-                          color: const Color(0xFF065F46),
-                          fontWeight: FontWeight.w700,
+                  ),
+                  const SizedBox(height: 16),
+                  FutureBuilder<Map<String, dynamic>>(
+                    future: pairingCodeFuture,
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState != ConnectionState.done) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 32),
+                          child: Center(child: CircularProgressIndicator()),
+                        );
+                      }
+
+                      final result = snapshot.data;
+                      final data = result?['data'] as Map<String, dynamic>?;
+                      final String? code = data?['pairing_code'] as String?;
+
+                      // ★ 失敗（連線失敗／逾時／後端回傳 error／欄位缺漏）一律
+                      //   顯示白話錯誤＋重試鍵，絕不用猜測值（原本的 padLeft
+                      //   假號碼）兜底。
+                      if (snapshot.hasError ||
+                          result == null ||
+                          result['status'] == 'error' ||
+                          code == null ||
+                          code.isEmpty) {
+                        return Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFEF2F2),
+                            borderRadius: BorderRadius.circular(24),
+                            border: Border.all(
+                                color: const Color(0xFFFECACA), width: 1.5),
+                          ),
+                          child: Column(
+                            children: [
+                              const Icon(Icons.error_outline_rounded,
+                                  color: Color(0xFFDC2626), size: 32),
+                              const SizedBox(height: 8),
+                              Text(
+                                '暫時無法取得配對碼，請稍後再試',
+                                textAlign: TextAlign.center,
+                                style: GoogleFonts.notoSansTc(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: const Color(0xFFB91C1C),
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              ElevatedButton.icon(
+                                onPressed: () {
+                                  setDialogState(() {
+                                    pairingCodeFuture =
+                                        ApiService.requestPairingCode();
+                                  });
+                                },
+                                icon: const Icon(Icons.refresh_rounded,
+                                    size: 18),
+                                label: Text(
+                                  '重新取得配對碼',
+                                  style: GoogleFonts.notoSansTc(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFFDC2626),
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+
+                      final int expiresInSeconds =
+                          (data?['expires_in_seconds'] as int?) ?? 600;
+                      return Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF7ED),
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(
+                              color: const Color(0xFFFDBA74), width: 1.5),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.orange.withValues(alpha: 0.08),
+                              blurRadius: 16,
+                              offset: const Offset(0, 6),
+                            ),
+                          ],
                         ),
-                      ),
+                        child: Column(
+                          children: [
+                            Text(
+                              code,
+                              style: GoogleFonts.inter(
+                                fontSize: 48,
+                                fontWeight: FontWeight.w900,
+                                color: const Color(0xFFEA580C),
+                                letterSpacing: 6,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            QrImageView(
+                              data: code,
+                              version: QrVersions.auto,
+                              size: 140.0,
+                              backgroundColor: Colors.white,
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              '配對倒數: $expiresInSeconds 秒',
+                              style: const TextStyle(
+                                color: Colors.redAccent,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFECFDF5),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: const Color(0xFFA7F3D0)),
                     ),
-                  ],
+                    child: Row(
+                      children: [
+                        const Icon(Icons.check_circle_rounded,
+                            color: Color(0xFF059669), size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '綁定後，子女可遠端排定吃藥，並即時關心您的每日健康與小豬！',
+                            style: GoogleFonts.notoSansTc(
+                              fontSize: 13.5,
+                              color: const Color(0xFF065F46),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogCtx),
+                child: Text(
+                  '知道了',
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: const Color(0xFF59B294),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  /// ★ 第四十一輪（item 3）：「我的」介面顯示自己的朋友圈好友 ID（4 位數
+  /// elder_id）。與上方 [_showFamilyPairingDialog] 的家人配對碼是兩件事——
+  /// 刻意不共用同一顆 QR／同一組數字介面，避免長輩混淆「給子女掃」跟
+  /// 「給朋友掃」；好友 ID 本身沿用同一個 elder_id 數值沒有問題，只是呈現
+  /// 的入口分開。載入中或失敗時顯示對應提示，不佔用太多版面。
+  Widget _buildMyFriendIdCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF59B294).withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.badge_rounded, color: Color(0xFF59B294), size: 26),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  '我的好友 ID',
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF64748B),
+                  ),
                 ),
               ),
             ],
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(
-              '知道了',
-              style: GoogleFonts.notoSansTc(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: const Color(0xFF59B294),
+          const SizedBox(height: 8),
+          if (_myFriendElderId != null)
+            Text(
+              _myFriendElderId!,
+              style: GoogleFonts.inter(
+                fontSize: 34,
+                fontWeight: FontWeight.w900,
+                color: const Color(0xFF2E7D78),
+                letterSpacing: 6,
               ),
+            )
+          else
+            Row(
+              children: [
+                const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  '載入中…',
+                  style: GoogleFonts.notoSansTc(fontSize: 15, color: const Color(0xFF94A3B8)),
+                ),
+              ],
+            ),
+          const SizedBox(height: 6),
+          Text(
+            '把這組號碼給朋友，就能加你為好友',
+            style: GoogleFonts.notoSansTc(
+              fontSize: 13.5,
+              color: const Color(0xFF94A3B8),
+              fontWeight: FontWeight.w600,
             ),
           ),
         ],
@@ -2075,7 +2313,17 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                 child: Center(
                   child: SingleChildScrollView(
                     physics: const ClampingScrollPhysics(),
-                    child: _buildUnifiedPetAndGoalCard(),
+                    child: Column(
+                      children: [
+                        _buildUnifiedPetAndGoalCard(),
+                        const SizedBox(height: 16),
+                        // ★ 第四十一輪（item 3）：朋友圈好友 ID 卡片。加在既有
+                        // ScrollView 內是刻意的——這個畫面上方標頭與下方 3 顆
+                        // 快捷按鈕都是固定高度、彼此間沒有多餘空間，只有這裡
+                        // 已經是可捲動區域，才是安全插入新內容的位置。
+                        _buildMyFriendIdCard(),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -2088,6 +2336,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                   // 👨‍👩‍👧 方案 C：家人綁定
                   Expanded(
                     child: _buildActionCard(
+                      key: widget.familyPairingKey,
                       icon: Icons.family_restroom_rounded,
                       title: '家人綁定',
                       subtitle: '出示配對碼',
@@ -2099,6 +2348,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                   // 🤖 語音助理
                   Expanded(
                     child: _buildActionCard(
+                      key: widget.aiAssistantKey,
                       icon: Icons.assistant_rounded,
                       title: '語音助理',
                       subtitle: 'Hey 嘎蛙',

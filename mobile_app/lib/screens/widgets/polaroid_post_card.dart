@@ -10,12 +10,20 @@ class PolaroidPostCard extends StatefulWidget {
   final VoidCallback onComment;
   final VoidCallback? onCallFamily;
 
+  // ★ 第四十一輪（item 2）：新手指引用的高光目標 GlobalKey，選填。由
+  //   elder_community_screen.dart 只在第一則貼文傳入，其餘呼叫端不傳、
+  //   維持 null，完全不影響現有畫面。
+  final GlobalKey? likeButtonKey;
+  final GlobalKey? commentButtonKey;
+
   const PolaroidPostCard({
     super.key,
     required this.post,
     required this.onLike,
     required this.onComment,
     this.onCallFamily,
+    this.likeButtonKey,
+    this.commentButtonKey,
   });
 
   @override
@@ -440,6 +448,7 @@ class _PolaroidPostCardState extends State<PolaroidPostCard>
                 // 關心 (爪印/愛心按讚)
                 Expanded(
                   child: GestureDetector(
+                    key: widget.likeButtonKey,
                     onTap: _handleLikeTap,
                     behavior: HitTestBehavior.opaque,
                     child: ScaleTransition(
@@ -488,6 +497,7 @@ class _PolaroidPostCardState extends State<PolaroidPostCard>
                 // 留言按鈕
                 Expanded(
                   child: GestureDetector(
+                    key: widget.commentButtonKey,
                     onTap: widget.onComment,
                     behavior: HitTestBehavior.opaque,
                     child: Container(

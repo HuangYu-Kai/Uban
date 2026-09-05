@@ -23,6 +23,7 @@ import 'family_onboarding_screen.dart';
 import 'emergency_permission_guide_screen.dart';
 import 'package:flutter_application_1/utils/app_logger.dart';
 import '../globals.dart';
+import '../widgets/spotlight_tutorial.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 // ★ 2026-08-05 第十七輪：跌倒警報的「亮螢幕 + 通知 + 朗讀」三件套
 import 'package:flutter_tts/flutter_tts.dart';
@@ -245,6 +246,35 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     }
   }
 
+  // ★ 第四十一輪 item 2（第二階段）：新手指引用的高光目標 GlobalKey。
+  //   比照長輩端 elder_home_screen.dart 同一輪同一功能的作法——全部由本畫面
+  //   （IndexedStack 的父層）持有並往下傳給三個分頁：IndexedStack 會讓三個
+  //   分頁的 initState 在本畫面第一次建構時就全部跑過一次（保活），無法用
+  //   各分頁自己的 initState 偵測「使用者第一次切過來」，因此「第一次切到
+  //   哪個分頁」的判斷邏輯與對應的 key 都集中在這裡，詳見
+  //   _onItemTapped / _maybeShowTabTutorial。
+  final List<GlobalKey> _navItemKeys = List.generate(3, (_) => GlobalKey());
+  // 首頁分頁
+  final GlobalKey _homeElderHeaderKey = GlobalKey();
+  final GlobalKey _homeMonitorStatusKey = GlobalKey();
+  final GlobalKey _homeAiMoodRadarKey = GlobalKey();
+  final GlobalKey _homeAlertPreviewKey = GlobalKey();
+  // 互動分頁
+  final GlobalKey _interactionCallKey = GlobalKey();
+  final GlobalKey _interactionAiCopilotKey = GlobalKey();
+  final GlobalKey _interactionCommunityKey = GlobalKey();
+  final GlobalKey _interactionMonitorKey = GlobalKey();
+  // 資料分頁
+  final GlobalKey _dataCaregiverKey = GlobalKey();
+  final GlobalKey _dataElderSummaryKey = GlobalKey();
+  final GlobalKey _dataMemoirsKey = GlobalKey();
+  final GlobalKey _dataAiHelperKey = GlobalKey();
+
+  /// 本次畫面存活期間，已經嘗試顯示過教學的分頁 index。只避免同一個 session
+  /// 內因快速連續切換而重複呼叫；「使用者是否真的看過教學」這個跨 session 的
+  /// 持久判斷，交給 SpotlightTutorial 內部的 SharedPreferences 完成旗標。
+  final Set<int> _tabTutorialAttempted = {};
+
   @override
   void initState() {
     super.initState();
@@ -264,8 +294,17 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _maybeShowMiuiPermissionGuide();
     });
+
+    // ★ 第四十一輪（item 2 第二階段）：主介面（底部三個標籤）的新手指引，
+    //   家屬第一次進入主畫面就會看到。獨立一個 addPostFrameCallback（不與
+    //   上面的 MIUI 引導共用），且內部一律先確認沒有正在進行的來電／警報
+    //   才會顯示——見 _isSafeToShowFamilyTutorial / _maybeShowMainTutorial
+    //   的說明。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _maybeShowMainTutorial();
+    });
   }
-  
+
   Future<void> _initializeElderManagerAndConnect() async {
     appLogger.d('🔄 FamilyMainScreen: Starting ElderManager initialization');
     await ElderManager().initialize(userId: widget.userId);
@@ -1848,6 +1887,204 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     setState(() {
       _selectedIndex = index;
     });
+    // ★ 第四十一輪 item 2（第二階段）：偵測「使用者第一次切到某個分頁」並
+    //   排程該分頁的新手指引。比照 elder_home_screen.dart::_onNavTap 同一輪
+    //   同一功能的作法——IndexedStack 讓三個分頁的 initState 在本畫面第一次
+    //   建構時就全部跑過一次，無法拿來偵測「第一次切過來」，因此判斷邏輯
+    //   放在這裡（nav 的 tap 入口）。`_tabTutorialAttempted.add()` 在
+    //   setState 之後、postFrameCallback 之前同步執行，可擋掉快速連續點擊
+    //   同一分頁造成的重複排程。
+    if (_tabTutorialAttempted.add(index)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _maybeShowTabTutorial(index);
+      });
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // ★ 第四十一輪 item 2（第二階段）：新手指引（步驟式高光），家屬端
+  // ════════════════════════════════════════════════════════════════
+
+  /// 🚨 硬性要求（來自任務指示，務必保留，不可移除）：教學遮罩絕對不能蓋住
+  /// 跌倒警報彈窗／來電對話框，也不能阻止使用者查看監視畫面——家屬錯過一則
+  /// 跌倒警報，比錯過一次教學嚴重得多。顯示前一律先確認下列全部條件都成立，
+  /// 任一條件不成立就直接放棄本次顯示（不重試；SharedPreferences 完成旗標
+  /// 只在 `SpotlightTutorial.showIfNeeded` 真正跑到 `showGeneralDialog` 那
+  /// 一步才會寫入，這裡提早 return 不會誤標記成「已經看過」，下次再進來、
+  /// 屆時沒有警報／來電了，仍會再嘗試一次）。
+  ///
+  /// 比長輩端 elder_home_screen.dart 的三個 guard（mounted／
+  /// pendingAcceptedCall／來電對話框）多出三項家屬端特有情境：
+  /// - `_cctvAlertDialogOpen`：跌倒警報彈窗正開著。
+  /// - `_activeAlerts.isNotEmpty`：即時警報卡片仍在畫面上（彈窗可能已被
+  ///   使用者關掉，但警報本身尚未處理／查看，見 `_presentCctvAlert` 與
+  ///   `_handleCctvAlert` 的欄位註解）。
+  /// - `_viewingMonitorDeviceId != null`：正在觀看某台監視機的即時畫面。
+  ///
+  /// 長輩端只在「主介面教學」（冷啟動當下最容易撞到來電）檢查一次，各分頁
+  /// 教學不再重查，因為 `_onNavTap` 本身就無法在阻擋式來電對話框開著時被
+  /// 觸發（`showDialog(barrierDismissible: false)` 會擋掉底下所有點擊）。
+  /// 家屬端的 CCTV 警報卡片**不是**阻擋式彈窗（`_activeAlerts` 非空時使用者
+  /// 仍可正常操作分頁、點擊底部導覽），因此這裡在主介面教學與三個分頁教學
+  /// 的每一個入口都重新檢查一次，而不是只在最外層查一次。
+  bool _isSafeToShowFamilyTutorial() {
+    if (!mounted) return false;
+    if (pendingAcceptedCall.value != null) return false;
+    if (_isIncomingCallDialogOpen) return false;
+    if (_cctvAlertDialogOpen) return false;
+    if (_activeAlerts.isNotEmpty) return false;
+    if (_viewingMonitorDeviceId != null) return false;
+    return true;
+  }
+
+  /// 主介面教學：介紹最下面三個標籤分別是什麼。
+  Future<void> _maybeShowMainTutorial() async {
+    if (!_isSafeToShowFamilyTutorial()) return;
+    await SpotlightTutorial.showIfNeeded(
+      context,
+      tutorialId: 'family_main_v1',
+      titleFontSize: 20,
+      bodyFontSize: 15,
+      buttonHeight: 48,
+      steps: [
+        TutorialStep(
+          targetKey: _navItemKeys[0],
+          title: '首頁',
+          body: '這裡會看到長輩現在在不在線上、AI 幫您整理的情緒氣象台，還有最新的警示通知。',
+        ),
+        TutorialStep(
+          targetKey: _navItemKeys[1],
+          title: '互動',
+          body: '想打視訊電話給長輩、找 AI 討論照護問題、看家庭時光牆或監視器畫面，都在這裡。',
+        ),
+        TutorialStep(
+          targetKey: _navItemKeys[2],
+          title: '資料',
+          body: '這裡有您的帳號資料、長輩的基本資料摘要、回憶錄，還有 AI 助手的設定。',
+        ),
+      ],
+    );
+
+    // ★ 首頁（index 0）是開機時的預設選中分頁，理由同 elder_home_screen.dart
+    //   對應註解：使用者不需要點擊就已經看到首頁，_onItemTapped 永遠不會被
+    //   觸發，family_home_v1 教學需在這裡補上一次串接。守門條件重查一次，
+    //   不沿用函式開頭那次的結果——主介面教學播完可能已經過了好幾秒。
+    if (!_isSafeToShowFamilyTutorial()) return;
+    if (_tabTutorialAttempted.add(_selectedIndex)) {
+      _maybeShowTabTutorial(_selectedIndex);
+    }
+  }
+
+  /// 分頁教學的分派：只在 `_onItemTapped` 判定「第一次切到這個分頁」時呼叫。
+  void _maybeShowTabTutorial(int index) {
+    if (!_isSafeToShowFamilyTutorial()) return;
+    switch (index) {
+      case 0:
+        _showHomeTabTutorial();
+        break;
+      case 1:
+        _showInteractionTabTutorial();
+        break;
+      case 2:
+        _showDataTabTutorial();
+        break;
+    }
+  }
+
+  void _showHomeTabTutorial() {
+    SpotlightTutorial.showIfNeeded(
+      context,
+      tutorialId: 'family_home_v1',
+      titleFontSize: 20,
+      bodyFontSize: 15,
+      buttonHeight: 48,
+      steps: [
+        TutorialStep(
+          targetKey: _homeElderHeaderKey,
+          title: '長輩目前狀態',
+          body: '這裡會顯示長輩現在在不在線上、目前的位置，還有今天走了幾步路。',
+        ),
+        TutorialStep(
+          targetKey: _homeMonitorStatusKey,
+          title: '監控設備狀態',
+          body: '這裡看監視器有沒有連線。偵測到跌倒時卡片會變紅色提醒您，長輩出現在鏡頭前時會變成青色。',
+        ),
+        TutorialStep(
+          targetKey: _homeAiMoodRadarKey,
+          title: 'AI 情緒氣象台',
+          body: 'AI 會分析長輩最近的狀況，幫您整理一段開場白和話題，讓您打電話時知道要聊什麼。',
+        ),
+        TutorialStep(
+          targetKey: _homeAlertPreviewKey,
+          title: '最新警示',
+          body: '這裡列出最新的警示通知，點下去可以看到完整的警示清單。',
+        ),
+      ],
+    );
+  }
+
+  void _showInteractionTabTutorial() {
+    SpotlightTutorial.showIfNeeded(
+      context,
+      tutorialId: 'family_interaction_v1',
+      titleFontSize: 20,
+      bodyFontSize: 15,
+      buttonHeight: 48,
+      steps: [
+        TutorialStep(
+          targetKey: _interactionCallKey,
+          title: '視訊通話',
+          body: '按這裡可以打視訊電話給長輩，遇到緊急狀況也可以在這裡發起緊急通話。',
+        ),
+        TutorialStep(
+          targetKey: _interactionAiCopilotKey,
+          title: 'AI 照護共創助理',
+          body: 'AI 助理可以陪您一起討論怎麼照顧長輩，給您實用的照護建議。',
+        ),
+        TutorialStep(
+          targetKey: _interactionCommunityKey,
+          title: '家庭生活時光牆',
+          body: '這裡是全家人分享生活點滴的地方，您可以看到長輩的近況，也能分享照片給長輩看。',
+        ),
+        TutorialStep(
+          targetKey: _interactionMonitorKey,
+          title: '監控設備',
+          body: '這裡管理家中的監視器，可以隨時打開查看即時畫面，確認長輩是否平安。',
+        ),
+      ],
+    );
+  }
+
+  void _showDataTabTutorial() {
+    SpotlightTutorial.showIfNeeded(
+      context,
+      tutorialId: 'family_data_v1',
+      titleFontSize: 20,
+      bodyFontSize: 15,
+      buttonHeight: 48,
+      steps: [
+        TutorialStep(
+          targetKey: _dataCaregiverKey,
+          title: '您的帳號資料',
+          body: '這裡是您自己的帳號資訊，可以查看和修改您的個人資料。',
+        ),
+        TutorialStep(
+          targetKey: _dataElderSummaryKey,
+          title: '長輩基本資料',
+          body: '這裡整理了長輩的基本資料，像是慢性病史和用藥提醒，方便您隨時查閱。',
+        ),
+        TutorialStep(
+          targetKey: _dataMemoirsKey,
+          title: '回憶錄',
+          body: '這裡收藏長輩的人生故事，您可以陪長輩一起回顧美好的回憶。',
+        ),
+        TutorialStep(
+          targetKey: _dataAiHelperKey,
+          title: 'AI 助手設定',
+          body: '這裡可以調整陪伴長輩的 AI 助手，像是稱呼、說話語氣和聊天話題偏好。',
+        ),
+      ],
+    );
   }
 
   PreferredSizeWidget _buildAppBar() {
@@ -2001,6 +2238,14 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                     builder: (c) => AlertCenterScreen(
                       elderName: _currentElder!.displayName,
                       elderId: _currentElder!.id,
+                      // ★ 第四十一輪（item 1 追加）：與 family_home_tab.dart
+                      // ::_loadDynamicData（:824）算法一致，供 AlertCenterScreen
+                      // 自行抓取活動流水／持久化跌倒警報時使用。
+                      elderRoomId: _currentElder!.elderId ??
+                          _currentElder!.id.toString(),
+                      // ★ 第四十一輪（item 1）：與傳給 FamilyHomeTab 的是同一份
+                      // _activeAlerts，避免「查看全部」展開後即時警報消失。
+                      activeAlerts: _activeAlerts,
                     ),
                   ),
                 );
@@ -2022,6 +2267,12 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
               if (deviceId == null || deviceId.isEmpty) return;
               _openMonitorViewForDevice(deviceId);
             },
+            // ★ 第四十一輪 item 2（第二階段）：新手指引高光目標，見本檔
+            //   `_showHomeTabTutorial` 與欄位宣告處的說明。
+            elderHeaderKey: _homeElderHeaderKey,
+            monitorStatusKey: _homeMonitorStatusKey,
+            aiMoodRadarKey: _homeAiMoodRadarKey,
+            alertPreviewKey: _homeAlertPreviewKey,
           ),
           FamilyInteractionTab(
             currentElder: _currentElder,
@@ -2036,6 +2287,12 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
             tierLevel: _tierLevel,
             userId: widget.userId,
             elderSocketId: _elderSocketId,
+            // ★ 第四十一輪 item 2（第二階段）：新手指引高光目標，見本檔
+            //   `_showInteractionTabTutorial` 與欄位宣告處的說明。
+            callSectionKey: _interactionCallKey,
+            aiCopilotKey: _interactionAiCopilotKey,
+            communityKey: _interactionCommunityKey,
+            monitorSectionKey: _interactionMonitorKey,
             // ★ 2026-08-16（需求 2）：查看完監視畫面後移除該設備的警報狀態
             onAlertDismissed: (deviceId) {
               if (mounted) {
@@ -2058,6 +2315,12 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
             onElderUpdated: () {
               _refreshElders();
             },
+            // ★ 第四十一輪 item 2（第二階段）：新手指引高光目標，見本檔
+            //   `_showDataTabTutorial` 與欄位宣告處的說明。
+            caregiverCardKey: _dataCaregiverKey,
+            elderSummaryKey: _dataElderSummaryKey,
+            memoirsKey: _dataMemoirsKey,
+            aiHelperKey: _dataAiHelperKey,
           ),
         ],
       ),
@@ -2111,6 +2374,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
 
     return Expanded(
       child: GestureDetector(
+        key: _navItemKeys[index],
         onTap: () => _onItemTapped(index),
         behavior: HitTestBehavior.opaque,
         child: AnimatedContainer(

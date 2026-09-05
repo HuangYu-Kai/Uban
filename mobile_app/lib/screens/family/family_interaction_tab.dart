@@ -47,6 +47,15 @@ class FamilyInteractionTab extends StatefulWidget {
   final VoidCallback? onDevicesChanged;
   final Function(dynamic deviceId)? onAlertDismissed;
 
+  // ★ 第四十一輪 item 2（第二階段）：新手指引用的高光目標 GlobalKey。全部
+  //   選填、預設 null——GlobalKey 必須由上層 FamilyMainScreen 持有並傳入，
+  //   理由與傳遞方式比照 family_home_tab.dart 同名欄位群組的說明。不傳就
+  //   等同沒有目標，`SpotlightTutorial` 會自動退化為無挖洞的置中卡片。
+  final GlobalKey? callSectionKey;
+  final GlobalKey? aiCopilotKey;
+  final GlobalKey? communityKey;
+  final GlobalKey? monitorSectionKey;
+
   const FamilyInteractionTab({
     super.key,
     required this.currentElder,
@@ -61,6 +70,10 @@ class FamilyInteractionTab extends StatefulWidget {
     this.elderSocketId,
     this.onDevicesChanged,
     this.onAlertDismissed,
+    this.callSectionKey,
+    this.aiCopilotKey,
+    this.communityKey,
+    this.monitorSectionKey,
   });
 
   @override
@@ -1087,6 +1100,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
     final elderName = widget.currentElder?.displayName ?? '長輩';
 
     return Container(
+      key: widget.aiCopilotKey,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(28),
         gradient: const LinearGradient(
@@ -1313,6 +1327,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
 
   Widget _buildCommunitySection() {
     return Container(
+      key: widget.communityKey,
       width: double.infinity,
       decoration: BoxDecoration(
         gradient: const LinearGradient(
@@ -1466,6 +1481,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
 
   Widget _buildCallSection() {
     return Container(
+      key: widget.callSectionKey,
       width: double.infinity,
       decoration: BoxDecoration(
         gradient: const LinearGradient(
@@ -1932,6 +1948,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
     final Color accent = _tierAccentColor();
 
     return Column(
+      key: widget.monitorSectionKey,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // ★ Task B4：訂閱層級徽章（點擊進入訂閱頁）

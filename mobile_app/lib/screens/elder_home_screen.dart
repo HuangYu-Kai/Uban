@@ -21,6 +21,8 @@ import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import '../widgets/google_assistant_overlay.dart';
 // ★ 第四十輪（item 4）：onCancelCall 現在也要關備援本機通知，見下方說明。
 import '../services/local_call_notification.dart';
+// ★ 第四十一輪（item 2）：步驟式高光新手指引元件。
+import '../widgets/spotlight_tutorial.dart';
 
 /// ★ 第四十輪（item 4）：取消來電時清除待處理通話 prefs 的共用邏輯。
 /// 與 `main.dart::_clearPendingCallPrefsOnCancel` 同一邏輯（該函式對本檔
@@ -63,6 +65,42 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
   final SpeechToText _wakeWordStt = SpeechToText();
   bool _wakeWordListening = false;
   bool _isAssistantShowing = false;
+
+  // ★ 第四十一輪（item 2）：新手指引用的高光目標 GlobalKey。
+  //   全部由本畫面（IndexedStack 的父層）持有並往下傳給各分頁——
+  //   IndexedStack 會讓五個分頁的 initState 在本畫面第一次建構時就全部跑過
+  //   一次（保活），無法用各分頁自己的 initState 偵測「使用者第一次切過
+  //   來」，因此「第一次切到哪個分頁」的判斷邏輯與對應的 key 都集中在這裡，
+  //   詳見 _onNavTap / _maybeShowTabTutorial。
+  final List<GlobalKey> _navItemKeys = List.generate(5, (_) => GlobalKey());
+  // 首頁分頁
+  final GlobalKey _homeDateCardKey = GlobalKey();
+  final GlobalKey _homeNewsCardKey = GlobalKey();
+  final GlobalKey _homeMoreNewsKey = GlobalKey();
+  // 電話分頁
+  final GlobalKey _phoneTabBarKey = GlobalKey();
+  final GlobalKey _phoneCallKey = GlobalKey();
+  final GlobalKey _phoneVideoKey = GlobalKey();
+  // 社群分頁
+  final GlobalKey _communityPrivacyKey = GlobalKey();
+  final GlobalKey _communityCreatePostKey = GlobalKey();
+  final GlobalKey _communityLikeKey = GlobalKey();
+  final GlobalKey _communityCommentKey = GlobalKey();
+  // 聊天分頁
+  final GlobalKey _chatVoiceToggleKey = GlobalKey();
+  final GlobalKey _chatInputAreaKey = GlobalKey();
+  final GlobalKey _chatLanguageToggleKey = GlobalKey();
+  // 我的分頁
+  final GlobalKey _profilePetKey = GlobalKey();
+  final GlobalKey _profileTasksKey = GlobalKey();
+  final GlobalKey _profileFamilyPairingKey = GlobalKey();
+  final GlobalKey _profileAiAssistantKey = GlobalKey();
+
+  /// 本次畫面存活期間，已經嘗試顯示過教學的分頁 index。
+  /// 只避免同一個 session 內因快速連續切換而重複呼叫；「使用者是否真的看過
+  /// 教學」這個跨 session 的持久判斷，交給 SpotlightTutorial 內部的
+  /// SharedPreferences 完成旗標。
+  final Set<int> _tabTutorialAttempted = {};
 
 
   Future<void> _requestPermissions() async {
@@ -188,6 +226,14 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     //   不 await、不擋任何既有的啟動流程；詳見 _maybeShowMiuiPermissionGuide。
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _maybeShowMiuiPermissionGuide();
+    });
+
+    // ★ 第四十一輪（item 2）：主介面（五個底部標籤）的新手指引，長輩第一次
+    //   進入首頁就會看到。獨立一個 addPostFrameCallback（不與上面的 MIUI
+    //   引導共用），且內部一律先確認沒有來電才會顯示——見
+    //   _maybeShowMainTutorial 的說明。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _maybeShowMainTutorial();
     });
   }
 
@@ -735,6 +781,247 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     }
   }
 
+  // ════════════════════════════════════════════════════════════════
+  // ★ 第四十一輪（item 2）：新手指引（步驟式高光）
+  // ════════════════════════════════════════════════════════════════
+
+  /// 五個底部標籤的分頁切換入口。除了切換 `_selectedIndex`，還負責偵測
+  /// 「使用者第一次切到某個分頁」並排程該分頁的教學。
+  ///
+  /// IndexedStack 會在本畫面第一次建構時就把五個分頁全部建出來並保活，
+  /// 各分頁自己的 initState 因此只會在那一刻跑一次（等於五個分頁的
+  /// initState 幾乎同時觸發），無法拿來偵測「使用者何時真的切過去看了那一
+  /// 頁」——這正是為什麼判斷邏輯放在這裡（nav 的 onTap），而不是放進各分頁
+  /// 自己的檔案。
+  void _onNavTap(int index) {
+    setState(() => _selectedIndex = index);
+    if (_tabTutorialAttempted.add(index)) {
+      // 等下一影格畫出（IndexedStack 切換後的新 index 已經 paint）再嘗試，
+      // 確保 SpotlightTutorial 量測目標位置時拿到的是最新版面。
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _maybeShowTabTutorial(index);
+      });
+    }
+  }
+
+  /// 主介面教學：介紹最下面五個標籤分別是什麼。
+  ///
+  /// 🚨 硬性要求（來自任務指示，務必保留，不可移除）：教學遮罩絕對不能蓋住
+  /// 來電對話框、也不能阻止接聽——長輩錯過一通電話遠比錯過教學嚴重。因此
+  /// 顯示前一律先確認「目前沒有待接聽來電」也「沒有正在顯示的來電對話
+  /// 框」，任一條件不成立就直接放棄本次顯示。SharedPreferences 的完成旗標
+  /// 只在 `SpotlightTutorial.showIfNeeded` 真正跑完（走到 showGeneralDialog
+  /// 那一步）後才會寫入，所以這裡提早 return 並不會讓教學被誤標記成
+  /// 「已經看過」——下次進首頁、屆時沒有來電了，仍會再嘗試顯示一次。
+  Future<void> _maybeShowMainTutorial() async {
+    if (!mounted) return;
+    if (pendingAcceptedCall.value != null) return;
+    if (_isIncomingCallDialogOpen) return;
+    await SpotlightTutorial.showIfNeeded(
+      context,
+      tutorialId: 'elder_main_v1',
+      steps: [
+        const TutorialStep(
+          title: '歡迎使用',
+          body: '接下來帶您看一下最下面的五個按鈕，跟著「下一步」看下去就可以了。',
+        ),
+        TutorialStep(
+          targetKey: _navItemKeys[0],
+          title: '首頁',
+          body: '打開 App 就會先看到這裡，可以看到今天的日期，還有每天更新的新聞。',
+        ),
+        TutorialStep(
+          targetKey: _navItemKeys[1],
+          title: '電話',
+          body: '想打電話給家人的時候，按這裡就對了。',
+        ),
+        TutorialStep(
+          targetKey: _navItemKeys[2],
+          title: '社群',
+          body: '這裡可以看家人分享的近況，您也可以分享自己的照片和心情。',
+        ),
+        TutorialStep(
+          targetKey: _navItemKeys[3],
+          title: '聊天',
+          body: '有什麼想問的、想聊的，都可以按這裡跟 AI 好朋友小嘎說話。',
+        ),
+        TutorialStep(
+          targetKey: _navItemKeys[4],
+          title: '我的',
+          body: '這裡有您的小豬夥伴、每天的小任務，還有跟家人配對、設定的地方。',
+        ),
+      ],
+    );
+
+    // ★ 首頁（index 0）是開機時的預設選中分頁，使用者看到的就是首頁本身，
+    //   不需要「點擊」它——_onNavTap 因此永遠不會被觸發，elder_home_v1
+    //   教學若不在這裡補上一次串接就永遠不會顯示。主介面教學播完可能已經
+    //   過了好幾秒，期間可能有來電或警報進來，守門條件要重查一次，不能
+    //   沿用函式開頭那次的結果。
+    if (!mounted) return;
+    if (pendingAcceptedCall.value != null) return;
+    if (_isIncomingCallDialogOpen) return;
+    if (_tabTutorialAttempted.add(_selectedIndex)) {
+      _maybeShowTabTutorial(_selectedIndex);
+    }
+  }
+
+  /// 分頁教學的分派：只在 `_onNavTap` 判定「第一次切到這個分頁」時呼叫一次。
+  void _maybeShowTabTutorial(int index) {
+    if (!mounted) return;
+    switch (index) {
+      case 0:
+        _showHomeTutorial();
+        break;
+      case 1:
+        _showPhoneTutorial();
+        break;
+      case 2:
+        _showCommunityTutorial();
+        break;
+      case 3:
+        _showChatTutorial();
+        break;
+      case 4:
+        _showProfileTutorial();
+        break;
+    }
+  }
+
+  void _showHomeTutorial() {
+    SpotlightTutorial.showIfNeeded(
+      context,
+      tutorialId: 'elder_home_v1',
+      steps: [
+        TutorialStep(
+          targetKey: _homeDateCardKey,
+          title: '今日日期',
+          body: '這裡會顯示今天的日期、農民曆和節氣，按下去還能看更多內容。',
+        ),
+        TutorialStep(
+          targetKey: _homeNewsCardKey,
+          title: '今日頭條',
+          body: '每天都會更新新聞，按下去可以用聽的，不用自己看小字。',
+        ),
+        TutorialStep(
+          targetKey: _homeMoreNewsKey,
+          title: '看更多新聞',
+          body: '想看其他新聞的話，按這裡就可以看到更多則。',
+        ),
+      ],
+    );
+  }
+
+  void _showPhoneTutorial() {
+    SpotlightTutorial.showIfNeeded(
+      context,
+      tutorialId: 'elder_phone_v1',
+      steps: [
+        const TutorialStep(
+          title: '打電話給家人',
+          body: '這裡列出您的家人，想聯絡的時候可以打電話，也可以用視訊看到對方。',
+        ),
+        TutorialStep(
+          targetKey: _phoneTabBarKey,
+          title: '家人／朋友',
+          body: '上面可以切換看「家人」或「朋友」名單。',
+        ),
+        TutorialStep(
+          targetKey: _phoneCallKey,
+          title: '電話鍵',
+          body: '按這裡是打一般電話，只有聲音、沒有畫面。',
+        ),
+        TutorialStep(
+          targetKey: _phoneVideoKey,
+          title: '視訊鍵',
+          body: '按這裡是打視訊電話，可以看到對方的畫面。',
+        ),
+      ],
+    );
+  }
+
+  void _showCommunityTutorial() {
+    SpotlightTutorial.showIfNeeded(
+      context,
+      tutorialId: 'elder_community_v1',
+      steps: [
+        TutorialStep(
+          targetKey: _communityPrivacyKey,
+          title: '放心分享',
+          body: '這裡只有家人和認識的朋友看得到，請放心分享您的近況。',
+        ),
+        TutorialStep(
+          targetKey: _communityCreatePostKey,
+          title: '分享近況',
+          body: '按這裡可以拍照、寫幾句話，跟家人分享您現在在做什麼。',
+        ),
+        TutorialStep(
+          targetKey: _communityLikeKey,
+          title: '送爪印',
+          body: '看到家人的分享，按這裡送一個愛心，讓他們知道您有看到、很關心。',
+        ),
+        TutorialStep(
+          targetKey: _communityCommentKey,
+          title: '留言',
+          body: '想跟家人說說話，也可以按這裡留言。',
+        ),
+      ],
+    );
+  }
+
+  void _showChatTutorial() {
+    SpotlightTutorial.showIfNeeded(
+      context,
+      tutorialId: 'elder_chat_v1',
+      steps: [
+        TutorialStep(
+          targetKey: _chatVoiceToggleKey,
+          title: '說話或打字',
+          body: '按這裡可以切換成用「說」的，或是用打字的，跟小嘎聊天。',
+        ),
+        TutorialStep(
+          targetKey: _chatInputAreaKey,
+          title: '開始聊天',
+          body: '按住這裡說話，或是打字，小嘎都會回應您。',
+        ),
+        TutorialStep(
+          targetKey: _chatLanguageToggleKey,
+          title: '國語／台語',
+          body: '這裡可以切換小嘎用國語還是台語跟您說話。',
+        ),
+      ],
+    );
+  }
+
+  void _showProfileTutorial() {
+    SpotlightTutorial.showIfNeeded(
+      context,
+      tutorialId: 'elder_profile_v1',
+      steps: [
+        TutorialStep(
+          targetKey: _profilePetKey,
+          title: '您的小豬夥伴',
+          body: '這是陪伴您的小豬，按一下摸摸牠，牠會陪您一起變健康。',
+        ),
+        TutorialStep(
+          targetKey: _profileTasksKey,
+          title: '今日任務',
+          body: '這裡看家人幫您安排的小任務，完成了記得來打勾。',
+        ),
+        TutorialStep(
+          targetKey: _profileFamilyPairingKey,
+          title: '家人綁定',
+          body: '要讓新的家人跟您配對時，按這裡出示配對碼。',
+        ),
+        TutorialStep(
+          targetKey: _profileAiAssistantKey,
+          title: '語音助理設定',
+          body: '這裡可以設定「Hey 嘎蛙」語音喚醒的相關功能。',
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -750,27 +1037,44 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
                 userId: widget.userId,
                 userName: widget.userName,
                 roomId: widget.roomId,
+                dateCardKey: _homeDateCardKey,
+                newsCardKey: _homeNewsCardKey,
+                moreNewsKey: _homeMoreNewsKey,
               ),
               // 1 電話（好友列表）
               FriendsScreen(
                 userId: widget.userId,
                 userName: widget.userName,
                 roomId: widget.roomId,
+                tabBarKey: _phoneTabBarKey,
+                firstCallKey: _phoneCallKey,
+                firstVideoKey: _phoneVideoKey,
               ),
               // 2 社群（家人與熟人限定）
               ElderCommunityScreen(
                 userId: widget.userId,
                 userName: widget.userName,
+                privacyCardKey: _communityPrivacyKey,
+                createPostButtonKey: _communityCreatePostKey,
+                firstPostLikeKey: _communityLikeKey,
+                firstPostCommentKey: _communityCommentKey,
               ),
               // 3 聊天（小雲 AI 聊天）
               ElderChatScreen(
                 userId: widget.userId,
                 userName: widget.userName,
+                voiceToggleKey: _chatVoiceToggleKey,
+                inputAreaKey: _chatInputAreaKey,
+                languageToggleKey: _chatLanguageToggleKey,
               ),
               // 4 我的
               ElderProfileTab(
                 userId: widget.userId,
                 userName: widget.userName,
+                petKey: _profilePetKey,
+                tasksKey: _profileTasksKey,
+                familyPairingKey: _profileFamilyPairingKey,
+                aiAssistantKey: _profileAiAssistantKey,
               ),
             ],
           ),
@@ -823,7 +1127,8 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     final Color inactiveColor = const Color(0xFF94A3B8);
     return Expanded(
       child: GestureDetector(
-        onTap: () => setState(() => _selectedIndex = index),
+        key: _navItemKeys[index],
+        onTap: () => _onNavTap(index),
         behavior: HitTestBehavior.opaque,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 250),

@@ -71,6 +71,18 @@ class FamilyHomeTab extends StatefulWidget {
   /// 不重新拼一份、也不直接 import `video_call_screen.dart`。
   final ValueChanged<String?>? onOpenMonitorView;
 
+  // ★ 第四十一輪 item 2（第二階段）：新手指引用的高光目標 GlobalKey。全部
+  //   選填、預設 null——GlobalKey 必須由上層 FamilyMainScreen 持有並傳入
+  //   （IndexedStack 讓本分頁在父層第一次建構時就跟著建出來，若 GlobalKey
+  //   放在本分頁自己身上，父層每 2.5 秒的裝置／警報輪詢觸發整棵樹重建時
+  //   容易造成 key 與 Element 對應混亂；比照 elder_tabs/elder_home_tab.dart
+  //   同一輪同一功能的作法）。不傳就等同沒有目標，`SpotlightTutorial` 會
+  //   自動退化為無挖洞的置中卡片，不影響本分頁任何既有行為。
+  final GlobalKey? elderHeaderKey;
+  final GlobalKey? monitorStatusKey;
+  final GlobalKey? aiMoodRadarKey;
+  final GlobalKey? alertPreviewKey;
+
   const FamilyHomeTab({
     super.key,
     this.currentElder,
@@ -84,6 +96,10 @@ class FamilyHomeTab extends StatefulWidget {
     this.dismissedAlertKeys = const {},
     this.onAlertItemDismissed,
     this.onOpenMonitorView,
+    this.elderHeaderKey,
+    this.monitorStatusKey,
+    this.aiMoodRadarKey,
+    this.alertPreviewKey,
   });
 
   @override
@@ -962,6 +978,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     final location = widget.currentElder?.location ?? '台北市';
 
     return Container(
+      key: widget.elderHeaderKey,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
@@ -1339,6 +1356,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     if (monitors.isEmpty) return const SizedBox.shrink();
 
     return Container(
+      key: widget.monitorStatusKey,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
@@ -1623,6 +1641,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     }
 
     return Container(
+      key: widget.aiMoodRadarKey,
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
@@ -3327,6 +3346,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     // 避免清單隨歷史警報無限增長；沿用既有數字而非另外發明一個。
     final displayAlerts = visibleAlerts.take(30).toList();
     return Container(
+      key: widget.alertPreviewKey,
       margin: const EdgeInsets.symmetric(vertical: 8),
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
@@ -3433,6 +3453,14 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                         builder: (c) => AlertCenterScreen(
                           elderName: widget.currentElder?.displayName ?? '長輩',
                           elderId: widget.currentElder?.id,
+                          // ★ 第四十一輪（item 1 追加）：與 _loadDynamicData
+                          // （:824）算法一致，供 AlertCenterScreen 自行抓取
+                          // 活動流水／持久化跌倒警報時使用。
+                          elderRoomId: widget.currentElder?.elderId ??
+                              widget.currentElder?.id.toString(),
+                          // ★ 第四十一輪（item 1）：與上方預覽同一份即時警報，
+                          // 避免展開後遺失。
+                          activeAlerts: widget.activeAlerts,
                         ),
                       ),
                     );

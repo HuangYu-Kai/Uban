@@ -19,12 +19,24 @@ class ElderHomeTab extends StatefulWidget {
   /// 切換到「聊天」分頁的回呼（首頁「和小雲聊天」大按鈕用）。
   final VoidCallback? onNavigateToChat;
 
+  // ★ 第四十一輪（item 2）：新手指引用的高光目標 GlobalKey。全部選填、預設
+  //   null——GlobalKey 必須由上層 ElderHomeScreen 持有並傳入（IndexedStack
+  //   保活導致本頁 initState 只會跑一次，無法自行偵測「使用者第一次切到本
+  //   頁」，判斷邏輯因此留在上層，詳見 elder_home_screen.dart）。傳 null 時
+  //   完全不影響現有畫面。
+  final GlobalKey? dateCardKey;
+  final GlobalKey? newsCardKey;
+  final GlobalKey? moreNewsKey;
+
   const ElderHomeTab({
     super.key,
     required this.userId,
     required this.userName,
     this.roomId,
     this.onNavigateToChat,
+    this.dateCardKey,
+    this.newsCardKey,
+    this.moreNewsKey,
   });
 
   @override
@@ -363,6 +375,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     }
 
     return GlassCard(
+      key: widget.dateCardKey,
       onTap: () {
         HapticFeedback.lightImpact();
         Navigator.of(context).push(
@@ -377,55 +390,12 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
       child: Column(
         children: [
-          Row(
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '$_monthStr$_dateStr日',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 44,
-                      fontWeight: FontWeight.w900,
-                      color: AppColors.primary,
-                      height: 1.0,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    _dayName,
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 26,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                ],
-              ),
-              const Spacer(),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    _lunarDate,
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _solarTerm,
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.primaryDark,
-                    ),
-                  ),
-                ],
-              ),
-            ],
+          ElderDateSummaryRow(
+            monthStr: _monthStr,
+            dateStr: _dateStr,
+            dayName: _dayName,
+            lunarDate: _lunarDate,
+            solarTerm: _solarTerm,
           ),
           const SizedBox(height: 14),
           // 🌿 農民曆與神明吉凶資訊導引列（薄荷綠毛玻璃質感，融於首頁主視覺）
@@ -561,6 +531,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
         const SizedBox(height: 12),
         // 整塊卡片可點 → 聆聽新聞畫面
         Material(
+          key: widget.newsCardKey,
           color: Colors.transparent,
           child: InkWell(
             onTap: () => _openNewsListenPlayer(item),
@@ -670,6 +641,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
         Align(
           alignment: Alignment.centerRight,
           child: TextButton(
+            key: widget.moreNewsKey,
             onPressed: _openNewsListFromTopEntry,
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -777,4 +749,156 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     );
   }
 
+}
+
+/// 首頁日期卡片「國曆（左）／農曆（右）」兩欄排版。
+///
+/// 從 [_ElderHomeTabState._buildElderDateCard] 抽出成獨立、不連網、不讀
+/// SharedPreferences 的 [StatelessWidget]，讓 widget test 能直接 pump 這個
+/// 元件驗證大字級下的溢位情形，不需要連帶啟動 [ElderHomeTab] 的新聞抓取／
+/// 訂閱查詢等重量級 initState 副作用。
+///
+/// 排版邏輯：平時（卡片可用寬度足夠）維持原本的 `Row` + `Spacer`——左欄
+/// （國曆日期＋星期）靠左、右欄（農曆＋節氣）靠右，兩欄間距由 `Spacer`
+/// 動態撐開，外觀與抽出前逐像素相同。只有在系統字體被調到很大、兩欄實際
+/// 需要的寬度超過可用寬度時，才整體等比縮小（`FittedBox` +
+/// `BoxFit.scaleDown`），避免 RenderFlex 溢位；不使用
+/// `TextOverflow.ellipsis` 裁切文字。
+///
+/// 兩欄是否「塞得下」用 [TextPainter] 依目前 [TextScaler] 精確量測，而不是
+/// 用固定 flex 比例分配空間——左欄（44pt 六個字）與右欄（24pt 最多五個字）
+/// 的自然寬度差距很大，固定 flex 比例在「其實塞得下」時也可能誤判為塞不下
+/// 而提早縮小其中一欄，那會違反「1.0 倍字級外觀不得改變」的要求。
+class ElderDateSummaryRow extends StatelessWidget {
+  final String monthStr;
+  final String dateStr;
+  final String dayName;
+  final String lunarDate;
+  final String solarTerm;
+
+  /// 量測與 FittedBox 之間預留的安全誤差（邏輯像素）。
+  ///
+  /// [TextPainter] 量測與 [Text] 實際排版理論上會得到相同寬度，但仍以極小
+  /// 誤差值防禦浮點捨入——寧可在邊界值附近提早一點點進入等比縮小分支，
+  /// 也不要讓 RenderFlex 在邊界誤判為「塞得下」而真的溢位一個像素。
+  static const double _overflowSafetyMargin = 1.0;
+
+  const ElderDateSummaryRow({
+    super.key,
+    required this.monthStr,
+    required this.dateStr,
+    required this.dayName,
+    required this.lunarDate,
+    required this.solarTerm,
+  });
+
+  // ⚠️ 這裡刻意不寫死 `TextDirection` 型別名稱：本檔已 import 'package:intl/intl.dart'，
+  // intl 自己也有一個同名的 TextDirection class，與 dart:ui 的 TextDirection 撞名，
+  // 裸寫 `TextDirection.ltr` 會被解析成 intl 那個（沒有 .ltr getter）而編譯失敗。
+  // 改用 Directionality.of(context) 直接取得正確型別的值，同時也更精確地
+  // 反映 Text widget 實際會用的方向（跟隨 ambient Directionality，而非寫死 ltr）。
+  double _measureWidth(
+    BuildContext context,
+    String text,
+    TextStyle style,
+    TextScaler scaler,
+  ) {
+    final painter = TextPainter(
+      text: TextSpan(text: text, style: style),
+      textDirection: Directionality.of(context),
+      textScaler: scaler,
+    )..layout();
+    return painter.width;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dateStyle = GoogleFonts.notoSansTc(
+      fontSize: 44,
+      fontWeight: FontWeight.w900,
+      color: AppColors.primary,
+      height: 1.0,
+    );
+    final dayStyle = GoogleFonts.notoSansTc(
+      fontSize: 26,
+      fontWeight: FontWeight.w800,
+      color: AppColors.textPrimary,
+    );
+    final lunarStyle = GoogleFonts.notoSansTc(
+      fontSize: 24,
+      fontWeight: FontWeight.w800,
+      color: AppColors.textSecondary,
+    );
+    final termStyle = GoogleFonts.notoSansTc(
+      fontSize: 22,
+      fontWeight: FontWeight.w700,
+      color: AppColors.primaryDark,
+    );
+
+    final dateText = '$monthStr$dateStr日';
+
+    final leftColumn = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(dateText, style: dateStyle),
+        const SizedBox(height: 6),
+        Text(dayName, style: dayStyle),
+      ],
+    );
+    final rightColumn = Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Text(lunarDate, style: lunarStyle),
+        const SizedBox(height: 4),
+        Text(solarTerm, style: termStyle),
+      ],
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final scaler = MediaQuery.textScalerOf(context);
+        final leftDateWidth =
+            _measureWidth(context, dateText, dateStyle, scaler);
+        final leftDayWidth =
+            _measureWidth(context, dayName, dayStyle, scaler);
+        final rightLunarWidth =
+            _measureWidth(context, lunarDate, lunarStyle, scaler);
+        final rightTermWidth =
+            _measureWidth(context, solarTerm, termStyle, scaler);
+        final leftWidth =
+            leftDateWidth > leftDayWidth ? leftDateWidth : leftDayWidth;
+        final rightWidth =
+            rightLunarWidth > rightTermWidth ? rightLunarWidth : rightTermWidth;
+
+        final available = constraints.maxWidth;
+        final fits = !available.isFinite ||
+            (leftWidth + rightWidth + _overflowSafetyMargin) <= available;
+
+        if (fits) {
+          // 塞得下：與抽出前完全相同的排版，1.0 倍字級外觀零改變。
+          return Row(
+            children: [
+              leftColumn,
+              const Spacer(),
+              rightColumn,
+            ],
+          );
+        }
+
+        // 塞不下（例如系統字體被調到很大）：兩欄整體等比縮小，不裁切文字。
+        return FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              leftColumn,
+              const SizedBox(width: 12),
+              rightColumn,
+            ],
+          ),
+        );
+      },
+    );
+  }
 }
