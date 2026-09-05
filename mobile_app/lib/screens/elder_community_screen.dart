@@ -11,6 +11,7 @@ import '../models/community_post.dart';
 import '../services/api_service.dart';
 import '../services/community_service.dart';
 import '../theme/app_theme.dart';
+import 'elder_friend_feed_screen.dart';
 import 'widgets/pet_reward_dialog.dart';
 import 'widgets/polaroid_post_card.dart';
 
@@ -18,6 +19,14 @@ class ElderCommunityScreen extends StatefulWidget {
   final int userId;
   final String userName;
   final int? familyId;
+
+  // ★ 第四十二輪：長輩端「社群」分頁加「家人／朋友」頂部標籤。預設 false，
+  //   家屬端（family_interaction_tab.dart:1360）呼叫時完全不傳這個參數，
+  //   行為與改動前逐位元組相同（單一畫面、無 TabBar，零回歸）。只有長輩端
+  //   首頁（elder_home_screen.dart）的「社群」分頁傳 true，才會多出「朋友」
+  //   標籤，內容重用既有的 FriendFeedBody（elder_friend_feed_screen.dart），
+  //   不重寫、也不與家庭圈資料混用。
+  final bool showFriendTab;
 
   // ★ 第四十一輪（item 2）：新手指引用的高光目標 GlobalKey，全部選填。由上層
   //   ElderHomeScreen 持有並傳入，傳 null 時完全不影響現有畫面。
@@ -33,6 +42,7 @@ class ElderCommunityScreen extends StatefulWidget {
     required this.userId,
     required this.userName,
     this.familyId,
+    this.showFriendTab = false,
     this.privacyCardKey,
     this.createPostButtonKey,
     this.firstPostLikeKey,
@@ -43,7 +53,8 @@ class ElderCommunityScreen extends StatefulWidget {
   State<ElderCommunityScreen> createState() => _ElderCommunityScreenState();
 }
 
-class _ElderCommunityScreenState extends State<ElderCommunityScreen> {
+class _ElderCommunityScreenState extends State<ElderCommunityScreen>
+    with SingleTickerProviderStateMixin {
   final CommunityService _communityService = CommunityService();
   final TextEditingController _postController = TextEditingController();
   final TextEditingController _commentController = TextEditingController();
@@ -51,9 +62,16 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen> {
   List<CommunityPost> _posts = [];
   bool _isLoading = true;
 
+  // 只有 showFriendTab 時才建立，家屬端（預設 false）不會多出一個沒用到的
+  // vsync ticker。
+  TabController? _tabController;
+
   @override
   void initState() {
     super.initState();
+    if (widget.showFriendTab) {
+      _tabController = TabController(length: 2, vsync: this);
+    }
     _initialize();
   }
 
@@ -838,6 +856,7 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen> {
 
   @override
   void dispose() {
+    _tabController?.dispose();
     _postController.dispose();
     _commentController.dispose();
     super.dispose();
@@ -845,6 +864,34 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final familyContent = _buildFamilyContent();
+
+    if (!widget.showFriendTab) {
+      // 家屬端（預設 showFriendTab: false）走這條分支——與改動前逐位元組
+      // 相同的 Scaffold／AppBar／body 結構，零回歸。
+      return Scaffold(
+        backgroundColor: const Color(0xFFF8FAFC),
+        appBar: AppBar(
+          toolbarHeight: 70,
+          backgroundColor: Colors.white,
+          elevation: 0,
+          title: Text(
+            '家庭社群',
+            style: GoogleFonts.notoSansTc(
+              fontSize: 28,
+              fontWeight: FontWeight.w900,
+              color: AppColors.textPrimary,
+            ),
+          ),
+        ),
+        body: familyContent,
+      );
+    }
+
+    // ★ 第四十二輪：長輩端「社群」分頁多一個「朋友」標籤。TabBar 樣式沿用
+    // friends_screen.dart 第四十一輪已上線的「家人／朋友」寫法（字級 20、
+    // FontWeight.w900、圖示 28、indicatorWeight 4）——長輩端已經看過一次，
+    // 不是新視覺語言。
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
@@ -859,44 +906,82 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen> {
             color: AppColors.textPrimary,
           ),
         ),
+        bottom: TabBar(
+          controller: _tabController,
+          indicatorColor: AppColors.primary,
+          indicatorWeight: 4,
+          labelColor: AppColors.primary,
+          unselectedLabelColor: AppColors.textHint,
+          labelStyle: GoogleFonts.notoSansTc(
+            fontSize: 20,
+            fontWeight: FontWeight.w900,
+          ),
+          unselectedLabelStyle: GoogleFonts.notoSansTc(
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+          ),
+          tabs: const [
+            Tab(
+              icon: Icon(Icons.family_restroom_rounded, size: 28),
+              text: '家人',
+            ),
+            Tab(
+              icon: Icon(Icons.groups_rounded, size: 28),
+              text: '朋友',
+            ),
+          ],
+        ),
       ),
-      body: SafeArea(
-        bottom: false,
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : RefreshIndicator(
-                onRefresh: _loadPosts,
-                child: ListView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 132),
-                  children: [
-                    _buildPrivacyCard(),
-                    const SizedBox(height: 14),
-                    _buildCreatePostButton(),
-                    const SizedBox(height: 18),
-                    Text('大家的近況', style: ElderScale.sectionTitle),
-                    const SizedBox(height: 12),
-                    if (_posts.isEmpty) _buildEmptyState(),
-                    // ★ 第四十一輪（item 2）：改用 asMap().entries 取得 index，
-                    //   只在第一則貼文（index == 0）傳入教學高光用的 key，
-                    //   其餘貼文不受影響、渲染順序與內容完全未變。
-                    ..._posts.asMap().entries.map((entry) {
-                      final int index = entry.key;
-                      final CommunityPost post = entry.value;
-                      return PolaroidPostCard(
-                        post: post,
-                        onLike: () => _toggleLike(post),
-                        onComment: () => _showComments(post),
-                        likeButtonKey:
-                            index == 0 ? widget.firstPostLikeKey : null,
-                        commentButtonKey:
-                            index == 0 ? widget.firstPostCommentKey : null,
-                      );
-                    }),
-                  ],
-                ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          familyContent,
+          // 朋友標籤：100% 重用 FriendFeedBody（elder_friend_feed_screen.dart），
+          // 與「電話 → 朋友 → 朋友圈」（ElderFriendFeedScreen）共用同一份邏輯，
+          // 只是這裡不再包一層自己的 Scaffold／AppBar。
+          FriendFeedBody(userId: widget.userId, userName: widget.userName),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFamilyContent() {
+    return SafeArea(
+      bottom: false,
+      child: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : RefreshIndicator(
+              onRefresh: _loadPosts,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 132),
+                children: [
+                  _buildPrivacyCard(),
+                  const SizedBox(height: 14),
+                  _buildCreatePostButton(),
+                  const SizedBox(height: 18),
+                  Text('大家的近況', style: ElderScale.sectionTitle),
+                  const SizedBox(height: 12),
+                  if (_posts.isEmpty) _buildEmptyState(),
+                  // ★ 第四十一輪（item 2）：改用 asMap().entries 取得 index，
+                  //   只在第一則貼文（index == 0）傳入教學高光用的 key，
+                  //   其餘貼文不受影響、渲染順序與內容完全未變。
+                  ..._posts.asMap().entries.map((entry) {
+                    final int index = entry.key;
+                    final CommunityPost post = entry.value;
+                    return PolaroidPostCard(
+                      post: post,
+                      onLike: () => _toggleLike(post),
+                      onComment: () => _showComments(post),
+                      likeButtonKey:
+                          index == 0 ? widget.firstPostLikeKey : null,
+                      commentButtonKey:
+                          index == 0 ? widget.firstPostCommentKey : null,
+                    );
+                  }),
+                ],
               ),
-      ),
+            ),
     );
   }
 

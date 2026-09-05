@@ -9,7 +9,7 @@ import '../services/friend_service.dart';
 import '../theme/app_theme.dart';
 import 'widgets/friend_avatar.dart';
 
-/// 長輩「朋友圈」動態牆（第四十一輪 item 3）。
+/// 長輩「朋友圈」動態牆內容（第四十一輪 item 3；第四十三輪抽成可嵌入 widget）。
 ///
 /// Threads／FB／IG 風格的單欄時間軸：頭像＋名字＋時間＋內文＋圖片＋按讚／留言，
 /// 但長輩可用性優先——字級大、觸控目標大、讚／留言各一顆大按鈕，不做小圖示列；
@@ -19,21 +19,28 @@ import 'widgets/friend_avatar.dart';
 /// `FriendService`／`routers/friend.py`，不會讀寫任何 `community_posts` 資料。
 /// 貼文附圖沿用既有的 `ApiService.uploadCommunityImage`（通用圖片上傳端點，
 /// 與家庭圈貼文資料表無關，純粹是共用的檔案儲存工具）。
-class ElderFriendFeedScreen extends StatefulWidget {
+///
+/// 只回傳內容本身（不含 Scaffold／AppBar），供兩處共用同一份邏輯與 UI，
+/// 零重複實作：
+/// - [ElderFriendFeedScreen]：電話 → 朋友 → 朋友圈的獨立畫面入口
+///   （`friends_screen.dart:455`），維持原本獨立進入點不變。
+/// - `ElderCommunityScreen`（`showFriendTab: true` 時）：長輩端「社群」分頁
+///   新增的「朋友」標籤，與「家人」標籤共用同一個 AppBar／TabBar。
+class FriendFeedBody extends StatefulWidget {
   final int userId;
   final String userName;
 
-  const ElderFriendFeedScreen({
+  const FriendFeedBody({
     super.key,
     required this.userId,
     required this.userName,
   });
 
   @override
-  State<ElderFriendFeedScreen> createState() => _ElderFriendFeedScreenState();
+  State<FriendFeedBody> createState() => _FriendFeedBodyState();
 }
 
-class _ElderFriendFeedScreenState extends State<ElderFriendFeedScreen> {
+class _FriendFeedBodyState extends State<FriendFeedBody> {
   static const int _pageSize = 20;
 
   String? _myElderId;
@@ -502,23 +509,7 @@ class _ElderFriendFeedScreenState extends State<ElderFriendFeedScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      appBar: AppBar(
-        toolbarHeight: 70,
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: Text(
-          '朋友圈',
-          style: GoogleFonts.notoSansTc(
-            fontSize: 28,
-            fontWeight: FontWeight.w900,
-            color: AppColors.textPrimary,
-          ),
-        ),
-      ),
-      body: SafeArea(bottom: false, child: _buildBody()),
-    );
+    return SafeArea(bottom: false, child: _buildBody());
   }
 
   Widget _buildBody() {
@@ -777,6 +768,49 @@ class _ElderFriendFeedScreenState extends State<ElderFriendFeedScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// 長輩「朋友圈」動態牆的獨立畫面入口（電話 → 朋友 → 朋友圈，
+/// `friends_screen.dart:455`）。
+///
+/// 第四十三輪抽出 [FriendFeedBody] 後，這裡只剩 Scaffold／AppBar 外殼；
+/// 內容邏輯與 UI 100% 共用 [FriendFeedBody]，與長輩「社群」分頁的「朋友」
+/// 標籤（`ElderCommunityScreen(showFriendTab: true)`）零重複實作。
+class ElderFriendFeedScreen extends StatefulWidget {
+  final int userId;
+  final String userName;
+
+  const ElderFriendFeedScreen({
+    super.key,
+    required this.userId,
+    required this.userName,
+  });
+
+  @override
+  State<ElderFriendFeedScreen> createState() => _ElderFriendFeedScreenState();
+}
+
+class _ElderFriendFeedScreenState extends State<ElderFriendFeedScreen> {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
+      appBar: AppBar(
+        toolbarHeight: 70,
+        backgroundColor: Colors.white,
+        elevation: 0,
+        title: Text(
+          '朋友圈',
+          style: GoogleFonts.notoSansTc(
+            fontSize: 28,
+            fontWeight: FontWeight.w900,
+            color: AppColors.textPrimary,
+          ),
+        ),
+      ),
+      body: FriendFeedBody(userId: widget.userId, userName: widget.userName),
     );
   }
 }

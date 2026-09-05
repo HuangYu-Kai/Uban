@@ -174,6 +174,10 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     final id = await FriendService.resolveMyElderId(widget.userId);
     if (mounted) {
       setState(() => _myFriendElderId = id);
+      // ★ 第四十三輪修復：_loadElderReminders 讀取排程提醒的權威鍵就是這裡解析
+      // 出的 elder_id（見該函式說明）。initState 呼叫 _loadElderReminders 時
+      // 本欄位通常還沒載入完成而被暫緩，這裡載入完成後補發一次真正的讀取。
+      _loadElderReminders();
     }
   }
 
@@ -741,6 +745,24 @@ class _ElderProfileTabState extends State<ElderProfileTab>
 
   // ── 📋 載入子女排程生活任務 ──────────────────────────────────
   Future<void> _loadElderReminders() async {
+    // ★ 第四十三輪修復：排程提醒送達失敗的根因之一是讀寫用了兩把不同的鍵——
+    // 家屬端寫入 `remote_reminders.elder_id` 用的是 elder_profile 的 4 碼房號
+    // （見 alert_center_screen.dart:20-23 的既定寫法），這裡卻讀 widget.userId
+    // （DB 整數 PK）。後端 main.py::check_remote_reminders_job 組 Socket 房名
+    //／查 FCM token 都是用前者，兩把鍵對不上時，觸發會送到沒人在的房間、
+    // FCM 也查無 token——長輩端前景背景兩者皆完全收不到。
+    // 權威鍵與「我的好友 ID」（_myFriendElderId，見 _loadMyFriendElderId）
+    // 一致，兩者都是後端 elder_profile 表解析出的同一個 4 碼 elder_id。
+    // initState 會在 _myFriendElderId 尚未載入完成前先呼叫一次本函式；此時
+    // 寧可暫緩本次讀取、維持讀取中畫面，也不能退回 widget.userId 兜底——那樣
+    // 讀到的會是另一把鍵，等同沒修。_loadMyFriendElderId 載入完成後會再呼叫
+    // 一次本函式補讀正確資料。
+    final elderKey = _myFriendElderId;
+    if (elderKey == null) {
+      if (mounted) setState(() => _isLoadingReminders = true);
+      return;
+    }
+
     setState(() => _isLoadingReminders = true);
     final prefs = await SharedPreferences.getInstance();
     final today = DateTime.now().toIso8601String().substring(0, 10);
@@ -749,7 +771,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
         completedList.map((e) => int.tryParse(e) ?? -1).toSet();
 
     try {
-      final list = await ApiService.getElderReminders(widget.userId.toString());
+      final list = await ApiService.getElderReminders(elderKey);
       if (mounted) {
         setState(() {
           if (list.isNotEmpty) {
@@ -873,6 +895,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
         builder: (_) => PetStudioScreen(
           initialSteps: currentSteps,
           userName: widget.userName,
+          userId: widget.userId,
         ),
       ),
     );

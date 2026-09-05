@@ -5,24 +5,36 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'models/pet_food_item.dart';
 import 'models/pet_growth_state.dart';
+import '../../services/friend_service.dart';
 import '../elder_home_screen.dart';
 import 'services/garden_ambient_audio_service.dart';
+import 'services/pet_leaderboard_service.dart';
 import 'widgets/animated_piglet_actor.dart';
 import 'widgets/food_milestone_tray.dart';
 import 'widgets/garden_feeding_sheet.dart';
 import 'widgets/hand_drawn_piglet_actor.dart';
 import 'widgets/pet_evolution_dialog.dart';
 import 'widgets/pet_growth_scale_card.dart';
+import 'widgets/pet_leaderboard_card.dart';
 import 'widgets/pet_particle_canvas.dart';
 
 class PetStudioScreen extends StatefulWidget {
   final int initialSteps;
   final String userName;
 
+  /// 登入使用者的資料庫整數 PK（`user_account_data.user_id`）。
+  ///
+  /// ⚠️ 這不是好友排行榜要用的 `elder_id`——兩者是資料庫中兩個獨立欄位
+  /// （見 `FriendService.resolveMyElderId` 的說明），本畫面內部一律用這個
+  /// userId 再呼叫 `FriendService.resolveMyElderId` 換出權威的 4 碼 elder_id，
+  /// 不可用 userId 補零臆測。
+  final int userId;
+
   const PetStudioScreen({
     super.key,
     this.initialSteps = 3500,
     this.userName = '宇璿',
+    required this.userId,
   });
 
   @override
@@ -33,6 +45,11 @@ class _PetStudioScreenState extends State<PetStudioScreen>
     with TickerProviderStateMixin {
   late PetGrowthState _growthState;
   bool _isLoading = true;
+
+  // 🏆 好友寵物排行榜：elder_id 解析結果與重新整理觸發鍵。
+  String? _myElderId;
+  bool _hasSyncedInitialWeight = false;
+  int _leaderboardRefreshTick = 0;
 
   ActorMood _actorMood = ActorMood.idle;
   String _speechText = '';
@@ -70,6 +87,7 @@ class _PetStudioScreenState extends State<PetStudioScreen>
     );
 
     _loadSavedData();
+    _resolveElderId();
     _audioService.initAndStartAmbience();
 
     _particleAnimController = AnimationController(
@@ -86,6 +104,50 @@ class _PetStudioScreenState extends State<PetStudioScreen>
         _growthState = state;
         _isLoading = false;
       });
+      _maybeSyncInitialWeight();
+    }
+  }
+
+  /// 解析目前登入長輩的好友排行榜 elder_id（權威來源見 [PetStudioScreen.userId]
+  /// 的欄位說明）。與 [_loadSavedData] 是各自獨立的非同步流程，兩者哪個先完成
+  /// 都在這裡與 [_maybeSyncInitialWeight] 互相補位，不搶跑、不用臆測值頂替。
+  Future<void> _resolveElderId() async {
+    final id = await FriendService.resolveMyElderId(widget.userId);
+    if (!mounted) return;
+    setState(() => _myElderId = id);
+    _maybeSyncInitialWeight();
+  }
+
+  /// 進入寵物介面時，把體重同步一次到好友排行榜。
+  ///
+  /// 刻意等本機存檔（[_loadSavedData]）與 elder_id 解析（[_resolveElderId]）
+  /// 都完成才觸發——兩者是互相獨立的非同步流程，先完成的一方在這裡會因為
+  /// 另一項還沒就緒而先行返回，等兩項都到齊時才由後完成的一方補上這一次同步。
+  /// 這樣才不會用還沒套用本機存檔的預設體重（1250g）搶先上傳。
+  void _maybeSyncInitialWeight() {
+    if (_hasSyncedInitialWeight || _isLoading || _myElderId == null) return;
+    _hasSyncedInitialWeight = true;
+    _syncWeightToLeaderboard();
+  }
+
+  /// 把目前體重同步到後端好友排行榜（`POST /api/pet/state`）。
+  ///
+  /// 刻意不拋例外、不阻擋既有寵物養成流程——`PetLeaderboardService` 內部已經
+  /// try/catch 過一層，這裡只是呼叫端，失敗只記 log，不彈錯誤對話框、不影響
+  /// 本機存檔／動畫。同步完成（不論成功失敗）都會遞增 `_leaderboardRefreshTick`
+  /// ，讓目前開著或之後開啟的排行榜面板重新讀取一次最新名次。
+  Future<void> _syncWeightToLeaderboard() async {
+    final eid = _myElderId;
+    if (eid == null) return;
+    final ok = await PetLeaderboardService.uploadMyState(
+      elderId: eid,
+      weightGrams: _growthState.weightGrams,
+    );
+    if (!ok) {
+      debugPrint('⚠️ [PetStudioScreen] 寵物體重同步到排行榜失敗，不影響本機養成功能');
+    }
+    if (mounted) {
+      setState(() => _leaderboardRefreshTick++);
     }
   }
 
@@ -169,6 +231,7 @@ class _PetStudioScreenState extends State<PetStudioScreen>
     _showSnackToast('小豬大口吃下了【${food.name}】！活力 +${food.vitalityGain} ✨');
     _spawnHearts(const Offset(350, 480), color: food.themeColor, count: 20);
     PetStorageService.saveState(newState);
+    _syncWeightToLeaderboard();
 
     _moodResetTimer?.cancel();
     _moodResetTimer = Timer(const Duration(milliseconds: 2600), () {
@@ -236,6 +299,7 @@ class _PetStudioScreenState extends State<PetStudioScreen>
       _speechText = '太棒了！${widget.userName}準時吃藥照顧身體，小豬陪您健健康康！💊💪 (體重 +0.5 kg ⚖️)';
     });
     PetStorageService.saveState(newState);
+    _syncWeightToLeaderboard();
 
     _moodResetTimer?.cancel();
     _moodResetTimer = Timer(const Duration(milliseconds: 3200), () {
@@ -257,6 +321,7 @@ class _PetStudioScreenState extends State<PetStudioScreen>
       _speechText = '👑 哇！今日 8,000 步全達成！${widget.userName}是全家人的健康冠軍！🏆✨ (體重 +1.2 kg ⚖️)';
     });
     PetStorageService.saveState(newState);
+    _syncWeightToLeaderboard();
 
     _moodResetTimer?.cancel();
     _moodResetTimer = Timer(const Duration(milliseconds: 4500), () {
@@ -396,12 +461,20 @@ class _PetStudioScreenState extends State<PetStudioScreen>
                 ),
               ),
 
-              // 🎵 頂部音樂控制按鈕（自由開關與曲目設定）
+              // 🏆🎵 頂部右側懸浮膠囊：排行榜／音樂控制（直式堆疊，避免與音樂
+              // 膠囊並排時橫向擠壓造成溢位——鐵律 #14／護欄 G159）
               Positioned(
                 top: MediaQuery.of(context).padding.top + 12,
                 right: 16,
                 child: SafeArea(
-                  child: _buildMusicControlButton(),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      _buildLeaderboardButton(),
+                      const SizedBox(height: 10),
+                      _buildMusicControlButton(),
+                    ],
+                  ),
                 ),
               ),
 
@@ -882,6 +955,85 @@ class _PetStudioScreenState extends State<PetStudioScreen>
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  // 🏆 頂部排行榜控制膠囊按鈕（開啟好友寵物排行榜面板）
+  Widget _buildLeaderboardButton() {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          HapticFeedback.lightImpact();
+          _showLeaderboardSheet();
+        },
+        borderRadius: BorderRadius.circular(24),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFFDF8).withValues(alpha: 0.94),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: const Color(0xFFFDE68A), width: 1.5),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFFF59E0B).withValues(alpha: 0.16),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('🏆', style: TextStyle(fontSize: 17)),
+              const SizedBox(width: 6),
+              Text(
+                '排行榜',
+                style: GoogleFonts.notoSansTc(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w900,
+                  color: const Color(0xFF92400E),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // 🏆 開啟好友寵物排行榜面板（內容沿用 [PetLeaderboardCard]）。
+  //
+  // 用 ConstrainedBox 限制最高螢幕高度 82% 再包 SingleChildScrollView──
+  // PetLeaderboardCard 展開「看全部」時列數不固定，好友數多或系統字級被
+  // 長輩調大時都可能超出可視高度，這裡是最後一道防線（鐵律 #14／護欄 G159）。
+  void _showLeaderboardSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 20,
+          bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
+        ),
+        child: SafeArea(
+          top: false,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(ctx).size.height * 0.82,
+            ),
+            child: SingleChildScrollView(
+              child: PetLeaderboardCard(
+                myElderId: _myElderId,
+                refreshTick: _leaderboardRefreshTick,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -1125,10 +1125,11 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
                 firstCallKey: _phoneCallKey,
                 firstVideoKey: _phoneVideoKey,
               ),
-              // 2 社群（家人與熟人限定）
+              // 2 社群（家人與熟人限定；第四十二輪加「家人／朋友」頂部標籤）
               ElderCommunityScreen(
                 userId: widget.userId,
                 userName: widget.userName,
+                showFriendTab: true,
                 privacyCardKey: _communityPrivacyKey,
                 createPostButtonKey: _communityCreatePostKey,
                 firstPostLikeKey: _communityLikeKey,

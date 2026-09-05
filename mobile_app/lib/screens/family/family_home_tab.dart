@@ -3600,11 +3600,19 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
           Navigator.push(
             context,
             // ★ 2026-08-31 合併修正：main 的真實 HealthReminderScreen 收 String elderId
-            //   （placeholder 版收 int），比照 remote_care_hub_screen.dart:220 的
-            //   權威用法 `elderId: (...).toString()` 轉型，並一併帶入姓名。
+            //   （placeholder 版收 int），故轉型為 String。
+            // ★ 2026-09-05 第四十三輪修正：轉型沒錯，但轉的欄位錯了——`elder.id`
+            //   是 DB 整數 PK／user_id，`HealthReminderScreen.elderId` 會原樣送進
+            //   `POST /api/reminder/`(elder_id) 與 `GET /api/reminder/elder/{elder_id}`，
+            //   後端排程 (main.py::check_remote_reminders_job) 組 Socket 房名／查
+            //   FCM token 用的卻是 elder_profile 的 4 碼房號 `elder.elderId`——兩者
+            //   多數情況下數值不同，用錯會導致長輩端前景背景都收不到排程提醒。
+            //   改用與 alert_center_screen.dart:20-23 相同的既定寫法
+            //   `elderId ?? id.toString()`（僅在 elder_profile 缺 elder_id 時才退回
+            //   user_id，維持向後相容)。
             MaterialPageRoute(
               builder: (_) => HealthReminderScreen(
-                elderId: elder.id.toString(),
+                elderId: elder.elderId ?? elder.id.toString(),
                 elderName: elder.displayName,
               ),
             ),

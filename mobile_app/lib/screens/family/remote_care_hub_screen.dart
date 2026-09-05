@@ -217,10 +217,22 @@ class _RemoteCareHubScreenState extends State<RemoteCareHubScreen> {
                 gradient: LinearGradient(
                   colors: [Color(0xFFEF4444), Color(0xFFF87171)],
                 ),
-                onTap: () => _navigateTo(HealthReminderScreen(
-                  elderId: (widget.elderId ?? 2).toString(),
-                  elderName: widget.elderName,
-                )),
+                onTap: () {
+                  // ★ 第四十三輪修復：原本 `?? 2` 在查不到長輩時，會靜默把
+                  // 提醒設給 user_id 為 2 的長輩（危險的猜測值）。查不到就
+                  // 不開這個畫面，改用明確錯誤告知，不要用猜測值頂替。
+                  final elderId = widget.elderId;
+                  if (elderId == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('找不到長輩資料，請重新整理後再試')),
+                    );
+                    return;
+                  }
+                  _navigateTo(HealthReminderScreen(
+                    elderId: elderId.toString(),
+                    elderName: widget.elderName,
+                  ));
+                },
               ),
             ),
           ],
