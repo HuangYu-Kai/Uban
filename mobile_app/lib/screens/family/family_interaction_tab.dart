@@ -1351,7 +1351,17 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
             HapticFeedback.lightImpact();
             final prefs = await SharedPreferences.getInstance();
             if (!mounted) return;
-            final familyId = prefs.getInt('caregiver_id') ?? 2;
+            // ★ 第五項需求（家屬好友系統）順手修復：原本讀不到 caregiver_id
+            // 時會兜底成寫死的 family_id 2，導致使用者用別人的家庭身分發文
+            // 到別人的家庭留言板。讀不到就顯示明確錯誤並不開畫面，不得用
+            // 猜測值兜底。
+            final familyId = prefs.getInt('caregiver_id');
+            if (familyId == null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('無法取得您的帳號 ID，請重新登入後再試')),
+              );
+              return;
+            }
             final userName = prefs.getString('caregiver_name') ?? prefs.getString('user_name') ?? '家人';
 
             Navigator.push(
