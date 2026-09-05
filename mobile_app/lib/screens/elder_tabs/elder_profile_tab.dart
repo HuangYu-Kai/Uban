@@ -22,7 +22,9 @@ import '../pet_companion_studio/models/pet_growth_state.dart';
 import '../pet_companion_studio/pet_studio_screen.dart';
 import '../pet_companion_studio/widgets/animated_piglet_actor.dart';
 import '../pet_companion_studio/widgets/hand_drawn_piglet_actor.dart';
+import '../pet_companion_studio/widgets/pet_growth_scale_card.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import '../../services/elder_reminder_manager.dart';
 
 enum _PetMood {
   superHappy, // 活力滿滿 / 達標 / 任務100% / 摸摸
@@ -132,6 +134,20 @@ class _ElderProfileTabState extends State<ElderProfileTab>
   Set<int> _completedReminderIds = {};
   bool _isLoadingReminders = false;
 
+  // ── 🎨 手作繪本對話與溫暖語錄 ──────────────────────────────
+  String _speechText = '阿公～今天天氣真好，一起散步活動身體吧！🌿';
+  Timer? _speechBubbleTimer;
+  final List<String> _pigQuotes = [
+    '阿公～有您天天陪我，小豬每天都好幸福喔！❤️',
+    '記得要多喝溫水，小豬也陪您喝一杯！🍵',
+    '今天走起路來很有精神呢，我們一起加油！💪',
+    '摸摸我的圓滾肚子，把平安福氣都帶給您！✨',
+    '中午要記得吃飽飽，休息一下再散步唷！🍙',
+    '看到阿公笑瞇瞇的，小豬的心情最開心了！🌸',
+  ];
+  final int _quoteIndex = 0;
+
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -196,16 +212,25 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     _autoStartTracking();
     _startStepTracking();
     _loadElderReminders();
+    ElderReminderManager.instance.addListener(_onReminderManagerUpdate);
     _loadPetGrowthState();
     _loadMyFriendElderId();
   }
 
+  void _onReminderManagerUpdate() {
+    if (mounted) {
+      _loadElderReminders();
+    }
+  }
+
   @override
   void dispose() {
+    ElderReminderManager.instance.removeListener(_onReminderManagerUpdate);
     _ctrl.dispose();
     _particleController.dispose();
     _petBounceController.dispose();
     _petWalkTimer?.cancel();
+    _speechBubbleTimer?.cancel();
     _positionStream?.cancel();
     _stepCountStream?.cancel();
     super.dispose();
@@ -678,24 +703,6 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     return math.sqrt((px - projX) * (px - projX) + (py - projY) * (py - projY));
   }
 
-  void _handlePetTap() {
-    HapticFeedback.lightImpact();
-    setState(() {
-      _isPetHappy = true;
-      _petIntimacy = math.min(100, _petIntimacy + 1);
-      _spawnHeartParticles();
-    });
-
-    _petBounceController.forward(from: 0.0);
-    _particleController.forward(from: 0.0);
-
-    Future.delayed(const Duration(seconds: 3), () {
-      if (mounted) {
-        setState(() => _isPetHappy = false);
-      }
-    });
-  }
-
   void _spawnHeartParticles() {
     _petParticles.clear();
     final rand = math.Random();
@@ -799,11 +806,18 @@ class _ElderProfileTabState extends State<ElderProfileTab>
         _completedReminderIds.add(reminderId);
         _isPetHappy = true;
         _petIntimacy = math.min(100, _petIntimacy + 3);
+        _speechText = '太棒了！生活排程打卡成功，小豬好開心！🎉';
         _spawnHeartParticles();
         _petBounceController.forward(from: 0.0);
         _particleController.forward(from: 0.0);
-        Future.delayed(const Duration(seconds: 3), () {
-          if (mounted) setState(() => _isPetHappy = false);
+        _speechBubbleTimer?.cancel();
+        _speechBubbleTimer = Timer(const Duration(seconds: 4), () {
+          if (mounted) {
+            setState(() {
+              _isPetHappy = false;
+              _speechText = _pigQuotes[_quoteIndex];
+            });
+          }
         });
       }
     });
@@ -851,8 +865,23 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     return _PetMood.content;
   }
 
-  // ── 🐾 左側寵物夥伴互動舞台（隨健康狀況與任務動態變換）──────
-  Widget _buildPetInteractiveStage(double progress) {
+  // ── 🐾 溫暖手作繪本厚塗油畫風：小豬夥伴生活舞台 ──────────────────────
+  Future<void> _openPetStudio() async {
+    HapticFeedback.selectionClick();
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PetStudioScreen(
+          initialSteps: currentSteps,
+          userName: widget.userName,
+        ),
+      ),
+    );
+    _loadPetGrowthState();
+  }
+
+  // ★ 第四十一輪（item 2）：接受 key 是為了讓步驟式新手指引能定位到寵物卡片；
+  // 本輪 merge 從舊版「僅寵物視覺元素」的 widget.petKey 遷移到整張卡片。
+  Widget _buildStorybookPetStageCard({Key? key, bool isLandscape = false}) {
     final mood = _determinePetMood();
     final activeReminders =
         _reminders.where((r) => r['is_active'] != false).toList();
@@ -860,6 +889,9 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     final int completedTasks = activeReminders
         .where((r) => _completedReminderIds.contains(r['id']))
         .length;
+    final double stepProgress = (dailyStepGoal > 0)
+        ? (currentSteps / dailyStepGoal).clamp(0.0, 1.0)
+        : 0.0;
 
     String moodLabel;
     IconData moodIcon;
@@ -869,7 +901,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
       case _PetMood.superHappy:
         moodLabel = (totalTasks > 0 && completedTasks >= totalTasks)
             ? '任務全達標 🎉'
-            : (progress >= 1.0 ? '步數達成 👑' : '活力滿分 🌟');
+            : (stepProgress >= 1.0 ? '步數達成 👑' : '活力滿分 🌟');
         moodIcon = Icons.stars_rounded;
         moodThemeColor = const Color(0xFFF59E0B);
         break;
@@ -884,7 +916,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
         moodThemeColor = const Color(0xFF8B5CF6);
         break;
       case _PetMood.reminding:
-        moodLabel = '子女排程待辦';
+        moodLabel = '生活待辦提醒';
         moodIcon = Icons.notifications_active_rounded;
         moodThemeColor = const Color(0xFFF97316);
         break;
@@ -895,691 +927,436 @@ class _ElderProfileTabState extends State<ElderProfileTab>
         break;
     }
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final isWide = constraints.maxWidth >= 280;
-
-        Widget petVisual = GestureDetector(
-          key: widget.petKey,
-          onTap: _handlePetTap,
-          child: Stack(
-            clipBehavior: Clip.none,
-            alignment: Alignment.center,
-            children: [
-              // 外層柔和呼吸光圈
-              Container(
-                width: isWide ? 145 : 100,
-                height: isWide ? 145 : 100,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: RadialGradient(
-                    colors: [
-                      moodThemeColor.withValues(alpha: 0.18),
-                      moodThemeColor.withValues(alpha: 0.04),
-                      Colors.transparent,
-                    ],
-                  ),
-                ),
-              ),
-
-              // 愛心/星芒粒子層
-              if (_petParticles.isNotEmpty)
-                Positioned.fill(
-                  child: CustomPaint(
-                    painter: _PetHeartPainter(_petParticles),
-                  ),
-                ),
-
-              // 核心小豬手繪逐格寵物本體（大幅放大至 165px 超萌清晰呈現）
-              ScaleTransition(
-                scale: Tween<double>(begin: 1.0, end: 1.12).animate(
-                  CurvedAnimation(
-                    parent: _petBounceController,
-                    curve: Curves.elasticOut,
-                  ),
-                ),
-                child: SizedBox(
-                  width: isWide ? 165 : 100,
-                  height: isWide ? 165 : 100,
-                  child: FittedBox(
-                    fit: BoxFit.contain,
-                    child: HandDrawnPigletActor(
-                      size: isWide ? 135 : 80,
-                      stage: _petGrowthState?.stage ?? PetGrowthStage.miniMochi,
-                      mood: mood == _PetMood.superHappy
-                          ? ActorMood.superHappy
-                          : (mood == _PetMood.sleeping
-                              ? ActorMood.sleeping
-                              : (mood == _PetMood.reminding
-                                  ? ActorMood.anticipating
-                                  : ActorMood.idle)),
-                      onPetHead: _handlePetTap,
-                      onPokeBelly: _handlePetTap,
-                    ),
-                  ),
-                ),
-              ),
-
-              // 右上角狀態小角標 (徽章)
-              if (mood == _PetMood.superHappy)
-                Positioned(
-                  top: isWide ? 6 : 2,
-                  right: isWide ? 6 : 2,
-                  child: Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFF59E0B),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.star_rounded,
-                        color: Colors.white, size: 18),
-                  ),
-                )
-              else if (mood == _PetMood.reminding)
-                Positioned(
-                  top: isWide ? 6 : 2,
-                  right: isWide ? 6 : 2,
-                  child: Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFEF4444),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.priority_high_rounded,
-                        color: Colors.white, size: 18),
-                  ),
-                )
-              else if (mood == _PetMood.sleeping)
-                Positioned(
-                  top: isWide ? 6 : 2,
-                  right: isWide ? 6 : 2,
-                  child: Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF8B5CF6),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.nightlight_round,
-                        color: Colors.white, size: 18),
-                  ),
-                ),
-            ],
-          ),
+    final currentGrowthState = _petGrowthState ??
+        const PetGrowthState(
+          weightGrams: 28000,
+          vitality: 88,
+          todaySteps: 3500,
+          fedFoodIds: {},
+          lastDateStr: '',
+          isCrownUnlocked: false,
         );
 
-        Widget petControls = Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: isWide ? CrossAxisAlignment.start : CrossAxisAlignment.center,
-          children: [
-            // 寵物狀態標籤膠囊
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-              decoration: BoxDecoration(
-                color: moodThemeColor.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(moodIcon, size: 15, color: moodThemeColor),
-                  const SizedBox(width: 5),
-                  Text(
-                    moodLabel,
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      color: moodThemeColor,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 8),
-
-            // ── 📋 子女排程任務打卡入口膠囊 ──
-            GestureDetector(
-              key: widget.tasksKey,
-              onTap: _showTasksModal,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                decoration: BoxDecoration(
-                  color: (totalTasks > 0 && completedTasks >= totalTasks)
-                      ? const Color(0xFFECFDF5)
-                      : const Color(0xFFF1F5F9),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: (totalTasks > 0 && completedTasks >= totalTasks)
-                        ? const Color(0xFF10B981)
-                        : const Color(0xFFCBD5E1),
-                    width: 1.2,
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      (totalTasks > 0 && completedTasks >= totalTasks)
-                          ? Icons.check_circle_rounded
-                          : Icons.task_alt_rounded,
-                      size: 14,
-                      color: (totalTasks > 0 && completedTasks >= totalTasks)
-                          ? const Color(0xFF059669)
-                          : const Color(0xFF64748B),
-                    ),
-                    const SizedBox(width: 5),
-                    Text(
-                      '排程 $completedTasks/$totalTasks 打卡',
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.bold,
-                        color: (totalTasks > 0 && completedTasks >= totalTasks)
-                            ? const Color(0xFF065F46)
-                            : const Color(0xFF334155),
-                      ),
-                    ),
-                    const Icon(Icons.arrow_drop_down,
-                        size: 16, color: Color(0xFF64748B)),
-                  ],
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 8),
-
-            // ── 🏡 前往福氣小豬窩按鈕 ──
-            InkWell(
-              onTap: () async {
-                HapticFeedback.selectionClick();
-                await Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => PetStudioScreen(
-                      initialSteps: currentSteps,
-                      userName: widget.userName,
-                    ),
-                  ),
-                );
-                _loadPetGrowthState();
-              },
-              borderRadius: BorderRadius.circular(16),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFFEF3C7), Color(0xFFFDE68A)],
-                  ),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.5)),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
-                      blurRadius: 8,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text('🏡', style: TextStyle(fontSize: 15)),
-                    const SizedBox(width: 6),
-                    Text(
-                      '前往福氣小豬窩 🐾',
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w900,
-                        color: const Color(0xFF92400E),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        );
-
-        if (isWide) {
-          return Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              petVisual,
-              const SizedBox(width: 14),
-              Flexible(child: petControls),
-            ],
-          );
-        } else {
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              petVisual,
-              const SizedBox(height: 8),
-              petControls,
-            ],
-          );
-        }
-      },
-    );
-  }
-
-  // ── 📋 子女排程任務打卡彈窗 ─────────────────────────────────
-  void _showTasksModal() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (bottomSheetCtx) => StatefulBuilder(
-        builder: (context, setModalState) {
-          final activeReminders =
-              _reminders.where((r) => r['is_active'] != false).toList();
-          final completedCount = activeReminders
-              .where((r) => _completedReminderIds.contains(r['id']))
-              .length;
-          final totalCount = activeReminders.length;
-
-          return Container(
-            padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 44,
-                    height: 5,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFCBD5E1),
-                      borderRadius: BorderRadius.circular(3),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.assignment_turned_in_rounded,
-                            color: Color(0xFF059669), size: 28),
-                        const SizedBox(width: 8),
-                        Text(
-                          '子女排程生活任務',
-                          style: GoogleFonts.notoSansTc(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w900,
-                            color: const Color(0xFF0F172A),
-                          ),
-                        ),
-                      ],
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF059669).withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        '完成 $completedCount/$totalCount',
-                        style: GoogleFonts.notoSansTc(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: const Color(0xFF059669),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  '勾選即可完成打卡，小豬會立刻獲得滿滿活力喔！',
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 14,
-                    color: const Color(0xFF64748B),
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 18),
-                if (_isLoadingReminders)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 24),
-                    child: Center(child: CircularProgressIndicator()),
-                  )
-                else if (activeReminders.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 24),
-                    child: Center(
-                      child: Text(
-                        '目前沒有排程任務，好好休息放鬆吧！',
-                        style: GoogleFonts.notoSansTc(
-                          fontSize: 16,
-                          color: const Color(0xFF94A3B8),
-                        ),
-                      ),
-                    ),
-                  )
-                else
-                  ...activeReminders.map((r) {
-                    final int id = r['id'] is int
-                        ? r['id']
-                        : int.tryParse(r['id'].toString()) ?? 0;
-                    final bool isDone = _completedReminderIds.contains(id);
-                    final String title = r['title'] ?? '日常任務';
-                    final String timeStr = r['time_str'] ?? '';
-                    final String category = r['category'] ?? 'custom';
-                    final String note = r['note'] ?? '';
-
-                    IconData catIcon = Icons.check_circle_outline_rounded;
-                    Color catColor = const Color(0xFF0284C7);
-                    if (category == 'medication') {
-                      catIcon = Icons.medication_rounded;
-                      catColor = const Color(0xFFEF4444);
-                    } else if (category == 'water') {
-                      catIcon = Icons.water_drop_rounded;
-                      catColor = const Color(0xFF0284C7);
-                    } else if (category == 'exercise') {
-                      catIcon = Icons.directions_walk_rounded;
-                      catColor = const Color(0xFF10B981);
-                    } else if (category == 'hospital') {
-                      catIcon = Icons.local_hospital_rounded;
-                      catColor = const Color(0xFF8B5CF6);
-                    }
-
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      decoration: BoxDecoration(
-                        color: isDone
-                            ? const Color(0xFFF8FAFC)
-                            : Colors.white,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: isDone
-                              ? const Color(0xFFE2E8F0)
-                              : const Color(0xFFE2E8F0),
-                          width: 1.2,
-                        ),
-                        boxShadow: isDone
-                            ? null
-                            : [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.03),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
-                      ),
-                      child: InkWell(
-                        onTap: () {
-                          _toggleTaskCompletion(id);
-                          setModalState(() {});
-                        },
-                        borderRadius: BorderRadius.circular(20),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 14),
-                          child: Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(10),
-                                decoration: BoxDecoration(
-                                  color: catColor.withValues(alpha: 0.12),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Icon(catIcon, color: catColor, size: 22),
-                              ),
-                              const SizedBox(width: 14),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      title,
-                                      style: GoogleFonts.notoSansTc(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                        color: isDone
-                                            ? const Color(0xFF94A3B8)
-                                            : const Color(0xFF0F172A),
-                                        decoration: isDone
-                                            ? TextDecoration.lineThrough
-                                            : null,
-                                      ),
-                                    ),
-                                    if (timeStr.isNotEmpty || note.isNotEmpty) ...[
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        [
-                                          if (timeStr.isNotEmpty) '⏰ $timeStr',
-                                          if (note.isNotEmpty) note
-                                        ].join(' · '),
-                                        style: GoogleFonts.notoSansTc(
-                                          fontSize: 13,
-                                          color: isDone
-                                              ? const Color(0xFFCBD5E1)
-                                              : const Color(0xFF64748B),
-                                        ),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ),
-                              Container(
-                                width: 32,
-                                height: 32,
-                                decoration: BoxDecoration(
-                                  color: isDone
-                                      ? const Color(0xFF10B981)
-                                      : Colors.transparent,
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                    color: isDone
-                                        ? const Color(0xFF10B981)
-                                        : const Color(0xFFCBD5E1),
-                                    width: 2,
-                                  ),
-                                ),
-                                child: isDone
-                                    ? const Icon(Icons.check_rounded,
-                                        color: Colors.white, size: 20)
-                                    : null,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    );
-                  }),
-                const SizedBox(height: 12),
-                ElevatedButton(
-                  onPressed: () => Navigator.pop(bottomSheetCtx),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF059669),
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size(double.infinity, 50),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                  child: Text(
-                    '關閉清單',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 17,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  // ── 🐾 旗艦一體化：左側寵物夥伴 ＆ 右側今日步數圓環與健康統計（各佔 50%）─────────────
-  Widget _buildUnifiedPetAndGoalCard() {
-    final double progress = (currentSteps / dailyStepGoal).clamp(0.0, 1.0);
-
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+      key: key,
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(32),
+        borderRadius: BorderRadius.circular(28),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF1E293B).withValues(alpha: 0.04),
-            blurRadius: 20,
-            offset: const Offset(0, 6),
+            color: const Color(0xFF78350F).withValues(alpha: 0.05),
+            blurRadius: 18,
+            offset: const Offset(0, 5),
           ),
           BoxShadow(
-            color: const Color(0xFF59B294).withValues(alpha: 0.06),
-            blurRadius: 16,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          // ── 👈 左側：寵物夥伴舞台（各佔一半 50%）──
-          Expanded(
-            flex: 1,
-            child: _buildPetInteractiveStage(progress),
-          ),
-
-          // ── 垂直精緻分隔線 ──
-          Container(
-            height: 155,
-            width: 1.5,
-            margin: const EdgeInsets.symmetric(horizontal: 14),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF1F5F9),
-              borderRadius: BorderRadius.circular(1),
-            ),
-          ),
-
-          // ── 👉 右側：今日步數大圓環 ＋ 步行距離與消耗熱量（各佔一半 50%）──
-          Expanded(
-            flex: 1,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                // 1. 步數大圓環
-                Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    SizedBox(
-                      width: 150,
-                      height: 150,
-                      child: CircularProgressIndicator(
-                        value: progress,
-                        strokeWidth: 14,
-                        backgroundColor: const Color(0xFFF1F5F9),
-                        valueColor: const AlwaysStoppedAnimation<Color>(
-                            Color(0xFF59B294)),
-                        strokeCap: StrokeCap.round,
-                      ),
-                    ),
-                    Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          '今日步數',
-                          style: GoogleFonts.notoSansTc(
-                            fontSize: 14,
-                            color: const Color(0xFF64748B),
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        Text(
-                          NumberFormat('#,###').format(currentSteps),
-                          style: GoogleFonts.inter(
-                            fontSize: 32,
-                            fontWeight: FontWeight.w900,
-                            color: const Color(0xFF0F172A),
-                            height: 1.1,
-                          ),
-                        ),
-                        Text(
-                          '目標 $dailyStepGoal 步',
-                          style: GoogleFonts.notoSansTc(
-                            fontSize: 12,
-                            color: const Color(0xFF94A3B8),
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-
-                const SizedBox(width: 14),
-
-                // 2. 圓環右側：垂直排列「步行距離」與「消耗熱量」
-                Expanded(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _buildSideStatCard(
-                        icon: Icons.directions_walk_rounded,
-                        iconColor: const Color(0xFF0284C7),
-                        label: '步行距離',
-                        value: '${_totalDistance.toStringAsFixed(2)} 公里',
-                      ),
-                      const SizedBox(height: 10),
-                      _buildSideStatCard(
-                        icon: Icons.local_fire_department_rounded,
-                        iconColor: const Color(0xFFF97316),
-                        label: '消耗熱量',
-                        value: '${(_totalDistance * 60).toInt()} 千卡',
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSideStatCard({
-    required IconData icon,
-    required Color iconColor,
-    required String label,
-    required String value,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFF1F5F9), width: 1.2),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 6,
+            color: const Color(0xFF59B294).withValues(alpha: 0.04),
+            blurRadius: 12,
             offset: const Offset(0, 2),
           ),
         ],
       ),
+      child: Material(
+        color: const Color(0xFFFFFDF9),
+        borderRadius: BorderRadius.circular(28),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: _openPetStudio,
+          borderRadius: BorderRadius.circular(28),
+          child: Container(
+            padding: EdgeInsets.all(isLandscape ? 16 : 20),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(color: const Color(0xFFEADBCE), width: 1.8),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // ── A. 標頭列：夥伴名稱 ＋ 心情膠囊 ＋ 前往小豬的家標籤 ──
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(7),
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFFEF3C7),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Text('🐽', style: TextStyle(fontSize: 18)),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '我的元氣小豬夥伴',
+                            style: GoogleFonts.notoSansTc(
+                              fontSize: isLandscape ? 17 : 18,
+                              fontWeight: FontWeight.w900,
+                              color: const Color(0xFF451A03),
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          // 心情標籤膠囊
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: moodThemeColor.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(moodIcon, size: 13, color: moodThemeColor),
+                                const SizedBox(width: 4),
+                                Text(
+                                  moodLabel,
+                                  style: GoogleFonts.notoSansTc(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: moodThemeColor,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // 🏡 小豬的家標籤（提示長輩點擊全卡片皆可進入）
+                    Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: isLandscape ? 12 : 14,
+                        vertical: isLandscape ? 6 : 8,
+                      ),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFFFEF3C7), Color(0xFFFDE68A)],
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: const Color(0xFFF59E0B).withValues(alpha: 0.6),
+                          width: 1.2,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color:
+                                const Color(0xFFF59E0B).withValues(alpha: 0.18),
+                            blurRadius: 8,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text('🏡', style: TextStyle(fontSize: 15)),
+                          const SizedBox(width: 5),
+                          Text(
+                            '小豬的家',
+                            style: GoogleFonts.notoSansTc(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w900,
+                              color: const Color(0xFF92400E),
+                            ),
+                          ),
+                          const SizedBox(width: 3),
+                          const Icon(
+                            Icons.arrow_forward_ios_rounded,
+                            size: 11,
+                            color: Color(0xFF92400E),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+
+                SizedBox(height: isLandscape ? 8 : 14),
+
+                // ── B. 核心小豬正面手繪油畫舞台（移除點擊彈跳動畫，點擊全卡直接進入小豬的家）──
+                IgnorePointer(
+                  child: Stack(
+                    alignment: Alignment.center,
+                    clipBehavior: Clip.none,
+                    children: [
+                      // 呼吸背景微暈
+                      Container(
+                        width: isLandscape ? 160 : 200,
+                        height: isLandscape ? 160 : 200,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: RadialGradient(
+                            colors: [
+                              moodThemeColor.withValues(alpha: 0.16),
+                              moodThemeColor.withValues(alpha: 0.03),
+                              Colors.transparent,
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      // 愛心粒子噴發層（用於生活任務打卡慶祝）
+                      if (_petParticles.isNotEmpty)
+                        Positioned.fill(
+                          child: CustomPaint(
+                            painter: _PetHeartPainter(_petParticles),
+                          ),
+                        ),
+
+                      // 小豬油畫主角與對話氣泡
+                      HandDrawnPigletActor(
+                        size: isLandscape ? 165 : 195,
+                        stage: currentGrowthState.stage,
+                        mood: mood == _PetMood.superHappy
+                            ? ActorMood.superHappy
+                            : (mood == _PetMood.sleeping
+                                ? ActorMood.sleeping
+                                : (mood == _PetMood.reminding
+                                    ? ActorMood.anticipating
+                                    : ActorMood.idle)),
+                        speechText: _speechText,
+                      ),
+                    ],
+                  ),
+                ),
+
+                SizedBox(height: isLandscape ? 8 : 14),
+
+                // ── C. 體重秤與成長階段卡（PetGrowthScaleCard，透過外層卡片統一跳轉）──
+                IgnorePointer(
+                  child: PetGrowthScaleCard(
+                    growthState: currentGrowthState,
+                    isCompact: false,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── 🎯 今日健康活力雙環 ＆ 四合一指標卡片 ──────────────────────
+  Widget _buildVitalityStepGoalsCard(double progress, {bool isLandscape = false}) {
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: isLandscape ? 16 : 20,
+        vertical: isLandscape ? 12 : 20,
+      ),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFDF9),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: const Color(0xFFEADBCE), width: 1.8),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF78350F).withValues(alpha: 0.05),
+            blurRadius: 18,
+            offset: const Offset(0, 5),
+          ),
+          BoxShadow(
+            color: const Color(0xFF59B294).withValues(alpha: 0.03),
+            blurRadius: 12,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // ── 今日健康活力指標 Header ──
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: const BoxDecoration(
+                  color: Color(0xFFECFDF5),
+                  shape: BoxShape.circle,
+                ),
+                child: const Text('🎯', style: TextStyle(fontSize: 16)),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '今日健康活力雙環',
+                style: GoogleFonts.notoSansTc(
+                  fontSize: isLandscape ? 16 : 17,
+                  fontWeight: FontWeight.w900,
+                  color: const Color(0xFF451A03),
+                ),
+              ),
+              const Spacer(),
+              Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: isLandscape ? 8 : 10,
+                  vertical: isLandscape ? 3 : 4,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF5EBE1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  '目標 $dailyStepGoal 步',
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: isLandscape ? 11.5 : 12.5,
+                    fontWeight: FontWeight.bold,
+                    color: const Color(0xFF78350F),
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          SizedBox(height: isLandscape ? 10 : 16),
+
+          // ── 步數大圓環 ＋ 4-in-1 健康指標 ──
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // 步數圓環
+              Stack(
+                alignment: Alignment.center,
+                children: [
+                  SizedBox(
+                    width: isLandscape ? 86 : 110,
+                    height: isLandscape ? 86 : 110,
+                    child: CircularProgressIndicator(
+                      value: progress,
+                      strokeWidth: isLandscape ? 8 : 10,
+                      backgroundColor: const Color(0xFFF1EBE1),
+                      valueColor:
+                          const AlwaysStoppedAnimation<Color>(Color(0xFF59B294)),
+                      strokeCap: StrokeCap.round,
+                    ),
+                  ),
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '今日步數',
+                        style: GoogleFonts.notoSansTc(
+                          fontSize: isLandscape ? 10.5 : 12,
+                          color: const Color(0xFF8C6D58),
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        NumberFormat('#,###').format(currentSteps),
+                        style: GoogleFonts.inter(
+                          fontSize: isLandscape ? 18 : 22,
+                          fontWeight: FontWeight.w900,
+                          color: const Color(0xFF451A03),
+                          height: 1.1,
+                        ),
+                      ),
+                      Text(
+                        '${(progress * 100).toInt()}% 達成',
+                        style: GoogleFonts.notoSansTc(
+                          fontSize: isLandscape ? 10 : 11.5,
+                          color: const Color(0xFF59B294),
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+
+              SizedBox(width: isLandscape ? 12 : 14),
+
+              // 4-in-1 指標格
+              Expanded(
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildStorybookStatTile(
+                            icon: Icons.directions_walk_rounded,
+                            iconColor: const Color(0xFF0284C7),
+                            label: '步行距離',
+                            value: '${_totalDistance.toStringAsFixed(2)} 公里',
+                            isLandscape: isLandscape,
+                          ),
+                        ),
+                        SizedBox(width: isLandscape ? 6 : 8),
+                        Expanded(
+                          child: _buildStorybookStatTile(
+                            icon: Icons.local_fire_department_rounded,
+                            iconColor: const Color(0xFFF97316),
+                            label: '消耗熱量',
+                            value: '${(_totalDistance * 60).toInt()} 千卡',
+                            isLandscape: isLandscape,
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: isLandscape ? 6 : 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildStorybookStatTile(
+                            icon: Icons.timer_rounded,
+                            iconColor: const Color(0xFF8B5CF6),
+                            label: '活動時間',
+                            value:
+                                '${(_totalDistance > 0 ? (_totalDistance / 3.2 * 60).toInt() : (currentSteps ~/ 100)).clamp(0, 180)} 分鐘',
+                            isLandscape: isLandscape,
+                          ),
+                        ),
+                        SizedBox(width: isLandscape ? 6 : 8),
+                        Expanded(
+                          child: _buildStorybookStatTile(
+                            icon: Icons.water_drop_rounded,
+                            iconColor: const Color(0xFF06B6D4),
+                            label: '溫水補充',
+                            value: _completedReminderIds.contains(102)
+                                ? '1,000 毫升'
+                                : '500 毫升',
+                            isLandscape: isLandscape,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStorybookStatTile({
+    required IconData icon,
+    required Color iconColor,
+    required String label,
+    required String value,
+    bool isLandscape = false,
+  }) {
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: isLandscape ? 8 : 10,
+        vertical: isLandscape ? 6 : 8,
+      ),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFAF7F2),
+        borderRadius: BorderRadius.circular(isLandscape ? 14 : 16),
+        border: Border.all(color: const Color(0xFFEADBCE), width: 1.2),
+      ),
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(10),
+            padding: EdgeInsets.all(isLandscape ? 5 : 6),
             decoration: BoxDecoration(
               color: iconColor.withValues(alpha: 0.12),
               shape: BoxShape.circle,
             ),
-            child: Icon(icon, color: iconColor, size: 24),
+            child: Icon(icon, color: iconColor, size: isLandscape ? 16 : 18),
           ),
-          const SizedBox(width: 10),
+          SizedBox(width: isLandscape ? 6 : 8),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1588,21 +1365,473 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                 Text(
                   label,
                   style: GoogleFonts.notoSansTc(
-                    fontSize: 13,
-                    color: const Color(0xFF64748B),
+                    fontSize: isLandscape ? 10.5 : 11.5,
+                    color: const Color(0xFF78350F),
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                const SizedBox(height: 2),
                 Text(
                   value,
                   style: GoogleFonts.inter(
-                    fontSize: 18,
+                    fontSize: isLandscape ? 13 : 14.5,
                     fontWeight: FontWeight.w900,
-                    color: const Color(0xFF0F172A),
+                    color: const Color(0xFF451A03),
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── 📋 今日生活排程與用藥打卡手帳（直接呈現在卡片上，支援大字體打卡）──
+  // ★ 第四十一輪（item 2）：接受 key 是為了讓步驟式新手指引能定位到任務卡片；
+  // 本輪 merge 從舊版「打卡入口膠囊」的 widget.tasksKey 遷移到整張卡片。
+  Widget _buildTodayTasksHandmadeSection({Key? key, bool isLandscape = false}) {
+    final activeReminders =
+        _reminders.where((r) => r['is_active'] != false).toList();
+    final totalTasks = activeReminders.length;
+    final completedTasks = activeReminders
+        .where((r) => _completedReminderIds.contains(r['id']))
+        .length;
+    final bool isAllCompleted = totalTasks > 0 && completedTasks >= totalTasks;
+
+    return Container(
+      key: key,
+      padding: EdgeInsets.symmetric(
+        horizontal: isLandscape ? 16 : 20,
+        vertical: isLandscape ? 12 : 20,
+      ),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFDF9),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: const Color(0xFFEADBCE), width: 1.8),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF78350F).withValues(alpha: 0.05),
+            blurRadius: 18,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 標頭
+          Row(
+            children: [
+              Container(
+                padding: EdgeInsets.all(isLandscape ? 5 : 7),
+                decoration: const BoxDecoration(
+                  color: Color(0xFFFEF3C7),
+                  shape: BoxShape.circle,
+                ),
+                child: Text('📋', style: TextStyle(fontSize: isLandscape ? 15 : 18)),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '今日生活排程與用藥',
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: isLandscape ? 16.5 : 18,
+                        fontWeight: FontWeight.w900,
+                        color: const Color(0xFF451A03),
+                      ),
+                    ),
+                    Text(
+                      '點擊打卡即可完成，小豬陪您規律生活',
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: isLandscape ? 11.5 : 12.5,
+                        color: const Color(0xFF8C6D58),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // 完成進度標籤
+              Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: isLandscape ? 8 : 10,
+                  vertical: isLandscape ? 3 : 5,
+                ),
+                decoration: BoxDecoration(
+                  color: isAllCompleted
+                      ? const Color(0xFFECFDF5)
+                      : const Color(0xFFFEF3C7),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: isAllCompleted
+                        ? const Color(0xFFA7F3D0)
+                        : const Color(0xFFFDE68A),
+                  ),
+                ),
+                child: Text(
+                  isAllCompleted ? '全數達標 🌟' : '已完成 $completedTasks/$totalTasks',
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: isLandscape ? 12 : 13,
+                    fontWeight: FontWeight.w900,
+                    color: isAllCompleted
+                        ? const Color(0xFF047857)
+                        : const Color(0xFF92400E),
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          SizedBox(height: isLandscape ? 8 : 14),
+
+          if (_isLoadingReminders)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 20),
+              child: Center(
+                child: CircularProgressIndicator(color: Color(0xFF59B294)),
+              ),
+            )
+          else if (activeReminders.isEmpty)
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              alignment: Alignment.center,
+              child: Text(
+                '今天尚無待辦事項，悠閒放鬆一下吧！🌸',
+                style: GoogleFonts.notoSansTc(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: const Color(0xFF8C6D58),
+                ),
+              ),
+            )
+          else
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: activeReminders.length,
+              separatorBuilder: (_, __) => SizedBox(height: isLandscape ? 6 : 10),
+              itemBuilder: (context, index) {
+                final r = activeReminders[index];
+                final int rId = r['id'] as int;
+                final bool isDone = _completedReminderIds.contains(rId);
+                final String cat = (r['category'] ?? '').toString();
+
+                String catEmoji = '⏰';
+                Color catBg = const Color(0xFFF1F5F9);
+                if (cat == 'medication') {
+                  catEmoji = '💊';
+                  catBg = const Color(0xFFFFE4E6);
+                } else if (cat == 'water') {
+                  catEmoji = '💧';
+                  catBg = const Color(0xFFE0F2FE);
+                } else if (cat == 'exercise') {
+                  catEmoji = '👟';
+                  catBg = const Color(0xFFFEF3C7);
+                }
+
+                return Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () => _toggleTaskCompletion(rId),
+                    borderRadius: BorderRadius.circular(isLandscape ? 16 : 20),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 250),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: isLandscape ? 6 : 12,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isDone
+                            ? const Color(0xFFF0FDF4)
+                            : const Color(0xFFFAF7F2),
+                        borderRadius: BorderRadius.circular(isLandscape ? 16 : 20),
+                        border: Border.all(
+                          color: isDone
+                              ? const Color(0xFF86EFAC)
+                              : const Color(0xFFEADBCE),
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          // 類別 Emoji 圖標
+                          Container(
+                            width: isLandscape ? 38 : 44,
+                            height: isLandscape ? 38 : 44,
+                            decoration: BoxDecoration(
+                              color: catBg,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Center(
+                              child: Text(
+                                catEmoji,
+                                style: TextStyle(fontSize: isLandscape ? 18 : 22),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          // 內容文字
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 7, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: isDone
+                                            ? const Color(0xFFDCFCE7)
+                                            : const Color(0xFFF5EBE1),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Text(
+                                        r['time_str'] ?? '',
+                                        style: GoogleFonts.inter(
+                                          fontSize: isLandscape ? 11.5 : 12.5,
+                                          fontWeight: FontWeight.w800,
+                                          color: isDone
+                                              ? const Color(0xFF15803D)
+                                              : const Color(0xFF78350F),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Flexible(
+                                      child: Text(
+                                        r['title'] ?? '',
+                                        style: GoogleFonts.notoSansTc(
+                                          fontSize: isLandscape ? 15 : 16.5,
+                                          fontWeight: FontWeight.w900,
+                                          color: isDone
+                                              ? const Color(0xFF166534)
+                                              : const Color(0xFF451A03),
+                                          decoration: isDone
+                                              ? TextDecoration.lineThrough
+                                              : null,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                if ((r['note'] ?? '').toString().isNotEmpty) ...[
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    r['note'],
+                                    style: GoogleFonts.notoSansTc(
+                                      fontSize: isLandscape ? 11.5 : 13,
+                                      color: isDone
+                                          ? const Color(0xFF15803D)
+                                          : const Color(0xFF78350F),
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          // ── 大字體觸控打卡核選扭 ──
+                          Container(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: isLandscape ? 10 : 12,
+                              vertical: isLandscape ? 5 : 7,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isDone
+                                  ? const Color(0xFF10B981)
+                                  : Colors.white,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: isDone
+                                    ? const Color(0xFF059669)
+                                    : const Color(0xFFF59E0B),
+                                width: 1.5,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: (isDone
+                                          ? const Color(0xFF10B981)
+                                          : const Color(0xFFF59E0B))
+                                      .withValues(alpha: 0.18),
+                                  blurRadius: 6,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  isDone
+                                      ? Icons.check_circle_rounded
+                                      : Icons.touch_app_rounded,
+                                  size: isLandscape ? 14 : 16,
+                                  color: isDone
+                                      ? Colors.white
+                                      : const Color(0xFF92400E),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  isDone ? '已打卡' : '打卡',
+                                  style: GoogleFonts.notoSansTc(
+                                    fontSize: isLandscape ? 12 : 13,
+                                    fontWeight: FontWeight.w900,
+                                    color: isDone
+                                        ? Colors.white
+                                        : const Color(0xFF92400E),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+
+          SizedBox(height: isLandscape ? 8 : 14),
+
+          // 溫馨提示字卡
+          Container(
+            padding: EdgeInsets.symmetric(
+              horizontal: isLandscape ? 12 : 14,
+              vertical: isLandscape ? 6 : 9,
+            ),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFFBEB),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFFFDE68A)),
+            ),
+            child: Row(
+              children: [
+                Text('💡', style: TextStyle(fontSize: isLandscape ? 13 : 15)),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    '定時服藥與多喝溫水，小豬會長得圓滾有元氣喔！',
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: isLandscape ? 11.5 : 13,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF92400E),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── 溫馨早午晚標頭 (手繪厚塗繪本風格) ──────────────────────────
+  Widget _buildStorybookHeader(String greetingTitle, {bool isLandscape = false}) {
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: isLandscape ? 18 : 20,
+        vertical: isLandscape ? 9 : 14,
+      ),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFDF9),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: const Color(0xFFEADBCE), width: 1.8),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF78350F).withValues(alpha: 0.04),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: isLandscape ? 46 : 58,
+            height: isLandscape ? 46 : 58,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: const Color(0xFF59B294).withValues(alpha: 0.15),
+              border: Border.all(color: const Color(0xFF59B294), width: 2.2),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF59B294).withValues(alpha: 0.18),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Center(
+              child: Text('👴', style: TextStyle(fontSize: isLandscape ? 26 : 32)),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      '$greetingTitle，${widget.userName}',
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: isLandscape ? 21 : 25,
+                        fontWeight: FontWeight.w900,
+                        color: const Color(0xFF451A03),
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: isLandscape ? 8 : 10,
+                        vertical: isLandscape ? 2 : 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFECFDF5),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFA7F3D0)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text('🌿', style: TextStyle(fontSize: 11)),
+                          const SizedBox(width: 4),
+                          Text(
+                            '守護中',
+                            style: GoogleFonts.notoSansTc(
+                              fontSize: isLandscape ? 11 : 12,
+                              fontWeight: FontWeight.bold,
+                              color: const Color(0xFF047857),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: isLandscape ? 1 : 3),
+                Text(
+                  '${DateTime.now().month}月${DateTime.now().day}日 · 今天也要開開心心地活動身體喔！✨',
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: isLandscape ? 13 : 14.5,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF8C6D58),
+                  ),
                 ),
               ],
             ),
@@ -1670,8 +1899,8 @@ class _ElderProfileTabState extends State<ElderProfileTab>
         prefs.getString('elder_name') ??
         (widget.userName.isNotEmpty ? widget.userName : '宇璿');
     bool isPortableMode = prefs.getBool('is_portable_mode') ?? true;
-    // ★ 2026-08-10 第二十輪（需求 6）：語音喚醒總開關，預設關閉。
-    bool wakeWordEnabled = prefs.getBool(kWakeWordEnabledKey) ?? false;
+    // ★ 語音喚醒總開關，長輩端預設啟用（true）。
+    bool wakeWordEnabled = prefs.getBool(kWakeWordEnabledKey) ?? true;
 
     final aiNameController = TextEditingController(text: currentAiName);
     final userNameController = TextEditingController(text: currentUserName);
@@ -1824,6 +2053,13 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                 if (newUser.isNotEmpty) {
                   await prefs.setString('caregiver_name', newUser);
                   await prefs.setString('user_name', newUser);
+                  await prefs.setString('elder_appellation', newUser);
+                  try {
+                    await ApiService.updateElderProfile(
+                      userId: widget.userId,
+                      appellation: newUser,
+                    );
+                  } catch (_) {}
                 }
                 navigator.pop();
                 scaffoldMessenger.showSnackBar(
@@ -1845,23 +2081,27 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     required String subtitle,
     required Color color,
     required VoidCallback onTap,
+    bool isLandscape = false,
   }) {
     return Material(
       key: key,
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(24),
+      color: const Color(0xFFFFFDF9),
+      borderRadius: BorderRadius.circular(isLandscape ? 18 : 24),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(isLandscape ? 18 : 24),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          padding: EdgeInsets.symmetric(
+            horizontal: isLandscape ? 12 : 16,
+            vertical: isLandscape ? 9 : 16,
+          ),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: const Color(0xFFF1F5F9), width: 1.2),
+            borderRadius: BorderRadius.circular(isLandscape ? 18 : 24),
+            border: Border.all(color: const Color(0xFFEADBCE), width: 1.5),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.03),
-                blurRadius: 10,
+                color: const Color(0xFF78350F).withValues(alpha: 0.05),
+                blurRadius: 12,
                 offset: const Offset(0, 3),
               ),
             ],
@@ -1869,14 +2109,14 @@ class _ElderProfileTabState extends State<ElderProfileTab>
           child: Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(12),
+                padding: EdgeInsets.all(isLandscape ? 8 : 12),
                 decoration: BoxDecoration(
                   color: color.withValues(alpha: 0.12),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(icon, color: color, size: 26),
+                child: Icon(icon, color: color, size: isLandscape ? 20 : 26),
               ),
-              const SizedBox(width: 12),
+              SizedBox(width: isLandscape ? 8 : 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1885,18 +2125,18 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                     Text(
                       title,
                       style: GoogleFonts.notoSansTc(
-                        fontSize: 18,
+                        fontSize: isLandscape ? 15.5 : 18,
                         fontWeight: FontWeight.w900,
-                        color: const Color(0xFF0F172A),
+                        color: const Color(0xFF451A03),
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 2),
+                    SizedBox(height: isLandscape ? 1 : 2),
                     Text(
                       subtitle,
                       style: GoogleFonts.notoSansTc(
-                        fontSize: 14,
+                        fontSize: isLandscape ? 12 : 13.5,
                         fontWeight: FontWeight.bold,
                         color: color,
                       ),
@@ -1906,8 +2146,11 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                   ],
                 ),
               ),
-              Icon(Icons.arrow_forward_ios_rounded,
-                  size: 16, color: Colors.grey.shade300),
+              Icon(
+                Icons.arrow_forward_ios_rounded,
+                size: isLandscape ? 13 : 15,
+                color: const Color(0xFFD4C5B9),
+              ),
             ],
           ),
         ),
@@ -2249,127 +2492,197 @@ class _ElderProfileTabState extends State<ElderProfileTab>
   @override
   Widget build(BuildContext context) {
     currentSteps = _computeFusedSteps();
+    final double progress = (currentSteps / dailyStepGoal).clamp(0.0, 1.0);
     final hour = DateTime.now().hour;
     String greetingTitle = '早安';
     if (hour >= 12 && hour < 18) greetingTitle = '午安';
     if (hour >= 18 || hour < 5) greetingTitle = '晚安';
+    final orientation = MediaQuery.of(context).orientation;
+    final bool isLandscape = orientation == Orientation.landscape &&
+        MediaQuery.of(context).size.width >= 720;
 
     return Container(
-      color: const Color(0xFFFDFCF9),
+      color: const Color(0xFFFAF7F2), // 溫暖手作燕麥宣紙底色
       width: double.infinity,
       height: double.infinity,
       child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 96),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // ── 溫馨標頭 (Header - 大字體) ───────────────────────────
-              Row(
-                children: [
-                  Container(
-                    width: 60,
-                    height: 60,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: const Color(0xFF59B294).withValues(alpha: 0.12),
-                      border:
-                          Border.all(color: const Color(0xFF59B294), width: 2.5),
-                    ),
-                    child: const Icon(Icons.person_rounded,
-                        size: 36, color: Color(0xFF59B294)),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
+        bottom: false,
+        child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          padding: EdgeInsets.fromLTRB(
+            18,
+            isLandscape ? 10 : 16,
+            18,
+            isLandscape ? 106 : 110,
+          ),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              if (isLandscape) {
+                // ── 橫屏模式（平板座充模式）：左右雙欄對稱飽滿排版（零滾動設計） ──
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // 1. 溫馨早午晚標頭
+                    _buildStorybookHeader(greetingTitle, isLandscape: true),
+
+                    const SizedBox(height: 10),
+
+                    // 2. 雙欄核心內容區
+                    Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          '$greetingTitle，${widget.userName}',
-                          style: GoogleFonts.notoSansTc(
-                            fontSize: 26,
-                            fontWeight: FontWeight.w900,
-                            color: const Color(0xFF0F172A),
+                        // 👈 左欄：手繪小豬生活舞台 ＆ 成長里程碑 (佔 50%)
+                        Expanded(
+                          flex: 5,
+                          child: _buildStorybookPetStageCard(
+                            key: widget.petKey,
+                            isLandscape: true,
                           ),
                         ),
-                        Text(
-                          '今天也要開心地活動身體喔！',
-                          style: GoogleFonts.notoSansTc(
-                            fontSize: 17,
-                            color: const Color(0xFF64748B),
-                            fontWeight: FontWeight.w600,
+
+                        const SizedBox(width: 14),
+
+                        // 👉 右欄：今日生活用藥打卡手帳 ＆ 健康活力雙環 (佔 50%)
+                        Expanded(
+                          flex: 5,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _buildTodayTasksHandmadeSection(
+                                key: widget.tasksKey,
+                                isLandscape: true,
+                              ),
+                              const SizedBox(height: 10),
+                              _buildVitalityStepGoalsCard(progress, isLandscape: true),
+                            ],
                           ),
                         ),
                       ],
                     ),
-                  ),
-                ],
-              ),
 
-              const SizedBox(height: 16),
+                    const SizedBox(height: 10),
 
-              // ── 🐾 核心卡片區（健康活力旗艦卡：守護小豬 ＋ 步數圓環 ＋ 健康統計）─────────────
-              Expanded(
-                child: Center(
-                  child: SingleChildScrollView(
-                    physics: const ClampingScrollPhysics(),
-                    child: Column(
+                    // ★ 第四十一輪的「我的好友 ID」卡片：橫屏採左右雙欄「零滾動設計」
+                    // （見上方原設計註解），版面高度已配合平板座充模式的可視範圍調校；
+                    // 插入整張新卡片會撐高內容、迫使橫屏也得捲動，違背零滾動設計的初衷，
+                    // 故此處刻意不放好友 ID 卡片，僅保留在下方直屏（可捲動手帳流）版面中。
+
+                    // 3. 底部快捷操作列
+                    Row(
                       children: [
-                        _buildUnifiedPetAndGoalCard(),
-                        const SizedBox(height: 16),
-                        // ★ 第四十一輪（item 3）：朋友圈好友 ID 卡片。加在既有
-                        // ScrollView 內是刻意的——這個畫面上方標頭與下方 3 顆
-                        // 快捷按鈕都是固定高度、彼此間沒有多餘空間，只有這裡
-                        // 已經是可捲動區域，才是安全插入新內容的位置。
-                        _buildMyFriendIdCard(),
+                        // 👨‍👩‍👧 家人綁定
+                        Expanded(
+                          child: _buildActionCard(
+                            key: widget.familyPairingKey,
+                            icon: Icons.family_restroom_rounded,
+                            title: '家人綁定',
+                            subtitle: '出示配對碼',
+                            color: const Color(0xFFEA580C),
+                            onTap: _showFamilyPairingDialog,
+                            isLandscape: true,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        // 🤖 語音助理
+                        Expanded(
+                          child: _buildActionCard(
+                            key: widget.aiAssistantKey,
+                            icon: Icons.assistant_rounded,
+                            title: '語音助理',
+                            subtitle: 'Hey 嘎蛙',
+                            color: const Color(0xFF0284C7),
+                            onTap: _showAiAssistantSettingsDialog,
+                            isLandscape: true,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        // 🚪 切換身分
+                        Expanded(
+                          child: _buildActionCard(
+                            icon: Icons.logout_rounded,
+                            title: '切換身分',
+                            subtitle: '登出系統',
+                            color: const Color(0xFFEF4444),
+                            onTap: _handleLogout,
+                            isLandscape: true,
+                          ),
+                        ),
                       ],
                     ),
-                  ),
-                ),
-              ),
+                  ],
+                );
+              } else {
+                // ── 直屏模式：垂直手帳滑動流 ──
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // 1. 溫馨早午晚標頭
+                    _buildStorybookHeader(greetingTitle),
 
-              const SizedBox(height: 16),
+                    const SizedBox(height: 16),
 
-              // ── 快捷操作按鈕列 (3大功能 / 零滾動 / 大字體) ─────────────────
-              Row(
-                children: [
-                  // 👨‍👩‍👧 方案 C：家人綁定
-                  Expanded(
-                    child: _buildActionCard(
-                      key: widget.familyPairingKey,
-                      icon: Icons.family_restroom_rounded,
-                      title: '家人綁定',
-                      subtitle: '出示配對碼',
-                      color: const Color(0xFFEA580C),
-                      onTap: _showFamilyPairingDialog,
+                    // 2. 小豬生活手繪舞台 ＆ 成長里程碑
+                    _buildStorybookPetStageCard(key: widget.petKey),
+
+                    const SizedBox(height: 16),
+
+                    // 3. 今日生活排程與用藥打卡手帳
+                    _buildTodayTasksHandmadeSection(key: widget.tasksKey),
+
+                    const SizedBox(height: 16),
+
+                    // 4. 今日健康活力雙環
+                    _buildVitalityStepGoalsCard(progress),
+
+                    const SizedBox(height: 16),
+
+                    // ★ 第四十一輪（item 3）：朋友圈好友 ID 卡片。本輪 merge 時從舊版面
+                    // 遷移到此處——好友 ID 與下方「家人綁定」同屬身分／社交性質放在一起
+                    // 最合理，且直屏本身就是可捲動的手帳滑動流，是安全的插入位置。
+                    _buildMyFriendIdCard(),
+
+                    const SizedBox(height: 16),
+
+                    // 5. 底部快捷操作列
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildActionCard(
+                            key: widget.familyPairingKey,
+                            icon: Icons.family_restroom_rounded,
+                            title: '家人綁定',
+                            subtitle: '出示配對碼',
+                            color: const Color(0xFFEA580C),
+                            onTap: _showFamilyPairingDialog,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _buildActionCard(
+                            key: widget.aiAssistantKey,
+                            icon: Icons.assistant_rounded,
+                            title: '語音助理',
+                            subtitle: 'Hey 嘎蛙',
+                            color: const Color(0xFF0284C7),
+                            onTap: _showAiAssistantSettingsDialog,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _buildActionCard(
+                            icon: Icons.logout_rounded,
+                            title: '切換身分',
+                            subtitle: '登出系統',
+                            color: const Color(0xFFEF4444),
+                            onTap: _handleLogout,
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  // 🤖 語音助理
-                  Expanded(
-                    child: _buildActionCard(
-                      key: widget.aiAssistantKey,
-                      icon: Icons.assistant_rounded,
-                      title: '語音助理',
-                      subtitle: 'Hey 嘎蛙',
-                      color: const Color(0xFF0284C7),
-                      onTap: _showAiAssistantSettingsDialog,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  // 🚪 切換身分
-                  Expanded(
-                    child: _buildActionCard(
-                      icon: Icons.logout_rounded,
-                      title: '切換身分',
-                      subtitle: '登出系統',
-                      color: const Color(0xFFEF4444),
-                      onTap: _handleLogout,
-                    ),
-                  ),
-                ],
-              ),
-            ],
+                  ],
+                );
+              }
+            },
           ),
         ),
       ),

@@ -70,8 +70,9 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
       duration: const Duration(milliseconds: 1400),
     )..repeat(reverse: true);
 
-    _initTtsAndGreeting();
-    _initSpeech();
+    _initSpeech().then((_) {
+      if (mounted) _initTtsAndGreeting();
+    });
   }
 
   /// 初始化 TTS 並自動播報首句 "怎麼了嗎 宇璿"
@@ -94,11 +95,29 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
         _dialogHistory.add({"role": "assistant", "text": greeting});
       });
 
-      await _flutterTts.speak(greeting);
-
-      // 如果有初始語意請求，自動發送
+      // 如果有初始語意請求（如長輩一口氣問了「今天天氣如何」），自動發送
       if (widget.initialPrompt != null && widget.initialPrompt!.isNotEmpty) {
         _processUserQuery(widget.initialPrompt!);
+      } else {
+        // 單純呼叫喚醒詞（如「Hey 嘎蛙」），播報完後自動開啟麥克風聆聽長輩說話
+        bool autoStarted = false;
+        void autoStartMic() {
+          if (!autoStarted && mounted && !_isThinking && !_isListening) {
+            autoStarted = true;
+            _startListening();
+          }
+        }
+
+        _flutterTts.setCompletionHandler(() {
+          autoStartMic();
+        });
+
+        await _flutterTts.speak(greeting);
+
+        // 兜底保護：若特定裝置 TTS 未觸發 completionHandler，2.5 秒後自動啟動麥克風
+        Future.delayed(const Duration(milliseconds: 2500), () {
+          autoStartMic();
+        });
       }
     } catch (e) {
       debugPrint("🤖 [UbanAssistant] TTS init error: $e");
@@ -115,6 +134,11 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
           if (status == 'done' || status == 'notListening') {
             if (mounted && _isListening) {
               setState(() => _isListening = false);
+              // 長輩說完停頓後自動提交已辨識的文字
+              final text = _textController.text.trim();
+              if (text.isNotEmpty && !_isThinking) {
+                _processUserQuery(text);
+              }
             }
           }
         },
@@ -135,6 +159,13 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
       });
       await _speechToText.listen(
         localeId: 'zh_TW',
+        listenOptions: SpeechListenOptions(
+          partialResults: true,
+          cancelOnError: false,
+          listenMode: ListenMode.dictation,
+        ),
+        listenFor: const Duration(seconds: 30),
+        pauseFor: const Duration(seconds: 3),
         onResult: (result) {
           setState(() {
             _textController.text = result.recognizedWords;
@@ -163,6 +194,8 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
   Future<void> _processUserQuery(String query) async {
     if (query.isEmpty || _isThinking) return;
 
+    // 清除問候語 completionHandler，防止 AI 回覆完誤觸
+    _flutterTts.setCompletionHandler(() {});
     await _flutterTts.stop();
 
     setState(() {
@@ -234,6 +267,7 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
   @override
   void dispose() {
     _waveController.dispose();
+    _flutterTts.setCompletionHandler(() {});
     _flutterTts.stop();
     _speechToText.stop();
     _textController.dispose();

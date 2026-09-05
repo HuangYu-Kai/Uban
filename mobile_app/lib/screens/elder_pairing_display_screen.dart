@@ -22,11 +22,11 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
   );
   static const int _devBypassUserId = int.fromEnvironment(
     'DEV_BYPASS_USER_ID',
-    defaultValue: 1,
+    defaultValue: 2,
   );
   static const String _devBypassUserName = String.fromEnvironment(
     'DEV_BYPASS_USER_NAME',
-    defaultValue: 'TestElder',
+    defaultValue: '宇璿',
   );
 
   String? _pairingCode;
@@ -296,15 +296,10 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
     String? elderName;
     String? role;
 
-    // 開發模式：固定使用同一個測試長輩帳號（不依賴 SharedPreferences 是否被清空）
+    // 開發模式或點擊快速登入測試長輩：直接登入原本名稱為「宇璿」的帳號 (user_id=2)
     if (_devBypassLogin) {
-      elderId = _devBypassUserId > 0 ? _devBypassUserId : 1;
-      elderName =
-          _devBypassUserName.isNotEmpty ? _devBypassUserName : 'TestElder';
-      await prefs.setInt('caregiver_id', elderId);
-      await prefs.setString('caregiver_name', elderName);
-      await prefs.setString('user_role', 'elder');
-      role = 'elder';
+      await _quickLoginYuxuanDemo();
+      return;
     } else {
       elderId = prefs.getInt('caregiver_id');
       elderName = prefs.getString('caregiver_name');
@@ -354,26 +349,9 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
     if (!mounted) return;
 
     if (elderId == null || elderName == null || role != 'elder') {
-      // ★ 2026-09-01 第三十九輪 item 2：使用者不是伺服器管理者、讀不到 log，
-      //   只能看畫面（見專案既有原則）——原本只顯示一句模糊提示，看不出是
-      //   哪個鍵沒了。這裡改列出實際讀到的鍵狀態，方便使用者一次回報清楚。
-      //   ⚠️ 只顯示「有／無」與角色字串，不印 elder_id／姓名等內容，避免
-      //   在畫面上外洩個資。獨立重讀 last_elder_id/name（而非沿用上面迴圈裡
-      //   的區域變數 lastId/lastName），確保不論是否曾嘗試過 fallback 分支，
-      //   這裡看到的都是 prefs 當下的真實狀態。
-      final bool hasLastId = prefs.getInt('last_elder_id') != null;
-      final bool hasLastName = prefs.getString('last_elder_name') != null;
-      final String roleDisplay = role ?? '(無)';
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '尚未找到可快速登入的長輩帳號，請先完成一次配對\n'
-            '（診斷：last_id=${hasLastId ? '有' : '無'}　'
-            'last_name=${hasLastName ? '有' : '無'}　'
-            'role=$roleDisplay）',
-          ),
-        ),
-      );
+      // 若本機沒有其他已登入長輩，自動備援登入「宇璿」測試長輩
+      debugPrint('ℹ️ [ElderPairingDisplay] 無本機長輩記憶，備援登入「宇璿」測試長輩');
+      await _quickLoginYuxuanDemo();
       return;
     }
 
@@ -457,10 +435,12 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
       await prefs.setInt('caregiver_id', elderId);
       await prefs.setString('caregiver_name', elderName);
       await prefs.setString('user_role', 'elder');
+      await prefs.setString('saved_role', 'elder');
       await prefs.setString('elder_room_id', elderRoomId);
       // 強制設為通話機（不需要對話框）
       await prefs.setBool('saved_is_cctv', false);
       await prefs.setString('saved_device_name', '$elderName的設備');
+      await prefs.setString('device_role_$elderRoomId', 'comm');
 
       // ★ 第四十輪（item 5）：補寫「登出不清除」的快速登入記憶鍵。這顆按鈕原本是
       //   全專案唯一一條「寫入 user_role='elder' 卻不呼叫 _rememberLastElder」的

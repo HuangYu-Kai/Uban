@@ -502,8 +502,13 @@ class ApiService {
     return {'status': 'error', 'message': '網路連線失敗，請檢查 AI Server 是否開啟'};
   }
 
-  /// AI 串流聊天（SSE）- 逐 token 回傳，支援多候選 IP 自動降級連線
-  static Stream<String> aiChatStream(int userId, String message) async* {
+  /// AI 串流聊天（SSE）- 逐 token 回傳，支援多候選 IP 自動降級連線，支援自訂長輩稱謂 (appellation)
+  static Stream<String> aiChatStream(
+    int userId,
+    String message, {
+    String? appellation,
+    String? userName,
+  }) async* {
     // ★ 同 [aiChat]：已移除開發者 LAN IP／模擬器 10.0.2.2 兩筆寫死候選位址。
     final List<String> candidateUrls = [
       'https://boyo-desktop.tail531c8a.ts.net/api/ai/chat/stream',
@@ -519,7 +524,12 @@ class ApiService {
         debugPrint('📡 [aiChatStream Attempt ${idx + 1}] -> $targetUrl');
         final request = http.Request('POST', Uri.parse(targetUrl));
         request.headers['Content-Type'] = 'application/json';
-        request.body = jsonEncode({'user_id': userId, 'message': message});
+        request.body = jsonEncode({
+          'user_id': userId,
+          'message': message,
+          if (appellation != null && appellation.isNotEmpty) 'appellation': appellation,
+          if (userName != null && userName.isNotEmpty) 'user_name': userName,
+        });
 
         final streamedResponse = await client.send(request).timeout(const Duration(seconds: 15));
 

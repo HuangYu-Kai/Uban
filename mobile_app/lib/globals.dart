@@ -19,14 +19,13 @@ ValueNotifier<bool> isMediaPlayingNotifier = ValueNotifier(false);
 /// 每次重啟都是一次麥克風 acquire/release，系統的麥克風指示燈於是不停閃爍，
 /// 而這個 App 的核心是「環繞長輩語音操作」，環境雜音又會不斷觸發誤判重啟。
 ///
-/// 預設 **false（關閉）**，由長輩端設定頁的開關手動啟用。
-/// 關閉時完全不初始化 STT、不請求麥克風權限、不啟動看門狗——
-/// 不是「啟動後再停掉」，而是根本不開始。
+/// 預設 **true（啟用）**，長輩端開機即支援免持呼叫「Hey 嘎蛙 / 嘎挖」。
+/// 可由長輩端設定頁手動切換關閉。
 ///
 /// 這個 notifier 讓設定頁的切換能即時生效，不必重開 App；
 /// 持久化鍵位為 [kWakeWordEnabledKey]，屬於「與帳號無關的裝置偏好」，
 /// 因此**刻意不列入** `SessionManager._sessionKeys`，登出不會被清掉。
-ValueNotifier<bool> wakeWordEnabledNotifier = ValueNotifier(false);
+ValueNotifier<bool> wakeWordEnabledNotifier = ValueNotifier(true);
 
 /// [wakeWordEnabledNotifier] 的 SharedPreferences 鍵位。
 const String kWakeWordEnabledKey = 'wake_word_enabled';
