@@ -396,6 +396,15 @@ class _PetStudioScreenState extends State<PetStudioScreen>
                 ),
               ),
 
+              // 🎵 頂部音樂控制按鈕（自由開關與曲目設定）
+              Positioned(
+                top: MediaQuery.of(context).padding.top + 12,
+                right: 16,
+                child: SafeArea(
+                  child: _buildMusicControlButton(),
+                ),
+              ),
+
               // 🧺 6. 自適應半透明食匣抽屜（橫螢幕滑自右側、直螢幕升自底部）
               if (_isFeedingSheetOpen)
                 Positioned.fill(
@@ -472,7 +481,7 @@ class _PetStudioScreenState extends State<PetStudioScreen>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '🏡 福氣小豬窩',
+                '🏡 小豬的家',
                 style: GoogleFonts.notoSansTc(
                   fontSize: isLandscape ? 21 : 18.5,
                   fontWeight: FontWeight.w900,
@@ -873,6 +882,396 @@ class _PetStudioScreenState extends State<PetStudioScreen>
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  // 🎵 頂部音樂控制膠囊按鈕
+  Widget _buildMusicControlButton() {
+    final bool isMuted = _audioService.isMuted;
+
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFFDF8).withValues(alpha: 0.94),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: isMuted ? const Color(0xFFE2E8F0) : const Color(0xFFFDE68A),
+            width: 1.5,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: isMuted
+                  ? Colors.black.withValues(alpha: 0.05)
+                  : const Color(0xFFF59E0B).withValues(alpha: 0.16),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 點擊直接切換開/關
+            InkWell(
+              onTap: () async {
+                HapticFeedback.lightImpact();
+                await _audioService.toggleMute();
+                setState(() {});
+                _showSnackToast(
+                  _audioService.isMuted
+                      ? '🔇 背景音樂已靜音'
+                      : '🎵 背景音樂已開啟（${_audioService.currentTrack.title}）',
+                );
+              },
+              borderRadius: const BorderRadius.horizontal(left: Radius.circular(24)),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 9, 10, 9),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(5),
+                      decoration: BoxDecoration(
+                        color: isMuted
+                            ? const Color(0xFFF1F5F9)
+                            : const Color(0xFFFEF3C7),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        isMuted
+                            ? Icons.music_off_rounded
+                            : Icons.music_note_rounded,
+                        color: isMuted
+                            ? const Color(0xFF94A3B8)
+                            : const Color(0xFFD97706),
+                        size: 18,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      isMuted ? '音樂：關' : '音樂：開',
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                        color: isMuted
+                            ? const Color(0xFF94A3B8)
+                            : const Color(0xFF78350F),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            // 分隔細線
+            Container(
+              width: 1.2,
+              height: 18,
+              color: const Color(0xFFEADBCE),
+            ),
+            // 設定/曲目選擇按鈕
+            InkWell(
+              onTap: () {
+                HapticFeedback.lightImpact();
+                _showMusicSettingsSheet();
+              },
+              borderRadius: const BorderRadius.horizontal(right: Radius.circular(24)),
+              child: const Padding(
+                padding: EdgeInsets.fromLTRB(9, 9, 14, 9),
+                child: Icon(
+                  Icons.tune_rounded,
+                  size: 19,
+                  color: Color(0xFFB45309),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // 🎼 背景音樂曲目與音量設定面板
+  void _showMusicSettingsSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (modalContext, setModalState) {
+          final isMuted = _audioService.isMuted;
+          final currentTrackId = _audioService.currentTrackId;
+          final volume = _audioService.volume;
+
+          return Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+            padding: const EdgeInsets.all(22),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFFDF8),
+              borderRadius: BorderRadius.circular(32),
+              border: Border.all(color: const Color(0xFFEADBCE), width: 1.8),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF78350F).withValues(alpha: 0.12),
+                  blurRadius: 24,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // 標題與關閉
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFFEF3C7),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Text('🎵', style: TextStyle(fontSize: 20)),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '背景音樂設定',
+                            style: GoogleFonts.notoSansTc(
+                              fontSize: 19,
+                              fontWeight: FontWeight.w900,
+                              color: const Color(0xFF451A03),
+                            ),
+                          ),
+                          Text(
+                            '柔和悠揚的田園樂章，陪伴長輩與小豬',
+                            style: GoogleFonts.notoSansTc(
+                              fontSize: 12.5,
+                              color: const Color(0xFF8C6D58),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded, color: Color(0xFF78350F)),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+
+                // 1. 音樂總開關 Switch
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: isMuted ? const Color(0xFFF8FAFC) : const Color(0xFFFFFBEB),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: isMuted ? const Color(0xFFE2E8F0) : const Color(0xFFFDE68A),
+                      width: 1.5,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        isMuted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+                        color: isMuted ? const Color(0xFF94A3B8) : const Color(0xFFD97706),
+                        size: 24,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              isMuted ? '音樂已靜音' : '背景音樂播放中',
+                              style: GoogleFonts.notoSansTc(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                                color: isMuted ? const Color(0xFF64748B) : const Color(0xFF78350F),
+                              ),
+                            ),
+                            Text(
+                              isMuted ? '點擊右側開關即可開啟音樂' : '保持輕柔舒緩的田園陪伴',
+                              style: GoogleFonts.notoSansTc(
+                                fontSize: 12,
+                                color: const Color(0xFF94A3B8),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Switch(
+                        value: !isMuted,
+                        activeThumbColor: const Color(0xFFD97706),
+                        activeTrackColor: const Color(0xFFFDE68A),
+                        onChanged: (val) async {
+                          HapticFeedback.lightImpact();
+                          await _audioService.toggleMute();
+                          setModalState(() {});
+                          setState(() {});
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // 2. 音量拉桿（開啟狀態才顯示）
+                if (!isMuted) ...[
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        '音量調節',
+                        style: GoogleFonts.notoSansTc(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFF78350F),
+                        ),
+                      ),
+                      Text(
+                        '${(volume * 100).round()}%',
+                        style: GoogleFonts.inter(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w900,
+                          color: const Color(0xFFB45309),
+                        ),
+                      ),
+                    ],
+                  ),
+                  SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      activeTrackColor: const Color(0xFFD97706),
+                      inactiveTrackColor: const Color(0xFFF1EBE1),
+                      thumbColor: const Color(0xFFD97706),
+                      overlayColor: const Color(0xFFD97706).withValues(alpha: 0.15),
+                      trackHeight: 6,
+                    ),
+                    child: Slider(
+                      value: volume,
+                      min: 0.05,
+                      max: 1.0,
+                      onChanged: (val) async {
+                        await _audioService.setVolume(val);
+                        setModalState(() {});
+                        setState(() {});
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+
+                // 3. 曲目清單選擇
+                Text(
+                  '選擇柔和曲目',
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF78350F),
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                ...GardenAmbientAudioService.availableTracks.map((track) {
+                  final bool isSelected = currentTrackId == track.id;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: InkWell(
+                      onTap: () async {
+                        HapticFeedback.lightImpact();
+                        await _audioService.setTrack(track.id);
+                        setModalState(() {});
+                        setState(() {});
+                      },
+                      borderRadius: BorderRadius.circular(18),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: isSelected ? const Color(0xFFFFFBEB) : const Color(0xFFFAF7F2),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(
+                            color: isSelected ? const Color(0xFFF59E0B) : const Color(0xFFEADBCE),
+                            width: isSelected ? 2.0 : 1.2,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Text(track.emoji, style: const TextStyle(fontSize: 24)),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Text(
+                                        track.title,
+                                        style: GoogleFonts.notoSansTc(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w900,
+                                          color: isSelected
+                                              ? const Color(0xFF78350F)
+                                              : const Color(0xFF451A03),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 7, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: isSelected
+                                              ? const Color(0xFFFEF3C7)
+                                              : const Color(0xFFF1EBE1),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: Text(
+                                          track.durationText,
+                                          style: GoogleFonts.inter(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                            color: const Color(0xFF78350F),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    track.description,
+                                    style: GoogleFonts.notoSansTc(
+                                      fontSize: 12,
+                                      color: const Color(0xFF8C6D58),
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (isSelected)
+                              const Icon(
+                                Icons.check_circle_rounded,
+                                color: Color(0xFFD97706),
+                                size: 22,
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ],
+            ),
+          );
+        },
       ),
     );
   }

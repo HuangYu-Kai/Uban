@@ -6,12 +6,14 @@ class PetGrowthScaleCard extends StatelessWidget {
   final PetGrowthState growthState;
   final VoidCallback? onTap;
   final bool isCompact;
+  final double? maxWidth;
 
   const PetGrowthScaleCard({
     super.key,
     required this.growthState,
     this.onTap,
     this.isCompact = false,
+    this.maxWidth,
   });
 
   @override
@@ -69,7 +71,8 @@ class PetGrowthScaleCard extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(24),
       child: Container(
-        constraints: const BoxConstraints(maxWidth: 480),
+        width: maxWidth == null ? double.infinity : null,
+        constraints: maxWidth != null ? BoxConstraints(maxWidth: maxWidth!) : null,
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
         decoration: BoxDecoration(
           color: const Color(0xFFFFFDF8),

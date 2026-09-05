@@ -33,11 +33,11 @@ class _SplashScreenState extends State<SplashScreen> {
   );
   static const int _devBypassUserId = int.fromEnvironment(
     'DEV_BYPASS_USER_ID',
-    defaultValue: 0,
+    defaultValue: 2,
   );
   static const String _devBypassUserName = String.fromEnvironment(
     'DEV_BYPASS_USER_NAME',
-    defaultValue: '測試使用者',
+    defaultValue: '宇璿',
   );
 
   bool _fadedOut = false;

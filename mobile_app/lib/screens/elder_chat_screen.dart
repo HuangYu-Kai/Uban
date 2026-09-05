@@ -1,7 +1,9 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:http/http.dart' as http;
 import 'package:record/record.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:audioplayers/audioplayers.dart';
@@ -31,11 +33,25 @@ class ElderChatScreen extends StatefulWidget {
 }
 
 class _ChatMessage {
+  final String id;
   String text;
   final bool isUser;
   bool isStreaming; // AI 訊息是否還在串流中
+  String? ttsLanguage; // 記錄發送當下的語系 ('mandarin' 或 'taigi')
+  String? ttsText; // 記錄當初 TTS 實際唸出來的純淨文字
+  String? ttsAudioPath; // 本地快取音檔路徑（特別是台語，存入本地，點了直接重播，免額外發送 Yating API）
+  bool isPlayingAudio; // 當前是否正在播放中
 
-  _ChatMessage(this.text, this.isUser, {this.isStreaming = false});
+  _ChatMessage(
+    this.text,
+    this.isUser, {
+    String? id,
+    this.isStreaming = false,
+    this.ttsLanguage,
+    this.ttsText,
+    this.ttsAudioPath,
+    this.isPlayingAudio = false,
+  }) : id = id ?? '${DateTime.now().millisecondsSinceEpoch}_${text.hashCode.abs()}';
 }
 
 class _ElderChatScreenState extends State<ElderChatScreen> {
@@ -56,10 +72,12 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
   final AudioPlayer _audioPlayer = AudioPlayer();
   String _selectedLanguage = 'mandarin'; // 'mandarin' 或 'taigi'
   bool _isNavigatingToNews = false; // 防連擊鎖與載入狀態
+  String _currentAppellation = ''; // 長輩/子女設定的專屬稱呼
 
   @override
   void initState() {
     super.initState();
+    _currentAppellation = widget.userName;
     try {
       _audioPlayer.setAudioContext(AudioContext(
         android: const AudioContextAndroid(
@@ -70,12 +88,63 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
         ),
       ));
     } catch (_) {}
-    _messages.add(_ChatMessage(
-      '您好，${widget.userName}！我是小嘎 😊\n想聊什麼都可以跟我說喔～',
-      false,
-    ));
+
+    _audioPlayer.onPlayerComplete.listen((_) {
+      if (mounted) {
+        setState(() {
+          for (final m in _messages) {
+            m.isPlayingAudio = false;
+          }
+        });
+      }
+    });
+
+    _audioPlayer.onPlayerStateChanged.listen((state) {
+      if (state == PlayerState.stopped || state == PlayerState.completed) {
+        if (mounted) {
+          setState(() {
+            for (final m in _messages) {
+              m.isPlayingAudio = false;
+            }
+          });
+        }
+      }
+    });
+
+    _loadUserAppellation();
     _initSpeech();
     _loadChatHistory();
+  }
+
+  /// 載入由長輩或子女設定的專屬稱呼（優先從本機快取讀取，並向後端 API 同步）
+  Future<void> _loadUserAppellation() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final localAppellation = prefs.getString('elder_appellation') ??
+          prefs.getString('user_name') ??
+          prefs.getString('caregiver_name');
+      if (localAppellation != null && localAppellation.trim().isNotEmpty) {
+        if (mounted) {
+          setState(() {
+            _currentAppellation = localAppellation.trim();
+          });
+        }
+      }
+
+      // 從後端個人設定同步最新稱呼 (appellation)
+      final profile = await ApiService.getElderProfile(widget.userId);
+      if (profile['status'] == 'success' && profile['data'] != null) {
+        final serverApp = profile['data']['appellation']?.toString().trim();
+        if (serverApp != null && serverApp.isNotEmpty) {
+          await prefs.setString('elder_appellation', serverApp);
+          if (mounted) {
+            setState(() {
+              _currentAppellation = serverApp;
+            });
+          }
+        }
+      }
+    } catch (_) {}
   }
 
   Future<void> _loadChatHistory() async {
@@ -86,7 +155,14 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
       if (cached != null && cached.isNotEmpty) {
         final List<dynamic> decoded = jsonDecode(cached);
         final List<_ChatMessage> localLoaded = decoded
-            .map((item) => _ChatMessage(item['text'] ?? '', item['isUser'] == true))
+            .map((item) => _ChatMessage(
+                  item['text'] ?? '',
+                  item['isUser'] == true,
+                  id: item['id']?.toString(),
+                  ttsLanguage: item['ttsLanguage'],
+                  ttsText: item['ttsText'],
+                  ttsAudioPath: item['ttsAudioPath'],
+                ))
             .where((m) => m.text.isNotEmpty)
             .toList();
 
@@ -113,7 +189,12 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
             final role = item['role'] ?? 'user';
             final text = item['text'] ?? '';
             if (text.isNotEmpty) {
-              remoteLoaded.add(_ChatMessage(text, role == 'user'));
+              remoteLoaded.add(_ChatMessage(
+                text,
+                role == 'user',
+                ttsLanguage: role == 'user' ? null : 'mandarin',
+                ttsText: role == 'user' ? null : _extractCleanTtsText(text),
+              ));
             }
           }
           if (mounted && remoteLoaded.isNotEmpty) {
@@ -129,6 +210,18 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
     } catch (e) {
       debugPrint('⚠️ [Remote ChatHistory Load Error] $e');
     }
+
+    if (_messages.isEmpty && mounted) {
+      final name = _currentAppellation.isNotEmpty ? _currentAppellation : widget.userName;
+      setState(() {
+        _messages.add(_ChatMessage(
+          '您好，$name！我是小嘎 😊\n想聊什麼都可以跟我說喔～',
+          false,
+          ttsText: '您好，$name！我是小嘎，想聊什麼都可以跟我說喔～',
+          ttsLanguage: 'mandarin',
+        ));
+      });
+    }
   }
 
   Future<void> _saveLocalChatHistory() async {
@@ -136,7 +229,14 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
       final prefs = await SharedPreferences.getInstance();
       final listData = _messages
           .where((m) => !m.isStreaming && m.text.isNotEmpty)
-          .map((m) => {'text': m.text, 'isUser': m.isUser})
+          .map((m) => {
+                'id': m.id,
+                'text': m.text,
+                'isUser': m.isUser,
+                'ttsLanguage': m.ttsLanguage,
+                'ttsText': m.ttsText,
+                'ttsAudioPath': m.ttsAudioPath,
+              })
           .toList();
       await prefs.setString('chat_history_${widget.userId}', jsonEncode(listData));
     } catch (e) {
@@ -169,11 +269,14 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
         await prefs.remove('chat_history_${widget.userId}');
         await ApiService.delete('/ai/history?user_id=${widget.userId}');
         if (mounted) {
+          final name = _currentAppellation.isNotEmpty ? _currentAppellation : widget.userName;
           setState(() {
             _messages.clear();
             _messages.add(_ChatMessage(
-              '您好，${widget.userName}！我是小嘎 😊\n已為您重置聊天紀錄，想聊什麼隨時跟我說喔～',
+              '您好，$name！我是小嘎 😊\n已為您重置聊天紀錄，想聊什麼隨時跟我說喔～',
               false,
+              ttsText: '您好，$name！我是小嘎，已為您重置聊天紀錄，想聊什麼隨時跟我說喔～',
+              ttsLanguage: 'mandarin',
             ));
           });
           ScaffoldMessenger.of(context).showSnackBar(
@@ -321,7 +424,12 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
     final aiMsg = _ChatMessage('', false, isStreaming: true);
 
     try {
-      final stream = ApiService.aiChatStream(widget.userId, text);
+      final stream = ApiService.aiChatStream(
+        widget.userId,
+        text,
+        appellation: _currentAppellation.isNotEmpty ? _currentAppellation : widget.userName,
+        userName: widget.userName,
+      );
       bool firstToken = true;
 
       await for (final token in stream) {
@@ -356,21 +464,30 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
 
       // 串流結束
       if (mounted) {
+        final cleanText = _extractCleanTtsText(aiMsg.text);
         setState(() {
           aiMsg.isStreaming = false;
           if (aiMsg.text.isEmpty) aiMsg.text = '嗯嗯，我在聽～';
+          aiMsg.ttsLanguage = _selectedLanguage; // 記錄當初 TTS 唸出來的語系 ('mandarin' 或 'taigi')
+          aiMsg.ttsText = cleanText;             // 記錄當初 TTS 唸出來的純淨內容
           _isThinking = false;
         });
         
         _saveLocalChatHistory();
 
-        // 觸發 TTS 語音播放
-        _playTts(aiMsg.text);
+        // 觸發 TTS 語音播放與本機快取
+        _playOrReplayTts(aiMsg);
       }
     } catch (e) {
       if (!mounted) return;
+      final errorText = '小嘎現在連不上，稍後再聊喔 🙏';
       setState(() {
-        _messages.add(_ChatMessage('小嘎現在連不上，稍後再聊喔 🙏', false));
+        _messages.add(_ChatMessage(
+          errorText,
+          false,
+          ttsLanguage: _selectedLanguage,
+          ttsText: _extractCleanTtsText(errorText),
+        ));
         _isThinking = false;
       });
       _saveLocalChatHistory();
@@ -378,37 +495,122 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
     _scrollToBottom();
   }
 
-  Future<void> _playTts(String text) async {
-    debugPrint('🎙️ [TTS Stream] _playTts called. Text length: ${text.length}');
-    try {
-      // 移除 [VIDEO_ID:...] 標籤、Markdown 語法、Emoji 等，使語音朗讀順暢
-      String cleanText = text
-          .replaceAll(RegExp(r'\[VIDEO_ID:[^\]]+\]'), '')
-          .replaceAll(RegExp(r'\*\*|__|\*|_|#|>|`|\[|\]|\(|\)'), '')
-          .replaceAll(RegExp(r'!\[.*?\]\(.*?\)|\[.*?\]\(.*?\)', caseSensitive: false), '')
-          .replaceAll(RegExp(r'[\u{1F600}-\u{1F64F}|\u{1F300}-\u{1F5FF}|\u{1F680}-\u{1F6FF}|\u{2600}-\u{26FF}|\u{2700}-\u{27BF}]', unicode: true), '') // 移除 Emoji
-          .trim();
+  /// 提取純淨 TTS 朗讀文字：移除影片標籤、Markdown 語法與 Emoji
+  static String _extractCleanTtsText(String text) {
+    return text
+        .replaceAll(RegExp(r'\[VIDEO_ID:[^\]]+\]'), '')
+        .replaceAll(RegExp(r'（[^）]*?）|\([^)]*?\)'), '') // 移除舞台指示或括號口吻（如 （溫和地）、(微笑) 等）
+        .replaceAll(RegExp(r'\*\*|__|\*|_|#|>|`|\[|\]'), '')
+        .replaceAll(RegExp(r'!\[.*?\]\(.*?\)|\[.*?\]\(.*?\)', caseSensitive: false), '')
+        .replaceAll(RegExp(r'[\u{1F600}-\u{1F64F}|\u{1F300}-\u{1F5FF}|\u{1F680}-\u{1F6FF}|\u{2600}-\u{26FF}|\u{2700}-\u{27BF}]', unicode: true), '') // 移除 Emoji
+        .trim();
+  }
 
-      debugPrint('🎙️ [TTS Stream] Cleaned text: "$cleanText"');
-      if (cleanText.isEmpty) {
-        debugPrint('🎙️ [TTS Stream] Cleaned text is empty. Skipping.');
+  /// 語音播放與重播控制（包含多候選伺服器備援與台語 100% 本機快取防重複計費機制）
+  Future<void> _playOrReplayTts(_ChatMessage msg) async {
+    // 若當前正播放此訊息語音，點擊即停止
+    if (msg.isPlayingAudio) {
+      await _audioPlayer.stop();
+      if (mounted) {
+        setState(() {
+          msg.isPlayingAudio = false;
+        });
+      }
+      return;
+    }
+
+    final cleanText = (msg.ttsText != null && msg.ttsText!.isNotEmpty)
+        ? msg.ttsText!
+        : _extractCleanTtsText(msg.text);
+
+    if (cleanText.isEmpty) {
+      debugPrint('🎙️ [TTS] Cleaned text is empty. Skipping.');
+      return;
+    }
+
+    // 停止其它訊息播放，並標註此訊息為播放中
+    await _audioPlayer.stop();
+    if (mounted) {
+      setState(() {
+        for (final m in _messages) {
+          m.isPlayingAudio = false;
+        }
+        msg.isPlayingAudio = true;
+      });
+    }
+
+    try {
+      final lang = msg.ttsLanguage ?? _selectedLanguage;
+      final engine = lang == 'taigi' ? 'yating' : 'edge';
+
+      // 1. 優先檢查本地快取（特別是台語）
+      if (msg.ttsAudioPath != null &&
+          File(msg.ttsAudioPath!).existsSync() &&
+          File(msg.ttsAudioPath!).lengthSync() > 0) {
+        debugPrint('🎙️ [TTS Cache Hit] 命中本地快取音檔: ${msg.ttsAudioPath} (語言: $lang, 引擎: $engine)');
+        await _audioPlayer.play(DeviceFileSource(msg.ttsAudioPath!));
         return;
       }
 
-      final engine = _selectedLanguage == 'taigi' ? 'yating' : 'edge';
-      
-      // 構建實時語音音訊串流 URL
-      final baseUrl = ApiService.baseUrl;
+      // 2. 構建多伺服器候選位址（優先存取配置了 Yating API 金鑰的高效能 AI Hub: boyo-desktop）
       final encodedText = Uri.encodeComponent(cleanText);
-      final streamUrl = '$baseUrl/voice/tts/stream?text=$encodedText&engine=$engine';
-      
-      debugPrint('🎙️ [TTS Stream] Playing via UrlSource: $streamUrl');
-      
-      await _audioPlayer.stop();
-      await _audioPlayer.play(UrlSource(streamUrl));
-      debugPrint('🎙️ [TTS Stream] Play method invoked successfully.');
+      final candidateUrls = [
+        'https://boyo-desktop.tail531c8a.ts.net/api/voice/tts/stream?text=$encodedText&engine=$engine',
+        '${ApiService.localAiBaseUrl}/voice/tts/stream?text=$encodedText&engine=$engine',
+        '${ApiService.baseUrl.replaceFirst('/api', '')}/api/voice/tts/stream?text=$encodedText&engine=$engine',
+      ].toSet().toList();
+
+      final dir = await getApplicationDocumentsDirectory();
+      final cacheDir = Directory('${dir.path}/tts_cache');
+      if (!cacheDir.existsSync()) {
+        cacheDir.createSync(recursive: true);
+      }
+      final cachedFile = File('${cacheDir.path}/${lang}_${msg.id}.mp3');
+
+      bool downloadSuccess = false;
+      for (int i = 0; i < candidateUrls.length; i++) {
+        final targetUrl = candidateUrls[i];
+        try {
+          debugPrint('🎙️ [TTS Download Attempt ${i + 1}] ($lang / $engine) -> $targetUrl');
+          final response = await http.get(Uri.parse(targetUrl)).timeout(const Duration(seconds: 30));
+          if (response.statusCode == 200 && response.bodyBytes.isNotEmpty) {
+            await cachedFile.writeAsBytes(response.bodyBytes);
+            downloadSuccess = true;
+            debugPrint('🎙️ [TTS Download Success] 成功存入本地快取: ${cachedFile.path} (${response.bodyBytes.length} bytes)');
+            break;
+          } else {
+            debugPrint('⚠️ [TTS Download] 伺服器返回空音檔 (HTTP ${response.statusCode}, bytes=${response.bodyBytes.length})，切換下一候選位址');
+          }
+        } catch (e) {
+          debugPrint('⚠️ [TTS Download Error] $targetUrl 失敗: $e');
+        }
+      }
+
+      if (downloadSuccess && cachedFile.existsSync() && cachedFile.lengthSync() > 0) {
+        if (mounted) {
+          setState(() {
+            msg.ttsAudioPath = cachedFile.path;
+          });
+        } else {
+          msg.ttsAudioPath = cachedFile.path;
+        }
+        _saveLocalChatHistory();
+        debugPrint('🎙️ [TTS Play] 播放本地音檔: ${cachedFile.path}');
+        await _audioPlayer.play(DeviceFileSource(cachedFile.path));
+      } else {
+        debugPrint('❌ [TTS Failed] 所有候選伺服器皆無法合成語音');
+        if (mounted) {
+          setState(() => msg.isPlayingAudio = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('${lang == 'taigi' ? '台語' : '國語'}語音播放失敗，請檢查網路')),
+          );
+        }
+      }
     } catch (e) {
-      debugPrint('🎙️ [TTS Stream Failed] $e');
+      debugPrint('🎙️ [TTS Play Failed] $e');
+      if (mounted) {
+        setState(() => msg.isPlayingAudio = false);
+      }
     }
   }
 
@@ -921,8 +1123,78 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
                             padding: const EdgeInsets.only(top: 4),
                             child: _StreamingCursor(),
                           ),
+                        // 非串流中：顯示當時 TTS 朗讀純文字紀錄與再聽一次重播條
+                        if (!msg.isStreaming &&
+                            (msg.ttsText?.isNotEmpty == true || msg.text.isNotEmpty))
+                          _buildTtsReplayBar(msg),
                       ],
                     ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// AI 對話框中的語系標記與語音重播按鈕（不重複呈現文字，僅以聲音圖示提供隨時重聽）
+  Widget _buildTtsReplayBar(_ChatMessage msg) {
+    final bool isTaigi = msg.ttsLanguage == 'taigi';
+    final bool isPlaying = msg.isPlayingAudio;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 語系標籤 (記錄當時是用台語還是國語)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: isTaigi ? const Color(0xFFEA580C) : const Color(0xFF16A34A),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              isTaigi ? '🏮 台語' : '🗣️ 國語',
+              style: GoogleFonts.notoSansTc(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          // 聲音 ICON（直接點擊播放/停止，不寫「再聽一次」文字）
+          InkWell(
+            onTap: () => _playOrReplayTts(msg),
+            borderRadius: BorderRadius.circular(22),
+            child: Container(
+              padding: const EdgeInsets.all(7),
+              decoration: BoxDecoration(
+                color: isPlaying
+                    ? const Color(0xFFFEF3C7)
+                    : (isTaigi ? const Color(0xFFFFF7ED) : const Color(0xFFF0FDF4)),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: isPlaying
+                      ? const Color(0xFFF59E0B)
+                      : (isTaigi ? const Color(0xFFFDBA74) : const Color(0xFF86EFAC)),
+                  width: 1.5,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.06),
+                    blurRadius: 3,
+                    offset: const Offset(0, 1),
+                  ),
+                ],
+              ),
+              child: Icon(
+                isPlaying ? Icons.pause_circle_filled_rounded : Icons.volume_up_rounded,
+                color: isPlaying
+                    ? const Color(0xFFD97706)
+                    : (isTaigi ? const Color(0xFFEA580C) : const Color(0xFF16A34A)),
+                size: 24,
+              ),
             ),
           ),
         ],

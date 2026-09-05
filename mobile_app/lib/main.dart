@@ -40,6 +40,9 @@ import 'services/local_call_notification.dart';
 import 'services/cctv_alert_notification.dart';
 // ★ 2026-08-12 第二十三輪：緊急通話提示音的全域單一擁有者（救護車雙音）
 import 'services/emergency_tone.dart';
+// ⏰ 排程提醒本機通知與全域管理器
+import 'services/local_reminder_notification.dart';
+import 'services/elder_reminder_manager.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 final StreamController<String> callKitDeclineStream =
@@ -150,6 +153,28 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         await CctvAlertNotification.show(message.data);
       } catch (e) {
         debugPrint('⚠️ [BG] 跌倒警報通知失敗: $e');
+      }
+      return;
+    }
+
+    // ★ ⏰ 排程提醒 FCM（離線/背景高優先級通知 ＋ 前景彈窗）
+    if (type == 'reminder') {
+      debugPrint('⏰ [BG] 收到排程提醒 FCM，顯示本機高優先級通知與彈窗');
+      try {
+        final int reminderId = int.tryParse(message.data['id']?.toString() ?? '') ?? 0;
+        final String title = message.data['title']?.toString() ?? '排程提醒';
+        final String timeStr = message.data['time_str']?.toString() ?? '';
+        final String? note = message.data['note']?.toString();
+        final String? category = message.data['category']?.toString();
+        await LocalReminderNotification.showReminderNotification(
+          id: reminderId,
+          title: title,
+          timeStr: timeStr,
+          note: note,
+          category: category,
+        );
+      } catch (e) {
+        debugPrint('⚠️ [BG] 排程提醒通知失敗: $e');
       }
       return;
     }
@@ -1728,6 +1753,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         } catch (e) {
           debugPrint("⚠️ [FCM-Fg] 跌倒警報通知失敗: $e");
         }
+        return;
+      }
+
+      // ★ ⏰ 排程提醒 FCM（前景訊息，交由 ElderReminderManager 彈窗處理）
+      if (message.data['type'] == 'reminder') {
+        debugPrint("⏰ [FCM-Fg] 收到排程提醒，交由 ElderReminderManager 處理");
+        ElderReminderManager.instance.handleIncomingReminder(message.data);
         return;
       }
 

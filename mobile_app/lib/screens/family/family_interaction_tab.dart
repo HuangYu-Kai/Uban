@@ -1805,42 +1805,47 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                                   ),
                                 ),
                                 const SizedBox(width: 6),
-                                if (r['start_date'] != null && r['start_date'].toString().isNotEmpty) ...[
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF0284C7).withValues(alpha: 0.2),
-                                      borderRadius: BorderRadius.circular(6),
-                                      border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.3)),
-                                    ),
-                                    child: Text(
-                                      r['start_date'].toString().replaceAll('-', '/'),
-                                      style: GoogleFonts.notoSansTc(
-                                        fontSize: 10,
-                                        color: const Color(0xFF38BDF8),
-                                        fontWeight: FontWeight.bold,
+                                Expanded(
+                                  child: Wrap(
+                                    spacing: 4,
+                                    runSpacing: 4,
+                                    crossAxisAlignment: WrapCrossAlignment.center,
+                                    children: [
+                                      if (r['start_date'] != null && r['start_date'].toString().isNotEmpty)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFF0284C7).withValues(alpha: 0.2),
+                                            borderRadius: BorderRadius.circular(6),
+                                            border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.3)),
+                                          ),
+                                          child: Text(
+                                            _formatReminderDate(r['start_date']),
+                                            style: GoogleFonts.notoSansTc(
+                                              fontSize: 10,
+                                              color: const Color(0xFF38BDF8),
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF334155),
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: Text(
+                                          r['repeat_days'] ?? '每天',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: GoogleFonts.notoSansTc(
+                                            fontSize: 10.5,
+                                            color: const Color(0xFFCBD5E1),
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
                                       ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 4),
-                                ],
-                                Flexible(
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF334155),
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    child: Text(
-                                      r['repeat_days'] ?? '每天',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: GoogleFonts.notoSansTc(
-                                        fontSize: 10.5,
-                                        color: const Color(0xFFCBD5E1),
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
+                                    ],
                                   ),
                                 ),
                               ],
@@ -1922,6 +1927,18 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
         ],
       ),
     ).animate().fadeIn(delay: 100.ms, duration: 400.ms);
+  }
+
+  String _formatReminderDate(dynamic rawDate) {
+    if (rawDate == null) return '';
+    final str = rawDate.toString().trim();
+    if (str.isEmpty) return '';
+    // 若為 YYYY-MM-DD 或 YYYY/MM/DD，格式化為 MM/DD 精簡顯示防溢出
+    final match = RegExp(r'^\d{4}[-/](\d{1,2}[-/]\d{1,2})').firstMatch(str);
+    if (match != null) {
+      return match.group(1)!.replaceAll('-', '/');
+    }
+    return str.replaceAll('-', '/');
   }
 
   Widget _buildMonitorSection() {

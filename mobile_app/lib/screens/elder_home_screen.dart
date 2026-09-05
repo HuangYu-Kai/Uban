@@ -21,6 +21,9 @@ import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import '../widgets/google_assistant_overlay.dart';
 // ★ 第四十輪（item 4）：onCancelCall 現在也要關備援本機通知，見下方說明。
 import '../services/local_call_notification.dart';
+// ⏰ 排程提醒管理器
+import '../services/elder_reminder_manager.dart';
+import '../services/local_reminder_notification.dart';
 
 /// ★ 第四十輪（item 4）：取消來電時清除待處理通話 prefs 的共用邏輯。
 /// 與 `main.dart::_clearPendingCallPrefsOnCancel` 同一邏輯（該函式對本檔
@@ -183,11 +186,23 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     // 監聽來自親人的呼叫與推播留言
     _restoreSignalingCallbacks();
 
+    // ★ ⏰ 註冊前景 context 取得器並啟動長輩端排程提醒守護（在線彈窗＋離線定時看門狗）
+    ElderReminderManager.instance.setContextGetter(() => mounted ? context : null);
+    ElderReminderManager.instance.start(
+      userId: widget.userId,
+      userName: widget.userName,
+    );
+
     // ★ 2026-08-20 新增：MIUI 家族裝置的「鎖定螢幕顯示／後台彈出介面」權限
     //   引導。等第一影格畫出後才檢查與導航（此時 Navigator 已就緒），且完全
     //   不 await、不擋任何既有的啟動流程；詳見 _maybeShowMiuiPermissionGuide。
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       _maybeShowMiuiPermissionGuide();
+      // ★ ⏰ 檢查是否由點擊排程提醒通知啟動
+      final launchReminder = await LocalReminderNotification.consumeLaunchPayload();
+      if (launchReminder != null && mounted) {
+        ElderReminderManager.instance.handleIncomingReminder(launchReminder, force: true);
+      }
     });
   }
 
@@ -223,10 +238,13 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
               '嘎蛙';
         });
       }
-      // ★ 2026-08-10 第二十輪（需求 6）：先讀總開關再決定要不要初始化語音喚醒。
-      //   預設 false——這是使用者明確要求的行為（避免雜訊誤觸開麥克風／鏡頭）。
-      wakeWordEnabledNotifier.value =
-          prefs.getBool(kWakeWordEnabledKey) ?? false;
+      // ★ 確保長輩端「全時語音喚醒詞」預設啟用（true），長輩呼叫「Hey 嘎蛙 / 嘎挖」能即時喚醒
+      bool wakeWordEnabled = prefs.getBool(kWakeWordEnabledKey) ?? true;
+      if (!wakeWordEnabled) {
+        wakeWordEnabled = true;
+        await prefs.setBool(kWakeWordEnabledKey, true);
+      }
+      wakeWordEnabledNotifier.value = wakeWordEnabled;
       _initWakeWordListener();
     } catch (e) {
       debugPrint('🤖 [_loadAssistantSettings Error] $e');
@@ -379,13 +397,11 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
         listenFor: const Duration(hours: 1),
         pauseFor: const Duration(seconds: 60),
         onResult: (result) {
-          final text = result.recognizedWords.toLowerCase();
-          debugPrint('🎙️ [WakeWord Recognized] $text (Target AI: $_aiName)');
+          final text = result.recognizedWords;
+          debugPrint('🎙️ [WakeWord Recognized] "$text" (Target AI: $_aiName)');
 
           if (_isDynamicWakeWordMatch(text, _aiName)) {
-            debugPrint('🎯 [WakeWord Match Success!] 觸發 AI 助理彈窗 (識別內容: $text)');
-            _wakeWordStt.stop();
-            _wakeWordListening = false;
+            debugPrint('🎯 [WakeWord Match Success!] 觸發 AI 助理 (識別內容: "$text")');
             _triggerGoogleAssistantOverlay(text);
           }
         },
@@ -398,59 +414,100 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     }
   }
 
-  /// 動態喚醒詞比對算法：100% 覆蓋所有中文 ASR 轉錄同音字、前綴與常見意圖問句
+  /// 動態喚醒詞比對算法：準確覆蓋所有中文 ASR 轉錄同音字與「Hey 嘎蛙/嘎挖」喚醒詞
   bool _isDynamicWakeWordMatch(String text, String customAiName) {
-    final lowerText = text.toLowerCase().replaceAll(RegExp(r'\s+'), '');
+    final lowerText = text
+        .toLowerCase()
+        .replaceAll(RegExp(r'\s+'), '')
+        .replaceAll(RegExp(r'[，,。！!？?\.]'), '');
     final lowerAi = customAiName.toLowerCase().trim();
-    if (lowerAi.isEmpty) return false;
 
-    // 1. 完整包含自訂 AI 名稱
-    if (lowerText.contains(lowerAi)) return true;
+    // 1. 完整包含自訂 AI 名稱（長度 >= 2）
+    if (lowerAi.length >= 2 && lowerText.contains(lowerAi)) return true;
 
-    // 2. 嘎蛙超廣角同音字與轉錄變體 (嘎蛙 / 嘎挖 / 嘎娃 / 嘎哇 / gawa / 黑嘎 / 嘿嘎 / 嗨嘎 / 嘎)
-    final Set<String> targetVariants = {
-      lowerAi,
-      '嘎蛙', '嘎挖', '嘎娃', '嘎哇', '黑嘎', '嘿嘎', '嗨嘎', 'gawa', 'gawha', '小嘎', '嘎', '蛙'
-    };
+    // 2. 嘎蛙/嘎挖 精準同音字與常見 ASR 變體
+    const targetVariants = [
+      '嘎蛙', '嘎挖', '嘎娃', '嘎哇', '嘎話', '嘎花',
+      'gawa', 'gawha',
+      '小嘎', '小蛙', '小嘎蛙',
+      'hey嘎', '嘿嘎', '嗨嘎', '黑嘎', 'hi嘎', '哈囉嘎', '呼叫嘎'
+    ];
 
     for (final variant in targetVariants) {
       if (lowerText.contains(variant)) return true;
     }
 
-    // 3. 常見喚醒前綴 (Hey / 黑 / 嘿 / 嗨 / Hi / 哈囉 / 呼叫 / 小 / 喂)
-    final prefixes = ['hey', 'hi', 'hello', '黑', '嘿', '嗨', '哈囉', '呼叫', '小', '喂'];
-    for (final prefix in prefixes) {
-      if (lowerText.contains(prefix)) return true;
-    }
-
-    // 4. 常見意圖問句 (防止 ASR 裁切掉前導喚醒詞時漏接，如："可以幹嘛", "在嗎", "幫我", "幾點")
-    final intentPhrases = ['可以幹嘛', '在嗎', '你好', '幫我', '幾點', '天氣', '請問', '做什麼', '幹嘛'];
-    for (final intent in intentPhrases) {
-      if (lowerText.contains(intent)) return true;
-    }
-
     return false;
+  }
+
+  /// 從喚醒詞語句中提取出使用者的實際問題（若只叫喚醒詞則返回 null）
+  String? _extractUserQuery(String? rawText, String customAiName) {
+    if (rawText == null || rawText.trim().isEmpty) return null;
+    String text = rawText.trim();
+
+    // 移除常見前綴詞 (hey, 嘿, 嗨, hi, hello, 哈囉, 呼叫, 喂, 黑)
+    final prefixes = ['hey', 'hi', 'hello', '哈囉', '呼叫', '嘿', '嗨', '黑', '喂'];
+    for (final p in prefixes) {
+      if (text.toLowerCase().startsWith(p)) {
+        text = text.substring(p.length).trim();
+      }
+    }
+
+    // 移除 AI 助理名稱與變體 (嘎蛙, 嘎挖, 嘎娃, 嘎哇, gawa, customAiName 等)
+    final aiVariants = [
+      customAiName.toLowerCase(),
+      '嘎蛙', '嘎挖', '嘎娃', '嘎哇', '嘎話', '嘎花', 'gawa', 'gawha', '小嘎', '小蛙', '小嘎蛙', '嘎'
+    ];
+    for (final v in aiVariants) {
+      if (v.isNotEmpty && text.toLowerCase().startsWith(v)) {
+        text = text.substring(v.length).trim();
+      }
+    }
+
+    // 移除開頭標點符號與空白
+    text = text.replaceAll(RegExp(r'^[，,。！!？?\s]+'), '').trim();
+
+    // 若剩餘字串過短或為空，表示長輩只是呼叫喚醒詞，並未包含問題
+    if (text.length <= 1) {
+      return null;
+    }
+    return text;
   }
 
   void _triggerGoogleAssistantOverlay([String? prompt]) async {
     if (_isAssistantShowing) return;
     _isAssistantShowing = true;
-    _wakeWordStt.stop();
+    try {
+      await _wakeWordStt.cancel();
+    } catch (_) {
+      try {
+        _wakeWordStt.stop();
+      } catch (_) {}
+    }
     _wakeWordListening = false;
+    await Future.delayed(const Duration(milliseconds: 200));
+
+    final cleanedPrompt = _extractUserQuery(prompt, _aiName);
+    debugPrint('🎯 [Assistant Launch] rawPrompt="$prompt", cleanedPrompt="$cleanedPrompt"');
+
+    if (!mounted) return;
 
     await GoogleAssistantOverlay.show(
       context,
       userName: _userName,
       aiName: _aiName,
       userId: widget.userId,
-      initialPrompt: prompt,
+      initialPrompt: cleanedPrompt,
     );
 
     if (mounted) {
       setState(() {
         _isAssistantShowing = false;
       });
-      _safeRestartWakeWordListening('overlay_closed');
+      // 延遲重啟語音喚醒，防止搶奪音訊
+      Future.delayed(const Duration(milliseconds: 1500), () {
+        if (mounted) _safeRestartWakeWordListening('overlay_closed');
+      });
     }
   }
 
@@ -488,6 +545,20 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     Signaling().onHeartbeatMessage = (message) {
       if (mounted) {
         _handleProactiveMessage(message);
+      }
+    };
+
+    // ★ ⏰ 監聽排程提醒與同步信令
+    Signaling().onRemoteReminder = (data) {
+      if (mounted) {
+        debugPrint('⏰ [ElderHomeScreen] 收到 onRemoteReminder 信令: $data');
+        ElderReminderManager.instance.handleIncomingReminder(data);
+      }
+    };
+    Signaling().onReminderSync = (data) {
+      if (mounted) {
+        debugPrint('🔄 [ElderHomeScreen] 收到 onReminderSync 信令: $data');
+        ElderReminderManager.instance.syncReminders();
       }
     };
   }
@@ -661,6 +732,10 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     Signaling().onHeartbeatMessage = null;
     Signaling().onCallRequest = null;
     Signaling().onCancelCall = null;
+    Signaling().onRemoteReminder = null;
+    Signaling().onReminderSync = null;
+    ElderReminderManager.instance.setContextGetter(null);
+    ElderReminderManager.instance.stop();
     super.dispose();
   }
 

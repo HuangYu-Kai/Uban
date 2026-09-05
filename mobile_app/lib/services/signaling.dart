@@ -124,6 +124,9 @@ class Signaling {
   Map<String, String> lastEmergencyMeta = const <String, String>{};
   CallAcceptedCallback? onCallAcceptedByRemote;
   CallAcceptedCallback? onCallBusy;
+  /// ⏰ 排程提醒相關回呼
+  void Function(Map<String, dynamic>)? onRemoteReminder;
+  void Function(Map<String, dynamic>)? onReminderSync;
   /// ★ 2026-08-06 第十九輪（需求 3）：與 [onCallBusy] 同步配對的**純資料**欄位。
   /// 在觸發 onCallBusy 之前寫入、回呼內同步讀取，語意與 `lastProcessedCallId` 同一類，
   /// 不是顯示狀態旗標（護欄 G27）。讀不到就是預設的 'declined'。
@@ -402,6 +405,23 @@ class Signaling {
         socket?.disconnect();
       } else {
         debugPrint('⚠️ [Signaling] Join-failed during call, keeping connection');
+      }
+    });
+
+    // ★ ⏰ 排程提醒相關信令
+    socket!.on('remote-reminder', (data) {
+      debugPrint('⏰ [Signaling] 收到 remote-reminder: $data');
+      if (data is Map) {
+        onRemoteReminder?.call(Map<String, dynamic>.from(data));
+      }
+    });
+
+    socket!.on('reminder-sync', (data) {
+      debugPrint('🔄 [Signaling] 收到 reminder-sync: $data');
+      if (data is Map) {
+        onReminderSync?.call(Map<String, dynamic>.from(data));
+      } else {
+        onReminderSync?.call({});
       }
     });
 
