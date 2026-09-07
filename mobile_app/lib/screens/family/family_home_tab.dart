@@ -642,11 +642,20 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
       }
 
       String actName = '';
-      final quoteMatch = RegExp(r'「(.*?)」').firstMatch(fullText);
+      final quoteMatch = RegExp(r'「([^」\n]{1,25})」').firstMatch(fullText);
       if (quoteMatch != null) {
         actName = quoteMatch.group(1)!.trim();
+        if (actName.contains('「')) {
+          actName = actName.split('「').last.trim();
+        }
+        if (actName.contains('...')) {
+          actName = actName.replaceAll('...', '').trim();
+        }
+        actName = actName.replaceAll(RegExp(r'[^\w\u4e00-\u9fa5]+$'), '').trim();
+        actName = actName.replaceAll(RegExp(r'^[^\w\u4e00-\u9fa5]+'), '').trim();
         if (actName.startsWith('做')) actName = actName.substring(1);
-      } else {
+      }
+      if (actName.isEmpty) {
         final m = RegExp(r'(傍晚伸展|伸展運動|晨間散步|健康體操|太極拳|深蹲|抬腿|瑜珈|散步|運動)').firstMatch(fullText);
         actName = m != null ? m.group(1)! : '';
       }
@@ -667,12 +676,21 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     // 3. 用藥類 (Medication)
     if (fullText.contains('藥') || badge == 'MEDICINE' || eventType == 'medication') {
       String medName = '';
-      final quoteMatch = RegExp(r'「(.*?)」').firstMatch(fullText);
+      final quoteMatch = RegExp(r'「([^」\n]{1,25})」').firstMatch(fullText);
       if (quoteMatch != null) {
         medName = quoteMatch.group(1)!.trim();
+        if (medName.contains('「')) {
+          medName = medName.split('「').last.trim();
+        }
+        if (medName.contains('...')) {
+          medName = medName.replaceAll('...', '').trim();
+        }
+        medName = medName.replaceAll(RegExp(r'[^\w\u4e00-\u9fa5]+$'), '').trim();
+        medName = medName.replaceAll(RegExp(r'^[^\w\u4e00-\u9fa5]+'), '').trim();
         if (medName.startsWith('吃')) medName = medName.substring(1);
         if (medName.startsWith('服用')) medName = medName.substring(2);
-      } else {
+      }
+      if (medName.isEmpty) {
         final m = RegExp(r'(高血壓藥|降血壓藥|胃藥|止痛藥|慢性病藥|維他命|綜合維他命|感冒藥|心臟藥|血糖藥|糖尿病藥|中藥)').firstMatch(fullText);
         medName = m != null ? m.group(1)! : '指定用藥';
       }
@@ -902,7 +920,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                           Text(
                             '共 ${items.length} 筆$displayTitle詳細紀錄',
                             style: GoogleFonts.notoSansTc(
-                              fontSize: 12,
+                              fontSize: 13.5,
                               color: cs.onSurfaceVariant,
                               fontWeight: FontWeight.w600,
                             ),
@@ -951,7 +969,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                                 Row(
                                   children: [
                                     Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
+                                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3.5),
                                       decoration: BoxDecoration(
                                         color: parsed.themeColor.withValues(alpha: isDark ? 0.25 : 0.12),
                                         borderRadius: BorderRadius.circular(6),
@@ -959,15 +977,15 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                                       child: Text(
                                         parsed.categoryTag,
                                         style: GoogleFonts.notoSansTc(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w800,
+                                          fontSize: 12.5,
+                                          fontWeight: FontWeight.w700,
                                           color: parsed.themeColor,
                                         ),
                                       ),
                                     ),
                                     const SizedBox(width: 8),
                                     Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
                                       decoration: BoxDecoration(
                                         color: isDark ? cs.surfaceContainerHighest : cs.surfaceContainerHighest.withValues(alpha: 0.6),
                                         borderRadius: BorderRadius.circular(6),
@@ -975,7 +993,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                                       child: Text(
                                         parsed.statusText,
                                         style: GoogleFonts.notoSansTc(
-                                          fontSize: 10.5,
+                                          fontSize: 12.0,
                                           fontWeight: FontWeight.w700,
                                           color: cs.onSurfaceVariant,
                                         ),
@@ -986,7 +1004,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                                       Text(
                                         parsed.timeText,
                                         style: GoogleFonts.inter(
-                                          fontSize: 11.5,
+                                          fontSize: 13.0,
                                           color: cs.onSurfaceVariant,
                                           fontWeight: FontWeight.w600,
                                         ),
@@ -998,13 +1016,13 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Container(
-                                      width: 28,
-                                      height: 28,
+                                      width: 32,
+                                      height: 32,
                                       decoration: BoxDecoration(
                                         color: parsed.themeColor.withValues(alpha: isDark ? 0.25 : 0.12),
                                         shape: BoxShape.circle,
                                       ),
-                                      child: Icon(parsed.icon, size: 15, color: parsed.themeColor),
+                                      child: Icon(parsed.icon, size: 17, color: parsed.themeColor),
                                     ),
                                     const SizedBox(width: 10),
                                     Expanded(
@@ -1014,7 +1032,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                                           Text(
                                             parsed.title,
                                             style: GoogleFonts.notoSansTc(
-                                              fontSize: 14.5,
+                                              fontSize: 16.0,
                                               fontWeight: FontWeight.bold,
                                               color: cs.onSurface,
                                               height: 1.35,
@@ -1025,7 +1043,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                                             Text(
                                               parsed.subtitle!,
                                               style: GoogleFonts.notoSansTc(
-                                                fontSize: 12.5,
+                                                fontSize: 13.5,
                                                 height: 1.4,
                                                 color: cs.onSurfaceVariant,
                                                 fontWeight: FontWeight.w500,
@@ -1063,7 +1081,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                                           Text(
                                             '📖 展開檢視長輩與 AI 完整對話逐字稿',
                                             style: GoogleFonts.notoSansTc(
-                                              fontSize: 12,
+                                              fontSize: 13.5,
                                               fontWeight: FontWeight.bold,
                                               color: isDark ? const Color(0xFFFCD34D) : const Color(0xFFB45309),
                                             ),
@@ -2391,18 +2409,20 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                             overflow: TextOverflow.ellipsis,
                             maxLines: 1,
                             style: GoogleFonts.notoSansTc(
-                              fontSize: 19,
+                              fontSize: 20,
                               fontWeight: FontWeight.w900,
                               color: cs.onSurface,
                             ),
                           ),
+                          const SizedBox(height: 2),
                           Text(
                             '目前共 ${activeFilteredItems.length} 筆生活足跡',
                             overflow: TextOverflow.ellipsis,
                             maxLines: 1,
                             style: GoogleFonts.notoSansTc(
-                              fontSize: 12,
+                              fontSize: 13.5,
                               color: cs.onSurfaceVariant,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
                         ],
@@ -2413,7 +2433,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
               ),
               const SizedBox(width: 8),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
                 decoration: BoxDecoration(
                   color: cs.surface,
                   borderRadius: BorderRadius.circular(12),
@@ -2426,7 +2446,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                     Text(
                       '即時同步',
                       style: GoogleFonts.notoSansTc(
-                        fontSize: 12,
+                        fontSize: 13,
                         fontWeight: FontWeight.w700,
                         color: cs.onSurface,
                       ),
@@ -2704,7 +2724,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                 });
               },
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
                 decoration: BoxDecoration(
                   color: isSelected ? cs.primary : cs.surface,
                   borderRadius: BorderRadius.circular(20),
@@ -2727,8 +2747,8 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                 child: Text(
                   t['tag'] as String,
                   style: GoogleFonts.notoSansTc(
-                    fontSize: 12,
-                    fontWeight: isSelected ? FontWeight.w800 : FontWeight.w700,
+                    fontSize: 13.5,
+                    fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
                     color: isSelected ? cs.onPrimary : cs.onSurface,
                   ),
                 ),
@@ -2745,7 +2765,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
         decoration: BoxDecoration(
           color: isSelected ? cs.primary : cs.surface,
           borderRadius: BorderRadius.circular(12),
@@ -2768,7 +2788,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
         child: Text(
           label,
           style: GoogleFonts.notoSansTc(
-            fontSize: 12.5,
+            fontSize: 13.5,
             fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
             color: isSelected ? cs.onPrimary : cs.onSurfaceVariant,
           ),
@@ -3073,7 +3093,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
             child: Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
                   decoration: BoxDecoration(
                     color: cs.primary.withValues(alpha: isDark ? 0.2 : 0.08),
                     borderRadius: BorderRadius.circular(10),
@@ -3081,7 +3101,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                   child: Text(
                     dateLabel,
                     style: GoogleFonts.notoSansTc(
-                      fontSize: 12,
+                      fontSize: 13.5,
                       fontWeight: FontWeight.w800,
                       color: cs.primary,
                       letterSpacing: 0.3,
@@ -3163,12 +3183,12 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(9),
+                padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
                   color: cs.primary,
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: Icon(categoryIcon, color: cs.onPrimary, size: 20),
+                child: Icon(categoryIcon, color: cs.onPrimary, size: 22),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -3178,8 +3198,8 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                     Text(
                       displayTitle,
                       style: GoogleFonts.notoSansTc(
-                        fontSize: 16.5,
-                        fontWeight: FontWeight.w900,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
                         color: cs.onSurface,
                       ),
                     ),
@@ -3189,8 +3209,8 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.notoSansTc(
-                        fontSize: 12,
-                        height: 1.35,
+                        fontSize: 13.5,
+                        height: 1.4,
                         color: cs.onSurfaceVariant,
                         fontWeight: FontWeight.w600,
                       ),
@@ -3200,7 +3220,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
               ),
               const SizedBox(width: 6),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 4.5),
                 decoration: BoxDecoration(
                   color: cs.primary,
                   borderRadius: BorderRadius.circular(10),
@@ -3208,8 +3228,8 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                 child: Text(
                   '$count 筆',
                   style: GoogleFonts.notoSansTc(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
                     color: cs.onPrimary,
                   ),
                 ),
@@ -3226,7 +3246,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
               child: Text(
                 previewSummary.isNotEmpty ? previewSummary : '尚無相關紀錄',
                 style: GoogleFonts.notoSansTc(
-                  fontSize: 13,
+                  fontSize: 14,
                   color: cs.onSurfaceVariant,
                 ),
               ),
@@ -3261,7 +3281,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                         // 🕒 時間標籤（精緻膠囊，有顏色無邊框，精簡為純時間鐘點）
                         if (clockTime.isNotEmpty) ...[
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3.5),
                             decoration: BoxDecoration(
                               color: isDark
                                   ? cs.surfaceContainerHighest.withValues(alpha: 0.6)
@@ -3271,28 +3291,28 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                             child: Text(
                               clockTime,
                               style: GoogleFonts.inter(
-                                fontSize: 11,
+                                fontSize: 12.0,
                                 fontWeight: FontWeight.w700,
                                 color: cs.onSurfaceVariant,
                               ),
                             ),
                           ),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: 6),
                         ],
 
                         // 🎯 圓形圖標（主題色微亮背景，無邊框）
                         Container(
-                          width: 28,
-                          height: 28,
+                          width: 30,
+                          height: 30,
                           decoration: BoxDecoration(
                             color: parsed.themeColor.withValues(alpha: isDark ? 0.25 : 0.12),
                             shape: BoxShape.circle,
                           ),
-                          child: Icon(parsed.icon, size: 15, color: parsed.themeColor),
+                          child: Icon(parsed.icon, size: 16, color: parsed.themeColor),
                         ),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: 8),
 
-                        // 📝 乾淨標題與副標（空間充足，單行呈現）
+                        // 📝 乾淨標題與副標（空間充足，字體放大清晰，單行呈現）
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -3302,10 +3322,10 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: GoogleFonts.notoSansTc(
-                                  fontSize: 13.5,
+                                  fontSize: 14.5,
                                   fontWeight: FontWeight.w700,
                                   color: cs.onSurface,
-                                  height: 1.25,
+                                  height: 1.3,
                                 ),
                               ),
                               if (parsed.subtitle != null && parsed.subtitle!.isNotEmpty) ...[
@@ -3315,7 +3335,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: GoogleFonts.notoSansTc(
-                                    fontSize: 11.5,
+                                    fontSize: 12.5,
                                     color: cs.onSurfaceVariant,
                                     fontWeight: FontWeight.w500,
                                   ),
@@ -3324,11 +3344,11 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                             ],
                           ),
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 6),
 
-                        // 🏷️ 狀態標籤（主題色微亮背景，無邊框，高對比度文字）
+                        // 🏷️ 狀態標籤（主題色微亮背景，無邊框，高對比度文字，字體放大防糊）
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3.5),
                           decoration: BoxDecoration(
                             color: parsed.themeColor.withValues(alpha: isDark ? 0.22 : 0.12),
                             borderRadius: BorderRadius.circular(6),
@@ -3336,8 +3356,8 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                           child: Text(
                             parsed.statusText,
                             style: GoogleFonts.notoSansTc(
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.w800,
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w700,
                               color: badgeTextColor,
                             ),
                           ),
@@ -3390,7 +3410,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.auto_stories_rounded, color: cs.onPrimary, size: 15),
+                        Icon(Icons.auto_stories_rounded, color: cs.onPrimary, size: 16),
                         const SizedBox(width: 6),
                         Flexible(
                           child: Text(
@@ -3398,14 +3418,14 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: GoogleFonts.notoSansTc(
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w800,
+                              fontSize: 14.0,
+                              fontWeight: FontWeight.w700,
                               color: cs.onPrimary,
                             ),
                           ),
                         ),
                         const SizedBox(width: 4),
-                        Icon(Icons.arrow_forward_ios_rounded, color: cs.onPrimary, size: 10),
+                        Icon(Icons.arrow_forward_ios_rounded, color: cs.onPrimary, size: 11),
                       ],
                     ),
                   ),
@@ -3449,7 +3469,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                   );
                 },
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   decoration: BoxDecoration(
                     color: _likedCategories.contains(displayTitle)
                         ? cs.secondary.withValues(alpha: 0.15)
@@ -3465,13 +3485,13 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                       Icon(
                         _likedCategories.contains(displayTitle) ? Icons.favorite_rounded : Icons.favorite_border_rounded,
                         color: _likedCategories.contains(displayTitle) ? cs.secondary : cs.outline,
-                        size: 16,
+                        size: 17,
                       ),
                       const SizedBox(width: 4),
                       Text(
                         _likedCategories.contains(displayTitle) ? '已送心意' : '給個心意',
                         style: GoogleFonts.notoSansTc(
-                          fontSize: 12,
+                          fontSize: 13.5,
                           fontWeight: FontWeight.w700,
                           color: _likedCategories.contains(displayTitle) ? cs.secondary : cs.onSurface,
                         ),
