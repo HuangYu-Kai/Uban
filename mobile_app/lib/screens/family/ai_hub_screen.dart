@@ -167,9 +167,18 @@ class _AiHubScreenState extends State<AiHubScreen> {
         );
         break;
       case 'alerts':
+        // ★ 第四十一輪（item 1，2026-09-04 依 team-lead 回饋修正）：本畫面不
+        // 持有即時 CCTV／跌倒警報（沒有對應的 Socket 監聽或狀態），
+        // activeAlerts 維持參數預設的空清單即可，不為此另外造假資料或另開
+        // 一條資料來源。但另外兩類（活動流水、持久化跌倒警報）已改由
+        // AlertCenterScreen 自己用 REST 抓取（見該檔 _loadHistoryAlerts），
+        // 只要傳對 elderRoomId，本入口一樣能看到完整警示，不再是本 bug 的
+        // 另一半殘留。
         destination = AlertCenterScreen(
           elderName: _currentElder?.displayName ?? '長輩',
           elderId: _currentElder?.id,
+          elderRoomId: _currentElder?.elderId ?? _currentElder?.id.toString(),
+          activeAlerts: const [],
         );
         break;
       case 'video':

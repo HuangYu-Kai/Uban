@@ -28,6 +28,18 @@ class ElderScreen extends StatefulWidget {
   final bool isVideoCall; // ★ 新增：是否為視訊通話（false = 純語音）
   final Map<String, dynamic>? initialCallData; // ★ 新增：初始化通話參數，避免與 global 變數競爭
 
+  /// ★ 第四十二輪：長輩↔長輩好友通話。
+  ///
+  /// `null`（預設）＝現有行為完全不變：以 `role:'elder'` 加入 `widget.roomId`
+  /// （呼叫者自己）的房間。
+  ///
+  /// 非 `null` 時＝本次要以 `role:'friend'` 加入**對方**（此欄位指定的
+  /// elder_id）的 `comm_elder_<對方>` 房間撥打，`widget.roomId` 仍維持「呼叫者
+  /// 自己的房間」語意不變（供 [_buildFallbackHome] 等既有邏輯使用）。
+  /// 後端 `_verify_room_access` 會查呼叫者與對方之間是否存在 `status='accepted'`
+  /// 的 `elder_friendship` 才放行，且只能進 `comm_elder_*`（不可為監控房）。
+  final String? friendCallTargetElderId;
+
   const ElderScreen({
     super.key,
     required this.roomId,
@@ -36,6 +48,7 @@ class ElderScreen extends StatefulWidget {
     this.autoCall = false,
     this.isVideoCall = true, // 預設視訊通話
     this.initialCallData,
+    this.friendCallTargetElderId,
   });
 
   @override
@@ -436,7 +449,11 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     _checkPermissions();
     
     // ★ 初始化格式化的房間ID
-    _formattedRoomId = _getFormattedRoomId(widget.roomId);
+    // ★ 第四十二輪：好友通話進「對方」的房間；friendCallTargetElderId 為 null
+    //   時（絕大多數情境）完全等同原本的 _getFormattedRoomId(widget.roomId)。
+    _formattedRoomId = widget.friendCallTargetElderId != null
+        ? _getFormattedRoomId(widget.friendCallTargetElderId!)
+        : _getFormattedRoomId(widget.roomId);
     // ★ 第十九輪（D4）：CCTV 目前裝置名稱初始值，改名事件會更新它
     _currentDeviceName = widget.deviceName;
 
@@ -985,9 +1002,15 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
         "socketConnected=${_signaling.socket?.connected == true})");
     _signaling.connect(
       _formattedRoomId,
-      'elder',
+      // ★ 第四十二輪：好友通話以 'friend' 身分加入對方的房間，讓後端
+      //   _verify_room_access 走好友關係驗證分支（一般情境不變，仍是 'elder'）。
+      widget.friendCallTargetElderId != null ? 'friend' : 'elder',
       userId: resolvedUserId,
       deviceName: widget.deviceName,
+      // deviceMode 不因好友通話改變邏輯：isCCTVMode 對好友通話恆為 false，
+      // 故此處自然結果就是 'comm'——好友通話絕不可用 'monitor'（見
+      // friendCallTargetElderId 欄位說明；'monitor' 會誤觸監控房授權與
+      // 監控機額度計算）。
       deviceMode: widget.isCCTVMode ? 'monitor' : 'comm',
       fcmToken: fcmToken,
     );
@@ -1557,7 +1580,11 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     //   30 秒，期間其實從頭到尾沒送出任何請求。
     final bool sent = await _signaling.sendCallRequest(
       _formattedRoomId,
-      role: 'elder',
+      // ★ 第四十二輪：好友通話必須送 'friend'，不可沿用 'elder'。後端路由公式
+      //   是 `target_role = 'elder' if sender_role in ('family','friend') else
+      //   'family'`——送 'elder' 會讓 target_role 變成 'family'，call-request
+      //   被誤送去對方的家屬而不是對方本人（對方完全收不到來電，無任何錯誤）。
+      role: widget.friendCallTargetElderId != null ? 'friend' : 'elder',
       isVideoCall: widget.isVideoCall,
     ); // ★ 使用格式化的房間ID
     if (!mounted) return;
@@ -1623,7 +1650,12 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   /// 改為與家屬端共用的 [showCallRetryDialog]：離開通話，或重新撥打。
   Future<void> _handleCallTimeout() async {
     debugPrint("⏰ [ElderScreen] 撥打逾時，自動取消通話");
-    _signaling.sendCancelCall(_formattedRoomId, role: 'elder');
+    // ★ 第四十二輪：同 _makeCall 的 sendCallRequest，role 必須跟著撥打時一致，
+    //   否則後端算出的 target_role 會反過來查錯房間成員（見該處註解）。
+    _signaling.sendCancelCall(
+      _formattedRoomId,
+      role: widget.friendCallTargetElderId != null ? 'friend' : 'elder',
+    );
     _signaling.hangUp(disconnectSocket: false, disposeLocalStream: false);
     if (!mounted) return;
     setState(() {
@@ -1877,6 +1909,29 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     _signaling.onHeartbeatMessage = null;
     _signaling.onMonitorRenamed = null;
     _signaling.onMonitorRemoved = null;
+
+    // ★ 第四十二輪：好友通話結束時，必須離開對方的房間並重新以 'elder' 身分
+    //   加入「自己」的房間。`Signaling` 是單例，`_currentRoomId`/`_role` 此刻
+    //   仍停在對方的房間／'friend'（見 connect() 的實作，`_asyncJoin`/`onConnect`
+    //   重連都是讀這兩個 instance 欄位，見 CLAUDE_call-monitor-guardrails.md
+    //   G47/G101/G103）。不做這一步，這位長輩之後就再也收不到「自己」家人打來
+    //   的電話——沒有任何錯誤訊息，純粹靜默失效。
+    //   leaveRoom 在前、connect 在後：同一條 socket 連線上先送出的事件必定先
+    //   送達伺服器，不會有『先加入新房間才離開舊房間』的競態。
+    //   一般情境（friendCallTargetElderId 為 null）完全不進入這個分支，行為不變。
+    if (widget.friendCallTargetElderId != null) {
+      _signaling.leaveRoom(_formattedRoomId);
+      final String ownRoomId = _getFormattedRoomId(widget.roomId);
+      debugPrint(
+          '👋 [ElderScreen] 好友通話結束，離開 $_formattedRoomId，重新加入自己的房間 $ownRoomId');
+      _signaling.connect(
+        ownRoomId,
+        'elder',
+        userId: _userId ?? widget.roomId,
+        deviceName: widget.deviceName,
+        deviceMode: 'comm',
+      );
+    }
 
     // ★ 2026-08-11 第二十二輪（需求 9）：離開畫面一定要停掉緊急提示音，
     //   否則掛斷後音效還會繼續在背景播完剩下的秒數。

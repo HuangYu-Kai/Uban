@@ -21,6 +21,15 @@ class FamilyDataTab extends StatefulWidget {
   final bool isDarkMode;
   final ValueChanged<bool>? onToggleDarkMode;
 
+  // ★ 第四十一輪 item 2（第二階段）：新手指引用的高光目標 GlobalKey。全部
+  //   選填、預設 null——GlobalKey 必須由上層 FamilyMainScreen 持有並傳入，
+  //   理由與傳遞方式比照 family_home_tab.dart 同名欄位群組的說明。不傳就
+  //   等同沒有目標，`SpotlightTutorial` 會自動退化為無挖洞的置中卡片。
+  final GlobalKey? caregiverCardKey;
+  final GlobalKey? elderSummaryKey;
+  final GlobalKey? memoirsKey;
+  final GlobalKey? aiHelperKey;
+
   const FamilyDataTab({
     super.key,
     required this.currentElder,
@@ -29,6 +38,10 @@ class FamilyDataTab extends StatefulWidget {
     this.onElderUpdated,
     this.isDarkMode = false,
     this.onToggleDarkMode,
+    this.caregiverCardKey,
+    this.elderSummaryKey,
+    this.memoirsKey,
+    this.aiHelperKey,
   });
 
   @override
@@ -706,6 +719,7 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
+      key: widget.caregiverCardKey,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: cs.surface,
@@ -867,6 +881,7 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
     final medicationNotes = _elderProfileData?['medication_notes'] ?? '照護提醒正常';
 
     return Container(
+      key: widget.elderSummaryKey,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: cs.surface,
@@ -1070,6 +1085,7 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
     ];
 
     return Container(
+      key: widget.memoirsKey,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: cs.surface,
@@ -1234,6 +1250,7 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
     final interests = _elderProfileData?['interests'] ?? '懷舊老歌, 台股動態, 泡茶, 散步';
 
     return Container(
+      key: widget.aiHelperKey,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: cs.surface,

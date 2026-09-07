@@ -71,6 +71,18 @@ class FamilyHomeTab extends StatefulWidget {
   /// 不重新拼一份、也不直接 import `video_call_screen.dart`。
   final ValueChanged<String?>? onOpenMonitorView;
 
+  // ★ 第四十一輪 item 2（第二階段）：新手指引用的高光目標 GlobalKey。全部
+  //   選填、預設 null——GlobalKey 必須由上層 FamilyMainScreen 持有並傳入
+  //   （IndexedStack 讓本分頁在父層第一次建構時就跟著建出來，若 GlobalKey
+  //   放在本分頁自己身上，父層每 2.5 秒的裝置／警報輪詢觸發整棵樹重建時
+  //   容易造成 key 與 Element 對應混亂；比照 elder_tabs/elder_home_tab.dart
+  //   同一輪同一功能的作法）。不傳就等同沒有目標，`SpotlightTutorial` 會
+  //   自動退化為無挖洞的置中卡片，不影響本分頁任何既有行為。
+  final GlobalKey? elderHeaderKey;
+  final GlobalKey? monitorStatusKey;
+  final GlobalKey? aiMoodRadarKey;
+  final GlobalKey? alertPreviewKey;
+
   const FamilyHomeTab({
     super.key,
     this.currentElder,
@@ -84,6 +96,10 @@ class FamilyHomeTab extends StatefulWidget {
     this.dismissedAlertKeys = const {},
     this.onAlertItemDismissed,
     this.onOpenMonitorView,
+    this.elderHeaderKey,
+    this.monitorStatusKey,
+    this.aiMoodRadarKey,
+    this.alertPreviewKey,
   });
 
   @override
@@ -1257,6 +1273,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
+      key: widget.elderHeaderKey,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: cs.surface,
@@ -1639,6 +1656,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     if (monitors.isEmpty) return const SizedBox.shrink();
 
     return Container(
+      key: widget.monitorStatusKey,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: cs.surface,
@@ -1930,6 +1948,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     }
 
     return Container(
+      key: widget.aiMoodRadarKey,
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
         color: cs.surface,
@@ -3679,6 +3698,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
+      key: widget.alertPreviewKey,
       margin: const EdgeInsets.symmetric(vertical: 8),
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
@@ -3763,6 +3783,14 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                         builder: (c) => AlertCenterScreen(
                           elderName: widget.currentElder?.displayName ?? '長輩',
                           elderId: widget.currentElder?.id,
+                          // ★ 第四十一輪（item 1 追加）：與 _loadDynamicData
+                          // （:824）算法一致，供 AlertCenterScreen 自行抓取
+                          // 活動流水／持久化跌倒警報時使用。
+                          elderRoomId: widget.currentElder?.elderId ??
+                              widget.currentElder?.id.toString(),
+                          // ★ 第四十一輪（item 1）：與上方預覽同一份即時警報，
+                          // 避免展開後遺失。
+                          activeAlerts: widget.activeAlerts,
                         ),
                       ),
                     );
@@ -3893,9 +3921,20 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
           HapticFeedback.lightImpact();
           Navigator.push(
             context,
+            // ★ 2026-08-31 合併修正：main 的真實 HealthReminderScreen 收 String elderId
+            //   （placeholder 版收 int），故轉型為 String。
+            // ★ 2026-09-05 第四十三輪修正：轉型沒錯，但轉的欄位錯了——`elder.id`
+            //   是 DB 整數 PK／user_id，`HealthReminderScreen.elderId` 會原樣送進
+            //   `POST /api/reminder/`(elder_id) 與 `GET /api/reminder/elder/{elder_id}`，
+            //   後端排程 (main.py::check_remote_reminders_job) 組 Socket 房名／查
+            //   FCM token 用的卻是 elder_profile 的 4 碼房號 `elder.elderId`——兩者
+            //   多數情況下數值不同，用錯會導致長輩端前景背景都收不到排程提醒。
+            //   改用與 alert_center_screen.dart:20-23 相同的既定寫法
+            //   `elderId ?? id.toString()`（僅在 elder_profile 缺 elder_id 時才退回
+            //   user_id，維持向後相容)。
             MaterialPageRoute(
               builder: (_) => HealthReminderScreen(
-                elderId: elder.id.toString(),
+                elderId: elder.elderId ?? elder.id.toString(),
                 elderName: elder.displayName,
               ),
             ),

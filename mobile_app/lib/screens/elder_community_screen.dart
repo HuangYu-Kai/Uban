@@ -11,6 +11,7 @@ import '../models/community_post.dart';
 import '../services/api_service.dart';
 import '../services/community_service.dart';
 import '../theme/app_theme.dart';
+import 'elder_friend_feed_screen.dart';
 import 'widgets/pet_reward_dialog.dart';
 import 'widgets/polaroid_post_card.dart';
 
@@ -19,18 +20,52 @@ class ElderCommunityScreen extends StatefulWidget {
   final String userName;
   final int? familyId;
 
+  // ★ 第四十二輪：長輩端「社群」分頁加「家人／朋友」頂部標籤。第五項需求
+  //   （家屬好友系統）起，家屬端也跟進同一套頂部標籤——目前長輩端首頁
+  //   （elder_home_screen.dart）與家屬端（family_interaction_tab.dart::
+  //   _buildCommunitySection）皆已傳 true。不傳（預設 false）時維持改動前
+  //   的單一畫面、無 TabBar 行為，零回歸；這個預設值仍保留給未來其他未跟進
+  //   的呼叫端。
+  final bool showFriendTab;
+
+  // ★ 第五項需求（家屬好友系統）：把「朋友」標籤旁邊那個標籤（本來寫死
+  //   '家人'）的文字，與朋友標籤要渲染的內容都做成可注入。兩者預設值
+  //   等同改動前的長輩端寫死行為——長輩端呼叫點不傳這兩個參數，標籤文字
+  //   固定「家人」、內容固定 FriendFeedBody(userId, userName)，100% 不變。
+  //   家屬端呼叫時傳入 familyTabLabel: '家庭' 與自己的 FamilyFriendFeedBody，
+  //   長輩朋友圈／家屬朋友圈兩邊資料完全不互通。
+  final String familyTabLabel;
+  final Widget? friendTabContent;
+
+  // ★ 第四十一輪（item 2）：新手指引用的高光目標 GlobalKey，全部選填。由上層
+  //   ElderHomeScreen 持有並傳入，傳 null 時完全不影響現有畫面。
+  //   firstPostLikeKey / firstPostCommentKey 只點亮「大家的近況」清單第一則
+  //   貼文的按鈕（清單可能是空的，該步驟會自動退化為置中卡片）。
+  final GlobalKey? privacyCardKey;
+  final GlobalKey? createPostButtonKey;
+  final GlobalKey? firstPostLikeKey;
+  final GlobalKey? firstPostCommentKey;
+
   const ElderCommunityScreen({
     super.key,
     required this.userId,
     required this.userName,
     this.familyId,
+    this.showFriendTab = false,
+    this.familyTabLabel = '家人',
+    this.friendTabContent,
+    this.privacyCardKey,
+    this.createPostButtonKey,
+    this.firstPostLikeKey,
+    this.firstPostCommentKey,
   });
 
   @override
   State<ElderCommunityScreen> createState() => _ElderCommunityScreenState();
 }
 
-class _ElderCommunityScreenState extends State<ElderCommunityScreen> {
+class _ElderCommunityScreenState extends State<ElderCommunityScreen>
+    with SingleTickerProviderStateMixin {
   final CommunityService _communityService = CommunityService();
   final TextEditingController _postController = TextEditingController();
   final TextEditingController _commentController = TextEditingController();
@@ -38,9 +73,16 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen> {
   List<CommunityPost> _posts = [];
   bool _isLoading = true;
 
+  // 只有 showFriendTab 時才建立，家屬端（預設 false）不會多出一個沒用到的
+  // vsync ticker。
+  TabController? _tabController;
+
   @override
   void initState() {
     super.initState();
+    if (widget.showFriendTab) {
+      _tabController = TabController(length: 2, vsync: this);
+    }
     _initialize();
   }
 
@@ -825,6 +867,7 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen> {
 
   @override
   void dispose() {
+    _tabController?.dispose();
     _postController.dispose();
     _commentController.dispose();
     super.dispose();
@@ -832,6 +875,34 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final familyContent = _buildFamilyContent();
+
+    if (!widget.showFriendTab) {
+      // 家屬端（預設 showFriendTab: false）走這條分支——與改動前逐位元組
+      // 相同的 Scaffold／AppBar／body 結構，零回歸。
+      return Scaffold(
+        backgroundColor: const Color(0xFFF8FAFC),
+        appBar: AppBar(
+          toolbarHeight: 70,
+          backgroundColor: Colors.white,
+          elevation: 0,
+          title: Text(
+            '家庭社群',
+            style: GoogleFonts.notoSansTc(
+              fontSize: 28,
+              fontWeight: FontWeight.w900,
+              color: AppColors.textPrimary,
+            ),
+          ),
+        ),
+        body: familyContent,
+      );
+    }
+
+    // ★ 第四十二輪：長輩端「社群」分頁多一個「朋友」標籤。TabBar 樣式沿用
+    // friends_screen.dart 第四十一輪已上線的「家人／朋友」寫法（字級 20、
+    // FontWeight.w900、圖示 28、indicatorWeight 4）——長輩端已經看過一次，
+    // 不是新視覺語言。
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
@@ -846,38 +917,91 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen> {
             color: AppColors.textPrimary,
           ),
         ),
+        bottom: TabBar(
+          controller: _tabController,
+          indicatorColor: AppColors.primary,
+          indicatorWeight: 4,
+          labelColor: AppColors.primary,
+          unselectedLabelColor: AppColors.textHint,
+          labelStyle: GoogleFonts.notoSansTc(
+            fontSize: 20,
+            fontWeight: FontWeight.w900,
+          ),
+          unselectedLabelStyle: GoogleFonts.notoSansTc(
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+          ),
+          tabs: [
+            Tab(
+              icon: const Icon(Icons.family_restroom_rounded, size: 28),
+              text: widget.familyTabLabel,
+            ),
+            const Tab(
+              icon: Icon(Icons.groups_rounded, size: 28),
+              text: '朋友',
+            ),
+          ],
+        ),
       ),
-      body: SafeArea(
-        bottom: false,
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : RefreshIndicator(
-                onRefresh: _loadPosts,
-                child: ListView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 132),
-                  children: [
-                    _buildPrivacyCard(),
-                    const SizedBox(height: 14),
-                    _buildCreatePostButton(),
-                    const SizedBox(height: 18),
-                    Text('大家的近況', style: ElderScale.sectionTitle),
-                    const SizedBox(height: 12),
-                    if (_posts.isEmpty) _buildEmptyState(),
-                    ..._posts.map((post) => PolaroidPostCard(
-                          post: post,
-                          onLike: () => _toggleLike(post),
-                          onComment: () => _showComments(post),
-                        )),
-                  ],
-                ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          familyContent,
+          // 朋友標籤：預設（friendTabContent 為 null，長輩端呼叫點的現況）
+          // 100% 重用 FriendFeedBody（elder_friend_feed_screen.dart），與
+          // 「電話 → 朋友 → 朋友圈」（ElderFriendFeedScreen）共用同一份邏輯，
+          // 行為與改動前逐位元組相同；家屬端傳入 friendTabContent
+          // （FamilyFriendFeedBody）時改顯示家屬自己的朋友圈。
+          widget.friendTabContent ??
+              FriendFeedBody(userId: widget.userId, userName: widget.userName),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFamilyContent() {
+    return SafeArea(
+      bottom: false,
+      child: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : RefreshIndicator(
+              onRefresh: _loadPosts,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 132),
+                children: [
+                  _buildPrivacyCard(),
+                  const SizedBox(height: 14),
+                  _buildCreatePostButton(),
+                  const SizedBox(height: 18),
+                  Text('大家的近況', style: ElderScale.sectionTitle),
+                  const SizedBox(height: 12),
+                  if (_posts.isEmpty) _buildEmptyState(),
+                  // ★ 第四十一輪（item 2）：改用 asMap().entries 取得 index，
+                  //   只在第一則貼文（index == 0）傳入教學高光用的 key，
+                  //   其餘貼文不受影響、渲染順序與內容完全未變。
+                  ..._posts.asMap().entries.map((entry) {
+                    final int index = entry.key;
+                    final CommunityPost post = entry.value;
+                    return PolaroidPostCard(
+                      post: post,
+                      onLike: () => _toggleLike(post),
+                      onComment: () => _showComments(post),
+                      likeButtonKey:
+                          index == 0 ? widget.firstPostLikeKey : null,
+                      commentButtonKey:
+                          index == 0 ? widget.firstPostCommentKey : null,
+                    );
+                  }),
+                ],
               ),
-      ),
+            ),
     );
   }
 
   Widget _buildPrivacyCard() {
     return Container(
+      key: widget.privacyCardKey,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppColors.primaryDark,
@@ -902,6 +1026,7 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen> {
     return SizedBox(
       height: ElderScale.buttonHeight,
       child: GestureDetector(
+        key: widget.createPostButtonKey,
         behavior: HitTestBehavior.opaque,
         onTap: _showCreatePostSheet,
         child: Container(
