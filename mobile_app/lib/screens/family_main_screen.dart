@@ -8,6 +8,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'family/family_home_tab.dart';
 import 'family/family_interaction_tab.dart';
 import 'family/family_data_tab.dart';
+import '../theme/family_theme.dart';
 import 'family/alert_center_screen.dart';
 import 'family/subscription_test_screen.dart';
 // ⚠️ 這行 import 在分支整合時遺失（:798 有 const FamilySubscriptionScreen() 卻無 import），
@@ -45,6 +46,7 @@ class FamilyMainScreen extends StatefulWidget {
 
 class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBindingObserver {
   int _selectedIndex = 0;
+  bool _isDarkMode = false; // 子女端 M3 薄荷綠主題：預設為淺色模式 (Light)
   final Signaling _signaling = Signaling();
   bool _isIncomingCallDialogOpen = false;
 
@@ -257,6 +259,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
 
     _initializeElderManagerAndConnect();
     _loadSubscriptionTier();
+    _loadThemePreference();
 
     // ★ 2026-08-20 新增：MIUI 家族裝置的「鎖定螢幕顯示／後台彈出介面」權限
     //   引導。等第一影格畫出後才檢查與導航，且完全不 await、不擋任何既有的
@@ -264,6 +267,25 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _maybeShowMiuiPermissionGuide();
     });
+  }
+
+  /// 載入使用者在外觀設定中所選的深淺色偏好（預設為 Light）
+  Future<void> _loadThemePreference() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() {
+        _isDarkMode = prefs.getBool('family_theme_is_dark') ?? false;
+      });
+    }
+  }
+
+  /// 由資料 Tab (FamilyDataTab) 呼叫切換深淺色模式並持久化儲存
+  Future<void> _setDarkMode(bool isDark) async {
+    setState(() {
+      _isDarkMode = isDark;
+    });
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('family_theme_is_dark', isDark);
   }
   
   Future<void> _initializeElderManagerAndConnect() async {
@@ -1550,8 +1572,8 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
         return;
       }
       final int now = DateTime.now().millisecondsSinceEpoch;
-      final int? expiresAt = int.tryParse('${args['expiresAt'] ?? ''}');
-      final int? issuedAt = int.tryParse('${args['issuedAt'] ?? ''}');
+      final int? expiresAt = int.tryParse(args['expiresAt']?.toString() ?? '');
+      final int? issuedAt = int.tryParse(args['issuedAt']?.toString() ?? '');
       final bool isExpired = (expiresAt != null && now > expiresAt) || (issuedAt != null && (now - issuedAt) > kCallValidityMs);
       if (isExpired) {
         debugPrint("⏰ [FamilyMainScreen] 忽略過期待接聽來電 (callId=$callId)");
@@ -1694,12 +1716,14 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   }
 
   void _showElderSelector() {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
-      backgroundColor: Colors.white,
+      backgroundColor: cs.surfaceContainerHigh,
       builder: (context) {
         return SafeArea(
           child: Padding(
@@ -1715,7 +1739,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                     style: GoogleFonts.notoSansTc(
                       fontSize: 18,
                       fontWeight: FontWeight.w900,
-                      color: const Color(0xFF0F172A),
+                      color: cs.onSurface,
                     ),
                   ),
                 ),
@@ -1725,7 +1749,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                     padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
                     child: Text(
                       '目前沒有配對的長輩裝置',
-                      style: GoogleFonts.notoSansTc(color: const Color(0xFF64748B)),
+                      style: GoogleFonts.notoSansTc(color: cs.outline),
                     ),
                   )
                 else
@@ -1741,8 +1765,8 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                           leading: CircleAvatar(
                             radius: 20,
                             backgroundColor: elder.gender == 'F'
-                                ? const Color(0xFFFDF2F8)
-                                : const Color(0xFFF0FDF4),
+                                ? (isDark ? const Color(0xFF3F202B) : const Color(0xFFFDF2F8))
+                                : cs.secondaryContainer,
                             child: Text(
                               elder.genderEmoji,
                               style: const TextStyle(fontSize: 20),
@@ -1753,18 +1777,18 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                             style: GoogleFonts.notoSansTc(
                               fontWeight: FontWeight.bold,
                               fontSize: 16,
-                              color: isSelected ? const Color(0xFF3B82F6) : const Color(0xFF0F172A),
+                              color: isSelected ? cs.primary : cs.onSurface,
                             ),
                           ),
                           subtitle: Text(
                             'ID: ${elder.id} • ${elder.age ?? "?"}歲',
                             style: GoogleFonts.inter(
                               fontSize: 12,
-                              color: const Color(0xFF64748B),
+                              color: cs.onSurfaceVariant,
                             ),
                           ),
                           trailing: isSelected
-                              ? const Icon(Icons.check_circle_rounded, color: Color(0xFF3B82F6))
+                              ? Icon(Icons.check_circle_rounded, color: cs.primary)
                               : null,
                           onTap: () {
                             Navigator.pop(context);
@@ -1774,22 +1798,22 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                       },
                     ),
                   ),
-                const Divider(height: 24, color: Color(0xFFF1F5F9)),
+                Divider(height: 24, color: cs.outlineVariant.withValues(alpha: 0.5)),
                 ListTile(
                   contentPadding: const EdgeInsets.symmetric(horizontal: 24),
                   leading: Container(
                     padding: const EdgeInsets.all(8),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFEFF6FF),
+                    decoration: BoxDecoration(
+                      color: cs.primaryContainer.withValues(alpha: 0.5),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(Icons.person_add_alt_1_rounded, color: Color(0xFF3B82F6), size: 20),
+                    child: Icon(Icons.person_add_alt_1_rounded, color: cs.primary, size: 20),
                   ),
                   title: Text(
                     '配對新的長輩裝置',
                     style: GoogleFonts.notoSansTc(
                       fontWeight: FontWeight.bold,
-                      color: const Color(0xFF3B82F6),
+                      color: cs.primary,
                     ),
                   ),
                   onTap: () {
@@ -1850,9 +1874,9 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     });
   }
 
-  PreferredSizeWidget _buildAppBar() {
+  PreferredSizeWidget _buildAppBar(BuildContext context, ColorScheme cs) {
     return AppBar(
-      backgroundColor: const Color(0xFF0F172A),
+      backgroundColor: cs.surface,
       elevation: 0,
       scrolledUnderElevation: 0,
       centerTitle: false,
@@ -1861,7 +1885,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
           ? Text(
               'Uban 照護中樞',
               style: GoogleFonts.notoSansTc(
-                color: Colors.white,
+                color: cs.onSurface,
                 fontWeight: FontWeight.w900,
                 fontSize: 24,
               ),
@@ -1876,7 +1900,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                   children: [
                     CircleAvatar(
                       radius: 20,
-                      backgroundColor: const Color(0xFF1E293B),
+                      backgroundColor: cs.surfaceContainerHighest,
                       child: Text(
                         _currentElder?.genderEmoji ?? '',
                         style: const TextStyle(fontSize: 20),
@@ -1892,23 +1916,23 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: GoogleFonts.notoSansTc(
-                          color: Colors.white,
+                          color: cs.onSurface,
                           fontWeight: FontWeight.w900,
                           fontSize: 22,
                         ),
                       ),
                     ),
                     const SizedBox(width: 6),
-                    const Icon(
+                    Icon(
                       Icons.keyboard_arrow_down_rounded,
-                      color: Color(0xFF38BDF8),
+                      color: cs.primary,
                       size: 24,
                     ),
                     const SizedBox(width: 10),
                     _PulseDot(
                       color: _isElderOnline
-                          ? const Color(0xFF10B981)
-                          : const Color(0xFF94A3B8),
+                          ? cs.primary
+                          : cs.outline,
                     ),
                     const SizedBox(width: 6),
                     Text(
@@ -1916,8 +1940,8 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                       style: GoogleFonts.notoSansTc(
                         fontSize: 14,
                         color: _isElderOnline
-                            ? const Color(0xFF34D399)
-                            : const Color(0xFF94A3B8),
+                            ? cs.primary
+                            : cs.outline,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -1927,7 +1951,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
             ),
       actions: [
         IconButton(
-          icon: const Icon(Icons.workspace_premium_rounded, color: Color(0xFFF5C451), size: 26),
+          icon: const Icon(Icons.workspace_premium_rounded, color: Color(0xFFF59E0B), size: 26),
           tooltip: '訂閱測試（為長輩開通）',
           onPressed: () {
             final elder = _currentElder;
@@ -1945,7 +1969,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
           },
         ),
         IconButton(
-          icon: const Icon(Icons.person_add_alt_1_rounded, color: Color(0xFF38BDF8), size: 28),
+          icon: Icon(Icons.person_add_alt_1_rounded, color: cs.primary, size: 28),
           tooltip: '配對新長輩',
           onPressed: () {
             Navigator.push(
@@ -1964,7 +1988,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
       bottom: PreferredSize(
         preferredSize: const Size.fromHeight(1),
         child: Container(
-          color: Colors.white.withValues(alpha: 0.08),
+          color: cs.outlineVariant.withValues(alpha: 0.4),
           height: 1,
         ),
       ),
@@ -1973,141 +1997,134 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
-      extendBody: true,
-      appBar: _buildAppBar(),
-      body: IndexedStack(
-        index: _selectedIndex,
-        children: [
-          FamilyHomeTab(
-            currentElder: _currentElder,
-            isElderOnline: _isElderOnline,
-            activeAlerts: _activeAlerts,
-            // ★ 2026-08-18 IPS prototype：長輩目前所在區域卡片所需資料。
-            //   monitorDevices 沿用與 FamilyInteractionTab 相同的清單，由該分頁
-            //   自行取第一台監視機的 deviceId/deviceName（與本檔 `_maybeFetchInitialZone`
-            //   同一套邏輯），不在此另外拆欄位傳遞。
-            monitorDevices: _monitorDevices,
-            elderZone: _elderZone,
-            userId: widget.userId,
-            // ★ 2026-08-10 第十九輪（需求 4）：首頁「開始撥號」接回真正的通話路徑
-            onStartVideoCall: _startNormalVideoCall,
-            onNavigateToAlerts: () {
-              if (_currentElder != null) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (c) => AlertCenterScreen(
-                      elderName: _currentElder!.displayName,
-                      elderId: _currentElder!.id,
+    final familyTheme = FamilyTheme.buildTheme(context, isDark: _isDarkMode);
+    final cs = familyTheme.colorScheme;
+
+    return Theme(
+      data: familyTheme,
+      child: Builder(
+        builder: (context) {
+          return Scaffold(
+            backgroundColor: cs.surface,
+            extendBody: true,
+            appBar: _buildAppBar(context, cs),
+            body: IndexedStack(
+              index: _selectedIndex,
+              children: [
+                FamilyHomeTab(
+                  currentElder: _currentElder,
+                  isElderOnline: _isElderOnline,
+                  activeAlerts: _activeAlerts,
+                  // ★ 2026-08-18 IPS prototype：長輩目前所在區域卡片所需資料。
+                  monitorDevices: _monitorDevices,
+                  elderZone: _elderZone,
+                  userId: widget.userId,
+                  onStartVideoCall: _startNormalVideoCall,
+                  onNavigateToAlerts: () {
+                    if (_currentElder != null) {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (c) => AlertCenterScreen(
+                            elderName: _currentElder!.displayName,
+                            elderId: _currentElder!.id,
+                          ),
+                        ),
+                      );
+                    }
+                  },
+                  dismissedAlertKeys: _dismissedAlertKeys,
+                  onAlertItemDismissed: _handleAlertItemDismissed,
+                  onOpenMonitorView: (deviceId) {
+                    if (deviceId == null || deviceId.isEmpty) return;
+                    _openMonitorViewForDevice(deviceId);
+                  },
+                ),
+                FamilyInteractionTab(
+                  currentElder: _currentElder,
+                  signaling: _signaling,
+                  monitorDevices: _monitorDevices,
+                  activeAlerts: _activeAlerts,
+                  elderZone: _elderZone,
+                  devicesMax: _devicesMax,
+                  tierDisplayName: _tierDisplayName,
+                  tierLevel: _tierLevel,
+                  userId: widget.userId,
+                  elderSocketId: _elderSocketId,
+                  onAlertDismissed: (deviceId) {
+                    if (mounted) {
+                      setState(() {
+                        _activeAlerts.removeWhere((a) =>
+                            (a['device_id'] ?? a['deviceId'])?.toString() == deviceId.toString());
+                      });
+                    }
+                  },
+                  onDevicesChanged: () {
+                    _refreshMonitorDevicesViaHttp();
+                    _loadSubscriptionTier();
+                  },
+                ),
+                FamilyDataTab(
+                  currentElder: _currentElder,
+                  userId: widget.userId,
+                  userName: widget.userName,
+                  isDarkMode: _isDarkMode,
+                  onToggleDarkMode: _setDarkMode,
+                  onElderUpdated: () {
+                    _refreshElders();
+                  },
+                ),
+              ],
+            ),
+            bottomNavigationBar: SafeArea(
+              child: Container(
+                margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                height: 76,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(32),
+                  boxShadow: [
+                    BoxShadow(
+                      color: _isDarkMode
+                          ? Colors.black.withValues(alpha: 0.5)
+                          : cs.primary.withValues(alpha: 0.08),
+                      blurRadius: 24,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(32),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: cs.surfaceContainer.withValues(alpha: 0.94),
+                        borderRadius: BorderRadius.circular(32),
+                        border: Border.all(
+                          color: cs.outlineVariant.withValues(alpha: 0.5),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        children: [
+                          _buildNavItem(0, Icons.home_rounded, '首頁', cs),
+                          _buildNavItem(1, Icons.chat_bubble_rounded, '互動', cs),
+                          _buildNavItem(2, Icons.settings_rounded, '資料', cs),
+                        ],
+                      ),
                     ),
                   ),
-                );
-              }
-            },
-            // ★ 2026-08-24（首頁「最新警示」滑動關閉，父層一半）：接上
-            //   FamilyHomeTab 的同名參數（宣告見 family_home_tab.dart:49-52，
-            //   對方那份分頁側程式碼——filter :3009、Dismissible :3173——早已
-            //   就位，只是父層一直沒有傳入非預設值，導致滑掉的警示在下一輪
-            //   2.5 秒輪詢又跳回來）。_dismissedAlertKeys／
-            //   _handleAlertItemDismissed 宣告與完整理由見本檔上方欄位註解。
-            dismissedAlertKeys: _dismissedAlertKeys,
-            onAlertItemDismissed: _handleAlertItemDismissed,
-            // ★ 2026-08-31 第三十八輪：首頁「最新警示」的 CCTV／跌倒項目點擊入口。
-            //   在此之前本參數從未被傳入，導致該類警示永遠不可點擊（見
-            //   _openMonitorViewForDevice 的說明）。與跌倒警報彈窗共用同一組
-            //   VideoCallScreen 建構參數（G55）。
-            onOpenMonitorView: (deviceId) {
-              if (deviceId == null || deviceId.isEmpty) return;
-              _openMonitorViewForDevice(deviceId);
-            },
-          ),
-          FamilyInteractionTab(
-            currentElder: _currentElder,
-            signaling: _signaling,
-            monitorDevices: _monitorDevices,
-            activeAlerts: _activeAlerts,
-            // ★ 2026-08-24 Feature A：與傳給 FamilyHomeTab 的是同一份狀態，
-            //   供監控卡片高亮「目前長輩所在此處」。
-            elderZone: _elderZone,
-            devicesMax: _devicesMax,
-            tierDisplayName: _tierDisplayName,
-            tierLevel: _tierLevel,
-            userId: widget.userId,
-            elderSocketId: _elderSocketId,
-            // ★ 2026-08-16（需求 2）：查看完監視畫面後移除該設備的警報狀態
-            onAlertDismissed: (deviceId) {
-              if (mounted) {
-                setState(() {
-                  _activeAlerts.removeWhere((a) =>
-                      (a['device_id'] ?? a['deviceId'])?.toString() == deviceId.toString());
-                });
-              }
-            },
-            // ★ 2026-08-10 第十九輪（需求 3）：卡片刪除／改名後立即重新整理。
-            onDevicesChanged: () {
-              _refreshMonitorDevicesViaHttp();
-              _loadSubscriptionTier();
-            },
-          ),
-          FamilyDataTab(
-            currentElder: _currentElder,
-            userId: widget.userId,
-            userName: widget.userName,
-            onElderUpdated: () {
-              _refreshElders();
-            },
-          ),
-        ],
-      ),
-      bottomNavigationBar: SafeArea(
-        child: Container(
-          margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          height: 76,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(32),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.4),
-                blurRadius: 24,
-                offset: const Offset(0, 10),
-              ),
-            ],
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(32),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1E293B).withValues(alpha: 0.92),
-                  borderRadius: BorderRadius.circular(32),
-                  border: Border.all(
-                    color: const Color(0xFF38BDF8).withValues(alpha: 0.25),
-                  ),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    _buildNavItem(0, Icons.home_rounded, '首頁'),
-                    _buildNavItem(1, Icons.chat_bubble_rounded, '互動'),
-                    _buildNavItem(2, Icons.settings_rounded, '資料'),
-                  ],
                 ),
               ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }
 
-  Widget _buildNavItem(int index, IconData icon, String label) {
+  Widget _buildNavItem(int index, IconData icon, String label, ColorScheme cs) {
     final isSelected = _selectedIndex == index;
-    final color = isSelected
-        ? const Color(0xFF38BDF8) // Neon Cyan Glow
-        : const Color(0xFF64748B); // Slate Gray
 
     return Expanded(
       child: GestureDetector(
@@ -2119,18 +2136,34 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              AnimatedScale(
-                scale: isSelected ? 1.1 : 1.0,
+              AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
-                curve: Curves.easeOut,
-                child: Icon(icon, color: color, size: 29),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? cs.primaryContainer.withValues(alpha: _isDarkMode ? 0.4 : 0.8)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: AnimatedScale(
+                  scale: isSelected ? 1.05 : 1.0,
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOut,
+                  child: Icon(
+                    icon,
+                    color: isSelected
+                        ? (_isDarkMode ? cs.primary : cs.onPrimaryContainer)
+                        : cs.secondary,
+                    size: 25,
+                  ),
+                ),
               ),
-              const SizedBox(height: 5),
+              const SizedBox(height: 3),
               Text(
                 label,
                 style: GoogleFonts.notoSansTc(
-                  color: color,
-                  fontSize: 13,
+                  color: isSelected ? cs.onSurface : cs.secondary,
+                  fontSize: 12,
                   fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
                   height: 1.1,
                 ),

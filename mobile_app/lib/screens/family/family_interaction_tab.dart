@@ -227,6 +227,8 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
     final bool? created = await showDialog<bool>(
       context: context,
       builder: (ctx) {
+        final cs = Theme.of(context).colorScheme;
+
         return StatefulBuilder(
           builder: (context, setDialogState) {
             final now = DateTime.now();
@@ -249,22 +251,25 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
             }
 
             return AlertDialog(
-              backgroundColor: const Color(0xFF1E293B),
+              backgroundColor: cs.surfaceContainer,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
               title: Row(
                 children: [
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF38BDF8).withValues(alpha: 0.2),
+                      color: cs.primaryContainer,
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: Icon(isEditing ? Icons.edit_calendar_rounded : Icons.add_alarm_rounded, color: const Color(0xFF38BDF8)),
+                    child: Icon(
+                      isEditing ? Icons.edit_calendar_rounded : Icons.add_alarm_rounded,
+                      color: cs.primary,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Text(
                     isEditing ? '編輯遠端提醒' : '新增遠端提醒',
-                    style: GoogleFonts.notoSansTc(color: Colors.white, fontWeight: FontWeight.bold),
+                    style: GoogleFonts.notoSansTc(color: cs.onSurface, fontWeight: FontWeight.bold),
                   ),
                 ],
               ),
@@ -273,7 +278,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('提醒類別', style: GoogleFonts.notoSansTc(color: const Color(0xFF94A3B8), fontSize: 13)),
+                    Text('提醒類別', style: GoogleFonts.notoSansTc(color: cs.onSurfaceVariant, fontSize: 13)),
                     const SizedBox(height: 8),
                     Wrap(
                       spacing: 6,
@@ -287,21 +292,23 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                       ],
                     ),
                     const SizedBox(height: 16),
-                    Text('提醒標題', style: GoogleFonts.notoSansTc(color: const Color(0xFF94A3B8), fontSize: 13)),
+                    Text('提醒標題', style: GoogleFonts.notoSansTc(color: cs.onSurfaceVariant, fontSize: 13)),
                     const SizedBox(height: 6),
                     TextField(
                       controller: titleCtrl,
-                      style: GoogleFonts.notoSansTc(color: Colors.white),
+                      style: GoogleFonts.notoSansTc(color: cs.onSurface),
                       decoration: InputDecoration(
                         hintText: '例如: 吃高血壓藥、台大看診',
-                        hintStyle: GoogleFonts.notoSansTc(color: const Color(0xFF64748B)),
+                        hintStyle: GoogleFonts.notoSansTc(color: cs.onSurfaceVariant.withValues(alpha: 0.6)),
                         filled: true,
-                        fillColor: const Color(0xFF0F172A),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                        fillColor: cs.surfaceContainerLow,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.3))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.3))),
+                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: cs.primary, width: 1.5)),
                       ),
                     ),
                     const SizedBox(height: 16),
-                    Text('提醒日期', style: GoogleFonts.notoSansTc(color: const Color(0xFF94A3B8), fontSize: 13)),
+                    Text('提醒日期', style: GoogleFonts.notoSansTc(color: cs.onSurfaceVariant, fontSize: 13)),
                     const SizedBox(height: 6),
                     InkWell(
                       onTap: () async {
@@ -316,21 +323,21 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF0F172A),
+                          color: cs.surfaceContainerLow,
                           borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.3)),
+                          border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.3)),
                         ),
                         child: Row(
                           children: [
-                            const Icon(Icons.calendar_month_rounded, color: Color(0xFF38BDF8), size: 20),
+                            Icon(Icons.calendar_month_rounded, color: cs.primary, size: 20),
                             const SizedBox(width: 10),
                             Expanded(
                               child: Text(
                                 dateText,
-                                style: GoogleFonts.notoSansTc(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+                                style: GoogleFonts.notoSansTc(color: cs.onSurface, fontWeight: FontWeight.bold, fontSize: 15),
                               ),
                             ),
-                            const Icon(Icons.arrow_drop_down_rounded, color: Color(0xFF94A3B8)),
+                            Icon(Icons.arrow_drop_down_rounded, color: cs.onSurfaceVariant),
                           ],
                         ),
                       ),
@@ -342,7 +349,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text('提醒時間', style: GoogleFonts.notoSansTc(color: const Color(0xFF94A3B8), fontSize: 13)),
+                              Text('提醒時間', style: GoogleFonts.notoSansTc(color: cs.onSurfaceVariant, fontSize: 13)),
                               const SizedBox(height: 6),
                               InkWell(
                                 onTap: () async {
@@ -352,16 +359,17 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFF0F172A),
+                                    color: cs.surfaceContainerLow,
                                     borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.3)),
                                   ),
                                   child: Row(
                                     children: [
-                                      const Icon(Icons.access_time_rounded, color: Color(0xFF38BDF8), size: 20),
+                                      Icon(Icons.access_time_rounded, color: cs.primary, size: 20),
                                       const SizedBox(width: 8),
                                       Text(
                                         "${selectedTime.hour.toString().padLeft(2, '0')}:${selectedTime.minute.toString().padLeft(2, '0')}",
-                                        style: GoogleFonts.notoSansTc(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                                        style: GoogleFonts.notoSansTc(color: cs.onSurface, fontWeight: FontWeight.bold, fontSize: 16),
                                       ),
                                     ],
                                   ),
@@ -375,19 +383,20 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text('重複頻率', style: GoogleFonts.notoSansTc(color: const Color(0xFF94A3B8), fontSize: 13)),
+                              Text('重複頻率', style: GoogleFonts.notoSansTc(color: cs.onSurfaceVariant, fontSize: 13)),
                               const SizedBox(height: 6),
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 12),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF0F172A),
+                                  color: cs.surfaceContainerLow,
                                   borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.3)),
                                 ),
                                 child: DropdownButtonHideUnderline(
                                   child: DropdownButton<String>(
                                     value: selectedRepeat,
-                                    dropdownColor: const Color(0xFF0F172A),
-                                    style: GoogleFonts.notoSansTc(color: Colors.white, fontWeight: FontWeight.w600),
+                                    dropdownColor: cs.surfaceContainer,
+                                    style: GoogleFonts.notoSansTc(color: cs.onSurface, fontWeight: FontWeight.w600),
                                     isExpanded: true,
                                     items: ['每天', '週一至週五', '每週三', '單次'].map((r) => DropdownMenuItem(value: r, child: Text(r))).toList(),
                                     onChanged: (val) {
@@ -402,17 +411,19 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                       ],
                     ),
                     const SizedBox(height: 16),
-                    Text('備註說明（選填）', style: GoogleFonts.notoSansTc(color: const Color(0xFF94A3B8), fontSize: 13)),
+                    Text('備註說明（選填）', style: GoogleFonts.notoSansTc(color: cs.onSurfaceVariant, fontSize: 13)),
                     const SizedBox(height: 6),
                     TextField(
                       controller: noteCtrl,
-                      style: GoogleFonts.notoSansTc(color: Colors.white),
+                      style: GoogleFonts.notoSansTc(color: cs.onSurface),
                       decoration: InputDecoration(
                         hintText: '例如: 飯後溫開水服用一顆',
-                        hintStyle: GoogleFonts.notoSansTc(color: const Color(0xFF64748B)),
+                        hintStyle: GoogleFonts.notoSansTc(color: cs.onSurfaceVariant.withValues(alpha: 0.6)),
                         filled: true,
-                        fillColor: const Color(0xFF0F172A),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                        fillColor: cs.surfaceContainerLow,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.3))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.3))),
+                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: cs.primary, width: 1.5)),
                       ),
                     ),
                   ],
@@ -421,11 +432,12 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(ctx, false),
-                  child: Text('取消', style: GoogleFonts.notoSansTc(color: const Color(0xFF94A3B8))),
+                  child: Text('取消', style: GoogleFonts.notoSansTc(color: cs.onSurfaceVariant)),
                 ),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF0284C7),
+                    backgroundColor: cs.primary,
+                    foregroundColor: cs.onPrimary,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                   onPressed: () async {
@@ -470,7 +482,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                       }
                     }
                   },
-                  child: Text(isEditing ? '確認儲存' : '確認新增', style: GoogleFonts.notoSansTc(color: Colors.white, fontWeight: FontWeight.bold)),
+                  child: Text(isEditing ? '確認儲存' : '確認新增', style: GoogleFonts.notoSansTc(color: cs.onPrimary, fontWeight: FontWeight.bold)),
                 ),
               ],
             );
@@ -485,12 +497,23 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
   }
 
   Widget _buildCatChip(String catKey, String label, String currentCat, Function(String) onSelect) {
+    final cs = Theme.of(context).colorScheme;
     final bool isSel = currentCat == catKey;
     return ChoiceChip(
-      label: Text(label, style: GoogleFonts.notoSansTc(fontSize: 12, color: isSel ? Colors.white : const Color(0xFF94A3B8))),
+      label: Text(
+        label,
+        style: GoogleFonts.notoSansTc(
+          fontSize: 12,
+          fontWeight: isSel ? FontWeight.bold : FontWeight.normal,
+          color: isSel ? cs.onPrimaryContainer : cs.onSurfaceVariant,
+        ),
+      ),
       selected: isSel,
-      selectedColor: const Color(0xFF0284C7),
-      backgroundColor: const Color(0xFF0F172A),
+      selectedColor: cs.primaryContainer,
+      backgroundColor: cs.surfaceContainerLow,
+      side: BorderSide(
+        color: isSel ? cs.primary : cs.outlineVariant.withValues(alpha: 0.4),
+      ),
       onSelected: (_) => onSelect(catKey),
     );
   }
@@ -762,7 +785,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                 Container(
                   padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade200,
+                    color: Theme.of(ctx).colorScheme.surfaceContainerHigh,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
@@ -771,19 +794,19 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                       fontSize: 32,
                       fontWeight: FontWeight.bold,
                       letterSpacing: 8,
-                      color: Colors.blue.shade700,
+                      color: Theme.of(ctx).colorScheme.primary,
                     ),
                   ),
                 ),
                 const SizedBox(height: 12),
                 Text(
                   '此代碼將在 15 分鐘後失效。',
-                  style: TextStyle(color: Colors.red.shade400, fontSize: 12),
+                  style: TextStyle(color: Theme.of(ctx).colorScheme.error, fontSize: 12),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   '對方輸入完成後，本視窗會自動關閉。',
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                  style: TextStyle(color: Theme.of(ctx).colorScheme.onSurfaceVariant, fontSize: 12),
                 ),
               ],
             ),
@@ -820,88 +843,92 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
     
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF0F172A),
-      shape: RoundedRectangleBorder(
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-        side: BorderSide(color: const Color(0xFF0284C7).withValues(alpha: 0.4), width: 1.5),
-      ),
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
       builder: (context) {
+        final theme = Theme.of(context);
+        final cs = theme.colorScheme;
+        final isDark = theme.brightness == Brightness.dark;
         final String rawId = widget.currentElder!.elderId ?? widget.currentElder!.id.toString();
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 44,
-                  height: 5,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF334155),
-                    borderRadius: BorderRadius.circular(3),
+        return Container(
+          decoration: BoxDecoration(
+            color: cs.surfaceContainer,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+            border: Border(
+              top: BorderSide(color: cs.outlineVariant.withValues(alpha: isDark ? 0.3 : 0.5), width: 1.5),
+              left: BorderSide(color: cs.outlineVariant.withValues(alpha: isDark ? 0.3 : 0.5), width: 1.5),
+              right: BorderSide(color: cs.outlineVariant.withValues(alpha: isDark ? 0.3 : 0.5), width: 1.5),
+            ),
+          ),
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 44,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: cs.outlineVariant,
+                      borderRadius: BorderRadius.circular(3),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 20),
-                Text(
-                  '選擇通話方式',
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
+                  const SizedBox(height: 20),
+                  Text(
+                    '選擇通話方式',
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: cs.onSurface,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 24),
-                // 一般通話按鈕
-                _buildCallOptionButton(
-                  title: '一般視訊通話',
-                  subtitle: '長輩需手動接聽後建立連線',
-                  icon: Icons.video_call_rounded,
-                  color: const Color(0xFF38BDF8),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => VideoCallScreen(
-                          roomId: 'comm_elder_$rawId',
-                          targetSocketId: null, // ★ 不綁死單一 socket ID，由後端完整廣播給線上長輩 Socket 與所有長輩 FCM Token
-                          autoStart: true,
-                          isEmergency: false,
+                  const SizedBox(height: 24),
+                  // 一般通話按鈕
+                  _buildCallOptionButton(
+                    title: '一般視訊通話',
+                    subtitle: '長輩需手動接聽後建立連線',
+                    icon: Icons.video_call_rounded,
+                    color: cs.primary,
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => VideoCallScreen(
+                            roomId: 'comm_elder_$rawId',
+                            targetSocketId: null, // ★ 不綁死單一 socket ID，由後端完整廣播給線上長輩 Socket 與所有長輩 FCM Token
+                            autoStart: true,
+                            isEmergency: false,
+                          ),
                         ),
-                      ),
-                    );
-                  },
-                ),
-                const SizedBox(height: 16),
-                // 緊急強制通話按鈕
-                _buildCallOptionButton(
-                  title: '緊急強制通話',
-                  subtitle: '強制喚醒長輩設備並自動接聽',
-                  icon: Icons.warning_rounded,
-                  color: const Color(0xFFEF4444),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => VideoCallScreen(
-                          roomId: 'comm_elder_$rawId',
-                          targetSocketId: null, // ★ 不綁死單一 socket ID，由後端完整廣播給線上長輩 Socket 與所有長輩 FCM Token
-                          autoStart: true,
-                          isEmergency: true,
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  // 緊急強制通話按鈕
+                  _buildCallOptionButton(
+                    title: '緊急強制通話',
+                    subtitle: '強制喚醒長輩設備並自動接聽',
+                    icon: Icons.warning_rounded,
+                    color: cs.error,
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => VideoCallScreen(
+                            roomId: 'comm_elder_$rawId',
+                            targetSocketId: null, // ★ 不綁死單一 socket ID，由後端完整廣播給線上長輩 Socket 與所有長輩 FCM Token
+                            autoStart: true,
+                            isEmergency: true,
+                          ),
                         ),
-                      ),
-                    );
-                  },
-                ),
-                // ★ 第四十輪（item 1b）：移除「單向視訊監控」選項（原本呼叫
-                //   CameraScreen，roomId: 'monitor_elder_$rawId'，只取房內第一台
-                //   monitor 裝置，無法選擇特定裝置）。監控檢視能力並未消失——
-                //   互動分頁監控卡片的「觀看 CCTV」（_buildMonitorDeviceCard →
-                //   VideoCallScreen(monitorViewOnly: true)，見 CLAUDE_call-monitor.md
-                //   G55／G138）走的是同一份 elder-devices-update 設備清單，且能精準
-                //   指定裝置，功能完整覆蓋此處移除的項目。
-              ],
+                      );
+                    },
+                  ),
+                ],
+              ),
             ),
           ),
         );
@@ -916,6 +943,10 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
     required Color color,
     required VoidCallback onTap,
   }) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -927,12 +958,12 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: const Color(0xFF1E293B),
+            color: cs.surfaceContainerHigh,
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: color.withValues(alpha: 0.35), width: 1.2),
+            border: Border.all(color: color.withValues(alpha: isDark ? 0.35 : 0.45), width: 1.2),
             boxShadow: [
               BoxShadow(
-                color: color.withValues(alpha: 0.12),
+                color: color.withValues(alpha: isDark ? 0.12 : 0.08),
                 blurRadius: 10,
                 offset: const Offset(0, 4),
               ),
@@ -943,7 +974,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.2),
+                  color: color.withValues(alpha: isDark ? 0.2 : 0.12),
                   shape: BoxShape.circle,
                   border: Border.all(color: color.withValues(alpha: 0.4)),
                 ),
@@ -959,7 +990,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                       style: GoogleFonts.notoSansTc(
                         fontSize: 17,
                         fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                        color: cs.onSurface,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -967,7 +998,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                       subtitle,
                       style: GoogleFonts.notoSansTc(
                         fontSize: 13,
-                        color: const Color(0xFF94A3B8),
+                        color: cs.onSurfaceVariant,
                       ),
                     ),
                   ],
@@ -1084,23 +1115,23 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
   }
 
   Widget _buildAiCopilotSection() {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final elderName = widget.currentElder?.displayName ?? '長輩';
 
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(28),
-        gradient: const LinearGradient(
+        gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF38BDF8),
-            Color(0xFF8B5CF6),
-            Color(0xFF10B981),
-          ],
+          colors: isDark
+              ? [const Color(0xFF74DAA2), const Color(0xFF3C6472), const Color(0xFF005238)]
+              : [const Color(0xFF006C4C), const Color(0xFF3C6472), const Color(0xFF90F7BE)],
         ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF0284C7).withValues(alpha: 0.3),
+            color: cs.primary.withValues(alpha: isDark ? 0.2 : 0.1),
             blurRadius: 24,
             offset: const Offset(0, 10),
           ),
@@ -1110,7 +1141,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: const Color(0xFF0F172A),
+          color: cs.surfaceContainer,
           borderRadius: BorderRadius.circular(26.5),
         ),
         child: Column(
@@ -1121,15 +1152,15 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                 Container(
                   padding: const EdgeInsets.all(11),
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF0284C7), Color(0xFF6366F1)],
+                    gradient: LinearGradient(
+                      colors: [cs.primary, cs.tertiary],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
                     borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
-                        color: const Color(0xFF38BDF8).withValues(alpha: 0.35),
+                        color: cs.primary.withValues(alpha: 0.3),
                         blurRadius: 12,
                       ),
                     ],
@@ -1143,8 +1174,6 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                     children: [
                       Row(
                         children: [
-                          // ★ 第四十輪（item 1a）：與「家庭生活時光牆」同型的溢位風險——
-                          //   同列有 ≥18pt 標題 + 徽章即需可收縮，字面字串不是安全的判準。
                           Flexible(
                             child: Text(
                               'AI 照護共創助理',
@@ -1152,7 +1181,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                               style: GoogleFonts.notoSansTc(
                                 fontSize: 18,
                                 fontWeight: FontWeight.w900,
-                                color: Colors.white,
+                                color: cs.onSurface,
                                 letterSpacing: 0.3,
                               ),
                             ),
@@ -1161,9 +1190,9 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                              color: cs.primaryContainer,
                               borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.5)),
+                              border: Border.all(color: cs.primary.withValues(alpha: 0.5)),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
@@ -1171,8 +1200,8 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                                 Container(
                                   width: 6,
                                   height: 6,
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xFF10B981),
+                                  decoration: BoxDecoration(
+                                    color: cs.primary,
                                     shape: BoxShape.circle,
                                   ),
                                 ),
@@ -1182,7 +1211,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                                   style: GoogleFonts.notoSansTc(
                                     fontSize: 10,
                                     fontWeight: FontWeight.bold,
-                                    color: const Color(0xFF10B981),
+                                    color: cs.onPrimaryContainer,
                                   ),
                                 ),
                               ],
@@ -1195,7 +1224,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                         '對話建立排程與近況速報摘要',
                         style: GoogleFonts.notoSansTc(
                           fontSize: 12,
-                          color: const Color(0xFF94A3B8),
+                          color: cs.onSurfaceVariant,
                         ),
                       ),
                     ],
@@ -1208,7 +1237,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
               '與 AI 照護助理對話，可快速獲取 $elderName 的最新動態速報，或直接以自然語言語音建立吃藥與運動排程！',
               style: GoogleFonts.notoSansTc(
                 fontSize: 13,
-                color: const Color(0xFFCBD5E1),
+                color: cs.onSurfaceVariant,
                 height: 1.5,
               ),
             ),
@@ -1228,14 +1257,14 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
               height: 50,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(18),
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF0284C7), Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                gradient: LinearGradient(
+                  colors: [cs.primary, cs.tertiary],
                   begin: Alignment.centerLeft,
                   end: Alignment.centerRight,
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFF0284C7).withValues(alpha: 0.4),
+                    color: cs.primary.withValues(alpha: 0.35),
                     blurRadius: 14,
                     offset: const Offset(0, 4),
                   ),
@@ -1286,12 +1315,14 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
   }
 
   Widget _buildAuroraBadge(IconData icon, String label, Color color) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
+        color: isDark ? color.withValues(alpha: 0.12) : cs.surfaceContainerHigh,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.35)),
+        border: Border.all(color: color.withValues(alpha: isDark ? 0.35 : 0.4)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1303,7 +1334,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
             style: GoogleFonts.notoSansTc(
               fontSize: 11,
               fontWeight: FontWeight.w700,
-              color: color,
+              color: isDark ? color : (color == const Color(0xFF38BDF8) ? cs.primary : color),
             ),
           ),
         ],
@@ -1312,18 +1343,23 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
   }
 
   Widget _buildCommunitySection() {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF10B981), Color(0xFF047857)],
+        gradient: LinearGradient(
+          colors: isDark
+              ? [const Color(0xFF005238), const Color(0xFF003824)]
+              : [const Color(0xFF006C4C), const Color(0xFF3C6472)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF10B981).withValues(alpha: 0.25),
+            color: cs.primary.withValues(alpha: isDark ? 0.2 : 0.12),
             blurRadius: 20,
             offset: const Offset(0, 10),
           ),
@@ -1374,10 +1410,6 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                     children: [
                       Row(
                         children: [
-                          // ★ 第四十輪（item 1a）：字面字串不等於安全——'家庭生活時光牆'
-                          //   七個中文字在 22pt / w900 下，加上同列的「雙向交流」徽章與
-                          //   外層固定寬度的箭頭圖示，在 360dp 寬手機上就會右側溢位。
-                          //   字級與同列元素數量才是判準，不是字串是否為動態內容。
                           Flexible(
                             child: Text(
                               '家庭生活時光牆',
@@ -1433,20 +1465,21 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
   }
 
   Widget _buildNoElderPlaceholder() {
+    final cs = Theme.of(context).colorScheme;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24.0),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.people_alt_rounded, size: 64, color: Color(0xFF94A3B8)),
+            Icon(Icons.people_alt_rounded, size: 64, color: cs.onSurfaceVariant.withValues(alpha: 0.4)),
             const SizedBox(height: 16),
             Text(
               '尚未選擇長輩',
               style: GoogleFonts.notoSansTc(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
-                color: const Color(0xFF475569),
+                color: cs.onSurface,
               ),
             ),
             const SizedBox(height: 8),
@@ -1454,7 +1487,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
               '請點擊頂部長輩選單來載入長輩的互動功能',
               style: GoogleFonts.notoSansTc(
                 fontSize: 14,
-                color: const Color(0xFF64748B),
+                color: cs.onSurfaceVariant,
               ),
               textAlign: TextAlign.center,
             ),
@@ -1465,19 +1498,27 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
   }
 
   Widget _buildCallSection() {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF1E1B4B), Color(0xFF1E40AF), Color(0xFF0284C7)],
+        gradient: LinearGradient(
+          colors: isDark
+              ? [const Color(0xFF003824), const Color(0xFF005238)]
+              : [const Color(0xFF006C4C), const Color(0xFF005238)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.4), width: 1.5),
+        border: Border.all(
+          color: isDark ? cs.primary.withValues(alpha: 0.3) : cs.primaryContainer.withValues(alpha: 0.4),
+          width: 1.5,
+        ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF0284C7).withValues(alpha: 0.35),
+            color: cs.primary.withValues(alpha: isDark ? 0.3 : 0.2),
             blurRadius: 24,
             offset: const Offset(0, 10),
           ),
@@ -1495,12 +1536,12 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                 Container(
                   padding: const EdgeInsets.all(18),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF38BDF8).withValues(alpha: 0.2),
+                    color: Colors.white.withValues(alpha: 0.15),
                     shape: BoxShape.circle,
-                    border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.6), width: 1.5),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.3), width: 1.5),
                     boxShadow: [
                       BoxShadow(
-                        color: const Color(0xFF38BDF8).withValues(alpha: 0.3),
+                        color: Colors.black.withValues(alpha: 0.1),
                         blurRadius: 12,
                       ),
                     ],
@@ -1516,15 +1557,6 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // ★ 2026-08-11 第二十一輪（需求 3）：原本這裡是 Row，兩個子項
-                      //   （fontSize 24 的「視訊通話」標題 + 「即時連線」徽章）都是
-                      //   **非彈性**的，卻放在外層 Row 的 Expanded 裡——可用寬度是
-                      //   螢幕寬扣掉 SliverPadding 32、卡片 padding 48、左側圓形圖示
-                      //   約 71、間距 18、右側箭頭約 36 之後的剩餘量，在一般手機上
-                      //   小於這兩項的自然寬度總和，因此必然 RIGHT OVERFLOW（實測 13px），
-                      //   黃黑斜紋警示條就疊在「視訊通話」按鈕上。
-                      //   改用 Wrap：寬螢幕的排版與原本逐像素相同（同一列、間距 8），
-                      //   窄螢幕則讓徽章自動換行，永遠不會溢位，也不必截斷標題文字。
                       Wrap(
                         crossAxisAlignment: WrapCrossAlignment.center,
                         spacing: 8,
@@ -1542,9 +1574,9 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF10B981).withValues(alpha: 0.25),
+                              color: Colors.white.withValues(alpha: 0.2),
                               borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.5)),
+                              border: Border.all(color: Colors.white38),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
@@ -1553,7 +1585,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                                   width: 6,
                                   height: 6,
                                   decoration: const BoxDecoration(
-                                    color: Color(0xFF34D399),
+                                    color: Color(0xFF74DAA2),
                                     shape: BoxShape.circle,
                                   ),
                                 ),
@@ -1563,7 +1595,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                                   style: GoogleFonts.notoSansTc(
                                     fontSize: 11,
                                     fontWeight: FontWeight.bold,
-                                    color: const Color(0xFF34D399),
+                                    color: Colors.white,
                                   ),
                                 ),
                               ],
@@ -1577,7 +1609,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                         style: GoogleFonts.notoSansTc(
                           fontSize: 14,
                           fontWeight: FontWeight.w500,
-                          color: const Color(0xFFBAE6FD),
+                          color: const Color(0xFF90F7BE),
                         ),
                       ),
                     ],
@@ -1603,20 +1635,23 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
     ).animate().fadeIn(duration: 400.ms).slideY(begin: 0.05);
   }
 
-    Widget _buildMessageSection() {
+  Widget _buildMessageSection() {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+
     return Container(
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF0F172A), Color(0xFF1E293B)],
-        ),
+        color: cs.surfaceContainer,
         borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.3), width: 1.2),
+        border: Border.all(
+          color: cs.outlineVariant.withValues(alpha: isDark ? 0.3 : 0.5),
+          width: 1.2,
+        ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF0284C7).withValues(alpha: 0.1),
+            color: cs.shadow.withValues(alpha: isDark ? 0.3 : 0.05),
             blurRadius: 20,
             offset: const Offset(0, 4),
           ),
@@ -1630,13 +1665,13 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF0284C7).withValues(alpha: 0.2),
+                  color: cs.primary.withValues(alpha: isDark ? 0.2 : 0.12),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.3)),
+                  border: Border.all(color: cs.primary.withValues(alpha: 0.3)),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.alarm_rounded,
-                  color: Color(0xFF38BDF8),
+                  color: cs.primary,
                   size: 22,
                 ),
               ),
@@ -1650,7 +1685,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                       style: GoogleFonts.notoSansTc(
                         fontSize: 19,
                         fontWeight: FontWeight.w800,
-                        color: Colors.white,
+                        color: cs.onSurface,
                       ),
                     ),
                   ],
@@ -1658,17 +1693,15 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
               ),
               InkWell(
                 onTap: _showAddReminderDialog,
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(14),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF0284C7), Color(0xFF38BDF8)],
-                    ),
+                    color: cs.primary,
                     borderRadius: BorderRadius.circular(14),
                     boxShadow: [
                       BoxShadow(
-                        color: const Color(0xFF38BDF8).withValues(alpha: 0.3),
+                        color: cs.primary.withValues(alpha: 0.3),
                         blurRadius: 8,
                       ),
                     ],
@@ -1676,14 +1709,14 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.add_rounded, color: Colors.white, size: 18),
+                      Icon(Icons.add_rounded, color: cs.onPrimary, size: 18),
                       const SizedBox(width: 4),
                       Text(
                         '新增提醒',
                         style: GoogleFonts.notoSansTc(
                           fontSize: 13,
                           fontWeight: FontWeight.bold,
-                          color: Colors.white,
+                          color: cs.onPrimary,
                         ),
                       ),
                     ],
@@ -1695,10 +1728,10 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
           const SizedBox(height: 18),
 
           if (_isLoadingReminders)
-            const Center(
+            Center(
               child: Padding(
-                padding: EdgeInsets.all(24.0),
-                child: CircularProgressIndicator(color: Color(0xFF38BDF8)),
+                padding: const EdgeInsets.all(24.0),
+                child: CircularProgressIndicator(color: cs.primary),
               ),
             )
           else if (_reminders.isEmpty)
@@ -1706,22 +1739,22 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
               decoration: BoxDecoration(
-                color: const Color(0xFF0F172A),
+                color: cs.surfaceContainerLow,
                 borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: const Color(0xFF334155)),
+                border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.4)),
               ),
               child: Column(
                 children: [
-                  const Icon(Icons.notifications_none_rounded, color: Color(0xFF64748B), size: 40),
+                  Icon(Icons.notifications_none_rounded, color: cs.onSurfaceVariant.withValues(alpha: 0.6), size: 40),
                   const SizedBox(height: 8),
                   Text(
                     '目前尚無排程提醒',
-                    style: GoogleFonts.notoSansTc(color: const Color(0xFF94A3B8), fontSize: 14, fontWeight: FontWeight.bold),
+                    style: GoogleFonts.notoSansTc(color: cs.onSurface, fontSize: 14, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     '點擊右上角「新增提醒」為長輩設定用藥或看診時間',
-                    style: GoogleFonts.notoSansTc(color: const Color(0xFF64748B), fontSize: 12),
+                    style: GoogleFonts.notoSansTc(color: cs.onSurfaceVariant, fontSize: 12),
                   ),
                 ],
               ),
@@ -1737,24 +1770,19 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                 final bool isActive = r['is_active'] == true || r['is_active'] == 1;
                 final cat = r['category'] ?? 'custom';
                 
-                String catName = '叮嚀';
-                Color iconColor = const Color(0xFF38BDF8);
+                Color iconColor = cs.primary;
                 IconData catIcon = Icons.notifications_active_rounded;
                 if (cat == 'medication') {
-                  catName = '用藥';
-                  iconColor = const Color(0xFFF43F5E);
+                  iconColor = const Color(0xFFE11D48);
                   catIcon = Icons.medication_rounded;
                 } else if (cat == 'hospital') {
-                  catName = '看診';
-                  iconColor = const Color(0xFF3B82F6);
+                  iconColor = const Color(0xFF2563EB);
                   catIcon = Icons.local_hospital_rounded;
                 } else if (cat == 'water') {
-                  catName = '飲水';
-                  iconColor = const Color(0xFF06B6D4);
+                  iconColor = const Color(0xFF0891B2);
                   catIcon = Icons.water_drop_rounded;
                 } else if (cat == 'exercise') {
-                  catName = '運動';
-                  iconColor = const Color(0xFF10B981);
+                  iconColor = cs.primary;
                   catIcon = Icons.fitness_center_rounded;
                 }
 
@@ -1762,15 +1790,17 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                   duration: const Duration(milliseconds: 200),
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
                   decoration: BoxDecoration(
-                    color: isActive ? const Color(0xFF1E293B) : const Color(0xFF0F172A).withValues(alpha: 0.6),
+                    color: isActive 
+                        ? (isDark ? cs.surfaceContainerHigh : cs.surface)
+                        : (isDark ? cs.surfaceContainerLow : cs.surfaceContainerLowest),
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                      color: isActive ? iconColor.withValues(alpha: 0.4) : const Color(0xFF334155),
+                      color: isActive ? iconColor.withValues(alpha: 0.4) : cs.outlineVariant.withValues(alpha: 0.4),
                       width: isActive ? 1.5 : 1.0,
                     ),
                     boxShadow: isActive ? [
                       BoxShadow(
-                        color: iconColor.withValues(alpha: 0.08),
+                        color: iconColor.withValues(alpha: isDark ? 0.12 : 0.08),
                         blurRadius: 12,
                         offset: const Offset(0, 4),
                       ),
@@ -1789,10 +1819,10 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                                 Container(
                                   padding: const EdgeInsets.all(6),
                                   decoration: BoxDecoration(
-                                    color: iconColor.withValues(alpha: isActive ? 0.2 : 0.08),
+                                    color: iconColor.withValues(alpha: isActive ? 0.15 : 0.08),
                                     borderRadius: BorderRadius.circular(9),
                                   ),
-                                  child: Icon(catIcon, color: isActive ? iconColor : const Color(0xFF64748B), size: 16),
+                                  child: Icon(catIcon, color: isActive ? iconColor : cs.onSurfaceVariant.withValues(alpha: 0.5), size: 16),
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
@@ -1800,7 +1830,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                                   style: GoogleFonts.notoSansTc(
                                     fontSize: 19,
                                     fontWeight: FontWeight.w900,
-                                    color: isActive ? Colors.white : const Color(0xFF64748B),
+                                    color: isActive ? cs.onSurface : cs.onSurfaceVariant.withValues(alpha: 0.6),
                                     letterSpacing: 0.5,
                                   ),
                                 ),
@@ -1815,15 +1845,15 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                                         Container(
                                           padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                                           decoration: BoxDecoration(
-                                            color: const Color(0xFF0284C7).withValues(alpha: 0.2),
+                                            color: cs.primaryContainer.withValues(alpha: 0.6),
                                             borderRadius: BorderRadius.circular(6),
-                                            border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.3)),
+                                            border: Border.all(color: cs.primary.withValues(alpha: 0.3)),
                                           ),
                                           child: Text(
                                             _formatReminderDate(r['start_date']),
                                             style: GoogleFonts.notoSansTc(
                                               fontSize: 10,
-                                              color: const Color(0xFF38BDF8),
+                                              color: cs.onPrimaryContainer,
                                               fontWeight: FontWeight.bold,
                                             ),
                                           ),
@@ -1831,7 +1861,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                                       Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                         decoration: BoxDecoration(
-                                          color: const Color(0xFF334155),
+                                          color: cs.surfaceContainerHighest,
                                           borderRadius: BorderRadius.circular(6),
                                         ),
                                         child: Text(
@@ -1840,7 +1870,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                                           overflow: TextOverflow.ellipsis,
                                           style: GoogleFonts.notoSansTc(
                                             fontSize: 10.5,
-                                            color: const Color(0xFFCBD5E1),
+                                            color: cs.onSurfaceVariant,
                                             fontWeight: FontWeight.bold,
                                           ),
                                         ),
@@ -1856,7 +1886,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                               style: GoogleFonts.notoSansTc(
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
-                                color: isActive ? const Color(0xFFF8FAFC) : const Color(0xFF64748B),
+                                color: isActive ? cs.onSurface : cs.onSurfaceVariant.withValues(alpha: 0.6),
                               ),
                             ),
                             if (r['note'] != null && r['note'].toString().isNotEmpty) ...[
@@ -1865,7 +1895,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                                 r['note'],
                                 style: GoogleFonts.notoSansTc(
                                   fontSize: 13,
-                                  color: const Color(0xFF94A3B8),
+                                  color: cs.onSurfaceVariant,
                                   height: 1.3,
                                 ),
                               ),
@@ -1879,14 +1909,14 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Transform.scale(
-                            scale: 1.2,
+                            scale: 1.1,
                             child: Switch(
                               materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                               value: isActive,
-                              activeColor: const Color(0xFF38BDF8),
-                              activeTrackColor: const Color(0xFF0284C7).withValues(alpha: 0.5),
-                              inactiveThumbColor: const Color(0xFF64748B),
-                              inactiveTrackColor: const Color(0xFF1E293B),
+                              activeThumbColor: cs.primary,
+                              activeTrackColor: cs.primaryContainer,
+                              inactiveThumbColor: cs.outline,
+                              inactiveTrackColor: cs.surfaceContainerHighest,
                               onChanged: (_) => _toggleReminder(index),
                             ),
                           ),
@@ -1897,7 +1927,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                               IconButton(
                                 padding: EdgeInsets.zero,
                                 constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
-                                icon: const Icon(Icons.edit_note_rounded, color: Color(0xFF38BDF8), size: 24),
+                                icon: Icon(Icons.edit_note_rounded, color: cs.primary, size: 24),
                                 tooltip: '編輯提醒',
                                 onPressed: () => _showAddReminderDialog(existingReminder: r),
                               ),
@@ -1911,7 +1941,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                               IconButton(
                                 padding: EdgeInsets.zero,
                                 constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
-                                icon: const Icon(Icons.delete_outline_rounded, color: Color(0xFFEF4444), size: 21),
+                                icon: Icon(Icons.delete_outline_rounded, color: cs.error, size: 21),
                                 tooltip: '刪除提醒',
                                 onPressed: () => _deleteReminder(r['id']),
                               ),
@@ -1942,6 +1972,9 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
   }
 
   Widget _buildMonitorSection() {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
     final reachedLimit = widget.monitorDevices.length >= widget.devicesMax;
     final String rawId = widget.currentElder!.elderId ?? widget.currentElder!.id.toString();
     final String monitorRoomId = 'monitor_elder_$rawId';
@@ -1955,17 +1988,13 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
         _buildTierBadge(),
         const SizedBox(height: 12),
         Container(
-          // ★ 2026-08-11 第二十二輪（需求 5）：改用家屬端暗色系。
-          //   `family_main_screen.dart` 的 Scaffold 底色是 `0xFF0F172A`、卡片是 `0xFF1E293B`，
-          //   這張白卡在深色底上像貼錯的浮水印，故整段（含子元件）一併改深。
-          //   ⚠️ 純配色調整：版面結構、Expanded/Spacer、按鈕行為與跳轉全部不動。
           decoration: BoxDecoration(
-            color: const Color(0xFF1E293B),
+            color: cs.surfaceContainer,
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: const Color(0xFF334155)),
+            border: Border.all(color: cs.outlineVariant.withValues(alpha: isDark ? 0.3 : 0.5)),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.35),
+                color: cs.shadow.withValues(alpha: isDark ? 0.3 : 0.05),
                 blurRadius: 16,
                 offset: const Offset(0, 4),
               ),
@@ -1993,11 +2022,6 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                       ),
                     ),
                     const SizedBox(width: 12),
-                    // ★ 2026-08-10 第二十輪（需求 2）：原本是 Text + Spacer，
-                    //   標題不可壓縮；一旦出現「N 警報」徽章，
-                    //   標題 + 兩個徽章的總寬就超過卡片內寬 → 整條往右溢位。
-                    //   改成 Expanded 後視覺位置完全相同（Text 在 Expanded 內靠左），
-                    //   但空間不足時會自行縮短而非溢出。
                     Expanded(
                       child: Text(
                         '遠端視訊監控',
@@ -2006,30 +2030,30 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                         style: GoogleFonts.notoSansTc(
                           fontSize: 18,
                           fontWeight: FontWeight.w800,
-                          color: const Color(0xFFE2E8F0),
+                          color: cs.onSurface,
                         ),
                       ),
                     ),
-                    // ★ 移植自 family_dashboard_view.dart 第 1280-1303 行：活躍警報計數 badge
+                    // 活躍警報計數 badge
                     if (widget.activeAlerts.isNotEmpty)
                       Container(
                         margin: const EdgeInsets.only(right: 8),
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(
-                          color: Colors.red.shade500,
+                          color: cs.error,
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.warning_amber_rounded, color: Colors.white, size: 14),
+                            Icon(Icons.warning_amber_rounded, color: cs.onError, size: 14),
                             const SizedBox(width: 4),
                             Text(
                               '${widget.activeAlerts.length} 警報',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w800,
-                                color: Colors.white,
+                                color: cs.onError,
                               ),
                             ),
                           ],
@@ -2041,7 +2065,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                       decoration: BoxDecoration(
                         color: reachedLimit
                             ? const Color(0xFFF59E0B).withValues(alpha: 0.18)
-                            : const Color(0xFF0F172A),
+                            : cs.surfaceContainerHigh,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
@@ -2050,8 +2074,8 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                           fontSize: 13,
                           fontWeight: FontWeight.w700,
                           color: reachedLimit
-                              ? const Color(0xFFFBBF24)
-                              : const Color(0xFF94A3B8),
+                              ? const Color(0xFFF59E0B)
+                              : cs.onSurfaceVariant,
                         ),
                       ),
                     ),
@@ -2083,8 +2107,8 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                     icon: const Icon(Icons.add_a_photo_rounded, size: 20),
                     label: const Text('新增並連接監控設備'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF334155),
-                      foregroundColor: const Color(0xFFE2E8F0),
+                      backgroundColor: cs.primaryContainer,
+                      foregroundColor: cs.onPrimaryContainer,
                       elevation: 0,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       textStyle: GoogleFonts.notoSansTc(
@@ -2107,14 +2131,15 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
 
   /// 空狀態：尚未連接任何監視機設備（移植自 family_dashboard_view.dart 第 1345 行 _buildNoMonitorDevice）
   Widget _buildNoMonitorDevice() {
-    // ★ 2026-08-11 第二十二輪（需求 5）：空狀態同樣改暗色系，ICON 依會員層級著色。
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 24),
       decoration: BoxDecoration(
-        color: const Color(0xFF0F172A),
+        color: cs.surfaceContainerLow,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF334155)),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.5)),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -2128,7 +2153,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
           Text(
             '尚未連接任何監視機設備',
             style: GoogleFonts.notoSansTc(
-              color: const Color(0xFFCBD5E1),
+              color: cs.onSurface,
               fontSize: 15,
               fontWeight: FontWeight.w700,
             ),
@@ -2137,7 +2162,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
           Text(
             '請至「設定」配對家庭監控裝置',
             style: GoogleFonts.notoSansTc(
-              color: const Color(0xFF64748B),
+              color: cs.onSurfaceVariant,
               fontSize: 13,
             ),
           ),
@@ -2149,6 +2174,10 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
   /// 單一監視機裝置卡片（移植自 family_dashboard_view.dart 第 1382 行 _buildMonitorDeviceCard，
   /// 含依 hasActiveAlert 判定的紅框跌倒警報高亮樣式）
   Widget _buildMonitorDeviceCard(Map device, {required String monitorRoomId}) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+
     final name = device['deviceName'] ?? 'Unnamed';
     final socketId = device['id'] as String? ?? '';
     final isOnline = device['isOnline'] == true;
@@ -2161,65 +2190,47 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
     final hasActiveAlert = deviceAlerts.isNotEmpty;
     final mostSevereAlert = hasActiveAlert ? deviceAlerts.first : null;
 
-    // ★ 2026-08-24 Feature A：長輩目前所在此處的高亮。deviceId 比對邏輯與
-    //   上面的 hasActiveAlert 同款（轉字串比對）。🚨 緊急優先：hasActiveAlert
-    //   時一律顯示跌倒警報樣式，不疊加這個高亮（decoration／徽章／副標題
-    //   三處都先判斷 `!hasActiveAlert`）。
-    //   ⚠️ 「設定區域」校準功能移除後新增 `present` 判斷：只比對 deviceId
-    //   不夠——`_elderZone` 過期（長輩早已離開鏡頭）時 `deviceId` 可能還留著
-    //   上一次的值，`present` 才是後端過期判定後的權威結果，見
-    //   `elderZone` 欄位宣告處的說明。
     final String? presentDeviceId = widget.elderZone?['deviceId']?.toString();
     final bool isElderPresent = !hasActiveAlert &&
         widget.elderZone?['present'] == true &&
         presentDeviceId != null &&
         presentDeviceId == deviceId.toString();
-    // ⚠️ 括號是必要的：三元運算子的 `?` 緊接著 null-aware index `?[` 會被
-    //   解析器誤判成巢狀三元運算式的開頭（`widget.elderZone` 被當成內層
-    //   condition），拆成獨立的括號表達式即可消歧義。
     final String? presentZoneName =
         isElderPresent ? (widget.elderZone?['zone'])?.toString() : null;
     final bool showZoneName = presentZoneName != null && presentZoneName != 'unknown';
 
-    // ★ 2026-08-04 第 7 項：語音通道按鈕所需的兩個數值。
-    //   任一個解析不出來就不顯示按鈕——寧可少一個功能鍵，也不能送出錯誤的
-    //   alert_id / device_id 而把語音權限開到別台監視機上。
-    final int? alertId = hasActiveAlert
-        ? int.tryParse(
-            (mostSevereAlert?['alert_id'] ?? mostSevereAlert?['alertId'])?.toString() ?? '')
-        : null;
-    final int? numericDeviceId = int.tryParse(deviceId.toString());
-    // ★ 2026-08-11 第二十二輪（需求 5）：卡片內的操作主色同樣依會員層級。
     final Color accent = _tierAccentColor();
+
+    Color cardBg;
+    Color cardBorder;
+    if (hasActiveAlert) {
+      cardBg = isDark ? const Color(0xFF3F1D1D) : const Color(0xFFFEF2F2);
+      cardBorder = const Color(0xFFF87171);
+    } else if (isElderPresent) {
+      cardBg = isDark ? const Color(0xFF083344) : cs.primaryContainer.withValues(alpha: 0.35);
+      cardBorder = cs.primary;
+    } else {
+      cardBg = isDark ? cs.surfaceContainerLow : cs.surface;
+      cardBorder = cs.outlineVariant.withValues(alpha: isDark ? 0.3 : 0.5);
+    }
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 18),
-      // ★ 2026-08-11 第二十二輪（需求 5）：暗色系。跌倒警報的紅色高亮**必須保留**
-      //   （§7 護欄：警報視覺不可被弱化），只是把淺紅底換成深紅底、邊框轉亮，
-      //   在深色卡片上維持同等的「一眼看到」強度。
-      // ★ 2026-08-24 Feature A：新增「長輩目前所在此處」的青色高亮
-      //   （isElderPresent），刻意選跟警報紅、線上綠點都明顯不同的色相；
-      //   三態優先序＝警報 > 目前所在 > 一般（isElderPresent 本身已內建
-      //   `!hasActiveAlert`，這裡的三元判斷只是讓顏色選擇同樣顯式對齊）。
       decoration: BoxDecoration(
-        color: hasActiveAlert
-            ? const Color(0xFF3F1D1D)
-            : (isElderPresent ? const Color(0xFF083344) : const Color(0xFF0F172A)),
+        color: cardBg,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: hasActiveAlert
-              ? const Color(0xFFF87171)
-              : (isElderPresent ? const Color(0xFF38BDF8) : const Color(0xFF334155)),
+          color: cardBorder,
           width: (hasActiveAlert || isElderPresent) ? 2.0 : 1.0,
         ),
         boxShadow: [
           BoxShadow(
             color: hasActiveAlert
-                ? Colors.red.withValues(alpha: 0.22)
+                ? Colors.red.withValues(alpha: isDark ? 0.22 : 0.12)
                 : (isElderPresent
-                    ? const Color(0xFF38BDF8).withValues(alpha: 0.22)
-                    : Colors.black.withValues(alpha: 0.25)),
+                    ? cs.primary.withValues(alpha: isDark ? 0.22 : 0.12)
+                    : cs.shadow.withValues(alpha: isDark ? 0.25 : 0.04)),
             blurRadius: (hasActiveAlert || isElderPresent) ? 12 : 8,
             offset: const Offset(0, 2),
           ),
@@ -2232,12 +2243,12 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
             width: 10,
             height: 10,
             decoration: BoxDecoration(
-              color: isOnline ? const Color(0xFF34D399) : const Color(0xFF475569),
+              color: isOnline ? const Color(0xFF10B981) : cs.outlineVariant,
               shape: BoxShape.circle,
               boxShadow: isOnline
                   ? [
                       BoxShadow(
-                        color: const Color(0xFF34D399).withValues(alpha: 0.5),
+                        color: const Color(0xFF10B981).withValues(alpha: 0.5),
                         blurRadius: 6,
                       )
                     ]
@@ -2259,8 +2270,8 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
                           color: isOnline
-                              ? const Color(0xFFE2E8F0)
-                              : const Color(0xFF64748B),
+                              ? cs.onSurface
+                              : cs.onSurfaceVariant.withValues(alpha: 0.6),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
@@ -2270,7 +2281,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                         decoration: BoxDecoration(
-                          color: Colors.red.shade500,
+                          color: Colors.red.shade600,
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Text(
@@ -2283,20 +2294,18 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                         ),
                       ),
                     ] else if (isElderPresent) ...[
-                      // ★ 2026-08-24 Feature A：「長輩在此」徽章，僅在沒有作用中
-                      //   警報時顯示——警報優先權比照上面 hasActiveAlert 分支。
                       const SizedBox(width: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF06B6D4),
+                          color: cs.primary,
                           borderRadius: BorderRadius.circular(10),
                         ),
-                        child: const Text(
+                        child: Text(
                           '長輩在此',
                           style: TextStyle(
                             fontSize: 11,
-                            color: Colors.white,
+                            color: cs.onPrimary,
                             fontWeight: FontWeight.w800,
                           ),
                         ),
@@ -2314,10 +2323,10 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                   style: TextStyle(
                     fontSize: 12,
                     color: hasActiveAlert
-                        ? const Color(0xFFFCA5A5)
+                        ? (isDark ? const Color(0xFFFCA5A5) : const Color(0xFFDC2626))
                         : (isElderPresent
-                            ? const Color(0xFF7DD3FC)
-                            : const Color(0xFF94A3B8)),
+                            ? cs.primary
+                            : cs.onSurfaceVariant),
                     fontWeight: (hasActiveAlert || isElderPresent)
                         ? FontWeight.w600
                         : FontWeight.normal,
@@ -2338,28 +2347,12 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                           targetSocketId: socketId,
                           isEmergency: true,
                           autoStart: true,
-                          // ★ 2026-08-05 第十七輪：CCTV 監控檢視改用 pop() 返回本頁
-                          //   （互動分頁），不再整個重建 FamilyMainScreen。
                           returnByPop: true,
-                          // ★ 2026-08-10 第十九輪（需求 2）：單向監控——不開自己的
-                          //   鏡頭、不顯示本地預覽、不給鏡頭類按鈕，只留麥克風。
-                          //   全專案唯一可以傳 true 的地方（見 §7 G55）。
                           monitorViewOnly: true,
-                          // ★ 2026-08-26：補上 `monitorDeviceName`，讓
-                          //   [Signaling.onMonitorRemoved] 能精準比對「被移除的是不是
-                          //   我正在看的這一台」。`name` 就是這張卡片本身的
-                          //   `device['deviceName']`——與下方 PopupMenuButton 呼叫
-                          //   `_showDeleteMonitorDeviceDialog(name.toString())` 用的是
-                          //   同一個字串，而後端刪除時會把收到的 `device_name`
-                          //   查詢參數（僅 `.strip()`）原樣寫回 `monitor-removed` 的
-                          //   `deviceName` 欄位（見 `routers/pairing.py::delete_monitor_device`），
-                          //   故兩者保證一致。未傳入前，比對退回只認 elderId（見該欄位
-                          //   宣告處），會讓刪除同一長輩底下的「另一台」也誤關本畫面。
                           monitorDeviceName: name.toString(),
                         ),
                       ),
                     ).then((_) {
-                      // ★ 2026-08-16（需求 2）：查看完監視畫面返回後，通知父層清除該設備的警報狀態，還原介面樣式與動畫
                       widget.onAlertDismissed?.call(deviceId);
                     });
                   }
@@ -2368,9 +2361,11 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
             label: const Text('觀看 CCTV'),
             style: ElevatedButton.styleFrom(
               backgroundColor: isOnline
-                  ? accent.withValues(alpha: 0.16)
-                  : const Color(0xFF334155),
-              foregroundColor: isOnline ? accent : const Color(0xFF64748B),
+                  ? (isDark ? accent.withValues(alpha: 0.16) : cs.primaryContainer)
+                  : cs.surfaceContainerHighest,
+              foregroundColor: isOnline 
+                  ? (isDark ? accent : cs.onPrimaryContainer)
+                  : cs.onSurfaceVariant.withValues(alpha: 0.5),
               elevation: 0,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               shape: RoundedRectangleBorder(
@@ -2378,14 +2373,10 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
               ),
             ),
           ),
-          // ★ 2026-08-10 第十九輪（需求 3）：家屬端也能刪除監視機與改名。
-          //   離線裝置同樣要能操作（離線殘影正是最需要被刪掉的情況）。
           PopupMenuButton<String>(
             tooltip: '管理監視機',
-            // ★ 2026-08-11 第二十二輪（需求 5）：選單本身預設是亮底，
-            //   在暗色卡片上點開會整片刺眼，一併轉深。
-            color: const Color(0xFF1E293B),
-            icon: const Icon(Icons.more_vert_rounded, color: Color(0xFF94A3B8)),
+            color: cs.surfaceContainerHigh,
+            icon: Icon(Icons.more_vert_rounded, color: cs.onSurfaceVariant),
             onSelected: (value) {
               if (value == 'rename') {
                 _showRenameMonitorDeviceDialog(name.toString());
@@ -2393,23 +2384,23 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                 _showDeleteMonitorDeviceDialog(name.toString());
               }
             },
-            itemBuilder: (_) => const [
+            itemBuilder: (_) => [
               PopupMenuItem<String>(
                 value: 'rename',
                 child: ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: Icon(Icons.drive_file_rename_outline_rounded,
-                      color: Color(0xFFCBD5E1)),
+                      color: cs.onSurface),
                   title: Text('重新命名',
-                      style: TextStyle(color: Color(0xFFE2E8F0))),
+                      style: TextStyle(color: cs.onSurface)),
                 ),
               ),
               PopupMenuItem<String>(
                 value: 'delete',
                 child: ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.delete_outline_rounded, color: Color(0xFFF87171)),
-                  title: Text('刪除監視機', style: TextStyle(color: Color(0xFFF87171))),
+                  leading: Icon(Icons.delete_outline_rounded, color: cs.error),
+                  title: Text('刪除監視機', style: TextStyle(color: cs.error)),
                 ),
               ),
             ],
@@ -2510,8 +2501,8 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
             onPressed: () =>
                 Navigator.pop(dialogContext, controller.text.trim()),
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF59B294),
-              foregroundColor: Colors.white,
+              backgroundColor: Theme.of(dialogContext).colorScheme.primary,
+              foregroundColor: Theme.of(dialogContext).colorScheme.onPrimary,
             ),
             child: const Text('儲存'),
           ),
@@ -2562,18 +2553,20 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
 
   /// 設備數量達上限時的警告卡片（移植自 family_dashboard_view.dart 第 1537 行 _buildDeviceLimitWarning）
   Widget _buildDeviceLimitWarning() {
-    // ★ 2026-08-11 第二十二輪（需求 5）：與監視機卡片同一張深色卡內，一併轉深底暖黃。
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 18),
       decoration: BoxDecoration(
-        color: const Color(0xFF3A2A0B),
+        color: isDark ? const Color(0xFF3A2A0B) : const Color(0xFFFEF3C7),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF92400E)),
+        border: Border.all(color: isDark ? const Color(0xFF92400E) : const Color(0xFFF59E0B).withValues(alpha: 0.5)),
       ),
       child: Row(
         children: [
-          const Icon(Icons.warning_amber_rounded, color: Color(0xFFFBBF24), size: 22),
+          Icon(Icons.warning_amber_rounded, color: isDark ? const Color(0xFFFBBF24) : const Color(0xFFD97706), size: 22),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -2584,7 +2577,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                   style: GoogleFonts.notoSansTc(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
-                    color: const Color(0xFFFCD34D),
+                    color: isDark ? const Color(0xFFFCD34D) : const Color(0xFF92400E),
                   ),
                 ),
                 const SizedBox(height: 2),
@@ -2592,7 +2585,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                   '升級方案以新增更多監視機',
                   style: GoogleFonts.notoSansTc(
                     fontSize: 12,
-                    color: const Color(0xFFFDE68A),
+                    color: isDark ? const Color(0xFFFDE68A) : const Color(0xFFB45309),
                   ),
                 ),
               ],
@@ -2606,7 +2599,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
               );
             },
             style: TextButton.styleFrom(
-              foregroundColor: const Color(0xFFFBBF24),
+              foregroundColor: isDark ? const Color(0xFFFBBF24) : const Color(0xFFD97706),
             ),
             child: Text(
               '升級',
@@ -2621,18 +2614,14 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
   /// ★ 2026-08-11 第二十二輪（需求 5）：會員層級主色——**全分頁唯一來源**。
   ///
   /// 使用者指定：一般會員綠色、黃金會員金黃色、鑽石會員亮藍色。
-  /// 這裡刻意比 2026-08-04 第 6 項的原色（`0xFFC9911B` / `0xFF4A7FD9` / `0xFF59B294`）
-  /// 更亮一階——那組是為**白底卡片**挑的，遠端視訊監控改成 `0xFF1E293B` 深底之後
-  /// 對比度不足（尤其黃金的暗金會糊在深底上）。鑽石的 `0xFF38BDF8` 同時也是
-  /// `family_main_screen.dart` 底部導覽列選中態的主色，兩處一致。
-  ///
   /// ⚠️ 未知層級一律退回一般會員的綠色，**不可拋例外**——`tierLevel` 來自後端訂閱
   ///   查詢，查詢失敗時是 `'free'` 以外的任意字串，不能因此讓整個分頁白畫面。
   Color _tierAccentColor() {
+    final cs = Theme.of(context).colorScheme;
     return switch (widget.tierLevel) {
       'gold' => const Color(0xFFF5C451),    // 黃金會員 — 金黃
       'diamond' => const Color(0xFF38BDF8), // 鑽石會員 — 亮藍
-      _ => const Color(0xFF10B981),         // 一般會員（免費）— 綠
+      _ => cs.primary,                      // 一般會員（免費）— 核心薄荷綠
     };
   }
 

@@ -92,10 +92,12 @@ class FamilyHomeTab extends StatefulWidget {
 
 class _FamilyHomeTabState extends State<FamilyHomeTab> {
   void _showSendCareCardModal(BuildContext context, String elderName) {
+    final cs = Theme.of(context).colorScheme;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF0F172A),
+      backgroundColor: cs.surfaceContainer,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
@@ -160,12 +162,12 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                       Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF0284C7).withValues(alpha: 0.2),
+                          color: cs.primaryContainer,
                           borderRadius: BorderRadius.circular(14),
                         ),
                         child: Icon(
                           selectedTabIndex == 0 ? Icons.auto_awesome_rounded : Icons.mic_rounded,
-                          color: const Color(0xFF38BDF8),
+                          color: cs.primary,
                           size: 24,
                         ),
                       ),
@@ -179,7 +181,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                               style: GoogleFonts.notoSansTc(
                                 fontSize: 18,
                                 fontWeight: FontWeight.w900,
-                                color: Colors.white,
+                                color: cs.onSurface,
                               ),
                             ),
                             Text(
@@ -188,7 +190,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                                   : '按住錄音即可傳送子女真實原聲至 $elderName 的裝置',
                               style: GoogleFonts.notoSansTc(
                                 fontSize: 12,
-                                color: const Color(0xFF94A3B8),
+                                color: cs.onSurfaceVariant,
                               ),
                             ),
                           ],
@@ -200,7 +202,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
 
                   Container(
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1E293B),
+                      color: cs.surfaceContainerHigh,
                       borderRadius: BorderRadius.circular(14),
                     ),
                     padding: const EdgeInsets.all(4),
@@ -212,15 +214,26 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                             child: Container(
                               padding: const EdgeInsets.symmetric(vertical: 10),
                               decoration: BoxDecoration(
-                                color: selectedTabIndex == 0 ? const Color(0xFF0284C7) : Colors.transparent,
+                                color: selectedTabIndex == 0 ? cs.primary : Colors.transparent,
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               child: Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  const Icon(Icons.auto_awesome_rounded, size: 16, color: Colors.white),
+                                  Icon(
+                                    Icons.auto_awesome_rounded,
+                                    size: 16,
+                                    color: selectedTabIndex == 0 ? cs.onPrimary : cs.onSurfaceVariant,
+                                  ),
                                   const SizedBox(width: 6),
-                                  Text('AI 近況短句', style: GoogleFonts.notoSansTc(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white)),
+                                  Text(
+                                    'AI 近況短句',
+                                    style: GoogleFonts.notoSansTc(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.bold,
+                                      color: selectedTabIndex == 0 ? cs.onPrimary : cs.onSurfaceVariant,
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),
@@ -232,15 +245,26 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                             child: Container(
                               padding: const EdgeInsets.symmetric(vertical: 10),
                               decoration: BoxDecoration(
-                                color: selectedTabIndex == 1 ? const Color(0xFF10B981) : Colors.transparent,
+                                color: selectedTabIndex == 1 ? cs.primary : Colors.transparent,
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               child: Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  const Icon(Icons.mic_rounded, size: 16, color: Colors.white),
+                                  Icon(
+                                    Icons.mic_rounded,
+                                    size: 16,
+                                    color: selectedTabIndex == 1 ? cs.onPrimary : cs.onSurfaceVariant,
+                                  ),
                                   const SizedBox(width: 6),
-                                  Text('原聲錄音對講', style: GoogleFonts.notoSansTc(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white)),
+                                  Text(
+                                    '原聲錄音對講',
+                                    style: GoogleFonts.notoSansTc(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.bold,
+                                      color: selectedTabIndex == 1 ? cs.onPrimary : cs.onSurfaceVariant,
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),
@@ -253,9 +277,9 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
 
                   if (selectedTabIndex == 0) ...[
                     if (isLoadingMessages)
-                      const Padding(
-                        padding: EdgeInsets.all(32.0),
-                        child: Center(child: CircularProgressIndicator(color: Color(0xFF38BDF8))),
+                      Padding(
+                        padding: const EdgeInsets.all(32.0),
+                        child: Center(child: CircularProgressIndicator(color: cs.primary)),
                       )
                     else
                       ...List.generate(dynamicCareMessages.length, (idx) {
@@ -268,10 +292,10 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                             child: Container(
                               padding: const EdgeInsets.all(14),
                               decoration: BoxDecoration(
-                                color: isSel ? const Color(0xFF0284C7).withValues(alpha: 0.2) : const Color(0xFF1E293B),
+                                color: isSel ? cs.primaryContainer : cs.surfaceContainerHigh,
                                 borderRadius: BorderRadius.circular(16),
                                 border: Border.all(
-                                  color: isSel ? const Color(0xFF38BDF8) : Colors.white12,
+                                  color: isSel ? cs.primary : cs.outlineVariant.withValues(alpha: 0.4),
                                   width: isSel ? 1.5 : 1,
                                 ),
                               ),
@@ -280,10 +304,6 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                                 children: [
                                   Row(
                                     children: [
-                                      // ★ 2026-09-01 第三十九輪（RenderFlex 溢位修復）：card['title']
-                                      // 來自 AI 動態關懷訊息（後端 /api/ai/dynamic_care_messages 或
-                                      // 內建 fallback），長度不可控；旁邊還有 Spacer 會把剩餘寬度
-                                      // 吃到 0，標題過長時原本會整條溢出，故包 Flexible 可收縮。
                                       Flexible(
                                         child: Text(
                                           card['title']!,
@@ -291,12 +311,12 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                                           style: GoogleFonts.notoSansTc(
                                             fontSize: 14,
                                             fontWeight: FontWeight.bold,
-                                            color: isSel ? const Color(0xFF38BDF8) : Colors.white,
+                                            color: isSel ? cs.onPrimaryContainer : cs.onSurface,
                                           ),
                                         ),
                                       ),
                                       const Spacer(),
-                                      if (isSel) const Icon(Icons.check_circle_rounded, color: Color(0xFF38BDF8), size: 18),
+                                      if (isSel) Icon(Icons.check_circle_rounded, color: cs.primary, size: 18),
                                     ],
                                   ),
                                   const SizedBox(height: 6),
@@ -304,7 +324,9 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                                     card['desc']!,
                                     style: GoogleFonts.notoSansTc(
                                       fontSize: 13,
-                                      color: const Color(0xFFCBD5E1),
+                                      color: isSel
+                                          ? cs.onPrimaryContainer.withValues(alpha: 0.8)
+                                          : cs.onSurfaceVariant,
                                       height: 1.3,
                                     ),
                                   ),
@@ -320,7 +342,8 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                       height: 48,
                       child: ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF0284C7),
+                          backgroundColor: cs.primary,
+                          foregroundColor: cs.onPrimary,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                         ),
                         onPressed: () async {
@@ -355,10 +378,10 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                             );
                           }
                         },
-                        icon: const Icon(Icons.send_rounded, color: Colors.white, size: 18),
+                        icon: Icon(Icons.send_rounded, color: cs.onPrimary, size: 18),
                         label: Text(
                           '推送 AI 貼心問候至長輩端',
-                          style: GoogleFonts.notoSansTc(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white),
+                          style: GoogleFonts.notoSansTc(fontSize: 15, fontWeight: FontWeight.w800, color: cs.onPrimary),
                         ),
                       ),
                     ),
@@ -438,7 +461,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                             style: GoogleFonts.notoSansTc(
                               fontSize: 14,
                               fontWeight: FontWeight.bold,
-                              color: isRecording ? const Color(0xFFEF4444) : const Color(0xFF38BDF8),
+                              color: isRecording ? const Color(0xFFEF4444) : cs.primary,
                             ),
                           ),
                           const SizedBox(height: 16),
@@ -461,8 +484,8 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                                     }
                                   },
                                   style: OutlinedButton.styleFrom(
-                                    foregroundColor: const Color(0xFF10B981),
-                                    side: const BorderSide(color: Color(0xFF10B981)),
+                                    foregroundColor: cs.primary,
+                                    side: BorderSide(color: cs.primary),
                                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                   ),
                                   icon: Icon(isPlayingPreview ? Icons.pause_rounded : Icons.play_arrow_rounded, size: 20),
@@ -481,7 +504,8 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                       height: 48,
                       child: ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: recordedFilePath != null ? const Color(0xFF10B981) : const Color(0xFF64748B),
+                          backgroundColor: recordedFilePath != null ? cs.primary : cs.surfaceContainerHighest,
+                          foregroundColor: cs.onPrimary,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                         ),
                         onPressed: recordedFilePath == null
@@ -507,10 +531,10 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                                   );
                                 }
                               },
-                        icon: const Icon(Icons.volume_up_rounded, color: Colors.white, size: 18),
+                        icon: Icon(Icons.volume_up_rounded, color: cs.onPrimary, size: 18),
                         label: Text(
                           '傳送 10 秒原聲語音至長輩端',
-                          style: GoogleFonts.notoSansTc(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white),
+                          style: GoogleFonts.notoSansTc(fontSize: 15, fontWeight: FontWeight.w800, color: cs.onPrimary),
                         ),
                       ),
                     ),
@@ -566,10 +590,13 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
 
 
   void _showFullDialogueDialog(BuildContext context, String query, String ai, String timeStr) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     showDialog(
       context: context,
       builder: (c) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
+        backgroundColor: cs.surfaceContainer,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         title: Row(
           children: [
@@ -580,7 +607,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                 '🗣️ AI 語音陪伴對話紀錄 ($timeStr)',
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.notoSansTc(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800),
+                style: GoogleFonts.notoSansTc(color: cs.onSurface, fontSize: 16, fontWeight: FontWeight.w800),
               ),
             ),
           ],
@@ -589,35 +616,35 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('👴 長輩提問：', style: GoogleFonts.notoSansTc(color: const Color(0xFF38BDF8), fontWeight: FontWeight.bold)),
+            Text('👴 長輩提問：', style: GoogleFonts.notoSansTc(color: cs.primary, fontWeight: FontWeight.bold)),
             const SizedBox(height: 4),
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: const Color(0xFF0F172A),
+                color: cs.surfaceContainerLow,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.3)),
+                border: Border.all(color: cs.primary.withValues(alpha: 0.3)),
               ),
-              child: Text(query, style: GoogleFonts.notoSansTc(color: Colors.white, height: 1.4)),
+              child: Text(query, style: GoogleFonts.notoSansTc(color: cs.onSurface, height: 1.4)),
             ),
             const SizedBox(height: 14),
-            Text('🤖 AI 小嘎回報與陪伴：', style: GoogleFonts.notoSansTc(color: const Color(0xFFFCD34D), fontWeight: FontWeight.bold)),
+            Text('🤖 AI 小嘎回報與陪伴：', style: GoogleFonts.notoSansTc(color: isDark ? const Color(0xFFFCD34D) : const Color(0xFFD97706), fontWeight: FontWeight.bold)),
             const SizedBox(height: 4),
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: const Color(0xFF0F172A),
+                color: cs.surfaceContainerLow,
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.3)),
               ),
-              child: Text(ai, style: GoogleFonts.notoSansTc(color: const Color(0xFFFEF3C7), height: 1.4)),
+              child: Text(ai, style: GoogleFonts.notoSansTc(color: cs.onSurface, height: 1.4)),
             ),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(c),
-            child: Text('關閉', style: GoogleFonts.notoSansTc(color: const Color(0xFF38BDF8), fontWeight: FontWeight.bold)),
+            child: Text('關閉', style: GoogleFonts.notoSansTc(color: cs.primary, fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -631,6 +658,9 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     required Color categoryColor,
     required List<Map<String, dynamic>> items,
   }) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -638,11 +668,15 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
       builder: (c) {
         return Container(
           height: MediaQuery.of(context).size.height * 0.8,
-          decoration: const BoxDecoration(
-            color: Color(0xFF1E293B),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+          decoration: BoxDecoration(
+            color: cs.surfaceContainer,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
             boxShadow: [
-              BoxShadow(color: Colors.black87, blurRadius: 30, spreadRadius: 5),
+              BoxShadow(
+                color: isDark ? Colors.black87 : cs.primary.withValues(alpha: 0.08),
+                blurRadius: 30,
+                spreadRadius: 5,
+              ),
             ],
           ),
           child: Column(
@@ -652,7 +686,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                 width: 44,
                 height: 5,
                 decoration: BoxDecoration(
-                  color: Colors.white24,
+                  color: cs.outlineVariant,
                   borderRadius: BorderRadius.circular(10),
                 ),
               ),
@@ -680,33 +714,33 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                             style: GoogleFonts.notoSansTc(
                               fontSize: 19,
                               fontWeight: FontWeight.w900,
-                              color: Colors.white,
+                              color: cs.onSurface,
                             ),
                           ),
                           Text(
                             '包含 ${items.length} 筆相關新聞閱覽與 AI 陪伴對話',
                             style: GoogleFonts.notoSansTc(
                               fontSize: 12,
-                              color: const Color(0xFF94A3B8),
+                              color: cs.onSurfaceVariant,
                             ),
                           ),
                         ],
                       ),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.close_rounded, color: Colors.white60),
+                      icon: Icon(Icons.close_rounded, color: cs.onSurfaceVariant),
                       onPressed: () => Navigator.pop(c),
                     ),
                   ],
                 ),
               ),
-              const Divider(color: Colors.white12, height: 24),
+              Divider(color: cs.outlineVariant.withValues(alpha: 0.3), height: 24),
               Expanded(
                 child: items.isEmpty
                     ? Center(
                         child: Text(
                           '尚無該主題分類的新紀錄',
-                          style: GoogleFonts.notoSansTc(color: Colors.white54),
+                          style: GoogleFonts.notoSansTc(color: cs.onSurfaceVariant),
                         ),
                       )
                     : ListView.builder(
@@ -720,7 +754,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                             margin: const EdgeInsets.only(bottom: 14),
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF0F172A),
+                              color: cs.surfaceContainerLow,
                               borderRadius: BorderRadius.circular(20),
                               border: Border.all(color: (item['color'] as Color).withValues(alpha: 0.3)),
                             ),
@@ -751,13 +785,13 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                                         style: GoogleFonts.notoSansTc(
                                           fontSize: 15,
                                           fontWeight: FontWeight.bold,
-                                          color: Colors.white,
+                                          color: cs.onSurface,
                                         ),
                                       ),
                                     ),
                                     Text(
                                       '${item['date']} ${item['time']}',
-                                      style: GoogleFonts.inter(fontSize: 11, color: Colors.white38),
+                                      style: GoogleFonts.inter(fontSize: 11, color: cs.onSurfaceVariant),
                                     ),
                                   ],
                                 ),
@@ -767,15 +801,15 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                                   style: GoogleFonts.notoSansTc(
                                     fontSize: 13.5,
                                     height: 1.45,
-                                    color: const Color(0xFFCBD5E1),
+                                    color: cs.onSurfaceVariant,
                                   ),
                                 ),
                                 if (isChat) ...[
                                   const SizedBox(height: 12),
                                   ElevatedButton.icon(
                                     style: ElevatedButton.styleFrom(
-                                      backgroundColor: const Color(0xFFF59E0B).withValues(alpha: 0.2),
-                                      foregroundColor: const Color(0xFFFCD34D),
+                                      backgroundColor: const Color(0xFFF59E0B).withValues(alpha: 0.15),
+                                      foregroundColor: isDark ? const Color(0xFFFCD34D) : const Color(0xFFB45309),
                                       elevation: 0,
                                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                                       shape: RoundedRectangleBorder(
@@ -960,20 +994,23 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     final online = widget.isElderOnline;
     final name = widget.currentElder?.displayName ?? '長輩';
     final location = widget.currentElder?.location ?? '台北市';
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF1E293B), Color(0xFF0F172A)],
-        ),
+        color: cs.surfaceContainer,
         borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.35), width: 1.5),
+        border: Border.all(
+          color: isDark
+              ? cs.outlineVariant.withValues(alpha: 0.5)
+              : cs.primary.withValues(alpha: 0.2),
+          width: 1.5,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.3),
+            color: isDark ? Colors.black.withValues(alpha: 0.3) : cs.primary.withValues(alpha: 0.05),
             blurRadius: 24,
             offset: const Offset(0, 8),
           ),
@@ -991,7 +1028,10 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                     height: 58,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.8), width: 2),
+                      border: Border.all(
+                        color: isDark ? Colors.white.withValues(alpha: 0.8) : cs.primary,
+                        width: 2,
+                      ),
                       image: const DecorationImage(
                         image: AssetImage('assets/images/user_avatar.png'),
                         fit: BoxFit.cover,
@@ -1020,7 +1060,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                             style: GoogleFonts.notoSansTc(
                               fontSize: 20,
                               fontWeight: FontWeight.w900,
-                              color: Colors.white,
+                              color: cs.onSurface,
                             ),
                           ),
                         ),
@@ -1028,10 +1068,10 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
-                            color: online ? const Color(0xFF10B981).withValues(alpha: 0.25) : Colors.white12,
+                            color: online ? const Color(0xFF10B981).withValues(alpha: 0.25) : cs.surfaceContainerHighest,
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: online ? const Color(0xFF34D399) : Colors.white24,
+                              color: online ? const Color(0xFF34D399) : cs.outlineVariant,
                             ),
                           ),
                           child: Text(
@@ -1039,7 +1079,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                             style: GoogleFonts.notoSansTc(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
-                              color: online ? const Color(0xFF6EE7B7) : const Color(0xFFCBD5E1),
+                              color: online ? const Color(0xFF059669) : cs.outline,
                             ),
                           ),
                         ),
@@ -1048,7 +1088,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        const Icon(Icons.location_on_rounded, size: 14, color: Color(0xFF94A3B8)),
+                        Icon(Icons.location_on_rounded, size: 14, color: cs.onSurfaceVariant),
                         const SizedBox(width: 4),
                         // ★ 2026-09-01 第三十九輪（RenderFlex 溢位修復）：locDisplay 是長輩
                         // 所在地，屬使用者自訂欄位，長度不可控；再串上步數文字後最容易在窄
@@ -1072,7 +1112,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                             overflow: TextOverflow.ellipsis,
                             style: GoogleFonts.notoSansTc(
                               fontSize: 13,
-                              color: const Color(0xFFCBD5E1),
+                              color: cs.onSurfaceVariant,
                             ),
                           );
                           }),
@@ -1111,6 +1151,8 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
   //   3. elderZone.present == true → 監視機前偵測到長輩，顯示已持續時間
 
   Widget _buildZoneCard(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final List<dynamic> monitors = widget.monitorDevices;
     final dynamic firstMonitor = monitors.isNotEmpty ? monitors.first : null;
     final int? deviceId = firstMonitor is Map
@@ -1125,7 +1167,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              gradient: const LinearGradient(colors: [Color(0xFF0EA5E9), Color(0xFF6366F1)]),
+              gradient: const LinearGradient(colors: [Color(0xFF006C4C), Color(0xFF3C6472)]),
               borderRadius: BorderRadius.circular(14),
             ),
             child: const Icon(Icons.my_location_rounded, color: Colors.white, size: 22),
@@ -1136,7 +1178,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
             style: GoogleFonts.notoSansTc(
               fontSize: 17,
               fontWeight: FontWeight.w900,
-              color: Colors.white,
+              color: cs.onSurface,
             ),
           ),
         ],
@@ -1147,16 +1189,17 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
       return Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF1E293B), Color(0xFF0F172A)],
-          ),
+          color: cs.surfaceContainer,
           borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.35), width: 1.5),
+          border: Border.all(
+            color: isDark
+                ? cs.outlineVariant.withValues(alpha: 0.5)
+                : cs.primary.withValues(alpha: 0.2),
+            width: 1.5,
+          ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.3),
+              color: isDark ? Colors.black.withValues(alpha: 0.3) : cs.primary.withValues(alpha: 0.05),
               blurRadius: 24,
               offset: const Offset(0, 8),
             ),
@@ -1178,14 +1221,14 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
               '尚未綁定監視機',
               style: GoogleFonts.notoSansTc(
                 fontSize: 14,
-                color: const Color(0xFF94A3B8),
+                color: cs.onSurface,
                 fontWeight: FontWeight.w600,
               ),
             ),
             const SizedBox(height: 4),
             Text(
               '綁定監視機後即可查看長輩目前所在的區域',
-              style: GoogleFonts.notoSansTc(fontSize: 12, color: const Color(0xFF64748B)),
+              style: GoogleFonts.notoSansTc(fontSize: 12, color: cs.onSurfaceVariant),
             ),
           ],
         ),
@@ -1213,14 +1256,14 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
               '目前未偵測到長輩',
               style: GoogleFonts.notoSansTc(
                 fontSize: 14,
-                color: const Color(0xFF94A3B8),
+                color: cs.onSurface,
                 fontWeight: FontWeight.w600,
               ),
             ),
             const SizedBox(height: 4),
             Text(
               '「$deviceName」目前鏡頭前沒有偵測到人',
-              style: GoogleFonts.notoSansTc(fontSize: 12, color: const Color(0xFF64748B)),
+              style: GoogleFonts.notoSansTc(fontSize: 12, color: cs.onSurfaceVariant),
             ),
             if (lastUpdatedAt != null) ...[
               const SizedBox(height: 10),
@@ -1260,7 +1303,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                   style: GoogleFonts.notoSansTc(
                     fontSize: 16,
                     fontWeight: FontWeight.w800,
-                    color: const Color(0xFF6EE7B7),
+                    color: isDark ? const Color(0xFF6EE7B7) : const Color(0xFF006C4C),
                   ),
                 ),
               ),
@@ -1268,7 +1311,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
               Expanded(
                 child: Text(
                   '已持續 ${_formatZoneDwell(enteredAt)}',
-                  style: GoogleFonts.notoSansTc(fontSize: 13, color: const Color(0xFFCBD5E1)),
+                  style: GoogleFonts.notoSansTc(fontSize: 13, color: cs.onSurfaceVariant),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -1335,22 +1378,23 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
   //
   // 純呈現：不含「觀看 CCTV」等互動按鈕、不新增任何導航路徑或 API 呼叫。
   Widget _buildMonitorDeviceStatus(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final List<dynamic> monitors = widget.monitorDevices;
     if (monitors.isEmpty) return const SizedBox.shrink();
 
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF1E293B), Color(0xFF0F172A)],
-        ),
+        color: cs.surfaceContainer,
         borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.35), width: 1.5),
+        border: Border.all(
+          color: isDark ? cs.outlineVariant.withValues(alpha: 0.5) : cs.primary.withValues(alpha: 0.2),
+          width: 1.5,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.3),
+            color: isDark ? Colors.black.withValues(alpha: 0.3) : cs.primary.withValues(alpha: 0.05),
             blurRadius: 24,
             offset: const Offset(0, 8),
           ),
@@ -1364,7 +1408,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(colors: [Color(0xFF0EA5E9), Color(0xFF6366F1)]),
+                  gradient: const LinearGradient(colors: [Color(0xFF006C4C), Color(0xFF3C6472)]),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: const Icon(Icons.videocam_rounded, color: Colors.white, size: 22),
@@ -1375,7 +1419,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                 style: GoogleFonts.notoSansTc(
                   fontSize: 17,
                   fontWeight: FontWeight.w900,
-                  color: Colors.white,
+                  color: cs.onSurface,
                 ),
               ),
             ],
@@ -1398,6 +1442,8 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
   /// 開頭註解的重複來源說明。
   Widget _buildMonitorStatusCard(dynamic device) {
     if (device is! Map) return const SizedBox.shrink();
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final String name = (device['deviceName'] ?? 'Unnamed').toString();
     final bool isOnline = device['isOnline'] == true;
     final dynamic deviceId = device['deviceId'] ?? device['id'];
@@ -1439,13 +1485,17 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
       padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 18),
       decoration: BoxDecoration(
         color: hasActiveAlert
-            ? const Color(0xFF3F1D1D)
-            : (isElderPresent ? const Color(0xFF083344) : const Color(0xFF0F172A)),
+            ? (isDark ? const Color(0xFF3F1D1D) : const Color(0xFFFEF2F2))
+            : (isElderPresent
+                ? (isDark ? const Color(0xFF083344) : cs.primaryContainer)
+                : cs.surfaceContainerLow),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: hasActiveAlert
               ? const Color(0xFFF87171)
-              : (isElderPresent ? const Color(0xFF38BDF8) : const Color(0xFF334155)),
+              : (isElderPresent
+                  ? cs.primary
+                  : cs.outlineVariant.withValues(alpha: 0.4)),
           width: (hasActiveAlert || isElderPresent) ? 2.0 : 1.0,
         ),
         boxShadow: [
@@ -1453,8 +1503,8 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
             color: hasActiveAlert
                 ? Colors.red.withValues(alpha: 0.22)
                 : (isElderPresent
-                    ? const Color(0xFF38BDF8).withValues(alpha: 0.22)
-                    : Colors.black.withValues(alpha: 0.25)),
+                    ? cs.primary.withValues(alpha: 0.15)
+                    : (isDark ? Colors.black.withValues(alpha: 0.25) : Colors.black.withValues(alpha: 0.04))),
             blurRadius: (hasActiveAlert || isElderPresent) ? 12 : 8,
             offset: const Offset(0, 2),
           ),
@@ -1492,7 +1542,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
-                          color: isOnline ? const Color(0xFFE2E8F0) : const Color(0xFF64748B),
+                          color: isOnline ? cs.onSurface : cs.onSurfaceVariant,
                         ),
                       ),
                     ),
@@ -1521,14 +1571,14 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF06B6D4),
+                          color: isDark ? const Color(0xFF06B6D4) : cs.primary,
                           borderRadius: BorderRadius.circular(10),
                         ),
-                        child: const Text(
+                        child: Text(
                           '長輩在此',
                           style: TextStyle(
                             fontSize: 11,
-                            color: Colors.white,
+                            color: isDark ? Colors.white : cs.onPrimary,
                             fontWeight: FontWeight.w800,
                           ),
                         ),
@@ -1548,8 +1598,8 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                   style: TextStyle(
                     fontSize: 12,
                     color: hasActiveAlert
-                        ? const Color(0xFFFCA5A5)
-                        : (isElderPresent ? const Color(0xFF7DD3FC) : const Color(0xFF94A3B8)),
+                        ? (isDark ? const Color(0xFFFCA5A5) : const Color(0xFFDC2626))
+                        : (isElderPresent ? (isDark ? const Color(0xFF7DD3FC) : cs.primary) : cs.onSurfaceVariant),
                     fontWeight: (hasActiveAlert || isElderPresent)
                         ? FontWeight.w600
                         : FontWeight.normal,
@@ -1580,6 +1630,8 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
   // ─── 2. 🤖 AI 長輩情緒氣象台 & 破冰話題 (方案 B：第一人稱問候 + 快捷動作) ───
 
   Widget _buildAiMoodRadarCard(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final name = widget.currentElder?.displayName ?? '長輩';
     final moodTitle = _moodInsightData?['mood_title'] ?? '溫馨平穩';
     final moodScore = _moodInsightData?['mood_score'] ?? 88;
@@ -1625,20 +1677,17 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     return Container(
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF0F172A),
-            Color(0xFF1E293B),
-            Color(0xFF0F2942),
-          ],
-        ),
+        color: cs.surfaceContainer,
         borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.35), width: 1.5),
+        border: Border.all(
+          color: isDark
+              ? cs.outlineVariant.withValues(alpha: 0.5)
+              : cs.primary.withValues(alpha: 0.2),
+          width: 1.5,
+        ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF0284C7).withValues(alpha: 0.2),
+            color: isDark ? Colors.black.withValues(alpha: 0.3) : cs.primary.withValues(alpha: 0.05),
             blurRadius: 24,
             offset: const Offset(0, 10),
           ),
@@ -1661,12 +1710,12 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
-                        colors: [Color(0xFF0EA5E9), Color(0xFF6366F1)],
+                        colors: [Color(0xFF006C4C), Color(0xFF3C6472)],
                       ),
                       borderRadius: BorderRadius.circular(14),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFF38BDF8).withValues(alpha: 0.4),
+                          color: cs.primary.withValues(alpha: 0.3),
                           blurRadius: 10,
                         ),
                       ],
@@ -1685,7 +1734,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                           style: GoogleFonts.notoSansTc(
                             fontSize: 19,
                             fontWeight: FontWeight.w900,
-                            color: Colors.white,
+                            color: cs.onSurface,
                             letterSpacing: 0.5,
                           ),
                         ),
@@ -1695,7 +1744,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                           overflow: TextOverflow.ellipsis,
                           style: GoogleFonts.notoSansTc(
                             fontSize: 12,
-                            color: const Color(0xFF94A3B8),
+                            color: cs.onSurfaceVariant,
                           ),
                         ),
                       ],
@@ -1706,24 +1755,14 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
               ),
               const SizedBox(width: 8),
               // 極光發光情緒指標 Badge
-              // ★ 2026-08-10 第二十輪（需求 2）：mood_title 由 AI 產生，長度不可控。
-              //   Row 會先用「無限寬」量非 flex 子元素，量出來多寬就佔多寬，
-              //   左側 Expanded 只能拿剩下的（可能為 0）→ 溢位。故在此硬性設上限。
               ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 180),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF10B981), Color(0xFF059669)],
-                    ),
+                    color: cs.primaryContainer,
                     borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF10B981).withValues(alpha: 0.4),
-                        blurRadius: 10,
-                      ),
-                    ],
+                    border: Border.all(color: cs.primary.withValues(alpha: 0.4)),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -1737,7 +1776,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                           style: GoogleFonts.notoSansTc(
                             fontSize: 13,
                             fontWeight: FontWeight.w800,
-                            color: Colors.white,
+                            color: cs.onPrimaryContainer,
                           ),
                         ),
                       ),
@@ -1757,25 +1796,25 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
               fontSize: 15,
               height: 1.6,
               fontWeight: FontWeight.w500,
-              color: const Color(0xFFE2E8F0),
+              color: cs.onSurface,
             ),
           ),
 
           const SizedBox(height: 18),
-          Divider(height: 1, color: Colors.white.withValues(alpha: 0.12)),
+          Divider(height: 1, color: cs.outlineVariant.withValues(alpha: 0.4)),
           const SizedBox(height: 16),
 
           // 💡 破冰話題建議標題
           Row(
             children: [
-              const Icon(Icons.auto_awesome_rounded, color: Color(0xFFF59E0B), size: 20),
+              const Icon(Icons.auto_awesome_rounded, color: Color(0xFFD97706), size: 20),
               const SizedBox(width: 8),
               Text(
                 '今日推薦關懷破冰話題：',
                 style: GoogleFonts.notoSansTc(
                   fontSize: 15,
                   fontWeight: FontWeight.w800,
-                  color: const Color(0xFFFCD34D),
+                  color: isDark ? const Color(0xFFFCD34D) : const Color(0xFFB45309),
                 ),
               ),
             ],
@@ -1787,19 +1826,12 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Color(0xFF261C05),
-                  Color(0xFF1F1703),
-                ],
-              ),
+              color: isDark ? const Color(0xFF261C05) : const Color(0xFFFFFBEB),
               borderRadius: BorderRadius.circular(18),
               border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.6), width: 1.2),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
+                  color: const Color(0xFFF59E0B).withValues(alpha: isDark ? 0.15 : 0.08),
                   blurRadius: 14,
                 ),
               ],
@@ -1807,13 +1839,13 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   '“',
                   style: TextStyle(
                     fontSize: 32,
                     height: 0.8,
                     fontWeight: FontWeight.w900,
-                    color: Color(0xFFFDE68A),
+                    color: isDark ? const Color(0xFFFDE68A) : const Color(0xFFD97706),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -1823,7 +1855,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                     style: GoogleFonts.notoSansTc(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
-                      color: const Color(0xFFFEF3C7),
+                      color: isDark ? const Color(0xFFFEF3C7) : const Color(0xFF78350F),
                       height: 1.5,
                     ),
                   ),
@@ -1844,11 +1876,11 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                     showDialog(
                       context: context,
                       builder: (c) => AlertDialog(
-                        backgroundColor: const Color(0xFF1E293B),
+                        backgroundColor: cs.surfaceContainerHigh,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
                         title: Text(
                           '📞 撥打關懷電話給$name',
-                          style: GoogleFonts.notoSansTc(color: Colors.white, fontWeight: FontWeight.w800),
+                          style: GoogleFonts.notoSansTc(color: cs.onSurface, fontWeight: FontWeight.w800),
                         ),
                         content: Column(
                           mainAxisSize: MainAxisSize.min,
@@ -1856,18 +1888,18 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                           children: [
                             Text(
                               '💡 推薦聊天開場白：',
-                              style: GoogleFonts.notoSansTc(color: const Color(0xFFFCD34D), fontWeight: FontWeight.bold),
+                              style: GoogleFonts.notoSansTc(color: isDark ? const Color(0xFFFCD34D) : const Color(0xFFB45309), fontWeight: FontWeight.bold),
                             ),
                             const SizedBox(height: 6),
                             Container(
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: const Color(0xFF0F172A),
+                                color: cs.surfaceContainerLow,
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Text(
                                 icebreakerTopic,
-                                style: GoogleFonts.notoSansTc(color: const Color(0xFFFEF3C7), height: 1.4),
+                                style: GoogleFonts.notoSansTc(color: cs.onSurface, height: 1.4),
                               ),
                             ),
                           ],
@@ -1875,15 +1907,15 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                         actions: [
                           TextButton(
                             onPressed: () => Navigator.pop(c),
-                            child: Text('取消', style: GoogleFonts.notoSansTc(color: const Color(0xFF94A3B8))),
+                            child: Text('取消', style: GoogleFonts.notoSansTc(color: cs.outline)),
                           ),
                           ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF10B981)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: cs.primary,
+                              foregroundColor: cs.onPrimary,
+                            ),
                             onPressed: () {
                               Navigator.pop(c);
-                              // ★ 2026-08-10 第十九輪（需求 4）：原本只彈 SnackBar、
-                              //   什麼都不做。改為交給父層注入的撥號路徑；
-                              //   父層沒給（不該發生）才退回原本的提示，不要靜默。
                               final startCall = widget.onStartVideoCall;
                               if (startCall != null) {
                                 startCall();
@@ -1896,23 +1928,24 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                                 );
                               }
                             },
-                            icon: const Icon(Icons.phone_rounded, color: Colors.white, size: 18),
-                            label: Text('開始撥號', style: GoogleFonts.notoSansTc(color: Colors.white, fontWeight: FontWeight.bold)),
+                            icon: Icon(Icons.phone_rounded, color: cs.onPrimary, size: 18),
+                            label: Text('開始撥號', style: GoogleFonts.notoSansTc(color: cs.onPrimary, fontWeight: FontWeight.bold)),
                           ),
                         ],
                       ),
                     );
                   },
-                  icon: const Icon(Icons.phone_in_talk_rounded, size: 18, color: Colors.white),
+                  icon: Icon(Icons.phone_in_talk_rounded, size: 18, color: cs.onPrimary),
                   label: Text(
                     '撥打電話聊聊',
                     style: GoogleFonts.notoSansTc(
                       fontWeight: FontWeight.w800,
-                      color: Colors.white,
+                      color: cs.onPrimary,
                     ),
                   ),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF0284C7),
+                    backgroundColor: cs.primary,
+                    foregroundColor: cs.onPrimary,
                     elevation: 0,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     padding: const EdgeInsets.symmetric(vertical: 14),
@@ -1923,16 +1956,17 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
               Expanded(
                 child: ElevatedButton.icon(
                   onPressed: () => _showSendCareCardModal(context, name),
-                  icon: const Icon(Icons.mark_email_unread_rounded, size: 18, color: Color(0xFF78350F)),
+                  icon: Icon(Icons.mark_email_unread_rounded, size: 18, color: isDark ? const Color(0xFFFDE68A) : const Color(0xFF78350F)),
                   label: Text(
                     '傳送關懷卡',
                     style: GoogleFonts.notoSansTc(
                       fontWeight: FontWeight.w800,
-                      color: const Color(0xFF78350F),
+                      color: isDark ? const Color(0xFFFDE68A) : const Color(0xFF78350F),
                     ),
                   ),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFFDE68A),
+                    backgroundColor: isDark ? const Color(0xFF2E2415) : const Color(0xFFFEF3C7),
+                    foregroundColor: isDark ? const Color(0xFFFDE68A) : const Color(0xFF78350F),
                     elevation: 0,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     padding: const EdgeInsets.symmetric(vertical: 14),
@@ -1949,6 +1983,8 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
   // ─── 3. 📸 長輩生活動態時光牆 (動態擴充與折疊/展開機制 + 日期篩選) ───
 
   Widget _buildElderLifeFeedSection(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final name = widget.currentElder?.displayName ?? '長輩';
     final now = DateTime.now();
     final todayStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
@@ -2090,19 +2126,17 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
       margin: const EdgeInsets.symmetric(horizontal: 4),
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 22),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF1E293B),
-            Color(0xFF0F172A),
-          ],
-        ),
+        color: cs.surfaceContainer,
         borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+        border: Border.all(
+          color: isDark
+              ? cs.outlineVariant.withValues(alpha: 0.5)
+              : cs.primary.withValues(alpha: 0.2),
+          width: 1.5,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.3),
+            color: isDark ? Colors.black.withValues(alpha: 0.3) : cs.primary.withValues(alpha: 0.05),
             blurRadius: 24,
             offset: const Offset(0, 8),
           ),
@@ -2124,7 +2158,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
                         gradient: const LinearGradient(
-                          colors: [Color(0xFF38BDF8), Color(0xFF818CF8)],
+                          colors: [Color(0xFF006C4C), Color(0xFF3C6472)],
                         ),
                         borderRadius: BorderRadius.circular(14),
                       ),
@@ -2142,7 +2176,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                             style: GoogleFonts.notoSansTc(
                               fontSize: 19,
                               fontWeight: FontWeight.w900,
-                              color: Colors.white,
+                              color: cs.onSurface,
                             ),
                           ),
                           Text(
@@ -2151,7 +2185,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                             maxLines: 1,
                             style: GoogleFonts.notoSansTc(
                               fontSize: 12,
-                              color: const Color(0xFF94A3B8),
+                              color: cs.onSurfaceVariant,
                             ),
                           ),
                         ],
@@ -2164,9 +2198,9 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.1),
+                  color: cs.surfaceContainerHigh,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.white24),
+                  border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.5)),
                 ),
                 child: Row(
                   children: [
@@ -2481,23 +2515,24 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
   }
 
   Widget _buildDateChip(String label, {required bool isSelected, VoidCallback? onTap}) {
+    final cs = Theme.of(context).colorScheme;
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF38BDF8).withValues(alpha: 0.25) : Colors.white.withValues(alpha: 0.05),
+          color: isSelected ? cs.primaryContainer : cs.surfaceContainerHigh,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isSelected ? const Color(0xFF38BDF8) : Colors.white12,
+            color: isSelected ? cs.primary : cs.outlineVariant.withValues(alpha: 0.5),
           ),
         ),
         child: Text(
           label,
           style: GoogleFonts.notoSansTc(
             fontSize: 12,
-            fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
-            color: isSelected ? const Color(0xFF38BDF8) : const Color(0xFF94A3B8),
+            fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+            color: isSelected ? cs.onPrimaryContainer : cs.secondary,
           ),
         ),
       ),
@@ -2849,6 +2884,8 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     required String previewSummary,
     required List<Map<String, dynamic>> items,
   }) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final count = items.length;
     final name = widget.currentElder?.displayName ?? '長輩';
 
@@ -2858,12 +2895,15 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: const Color(0xFF0F172A).withValues(alpha: 0.65),
+        color: isDark ? cs.surfaceContainer.withValues(alpha: 0.8) : cs.surfaceContainerHigh,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: categoryColor.withValues(alpha: 0.28), width: 1.2),
+        border: Border.all(
+          color: isDark ? categoryColor.withValues(alpha: 0.28) : categoryColor.withValues(alpha: 0.4),
+          width: 1.2,
+        ),
         boxShadow: [
           BoxShadow(
-            color: glowColor.withValues(alpha: 0.12),
+            color: isDark ? glowColor.withValues(alpha: 0.12) : glowColor.withValues(alpha: 0.08),
             blurRadius: 20,
             spreadRadius: 1,
             offset: const Offset(0, 6),
@@ -2895,7 +2935,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                       style: GoogleFonts.notoSansTc(
                         fontSize: 16,
                         fontWeight: FontWeight.w900,
-                        color: Colors.white,
+                        color: cs.onSurface,
                       ),
                     ),
                     const SizedBox(height: 2),
@@ -2946,9 +2986,9 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                 width: double.infinity,
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1E293B).withValues(alpha: 0.6),
+                  color: cs.surfaceContainerLow,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                  border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.3)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -2964,7 +3004,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                               style: GoogleFonts.notoSansTc(
                                 fontSize: 12.5,
                                 fontWeight: FontWeight.w700,
-                                color: const Color(0xFFFDE68A),
+                                color: isDark ? const Color(0xFFFDE68A) : const Color(0xFF92400E),
                               ),
                             ),
                           ),
@@ -2982,7 +3022,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                             style: GoogleFonts.notoSansTc(
                               fontSize: 12,
                               height: 1.45,
-                              color: const Color(0xFFE2E8F0),
+                              color: cs.onSurface,
                               fontWeight: FontWeight.w400,
                             ),
                           ),
@@ -2998,9 +3038,9 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
               width: double.infinity,
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: const Color(0xFF1E293B).withValues(alpha: 0.6),
+                color: cs.surfaceContainerLow,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.3)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -3024,7 +3064,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                             style: GoogleFonts.notoSansTc(
                               fontSize: 12,
                               height: 1.4,
-                              color: const Color(0xFFCBD5E1),
+                              color: cs.onSurfaceVariant,
                             ),
                           ),
                         ),
@@ -3074,7 +3114,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                             style: GoogleFonts.notoSansTc(
                               fontSize: 11.5,
                               fontWeight: FontWeight.w700,
-                              color: Colors.white,
+                              color: isDark ? Colors.white : cs.onSurface,
                             ),
                           ),
                         ),
@@ -3123,19 +3163,19 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                   decoration: BoxDecoration(
                     color: _likedCategories.contains(categoryTitle)
                         ? const Color(0xFFEC4899).withValues(alpha: 0.25)
-                        : Colors.white.withValues(alpha: 0.08),
+                        : cs.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
                       color: _likedCategories.contains(categoryTitle)
                           ? const Color(0xFFEC4899)
-                          : Colors.white24,
+                          : cs.outlineVariant.withValues(alpha: 0.5),
                     ),
                   ),
                   child: Row(
                     children: [
                       Icon(
                         _likedCategories.contains(categoryTitle) ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                        color: _likedCategories.contains(categoryTitle) ? const Color(0xFFEC4899) : Colors.white60,
+                        color: _likedCategories.contains(categoryTitle) ? const Color(0xFFEC4899) : cs.onSurfaceVariant,
                         size: 16,
                       ),
                       const SizedBox(width: 4),
@@ -3144,7 +3184,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                         style: GoogleFonts.notoSansTc(
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
-                          color: _likedCategories.contains(categoryTitle) ? const Color(0xFFEC4899) : Colors.white70,
+                          color: _likedCategories.contains(categoryTitle) ? const Color(0xFFEC4899) : cs.onSurfaceVariant,
                         ),
                       ),
                     ],
@@ -3167,7 +3207,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
   Widget _buildAlertPreview(BuildContext context) {
     // ★ 整合即時跌倒／異常警報（activeAlerts）至首頁「最新警示」
     final List<Map<String, dynamic>> activeItems = [];
-    final currentElderIdStr = widget.currentElder?.elderId ?? widget.currentElder?.id?.toString();
+    final currentElderIdStr = widget.currentElder?.elderId ?? widget.currentElder?.id.toString();
     for (final a in widget.activeAlerts) {
       final aElderId = (a['elder_id'] ?? a['elderId'])?.toString();
       if (currentElderIdStr != null && aElderId != null && aElderId != currentElderIdStr) {
@@ -3326,24 +3366,26 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     // 上限比照同一支函式（_loadDynamicData）抓取 _realLogs 時已用過的 30 筆，
     // 避免清單隨歷史警報無限增長；沿用既有數字而非另外發明一個。
     final displayAlerts = visibleAlerts.take(30).toList();
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 8),
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF1E1015),
-            Color(0xFF0F172A),
-            Color(0xFF1A1325),
-          ],
-        ),
+        color: cs.surfaceContainer,
         borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.35), width: 1.5),
+        border: Border.all(
+          color: isDark
+              ? const Color(0xFFEF4444).withValues(alpha: 0.35)
+              : const Color(0xFFF87171).withValues(alpha: 0.3),
+          width: 1.5,
+        ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFFEF4444).withValues(alpha: 0.15),
+            color: isDark
+                ? const Color(0xFFEF4444).withValues(alpha: 0.15)
+                : const Color(0xFFEF4444).withValues(alpha: 0.08),
             blurRadius: 24,
             offset: const Offset(0, 8),
           ),
@@ -3355,11 +3397,6 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // ★ 2026-09-01 第三十九輪（RenderFlex 溢位修復）：外層是
-              // mainAxisAlignment.spaceBetween，這一側（icon+標題+計數徽章）與
-              // 右側「查看全部」都是非 flex 子元素，兩者實際寬度加總在窄螢幕或
-              // 系統字級放大時會超出卡片可用寬度，此為使用者回報 23px 溢位最可疑
-              // 的一處。包 Flexible 讓這一側可收縮，內層標題另加 ellipsis 承接。
               Flexible(
                 child: Row(
                 children: [
@@ -3391,7 +3428,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                       style: GoogleFonts.notoSansTc(
                         fontSize: 19,
                         fontWeight: FontWeight.w900,
-                        color: Colors.white,
+                        color: cs.onSurface,
                         letterSpacing: 0.5,
                       ),
                     ),
@@ -3445,11 +3482,11 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                       style: GoogleFonts.notoSansTc(
                         fontSize: 14,
                         fontWeight: FontWeight.w700,
-                        color: const Color(0xFF38BDF8),
+                        color: cs.primary,
                       ),
                     ),
                     const SizedBox(width: 4),
-                    const Icon(Icons.arrow_forward_ios_rounded, size: 13, color: Color(0xFF38BDF8)),
+                    Icon(Icons.arrow_forward_ios_rounded, size: 13, color: cs.primary),
                   ],
                 ),
               ),
@@ -3458,23 +3495,19 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
 
           const SizedBox(height: 16),
 
-          // ★ 2026-08-17 第二十五輪（需求 7）：C3 — 三個真實來源（即時 activeAlerts、
-          //   持久化 persistedAlertItems、activity_log 的 alertItems）都是空時，
-          //   不再顯示 `_mockAlerts` 假資料，改用明確的空狀態文案，
-          //   樣式比照 `_buildElderLifeFeedSection` 的空狀態（Icon + 提示文字）。
           if (displayAlerts.isEmpty)
             Center(
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 child: Column(
                   children: [
-                    const Icon(Icons.verified_rounded, color: Colors.white38, size: 44),
+                    Icon(Icons.verified_rounded, color: cs.onSurfaceVariant.withValues(alpha: 0.4), size: 44),
                     const SizedBox(height: 8),
                     Text(
                       '目前沒有任何警示',
                       style: GoogleFonts.notoSansTc(
                         fontSize: 14,
-                        color: Colors.white60,
+                        color: cs.onSurfaceVariant,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -3486,9 +3519,6 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
             ...displayAlerts.asMap().entries.map((e) {
               final Map<String, dynamic> item = e.value;
               final String itemId = item['id'] as String;
-              // ★ 2026-08-24：swipe 與明確關閉鍵共用同一個 handler，兩者效果
-              //   完全相同（僅通知父層 FamilyMainScreen 把 itemId 記入
-              //   dismissedAlertKeys，見 widget.onAlertItemDismissed 欄位註解）。
               void handleDismiss() {
                 HapticFeedback.lightImpact();
                 widget.onAlertItemDismissed?.call(itemId);
@@ -3496,11 +3526,9 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
               return Padding(
                 padding: EdgeInsets.only(bottom: e.key < displayAlerts.length - 1 ? 12 : 0),
                 child: Dismissible(
-                  // ★ 穩定複合鍵（見上方三個來源迴圈的 id 組法），絕不用
-                  //   e.key（清單 index）——dismiss 後其餘項目 index 會前移。
                   key: ValueKey(itemId),
                   direction: DismissDirection.endToStart,
-                  background: _buildAlertDismissBackground(),
+                  background: _buildAlertDismissBackground(context),
                   onDismissed: (_) => handleDismiss(),
                   child: _AlertItem(
                     data: item,
@@ -3517,15 +3545,16 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
   }
 
   /// 「最新警示」項目向左滑動時，底下露出的「已讀／關閉」提示背景。
-  Widget _buildAlertDismissBackground() {
+  Widget _buildAlertDismissBackground(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF334155),
+        color: cs.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(18),
       ),
       alignment: Alignment.centerRight,
       padding: const EdgeInsets.symmetric(horizontal: 22),
-      child: const Icon(Icons.done_all_rounded, color: Colors.white70, size: 24),
+      child: Icon(Icons.done_all_rounded, color: cs.onSurfaceVariant, size: 24),
     );
   }
 
@@ -3571,9 +3600,6 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
           HapticFeedback.lightImpact();
           Navigator.push(
             context,
-            // ★ 2026-08-31 合併修正：main 的真實 HealthReminderScreen 收 String elderId
-            //   （placeholder 版收 int），比照 remote_care_hub_screen.dart:220 的
-            //   權威用法 `elderId: (...).toString()` 轉型，並一併帶入姓名。
             MaterialPageRoute(
               builder: (_) => HealthReminderScreen(
                 elderId: elder.id.toString(),
@@ -3625,6 +3651,9 @@ class _AlertItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     Color levelColor;
     Color iconBgColor;
     Color cardBgColor;
@@ -3635,27 +3664,27 @@ class _AlertItem extends StatelessWidget {
     switch (data['level'] as String) {
       case 'high':
         levelColor = const Color(0xFFF87171);
-        iconBgColor = const Color(0xFF7F1D1D);
-        cardBgColor = const Color(0xFF231012);
-        titleColor = const Color(0xFFFECACA);
-        descColor = const Color(0xFFFCA5A5);
+        iconBgColor = isDark ? const Color(0xFF7F1D1D) : const Color(0xFFFEE2E2);
+        cardBgColor = isDark ? const Color(0xFF231012) : const Color(0xFFFEF2F2);
+        titleColor = isDark ? const Color(0xFFFECACA) : const Color(0xFF991B1B);
+        descColor = isDark ? const Color(0xFFFCA5A5) : const Color(0xFFB91C1C);
         borderSide = BorderSide(color: const Color(0xFFEF4444).withValues(alpha: 0.5), width: 1.2);
         break;
       case 'medium':
         levelColor = const Color(0xFFFBBF24);
-        iconBgColor = const Color(0xFF78350F);
-        cardBgColor = const Color(0xFF221A08);
-        titleColor = const Color(0xFFFEF08A);
-        descColor = const Color(0xFFFDE68A);
+        iconBgColor = isDark ? const Color(0xFF78350F) : const Color(0xFFFEF3C7);
+        cardBgColor = isDark ? const Color(0xFF221A08) : const Color(0xFFFFFBEB);
+        titleColor = isDark ? const Color(0xFFFEF08A) : const Color(0xFF92400E);
+        descColor = isDark ? const Color(0xFFFDE68A) : const Color(0xFFB45309);
         borderSide = BorderSide(color: const Color(0xFFF59E0B).withValues(alpha: 0.5), width: 1.2);
         break;
       default:
-        levelColor = const Color(0xFF38BDF8);
-        iconBgColor = const Color(0xFF075985);
-        cardBgColor = const Color(0xFF091F2C);
-        titleColor = const Color(0xFFBAE6FD);
-        descColor = const Color(0xFF7DD3FC);
-        borderSide = BorderSide(color: const Color(0xFF0284C7).withValues(alpha: 0.5), width: 1.2);
+        levelColor = cs.primary;
+        iconBgColor = cs.primaryContainer;
+        cardBgColor = cs.surfaceContainerLow;
+        titleColor = cs.onSurface;
+        descColor = cs.onSurfaceVariant;
+        borderSide = BorderSide(color: cs.primary.withValues(alpha: 0.4), width: 1.2);
     }
 
     final card = Container(
@@ -3681,7 +3710,13 @@ class _AlertItem extends StatelessWidget {
             ),
             child: Icon(
               data['icon'] as IconData,
-              color: levelColor,
+              color: (data['level'] == 'high' && !isDark)
+                  ? const Color(0xFFDC2626)
+                  : ((data['level'] == 'medium' && !isDark)
+                      ? const Color(0xFFD97706)
+                      : (data['level'] != 'high' && data['level'] != 'medium' && !isDark
+                          ? cs.primary
+                          : levelColor)),
               size: 22,
             ),
           ),
