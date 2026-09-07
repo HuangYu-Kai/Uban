@@ -569,6 +569,186 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     return {'user': userPart, 'ai': aiPart};
   }
 
+  _ParsedLogEntry _parseActivityLogItem(Map<String, dynamic> item, ColorScheme cs) {
+    final rawDesc = item['desc']?.toString() ?? item['content']?.toString() ?? '';
+    final rawTitle = item['title']?.toString() ?? '';
+    final rawTime = item['time']?.toString() ?? '';
+    final badge = item['badge']?.toString() ?? '';
+    final eventType = item['eventType']?.toString() ?? item['event_type']?.toString() ?? '';
+    final fullText = '$rawTitle $rawDesc';
+
+    String timeDisplay = rawTime;
+    if (timeDisplay.isEmpty && item['rawTimestamp'] != null) {
+      final ts = item['rawTimestamp'].toString();
+      if (ts.length >= 16) {
+        timeDisplay = ts.substring(11, 16);
+      }
+    }
+
+    // 1. 新聞類 (News)
+    if (rawDesc.contains('【新聞點閱】') || badge == 'NEWS' || eventType == 'news_view' || eventType == 'news_query' || fullText.contains('新聞')) {
+      String cleanTitle = rawDesc;
+      String categoryName = '熱門新聞';
+      IconData newsIcon = Icons.newspaper_rounded;
+
+      final catMatch = RegExp(r'類別:\s*([^\s|｜]+)').firstMatch(rawDesc);
+      if (catMatch != null) {
+        final rawCat = catMatch.group(1)!.trim().toLowerCase();
+        if (rawCat.contains('sport') || rawCat.contains('體育') || rawCat.contains('nba') || rawCat.contains('棒球')) {
+          categoryName = '體育賽事';
+          newsIcon = Icons.sports_baseball_rounded;
+        } else if (rawCat.contains('finance') || rawCat.contains('財經') || rawCat.contains('股市') || rawCat.contains('stock')) {
+          categoryName = '財經生活';
+          newsIcon = Icons.trending_up_rounded;
+        } else if (rawCat.contains('entertain') || rawCat.contains('娛樂') || rawCat.contains('藝人')) {
+          categoryName = '影視娛樂';
+          newsIcon = Icons.movie_rounded;
+        } else if (rawCat.contains('health') || rawCat.contains('健康') || rawCat.contains('醫療')) {
+          categoryName = '健康時事';
+          newsIcon = Icons.favorite_rounded;
+        } else {
+          categoryName = '焦點新聞';
+        }
+      }
+
+      final titleMatch = RegExp(r'標題:\s*(.*)').firstMatch(rawDesc);
+      if (titleMatch != null) {
+        cleanTitle = titleMatch.group(1)!.trim();
+      } else {
+        cleanTitle = rawDesc
+            .replaceAll(RegExp(r'【新聞點閱】\s*'), '')
+            .replaceAll(RegExp(r'類別:\s*[^\s|｜]+\s*[|｜]?\s*'), '')
+            .replaceAll('標題:', '')
+            .trim();
+      }
+      if (cleanTitle.isEmpty) cleanTitle = '閱覽時事焦點新聞';
+
+      return _ParsedLogEntry(
+        timeText: timeDisplay,
+        title: cleanTitle,
+        categoryTag: categoryName,
+        statusText: '已閱覽',
+        icon: newsIcon,
+        themeColor: const Color(0xFF38BDF8),
+      );
+    }
+
+    // 2. 散步與運動伸展類 (Walk / Activity / Exercise / Stretch)
+    if (fullText.contains('散步') || fullText.contains('步數') || fullText.contains('運動') || fullText.contains('伸展') || fullText.contains('體操') || fullText.contains('健身') || badge == 'WALK' || eventType == 'activity') {
+      String stepCountStr = '';
+      final numMatch = RegExp(r'(\d+)\s*步').firstMatch(fullText);
+      if (numMatch != null) {
+        stepCountStr = '${numMatch.group(1)} 步';
+      }
+
+      String actName = '';
+      final quoteMatch = RegExp(r'「(.*?)」').firstMatch(fullText);
+      if (quoteMatch != null) {
+        actName = quoteMatch.group(1)!.trim();
+        if (actName.startsWith('做')) actName = actName.substring(1);
+      } else {
+        final m = RegExp(r'(傍晚伸展|伸展運動|晨間散步|健康體操|太極拳|深蹲|抬腿|瑜珈|散步|運動)').firstMatch(fullText);
+        actName = m != null ? m.group(1)! : '';
+      }
+
+      String title = stepCountStr.isNotEmpty
+          ? '戶外散步累計 $stepCountStr'
+          : (actName.isNotEmpty ? '完成「$actName」' : '完成日常運動打卡');
+      return _ParsedLogEntry(
+        timeText: timeDisplay,
+        title: title,
+        categoryTag: '健康運動',
+        statusText: '已完成',
+        icon: (actName.contains('伸展') || fullText.contains('伸展')) ? Icons.self_improvement_rounded : Icons.directions_walk_rounded,
+        themeColor: const Color(0xFF10B981),
+      );
+    }
+
+    // 3. 用藥類 (Medication)
+    if (fullText.contains('藥') || badge == 'MEDICINE' || eventType == 'medication') {
+      String medName = '';
+      final quoteMatch = RegExp(r'「(.*?)」').firstMatch(fullText);
+      if (quoteMatch != null) {
+        medName = quoteMatch.group(1)!.trim();
+        if (medName.startsWith('吃')) medName = medName.substring(1);
+        if (medName.startsWith('服用')) medName = medName.substring(2);
+      } else {
+        final m = RegExp(r'(高血壓藥|降血壓藥|胃藥|止痛藥|慢性病藥|維他命|綜合維他命|感冒藥|心臟藥|血糖藥|糖尿病藥|中藥)').firstMatch(fullText);
+        medName = m != null ? m.group(1)! : '指定用藥';
+      }
+
+      return _ParsedLogEntry(
+        timeText: timeDisplay,
+        title: '服用「$medName」',
+        categoryTag: '準時服藥',
+        statusText: '已完成',
+        icon: Icons.medication_rounded,
+        themeColor: const Color(0xFF06B6D4),
+      );
+    }
+
+    // 4. 影音與音樂類 (YouTube / Media)
+    if (fullText.contains('YouTube') || fullText.contains('音樂') || fullText.contains('歌曲') || badge == 'MEDIA' || eventType == 'youtube_query') {
+      String mediaName = '';
+      final quoteMatch = RegExp(r'《(.*?)》|「(.*?)」').firstMatch(fullText);
+      if (quoteMatch != null) {
+        mediaName = quoteMatch.group(1) ?? quoteMatch.group(2) ?? '';
+      } else {
+        final match = RegExp(r'(?:YouTube 音樂/影片|歌曲|音樂|播放|點播)[：:\s]*([^\s|｜]+)').firstMatch(fullText);
+        if (match != null) {
+          mediaName = match.group(1)!;
+        }
+      }
+      if (mediaName.isEmpty) mediaName = '熱門影音內容';
+
+      return _ParsedLogEntry(
+        timeText: timeDisplay,
+        title: '點播收聽《$mediaName》',
+        categoryTag: '經典影音',
+        statusText: '已播放',
+        icon: Icons.play_circle_fill_rounded,
+        themeColor: const Color(0xFFF43F5E),
+      );
+    }
+
+    // 5. AI 陪伴與日常對話 (AI Chat)
+    if (item['isChat'] == true || badge == 'AI CHAT' || fullText.contains('長者詢問') || (fullText.contains('長輩') && fullText.contains('AI')) || eventType == 'chat' || eventType == 'mood') {
+      final cleaned = _cleanAiLogText(rawDesc);
+      final userTalk = cleaned['user']?.trim() ?? '';
+      final aiTalk = cleaned['ai']?.trim() ?? '';
+
+      String displayTitle = userTalk.isNotEmpty ? '長輩：「$userTalk」' : '語音互動與陪伴關懷';
+      String displaySub = aiTalk.isNotEmpty ? '小嘎：「${aiTalk.length > 50 ? '${aiTalk.substring(0, 50)}...' : aiTalk}」' : '';
+
+      return _ParsedLogEntry(
+        timeText: timeDisplay,
+        title: displayTitle,
+        subtitle: displaySub.isNotEmpty ? displaySub : null,
+        categoryTag: 'AI 陪伴',
+        statusText: '陪伴對話',
+        icon: Icons.chat_bubble_rounded,
+        themeColor: const Color(0xFFF59E0B),
+        isChat: true,
+        fullQuery: userTalk.isNotEmpty ? userTalk : (item['fullQuery']?.toString() ?? ''),
+        fullAi: aiTalk.isNotEmpty ? aiTalk : (item['fullAi']?.toString() ?? ''),
+      );
+    }
+
+    // 6. 其他通用動態
+    String cleanText = rawDesc.replaceAll(RegExp(r'【.*?】'), '').trim();
+    if (cleanText.isEmpty) cleanText = rawTitle;
+    if (cleanText.length > 30) cleanText = '${cleanText.substring(0, 30)}...';
+
+    return _ParsedLogEntry(
+      timeText: timeDisplay,
+      title: cleanText,
+      categoryTag: '生活足跡',
+      statusText: '已記錄',
+      icon: Icons.check_circle_rounded,
+      themeColor: cs.primary,
+    );
+  }
+
   final Set<String> _likedCategories = {};
   String? _selectedTopicKeyword;
 
@@ -718,10 +898,11 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                             ),
                           ),
                           Text(
-                            '包含 ${items.length} 筆相關新聞閱覽與 AI 陪伴對話',
+                            '共 ${items.length} 筆${categoryTitle.replaceAll(RegExp(r'^[^\w\u4e00-\u9fa5]+'), '')}詳細紀錄',
                             style: GoogleFonts.notoSansTc(
                               fontSize: 12,
                               color: cs.onSurfaceVariant,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
                         ],
@@ -748,15 +929,19 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                         itemCount: items.length,
                         itemBuilder: (context, idx) {
                           final item = items[idx];
-                          final isChat = item['isChat'] == true;
+                          final parsed = _parseActivityLogItem(item, cs);
+                          final isChat = parsed.isChat || item['isChat'] == true;
 
                           return Container(
-                            margin: const EdgeInsets.only(bottom: 14),
-                            padding: const EdgeInsets.all(16),
+                            margin: const EdgeInsets.only(bottom: 12),
+                            padding: const EdgeInsets.all(15),
                             decoration: BoxDecoration(
                               color: cs.surfaceContainerLow,
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: (item['color'] as Color).withValues(alpha: 0.3)),
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(
+                                color: cs.outline.withValues(alpha: isDark ? 0.3 : 0.15),
+                                width: 1.2,
+                              ),
                             ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -764,71 +949,125 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                                 Row(
                                   children: [
                                     Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
                                       decoration: BoxDecoration(
-                                        color: (item['color'] as Color).withValues(alpha: 0.2),
-                                        borderRadius: BorderRadius.circular(8),
+                                        color: parsed.themeColor.withValues(alpha: isDark ? 0.25 : 0.12),
+                                        borderRadius: BorderRadius.circular(6),
                                       ),
                                       child: Text(
-                                        item['badge'] as String,
-                                        style: GoogleFonts.inter(
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.w900,
-                                          color: item['color'] as Color,
+                                        parsed.categoryTag,
+                                        style: GoogleFonts.notoSansTc(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w800,
+                                          color: parsed.themeColor,
                                         ),
                                       ),
                                     ),
                                     const SizedBox(width: 8),
-                                    Expanded(
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                                      decoration: BoxDecoration(
+                                        color: isDark ? cs.surfaceContainerHighest : cs.surfaceContainerHighest.withValues(alpha: 0.6),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
                                       child: Text(
-                                        item['title'] as String,
+                                        parsed.statusText,
                                         style: GoogleFonts.notoSansTc(
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.bold,
-                                          color: cs.onSurface,
+                                          fontSize: 10.5,
+                                          fontWeight: FontWeight.w700,
+                                          color: cs.onSurfaceVariant,
                                         ),
                                       ),
                                     ),
-                                    Text(
-                                      '${item['date']} ${item['time']}',
-                                      style: GoogleFonts.inter(fontSize: 11, color: cs.onSurfaceVariant),
-                                    ),
+                                    const Spacer(),
+                                    if (parsed.timeText.isNotEmpty)
+                                      Text(
+                                        parsed.timeText,
+                                        style: GoogleFonts.inter(
+                                          fontSize: 11.5,
+                                          color: cs.onSurfaceVariant,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
                                   ],
                                 ),
                                 const SizedBox(height: 10),
-                                Text(
-                                  item['desc'] as String,
-                                  style: GoogleFonts.notoSansTc(
-                                    fontSize: 13.5,
-                                    height: 1.45,
-                                    color: cs.onSurfaceVariant,
-                                  ),
-                                ),
-                                if (isChat) ...[
-                                  const SizedBox(height: 12),
-                                  ElevatedButton.icon(
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: const Color(0xFFF59E0B).withValues(alpha: 0.15),
-                                      foregroundColor: isDark ? const Color(0xFFFCD34D) : const Color(0xFFB45309),
-                                      elevation: 0,
-                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                        side: const BorderSide(color: Color(0xFFF59E0B)),
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Container(
+                                      width: 28,
+                                      height: 28,
+                                      decoration: BoxDecoration(
+                                        color: parsed.themeColor.withValues(alpha: isDark ? 0.25 : 0.12),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: Icon(parsed.icon, size: 15, color: parsed.themeColor),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            parsed.title,
+                                            style: GoogleFonts.notoSansTc(
+                                              fontSize: 14.5,
+                                              fontWeight: FontWeight.bold,
+                                              color: cs.onSurface,
+                                              height: 1.35,
+                                            ),
+                                          ),
+                                          if (parsed.subtitle != null && parsed.subtitle!.isNotEmpty) ...[
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              parsed.subtitle!,
+                                              style: GoogleFonts.notoSansTc(
+                                                fontSize: 12.5,
+                                                height: 1.4,
+                                                color: cs.onSurfaceVariant,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                          ],
+                                        ],
                                       ),
                                     ),
-                                    onPressed: () {
+                                  ],
+                                ),
+                                if (isChat && (parsed.fullQuery.isNotEmpty || item['fullQuery'] != null)) ...[
+                                  const SizedBox(height: 12),
+                                  InkWell(
+                                    onTap: () {
                                       _showFullDialogueDialog(
                                         context,
-                                        item['fullQuery'] as String? ?? '',
-                                        item['fullAi'] as String? ?? '',
-                                        item['time'] as String? ?? '',
+                                        parsed.fullQuery.isNotEmpty ? parsed.fullQuery : (item['fullQuery'] as String? ?? ''),
+                                        parsed.fullAi.isNotEmpty ? parsed.fullAi : (item['fullAi'] as String? ?? ''),
+                                        parsed.timeText.isNotEmpty ? parsed.timeText : (item['time'] as String? ?? ''),
                                       );
                                     },
-                                    icon: const Icon(Icons.auto_awesome_rounded, size: 16),
-                                    label: Text(
-                                      '📖 展開檢視長輩與 AI 完整對話逐字稿',
-                                      style: GoogleFonts.notoSansTc(fontSize: 12, fontWeight: FontWeight.bold),
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFF59E0B).withValues(alpha: isDark ? 0.2 : 0.1),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Icon(Icons.auto_awesome_rounded, size: 15, color: Color(0xFFF59E0B)),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            '📖 展開檢視長輩與 AI 完整對話逐字稿',
+                                            style: GoogleFonts.notoSansTc(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.bold,
+                                              color: isDark ? const Color(0xFFFCD34D) : const Color(0xFFB45309),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ),
                                 ],
@@ -2012,12 +2251,12 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
           col = const Color(0xFFF43F5E);
           glowCol = const Color(0xFFBE123C);
           ic = Icons.play_circle_fill_rounded;
-        } else if (contentStr.contains('散步') || contentStr.contains('步數') || contentStr.contains('運動') || eventType == 'activity') {
+        } else if (contentStr.contains('散步') || contentStr.contains('步數') || contentStr.contains('運動') || contentStr.contains('伸展') || contentStr.contains('體操') || contentStr.contains('健身') || eventType == 'activity') {
           badge = 'WALK';
           col = const Color(0xFF34D399);
           glowCol = const Color(0xFF059669);
           ic = Icons.directions_run_rounded;
-        } else if (contentStr.contains('藥') || contentStr.contains('打卡') || eventType == 'medication') {
+        } else if (contentStr.contains('藥') || (contentStr.contains('打卡') && !contentStr.contains('伸展') && !contentStr.contains('運動')) || eventType == 'medication') {
           badge = 'MEDICINE';
           col = const Color(0xFFA78BFA);
           glowCol = const Color(0xFF7C3AED);
@@ -2534,12 +2773,27 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     final name = widget.currentElder?.displayName ?? '長輩';
     final apiClusters = _moodInsightData?['topic_clusters'] as List<dynamic>?;
 
-    String makeDynamicTagline(List<Map<String, dynamic>> items, String fallback) {
+    String makeDynamicTagline(List<Map<String, dynamic>> items, String fallback, {String? categoryTitle}) {
       if (items.isEmpty) return fallback;
-      final first = items.first;
-      final t = first['title']?.toString() ?? '';
-      final tm = first['time']?.toString() ?? '';
-      return '最新紀錄：$t ($tm)';
+      final count = items.length;
+      final title = categoryTitle ?? fallback;
+      if (title.contains('健康') || title.contains('作息') || title.contains('運動')) {
+        final medCount = items.where((i) => "${i['title']} ${i['desc']}".contains('藥')).length;
+        if (medCount > 0) {
+          return '今日作息規律，已按時完成 $medCount 次用藥打卡';
+        }
+        return '今日健康狀態良好，累計完成 $count 項日常作息';
+      }
+      if (title.contains('新聞') || title.contains('體育') || title.contains('賽事')) {
+        return '長輩重點關注熱門時事與體育賽事動態 ($count 則)';
+      }
+      if (title.contains('影音') || title.contains('音樂') || title.contains('娛樂')) {
+        return '長輩點播聆聽了 $count 首經典歌曲與娛樂影音';
+      }
+      if (title.contains('陪伴') || title.contains('對話') || title.contains('溫情')) {
+        return '長輩與 AI 陪伴對話互動 $count 次，互動狀況良好';
+      }
+      return '累計 $count 筆最新生活足跡記錄';
     }
 
     String makeDynamicSummary(List<Map<String, dynamic>> items, String fallback) {
@@ -2877,9 +3131,6 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     final count = items.length;
     final name = widget.currentElder?.displayName ?? '長輩';
 
-    // 判斷是否包含 AI 語音對話/故事
-    final isChatCategory = categoryTitle.contains('陪伴') || categoryTitle.contains('對話') || items.any((i) => i['isChat'] == true);
-
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -2927,10 +3178,11 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                     const SizedBox(height: 3),
                     Text(
                       tagline,
-                      maxLines: 1,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.notoSansTc(
                         fontSize: 12,
+                        height: 1.35,
                         color: cs.onSurfaceVariant,
                         fontWeight: FontWeight.w600,
                       ),
@@ -2959,107 +3211,129 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
 
           const SizedBox(height: 14),
 
-          // 💬 特色內容區塊：若為對話則渲染親情對話對白框，若為健康作息則渲染簡潔動態條目
-          if (isChatCategory) ...[
-            Builder(builder: (context) {
-              final rawDesc = items.isNotEmpty ? items.first['desc'].toString() : previewSummary;
-              final cleaned = _cleanAiLogText(rawDesc);
-              final userTalk = cleaned['user'] ?? '';
-              final aiTalk = cleaned['ai'] ?? '';
-
-              return Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: isDark ? cs.surfaceContainer : const Color(0xFFF9FAFB),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: cs.outline, width: 1.2),
+          // 📋 條理分明的動態清單（去除巢狀內框，直覺一目瞭然）
+          if (items.isEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Text(
+                previewSummary.isNotEmpty ? previewSummary : '尚無相關紀錄',
+                style: GoogleFonts.notoSansTc(
+                  fontSize: 13,
+                  color: cs.onSurfaceVariant,
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (userTalk.isNotEmpty) ...[
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('💬 ', style: TextStyle(fontSize: 13)),
-                          Expanded(
+              ),
+            ),
+          ] else ...[
+            ...items.take(3).toList().asMap().entries.map((entry) {
+              final idx = entry.key;
+              final item = entry.value;
+              final isLast = idx == (items.length > 3 ? 2 : items.length - 1);
+              final parsed = _parseActivityLogItem(item, cs);
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        // 🕒 時間標籤（精緻膠囊，有顏色無邊框）
+                        if (parsed.timeText.isNotEmpty) ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: isDark
+                                  ? cs.surfaceContainerHighest.withValues(alpha: 0.6)
+                                  : cs.outline.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
                             child: Text(
-                              '$name：「$userTalk」',
-                              style: GoogleFonts.notoSansTc(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w800,
-                                color: cs.onSurface,
+                              parsed.timeText,
+                              style: GoogleFonts.inter(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: cs.onSurfaceVariant,
                               ),
                             ),
                           ),
+                          const SizedBox(width: 8),
                         ],
-                      ),
-                      const SizedBox(height: 8),
-                    ],
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('💌 ', style: TextStyle(fontSize: 13)),
+
+                        // 🎯 圓形圖標（主題色微亮背景，無邊框）
+                        Container(
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            color: parsed.themeColor.withValues(alpha: isDark ? 0.25 : 0.12),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(parsed.icon, size: 15, color: parsed.themeColor),
+                        ),
+                        const SizedBox(width: 10),
+
+                        // 📝 乾淨標題與副標
                         Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                parsed.title,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: GoogleFonts.notoSansTc(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                  color: cs.onSurface,
+                                  height: 1.35,
+                                ),
+                              ),
+                              if (parsed.subtitle != null && parsed.subtitle!.isNotEmpty) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  parsed.subtitle!,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.notoSansTc(
+                                    fontSize: 11.5,
+                                    color: cs.onSurfaceVariant,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+
+                        // 🏷️ 狀態標籤（主題色微亮背景，無邊框）
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: parsed.themeColor.withValues(alpha: isDark ? 0.22 : 0.12),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
                           child: Text(
-                            '小嘎：「${aiTalk.length > 80 ? '${aiTalk.substring(0, 80)}...' : aiTalk}」',
+                            parsed.statusText,
                             style: GoogleFonts.notoSansTc(
-                              fontSize: 12.5,
-                              height: 1.45,
-                              color: cs.onSurfaceVariant,
-                              fontWeight: FontWeight.w500,
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w800,
+                              color: parsed.themeColor,
                             ),
                           ),
                         ),
                       ],
                     ),
-                  ],
-                ),
+                  ),
+                  if (!isLast)
+                    Divider(
+                      height: 12,
+                      thickness: 0.8,
+                      color: cs.outlineVariant.withValues(alpha: isDark ? 0.25 : 0.15),
+                    ),
+                ],
               );
             }),
-          ] else ...[
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: isDark ? cs.surfaceContainer : const Color(0xFFF9FAFB),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: cs.outline, width: 1.2),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: items.take(2).map((item) {
-                  final titleStr = item['title']?.toString() ?? '';
-                  final descStr = item['desc']?.toString() ?? '';
-                  final cleanD = _cleanAiLogText(descStr)['ai'] ?? descStr;
-
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 6),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(item['icon'] as IconData? ?? Icons.check_circle_rounded, color: cs.primary, size: 16),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            '$titleStr • $cleanD',
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.notoSansTc(
-                              fontSize: 13,
-                              height: 1.4,
-                              color: cs.onSurface,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                }).toList(),
-              ),
-            ),
           ],
 
           const SizedBox(height: 14),
@@ -3768,4 +4042,30 @@ class _AlertItem extends StatelessWidget {
       child: card,
     ).animate(delay: (index * 80).ms).fadeIn().slideX(begin: 0.05);
   }
+}
+
+class _ParsedLogEntry {
+  final String timeText;
+  final String title;
+  final String? subtitle;
+  final String categoryTag;
+  final String statusText;
+  final IconData icon;
+  final Color themeColor;
+  final bool isChat;
+  final String fullQuery;
+  final String fullAi;
+
+  const _ParsedLogEntry({
+    required this.timeText,
+    required this.title,
+    this.subtitle,
+    required this.categoryTag,
+    required this.statusText,
+    required this.icon,
+    required this.themeColor,
+    this.isChat = false,
+    this.fullQuery = '',
+    this.fullAi = '',
+  });
 }
