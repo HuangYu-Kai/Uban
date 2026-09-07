@@ -841,6 +841,9 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
+    final cleanTitle = categoryTitle.replaceAll(RegExp(r'^[^\w\u4e00-\u9fa5]+'), '').trim();
+    final displayTitle = cleanTitle.isNotEmpty ? cleanTitle : categoryTitle;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -880,7 +883,6 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                       decoration: BoxDecoration(
                         color: categoryColor.withValues(alpha: 0.2),
                         shape: BoxShape.circle,
-                        border: Border.all(color: categoryColor, width: 1.5),
                       ),
                       child: Icon(categoryIcon, color: categoryColor, size: 24),
                     ),
@@ -890,7 +892,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            categoryTitle,
+                            displayTitle,
                             style: GoogleFonts.notoSansTc(
                               fontSize: 19,
                               fontWeight: FontWeight.w900,
@@ -898,7 +900,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                             ),
                           ),
                           Text(
-                            '共 ${items.length} 筆${categoryTitle.replaceAll(RegExp(r'^[^\w\u4e00-\u9fa5]+'), '')}詳細紀錄',
+                            '共 ${items.length} 筆$displayTitle詳細紀錄',
                             style: GoogleFonts.notoSansTc(
                               fontSize: 12,
                               color: cs.onSurfaceVariant,
@@ -2437,12 +2439,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
 
           const SizedBox(height: 14),
 
-          // 🏷️ 特色功能 1：長輩熱情話題關鍵字雲 (Topic Pulse Cloud)
-          _buildTopicPulseCloud(activeFilteredItems),
-
-          const SizedBox(height: 12),
-
-          // 日期篩選標籤
+          // 📅 日期篩選標籤
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
@@ -2511,6 +2508,11 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
               ],
             ),
           ),
+
+          const SizedBox(height: 12),
+
+          // 🏷️ 特色功能 1：長輩熱情話題關鍵字雲 (Topic Pulse Cloud)
+          _buildTopicPulseCloud(activeFilteredItems),
 
           const SizedBox(height: 20),
 
@@ -2628,18 +2630,24 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
 
         // C. 熱門新聞點閱與關注
         else if (badge == 'NEWS' || fullText.contains('新聞')) {
-          final match = RegExp(r'【([^】]+)】').firstMatch(fullText);
-          if (match != null) {
-            final cat = match.group(1)!;
-            if (cat != 'all' && cat.isNotEmpty) {
-              addTag('📰 #$cat新聞', cat, const Color(0xFF38BDF8));
-              continue;
-            }
-          }
-          if (fullText.contains('NBA') || fullText.contains('體育')) {
-            addTag('🏀 #體育賽事新聞', '體育', const Color(0xFF38BDF8));
+          if (fullText.contains('NBA') || fullText.contains('體育') || fullText.contains('籃球') || fullText.contains('棒球')) {
+            addTag('🏀 #體育賽事', '體育', const Color(0xFF38BDF8));
+          } else if (fullText.contains('財經') || fullText.contains('股市') || fullText.contains('經濟')) {
+            addTag('📈 #財經焦點', '財經', const Color(0xFF38BDF8));
+          } else if (fullText.contains('影視') || fullText.contains('娛樂') || fullText.contains('明星')) {
+            addTag('🎬 #影視娛樂', '娛樂', const Color(0xFF38BDF8));
           } else {
-            addTag('📰 #熱門新聞關注', '新聞', const Color(0xFF38BDF8));
+            final match = RegExp(r'【([^】]+)】').firstMatch(fullText);
+            var tagLabel = '熱門時事';
+            var tagKeyword = '新聞';
+            if (match != null) {
+              final cat = match.group(1)!.replaceAll('新聞', '').replaceAll('點閱', '').trim();
+              if (cat.isNotEmpty && cat != 'all') {
+                tagLabel = '$cat新聞';
+                tagKeyword = cat;
+              }
+            }
+            addTag('📰 #$tagLabel', tagKeyword, const Color(0xFF38BDF8));
           }
         }
 
@@ -2779,8 +2787,13 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
       final title = categoryTitle ?? fallback;
       if (title.contains('健康') || title.contains('作息') || title.contains('運動')) {
         final medCount = items.where((i) => "${i['title']} ${i['desc']}".contains('藥')).length;
-        if (medCount > 0) {
+        final exerciseCount = items.where((i) => "${i['title']} ${i['desc']}".contains('運動') || "${i['title']} ${i['desc']}".contains('步') || "${i['title']} ${i['desc']}".contains('伸展')).length;
+        if (medCount > 0 && exerciseCount > 0) {
+          return '今日作息規律，已完成 $medCount 次用藥打卡與 $exerciseCount 項健康運動';
+        } else if (medCount > 0) {
           return '今日作息規律，已按時完成 $medCount 次用藥打卡';
+        } else if (exerciseCount > 0) {
+          return '今日健康活力充沛，已完成 $exerciseCount 項日常伸展與運動';
         }
         return '今日健康狀態良好，累計完成 $count 項日常作息';
       }
@@ -2874,7 +2887,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
 
         if (mediaLeftovers.isNotEmpty) {
           categoriesToRender.add({
-            'title': '🎵 音樂影音與娛樂點播',
+            'title': '音樂影音與娛樂點播',
             'icon': Icons.play_circle_fill_rounded,
             'color': const Color(0xFFF43F5E),
             'glow': const Color(0xFFBE123C),
@@ -2887,7 +2900,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
         final remaining = unmatchedItems.where((i) => !mediaLeftovers.contains(i)).toList();
         if (remaining.isNotEmpty) {
           categoriesToRender.add({
-            'title': '🌟 每日生活足跡記錄',
+            'title': '每日生活足跡記錄',
             'icon': Icons.auto_awesome_rounded,
             'color': const Color(0xFF818CF8),
             'glow': const Color(0xFF4F46E5),
@@ -2907,7 +2920,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
 
       if (financeItems.isNotEmpty) {
         categoriesToRender.add({
-          'title': '📈 財經觀點與台股投資',
+          'title': '財經觀點與台股投資',
           'icon': Icons.trending_up_rounded,
           'color': const Color(0xFF10B981),
           'glow': const Color(0xFF059669),
@@ -2924,7 +2937,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
 
       if (foodItems.isNotEmpty) {
         categoriesToRender.add({
-          'title': '🍳 美食佳餚與餐飲食譜交流',
+          'title': '美食佳餚與餐飲食譜交流',
           'icon': Icons.restaurant_rounded,
           'color': const Color(0xFFFB923C),
           'glow': const Color(0xFFC2410C),
@@ -2941,7 +2954,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
 
       if (sportsItems.isNotEmpty) {
         categoriesToRender.add({
-          'title': '🏀 體育賽事與熱門新聞關注',
+          'title': '體育賽事與熱門新聞關注',
           'icon': Icons.sports_basketball_rounded,
           'color': const Color(0xFF38BDF8),
           'glow': const Color(0xFF0284C7),
@@ -2958,7 +2971,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
 
       if (healthItems.isNotEmpty) {
         categoriesToRender.add({
-          'title': '🏃‍♂️ 健康運動與日常作息保養',
+          'title': '健康運動與日常作息保養',
           'icon': Icons.directions_run_rounded,
           'color': const Color(0xFF34D399),
           'glow': const Color(0xFF059669),
@@ -2975,7 +2988,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
 
       if (mediaItems.isNotEmpty) {
         categoriesToRender.add({
-          'title': '🎵 音樂影音與娛樂點播',
+          'title': '音樂影音與娛樂點播',
           'icon': Icons.play_circle_fill_rounded,
           'color': const Color(0xFFF43F5E),
           'glow': const Color(0xFFBE123C),
@@ -2992,7 +3005,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
 
       if (chatItems.isNotEmpty) {
         categoriesToRender.add({
-          'title': '💬 溫情陪伴與家族互動',
+          'title': '溫情陪伴與家族互動',
           'icon': Icons.favorite_rounded,
           'color': const Color(0xFFF59E0B),
           'glow': const Color(0xFFD97706),
@@ -3004,7 +3017,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
 
       if (categoriesToRender.isEmpty) {
         categoriesToRender.add({
-          'title': '🌟 每日生活足跡記錄',
+          'title': '每日生活足跡記錄',
           'icon': Icons.auto_awesome_rounded,
           'color': const Color(0xFF818CF8),
           'glow': const Color(0xFF4F46E5),
@@ -3024,96 +3037,88 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
       return tsB.toString().compareTo(tsA.toString());
     });
 
-    final categoriesList = categoriesToRender.asMap().entries.toList();
+    final now = DateTime.now();
+    final todayStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+    final yesterday = now.subtract(const Duration(days: 1));
+    final yesterdayStr = "${yesterday.year}-${yesterday.month.toString().padLeft(2, '0')}-${yesterday.day.toString().padLeft(2, '0')}";
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    String lastRenderedTime = '';
 
-    return categoriesList.map((entry) {
-      final idx = entry.key;
-      final cat = entry.value;
-      final isLast = idx == categoriesList.length - 1;
-      final items = cat['items'] as List<Map<String, dynamic>>;
-      final latestTime = items.isNotEmpty ? (items.first['time'] as String? ?? '') : '';
+    final List<Widget> widgets = [];
+    String? lastRenderedDate;
 
-      final bool showTimeLabel = latestTime.isNotEmpty && latestTime != lastRenderedTime;
-      if (showTimeLabel) {
-        lastRenderedTime = latestTime;
+    for (final cat in categoriesToRender) {
+      final items = cat['items'] as List<Map<String, dynamic>>? ?? [];
+      final firstItem = items.isNotEmpty ? items.first : null;
+      final rawDate = firstItem?['date']?.toString() ?? '';
+
+      if (rawDate.isNotEmpty && rawDate != lastRenderedDate) {
+        lastRenderedDate = rawDate;
+        String dateLabel;
+        if (rawDate == todayStr) {
+          dateLabel = '📅 今日生活動態';
+        } else if (rawDate == yesterdayStr) {
+          dateLabel = '📅 昨天生活動態';
+        } else if (rawDate.length >= 10) {
+          final m = int.tryParse(rawDate.substring(5, 7)) ?? 0;
+          final d = int.tryParse(rawDate.substring(8, 10)) ?? 0;
+          dateLabel = '📅 $m月$d日 生活動態';
+        } else {
+          dateLabel = '📅 $rawDate';
+        }
+
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.only(top: 8, bottom: 12),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: cs.primary.withValues(alpha: isDark ? 0.2 : 0.08),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    dateLabel,
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      color: cs.primary,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Container(
+                    height: 1,
+                    color: cs.outlineVariant.withValues(alpha: isDark ? 0.25 : 0.15),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
       }
 
-      return IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: 56,
-              child: Column(
-                children: [
-                  if (showTimeLabel) ...[
-                    Text(
-                      latestTime,
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.inter(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                        color: cs.onSurfaceVariant,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                  ] else ...[
-                    const SizedBox(height: 14),
-                  ],
-                  Container(
-                    width: 34,
-                    height: 34,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: cs.surface,
-                      border: Border.all(color: cs.outline, width: 1.5),
-                      boxShadow: [
-                        BoxShadow(
-                          color: (isDark ? Colors.black : cs.outline).withValues(alpha: isDark ? 0.35 : 0.08),
-                          blurRadius: 4,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: Icon(cat['icon'] as IconData, color: cs.primary, size: 16),
-                  ),
-                  if (!isLast)
-                    Expanded(
-                      child: Container(
-                        width: 2,
-                        margin: const EdgeInsets.symmetric(vertical: 4),
-                        decoration: BoxDecoration(
-                          color: cs.outlineVariant,
-                          borderRadius: BorderRadius.circular(1),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: 20),
-                child: _buildCategoryCard(
-                  context,
-                  categoryTitle: cat['title'] as String,
-                  categoryIcon: cat['icon'] as IconData,
-                  categoryColor: cat['color'] as Color,
-                  glowColor: cat['glow'] as Color,
-                  tagline: cat['tagline'] as String,
-                  previewSummary: cat['previewSummary'] as String,
-                  items: items,
-                ),
-              ),
-            ),
-          ],
+      widgets.add(
+        Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: _buildCategoryCard(
+            context,
+            categoryTitle: cat['title'] as String,
+            categoryIcon: cat['icon'] as IconData,
+            categoryColor: cat['color'] as Color,
+            glowColor: cat['glow'] as Color,
+            tagline: cat['tagline'] as String,
+            previewSummary: cat['previewSummary'] as String,
+            items: items,
+          ),
         ),
       );
-    }).toList();
+    }
+
+    return widgets;
   }
 
   Widget _buildCategoryCard(
@@ -3130,6 +3135,9 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final count = items.length;
     final name = widget.currentElder?.displayName ?? '長輩';
+
+    final cleanTitle = categoryTitle.replaceAll(RegExp(r'^[^\w\u4e00-\u9fa5]+'), '').trim();
+    final displayTitle = cleanTitle.isNotEmpty ? cleanTitle : categoryTitle;
 
     return Container(
       padding: const EdgeInsets.all(18),
@@ -3168,7 +3176,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      categoryTitle,
+                      displayTitle,
                       style: GoogleFonts.notoSansTc(
                         fontSize: 16.5,
                         fontWeight: FontWeight.w900,
@@ -3230,6 +3238,18 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
               final isLast = idx == (items.length > 3 ? 2 : items.length - 1);
               final parsed = _parseActivityLogItem(item, cs);
 
+              final rawTs = item['rawTimestamp']?.toString() ?? '';
+              final clockTime = (rawTs.length >= 16)
+                  ? rawTs.substring(11, 16)
+                  : (parsed.timeText.contains(' ') ? parsed.timeText.split(' ').last : parsed.timeText);
+
+              final badgeTextColor = isDark
+                  ? parsed.themeColor
+                  : () {
+                      final hsl = HSLColor.fromColor(parsed.themeColor);
+                      return hsl.withLightness((hsl.lightness * 0.72).clamp(0.2, 0.45)).toColor();
+                    }();
+
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -3238,8 +3258,8 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        // 🕒 時間標籤（精緻膠囊，有顏色無邊框）
-                        if (parsed.timeText.isNotEmpty) ...[
+                        // 🕒 時間標籤（精緻膠囊，有顏色無邊框，精簡為純時間鐘點）
+                        if (clockTime.isNotEmpty) ...[
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                             decoration: BoxDecoration(
@@ -3249,7 +3269,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
-                              parsed.timeText,
+                              clockTime,
                               style: GoogleFonts.inter(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w700,
@@ -3272,20 +3292,20 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                         ),
                         const SizedBox(width: 10),
 
-                        // 📝 乾淨標題與副標
+                        // 📝 乾淨標題與副標（空間充足，單行呈現）
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
                                 parsed.title,
-                                maxLines: 2,
+                                maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: GoogleFonts.notoSansTc(
-                                  fontSize: 13,
+                                  fontSize: 13.5,
                                   fontWeight: FontWeight.w700,
                                   color: cs.onSurface,
-                                  height: 1.35,
+                                  height: 1.25,
                                 ),
                               ),
                               if (parsed.subtitle != null && parsed.subtitle!.isNotEmpty) ...[
@@ -3306,7 +3326,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                         ),
                         const SizedBox(width: 8),
 
-                        // 🏷️ 狀態標籤（主題色微亮背景，無邊框）
+                        // 🏷️ 狀態標籤（主題色微亮背景，無邊框，高對比度文字）
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                           decoration: BoxDecoration(
@@ -3318,7 +3338,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                             style: GoogleFonts.notoSansTc(
                               fontSize: 10.5,
                               fontWeight: FontWeight.w800,
-                              color: parsed.themeColor,
+                              color: badgeTextColor,
                             ),
                           ),
                         ),
@@ -3347,7 +3367,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                     HapticFeedback.mediumImpact();
                     _showCategoryDetailModal(
                       context,
-                      categoryTitle: categoryTitle,
+                      categoryTitle: displayTitle,
                       categoryIcon: categoryIcon,
                       categoryColor: categoryColor,
                       items: items,
@@ -3396,10 +3416,10 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                 onTap: () {
                   HapticFeedback.mediumImpact();
                   setState(() {
-                    if (_likedCategories.contains(categoryTitle)) {
-                      _likedCategories.remove(categoryTitle);
+                    if (_likedCategories.contains(displayTitle)) {
+                      _likedCategories.remove(displayTitle);
                     } else {
-                      _likedCategories.add(categoryTitle);
+                      _likedCategories.add(displayTitle);
                     }
                   });
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -3431,7 +3451,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   decoration: BoxDecoration(
-                    color: _likedCategories.contains(categoryTitle)
+                    color: _likedCategories.contains(displayTitle)
                         ? cs.secondary.withValues(alpha: 0.15)
                         : cs.surface,
                     borderRadius: BorderRadius.circular(14),
@@ -3443,17 +3463,17 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                   child: Row(
                     children: [
                       Icon(
-                        _likedCategories.contains(categoryTitle) ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                        color: _likedCategories.contains(categoryTitle) ? cs.secondary : cs.outline,
+                        _likedCategories.contains(displayTitle) ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                        color: _likedCategories.contains(displayTitle) ? cs.secondary : cs.outline,
                         size: 16,
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        _likedCategories.contains(categoryTitle) ? '已送心意' : '給個心意',
+                        _likedCategories.contains(displayTitle) ? '已送心意' : '給個心意',
                         style: GoogleFonts.notoSansTc(
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
-                          color: _likedCategories.contains(categoryTitle) ? cs.secondary : cs.onSurface,
+                          color: _likedCategories.contains(displayTitle) ? cs.secondary : cs.onSurface,
                         ),
                       ),
                     ],
