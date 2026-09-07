@@ -1000,19 +1000,17 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: cs.surfaceContainer,
-        borderRadius: BorderRadius.circular(28),
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(
-          color: isDark
-              ? cs.outlineVariant.withValues(alpha: 0.5)
-              : cs.primary.withValues(alpha: 0.2),
+          color: cs.outline,
           width: 1.5,
         ),
         boxShadow: [
           BoxShadow(
-            color: isDark ? Colors.black.withValues(alpha: 0.3) : cs.primary.withValues(alpha: 0.05),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
+            color: (isDark ? Colors.black : cs.outline).withValues(alpha: isDark ? 0.35 : 0.08),
+            blurRadius: 6,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
@@ -1029,7 +1027,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       border: Border.all(
-                        color: isDark ? Colors.white.withValues(alpha: 0.8) : cs.primary,
+                        color: cs.outline,
                         width: 2,
                       ),
                       image: const DecorationImage(
@@ -1167,10 +1165,11 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              gradient: const LinearGradient(colors: [Color(0xFF006C4C), Color(0xFF3C6472)]),
+              color: cs.primary,
               borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: cs.outline, width: 1.5),
             ),
-            child: const Icon(Icons.my_location_rounded, color: Colors.white, size: 22),
+            child: Icon(Icons.my_location_rounded, color: cs.onPrimary, size: 22),
           ),
           const SizedBox(width: 12),
           Text(
@@ -1189,19 +1188,17 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
       return Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: cs.surfaceContainer,
-          borderRadius: BorderRadius.circular(28),
+          color: cs.surface,
+          borderRadius: BorderRadius.circular(24),
           border: Border.all(
-            color: isDark
-                ? cs.outlineVariant.withValues(alpha: 0.5)
-                : cs.primary.withValues(alpha: 0.2),
+            color: cs.outline,
             width: 1.5,
           ),
           boxShadow: [
             BoxShadow(
-              color: isDark ? Colors.black.withValues(alpha: 0.3) : cs.primary.withValues(alpha: 0.05),
-              blurRadius: 24,
-              offset: const Offset(0, 8),
+              color: (isDark ? Colors.black : cs.outline).withValues(alpha: isDark ? 0.35 : 0.08),
+              blurRadius: 6,
+              offset: const Offset(0, 3),
             ),
           ],
         ),
@@ -1386,17 +1383,17 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: cs.surfaceContainer,
-        borderRadius: BorderRadius.circular(28),
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(
-          color: isDark ? cs.outlineVariant.withValues(alpha: 0.5) : cs.primary.withValues(alpha: 0.2),
+          color: cs.outline,
           width: 1.5,
         ),
         boxShadow: [
           BoxShadow(
-            color: isDark ? Colors.black.withValues(alpha: 0.3) : cs.primary.withValues(alpha: 0.05),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
+            color: (isDark ? Colors.black : cs.outline).withValues(alpha: isDark ? 0.35 : 0.08),
+            blurRadius: 6,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
@@ -1408,10 +1405,11 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(colors: [Color(0xFF006C4C), Color(0xFF3C6472)]),
+                  color: cs.primary,
                   borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: cs.outline, width: 1.5),
                 ),
-                child: const Icon(Icons.videocam_rounded, color: Colors.white, size: 22),
+                child: Icon(Icons.videocam_rounded, color: cs.onPrimary, size: 22),
               ),
               const SizedBox(width: 12),
               Text(
@@ -1677,92 +1675,80 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     return Container(
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        color: cs.surfaceContainer,
-        borderRadius: BorderRadius.circular(28),
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(
-          color: isDark
-              ? cs.outlineVariant.withValues(alpha: 0.5)
-              : cs.primary.withValues(alpha: 0.2),
+          color: cs.outline,
           width: 1.5,
         ),
         boxShadow: [
           BoxShadow(
-            color: isDark ? Colors.black.withValues(alpha: 0.3) : cs.primary.withValues(alpha: 0.05),
-            blurRadius: 24,
-            offset: const Offset(0, 10),
+            color: (isDark ? Colors.black : cs.outline).withValues(alpha: isDark ? 0.35 : 0.08),
+            blurRadius: 6,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 頂部標題與極光情緒氣象發光球
+          // 頂部標題與情緒指標徽章
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // ★ 2026-08-10 第二十輪（需求 2）：spaceBetween 的左側 Row 未包
-              //   Expanded，右側情緒徽章的 $moodTitle 由 AI 產生、長度不可控，
-              //   兩邊相加超過寬度就整條往右溢位。
               Expanded(
                 child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFF006C4C), Color(0xFF3C6472)],
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: cs.primary,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: cs.outline, width: 1.5),
                       ),
-                      borderRadius: BorderRadius.circular(14),
-                      boxShadow: [
-                        BoxShadow(
-                          color: cs.primary.withValues(alpha: 0.3),
-                          blurRadius: 10,
-                        ),
-                      ],
+                      child: Icon(Icons.sentiment_satisfied_alt_rounded, color: cs.onPrimary, size: 24),
                     ),
-                    child: const Icon(Icons.psychology_rounded, color: Colors.white, size: 24),
-                  ),
-                  const SizedBox(width: 12),
-                  Flexible(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'AI 情緒氣象台',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.notoSansTc(
-                            fontSize: 19,
-                            fontWeight: FontWeight.w900,
-                            color: cs.onSurface,
-                            letterSpacing: 0.5,
+                    const SizedBox(width: 12),
+                    Flexible(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '長輩身心觀察',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.notoSansTc(
+                              fontSize: 19,
+                              fontWeight: FontWeight.w900,
+                              color: cs.onSurface,
+                              letterSpacing: 0.5,
+                            ),
                           ),
-                        ),
-                        Text(
-                          '即時情緒趨勢分析',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.notoSansTc(
-                            fontSize: 12,
-                            color: cs.onSurfaceVariant,
+                          Text(
+                            '近期情緒與日常狀態',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.notoSansTc(
+                              fontSize: 12,
+                              color: cs.onSurfaceVariant,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
                 ),
               ),
               const SizedBox(width: 8),
-              // 極光發光情緒指標 Badge
+              // 情緒指標 Badge
               ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 180),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: cs.primaryContainer,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: cs.primary.withValues(alpha: 0.4)),
+                    color: cs.tertiary,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: cs.outline, width: 1.2),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -1775,8 +1761,8 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                           overflow: TextOverflow.ellipsis,
                           style: GoogleFonts.notoSansTc(
                             fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                            color: cs.onPrimaryContainer,
+                            fontWeight: FontWeight.w900,
+                            color: cs.outline,
                           ),
                         ),
                       ),
@@ -1801,20 +1787,20 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
           ),
 
           const SizedBox(height: 18),
-          Divider(height: 1, color: cs.outlineVariant.withValues(alpha: 0.4)),
+          Divider(height: 1, color: cs.outline.withValues(alpha: 0.2)),
           const SizedBox(height: 16),
 
-          // 💡 破冰話題建議標題
+          // 💡 關懷話題建議標題
           Row(
             children: [
-              const Icon(Icons.auto_awesome_rounded, color: Color(0xFFD97706), size: 20),
+              Icon(Icons.chat_bubble_outline_rounded, color: isDark ? const Color(0xFFFDE24F) : cs.outline, size: 20),
               const SizedBox(width: 8),
               Text(
-                '今日推薦關懷破冰話題：',
+                '今日關懷話題建議：',
                 style: GoogleFonts.notoSansTc(
                   fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                  color: isDark ? const Color(0xFFFCD34D) : const Color(0xFFB45309),
+                  fontWeight: FontWeight.w900,
+                  color: cs.onSurface,
                 ),
               ),
             ],
@@ -1822,19 +1808,13 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
 
           const SizedBox(height: 10),
 
-          // 奢華亮金發光金句卡（第一人稱溫情問候）
+          // 溫馨金句卡（第一人稱溫情問候）
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF261C05) : const Color(0xFFFFFBEB),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.6), width: 1.2),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFFF59E0B).withValues(alpha: isDark ? 0.15 : 0.08),
-                  blurRadius: 14,
-                ),
-              ],
+              color: isDark ? cs.surfaceContainerHigh : const Color(0xFFFFF9DB),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: cs.outline, width: 1.5),
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1947,7 +1927,10 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                     backgroundColor: cs.primary,
                     foregroundColor: cs.onPrimary,
                     elevation: 0,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      side: BorderSide(color: cs.outline, width: 1.5),
+                    ),
                     padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
                 ),
@@ -1956,19 +1939,22 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
               Expanded(
                 child: ElevatedButton.icon(
                   onPressed: () => _showSendCareCardModal(context, name),
-                  icon: Icon(Icons.mark_email_unread_rounded, size: 18, color: isDark ? const Color(0xFFFDE68A) : const Color(0xFF78350F)),
+                  icon: Icon(Icons.mark_email_unread_rounded, size: 18, color: cs.outline),
                   label: Text(
                     '傳送關懷卡',
                     style: GoogleFonts.notoSansTc(
                       fontWeight: FontWeight.w800,
-                      color: isDark ? const Color(0xFFFDE68A) : const Color(0xFF78350F),
+                      color: cs.outline,
                     ),
                   ),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: isDark ? const Color(0xFF2E2415) : const Color(0xFFFEF3C7),
-                    foregroundColor: isDark ? const Color(0xFFFDE68A) : const Color(0xFF78350F),
+                    backgroundColor: cs.tertiary,
+                    foregroundColor: cs.outline,
                     elevation: 0,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      side: BorderSide(color: cs.outline, width: 1.5),
+                    ),
                     padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
                 ),
@@ -2126,19 +2112,17 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
       margin: const EdgeInsets.symmetric(horizontal: 4),
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 22),
       decoration: BoxDecoration(
-        color: cs.surfaceContainer,
-        borderRadius: BorderRadius.circular(28),
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(
-          color: isDark
-              ? cs.outlineVariant.withValues(alpha: 0.5)
-              : cs.primary.withValues(alpha: 0.2),
+          color: cs.outline,
           width: 1.5,
         ),
         boxShadow: [
           BoxShadow(
-            color: isDark ? Colors.black.withValues(alpha: 0.3) : cs.primary.withValues(alpha: 0.05),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
+            color: (isDark ? Colors.black : cs.outline).withValues(alpha: isDark ? 0.35 : 0.08),
+            blurRadius: 6,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
@@ -2149,20 +2133,17 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // ★ 用 Expanded 包住左側區塊：長輩姓名為執行期字串，長度不定，
-              //   沒有 Expanded 時右側「即時同步」徽章會被推出螢幕造成 RenderFlex overflow。
               Expanded(
                 child: Row(
                   children: [
                     Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFF006C4C), Color(0xFF3C6472)],
-                        ),
+                        color: cs.primary,
                         borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: cs.outline, width: 1.5),
                       ),
-                      child: const Icon(Icons.grid_view_rounded, color: Colors.white, size: 24),
+                      child: Icon(Icons.grid_view_rounded, color: cs.onPrimary, size: 24),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -2198,20 +2179,20 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: cs.surfaceContainerHigh,
+                  color: cs.surface,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.5)),
+                  border: Border.all(color: cs.outline, width: 1.2),
                 ),
                 child: Row(
                   children: [
-                    const _PulseDot(color: Color(0xFF38BDF8)),
+                    _PulseDot(color: cs.secondary),
                     const SizedBox(width: 6),
                     Text(
                       '即時同步',
                       style: GoogleFonts.notoSansTc(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
-                        color: const Color(0xFF38BDF8),
+                        color: cs.onSurface,
                       ),
                     ),
                   ],
@@ -2262,7 +2243,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                 _buildDateChip(
                   _selectedHistoricalDate != null
                       ? '🗓️ ${_selectedHistoricalDate!.month}/${_selectedHistoricalDate!.day}'
-                      : '歷史月曆 🗓️',
+                      : '歷史月曆',
                   isSelected: _selectedDateFilterIndex == 3,
                   onTap: () async {
                     HapticFeedback.lightImpact();
@@ -2460,13 +2441,13 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     final dynamicTopics = _extractDynamicTopicTags(rawFeedItems, _moodInsightData, '');
 
     if (dynamicTopics.isEmpty) return const SizedBox.shrink();
+    final cs = Theme.of(context).colorScheme;
 
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
         children: dynamicTopics.map((t) {
           final isSelected = _selectedTopicKeyword == t['keyword'];
-          final col = t['color'] as Color;
           return Padding(
             padding: const EdgeInsets.only(right: 8),
             child: GestureDetector(
@@ -2481,29 +2462,21 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                 });
               },
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: isSelected ? col.withValues(alpha: 0.3) : col.withValues(alpha: 0.08),
+                  color: isSelected ? cs.primary : cs.surface,
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                    color: isSelected ? col : col.withValues(alpha: 0.3),
-                    width: isSelected ? 1.5 : 1,
+                    color: cs.outline,
+                    width: isSelected ? 1.5 : 1.2,
                   ),
-                  boxShadow: isSelected
-                      ? [
-                          BoxShadow(
-                            color: col.withValues(alpha: 0.4),
-                            blurRadius: 8,
-                          ),
-                        ]
-                      : [],
                 ),
                 child: Text(
                   t['tag'] as String,
                   style: GoogleFonts.notoSansTc(
-                    fontSize: 11.5,
-                    fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                    color: isSelected ? Colors.white : col,
+                    fontSize: 12,
+                    fontWeight: isSelected ? FontWeight.w800 : FontWeight.w700,
+                    color: isSelected ? cs.onPrimary : cs.onSurface,
                   ),
                 ),
               ),
@@ -2519,20 +2492,21 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
         decoration: BoxDecoration(
-          color: isSelected ? cs.primaryContainer : cs.surfaceContainerHigh,
+          color: isSelected ? cs.primary : cs.surface,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isSelected ? cs.primary : cs.outlineVariant.withValues(alpha: 0.5),
+            color: cs.outline,
+            width: isSelected ? 1.5 : 1.2,
           ),
         ),
         child: Text(
           label,
           style: GoogleFonts.notoSansTc(
-            fontSize: 12,
+            fontSize: 12.5,
             fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-            color: isSelected ? cs.onPrimaryContainer : cs.secondary,
+            color: isSelected ? cs.onPrimary : cs.onSurfaceVariant,
           ),
         ),
       ),
@@ -2780,6 +2754,8 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     });
 
     final categoriesList = categoriesToRender.asMap().entries.toList();
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     String lastRenderedTime = '';
 
     return categoriesList.map((entry) {
@@ -2809,7 +2785,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                       style: GoogleFonts.inter(
                         fontSize: 10,
                         fontWeight: FontWeight.w800,
-                        color: cat['color'] as Color,
+                        color: cs.onSurfaceVariant,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -2821,16 +2797,17 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                     height: 34,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: const Color(0xFF0F172A),
-                      border: Border.all(color: cat['color'] as Color, width: 2),
+                      color: cs.surface,
+                      border: Border.all(color: cs.outline, width: 1.5),
                       boxShadow: [
                         BoxShadow(
-                          color: (cat['glow'] as Color).withValues(alpha: 0.4),
-                          blurRadius: 10,
+                          color: (isDark ? Colors.black : cs.outline).withValues(alpha: isDark ? 0.35 : 0.08),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
                         ),
                       ],
                     ),
-                    child: Icon(cat['icon'] as IconData, color: cat['color'] as Color, size: 16),
+                    child: Icon(cat['icon'] as IconData, color: cs.primary, size: 16),
                   ),
                   if (!isLast)
                     Expanded(
@@ -2838,14 +2815,8 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                         width: 2,
                         margin: const EdgeInsets.symmetric(vertical: 4),
                         decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              cat['color'] as Color,
-                              Colors.white24,
-                            ],
-                          ),
+                          color: cs.outlineVariant,
+                          borderRadius: BorderRadius.circular(1),
                         ),
                       ),
                     ),
@@ -2895,18 +2866,17 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: isDark ? cs.surfaceContainer.withValues(alpha: 0.8) : cs.surfaceContainerHigh,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
-          color: isDark ? categoryColor.withValues(alpha: 0.28) : categoryColor.withValues(alpha: 0.4),
-          width: 1.2,
+          color: cs.outline,
+          width: 1.5,
         ),
         boxShadow: [
           BoxShadow(
-            color: isDark ? glowColor.withValues(alpha: 0.12) : glowColor.withValues(alpha: 0.08),
-            blurRadius: 20,
-            spreadRadius: 1,
-            offset: const Offset(0, 6),
+            color: (isDark ? Colors.black : cs.outline).withValues(alpha: isDark ? 0.35 : 0.08),
+            blurRadius: 6,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
@@ -2919,11 +2889,11 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
               Container(
                 padding: const EdgeInsets.all(9),
                 decoration: BoxDecoration(
-                  color: categoryColor.withValues(alpha: 0.18),
+                  color: cs.primary,
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: categoryColor.withValues(alpha: 0.4)),
+                  border: Border.all(color: cs.outline, width: 1.2),
                 ),
-                child: Icon(categoryIcon, color: categoryColor, size: 20),
+                child: Icon(categoryIcon, color: cs.onPrimary, size: 20),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -2933,19 +2903,19 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                     Text(
                       categoryTitle,
                       style: GoogleFonts.notoSansTc(
-                        fontSize: 16,
+                        fontSize: 16.5,
                         fontWeight: FontWeight.w900,
                         color: cs.onSurface,
                       ),
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 3),
                     Text(
                       tagline,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.notoSansTc(
-                        fontSize: 11,
-                        color: categoryColor,
+                        fontSize: 12,
+                        color: cs.onSurfaceVariant,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -2956,16 +2926,16 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: categoryColor.withValues(alpha: 0.2),
+                  color: cs.primary,
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: categoryColor.withValues(alpha: 0.4)),
+                  border: Border.all(color: cs.outline, width: 1.2),
                 ),
                 child: Text(
                   '$count 筆',
                   style: GoogleFonts.notoSansTc(
                     fontSize: 11,
                     fontWeight: FontWeight.w800,
-                    color: categoryColor,
+                    color: cs.onPrimary,
                   ),
                 ),
               ),
@@ -2986,9 +2956,9 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                 width: double.infinity,
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: cs.surfaceContainerLow,
+                  color: isDark ? cs.surfaceContainer : const Color(0xFFF9FAFB),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.3)),
+                  border: Border.all(color: cs.outline, width: 1.2),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -3002,9 +2972,9 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                             child: Text(
                               '$name：「$userTalk」',
                               style: GoogleFonts.notoSansTc(
-                                fontSize: 12.5,
-                                fontWeight: FontWeight.w700,
-                                color: isDark ? const Color(0xFFFDE68A) : const Color(0xFF92400E),
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                color: cs.onSurface,
                               ),
                             ),
                           ),
@@ -3020,10 +2990,10 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                           child: Text(
                             '小嘎：「${aiTalk.length > 80 ? '${aiTalk.substring(0, 80)}...' : aiTalk}」',
                             style: GoogleFonts.notoSansTc(
-                              fontSize: 12,
+                              fontSize: 12.5,
                               height: 1.45,
-                              color: cs.onSurface,
-                              fontWeight: FontWeight.w400,
+                              color: cs.onSurfaceVariant,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
                         ),
@@ -3038,9 +3008,9 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
               width: double.infinity,
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: cs.surfaceContainerLow,
+                color: isDark ? cs.surfaceContainer : const Color(0xFFF9FAFB),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.3)),
+                border: Border.all(color: cs.outline, width: 1.2),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -3054,7 +3024,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(item['icon'] as IconData? ?? Icons.check_circle_rounded, color: categoryColor, size: 15),
+                        Icon(item['icon'] as IconData? ?? Icons.check_circle_rounded, color: cs.primary, size: 16),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
@@ -3062,9 +3032,10 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             style: GoogleFonts.notoSansTc(
-                              fontSize: 12,
+                              fontSize: 13,
                               height: 1.4,
-                              color: cs.onSurfaceVariant,
+                              color: cs.onSurface,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
                         ),
@@ -3097,29 +3068,29 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                     decoration: BoxDecoration(
-                      color: categoryColor.withValues(alpha: 0.15),
+                      color: cs.primary,
                       borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: categoryColor.withValues(alpha: 0.5)),
+                      border: Border.all(color: cs.outline, width: 1.5),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.auto_stories_rounded, color: categoryColor, size: 15),
+                        Icon(Icons.auto_stories_rounded, color: cs.onPrimary, size: 15),
                         const SizedBox(width: 6),
                         Flexible(
                           child: Text(
-                            '閱覽對話與新聞紀錄 ($count)',
+                            '查看紀錄 ($count)',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: GoogleFonts.notoSansTc(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w700,
-                              color: isDark ? Colors.white : cs.onSurface,
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w800,
+                              color: cs.onPrimary,
                             ),
                           ),
                         ),
                         const SizedBox(width: 4),
-                        Icon(Icons.arrow_forward_ios_rounded, color: categoryColor, size: 10),
+                        Icon(Icons.arrow_forward_ios_rounded, color: cs.onPrimary, size: 10),
                       ],
                     ),
                   ),
@@ -3140,51 +3111,54 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                     SnackBar(
                       content: Row(
                         children: [
-                          const Icon(Icons.favorite_rounded, color: Color(0xFFEC4899), size: 20),
+                          Icon(Icons.favorite_rounded, color: cs.secondary, size: 20),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
                               '已傳送女兒的溫馨心意給 $name！❤️',
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.notoSansTc(color: Colors.white, fontWeight: FontWeight.bold),
+                              style: GoogleFonts.notoSansTc(color: cs.onSurface, fontWeight: FontWeight.bold),
                             ),
                           ),
                         ],
                       ),
-                      backgroundColor: const Color(0xFF1E293B),
+                      backgroundColor: cs.surface,
                       behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: BorderSide(color: cs.outline, width: 1.5),
+                      ),
                       duration: const Duration(seconds: 2),
                     ),
                   );
                 },
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   decoration: BoxDecoration(
                     color: _likedCategories.contains(categoryTitle)
-                        ? const Color(0xFFEC4899).withValues(alpha: 0.25)
-                        : cs.surfaceContainerHighest,
+                        ? cs.secondary.withValues(alpha: 0.15)
+                        : cs.surface,
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
-                      color: _likedCategories.contains(categoryTitle)
-                          ? const Color(0xFFEC4899)
-                          : cs.outlineVariant.withValues(alpha: 0.5),
+                      color: cs.outline,
+                      width: 1.5,
                     ),
                   ),
                   child: Row(
                     children: [
                       Icon(
                         _likedCategories.contains(categoryTitle) ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                        color: _likedCategories.contains(categoryTitle) ? const Color(0xFFEC4899) : cs.onSurfaceVariant,
+                        color: _likedCategories.contains(categoryTitle) ? cs.secondary : cs.outline,
                         size: 16,
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        _likedCategories.contains(categoryTitle) ? '已讚' : '給個心意',
+                        _likedCategories.contains(categoryTitle) ? '已送心意' : '給個心意',
                         style: GoogleFonts.notoSansTc(
-                          fontSize: 11,
+                          fontSize: 12,
                           fontWeight: FontWeight.w700,
-                          color: _likedCategories.contains(categoryTitle) ? const Color(0xFFEC4899) : cs.onSurfaceVariant,
+                          color: _likedCategories.contains(categoryTitle) ? cs.secondary : cs.onSurface,
                         ),
                       ),
                     ],
@@ -3373,21 +3347,17 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
       margin: const EdgeInsets.symmetric(vertical: 8),
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        color: cs.surfaceContainer,
-        borderRadius: BorderRadius.circular(28),
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(
-          color: isDark
-              ? const Color(0xFFEF4444).withValues(alpha: 0.35)
-              : const Color(0xFFF87171).withValues(alpha: 0.3),
+          color: cs.error,
           width: 1.5,
         ),
         boxShadow: [
           BoxShadow(
-            color: isDark
-                ? const Color(0xFFEF4444).withValues(alpha: 0.15)
-                : const Color(0xFFEF4444).withValues(alpha: 0.08),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
+            color: cs.error.withValues(alpha: isDark ? 0.25 : 0.1),
+            blurRadius: 6,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
@@ -3403,16 +3373,9 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFFEF4444), Color(0xFFDC2626)],
-                      ),
+                      color: cs.error,
                       borderRadius: BorderRadius.circular(14),
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color(0xFFEF4444).withValues(alpha: 0.4),
-                          blurRadius: 10,
-                        ),
-                      ],
+                      border: Border.all(color: cs.outline, width: 1.5),
                     ),
                     child: const Icon(
                       Icons.notifications_active_rounded,
@@ -3437,14 +3400,9 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFEF4444),
+                      color: cs.error,
                       borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color(0xFFEF4444).withValues(alpha: 0.5),
-                          blurRadius: 8,
-                        ),
-                      ],
+                      border: Border.all(color: cs.outline, width: 1.2),
                     ),
                     child: Text(
                       '${displayAlerts.length}',

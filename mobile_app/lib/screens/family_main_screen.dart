@@ -2079,29 +2079,28 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
             bottomNavigationBar: SafeArea(
               child: Container(
                 margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                height: 76,
+                height: 74,
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(32),
+                  borderRadius: BorderRadius.circular(28),
                   boxShadow: [
                     BoxShadow(
-                      color: _isDarkMode
-                          ? Colors.black.withValues(alpha: 0.5)
-                          : cs.primary.withValues(alpha: 0.08),
-                      blurRadius: 24,
-                      offset: const Offset(0, 10),
+                      color: (_isDarkMode ? Colors.black : cs.outline).withValues(alpha: _isDarkMode ? 0.45 : 0.1),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
                     ),
                   ],
                 ),
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(32),
+                  borderRadius: BorderRadius.circular(28),
                   child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                    filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
                     child: Container(
                       decoration: BoxDecoration(
-                        color: cs.surfaceContainer.withValues(alpha: 0.94),
-                        borderRadius: BorderRadius.circular(32),
+                        color: cs.surface.withValues(alpha: 0.96),
+                        borderRadius: BorderRadius.circular(28),
                         border: Border.all(
-                          color: cs.outlineVariant.withValues(alpha: 0.5),
+                          color: cs.outline,
+                          width: 1.5,
                         ),
                       ),
                       child: Row(
@@ -2132,18 +2131,17 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
         behavior: HitTestBehavior.opaque,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 4),
                 decoration: BoxDecoration(
-                  color: isSelected
-                      ? cs.primaryContainer.withValues(alpha: _isDarkMode ? 0.4 : 0.8)
-                      : Colors.transparent,
+                  color: isSelected ? cs.primary : Colors.transparent,
                   borderRadius: BorderRadius.circular(16),
+                  border: isSelected ? Border.all(color: cs.outline, width: 1.2) : null,
                 ),
                 child: AnimatedScale(
                   scale: isSelected ? 1.05 : 1.0,
@@ -2151,10 +2149,8 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                   curve: Curves.easeOut,
                   child: Icon(
                     icon,
-                    color: isSelected
-                        ? (_isDarkMode ? cs.primary : cs.onPrimaryContainer)
-                        : cs.secondary,
-                    size: 25,
+                    color: isSelected ? cs.onPrimary : cs.onSurfaceVariant,
+                    size: 24,
                   ),
                 ),
               ),
@@ -2162,9 +2158,9 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
               Text(
                 label,
                 style: GoogleFonts.notoSansTc(
-                  color: isSelected ? cs.onSurface : cs.secondary,
+                  color: isSelected ? cs.onSurface : cs.onSurfaceVariant,
                   fontSize: 12,
-                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                  fontWeight: isSelected ? FontWeight.w900 : FontWeight.w600,
                   height: 1.1,
                 ),
                 textAlign: TextAlign.center,

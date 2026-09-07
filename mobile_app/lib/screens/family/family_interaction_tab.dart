@@ -1121,220 +1121,191 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
 
     return Container(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(28),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: isDark
-              ? [const Color(0xFF74DAA2), const Color(0xFF3C6472), const Color(0xFF005238)]
-              : [const Color(0xFF006C4C), const Color(0xFF3C6472), const Color(0xFF90F7BE)],
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: cs.outline,
+          width: 1.5,
         ),
         boxShadow: [
           BoxShadow(
-            color: cs.primary.withValues(alpha: isDark ? 0.2 : 0.1),
-            blurRadius: 24,
-            offset: const Offset(0, 10),
+            color: (isDark ? Colors.black : cs.outline).withValues(alpha: isDark ? 0.35 : 0.08),
+            blurRadius: 6,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
-      padding: const EdgeInsets.all(1.5),
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: cs.surfaceContainer,
-          borderRadius: BorderRadius.circular(26.5),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(11),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [cs.primary, cs.tertiary],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: cs.primary.withValues(alpha: 0.3),
-                        blurRadius: 12,
-                      ),
-                    ],
-                  ),
-                  child: const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 22),
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: cs.primary,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: cs.outline, width: 1.5),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              'AI 照護共創助理',
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.notoSansTc(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w900,
-                                color: cs.onSurface,
-                                letterSpacing: 0.3,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: cs.primaryContainer,
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: cs.primary.withValues(alpha: 0.5)),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(
-                                  width: 6,
-                                  height: 6,
-                                  decoration: BoxDecoration(
-                                    color: cs.primary,
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  '就緒',
-                                  style: GoogleFonts.notoSansTc(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                    color: cs.onPrimaryContainer,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '對話建立排程與近況速報摘要',
-                        style: GoogleFonts.notoSansTc(
-                          fontSize: 12,
-                          color: cs.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            Text(
-              '與 AI 照護助理對話，可快速獲取 $elderName 的最新動態速報，或直接以自然語言語音建立吃藥與運動排程！',
-              style: GoogleFonts.notoSansTc(
-                fontSize: 13,
-                color: cs.onSurfaceVariant,
-                height: 1.5,
+                child: Icon(Icons.support_agent_rounded, color: cs.onPrimary, size: 24),
               ),
-            ),
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                _buildAuroraBadge(Icons.wb_sunny_rounded, '近況速報', const Color(0xFF38BDF8)),
-                const SizedBox(width: 8),
-                _buildAuroraBadge(Icons.edit_calendar_rounded, '對話建立排程', const Color(0xFF10B981)),
-                const SizedBox(width: 8),
-                _buildAuroraBadge(Icons.forum_rounded, '照護諮詢', const Color(0xFFF59E0B)),
-              ],
-            ),
-            const SizedBox(height: 18),
-            Container(
-              width: double.infinity,
-              height: 50,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(18),
-                gradient: LinearGradient(
-                  colors: [cs.primary, cs.tertiary],
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: cs.primary.withValues(alpha: 0.35),
-                    blurRadius: 14,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(18),
-                  onTap: () {
-                    HapticFeedback.mediumImpact();
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => FamilyAiCopilotScreen(currentElder: widget.currentElder),
-                      ),
-                    ).then((_) {
-                      _fetchReminders();
-                    });
-                  },
-                  child: Center(
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
                       children: [
-                        const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 20),
-                        const SizedBox(width: 8),
-                        Text(
-                          '開啟 AI 照護對話助理',
-                          style: GoogleFonts.notoSansTc(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.white,
-                            letterSpacing: 0.5,
+                        Flexible(
+                          child: Text(
+                            '家庭照護秘書',
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.notoSansTc(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                              color: cs.onSurface,
+                              letterSpacing: 0.3,
+                            ),
                           ),
                         ),
-                        const SizedBox(width: 6),
-                        const Icon(Icons.arrow_forward_rounded, color: Colors.white70, size: 18),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: cs.surfaceContainerHigh,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: cs.outline, width: 1.2),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 6,
+                                height: 6,
+                                decoration: BoxDecoration(
+                                  color: cs.secondary,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                '就緒',
+                                style: GoogleFonts.notoSansTc(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w900,
+                                  color: cs.outline,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '對話建立排程與生活近況摘要',
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: 12,
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            '與照護秘書對話，可快速獲取 $elderName 的最新動態速報，或直接以自然語言語音建立吃藥與運動排程！',
+            style: GoogleFonts.notoSansTc(
+              fontSize: 13,
+              color: cs.onSurfaceVariant,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              _buildFeatureBadge(Icons.wb_sunny_rounded, '近況速報', cs.tertiary),
+              const SizedBox(width: 8),
+              _buildFeatureBadge(Icons.edit_calendar_rounded, '建立排程', cs.primary),
+              const SizedBox(width: 8),
+              _buildFeatureBadge(Icons.forum_rounded, '照護諮詢', cs.secondary),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Container(
+            width: double.infinity,
+            height: 48,
+            decoration: BoxDecoration(
+              color: cs.primary,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: cs.outline, width: 1.5),
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(16),
+                onTap: () {
+                  HapticFeedback.mediumImpact();
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => FamilyAiCopilotScreen(currentElder: widget.currentElder),
+                    ),
+                  ).then((_) {
+                    _fetchReminders();
+                  });
+                },
+                child: Center(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.forum_rounded, color: cs.onPrimary, size: 20),
+                      const SizedBox(width: 8),
+                      Text(
+                        '開啟照護交流對話',
+                        style: GoogleFonts.notoSansTc(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w900,
+                          color: cs.onPrimary,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Icon(Icons.arrow_forward_rounded, color: cs.onPrimary, size: 18),
+                    ],
                   ),
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildAuroraBadge(IconData icon, String label, Color color) {
+  Widget _buildFeatureBadge(IconData icon, String label, Color accentColor) {
     final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: isDark ? color.withValues(alpha: 0.12) : cs.surfaceContainerHigh,
+        color: cs.surfaceContainerHigh,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: isDark ? 0.35 : 0.4)),
+        border: Border.all(color: cs.outline, width: 1.2),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 13, color: color),
+          Icon(icon, size: 13, color: cs.outline),
           const SizedBox(width: 5),
           Text(
             label,
             style: GoogleFonts.notoSansTc(
               fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: isDark ? color : (color == const Color(0xFF38BDF8) ? cs.primary : color),
+              fontWeight: FontWeight.w900,
+              color: cs.outline,
             ),
           ),
         ],
@@ -1349,19 +1320,17 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: isDark
-              ? [const Color(0xFF005238), const Color(0xFF003824)]
-              : [const Color(0xFF006C4C), const Color(0xFF3C6472)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: cs.surface,
         borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: cs.outline,
+          width: 1.5,
+        ),
         boxShadow: [
           BoxShadow(
-            color: cs.primary.withValues(alpha: isDark ? 0.2 : 0.12),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
+            color: (isDark ? Colors.black : cs.outline).withValues(alpha: isDark ? 0.35 : 0.08),
+            blurRadius: 6,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
@@ -1388,22 +1357,23 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
           },
           borderRadius: BorderRadius.circular(24),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 22),
             child: Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.2),
-                    shape: BoxShape.circle,
+                    color: cs.tertiary,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: cs.outline, width: 1.5),
                   ),
-                  child: const Icon(
+                  child: Icon(
                     Icons.groups_rounded,
-                    color: Colors.white,
-                    size: 32,
+                    color: cs.outline,
+                    size: 30,
                   ),
                 ),
-                const SizedBox(width: 18),
+                const SizedBox(width: 16),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1415,9 +1385,9 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                               '家庭生活時光牆',
                               overflow: TextOverflow.ellipsis,
                               style: GoogleFonts.notoSansTc(
-                                fontSize: 22,
+                                fontSize: 20,
                                 fontWeight: FontWeight.w900,
-                                color: Colors.white,
+                                color: cs.onSurface,
                               ),
                             ),
                           ),
@@ -1425,15 +1395,16 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                             decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.25),
+                              color: cs.primary,
                               borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: cs.outline, width: 1.2),
                             ),
-                            child: const Text(
+                            child: Text(
                               '雙向交流',
                               style: TextStyle(
-                                color: Colors.white,
+                                color: cs.onPrimary,
                                 fontSize: 11,
-                                fontWeight: FontWeight.bold,
+                                fontWeight: FontWeight.w900,
                               ),
                             ),
                           ),
@@ -1443,18 +1414,18 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                       Text(
                         '瀏覽長輩心情、分享生活照片與留言關心',
                         style: GoogleFonts.notoSansTc(
-                          fontSize: 14,
+                          fontSize: 13,
                           fontWeight: FontWeight.w500,
-                          color: Colors.white.withValues(alpha: 0.9),
+                          color: cs.onSurfaceVariant,
                         ),
                       ),
                     ],
                   ),
                 ),
-                const Icon(
+                Icon(
                   Icons.arrow_forward_ios_rounded,
-                  color: Colors.white,
-                  size: 20,
+                  color: cs.outline,
+                  size: 18,
                 ),
               ],
             ),
@@ -1504,23 +1475,17 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: isDark
-              ? [const Color(0xFF003824), const Color(0xFF005238)]
-              : [const Color(0xFF006C4C), const Color(0xFF005238)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(28),
+        color: cs.primary,
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(
-          color: isDark ? cs.primary.withValues(alpha: 0.3) : cs.primaryContainer.withValues(alpha: 0.4),
+          color: cs.outline,
           width: 1.5,
         ),
         boxShadow: [
           BoxShadow(
-            color: cs.primary.withValues(alpha: isDark ? 0.3 : 0.2),
-            blurRadius: 24,
-            offset: const Offset(0, 10),
+            color: cs.outline.withValues(alpha: isDark ? 0.35 : 0.08),
+            blurRadius: 6,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
@@ -1528,31 +1493,25 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
         color: Colors.transparent,
         child: InkWell(
           onTap: _makeVideoCall,
-          borderRadius: BorderRadius.circular(28),
+          borderRadius: BorderRadius.circular(24),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 24),
             child: Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(18),
+                  padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.15),
+                    color: cs.surface,
                     shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white.withValues(alpha: 0.3), width: 1.5),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.1),
-                        blurRadius: 12,
-                      ),
-                    ],
+                    border: Border.all(color: cs.outline, width: 1.5),
                   ),
-                  child: const Icon(
+                  child: Icon(
                     Icons.videocam_rounded,
-                    color: Colors.white,
-                    size: 34,
+                    color: cs.outline,
+                    size: 32,
                   ),
                 ),
-                const SizedBox(width: 18),
+                const SizedBox(width: 16),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1565,18 +1524,18 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                           Text(
                             '視訊通話',
                             style: GoogleFonts.notoSansTc(
-                              fontSize: 24,
+                              fontSize: 22,
                               fontWeight: FontWeight.w900,
-                              color: Colors.white,
+                              color: cs.onPrimary,
                               letterSpacing: 0.5,
                             ),
                           ),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                             decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.2),
+                              color: cs.surface,
                               borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: Colors.white38),
+                              border: Border.all(color: cs.outline, width: 1.2),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
@@ -1584,8 +1543,8 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                                 Container(
                                   width: 6,
                                   height: 6,
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xFF74DAA2),
+                                  decoration: BoxDecoration(
+                                    color: cs.secondary,
                                     shape: BoxShape.circle,
                                   ),
                                 ),
@@ -1594,8 +1553,8 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                                   '即時連線',
                                   style: GoogleFonts.notoSansTc(
                                     fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
+                                    fontWeight: FontWeight.w900,
+                                    color: cs.outline,
                                   ),
                                 ),
                               ],
@@ -1603,13 +1562,13 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 4),
                       Text(
-                        '與長輩開啟高清雙向視訊與音訊對話',
+                        '與長輩開啟雙向視訊與音訊對話',
                         style: GoogleFonts.notoSansTc(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: const Color(0xFF90F7BE),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: cs.onPrimary.withValues(alpha: 0.8),
                         ),
                       ),
                     ],
@@ -1618,13 +1577,14 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.1),
+                    color: cs.surface,
                     shape: BoxShape.circle,
+                    border: Border.all(color: cs.outline, width: 1.2),
                   ),
-                  child: const Icon(
+                  child: Icon(
                     Icons.arrow_forward_ios_rounded,
-                    color: Colors.white,
-                    size: 18,
+                    color: cs.outline,
+                    size: 16,
                   ),
                 ),
               ],
@@ -1643,17 +1603,17 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
     return Container(
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        color: cs.surfaceContainer,
-        borderRadius: BorderRadius.circular(28),
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(
-          color: cs.outlineVariant.withValues(alpha: isDark ? 0.3 : 0.5),
-          width: 1.2,
+          color: cs.outline,
+          width: 1.5,
         ),
         boxShadow: [
           BoxShadow(
-            color: cs.shadow.withValues(alpha: isDark ? 0.3 : 0.05),
-            blurRadius: 20,
-            offset: const Offset(0, 4),
+            color: (isDark ? Colors.black : cs.outline).withValues(alpha: isDark ? 0.35 : 0.08),
+            blurRadius: 6,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
@@ -1665,13 +1625,13 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: cs.primary.withValues(alpha: isDark ? 0.2 : 0.12),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: cs.primary.withValues(alpha: 0.3)),
+                  color: cs.primary,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: cs.outline, width: 1.5),
                 ),
                 child: Icon(
                   Icons.alarm_rounded,
-                  color: cs.primary,
+                  color: cs.onPrimary,
                   size: 22,
                 ),
               ),
@@ -1989,14 +1949,17 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
         const SizedBox(height: 12),
         Container(
           decoration: BoxDecoration(
-            color: cs.surfaceContainer,
+            color: cs.surface,
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: cs.outlineVariant.withValues(alpha: isDark ? 0.3 : 0.5)),
+            border: Border.all(
+              color: cs.outline,
+              width: 1.5,
+            ),
             boxShadow: [
               BoxShadow(
-                color: cs.shadow.withValues(alpha: isDark ? 0.3 : 0.05),
-                blurRadius: 16,
-                offset: const Offset(0, 4),
+                color: (isDark ? Colors.black : cs.outline).withValues(alpha: isDark ? 0.35 : 0.08),
+                blurRadius: 6,
+                offset: const Offset(0, 3),
               ),
             ],
           ),
