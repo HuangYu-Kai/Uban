@@ -1167,7 +1167,6 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
             decoration: BoxDecoration(
               color: cs.primary,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: cs.outline, width: 1.5),
             ),
             child: Icon(Icons.my_location_rounded, color: cs.onPrimary, size: 22),
           ),
@@ -1407,7 +1406,6 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                 decoration: BoxDecoration(
                   color: cs.primary,
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: cs.outline, width: 1.5),
                 ),
                 child: Icon(Icons.videocam_rounded, color: cs.onPrimary, size: 22),
               ),
@@ -1704,7 +1702,6 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                       decoration: BoxDecoration(
                         color: cs.primary,
                         borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: cs.outline, width: 1.5),
                       ),
                       child: Icon(Icons.sentiment_satisfied_alt_rounded, color: cs.onPrimary, size: 24),
                     ),
@@ -1748,7 +1745,6 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                   decoration: BoxDecoration(
                     color: cs.tertiary,
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: cs.outline, width: 1.2),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -1926,10 +1922,10 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: cs.primary,
                     foregroundColor: cs.onPrimary,
-                    elevation: 0,
+                    elevation: 1,
+                    shadowColor: cs.primary.withValues(alpha: 0.35),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
-                      side: BorderSide(color: cs.outline, width: 1.5),
                     ),
                     padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
@@ -1950,10 +1946,10 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: cs.tertiary,
                     foregroundColor: cs.outline,
-                    elevation: 0,
+                    elevation: 1,
+                    shadowColor: cs.tertiary.withValues(alpha: 0.35),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
-                      side: BorderSide(color: cs.outline, width: 1.5),
                     ),
                     padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
@@ -2141,7 +2137,6 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                       decoration: BoxDecoration(
                         color: cs.primary,
                         borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: cs.outline, width: 1.5),
                       ),
                       child: Icon(Icons.grid_view_rounded, color: cs.onPrimary, size: 24),
                     ),
@@ -2466,10 +2461,21 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                 decoration: BoxDecoration(
                   color: isSelected ? cs.primary : cs.surface,
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: cs.outline,
-                    width: isSelected ? 1.5 : 1.2,
-                  ),
+                  border: isSelected
+                      ? null
+                      : Border.all(
+                          color: cs.outline,
+                          width: 1.2,
+                        ),
+                  boxShadow: isSelected
+                      ? [
+                          BoxShadow(
+                            color: cs.primary.withValues(alpha: 0.35),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
+                          ),
+                        ]
+                      : null,
                 ),
                 child: Text(
                   t['tag'] as String,
@@ -2496,10 +2502,21 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
         decoration: BoxDecoration(
           color: isSelected ? cs.primary : cs.surface,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: cs.outline,
-            width: isSelected ? 1.5 : 1.2,
-          ),
+          border: isSelected
+              ? null
+              : Border.all(
+                  color: cs.outline,
+                  width: 1.2,
+                ),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: cs.primary.withValues(alpha: 0.35),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : null,
         ),
         child: Text(
           label,
@@ -2891,7 +2908,6 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                 decoration: BoxDecoration(
                   color: cs.primary,
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: cs.outline, width: 1.2),
                 ),
                 child: Icon(categoryIcon, color: cs.onPrimary, size: 20),
               ),
@@ -2928,7 +2944,6 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                 decoration: BoxDecoration(
                   color: cs.primary,
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: cs.outline, width: 1.2),
                 ),
                 child: Text(
                   '$count 筆',
@@ -3070,7 +3085,13 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                     decoration: BoxDecoration(
                       color: cs.primary,
                       borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: cs.outline, width: 1.5),
+                      boxShadow: [
+                        BoxShadow(
+                          color: cs.primary.withValues(alpha: 0.35),
+                          blurRadius: 8,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,

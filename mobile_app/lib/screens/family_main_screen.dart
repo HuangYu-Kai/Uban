@@ -2141,7 +2141,15 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                 decoration: BoxDecoration(
                   color: isSelected ? cs.primary : Colors.transparent,
                   borderRadius: BorderRadius.circular(16),
-                  border: isSelected ? Border.all(color: cs.outline, width: 1.2) : null,
+                  boxShadow: isSelected
+                      ? [
+                          BoxShadow(
+                            color: cs.primary.withValues(alpha: 0.35),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
+                          ),
+                        ]
+                      : null,
                 ),
                 child: AnimatedScale(
                   scale: isSelected ? 1.05 : 1.0,
