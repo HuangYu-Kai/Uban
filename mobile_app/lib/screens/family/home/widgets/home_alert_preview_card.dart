@@ -3,9 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../../../models/elder.dart';
-import '../alert_center_screen.dart';
-import '../placeholder_screens.dart';
-import '../health_reminder_screen.dart';
+import '../../alert_center_screen.dart';
+import '../../placeholder_screens.dart';
+import '../../health_reminder_screen.dart';
 
 /// 🏠 最新警示預覽卡片與警示清單元件
 class HomeAlertPreviewCard extends StatelessWidget {

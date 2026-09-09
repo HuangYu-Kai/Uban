@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../../pet_companion_studio/models/pet_growth_state.dart';
-import '../../pet_companion_studio/widgets/hand_drawn_piglet_actor.dart';
-import '../../pet_companion_studio/widgets/pet_growth_scale_card.dart';
+import '../../../pet_companion_studio/models/pet_growth_state.dart';
+import '../../../pet_companion_studio/widgets/animated_piglet_actor.dart';
+import '../../../pet_companion_studio/widgets/hand_drawn_piglet_actor.dart';
+import '../../../pet_companion_studio/widgets/pet_growth_scale_card.dart';
 import '../models/pet_mood.dart';
 import '../painters/pet_heart_painter.dart';
 

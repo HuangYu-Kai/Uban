@@ -598,6 +598,12 @@ class _HomeElderLifeFeedState extends State<HomeElderLifeFeed> {
   }
 
   List<Widget> _buildUnifiedTimelineCategoryCards(BuildContext context, List<Map<String, dynamic>> activeFilteredItems) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final now = DateTime.now();
+    final todayStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+    final yesterday = now.subtract(const Duration(days: 1));
+    final yesterdayStr = "${yesterday.year}-${yesterday.month.toString().padLeft(2, '0')}-${yesterday.day.toString().padLeft(2, '0')}";
     final name = widget.currentElder?.displayName ?? '長輩';
     final apiClusters = widget.moodInsightData?['topic_clusters'] as List<dynamic>?;
 
