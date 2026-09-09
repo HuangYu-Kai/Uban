@@ -1270,6 +1270,223 @@ IMU 航位推算漂移嚴重，且長輩常不隨身攜帶手機。相機方案�
 > `CLAUDE_call-monitor-history.md`；**N ≥ 41** 仍在本檔 §8。此門檻會隨每輪搬移而持續調高，
 > 調整時只需要更新本處（§8 開頭）的數字。
 
+### 2026-09-05 — 第四十三輪：分支合併、排程提醒送達根因、社群整合、寵物排行榜、家屬好友系統
+
+**背景**
+
+延續第四十一、四十二輪的既有修復，先把本地 `main` 與 `origin/main` 合併，再處理使用者
+第五項需求（家屬好友系統）與過程中新發現的「家屬設定的排程提醒，長輩端完全收不到」。
+
+**項目 A（前端）本地 main 與 origin/main 合併**
+
+`uban-api` 合併零衝突；`Uban` 有 4 處衝突：
+1. `elder_home_screen.dart` 的 import——兩邊各自新增，三個 import（本地
+   `spotlight_tutorial`、遠端 `elder_reminder_manager` 與
+   `local_reminder_notification`）全部保留。
+2. `elder_profile_tab.dart` 舊寵物卡片（`_showTasksModal` 與
+   `_buildUnifiedPetAndGoalCard`，529 行）——取遠端的繪本風新設計取代。
+3. `_buildActionCard` 的 `Material`——合併兩側：保留本地的 `key: key,`（第四十一輪
+   新手指引的 GlobalKey 錨點，丟失會靜默失效），顏色與圓角取遠端的新設計與橫屏自適應。
+4. 版面重構——以遠端的橫／直屏自適應版面為準，把第四十一輪的 `_buildMyFriendIdCard()`
+   遷入直屏滑動流（活力雙環之後、快捷列之前）；橫屏刻意不放，該分支原註解標明是
+   「零滾動設計」，插入這張卡片會破壞平板座充模式的版面意圖。
+
+★ **這次 merge 最危險的不是那 4 個衝突區，而是衝突之外**：遠端重寫「我的」版面時，新
+元件（`_buildStorybookPetStageCard`、`_buildTodayTasksHandmadeSection`）**沒有 `Key`
+參數**，`_buildActionCard` 的呼叫端也沒傳值，導致第四十一輪新手指引的四個高光錨點
+（`petKey`／`tasksKey`／`familyPairingKey`／`aiAssistantKey`）在新版面中**全部失去掛
+載點**。`flutter analyze` 綠、`flutter build` 綠、測試綠，**指引就是標不到東西**——完
+全靜默。已為前兩者新增 `Key? key` 參數，並在橫直屏共 8 個呼叫點補上傳值。
+
+更值得記的是：當時用來驗證的腳本 `grep -c 'key: key,'` 抓不到這個問題。它檢查的是
+`_buildActionCard` 函式定義裡那行固定樣板文字，跟呼叫端有沒有真的傳入 `widget.xxxKey`
+無關——四個錨點全部消失，那個 grep 一樣會回報「有找到」。這是典型的恆綠假驗證。
+→ 新護欄 **G166**
+
+**驗證**：`flutter analyze` 0 error、`flutter test` 44 passed、`flutter build apk
+--debug` 成功；第四十至四十二輪的既有修復（`endAllCalls` try/catch、取消來電清 prefs、
+好友通話、日期卡片溢位防護、真配對碼流程）皆確認存活。
+
+**項目 B（後端）排程提醒送達根因**
+
+**症狀**：家屬設定的排程提醒，長輩端 App 前景無彈窗、背景／螢幕關閉也無通知——**兩者
+皆無**。
+
+**根因**：`remote_reminders.elder_id` 這欄**必須存 4 碼房間代碼**，因為
+`main.py::check_remote_reminders_job` 拿它組房名並查 FCM token：
+```python
+emit_threadsafe('remote-reminder', payload, to=f"comm_elder_{elder_id}")
+elder_tokens_map = _get_all_known_fcm_tokens(f"comm_elder_{elder_id}", 'elder', None)
+```
+但家屬端寫入的是 **`user_id`**。`Elder` 模型的 `id`（= user_id）與 `elderId`
+（= `elder_profile.elder_id`，房間代碼）是兩個獨立欄位，註解本已寫明，呼叫點卻傳錯。
+於是訊息送往一個**沒人在的房間**，Socket 與 FCM 兩條路同時失效——**一個根因，兩個
+症狀**。
+
+★ **為什麼這個 bug 藏得住**：`GET /api/reminder/elder/{id}` 本來就用 `OR` 同時容忍
+`elder_id` 與 `user_id` 兩種鍵，所以**長輩端的提醒清單顯示得出來**，看起來像有在運
+作，只有「送達」壞掉。
+
+**修復**：
+- 後端 `services/socket_app.py` 新增 `_resolve_canonical_elder_id()`，
+  `check_remote_reminders_job` 呼叫它把兩種格式都正規化成 4 碼 elder_id。
+- **為什麼修在後端**：資料庫裡已經有一批用 `user_id` 寫入的舊提醒，只修前端會讓它們
+  永遠不再觸發、且長輩端清單突然變空。後端正規化同時救回新舊資料，也不怕前端哪天又
+  送錯。
+- 解析失敗印出帶原始值的警告後跳過，不靜默略過。
+- 前端三處一併改對：`family_home_tab.dart`（`elder.elderId ?? elder.id.toString()`）、
+  `remote_care_hub_screen.dart`、`elder_profile_tab.dart`（讀取端也要用解析後的
+  elder_id，並處理非同步時序）。
+→ 新護欄 **G160**
+
+**同批修的兩件事**：
+
+- **測試端點無認證**：`POST /api/reminder/test-trigger/{elder_id}` 原本完全沒有授權
+  也沒有開關，任何人知道一個 4 碼 elder_id（一萬種，可窮舉）就能對該長輩推送**偽造
+  的用藥提醒**（「吃下午降壓藥 💊 溫開水送服一顆」）。比照
+  `routers/alert.py::trigger_test_fall` 加三道閘（開關預設關閉／共用密鑰／存在性），
+  未啟用一律回 404 不回 403。⚠️ 這不只是資安問題——叫長輩吃不該吃的藥是安全問題。
+  `services/call_security.py` 新增 `reminder_test_trigger_enabled()`。
+  → 新護欄 **G161**
+- **排程可能整分鐘漏掉**：`check_remote_reminders_job` 是 `'interval', minutes=1` 而
+  查詢對分鐘做字串精確比對，APScheduler 的 `misfire_grace_time` 預設只有 **1 秒**，
+  負載稍高延遲超過 1 秒該分鐘就被整個跳過。改為 `misfire_grace_time=30`。
+  → 新護欄 **G162**
+
+**驗證**：新增 `tests/test_pet_leaderboard.py`（8 條）與提醒正規化測試 1 條，相關測試
+共 **135 passed**。
+
+**項目 C（前端）長輩社群加「家人／朋友」頂部標籤**
+
+原本是兩個彼此分離的畫面（社群分頁的家庭圈、電話分頁再進一層的朋友圈）。把
+`elder_friend_feed_screen.dart` 的全部邏輯與 UI 抽成 `FriendFeedBody`（不含
+Scaffold／AppBar），`ElderFriendFeedScreen` 改為薄殼包住它——**獨立畫面與新標籤頁共用
+同一份**，之後改一處兩邊同時生效。
+
+`ElderCommunityScreen` 新增 `showFriendTab`（預設 `false`），為 `true` 時 `AppBar` 掛
+`TabBar`（家人／朋友）、body 改 `TabBarView`，第二頁直接放 `FriendFeedBody`；
+`TabController` 只在 `true` 時建立。`elder_home_screen.dart` 的長輩端呼叫點傳 `true`。
+
+**家屬端（`family_interaction_tab.dart`）刻意不傳這個參數**走預設 `false`，行為與改動
+前相同——家屬不應看到長輩的朋友圈，那是長輩之間的社交。`friends_screen.dart` 既有的
+朋友圈進入點完全未動。
+
+**項目 D（前後端）好友寵物排行榜**
+
+寵物重量原本是**純本機 SharedPreferences**，後端一張相關的表都沒有。新增
+`elder_pet_state`（MySQL 與 SQLite 兩分支都建）與 `routers/pet.py` 兩個端點
+（`POST /state` 上傳體重、`GET /leaderboard/{elder_id}` 回傳「自己 + 已接受好友」的
+完整排名）。
+
+★ 兩個設計決定值得記：
+- **名次由後端算好回傳**（`rank`、`my_rank`）。前端只顯示前 10 筆時，自己若在 10 名
+  外就**數不出來自己第幾名**，而需求正是「第十位後顯示長輩目前名次」。
+- **排序有固定次要鍵**（體重遞減、`elder_id` 遞增）。不穩定排序會讓長輩每次刷新看到
+  自己的名次跳動——這是使用者看得到的體驗缺陷，不只是內部實作細節。
+- 只列出**已同步過狀態**者，用 `JOIN` 而非 `LEFT JOIN` 補預設值，避免從未開過寵物介
+  面的好友以預設 1250g「冒充有寵物」。
+→ 新護欄 **G163**
+
+前端：新增 `pet_leaderboard_service.dart`（串接兩個端點）與 `pet_leaderboard_card.dart`
+（預設前 10 名、可展開全部、自己那列明顯標示、顯示與上一名的體重差；自己在 10 名外時
+於第 10 名後獨立顯示自己的名次）。`pet_studio_screen.dart` 新增 `userId` 參數，內部以
+`FriendService.resolveMyElderId` 換取權威的 4 碼 elder_id；進入寵物介面與三個改變體重
+的動作各同步一次；初次同步**等本機存檔與 elder_id 解析兩個非同步流程都到齊**才觸發，
+避免搶在存檔套用前把預設值傳上去；全程 fire-and-forget，失敗只記 log，不影響本機存檔
+與動畫。邊界情況（`my_rank` 為 `null`、僅自己一人上榜、載入失敗）各有明確文案與重試，
+不用猜測值兜底。
+
+**驗證**：`flutter analyze` 0 error（121 info／36 warning，與基準一致）、
+`flutter test` 44 passed、`flutter build apk --debug` 成功。
+
+**項目 E（前後端）家屬好友系統（與長輩對等）**
+
+家屬只是 `user_account_data` 的一列，**沒有像 `elder_profile.elder_id` 那樣的 4 碼代
+碼**，無法沿用「用 ID 加好友」的體驗。
+
+新增獨立表 `family_friend_code` 惰性產生代碼（**不在 `user_account_data` 加欄位**——
+那是登入認證的核心表；**也不直接用 `user_id` 當代碼**——它是連號的，等於開放全站帳號
+窮舉），加上 `family_friendship`／`family_friend_post`／`family_friend_post_comment`／
+`family_friend_post_like` 四張關聯表與 `routers/family_friend.py`（11 個端點，安全語意
+比照 `routers/friend.py`：`/search` 限流、`/respond` 驗證收件人身分且一律回 404 不回
+403、拒絕即刪列不留 rejected 狀態、不可加自己、重複邀請回 409），全部獨立於
+`community_posts`。代碼產生做唯一性重試迴圈並處理 INSERT 競態窗口（30 次都撞才回
+500，不會靜默回一組撞碼的代碼）。
+→ 新護欄 **G164**
+
+前端：新增 `family_friend_service.dart`（對接 11 個端點，429 限流由前端統一顯示「查詢
+太頻繁，請稍後再試」，不透出原始錯誤碼也不靜默失敗）、`family_friend_feed_body.dart`
+（結構比照 `FriendFeedBody` 但改走一般字級 `AppTextStyles` 而非長輩專用放大字級
+`ElderScale`）、`family_add_friend_screen.dart`（我的代碼／搜尋加好友／好友管理三個分
+頁）。`ElderCommunityScreen` 加 `familyTabLabel`（預設 `'家人'`）與 `friendTabContent`
+（預設 `null`，朋友分頁內容為 `friendTabContent ?? FriendFeedBody(...)`），家屬端傳
+`'家庭'` 與 `FamilyFriendFeedBody`。**長輩端呼叫點（`elder_home_screen.dart`）完全未
+修改**，不傳這兩個參數而吃預設值——零回歸由「不存在」保證，比顯式傳預設值更不易被誤
+改。加好友入口放在朋友標籤內的入口卡（含待處理邀請角標），不動 `AppBar` 結構，長輩端
+的 `AppBar` 因此保證零異動。
+
+三個資料來源（家庭圈 `community_posts`、長輩朋友圈 `friend_post`、家屬朋友圈
+`family_friend_post`）互不相通，家屬看不到長輩的朋友圈。
+
+**驗證**：後端新增 `tests/test_family_friend.py`（19 條），相關測試共 **154 passed**
+（必補的五條在陽春版實作下先確認為紅——`IntegrityError` 或斷言失敗，非 import 失敗那
+種假紅——改正後轉綠）；前端 `flutter analyze` 0 error（120 info／36 warning）、
+`flutter test` 44 passed、`flutter build apk --debug` 成功，三個新檔在 analyze 報告中
+零命中。
+
+**項目 F — 清掉四處硬寫預設值兜底**
+
+本輪在專案裡找到**四處**「取不到就用猜測值」的寫法，全部移除，一律改為顯示明確錯誤並
+不開畫面／不開對話框：
+- `remote_care_hub_screen.dart:221` 的 `?? 2`——查不到長輩就靜默把提醒設給 user_id 為
+  2 的長輩。
+- `family_interaction_tab.dart:1354` 的 `?? 2`——家屬會以 family_id 2 的身分發文到
+  **別人的**家庭留言板。
+- `family_interaction_tab.dart:211` 的 `?? 1`——提醒被歸屬到 family_id 1。
+- `family_home_tab.dart:3607` 傳錯欄位（`elder.id` 而非 `elder.elderId`）——雖非 `??`
+  形式，但同一類「用錯的值頂替」，後端排程用房間代碼查 FCM token，兩個欄位多數情況
+  下數值不同。
+→ 新護欄 **G165**
+
+**查證但未改動的結論（供下一輪參考，不要誤「清理」）**
+
+1. **`routers/pairing.py:1169` 建立長輩帳號時的撞碼風險**：
+   `elder_id_short = generate_random_code(4)` **沒有做唯一性檢查**就直接 INSERT，而同
+   檔 `request_code`（:1004-1010）有正確的重試迴圈。4 位數只有一萬種組合，目前已有
+   26 位長輩，撞碼機率約 3%。撞到會是 PRIMARY KEY 衝突導致建立帳號失敗（**會報錯，
+   不是靜默壞掉**），所以本輪未修，但下次動到那段時應一併處理。本輪的
+   `family_friend_code` 代碼產生**刻意沒有照抄這段**，用的是 `request_code` 的正確
+   寫法加上 INSERT 競態處理（見 G164）。
+
+2. **本機 `.env` 的 `DB_HOST` 指向正式 Tailscale MySQL**（`100.73.39.14`）：在
+   `uban-api/` 直接跑 `pytest` 是**打在正式資料庫上**，不是本機 SQLite（`database.py`
+   只在連不上 MySQL 時才 fallback）。本輪的家屬好友測試（`tests/test_family_friend.py`）
+   就是這樣跑的：沿用 `tests/test_friend.py`（第四十二輪既有）立下的防護**模式**——
+   保留字 email 尾綴 ＋ 模組級 fixture 前後都 `_purge()`——但**改用自己專屬的尾綴
+   `@ubanff.qa`**（`test_friend.py` 用的是 `@uban.qa`，兩者刻意不同以免互相占用），
+   才沒有互相污染也沒有留下殘留，跑完另外下 SQL 覆核為 0。**⚠️ 下一個寫後端測試的人
+   必須知道這件事**，不要預設「本機一定是 SQLite」，新增保留字尾綴前也要先確認沒被
+   其他測試檔用掉。
+
+3. **正式庫現況（2026-09-05 實測）**：26 位長輩；`elder_friendship` 1 筆（宇璿 `6160`
+   ↔ 蛙 `5327`，本輪用真實 API 建立的測試好友關係）；`elder_pet_state`、
+   `family_friend_code`、`family_friendship`、`family_friend_post` 皆 0 筆。（長輩）
+   好友 API 的 10 個端點**已部署在遠端**（`openapi.json` 可查）。
+
+**新增護欄**
+
+本輪新增 **G160–G166**（後端 G160–G162、G164；跨端 G163、G165；流程 G166；條文見
+§7.2）。護欄檔（`CLAUDE_call-monitor-guardrails.md`）開頭護欄總數同步更新為 **166**。
+
+⚠️ **graphify 已連續兩輪未同步**：本輪新增 `routers/pet.py`（2 個端點）與
+`routers/family_friend.py`（11 個端點）、`ElderCommunityScreen` 的分頁路由重構
+（`showFriendTab`／`friendTabContent`／`familyTabLabel`）、`family_friend_service.dart`
+／`pet_leaderboard_service.dart` 等新的模組間呼叫關係，依鐵律 #10 屬於「連接／跳轉」
+語意變更，理應同步 `Uban/graphify-out/` 與 `uban-api/graphify-out/`；查證
+`graphify-out/` 的檔案時間仍停在 2026-08-30／31，晚於本輪改動（2026-09-05／06），且
+第四十二輪的年表已記過同一件事——**已連續兩輪未執行 `/graphify . --update`**。下一輪
+處理時請一併帶上。
+
 ### 2026-09-04 — 第四十二輪：假配對碼、護欄獨立成檔、長輩↔長輩好友通話
 
 **背景**
