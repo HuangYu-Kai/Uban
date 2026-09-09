@@ -1,432 +1,159 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
+import 'dart:typed_data';
 
-/// ★ 2026-08-25：`POST /api/cctv/frame` 的簡化解析結果，供監視機畫面呈現「這一幀
-/// 後端到底怎麼處理了」。後端在進 YOLO 推論前有好幾個合法的早退點（見
-/// `routers/alert.py::push_cctv_frame`），過去 [ApiService.pushCctvFrame] 只回一個
-/// bool，呼叫端完全看不出「沒有異常」是正常的節流／停用，還是真的推送失敗。
+import 'api/api_client.dart';
+import 'api/auth_api.dart';
+import 'api/pairing_api.dart';
+import 'api/call_api.dart';
+import 'api/ai_chat_api.dart';
+import 'api/elder_data_api.dart';
+import 'api/cctv_alert_api.dart';
+import 'api/reminder_api.dart';
+import 'api/community_api.dart';
+
+export 'api/cctv_alert_api.dart' show CctvPushResult;
+export 'api/api_client.dart';
+export 'api/auth_api.dart';
+export 'api/pairing_api.dart';
+export 'api/call_api.dart';
+export 'api/ai_chat_api.dart';
+export 'api/elder_data_api.dart';
+export 'api/cctv_alert_api.dart';
+export 'api/reminder_api.dart';
+export 'api/community_api.dart';
+
+/// 專案 API 門面 (Facade Pattern)
 ///
-/// [reason] 沿用後端 `{'detected': ..., 'reason': ...}` 的原始字串（例如
-/// `yolo_disabled`／`busy_frame_dropped`／`yolo_unavailable`／`no_event`／
-/// `unknown_elder`／`server_error`）；`detected == true` 時後端不帶這個欄位，
-/// 此時為 `null`。HTTP 層本身失敗（非 200、逾時、連線例外、回應格式不對）時
-/// 用 [CctvPushResult.failure] 產生的 [transportError] sentinel 值表示——
-/// **不是**後端字彙，純粹讓呼叫端分辨「連後端怎麼想都不知道」與後端明確回覆
-/// 的原因。
-///
-/// ★ 2026-08-26：新增 [loadError]，對應後端 `reason == 'yolo_unavailable'`
-/// 時新帶的 `load_error` 欄位（`routers/alert.py::push_cctv_frame`，內容已由
-/// 後端 `_sanitize_load_error()` 折單行＋裁切＋遮蔽憑證樣式）。這是使用者
-/// （不是伺服器管理員，查不了 `/cctv/yolo_status` 之類的診斷端點）唯一能拿到
-/// 的「偵測器為什麼載入失敗」線索，故原樣保留供畫面顯示、原樣回報。其他
-/// `reason` 值後端不帶這個鍵，此時為 `null`。
-class CctvPushResult {
-  final bool detected;
-  final String? reason;
-  final String? loadError;
-
-  const CctvPushResult({required this.detected, this.reason, this.loadError});
-
-  /// 非後端字彙的 sentinel：HTTP 請求本身失敗（非 200、逾時、連線例外、
-  /// 回應格式不對）時使用。
-  static const String transportError = 'transport_error';
-
-  factory CctvPushResult.failure() =>
-      const CctvPushResult(detected: false, reason: transportError);
-}
-
+/// 負責將所有舊版 `ApiService.xxx()` 的靜態呼叫透明轉發給對應的領域 API 模組：
+/// - [AuthApi]: 登入、註冊、OIDC、訂閱、帳號復原、Session 管理
+/// - [PairingApi]: 配對碼、監視機 Setup、長輩綁定與解綁
+/// - [CallApi]: 來電拒接、通話歷史
+/// - [AiChatApi]: AI 對話、串流、ASR/TTS、每日建議、情緒分析
+/// - [ElderDataApi]: 長輩資料、個人檔案、活動紀錄、家庭留言
+/// - [CctvAlertApi]: CCTV 串流、跌倒測試、設備管理、緊急警報歷史、室內定位 (IPS)
+/// - [ReminderApi]: 排程提醒 CRUD 與打卡
+/// - [CommunityApi]: 社群貼文、互動點讚、留言與圖片上傳
 class ApiService {
-  // --- 動態伺服器 IP 設置 ---
-  static const String _serverIp = String.fromEnvironment('SERVER_IP',
-      defaultValue: 'localhost-0.tail5abf5e.ts.net');
+  // --- 基礎 URL 與通用請求 ---
+  static String get baseUrl => ApiClient.baseUrl;
+  static String get serverRootUrl => ApiClient.serverRootUrl;
+  static String get localAiBaseUrl => ApiClient.localAiBaseUrl;
 
-  // 依據環境動態切換 API 基礎網址；未帶 --dart-define=SERVER_IP 時預設連線正式
-  // Tailscale 網域（見上方 _serverIp），本機開發請自行帶入你的位址（例如模擬器用 10.0.2.2）
-  static String get baseUrl {
-    if (_serverIp.startsWith('http://') || _serverIp.startsWith('https://')) {
-      return _serverIp.endsWith('/api') ? _serverIp : '$_serverIp/api';
-    }
-    if (_serverIp.contains('ts.net') || _serverIp.contains('ngrok')) {
-      return 'https://$_serverIp/api';
-    }
-    return 'http://$_serverIp:8000/api';
-  }
+  static Future<Map<String, dynamic>?> get(String path) => ApiClient.get(path);
+  static Future<Map<String, dynamic>?> post(String path, Map<String, dynamic> body) => ApiClient.post(path, body);
+  static Future<Map<String, dynamic>?> put(String path, Map<String, dynamic> body) => ApiClient.put(path, body);
+  static Future<Map<String, dynamic>?> delete(String path) => ApiClient.delete(path);
 
-  static String get serverRootUrl {
-    return _serverIp.contains('ngrok') || _serverIp.contains('ts.net')
-        ? 'https://$_serverIp'
-        : 'http://$_serverIp:8000';
-  }
-
-  // 本機 AI Server（Ollama 在這台電腦，遠端主後台沒有 Ollama）
-  // Android 模擬器/實體裝置用 LAN IP 存取 Host
-  static const String _localAiServerIp = String.fromEnvironment(
-    'LOCAL_AI_IP',
-    defaultValue: 'boyo-desktop.tail531c8a.ts.net', // AI Hub 專屬 Tailscale 網域
-  );
-  static String get localAiBaseUrl {
-    if (_localAiServerIp.startsWith('http://') || _localAiServerIp.startsWith('https://')) {
-      return _localAiServerIp.endsWith('/api') ? _localAiServerIp : '$_localAiServerIp/api';
-    }
-    if (_localAiServerIp.contains('ts.net')) {
-      return 'https://$_localAiServerIp/api';
-    }
-    return 'http://$_localAiServerIp:8000/api';
-  }
-
-  // 統一超時時間
-  static const Duration _timeout = Duration(seconds: 15);
-
-  static String _fullUrl(String path) {
-    if (path.startsWith('http://') || path.startsWith('https://')) {
-      return path;
-    }
-    String cleanPath = path;
-    if (baseUrl.endsWith('/api') && cleanPath.startsWith('/api/')) {
-      cleanPath = cleanPath.substring(4);
-    }
-    if (!cleanPath.startsWith('/')) {
-      cleanPath = '/$cleanPath';
-    }
-    return '$baseUrl$cleanPath';
-  }
-
-  static Future<Map<String, dynamic>?> get(String path) async {
-    try {
-      final url = _fullUrl(path);
-      debugPrint('📡 [ApiService.get] -> $url');
-      final response = await http
-          .get(Uri.parse(url))
-          .timeout(_timeout);
-      debugPrint('📡 [ApiService.get] <- status: ${response.statusCode}, body: ${response.body}');
-      if (response.statusCode == 200) {
-        final decoded = _safeDecode(response);
-        if (decoded['status'] == 'success') {
-          return decoded;
-        }
-      }
-      // ★ 這裡原本有一段降級打 `http://10.0.2.2:8000` 的模擬器時期 fallback。
-      // 觸發條件 `url.contains('ts.net')` 在正式環境恆為真，等於每次非 success
-      // 回應都會白等 4 秒打一個實機不可路由的位址；本專案又刻意用 **404 表示
-      // 「無權存取」**，所以每次授權拒絕都會多花 4 秒。不要再加回來；
-      // 本機開發請用 --dart-define=SERVER_IP=10.0.2.2。
-      return _safeDecode(response);
-    } catch (e) {
-      debugPrint('⚠️ ApiService.get error: $e');
-      return null;
-    }
-  }
-
-  static Future<Map<String, dynamic>?> post(String path, Map<String, dynamic> body) async {
-    try {
-      final url = _fullUrl(path);
-      debugPrint('📡 [ApiService.post] -> $url body: $body');
-      final response = await http
-          .post(
-            Uri.parse(url),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode(body),
-          )
-          .timeout(_timeout);
-      debugPrint('📡 [ApiService.post] <- status: ${response.statusCode}, body: ${response.body}');
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        final decoded = _safeDecode(response);
-        if (decoded['status'] == 'success') {
-          return decoded;
-        }
-      }
-      // ★ 同 [get] 方法：已移除模擬器時期打 `http://10.0.2.2:8000` 的降級 fallback，不要加回來。
-      return _safeDecode(response);
-    } catch (e) {
-      debugPrint('⚠️ ApiService.post error: $e');
-      return null;
-    }
-  }
-
-  static Future<Map<String, dynamic>?> put(String path, Map<String, dynamic> body) async {
-    try {
-      final url = _fullUrl(path);
-      debugPrint('📡 [ApiService.put] -> $url body: $body');
-      final response = await http
-          .put(
-            Uri.parse(url),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode(body),
-          )
-          .timeout(_timeout);
-      debugPrint('📡 [ApiService.put] <- status: ${response.statusCode}, body: ${response.body}');
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        final decoded = _safeDecode(response);
-        if (decoded['status'] == 'success') {
-          return decoded;
-        }
-      }
-      if (url.contains('ts.net') || response.statusCode == 404 || response.statusCode == 405) {
-        final cleanPath = path.startsWith('/api') ? path.substring(4) : path;
-        final fallbackUrl = 'http://10.0.2.2:8000/api$cleanPath';
-        debugPrint('🔄 [ApiService.put Fallback] -> $fallbackUrl');
-        final fbRes = await http.put(
-          Uri.parse(fallbackUrl),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode(body),
-        ).timeout(const Duration(seconds: 4));
-        if (fbRes.statusCode == 200 || fbRes.statusCode == 201) {
-          return _safeDecode(fbRes);
-        }
-      }
-      return _safeDecode(response);
-    } catch (e) {
-      debugPrint('⚠️ ApiService.put error: $e');
-      try {
-        final cleanPath = path.startsWith('/api') ? path.substring(4) : path;
-        final fallbackUrl = 'http://10.0.2.2:8000/api$cleanPath';
-        final fbRes = await http.put(
-          Uri.parse(fallbackUrl),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode(body),
-        ).timeout(const Duration(seconds: 4));
-        if (fbRes.statusCode == 200 || fbRes.statusCode == 201) {
-          return _safeDecode(fbRes);
-        }
-      } catch (_) {}
-      return null;
-    }
-  }
-
-  static Future<Map<String, dynamic>?> delete(String path) async {
-    try {
-      final url = _fullUrl(path);
-      debugPrint('📡 [ApiService.delete] -> $url');
-      final response = await http
-          .delete(Uri.parse(url))
-          .timeout(_timeout);
-      debugPrint('📡 [ApiService.delete] <- status: ${response.statusCode}, body: ${response.body}');
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        final decoded = _safeDecode(response);
-        if (decoded['status'] == 'success') {
-          return decoded;
-        }
-      }
-      if (url.contains('ts.net') || response.statusCode == 404) {
-        final cleanPath = path.startsWith('/api') ? path.substring(4) : path;
-        final fallbackUrl = 'http://10.0.2.2:8000/api$cleanPath';
-        debugPrint('🔄 [ApiService.delete Fallback] -> $fallbackUrl');
-        final fbRes = await http.delete(Uri.parse(fallbackUrl)).timeout(const Duration(seconds: 4));
-        if (fbRes.statusCode == 200 || fbRes.statusCode == 201) {
-          return _safeDecode(fbRes);
-        }
-      }
-      return _safeDecode(response);
-    } catch (e) {
-      debugPrint('⚠️ ApiService.delete error: $e');
-      try {
-        final cleanPath = path.startsWith('/api') ? path.substring(4) : path;
-        final fallbackUrl = 'http://10.0.2.2:8000/api$cleanPath';
-        final fbRes = await http.delete(Uri.parse(fallbackUrl)).timeout(const Duration(seconds: 4));
-        if (fbRes.statusCode == 200 || fbRes.statusCode == 201) {
-          return _safeDecode(fbRes);
-        }
-      } catch (_) {}
-      return null;
-    }
-  }
-  /// ★ 2026-08-05 第十七輪（安全）：監視機推流／跌倒測試端點的共用密鑰。
-  ///
-  /// 後端 `POST /api/cctv/frame` 的下游就是「偽造跌倒 → 對家屬強制點亮螢幕」，
-  /// 原本無任何驗證。後端在 `.env` 設定 `CCTV_INGEST_TOKEN` 後即要求此標頭；
-  /// **未設定時後端完全維持舊行為**，故這裡留空也不會打斷現有部署。
-  ///
-  /// 注入方式比照 `SERVER_IP` / `TURN_PASS`，絕不寫死在程式碼內：
-  ///   flutter run --dart-define=CCTV_INGEST_TOKEN=<與後端 .env 相同的字串>
-  static const String _cctvIngestToken =
-      String.fromEnvironment('CCTV_INGEST_TOKEN', defaultValue: '');
-
-  /// 空字串時回傳空 Map，讓呼叫端可無條件展開（`...`）而不需分支。
-  static Map<String, String> get _deviceTokenHeader =>
-      _cctvIngestToken.isEmpty ? {} : {'X-Uban-Device-Token': _cctvIngestToken};
-
+  // --- Auth & Account ---
   static Future<Map<String, dynamic>> register({
     required String username,
     required String email,
     required String password,
     required String role,
-  }) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/auth/register'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'username': username,
-              'email': email,
-              'password': password,
-              'role': role,
-            }),
-          )
-          .timeout(_timeout);
-      return _safeDecode(response);
-    } on TimeoutException {
-      return {'status': 'error', 'message': '連線逾時，請檢查網路'};
-    } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
-    }
-  }
+  }) => AuthApi.register(username: username, email: email, password: password, role: role);
 
-  static Future<Map<String, dynamic>> login(
-    String email,
-    String password,
-  ) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/auth/login'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'email': email, 'password': password}),
-          )
-          .timeout(_timeout);
-      return _safeDecode(response);
-    } on TimeoutException {
-      return {'status': 'error', 'message': '連線逾時，請檢查網路'};
-    } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
-    }
-  }
+  static Future<Map<String, dynamic>> login(String email, String password) => AuthApi.login(email, password);
 
-  static Map<String, dynamic> _safeDecode(http.Response response) {
-    try {
-      return jsonDecode(response.body);
-    } catch (e) {
-      final String snippet = response.body.length > 100
-          ? response.body.substring(0, 100)
-          : response.body;
-      return {
-        'status': 'error',
-        'message': '伺服器回傳格式錯誤 [HTTP ${response.statusCode}]: $snippet',
-        'details': response.body
-      };
-    }
-  }
+  static Future<Map<String, dynamic>> testOidc({
+    required String provider,
+    required String email,
+    required String uid,
+    required String token,
+  }) => AuthApi.testOidc(provider: provider, email: email, uid: uid, token: token);
 
-  static Future<Map<String, dynamic>> requestPairingCode() async {
-    try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/pairing/request_code'),
-        headers: {'Content-Type': 'application/json'},
-      ).timeout(const Duration(seconds: 10));
-      return _safeDecode(response);
-    } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
-    }
-  }
+  static Future<Map<String, dynamic>> checkHealth() => AuthApi.checkHealth();
 
-  /// ★ 2026-07-18：無狀態拒接／取消 HTTP 備援。
-  ///   背景/被殺死狀態下沒有 Socket 連線，或 Socket 剛好斷線時，改走此 REST
-  ///   端點通知後端廣播 call-busy/cancel-call（含 FCM），確保雙端同步終止。
-  ///
-  /// ★ 第四十輪（item 3）：回傳型別由 `Future<void>` 改為 `Future<bool>`——
-  ///   內部仍然整段 try/catch、絕不 rethrow（既有呼叫端全部不看回傳值，行為
-  ///   不受影響），只是額外把「有沒有真的送出去」讓呼叫端知道。背景／被殺死
-  ///   狀態下按拒接，使用者唯一看得到的畫面只有通知列，這個布林值是
-  ///   `local_call_notification.dart::showDeclineFeedback` 判斷要顯示「已
-  ///   拒接」還是「發生問題」的唯一依據。比照 `sendHeartbeat`（第三十八輪）／
-  ///   `sendCallAccept`（G106）已經用過的同一種擴充方式。
-  static Future<bool> declineCall({
-    required String roomId,
-    required String senderId,
-    String? callId,
-  }) async {
-    try {
-      await http
-          .post(
-            Uri.parse('$baseUrl/call/decline'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'roomId': roomId,
-              'senderId': senderId,
-              'callId': callId,
-            }),
-          )
-          .timeout(const Duration(seconds: 8));
-      debugPrint('✅ [ApiService] declineCall sent (room=$roomId, call=$callId)');
-      return true;
-    } catch (e) {
-      debugPrint('⚠️ [ApiService] declineCall failed: $e');
-      return false;
-    }
-  }
+  static Future<Map<String, dynamic>> generateRecoveryLink({
+    required int familyId,
+    required String elderId,
+  }) => AuthApi.generateRecoveryLink(familyId: familyId, elderId: elderId);
 
-  static Future<Map<String, dynamic>> checkPairingStatus(String code) async {
-    try {
-      final response = await http
-          .get(
-            Uri.parse('$baseUrl/pairing/check_status/$code'),
-          )
-          .timeout(const Duration(seconds: 10));
-      return _safeDecode(response);
-    } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
-    }
-  }
+  static Future<Map<String, dynamic>> verifyRecoveryCode(String code) => AuthApi.verifyRecoveryCode(code);
 
+  static Future<bool> releaseSession({
+    required String fcmToken,
+    int? userId,
+    String? roomId,
+  }) => AuthApi.releaseSession(fcmToken: fcmToken, userId: userId, roomId: roomId);
+
+  static Future<Map<String, dynamic>> getSubscriptionTier(int userId) => AuthApi.getSubscriptionTier(userId);
+  static Future<Map<String, dynamic>> getSubscriptionRecords(int userId) => AuthApi.getSubscriptionRecords(userId);
+
+  // --- Pairing & Monitor Setup ---
+  static String? get lastResolveError => PairingApi.lastResolveError;
+  static set lastResolveError(String? value) => PairingApi.lastResolveError = value;
+
+  static Future<Map<String, dynamic>> requestPairingCode() => PairingApi.requestPairingCode();
+  static Future<Map<String, dynamic>> checkPairingStatus(String code) => PairingApi.checkPairingStatus(code);
   static Future<Map<String, dynamic>> confirmPairing({
     required int familyId,
     required String code,
     required String elderName,
     required String gender,
     required int age,
-  }) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/pairing/confirm'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'family_id': familyId,
-              'code': code,
-              'elder_name': elderName,
-              'gender': gender,
-              'age': age,
-            }),
-          )
-          .timeout(_timeout);
-      return _safeDecode(response);
-    } on TimeoutException {
-      return {'status': 'error', 'message': '連線逾時，請檢查網路'};
-    } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
-    }
-  }
+  }) => PairingApi.confirmPairing(
+        familyId: familyId,
+        code: code,
+        elderName: elderName,
+        gender: gender,
+        age: age,
+      );
 
-  static Future<Map<String, dynamic>> ensureYuxuanDemoElder() async {
-    try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/pairing/dev/ensure-yuxuan-demo'),
-        headers: {'Content-Type': 'application/json'},
-      ).timeout(_timeout);
-      return _safeDecode(response);
-    } on TimeoutException {
-      return {'status': 'error', 'message': '連線逾時，請檢查網路'};
-    } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
-    }
-  }
+  static Future<Map<String, dynamic>> ensureYuxuanDemoElder() => PairingApi.ensureYuxuanDemoElder();
+  static Future<Map<String, dynamic>> ensureGawaDemoElder() => PairingApi.ensureGawaDemoElder();
+  static Future<Map<String, dynamic>> unbindElder(int familyId, Object elderId) => PairingApi.unbindElder(familyId, elderId);
 
-  static Future<Map<String, dynamic>> ensureGawaDemoElder() async {
-    try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/pairing/dev/ensure-gawa-demo'),
-        headers: {'Content-Type': 'application/json'},
-      ).timeout(_timeout);
-      return _safeDecode(response);
-    } on TimeoutException {
-      return {'status': 'error', 'message': '連線逾時，請檢查網路'};
-    } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
-    }
-  }
+  static Future<Map<String, dynamic>?> createMonitorSetup(int familyId, String elderId, String deviceName) =>
+      PairingApi.createMonitorSetup(familyId, elderId, deviceName);
+
+  static Future<Map<String, dynamic>?> resolveMonitorSetup(String code) => PairingApi.resolveMonitorSetup(code);
+
+  static Future<Map<String, dynamic>?> getMonitorSetupStatus(String code, {required int userId}) =>
+      PairingApi.getMonitorSetupStatus(code, userId: userId);
+
+  // --- Call ---
+  static Future<bool> declineCall({
+    required String roomId,
+    required String senderId,
+    String? callId,
+  }) => CallApi.declineCall(roomId: roomId, senderId: senderId, callId: callId);
+
+  static Future<Map<String, dynamic>> getCallHistory(String roomId) => CallApi.getCallHistory(roomId);
+
+  // --- AI Chat, Voice, Persona, Daily Suggestions ---
+  static Future<Map<String, dynamic>> aiChat(int userId, String message, {String? imageUrl}) =>
+      AiChatApi.aiChat(userId, message, imageUrl: imageUrl);
+
+  static Stream<String> aiChatStream(
+    int userId,
+    String message, {
+    String? appellation,
+    String? userName,
+  }) => AiChatApi.aiChatStream(userId, message, appellation: appellation, userName: userName);
+
+  static Future<String?> transcribeAudio(String filePath) => AiChatApi.transcribeAudio(filePath);
+  static Future<Map<String, dynamic>> petGreeting(int userId, String context) => AiChatApi.petGreeting(userId, context);
+  static Future<List<dynamic>> getPersonaTemplates() => AiChatApi.getPersonaTemplates();
+  static Future<Map<String, dynamic>> getElderAgentProfile(int elderId) => AiChatApi.getElderAgentProfile(elderId);
+  static Future<Map<String, dynamic>> getDailySuggestions(int elderId) => AiChatApi.getDailySuggestions(elderId);
+  static Future<Map<String, dynamic>> getNews({
+    String category = 'politics',
+    int limit = 3,
+    String? dataDate,
+  }) => AiChatApi.getNews(category: category, limit: limit, dataDate: dataDate);
+
+  static Future<Map<String, dynamic>> synthesizeTts({
+    required String text,
+    String? emotion,
+    String engine = 'edge',
+  }) => AiChatApi.synthesizeTts(text: text, emotion: emotion, engine: engine);
+
+  static Future<Map<String, dynamic>> generatePondLeaf(int userId) => AiChatApi.generatePondLeaf(userId);
+  static Future<Map<String, dynamic>?> getElderMoodInsight(String elderId) => AiChatApi.getElderMoodInsight(elderId);
+
+  // --- Elder Data & Profile ---
+  static Future<Map<String, dynamic>> getStatus(int userId) => ElderDataApi.getStatus(userId);
 
   static Future<Map<String, dynamic>> updateElderInfo({
     required int familyId,
@@ -434,330 +161,33 @@ class ApiService {
     String? userName,
     int? age,
     String? gender,
-  }) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/user/profile/$elderId'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              if (userName != null) 'user_name': userName,
-              if (age != null) 'age': age,
-              if (gender != null) 'gender': gender,
-            }),
-          )
-          .timeout(_timeout);
-      return _safeDecode(response);
-    } on TimeoutException {
-      return {'status': 'error', 'message': '連線逾時，請檢查網路'};
-    } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
-    }
-  }
-
-  static Future<Map<String, dynamic>> getStatus(int userId) async {
-    try {
-      final response = await http
-          .get(Uri.parse('$baseUrl/user/status/$userId'))
-          .timeout(_timeout);
-      return _safeDecode(response);
-    } on TimeoutException {
-      return {'status': 'error', 'message': '連線逾時，請檢查網路'};
-    } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
-    }
-  }
-
-  // AI 相關功能
-  // ⚠️ 使用本機 AI Server (localAiBaseUrl) 與自動降級連線備援
-  static Future<Map<String, dynamic>> aiChat(int userId, String message, {String? imageUrl}) async {
-    // ★ 已移除兩筆寫死 IP 的候選位址（開發者 LAN IP、模擬器 10.0.2.2）：
-    // 使用者實機連不到，卻仍要各等滿 30 秒逾時才降級到下一個候選。
-    // 新增候選一律走 --dart-define，不要再放字面 IP。
-    final List<String> candidateUrls = [
-      'https://boyo-desktop.tail531c8a.ts.net/api/ai/chat',
-      '$localAiBaseUrl/ai/chat',
-      '${baseUrl.replaceFirst('/api', '')}/api/ai/chat',
-    ];
-    final uniqueUrls = candidateUrls.toSet().toList();
-
-    for (final url in uniqueUrls) {
-      try {
-        final response = await http
-            .post(
-              Uri.parse(url),
-              headers: {'Content-Type': 'application/json'},
-              body: jsonEncode({
-                'user_id': userId,
-                'message': message,
-                if (imageUrl != null) 'image_url': imageUrl,
-              }),
-            )
-            .timeout(const Duration(seconds: 30));
-        if (response.statusCode == 200) {
-          return _safeDecode(response);
-        }
-      } catch (_) {}
-    }
-    return {'status': 'error', 'message': '網路連線失敗，請檢查 AI Server 是否開啟'};
-  }
-
-  /// AI 串流聊天（SSE）- 逐 token 回傳，支援多候選 IP 自動降級連線，支援自訂長輩稱謂 (appellation)
-  static Stream<String> aiChatStream(
-    int userId,
-    String message, {
-    String? appellation,
-    String? userName,
-  }) async* {
-    // ★ 同 [aiChat]：已移除開發者 LAN IP／模擬器 10.0.2.2 兩筆寫死候選位址。
-    final List<String> candidateUrls = [
-      'https://boyo-desktop.tail531c8a.ts.net/api/ai/chat/stream',
-      '$localAiBaseUrl/ai/chat/stream',
-      '${baseUrl.replaceFirst('/api', '')}/api/ai/chat/stream',
-    ];
-    final uniqueUrls = candidateUrls.toSet().toList();
-
-    for (int idx = 0; idx < uniqueUrls.length; idx++) {
-      final targetUrl = uniqueUrls[idx];
-      final client = http.Client();
-      try {
-        debugPrint('📡 [aiChatStream Attempt ${idx + 1}] -> $targetUrl');
-        final request = http.Request('POST', Uri.parse(targetUrl));
-        request.headers['Content-Type'] = 'application/json';
-        request.body = jsonEncode({
-          'user_id': userId,
-          'message': message,
-          if (appellation != null && appellation.isNotEmpty) 'appellation': appellation,
-          if (userName != null && userName.isNotEmpty) 'user_name': userName,
-        });
-
-        final streamedResponse = await client.send(request).timeout(const Duration(seconds: 15));
-
-        if (streamedResponse.statusCode != 200) {
-          client.close();
-          if (idx < uniqueUrls.length - 1) continue;
-          yield '[ERROR] 伺服器錯誤: ${streamedResponse.statusCode}';
-          return;
-        }
-
-        final StringBuffer lineBuf = StringBuffer();
-        bool receivedData = false;
-
-        await for (final chunk in streamedResponse.stream) {
-          receivedData = true;
-          final decoded = utf8.decode(chunk, allowMalformed: true);
-          for (int i = 0; i < decoded.length; i++) {
-            final ch = decoded[i];
-            if (ch == '\n') {
-              final line = lineBuf.toString().trimRight();
-              lineBuf.clear();
-              if (line.startsWith('data: ')) {
-                final payload = line.substring(6).trim();
-                if (payload == '[DONE]') {
-                  client.close();
-                  return;
-                }
-                if (payload.startsWith('[ERROR]')) {
-                  client.close();
-                  yield payload;
-                  return;
-                }
-                try {
-                  final token = jsonDecode(payload) as String;
-                  if (token.isNotEmpty) yield token;
-                } catch (_) {
-                  if (payload.isNotEmpty) yield payload;
-                }
-              }
-            } else {
-              lineBuf.write(ch);
-            }
-          }
-        }
-        client.close();
-        if (receivedData) return;
-      } catch (e) {
-        debugPrint('⚠️ [aiChatStream Fail] $targetUrl error: $e');
-        client.close();
-        if (idx < uniqueUrls.length - 1) continue;
-        yield '[ERROR] $e';
-      }
-    }
-  }
-
-  /// 語音轉文字 (ASR/STT) - 上傳本地錄音檔至 AI Server
-  static Future<String?> transcribeAudio(String filePath) async {
-    try {
-      final request = http.MultipartRequest(
-        'POST',
-        Uri.parse('$localAiBaseUrl/voice/transcribe'),
+  }) => ElderDataApi.updateElderInfo(
+        familyId: familyId,
+        elderId: elderId,
+        userName: userName,
+        age: age,
+        gender: gender,
       );
-      request.files.add(await http.MultipartFile.fromPath('file', filePath));
-      request.fields['language'] = 'zh';
-
-      final streamedResponse = await request.send().timeout(const Duration(seconds: 30));
-      final response = await http.Response.fromStream(streamedResponse);
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['success'] == true) {
-          return data['transcription']?.toString().trim();
-        }
-      }
-      return null;
-    } catch (e) {
-      debugPrint('❌ [transcribeAudio] 錯誤: $e');
-      return null;
-    }
-  }
-
-  static Future<Map<String, dynamic>> petGreeting(int userId, String context) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/ai/pet_greeting'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'user_id': userId, 'message': context}),
-          )
-          .timeout(const Duration(seconds: 120)); // 增加超時時間至 120 秒
-      return _safeDecode(response);
-    } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
-    }
-  }
 
   static Future<Map<String, dynamic>> logActivity(
     int userId,
     String type,
     String content, {
     Map<String, dynamic>? extraData,
-  }) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/ai/log_activity'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'user_id': userId,
-              'event_type': type,
-              'content': content,
-              'extra_data': extraData != null ? jsonEncode(extraData) : null,
-            }),
-          )
-          .timeout(_timeout);
-      return _safeDecode(response);
-    } on TimeoutException {
-      return {'status': 'error', 'message': '連線逾時，請檢查網路'};
-    } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
-    }
-  }
+  }) => ElderDataApi.logActivity(userId, type, content, extraData: extraData);
 
   static Future<Map<String, dynamic>> sendFamilyMessage({
     required int familyId,
     required int elderId,
     required String content,
-  }) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/family_message'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'family_id': familyId,
-              'elder_id': elderId,
-              'content': content,
-            }),
-          )
-          .timeout(_timeout);
-      return _safeDecode(response);
-    } on TimeoutException {
-      return {'status': 'error', 'message': '連線逾時，請檢查網路'};
-    } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
-    }
-  }
+  }) => ElderDataApi.sendFamilyMessage(familyId: familyId, elderId: elderId, content: content);
 
-  // 已棄用：請使用 getPairedElders(int userId) 替代
   @Deprecated('Use getPairedElders instead')
-  static Future<List<dynamic>> getElderData(String userId) async {
-    return getPairedElders(int.tryParse(userId) ?? 0);
-  }
-
-  static Future<List<dynamic>> getPairedElders(int userId) async {
-    try {
-      final response = await http
-          .get(Uri.parse('$baseUrl/user/$userId/elders'))
-          .timeout(_timeout);
-      if (response.statusCode == 200) {
-        final decoded = jsonDecode(response.body);
-        // 後端直接返回 list，不是 {status, data} 格式
-        if (decoded is List) {
-          return decoded;
-        }
-        // 兼容舊格式
-        if (decoded is Map && decoded['status'] == 'success') {
-          return decoded['data'] as List<dynamic>;
-        }
-      }
-      return [];
-    } catch (e) {
-      debugPrint('⚠️ getPairedElders error: $e');
-      return [];
-    }
-  }
-
-  /// 查詢某長輩是否已存在「通話機」設備。
-  /// 用於長輩設備首次登入時自動決定角色：
-  /// 已有通話機 → 新設備自動成為監控機（不需資料庫欄位）。
-  /// 查詢失敗時保守回傳 false（讓設備預設為通話機）。
-  static Future<bool> hasCommDevice(String elderId) async {
-    try {
-      final response = await http
-          .get(Uri.parse('$baseUrl/user/elder/$elderId/has-comm-device'))
-          .timeout(_timeout);
-      if (response.statusCode == 200) {
-        final decoded = jsonDecode(response.body);
-        if (decoded is Map && decoded['has_comm_device'] == true) {
-          return true;
-        }
-      }
-      return false;
-    } catch (e) {
-      debugPrint('⚠️ hasCommDevice error: $e');
-      return false;
-    }
-  }
-
-  static Future<List<dynamic>> getPairedFamily(int userId) async {
-    try {
-      final response = await http
-          .get(Uri.parse('$baseUrl/user/$userId/family'))
-          .timeout(_timeout);
-      if (response.statusCode == 200) {
-        final decoded = jsonDecode(response.body);
-        if (decoded['status'] == 'success') {
-          return decoded['data'] as List<dynamic>;
-        }
-      }
-    } catch (e) {
-      // Error fetching paired family
-    }
-    return [];
-  }
-
-  static Future<Map<String, dynamic>> getElderProfile(int userId) async {
-    try {
-      final response = await http
-          .get(Uri.parse('$baseUrl/user/profile/$userId'))
-          .timeout(_timeout);
-      return _safeDecode(response);
-    } on TimeoutException {
-      return {'status': 'error', 'message': '連線逾時，請檢查網路'};
-    } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
-    }
-  }
+  static Future<List<dynamic>> getElderData(String userId) => ElderDataApi.getElderData(userId);
+  static Future<List<dynamic>> getPairedElders(int userId) => ElderDataApi.getPairedElders(userId);
+  static Future<bool> hasCommDevice(String elderId) => ElderDataApi.hasCommDevice(elderId);
+  static Future<List<dynamic>> getPairedFamily(int userId) => ElderDataApi.getPairedFamily(userId);
+  static Future<Map<String, dynamic>> getElderProfile(int userId) => ElderDataApi.getElderProfile(userId);
 
   static Future<Map<String, dynamic>> updateElderProfile({
     required int userId,
@@ -772,1087 +202,149 @@ class ApiService {
     String? aiPersona,
     String? lifeStory,
     int? heartbeatFrequency,
-  }) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/user/profile/$userId'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              if (phone != null) 'phone': phone,
-              if (location != null) 'location': location,
-              if (appellation != null) 'appellation': appellation,
-              if (aiEmotionTone != null) 'ai_emotion_tone': aiEmotionTone,
-              if (aiTextVerbosity != null) 'ai_text_verbosity': aiTextVerbosity,
-              if (chronicDiseases != null) 'chronic_diseases': chronicDiseases,
-              if (medicationNotes != null) 'medication_notes': medicationNotes,
-              if (interests != null) 'interests': interests,
-              if (aiPersona != null) 'ai_persona': aiPersona,
-              if (lifeStory != null) 'life_story': lifeStory,
-              if (heartbeatFrequency != null)
-                'heartbeat_frequency': heartbeatFrequency,
-            }),
-          )
-          .timeout(_timeout);
-      return _safeDecode(response);
-    } on TimeoutException {
-      return {'status': 'error', 'message': '連線逾時，請檢查網路'};
-    } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
-    }
-  }
-
-  static Future<List<dynamic>> getPersonaTemplates() async {
-    try {
-      final response = await http
-          .get(Uri.parse('$baseUrl/ai/persona_templates'))
-          .timeout(_timeout);
-      if (response.statusCode == 200) {
-        final decoded = jsonDecode(response.body);
-        if (decoded['status'] == 'success') {
-          return decoded['data'] as List<dynamic>;
-        }
-      }
-      return [];
-    } catch (e) {
-      return [];
-    }
-  }
-
-  static Future<Map<String, dynamic>> getElderAgentProfile(int elderId) async {
-    try {
-      final response = await http
-          .get(Uri.parse('$baseUrl/user/elder/$elderId'))
-          .timeout(_timeout);
-      return _safeDecode(response);
-    } on TimeoutException {
-      return {'status': 'error', 'message': '連線逾時，請檢查網路'};
-    } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
-    }
-  }
-
-  static Future<Map<String, dynamic>> unbindElder(
-    int familyId,
-    Object elderId,
-  ) async {
-    try {
-      final response = await http
-          .delete(Uri.parse('$baseUrl/pairing/$familyId/$elderId'))
-          .timeout(const Duration(seconds: 10));
-
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
-      } else {
-        return {'error': 'Failed to unbind elder: ${response.statusCode}'};
-      }
-    } catch (e) {
-      return {'error': e.toString()};
-    }
-  }
-
-  static Future<Map<String, dynamic>> uploadAvatar(
-    int userId,
-    String filePath,
-  ) async {
-    try {
-      var request = http.MultipartRequest(
-        'POST',
-        Uri.parse('$baseUrl/user/$userId/avatar'),
+  }) => ElderDataApi.updateElderProfile(
+        userId: userId,
+        phone: phone,
+        location: location,
+        appellation: appellation,
+        aiEmotionTone: aiEmotionTone,
+        aiTextVerbosity: aiTextVerbosity,
+        chronicDiseases: chronicDiseases,
+        medicationNotes: medicationNotes,
+        interests: interests,
+        aiPersona: aiPersona,
+        lifeStory: lifeStory,
+        heartbeatFrequency: heartbeatFrequency,
       );
-      request.files.add(await http.MultipartFile.fromPath('avatar', filePath));
 
-      var streamedResponse = await request.send();
-      var response = await http.Response.fromStream(streamedResponse);
+  static Future<Map<String, dynamic>> uploadAvatar(int userId, String filePath) =>
+      ElderDataApi.uploadAvatar(userId, filePath);
 
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
-      } else {
-        return {'error': 'Failed to upload avatar: ${response.statusCode}'};
-      }
-    } catch (e) {
-      return {'error': e.toString()};
-    }
-  }
+  static Future<Map<String, dynamic>> uploadImage(String filePath) =>
+      ElderDataApi.uploadImage(filePath);
 
-  static Future<Map<String, dynamic>> uploadImage(String filePath) async {
-    try {
-      var request = http.MultipartRequest(
-        'POST',
-        Uri.parse('$baseUrl/ai/upload_image'),
-      );
-      request.files.add(await http.MultipartFile.fromPath('file', filePath));
+  static Future<List<dynamic>> getElderActivityLogs(String elderId, {int limit = 10}) =>
+      ElderDataApi.getElderActivityLogs(elderId, limit: limit);
 
-      var streamedResponse = await request.send();
-      var response = await http.Response.fromStream(streamedResponse);
-
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
-      } else {
-        return {'error': 'Failed to upload image: ${response.statusCode}'};
-      }
-    } catch (e) {
-      return {'error': e.toString()};
-    }
-  }
-
-  static Future<Map<String, dynamic>> checkHealth() async {
-    try {
-      final rootUrl = baseUrl.replaceAll('/api', '');
-      final response = await http
-          .get(Uri.parse(rootUrl))
-          .timeout(const Duration(seconds: 5));
-      if (response.statusCode == 200) {
-        return {'status': 'ok'};
-      }
-      return {'error': '伺服器狀態異常: ${response.statusCode}'};
-    } catch (e) {
-      return {'error': e.toString()};
-    }
-  }
-
-  static Future<Map<String, dynamic>> testOidc({
-    required String provider,
-    required String email,
-    required String uid,
-    required String token,
-  }) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/auth/test_oidc'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'provider': provider,
-              'email': email,
-              'uid': uid,
-              'token': token,
-            }),
-          )
-          .timeout(const Duration(seconds: 10));
-      return _safeDecode(response);
-    } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
-    }
-  }
-
-  /// 取得特定房間的通話紀錄（對應後端 GET /api/call_history）
-  static Future<Map<String, dynamic>> getCallHistory(String roomId) async {
-    try {
-      final response = await http
-          .get(Uri.parse(
-              '${baseUrl.replaceAll('/api', '')}/api/call_history?room_id=$roomId'))
-          .timeout(const Duration(seconds: 10));
-      return _safeDecode(response);
-    } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
-    }
-  }
-
-  /// 獲取長輩的今日智能建議
-  static Future<Map<String, dynamic>> getDailySuggestions(int elderId) async {
-    try {
-      final response = await http
-          .get(Uri.parse('$baseUrl/ai/daily-suggestions/$elderId'))
-          .timeout(const Duration(seconds: 60)); // 設為 60 秒以容納模型生成時間
-      return _safeDecode(response);
-    } on TimeoutException {
-      return {'status': 'error', 'message': '獲取建議逾時，請稍後再試'};
-    } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
-    }
-  }
-
-  static Future<Map<String, dynamic>> getNews({
-    String category = 'politics',
-    int limit = 3,
-    String? dataDate,
-  }) async {
-    try {
-      final queryParameters = <String, String>{
-        'category': category,
-        'limit': limit.toString(),
-      };
-      if (dataDate != null && dataDate.isNotEmpty) {
-        queryParameters['data_date'] = dataDate;
-      }
-
-      final uri =
-          Uri.parse('$baseUrl/news').replace(queryParameters: queryParameters);
-      final response = await http.get(uri).timeout(_timeout);
-      return _safeDecode(response);
-    } on TimeoutException {
-      return {'status': 'error', 'message': '新聞讀取逾時，請稍後再試'};
-    } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
-    }
-  }
-
-  static Future<Map<String, dynamic>> synthesizeTts({
-    required String text,
-    String? emotion,
-    String engine = 'edge',
-  }) async {
-    try {
-      final queryParameters = <String, String>{
-        'text': text,
-        'engine': engine,
-      };
-      if (emotion != null && emotion.isNotEmpty) {
-        queryParameters['emotion'] = emotion;
-      }
-      final uri = Uri.parse('$baseUrl/voice/tts/test')
-          .replace(queryParameters: queryParameters);
-      final response =
-          await http.post(uri).timeout(const Duration(seconds: 120));
-      return _safeDecode(response);
-    } on TimeoutException {
-      return {'status': 'error', 'message': '語音合成逾時，請稍後再試'};
-    } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
-    }
-  }
-
-  /// 根據長期記憶 (RAG) 生成一片對話落葉話題
-  static Future<Map<String, dynamic>> generatePondLeaf(int userId) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/ai/generate_pond_leaf?user_id=$userId'),
-            headers: {'Content-Type': 'application/json'},
-          )
-          .timeout(const Duration(seconds: 45));
-      return _safeDecode(response);
-    } on TimeoutException {
-      return {'status': 'error', 'message': '話題生成逾時，請稍後再試'};
-    } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
-    }
-  }
-
-  static Future<Map<String, dynamic>> generateRecoveryLink({
-    required int familyId,
-    required String elderId,
-  }) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/pairing/generate_recovery'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'family_id': familyId,
-              'elder_id': elderId,
-            }),
-          )
-          .timeout(_timeout);
-      return _safeDecode(response);
-    } on TimeoutException {
-      return {'status': 'error', 'message': '連線逾時，請檢查網路'};
-    } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
-    }
-  }
-
-  static Future<Map<String, dynamic>> verifyRecoveryCode(String code) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/pairing/verify_recovery'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'code': code,
-            }),
-          )
-          .timeout(_timeout);
-      return _safeDecode(response);
-    } on TimeoutException {
-      return {'status': 'error', 'message': '連線逾時，請檢查網路'};
-    } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
-    }
-  }
-
-  // ==========================================
-  // Monitor Setup
-  // ==========================================
-
-  static Future<Map<String, dynamic>?> createMonitorSetup(int familyId, String elderId, String deviceName) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/pairing/monitor_setup'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'family_id': familyId,
-              'elder_id': elderId,
-              'device_name': deviceName,
-            }),
-          )
-          .timeout(_timeout);
-      
-      final data = _safeDecode(response);
-      if (data['status'] == 'success') {
-        return data['data']; // should contain 'code'
-      }
-      return null;
-    } catch (e) {
-      debugPrint('📞 createMonitorSetup error: $e');
-      return null;
-    }
-  }
-
-  /// ★ 2026-08-10 第二十輪：resolveMonitorSetup 失敗時的可讀錯誤訊息，
-  ///   供 monitor_pairing_screen 顯示具體原因（綁定碼不存在／已過期／連線失敗）。
-  ///   成功時會重置為 null；每次呼叫都會覆寫上一次的值。
-  static String? lastResolveError;
-
-  static Future<Map<String, dynamic>?> resolveMonitorSetup(String code) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/pairing/monitor_setup/resolve'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'code': code,
-            }),
-          )
-          .timeout(_timeout);
-      
-      final data = _safeDecode(response);
-      if (data['status'] == 'success') {
-        lastResolveError = null;
-        return data['data'];
-      }
-
-      // ★ 2026-08-10 第二十輪：取出後端 HTTPException 的 detail（例如「綁定碼不存在」
-      //   或「綁定碼已過期」），讓 UI 能顯示具體原因而非統一的模糊訊息。
-      final dynamic msg = data['detail'] ?? data['message'];
-      lastResolveError =
-          msg != null ? msg.toString() : '伺服器錯誤（HTTP ${response.statusCode}）';
-      return null;
-    } catch (e) {
-      debugPrint('⚠️ resolveMonitorSetup error: $e');
-      lastResolveError = '無法連線到後端，請確認網路狀態';
-      return null;
-    }
-  }
-
-  /// ★ 2026-08-19 修正（監控綁定碼假成功 bug）：查詢一組監控設備綁定碼
-  /// 是否已被監控機兌換。GET /api/pairing/monitor_setup/status?code=&user_id=
-  ///
-  /// 舊版彈窗（family_interaction_tab.dart）靠「裝置清單裡有沒有出現同名／
-  /// 新裝置」判斷綁定完成，但 monitor_device_binding 是永久紀錄、裝置名稱又
-  /// 預設固定，導致長輩之前綁過同名裝置時，彈窗開出來的第一個輪詢 tick 就
-  /// 誤判成功。真正的完成信號是後端 `monitor_setup_code.used_at`，本方法就是
-  /// 用來查這個信號。
-  ///
-  /// 回傳 `null` 代表**查詢本身失敗**（網路錯誤、逾時、非 success 回應）——
-  /// 呼叫端應視為「還不知道」，維持現狀等下一輪輪詢重試；回傳 Map 代表拿到
-  /// 明確答案，至少含 `used`（bool）、`device_name`、`used_at`（ISO 字串或
-  /// null）、`expired`（bool）。做法比照 [fetchMonitorDevicesOrNull]：
-  /// null-means-unknown，不可與「查到了、確定還沒兌換」混為一談。
-  static Future<Map<String, dynamic>?> getMonitorSetupStatus(
-    String code, {
-    required int userId,
-  }) async {
-    try {
-      final uri = Uri.parse('$baseUrl/pairing/monitor_setup/status').replace(
-        queryParameters: {
-          'code': code,
-          'user_id': userId.toString(),
-        },
-      );
-      final response = await http.get(uri).timeout(_timeout);
-      final data = _safeDecode(response);
-      if (data['status'] != 'success') return null;
-      final payload = data['data'];
-      return payload is Map ? Map<String, dynamic>.from(payload) : null;
-    } catch (e) {
-      debugPrint('⚠️ getMonitorSetupStatus error: $e');
-      return null;
-    }
-  }
-
-  /// ★ 2026-08-10 第二十輪（需求 1、5）：通知後端釋放目前 session，
-  ///   後端會據此註銷 FCM token，避免登出後仍收到上一個帳號的來電推播。
-  /// 對應後端 POST /api/pairing/session/release。
-  /// 任何網路例外都吞掉並回傳 false —— 絕不能讓後端呼叫失敗擋住本機登出流程。
-  static Future<bool> releaseSession({
-    required String fcmToken,
-    int? userId,
-    String? roomId,
-  }) async {
-    try {
-      final Map<String, dynamic> body = {'fcm_token': fcmToken};
-      if (userId != null) body['user_id'] = userId;
-      if (roomId != null) body['room_id'] = roomId;
-
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/pairing/session/release'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode(body),
-          )
-          .timeout(_timeout);
-      return response.statusCode >= 200 && response.statusCode < 300;
-    } catch (e) {
-      debugPrint('⚠️ [ApiService] releaseSession error: $e');
-      return false;
-    }
-  }
-
-  /// ★ Task 6：取得使用者目前訂閱層級與設備上限
-  /// GET /api/subscription/tier/{user_id}
-  static Future<Map<String, dynamic>> getSubscriptionTier(int userId) async {
-    try {
-      final response = await http
-          .get(Uri.parse('$baseUrl/subscription/tier/$userId'))
-          .timeout(_timeout);
-      return _safeDecode(response);
-    } catch (e) {
-      debugPrint('⚠️ getSubscriptionTier error: $e');
-      return {'status': 'error', 'message': e.toString()};
-    }
-  }
-
-  /// ★ Task 6：取得使用者訂閱歷史明細列表
-  /// GET /api/subscription/records/{user_id}
-  static Future<Map<String, dynamic>> getSubscriptionRecords(int userId) async {
-    try {
-      final response = await http
-          .get(Uri.parse('$baseUrl/subscription/records/$userId'))
-          .timeout(_timeout);
-      return _safeDecode(response);
-    } catch (e) {
-      debugPrint('⚠️ getSubscriptionRecords error: $e');
-      return {'status': 'error', 'message': e.toString()};
-    }
-  }
-
-  /// ★ 2026-08-04 第 7 項：CCTV 監視機推送單一影格給後端做 YOLO 跌倒偵測。
-  /// POST /api/cctv/frame（multipart/form-data）；任何失敗都吞掉只回傳
-  /// [CctvPushResult.failure]，避免影格推送迴圈因單次網路錯誤而中斷。
-  ///
-  /// 檔名為 .png 是因為 flutter_webrtc 1.3.1 的 `captureFrame()` 產出的就是 PNG
-  /// （它把畫面寫成暫存 png 再讀回）。後端用 cv2.imdecode 靠魔術位元組判別格式，
-  /// 副檔名只是給人看的，但不要改成 .jpg 以免誤導後續維護者。
-  ///
-  /// ★ 2026-08-25：原本只回 bool，監視機端完全看不出「這一幀為什麼沒有異常」——
-  /// 後端在進 YOLO 推論之前有好幾個合法的早退點（`yolo_disabled`／
-  /// `busy_frame_dropped` 等，見 `routers/alert.py::push_cctv_frame`），呼叫端
-  /// 全部只看到同一個「沒事」。改回傳 [CctvPushResult]，把後端
-  /// `{'detected': ..., 'reason': ...}` 原樣帶出來；目前唯一呼叫端
-  /// （`elder_screen.dart` 的推幀迴圈）本來就是 `await` 後完全不看回傳值，
-  /// 故此變更不影響既有推流行為，是純粹的擴充。
-  ///
-  /// ★ 2026-08-26：`reason == 'yolo_unavailable'` 時後端另外多帶一個
-  /// `load_error` 鍵（見 [CctvPushResult.loadError]），一併解析出來。
+  // --- CCTV, Alerts, Audio Bridge & IPS ---
   static Future<CctvPushResult> pushCctvFrame({
     required String elderId,
     required String deviceName,
     required Uint8List frameBytes,
-  }) async {
-    try {
-      final request = http.MultipartRequest(
-        'POST',
-        Uri.parse('$baseUrl/cctv/frame'),
+  }) => CctvAlertApi.pushCctvFrame(
+        elderId: elderId,
+        deviceName: deviceName,
+        frameBytes: frameBytes,
       );
-      request.headers.addAll(_deviceTokenHeader);
-      request.fields['elder_id'] = elderId;
-      request.fields['device_name'] = deviceName;
-      request.files.add(
-        http.MultipartFile.fromBytes('frame', frameBytes, filename: 'frame.png'),
-      );
-      final streamed = await request.send().timeout(_timeout);
-      // ★ 2026-08-17 第二十五輪（需求 2）：package:http 的 BaseRequest.send() 內部會建立
-      //   一個 http.Client，只有在 response.stream 被消費完畢時才會呼叫 client.close()
-      //   （send() 回傳前掛的是 onDone(response.stream, client.close)）。這裡原本從未讀取
-      //   streamed.stream，client 與其底層 socket 就永遠不會被釋放——CCTV 推幀迴圈每
-      //   2 秒呼叫一次本方法（見 elder_screen.dart:183），約每分鐘洩漏 30 條連線，直到
-      //   耗盡連線上限後**所有**後續 HTTP 呼叫都會拋錯，也就是「退出監控後登入變成
-      //   『網路連線失敗』，只有砍掉整個 App 才會恢復」的根因。本檔其餘每一處
-      //   request.send() 都有接 http.Response.fromStream(...)（見 :514-515、:756-757、
-      //   :777-778），這裡補齊，不要為了「省一行」把它精簡掉。
-      //   ★ 2026-08-25：下面新增的 JSON 解析全部發生在這一行「之後」，
-      //   即使狀態碼非 200 或內容不是預期形狀，streamed 都已被消費完畢，
-      //   不會因為新增的解析邏輯而讓這條 G88 護欄破功。
-      final response = await http.Response.fromStream(streamed);
-      if (response.statusCode != 200) {
-        debugPrint('⚠️ pushCctvFrame 非 200: ${response.statusCode}');
-        return CctvPushResult.failure();
-      }
-      // 後端一律包在 {'status': 'success', 'data': {...}} 裡
-      // （schemas/common.py::success_response），實際的 detected/reason 在 data 底下。
-      final decoded = jsonDecode(response.body);
-      final data = decoded is Map ? decoded['data'] : null;
-      if (data is Map) {
-        return CctvPushResult(
-          detected: data['detected'] == true,
-          reason: data['reason'] as String?,
-          // ★ 2026-08-26：只在 reason == 'yolo_unavailable' 時後端才會帶這個
-          //   鍵，其餘情況 data['load_error'] 本就是 null，`as String?` 原樣通過。
-          loadError: data['load_error'] as String?,
-        );
-      }
-      return CctvPushResult.failure();
-    } catch (e) {
-      debugPrint('⚠️ pushCctvFrame error: $e');
-      return CctvPushResult.failure();
-    }
-  }
 
-  /// ★ 2026-08-05 第十七輪：POST /api/cctv/test-fall，觸發與 YOLO 相同的跌倒警報派送路徑。
-  /// 暫時性測試入口，YOLO 可實測後即可移除。後端該端點是 `Form(...)`，故用
-  /// application/x-www-form-urlencoded（body 傳 Map，http 套件會自動編碼並設定
-  /// Content-Type），欄位名沿用後端的 snake_case（elder_id / device_name）。
-  /// ★ 2026-08-05 第十七輪（安全）：後端此端點**預設關閉**，且回傳的
-  /// `detail` 會明講關閉／無密鑰／查無監視機三種原因。若這裡照舊只回 bool，
-  /// 使用者按下測試鍵只會看到「送出失敗」而無從得知要去 .env 開開關，
-  /// 因此改回傳 **錯誤訊息字串**：`null` 代表成功，非 null 就是可直接顯示的原因。
   static Future<String?> triggerTestFall({
     required String elderId,
     required String deviceName,
-  }) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/cctv/test-fall'),
-            headers: _deviceTokenHeader,
-            body: {'elder_id': elderId, 'device_name': deviceName},
-          )
-          .timeout(_timeout);
-      if (response.statusCode == 200) return null;
-      // FastAPI 的 HTTPException 一律以 {"detail": "..."} 回傳
-      String detail = '送出失敗（HTTP ${response.statusCode}）';
-      try {
-        final decoded = jsonDecode(utf8.decode(response.bodyBytes));
-        if (decoded is Map && decoded['detail'] != null) {
-          detail = decoded['detail'].toString();
-        }
-      } catch (_) {
-        // body 不是 JSON 就沿用上面的預設訊息
-      }
-      debugPrint('⚠️ triggerTestFall 被拒: ${response.statusCode} $detail');
-      return detail;
-    } catch (e) {
-      debugPrint('⚠️ triggerTestFall error: $e');
-      return '無法連線到後端，請確認網路狀態';
-    }
-  }
+  }) => CctvAlertApi.triggerTestFall(elderId: elderId, deviceName: deviceName);
 
-  /// ★ 2026-08-04 第 7 項：移除一台監視機設備（含其 FCM token）。
-  /// DELETE /api/pairing/monitor_device?elder_id=...&device_name=...&user_id=...
-  ///
-  /// ★ 2026-08-10 第十九輪（D2）：後端補上授權，`user_id` 必須帶（呼叫端須為該
-  ///   長輩本人或已配對家屬），不符一律回 404。舊版沒有這個參數時後端零驗證，
-  ///   任何人知道 elder_id + device_name 就能刪別人家的監視機。
   static Future<bool> deleteMonitorDevice({
     required String elderId,
     required String deviceName,
     int? userId,
-  }) async {
-    try {
-      final uri = Uri.parse('$baseUrl/pairing/monitor_device').replace(
-        queryParameters: {
-          'elder_id': elderId,
-          'device_name': deviceName,
-          if (userId != null) 'user_id': userId.toString(),
-        },
+  }) => CctvAlertApi.deleteMonitorDevice(
+        elderId: elderId,
+        deviceName: deviceName,
+        userId: userId,
       );
-      final response = await http.delete(uri).timeout(_timeout);
-      final data = _safeDecode(response);
-      return data['status'] == 'success';
-    } catch (e) {
-      debugPrint('⚠️ deleteMonitorDevice error: $e');
-      return false;
-    }
-  }
 
-  /// ★ 2026-08-10 第十九輪（A4）：以 HTTP 交叉驗證長輩名下的監視設備清單。
-  /// GET /api/pairing/monitor_devices?elder_id=...&user_id=...
-  ///
-  /// 回傳形狀與 Socket `elder-devices-update` **完全相同**（後端直接呼叫同一支
-  /// `_get_elder_devices_list`），每筆為 `{id, deviceName, deviceMode, isOnline,
-  /// appState, deviceId}`。比 Socket 事件多的好處：裝置只要完成過配對碼兌換
-  /// （後端 A2 已寫入 `monitor_device_binding`），即使從未成功 join 過，
-  /// 這裡也會回一筆 `isOnline: false` 的紀錄。
-  ///
-  /// 任何錯誤（含 404 無權）一律回**空陣列**，而呼叫端
-  /// （`family_main_screen.dart::_refreshMonitorDevicesViaHttp`）對空陣列直接
-  /// return——絕不因單次 HTTP 失敗就把既有的 Socket 清單清空。
-  ///
-  /// ⚠️ 非空時呼叫端是「後到者為準」整批覆蓋，**不是聯集**：需求 3 的
-  /// 「刪除監視機」與「監視機主動退出即移除」都需要清單能夠**變短**，
-  /// 聯集會讓已刪除的裝置永遠留在畫面上。
   static Future<List<dynamic>> fetchMonitorDevices({
     required String elderId,
     required int userId,
-  }) async =>
-      await fetchMonitorDevicesOrNull(elderId: elderId, userId: userId) ??
-      const [];
+  }) => CctvAlertApi.fetchMonitorDevices(elderId: elderId, userId: userId);
 
-  /// ★ 2026-08-11 第二十二輪（需求 6）：與 [fetchMonitorDevices] 相同的查詢，
-  /// 但**區分「查詢失敗」與「查到了、清單是空的」**——失敗回 `null`、成功回清單
-  /// （可能為空陣列）。
-  ///
-  /// 為什麼需要這個變體：`elder_screen.dart` 的監控機在斷線時要判斷
-  /// 「是網路斷了」還是「這台已被家屬端刪除」。若沿用會把錯誤吞成 `[]` 的舊方法，
-  /// 空陣列同時代表「請求失敗」與「名下已無任何監控設備（正是被刪除的樣子）」，
-  /// 兩種相反結論無從區分，一定會誤報其中一種。
-  ///
-  /// [fetchMonitorDevices] 現在直接轉呼叫本方法並把 `null` 攤平成 `[]`，
-  /// 既有呼叫端（`family_main_screen.dart::_refreshMonitorDevicesViaHttp`）
-  /// 的行為完全不變。
   static Future<List<dynamic>?> fetchMonitorDevicesOrNull({
     required String elderId,
     required int userId,
-  }) async {
-    try {
-      final uri = Uri.parse('$baseUrl/pairing/monitor_devices').replace(
-        queryParameters: {
-          'elder_id': elderId,
-          'user_id': userId.toString(),
-        },
-      );
-      final response = await http.get(uri).timeout(_timeout);
-      final data = _safeDecode(response);
-      if (data['status'] != 'success') return null;
-      final devices = (data['data'] ?? const {})['devices'];
-      return devices is List ? devices : const [];
-    } catch (e) {
-      debugPrint('⚠️ fetchMonitorDevices error: $e');
-      return null;
-    }
-  }
+  }) => CctvAlertApi.fetchMonitorDevicesOrNull(elderId: elderId, userId: userId);
 
-  /// ★ 2026-08-10 第十九輪（D3）：重新命名一台監視設備。
-  /// PATCH /api/pairing/monitor_device
-  ///
-  /// 後端的 `device_id = crc32("elder_id|device_name")`，**改名即改身分**，
-  /// 因此後端會在同一次請求內同步更新 `monitor_device_binding`、
-  /// `user_fcm_token.device_name`、`cctv_feed_status.device_id` 與兩個記憶體字典，
-  /// 並對該裝置推 `monitor-renamed` 事件。
-  ///
-  /// 回傳後端的 data（含 `device_id`）；失敗回 null。
-  /// 撞名時後端回 **409**，此處一併吞成 null——呼叫端只需知道「沒成功」。
   static Future<Map<String, dynamic>?> renameMonitorDevice({
     required String elderId,
     required int userId,
     required String oldDeviceName,
     required String newDeviceName,
-  }) async {
-    try {
-      final response = await http
-          .patch(
-            Uri.parse('$baseUrl/pairing/monitor_device'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'elder_id': elderId,
-              'user_id': userId,
-              'old_device_name': oldDeviceName,
-              'new_device_name': newDeviceName,
-            }),
-          )
-          .timeout(_timeout);
-      final data = _safeDecode(response);
-      if (data['status'] != 'success') {
-        debugPrint('⚠️ renameMonitorDevice 被拒: ${response.statusCode} $data');
-        return null;
-      }
-      final payload = data['data'];
-      return payload is Map ? Map<String, dynamic>.from(payload) : <String, dynamic>{};
-    } catch (e) {
-      debugPrint('⚠️ renameMonitorDevice error: $e');
-      return null;
-    }
-  }
+  }) => CctvAlertApi.renameMonitorDevice(
+        elderId: elderId,
+        userId: userId,
+        oldDeviceName: oldDeviceName,
+        newDeviceName: newDeviceName,
+      );
 
-  /// ★ 2026-08-04 第 7 項：開通／延長警報的音頻橋（30 分鐘單向音頻）。
-  /// POST /api/alerts/{alert_id}/audio-bridge
   static Future<Map<String, dynamic>?> openAudioBridge({
     required int alertId,
     required int fromId,
     required int toDeviceId,
-  }) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/alerts/$alertId/audio-bridge'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'from_id': fromId,
-              'to_device_id': toDeviceId,
-            }),
-          )
-          .timeout(_timeout);
-      final data = _safeDecode(response);
-      if (data['status'] == 'success') {
-        final payload = data['data'];
-        return payload is Map ? Map<String, dynamic>.from(payload) : <String, dynamic>{};
-      }
-      return null;
-    } catch (e) {
-      debugPrint('⚠️ openAudioBridge error: $e');
-      return null;
-    }
-  }
+  }) => CctvAlertApi.openAudioBridge(
+        alertId: alertId,
+        fromId: fromId,
+        toDeviceId: toDeviceId,
+      );
 
-  static Future<Map<String, dynamic>?> getElderMoodInsight(String elderId) async {
-    try {
-      final response = await http
-          .get(Uri.parse('$baseUrl/ai/elder_mood_insight/$elderId'))
-          .timeout(_timeout);
-      final data = _safeDecode(response);
-      if (data['status'] == 'success') {
-        return data['data'];
-      }
-      return null;
-    } catch (e) {
-      debugPrint('⚠️ getElderMoodInsight error: $e');
-      return null;
-    }
-  }
+  static Future<Map<String, dynamic>?> checkAudioBridge(int alertId, {int? userId}) =>
+      CctvAlertApi.checkAudioBridge(alertId, userId: userId);
 
-  static Future<List<dynamic>> getElderActivityLogs(String elderId, {int limit = 10}) async {
-    try {
-      final response = await http
-          .get(Uri.parse('$baseUrl/activity/elder/$elderId?limit=$limit'))
-          .timeout(_timeout);
-      final data = _safeDecode(response);
-      if (data['status'] == 'success' && data['data'] is List) {
-        return List<dynamic>.from(data['data']);
-      }
-      return [];
-    } catch (e) {
-      debugPrint('⚠️ getElderActivityLogs error: $e');
-      return [];
-    }
-  }
-
-  /// ★ 2026-08-17 第二十五輪（需求 3）：長輩跌倒／緊急警報的**持久歷史記錄**。
-  /// GET /api/alerts/{elder_id}?user_id=...&status=...&limit=...
-  /// （對應後端 `uban-api/routers/alert.py:47`）
-  ///
-  /// 這支端點在今天之前於全專案**零消費者**——Flutter 端從未呼叫過。首頁「最新警示」
-  /// 過去只能靠 [getElderActivityLogs] 讀取完全不同的 `activity_log` 表（一般活動流水
-  /// 記錄），沒有任何管道能取得 `emergency_alerts` 表裡持久化的跌倒／爬行警報
-  /// （含 snapshot_url 快照、acknowledged_by/acknowledged_at 等稽核欄位）。本方法補上
-  /// 這條路徑，讓首頁能顯示**真正的**警示歷史，而不是把一般活動誤當警示呈現。
-  ///
-  /// `user_id` 為後端**必填**參數（用於 `call_security.is_user_linked_to_elder` 關係
-  /// 驗證，非本人或未配對家屬一律回 404 不回 403，避免被拿來列舉），呼叫端務必帶上
-  /// 目前登入者的 user_id。任何失敗（含 404／逾時／解析錯誤）一律吞掉回傳空陣列，
-  /// 絕不拋出——首頁必須照常渲染，警示區塊只是少一筆資料而已。
-  ///
-  /// `elderId` 沿用 [getElderActivityLogs] 的簽章慣例採**位置參數**，`userId` 因為是
-  /// 後端必填、呼叫端不應遺漏，改用具名 `required` 更凸顯它不是可選項。
   static Future<List<dynamic>> getEmergencyAlerts(
     String elderId, {
     required int userId,
     String? status,
     int limit = 20,
-  }) async {
-    try {
-      final queryParameters = <String, String>{
-        'user_id': userId.toString(),
-        'limit': limit.toString(),
-      };
-      if (status != null && status.isNotEmpty) {
-        queryParameters['status'] = status;
-      }
-      final uri = Uri.parse('$baseUrl/alerts/$elderId')
-          .replace(queryParameters: queryParameters);
-      final response = await http.get(uri).timeout(_timeout);
-      final data = _safeDecode(response);
-      if (data['status'] == 'success' && data['data'] is Map) {
-        final alerts = data['data']['alerts'];
-        if (alerts is List) return alerts;
-      }
-      return [];
-    } catch (e) {
-      debugPrint('⚠️ getEmergencyAlerts error: $e');
-      return [];
-    }
-  }
+  }) => CctvAlertApi.getEmergencyAlerts(
+        elderId,
+        userId: userId,
+        status: status,
+        limit: limit,
+      );
 
-  // ═══════════════════════════════════════════════════════════
-  // IPS（室內定位）— 2026-08-18 新增
-  // 後端完整邏輯見 uban-api/routers/ips.py、uban-api/services/indoor_position.py。
-  // 三支端點皆要求 user_id（家屬的 caregiver_id）與 device_id（監視機
-  // device_id），無配對關係一律回 404（比照本檔其餘校準／監控類端點，不回
-  // 403，避免被用來列舉 elder_id）。
-  // ═══════════════════════════════════════════════════════════
-
-  /// ★ IPS：讀取家屬為某監視機校準過的樓層區域（zone）多邊形設定。
-  /// GET /api/ips/zones/{elder_id}?user_id=&device_id=
-  ///
-  /// 回傳的每筆元素為 `{name, polygon:[[x,y],...]}`，座標為正規化 [0,1]、
-  /// 原點在畫面左上角（見後端 indoor_position.py::validate_zones）。尚未
-  /// 校準過、或任何失敗（含 404 無權）一律回傳空陣列，不拋出——呼叫端
-  /// （校準畫面）看到 `[]` 只會顯示「尚未校準」，不是錯誤畫面。
-  ///
-  /// ⚠️ 2026-08-25 校準畫面移除後已無呼叫端；後端 `routers/ips.py` 端點刻意
-  /// 保留，使前後端契約維持對稱，供功能復用時免重新設計介面。
   static Future<List<dynamic>> getZoneConfig(
     String elderId, {
     required int userId,
     required int deviceId,
-  }) async {
-    try {
-      final uri = Uri.parse('$baseUrl/ips/zones/$elderId').replace(
-        queryParameters: {
-          'user_id': userId.toString(),
-          'device_id': deviceId.toString(),
-        },
-      );
-      final response = await http.get(uri).timeout(_timeout);
-      final data = _safeDecode(response);
-      if (data['status'] == 'success' && data['data'] is Map) {
-        final zones = data['data']['zones'];
-        if (zones is List) return zones;
-      }
-      return [];
-    } catch (e) {
-      debugPrint('⚠️ getZoneConfig error: $e');
-      return [];
-    }
-  }
+  }) => CctvAlertApi.getZoneConfig(elderId, userId: userId, deviceId: deviceId);
 
-  /// ★ IPS：全量覆寫某監視機的樓層區域（zone）多邊形設定（家屬端「校準」
-  /// 流程的落地點）。
-  /// PUT /api/ips/zones/{elder_id}?user_id=&device_id=  body: `{"zones":[...]}`
-  ///
-  /// 全量覆寫、不做局部合併——校準是一次性動作，呼叫端每次都要送出完整
-  /// 清單。範圍較小／較精確的 zone（例如「浴室」）必須排在陣列前面：後端
-  /// `classify_zone` 是 first-match-wins，順序決定歸屬。
-  ///
-  /// 回傳 `null` 代表成功；非 null 為可直接顯示的錯誤原因。做法比照
-  /// [triggerTestFall]：FastAPI 的 HTTPException 一律以 `{"detail": "..."}`
-  /// 回傳，400（座標格式錯誤）與 404（無權）都在這裡被轉成看得懂的中文。
-  ///
-  /// ⚠️ 2026-08-25 校準畫面移除後已無呼叫端；後端 `routers/ips.py` 端點刻意
-  /// 保留，使前後端契約維持對稱，供功能復用時免重新設計介面。
   static Future<String?> saveZoneConfig(
     String elderId, {
     required int userId,
     required int deviceId,
     required List<Map<String, dynamic>> zones,
-  }) async {
-    try {
-      final uri = Uri.parse('$baseUrl/ips/zones/$elderId').replace(
-        queryParameters: {
-          'user_id': userId.toString(),
-          'device_id': deviceId.toString(),
-        },
+  }) => CctvAlertApi.saveZoneConfig(
+        elderId,
+        userId: userId,
+        deviceId: deviceId,
+        zones: zones,
       );
-      final response = await http
-          .put(
-            uri,
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'zones': zones}),
-          )
-          .timeout(_timeout);
-      if (response.statusCode == 200) return null;
-      // FastAPI 的 HTTPException 一律以 {"detail": "..."} 回傳
-      String detail = '儲存失敗（HTTP ${response.statusCode}）';
-      try {
-        final decoded = jsonDecode(utf8.decode(response.bodyBytes));
-        if (decoded is Map && decoded['detail'] != null) {
-          detail = decoded['detail'].toString();
-        }
-      } catch (_) {
-        // body 不是 JSON 就沿用上面的預設訊息
-      }
-      debugPrint('⚠️ saveZoneConfig 被拒: ${response.statusCode} $detail');
-      return detail;
-    } catch (e) {
-      debugPrint('⚠️ saveZoneConfig error: $e');
-      return '無法連線到後端，請確認網路狀態';
-    }
-  }
 
-  /// ★ IPS：查詢長輩目前所在的樓層區域（zone）與已停留秒數。
-  /// GET /api/ips/current/{elder_id}?user_id=&device_id=
-  ///
-  /// 尚無任何 YOLO 推論資料時（IPS_ENABLED=false、或這台監視機從未被推論
-  /// 過）後端回傳 `zone:'unknown', dwell_seconds:0, last_seen:null`——這是
-  /// 合法的「尚無資料」狀態，此處原樣透傳，呼叫端自行判斷 `zone` 是否為
-  /// `'unknown'`。任何失敗（含 404 無權）一律回傳空 Map，呼叫端請將 `{}`
-  /// 視同「尚無資料」。
   static Future<Map<String, dynamic>> getCurrentZone(
     String elderId, {
     required int userId,
     required int deviceId,
-  }) async {
-    try {
-      final uri = Uri.parse('$baseUrl/ips/current/$elderId').replace(
-        queryParameters: {
-          'user_id': userId.toString(),
-          'device_id': deviceId.toString(),
-        },
-      );
-      final response = await http.get(uri).timeout(_timeout);
-      final data = _safeDecode(response);
-      if (data['status'] == 'success' && data['data'] is Map) {
-        return Map<String, dynamic>.from(data['data']);
-      }
-      return {};
-    } catch (e) {
-      debugPrint('⚠️ getCurrentZone error: $e');
-      return {};
-    }
-  }
+  }) => CctvAlertApi.getCurrentZone(elderId, userId: userId, deviceId: deviceId);
 
-  /// ★ IPS：組出監視機最近一次快照畫面的 URL，供校準畫面用 `Image.network`
-  /// （或共用同一個 `ImageProvider`）直接載入，藉此拿到內建的快取與載入
-  /// 進度，不必自己抓 bytes 再轉 `Image.memory`。
-  /// GET /api/ips/snapshot/{elder_id}?user_id=&device_id=
-  ///
-  /// 純字串組裝、不發送請求，因此不需要 try/catch 或 timeout；請求本身
-  /// 何時發生、失敗如何呈現由呼叫端的 `Image` widget 決定。尚無快取影格時
-  /// 後端回 404，呼叫端須自行處理空狀態呈現。
-  ///
-  /// ⚠️ 2026-08-25 校準畫面移除後已無呼叫端；後端 `routers/ips.py` 端點刻意
-  /// 保留，使前後端契約維持對稱，供功能復用時免重新設計介面。
   static String zoneSnapshotUrl(
     String elderId, {
     required int userId,
     required int deviceId,
-  }) {
-    final uri = Uri.parse('$baseUrl/ips/snapshot/$elderId').replace(
-      queryParameters: {
-        'user_id': userId.toString(),
-        'device_id': deviceId.toString(),
-      },
-    );
-    return uri.toString();
-  }
+  }) => CctvAlertApi.zoneSnapshotUrl(elderId, userId: userId, deviceId: deviceId);
 
-  /// ★ 2026-08-04 第 7 項：查詢某警報目前是否有有效的音頻橋。
-  /// GET /api/alerts/audio/{alert_id}
-  ///
-  /// ★ 2026-08-05 第十七輪（安全）：新增選填 `userId`。後端有帶就驗證
-  /// 「此人是否為該警報長輩的本人或已配對家屬」，並在通過後才回傳
-  /// `from_id` / `to_device_id`；未帶則只回布林狀態與到期時間。
-  /// 呼叫端請一律帶上，讓它走完整驗證分支。
-  static Future<Map<String, dynamic>?> checkAudioBridge(
-    int alertId, {
-    int? userId,
-  }) async {
-    try {
-      final uri = Uri.parse('$baseUrl/alerts/audio/$alertId').replace(
-        queryParameters: userId == null ? null : {'user_id': '$userId'},
-      );
-      final response = await http.get(uri).timeout(_timeout);
-      final data = _safeDecode(response);
-      if (data['status'] == 'success') {
-        return data['data'];
-      }
-      return null;
-    } catch (e) {
-      debugPrint('⚠️ checkAudioBridge error: $e');
-      return null;
-    }
-  }
+  // --- Remote Reminders ---
+  static Future<List<dynamic>> getElderReminders(String elderId) => ReminderApi.getElderReminders(elderId);
+  static Future<bool> createElderReminder(Map<String, dynamic> body) => ReminderApi.createElderReminder(body);
+  static Future<bool> toggleElderReminder(int reminderId) => ReminderApi.toggleElderReminder(reminderId);
+  static Future<bool> deleteElderReminder(int reminderId) => ReminderApi.deleteElderReminder(reminderId);
+  static Future<bool> updateElderReminder(int reminderId, Map<String, dynamic> body) =>
+      ReminderApi.updateElderReminder(reminderId, body);
+  static Future<bool> completeElderReminder(int reminderId) => ReminderApi.completeElderReminder(reminderId);
 
-  // ─── ⏰ 遠端排程提醒 API ───
-
-  static Future<List<dynamic>> getElderReminders(String elderId) async {
-    try {
-      final res = await get('/reminder/elder/$elderId');
-      if (res != null && res['status'] == 'success' && res['data'] is List) {
-        return res['data'];
-      }
-      return [];
-    } catch (e) {
-      debugPrint('⚠️ getElderReminders error: $e');
-      return [];
-    }
-  }
-
-  static Future<bool> createElderReminder(Map<String, dynamic> body) async {
-    try {
-      final res = await post('/reminder/', body);
-      return res != null && res['status'] == 'success';
-    } catch (e) {
-      debugPrint('⚠️ createElderReminder error: $e');
-      return false;
-    }
-  }
-
-  static Future<bool> toggleElderReminder(int reminderId) async {
-    try {
-      final url = _fullUrl('/reminder/$reminderId/toggle');
-      final res = await http.put(Uri.parse(url)).timeout(_timeout);
-      final data = _safeDecode(res);
-      return data['status'] == 'success';
-    } catch (e) {
-      debugPrint('⚠️ toggleElderReminder error: $e');
-      return false;
-    }
-  }
-
-  static Future<bool> deleteElderReminder(int reminderId) async {
-    try {
-      final url = _fullUrl('/reminder/$reminderId');
-      final res = await http.delete(Uri.parse(url)).timeout(_timeout);
-      final data = _safeDecode(res);
-      return data['status'] == 'success';
-    } catch (e) {
-      debugPrint('⚠️ deleteElderReminder error: $e');
-      return false;
-    }
-  }
-
-  static Future<bool> updateElderReminder(int reminderId, Map<String, dynamic> body) async {
-    try {
-      final res = await put('/reminder/$reminderId', body);
-      return res != null && res['status'] == 'success';
-    } catch (e) {
-      debugPrint('⚠️ updateElderReminder error: $e');
-      return false;
-    }
-  }
-
-  static Future<bool> completeElderReminder(int reminderId) async {
-    try {
-      final res = await post('/reminder/$reminderId/complete', {});
-      return res != null && res['status'] == 'success';
-    } catch (e) {
-      debugPrint('⚠️ completeElderReminder error: $e');
-      return false;
-    }
-  }
-
-  // ── 👥 家庭溫馨社群 (Community API) ─────────────────────────
-
-  /// 取得家庭社群貼文列表
+  // --- Community ---
   static Future<List<dynamic>> getCommunityPosts({
     int? familyId,
     int? userId,
     int limit = 50,
-  }) async {
-    try {
-      final queryParams = <String, String>{
-        'limit': limit.toString(),
-      };
-      if (familyId != null) queryParams['family_id'] = familyId.toString();
-      if (userId != null) queryParams['user_id'] = userId.toString();
+  }) => CommunityApi.getCommunityPosts(familyId: familyId, userId: userId, limit: limit);
 
-      final uri = Uri.parse('$baseUrl/community/posts').replace(queryParameters: queryParams);
-      final response = await http.get(uri).timeout(_timeout);
-      final data = _safeDecode(response);
-      if (data['status'] == 'success' && data['data'] is List) {
-        return data['data'];
-      }
-      return [];
-    } catch (e) {
-      debugPrint('⚠️ getCommunityPosts error: $e');
-      return [];
-    }
-  }
-
-  /// 發佈社群近況貼文
   static Future<Map<String, dynamic>?> createCommunityPost({
     required int familyId,
     required int authorId,
@@ -1862,60 +354,22 @@ class ApiService {
     String mood = '😊',
     String? stampType,
     String? imageUrl,
-  }) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/community/posts'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'family_id': familyId,
-              'author_id': authorId,
-              'author_name': authorName,
-              'author_role': authorRole,
-              'content': content,
-              'mood': mood,
-              if (stampType != null) 'stamp_type': stampType,
-              if (imageUrl != null) 'image_url': imageUrl,
-            }),
-          )
-          .timeout(_timeout);
-      final data = _safeDecode(response);
-      if (data['status'] == 'success') {
-        return data['data'];
-      }
-      return null;
-    } catch (e) {
-      debugPrint('⚠️ createCommunityPost error: $e');
-      return null;
-    }
-  }
+  }) => CommunityApi.createCommunityPost(
+        familyId: familyId,
+        authorId: authorId,
+        authorName: authorName,
+        authorRole: authorRole,
+        content: content,
+        mood: mood,
+        stampType: stampType,
+        imageUrl: imageUrl,
+      );
 
-  /// 切換貼文「關心 ❤️」狀態
   static Future<Map<String, dynamic>?> toggleCommunityPostLike({
     required int postId,
     required int userId,
-  }) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/community/posts/$postId/like'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'user_id': userId}),
-          )
-          .timeout(_timeout);
-      final data = _safeDecode(response);
-      if (data['status'] == 'success') {
-        return data['data'];
-      }
-      return null;
-    } catch (e) {
-      debugPrint('⚠️ toggleCommunityPostLike error: $e');
-      return null;
-    }
-  }
+  }) => CommunityApi.toggleCommunityPostLike(postId: postId, userId: userId);
 
-  /// 新增貼文留言
   static Future<Map<String, dynamic>?> addCommunityComment({
     required int postId,
     required int authorId,
@@ -1923,53 +377,15 @@ class ApiService {
     String authorRole = 'elder',
     required String message,
     String? imageUrl,
-  }) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/community/posts/$postId/comments'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'author_id': authorId,
-              'author_name': authorName,
-              'author_role': authorRole,
-              'message': message,
-              if (imageUrl != null) 'image_url': imageUrl,
-            }),
-          )
-          .timeout(_timeout);
-      final data = _safeDecode(response);
-      if (data['status'] == 'success') {
-        return data['data'];
-      }
-      return null;
-    } catch (e) {
-      debugPrint('⚠️ addCommunityComment error: $e');
-      return null;
-    }
-  }
+  }) => CommunityApi.addCommunityComment(
+        postId: postId,
+        authorId: authorId,
+        authorName: authorName,
+        authorRole: authorRole,
+        message: message,
+        imageUrl: imageUrl,
+      );
 
-  /// 上傳社群圖片（Multipart Form-Data）
-  static Future<String?> uploadCommunityImage(File imageFile) async {
-    try {
-      final uri = Uri.parse('$baseUrl/community/upload');
-      final request = http.MultipartRequest('POST', uri);
-      request.files.add(await http.MultipartFile.fromPath('file', imageFile.path));
-
-      final streamedResponse = await request.send().timeout(_timeout);
-      final response = await http.Response.fromStream(streamedResponse);
-      final data = _safeDecode(response);
-      if (data['status'] == 'success' && data['data'] != null && data['data']['url'] != null) {
-        final relativeUrl = data['data']['url'] as String;
-        if (relativeUrl.startsWith('http')) {
-          return relativeUrl;
-        }
-        return '$serverRootUrl$relativeUrl';
-      }
-      return null;
-    } catch (e) {
-      debugPrint('⚠️ uploadCommunityImage error: $e');
-      return null;
-    }
-  }
+  static Future<String?> uploadCommunityImage(File imageFile) =>
+      CommunityApi.uploadCommunityImage(imageFile);
 }

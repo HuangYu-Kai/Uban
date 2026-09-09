@@ -10,6 +10,10 @@ import '../elder_profile_edit_screen.dart';
 import '../caregiver_pairing_screen.dart';
 import '../identification_screen.dart';
 import 'family_subscription_screen.dart';
+import '../../models/memoir_story.dart';
+import '../../services/memoir_service.dart';
+import '../../widgets/memoir_detail_sheet.dart';
+import 'memoirs_gallery_screen.dart';
 
 /// ⚙️ 子女端「資料與設定」Tab (FamilyDataTab)
 /// 包含：照顧者資訊、關照長輩完整檔案、AI 陪伴偏好、人生故事膠囊、安全通知設定、裝置與訂閱管理
@@ -63,6 +67,10 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
   bool _isLoadingAiProfile = false;
   Map<String, dynamic>? _elderProfileData;
 
+  // 📖 人生故事膠囊資料狀態
+  List<MemoirStory> _memoirStories = [];
+  bool _isLoadingMemoirs = true;
+
   @override
   void initState() {
     super.initState();
@@ -70,6 +78,14 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
     _loadCaregiverName();
     _loadSubscriptionInfo();
     _loadAiProfile();
+    MemoirService.instance.addListener(_onMemoirsChanged);
+    _loadMemoirs();
+  }
+
+  @override
+  void dispose() {
+    MemoirService.instance.removeListener(_onMemoirsChanged);
+    super.dispose();
   }
 
   @override
@@ -78,6 +94,22 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
     if (widget.currentElder?.id != oldWidget.currentElder?.id ||
         widget.currentElder?.elderId != oldWidget.currentElder?.elderId) {
       _loadAiProfile();
+      _loadMemoirs();
+    }
+  }
+
+  void _onMemoirsChanged() {
+    if (mounted) _loadMemoirs();
+  }
+
+  Future<void> _loadMemoirs() async {
+    final elderId = widget.currentElder?.elderId ?? widget.currentElder?.id.toString() ?? 'default_elder';
+    final stories = await MemoirService.instance.getMemoirs(elderId);
+    if (mounted) {
+      setState(() {
+        _memoirStories = stories;
+        _isLoadingMemoirs = false;
+      });
     }
   }
 
@@ -1066,23 +1098,8 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    final List<Map<String, String>> stories = [
-      {
-        'title': '大稻埕布莊歲月 (1975年)',
-        'tag': '經典回憶',
-        'preview': '年輕時在迪化街經營布料批發，堅持選用頂級棉麻，結交了許多一輩子的摯友與商界老搭檔...',
-      },
-      {
-        'title': '給兒女與孫子的一封信',
-        'tag': '溫馨寄語',
-        'preview': '希望孩子們健康平安，阿公永遠記得你們第一次學會騎腳踏車時，全家在河濱公園歡笑的模樣...',
-      },
-      {
-        'title': '最懷念的柴燒紅豆湯滋味',
-        'tag': '美食記憶',
-        'preview': '媽媽當年手作的柴燒紅豆湯，慢火熬煮出綿密甘甜，那是童年記憶中最溫暖的冬日滋味...',
-      },
-    ];
+    final stories = _memoirStories;
+    final elderId = widget.currentElder?.elderId ?? widget.currentElder?.id.toString() ?? 'default_elder';
 
     return Container(
       key: widget.memoirsKey,
@@ -1105,55 +1122,71 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: cs.tertiary,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: cs.outline, width: 1.2),
-                      ),
-                      child: Icon(Icons.auto_stories_rounded, color: cs.outline, size: 24),
-                    ),
-                    const SizedBox(width: 10),
-                    Flexible(
-                      child: Text(
-                        '📖 $name的人生故事膠囊',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.notoSansTc(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w900,
-                          color: cs.onSurface,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: cs.tertiary,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: cs.outline, width: 1.2),
-                ),
-                child: Text(
-                  '珍藏 3 篇',
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: cs.outline,
+          // 卡片頂部標題列（點擊可進入完整回憶錄畫廊）
+          InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => MemoirsGalleryScreen(
+                    elderId: elderId,
+                    elderName: name,
+                    familyUserName: widget.userName,
                   ),
                 ),
-              ),
-            ],
+              );
+            },
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: cs.tertiary,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: cs.outline, width: 1.2),
+                        ),
+                        child: Icon(Icons.auto_stories_rounded, color: cs.outline, size: 24),
+                      ),
+                      const SizedBox(width: 10),
+                      Flexible(
+                        child: Text(
+                          '📖 $name的人生故事膠囊',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.notoSansTc(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                            color: cs.onSurface,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: cs.tertiary,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: cs.outline, width: 1.2),
+                  ),
+                  child: Text(
+                    '珍藏 ${stories.length} 篇',
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: cs.outline,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 6),
           Text(
@@ -1164,63 +1197,207 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
             ),
           ),
           const SizedBox(height: 14),
-          ...stories.map((st) => Container(
-            margin: const EdgeInsets.only(bottom: 10),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: isDark ? cs.surfaceContainer : const Color(0xFFFFFFFE),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: cs.outline, width: 1.2),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        st['title']!,
-                        maxLines: 1,
+
+          // 故事列表（最多展示前 3 篇，點擊可開啟原聲聆聽詳情彈窗）
+          if (_isLoadingMemoirs)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 20),
+                child: CircularProgressIndicator(),
+              ),
+            )
+          else if (stories.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: isDark ? cs.surfaceContainer : const Color(0xFFFFFFFE),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: cs.outline, width: 1.2),
+              ),
+              child: Text(
+                '長輩尚未與小豬分享故事，點擊下方「委託小豬提問」讓小豬主動發問吧！',
+                style: GoogleFonts.notoSansTc(fontSize: 13, color: cs.onSurfaceVariant),
+              ),
+            )
+          else
+            ...stories.take(3).map((st) => Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              decoration: BoxDecoration(
+                color: isDark ? cs.surfaceContainer : const Color(0xFFFFFFFE),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: cs.outline, width: 1.2),
+              ),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: () => MemoirDetailSheet.show(
+                  context,
+                  story: st,
+                  elderName: name,
+                  familyUserName: widget.userName,
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              st.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.notoSansTc(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                                color: cs.onSurface,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: cs.tertiary.withValues(alpha: 0.3),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: cs.outline, width: 1.0),
+                            ),
+                            child: Text(
+                              st.tag,
+                              style: GoogleFonts.notoSansTc(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: cs.outline,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        st.preview,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: GoogleFonts.notoSansTc(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
-                          color: cs.onSurface,
+                          fontSize: 12,
+                          color: cs.onSurfaceVariant,
+                          height: 1.4,
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: cs.tertiary.withValues(alpha: 0.3),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: cs.outline, width: 1.0),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          const Icon(Icons.volume_up_rounded, size: 13, color: Color(0xFF3B82F6)),
+                          const SizedBox(width: 3),
+                          Text(
+                            '原聲錄音',
+                            style: GoogleFonts.notoSansTc(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: const Color(0xFF3B82F6),
+                            ),
+                          ),
+                          if (st.familyNotes.isNotEmpty) ...[
+                            const SizedBox(width: 10),
+                            Icon(Icons.favorite_rounded, size: 12, color: cs.error),
+                            const SizedBox(width: 2),
+                            Text(
+                              '${st.familyNotes.length} 則筆記',
+                              style: GoogleFonts.notoSansTc(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: cs.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                          const Spacer(),
+                          Text(
+                            '點擊聆聽全文 >',
+                            style: GoogleFonts.notoSansTc(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                          ),
+                        ],
                       ),
-                      child: Text(
-                        st['tag']!,
-                        style: GoogleFonts.notoSansTc(
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          color: cs.outline,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  st['preview']!,
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 12,
-                    color: cs.onSurfaceVariant,
-                    height: 1.4,
+                    ],
                   ),
                 ),
-              ],
-            ),
-          )),
+              ),
+            )),
+
+          const SizedBox(height: 6),
+
+          // 底部快捷按鈕：進入回憶錄畫廊與委託小豬提問
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => MemoirsGalleryScreen(
+                          elderId: elderId,
+                          elderName: name,
+                          familyUserName: widget.userName,
+                        ),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.menu_book_rounded, size: 16),
+                  label: Text(
+                    '翻閱自傳畫廊 (${stories.length})',
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: cs.onSurface,
+                    side: BorderSide(color: cs.outline, width: 1.2),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => MemoirsGalleryScreen(
+                          elderId: elderId,
+                          elderName: name,
+                          familyUserName: widget.userName,
+                        ),
+                      ),
+                    );
+                  },
+                  icon: const Text('🐷', style: TextStyle(fontSize: 14)),
+                  label: Text(
+                    '委託小豬提問',
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFF97316),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    elevation: 0,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     ).animate().fadeIn(delay: 100.ms, duration: 350.ms);
