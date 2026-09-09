@@ -4,12 +4,19 @@ import '../models/pet_food_item.dart';
 
 class FoodMilestoneTray extends StatelessWidget {
   final int currentSteps;
+
+  /// 今日服藥打卡次數（來自後端 `GET /api/pet/food-unlocks/{elder_id}` 的
+  /// `medication_checkins_today`）——與 [currentSteps] 是 OR 關係，兩者
+  /// 達成其一即可解鎖食物，見 [PetFoodItem.isUnlockedFor]。呼叫端拿不到
+  /// 後端資料時傳 0 即可（等同「只靠步數解鎖」，不影響既有行為）。
+  final int medicationCheckinsToday;
   final Function(PetFoodItem food) onSelectFood;
   final Set<String> fedFoodIds;
 
   const FoodMilestoneTray({
     super.key,
     required this.currentSteps,
+    this.medicationCheckinsToday = 0,
     required this.onSelectFood,
     required this.fedFoodIds,
   });
@@ -102,7 +109,10 @@ class FoodMilestoneTray extends StatelessWidget {
               separatorBuilder: (_, __) => const SizedBox(width: 12),
               itemBuilder: (context, index) {
                 final item = foods[index];
-                final bool isUnlocked = currentSteps >= item.stepMilestone;
+                final bool isUnlocked = item.isUnlockedFor(
+                  currentSteps: currentSteps,
+                  medicationCheckinsToday: medicationCheckinsToday,
+                );
                 final bool isFed = fedFoodIds.contains(item.id);
 
                 return _buildFoodCard(context, item, isUnlocked, isFed);

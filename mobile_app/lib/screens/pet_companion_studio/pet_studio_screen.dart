@@ -9,6 +9,7 @@ import '../../services/friend_service.dart';
 import '../elder_home_screen.dart';
 import 'services/garden_ambient_audio_service.dart';
 import 'services/pet_leaderboard_service.dart';
+import 'services/pet_progress_service.dart';
 import 'widgets/animated_piglet_actor.dart';
 import 'widgets/food_milestone_tray.dart';
 import 'widgets/garden_feeding_sheet.dart';
@@ -51,6 +52,12 @@ class _PetStudioScreenState extends State<PetStudioScreen>
   bool _hasSyncedInitialWeight = false;
   int _leaderboardRefreshTick = 0;
 
+  // 🌾 後端「賽季」與「今日食物解鎖來源」（階段門檻本身不需要存在
+  // State——[PetGrowthStage.fromWeight] 直接讀 [PetProgressService.stageBounds]
+  // 這個靜態快取，這裡只保存畫面要顯示的賽季資訊與解鎖來源）。
+  PetSeasonInfo? _season;
+  PetFoodUnlockSource? _unlockSource;
+
   ActorMood _actorMood = ActorMood.idle;
   String _speechText = '';
   Timer? _moodResetTimer;
@@ -88,6 +95,7 @@ class _PetStudioScreenState extends State<PetStudioScreen>
 
     _loadSavedData();
     _resolveElderId();
+    _loadStageThresholdsAndSeason();
     _audioService.initAndStartAmbience();
 
     _particleAnimController = AnimationController(
@@ -116,7 +124,50 @@ class _PetStudioScreenState extends State<PetStudioScreen>
     if (!mounted) return;
     setState(() => _myElderId = id);
     _maybeSyncInitialWeight();
+    _refreshFoodUnlocks();
   }
+
+  /// 載入「目前生效中」的成長階段門檻與賽季資訊（`GET /api/pet/thresholds`
+  /// ／`GET /api/pet/season`）。兩者刻意各自 await、各自失敗互不影響——
+  /// [PetProgressService] 內部已經包過 try/catch，門檻失敗會自動退回離線
+  /// fallback（[PetProgressService.fallbackStageBounds]），賽季失敗則
+  /// [_season] 保持 null、畫面直接不顯示賽季膠囊，兩種失敗都不影響既有的
+  /// 寵物養成功能。
+  Future<void> _loadStageThresholdsAndSeason() async {
+    await PetProgressService.ensureStageBoundsLoaded();
+    // 門檻可能剛從後端更新，setState 讓 _growthState.stage 系列 getter
+    // 用最新門檻重新計算一次（例如管理者調整過門檻，長輩打開畫面時修正）。
+    if (mounted) setState(() {});
+
+    final season = await PetProgressService.loadSeason();
+    if (mounted && season != null) {
+      setState(() => _season = season);
+    }
+  }
+
+  /// 重新整理「今日食物解鎖來源」（步數／服藥打卡次數，
+  /// `GET /api/pet/food-unlocks/{elder_id}`）。elder_id 還沒解析出來時直接
+  /// 跳過——[_unlockSource] 維持 null，[_effectiveSteps]／
+  /// [_medicationCheckinsToday] 會自動退回裝置端步數與 0 次打卡，等同
+  /// 「只靠步數解鎖」的既有行為，不影響既有的餵食流程。失敗只記 log
+  /// （[PetProgressService] 內部已處理），不彈錯誤對話框。
+  Future<void> _refreshFoodUnlocks() async {
+    final eid = _myElderId;
+    if (eid == null) return;
+    final source = await PetProgressService.loadFoodUnlocks(eid);
+    if (mounted && source != null) {
+      setState(() => _unlockSource = source);
+    }
+  }
+
+  /// 今日步數——優先用後端答案（`elder_daily_step` 的即時資料），答不出來
+  /// （null，代表後端查詢失敗或該表在目前環境不存在）時退回裝置端既有的
+  /// 步數來源（[_growthState.todaySteps]）。
+  int get _effectiveSteps => _unlockSource?.todaySteps ?? _growthState.todaySteps;
+
+  /// 今日服藥打卡次數；還沒有後端資料時視為 0（等同不提供打卡解鎖加成，
+  /// 只靠步數，不影響既有行為）。
+  int get _medicationCheckinsToday => _unlockSource?.medicationCheckinsToday ?? 0;
 
   /// 進入寵物介面時，把體重同步一次到好友排行榜。
   ///
@@ -411,6 +462,9 @@ class _PetStudioScreenState extends State<PetStudioScreen>
                     setState(() {
                       _isFeedingSheetOpen = true;
                     });
+                    // 打開食匣前重新整理一次今日打卡次數，避免顯示過期的
+                    // 解鎖狀態（例如長輩剛在別的畫面完成服藥打卡）。
+                    _refreshFoodUnlocks();
                   },
                 ),
               ),
@@ -461,8 +515,8 @@ class _PetStudioScreenState extends State<PetStudioScreen>
                 ),
               ),
 
-              // 🏆🎵 頂部右側懸浮膠囊：排行榜／音樂控制（直式堆疊，避免與音樂
-              // 膠囊並排時橫向擠壓造成溢位——鐵律 #14／護欄 G159）
+              // 🗓️🏆🎵 頂部右側懸浮膠囊：賽季／排行榜／音樂控制（直式堆疊，
+              // 避免與其他膠囊並排時橫向擠壓造成溢位——鐵律 #14／護欄 G159）
               Positioned(
                 top: MediaQuery.of(context).padding.top + 12,
                 right: 16,
@@ -470,6 +524,10 @@ class _PetStudioScreenState extends State<PetStudioScreen>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
+                      if (_season != null) ...[
+                        _buildSeasonBadge(_season!),
+                        const SizedBox(height: 10),
+                      ],
                       _buildLeaderboardButton(),
                       const SizedBox(height: 10),
                       _buildMusicControlButton(),
@@ -484,6 +542,8 @@ class _PetStudioScreenState extends State<PetStudioScreen>
                   child: GardenFeedingSheet(
                     isLandscape: isLandscape,
                     foodInventory: _foodInventory,
+                    currentSteps: _effectiveSteps,
+                    medicationCheckinsToday: _medicationCheckinsToday,
                     onFeedFood: (food) {
                       _handleFeedFood(food);
                     },
@@ -709,7 +769,8 @@ class _PetStudioScreenState extends State<PetStudioScreen>
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   FoodMilestoneTray(
-                    currentSteps: _growthState.todaySteps,
+                    currentSteps: _effectiveSteps,
+                    medicationCheckinsToday: _medicationCheckinsToday,
                     onSelectFood: _handleFeedFood,
                     fedFoodIds: _growthState.fedFoodIds,
                   ),
@@ -756,7 +817,8 @@ class _PetStudioScreenState extends State<PetStudioScreen>
 
           // 下半部能量盤與互動
           FoodMilestoneTray(
-            currentSteps: _growthState.todaySteps,
+            currentSteps: _effectiveSteps,
+            medicationCheckinsToday: _medicationCheckinsToday,
             onSelectFood: _handleFeedFood,
             fedFoodIds: _growthState.fedFoodIds,
           ),
@@ -952,6 +1014,56 @@ class _PetStudioScreenState extends State<PetStudioScreen>
                 });
                 PetStorageService.saveState(_growthState);
               },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 🗓️ 頂部賽季膠囊：顯示第幾季、還剩幾天。
+  //
+  // 放在這個懸浮膠囊群組（而非底部的即時互動面板／步數卡）是刻意的：
+  // 這三個膠囊已經是「小豬的家」全螢幕中，唯一常駐可見、不需要額外點擊
+  // 就能看到的資訊區——賽季是「背景倒數」資訊，長輩不需要每次都特別去查，
+  // 放在視線常經過的角落比放進要點開才看得到的面板更合適。一個賽季三個月
+  // 、季末會重置體重（重置功能屬管理者端，尚未在本畫面實作），所以文案
+  // 用「還剩 N 天」而非只顯示日期——長輩看得懂「還剩幾天」，不需要自己
+  // 拿起訖日期去算。取不到賽季資料時 [_season] 是 null，呼叫端（build）
+  // 直接不渲染這顆膠囊，不顯示編造的數字。
+  Widget _buildSeasonBadge(PetSeasonInfo season) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFDF8).withValues(alpha: 0.94),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFBBF7D0), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF059669).withValues(alpha: 0.16),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text('🗓️', style: TextStyle(fontSize: 15)),
+          const SizedBox(width: 6),
+          // 季數與剩餘天數理論上都是短數字（季數頂多 2~3 位、剩餘天數
+          // 0~92），但仍包 Flexible + ellipsis——同列已有圖示，符合鐵律
+          // #14／護欄 G159「同列多元素時標題需可收縮」的判準。
+          Flexible(
+            child: Text(
+              '第 ${season.seasonNo} 季 · 還剩 ${season.daysRemaining} 天',
+              style: GoogleFonts.notoSansTc(
+                fontSize: 14,
+                fontWeight: FontWeight.w900,
+                color: const Color(0xFF047857),
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         ],

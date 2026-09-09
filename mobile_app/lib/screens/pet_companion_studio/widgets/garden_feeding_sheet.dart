@@ -10,6 +10,17 @@ import '../models/pet_food_item.dart';
 class GardenFeedingSheet extends StatefulWidget {
   final bool isLandscape;
   final Map<String, int> foodInventory;
+
+  /// 今日步數——優先用後端 `GET /api/pet/food-unlocks/{elder_id}` 的
+  /// `today_steps`，答不出來（null）時呼叫端應退回裝置端既有的步數來源
+  /// 再傳進來（見 [PetStudioScreen] 的合併邏輯），這裡只管拿到的數字。
+  final int currentSteps;
+
+  /// 今日服藥打卡次數（同一個後端端點的 `medication_checkins_today`）。
+  /// 與 [currentSteps] 是 OR 關係，兩者達成其一即可解鎖食物，見
+  /// [PetFoodItem.isUnlockedFor]。呼叫端拿不到後端資料時傳 0 即可（等同
+  /// 「只靠步數解鎖」，不影響既有行為）。
+  final int medicationCheckinsToday;
   final Function(PetFoodItem food) onFeedFood;
   final VoidCallback onClose;
 
@@ -17,6 +28,8 @@ class GardenFeedingSheet extends StatefulWidget {
     super.key,
     required this.isLandscape,
     required this.foodInventory,
+    this.currentSteps = 0,
+    this.medicationCheckinsToday = 0,
     required this.onFeedFood,
     required this.onClose,
   });
@@ -128,7 +141,14 @@ class _GardenFeedingSheetState extends State<GardenFeedingSheet>
                                 itemBuilder: (context, index) {
                                   final food = PetFoodItem.milestoneMenu[index];
                                   final count = widget.foodInventory[food.id] ?? food.initialCount;
-                                  final bool canFeed = count > 0 || count == -1;
+                                  final bool hasStock = count > 0 || count == -1;
+                                  // 步數達標「或」服藥打卡次數達標，兩者擇一即可——與庫存
+                                  // 是 AND 關係（就算已解鎖，庫存吃完當天還是不能再餵）。
+                                  final bool isProgressUnlocked = food.isUnlockedFor(
+                                    currentSteps: widget.currentSteps,
+                                    medicationCheckinsToday: widget.medicationCheckinsToday,
+                                  );
+                                  final bool canFeed = hasStock && isProgressUnlocked;
 
                                   return _buildFoodCard(food, count, canFeed);
                                 },
@@ -186,6 +206,19 @@ class _GardenFeedingSheetState extends State<GardenFeedingSheet>
                     color: const Color(0xFF78350F).withValues(alpha: 0.8),
                   ),
                 ),
+                const SizedBox(height: 6),
+                // 今日步數／服藥打卡次數——讓長輩看得懂食物為什麼「鎖定」
+                // 或「已解鎖」（見下方 unlockCondition 文案）。用 Wrap 而非
+                // Row：兩個膠囊寬度加總在窄螢幕或系統字級被調大時可能超出
+                // 可視寬度，Wrap 會自動換行，不會溢位（鐵律 #14／護欄 G159）。
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: [
+                    _buildStatusChip('🐾', '今日 ${widget.currentSteps} 步'),
+                    _buildStatusChip('💊', '服藥打卡 ${widget.medicationCheckinsToday} 次'),
+                  ],
+                ),
               ],
             ),
           ),
@@ -211,6 +244,35 @@ class _GardenFeedingSheetState extends State<GardenFeedingSheet>
     ),
   );
 }
+
+  // ── 今日進度小膠囊（步數／服藥打卡次數）──
+  Widget _buildStatusChip(String emoji, String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7F2E7),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFE5D9C5), width: 1),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(emoji, style: const TextStyle(fontSize: 11)),
+          const SizedBox(width: 3),
+          Text(
+            label,
+            style: GoogleFonts.notoSansTc(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFF78350F),
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
 
   // ── 食物卡片（支援拖曳與點擊投餵）──
   Widget _buildFoodCard(PetFoodItem food, int count, bool canFeed) {
@@ -305,6 +367,8 @@ class _GardenFeedingSheetState extends State<GardenFeedingSheet>
                     fontSize: 11.5,
                     color: const Color(0xFF94A3B8),
                   ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
