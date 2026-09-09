@@ -10,6 +10,7 @@ import '../elder_profile_edit_screen.dart';
 import '../caregiver_pairing_screen.dart';
 import '../identification_screen.dart';
 import 'family_subscription_screen.dart';
+import 'family_bug_report_screen.dart';
 import '../../models/memoir_story.dart';
 import '../../services/memoir_service.dart';
 import '../../widgets/memoir_detail_sheet.dart';
@@ -710,6 +711,27 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
                     Theme.of(context).colorScheme.secondary,
                   ),
                 ],
+              ]),
+              const SizedBox(height: 18),
+
+              // 6.5 支援與意見回饋 (Support & Feedback)
+              // ★ BUG 回報功能：低頻但重要，刻意不放頂層分頁、不放首頁／互動
+              //   這種高頻畫面，比照裝置配對／訂閱等次級設定放在「資料」分頁。
+              _buildSettingsGroup('🛟 支援與意見回饋', [
+                _buildActionItem(
+                  Icons.bug_report_rounded,
+                  '回報問題 / 意見反饋',
+                  '遇到問題或有建議？點此回報，我們會盡快處理',
+                  () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => FamilyBugReportScreen(familyId: widget.userId),
+                      ),
+                    );
+                  },
+                  Theme.of(context).colorScheme.tertiary,
+                ),
               ]),
               const SizedBox(height: 18),
 
