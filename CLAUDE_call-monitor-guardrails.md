@@ -1170,9 +1170,11 @@ CallKit 用 `endAllCalls()`（包 try/catch）、備援通知用
 A import B、B import C，不代表 A 看得到 C 的符號（除非 B 有 `export`）。
 🚫 修 import 錯誤時，**禁止**用「修好幾個路徑就會消失幾個錯誤」的推論一次寫完，必須
 修完**重跑 analyze 再看剩幾個**。
-> **原因**：`storybook_stage_card.dart` 11 個錯誤中 3 個是 import 路徑錯、8 個
-> 是符號未定義；修好 3 個路徑後，8 個裡只消掉 4 個，剩下 4 個 `ActorMood` 要靠
-> 另一個獨立的 export 修復，是把症狀數當成根因數的誤判。
+> **原因**：本輪 `storybook_stage_card.dart` 的 11 個錯誤中，3 個是 import 路徑
+> 錯、8 個是符號未定義。原本判斷「修好 3 個路徑，8 個符號錯誤會一起消失」，實際
+> 只消掉 4 個——剩下 4 個 `ActorMood` 是另一個獨立問題：這個 enum 定義在
+> `animated_piglet_actor.dart`，而 `hand_drawn_piglet_actor.dart` 雖然 import 了
+> 它但沒有 `export`。這是把症狀數當成根因數的誤判。
 
 **G170 — 需要分辨 HTTP 狀態碼的呼叫不可走 `ApiService` 的門面方法**
 那些門面只在 200/201 回傳 body，其餘狀態碼一律吞掉，呼叫端拿不到 `statusCode`。
