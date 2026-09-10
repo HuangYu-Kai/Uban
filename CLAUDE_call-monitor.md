@@ -1270,6 +1270,164 @@ IMU 航位推算漂移嚴重，且長輩常不隨身攜帶手機。相機方案�
 > `CLAUDE_call-monitor-history.md`；**N ≥ 41** 仍在本檔 §8。此門檻會隨每輪搬移而持續調高，
 > 調整時只需要更新本處（§8 開頭）的數字。
 
+### 2026-09-09 — 第四十四輪：分支合併與重構修復、寵物賽季制、管理者系統擴充、YOLO 睡眠誤報
+
+**背景**
+
+本輪工作分兩層：先合併 `origin/main` 帶來的大規模模組化重構、排除其自帶的編譯錯誤，
+再處理使用者提出的第三～七項需求——寵物養成賽季制、賽季重置與付費皮膚、管理者系統擴
+充、家屬端 BUG 回報、YOLO 區分跌倒與睡覺，以及作品提案規劃書改寫。
+
+**項目 A（前端）合併 origin/main 的大規模模組化重構**
+
+`origin/main` 做了一次大重構：`main.dart` -699 行、`elder_profile_tab.dart` -2187
+行、`family_home_tab.dart` -3726 行、`api_service.dart`（2038 行）拆成 9 個模組
+（`services/api/*.dart`）、FCM 背景處理器抽成 `services/firebase_bg_handler.dart`。
+
+合併本身**零衝突**（本地只領先一個文件 commit）。但合併後 `flutter analyze` 出現 29
+個 error——**這些是 `origin/main` 自己帶進來的，不是合併造成的**。三類：
+
+1. **缺 import**（5 個）：搬進來的程式碼用到 `jsonDecode`／`defaultTargetPlatform`，
+   沒帶 `dart:convert` 與 `flutter/foundation.dart`。
+2. **相對路徑層數算錯**（17 個：`storybook_stage_card.dart` 11 個、
+   `home_alert_preview_card.dart` 6 個）：`storybook_stage_card.dart` 在
+   `elder_tabs/profile/widgets/`，`../../` 只回得到 `elder_tabs/`，但目標在
+   `screens/` 底下，要 `../../../`；`home_alert_preview_card.dart` 同類問題。
+3. **抽出時遺失區域變數**（7 個）：`todayStr`／`cs`／`isDark` 定義在另一個方法內，
+   被搬到 `_buildUnifiedTimelineCategoryCards()` 的程式碼取不到。
+
+★ **這一項最重要的教訓**：`storybook_stage_card.dart` 的 11 個錯誤中，3 個是
+import 路徑錯（`uri_does_not_exist`）、8 個是符號未定義（`PetGrowthState` 2 個、
+`ActorMood` 4 個、`HandDrawnPigletActor` 與 `PetGrowthScaleCard` 各 1 個）。原本
+判斷「修好 3 個路徑，8 個符號錯誤會一起消失」，實際只消掉 4 個（`PetGrowthState`
+2 個＋`HandDrawnPigletActor`、`PetGrowthScaleCard` 各 1 個）——剩下 4 個
+`ActorMood` 是另一個獨立問題：這個 enum 定義在 `animated_piglet_actor.dart`，而
+`hand_drawn_piglet_actor.dart` 雖然 import 了它但**沒有 `export`**，**Dart 的
+import 不會傳遞可見性**。這是把「症狀數」當成「根因數」的誤判。正確做法是先修、
+再跑 analyze、再補——而不是照推論一次寫完就宣稱好了。
+→ 新護欄 **G167**
+
+第 3 類的日期字串必須**逐字複製**原本的補零寫法。格式一旦不同，`rawDate == todayStr`
+會恆假，「今日生活動態」的日期標籤靜默失效，而**編譯是綠的**。
+
+★ 大型重構還留下一個掃描盲點：`family_home_tab.dart` 從 3726 行被掏空到 289 行，內
+容搬進 `family/home/widgets/`——本輪跑既有的 RenderFlex 溢位掃描（見根 `CLAUDE.md`
+鐵律 #14）時，家屬首頁一度回報「無可疑處」，但那只是因為掃描掃到的是空殼，真正的內容
+已經不在原檔案裡。所有「逐檔掃描」的例行檢查在大型重構後都要重新確認涵蓋範圍。
+→ 新護欄 **G172**
+
+**驗證**：三類共 29 個 error 逐一排除，`flutter analyze` 恢復乾淨。
+
+**項目 B（前後端）寵物養成賽季制（第三項需求）**
+
+- 新增 `pet_stage_threshold` 表：五階段門檻改為**線性等距，每階 20 公斤**
+  （0/20000/40000/60000/80000 公克），取代原本寫死在 Dart 的非線性值（15/35/65/90
+  公斤）。放進資料表是為了讓管理者調整而不必改程式碼。
+- 新增 `pet_season` 表：一季三個月，惰性建立。
+- `routers/pet.py` 新增 `GET /thresholds`、`GET /season`、`GET
+  /food-unlocks/{elder_id}`。
+- 前端新增 `pet_progress_service.dart`，**本地 fallback 用的是同一組新線性值**——否
+  則離線與連線時會顯示不同階段。
+- 食物解鎖從「只認步數」改成「步數**或**用藥打卡」。修正前「或按時服藥」只是顯示文
+  字，承諾了做不到的事。
+- ⚠️ 運動解鎖**預留但未啟用**：`activity_log` 的 `exercise` 事件全專案只有讀取端、
+  **沒有任何寫入路徑**，納入會變成永遠不成立的死條件。
+
+**項目 C（後端）賽季重置與付費皮膚（第四項需求）**
+
+- 新增 `pet_season_settlement` 表保存每季結算。**重置前必須先結算**——否則排行榜歷
+  史全部消失、長輩三個月的努力歸零且無跡可循。
+- `POST /api/admin/pet-seasons/reset` 全程在單一交易內，任一步失敗即整個 rollback。
+- **重複呼叫防護兩層**：對 `pet_season.status` 做 `UPDATE ... WHERE status='active'`
+  的原子條件更新（只有 `rowcount==1` 才繼續）＋ `UNIQUE(season_no, elder_id)`。並發
+  測試用 `threading.Barrier` 讓兩個 thread 同時打，連跑五次穩定。
+  → 新護欄 **G168**
+- 體重重置目標 **1250 公克**，來源是前端 `pet_growth_state.dart` 的預設起始值（實際
+  讀檔確認）。
+- 新增 `pet_skin`／`elder_pet_skin_ownership`／`elder_pet_skin_selection` 三張表。擁
+  有權判斷唯一權威在 `routers/pet.py::_elder_owns_skin()`。
+- 購買流程本輪不做（金流）。接上點：付費成功回呼只需 INSERT 進 ownership 表。
+
+**項目 D（前後端）管理者系統擴充（第四項需求）**
+
+⚠️ **管理者系統本來就存在且已部署**（`uban-admin/` 掛在 `/admin`，實測回 200），本輪
+是擴充不是從零建。
+
+- 新增 `bug_report`／`account_ban`／`admin_action_log` 三張表。
+- `routers/admin.py` 17 個端點，`/api/admin/*` 全部以
+  `Depends(require_staff_role("admin"))` 保護。
+- `POST /api/bug-report` 供 App 提交（刻意未認證，因此加了長度上限、頻率限制、回報
+  者存在性驗證）。
+- 管理端新增三個頁面：BUG 回饋、帳號管理、寵物賽季與皮膚。
+- ⚠️ **封禁本輪只做記錄，尚未在登入流程強制生效**。登入是所有使用者的必經路徑，在
+  本輪同時進行多項改動時動它風險過高。
+
+**項目 E（前端）家屬端 BUG 回報（第五項需求）**
+
+放在家屬端「資料」分頁最下段的獨立群組。
+
+★ **一個值得記的設計決定**：刻意**不用 `ApiService.post()` 門面**——那支門面只在
+200/201 回傳 body，其餘狀態碼一律吞掉、呼叫端拿不到 `statusCode`，而這支端點的
+404／429／422 需要分開顯示。另外 422 的 `detail` 是 Pydantic 錯誤**清單**不是字
+串，直接轉述給使用者會是一串英文物件，所以四種錯誤都用寫死的白話文案。
+→ 新護欄 **G170**
+
+**項目 F（後端）YOLO 區分跌倒與睡覺（第七項需求）**
+
+**症狀**：躺著靜止 15 秒即推 `prolonged_inactivity` 警報，睡覺必然觸發。
+
+**修法**：新增 `_classify_lying_entry()`，由 bbox 長寬比的過渡歷史判斷「進入躺姿」
+是驟然（跌倒）還是漸進（主動躺下）。gradual 改用坐立的兩小時門檻，abrupt 維持 15
+秒。
+
+★ **刻意不選「gradual 就完全不推」**：分類會被快取，一旦判成 gradual，整段睡眠期間
+就**永久靜音**——萬一使用者在睡眠中途發生醫療突發（中風、呼吸停止）而不再移動，這條
+路徑永遠不會有第二次機會示警。用長門檻而非靜音，保留一道安全網。
+
+★ **Fail-safe 方向**：歷史不足以判斷進入速度時一律當成 abrupt（會推警報）。**漏報
+跌倒的代價遠大於誤報睡覺**——一位跌倒的長輩沒被偵測到可能躺數小時無人知曉，誤報一次
+睡覺只是一則不必要的通知。證據不足時偏向推警報。也**明文禁止**「夜間一律不推」這種
+一刀切——夜間跌倒仍是跌倒，而且往往更危險。
+→ 新護欄 **G169**
+
+**項目 G（文件）作品提案規劃書改寫（第六項需求）**
+
+改寫 `D:\114project\Documents\` 的提案書，讓內容符合實際系統。發現並修正兩處過譽：
+
+1. **「每週 AI 情緒與作息分析報告」**（出現三處，含**商業模式的付費賣點**）——前
+   端有 `health_report_service.dart`（21.5 KB，含週報／月報 PDF 產生器）但**零引
+   用**，是寫好沒接上的死碼。改寫成真實存在的每日新聞語音播報。
+2. **「緊急時顯示 GPS 定位」**——警報**不帶座標**。GPS 本身存在且完整
+   （`getPositionStream` + 卡爾曼濾波 + 路徑持久化），但那是**戶外散步路徑記錄**，
+   與緊急定位是兩回事。
+
+**附註（本輪流程事故）**
+
+驗證修復時，一個未加引號的 shell 重導向把 `uban-api/Dockerfile` 整個清空成 0 位元
+組（53 行全沒），而 `git status` 只顯示 `M Dockerfile`，外觀上像是正常修改，已復
+原。
+→ 新護欄 **G171**
+
+**查證但未修的既有問題（供下一輪參考）**
+
+1. **室內定位的區域校準介面已於 2026-08-24 下架**（產品決策），`load_zones()` 現在
+   對幾乎所有裝置恆回空陣列。程式碼裡的具名區域分類（客廳／廚房）邏輯完整且測試通
+   過，但**沒有任何操作介面能設定它**。實際運作的是更粗的「是否在鏡頭前」那一層
+   （依訂閱層級 15／7／3 秒更新）。
+2. **`health_report_service.dart` 是死碼**（21.5 KB，零引用）。要嘛接上，要嘛刪
+   除，留著會讓人以為週報功能存在。
+3. **`activity_log` 的 `exercise` 事件只有讀取端、沒有寫入端**，導致
+   `food-unlocks` 的運動計數恆為 0。
+4. **`tests/test_institution.py` 需要 `DB_HOST=100.73.39.14` 才能跑**
+   （`institution`／`care_staff` 表只存在於正式 MySQL）。未設時會有 31 個
+   `no such table` 錯誤，那是**環境相依行為不是回歸**。
+
+**新增護欄**
+
+本輪新增 **G167–G172**（前端 G167、G170、G172；後端 G168–G169；流程 G171；條文見
+§7.1／§7.2）。護欄檔（`CLAUDE_call-monitor-guardrails.md`）開頭護欄總數同步更新為
+**172**。
+
 ### 2026-09-05 — 第四十三輪：分支合併、排程提醒送達根因、社群整合、寵物排行榜、家屬好友系統
 
 **背景**
