@@ -1015,12 +1015,19 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
                   children: [
                     Row(
                       children: [
-                        Text(
-                          elder.displayName,
-                          style: GoogleFonts.notoSansTc(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w800,
-                            color: cs.onSurface,
+                        // ★ 第四十五輪（例行溢位檢查）：displayName 是長輩顯示名稱，
+                        // 長度不可控，20pt 同列還有固定寬度的「長輩端: Exxx」徽章，
+                        // 包 Flexible 並加 ellipsis 可收縮，避免 RenderFlex 溢位。
+                        Flexible(
+                          child: Text(
+                            elder.displayName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.notoSansTc(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w800,
+                              color: cs.onSurface,
+                            ),
                           ),
                         ),
                         const SizedBox(width: 8),

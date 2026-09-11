@@ -617,11 +617,19 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen>
                               children: [
                                 Row(
                                   children: [
-                                    Text(
-                                      comment.authorName,
-                                      style: ElderScale.caption.copyWith(
-                                        color: isFamily ? const Color(0xFF15803D) : AppColors.primaryDark,
-                                        fontWeight: FontWeight.w900,
+                                    // ★ 第四十五輪（例行溢位檢查）：authorName 是家人／
+                                    // 長輩的顯示名稱，長度不可控，ElderScale.caption
+                                    // 本身就是 18pt，同列還有角色徽章與 Spacer 後的
+                                    // 時間文字，包 Flexible 並加 ellipsis 可收縮。
+                                    Flexible(
+                                      child: Text(
+                                        comment.authorName,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: ElderScale.caption.copyWith(
+                                          color: isFamily ? const Color(0xFF15803D) : AppColors.primaryDark,
+                                          fontWeight: FontWeight.w900,
+                                        ),
                                       ),
                                     ),
                                     const SizedBox(width: 6),

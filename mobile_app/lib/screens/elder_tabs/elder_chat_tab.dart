@@ -1192,12 +1192,22 @@ class ElderChatTabState extends State<ElderChatTab>
               ),
             ),
             const SizedBox(width: 22),
-            Text(
-              '正在為您想辦法...',
-              style: GoogleFonts.notoSansTc(
-                fontSize: 28,
-                fontWeight: FontWeight.w900,
-                color: const Color(0xFF59B294),
+            // ★ 第四十五輪（例行溢位檢查，team-lead 覆核）：雖是固定字串，但
+            // 28pt w900 的 8 個中文字加上前面 36px spinner 與 22px 間距，在
+            // 360dp 螢幕扣掉氣泡 padding 52px 後會溢位（約 16-48px，視父層
+            // padding 而定）。mainAxisSize.min 的 Row 仍受父層 constraints
+            // 限制，包 Flexible 一樣能在空間不足時讓 Text 收縮，避免
+            // RenderFlex 溢位。
+            Flexible(
+              child: Text(
+                '正在為您想辦法...',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.notoSansTc(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w900,
+                  color: const Color(0xFF59B294),
+                ),
               ),
             ),
           ],

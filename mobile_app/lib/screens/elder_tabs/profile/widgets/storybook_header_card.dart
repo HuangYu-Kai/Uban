@@ -62,13 +62,21 @@ class StorybookHeaderCard extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Text(
-                      '$greetingTitle，$userName',
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: isLandscape ? 18.5 : 25,
-                        fontWeight: FontWeight.w900,
-                        color: const Color(0xFF451A03),
-                        letterSpacing: -0.5,
+                    // ★ 第四十五輪（例行溢位檢查）：userName 是長輩自訂顯示名稱，
+                    // 長度不可控，同列還有固定寬度的「守護中」徽章；25pt／18.5pt
+                    // 大字級加上長名字很容易把徽章擠出可視範圍，包 Flexible 並加
+                    // ellipsis 可收縮，避免 RenderFlex 溢位。
+                    Flexible(
+                      child: Text(
+                        '$greetingTitle，$userName',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.notoSansTc(
+                          fontSize: isLandscape ? 18.5 : 25,
+                          fontWeight: FontWeight.w900,
+                          color: const Color(0xFF451A03),
+                          letterSpacing: -0.5,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 8),
