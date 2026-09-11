@@ -1235,7 +1235,7 @@ IMU 航位推算漂移嚴重，且長輩常不隨身攜帶手機。相機方案�
 
 ## 7. 護欄
 
-> 🚨 **完整護欄清單（G1–G159）已於 2026-09-04 獨立成檔**：
+> 🚨 **完整護欄清單（G1–G181）已於 2026-09-04 獨立成檔**：
 > **[`CLAUDE_call-monitor-guardrails.md`](CLAUDE_call-monitor-guardrails.md)**
 >
 > 遷出原因：主檔逼近 262,144 bytes 的單次讀取上限，一旦超過，子代理就無法一次讀完，
@@ -1269,6 +1269,209 @@ IMU 航位推算漂移嚴重，且長輩常不隨身攜帶手機。相機方案�
 > 📌 **搬移門檻提示**：本文件中出現的「第 N 輪」，**N ≤ 40** 者其年表條目已遷至
 > `CLAUDE_call-monitor-history.md`；**N ≥ 41** 仍在本檔 §8。此門檻會隨每輪搬移而持續調高，
 > 調整時只需要更新本處（§8 開頭）的數字。
+
+### 2026-09-11 — 第四十五輪：新手教學捲動、管理端轉開發者定位、統計儀表板、開發者帳號、隱私權政策
+
+**背景**
+
+使用者提出五項需求：(1) 新手教學指引無法自動捲動到目標位置——目標在畫面下方需
+捲動才看得到時，教學不會把它捲進視野；(2) 管理員網頁改為開發者定位——不再是長
+照機構管理端，改為開發者對個別使用者除錯、賦予權限、接收 BUG；(3) 開發者統計儀
+表板——雙端年齡／居住地／緊急警報推送／緊急通話／誤報次數，至少 8 張圖含交叉比
+對與熱力圖，另需敘述統計；(4) 三組開發者最高權限帳號——資料庫加密儲存，但網頁
+上三人可互看明碼、只能改自己的密碼；(5) 隱私權政策——改成勾選同意才能使用
+App，超連結彈出完整政策，內容須涵蓋所有觸及個資的功能。
+
+**項目 A（前端）新手教學支援自動捲動**
+
+`lib/widgets/spotlight_tutorial.dart`：目標元件在畫面下方需捲動才可見時，原本的
+高光提示不會把它捲進視野。改成 `await Scrollable.ensureVisible(alignment: 0.3,
+duration: 300ms)` 捲動完成**後**才重新量測高光矩形；新增遞增 `_updateToken`，避
+免使用者在捲動完成前連按「下一步」時，上一步的過期量測覆蓋新步驟的結果。
+`alignment` 選 0.3 而非置中的 0.5，因為提示卡片 `maxHeight` 可達螢幕 55%，置中會
+與高光區重疊。既有三種 fallback（無目標步驟／元件未 layout／目標不在任何
+`Scrollable` 內）全部保留。
+
+**項目 B（前端）管理端網頁改為開發者定位**
+
+`uban-api/uban-admin/`：移除 `TasksPage`／`SchedulePage`／`StaffPage`／
+`StaffDetailPage` 四個機構營運頁面，連同其路由、導覽項目、專用型別（9 個）一併
+移除。導覽重構為「數據總覽」＋「使用者除錯」「系統管理」「問題回報」三組；
+`LoginPage` 改成可切換「機構員工／開發者」兩種身分登入。後端
+`routers/institution.py`／`institution_ops.py` **刻意保留不動**，只拆前端——這
+個決定是可逆的，日後若仍需要機構端功能，不必重寫後端。
+
+★ 刪路由留下一個陷阱：`App.tsx` 的 `CAREGIVER_HOME = '/tasks'` 在 `/tasks` 路由
+移除後變成死路由——caregiver 登入 → 導去 `/tasks` → 404 → catch-all 導回 `/` →
+又導去 `/tasks`，**無限重導向**。`EldersPage.tsx:185` 與
+`ElderDetailPage.tsx:200` 也各留了一個連向已刪除員工詳情頁的 `<Link>`。刪路由必
+須 grep 整個 `src` 找該路徑字串，不能只看 `App.tsx`。
+→ 新護欄 **G176**
+
+**項目 C（後端＋前端）開發者統計儀表板**
+
+`routers/admin_stats.py`（新檔，559 行）新增 3 支唯讀端點（`/demographics`、
+`/alerts?days=`、`/calls?days=`），`uban-admin/src/pages/overview/`（5 個新檔）
+撐起 10 個圖表卡片，含 3 張熱力圖（縣市×行政區、縣市×警報類型、星期×時段）與 1
+張年齡層×誤報率的雙軸組合圖。
+
+★ 樣本數 <2 時，標準差／變異數改回傳 `null` 而非 0——「標準差是 0」代表「樣本完
+全相同」，跟「樣本不足無法計算」是不同的事實，回 0 會讓圖表畫出看似有意義但錯
+誤的結論。`statistics.variance()` 在 n<2 會拋 `StatisticsError`，接住後回
+`null`；前端不把 `null` 顯示成 0，改用「尚未累積資料」／「樣本不足」與真正的 0
+分開呈現。
+→ 新護欄 **G178**
+
+**項目 D（後端＋前端）三組開發者最高權限帳號**
+
+`services/dev_crypto.py`、`auth_developer.py`、`routers/developer.py`、
+`scripts/seed_developer_accounts.py`、`uban-admin/src/pages/
+DeveloperAccountsPage.tsx`：雙欄位設計——`password_hash`（passlib
+scrypt/bcrypt，供登入驗證）＋ `password_cipher`（AES-GCM 可逆加密，供三人互看明
+碼）。金鑰走環境變數 `DEVELOPER_PASSWORD_KEY`，缺金鑰時**直接拋例外，絕不
+fallback 成明文儲存**。改密碼端點 `POST /accounts/me/password` 的身分完全來自
+token、路徑上沒有 `dev_id` 參數，**結構上就不可能改到別人的密碼**。
+
+**項目 E（前端）隱私權政策**
+
+`lib/data/privacy_policy_content.dart`（新檔）、`lib/widgets/
+policy_detail_dialog.dart`（新檔）：政策內容抽成單一權威來源（15 章節，每節含
+「收集什麼／為什麼／怎麼保護／保存多久／能否拒絕」），首次安裝關卡與註冊頁共用
+同一份內容。`prefsKey` 升版 `_v1` → `_v2`，逼舊使用者重新同意新版本。**完全沒有
+動 `splash_screen.dart` 與 `main.dart`**——同意狀態的鍵是常數，啟動流程只是照舊
+引用它，不需要改動流程本身。
+
+**項目 F（後端＋前端）緊急通話與誤報埋點**
+
+`services/socket_app.py` 的 `on_call_request`／`on_emergency_call` 各自的
+`INSERT INTO call_record` 分別補上 `is_emergency=0`／`is_emergency=1`（僅 6 增／
+6 刪，其餘邏輯未動）。新增 `POST /api/alerts/{alert_id}/false-alarm`，授權邏輯
+照抄同檔既有的 `acknowledge_alert`，無權一律回 404（沿用 G45）。家屬端
+`alert_center_screen.dart` 新增「這是誤報」的二次確認操作，供項目 C 的誤報統計
+取用。
+
+**項目 G（後端）資料層**
+
+`database.py` 新增 9 個欄位／1 張新表：`user_account_data` 加 `age`／
+`residence_city`／`residence_district`；`elder_profile` 加後兩者；
+`emergency_alerts` 加 `is_false_alarm`／`false_alarm_marked_by`／
+`false_alarm_marked_at`；`call_record` 加 `is_emergency`；新表
+`developer_account`。`ALLOWED_UPDATE_FIELDS` 白名單同步補上新欄位。Migration 寫
+在 `scripts/migrations/012_round45_stats_and_developer.sql`，**本輪只寫檔、未對
+正式庫執行 DDL**。
+
+**項目 H（前後端）雙端年齡／居住地詢問**
+
+`routers/user.py`、`elder_profile_edit_screen.dart`、`family_settings_view.dart`：
+長輩端**原本就有**城市／行政區輸入與 GPS 反查，但存檔時被拼接成單一字串塞進既
+有的 `location` 欄位，讀取時再用 `indexOf('市')` 切回來——這正是項目 C 統計做不
+出來的根因，結構化資料從未真正落地過。本輪改為**額外**寫入新的結構化欄位
+（`residence_city`／`residence_district`），`location` 原本的拼接寫法保留不
+動，避免影響既有讀取路徑。家屬端則是從零新增三個選填欄位（手動輸入，無
+GPS）。兩端輸入介面都加註「僅供統計、可不填寫」的說明。
+
+**項目 I（前端）例行溢位檢查**
+
+依根 `CLAUDE.md` 第 14 條做了雙端 8 個主介面的例行溢位檢查，**含重構後的子
+樹**（`elder_tabs/profile/`：3 個 dialog＋7 個 widget；`family/home/`：7 個
+widget＋2 個 sheet＋1 個 dialog），另加本輪新增 UI 的 3 個檔案。
+
+修正 4 處（全部包 `Flexible` ＋ `maxLines: 1` ＋
+`overflow: TextOverflow.ellipsis`，並附理由註解）：
+`elder_tabs/profile/widgets/storybook_header_card.dart:63`
+（`'$greetingTitle，$userName'` 25pt，同列有「守護中」徽章，`userName` 長度
+不可控）、`elder_community_screen.dart:618`（留言作者名，
+`ElderScale.caption`＝18pt，同列有角色徽章＋`Spacer`＋時間）、
+`family/family_data_tab.dart:1016`（`elder.displayName` 20pt，同列有「長輩
+端: Exxx」徽章）、`elder_tabs/elder_chat_tab.dart:1194`（**固定字串**
+`'正在為您想辦法...'` 28pt w900，同列有 36px spinner＋22px 間距）。
+
+★ 最後一處是固定字串仍然要修——這正是第 14 條「判準是**字級 × 同列元素
+數**，不是字串是不是動態」的案例。實算：360dp 螢幕扣掉氣泡
+`padding: horizontal 26`（52px）、spinner 36px、間距 22px 後剩約 250dp，而
+8 個中文字 × 28pt ≈ 266dp，會溢位。
+
+另有 5 處列出但判定不修：`'今日頭條'` 26pt、`'分享近況'` 30pt、`'留言'`
+30pt、`'受關照長輩檔案'` 18pt 等——**關鍵差異是它們同列有 `Spacer`**。
+`Spacer` 是彈性元件，會**吸收**剩餘空間而非爭搶，只要固定元素總和不超過可
+用寬度就不會溢位；真正危險的是**固定元素緊鄰**的結構（像思考泡泡的
+spinner ＋ 間距 ＋ 大字，三者都有固定寬度需求）。這個「有無 `Spacer`」的判
+準補進第 14 條目前只講「字級 × 同列元素數」、未區分同列元素是彈性還是固定
+的空缺。
+→ 新護欄 **G181**
+
+★★ **意外發現①：修好一個正在正式環境線上壞著的 500 bug**
+
+`routers/user.py::update_profile()` 的 `update_fields`／`update_values` 兩個
+list **從未初始化**，但下面有大量 `.append()` 呼叫——AST 掃描 `HEAD` 版本確認初
+始化次數為 **0**，任何呼叫必定 `NameError` → 500。`POST
+/api/user/profile/{user_id}` 正是長輩資料編輯頁「儲存」按鈕打的端點，代表**只要
+遇到長輩帳號，這個端點在正式環境過去一直是壞的**——長輩資料編輯的儲存功能從未
+真正成功過。本輪項目 H 順手一併修正。
+
+★★ **意外發現②：開發者看不到 6 位真實使用者**
+
+管理端的「使用者列表」與「警報中心」原本查的是 `institution_elder`（機構**收
+案**長輩），不是 `elder_profile`（全平台長輩）。對正式庫唯讀實測：
+`elder_profile` 共 **26 位**，`institution_elder` 收案中僅 **20 位**，未收案而
+開發者原本完全看不到的有 **6 位**（elder_id：2917、0343、7993、6160、9053、
+5327），其中 **6160** 與 **5327** 有真實警報紀錄共 **3 筆**，開發者原本也查不
+到。
+
+修法：`routers/institution_common.py` 的 `institution_elder_ids()`／
+`assert_elder_in_institution()`，以及 `routers/institution.py` 的
+`list_elders()`／`list_alerts()`，各自拆成「機構員工」與「開發者」兩段獨立
+SQL；開發者那半改以 `elder_profile`／`emergency_alerts` 為主表 LEFT JOIN，不再
+受限於收案關係。**機構員工那半的 SQL 與參數逐字未變**（用「逐一比對 alert_id
+集合」而非只比對數量驗證過，避免退化成假驗證）。
+
+過程中發現並修正兩個連帶問題：
+
+- 開發者 token 通過 `institution.py` 時，這兩支端點內部的 raw SQL 裡各自還留著
+  一個 `institution_id = %s` 的重複條件——開發者的 `institution_id` 是
+  `None`，SQL 三值邏輯下 `institution_id = NULL` **永遠不 match**，查詢靜默回
+  空清單、**不會報錯**。共用授權守衛換掉 `Depends` 覆蓋不到端點自己手寫的 SQL
+  二次過濾。
+  → 新護欄 **G177**
+- `institution_elder` 的唯一鍵是 `(institution_id, elder_id)`，同一位長輩可能
+  在不同機構各留一筆歷史收案紀錄。機構員工查詢已先用 `institution_id = %s` 鎖
+  到一間機構、最多一筆；但開發者是跨全平台查，LEFT JOIN 若不加
+  `discharged_at IS NULL`，一位長輩有兩筆歷史收案就會讓警報／長輩重複出現。
+  → 新護欄 **G180**
+
+**附註（本輪流程事故，三則）**
+
+1. team-lead 驗收三份子代理任務清單時，用 `npx tsc --noEmit` 檢查 TypeScript 型
+   別錯誤，三份回報皆「No errors found」。`uban-admin/tsconfig.json` 是
+   solution-style（`{"files": [], "references": [...]}`），不加 `-b` 只檢查空陣
+   列、**永遠回 EXIT 0**。實測探測檔驗證：`const n: number =
+   "definitely-a-string";` 用 `--noEmit` 回 EXIT=0 零輸出，換成 `-b --noEmit`
+   才抓到 `TS2322`；重跑後發現 `Layout.tsx` 早有 3 個既有型別錯誤。
+   → 新護欄 **G173**
+2. 檢查中文檔案的違規語法時用 `grep -ciF` 直接 SIGABRT（exit 134、輸出空字
+   串），`$(...)` 代入後看起來像「0 筆、通過」；`flutter analyze` 的錯誤計數用
+   `grep -c 'error •'` 也抓不到——這台機器的輸出用 `-` 分隔不是 `•`，正確判讀要
+   看總結行「N issues found」與 `-` 計數相加是否一致。
+   → 新護欄 **G174**、**G175**
+3. team-lead 為了清 `start)` 這個垃圾檔，用 `^[A-Za-z0-9_.\-]+$` 當「合理檔
+   名」判準，**把 `uban-api/管理者系統使用說明.md`（22,810 bytes、408 行的交付
+   文件）一併判定為垃圾並刪除**——這個專案大量使用中文檔名。已用 `git
+   checkout` 還原。往後清垃圾檔只認 `git status --short` 的 `??`（`??` 才是新
+   垃圾，`M` 或只有刪除行的 diff 是既有檔案被清空，要還原不是要刪）。
+   → 新護欄 **G179**
+
+**查證但未修的既有問題（供下一輪參考）**
+
+1. **封禁（`account_ban`）自第四十四輪起只做記錄，本輪仍未在登入流程強制生
+   效**——與開發者帳號一樣走 `routers/admin.py`，尚未接上。
+2. **付費皮膚購買流程仍未接金流**（第四十四輪已記錄，本輪未變動）。
+3. **`health_report_service.dart` 仍是死碼**（第四十四輪已記錄，本輪未變動）。
+
+**新增護欄**
+
+本輪新增 **G173–G181**（流程 G173–G175、G179；管理端 G176；後端 G177、G180；跨
+端 G178；前端 G181；條文見 §7.1／§7.2）。護欄檔（`CLAUDE_call-monitor-
+guardrails.md`）開頭護欄總數同步更新為 **181**。
 
 ### 2026-09-09 — 第四十四輪：分支合併與重構修復、寵物賽季制、管理者系統擴充、YOLO 睡眠誤報
 
