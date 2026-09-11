@@ -59,6 +59,8 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
   // 種類，分開存放、分開渲染（見 _buildContent、_buildHistoryAlertsSection）。
   List<Map<String, dynamic>> _historyAlertItems = [];
   bool _isLoading = true;
+  // ★ 第四十五輪：正在送出「標記誤報」請求的項目 id（防重複點擊／顯示 loading）。
+  final Set<String> _falseAlarmPending = {};
 
   @override
   void initState() {
@@ -163,6 +165,11 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
       final persistedItemId = (persistedAlertIdRaw != null && persistedAlertIdRaw.isNotEmpty)
           ? 'alert:$persistedAlertIdRaw'
           : 'persisted:$type:$detectedAt';
+      // ★ 第四十五輪：只有真正查得到 alert_id 的項目才能呼叫
+      //   POST /alerts/{alert_id}/false-alarm；下方 logItems（活動流水）沒有
+      //   對應的 emergency_alerts 列，_buildHistoryAlertCard 靠 alertId 是否
+      //   為 null 決定要不要顯示「這是誤報」操作。
+      final rawIsFalseAlarm = row['is_false_alarm'] ?? row['isFalseAlarm'];
       return <String, dynamic>{
         'id': persistedItemId,
         'title': title,
@@ -170,6 +177,8 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
         'level': 'high',
         'icon': Icons.warning_amber_rounded,
         'sortTs': DateTime.tryParse(detectedAt),
+        'alertId': persistedAlertIdRaw != null ? int.tryParse(persistedAlertIdRaw) : null,
+        'isFalseAlarm': rawIsFalseAlarm == true || rawIsFalseAlarm == 1,
       };
     });
 
@@ -327,6 +336,88 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
     );
   }
 
+  /// ★ 第四十五輪：把一筆已持久化的警報（有真實 `alert_id`）標記為誤報，
+  /// 供管理端統計儀表板排除誤報。授權（`user_id` 需與該警報的長輩有關係）
+  /// 與冪等行為完全交給後端 `POST /alerts/{alert_id}/false-alarm` 判斷，
+  /// 前端只負責防重複點擊與樂觀更新畫面上的 `isFalseAlarm` 狀態。
+  /// 這是與「確認」（acknowledge）完全獨立的動作——本畫面目前沒有任何地方
+  /// 呼叫 acknowledge 端點，故不涉及互相覆蓋的問題。
+  Future<void> _markFalseAlarm(String itemId, int alertId) async {
+    if (_falseAlarmPending.contains(itemId)) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+          '標記為誤報？',
+          style: GoogleFonts.notoSansTc(fontWeight: FontWeight.w800),
+        ),
+        content: Text(
+          '確定要把這則警報標記為誤報嗎？標記後將從統計中排除。',
+          style: GoogleFonts.notoSansTc(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('取消', style: GoogleFonts.notoSansTc()),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              '確定標記',
+              style: GoogleFonts.notoSansTc(
+                color: const Color(0xFFDC2626),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    // 沿用 _loadHistoryAlerts 既有慣例：家屬 user_id 讀 SharedPreferences 的
+    // 'caregiver_id'，不額外要求呼叫端多傳一個 widget 參數。
+    final prefs = await SharedPreferences.getInstance();
+    final familyUserId = prefs.getInt('caregiver_id');
+    if (familyUserId == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('無法確認家屬身分，請重新登入後再試', style: GoogleFonts.notoSansTc())),
+      );
+      return;
+    }
+
+    setState(() => _falseAlarmPending.add(itemId));
+    try {
+      final data = await ApiService.markFalseAlarm(alertId: alertId, userId: familyUserId);
+      if (!mounted) return;
+      if (data != null) {
+        setState(() {
+          final idx = _historyAlertItems.indexWhere((it) => it['id'] == itemId);
+          if (idx != -1) {
+            _historyAlertItems[idx] = {
+              ..._historyAlertItems[idx],
+              'isFalseAlarm': true,
+            };
+          }
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('已標記為誤報', style: GoogleFonts.notoSansTc()),
+            backgroundColor: const Color(0xFF59B294),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('標記誤報失敗，請稍後再試', style: GoogleFonts.notoSansTc())),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _falseAlarmPending.remove(itemId));
+    }
+  }
+
   /// 跌倒歷史（`_emergencyAlerts`）與活動警示（`_realLogs`）合併後的單筆卡片。
   /// 視覺語言沿用本畫面既有的 `_buildAlertCard`（白底卡＋色框＋圖示徽章），
   /// 刻意比上方即時警報卡片內斂——那些是「正在發生」，這裡是「曾經發生」。
@@ -334,6 +425,9 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
     final level = item['level'] as String? ?? 'medium';
     final color = level == 'high' ? const Color(0xFFEF4444) : const Color(0xFFF59E0B);
     final icon = item['icon'] as IconData? ?? Icons.warning_amber_rounded;
+    final String itemId = item['id'] as String? ?? '';
+    final int? alertId = item['alertId'] as int?;
+    final bool isFalseAlarm = item['isFalseAlarm'] == true;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -350,44 +444,107 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
           ),
         ],
       ),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(icon, color: color, size: 20),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, color: color, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item['title'] as String? ?? '警示',
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: const Color(0xFF1E293B),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      item['desc'] as String? ?? '',
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: const Color(0xFF64748B),
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  item['title'] as String? ?? '警示',
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: const Color(0xFF1E293B),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  item['desc'] as String? ?? '',
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    color: const Color(0xFF64748B),
-                    height: 1.4,
-                  ),
-                ),
-              ],
+          // ★ 第四十五輪：只有查得到真實 alert_id 的持久化警報才提供「這是
+          //   誤報」操作——logItems（活動流水）沒有對應的 emergency_alerts
+          //   列，alertId 恆為 null，不會顯示這個區塊。
+          if (alertId != null) ...[
+            const SizedBox(height: 10),
+            _buildFalseAlarmAction(itemId, alertId, isFalseAlarm),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// 「這是誤報」操作區：未標記時是可點擊按鈕，已標記則顯示唯讀徽章。
+  /// 按鈕文案為固定短字串（非後端動態內容），不受 RenderFlex 溢位規則的
+  /// 「動態字串」情境約束，但仍以 Flexible+ellipsis 包住徽章文字以求保險。
+  Widget _buildFalseAlarmAction(String itemId, int alertId, bool isFalseAlarm) {
+    if (isFalseAlarm) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.flag_rounded, size: 14, color: Color(0xFF94A3B8)),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              '已標記為誤報',
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.notoSansTc(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFF94A3B8),
+              ),
             ),
           ),
         ],
+      );
+    }
+
+    final isPending = _falseAlarmPending.contains(itemId);
+    return Align(
+      alignment: Alignment.centerRight,
+      child: SizedBox(
+        height: 30,
+        child: TextButton.icon(
+          onPressed: isPending ? null : () => _markFalseAlarm(itemId, alertId),
+          icon: Icon(
+            isPending ? Icons.hourglass_top_rounded : Icons.flag_outlined,
+            size: 15,
+          ),
+          label: Text(
+            isPending ? '標記中…' : '這是誤報',
+            style: GoogleFonts.notoSansTc(fontSize: 12, fontWeight: FontWeight.w700),
+          ),
+          style: TextButton.styleFrom(
+            foregroundColor: const Color(0xFF64748B),
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            minimumSize: Size.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+        ),
       ),
     );
   }

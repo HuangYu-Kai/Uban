@@ -137,16 +137,87 @@ class _SpotlightTutorialView extends StatefulWidget {
 class _SpotlightTutorialViewState extends State<_SpotlightTutorialView> {
   int _stepIndex = 0;
 
+  /// 目前步驟高光目標「捲動完成後」量到的螢幕座標。
+  ///
+  /// 之所以不在 build() 內直接同步呼叫 `_resolveTargetRect`，是因為切換步驟
+  /// 時必須先把目標捲進視野（見 [_scrollTargetIntoView]），量測結果只能取自
+  /// 捲動「完成之後」——捲動途中量到的座標是舊的，會讓高光框停在錯的位置。
+  /// null 代表「暫時不挖洞」：可能是這一步本來就沒有目標、目標量不到、或
+  /// 正在捲動中尚未量到新結果（此時退化成置中卡片，不會顯示錯誤位置的洞）。
+  Rect? _targetRect;
+
+  /// 每次切換步驟遞增一次。用來讓「使用者在捲動完成前又連按下一步」時，
+  /// 前一步驟過期的非同步捲動結果不會在回來後覆蓋新步驟已經量到的結果。
+  int _updateToken = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // 等本 widget 自己也至少畫過一影格再開始捲動／量測，做法與
+    // SpotlightTutorial.showIfNeeded 開對話框前的 postFrameCallback 一致。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _scrollTargetIntoView();
+    });
+  }
+
   void _handleNext() {
     if (_stepIndex >= widget.steps.length - 1) {
       Navigator.of(context).maybePop();
       return;
     }
-    setState(() => _stepIndex++);
+    setState(() {
+      _stepIndex++;
+      // 換下一步先清空舊高光——舊座標對應的是上一步的目標，留著只會讓洞口
+      // 停在錯的地方，不如先退化成置中卡片，等新目標捲好、量好再顯示。
+      _targetRect = null;
+    });
+    _scrollTargetIntoView();
   }
 
   void _handleSkip() {
     Navigator.of(context).maybePop();
+  }
+
+  /// 把目前步驟的目標（若有）捲進視野，捲動確定完成後才量測並套用高光矩形。
+  ///
+  /// 三種既有防呆情境原封不動保留，任何一種都不會拋例外或卡住教學：
+  /// - `targetKey == null`（純文字步驟）→ 不呼叫 ensureVisible，`_targetRect`
+  ///   維持 null（見欄位註解，呼叫端已先在 setState 或初始值清空）。
+  /// - `targetKey.currentContext == null`（元件尚未 layout，例如在 lazy list
+  ///   裡從未被 build 過）→ ensureVisible 對這種情況無能為力，略過捲動，
+  ///   直接落到下面的量測（結果同樣是 null），等同既有的「跳過高光」行為。
+  /// - 目標不在任何 Scrollable 內（例如釘在 AppBar／底部導覽列上）→
+  ///   `Scrollable.ensureVisible` 對此本身就是安全的立即完成 no-op。
+  void _scrollTargetIntoView() {
+    final int token = ++_updateToken;
+    final GlobalKey? key = widget.steps[_stepIndex].targetKey;
+    if (key == null) return;
+    unawaited(_scrollAndMeasure(key, token));
+  }
+
+  Future<void> _scrollAndMeasure(GlobalKey key, int token) async {
+    final BuildContext? targetContext = key.currentContext;
+    if (targetContext != null) {
+      try {
+        await Scrollable.ensureVisible(
+          targetContext,
+          // 讓目標落在畫面中間偏上：挖洞的高光留在上半部，下方留出足夠空間
+          // 給指引卡片（_buildCard 的上下半判斷才不會卡在邊界附近），也避免
+          // 卡片（最高可達螢幕 55%）從下往上蓋到剛捲好的目標。
+          alignment: 0.3,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+        );
+      } catch (_) {
+        // 捲動途中發生例外（例如過程中該 Scrollable 被移除）→ 視為無法捲動，
+        // 忽略即可，不中斷教學，仍走下面的量測與既有 fallback。
+      }
+    }
+
+    if (!mounted) return; // widget 可能在 await 期間被 dispose。
+    if (token != _updateToken) return; // 捲動完成前使用者已切到別的步驟，結果過期。
+
+    setState(() => _targetRect = _resolveTargetRect(key));
   }
 
   /// 量測目標元件目前在螢幕上的位置與大小。
@@ -171,8 +242,7 @@ class _SpotlightTutorialViewState extends State<_SpotlightTutorialView> {
   Widget build(BuildContext context) {
     final TutorialStep step = widget.steps[_stepIndex];
     final Size screenSize = MediaQuery.of(context).size;
-    final Rect? rawTargetRect = _resolveTargetRect(step.targetKey);
-    final Rect? holeRect = rawTargetRect?.inflate(8);
+    final Rect? holeRect = _targetRect?.inflate(8);
 
     return Material(
       type: MaterialType.transparency,

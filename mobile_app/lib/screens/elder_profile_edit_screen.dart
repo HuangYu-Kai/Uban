@@ -114,12 +114,23 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
           _appellationController.text = profile['appellation'] ?? '';
           _aiEmotionTone = (profile['ai_emotion_tone'] ?? 50).toDouble();
           _aiTextVerbosity = (profile['ai_text_verbosity'] ?? 50).toDouble();
-          
-          String fullLocation = profile['location'] ?? '';
-          if (fullLocation.isNotEmpty) {
-            _parseLocation(fullLocation);
+
+          // ★ 2026-09-11 第四十五輪第三項：優先採用結構化的 residence_city／
+          //   residence_district（本輪新增，較可靠）；只有兩者皆空時（例如舊資料
+          //   只在本輪之前存過 location 自由文字），才退回既有的字串切割解析，
+          //   避免蓋掉尚未回填結構化欄位的既有長輩資料。
+          final structuredCity = profile['residence_city']?.toString() ?? '';
+          final structuredDistrict = profile['residence_district']?.toString() ?? '';
+          if (structuredCity.isNotEmpty || structuredDistrict.isNotEmpty) {
+            _cityController.text = structuredCity;
+            _districtController.text = structuredDistrict;
+          } else {
+            String fullLocation = profile['location'] ?? '';
+            if (fullLocation.isNotEmpty) {
+              _parseLocation(fullLocation);
+            }
           }
-          
+
           _chronicDiseasesController.text = profile['chronic_diseases'] ?? '';
           _medicationNotesController.text = profile['medication_notes'] ?? '';
           _interestsController.text = profile['interests'] ?? '';
@@ -191,6 +202,11 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
       await ApiService.updateElderProfile(
         userId: elderId,
         location: '${_cityController.text.trim()}${_districtController.text.trim()}',
+        // ★ 2026-09-11 第四十五輪第三項：額外寫入結構化欄位供後端統計使用，
+        //   上面的 location 字串拼接寫法保留不動——可能還有其他讀取端在用
+        //   （AI 對話上下文、機構端統計），本輪是新增不是取代。
+        residenceCity: _cityController.text.trim(),
+        residenceDistrict: _districtController.text.trim(),
         appellation: _appellationController.text.trim(),
         aiEmotionTone: _aiEmotionTone.toInt(),
         aiTextVerbosity: _aiTextVerbosity.toInt(),
@@ -430,6 +446,11 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
                   _buildLocateButton(),
                 ],
               ),
+              // ★ 2026-09-11 第四十五輪第三項：告知居住地欄位的統計用途，且不強迫填寫。
+              _buildStatsNotice(
+                '居住地僅供用於統計資料，以提供更好的服務，可不填寫',
+                color: const Color(0xFF10B981),
+              ),
             ],
           ).animate().fadeIn(delay: 50.ms, duration: 350.ms),
 
@@ -631,6 +652,33 @@ class _ElderProfileEditScreenState extends State<ElderProfileEditScreen> {
           fontWeight: FontWeight.w700,
           color: const Color(0xFF94A3B8),
         ),
+      ),
+    );
+  }
+
+  /// ★ 2026-09-11 第四十五輪第三項：統計用途說明列（可不填寫）。
+  /// 用有色圖示＋文字取代角落小灰字，讓說明「看得到」；文字用 Flexible 換行
+  /// 而非 ellipsis 截斷——說明被截斷等於沒說明，也避免長字串造成溢位。
+  Widget _buildStatsNotice(String text, {required Color color}) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline_rounded, size: 16, color: color.withValues(alpha: 0.9)),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              text,
+              style: GoogleFonts.notoSansTc(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: color.withValues(alpha: 0.9),
+                height: 1.4,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

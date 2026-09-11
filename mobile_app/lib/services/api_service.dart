@@ -202,6 +202,9 @@ class ApiService {
     String? aiPersona,
     String? lifeStory,
     int? heartbeatFrequency,
+    int? age,
+    String? residenceCity,
+    String? residenceDistrict,
   }) => ElderDataApi.updateElderProfile(
         userId: userId,
         phone: phone,
@@ -215,6 +218,9 @@ class ApiService {
         aiPersona: aiPersona,
         lifeStory: lifeStory,
         heartbeatFrequency: heartbeatFrequency,
+        age: age,
+        residenceCity: residenceCity,
+        residenceDistrict: residenceDistrict,
       );
 
   static Future<Map<String, dynamic>> uploadAvatar(int userId, String filePath) =>
@@ -286,6 +292,11 @@ class ApiService {
 
   static Future<Map<String, dynamic>?> checkAudioBridge(int alertId, {int? userId}) =>
       CctvAlertApi.checkAudioBridge(alertId, userId: userId);
+
+  static Future<Map<String, dynamic>?> markFalseAlarm({
+    required int alertId,
+    required int userId,
+  }) => CctvAlertApi.markFalseAlarm(alertId: alertId, userId: userId);
 
   static Future<List<dynamic>> getEmergencyAlerts(
     String elderId, {

@@ -184,6 +184,12 @@ class ElderDataApi {
     String? aiPersona,
     String? lifeStory,
     int? heartbeatFrequency,
+    // ★ 2026-09-11 第四十五輪第三項：年齡／結構化居住地（縣市／鄉鎮市區）。
+    //   與既有的 location 自由文字並存、僅供統計使用、選填。後端依 user_id
+    //   是否有 elder_profile 列自動分流寫入 elder_profile 或 user_account_data。
+    int? age,
+    String? residenceCity,
+    String? residenceDistrict,
   }) async {
     try {
       final response = await http
@@ -203,6 +209,10 @@ class ElderDataApi {
               if (lifeStory != null) 'life_story': lifeStory,
               if (heartbeatFrequency != null)
                 'heartbeat_frequency': heartbeatFrequency,
+              if (age != null) 'age': age,
+              if (residenceCity != null) 'residence_city': residenceCity,
+              if (residenceDistrict != null)
+                'residence_district': residenceDistrict,
             }),
           )
           .timeout(ApiClient.timeout);

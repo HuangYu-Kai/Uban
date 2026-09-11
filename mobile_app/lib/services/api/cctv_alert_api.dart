@@ -226,6 +226,32 @@ class CctvAlertApi {
     }
   }
 
+  /// 家屬把一筆警報標記為誤報（供統計儀表板排除誤報用）。
+  /// 授權與冪等行為見後端 `routers/alert.py::mark_false_alarm`。
+  static Future<Map<String, dynamic>?> markFalseAlarm({
+    required int alertId,
+    required int userId,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('${ApiClient.baseUrl}/alerts/$alertId/false-alarm'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'user_id': userId}),
+          )
+          .timeout(ApiClient.timeout);
+      final data = ApiClient.safeDecode(response);
+      if (data['status'] == 'success') {
+        final payload = data['data'];
+        return payload is Map ? Map<String, dynamic>.from(payload) : <String, dynamic>{};
+      }
+      return null;
+    } catch (e) {
+      debugPrint('⚠️ markFalseAlarm error: $e');
+      return null;
+    }
+  }
+
   /// 長輩跌倒／緊急警報的持久歷史記錄
   static Future<List<dynamic>> getEmergencyAlerts(
     String elderId, {

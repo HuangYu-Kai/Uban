@@ -62,14 +62,28 @@ class _FamilySettingsViewState extends State<FamilySettingsView>
   bool _isMiuiFamily = false;
   bool _isOemGuideAcknowledged = false;
 
+  // ★ 2026-09-11 第四十五輪第三項：家屬本人的年齡／居住地（縣市／鄉鎮市區）。
+  //   純統計用途、全部選填，寫入 user_account_data（家屬帳號沒有 elder_profile
+  //   列，後端 update_profile() 會自動分流到這張表）。不做 GPS 自動定位——
+  //   這裡只做手動輸入，已完全滿足「不強迫回答」的需求，也不需要額外申請定位權限。
+  late TextEditingController _ageController;
+  late TextEditingController _residenceCityController;
+  late TextEditingController _residenceDistrictController;
+  bool _isLoadingDemographics = true;
+  bool _isSavingDemographics = false;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _ageController = TextEditingController();
+    _residenceCityController = TextEditingController();
+    _residenceDistrictController = TextEditingController();
     _loadUserInfo();
     _fetchPairedElders();
     _refreshNotificationPolicyStatus();
     _loadOemGuideAcknowledgedState();
+    _loadDemographics();
   }
 
   @override
@@ -77,6 +91,9 @@ class _FamilySettingsViewState extends State<FamilySettingsView>
     // ★ 這個 State 因新增 WidgetsBindingObserver 而必須在 dispose 移除，
     //   否則 observer 會一直掛在 WidgetsBinding 上造成洩漏（本專案已有前例）。
     WidgetsBinding.instance.removeObserver(this);
+    _ageController.dispose();
+    _residenceCityController.dispose();
+    _residenceDistrictController.dispose();
     super.dispose();
   }
 
@@ -165,6 +182,67 @@ class _FamilySettingsViewState extends State<FamilySettingsView>
     }
     if (!mounted) return;
     setState(() => _isOemGuideAcknowledged = acknowledged);
+  }
+
+  /// ★ 2026-09-11 第四十五輪第三項：讀取家屬本人已儲存過的年齡／居住地，
+  /// 讓設定頁重新打開時能看到上次填寫的內容，而不是每次都要重填。
+  /// 查詢失敗時維持欄位空白即可（選填欄位，不影響其他功能)。
+  Future<void> _loadDemographics() async {
+    try {
+      final profile = await ApiService.getElderProfile(widget.userId);
+      if (!mounted) return;
+      setState(() {
+        _ageController.text = profile['age']?.toString() ?? '';
+        _residenceCityController.text =
+            profile['residence_city']?.toString() ?? '';
+        _residenceDistrictController.text =
+            profile['residence_district']?.toString() ?? '';
+        _isLoadingDemographics = false;
+      });
+    } catch (e) {
+      appLogger.d('⚠️ 讀取家屬個人資料（年齡／居住地）失敗，欄位維持空白: $e');
+      if (mounted) setState(() => _isLoadingDemographics = false);
+    }
+  }
+
+  /// 儲存年齡／居住地。三個欄位都選填：年齡留白就不送出（維持原值不動，
+  /// 因為 int? 留白無法區分「沒填」與「要清空」）；縣市／鄉鎮市區留白則會
+  /// 送出空字串，允許使用者主動清空先前填過的地址（與長輩端編輯頁的既有
+  /// 慣例一致，見 elder_profile_edit_screen.dart::_saveProfile）。
+  Future<void> _saveDemographics() async {
+    setState(() => _isSavingDemographics = true);
+    try {
+      final ageText = _ageController.text.trim();
+      final result = await ApiService.updateElderProfile(
+        userId: widget.userId,
+        age: ageText.isEmpty ? null : int.tryParse(ageText),
+        residenceCity: _residenceCityController.text.trim(),
+        residenceDistrict: _residenceDistrictController.text.trim(),
+      );
+      if (!mounted) return;
+      if (result['status'] == 'error') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '儲存失敗: ${result['message'] ?? result['error'] ?? '未知錯誤'}',
+            ),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('已儲存'), backgroundColor: Colors.green),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('儲存失敗: $e'), backgroundColor: Colors.redAccent),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSavingDemographics = false);
+    }
   }
 
   /// 打開／重新打開「鎖屏與背景權限設定」引導頁。回來後重新讀取確認狀態，
@@ -450,6 +528,110 @@ class _FamilySettingsViewState extends State<FamilySettingsView>
         ],
       ),
     );
+  }
+
+  /// ★ 2026-09-11 第四十五輪第三項：家屬本人的年齡／居住地設定區塊。
+  /// 說明文字用 Text.rich 加粗關鍵字，比照隱私權政策的措辭方式，直接顯示在
+  /// 欄位上方（不是角落小灰字），且用可換行的 Text（非 ellipsis）避免被截斷。
+  Widget _buildDemographicsSection() {
+    return _buildSettingsGroup('個人資料（選填）', [
+      if (_isLoadingDemographics)
+        const Padding(
+          padding: EdgeInsets.all(20),
+          child: Center(child: CircularProgressIndicator()),
+        )
+      else ...[
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: Text.rich(
+            TextSpan(
+              style: GoogleFonts.notoSansTc(
+                fontSize: 12,
+                color: Colors.grey[600],
+                height: 1.5,
+              ),
+              children: [
+                const TextSpan(text: '年齡與居住地'),
+                TextSpan(
+                  text: '僅供用於統計資料，以提供更好的服務',
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 12,
+                    color: Colors.grey[800],
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const TextSpan(text: '，可自由選填，不會強迫您填寫。'),
+              ],
+            ),
+          ),
+        ),
+        const Divider(height: 1, indent: 16, endIndent: 16),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          child: TextField(
+            controller: _ageController,
+            keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            style: GoogleFonts.notoSansTc(),
+            decoration: InputDecoration(
+              labelText: '年齡（選填）',
+              labelStyle: GoogleFonts.notoSansTc(fontSize: 13),
+              border: const OutlineInputBorder(),
+              isDense: true,
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          child: TextField(
+            controller: _residenceCityController,
+            style: GoogleFonts.notoSansTc(),
+            decoration: InputDecoration(
+              labelText: '居住縣市（選填，例：台北市）',
+              labelStyle: GoogleFonts.notoSansTc(fontSize: 13),
+              border: const OutlineInputBorder(),
+              isDense: true,
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          child: TextField(
+            controller: _residenceDistrictController,
+            style: GoogleFonts.notoSansTc(),
+            decoration: InputDecoration(
+              labelText: '居住鄉鎮市區（選填，例：大安區）',
+              labelStyle: GoogleFonts.notoSansTc(fontSize: 13),
+              border: const OutlineInputBorder(),
+              isDense: true,
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: _isSavingDemographics
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : ElevatedButton(
+                    onPressed: _saveDemographics,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFFF9800),
+                      foregroundColor: Colors.white,
+                    ),
+                    child: Text(
+                      '儲存',
+                      style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+          ),
+        ),
+      ],
+    ]);
   }
 
   Widget _buildSettingsGroup(String title, List<Widget> items) {
@@ -949,6 +1131,8 @@ class _FamilySettingsViewState extends State<FamilySettingsView>
         child: Column(
           children: [
             _buildProfileSection(),
+            const SizedBox(height: 12),
+            _buildDemographicsSection(),
             const SizedBox(height: 12),
             _buildSettingsGroup('健康與安全', [
               _buildSwitchItem(
