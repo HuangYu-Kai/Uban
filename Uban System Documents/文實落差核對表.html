@@ -1,0 +1,1445 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Uban 文實落差核對表</title>
+<script>
+// 在首次繪製前套用已存的主題偏好，避免載入瞬間閃到另一個配色。
+(function(){
+  try{
+    var m = localStorage.getItem("uban-doc-gap-audit-v1:theme");
+    if(m === "light" || m === "dark"){
+      document.documentElement.setAttribute("data-theme", m);
+    }
+  }catch(e){}
+})();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+/* ── minimal reset ─────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body,h1,h2,h3,h4,h5,p,figure,blockquote,dl,dd{margin:0}
+ul[class],ol[class]{list-style:none;margin:0;padding:0}
+img,picture,video,canvas,svg{display:block;max-width:100%}
+input,button,textarea,select{font:inherit;color:inherit}
+button{background:none;border:none}
+table{border-collapse:collapse}
+
+:root{
+  --paper:#F3F3F0;
+  --surface:#FFFFFF;
+  --surface-sunk:#EDEDE9;
+  --ink:#17191E;
+  --ink-soft:#3A3E47;
+  --muted:#6A6E79;
+  --rule:#D9D9D3;
+  --rule-strong:#BFBFB8;
+  --accent:#2B3F6B;
+  --accent-soft:#E7EAF2;
+  --p0:#B3261E;
+  --p0-soft:#F7E6E4;
+  --p1:#8F5A12;
+  --p1-soft:#F7EEDF;
+  --p2:#4C5A72;
+  --p2-soft:#E8EBF0;
+  --ok:#2F6B4F;
+
+  --f-display:"Noto Serif TC",Georgia,"Songti TC",serif;
+  --f-body:"Noto Sans TC",-apple-system,"Segoe UI","PingFang TC","Microsoft JhengHei",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
+
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px;
+  --sp-5:24px; --sp-6:32px; --sp-7:48px; --sp-8:72px;
+}
+
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#14161A;
+    --surface:#1B1E24;
+    --surface-sunk:#22262D;
+    --ink:#E8E9EC;
+    --ink-soft:#C3C6CD;
+    --muted:#8F949F;
+    --rule:#2E333B;
+    --rule-strong:#414751;
+    --accent:#9BB0DD;
+    --accent-soft:#242B3A;
+    --p0:#E98A83;
+    --p0-soft:#33211F;
+    --p1:#D9A855;
+    --p1-soft:#2E2619;
+    --p2:#A3B2CB;
+    --p2-soft:#242932;
+    --ok:#7FBF9C;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#14161A;
+  --surface:#1B1E24;
+  --surface-sunk:#22262D;
+  --ink:#E8E9EC;
+  --ink-soft:#C3C6CD;
+  --muted:#8F949F;
+  --rule:#2E333B;
+  --rule-strong:#414751;
+  --accent:#9BB0DD;
+  --accent-soft:#242B3A;
+  --p0:#E98A83;
+  --p0-soft:#33211F;
+  --p1:#D9A855;
+  --p1-soft:#2E2619;
+  --p2:#A3B2CB;
+  --p2-soft:#242932;
+  --ok:#7FBF9C;
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0;
+  background:var(--paper);
+  color:var(--ink);
+  font-family:var(--f-body);
+  font-size:15px;
+  line-height:1.75;
+  -webkit-font-smoothing:antialiased;
+}
+a{color:var(--accent)}
+
+/* ── shell ───────────────────────────────────────── */
+.shell{
+  max-width:1240px;
+  margin:0 auto;
+  padding:var(--sp-7) var(--sp-5) var(--sp-8);
+  display:grid;
+  grid-template-columns:236px minmax(0,1fr);
+  gap:var(--sp-7);
+  align-items:start;
+}
+@media (max-width:900px){
+  .shell{grid-template-columns:minmax(0,1fr);gap:var(--sp-5);padding:var(--sp-5) var(--sp-4) var(--sp-7)}
+}
+
+/* ── masthead ────────────────────────────────────── */
+.masthead{grid-column:1/-1;border-bottom:2px solid var(--ink);padding-bottom:var(--sp-4)}
+.eyebrow{
+  font-family:var(--f-mono);
+  font-size:11px;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  color:var(--muted);
+  margin:0 0 var(--sp-3);
+}
+h1{
+  font-family:var(--f-display);
+  font-weight:700;
+  font-size:clamp(30px,4.4vw,46px);
+  line-height:1.18;
+  letter-spacing:-.01em;
+  margin:0 0 var(--sp-3);
+  text-wrap:balance;
+}
+.standfirst{
+  margin:0;
+  max-width:62ch;
+  color:var(--ink-soft);
+  font-size:16px;
+}
+.masthead-meta{
+  display:flex;flex-wrap:wrap;gap:var(--sp-2) var(--sp-4);
+  margin-top:var(--sp-4);
+  font-family:var(--f-mono);font-size:11.5px;color:var(--muted);
+}
+.masthead-meta b{color:var(--ink-soft);font-weight:500}
+
+/* ── premises ────────────────────────────────────── */
+.premises{grid-column:1/-1;display:grid;gap:var(--sp-3);grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
+.premise{
+  background:var(--surface);
+  border:1px solid var(--rule);
+  border-left:3px solid var(--p0);
+  padding:var(--sp-4) var(--sp-5);
+}
+.premise h3{
+  font-family:var(--f-body);font-size:13.5px;font-weight:700;
+  margin:0 0 var(--sp-2);color:var(--p0);
+  letter-spacing:.01em;
+}
+.premise p{margin:0;font-size:14px;color:var(--ink-soft)}
+
+/* ── rail ────────────────────────────────────────── */
+.rail{position:sticky;top:var(--sp-5);display:flex;flex-direction:column;gap:var(--sp-5)}
+@media (max-width:900px){.rail{position:static}}
+.rail-block h4{
+  font-family:var(--f-mono);font-size:10.5px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--muted);
+  margin:0 0 var(--sp-3);padding-bottom:var(--sp-2);
+  border-bottom:1px solid var(--rule);
+}
+.progress-figure{
+  font-family:var(--f-mono);
+  font-variant-numeric:tabular-nums;
+  font-size:30px;line-height:1;color:var(--ink);
+}
+.progress-figure span{font-size:15px;color:var(--muted)}
+.bar{height:5px;background:var(--surface-sunk);margin-top:var(--sp-3);overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--ok);transition:width .25s ease}
+.progress-note{margin:var(--sp-2) 0 0;font-size:12.5px;color:var(--muted)}
+.progress-note.warn{color:var(--p1);line-height:1.6}
+.progress-note.warn code{font-size:11.5px;background:var(--p1-soft)}
+.progress-note[hidden]{display:none}
+
+.filters{display:flex;flex-wrap:wrap;gap:var(--sp-2)}
+.chip{
+  font-family:var(--f-mono);font-size:11.5px;
+  padding:4px 10px;cursor:pointer;
+  background:var(--surface);color:var(--ink-soft);
+  border:1px solid var(--rule);
+  transition:background .15s,border-color .15s,color .15s;
+}
+.chip:hover{border-color:var(--rule-strong)}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.chip:focus-visible,.reset:focus-visible,.tick:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.reset{
+  font-family:var(--f-body);font-size:12.5px;
+  background:none;border:none;padding:0;cursor:pointer;
+  color:var(--muted);text-decoration:underline;text-underline-offset:3px;
+}
+.reset:hover{color:var(--ink)}
+
+/* ── groups ──────────────────────────────────────── */
+.stream{display:flex;flex-direction:column;gap:var(--sp-7);min-width:0}
+.group{display:flex;flex-direction:column;gap:var(--sp-3)}
+.group[hidden]{display:none}
+.group > header{
+  display:flex;align-items:baseline;gap:var(--sp-3);
+  border-bottom:1px solid var(--rule-strong);
+  padding-bottom:var(--sp-2);margin-bottom:var(--sp-2);
+}
+.group h2{
+  font-family:var(--f-display);font-weight:600;
+  font-size:22px;margin:0;letter-spacing:-.005em;
+}
+.group .count{
+  font-family:var(--f-mono);font-size:11.5px;color:var(--muted);
+  font-variant-numeric:tabular-nums;margin-left:auto;
+}
+.group-note{margin:0 0 var(--sp-2);font-size:13.5px;color:var(--muted);max-width:70ch}
+
+/* ── item ────────────────────────────────────────── */
+.item{
+  background:var(--surface);
+  border:1px solid var(--rule);
+  padding:var(--sp-4) var(--sp-5) var(--sp-5);
+  transition:opacity .2s;
+}
+.item[hidden]{display:none}
+.item-head{display:flex;align-items:flex-start;gap:var(--sp-3);flex-wrap:wrap}
+.tick{
+  appearance:none;-webkit-appearance:none;
+  width:17px;height:17px;flex:0 0 17px;margin:5px 0 0;
+  border:1.5px solid var(--rule-strong);background:var(--surface);
+  cursor:pointer;position:relative;border-radius:2px;
+}
+.tick:checked{background:var(--ok);border-color:var(--ok)}
+.tick:checked::after{
+  content:"";position:absolute;left:5px;top:1px;
+  width:4px;height:9px;border:solid #fff;border-width:0 2px 2px 0;
+  transform:rotate(43deg);
+}
+.id{
+  font-family:var(--f-mono);font-size:11.5px;color:var(--muted);
+  margin-top:6px;letter-spacing:.02em;
+}
+.pill{
+  font-family:var(--f-mono);font-size:10.5px;letter-spacing:.08em;
+  padding:3px 8px;margin-top:5px;white-space:nowrap;
+}
+.pill.p0{background:var(--p0-soft);color:var(--p0)}
+.pill.p1{background:var(--p1-soft);color:var(--p1)}
+.pill.p2{background:var(--p2-soft);color:var(--p2)}
+.loc{
+  flex:1 1 240px;min-width:0;margin-top:3px;
+  font-weight:700;font-size:15px;line-height:1.5;color:var(--ink);
+}
+.item.done{opacity:.48}
+.item.done .loc{text-decoration:line-through;text-decoration-thickness:1px}
+
+/* parallel text */
+.parallel{
+  display:grid;grid-template-columns:1fr 1fr;
+  gap:0;margin-top:var(--sp-4);
+  border-top:1px solid var(--rule);
+}
+@media (max-width:640px){.parallel{grid-template-columns:1fr}}
+.side{padding:var(--sp-3) 0 var(--sp-2)}
+.side + .side{
+  border-left:1px solid var(--rule);
+  padding-left:var(--sp-5);
+}
+@media (max-width:640px){
+  .side + .side{border-left:none;border-top:1px solid var(--rule);padding-left:0}
+}
+.side:first-child{padding-right:var(--sp-5)}
+@media (max-width:640px){.side:first-child{padding-right:0}}
+.side h5{
+  font-family:var(--f-mono);font-size:10.5px;letter-spacing:.1em;
+  text-transform:uppercase;margin:0 0 var(--sp-2);font-weight:500;
+}
+.side.doc h5{color:var(--muted)}
+.side.impl h5{color:var(--accent)}
+.side p{margin:0;font-size:14px;color:var(--ink-soft)}
+.side.doc p{color:var(--muted)}
+
+code{
+  font-family:var(--f-mono);font-size:12.5px;
+  background:var(--surface-sunk);color:var(--ink);
+  padding:1px 5px;border-radius:2px;
+  word-break:break-word;
+}
+.side.doc code{color:var(--ink-soft)}
+
+.foot{margin-top:var(--sp-4);display:flex;flex-direction:column;gap:var(--sp-2)}
+.line{display:flex;gap:var(--sp-3);align-items:baseline;font-size:13px}
+.line > span:first-child{
+  font-family:var(--f-mono);font-size:10.5px;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--muted);
+  flex:0 0 52px;
+}
+.line.evidence > span:last-child{
+  font-family:var(--f-mono);font-size:12px;color:var(--muted);
+  overflow-x:auto;white-space:nowrap;padding-bottom:2px;
+}
+.line.action > span:last-child{color:var(--ink);font-weight:500}
+
+.empty{
+  padding:var(--sp-6);text-align:center;color:var(--muted);
+  border:1px dashed var(--rule-strong);font-size:14px;
+}
+.empty[hidden]{display:none}
+
+footer.page{
+  grid-column:1/-1;margin-top:var(--sp-7);padding-top:var(--sp-4);
+  border-top:1px solid var(--rule);
+  font-size:13px;color:var(--muted);max-width:74ch;
+}
+footer.page p{margin:0 0 var(--sp-2)}
+
+@media (prefers-reduced-motion:reduce){
+  *{transition:none !important;animation:none !important}
+}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <header class="masthead">
+    <p class="eyebrow">二技第 115207 組 · Uban · 文件稽核</p>
+    <h1>文實落差核對表</h1>
+    <p class="standfirst">
+      把《Uban 系統手冊》八章逐節、逐圖、逐欄比對 <code>origin/main</code> 的實際程式碼，
+      列出 51 項對不上的地方。每項都標出文件寫什麼、程式碼實際是什麼、以及可自行覆核的佐證位置。
+    </p>
+    <div class="masthead-meta">
+      <span>盤點日 <b>2026-09-13</b></span>
+      <span>前端 <b>Uban @ 84c08b4</b></span>
+      <span>後端 <b>uban-api @ origin/main 987a4d0</b></span>
+      <span>比對範圍 <b>Ch2–Ch8</b></span>
+    </div>
+  </header>
+
+  <section class="premises">
+    <div class="premise">
+      <h3>前提一：別拿本機的 uban-api 比對</h3>
+      <p>
+        本機工作目錄停在 <code>f8679b7</code>（08-24），<code>origin/main</code> 已到
+        <code>987a4d0</code>（09-13），相差三週。用本機版本比對會把 BUG 回報、標記誤報、
+        開發者後台等<strong>已完成</strong>的功能誤判為未實作。本表所有後端結論一律以
+        <code>git show origin/main:&lt;path&gt;</code> 為準。
+      </p>
+    </div>
+    <div class="premise">
+      <h3>前提二：系統手冊裡裝的是舊版第五章</h3>
+      <p>
+        <code>Chapter 5(update5-1).docx</code>（09-13）已把角色從「管理者」改為「開發者」並新增
+        十餘項使用案例，<strong>而且大多真的實作了</strong>。但合併本
+        <code>系統手冊(初審).docx</code> 收錄的仍是改版前的第五章，兩份文件目前互相打架。
+      </p>
+    </div>
+  </section>
+
+  <aside class="rail">
+    <div class="rail-block">
+      <h4>處理進度</h4>
+      <div class="progress-figure"><b id="done">0</b><span> / 51</span></div>
+      <div class="bar"><i id="bar"></i></div>
+      <p class="progress-note" id="noteOk">勾選狀態存在這台瀏覽器，重新整理不會消失。</p>
+      <p class="progress-note warn" id="noteBad" hidden>這次的勾選<strong>不會被記住</strong>——Chrome 與 Edge 以本機檔案開啟時會擋住網頁儲存。想保留進度，改用 Firefox 開啟，或在本資料夾執行 <code>python -m http.server</code> 後用 <code>localhost:8000</code> 開。</p>
+      <p style="margin:var(--sp-3) 0 0" id="resetWrap"><button class="reset" id="reset" type="button">清除全部勾選</button></p>
+    </div>
+
+    <div class="rail-block">
+      <h4>嚴重度</h4>
+      <div class="filters" id="sevFilters">
+        <button class="chip" type="button" data-sev="p0" aria-pressed="false">P0 擋口試</button>
+        <button class="chip" type="button" data-sev="p1" aria-pressed="false">P1 會被問</button>
+        <button class="chip" type="button" data-sev="p2" aria-pressed="false">P2 補齊即可</button>
+      </div>
+    </div>
+
+    <div class="rail-block">
+      <h4>章節</h4>
+      <div class="filters" id="chFilters">
+        <button class="chip" type="button" data-ch="ch2" aria-pressed="false">第二章</button>
+        <button class="chip" type="button" data-ch="ch3" aria-pressed="false">第三章</button>
+        <button class="chip" type="button" data-ch="ch4" aria-pressed="false">第四章</button>
+        <button class="chip" type="button" data-ch="ch5" aria-pressed="false">第五章</button>
+        <button class="chip" type="button" data-ch="ch6" aria-pressed="false">第六章</button>
+        <button class="chip" type="button" data-ch="ch7" aria-pressed="false">第七章</button>
+        <button class="chip" type="button" data-ch="ch8" aria-pressed="false">第八章</button>
+      </div>
+    </div>
+
+    <div class="rail-block">
+      <h4>檢視</h4>
+      <div class="filters">
+        <button class="chip" type="button" id="hideDone" aria-pressed="false">隱藏已處理</button>
+      </div>
+      <div class="filters" id="themeFilters" role="group" aria-label="配色主題">
+        <button class="chip" type="button" data-theme-set="system" aria-pressed="true">跟隨系統</button>
+        <button class="chip" type="button" data-theme-set="light" aria-pressed="false">淺色</button>
+        <button class="chip" type="button" data-theme-set="dark" aria-pressed="false">深色</button>
+      </div>
+    </div>
+  </aside>
+
+  <main class="stream" id="stream">
+
+    <!-- ═══════════════ P0 ═══════════════ -->
+    <section class="group">
+      <header>
+        <h2>P0 — 會在口試當場被抓</h2>
+        <span class="count" data-count="p0"></span>
+      </header>
+      <p class="group-note">圖與文字互相矛盾、或文件寫了系統裡根本沒有的技術。這類問題只要委員翻到圖、或要求 demo 對照，就會直接對不上。</p>
+
+      <!-- P0-1 -->
+      <article class="item" data-id="A1" data-sev="p0" data-ch="ch5">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 A1 已處理">
+          <span class="id">A1</span><span class="pill p0">P0</span>
+          <span class="loc">圖 5-21 使用個案圖：角色與文字表完全對不上</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>圖上是<strong>長輩／家屬／管理者</strong>三角色共 14 個使用案例，管理者底下掛「狀態與日誌監控／模型管理作業／使用者權限管理／用戶與資源分配」。</p></div>
+          <div class="side impl"><h5>同一份檔案的 5-1 表格</h5><p>第三個角色已改名為<strong>開發者</strong>，使用案例改成 7 組：開發者登入、帳號安全管理、平台數據分析、使用者除錯、權限管理、問題處理、營運管理。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>Chapter 5(update5-1).docx → word/media/image1.png（文件內第 1 張圖）</span></div>
+          <div class="line action"><span>動作</span><span>重畫使用個案圖，三個角色改為 長輩／家屬／開發者</span></div>
+        </div>
+      </article>
+
+      <article class="item" data-id="A2" data-sev="p0" data-ch="ch5">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 A2 已處理">
+          <span class="id">A2</span><span class="pill p0">P0</span>
+          <span class="loc">圖 5-31～5-314：14 張活動圖全部對應舊使用案例</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>14 張活動圖，涵蓋長輩登入、AI 語音陪伴、AI 日常提醒、長輩通訊、社群互動、趣味養成、帳號與設備管理、照護排程、狀態監測、家屬通訊，以及管理者的四張。</p></div>
+          <div class="side impl"><h5>5-1 表格新增卻沒有圖的</h5><p>跌倒自動警報、標記警報誤報、家屬社交、AI 協作助理、生命回顧（錄製／瀏覽）、問題回報、農民曆、新手引導、隱私同意、餵食小豬、成長階段與賽季——<strong>11 項全部沒有活動圖</strong>。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>Chapter 5(update5-1).docx → word/media/image2.png ～ image15.png</span></div>
+          <div class="line action"><span>動作</span><span>補畫新增使用案例的活動圖；管理者那四張改畫成開發者的流程</span></div>
+        </div>
+      </article>
+
+      <article class="item" data-id="A3" data-sev="p0" data-ch="ch5">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 A3 已處理">
+          <span class="id">A3</span><span class="pill p0">P0</span>
+          <span class="loc">圖 5-41 分析類別圖：留著已刪掉的功能</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>類別圖含 <code>虛擬商品</code>（price_points、item_type「造型,語音包」）、<code>消費申請</code>（狀態「待審核,核准,拒絕」）、<code>系統日誌</code>（log_level、message）。</p></div>
+          <div class="side impl"><h5>實際狀況</h5><p>5-1 表格已刪除對應的「申請購買稀有造型」「審核長輩消費申請」兩個使用案例；程式碼裡點數與消費申請 <strong>0 個命中</strong>；也沒有系統日誌表。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>Chapter 5(update5-1).docx → word/media/image16.png</span></div>
+          <div class="line action"><span>動作</span><span>刪掉三個類別，重畫分析類別圖</span></div>
+        </div>
+      </article>
+
+      <article class="item" data-id="A4" data-sev="p0" data-ch="ch5">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 A4 已處理">
+          <span class="id">A4</span><span class="pill p0">P0</span>
+          <span class="loc">系統手冊合併本收錄的是改版前的第五章</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p><code>系統手冊(初審).docx</code> 的第五章仍是「管理者」版本，含「申請購買稀有造型」「審核長輩消費申請」。</p></div>
+          <div class="side impl"><h5>實際狀況</h5><p>分章檔 <code>Chapter 5(update5-1).docx</code> 已是「開發者」版本。兩份都標 09-13 更新，內容卻不同步。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>Uban System Documents/ 兩檔並存；另有 Chapter 5-backup-2026-09-12.docx</span></div>
+          <div class="line action"><span>動作</span><span>把合併本的第五章換成 update5-1，並確立「分章檔為準」的單一真相來源</span></div>
+        </div>
+      </article>
+
+      <!-- P0-2 Ch3 tech -->
+      <article class="item" data-id="B1" data-sev="p0" data-ch="ch3">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 B1 已處理">
+          <span class="id">B1</span><span class="pill p0">P0</span>
+          <span class="loc">MongoDB 根本沒用到</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>圖 3-13：「非結構性資料則交由 MongoDB (NoSQL 資料庫) 處理，提升資料管理的彈性」；表 3-31 也列了 MongoDB 與 MongoDB Compass。</p></div>
+          <div class="side impl"><h5>實作是</h5><p><code>git grep -i mongo origin/main</code> <strong>0 個命中</strong>。真正的非關聯式儲存是 <strong>Pinecone 向量資料庫</strong>（index <code>uban</code>，768 維，cosine），用途是 AI 長期記憶。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>services/pinecone_service.py · CLAUDE.md「核心技術棧」表</span></div>
+          <div class="line action"><span>動作</span><span>圖 3-13 與表 3-31 的 MongoDB 全部改為 Pinecone，並補上用途說明</span></div>
+        </div>
+      </article>
+
+      <article class="item" data-id="B2" data-sev="p0" data-ch="ch3">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 B2 已處理">
+          <span class="id">B2</span><span class="pill p0">P0</span>
+          <span class="loc">n8n 自動化工作流未實作</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>圖 3-13：「串接了 n8n（長／後期開發：提供自動化客製工作流服務）」。</p></div>
+          <div class="side impl"><h5>實作是</h5><p><code>git grep -i n8n origin/main</code> <strong>0 個命中</strong>。排程全部由 <code>main.py</code> 內建的 scheduler 負責。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>main.py 排程任務表（check_and_distribute／heartbeat_job／daily_news_crawl_job／daily_pond_leaf_job）</span></div>
+          <div class="line action"><span>動作</span><span>圖上移除 n8n，或明確標註為「未實作之規劃」</span></div>
+        </div>
+      </article>
+
+      <article class="item" data-id="B3" data-sev="p0" data-ch="ch3">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 B3 已處理">
+          <span class="id">B3</span><span class="pill p0">P0</span>
+          <span class="loc">新聞不是串 News API，是自己爬</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>圖 3-13：「系統整合了 Go日曆與 News API（獲取即時、頭條新聞），豐富應用內容」。</p></div>
+          <div class="side impl"><h5>實作是</h5><p>自建 <strong>中央社 CNA 爬蟲</strong>，11 個分類，每日 06:00 排程爬取後落地 <code>daily_news_items</code>，另於 03:00 預先合成語音。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>services/news_crawler_service.py · routers/news.py · main.py::daily_news_crawl_job</span></div>
+          <div class="line action"><span>動作</span><span>改寫為自建爬蟲，並補上「11 分類 + 每日排程 + TTS 預合成」的流程</span></div>
+        </div>
+      </article>
+
+      <article class="item" data-id="B4" data-sev="p0" data-ch="ch3">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 B4 已處理">
+          <span class="id">B4</span><span class="pill p0">P0</span>
+          <span class="loc">「Go日曆」外部服務不存在</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>圖 3-12／3-13：「後端也會向外部請求『Go日曆』的服務」「獲取每日農曆資訊」。</p></div>
+          <div class="side impl"><h5>實作是</h5><p>後端沒有任何 lunar／農曆 相關程式碼。農民曆是<strong>前端本地計算</strong>後直接渲染。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>Uban/mobile_app/lib/models/almanac_data_helper.dart · lib/screens/almanac/farmer_almanac_screen.dart</span></div>
+          <div class="line action"><span>動作</span><span>把農民曆從「外部 API」改標為前端本地模組</span></div>
+        </div>
+      </article>
+
+      <article class="item" data-id="B5" data-sev="p0" data-ch="ch3">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 B5 已處理">
+          <span class="id">B5</span><span class="pill p0">P0</span>
+          <span class="loc">容器化是 Podman，不是 Docker</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>圖 3-12：「Fedora Linux Server 區域：使用 Docker 進行容器化管理」。</p></div>
+          <div class="side impl"><h5>實作是</h5><p>後端技術棧記載為 <strong>Podman + Tailscale</strong> 自動化部署。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>uban-api/CLAUDE.md「核心技術棧」表：容器化 = Podman + Tailscale</span></div>
+          <div class="line action"><span>動作</span><span>改為 Podman（Dockerfile 仍在，但執行環境是 Podman，敘述要一致）</span></div>
+        </div>
+      </article>
+
+      <article class="item" data-id="B6" data-sev="p0" data-ch="ch3">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 B6 已處理">
+          <span class="id">B6</span><span class="pill p0">P0</span>
+          <span class="loc">圖 3-11／3-12 把三台主機畫成兩區</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>「Ubuntu Server 區域：部署了 COTURN 伺服器…另外獨立部署了 Ollama Server 運行 Gemma AI 模型」——兩者畫在同一區塊。</p></div>
+          <div class="side impl"><h5>實作是</h5><p>實際分屬三處：FastAPI 信令在 <strong>Fedora</strong>（Tailscale Funnel）、Ollama 在 <strong>boyo-desktop</strong>（另一 Tailscale 節點 <code>tail531c8a.ts.net</code>）、Coturn 在 <strong>Oracle Cloud 日本大阪公網</strong> <code>turn:152.69.196.5:3478</code>。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>Uban/README.md 雙軌制架構圖與連線資訊表 · uban-api/CLAUDE.md 連線資訊</span></div>
+          <div class="line action"><span>動作</span><span>重畫成三個獨立節點，並標明「信令走 TCP/WSS、媒體走 UDP」的雙軌分離理由</span></div>
+        </div>
+      </article>
+
+      <article class="item" data-id="B7" data-sev="p0" data-ch="ch3">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 B7 已處理">
+          <span class="id">B7</span><span class="pill p0">P0</span>
+          <span class="loc">AI 引擎漏掉 Gemini 備援軌</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>只寫 Ollama 開源預訓練模型／Gemma。Gemini 僅出現在第十四章「使用 AI 輔助產出工具」的說明表裡，被當成寫文件的工具。</p></div>
+          <div class="side impl"><h5>實作是</h5><p><strong>雙軌 AI</strong>：Ollama <code>gemma4:e4b-it-q4_K_M</code> 為主引擎（支援 Tool Calling），<strong>Google Gemini 2.5／3.5 Flash 為備援</strong>，Ollama 不可用時自動切換。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>services/gemini_service.py · services/ollama_service.py · tests/test_ai_fallback.py · tests/test_gemini_rotation.py</span></div>
+          <div class="line action"><span>動作</span><span>架構圖與技術棧補上 Gemini 備援軌與切換條件</span></div>
+        </div>
+      </article>
+
+      <article class="item" data-id="B8" data-sev="p0" data-ch="ch3">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 B8 已處理">
+          <span class="id">B8</span><span class="pill p0">P0</span>
+          <span class="loc">表 3-31 開發工具表缺一大半</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>只列 Dart／Flutter／Python／FastAPI／MySQL／MongoDB／各式 IDE 與美術工具。</p></div>
+          <div class="side impl"><h5>實際在用但沒列</h5><p><strong>React + TypeScript + Vite</strong>（開發者管理端前端）、Podman、Tailscale、Firebase FCM、Pinecone、RevenueCat、YOLOv8、Faster-Whisper、Socket.IO、WebRTC／Coturn、Edge-TTS／Piper／CosyVoice／雅婷台語 TTS。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>uban-api/uban-admin/（React+Vite）· requirements.txt · Uban/mobile_app/pubspec.yaml</span></div>
+          <div class="line action"><span>動作</span><span>擴充表 3-31，按「前端／後端／資料／AI／基礎設施／第三方服務」分組</span></div>
+        </div>
+      </article>
+
+      <!-- P0-3 admin -->
+      <article class="item" data-id="C1" data-sev="p0" data-ch="ch3">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 C1 已處理">
+          <span class="id">C1</span><span class="pill p0">P0</span>
+          <span class="loc">「管理端」的定義已被實作推翻兩次</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>圖 3-11：「管理端：供系統開發者與管理者使用，負責使用者帳戶與系統權限的管理」。</p></div>
+          <div class="side impl"><h5>實作是</h5><p>先被做成 <strong>機構管理端（B2B 日照中心）</strong>，再於 <strong>09-13 第四十六輪整個刪除</strong>；<code>/admin</code> 現在掛的是<strong>開發者管理端</strong>：Overview（人口分布／警報統計／通話統計）、Accounts、BugReports、DeveloperAccounts、Elders、PetSeasons、Alerts。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>uban-admin/src/pages/*.tsx · auth_developer.py · routers/{admin,admin_stats,developer,developer_users}.py</span></div>
+          <div class="line action"><span>動作</span><span>Ch3 管理端敘述整段重寫為開發者管理端，並列出九個頁面</span></div>
+        </div>
+      </article>
+
+      <article class="item" data-id="C2" data-sev="p0" data-ch="ch6">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 C2 已處理">
+          <span class="id">C2</span><span class="pill p0">P0</span>
+          <span class="loc">圖 6-111～6-114：四張循序圖畫的是不存在的功能</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>狀態與日誌監控、模型管理作業、用戶與資源分配、使用者權限管理，各一張循序圖。</p></div>
+          <div class="side impl"><h5>實作是</h5><p>沒有伺服器資源／錯誤日誌介面，也沒有 AI 提示詞調優介面（提示詞是靜態檔 <code>server/agent/SOUL.md</code>）。實際有的是開發者的：帳號封禁、訂閱層級調整、寵物賽季管理、BUG 回饋處理、使用者時間軸除錯。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>routers/admin.py · routers/developer_users.py · tests/test_admin.py · tests/test_admin_pet_season.py</span></div>
+          <div class="line action"><span>動作</span><span>四張循序圖改畫開發者管理端的實際流程</span></div>
+        </div>
+      </article>
+
+      <!-- P0-4 DB -->
+      <article class="item" data-id="D1" data-sev="p0" data-ch="ch8">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 D1 已處理">
+          <span class="id">D1</span><span class="pill p0">P0</span>
+          <span class="loc">第八章只有 11 張表，實際約 45 張</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>T01–T11：user_account_data、elder_profile、family_elder_relationship、call_record、pairing_code、elder_fellowship_data、family_message、activity_log、elder_talk_topics、get_appearance_list、gawa_appearance。</p></div>
+          <div class="side impl"><h5>實作另有</h5><p><strong>開發者端</strong> developer_account／admin_action_log／account_ban／bug_report；<strong>寵物新系統</strong> pet_season／pet_season_settlement／pet_skin／pet_stage_threshold／elder_pet_state／elder_pet_skin_ownership／elder_pet_skin_selection；<strong>好友社群</strong> elder_friendship／friend_post(+comment,+like)／family_friendship／family_friend_code／family_friend_post(+comment,+like)／community_posts(+comments,+likes)；<strong>監控警報</strong> monitor_device_binding／monitor_setup_code／monitor_device_ip／cctv_feed_status／emergency_alerts／alert_audio_permissions；<strong>室內定位</strong> elder_zone_config／elder_zone_event；<strong>訂閱</strong> subscription_status／subscription_records；另有 remote_reminders／daily_news_items／user_fcm_token／elder_daily_step。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>database.py（init_sqlite_db／init_mysql_tables 兩分支）· scripts/migrations/*.sql · services/socket_app.py</span></div>
+          <div class="line action"><span>動作</span><span>第八章按模組分組補齊 Meta data 表；機構相關七張表已 DROP，不要列入</span></div>
+        </div>
+      </article>
+
+      <article class="item" data-id="D2" data-sev="p0" data-ch="ch8">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 D2 已處理">
+          <span class="id">D2</span><span class="pill p0">P0</span>
+          <span class="loc">圖 8-11 ER 圖需整張重畫</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>11 張表的關聯圖，以 elder_profile 與 user_account_data 為中心。</p></div>
+          <div class="side impl"><h5>實作是</h5><p>缺了三分之二的表與關聯。另外 <code>elder_talk_topics.keyword</code> 圖上畫 VARCHAR(16)，<code>database.py</code> 實際是 VARCHAR(64)。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>Chapter 8.docx → word/media/image1.png · database.py 建表語句</span></div>
+          <div class="line action"><span>動作</span><span>重畫 ER 圖；表數量太多時可拆成「核心／照護監控／社群遊戲／營運管理」四張子圖</span></div>
+        </div>
+      </article>
+
+      <article class="item" data-id="D3" data-sev="p0" data-ch="ch8">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 D3 已處理">
+          <span class="id">D3</span><span class="pill p0">P0</span>
+          <span class="loc">表 8-21 user_account_data 缺三個統計欄位</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>八欄：user_id、user_name、user_email、password、account_create_time、user_authority、payment_channel、register_platform。</p></div>
+          <div class="side impl"><h5>實作是</h5><p>migration 012 已新增 <code>age INT NULL</code>、<code>residence_city VARCHAR(16)</code>、<code>residence_district VARCHAR(16)</code>，供開發者端人口分布儀表板 GROUP BY 使用。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>scripts/migrations/012_round45_stats_and_developer.sql 第 1 節</span></div>
+          <div class="line action"><span>動作</span><span>表 8-21 補三欄，並註明皆可為 NULL（使用者可拒答）</span></div>
+        </div>
+      </article>
+
+      <article class="item" data-id="D4" data-sev="p0" data-ch="ch8">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 D4 已處理">
+          <span class="id">D4</span><span class="pill p0">P0</span>
+          <span class="loc">表 8-22 elder_profile 缺結構化居住地</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>21 欄，居住地只有自由文字的 <code>location VARCHAR(32)</code>。</p></div>
+          <div class="side impl"><h5>實作是</h5><p>migration 012 另加 <code>residence_city</code>、<code>residence_district</code> 兩欄（<code>age</code>、<code>location</code> 本來就有，該檔未動）。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>scripts/migrations/012_round45_stats_and_developer.sql 第 2 節</span></div>
+          <div class="line action"><span>動作</span><span>表 8-22 補兩欄</span></div>
+        </div>
+      </article>
+
+      <article class="item" data-id="D5" data-sev="p0" data-ch="ch8">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 D5 已處理">
+          <span class="id">D5</span><span class="pill p0">P0</span>
+          <span class="loc">表 8-24 call_record 缺 is_emergency</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>八欄，無法區分一般通話與緊急通話。另註明 <code>start_time</code> 可為空。</p></div>
+          <div class="side impl"><h5>實作是</h5><p>已加 <code>is_emergency TINYINT(1) NOT NULL DEFAULT 0</code> 供統計區分。且 <code>start_time</code> 在正式 MySQL 是 <strong>NOT NULL</strong>——後端 CLAUDE.md 特別註明此處與 DATABASE_SCHEMA_CRITICAL.md 記載不同，以實際結構為準。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>migrations/012 第 4 節 · uban-api/CLAUDE.md「兩個資料模型坑」</span></div>
+          <div class="line action"><span>動作</span><span>補 is_emergency，並修正 start_time 的必要性標記</span></div>
+        </div>
+      </article>
+
+      <article class="item" data-id="D6" data-sev="p0" data-ch="ch8">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 D6 已處理">
+          <span class="id">D6</span><span class="pill p0">P0</span>
+          <span class="loc">user_authority 的語意被改掉了</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>表 8-21：<code>user_authority</code> 中文名「使用者權限」，型態 ENUM。</p></div>
+          <div class="side impl"><h5>實作是</h5><p>這一欄實際存的是<strong>訂閱層級</strong>——<code>_sync_user_authority()</code> 依 RevenueCat 推導的 tier 寫入 free／gold／diamond（正式庫 ENUM 值形如 <code>'Normal','Sub1',…</code>）。系統裡沒有任何地方拿它當權限判斷。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>routers/subscription.py::_sync_user_authority() · DATABASE_SCHEMA_CRITICAL.md</span></div>
+          <div class="line action"><span>動作</span><span>中文名改為「訂閱層級」；若要保留「權限」語意就得改程式，兩者擇一</span></div>
+        </div>
+      </article>
+
+      <article class="item" data-id="D7" data-sev="p0" data-ch="ch8">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 D7 已處理">
+          <span class="id">D7</span><span class="pill p0">P0</span>
+          <span class="loc">elder_profile.location 被 GPS 覆寫成敘述字串</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>表 8-22：<code>location</code> 中文名「所在地」，VARCHAR(32)，語意是長輩居住地區。</p></div>
+          <div class="side impl"><h5>實作是</h5><p>定位更新端點會把它覆寫成「<strong>在 1 樓的 客廳</strong>」這種即時位置敘述，原本的「所在地」語意被吃掉。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>routers/user.py::update_elder_location()（UPDATE elder_profile SET location = …）</span></div>
+          <div class="line action"><span>動作</span><span>文件改註為「最後已知位置敘述」；居住地請改用新增的 residence_city／district</span></div>
+        </div>
+      </article>
+
+      <article class="item" data-id="D8" data-sev="p0" data-ch="ch8">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 D8 已處理">
+          <span class="id">D8</span><span class="pill p0">P0</span>
+          <span class="loc">GPS 軌跡沒有專屬資料表</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>第五章有「獲取長者定位與導航」使用案例，分析類別圖有 <code>狀態監測日誌</code>（location_id／latitude／longitude）。</p></div>
+          <div class="side impl"><h5>實作是</h5><p>沒有這張表。經緯度、樓層、房間標籤被塞進 <code>activity_log.extra_data</code> 的 JSON 字串，以 <code>event_type='location'</code> 區分。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>routers/user.py::update_elder_location()（INSERT INTO activity_log … extra_data）</span></div>
+          <div class="line action"><span>動作</span><span>文件如實描述這個設計（或決定補一張表，再回寫文件）</span></div>
+        </div>
+      </article>
+
+      <article class="item" data-id="D9" data-sev="p0" data-ch="ch8">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 D9 已處理">
+          <span class="id">D9</span><span class="pill p0">P0</span>
+          <span class="loc">activity_log 沒有 elder_id，ER 圖照畫會誤導</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>表 8-28 與 ER 圖把 activity_log 當成長輩活動紀錄使用。</p></div>
+          <div class="side impl"><h5>實作是</h5><p>這張表<strong>只有 user_id、沒有 elder_id</strong>。任何跨長輩統計都必須先 JOIN <code>elder_profile</code> 做 id 轉換——後端文件把這點列為必讀的資料模型坑。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>database.py activity_log 建表語句 · routers/developer_users.py 檔頭說明</span></div>
+          <div class="line action"><span>動作</span><span>ER 圖標明關聯要經 elder_profile 轉換，避免畫成 activity_log 直連長輩</span></div>
+        </div>
+      </article>
+
+      <article class="item" data-id="D10" data-sev="p0" data-ch="ch8">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 D10 已處理">
+          <span class="id">D10</span><span class="pill p0">P0</span>
+          <span class="loc">新舊兩套寵物資料表同時存在</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>T10 <code>get_appearance_list</code>、T11 <code>gawa_appearance</code>，配合 <code>elder_profile.gawa_id</code>、<code>step_total</code>，以造型與步數為核心。</p></div>
+          <div class="side impl"><h5>實作是</h5><p>新增了一整套 <code>pet_*</code> 系統（賽季、結算、皮膚、成長階段門檻、<code>elder_pet_state</code> 體重制），由 <code>routers/pet.py</code> 使用；<strong>舊表並未移除</strong>，<code>routers/game.py</code> 仍引用舊表 17 處。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>routers/pet.py · routers/game.py · tests/test_pet_skin.py · tests/test_pet_thresholds_season.py</span></div>
+          <div class="line action"><span>動作</span><span>文件要說清楚新舊並存的現況；或先收斂程式碼再寫文件</span></div>
+        </div>
+      </article>
+
+      <article class="item" data-id="D11" data-sev="p0" data-ch="ch8">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 D11 已處理">
+          <span class="id">D11</span><span class="pill p0">P0</span>
+          <span class="loc">emergency_alerts 缺誤報標記三欄</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>第八章完全沒有 <code>emergency_alerts</code> 這張表。</p></div>
+          <div class="side impl"><h5>實作是</h5><p>表存在，且 migration 012 又加了 <code>is_false_alarm</code>、<code>false_alarm_marked_by</code>、<code>false_alarm_marked_at</code> 三欄，供開發者端把誤報排除在統計外。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>migrations/012 第 3 節 · routers/alert.py（POST /alerts/{id}/false-alarm）</span></div>
+          <div class="line action"><span>動作</span><span>新增此表的 Meta data，含誤報三欄</span></div>
+        </div>
+      </article>
+    </section>
+
+    <!-- ═══════════════ P1 ═══════════════ -->
+    <section class="group">
+      <header>
+        <h2>P1 — 委員一追問就站不住</h2>
+        <span class="count" data-count="p1"></span>
+      </header>
+      <p class="group-note">寫在需求與設計裡、但程式碼做的是另一回事。不會第一眼看出來，被問到細節就會露餡。</p>
+
+      <article class="item" data-id="E1" data-sev="p1" data-ch="ch5">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 E1 已處理">
+          <span class="id">E1</span><span class="pill p1">P1</span>
+          <span class="loc">非功能需求「嚴格的存取權限控管」與實作相反</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>安全性：「實施嚴格的家屬存取權限控管，對非相關人士不允許存取他人對話」。</p></div>
+          <div class="side impl"><h5>實作是</h5><p><code>origin/main</code> 共 <strong>205 個 REST 端點</strong>，掛認證的<strong>只有開發者管理端</strong>（<code>Depends(get_current_developer)</code>）。長輩／家屬端 App API <strong>零個</strong>掛認證，程式註解直言：「本專案 App API 目前全域都沒有真的落地」「一律信任呼叫端自己回報的 elder_id／family_id」。現行防線是 <code>services/call_security.py</code> 的關係驗證＋選用共用密鑰。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>git grep "Depends(get_current" origin/main -- routers/*.py · services/call_security.py 模組說明</span></div>
+          <div class="line action"><span>動作</span><span>需求改寫為「以家屬－長輩關係驗證為授權基礎」，並誠實說明 JWT 尚未全面落地</span></div>
+        </div>
+      </article>
+
+      <article class="item" data-id="E2" data-sev="p1" data-ch="ch5">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 E2 已處理">
+          <span class="id">E2</span><span class="pill p1">P1</span>
+          <span class="loc">非功能需求「去識別化處理」未實作</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>安全性：「敏感對話數據送出分析前需進行去識別化處理」。</p></div>
+          <div class="side impl"><h5>實作是</h5><p>去識別化／anonymize／pseudonym 在 <code>origin/main</code> <strong>0 個命中</strong>。對話原文直接寫入 Pinecone metadata 的 <code>text</code> 欄位。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>services/pinecone_service.py::upsert_memory()（metadata 含 user_id/log_id/category/timestamp/text）</span></div>
+          <div class="line action"><span>動作</span><span>刪掉這句，或改寫為預計改善項目並移入第十一章未來展望</span></div>
+        </div>
+      </article>
+
+      <article class="item" data-id="E3" data-sev="p1" data-ch="ch5">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 E3 已處理">
+          <span class="id">E3</span><span class="pill p1">P1</span>
+          <span class="loc">相容性寫 iOS 13，專案設定是 15.0</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>相容性：「需能向下相容至 Android 8.0 與 iOS 13 等舊版作業系統」；表 2-11 也宣稱「提供 iOS 與 Android 雙平台一致的流暢體驗」。</p></div>
+          <div class="side impl"><h5>實作是</h5><p><code>IPHONEOS_DEPLOYMENT_TARGET = 15.0</code>（三處組態皆是）。且開發全程在 Windows，專案中沒有 iOS 建置或實機驗證紀錄。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>Uban/mobile_app/ios/Runner.xcodeproj/project.pbxproj</span></div>
+          <div class="line action"><span>動作</span><span>改為 iOS 15.0；若 iOS 實際未驗證過，雙平台宣稱也要一併修正口徑</span></div>
+        </div>
+      </article>
+
+      <article class="item" data-id="E4" data-sev="p1" data-ch="ch5">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 E4 已處理">
+          <span class="id">E4</span><span class="pill p1">P1</span>
+          <span class="loc">擴展性寫「無狀態化設計」，信令伺服器是有狀態的</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>擴展性：「系統後端架構需採無狀態化設計以支援水平擴充」。</p></div>
+          <div class="side impl"><h5>實作是</h5><p>Socket.IO 信令維持行程內的 <code>call_registry</code>、三層 FCM token 收集狀態與已取消通話快取，目前是<strong>有狀態單節點</strong>，直接水平擴充會讓來電廣播失效。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>services/socket_app.py（call_registry、Layer A/B/C token 收集、_CANCELLED_CALL_MAX）</span></div>
+          <div class="line action"><span>動作</span><span>限縮為「REST 層無狀態；信令層為單節點，水平擴充需引入共享狀態」</span></div>
+        </div>
+      </article>
+
+      <article class="item" data-id="E5" data-sev="p1" data-ch="ch5">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 E5 已處理">
+          <span class="id">E5</span><span class="pill p1">P1</span>
+          <span class="loc">家屬「儲值虛擬點數」未實作（新版沒刪乾淨）</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>5-1 家屬「訂閱與加值付費」：「使用者可購買進階系統方案<strong>或儲值虛擬點數</strong>」。</p></div>
+          <div class="side impl"><h5>實作是</h5><p><code>virtual_points</code>、點數、儲值在 <code>origin/main</code> <strong>0 個命中</strong>。金流只有 RevenueCat 訂閱一條路。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>routers/subscription.py（僅 RevenueCat webhook + 訂閱狀態查詢）</span></div>
+          <div class="line action"><span>動作</span><span>刪掉「或儲值虛擬點數」半句</span></div>
+        </div>
+      </article>
+
+      <article class="item" data-id="E6" data-sev="p1" data-ch="ch6">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 E6 已處理">
+          <span class="id">E6</span><span class="pill p1">P1</span>
+          <span class="loc">設計類別圖：寵物用經驗值與造型，實作是體重制</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p><code>長輩資料</code> 類別有 <code>pig_experience</code>、<code>current_pig_skin</code>，方法有 <code>addExperience(exp)</code>、<code>changeSkin(skin_id)</code>。</p></div>
+          <div class="side impl"><h5>實作是</h5><p>改為<strong>體重制</strong>（kg）：步數、服藥打卡、睡眠轉為小豬增重，狀態存在 <code>elder_pet_state</code>，皮膚擁有與選用分別是 <code>elder_pet_skin_ownership</code>／<code>elder_pet_skin_selection</code>，成長門檻在 <code>pet_stage_threshold</code>。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>routers/pet.py · Uban/docs/technical/PET_COMPANION_BLUEPRINT.md · tests/test_pet_thresholds_season.py</span></div>
+          <div class="line action"><span>動作</span><span>類別與方法改名，反映體重制與賽季機制</span></div>
+        </div>
+      </article>
+
+      <article class="item" data-id="E7" data-sev="p1" data-ch="ch6">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 E7 已處理">
+          <span class="id">E7</span><span class="pill p1">P1</span>
+          <span class="loc">設計類別圖有「對話與紀錄」類別，實際沒有對話資料表</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p><code>對話與紀錄</code>（chat_id、elder_id、content、media_path、is_ai_generated、timestamp），方法 <code>saveRecord()</code>、<code>analyzeIntentByLLM()</code>、<code>textToSpeech()</code>。</p></div>
+          <div class="side impl"><h5>實作是</h5><p>資料庫裡<strong>沒有對話表</strong>。對話以向量形式寫進 Pinecone（背景執行緒、非阻塞），重要事件另寫 <code>activity_log</code>。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>routers/ai.py（/chat、/chat_stream 寫入 Pinecone）· services/pinecone_service.py</span></div>
+          <div class="line action"><span>動作</span><span>改畫成「向量記憶」元件，並標明短期記憶（最近 5 輪）與長期記憶的分工</span></div>
+        </div>
+      </article>
+
+      <article class="item" data-id="E8" data-sev="p1" data-ch="ch6">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 E8 已處理">
+          <span class="id">E8</span><span class="pill p1">P1</span>
+          <span class="loc">設計類別圖「照護排程」欄位與 remote_reminders 完全不同</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p><code>照護排程</code>：schedule_id、elder_id、creator_id、task_type「吃藥,回診,日常」、title、schedule_time、is_completed、is_ai_generated。</p></div>
+          <div class="side impl"><h5>實作是</h5><p><code>remote_reminders</code>：family_id、elder_id、title、<code>category</code>（用藥／看診／飲水／運動／叮嚀）、<code>time_str</code>、<code>repeat_days</code>、<code>start_date</code>、note、<code>is_active</code>。沒有 is_completed 與 is_ai_generated。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>database.py remote_reminders 建表 · migrations/010 · routers/reminder.py</span></div>
+          <div class="line action"><span>動作</span><span>類別欄位對齊 remote_reminders；順帶把這張表補進第八章</span></div>
+        </div>
+      </article>
+
+      <article class="item" data-id="E9" data-sev="p1" data-ch="ch6">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 E9 已處理">
+          <span class="id">E9</span><span class="pill p1">P1</span>
+          <span class="loc">類別圖的「使用者」欄位與實際帳號表不符</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p><code>使用者</code>：account、password、<code>role「長輩,家屬,管理者」</code>、avatar、created_at；<code>長輩資料</code> 有 <code>binding_code</code>。</p></div>
+          <div class="side impl"><h5>實作是</h5><p><code>user_account_data</code> <strong>沒有 role 欄</strong>（<code>user_authority</code> 存的是訂閱層級），帳號欄位是 <code>user_name</code>／<code>user_email</code>，大頭貼走檔案端點；配對碼在獨立的 <code>pairing_code</code> 表，不在 elder_profile。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>DATABASE_SCHEMA_CRITICAL.md · routers/user.py（avatar 端點）· routers/pairing.py</span></div>
+          <div class="line action"><span>動作</span><span>類別屬性照實際欄位改；角色改以「是否有 elder_profile／家屬關聯」表達</span></div>
+        </div>
+      </article>
+
+      <article class="item" data-id="F1" data-sev="p1" data-ch="ch7">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 F1 已處理">
+          <span class="id">F1</span><span class="pill p1">P1</span>
+          <span class="loc">圖 7-31 元件圖畫了 ORM，但專案明令禁止 ORM</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>元件圖有一個《Interface》<strong>資料存取 (ORM)</strong>，由「混合式資料庫系統」提供。</p></div>
+          <div class="side impl"><h5>實作是</h5><p>後端硬規則第 1 條：「<strong>不要使用 ORM — 禁止 SQLAlchemy</strong>，必須 <code>cursor.execute(sql, (param,))</code> 參數化查詢」。全專案以 <code>db_cursor()</code> context manager 直接下 SQL。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>uban-api/CLAUDE.md「絕對禁止 (Hard Rules)」第 1 條 · database.py::db_cursor()</span></div>
+          <div class="line action"><span>動作</span><span>介面改名為「資料存取層（參數化 SQL）」</span></div>
+        </div>
+      </article>
+
+      <article class="item" data-id="F2" data-sev="p1" data-ch="ch7">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 F2 已處理">
+          <span class="id">F2</span><span class="pill p1">P1</span>
+          <span class="loc">圖 7-31 元件圖缺一半元件</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>只有：Flutter 應用、影音渲染、身分驗證與安全模組、即時通訊信令、照護排程引擎、語音轉文字 (STT)、語意與情緒分析、混合式資料庫。</p></div>
+          <div class="side impl"><h5>缺少的元件</h5><p>FCM 推播、TTS 合成（Edge／Piper／CosyVoice／雅婷）、YOLO 跌倒偵測與 CCTV 推流、Pinecone 向量記憶、室內定位、訂閱（RevenueCat）、新聞爬蟲、開發者管理端 SPA。另外「身分驗證模組 Provide 所有 REST API」與 E1 的實況矛盾。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>uban-api/services/ 目錄 · routers/ 目錄（共 22 個 router）</span></div>
+          <div class="line action"><span>動作</span><span>重畫元件圖，補齊八組元件</span></div>
+        </div>
+      </article>
+
+      <article class="item" data-id="F3" data-sev="p1" data-ch="ch7">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 F3 已處理">
+          <span class="id">F3</span><span class="pill p1">P1</span>
+          <span class="loc">圖 7-11 佈署圖把 Coturn 標成「影音信令伺服器」</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>節點「影音信令伺服器 (Linux)，Runtime: Coturn (STUN/TURN)」，畫在自架伺服器群內，並有一條「Websocket 信令」箭頭指向它；儲存節點寫「MySQL &amp; MongoDB」。</p></div>
+          <div class="side impl"><h5>實作是</h5><p>Coturn 是<strong>媒體中繼</strong>不是信令；信令是 FastAPI + Socket.IO。Coturn 位於 <strong>Oracle Cloud 日本大阪公網</strong>，不在自架機房。儲存應為 MySQL + Pinecone。圖上另缺 Tailscale Funnel（HTTPS 入口）、RevenueCat、開發者管理端 SPA；「第三方資訊節點 (News/Weather)」的 News 實際是自架爬蟲。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>Chapter 7.docx → word/media/image1.png · Uban/README.md「為什麼要雙軌制」</span></div>
+          <div class="line action"><span>動作</span><span>重畫佈署圖：信令節點與媒體中繼節點分離、標明協定與所在雲</span></div>
+        </div>
+      </article>
+
+      <article class="item" data-id="F4" data-sev="p1" data-ch="ch7">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 F4 已處理">
+          <span class="id">F4</span><span class="pill p1">P1</span>
+          <span class="loc">圖 7-21～7-23 套件圖只涵蓋四個領域</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>AI 互動、照護管理、趣味養成、帳號與安全四個 Domain；趣味養成底下含「造型消費邊界」「虛擬資產實體」與「查詢用戶餘額」。</p></div>
+          <div class="side impl"><h5>實作是</h5><p>缺通訊信令、監控警報、社群與好友、新聞、訂閱、室內定位、開發者管理端等領域；而點數餘額與消費邊界<strong>不存在</strong>。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>Chapter 7.docx → word/media/image2.png · routers/ 目錄</span></div>
+          <div class="line action"><span>動作</span><span>套件圖依 routers/ 的實際模組切分重畫，刪掉點數相關套件</span></div>
+        </div>
+      </article>
+
+      <article class="item" data-id="F5" data-sev="p1" data-ch="ch7">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 F5 已處理">
+          <span class="id">F5</span><span class="pill p1">P1</span>
+          <span class="loc">圖 7-43 通訊狀態機缺實際的容錯路徑</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>信令協商中 → 權限驗證中／等待接聽中 → P2P 連線建立中 → 影音串流中 → 閒置中。「驗證失敗[訂閱層級不足]」<strong>這條與實作相符</strong>（監視機台數上限 free 2／gold 3／diamond 5）。</p></div>
+          <div class="side impl"><h5>缺少的狀態</h5><p>Socket.IO 與 FCM <strong>雙通道互為備援</strong>並以 <code>callId</code> 去重、一般通話有效期 <strong>60 秒</strong> vs 緊急通話 <strong>ttl 3600 秒</strong>、忙線（call-busy）、發起方取消（cancel-call）、冷啟動五層兜底。這些是經 40 餘輪真機故障累積出來的核心設計，圖上完全沒有。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>services/socket_app.py::_get_monitor_device_limit() · CLAUDE_call-monitor.md §3.1／§4</span></div>
+          <div class="line action"><span>動作</span><span>補上雙通道與有效期分支——這是本專案最有技術含量的部分，值得畫清楚</span></div>
+        </div>
+      </article>
+    </section>
+
+    <!-- ═══════════════ P2 ═══════════════ -->
+    <section class="group">
+      <header>
+        <h2>P2 — 補齊完整度</h2>
+        <span class="count" data-count="p2"></span>
+      </header>
+      <p class="group-note">不會當場出事，但留著會讓文件顯得沒有跟著專案走。營運章節與分工表尤其明顯。</p>
+
+      <article class="item" data-id="G1" data-sev="p2" data-ch="ch2">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 G1 已處理">
+          <span class="id">G1</span><span class="pill p2">P2</span>
+          <span class="loc">三階段時程：B 端說 2～3 年後才做，實際做了又砍了</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>表 2-12：「長期 2～3 年：推出針對長照機構、社區據點的 B 端管理後台」；表 2-23 整張長期商業模式九宮格都圍繞 B 端機構授權 10,000 元/月。</p></div>
+          <div class="side impl"><h5>實作是</h5><p>機構管理端（員工登入、排班派工、三角色 RBAC）<strong>提前做完</strong>，又在 09-13 第四十六輪經裁示<strong>整個刪除</strong>，除錯用 API 搬進開發者命名空間。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>uban-api/CLAUDE.md「開發者管理端模組」沿革說明 · 001_institution.sql（前 7 節已註解）</span></div>
+          <div class="line action"><span>動作</span><span>重寫三階段時程與長期九宮格；若仍要保留 B 端願景，需說明現階段已移除</span></div>
+        </div>
+      </article>
+
+      <article class="item" data-id="G2" data-sev="p2" data-ch="ch2">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 G2 已處理">
+          <span class="id">G2</span><span class="pill p2">P2</span>
+          <span class="loc">收費模型與 RevenueCat 實作對不上</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>「家屬進階訂閱 180 元/月」＋「長者趣味特權 40 元/月（小豬造型加成、特殊語音包、虛擬成就獎勵）」兩種商品。</p></div>
+          <div class="side impl"><h5>實作是</h5><p>只有 RevenueCat <code>Uban-pro</code> entitlement，且是<strong>家屬替長輩買</strong>（<code>app_user_id</code> 形如 <code>elder_0343</code>，訂閱掛在長輩身上）。沒有造型加購商品。另外實作有 <strong>free／gold／diamond 三層</strong>，文件完全沒提。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>routers/subscription.py::_infer_tier() · Uban/docs/technical/SUBSCRIPTION_ARCHITECTURE.md</span></div>
+          <div class="line action"><span>動作</span><span>收益流改寫為三層訂閱制，並說明「家屬付費、長輩受惠」的綁定方式</span></div>
+        </div>
+      </article>
+
+      <article class="item" data-id="G3" data-sev="p2" data-ch="ch2">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 G3 已處理">
+          <span class="id">G3</span><span class="pill p2">P2</span>
+          <span class="loc">表 2-32 競品比較有兩列已過期</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>「機構/醫療雙向通訊：留待長期 B 端擴充」；「長者生活動態與照片檢視：透過家屬群組共享」。</p></div>
+          <div class="side impl"><h5>實作是</h5><p>前者：機構功能已移除，敘述要改口徑。後者：已有完整的<strong>長輩生活動態時光牆</strong>（動態主題標籤雲、主題卡片聚類）與家庭社群貼文、留言、點讚。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>Uban/docs/technical/COMMUNITY_ARCHITECTURE.md · lib/screens/family/family_interaction_tab.dart</span></div>
+          <div class="line action"><span>動作</span><span>更新這兩列的 Uban 欄位</span></div>
+        </div>
+      </article>
+
+      <article class="item" data-id="G4" data-sev="p2" data-ch="ch4">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 G4 已處理">
+          <span class="id">G4</span><span class="pill p2">P2</span>
+          <span class="loc">表 4-21 分工表停在半年前的功能清單</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>功能欄位只有：視訊通話、遠端監控、家屬配對、AI 對話陪伴、GPS／路徑計算、走路養小豬、新聞爬蟲、Ollama 訓練、TTS、STT、走路偵測、資料庫。</p></div>
+          <div class="side impl"><h5>未列入的模組</h5><p>開發者管理端（含 React 前端）、RevenueCat 訂閱、YOLO 跌倒偵測、室內定位 IPS、Pinecone 長期記憶、家庭社群與好友系統、新聞語音播報器、人生故事時光膠囊、遠端提醒排程、寵物賽季系統、全域語音喚醒。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>Uban/docs/README.md 功能矩陣（12 個模組標示「🟢 完整」）</span></div>
+          <div class="line action"><span>動作</span><span>表 4-21 補列 11 個模組並標記負責人</span></div>
+        </div>
+      </article>
+
+      <article class="item" data-id="G5" data-sev="p2" data-ch="ch4">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 G5 已處理">
+          <span class="id">G5</span><span class="pill p2">P2</span>
+          <span class="loc">表 4-22 貢獻度工作內容未更新</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>五人工作內容描述（各限 100 字）＋貢獻度 30/7/30/30/3%，擷取日 2026-05-31。</p></div>
+          <div class="side impl"><h5>實作是</h5><p>05-31 之後又累積了近四個月的開發（通話監控子系統從第 27 輪推進到第 47 輪、開發者管理端、寵物賽季系統等），工作內容描述與甘特圖擷取日都該一併更新。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>Uban @ 84c08b4「第四十六、四十七輪年表回寫」（2026-09-13）</span></div>
+          <div class="line action"><span>動作</span><span>重新擷取 GitHub 貢獻圖，更新工作內容與擷取日期</span></div>
+        </div>
+      </article>
+
+      <article class="item" data-id="H1" data-sev="p2" data-ch="ch6">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 H1 已處理">
+          <span class="id">H1</span><span class="pill p2">P2</span>
+          <span class="loc">缺模組：YOLO 跌倒偵測警報</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>Ch5 新版已補上「接收跌倒自動警報／標記警報誤報」兩個使用案例，但 Ch6 循序圖、Ch7 狀態機、Ch8 資料表都沒有。</p></div>
+          <div class="side impl"><h5>實作是</h5><p>YOLOv8 對 CCTV 影格做人物偵測，判定跌倒／爬行後派送警報，資料落在 <code>emergency_alerts</code>、<code>cctv_feed_status</code>、<code>alert_audio_permissions</code>，並有 30 分鐘音頻安全橋。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>yolo_detector_service.py · services/yolo_alert_dispatcher.py · routers/alert.py · tests/test_yolo_detector.py</span></div>
+          <div class="line action"><span>動作</span><span>補一張循序圖（偵測→派送→家屬確認／標記誤報）與對應資料表</span></div>
+        </div>
+      </article>
+
+      <article class="item" data-id="H2" data-sev="p2" data-ch="ch6">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 H2 已處理">
+          <span class="id">H2</span><span class="pill p2">P2</span>
+          <span class="loc">缺模組：室內定位 (IPS)</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>八章之中完全沒有提到室內定位。</p></div>
+          <div class="side impl"><h5>實作是</h5><p>重用 CCTV 管線：YOLO 取人物 bbox 腳點，正規化後用射線法比對房間多邊形，得出客廳／廚房／臥室／浴室等區域與停留秒數；家屬端可校準 zone 多邊形。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>routers/ips.py · services/indoor_position.py · migrations/011_ips_zones.sql · tests/test_indoor_position.py</span></div>
+          <div class="line action"><span>動作</span><span>Ch5 補使用案例、Ch6 補循序圖、Ch8 補兩張 zone 資料表</span></div>
+        </div>
+      </article>
+
+      <article class="item" data-id="H3" data-sev="p2" data-ch="ch6">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 H3 已處理">
+          <span class="id">H3</span><span class="pill p2">P2</span>
+          <span class="loc">缺模組：長期記憶與「魚你聊聊」落葉話題</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>只在 5-1 泛稱「語音日常閒聊」，沒有記憶機制與主動話題推播。</p></div>
+          <div class="side impl"><h5>實作是</h5><p>對話經 nomic-embed-text 轉 768 維向量存入 Pinecone；每日 08:00／15:00 由 <code>daily_pond_leaf_job</code> 語意召回記憶、生成話題開場白，透過 Socket 事件 <code>new-pond-leaf</code> 推給長輩端的禪意池塘畫面，落成黃色記憶葉並 TTS 播報。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>services/pinecone_service.py · main.py::daily_pond_leaf_job · lib/screens/zen_pond/zen_pond_screen.dart</span></div>
+          <div class="line action"><span>動作</span><span>補使用案例與循序圖——這是系統的差異化亮點，值得單獨一節</span></div>
+        </div>
+      </article>
+
+      <article class="item" data-id="H4" data-sev="p2" data-ch="ch6">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 H4 已處理">
+          <span class="id">H4</span><span class="pill p2">P2</span>
+          <span class="loc">缺模組：全域語音喚醒「Hey 嘎蛙」</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>5-1 只寫「喚醒 AI 助理：使用者可以啟動 AI 語音聆聽與對話模式」，沒有描述全域喚醒。</p></div>
+          <div class="side impl"><h5>實作是</h5><p>長輩端<strong>任何畫面</strong>都能喊「Hey 嘎蛙」（AI 名稱可自訂）觸發；具備音訊焦點共存模式，聽新聞／音樂／廣播時背景監聽不中斷。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>Uban/README.md「Google 助理風格全域語音喚醒 (GoogleAssistantOverlay)」</span></div>
+          <div class="line action"><span>動作</span><span>使用案例描述改寫，凸顯「全域、免點擊、與音訊播放並行」</span></div>
+        </div>
+      </article>
+
+      <article class="item" data-id="H5" data-sev="p2" data-ch="ch6">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 H5 已處理">
+          <span class="id">H5</span><span class="pill p2">P2</span>
+          <span class="loc">缺模組：人生故事時光膠囊與自傳繪本</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>Ch5 新版已補「錄製生命故事／瀏覽回憶錄」兩個使用案例，Ch6／Ch7／Ch8 仍無對應設計。</p></div>
+          <div class="side impl"><h5>實作是</h5><p>AI 主動提問、口述錄音即成故事、四象限時光膠囊、自傳繪本擬真翻頁、家屬原聲收聽與留言、委託 AI 提問。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>Uban/docs/technical/LIFE_STORY_CAPSULE.md · lib/screens/family/memoirs_gallery_screen.dart · elder_profile.life_story</span></div>
+          <div class="line action"><span>動作</span><span>補循序圖與儲存設計</span></div>
+        </div>
+      </article>
+
+      <article class="item" data-id="H6" data-sev="p2" data-ch="ch6">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 H6 已處理">
+          <span class="id">H6</span><span class="pill p2">P2</span>
+          <span class="loc">缺模組：寵物賽季與結算</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>Ch5 新版已補「查看成長階段與賽季」使用案例，但 Ch6 無循序圖、Ch8 無 <code>pet_season</code> 相關表。</p></div>
+          <div class="side impl"><h5>實作是</h5><p>賽季有起訖與狀態；重置前必須先把當季最終體重與名次寫入 <code>pet_season_settlement</code>（破壞性操作的存檔要求），成長門檻獨立在 <code>pet_stage_threshold</code>，由開發者端 PetSeasonsPage 管理。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>database.py pet_season／pet_season_settlement 建表註解 · routers/admin.py · tests/test_admin_pet_season.py</span></div>
+          <div class="line action"><span>動作</span><span>補賽季生命週期狀態機（進行中→結算→重置），與第七章既有狀態機並列</span></div>
+        </div>
+      </article>
+
+      <article class="item" data-id="H7" data-sev="p2" data-ch="ch6">
+        <div class="item-head">
+          <input class="tick" type="checkbox" aria-label="標記 H7 已處理">
+          <span class="id">H7</span><span class="pill p2">P2</span>
+          <span class="loc">缺模組：開發者端平台統計儀表板</span>
+        </div>
+        <div class="parallel">
+          <div class="side doc"><h5>文件寫的</h5><p>Ch5 新版已列「檢視使用者年齡與居住地分布／警報與誤報統計／緊急通話統計」，但 Ch6 無循序圖、Ch7 無元件。</p></div>
+          <div class="side impl"><h5>實作是</h5><p><code>/api/admin/stats</code> 三個唯讀彙總端點（demographics／alerts／calls），前端對應 <code>OverviewPage</code> 底下三個 Section。統計須排除已標記誤報的警報。</p></div>
+        </div>
+        <div class="foot">
+          <div class="line evidence"><span>佐證</span><span>routers/admin_stats.py · uban-admin/src/pages/overview/{DemographicsSection,AlertsStatsSection,CallsStatsSection}.tsx</span></div>
+          <div class="line action"><span>動作</span><span>補循序圖，並在元件圖加入開發者管理端 SPA</span></div>
+        </div>
+      </article>
+    </section>
+
+    <div class="empty" id="empty" hidden>目前的篩選條件沒有符合的項目。</div>
+  </main>
+
+  <footer class="page">
+    <p><strong>怎麼用這張表</strong>：從 P0 開始，一項一項處理，處理完就勾起來。左側可依嚴重度或章節篩選，也可以隱藏已處理的項目。</p>
+    <p>每一條「實作是什麼」都可以自行覆核：後端用 <code>git show origin/main:&lt;path&gt;</code> 或 <code>git grep -i &lt;關鍵字&gt; origin/main</code>，前端直接看 <code>Uban/mobile_app/lib/</code> 底下的檔案。</p>
+    <p>本表只盤點落差，沒有修改任何 <code>.docx</code>、<code>.pdf</code> 或程式碼。第九～十三章目前空缺，待第一輪落差收斂後再決定要補哪些章節。</p>
+  </footer>
+
+</div>
+
+<script>
+
+(function(){
+  "use strict";
+  var KEY = "uban-doc-gap-audit-v1";
+  var items = Array.prototype.slice.call(document.querySelectorAll(".item"));
+  var total = items.length;
+  var doneEl = document.getElementById("done");
+  var barEl = document.getElementById("bar");
+  var emptyEl = document.getElementById("empty");
+
+  // localStorage is refused on file:// in Chrome/Edge — probe once, tell the user.
+  var storageOK = (function(){
+    try{
+      localStorage.setItem(KEY + ":probe", "1");
+      localStorage.removeItem(KEY + ":probe");
+      return true;
+    }catch(e){ return false; }
+  })();
+
+  function load(){
+    if(!storageOK) return {};
+    try{
+      var raw = localStorage.getItem(KEY);
+      return raw ? JSON.parse(raw) : {};
+    }catch(e){ return {}; }
+  }
+  function save(state){
+    if(!storageOK) return;
+    try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){}
+  }
+
+  if(!storageOK){
+    document.getElementById("noteOk").hidden = true;
+    document.getElementById("noteBad").hidden = false;
+    document.getElementById("resetWrap").hidden = true;
+  }
+
+  // ── theme: system / light / dark, stamped on <html> ──────────────
+  (function(){
+    var TKEY = KEY + ":theme";
+    var root = document.documentElement;
+    var btns = Array.prototype.slice.call(document.querySelectorAll("[data-theme-set]"));
+
+    function paint(mode){
+      if(mode === "system"){ root.removeAttribute("data-theme"); }
+      else { root.setAttribute("data-theme", mode); }
+      btns.forEach(function(b){
+        b.setAttribute("aria-pressed", b.dataset.themeSet === mode ? "true" : "false");
+      });
+    }
+
+    var saved = "system";
+    try{ saved = localStorage.getItem(TKEY) || "system"; }catch(e){}
+    if(["system","light","dark"].indexOf(saved) === -1) saved = "system";
+    paint(saved);
+
+    btns.forEach(function(b){
+      b.addEventListener("click", function(){
+        var mode = b.dataset.themeSet;
+        paint(mode);
+        try{ localStorage.setItem(TKEY, mode); }catch(e){}
+      });
+    });
+  })();
+
+  var state = load();
+
+  // ── counts per severity ────────────────────────
+  ["p0","p1","p2"].forEach(function(sev){
+    var el = document.querySelector('[data-count="' + sev + '"]');
+    if(el){
+      var n = items.filter(function(it){ return it.dataset.sev === sev; }).length;
+      el.textContent = n + " 項";
+    }
+  });
+
+  // ── filters ────────────────────────────────────
+  var sevOn = {}, chOn = {}, hideDone = false;
+
+  function matches(it){
+    var sevKeys = Object.keys(sevOn).filter(function(k){ return sevOn[k]; });
+    var chKeys  = Object.keys(chOn).filter(function(k){ return chOn[k]; });
+    if(sevKeys.length && sevKeys.indexOf(it.dataset.sev) === -1) return false;
+    if(chKeys.length  && chKeys.indexOf(it.dataset.ch)  === -1) return false;
+    if(hideDone && it.classList.contains("done")) return false;
+    return true;
+  }
+
+  function apply(){
+    var shown = 0;
+    items.forEach(function(it){
+      var ok = matches(it);
+      it.hidden = !ok;
+      if(ok) shown++;
+    });
+    document.querySelectorAll(".group").forEach(function(g){
+      var any = Array.prototype.some.call(g.querySelectorAll(".item"), function(it){ return !it.hidden; });
+      g.hidden = !any;
+    });
+    emptyEl.hidden = shown > 0;
+  }
+
+  function refreshProgress(){
+    var n = items.filter(function(it){ return it.classList.contains("done"); }).length;
+    doneEl.textContent = n;
+    barEl.style.width = (total ? (n / total * 100) : 0) + "%";
+  }
+
+  // ── ticks ──────────────────────────────────────
+  items.forEach(function(it){
+    var box = it.querySelector(".tick");
+    var id = it.dataset.id;
+    if(state[id]){ box.checked = true; it.classList.add("done"); }
+    box.addEventListener("change", function(){
+      it.classList.toggle("done", box.checked);
+      if(box.checked){ state[id] = 1; } else { delete state[id]; }
+      save(state);
+      refreshProgress();
+      if(hideDone) apply();
+    });
+  });
+
+  document.querySelectorAll("#sevFilters .chip").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      var k = btn.dataset.sev;
+      sevOn[k] = !sevOn[k];
+      btn.setAttribute("aria-pressed", sevOn[k] ? "true" : "false");
+      apply();
+    });
+  });
+
+  document.querySelectorAll("#chFilters .chip").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      var k = btn.dataset.ch;
+      chOn[k] = !chOn[k];
+      btn.setAttribute("aria-pressed", chOn[k] ? "true" : "false");
+      apply();
+    });
+  });
+
+  var hd = document.getElementById("hideDone");
+  hd.addEventListener("click", function(){
+    hideDone = !hideDone;
+    hd.setAttribute("aria-pressed", hideDone ? "true" : "false");
+    apply();
+  });
+
+  document.getElementById("reset").addEventListener("click", function(){
+    state = {};
+    save(state);
+    items.forEach(function(it){
+      it.classList.remove("done");
+      it.querySelector(".tick").checked = false;
+    });
+    refreshProgress();
+    apply();
+  });
+
+  refreshProgress();
+  apply();
+})();
+</script>
+</body>
+</html>
