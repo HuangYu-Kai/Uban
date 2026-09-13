@@ -1276,6 +1276,174 @@ IMU 航位推算漂移嚴重，且長輩常不隨身攜帶手機。相機方案�
 > `CLAUDE_call-monitor-history.md`；**N ≥ 41** 仍在本檔 §8。此門檻會隨每輪搬移而持續調高，
 > 調整時只需要更新本處（§8 開頭）的數字。
 
+### 2026-09-13 — 第四十七輪：移除監控機的「跌倒測試」按鈕
+
+**背景**
+
+使用者要求移除監控機（CCTV 模式）畫面上的「跌倒測試」按鈕。這顆按鈕自第十七輪加
+入以來，一直標註為「暫時性測試入口，YOLO 可實測後即可移除」。
+
+**做了什麼（前端 -147 行）**
+
+`elder_screen.dart` 刪除 `_testFallSending` 旗標、`_sendTestFallAlert()` 方法、按
+鈕 UI（`Positioned` 區塊），共 -87 行；`cctv_alert_api.dart` 刪除
+`triggerTestFall()`；`api_service.dart` 刪除委派方法、檔頭註解移除「跌倒測試」字
+樣；`friend_service.dart` 檔頭註解原本舉 `triggerTestFall` 當「回傳 `String?`、
+`detail` 錯誤慣例」的範例，改舉同慣例的 `saveZoneConfig`。
+
+**後端一律保留不動**：`POST /api/cctv/test-fall`、
+`call_security.test_fall_enabled()`、`.env.example` 的
+`CCTV_TEST_FALL_ENABLED=false`、護欄 G43 全部維持原狀。理由：§9 除錯手冊把這個端
+點列為驗證「跌倒警報派送鏈」（DB 寫入 → Socket/FCM → 家屬端熄屏也要亮起並朗讀）
+的手段，刪掉按鈕後仍可用 curl 觸發，保留可測性；端點依 G43 預設關閉、關閉時回
+404，無安全風險。
+
+**關鍵風險**：被刪的按鈕與「退出監視機」**相鄰**，而後者是長輩退出 CCTV 模式的唯
+一出口。刪錯會讓監控機變成無法離開的畫面。驗收時逐行核對了 `git diff`：三段都是
+純刪除、無任何 `+` 行，前後的 `Positioned` 直接接上；反向檢查「退出監視機」的引
+用仍全部存在（4 處）。
+
+**連帶影響**（容易漏的一類）：`friend_service.dart` 的檔頭註解引用了被刪除的方法
+當程式碼慣例範例。這種殘留不會編譯錯誤、不會被目標關鍵字掃到（搜的是被刪除檔案
+本身的關鍵字，不是引用它的其他檔案），只有真的去讀那段註解的人才會發現指路指到
+空氣。
+→ 新護欄 **G185**
+
+**同步更新的其他文件**：`CLAUDE_call-monitor-ui-map.md` 原本記載「跌倒測試」按鈕
+的那一列整列刪除（該文件的定位是「按鈕在哪、按了跳去哪」，留一列指向不存在的按
+鈕會誤導只看表格的人，尤其它原本緊貼「退出監視機」），下方說明區塊濃縮成歷史註
+記而非整段刪除，保留「後端端點還在、可 curl 測、G43 開關不能亂動」這些仍有效的
+事實；本檔 §6.9 派送鏈圖、§6.10 測試方法、§9.2 驗收矩陣也都改成 curl 指令，欄位
+名稱對照 `routers/alert.py::trigger_test_fall()` 的簽章（`elder_id`、
+`device_name`）核對過。
+
+**新增護欄**
+
+本輪新增 **G185**（跨端；條文見 §7.2）。護欄檔（`CLAUDE_call-monitor-
+guardrails.md`）開頭護欄總數同步更新為 **185**。
+
+### 2026-09-13 — 第四十六輪：機構管理端完全移除
+
+**背景**
+
+使用者要求「刪除機構管理端的所有設計（包含資料表、管理介面）」，並裁定兩件事——
+除錯用的 API **搬到開發者命名空間**（不是連功能一起砍）、**移除機構員工登入**
+（管理端只剩開發者帳號能進）。
+
+**項目 A（後端）新增 `routers/developer_users.py`**
+
+5 支唯讀端點取代原本的機構端點，全走 `Depends(get_current_developer)`：
+`GET /api/developer/users`（取代 `/institution/elders`）、
+`GET /api/developer/users/{elder_id}`（取代 `/institution/elders/{id}`）、
+`GET /api/developer/users/{elder_id}/metrics`、
+`GET /api/developer/users/{elder_id}/timeline`、
+`GET /api/developer/alerts`（取代 `/institution/alerts`）。改以 `elder_profile`
+為主表，不再依賴機構收案關聯。回傳移除了 `room_no`／`care_level`／`enrolled_at`
+／`primary_staff`／`assigned_staff`，timeline 少了 `kind="task"` 事件。
+
+**項目 B（前端）管理端改接**
+
+三個除錯頁面改打新端點；`LoginPage` 移除身分切換只剩開發者登入；`session.ts`
+刪除 `StaffSession`；側欄警報徽章從 `/institution/overview` 改打
+`/developer/alerts?status=active`——刻意不用 `by_type` 總和，那是「近 N 天全部狀
+態的次數分布」，拿來當「目前待處理」的角標會把已結案的舊警報也算進去。
+`CareLevelBadge` 與 `Overview` 型別因無使用者一併移除。
+
+**項目 C（後端）刪除機構程式碼（共 2384 行）**
+
+刪除 `routers/institution.py`（982 行）、`routers/institution_ops.py`（1033
+行）、`routers/institution_common.py`（231 行）、`auth_staff.py`（138 行），四
+者共 2384 行；另刪除 `scripts/seed_demo_institution.py` 與
+`tests/test_institution.py`。`routers/admin.py` 的
+`require_admin_or_developer()` 從「先手動 decode JWT 判斷 `typ`、developer 與
+staff 走兩條路徑」簡化成只驗開發者 token。`ALGORITHM`／`SECRET_KEY`／`security`
+**不需要搬移**——`auth_developer.py` 本來就有同名同值的定義，改 import 來源即
+可，避免產生第三份密鑰定義。
+
+**項目 D（資料庫）刪除 7 張表（實際筆數）**
+
+依外鍵順序（先子表後父表）逐條 DROP，零失敗、不需
+`SET FOREIGN_KEY_CHECKS=0`：`care_task`（684 筆）、`care_shift`（128 筆）、
+`institution_elder`（20 筆）、`staff_elder_assignment`（20 筆）、`care_staff`
+（8 筆）、`shift_swap_request`（6 筆）、`institution`（1 筆）。9 張保護表
+（`elder_profile` 26、`user_account_data` 34、`emergency_alerts` 50、
+`call_record` 1242、`activity_log` 7099、`developer_account` 3、
+`elder_daily_step` 1800、`family_elder_relationship` 26、`subscription_status`
+9）筆數一筆未變。
+
+★★ **意外發現①：migration 每次開機重跑，只加註解會讓刪表白做**
+
+`main.py::run_sql_migrations()` **每次開機都重新執行** `scripts/migrations/` 底
+下每一個 `.sql`，**沒有「已執行過」的追蹤表**，靠 `CREATE TABLE IF NOT EXISTS`
+自身冪等。所以只在 `001_institution.sql` 檔頭加註解、不動內文的話，**DROP
+TABLE 做完、後端一重啟，7 張表會透過那份 migration 原封不動生回來**。
+
+處理：把第 1–7 節的 `CREATE TABLE` 逐行註解掉（不刪除任何文字，歷史完整保
+留），**但第 8 節 `elder_daily_step` 完全保留可執行**——那張表與機構表同檔但完
+全獨立，整檔註解或整檔跳過都會誤傷它。驗證：模擬 `run_sql_migrations()` 的解析
+邏輯，確認該檔只剩 1 條會執行的語句。
+→ 新護欄 **G182**
+
+**★★ 意外發現②：開發者原本看不到 6 位真實使用者**
+
+管理端查的是 `institution_elder`（機構**收案**長輩），不是 `elder_profile`（全
+平台）。對正式庫唯讀實測：26 位長輩中有 20 位被收案，**6 位（`2917`、`0343`、
+`7993`、`6160`、`9053`、`5327`）從未被任何機構收案，開發者完全看不到**，其中
+`6160` 與 `5327` 還有共 3 筆真實警報也查不到。而且清單上沒有任何提示說少了人。
+
+這直接牴觸管理端的定位（「開發者對個別使用者除錯」）。修法：
+`institution_common.py` 的兩個函式與 `institution.py` 的 `list_elders()`／
+`list_alerts()` 各自拆成機構員工／開發者兩段獨立 SQL，開發者那半改以
+`elder_profile`／`emergency_alerts` 為主表 LEFT JOIN，並加
+`discharged_at IS NULL` 避免同一位長輩在不同機構的歷史收案紀錄造成資料重複。
+（這幾支後來隨機構模組一起刪除，能力由 `developer_users.py` 承接。）
+
+**★ 過程中修掉的兩個靜默失敗**
+
+- `list_elders`／`list_alerts` 的 raw SQL 裡各還有一個 `institution_id = %s`
+  的重複過濾。開發者傳 `None` 進去，SQL 三值邏輯下 `institution_id = NULL`
+  **永遠不 match**，query 回空清單**而且不報錯**。共用授權守衛覆蓋不到端點自
+  己手寫的 SQL。→ 已是護欄 G177，本輪未新增。
+- 前端 `isFullScope()` 放行 admin 或 supervisor，但後端 `admin_stats` 的機構員
+  工門檻是 `require_staff_role("admin")`。督導進得去統計頁但三支 API 全
+  403，畫面卻顯示每張圖各自的「尚未累積資料」空狀態——**看起來像沒資料而不是
+  沒權限**。新增 `RequireAdminOrDeveloper` 守衛（重用既有 `isAdmin()`，語意與
+  後端門檻天然對齊）。
+
+**測試沒有降低強度**
+
+三個測試檔原本各有一條「caregiver 角色 token → 403」，測的是 `auth_staff.py`
+的 `ROLE_RANK` 角色分級——那個概念隨本輪移除而不存在，硬留著只能靠假造一個不存
+在的角色系統來測。改成 `test_legacy_staff_shaped_token_rejected`：偽造一個形狀
+與舊機構員工 token 相同的 JWT，斷言仍然 401，**守的是「`auth_staff.py` 刪除後
+不能留後門」**。其餘 401 斷言全部原樣保留。
+
+**附帶解除的資安疑慮**：舊文件反覆警告「demo 管理員密碼寫死在
+`seed_demo_institution.py`」，隨 `care_staff` 表刪除自動失效——那個帳號已不存
+在。
+
+**過程事故（驗證方法論，兩則）**
+
+1. 檢查刪除模組後有無殘留 import 時，字串搜尋把 docstring 與註解裡的提及也算
+   進去、且可被改寫註解騙過，三個檔案因此誤報。改用 AST 解析 `ast.Import`／
+   `ast.ImportFrom`（`ImportFrom` 要同時比對 `node.module` 與
+   `node.module + '.' + alias.name`，否則 `from routers import institution`
+   這種寫法會漏掉），`compileall` 只驗語法、抓不到名稱解析錯誤，不能替代。
+   → 新護欄 **G183**
+2. 驗證「新 API 完全不依賴機構表」時，最初寫成
+   `src.count('care_staff') == 0`——測的是「檔案裡有沒有這串字」，不是「有沒
+   有真的查這張表」。子代理誠實回報它為了讓檢查回報 0 而刻意在註解裡避開那些
+   識別字；真正風險是若其實用了機構表，只要拼成 `"care_" + "staff"` 就能一樣
+   回 0。壞指標的副作用不只漏掉問題，還逼執行者為了過關而改動無關的東西（本
+   輪連本質安全的 `f"...IN({ph})..."` 都被改寫成字串相加）。改用從非註解程式
+   碼抽出 `FROM`／`JOIN`／`UPDATE`／`INTO` 後面的表名、與目標集合取交集。
+   → 新護欄 **G184**
+
+**新增護欄**
+
+本輪新增 **G182–G184**（後端 G182；流程 G183–G184；條文見 §7.2）。護欄檔
+（`CLAUDE_call-monitor-guardrails.md`）開頭護欄總數同步更新為 **185**。
+
 ### 2026-09-11 — 第四十五輪：新手教學捲動、管理端轉開發者定位、統計儀表板、開發者帳號、隱私權政策
 
 **背景**
