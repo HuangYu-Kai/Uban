@@ -141,7 +141,7 @@ AI 對話、Pinecone 長期記憶、新聞爬蟲、遊戲、寵物、TTS/STT、`
 | `lib/globals.dart` | 跨 isolate／跨畫面的全域狀態橋 | `pendingAcceptedCall`、`isAppReady`、`appRole`、`kCallValidityMs`、`splashActive`、`safeNavigateBack()`、`parseIsVideoCall()` | 🔴 極高 |
 | `lib/services/signaling.dart` | Socket.IO 連線 + WebRTC（**Singleton**） | 見 §2.3 | 🔴 極高 |
 | `lib/services/local_call_notification.dart` | CallKit 失敗時的本地通知備援 | `show()`、`cancel()`、`consumeLaunchPayload()`、`_handleDecline()`、`_persistTapAsAccepted()`、`notificationBackgroundTapHandler` | 🔴 極高 |
-| `lib/services/api_service.dart` | HTTP 層；通話與監控相關 | `declineCall(roomId, senderId, callId)`、`pushCctvFrame()`、`triggerTestFall()`（回 `String?`）、`checkAudioBridge(alertId,{userId})`、`_deviceTokenHeader`（`X-Uban-Device-Token`） | 🟡 中 |
+| `lib/services/api_service.dart` | HTTP 層；通話與監控相關 | `declineCall(roomId, senderId, callId)`、`pushCctvFrame()`、`checkAudioBridge(alertId,{userId})`、`_deviceTokenHeader`（`X-Uban-Device-Token`） | 🟡 中 |
 | `lib/services/cctv_alert_notification.dart` | YOLO／測試跌倒警報的高優先級通知（**獨立 channel**，與來電備援分開） | `show()` | 🟠 中高 |
 | `lib/screens/video_call_screen.dart` | **家屬端**通話畫面 | `_initCall()`、`_toggleCamera`、`_toggleMic`、`_switchCamera`、`_toggleSpeaker`、`_safeHangUp`、`_goHomeAfterCall()`、`_showCallRejectedThenGoHome()` | 🔴 極高 |
 | `lib/screens/elder_screen.dart` | **長輩端**通話畫面（含 CCTV 模式） | `_makeCall()`、`_checkPendingAcceptedCall()`、`_toggleCamera`、`_toggleMute`、`_switchCamera`、`_hangUp`、`_exitCCTVMode`、`_activeCallId`、`friendCallTargetElderId`（建構子參數，非 null 進入好友通話模式：房號組對方的、role 送 `'friend'`，`dispose()` 觸發回房，見 G156／G157） | 🔴 極高 |
@@ -362,7 +362,7 @@ AI 對話、Pinecone 長期記憶、新聞爬蟲、遊戲、寵物、TTS/STT、`
 
 #### `cctv-alert`（`services/yolo_alert_dispatcher.py`:68-95）— 跌倒／異常警報
 
-> 這條**不是通話**，是監控子系統的警報推播（YOLO 偵測與「跌倒測試」鈕共用同一條派送路徑）。
+> 這條**不是通話**，是監控子系統的警報推播（YOLO 偵測與「跌倒測試」端點共用同一條派送路徑）。
 > Socket 通路事件名同為 `cctv-alert`，payload 由同檔的 `_build_push_payload()` 產生。
 
 | 欄位 | 值 | 說明 |
@@ -379,7 +379,7 @@ AI 對話、Pinecone 長期記憶、新聞爬蟲、遊戲、寵物、TTS/STT、`
 > 🚫 **`alertId` 單獨不可作為去重鍵**：`_insert_alert()` 對「同 elder + 同 device + 同 alert_type
 > 且 `status='active'`」的既有列是 **UPDATE `detected_at` 並沿用原本的 `alert_id`**。
 > 只用 `alertId` 去重，第二次以後的同類警報會**完全靜默**
-> （「跌倒測試」鈕按第二次沒反應，YOLO 連續偵測也一樣）。
+> （用「跌倒測試」端點連續觸發兩次，第二次沒反應，YOLO 連續偵測也一樣）。
 > 家屬端因此用 **`"a$alertId@$timestamp"` 複合鍵**（`family_main_screen.dart::_knownAlertKeys`）。
 > 後端若要改掉 UPSERT 語意，必須同步改前端這個鍵。
 
@@ -1014,7 +1014,7 @@ WHERE role='elder' AND (room_id IN (%s, %s) OR user_id = %s)
 影格來源
  ├─ 監視機推流：ApiService.pushCctvFrame → POST /api/cctv/frame（multipart PNG）
  │     └─ 後端每 2 秒取一個窗口送 YOLO 推論
- └─ 「跌倒測試」鈕：ApiService.triggerTestFall → POST /api/cctv/test-fall
+ └─ 「跌倒測試」端點（前端按鈕已於第四十七輪移除，僅能由 curl／API 工具觸發）：POST /api/cctv/test-fall
        └─ 跳過 YOLO，直接以 alert_type='fall' 進入下一步
 
            ↓ 兩條路在此匯流（services/yolo_alert_dispatcher.py::dispatch）
@@ -1053,7 +1053,13 @@ monitor_device_id(elder_id, device_name) = zlib.crc32(f"{elder_id}|{device_name.
 前端以 `--dart-define=CCTV_INGEST_TOKEN=<同一字串>` 注入
 （`api_service.dart`:31 的 `_cctvIngestToken` / `_deviceTokenHeader`，空字串時**不送**該標頭）。
 
-**要測「跌倒測試」鈕時**：`.env` 設 `CCTV_TEST_FALL_ENABLED=true` → 重啟後端 → 測完**立刻改回 `false`**。
+**要測「跌倒測試」端點時**（前端按鈕已於第四十七輪移除，改用 curl）：`.env` 設 `CCTV_TEST_FALL_ENABLED=true` → 重啟後端 →
+```bash
+curl -X POST <baseUrl>/api/cctv/test-fall \
+  -F "elder_id=<長輩ID>" -F "device_name=<監視機裝置名稱>"
+  # 若後端有設 CCTV_INGEST_TOKEN，另加：-H "X-Uban-Device-Token: <token>"
+```
+→ 測完**立刻改回 `false`**。
 理由：`elder_id` 只有 4 位數字（10 000 組，可完整列舉），長期開放等同開放對任意長輩家庭發動騷擾。
 
 ### 6.11 怎麼測 YOLO 的跌倒偵測
@@ -1069,7 +1075,7 @@ monitor_device_id(elder_id, device_name) = zlib.crc32(f"{elder_id}|{device_name.
 
 | 階段 | 目的 | 方法 | 判準 |
 |------|------|------|------|
-| **A. 派送鏈** | 驗證 DB 寫入 → Socket/FCM → 亮螢幕 + 通知 + 朗讀 + 彈窗 | 開 `CCTV_TEST_FALL_ENABLED=true`，按「🚨 跌倒測試」 | 家屬端**熄屏**狀態下也要亮起並朗讀。連按兩次要**兩次都有反應**（驗證複合鍵去重沒退化） |
+| **A. 派送鏈** | 驗證 DB 寫入 → Socket/FCM → 亮螢幕 + 通知 + 朗讀 + 彈窗 | 開 `CCTV_TEST_FALL_ENABLED=true`，用 curl 打 `POST /api/cctv/test-fall`（前端按鈕已於第四十七輪移除，curl 範例見 §6.10） | 家屬端**熄屏**狀態下也要亮起並朗讀。連續觸發兩次要**兩次都有反應**（驗證複合鍵去重沒退化） |
 | **B. YOLO 推論** | 驗證模型真的判得出跌倒 | 見下方姿勢清單 | 後端 log 出現 `🚨 [YoloAlert] fall ...` 且 `confidence` 合理 |
 
 **階段 B 的實際做法**
@@ -2254,7 +2260,7 @@ python -m pytest tests/test_call_signaling.py -q   # 目前基準：17 passed，
 | 9 | 通話中一端掛斷 | 另一端顯示 dialog 提示 2 秒後才回首頁（不可瞬間跳走） |
 | 10 | **雙端接不同網域**（一端 Wi-Fi、一端行動網路）互撥 | 進房後**看得到對方影像、聽得到聲音**。若失敗，必須在 12 秒內跳出「無法建立影音連線」並安全返回主畫面，**不可**停在有計時卻沒畫面的假連線 |
 | 11 | 長輩監控機上線／下線 | 家屬端列表**最遲 2.5 秒**出現／移除監視器名稱；點「觀看 CCTV」可進入，按「← 返回」回到原本的分頁（**不是**重建主畫面） |
-| 12 | `.env` 開 `CCTV_TEST_FALL_ENABLED=true` → 按「🚨 跌倒測試」**連按兩次** | 家屬端（含**熄屏**狀態）**兩次都**亮螢幕 + 通知 + 朗讀 + 彈窗。改回 `false` 後再按 → SnackBar 顯示 8 秒長文案（說明是後端設定未開、非 App 故障），而非靜默無反應 |
+| 12 | `.env` 開 `CCTV_TEST_FALL_ENABLED=true` → 用 curl **連續觸發兩次** `POST /api/cctv/test-fall`（前端按鈕已於第四十七輪移除，指令見 §6.10） | 家屬端（含**熄屏**狀態）**兩次都**亮螢幕 + 通知 + 朗讀 + 彈窗。改回 `false` 後再打 → HTTP 回應 404，`detail` 為「測試端點未啟用（請在後端 .env 設定 CCTV_TEST_FALL_ENABLED=true）」 |
 
 #### 2026-08-11 第二十二輪新增（13–19）
 
