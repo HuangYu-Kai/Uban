@@ -157,7 +157,8 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
   Future<void> _fetchNews({String? category}) async {
     final targetCategory = category ?? 'all';
     try {
-      debugPrint('📡 正在抓取新聞... 類別: $targetCategory, 網址: ${ApiService.baseUrl}/news');
+      debugPrint(
+          '📡 正在抓取新聞... 類別: $targetCategory, 網址: ${ApiService.baseUrl}/news');
       var parsed = <Map<String, dynamic>>[];
 
       // 動態抓取指定類別 (limit 為 30 符合目前前端設計)
@@ -249,9 +250,20 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
 
     setState(() {
       _lunarDate = "${lunar.getMonthInChinese()}月${lunar.getDayInChinese()}";
+      // ★ getJieQi() 只在「今天剛好是節氣當天」才回傳名稱，其餘約 360 天
+      //   都回空字串。原本的 fallback 寫死「立春」，等於一年到頭首頁都在
+      //   跟長輩說現在是立春——九月中顯示立春是明確的錯誤資訊。
+      //   改用 getPrevJieQi(true) 取「當前所處的節氣區間」，才是長輩要看的。
       _solarTerm = lunar.getJieQi();
       if (_solarTerm.isEmpty) {
-        _solarTerm = "立春";
+        try {
+          _solarTerm = lunar.getPrevJieQi(true).getName();
+        } catch (e) {
+          // 取不到就留空，由 ElderDateSummaryRow 自行省略，
+          // 絕不再用寫死的節氣冒充。
+          debugPrint('⚠️ [ElderHomeTab] 取得當前節氣失敗: $e');
+          _solarTerm = '';
+        }
       }
 
       try {
@@ -361,7 +373,6 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     );
   }
 
-
   Widget _buildHeader() {
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -392,8 +403,8 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
             child: Image.asset(
               'assets/images/user_avatar.png',
               fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => const Icon(
-                  Icons.person_rounded, color: AppColors.primary, size: 36),
+              errorBuilder: (_, __, ___) => const Icon(Icons.person_rounded,
+                  color: AppColors.primary, size: 36),
             ),
           ),
         ),
@@ -415,7 +426,8 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
       decoration: BoxDecoration(
         color: pillColor.withValues(alpha: 0.92),
         borderRadius: BorderRadius.circular(AppRadius.pill),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.6), width: 1.5),
+        border:
+            Border.all(color: Colors.white.withValues(alpha: 0.6), width: 1.5),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -426,8 +438,8 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
             child: Image.asset(
               badgeAsset,
               fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) =>
-                  const Center(child: Text('🐷', style: TextStyle(fontSize: 24))),
+              errorBuilder: (_, __, ___) => const Center(
+                  child: Text('🐷', style: TextStyle(fontSize: 24))),
             ),
           ),
           const SizedBox(width: 8),
@@ -498,7 +510,8 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(_weatherIcon(weather), size: 22, color: _weatherIconColor(weather)),
+            Icon(_weatherIcon(weather),
+                size: 22, color: _weatherIconColor(weather)),
             const SizedBox(width: 4),
             Flexible(
               child: Text(
@@ -670,7 +683,8 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
       final deityName = almanac.deities.first.name;
       summaryText = '🌟 今日【$deityName】・宜 ${almanac.yiList.take(2).join('、')}';
     } else if (almanac.yiList.isNotEmpty && almanac.jiList.isNotEmpty) {
-      summaryText = '📜 今日農民曆：宜 ${almanac.yiList.take(2).join('、')} ｜ 忌 ${almanac.jiList.take(2).join('、')}';
+      summaryText =
+          '📜 今日農民曆：宜 ${almanac.yiList.take(2).join('、')} ｜ 忌 ${almanac.jiList.take(2).join('、')}';
     } else {
       summaryText = '📜 點此查看今日農民曆・神明誕辰與吉凶';
     }
@@ -936,8 +950,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 6, vertical: 2),
                                 minimumSize: Size.zero,
-                                tapTargetSize:
-                                    MaterialTapTargetSize.shrinkWrap,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                               ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
@@ -1053,7 +1066,6 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
       ),
     );
   }
-
 }
 
 /// 首頁日期卡片「國曆（左）／農曆（右）」兩欄排版。
@@ -1164,8 +1176,7 @@ class ElderDateSummaryRow extends StatelessWidget {
         final scaler = MediaQuery.textScalerOf(context);
         final leftDateWidth =
             _measureWidth(context, dateText, dateStyle, scaler);
-        final leftDayWidth =
-            _measureWidth(context, dayName, dayStyle, scaler);
+        final leftDayWidth = _measureWidth(context, dayName, dayStyle, scaler);
         final rightLunarWidth =
             _measureWidth(context, lunarDate, lunarStyle, scaler);
         final rightTermWidth =
