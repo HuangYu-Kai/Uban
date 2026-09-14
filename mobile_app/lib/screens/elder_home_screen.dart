@@ -928,17 +928,8 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
       ],
     );
 
-    // ★ 首頁（index 0）是開機時的預設選中分頁，使用者看到的就是首頁本身，
-    //   不需要「點擊」它——_onNavTap 因此永遠不會被觸發，elder_home_v1
-    //   教學若不在這裡補上一次串接就永遠不會顯示。主介面教學播完可能已經
-    //   過了好幾秒，期間可能有來電或警報進來，守門條件要重查一次，不能
-    //   沿用函式開頭那次的結果。
-    if (!mounted) return;
-    if (pendingAcceptedCall.value != null) return;
-    if (_isIncomingCallDialogOpen) return;
-    if (_tabTutorialAttempted.add(_selectedIndex)) {
-      _maybeShowTabTutorial(_selectedIndex);
-    }
+    // ★ 優化：主介面教學播完或跳過後，不再無縫硬塞首頁教學，讓長輩能自由探索畫面，徹底消除連續彈窗轟炸。
+    //   若長輩日後需要說明，可隨時點擊右下角常駐的「❓ 怎麼用」救生圈或至「我的」重新開啟導覽。
   }
 
   /// 分頁教學的分派：只在 `_onNavTap` 判定「第一次切到這個分頁」時呼叫一次。
@@ -1161,9 +1152,217 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
             bottom: 0,
             child: _buildFloatingNavBar(),
           ),
+          // 🛟 長輩隨身救生圈：「❓ 怎麼用」隨叫隨到求助按鈕
+          Positioned(
+            right: 16,
+            bottom: 116,
+            child: _buildHelpButton(),
+          ),
         ],
       ),
     );
+  }
+
+  Widget _buildHelpButton() {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: _showHelpSheet,
+        borderRadius: BorderRadius.circular(30),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            color: const Color(0xFF2E7D78),
+            borderRadius: BorderRadius.circular(30),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.18),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.help_outline_rounded, color: Colors.white, size: 22),
+              const SizedBox(width: 6),
+              Text(
+                '怎麼用？',
+                style: GoogleFonts.notoSansTc(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showHelpSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return Container(
+          padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 44,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Text(
+                '👵 阿公阿嬤安心救生圈',
+                style: GoogleFonts.notoSansTc(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: const Color(0xFF1E293B),
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '遇到看不懂或按不出來？點選下方隨時幫您：',
+                style: GoogleFonts.notoSansTc(fontSize: 16, color: const Color(0xFF64748B)),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _triggerGoogleAssistantOverlay('請告訴我這個畫面怎麼用');
+                },
+                icon: const Icon(Icons.mic_rounded, size: 26),
+                label: Text(
+                  '🎙️ 聽小嘎說話（語音幫忙）',
+                  style: GoogleFonts.notoSansTc(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF2E7D78),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                ),
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _replayCurrentTabTutorial();
+                },
+                icon: const Icon(Icons.menu_book_rounded, size: 24),
+                label: Text(
+                  '📖 觀看本頁功能導覽',
+                  style: GoogleFonts.notoSansTc(fontSize: 17, fontWeight: FontWeight.bold),
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF2E7D78),
+                  side: const BorderSide(color: Color(0xFF2E7D78), width: 1.5),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextButton.icon(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _onNavTap(1);
+                },
+                icon: const Icon(Icons.phone_rounded, color: Color(0xFF0284C7), size: 24),
+                label: Text(
+                  '📞 撥打電話給家人',
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 16,
+                    color: const Color(0xFF0284C7),
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _replayCurrentTabTutorial() {
+    switch (_selectedIndex) {
+      case 0:
+        SpotlightTutorial.showForce(
+          context,
+          tutorialId: 'elder_home_v1',
+          steps: [
+            TutorialStep(
+              targetKey: _homeDateCardKey,
+              title: '今日日期',
+              body: '這裡會顯示今天的日期、農民曆和節氣，按下去還能看更多內容。',
+            ),
+            TutorialStep(
+              targetKey: _homeNewsCardKey,
+              title: '今日頭條',
+              body: '每天都會更新新聞，按下去可以用聽的，不用自己看小字。',
+            ),
+            TutorialStep(
+              targetKey: _homeMoreNewsKey,
+              title: '更多新聞',
+              body: '想看更多各類新聞，按這裡就可以挑選有興趣的主題。',
+            ),
+          ],
+        );
+        break;
+      case 1:
+        SpotlightTutorial.showForce(
+          context,
+          tutorialId: 'elder_phone_v1',
+          steps: [
+            TutorialStep(
+              targetKey: _phoneTabBarKey,
+              title: '聯絡人類別',
+              body: '可以在這裡切換家人或朋友的電話名冊。',
+            ),
+            TutorialStep(
+              targetKey: _phoneCallKey,
+              title: '撥打電話',
+              body: '按綠色按鈕可以直接撥語音電話給家人。',
+            ),
+            TutorialStep(
+              targetKey: _phoneVideoKey,
+              title: '視訊通話',
+              body: '按藍色按鈕可以看著家人的臉聊天喔！',
+            ),
+          ],
+        );
+        break;
+      default:
+        SpotlightTutorial.showForce(
+          context,
+          tutorialId: 'elder_main_v1',
+          steps: [
+            const TutorialStep(
+              title: '歡迎使用 UBan',
+              body: '最下面的五個按鈕是主要功能，點擊任一個都可以切換喔！',
+            ),
+          ],
+        );
+        break;
+    }
   }
 
   Widget _buildFloatingNavBar() {

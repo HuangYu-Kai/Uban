@@ -97,44 +97,118 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
           context: context,
           barrierDismissible: false,
           builder: (context) => AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: Text(
-              '設備角色選擇',
-              style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold),
-            ),
-            content: Text(
-              '系統偵測到此長輩目前已有其他「通話設備」在線。\n\n您希望將此設備設定為：',
-              style: GoogleFonts.notoSansTc(fontSize: 16),
-            ),
-            actionsAlignment: MainAxisAlignment.spaceEvenly,
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false), // 選擇通話機
-                child: Text(
-                  '設為通話機',
-                  style: GoogleFonts.notoSansTc(
-                    color: const Color(0xFF2E7D78),
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
+            contentPadding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+            title: Row(
+              children: [
+                const Text('👵 ', style: TextStyle(fontSize: 26)),
+                Expanded(
+                  child: Text(
+                    '這台手機平常怎麼用呢？',
+                    style: GoogleFonts.notoSansTc(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 20,
+                      color: const Color(0xFF1E293B),
+                    ),
                   ),
                 ),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(context, true), // 選擇監控機
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFE74C3C),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-                child: Text(
-                  '設為監控機',
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  '請選擇您打算如何使用這台手機：\n（完全免費安心使用，之後隨時可以在設定更換喔！）',
                   style: GoogleFonts.notoSansTc(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
+                    fontSize: 15,
+                    color: const Color(0xFF475569),
+                    height: 1.4,
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 18),
+                // 選項 1：隨身拿著用（打電話、看日曆、養小豬）
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(context, false), // 隨身通話機
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF2E7D78),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    elevation: 2,
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.phone_iphone_rounded, size: 28),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '📱 我隨身拿著用',
+                              style: GoogleFonts.notoSansTc(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Text(
+                              '打電話、看日曆、養小豬',
+                              style: GoogleFonts.notoSansTc(
+                                fontSize: 13,
+                                color: Colors.white70,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: Colors.white70),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                // 選項 2：放在客廳插著電（守護全家平安）
+                OutlinedButton(
+                  onPressed: () => Navigator.pop(context, true), // 定點守護機
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF334155),
+                    side: const BorderSide(color: Color(0xFF94A3B8), width: 1.5),
+                    padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.home_rounded, size: 28, color: Color(0xFF0284C7)),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '🏠 放在客廳插著電',
+                              style: GoogleFonts.notoSansTc(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: const Color(0xFF1E293B),
+                              ),
+                            ),
+                            Text(
+                              '定點守護、全家遠端平安連線',
+                              style: GoogleFonts.notoSansTc(
+                                fontSize: 13,
+                                color: const Color(0xFF64748B),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: Color(0xFF94A3B8)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         );
         if (chooseMonitor != null) {
@@ -491,10 +565,33 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
       final String elderRoomId = prefs.getString('last_elder_room_id') ?? '6160';
 
       await prefs.setBool('is_autonomous_mode', true);
-      await loginAndPersist(
+      await prefs.setInt('caregiver_id', elderId);
+      await prefs.setString('caregiver_name', elderName);
+      await prefs.setString('user_role', 'elder');
+      await prefs.setString('saved_role', 'elder');
+      await prefs.setString('elder_room_id', elderRoomId);
+      await prefs.setBool('saved_is_cctv', false);
+      await prefs.setString('saved_device_name', '$elderName的設備');
+      await prefs.setString('device_role_$elderRoomId', 'comm');
+      await _rememberLastElder(
+        prefs,
         elderId: elderId,
         elderName: elderName,
         elderRoomId: elderRoomId,
+      );
+      await prefs.setString('last_elder_device_role', 'comm');
+
+      if (!mounted) return;
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ElderHomeScreen(
+            userId: elderId,
+            userName: elderName,
+            roomId: elderRoomId,
+          ),
+        ),
       );
     } catch (e) {
       if (!mounted) return;
@@ -615,14 +712,31 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 10),
-                  Text(
-                    '💡 沒有家人在身旁？點此直接享受 AI 伴侶、農民曆與小豬養成！日後可隨時補綁家人。',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 14,
-                      color: const Color(0xFF64748B),
-                      fontWeight: FontWeight.w600,
+                  const SizedBox(height: 12),
+                  InkWell(
+                    onTap: _startAutonomousMode,
+                    borderRadius: BorderRadius.circular(12),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.touch_app_rounded, size: 18, color: Color(0xFF0284C7)),
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              '💡 沒有家人在身旁？點此直接享受 AI 伴侶、農民曆與小豬養成！日後可隨時補綁家人。',
+                              textAlign: TextAlign.center,
+                              style: GoogleFonts.notoSansTc(
+                                fontSize: 14,
+                                color: const Color(0xFF0284C7),
+                                fontWeight: FontWeight.w700,
+                                decoration: TextDecoration.underline,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                   const SizedBox(height: 24),
