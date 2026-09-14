@@ -125,16 +125,22 @@ class _ElderProfileTabState extends State<ElderProfileTab>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    precacheImage(const AssetImage('assets/images/pet_stages/pig_stage_1.png'), context);
-    precacheImage(const AssetImage('assets/images/pet_stages/pig_stage_2.png'), context);
-    precacheImage(const AssetImage('assets/images/pet_stages/pig_stage_3.png'), context);
-    precacheImage(const AssetImage('assets/images/pet_stages/pig_stage_4.png'), context);
-    precacheImage(const AssetImage('assets/images/pet_stages/pig_stage_5.png'), context);
+    precacheImage(
+        const AssetImage('assets/images/pet_stages/pig_stage_1.png'), context);
+    precacheImage(
+        const AssetImage('assets/images/pet_stages/pig_stage_2.png'), context);
+    precacheImage(
+        const AssetImage('assets/images/pet_stages/pig_stage_3.png'), context);
+    precacheImage(
+        const AssetImage('assets/images/pet_stages/pig_stage_4.png'), context);
+    precacheImage(
+        const AssetImage('assets/images/pet_stages/pig_stage_5.png'), context);
     precacheImage(const AssetImage('assets/images/pig_mascot.png'), context);
   }
 
   Future<void> _loadPetGrowthState() async {
-    final state = await PetStorageService.loadState(currentSensorSteps: currentSteps);
+    final state =
+        await PetStorageService.loadState(currentSensorSteps: currentSteps);
     if (mounted) {
       setState(() {
         _petGrowthState = state;
@@ -612,7 +618,8 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     PetStorageService.saveState(newState);
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('小豬大口吃下了【${food.name}】！活力 +${food.vitalityGain} ✨')),
+      SnackBar(
+          content: Text('小豬大口吃下了【${food.name}】！活力 +${food.vitalityGain} ✨')),
     );
   }
 
@@ -689,7 +696,8 @@ class _ElderProfileTabState extends State<ElderProfileTab>
             color: const Color(0xFFFEF3C7),
             borderRadius: BorderRadius.circular(14),
           ),
-          child: const Icon(Icons.school_rounded, color: Color(0xFFB45309), size: 28),
+          child: const Icon(Icons.school_rounded,
+              color: Color(0xFFB45309), size: 28),
         ),
         title: Text(
           '📖 重新觀看新手導覽',
@@ -703,11 +711,13 @@ class _ElderProfileTabState extends State<ElderProfileTab>
         ),
         subtitle: Text(
           '忘記功能怎麼用？點此重新開啟操作介紹',
-          style: GoogleFonts.notoSansTc(fontSize: 14, color: const Color(0xFF8C6D58)),
+          style: GoogleFonts.notoSansTc(
+              fontSize: 14, color: const Color(0xFF8C6D58)),
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
         ),
-        trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 18, color: Color(0xFFD4C5B9)),
+        trailing: const Icon(Icons.arrow_forward_ios_rounded,
+            size: 18, color: Color(0xFFD4C5B9)),
         onTap: () async {
           await SpotlightTutorial.resetAllTutorials();
           if (context.mounted) {
@@ -792,7 +802,9 @@ class _ElderProfileTabState extends State<ElderProfileTab>
           growthState: growthState,
           speechText: _speechText,
           greetingLine: greetingLine,
-          topRightActions: PetCornerActions(userId: widget.userId),
+          // 直向手機寬度有限，膠囊改精簡圖示橫排，把空間讓給問候語與對話氣泡
+          topRightActions:
+              PetCornerActions(userId: widget.userId, compact: true),
         ),
 
         Padding(

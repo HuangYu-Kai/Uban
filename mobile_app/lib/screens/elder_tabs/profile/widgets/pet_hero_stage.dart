@@ -138,6 +138,13 @@ class _PetHeroStageState extends State<PetHeroStage>
     );
   }
 
+  /// 頂部問候列與右上膠囊群佔用的高度。小豬的可用空間要先扣掉它，
+  /// 否則氣泡會被擠到問候列後面，變成穿透 0.82 半透明卡片的鬼影文字。
+  /// 精簡圖示橫排（40px 圓鈕）＋ 上下內距；直向手機用這個值。
+  /// 先前設 76 是沿用完整文字膠囊的高度，膠囊改精簡後等於白白吃掉
+  /// 20px，小豬被壓得比該有的小。
+  static const double _topBarReserve = 56.0;
+
   @override
   Widget build(BuildContext context) {
     final Size screenSize = MediaQuery.sizeOf(context);
@@ -200,16 +207,40 @@ class _PetHeroStageState extends State<PetHeroStage>
           ),
 
           // 4. 置中大隻手繪小豬（版面核心，比照寶可夢詳情頁大隻角色置中呈現）
-          Center(
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 24),
-              child: HandDrawnPigletActor(
-                size: isLandscape ? 300 : 260,
-                stage: widget.growthState.stage,
-                mood: ActorMood.idle,
-                speechText: widget.speechText,
-                isCrownUnlocked: widget.growthState.isCrownUnlocked,
-              ),
+          //
+          // ⚠️ 尺寸必須由「實際可用高度」推算，不能寫死。HandDrawnPigletActor
+          //    的舞台是 size * 1.32，speechText 非空時還會在上方疊一個對話
+          //    氣泡；固定 260 在較矮的視窗會直接擠爆，實測出現
+          //    BOTTOM OVERFLOWED BY 94 PIXELS（鐵律 #14），且被擠上去的氣泡
+          //    會穿到頂部問候列後面變成鬼影文字。
+          //    上方另外讓開 _topBarReserve，避免小豬與問候列／膠囊群打架。
+          Padding(
+            padding: const EdgeInsets.only(
+              top: _topBarReserve,
+              bottom: 24,
+            ),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final double bubbleReserve =
+                    widget.speechText.trim().isEmpty ? 0.0 : 96.0;
+                final double availH = constraints.maxHeight - bubbleReserve;
+                final double cap = isLandscape ? 300.0 : 260.0;
+                // 同時受高度與寬度限制，取最小者再夾到合理範圍
+                final double byHeight = availH / 1.32;
+                final double byWidth = constraints.maxWidth / 1.32;
+                final double actorSize =
+                    math.min(math.min(byHeight, byWidth), cap).clamp(96.0, cap);
+
+                return Center(
+                  child: HandDrawnPigletActor(
+                    size: actorSize,
+                    stage: widget.growthState.stage,
+                    mood: ActorMood.idle,
+                    speechText: widget.speechText,
+                    isCrownUnlocked: widget.growthState.isCrownUnlocked,
+                  ),
+                );
+              },
             ),
           ),
 
@@ -259,11 +290,13 @@ class _PetHeroStageState extends State<PetHeroStage>
                           vertical: 8,
                         ),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFFFFDF9).withValues(alpha: 0.82),
+                          color:
+                              const Color(0xFFFFFDF9).withValues(alpha: 0.82),
                           borderRadius: BorderRadius.circular(18),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(0xFF78350F).withValues(alpha: 0.10),
+                              color: const Color(0xFF78350F)
+                                  .withValues(alpha: 0.10),
                               blurRadius: 10,
                               offset: const Offset(0, 3),
                             ),
@@ -272,15 +305,13 @@ class _PetHeroStageState extends State<PetHeroStage>
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Text('👋', style: TextStyle(fontSize: 20)),
-                            const SizedBox(width: 6),
                             // ⚠️ 問候語含使用者姓名，長度不可控 → 必須
                             // Flexible + ellipsis（鐵律 #14／護欄 G159）。
                             Flexible(
                               child: Text(
                                 widget.greetingLine,
                                 style: GoogleFonts.notoSansTc(
-                                  fontSize: 23,
+                                  fontSize: 20,
                                   fontWeight: FontWeight.w900,
                                   color: const Color(0xFF451A03),
                                 ),

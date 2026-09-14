@@ -24,7 +24,16 @@ class PetCornerActions extends StatefulWidget {
   /// 換出權威值，不可補零臆測）。
   final int userId;
 
-  const PetCornerActions({super.key, required this.userId});
+  /// 窄螢幕（手機直向）用的精簡樣式：三顆改為純圖示的圓鈕橫排。
+  /// 完整文字版在 360px 寬度下會吃掉超過一半的橫向空間，把問候語擠成
+  /// 「晚…」，賽季膠囊也會壓到小豬的對話氣泡。
+  final bool compact;
+
+  const PetCornerActions({
+    super.key,
+    required this.userId,
+    this.compact = false,
+  });
 
   @override
   State<PetCornerActions> createState() => _PetCornerActionsState();
@@ -68,7 +77,8 @@ class _PetCornerActionsState extends State<PetCornerActions> {
   void _showSnackToast(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(msg, style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold)),
+        content: Text(msg,
+            style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold)),
         backgroundColor: const Color(0xFF0F172A),
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 2),
@@ -78,6 +88,8 @@ class _PetCornerActionsState extends State<PetCornerActions> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.compact) return _buildCompactRow();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
@@ -89,6 +101,93 @@ class _PetCornerActionsState extends State<PetCornerActions> {
         const SizedBox(height: 10),
         _buildMusicControlButton(),
       ],
+    );
+  }
+
+  /// 精簡橫排：三顆 40px 圓形圖示鈕，總寬約 136px，
+  /// 讓問候語在 360px 寬度下仍有足夠空間完整顯示。
+  Widget _buildCompactRow() {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (_season != null) ...[
+          _buildIconPill(
+            emoji: '🗓️',
+            borderColor: const Color(0xFFBBF7D0),
+            glowColor: const Color(0xFF059669),
+            tooltip:
+                '第 ${_season!.seasonNo} 季 · 還剩 ${_season!.daysRemaining} 天',
+            onTap: () {
+              HapticFeedback.lightImpact();
+              _showSnackToast(
+                '🗓️ 第 ${_season!.seasonNo} 季，還剩 ${_season!.daysRemaining} 天',
+              );
+            },
+          ),
+          const SizedBox(width: 8),
+        ],
+        _buildIconPill(
+          emoji: '🏆',
+          borderColor: const Color(0xFFFDE68A),
+          glowColor: const Color(0xFFF59E0B),
+          tooltip: '排行榜',
+          onTap: () {
+            HapticFeedback.lightImpact();
+            _showLeaderboardSheet();
+          },
+        ),
+        const SizedBox(width: 8),
+        _buildIconPill(
+          emoji: _audioService.isMuted ? '🔇' : '🎵',
+          borderColor: const Color(0xFFDDD6FE),
+          glowColor: const Color(0xFF7C3AED),
+          tooltip: _audioService.isMuted ? '背景音樂：關' : '背景音樂：開',
+          onTap: () async {
+            HapticFeedback.lightImpact();
+            await _audioService.toggleMute();
+            if (!mounted) return;
+            setState(() {});
+            _showSnackToast(
+              _audioService.isMuted
+                  ? '🔇 背景音樂已靜音'
+                  : '🎵 背景音樂已開啟（${_audioService.currentTrack.title}）',
+            );
+          },
+          onLongPress: () {
+            HapticFeedback.mediumImpact();
+            _showMusicSettingsSheet();
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildIconPill({
+    required String emoji,
+    required Color borderColor,
+    required Color glowColor,
+    required String tooltip,
+    required VoidCallback onTap,
+    VoidCallback? onLongPress,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: const Color(0xFFFFFDF8).withValues(alpha: 0.94),
+        shape: CircleBorder(side: BorderSide(color: borderColor, width: 1.5)),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          onLongPress: onLongPress,
+          child: SizedBox(
+            width: 40,
+            height: 40,
+            child: Center(
+              child: Text(emoji, style: const TextStyle(fontSize: 17)),
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -251,7 +350,8 @@ class _PetCornerActionsState extends State<PetCornerActions> {
                       : '🎵 背景音樂已開啟（${_audioService.currentTrack.title}）',
                 );
               },
-              borderRadius: const BorderRadius.horizontal(left: Radius.circular(24)),
+              borderRadius:
+                  const BorderRadius.horizontal(left: Radius.circular(24)),
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(14, 9, 10, 9),
                 child: Row(
@@ -302,7 +402,8 @@ class _PetCornerActionsState extends State<PetCornerActions> {
                 HapticFeedback.lightImpact();
                 _showMusicSettingsSheet();
               },
-              borderRadius: const BorderRadius.horizontal(right: Radius.circular(24)),
+              borderRadius:
+                  const BorderRadius.horizontal(right: Radius.circular(24)),
               child: const Padding(
                 padding: EdgeInsets.fromLTRB(9, 9, 14, 9),
                 child: Icon(
@@ -385,7 +486,8 @@ class _PetCornerActionsState extends State<PetCornerActions> {
                       ),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.close_rounded, color: Color(0xFF78350F)),
+                      icon: const Icon(Icons.close_rounded,
+                          color: Color(0xFF78350F)),
                       onPressed: () => Navigator.pop(ctx),
                     ),
                   ],
@@ -394,20 +496,29 @@ class _PetCornerActionsState extends State<PetCornerActions> {
 
                 // 1. 音樂總開關 Switch
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   decoration: BoxDecoration(
-                    color: isMuted ? const Color(0xFFF8FAFC) : const Color(0xFFFFFBEB),
+                    color: isMuted
+                        ? const Color(0xFFF8FAFC)
+                        : const Color(0xFFFFFBEB),
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                      color: isMuted ? const Color(0xFFE2E8F0) : const Color(0xFFFDE68A),
+                      color: isMuted
+                          ? const Color(0xFFE2E8F0)
+                          : const Color(0xFFFDE68A),
                       width: 1.5,
                     ),
                   ),
                   child: Row(
                     children: [
                       Icon(
-                        isMuted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
-                        color: isMuted ? const Color(0xFF94A3B8) : const Color(0xFFD97706),
+                        isMuted
+                            ? Icons.volume_off_rounded
+                            : Icons.volume_up_rounded,
+                        color: isMuted
+                            ? const Color(0xFF94A3B8)
+                            : const Color(0xFFD97706),
                         size: 24,
                       ),
                       const SizedBox(width: 12),
@@ -420,7 +531,9 @@ class _PetCornerActionsState extends State<PetCornerActions> {
                               style: GoogleFonts.notoSansTc(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w800,
-                                color: isMuted ? const Color(0xFF64748B) : const Color(0xFF78350F),
+                                color: isMuted
+                                    ? const Color(0xFF64748B)
+                                    : const Color(0xFF78350F),
                               ),
                             ),
                             Text(
@@ -478,7 +591,8 @@ class _PetCornerActionsState extends State<PetCornerActions> {
                       activeTrackColor: const Color(0xFFD97706),
                       inactiveTrackColor: const Color(0xFFF1EBE1),
                       thumbColor: const Color(0xFFD97706),
-                      overlayColor: const Color(0xFFD97706).withValues(alpha: 0.15),
+                      overlayColor:
+                          const Color(0xFFD97706).withValues(alpha: 0.15),
                       trackHeight: 6,
                     ),
                     child: Slider(
@@ -520,18 +634,24 @@ class _PetCornerActionsState extends State<PetCornerActions> {
                       borderRadius: BorderRadius.circular(18),
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 200),
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 12),
                         decoration: BoxDecoration(
-                          color: isSelected ? const Color(0xFFFFFBEB) : const Color(0xFFFAF7F2),
+                          color: isSelected
+                              ? const Color(0xFFFFFBEB)
+                              : const Color(0xFFFAF7F2),
                           borderRadius: BorderRadius.circular(18),
                           border: Border.all(
-                            color: isSelected ? const Color(0xFFF59E0B) : const Color(0xFFEADBCE),
+                            color: isSelected
+                                ? const Color(0xFFF59E0B)
+                                : const Color(0xFFEADBCE),
                             width: isSelected ? 2.0 : 1.2,
                           ),
                         ),
                         child: Row(
                           children: [
-                            Text(track.emoji, style: const TextStyle(fontSize: 24)),
+                            Text(track.emoji,
+                                style: const TextStyle(fontSize: 24)),
                             const SizedBox(width: 12),
                             Expanded(
                               child: Column(
@@ -557,7 +677,8 @@ class _PetCornerActionsState extends State<PetCornerActions> {
                                           color: isSelected
                                               ? const Color(0xFFFEF3C7)
                                               : const Color(0xFFF1EBE1),
-                                          borderRadius: BorderRadius.circular(8),
+                                          borderRadius:
+                                              BorderRadius.circular(8),
                                         ),
                                         child: Text(
                                           track.durationText,

@@ -36,8 +36,9 @@ class PetStatsSheet extends StatelessWidget {
     // 而不是繼續講「再 X 升級」卻沒有下一階可升。
     final bool isMaxStage =
         growthState.stage.index == PetGrowthStage.values.length - 1;
-    final String progressCaption =
-        isMaxStage ? '已經是最高階段了 👑' : '再 ${growthState.kgToNextStageFormatted} 升級';
+    final String progressCaption = isMaxStage
+        ? '已經是最高階段了 👑'
+        : '再 ${growthState.kgToNextStageFormatted} 升級';
 
     return Container(
       width: double.infinity,
@@ -92,7 +93,8 @@ class PetStatsSheet extends StatelessWidget {
               value: growthState.stageProgress,
               minHeight: 12,
               backgroundColor: const Color(0xFFF5EBE1),
-              valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFF59E0B)),
+              valueColor:
+                  const AlwaysStoppedAnimation<Color>(Color(0xFFF59E0B)),
             ),
           ),
           const SizedBox(height: 8),
@@ -111,33 +113,35 @@ class PetStatsSheet extends StatelessWidget {
 
           // 3. 三欄數據（體重｜成長階段｜活力），欄間 1px 直線分隔
           //    比照 Pokémon GO 詳情頁的 weight | type | height 那一列。
-          IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(
-                  child: _StatColumn(
-                    value: growthState.weightFormatted,
-                    label: '體重',
-                  ),
+          // ⚠️ 這裡刻意不用 IntrinsicHeight + stretch：分隔線本來就是固定
+          //    height: 40，不需要撐高；而 stretch 會把量測出來的高度當成
+          //    tight 約束餵給各欄，「🍙 第 1 階」的 emoji 行高比純文字字級
+          //    高一點點，就會擠出 1px 的 BOTTOM OVERFLOWED 黃黑斜紋（鐵律 #14）。
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: _StatColumn(
+                  value: growthState.weightFormatted,
+                  label: '體重',
                 ),
-                Container(width: 1, height: 40, color: const Color(0xFFEADBCE)),
-                Expanded(
-                  child: _StatColumn(
-                    value:
-                        '${growthState.stage.icon} 第 ${growthState.stage.index + 1} 階',
-                    label: '成長階段',
-                  ),
+              ),
+              Container(width: 1, height: 40, color: const Color(0xFFEADBCE)),
+              Expanded(
+                child: _StatColumn(
+                  value:
+                      '${growthState.stage.icon} 第 ${growthState.stage.index + 1} 階',
+                  label: '成長階段',
                 ),
-                Container(width: 1, height: 40, color: const Color(0xFFEADBCE)),
-                Expanded(
-                  child: _StatColumn(
-                    value: '${growthState.vitality}%',
-                    label: '活力',
-                  ),
+              ),
+              Container(width: 1, height: 40, color: const Color(0xFFEADBCE)),
+              Expanded(
+                child: _StatColumn(
+                  value: '${growthState.vitality}%',
+                  label: '活力',
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
           const SizedBox(height: 22),
 
@@ -200,6 +204,8 @@ class _StatColumn extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
+      // 不再被 stretch 撐成固定高度，明確以內容決定高度最安全
+      mainAxisSize: MainAxisSize.min,
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Text(
