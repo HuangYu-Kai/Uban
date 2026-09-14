@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../main.dart' show navigatorKey;
+import '../utils/reminder_schedule.dart' show appliesToday;
 import 'api_service.dart';
 import 'local_reminder_notification.dart';
 import '../widgets/elder_reminder_dialog.dart';
@@ -133,8 +134,6 @@ class ElderReminderManager {
     final now = DateTime.now();
     final currentTimeStr = DateFormat('HH:mm').format(now);
     final todayStr = DateFormat('yyyy-MM-dd').format(now);
-    final weekdayMap = {1: '週一', 2: '週二', 3: '週三', 4: '週四', 5: '週五', 6: '週六', 7: '週日'};
-    final currentWeekday = weekdayMap[now.weekday] ?? '';
 
     for (final r in _reminders) {
       final isActive = r['is_active'] == true || r['is_active'] == 1;
@@ -147,24 +146,13 @@ class ElderReminderManager {
       final dedupKey = '${id}_${todayStr}_$currentTimeStr';
       if (_triggeredKeys.contains(dedupKey)) continue;
 
-      // 檢查重複模式
-      final repeatDays = r['repeat_days']?.toString() ?? '每天';
-      final startDate = r['start_date']?.toString();
-      bool shouldTrigger = false;
-
-      if (repeatDays == '每天' || repeatDays == '常規') {
-        shouldTrigger = true;
-      } else if (repeatDays == '單次' || repeatDays == '單次提醒') {
-        if (startDate == null || startDate.isEmpty || startDate == todayStr) {
-          shouldTrigger = true;
-        }
-      } else if (repeatDays == '週一至週五') {
-        if (now.weekday <= 5) shouldTrigger = true;
-      } else if (repeatDays.contains(currentWeekday)) {
-        shouldTrigger = true;
-      } else {
-        shouldTrigger = true;
-      }
+      // ★ 檢查重複模式：改呼叫共用工具 appliesToday()，與「我的」分頁今日排程共用同一份
+      // 判斷邏輯，避免看門狗與 UI 對「今天算不算數」各自表述、互相矛盾。
+      // is_active 的判斷維持在上方（迴圈開頭的 isActive 檢查）不動，因為看門狗原本採「白名單」
+      // （is_active == true || 1 才觸發），與 appliesToday() 內部的寬鬆黑名單標準不同；
+      // 若改由 appliesToday() 一併判斷 is_active，會讓 is_active 為 null／其他型別的提醒
+      // 從「不觸發」變成「觸發」，行為不再等價，因此刻意保留原本的早退判斷。
+      final shouldTrigger = appliesToday(r, now);
 
       if (shouldTrigger) {
         _triggeredKeys.add(dedupKey);
