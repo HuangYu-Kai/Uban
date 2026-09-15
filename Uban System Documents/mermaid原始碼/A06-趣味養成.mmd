@@ -1,12 +1,15 @@
-%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["長輩"]
+    LS_S1["開始"]:::lbl
     ST_S1(("&nbsp;")):::term
     S1([日常走路]):::act
+    LS_S2["開始"]:::lbl
     ST_S2(("&nbsp;")):::term
     S2([開啟寵物花園]):::act
     S3{"要做什麼？"}:::dec
     S4(["看見小豬長大"]):::act
+    LE_S4["結束"]:::lbl
     EN_S4(("&nbsp;")):::term
   end
   subgraph FE["長輩機 App"]
@@ -15,12 +18,15 @@ flowchart TD
     P3["兩者取最大值"]:::act
     A1["PetStudioScreen"]:::act
     A2["顯示成長階段門檻<br/>與賽季剩餘天數"]:::act
+    LE_A2["結束"]:::lbl
     EN_A2(("&nbsp;")):::term
     A3["顯示好友體重排名"]:::act
+    LE_A3["結束"]:::lbl
     EN_A3(("&nbsp;")):::term
     A4{"已解鎖<br/>果實？"}:::dec
     A5["餵食動畫<br/>體重增加"]:::act
     A6["提示所需步數<br/>按鈕停用"]:::act
+    LE_A6["結束"]:::lbl
     EN_A6(("&nbsp;")):::term
   end
   subgraph BE["uban-api 後端"]
@@ -35,7 +41,9 @@ flowchart TD
     D4[("pet_season<br/>pet_season_settlement")]:::act
   end
 
+  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
+  LS_S2 ~~~ ST_S2
   ST_S2 --> S2
   S1 --> P1
   P1 --> P3
@@ -61,11 +69,18 @@ flowchart TD
   A5 --> S4
   D2 --> A1
   S4 --> EN_S4
+  LE_S4 ~~~ EN_S4
   A2 --> EN_A2
+  LE_A2 ~~~ EN_A2
   A3 --> EN_A3
+  LE_A3 ~~~ EN_A3
   A6 --> EN_A6
+  LE_A6 ~~~ EN_A6
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  ROLE ~~~ FE ~~~ BE
 
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+  classDef lbl  fill:none,stroke:none,color:#000000

@@ -1,9 +1,11 @@
-%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["家屬"]
+    LS_S1["開始"]:::lbl
     ST_S1(("&nbsp;")):::term
     S1([於『互動』分頁點選監控裝置]):::act
     S2(["觀看即時單向影像"]):::act
+    LE_S2["結束"]:::lbl
     EN_S2(("&nbsp;")):::term
   end
   subgraph FE["家屬機 App"]
@@ -19,12 +21,15 @@ flowchart TD
     B1["Socket.IO 交換<br/>offer／answer／candidate"]:::act
     B2["POST /api/cctv/frame<br/>監視機約每 2 秒推幀"]:::act
     B3["YOLO 推論（容器內 CPU）"]:::act
+    LE_B3["結束"]:::lbl
     EN_B3(("&nbsp;")):::term
     B4["更新 cctv_feed_status<br/>連線品質與最後推幀時間"]:::act
     B5{"30 秒未推幀？"}:::dec
     B6["yolo_monitor_job<br/>標記 inactive 並重置窗口"]:::act
+    LE_B6["結束"]:::lbl
     EN_B6(("&nbsp;")):::term
     X(["拒絕觀看"]):::act
+    LE_X["結束"]:::lbl
     EN_X(("&nbsp;")):::term
   end
   subgraph NET["雙軌傳輸（實體分離）"]
@@ -32,6 +37,7 @@ flowchart TD
     N2["媒體：Oracle Cloud Coturn<br/>UDP"]:::act
   end
 
+  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
   S1 --> G0
   G0 -->|"[否]"| X
@@ -51,11 +57,18 @@ flowchart TD
   B5 -->|"[是]"| B6
   B5 -->|"[否]"| B4
   S2 --> EN_S2
+  LE_S2 ~~~ EN_S2
   B3 --> EN_B3
+  LE_B3 ~~~ EN_B3
   B6 --> EN_B6
+  LE_B6 ~~~ EN_B6
   X --> EN_X
+  LE_X ~~~ EN_X
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  ROLE ~~~ FE ~~~ FE2 ~~~ BE ~~~ NET
 
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+  classDef lbl  fill:none,stroke:none,color:#000000

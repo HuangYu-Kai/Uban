@@ -1,12 +1,15 @@
-%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["開發者"]
+    LS_S1["開始"]:::lbl
     ST_S1(("&nbsp;")):::term
     S1([進入『帳號管理』頁]):::act
     S2{"要做什麼？"}:::dec
     S3(["層級調整完成"]):::act
+    LE_S3["結束"]:::lbl
     EN_S3(("&nbsp;")):::term
     S4(["停權狀態已記錄"]):::act
+    LE_S4["結束"]:::lbl
     EN_S4(("&nbsp;")):::term
   end
   subgraph FE["uban-admin · AccountsPage"]
@@ -24,11 +27,14 @@ flowchart TD
     D2[("account_ban")]:::act
     D3[("admin_action_log<br/>append-only・無外鍵・無查詢畫面")]:::act
     N1["routers/auth.py::login()<br/>未查 account_ban<br/>→ 停權帳號仍可登入"]:::act
+    LE_N1["結束"]:::lbl
     EN_N1(("&nbsp;")):::term
     X(["401"]):::act
+    LE_X["結束"]:::lbl
     EN_X(("&nbsp;")):::term
   end
 
+  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
   S1 --> G0
   G0 -->|"[否]"| X
@@ -50,11 +56,18 @@ flowchart TD
   B5 --> B6
   D2 -.->|"[未生效]"| N1
   S3 --> EN_S3
+  LE_S3 ~~~ EN_S3
   S4 --> EN_S4
+  LE_S4 ~~~ EN_S4
   N1 --> EN_N1
+  LE_N1 ~~~ EN_N1
   X --> EN_X
+  LE_X ~~~ EN_X
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  ROLE ~~~ FE ~~~ BE
 
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+  classDef lbl  fill:none,stroke:none,color:#000000

@@ -1,9 +1,11 @@
-%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["開發者"]
+    LS_S1["開始"]:::lbl
     ST_S1(("&nbsp;")):::term
     S1([登入後進入數據總覽]):::act
     S2(["檢視三類統計圖表"]):::act
+    LE_S2["結束"]:::lbl
     EN_S2(("&nbsp;")):::term
   end
   subgraph FE["uban-admin · OverviewPage"]
@@ -28,6 +30,7 @@ flowchart TD
     D4[("call_record<br/>is_emergency")]:::act
   end
 
+  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
   S1 --> A1
   A1 --> B1
@@ -52,8 +55,12 @@ flowchart TD
   A4 --> A5
   A5 --> S2
   S2 --> EN_S2
+  LE_S2 ~~~ EN_S2
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  ROLE ~~~ FE ~~~ BE
 
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+  classDef lbl  fill:none,stroke:none,color:#000000

@@ -1,6 +1,7 @@
-%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["長輩"]
+    LS_S1["開始"]:::lbl
     ST_S1(("&nbsp;")):::term
     S1([開啟 App]):::act
     S2["出示 4 碼配對碼與 QR"]:::act
@@ -12,8 +13,10 @@ flowchart TD
     A4["ElderPairingDisplayScreen<br/>輪詢 check_status"]:::act
     A5{"本機角色<br/>為監控機？"}:::dec
     A6(["進入 ElderScreen<br/>isCCTVMode = true"]):::act
+    LE_A6["結束"]:::lbl
     EN_A6(("&nbsp;")):::term
     A7(["進入 ElderHomeScreen<br/>五分頁主畫面"]):::act
+    LE_A7["結束"]:::lbl
     EN_A7(("&nbsp;")):::term
   end
   subgraph FE2["家屬機"]
@@ -28,6 +31,7 @@ flowchart TD
     E1["配對碼作廢<br/>重新產碼"]:::act
   end
 
+  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
   S1 --> A1
   A1 --> A2
@@ -49,9 +53,14 @@ flowchart TD
   C1 -.->|"[長輩換機]"| E2
   E2 --> A5
   A6 --> EN_A6
+  LE_A6 ~~~ EN_A6
   A7 --> EN_A7
+  LE_A7 ~~~ EN_A7
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  ROLE ~~~ FE ~~~ FE2 ~~~ BE
 
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+  classDef lbl  fill:none,stroke:none,color:#000000

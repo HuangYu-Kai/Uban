@@ -610,8 +610,11 @@ table.grid tr:hover td{background:var(--surface-sunk)}
       <p class="progress-note">
         圖表沿用<b>組長既有的 draw.io UML 畫法</b>。<br>
         <b>活動圖</b>：三道泳道＝<b>角色｜前端｜後端</b>；排程器、MySQL、外部服務不另立泳道，
-        改在節點文字裡註明。<code>●</code> 起訖點、<code>◇</code> 決策、
-        守衛條件寫成 <code>[是]</code>，全圖<b>黑白</b>，僅「缺口／未實作」用虛線框。<br>
+        改在節點文字裡註明。<code>●</code> 起訖點（點的<b>上方標有「開始」或「結束」</b>）、
+        <code>◇</code> 決策、守衛條件寫成 <code>[是]</code>，
+        全圖<b>黑白</b>，僅「缺口／未實作」用虛線框。<br>
+        <b>連線</b>：採 <b>ELK 正交路由</b>，轉彎一律 90 度、走在有間距的通道裡，
+        不穿過方塊也不貼邊框。<br>
         <b>使用個案圖</b>：依角色上色（長輩綠／家屬粉／開發者黃），系統邊界框外為參與者。<br>
         <b>類別圖</b>：屬性帶型別（<code>+int user_id</code>），型別取自
         <code>database.py</code> 的 CREATE TABLE。
@@ -620,7 +623,8 @@ table.grid tr:hover td{background:var(--surface-sunk)}
         <b>mermaid 畫不出來、以替代記號表示的五項</b>：火柴人（改用圓形）、
         牛眼 <code>◉</code> 終點（改用實心圓）、fork／join 粗橫槓（改用分支線）、
         類別框斜紋填充（改用平塗）、左上摺角圖名標籤（改用圖說標題）。
-        線條為折線而非正交折線，泳道會上下錯開而非等高並排，這是 mermaid 的版面限制。
+        泳道會上下錯開而非等高並排，這是 mermaid 的版面限制。
+        （<b>連線已改為正交 90 度</b>，不再是先前的折線。）
       </p>
     </div>
     <div class="rail-block">
@@ -667,7 +671,7 @@ table.grid tr:hover td{background:var(--surface-sunk)}
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
-%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TB
   E(("長輩")):::aE
   F(("家屬")):::aF
@@ -740,7 +744,7 @@ flowchart TB
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
-%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart LR
   A(("長輩")):::actor
   subgraph SYS["Uban 系統 — 長輩端（一）"]
@@ -804,7 +808,7 @@ flowchart LR
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
-%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart LR
   A(("長輩")):::actor
   subgraph SYS["Uban 系統 — 長輩端（二）"]
@@ -868,7 +872,7 @@ flowchart LR
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
-%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart LR
   A(("家屬")):::actor
   subgraph SYS["Uban 系統 — 家屬端"]
@@ -946,7 +950,7 @@ flowchart LR
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
-%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart LR
   A(("開發者")):::actor
   subgraph SYS["Uban 開發者管理端（/admin）"]
@@ -1048,9 +1052,10 @@ flowchart LR
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
-%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["長輩"]
+    LS_S1["開始"]:::lbl
     ST_S1(("&nbsp;")):::term
     S1([開啟 App]):::act
     S2["出示 4 碼配對碼與 QR"]:::act
@@ -1062,8 +1067,10 @@ flowchart TD
     A4["ElderPairingDisplayScreen<br/>輪詢 check_status"]:::act
     A5{"本機角色<br/>為監控機？"}:::dec
     A6(["進入 ElderScreen<br/>isCCTVMode = true"]):::act
+    LE_A6["結束"]:::lbl
     EN_A6(("&nbsp;")):::term
     A7(["進入 ElderHomeScreen<br/>五分頁主畫面"]):::act
+    LE_A7["結束"]:::lbl
     EN_A7(("&nbsp;")):::term
   end
   subgraph FE2["家屬機"]
@@ -1078,6 +1085,7 @@ flowchart TD
     E1["配對碼作廢<br/>重新產碼"]:::act
   end
 
+  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
   S1 --> A1
   A1 --> A2
@@ -1099,12 +1107,17 @@ flowchart TD
   C1 -.->|"[長輩換機]"| E2
   E2 --> A5
   A6 --> EN_A6
+  LE_A6 ~~~ EN_A6
   A7 --> EN_A7
+  LE_A7 ~~~ EN_A7
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  ROLE ~~~ FE ~~~ FE2 ~~~ BE
 
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+  classDef lbl  fill:none,stroke:none,color:#000000
 </script>
       </figure>
 
@@ -1144,13 +1157,15 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
-%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["長輩"]
+    LS_S1["開始"]:::lbl
     ST_S1(("&nbsp;")):::term
     S1([說出『Hey 嘎蛙』]):::act
     S2["說出問題或閒聊內容"]:::act
     S3(["聽取語音回覆"]):::act
+    LE_S3["結束"]:::lbl
     EN_S3(("&nbsp;")):::term
   end
   subgraph FE["長輩機 App"]
@@ -1175,6 +1190,7 @@ flowchart TD
     X2[("MySQL<br/>activity_log")]:::act
   end
 
+  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
   S1 --> A1
   A1 --> A2
@@ -1199,11 +1215,15 @@ flowchart TD
   B2 --> B9
   B9 --> X1
   S3 --> EN_S3
+  LE_S3 ~~~ EN_S3
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  ROLE ~~~ FE ~~~ BE
 
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+  classDef lbl  fill:none,stroke:none,color:#000000
 </script>
       </figure>
 
@@ -1241,14 +1261,16 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
-%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["長輩"]
     S1(["聽到提醒"]):::act
     S2{"點選<br/>『我完成了』？"}:::dec
     S3(["回報完成"]):::act
+    LE_S3["結束"]:::lbl
     EN_S3(("&nbsp;")):::term
     S4(["維持未完成<br/>不重複轟炸"]):::act
+    LE_S4["結束"]:::lbl
     EN_S4(("&nbsp;")):::term
   end
   subgraph FE["長輩機 App"]
@@ -1260,9 +1282,11 @@ flowchart TD
     A6{"App 在<br/>前景？"}:::dec
     W1["20 秒看門狗<br/>主動補拉"]:::act
     X(["忽略重複"]):::act
+    LE_X["結束"]:::lbl
     EN_X(("&nbsp;")):::term
   end
   subgraph BE["uban-api"]
+    LS_B1["開始"]:::lbl
     ST_B1(("&nbsp;")):::term
     B1(["check_remote_reminders_job<br/>每分鐘觸發<br/>（APScheduler 排程）"]):::act
     B2["掃描 remote_reminders"]:::act
@@ -1272,6 +1296,7 @@ flowchart TD
     C1["POST /api/reminder/{id}/complete"]:::act
   end
 
+  LS_B1 ~~~ ST_B1
   ST_B1 --> B1
   B1 --> B2
   B2 --> B3
@@ -1294,13 +1319,19 @@ flowchart TD
   S2 -->|"[否]"| S4
   W1 -.-> A1
   S3 --> EN_S3
+  LE_S3 ~~~ EN_S3
   S4 --> EN_S4
+  LE_S4 ~~~ EN_S4
   X --> EN_X
+  LE_X ~~~ EN_X
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  ROLE ~~~ FE ~~~ BE
 
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+  classDef lbl  fill:none,stroke:none,color:#000000
 </script>
       </figure>
 
@@ -1340,13 +1371,15 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
-%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["長輩"]
+    LS_S1["開始"]:::lbl
     ST_S1(("&nbsp;")):::term
     S1([於『電話』分頁點選好友]):::act
     S2{"來電響鈴<br/>是否接聽？"}:::dec
     S3(["進行視訊通話"]):::act
+    LE_S3["結束"]:::lbl
     EN_S3(("&nbsp;")):::term
   end
   subgraph FE["長輩機 App（Signaling 單例）"]
@@ -1359,8 +1392,10 @@ flowchart TD
     A7["ICE candidate 佇列<br/>待 setRemoteDescription 後 flush"]:::act
     A8(["進入 ElderScreen 通話房"]):::act
     A9["送出 call-busy"]:::act
+    LE_A9["結束"]:::lbl
     EN_A9(("&nbsp;")):::term
     D1(["丟棄，不響鈴"]):::act
+    LE_D1["結束"]:::lbl
     EN_D1(("&nbsp;")):::term
   end
   subgraph BE["uban-api 信令（Socket.IO）"]
@@ -1372,6 +1407,7 @@ flowchart TD
     M1[("Oracle Cloud Coturn<br/>turn:152.69.196.5:3478<br/>UDP 中繼")]:::act
   end
 
+  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
   S1 --> A1
   A1 --> B1
@@ -1391,13 +1427,19 @@ flowchart TD
   A8 --> S3
   A6 --> M1
   S3 --> EN_S3
+  LE_S3 ~~~ EN_S3
   A9 --> EN_A9
+  LE_A9 ~~~ EN_A9
   D1 --> EN_D1
+  LE_D1 ~~~ EN_D1
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  ROLE ~~~ FE ~~~ BE ~~~ NET
 
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+  classDef lbl  fill:none,stroke:none,color:#000000
 </script>
       </figure>
 
@@ -1435,23 +1477,27 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
-%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["長輩"]
+    LS_S1["開始"]:::lbl
     ST_S1(("&nbsp;")):::term
     S1([點選底部『社群』分頁]):::act
     S2{"要做什麼？"}:::dec
     S3(["瀏覽並按讚留言"]):::act
     S4(["收聽新聞"]):::act
+    LE_S4["結束"]:::lbl
     EN_S4(("&nbsp;")):::term
   end
   subgraph FE["長輩機 App"]
     A1["ElderCommunityScreen<br/>CommunityService 遠端優先"]:::act
     A2["image_picker 拍照或選圖"]:::act
     A3["彈出『活力幣 +N』獎勵動畫"]:::act
+    LE_A3["結束"]:::lbl
     EN_A3(("&nbsp;")):::term
     A4["NewsListenPlayerScreen<br/>播放語音並顯示字幕"]:::act
     A5["退守 SharedPreferences<br/>本機快取（僅供瀏覽）"]:::act
+    LE_A5["結束"]:::lbl
     EN_A5(("&nbsp;")):::term
   end
   subgraph BE["uban-api 後端"]
@@ -1459,17 +1505,23 @@ flowchart TD
     B2["POST /api/community/upload"]:::act
     B3["POST /api/community/posts"]:::act
     B4["POST /posts/{id}/like<br/>POST /posts/{id}/comments"]:::act
+    LE_B4["結束"]:::lbl
     EN_B4(("&nbsp;")):::term
     B5["GET /api/news<br/>當日 11 分類"]:::act
+    LS_J1["開始"]:::lbl
     ST_J1(("&nbsp;")):::term
     J1["daily_news_crawl_job 06:00<br/>中央社 CNA 自建爬蟲<br/>（APScheduler 排程）"]:::act
+    LS_J2["開始"]:::lbl
     ST_J2(("&nbsp;")):::term
     J2["pre_generate_news_audio 03:00<br/>TTS 預先合成"]:::act
     DB[("daily_news_items")]:::act
   end
 
+  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
+  LS_J1 ~~~ ST_J1
   ST_J1 --> J1
+  LS_J2 ~~~ ST_J2
   ST_J2 --> J2
   S1 --> A1
   A1 --> B1
@@ -1488,14 +1540,21 @@ flowchart TD
   J2 --> DB
   DB --> B5
   S4 --> EN_S4
+  LE_S4 ~~~ EN_S4
   A3 --> EN_A3
+  LE_A3 ~~~ EN_A3
   A5 --> EN_A5
+  LE_A5 ~~~ EN_A5
   B4 --> EN_B4
+  LE_B4 ~~~ EN_B4
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  ROLE ~~~ FE ~~~ BE
 
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+  classDef lbl  fill:none,stroke:none,color:#000000
 </script>
       </figure>
 
@@ -1534,15 +1593,18 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
-%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["長輩"]
+    LS_S1["開始"]:::lbl
     ST_S1(("&nbsp;")):::term
     S1([日常走路]):::act
+    LS_S2["開始"]:::lbl
     ST_S2(("&nbsp;")):::term
     S2([開啟寵物花園]):::act
     S3{"要做什麼？"}:::dec
     S4(["看見小豬長大"]):::act
+    LE_S4["結束"]:::lbl
     EN_S4(("&nbsp;")):::term
   end
   subgraph FE["長輩機 App"]
@@ -1551,12 +1613,15 @@ flowchart TD
     P3["兩者取最大值"]:::act
     A1["PetStudioScreen"]:::act
     A2["顯示成長階段門檻<br/>與賽季剩餘天數"]:::act
+    LE_A2["結束"]:::lbl
     EN_A2(("&nbsp;")):::term
     A3["顯示好友體重排名"]:::act
+    LE_A3["結束"]:::lbl
     EN_A3(("&nbsp;")):::term
     A4{"已解鎖<br/>果實？"}:::dec
     A5["餵食動畫<br/>體重增加"]:::act
     A6["提示所需步數<br/>按鈕停用"]:::act
+    LE_A6["結束"]:::lbl
     EN_A6(("&nbsp;")):::term
   end
   subgraph BE["uban-api 後端"]
@@ -1571,7 +1636,9 @@ flowchart TD
     D4[("pet_season<br/>pet_season_settlement")]:::act
   end
 
+  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
+  LS_S2 ~~~ ST_S2
   ST_S2 --> S2
   S1 --> P1
   P1 --> P3
@@ -1597,14 +1664,21 @@ flowchart TD
   A5 --> S4
   D2 --> A1
   S4 --> EN_S4
+  LE_S4 ~~~ EN_S4
   A2 --> EN_A2
+  LE_A2 ~~~ EN_A2
   A3 --> EN_A3
+  LE_A3 ~~~ EN_A3
   A6 --> EN_A6
+  LE_A6 ~~~ EN_A6
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  ROLE ~~~ FE ~~~ BE
 
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+  classDef lbl  fill:none,stroke:none,color:#000000
 </script>
       </figure>
       <figure class="dia" data-id="A07" data-sec="s53" data-role="elder" data-kind="activity">
@@ -1642,9 +1716,10 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
-%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["長輩 A（發起方）"]
+    LS_S1["開始"]:::lbl
     ST_S1(("&nbsp;")):::term
     S1([開啟『加好友』]):::act
     S2["輸入對方 4 碼好友代碼"]:::act
@@ -1654,12 +1729,14 @@ flowchart TD
     T1["查看好友邀請"]:::act
     T2{"是否同意？"}:::dec
     R1(["維持未成立<br/>雙方看不到彼此動態"]):::act
+    LE_R1["結束"]:::lbl
     EN_R1(("&nbsp;")):::term
   end
   subgraph FE["長輩機 App"]
     A1["ElderAddFriendScreen"]:::act
     A2["ElderFriendFeedScreen"]:::act
     A3["提示『查無此人』"]:::act
+    LE_A3["結束"]:::lbl
     EN_A3(("&nbsp;")):::term
   end
   subgraph BE["uban-api 後端"]
@@ -1673,6 +1750,7 @@ flowchart TD
     DB[("elder_friendship<br/>UNIQUE(elder_id_low, elder_id_high)<br/>friend_post / _comment / _like")]:::act
   end
 
+  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
   S1 --> A1
   A1 --> S2
@@ -1693,12 +1771,17 @@ flowchart TD
   S3 --> B7
   B7 --> DB
   R1 --> EN_R1
+  LE_R1 ~~~ EN_R1
   A3 --> EN_A3
+  LE_A3 ~~~ EN_A3
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  ROLE ~~~ ROLE2 ~~~ FE ~~~ BE
 
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+  classDef lbl  fill:none,stroke:none,color:#000000
 </script>
       </figure>
 
@@ -1735,16 +1818,19 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
-%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["長輩"]
+    LS_S1["開始"]:::lbl
     ST_S1(("&nbsp;")):::term
     S1([點選首頁日期卡片]):::act
     S2{"要語音播報？"}:::dec
     S3(["查看宜忌與神明誕辰"]):::act
     S4(["聽取語音播報"]):::act
+    LE_S4["結束"]:::lbl
     EN_S4(("&nbsp;")):::term
     E1([結束]):::act
+    LE_E1["結束"]:::lbl
     EN_E1(("&nbsp;")):::term
   end
   subgraph FE["長輩機 App（全程本地運算，不連後端）"]
@@ -1755,10 +1841,12 @@ flowchart TD
     A5["渲染農民曆版面"]:::act
     A6["flutter_tts 本機朗讀"]:::act
     A7["僅顯示文字"]:::act
+    LE_A7["結束"]:::lbl
     EN_A7(("&nbsp;")):::term
     A8{"裝置有<br/>TTS 引擎？"}:::dec
   end
 
+  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
   S1 --> A1
   A1 --> A2
@@ -1773,13 +1861,19 @@ flowchart TD
   A6 --> S4
   A8 -->|"[否]"| A7
   S4 --> EN_S4
+  LE_S4 ~~~ EN_S4
   E1 --> EN_E1
+  LE_E1 ~~~ EN_E1
   A7 --> EN_A7
+  LE_A7 ~~~ EN_A7
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  ROLE ~~~ FE
 
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+  classDef lbl  fill:none,stroke:none,color:#000000
 </script>
       </figure>
 
@@ -1817,13 +1911,15 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
-%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["長輩"]
+    LS_S1["開始"]:::lbl
     ST_S1(("&nbsp;")):::term
     S1([進入某個底部分頁]):::act
     S2["點『知道了』前進下一步"]:::act
     S3(["熟悉該頁操作"]):::act
+    LE_S3["結束"]:::lbl
     EN_S3(("&nbsp;")):::term
   end
   subgraph FE["長輩機 App"]
@@ -1836,9 +1932,11 @@ flowchart TD
     A7{"還有<br/>下一步？"}:::dec
     A8["寫入『已看過』旗標"]:::act
     A9(["跳過，不打擾"]):::act
+    LE_A9["結束"]:::lbl
     EN_A9(("&nbsp;")):::term
   end
 
+  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
   S1 --> A1
   A1 --> A2
@@ -1854,12 +1952,17 @@ flowchart TD
   A7 -->|"[否]"| A8
   A8 --> S3
   S3 --> EN_S3
+  LE_S3 ~~~ EN_S3
   A9 --> EN_A9
+  LE_A9 ~~~ EN_A9
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  ROLE ~~~ FE
 
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+  classDef lbl  fill:none,stroke:none,color:#000000
 </script>
       </figure>
 
@@ -1897,16 +2000,19 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
-%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["使用者（長輩端與家屬端共用）"]
+    LS_S1["開始"]:::lbl
     ST_S1(("&nbsp;")):::term
     S1([首次啟動 App]):::act
     S2["詳閱隱私權政策"]:::act
     S3{"是否同意？"}:::dec
     S4(["進入後續流程"]):::act
+    LE_S4["結束"]:::lbl
     EN_S4(("&nbsp;")):::term
     S5(["停留在政策頁<br/>無法繼續使用"]):::act
+    LE_S5["結束"]:::lbl
     EN_S5(("&nbsp;")):::term
   end
   subgraph FE["App"]
@@ -1919,6 +2025,7 @@ flowchart TD
     A7["請求相機／麥克風／定位權限<br/>刻意排在同意之後"]:::act
   end
 
+  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
   S1 --> A1
   A1 --> A2
@@ -1933,12 +2040,17 @@ flowchart TD
   A6 --> A7
   A7 --> S4
   S4 --> EN_S4
+  LE_S4 ~~~ EN_S4
   S5 --> EN_S5
+  LE_S5 ~~~ EN_S5
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  ROLE ~~~ FE
 
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+  classDef lbl  fill:none,stroke:none,color:#000000
 </script>
       </figure>
 
@@ -1976,9 +2088,10 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
-%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["家屬（代長輩填寫）"]
+    LS_S1["開始"]:::lbl
     ST_S1(("&nbsp;")):::term
     S1([於『資料』分頁點編輯長輩檔案]):::act
     S2["填寫年齡（選填）"]:::act
@@ -1997,12 +2110,15 @@ flowchart TD
     B1["PATCH /api/user/elder/{elder_id}"]:::act
     B2{"欄位是否留白？"}:::dec
     B3["略過該欄<br/>維持原值不動"]:::act
+    LE_B3["結束"]:::lbl
     EN_B3(("&nbsp;")):::term
     B4["寫入 elder_profile<br/>age / residence_city / residence_district"]:::act
     C1["GET /api/admin/stats/demographics<br/>年齡與居住地分布統計<br/>（開發者管理端）"]:::act
+    LE_C1["結束"]:::lbl
     EN_C1(("&nbsp;")):::term
   end
 
+  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
   S1 --> A1
   A1 --> A6
@@ -2021,12 +2137,17 @@ flowchart TD
   B2 -->|"[否]"| B4
   B4 --> C1
   B3 --> EN_B3
+  LE_B3 ~~~ EN_B3
   C1 --> EN_C1
+  LE_C1 ~~~ EN_C1
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  ROLE ~~~ FE ~~~ BE
 
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+  classDef lbl  fill:none,stroke:none,color:#000000
 </script>
       </figure>
 
@@ -2069,14 +2190,16 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
-%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["長輩"]
+    LS_S1["開始"]:::lbl
     ST_S1(("&nbsp;")):::term
     S1([於『我的』分頁看到提問橫幅]):::act
     S2["點選橫幅開始述說"]:::act
     S3["錄音並輸入文字"]:::act
     S4(["故事存入本機"]):::act
+    LE_S4["結束"]:::lbl
     EN_S4(("&nbsp;")):::term
   end
   subgraph FE["長輩機 App"]
@@ -2089,10 +2212,12 @@ flowchart TD
     A7["回傳空清單<br/>記錄 debug 訊息"]:::act
     LOCAL[("SharedPreferences<br/>鍵：uban_memoirs_{elderId}<br/>★ 僅存於本機，無後端")]:::gap
     G1["家屬機藝廊讀的是<br/>家屬機自己的本機儲存<br/>→ 看不到長輩錄的內容"]:::act
+    LE_G1["結束"]:::lbl
     EN_G1(("&nbsp;")):::term
     G2["清除資料或換機<br/>→ 故事永久遺失"]:::gap
   end
 
+  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
   S1 --> A1
   A1 --> S2
@@ -2110,12 +2235,17 @@ flowchart TD
   LOCAL -.-> G1
   LOCAL -.-> G2
   S4 --> EN_S4
+  LE_S4 ~~~ EN_S4
   G1 --> EN_G1
+  LE_G1 ~~~ EN_G1
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  ROLE ~~~ FE
 
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+  classDef lbl  fill:none,stroke:none,color:#000000
 </script>
       </figure>
       <figure class="dia" data-id="A13" data-sec="s53" data-role="family" data-kind="activity">
@@ -2159,17 +2289,20 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
-%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["家屬"]
+    LS_S1["開始"]:::lbl
     ST_S1(("&nbsp;")):::term
     S1([開啟 App]):::act
     S2{"已有帳號？"}:::dec
     S3["輸入 Email 與密碼<br/>或用 Google／LINE"]:::act
     S4{"要做什麼？"}:::dec
     S5(["完成綁定"]):::act
+    LE_S5["結束"]:::lbl
     EN_S5(("&nbsp;")):::term
     S6(["訂閱生效"]):::act
+    LE_S6["結束"]:::lbl
     EN_S6(("&nbsp;")):::term
   end
   subgraph FE["家屬機 App"]
@@ -2196,9 +2329,11 @@ flowchart TD
     B9["GET /api/subscription/{elder_id}<br/>功能鎖查詢"]:::act
     MON["舊手機輸入 6 碼設定碼"]:::act
     R1(["emit join-failed<br/>reason: monitor-limit<br/>／ip_limit_exceeded<br/>並中斷連線"]):::act
+    LE_R1["結束"]:::lbl
     EN_R1(("&nbsp;")):::term
   end
 
+  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
   S1 --> S2
   S2 -->|"[否]"| A1
@@ -2231,13 +2366,19 @@ flowchart TD
   B8 --> B9
   B9 --> A6
   S5 --> EN_S5
+  LE_S5 ~~~ EN_S5
   S6 --> EN_S6
+  LE_S6 ~~~ EN_S6
   R1 --> EN_R1
+  LE_R1 ~~~ EN_R1
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  ROLE ~~~ FE ~~~ BE
 
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+  classDef lbl  fill:none,stroke:none,color:#000000
 </script>
       </figure>
 
@@ -2276,17 +2417,20 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
-%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["家屬"]
+    LS_S1["開始"]:::lbl
     ST_S1(("&nbsp;")):::term
     S1([進入照護排程]):::act
     S2{"要做什麼？"}:::dec
     S3["以自然語言描述需求"]:::act
     S4{"草稿是否<br/>符合預期？"}:::dec
     S5(["排程生效"]):::act
+    LE_S5["結束"]:::lbl
     EN_S5(("&nbsp;")):::term
     S6(["查看情緒報告<br/>與破冰話題建議"]):::act
+    LE_S6["結束"]:::lbl
     EN_S6(("&nbsp;")):::term
   end
   subgraph FE["家屬機 App"]
@@ -2305,9 +2449,11 @@ flowchart TD
     J1["check_remote_reminders_job<br/>每分鐘推播給長輩<br/>（APScheduler 排程）"]:::act
     DB[("remote_reminders")]:::act
     X(["回傳無權限"]):::act
+    LE_X["結束"]:::lbl
     EN_X(("&nbsp;")):::term
   end
 
+  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
   S1 --> G0
   G0 -->|"[否]"| X
@@ -2330,13 +2476,19 @@ flowchart TD
   DB --> J1
   J1 --> S5
   S5 --> EN_S5
+  LE_S5 ~~~ EN_S5
   S6 --> EN_S6
+  LE_S6 ~~~ EN_S6
   X --> EN_X
+  LE_X ~~~ EN_X
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  ROLE ~~~ FE ~~~ BE
 
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+  classDef lbl  fill:none,stroke:none,color:#000000
 </script>
       </figure>
 
@@ -2375,12 +2527,14 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
-%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["家屬"]
+    LS_S1["開始"]:::lbl
     ST_S1(("&nbsp;")):::term
     S1([於『互動』分頁點選監控裝置]):::act
     S2(["觀看即時單向影像"]):::act
+    LE_S2["結束"]:::lbl
     EN_S2(("&nbsp;")):::term
   end
   subgraph FE["家屬機 App"]
@@ -2396,12 +2550,15 @@ flowchart TD
     B1["Socket.IO 交換<br/>offer／answer／candidate"]:::act
     B2["POST /api/cctv/frame<br/>監視機約每 2 秒推幀"]:::act
     B3["YOLO 推論（容器內 CPU）"]:::act
+    LE_B3["結束"]:::lbl
     EN_B3(("&nbsp;")):::term
     B4["更新 cctv_feed_status<br/>連線品質與最後推幀時間"]:::act
     B5{"30 秒未推幀？"}:::dec
     B6["yolo_monitor_job<br/>標記 inactive 並重置窗口"]:::act
+    LE_B6["結束"]:::lbl
     EN_B6(("&nbsp;")):::term
     X(["拒絕觀看"]):::act
+    LE_X["結束"]:::lbl
     EN_X(("&nbsp;")):::term
   end
   subgraph NET["雙軌傳輸（實體分離）"]
@@ -2409,6 +2566,7 @@ flowchart TD
     N2["媒體：Oracle Cloud Coturn<br/>UDP"]:::act
   end
 
+  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
   S1 --> G0
   G0 -->|"[否]"| X
@@ -2428,14 +2586,21 @@ flowchart TD
   B5 -->|"[是]"| B6
   B5 -->|"[否]"| B4
   S2 --> EN_S2
+  LE_S2 ~~~ EN_S2
   B3 --> EN_B3
+  LE_B3 ~~~ EN_B3
   B6 --> EN_B6
+  LE_B6 ~~~ EN_B6
   X --> EN_X
+  LE_X ~~~ EN_X
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  ROLE ~~~ FE ~~~ FE2 ~~~ BE ~~~ NET
 
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+  classDef lbl  fill:none,stroke:none,color:#000000
 </script>
       </figure>
 
@@ -2473,9 +2638,10 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
-%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["家屬"]
+    LS_S1["開始"]:::lbl
     ST_S1(("&nbsp;")):::term
     S1([於『互動』分頁點撥打]):::act
     S2{"一般通話<br/>或緊急通話？"}:::dec
@@ -2486,6 +2652,7 @@ flowchart TD
     A1["Signaling 送出 call-request<br/>targetSocketId = null"]:::act
     A2["Signaling 送出 emergency-call"]:::act
     A3["顯示重撥對話框"]:::act
+    LE_A3["結束"]:::lbl
     EN_A3(("&nbsp;")):::term
     A4["VideoCallScreen 通話房"]:::act
     M1[("Oracle Cloud Coturn<br/>UDP 媒體中繼")]:::act
@@ -2501,11 +2668,14 @@ flowchart TD
     B2{"長輩回應？"}:::dec
     B3["交換 offer／answer／candidate"]:::act
     B4["end-call → 寫入 call_record<br/>含 is_emergency 欄位"]:::act
+    LE_B4["結束"]:::lbl
     EN_B4(("&nbsp;")):::term
     T1(["通話失效"]):::act
+    LE_T1["結束"]:::lbl
     EN_T1(("&nbsp;")):::term
   end
 
+  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
   S1 --> S2
   S2 -->|"[一般]"| A1
@@ -2527,13 +2697,19 @@ flowchart TD
   S3 --> S4
   S4 --> B4
   A3 --> EN_A3
+  LE_A3 ~~~ EN_A3
   B4 --> EN_B4
+  LE_B4 ~~~ EN_B4
   T1 --> EN_T1
+  LE_T1 ~~~ EN_T1
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  ROLE ~~~ FE ~~~ FE2 ~~~ BE
 
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+  classDef lbl  fill:none,stroke:none,color:#000000
 </script>
       </figure>
 
@@ -2574,14 +2750,16 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
-%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["家屬"]
     S1(["收到跌倒警報"]):::act
     S2{"判定結果？"}:::dec
     S3(["語音橋接直接關心"]):::act
+    LE_S3["結束"]:::lbl
     EN_S3(("&nbsp;")):::term
     S4(["標記為誤報"]):::act
+    LE_S4["結束"]:::lbl
     EN_S4(("&nbsp;")):::term
   end
   subgraph FE["家屬機 App"]
@@ -2592,6 +2770,7 @@ flowchart TD
     A3["★ 禁止 fullScreenIntent<br/>與 AndroidIntent 強制開啟"]:::gap
   end
   subgraph FE2["長輩端監視機"]
+    LS_M1["開始"]:::lbl
     ST_M1(("&nbsp;")):::term
     M1(["持續擷取影格"]):::act
     M2["POST /api/cctv/frame<br/>約每 2 秒"]:::act
@@ -2601,17 +2780,21 @@ flowchart TD
     B2{"多幀窗口判定<br/>跌倒／爬行／長時間靜止？"}:::dec
     B3["dispatch_yolo_alert()"]:::act
     B4["寫入 emergency_alerts<br/>status = active"]:::act
+    LE_B4["結束"]:::lbl
     EN_B4(("&nbsp;")):::term
     B5["Socket 發 cctv-alert"]:::act
     B6["FCM 高優先級推播"]:::act
     B7["建立 alert_audio_permissions<br/>30 分鐘有效"]:::act
+    LE_B7["結束"]:::lbl
     EN_B7(("&nbsp;")):::term
     B8["POST /alerts/{id}/false-alarm<br/>寫入誤報三欄"]:::act
     B9["POST /alerts/{id}/audio-bridge"]:::act
     C1["警報與誤報比例統計<br/>（開發者管理端）"]:::act
+    LE_C1["結束"]:::lbl
     EN_C1(("&nbsp;")):::term
   end
 
+  LS_M1 ~~~ ST_M1
   ST_M1 --> M1
   M1 --> M2
   M2 --> B1
@@ -2637,15 +2820,23 @@ flowchart TD
   B8 --> S4
   B8 --> C1
   S3 --> EN_S3
+  LE_S3 ~~~ EN_S3
   S4 --> EN_S4
+  LE_S4 ~~~ EN_S4
   B4 --> EN_B4
+  LE_B4 ~~~ EN_B4
   B7 --> EN_B7
+  LE_B7 ~~~ EN_B7
   C1 --> EN_C1
+  LE_C1 ~~~ EN_C1
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  ROLE ~~~ FE ~~~ FE2 ~~~ BE
 
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+  classDef lbl  fill:none,stroke:none,color:#000000
 </script>
       </figure>
       <figure class="dia" data-id="A18" data-sec="s53" data-role="family" data-kind="activity">
@@ -2682,9 +2873,10 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
-%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["家屬 A"]
+    LS_S1["開始"]:::lbl
     ST_S1(("&nbsp;")):::term
     S1([開啟『加家屬好友』]):::act
     S2["輸入對方 4 碼 family_code"]:::act
@@ -2694,12 +2886,14 @@ flowchart TD
     T1["查看好友邀請"]:::act
     T2{"是否同意？"}:::dec
     R1(["維持未成立"]):::act
+    LE_R1["結束"]:::lbl
     EN_R1(("&nbsp;")):::term
   end
   subgraph FE["家屬機 App"]
     A1["FamilyAddFriendScreen<br/>顯示自己的 4 碼代碼"]:::act
     A2["FamilyFriendFeedBody"]:::act
     A3["提示『查無此人』"]:::act
+    LE_A3["結束"]:::lbl
     EN_A3(("&nbsp;")):::term
   end
   subgraph BE["uban-api 後端"]
@@ -2714,6 +2908,7 @@ flowchart TD
     DB[("family_friend_code<br/>family_friendship（UNIQUE low, high）<br/>family_friend_post / _comment / _like<br/>★ 與長輩端 friend_* 刻意不共用")]:::gap
   end
 
+  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
   S1 --> B0
   B0 --> A1
@@ -2735,12 +2930,17 @@ flowchart TD
   S3 --> B7
   B7 --> DB
   R1 --> EN_R1
+  LE_R1 ~~~ EN_R1
   A3 --> EN_A3
+  LE_A3 ~~~ EN_A3
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  ROLE ~~~ ROLE2 ~~~ FE ~~~ BE
 
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+  classDef lbl  fill:none,stroke:none,color:#000000
 </script>
       </figure>
 
@@ -2779,22 +2979,26 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
-%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["家屬"]
+    LS_S1["開始"]:::lbl
     ST_S1(("&nbsp;")):::term
     S1([於『互動』分頁開啟 AI 共創助理]):::act
     S2["以自然語言提問或下指令"]:::act
     S3{"草稿是否<br/>逐筆確認？"}:::dec
     S4(["取得回覆與關懷建議"]):::act
+    LE_S4["結束"]:::lbl
     EN_S4(("&nbsp;")):::term
     S5(["排程批次建立"]):::act
+    LE_S5["結束"]:::lbl
     EN_S5(("&nbsp;")):::term
   end
   subgraph FE["家屬機 App"]
     A1["FamilyAiCopilotScreen"]:::act
     A2["顯示排程草稿清單"]:::act
     A3(["不建立任何排程"]):::act
+    LE_A3["結束"]:::lbl
     EN_A3(("&nbsp;")):::term
   end
   subgraph BE["uban-api 後端"]
@@ -2811,9 +3015,11 @@ flowchart TD
     DB[("remote_reminders")]:::act
     PC[("Pinecone")]:::act
     X(["回傳無權限"]):::act
+    LE_X["結束"]:::lbl
     EN_X(("&nbsp;")):::term
   end
 
+  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
   S1 --> G0
   G0 -->|"[否]"| X
@@ -2837,14 +3043,21 @@ flowchart TD
   B8 --> DB
   DB --> S5
   S4 --> EN_S4
+  LE_S4 ~~~ EN_S4
   S5 --> EN_S5
+  LE_S5 ~~~ EN_S5
   A3 --> EN_A3
+  LE_A3 ~~~ EN_A3
   X --> EN_X
+  LE_X ~~~ EN_X
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  ROLE ~~~ FE ~~~ BE
 
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+  classDef lbl  fill:none,stroke:none,color:#000000
 </script>
       </figure>
 
@@ -2888,14 +3101,17 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
-%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["家屬"]
+    LS_S1["開始"]:::lbl
     ST_S1(("&nbsp;")):::term
     S1([於『資料』分頁點『回憶錄』]):::act
     S2(["看見長輩的故事"]):::act
+    LE_S2["結束"]:::lbl
     EN_S2(("&nbsp;")):::term
     S3(["看見空狀態"]):::act
+    LE_S3["結束"]:::lbl
     EN_S3(("&nbsp;")):::term
   end
   subgraph FE["家屬機 App"]
@@ -2907,6 +3123,7 @@ flowchart TD
     A6["MemoirDetailSheet 呈現"]:::act
   end
   subgraph FE2["長輩機"]
+    LS_E1["開始"]:::lbl
     ST_E1(("&nbsp;")):::term
     E1["長輩錄製生命故事"]:::act
     E2[("SharedPreferences（長輩機）<br/>uban_memoirs_{elderId}")]:::act
@@ -2915,7 +3132,9 @@ flowchart TD
     N3["下載 API"]:::act
   end
 
+  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
+  LS_E1 ~~~ ST_E1
   ST_E1 --> E1
   E1 --> E2
   E2 -.->|"[未實作]"| N1
@@ -2931,12 +3150,17 @@ flowchart TD
   A6 --> S2
   A5 -->|"[否]"| S3
   S2 --> EN_S2
+  LE_S2 ~~~ EN_S2
   S3 --> EN_S3
+  LE_S3 ~~~ EN_S3
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  ROLE ~~~ FE ~~~ FE2
 
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+  classDef lbl  fill:none,stroke:none,color:#000000
 </script>
       </figure>
 
@@ -2974,34 +3198,41 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
-%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["家屬"]
+    LS_S1["開始"]:::lbl
     ST_S1(("&nbsp;")):::term
     S1([開啟問題回報]):::act
     S2["填寫標題與內容"]:::act
     S3(["送出成功"]):::act
+    LE_S3["結束"]:::lbl
     EN_S3(("&nbsp;")):::term
   end
   subgraph FE["家屬機 App"]
     A1["FamilyBugReportScreen"]:::act
     A2{"標題與內容<br/>皆已填寫？"}:::dec
     A3["前端擋下並提示"]:::act
+    LE_A3["結束"]:::lbl
     EN_A3(("&nbsp;")):::term
     A4["BugReportService<br/>附上裝置資訊與 App 版本"]:::act
     A5["提示稍後再試<br/>（無本機佇列重送）"]:::act
+    LE_A5["結束"]:::lbl
     EN_A5(("&nbsp;")):::term
   end
   subgraph BE["uban-api 後端"]
     B1["POST /api/bug-report<br/>★ 不需登入驗證"]:::gap
     B2{"一分鐘內<br/>超過 5 次？"}:::dec
     B3["限流拒絕"]:::act
+    LE_B3["結束"]:::lbl
     EN_B3(("&nbsp;")):::term
     B4["寫入 bug_report<br/>status = new<br/>reporter_type / reporter_id<br/>★ 刻意不設外鍵"]:::gap
     C1["/bug-reports 頁檢視與處理<br/>new → in_progress<br/>→ resolved／wontfix<br/>（開發者管理端）"]:::act
+    LE_C1["結束"]:::lbl
     EN_C1(("&nbsp;")):::term
   end
 
+  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
   S1 --> A1
   A1 --> S2
@@ -3016,15 +3247,23 @@ flowchart TD
   B4 --> S3
   B4 --> C1
   S3 --> EN_S3
+  LE_S3 ~~~ EN_S3
   A3 --> EN_A3
+  LE_A3 ~~~ EN_A3
   A5 --> EN_A5
+  LE_A5 ~~~ EN_A5
   B3 --> EN_B3
+  LE_B3 ~~~ EN_B3
   C1 --> EN_C1
+  LE_C1 ~~~ EN_C1
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  ROLE ~~~ FE ~~~ BE
 
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+  classDef lbl  fill:none,stroke:none,color:#000000
 </script>
       </figure>
 
@@ -3071,13 +3310,15 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
-%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["家屬"]
+    LS_S1["開始"]:::lbl
     ST_S1(("&nbsp;")):::term
     S1([想填寫本人年齡與居住地]):::act
     S2["填寫年齡・縣市・行政區<br/>三欄皆選填"]:::act
     S3(["資料儲存"]):::act
+    LE_S3["結束"]:::lbl
     EN_S3(("&nbsp;")):::term
   end
   subgraph FE["家屬機 App"]
@@ -3088,15 +3329,18 @@ flowchart TD
     A4["欄位維持空白<br/>記錄 debug 訊息"]:::act
     A5{"欄位留白？"}:::dec
     A6["略過該欄<br/>維持原值不動"]:::act
+    LE_A6["結束"]:::lbl
     EN_A6(("&nbsp;")):::term
   end
   subgraph BE["uban-api 後端（已就緒）"]
     B1["更新使用者個人資料端點"]:::act
     B2[("user_account_data<br/>age / residence_city<br/>/ residence_district<br/>migration 012")]:::act
     B3["GET /api/admin/stats/demographics<br/>家屬＝無對應 elder_profile 的列"]:::act
+    LE_B3["結束"]:::lbl
     EN_B3(("&nbsp;")):::term
   end
 
+  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
   S1 -.->|"[入口不存在]"| N1
   N1 -.-> A1
@@ -3112,13 +3356,19 @@ flowchart TD
   B2 --> S3
   B2 --> B3
   S3 --> EN_S3
+  LE_S3 ~~~ EN_S3
   A6 --> EN_A6
+  LE_A6 ~~~ EN_A6
   B3 --> EN_B3
+  LE_B3 ~~~ EN_B3
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  ROLE ~~~ FE ~~~ BE
 
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+  classDef lbl  fill:none,stroke:none,color:#000000
 </script>
       </figure>
       <figure class="dia" data-id="A23" data-sec="s53" data-role="dev" data-kind="activity">
@@ -3161,13 +3411,15 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
-%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["開發者"]
+    LS_S1["開始"]:::lbl
     ST_S1(("&nbsp;")):::term
     S1([瀏覽器開啟 /admin]):::act
     S2["輸入帳號與密碼"]:::act
     S3(["進入數據總覽"]):::act
+    LE_S3["結束"]:::lbl
     EN_S3(("&nbsp;")):::term
   end
   subgraph FE["uban-admin（React SPA，烘進後端映像）"]
@@ -3175,12 +3427,14 @@ flowchart TD
     A2["LoginPage.tsx"]:::act
     A3["存入 session<br/>後續請求帶 Authorization"]:::act
     A4["停留登入頁並顯示錯誤"]:::act
+    LE_A4["結束"]:::lbl
     EN_A4(("&nbsp;")):::term
     A5["OverviewPage"]:::act
   end
   subgraph BE["uban-api 後端"]
     B0{"static/admin<br/>已建置？"}:::dec
     B1["503 說明頁"]:::act
+    LE_B1["結束"]:::lbl
     EN_B1(("&nbsp;")):::term
     B2["POST /api/developer/auth/login"]:::act
     B3{"password_hash<br/>驗證通過？"}:::dec
@@ -3190,6 +3444,7 @@ flowchart TD
     DB[("developer_account<br/>三位開發者")]:::act
   end
 
+  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
   S1 --> B0
   B0 -->|"[否]"| B1
@@ -3208,13 +3463,19 @@ flowchart TD
   B6 -->|"[是]"| A5
   A5 --> S3
   S3 --> EN_S3
+  LE_S3 ~~~ EN_S3
   A4 --> EN_A4
+  LE_A4 ~~~ EN_A4
   B1 --> EN_B1
+  LE_B1 ~~~ EN_B1
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  ROLE ~~~ FE ~~~ BE
 
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+  classDef lbl  fill:none,stroke:none,color:#000000
 </script>
       </figure>
 
@@ -3252,22 +3513,26 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
-%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["開發者"]
+    LS_S1["開始"]:::lbl
     ST_S1(("&nbsp;")):::term
     S1([進入『開發者帳號』頁]):::act
     S2(["看見三人明碼密碼"]):::act
     S3{"要修改<br/>自己的密碼？"}:::dec
     S4["輸入新密碼"]:::act
     S5(["密碼更新完成"]):::act
+    LE_S5["結束"]:::lbl
     EN_S5(("&nbsp;")):::term
     E1([結束]):::act
+    LE_E1["結束"]:::lbl
     EN_E1(("&nbsp;")):::term
   end
   subgraph FE["uban-admin"]
     A1["DeveloperAccountsPage.tsx"]:::act
     A2["顯示『無法解密』"]:::act
+    LE_A2["結束"]:::lbl
     EN_A2(("&nbsp;")):::term
   end
   subgraph BE["uban-api 後端"]
@@ -3280,9 +3545,11 @@ flowchart TD
     DB[("developer_account<br/>password_hash（驗證用）<br/>password_cipher BLOB（互看用）")]:::act
     ENV[("環境變數<br/>DEVELOPER_PASSWORD_KEY<br/>★ 不納入版本控制")]:::gap
     X(["401 導回登入頁"]):::act
+    LE_X["結束"]:::lbl
     EN_X(("&nbsp;")):::term
   end
 
+  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
   S1 --> G0
   G0 -->|"[否]"| X
@@ -3302,14 +3569,21 @@ flowchart TD
   B5 --> DB
   B5 --> S5
   S5 --> EN_S5
+  LE_S5 ~~~ EN_S5
   E1 --> EN_E1
+  LE_E1 ~~~ EN_E1
   A2 --> EN_A2
+  LE_A2 ~~~ EN_A2
   X --> EN_X
+  LE_X ~~~ EN_X
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  ROLE ~~~ FE ~~~ BE
 
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+  classDef lbl  fill:none,stroke:none,color:#000000
 </script>
       </figure>
 
@@ -3348,12 +3622,14 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
-%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["開發者"]
+    LS_S1["開始"]:::lbl
     ST_S1(("&nbsp;")):::term
     S1([登入後進入數據總覽]):::act
     S2(["檢視三類統計圖表"]):::act
+    LE_S2["結束"]:::lbl
     EN_S2(("&nbsp;")):::term
   end
   subgraph FE["uban-admin · OverviewPage"]
@@ -3378,6 +3654,7 @@ flowchart TD
     D4[("call_record<br/>is_emergency")]:::act
   end
 
+  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
   S1 --> A1
   A1 --> B1
@@ -3402,11 +3679,15 @@ flowchart TD
   A4 --> A5
   A5 --> S2
   S2 --> EN_S2
+  LE_S2 ~~~ EN_S2
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  ROLE ~~~ FE ~~~ BE
 
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+  classDef lbl  fill:none,stroke:none,color:#000000
 </script>
       </figure>
 
@@ -3444,23 +3725,28 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
-%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["開發者"]
+    LS_S1["開始"]:::lbl
     ST_S1(("&nbsp;")):::term
     S1([進入使用者列表]):::act
     S2["搜尋並點選個案"]:::act
     S3(["對照時序排除問題"]):::act
+    LE_S3["結束"]:::lbl
     EN_S3(("&nbsp;")):::term
   end
   subgraph FE["uban-admin"]
     A1["EldersPage.tsx"]:::act
     A2["ElderDetailPage.tsx"]:::act
     A3["AlertsPage.tsx（含徽章輪詢）"]:::act
+    LE_A3["結束"]:::lbl
     EN_A3(("&nbsp;")):::term
     A4["顯示『查無資料』"]:::act
+    LE_A4["結束"]:::lbl
     EN_A4(("&nbsp;")):::term
     A5["時間軸為空"]:::act
+    LE_A5["結束"]:::lbl
     EN_A5(("&nbsp;")):::term
   end
   subgraph BE["uban-api · /api/developer"]
@@ -3468,6 +3754,7 @@ flowchart TD
     B2{"elder_id 存在？"}:::dec
     B3["GET /users/{elder_id}<br/>詳細資料"]:::act
     B4["GET /users/{elder_id}/metrics<br/>指標"]:::act
+    LE_B4["結束"]:::lbl
     EN_B4(("&nbsp;")):::term
     B5["GET /users/{elder_id}/timeline<br/>活動時間軸"]:::act
     B6["GET /alerts"]:::act
@@ -3478,6 +3765,7 @@ flowchart TD
     D4[("emergency_alerts")]:::act
   end
 
+  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
   S1 --> B1
   B1 --> A1
@@ -3500,15 +3788,23 @@ flowchart TD
   S1 --> B6
   B6 --> A3
   S3 --> EN_S3
+  LE_S3 ~~~ EN_S3
   A3 --> EN_A3
+  LE_A3 ~~~ EN_A3
   A4 --> EN_A4
+  LE_A4 ~~~ EN_A4
   A5 --> EN_A5
+  LE_A5 ~~~ EN_A5
   B4 --> EN_B4
+  LE_B4 ~~~ EN_B4
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  ROLE ~~~ FE ~~~ BE
 
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+  classDef lbl  fill:none,stroke:none,color:#000000
 </script>
       </figure>
 
@@ -3550,15 +3846,18 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
-%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["開發者"]
+    LS_S1["開始"]:::lbl
     ST_S1(("&nbsp;")):::term
     S1([進入『帳號管理』頁]):::act
     S2{"要做什麼？"}:::dec
     S3(["層級調整完成"]):::act
+    LE_S3["結束"]:::lbl
     EN_S3(("&nbsp;")):::term
     S4(["停權狀態已記錄"]):::act
+    LE_S4["結束"]:::lbl
     EN_S4(("&nbsp;")):::term
   end
   subgraph FE["uban-admin · AccountsPage"]
@@ -3576,11 +3875,14 @@ flowchart TD
     D2[("account_ban")]:::act
     D3[("admin_action_log<br/>append-only・無外鍵・無查詢畫面")]:::act
     N1["routers/auth.py::login()<br/>未查 account_ban<br/>→ 停權帳號仍可登入"]:::act
+    LE_N1["結束"]:::lbl
     EN_N1(("&nbsp;")):::term
     X(["401"]):::act
+    LE_X["結束"]:::lbl
     EN_X(("&nbsp;")):::term
   end
 
+  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
   S1 --> G0
   G0 -->|"[否]"| X
@@ -3602,14 +3904,21 @@ flowchart TD
   B5 --> B6
   D2 -.->|"[未生效]"| N1
   S3 --> EN_S3
+  LE_S3 ~~~ EN_S3
   S4 --> EN_S4
+  LE_S4 ~~~ EN_S4
   N1 --> EN_N1
+  LE_N1 ~~~ EN_N1
   X --> EN_X
+  LE_X ~~~ EN_X
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  ROLE ~~~ FE ~~~ BE
 
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+  classDef lbl  fill:none,stroke:none,color:#000000
 </script>
       </figure>
 
@@ -3647,20 +3956,23 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
-%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["開發者"]
+    LS_S1["開始"]:::lbl
     ST_S1(("&nbsp;")):::term
     S1([進入『BUG 回饋』頁]):::act
     S2["檢視內容・裝置資訊・App 版本"]:::act
     S3{"判定結果？"}:::dec
     S4(["結案"]):::act
+    LE_S4["結束"]:::lbl
     EN_S4(("&nbsp;")):::term
     P1["in_progress"]:::act
     P2["resolved"]:::act
     P3["wontfix"]:::act
   end
   subgraph ROLE2["使用者（長輩或家屬）"]
+    LS_U1["開始"]:::lbl
     ST_U1(("&nbsp;")):::term
     U1(["送出 BUG 回報<br/>status = new"]):::act
     DB[("bug_report<br/>reporter_type / reporter_id VARCHAR<br/>★ 刻意不設外鍵")]:::gap
@@ -3675,13 +3987,17 @@ flowchart TD
     B2["PATCH /bug-reports/{id}"]:::act
     B3{"狀態值在<br/>BUG_REPORT_STATUSES<br/>白名單內？"}:::dec
     B4["以 Literal 型別擋下"]:::act
+    LE_B4["結束"]:::lbl
     EN_B4(("&nbsp;")):::term
     B5["更新 status ・admin_note<br/>handled_by_staff_id = -dev_id"]:::act
     X(["401"]):::act
+    LE_X["結束"]:::lbl
     EN_X(("&nbsp;")):::term
   end
 
+  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
+  LS_U1 ~~~ ST_U1
   ST_U1 --> U1
   U1 --> DB
   S1 --> G0
@@ -3704,13 +4020,19 @@ flowchart TD
   B5 --> DB
   B5 --> S4
   S4 --> EN_S4
+  LE_S4 ~~~ EN_S4
   B4 --> EN_B4
+  LE_B4 ~~~ EN_B4
   X --> EN_X
+  LE_X ~~~ EN_X
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  ROLE ~~~ ROLE2 ~~~ FE ~~~ BE
 
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+  classDef lbl  fill:none,stroke:none,color:#000000
 </script>
       </figure>
 
@@ -3747,15 +4069,18 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
-%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["開發者"]
+    LS_S1["開始"]:::lbl
     ST_S1(("&nbsp;")):::term
     S1([進入『寵物賽季與皮膚』頁]):::act
     S2{"要做什麼？"}:::dec
     S3(["新賽季開始"]):::act
+    LE_S3["結束"]:::lbl
     EN_S3(("&nbsp;")):::term
     S4(["造型上架完成"]):::act
+    LE_S4["結束"]:::lbl
     EN_S4(("&nbsp;")):::term
   end
   subgraph FE["uban-admin · PetSeasonsPage"]
@@ -3782,6 +4107,7 @@ flowchart TD
     GAP["★ 付費造型無購買金流<br/>取得途徑僅靠 ownership.source 發放"]:::gap
   end
 
+  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
   S1 --> B1
   B1 --> A1
@@ -3805,12 +4131,17 @@ flowchart TD
   E2 --> D5
   D4 -.-> GAP
   S3 --> EN_S3
+  LE_S3 ~~~ EN_S3
   S4 --> EN_S4
+  LE_S4 ~~~ EN_S4
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  ROLE ~~~ FE ~~~ FE2 ~~~ BE
 
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+  classDef lbl  fill:none,stroke:none,color:#000000
 </script>
       </figure>
     </section>
@@ -3868,7 +4199,7 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
-%%{init:{"themeVariables":{"textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","themeVariables":{"lineColor":"#000000","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","fontSize":"24px"}}}%%
 classDiagram
   direction TB
 
@@ -3999,7 +4330,7 @@ classDiagram
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
-%%{init:{"themeVariables":{"textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","themeVariables":{"lineColor":"#000000","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","fontSize":"24px"}}}%%
 classDiagram
   direction TB
 
@@ -4150,7 +4481,7 @@ classDiagram
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
-%%{init:{"themeVariables":{"textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","themeVariables":{"lineColor":"#000000","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","fontSize":"24px"}}}%%
 classDiagram
   direction TB
 
@@ -5325,7 +5656,28 @@ classDiagram
 
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<!-- mermaid 與 ELK 佈局引擎。
+     ELK 負責正交（90 度）路由，但它只出 ESM、沒有 UMD，所以改用 module 動態載入。
+     jsDelivr 有送 CORS 標頭，組員雙擊以 file:// 開啟時一樣載得進來（已實測）。
+     任何一步失敗都不會讓頁面壞掉：mermaid 載不到就顯示離線提示並保留原始碼可複製；
+     只有 ELK 載不到則退回內建 dagre，圖照畫、只是線條不是正交的。 -->
+<script type="module">
+  try{
+    const mermaid = (await import("https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs")).default;
+    try{
+      const elk = (await import("https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@0.2/dist/mermaid-layout-elk.esm.min.mjs")).default;
+      mermaid.registerLayoutLoaders(elk);
+      window.__ubanElk = true;
+    }catch(e){
+      window.__ubanElk = false;
+    }
+    window.mermaid = mermaid;
+  }catch(e){
+    window.__ubanMermaidError = String(e && e.message ? e.message : e);
+  }
+  window.__ubanMermaidDone = true;
+  window.dispatchEvent(new Event("uban-mermaid-ready"));
+</script>
 <script>
 
 (function(){
@@ -5368,7 +5720,9 @@ classDiagram
   }
 
   // ── mermaid：原始碼只存在 script.mmsrc，渲染與「原始碼」區塊都由它派生 ──
-  var mermaidReady = (typeof window.mermaid !== "undefined");
+  // module script 是延後執行的，解析到這一行時 window.mermaid 還不存在，
+  // 所以不能在這裡定死一個布林值，要每次現場問。
+  function mermaidReady(){ return typeof window.mermaid !== "undefined"; }
   var renderSeq = 0;
 
   function currentIsDark(){
@@ -5379,7 +5733,7 @@ classDiagram
   }
 
   function initMermaid(){
-    if(!mermaidReady) return;
+    if(!mermaidReady()) return;
     window.mermaid.initialize({
       startOnLoad: false,
       securityLevel: "loose",
@@ -5405,7 +5759,7 @@ classDiagram
     var host = dia.querySelector(".mmhost");
     if(!host) return Promise.resolve();
     var code = srcOf(dia);
-    if(!mermaidReady){
+    if(!mermaidReady()){
       host.innerHTML = '<div class="mm-fail">mermaid 函式庫沒有載入（可能是離線）。圖無法預覽，但下方「mermaid 原始碼」仍可複製後貼到 Mermaid Live Editor。</div>';
       return Promise.resolve();
     }
@@ -5618,7 +5972,12 @@ classDiagram
 
   refreshProgress();
   apply();
-  renderAll();
+  // 等 module script 把 mermaid 掛上 window 再畫；它可能比這裡早完成，所以兩種情況都要接。
+  if(window.__ubanMermaidDone){
+    renderAll();
+  }else{
+    window.addEventListener("uban-mermaid-ready", function(){ renderAll(); }, { once: true });
+  }
 })();
 </script>
 </body>

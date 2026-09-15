@@ -1,11 +1,13 @@
-%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["長輩"]
+    LS_S1["開始"]:::lbl
     ST_S1(("&nbsp;")):::term
     S1([於『我的』分頁看到提問橫幅]):::act
     S2["點選橫幅開始述說"]:::act
     S3["錄音並輸入文字"]:::act
     S4(["故事存入本機"]):::act
+    LE_S4["結束"]:::lbl
     EN_S4(("&nbsp;")):::term
   end
   subgraph FE["長輩機 App"]
@@ -18,10 +20,12 @@ flowchart TD
     A7["回傳空清單<br/>記錄 debug 訊息"]:::act
     LOCAL[("SharedPreferences<br/>鍵：uban_memoirs_{elderId}<br/>★ 僅存於本機，無後端")]:::gap
     G1["家屬機藝廊讀的是<br/>家屬機自己的本機儲存<br/>→ 看不到長輩錄的內容"]:::act
+    LE_G1["結束"]:::lbl
     EN_G1(("&nbsp;")):::term
     G2["清除資料或換機<br/>→ 故事永久遺失"]:::gap
   end
 
+  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
   S1 --> A1
   A1 --> S2
@@ -39,9 +43,14 @@ flowchart TD
   LOCAL -.-> G1
   LOCAL -.-> G2
   S4 --> EN_S4
+  LE_S4 ~~~ EN_S4
   G1 --> EN_G1
+  LE_G1 ~~~ EN_G1
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  ROLE ~~~ FE
 
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+  classDef lbl  fill:none,stroke:none,color:#000000

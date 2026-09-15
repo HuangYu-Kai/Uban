@@ -1,14 +1,17 @@
-%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["家屬"]
+    LS_S1["開始"]:::lbl
     ST_S1(("&nbsp;")):::term
     S1([開啟 App]):::act
     S2{"已有帳號？"}:::dec
     S3["輸入 Email 與密碼<br/>或用 Google／LINE"]:::act
     S4{"要做什麼？"}:::dec
     S5(["完成綁定"]):::act
+    LE_S5["結束"]:::lbl
     EN_S5(("&nbsp;")):::term
     S6(["訂閱生效"]):::act
+    LE_S6["結束"]:::lbl
     EN_S6(("&nbsp;")):::term
   end
   subgraph FE["家屬機 App"]
@@ -35,9 +38,11 @@ flowchart TD
     B9["GET /api/subscription/{elder_id}<br/>功能鎖查詢"]:::act
     MON["舊手機輸入 6 碼設定碼"]:::act
     R1(["emit join-failed<br/>reason: monitor-limit<br/>／ip_limit_exceeded<br/>並中斷連線"]):::act
+    LE_R1["結束"]:::lbl
     EN_R1(("&nbsp;")):::term
   end
 
+  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
   S1 --> S2
   S2 -->|"[否]"| A1
@@ -70,10 +75,16 @@ flowchart TD
   B8 --> B9
   B9 --> A6
   S5 --> EN_S5
+  LE_S5 ~~~ EN_S5
   S6 --> EN_S6
+  LE_S6 ~~~ EN_S6
   R1 --> EN_R1
+  LE_R1 ~~~ EN_R1
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  ROLE ~~~ FE ~~~ BE
 
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+  classDef lbl  fill:none,stroke:none,color:#000000

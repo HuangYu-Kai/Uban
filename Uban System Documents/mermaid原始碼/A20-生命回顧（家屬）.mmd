@@ -1,11 +1,14 @@
-%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["家屬"]
+    LS_S1["開始"]:::lbl
     ST_S1(("&nbsp;")):::term
     S1([於『資料』分頁點『回憶錄』]):::act
     S2(["看見長輩的故事"]):::act
+    LE_S2["結束"]:::lbl
     EN_S2(("&nbsp;")):::term
     S3(["看見空狀態"]):::act
+    LE_S3["結束"]:::lbl
     EN_S3(("&nbsp;")):::term
   end
   subgraph FE["家屬機 App"]
@@ -17,6 +20,7 @@ flowchart TD
     A6["MemoirDetailSheet 呈現"]:::act
   end
   subgraph FE2["長輩機"]
+    LS_E1["開始"]:::lbl
     ST_E1(("&nbsp;")):::term
     E1["長輩錄製生命故事"]:::act
     E2[("SharedPreferences（長輩機）<br/>uban_memoirs_{elderId}")]:::act
@@ -25,7 +29,9 @@ flowchart TD
     N3["下載 API"]:::act
   end
 
+  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
+  LS_E1 ~~~ ST_E1
   ST_E1 --> E1
   E1 --> E2
   E2 -.->|"[未實作]"| N1
@@ -41,9 +47,14 @@ flowchart TD
   A6 --> S2
   A5 -->|"[否]"| S3
   S2 --> EN_S2
+  LE_S2 ~~~ EN_S2
   S3 --> EN_S3
+  LE_S3 ~~~ EN_S3
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  ROLE ~~~ FE ~~~ FE2
 
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+  classDef lbl  fill:none,stroke:none,color:#000000

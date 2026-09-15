@@ -1,6 +1,7 @@
-%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["家屬"]
+    LS_S1["開始"]:::lbl
     ST_S1(("&nbsp;")):::term
     S1([於『互動』分頁點撥打]):::act
     S2{"一般通話<br/>或緊急通話？"}:::dec
@@ -11,6 +12,7 @@ flowchart TD
     A1["Signaling 送出 call-request<br/>targetSocketId = null"]:::act
     A2["Signaling 送出 emergency-call"]:::act
     A3["顯示重撥對話框"]:::act
+    LE_A3["結束"]:::lbl
     EN_A3(("&nbsp;")):::term
     A4["VideoCallScreen 通話房"]:::act
     M1[("Oracle Cloud Coturn<br/>UDP 媒體中繼")]:::act
@@ -26,11 +28,14 @@ flowchart TD
     B2{"長輩回應？"}:::dec
     B3["交換 offer／answer／candidate"]:::act
     B4["end-call → 寫入 call_record<br/>含 is_emergency 欄位"]:::act
+    LE_B4["結束"]:::lbl
     EN_B4(("&nbsp;")):::term
     T1(["通話失效"]):::act
+    LE_T1["結束"]:::lbl
     EN_T1(("&nbsp;")):::term
   end
 
+  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
   S1 --> S2
   S2 -->|"[一般]"| A1
@@ -52,10 +57,16 @@ flowchart TD
   S3 --> S4
   S4 --> B4
   A3 --> EN_A3
+  LE_A3 ~~~ EN_A3
   B4 --> EN_B4
+  LE_B4 ~~~ EN_B4
   T1 --> EN_T1
+  LE_T1 ~~~ EN_T1
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  ROLE ~~~ FE ~~~ FE2 ~~~ BE
 
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+  classDef lbl  fill:none,stroke:none,color:#000000
