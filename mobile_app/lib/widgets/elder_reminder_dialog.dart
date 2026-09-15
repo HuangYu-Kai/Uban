@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import '../services/api_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:intl/intl.dart';
 
 /// ⏰ 長輩端專用：高對比、大字體、暖心繪本風的排程提醒彈窗
 class ElderReminderDialog extends StatefulWidget {
@@ -123,6 +125,24 @@ class _ElderReminderDialogState extends State<ElderReminderDialog> {
     }
   }
 
+  /// 把完成狀態寫進本機當日清單，與「我的」分頁的 _toggleTaskCompletion
+  /// 使用同一個鍵（`completed_tasks_<yyyy-MM-dd>`），確保三個入口看到同一個狀態。
+  Future<void> _markCompletedLocally(int reminderId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+      final key = 'completed_tasks_$today';
+      final done = prefs.getStringList(key) ?? <String>[];
+      final id = reminderId.toString();
+      if (!done.contains(id)) {
+        done.add(id);
+        await prefs.setStringList(key, done);
+      }
+    } catch (e) {
+      debugPrint('⚠️ [ElderReminderDialog] 寫入本機完成清單失敗: $e');
+    }
+  }
+
   Future<void> _handleComplete() async {
     if (_isSubmitting) return;
     setState(() => _isSubmitting = true);
@@ -131,6 +151,11 @@ class _ElderReminderDialogState extends State<ElderReminderDialog> {
     try {
       if (widget.reminderId > 0) {
         await ApiService.completeElderReminder(widget.reminderId);
+        // ★ 2026-09-15：同時寫入本機當日完成清單。
+        //   這個彈窗原本只打 API、不寫本機，但「我的」分頁的用藥清單與首頁
+        //   「下一包藥」卡片讀的都是 completed_tasks_<yyyy-MM-dd>——長輩在
+        //   彈窗按了「我做好了」，畫面上那包藥卻還是顯示未完成，提醒也會再跳。
+        await _markCompletedLocally(widget.reminderId);
       }
     } catch (e) {
       debugPrint("⚠️ Complete reminder error: $e");
