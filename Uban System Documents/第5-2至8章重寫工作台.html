@@ -399,7 +399,8 @@ footer.page p{margin:0 0 var(--sp-2)}
 .canvas{
   padding:var(--sp-5);
   overflow-x:auto;
-  background:var(--surface);
+  /* 圖一律是組長的白紙風格（白底黑框），深色主題也維持白底才看得見線 */
+  background:#FFFFFF;
 }
 .canvas .mm-fail{
   border:1px dashed var(--p0);color:var(--p0);
@@ -603,6 +604,25 @@ table.grid tr:hover td{background:var(--surface-sunk)}
       </div>
     </div>
 
+
+    <div class="rail-block">
+      <h4>製圖約定</h4>
+      <p class="progress-note">
+        圖表沿用<b>組長既有的 draw.io UML 畫法</b>。<br>
+        <b>活動圖</b>：三道泳道＝<b>角色｜前端｜後端</b>；排程器、MySQL、外部服務不另立泳道，
+        改在節點文字裡註明。<code>●</code> 起訖點、<code>◇</code> 決策、
+        守衛條件寫成 <code>[是]</code>，全圖<b>黑白</b>，僅「缺口／未實作」用虛線框。<br>
+        <b>使用個案圖</b>：依角色上色（長輩綠／家屬粉／開發者黃），系統邊界框外為參與者。<br>
+        <b>類別圖</b>：屬性帶型別（<code>+int user_id</code>），型別取自
+        <code>database.py</code> 的 CREATE TABLE。
+      </p>
+      <p class="progress-note warn">
+        <b>mermaid 畫不出來、以替代記號表示的五項</b>：火柴人（改用圓形）、
+        牛眼 <code>◉</code> 終點（改用實心圓）、fork／join 粗橫槓（改用分支線）、
+        類別框斜紋填充（改用平塗）、左上摺角圖名標籤（改用圖說標題）。
+        線條為折線而非正交折線，泳道會上下錯開而非等高並排，這是 mermaid 的版面限制。
+      </p>
+    </div>
     <div class="rail-block">
       <h4>後續章節</h4>
       <p class="progress-note">
@@ -623,20 +643,20 @@ table.grid tr:hover td{background:var(--surface-sunk)}
           依 <b>5-1 功能性需求表</b>逐列產生，涵蓋 <b>29 個使用案例、49 個事件</b>，一個不多一個不少。
           舊圖 5-21 的第三個角色是「管理者」、只有 14 個使用案例，且掛著「狀態與日誌監控／模型管理作業／
           用戶與資源分配」三項程式碼裡不存在的功能，整張作廢。
-          總覽圖只畫到「使用案例」層級；三張分角色圖再往下展開到「事件」層級。
+          總覽圖只畫到「使用案例」層級；四張分角色圖再往下展開到「事件」層級（長輩的 12 個使用案例量體最大，拆成兩張）。
         </p>
       </header>
 
-      <div class="flag"><b>畫圖約定</b> — 方框＝參與者（Actor），圓角膠囊＝使用案例。
-        「排程器」與「YOLO 偵測服務」是<b>次要參與者</b>：5-1 中「AI 自動記錄活動與用藥」「接收自動化提醒」
+      <div class="flag"><b>畫圖約定</b> — 沿用組長既有畫法：圓形＝參與者（Actor，mermaid 沒有火柴人），圓角膠囊＝使用案例（近似橢圓），方框＝事件，外框＝系統邊界，並<b>依角色上色</b>（長輩綠／家屬粉／開發者黃）。
+        「排程器」與「YOLO 偵測服務」是<b>次要參與者</b>，在圖上以灰底事件加註「（由⋯⋯自動觸發）」表示，不另拉虛線以免橫穿整張圖：5-1 中「AI 自動記錄活動與用藥」「接收自動化提醒」
         「接收跌倒自動警報」三個事件並非由人觸發，而是由後端 <code>main.py</code> 的排程與
         <code>services/yolo_alert_dispatcher.py</code> 主動發起，畫成人為操作會與實作不符。</div>
 
-      <figure class="dia" data-id="D521" data-sec="s52" data-role="sys" data-kind="usecase">
+            <figure class="dia" data-id="D521" data-sec="s52" data-role="sys" data-kind="usecase">
         <div class="dia-head">
           <p class="dia-title">總覽：三角色 × 29 個使用案例<span class="fig">圖 5-2-1</span></p>
           <span class="kind">USE CASE</span>
-          <input class="tick" type="checkbox" aria-label="標記圖 5-2-1 已完成">
+          <input class="tick" type="checkbox" aria-label="標記圖 5-2-1已完成">
         </div>
         <div class="canvas"><div class="mmhost"></div></div>
         <div class="dia-foot">
@@ -647,95 +667,69 @@ table.grid tr:hover td{background:var(--surface-sunk)}
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
-flowchart LR
-  E["長輩"]
-  F["家屬"]
-  D["開發者"]
-
-  subgraph SYS["Uban 智慧陪伴照護系統"]
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+flowchart TB
+  E(("長輩")):::aE
+  F(("家屬")):::aF
+  D(("開發者")):::aD
+  subgraph GE["Uban 系統 — 長輩端"]
     direction TB
-
-    subgraph GE["長輩端"]
-      direction TB
-      E1(["長輩登入系統"])
-      E2(["AI 語音陪伴"])
-      E3(["AI 日常提醒"])
-      E4(["長輩通訊"])
-      E5(["長輩社群互動"])
-      E6(["趣味養成"])
-      E7(["長輩社交"])
-      E8(["生活工具"])
-      E9(["新手引導"])
-      E10(["隱私同意"])
-      E11(["個人資料"])
-      E12(["生命回顧"])
-    end
-
-    subgraph GF["家屬端"]
-      direction TB
-      F1(["帳號與設備管理"])
-      F2(["照護排程管理"])
-      F3(["長輩狀態監測"])
-      F4(["家屬通訊"])
-      F5(["安全監控"])
-      F6(["家屬社交"])
-      F7(["AI 協作"])
-      F8(["生命回顧"])
-      F9(["問題回報"])
-      F10(["個人資料"])
-    end
-
-    subgraph GD["開發者管理端"]
-      direction TB
-      D1(["開發者登入"])
-      D2(["帳號安全管理"])
-      D3(["平台數據分析"])
-      D4(["使用者除錯"])
-      D5(["權限管理"])
-      D6(["問題處理"])
-      D7(["營運管理"])
-    end
+    E1(["長輩登入系統"]):::ucE
+    E2(["AI 語音陪伴"]):::ucE
+    E3(["AI 日常提醒"]):::ucE
+    E4(["長輩通訊"]):::ucE
+    E5(["長輩社群互動"]):::ucE
+    E6(["趣味養成"]):::ucE
+    E7(["長輩社交"]):::ucE
+    E8(["生活工具"]):::ucE
+    E9(["新手引導"]):::ucE
+    E10(["隱私同意"]):::ucE
+    E11(["個人資料"]):::ucE
+    E12(["生命回顧"]):::ucE
+    E1 ~~~ E2 ~~~ E3 ~~~ E4 ~~~ E5 ~~~ E6 ~~~ E7 ~~~ E8 ~~~ E9 ~~~ E10 ~~~ E11 ~~~ E12
   end
-
-  E --- E1
-  E --- E2
-  E --- E3
-  E --- E4
-  E --- E5
-  E --- E6
-  E --- E7
-  E --- E8
-  E --- E9
-  E --- E10
-  E --- E11
-  E --- E12
-
-  F --- F1
-  F --- F2
-  F --- F3
-  F --- F4
-  F --- F5
-  F --- F6
-  F --- F7
-  F --- F8
-  F --- F9
-  F --- F10
-
-  D --- D1
-  D --- D2
-  D --- D3
-  D --- D4
-  D --- D5
-  D --- D6
-  D --- D7
-        </script>
+  subgraph GF["Uban 系統 — 家屬端"]
+    direction TB
+    F1(["帳號與設備管理"]):::ucF
+    F2(["照護排程管理"]):::ucF
+    F3(["長輩狀態監測"]):::ucF
+    F4(["家屬通訊"]):::ucF
+    F5(["安全監控"]):::ucF
+    F6(["家屬社交"]):::ucF
+    F7(["AI 協作"]):::ucF
+    F8(["生命回顧"]):::ucF
+    F9(["問題回報"]):::ucF
+    F10(["個人資料"]):::ucF
+    F1 ~~~ F2 ~~~ F3 ~~~ F4 ~~~ F5 ~~~ F6 ~~~ F7 ~~~ F8 ~~~ F9 ~~~ F10
+  end
+  subgraph GD["Uban 系統 — 開發者管理端"]
+    direction TB
+    D1(["開發者登入"]):::ucD
+    D2(["帳號安全管理"]):::ucD
+    D3(["平台數據分析"]):::ucD
+    D4(["使用者除錯"]):::ucD
+    D5(["權限管理"]):::ucD
+    D6(["問題處理"]):::ucD
+    D7(["營運管理"]):::ucD
+    D1 ~~~ D2 ~~~ D3 ~~~ D4 ~~~ D5 ~~~ D6 ~~~ D7
+  end
+  E --- GE
+  F --- GF
+  D --- GD
+  classDef aE fill:#D5E8D4,stroke:#82B366,stroke-width:2px,color:#1B3A17
+  classDef aF fill:#F8CECC,stroke:#B85450,stroke-width:2px,color:#4A1512
+  classDef aD fill:#FFF2CC,stroke:#D6B656,stroke-width:2px,color:#4A3A0B
+  classDef ucE fill:#D5E8D4,stroke:#82B366,stroke-width:1.5px,color:#1B3A17
+  classDef ucF fill:#F8CECC,stroke:#B85450,stroke-width:1.5px,color:#4A1512
+  classDef ucD fill:#FFF2CC,stroke:#D6B656,stroke-width:1.5px,color:#4A3A0B
+</script>
       </figure>
 
       <figure class="dia" data-id="D522" data-sec="s52" data-role="elder" data-kind="usecase">
         <div class="dia-head">
-          <p class="dia-title">長輩：12 個使用案例 → 24 個事件<span class="fig">圖 5-2-2</span></p>
+          <p class="dia-title">長輩（一）：5 個使用案例 → 13 個事件<span class="fig">圖 5-2-2</span></p>
           <span class="kind">USE CASE</span>
-          <input class="tick" type="checkbox" aria-label="標記圖 5-2-2 已完成">
+          <input class="tick" type="checkbox" aria-label="標記圖 5-2-2已完成">
         </div>
         <div class="canvas"><div class="mmhost"></div></div>
         <div class="dia-foot">
@@ -746,96 +740,60 @@ flowchart LR
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
 flowchart LR
-  E["長輩"]
-  SCH["排程器<br/>（次要參與者）"]
-
-  subgraph SYS["Uban 系統 — 長輩端"]
-    direction TB
-
-    subgraph U1["長輩登入系統"]
-      A1(["無密碼登入"])
-    end
-    subgraph U2["AI 語音陪伴"]
-      A2(["喚醒 AI 助理"])
-      A3(["語音日常閒聊"])
-      A4(["查詢實用資訊"])
-      A5(["聽取新聞與廣播"])
-      A6(["AI 自動記錄活動與用藥"])
-    end
-    subgraph U3["AI 日常提醒"]
-      A7(["接收自動化提醒"])
-    end
-    subgraph U4["長輩通訊"]
-      A8(["發起視訊通話"])
-      A9(["接聽視訊通話"])
-      A10(["接聽緊急通話"])
-    end
-    subgraph U5["長輩社群互動"]
-      A11(["查看社群貼文"])
-      A12(["發布社群貼文"])
-      A13(["查看與收聽新聞"])
-    end
-    subgraph U6["趣味養成"]
-      A14(["走路養小豬"])
-      A15(["查看小豬排行榜"])
-      A16(["餵食小豬"])
-      A17(["查看成長階段與賽季"])
-    end
-    subgraph U7["長輩社交"]
-      A18(["加入好友"])
-      A19(["查看好友動態"])
-    end
-    subgraph U8["生活工具"]
-      A20(["查詢農民曆"])
-    end
-    subgraph U9["新手引導"]
-      A21(["檢視操作教學"])
-    end
-    subgraph U10["隱私同意"]
-      A22(["同意隱私權政策"])
-    end
-    subgraph U11["個人資料"]
-      A23(["填寫年齡與居住地"])
-    end
-    subgraph U12["生命回顧"]
-      A24(["錄製生命故事"])
-    end
+  A(("長輩")):::actor
+  subgraph SYS["Uban 系統 — 長輩端（一）"]
+    direction LR
+    AU1(["長輩登入系統"]):::uc
+    AE1["無密碼登入"]:::ev
+    AU2(["AI 語音陪伴"]):::uc
+    AE2["喚醒 AI 助理"]:::ev
+    AE3["語音日常閒聊"]:::ev
+    AE4["查詢實用資訊"]:::ev
+    AE5["聽取新聞與廣播"]:::ev
+    AE6["AI 自動記錄活動與用藥<br/>（由排程器自動觸發）"]:::auto
+    AU3(["AI 日常提醒"]):::uc
+    AE7["接收自動化提醒<br/>（由排程器自動觸發）"]:::auto
+    AU4(["長輩通訊"]):::uc
+    AE8["發起視訊通話"]:::ev
+    AE9["接聽視訊通話"]:::ev
+    AE10["接聽緊急通話"]:::ev
+    AU5(["長輩社群互動"]):::uc
+    AE11["查看社群貼文"]:::ev
+    AE12["發布社群貼文"]:::ev
+    AE13["查看與收聽新聞"]:::ev
   end
-
-  E --- A1
-  E --- A2
-  E --- A3
-  E --- A4
-  E --- A5
-  E --- A8
-  E --- A9
-  E --- A10
-  E --- A11
-  E --- A12
-  E --- A13
-  E --- A14
-  E --- A15
-  E --- A16
-  E --- A17
-  E --- A18
-  E --- A19
-  E --- A20
-  E --- A21
-  E --- A22
-  E --- A23
-  E --- A24
-
-  SCH -.-> A6
-  SCH -.-> A7
-        </script>
+  A --- AU1
+  AU1 --- AE1
+  A --- AU2
+  AU2 --- AE2
+  AU2 --- AE3
+  AU2 --- AE4
+  AU2 --- AE5
+  AU2 --- AE6
+  A --- AU3
+  AU3 --- AE7
+  A --- AU4
+  AU4 --- AE8
+  AU4 --- AE9
+  AU4 --- AE10
+  A --- AU5
+  AU5 --- AE11
+  AU5 --- AE12
+  AU5 --- AE13
+  classDef actor fill:#D5E8D4,stroke:#82B366,stroke-width:2px,color:#1B3A17
+  classDef uc fill:#D5E8D4,stroke:#82B366,stroke-width:1.5px,color:#1B3A17
+  classDef ev fill:#EDF6EC,stroke:#82B366,stroke-width:1px,color:#1B3A17
+  classDef auto fill:#F5F5F5,stroke:#666666,stroke-width:1px,color:#222222
+</script>
       </figure>
 
-      <figure class="dia" data-id="D523" data-sec="s52" data-role="family" data-kind="usecase">
+      <figure class="dia" data-id="D523" data-sec="s52" data-role="elder" data-kind="usecase">
         <div class="dia-head">
-          <p class="dia-title">家屬：10 個使用案例 → 15 個事件<span class="fig">圖 5-2-3</span></p>
+          <p class="dia-title">長輩（二）：7 個使用案例 → 11 個事件<span class="fig">圖 5-2-3</span></p>
           <span class="kind">USE CASE</span>
-          <input class="tick" type="checkbox" aria-label="標記圖 5-2-3 已完成">
+          <input class="tick" type="checkbox" aria-label="標記圖 5-2-3已完成">
         </div>
         <div class="canvas"><div class="mmhost"></div></div>
         <div class="dia-foot">
@@ -846,74 +804,138 @@ flowchart LR
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
 flowchart LR
-  F["家屬"]
-  YOLO["YOLO 偵測服務<br/>（次要參與者）"]
+  A(("長輩")):::actor
+  subgraph SYS["Uban 系統 — 長輩端（二）"]
+    direction LR
+    BU1(["趣味養成"]):::uc
+    BE1["走路養小豬"]:::ev
+    BE2["查看小豬排行榜"]:::ev
+    BE3["餵食小豬"]:::ev
+    BE4["查看成長階段與賽季"]:::ev
+    BU2(["長輩社交"]):::uc
+    BE5["加入好友"]:::ev
+    BE6["查看好友動態"]:::ev
+    BU3(["生活工具"]):::uc
+    BE7["查詢農民曆"]:::ev
+    BU4(["新手引導"]):::uc
+    BE8["檢視操作教學"]:::ev
+    BU5(["隱私同意"]):::uc
+    BE9["同意隱私權政策"]:::ev
+    BU6(["個人資料"]):::uc
+    BE10["填寫年齡與居住地"]:::ev
+    BU7(["生命回顧"]):::uc
+    BE11["錄製生命故事"]:::ev
+  end
+  A --- BU1
+  BU1 --- BE1
+  BU1 --- BE2
+  BU1 --- BE3
+  BU1 --- BE4
+  A --- BU2
+  BU2 --- BE5
+  BU2 --- BE6
+  A --- BU3
+  BU3 --- BE7
+  A --- BU4
+  BU4 --- BE8
+  A --- BU5
+  BU5 --- BE9
+  A --- BU6
+  BU6 --- BE10
+  A --- BU7
+  BU7 --- BE11
+  classDef actor fill:#D5E8D4,stroke:#82B366,stroke-width:2px,color:#1B3A17
+  classDef uc fill:#D5E8D4,stroke:#82B366,stroke-width:1.5px,color:#1B3A17
+  classDef ev fill:#EDF6EC,stroke:#82B366,stroke-width:1px,color:#1B3A17
+  classDef auto fill:#F5F5F5,stroke:#666666,stroke-width:1px,color:#222222
+</script>
+      </figure>
 
+      <figure class="dia" data-id="D524" data-sec="s52" data-role="family" data-kind="usecase">
+        <div class="dia-head">
+          <p class="dia-title">家屬：10 個使用案例 → 15 個事件<span class="fig">圖 5-2-4</span></p>
+          <span class="kind">USE CASE</span>
+          <input class="tick" type="checkbox" aria-label="標記圖 5-2-4已完成">
+        </div>
+        <div class="canvas"><div class="mmhost"></div></div>
+        <div class="dia-foot">
+          <div class="srcbar">
+            <button class="copy" type="button">複製 mermaid</button>
+            <span class="hint">貼進 Mermaid Live Editor → Actions → PNG／SVG</span>
+          </div>
+          <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
+        </div>
+        <script type="text/plain" class="mmsrc">
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+flowchart LR
+  A(("家屬")):::actor
   subgraph SYS["Uban 系統 — 家屬端"]
-    direction TB
-
-    subgraph V1["帳號與設備管理"]
-      B1(["登入註冊與綁定設備"])
-      B2(["訂閱與加值付費"])
-    end
-    subgraph V2["照護排程管理"]
-      B3(["查閱與修改排程"])
-      B4(["手動／AI 安排流程"])
-      B5(["查閱數據與情緒報告"])
-    end
-    subgraph V3["長輩狀態監測"]
-      B6(["遠端單向影像監控"])
-    end
-    subgraph V4["家屬通訊"]
-      B7(["撥打視訊通話"])
-      B8(["撥打緊急通話"])
-    end
-    subgraph V5["安全監控"]
-      B9(["接收跌倒自動警報"])
-      B10(["標記警報誤報"])
-    end
-    subgraph V6["家屬社交"]
-      B11(["家屬好友與動態"])
-    end
-    subgraph V7["AI 協作"]
-      B12(["使用 AI 照護共創助理"])
-    end
-    subgraph V8["生命回顧"]
-      B13(["瀏覽回憶錄"])
-    end
-    subgraph V9["問題回報"]
-      B14(["回報系統問題"])
-    end
-    subgraph V10["個人資料"]
-      B15(["填寫年齡與居住地"])
-    end
+    direction LR
+    CU1(["帳號與設備管理"]):::uc
+    CE1["登入註冊與綁定設備"]:::ev
+    CE2["訂閱與加值付費"]:::ev
+    CU2(["照護排程管理"]):::uc
+    CE3["查閱與修改排程"]:::ev
+    CE4["手動／AI 安排流程"]:::ev
+    CE5["查閱數據與情緒報告"]:::ev
+    CU3(["長輩狀態監測"]):::uc
+    CE6["遠端單向影像監控"]:::ev
+    CU4(["家屬通訊"]):::uc
+    CE7["撥打視訊通話"]:::ev
+    CE8["撥打緊急通話"]:::ev
+    CU5(["安全監控"]):::uc
+    CE9["接收跌倒自動警報<br/>（由YOLO 偵測服務自動觸發）"]:::auto
+    CE10["標記警報誤報"]:::ev
+    CU6(["家屬社交"]):::uc
+    CE11["家屬好友與動態"]:::ev
+    CU7(["AI 協作"]):::uc
+    CE12["使用 AI 照護共創助理"]:::ev
+    CU8(["生命回顧"]):::uc
+    CE13["瀏覽回憶錄"]:::ev
+    CU9(["問題回報"]):::uc
+    CE14["回報系統問題"]:::ev
+    CU10(["個人資料"]):::uc
+    CE15["填寫年齡與居住地"]:::ev
   end
-
-  F --- B1
-  F --- B2
-  F --- B3
-  F --- B4
-  F --- B5
-  F --- B6
-  F --- B7
-  F --- B8
-  F --- B10
-  F --- B11
-  F --- B12
-  F --- B13
-  F --- B14
-  F --- B15
-
-  YOLO -.-> B9
-        </script>
+  A --- CU1
+  CU1 --- CE1
+  CU1 --- CE2
+  A --- CU2
+  CU2 --- CE3
+  CU2 --- CE4
+  CU2 --- CE5
+  A --- CU3
+  CU3 --- CE6
+  A --- CU4
+  CU4 --- CE7
+  CU4 --- CE8
+  A --- CU5
+  CU5 --- CE9
+  CU5 --- CE10
+  A --- CU6
+  CU6 --- CE11
+  A --- CU7
+  CU7 --- CE12
+  A --- CU8
+  CU8 --- CE13
+  A --- CU9
+  CU9 --- CE14
+  A --- CU10
+  CU10 --- CE15
+  classDef actor fill:#F8CECC,stroke:#B85450,stroke-width:2px,color:#4A1512
+  classDef uc fill:#F8CECC,stroke:#B85450,stroke-width:1.5px,color:#4A1512
+  classDef ev fill:#FDECEB,stroke:#B85450,stroke-width:1px,color:#4A1512
+  classDef auto fill:#F5F5F5,stroke:#666666,stroke-width:1px,color:#222222
+</script>
       </figure>
 
-      <figure class="dia" data-id="D524" data-sec="s52" data-role="dev" data-kind="usecase">
+      <figure class="dia" data-id="D525" data-sec="s52" data-role="dev" data-kind="usecase">
         <div class="dia-head">
-          <p class="dia-title">開發者：7 個使用案例 → 10 個事件<span class="fig">圖 5-2-4</span></p>
+          <p class="dia-title">開發者：7 個使用案例 → 10 個事件<span class="fig">圖 5-2-5</span></p>
           <span class="kind">USE CASE</span>
-          <input class="tick" type="checkbox" aria-label="標記圖 5-2-4 已完成">
+          <input class="tick" type="checkbox" aria-label="標記圖 5-2-5已完成">
         </div>
         <div class="canvas"><div class="mmhost"></div></div>
         <div class="dia-foot">
@@ -924,49 +946,51 @@ flowchart LR
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
 flowchart LR
-  D["開發者"]
-
+  A(("開發者")):::actor
   subgraph SYS["Uban 開發者管理端（/admin）"]
-    direction TB
-
-    subgraph W1["開發者登入"]
-      C1(["以開發者帳號登入管理端"])
-    end
-    subgraph W2["帳號安全管理"]
-      C2(["檢視與修改開發者密碼"])
-    end
-    subgraph W3["平台數據分析"]
-      C3(["檢視使用者年齡與居住地分布"])
-      C4(["檢視警報與誤報統計"])
-      C5(["檢視緊急通話統計"])
-    end
-    subgraph W4["使用者除錯"]
-      C6(["查詢個別使用者資料與時間軸"])
-    end
-    subgraph W5["權限管理"]
-      C7(["調整訂閱層級"])
-      C8(["停權與解除停權帳號"])
-    end
-    subgraph W6["問題處理"]
-      C9(["檢視與處理 BUG 回報"])
-    end
-    subgraph W7["營運管理"]
-      C10(["管理寵物賽季與付費造型"])
-    end
+    direction LR
+    DU1(["開發者登入"]):::uc
+    DE1["以開發者帳號登入管理端"]:::ev
+    DU2(["帳號安全管理"]):::uc
+    DE2["檢視與修改開發者密碼"]:::ev
+    DU3(["平台數據分析"]):::uc
+    DE3["檢視使用者年齡與居住地分布"]:::ev
+    DE4["檢視警報與誤報統計"]:::ev
+    DE5["檢視緊急通話統計"]:::ev
+    DU4(["使用者除錯"]):::uc
+    DE6["查詢個別使用者資料與時間軸"]:::ev
+    DU5(["權限管理"]):::uc
+    DE7["調整訂閱層級"]:::ev
+    DE8["停權與解除停權帳號"]:::ev
+    DU6(["問題處理"]):::uc
+    DE9["檢視與處理 BUG 回報"]:::ev
+    DU7(["營運管理"]):::uc
+    DE10["管理寵物賽季與付費造型"]:::ev
   end
-
-  D --- C1
-  D --- C2
-  D --- C3
-  D --- C4
-  D --- C5
-  D --- C6
-  D --- C7
-  D --- C8
-  D --- C9
-  D --- C10
-        </script>
+  A --- DU1
+  DU1 --- DE1
+  A --- DU2
+  DU2 --- DE2
+  A --- DU3
+  DU3 --- DE3
+  DU3 --- DE4
+  DU3 --- DE5
+  A --- DU4
+  DU4 --- DE6
+  A --- DU5
+  DU5 --- DE7
+  DU5 --- DE8
+  A --- DU6
+  DU6 --- DE9
+  A --- DU7
+  DU7 --- DE10
+  classDef actor fill:#FFF2CC,stroke:#D6B656,stroke-width:2px,color:#4A3A0B
+  classDef uc fill:#FFF2CC,stroke:#D6B656,stroke-width:1.5px,color:#4A3A0B
+  classDef ev fill:#FFFBF0,stroke:#D6B656,stroke-width:1px,color:#4A3A0B
+  classDef auto fill:#F5F5F5,stroke:#666666,stroke-width:1px,color:#222222
+</script>
       </figure>
     </section>
     <!-- ═══════════════ 5-3 使用個案描述 ═══════════════ -->
@@ -1024,49 +1048,64 @@ flowchart LR
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
 flowchart TD
-  subgraph LE["長輩"]
-    S1([開啟 App])
-    S2["出示 4 碼配對碼與 QR"]
+  subgraph ROLE["長輩"]
+    ST_S1(("&nbsp;")):::term
+    S1([開啟 App]):::act
+    S2["出示 4 碼配對碼與 QR"]:::act
+  end
+  subgraph FE["長輩機 App"]
+    A1["SplashScreen 讀取<br/>prefs: user_role / saved_role"]:::act
+    A2{"本機已有<br/>elder_id？"}:::dec
+    A3["IdentificationScreen<br/>選擇『我是長者』"]:::act
+    A4["ElderPairingDisplayScreen<br/>輪詢 check_status"]:::act
+    A5{"本機角色<br/>為監控機？"}:::dec
+    A6(["進入 ElderScreen<br/>isCCTVMode = true"]):::act
+    EN_A6(("&nbsp;")):::term
+    A7(["進入 ElderHomeScreen<br/>五分頁主畫面"]):::act
+    EN_A7(("&nbsp;")):::term
+  end
+  subgraph FE2["家屬機"]
+    C1["輸入 4 碼或掃描 QR"]:::act
+    E2["家屬產生 6 碼復原碼<br/>15 分鐘有效<br/>POST /verify_recovery"]:::act
+  end
+  subgraph BE["uban-api 後端"]
+    B1["GET /api/user/status/{user_id}<br/>回傳權威 role"]:::act
+    B2["POST /api/pairing/request_code<br/>產生 4 碼 · 10 分鐘有效"]:::act
+    B3["POST /api/pairing/confirm"]:::act
+    B4["建立 user_account_data<br/>elder_profile（4 碼 elder_id）<br/>family_elder_relationship"]:::act
+    E1["配對碼作廢<br/>重新產碼"]:::act
   end
 
-  subgraph LA["長輩機 App"]
-    A1["SplashScreen 讀取<br/>prefs: user_role / saved_role"]
-    A2{"本機已有<br/>elder_id？"}
-    A3["IdentificationScreen<br/>選擇『我是長者』"]
-    A4["ElderPairingDisplayScreen<br/>輪詢 check_status"]
-    A5{"本機角色<br/>為監控機？"}
-    A6(["進入 ElderScreen<br/>isCCTVMode = true"])
-    A7(["進入 ElderHomeScreen<br/>五分頁主畫面"])
-  end
-
-  subgraph API["uban-api 後端"]
-    B1["GET /api/user/status/{user_id}<br/>回傳權威 role"]
-    B2["POST /api/pairing/request_code<br/>產生 4 碼 · 10 分鐘有效"]
-    B3["POST /api/pairing/confirm"]
-    B4["建立 user_account_data<br/>elder_profile（4 碼 elder_id）<br/>family_elder_relationship"]
-  end
-
-  subgraph FA["家屬機"]
-    C1["輸入 4 碼或掃描 QR"]
-  end
-
-  S1 --> A1 --> A2
-  A2 -- 是 --> B1
+  ST_S1 --> S1
+  S1 --> A1
+  A1 --> A2
+  A2 -->|"[是]"| B1
   B1 --> A5
-  A2 -- 否 --> A3 --> B2
-  B2 --> A4 --> S2
-  S2 --> C1 --> B3 --> B4
+  A2 -->|"[否]"| A3
+  A3 --> B2
+  B2 --> A4
+  A4 --> S2
+  S2 --> C1
+  C1 --> B3
+  B3 --> B4
   B4 --> A4
   A4 --> A5
-  A5 -- 是 --> A6
-  A5 -- 否 --> A7
-
-  B2 -. 逾 10 分鐘未使用 .-> E1["配對碼作廢<br/>重新產碼"]
+  A5 -->|"[是]"| A6
+  A5 -->|"[否]"| A7
+  B2 -.->|"[逾 10 分鐘未使用]"| E1
   E1 --> A3
-  C1 -. 長輩換機 .-> E2["家屬產生 6 碼復原碼<br/>15 分鐘有效<br/>POST /verify_recovery"]
+  C1 -.->|"[長輩換機]"| E2
   E2 --> A5
-        </script>
+  A6 --> EN_A6
+  A7 --> EN_A7
+
+  classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+</script>
       </figure>
 
       <figure class="dia" data-id="A02" data-sec="s53" data-role="elder" data-kind="activity">
@@ -1105,53 +1144,67 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
 flowchart TD
-  subgraph LE["長輩"]
-    S1([說出『Hey 嘎蛙』])
-    S2["說出問題或閒聊內容"]
-    S3(["聽取語音回覆"])
+  subgraph ROLE["長輩"]
+    ST_S1(("&nbsp;")):::term
+    S1([說出『Hey 嘎蛙』]):::act
+    S2["說出問題或閒聊內容"]:::act
+    S3(["聽取語音回覆"]):::act
+    EN_S3(("&nbsp;")):::term
+  end
+  subgraph FE["長輩機 App"]
+    A1["常駐 SpeechToText 監聽喚醒詞<br/>elder_home_screen.dart"]:::act
+    A2{"命中喚醒詞？"}:::dec
+    A3["開啟 GoogleAssistantOverlay<br/>／ElderChatScreen"]:::act
+    A4["record 錄音 → 上傳 wav"]:::act
+    A5["接收 SSE 串流並逐字顯示"]:::act
+    A6["audioplayers 播放<br/>並快取音檔供重播"]:::act
+  end
+  subgraph BE["uban-api 後端"]
+    B1["POST /api/voice/transcribe<br/>ASR"]:::act
+    B2["POST /api/ai/chat_stream<br/>SSE"]:::act
+    B3{"Ollama<br/>可達？"}:::dec
+    B4["ollama_service<br/>gemma4:e4b-it-q4_K_M"]:::act
+    B5["gemini_service<br/>備援軌"]:::act
+    B6{"需要<br/>呼叫工具？"}:::dec
+    B7["tools_service<br/>get_weather_info / get_current_time<br/>search_news / record_elder_activity<br/>record_medication_taken"]:::act
+    B8["GET /api/voice/tts/stream<br/>edge-tts → CosyVoice → gTTS"]:::act
+    B9["背景執行緒<br/>向量化 upsert"]:::act
+    X1[("Pinecone<br/>索引 uban · 768 維<br/>（外部服務）")]:::act
+    X2[("MySQL<br/>activity_log")]:::act
   end
 
-  subgraph LA["長輩機 App"]
-    A1["常駐 SpeechToText 監聽喚醒詞<br/>elder_home_screen.dart"]
-    A2{"命中喚醒詞？"}
-    A3["開啟 GoogleAssistantOverlay<br/>／ElderChatScreen"]
-    A4["record 錄音 → 上傳 wav"]
-    A5["接收 SSE 串流並逐字顯示"]
-    A6["audioplayers 播放<br/>並快取音檔供重播"]
-  end
-
-  subgraph API["uban-api 後端"]
-    B1["POST /api/voice/transcribe<br/>ASR"]
-    B2["POST /api/ai/chat_stream<br/>SSE"]
-    B3{"Ollama<br/>可達？"}
-    B4["ollama_service<br/>gemma4:e4b-it-q4_K_M"]
-    B5["gemini_service<br/>備援軌"]
-    B6{"需要<br/>呼叫工具？"}
-    B7["tools_service<br/>get_weather_info / get_current_time<br/>search_news / record_elder_activity<br/>record_medication_taken"]
-    B8["GET /api/voice/tts/stream<br/>edge-tts → CosyVoice → gTTS"]
-    B9["背景執行緒<br/>向量化 upsert"]
-  end
-
-  subgraph EXT["外部服務"]
-    X1[("Pinecone<br/>索引 uban · 768 維")]
-    X2[("MySQL<br/>activity_log")]
-  end
-
-  S1 --> A1 --> A2
-  A2 -- 否 --> A1
-  A2 -- 是 --> A3 --> S2
-  S2 --> A4 --> B1 --> B2 --> B3
-  B3 -- 是 --> B4
-  B3 -- 否 --> B5
+  ST_S1 --> S1
+  S1 --> A1
+  A1 --> A2
+  A2 -->|"[否]"| A1
+  A2 -->|"[是]"| A3
+  A3 --> S2
+  S2 --> A4
+  A4 --> B1
+  B1 --> B2
+  B2 --> B3
+  B3 -->|"[是]"| B4
+  B3 -->|"[否]"| B5
   B4 --> B6
   B5 --> B6
-  B6 -- 是 --> B7 --> X2
+  B6 -->|"[是]"| B7
+  B7 --> X2
   B7 --> B8
-  B6 -- 否 --> B8
-  B8 --> A5 --> A6 --> S3
-  B2 --> B9 --> X1
-        </script>
+  B6 -->|"[否]"| B8
+  B8 --> A5
+  A5 --> A6
+  A6 --> S3
+  B2 --> B9
+  B9 --> X1
+  S3 --> EN_S3
+
+  classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+</script>
       </figure>
 
       <figure class="dia" data-id="A03" data-sec="s53" data-role="elder" data-kind="activity">
@@ -1188,53 +1241,67 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
 flowchart TD
-  subgraph SCH["後端排程器（APScheduler）"]
-    B1(["check_remote_reminders_job<br/>每分鐘觸發"])
-    B2["掃描 remote_reminders"]
-    B3{"有到期<br/>提醒？"}
-    B4["emit_threadsafe('remote-reminder')<br/>推 comm_elder_id 與 elder_id 房間"]
-    B5["發送 data-only FCM<br/>離線備援"]
+  subgraph ROLE["長輩"]
+    S1(["聽到提醒"]):::act
+    S2{"點選<br/>『我完成了』？"}:::dec
+    S3(["回報完成"]):::act
+    EN_S3(("&nbsp;")):::term
+    S4(["維持未完成<br/>不重複轟炸"]):::act
+    EN_S4(("&nbsp;")):::term
+  end
+  subgraph FE["長輩機 App"]
+    A1["ElderReminderManager<br/>接收 Socket 事件"]:::act
+    A2["firebase_bg_handler<br/>接收 FCM"]:::act
+    A3{"同日同分<br/>已播過？"}:::dec
+    A4["彈出 ElderReminderDialog<br/>flutter_tts 語音播報"]:::act
+    A5["local_reminder_notification<br/>高優先級通知"]:::act
+    A6{"App 在<br/>前景？"}:::dec
+    W1["20 秒看門狗<br/>主動補拉"]:::act
+    X(["忽略重複"]):::act
+    EN_X(("&nbsp;")):::term
+  end
+  subgraph BE["uban-api"]
+    ST_B1(("&nbsp;")):::term
+    B1(["check_remote_reminders_job<br/>每分鐘觸發<br/>（APScheduler 排程）"]):::act
+    B2["掃描 remote_reminders"]:::act
+    B3{"有到期<br/>提醒？"}:::dec
+    B4["emit_threadsafe('remote-reminder')<br/>推 comm_elder_id 與 elder_id 房間"]:::act
+    B5["發送 data-only FCM<br/>離線備援"]:::act
+    C1["POST /api/reminder/{id}/complete"]:::act
   end
 
-  subgraph LA["長輩機 App"]
-    A1["ElderReminderManager<br/>接收 Socket 事件"]
-    A2["firebase_bg_handler<br/>接收 FCM"]
-    A3{"同日同分<br/>已播過？"}
-    A4["彈出 ElderReminderDialog<br/>flutter_tts 語音播報"]
-    A5["local_reminder_notification<br/>高優先級通知"]
-    A6{"App 在<br/>前景？"}
-    W1["20 秒看門狗<br/>主動補拉"]
-  end
-
-  subgraph LE["長輩"]
-    S1(["聽到提醒"])
-    S2{"點選<br/>『我完成了』？"}
-    S3(["回報完成"])
-    S4(["維持未完成<br/>不重複轟炸"])
-  end
-
-  subgraph API["uban-api"]
-    C1["POST /api/reminder/{id}/complete"]
-  end
-
-  B1 --> B2 --> B3
-  B3 -- 否 --> B1
-  B3 -- 是 --> B4
+  ST_B1 --> B1
+  B1 --> B2
+  B2 --> B3
+  B3 -->|"[否]"| B1
+  B3 -->|"[是]"| B4
   B4 --> B5
   B4 --> A1
   B5 --> A2
   A1 --> A3
   A2 --> A6
-  A6 -- 是 --> A3
-  A6 -- 否 --> A5 --> S1
-  A3 -- 是 --> X(["忽略重複"])
-  A3 -- 否 --> A4 --> S1
+  A6 -->|"[是]"| A3
+  A6 -->|"[否]"| A5
+  A5 --> S1
+  A3 -->|"[是]"| X
+  A3 -->|"[否]"| A4
+  A4 --> S1
   S1 --> S2
-  S2 -- 是 --> C1 --> S3
-  S2 -- 否 --> S4
+  S2 -->|"[是]"| C1
+  C1 --> S3
+  S2 -->|"[否]"| S4
   W1 -.-> A1
-        </script>
+  S3 --> EN_S3
+  S4 --> EN_S4
+  X --> EN_X
+
+  classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+</script>
       </figure>
 
       <figure class="dia" data-id="A04" data-sec="s53" data-role="elder" data-kind="activity">
@@ -1273,48 +1340,65 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
 flowchart TD
-  subgraph LE["長輩"]
-    S1([於『電話』分頁點選好友])
-    S2{"來電響鈴<br/>是否接聽？"}
-    S3(["進行視訊通話"])
+  subgraph ROLE["長輩"]
+    ST_S1(("&nbsp;")):::term
+    S1([於『電話』分頁點選好友]):::act
+    S2{"來電響鈴<br/>是否接聽？"}:::dec
+    S3(["進行視訊通話"]):::act
+    EN_S3(("&nbsp;")):::term
+  end
+  subgraph FE["長輩機 App（Signaling 單例）"]
+    A1["送出 call-request<br/>帶 targetId，不廣播"]:::act
+    A2["收到 call-request<br/>／emergency-call"]:::act
+    A3{"payload<br/>是否逾期？<br/>一般 60s／緊急 3600s"}:::dec
+    A4["顯示來電畫面<br/>CallKit 或備援通知"]:::act
+    A5["回送 call-accept"]:::act
+    A6["建立 RTCPeerConnection<br/>交換 offer／answer／candidate"]:::act
+    A7["ICE candidate 佇列<br/>待 setRemoteDescription 後 flush"]:::act
+    A8(["進入 ElderScreen 通話房"]):::act
+    A9["送出 call-busy"]:::act
+    EN_A9(("&nbsp;")):::term
+    D1(["丟棄，不響鈴"]):::act
+    EN_D1(("&nbsp;")):::term
+  end
+  subgraph BE["uban-api 信令（Socket.IO）"]
+    B1["查 room_fcm_tokens<br/>與 call_registry"]:::act
+    B2["Socket 推送給對方"]:::act
+    B3["FCM 推送（離線備援）"]:::act
+  end
+  subgraph NET["媒體軌（與信令實體分離）"]
+    M1[("Oracle Cloud Coturn<br/>turn:152.69.196.5:3478<br/>UDP 中繼")]:::act
   end
 
-  subgraph LA["長輩機 App（Signaling 單例）"]
-    A1["送出 call-request<br/>帶 targetId，不廣播"]
-    A2["收到 call-request<br/>／emergency-call"]
-    A3{"payload<br/>是否逾期？<br/>一般 60s／緊急 3600s"}
-    A4["顯示來電畫面<br/>CallKit 或備援通知"]
-    A5["回送 call-accept"]
-    A6["建立 RTCPeerConnection<br/>交換 offer／answer／candidate"]
-    A7["ICE candidate 佇列<br/>待 setRemoteDescription 後 flush"]
-    A8(["進入 ElderScreen 通話房"])
-    A9["送出 call-busy"]
-  end
-
-  subgraph API["uban-api 信令（Socket.IO）"]
-    B1["查 room_fcm_tokens<br/>與 call_registry"]
-    B2["Socket 推送給對方"]
-    B3["FCM 推送（離線備援）"]
-  end
-
-  subgraph MEDIA["媒體軌（與信令實體分離）"]
-    M1[("Oracle Cloud Coturn<br/>turn:152.69.196.5:3478<br/>UDP 中繼")]
-  end
-
-  S1 --> A1 --> B1
+  ST_S1 --> S1
+  S1 --> A1
+  A1 --> B1
   B1 --> B2
   B1 --> B3
   B2 --> A2
   B3 --> A2
   A2 --> A3
-  A3 -- 是 --> D1(["丟棄，不響鈴"])
-  A3 -- 否 --> A4 --> S2
-  S2 -- 忙線中 --> A9
-  S2 -- 接聽 --> A5 --> A6
-  A6 --> A7 --> A8 --> S3
-  A6 <--> M1
-        </script>
+  A3 -->|"[是]"| D1
+  A3 -->|"[否]"| A4
+  A4 --> S2
+  S2 -->|"[忙線中]"| A9
+  S2 -->|"[接聽]"| A5
+  A5 --> A6
+  A6 --> A7
+  A7 --> A8
+  A8 --> S3
+  A6 --> M1
+  S3 --> EN_S3
+  A9 --> EN_A9
+  D1 --> EN_D1
+
+  classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+</script>
       </figure>
 
       <figure class="dia" data-id="A05" data-sec="s53" data-role="elder" data-kind="activity">
@@ -1351,45 +1435,68 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
 flowchart TD
-  subgraph LE["長輩"]
-    S1([點選底部『社群』分頁])
-    S2{"要做什麼？"}
-    S3(["瀏覽並按讚留言"])
-    S4(["收聽新聞"])
+  subgraph ROLE["長輩"]
+    ST_S1(("&nbsp;")):::term
+    S1([點選底部『社群』分頁]):::act
+    S2{"要做什麼？"}:::dec
+    S3(["瀏覽並按讚留言"]):::act
+    S4(["收聽新聞"]):::act
+    EN_S4(("&nbsp;")):::term
+  end
+  subgraph FE["長輩機 App"]
+    A1["ElderCommunityScreen<br/>CommunityService 遠端優先"]:::act
+    A2["image_picker 拍照或選圖"]:::act
+    A3["彈出『活力幣 +N』獎勵動畫"]:::act
+    EN_A3(("&nbsp;")):::term
+    A4["NewsListenPlayerScreen<br/>播放語音並顯示字幕"]:::act
+    A5["退守 SharedPreferences<br/>本機快取（僅供瀏覽）"]:::act
+    EN_A5(("&nbsp;")):::term
+  end
+  subgraph BE["uban-api 後端"]
+    B1["GET /api/community/posts<br/>依 family_elder_relationship<br/>解析可見親屬圈"]:::act
+    B2["POST /api/community/upload"]:::act
+    B3["POST /api/community/posts"]:::act
+    B4["POST /posts/{id}/like<br/>POST /posts/{id}/comments"]:::act
+    EN_B4(("&nbsp;")):::term
+    B5["GET /api/news<br/>當日 11 分類"]:::act
+    ST_J1(("&nbsp;")):::term
+    J1["daily_news_crawl_job 06:00<br/>中央社 CNA 自建爬蟲<br/>（APScheduler 排程）"]:::act
+    ST_J2(("&nbsp;")):::term
+    J2["pre_generate_news_audio 03:00<br/>TTS 預先合成"]:::act
+    DB[("daily_news_items")]:::act
   end
 
-  subgraph LA["長輩機 App"]
-    A1["ElderCommunityScreen<br/>CommunityService 遠端優先"]
-    A2["image_picker 拍照或選圖"]
-    A3["彈出『活力幣 +N』獎勵動畫"]
-    A4["NewsListenPlayerScreen<br/>播放語音並顯示字幕"]
-    A5["退守 SharedPreferences<br/>本機快取（僅供瀏覽）"]
-  end
-
-  subgraph API["uban-api 後端"]
-    B1["GET /api/community/posts<br/>依 family_elder_relationship<br/>解析可見親屬圈"]
-    B2["POST /api/community/upload"]
-    B3["POST /api/community/posts"]
-    B4["POST /posts/{id}/like<br/>POST /posts/{id}/comments"]
-    B5["GET /api/news<br/>當日 11 分類"]
-  end
-
-  subgraph JOB["後端排程"]
-    J1["daily_news_crawl_job 06:00<br/>中央社 CNA 自建爬蟲"]
-    J2["pre_generate_news_audio 03:00<br/>TTS 預先合成"]
-  end
-
-  S1 --> A1 --> B1
-  B1 -- 連線失敗 --> A5
+  ST_S1 --> S1
+  ST_J1 --> J1
+  ST_J2 --> J2
+  S1 --> A1
+  A1 --> B1
+  B1 -->|"[連線失敗]"| A5
   B1 --> S2
-  S2 -- 查看貼文 --> S3 --> B4
-  S2 -- 發布貼文 --> A2 --> B2 --> B3 --> A3
-  S2 -- 查看與收聽新聞 --> B5 --> A4 --> S4
-  J1 --> DB[("daily_news_items")]
+  S2 -->|"[查看貼文]"| S3
+  S3 --> B4
+  S2 -->|"[發布貼文]"| A2
+  A2 --> B2
+  B2 --> B3
+  B3 --> A3
+  S2 -->|"[查看與收聽新聞]"| B5
+  B5 --> A4
+  A4 --> S4
+  J1 --> DB
   J2 --> DB
   DB --> B5
-        </script>
+  S4 --> EN_S4
+  A3 --> EN_A3
+  A5 --> EN_A5
+  B4 --> EN_B4
+
+  classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+</script>
       </figure>
 
       <figure class="dia" data-id="A06" data-sec="s53" data-role="elder" data-kind="activity">
@@ -1427,59 +1534,78 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
 flowchart TD
-  subgraph LE["長輩"]
-    S1([日常走路])
-    S2([開啟寵物花園])
-    S3{"要做什麼？"}
-    S4(["看見小豬長大"])
+  subgraph ROLE["長輩"]
+    ST_S1(("&nbsp;")):::term
+    S1([日常走路]):::act
+    ST_S2(("&nbsp;")):::term
+    S2([開啟寵物花園]):::act
+    S3{"要做什麼？"}:::dec
+    S4(["看見小豬長大"]):::act
+    EN_S4(("&nbsp;")):::term
+  end
+  subgraph FE["長輩機 App"]
+    P1["pedometer StepCount 串流"]:::act
+    P2["geolocator GPS 軌跡<br/>Kalman 濾波"]:::act
+    P3["兩者取最大值"]:::act
+    A1["PetStudioScreen"]:::act
+    A2["顯示成長階段門檻<br/>與賽季剩餘天數"]:::act
+    EN_A2(("&nbsp;")):::term
+    A3["顯示好友體重排名"]:::act
+    EN_A3(("&nbsp;")):::term
+    A4{"已解鎖<br/>果實？"}:::dec
+    A5["餵食動畫<br/>體重增加"]:::act
+    A6["提示所需步數<br/>按鈕停用"]:::act
+    EN_A6(("&nbsp;")):::term
+  end
+  subgraph BE["uban-api 後端"]
+    B1["POST /api/game/update_steps"]:::act
+    B2["GET /api/pet/thresholds<br/>GET /api/pet/season"]:::act
+    B3["GET /api/pet/leaderboard/{elder_id}"]:::act
+    B4["GET /api/pet/food-unlocks/{elder_id}"]:::act
+    B5["POST /api/pet/state"]:::act
+    D1[("elder_profile.step_total<br/>elder_daily_step<br/>（MySQL）")]:::act
+    D2[("elder_pet_state.weight_grams<br/>體重制，非經驗值")]:::act
+    D3[("pet_stage_threshold<br/>5 階等距 20 公斤<br/>第 5 階 max 為 NULL")]:::act
+    D4[("pet_season<br/>pet_season_settlement")]:::act
   end
 
-  subgraph SENSOR["長輩機感測"]
-    P1["pedometer StepCount 串流"]
-    P2["geolocator GPS 軌跡<br/>Kalman 濾波"]
-    P3["兩者取最大值"]
-  end
-
-  subgraph LA["長輩機 App"]
-    A1["PetStudioScreen"]
-    A2["顯示成長階段門檻<br/>與賽季剩餘天數"]
-    A3["顯示好友體重排名"]
-    A4{"已解鎖<br/>果實？"}
-    A5["餵食動畫<br/>體重增加"]
-    A6["提示所需步數<br/>按鈕停用"]
-  end
-
-  subgraph API["uban-api 後端"]
-    B1["POST /api/game/update_steps"]
-    B2["GET /api/pet/thresholds<br/>GET /api/pet/season"]
-    B3["GET /api/pet/leaderboard/{elder_id}"]
-    B4["GET /api/pet/food-unlocks/{elder_id}"]
-    B5["POST /api/pet/state"]
-  end
-
-  subgraph DB["MySQL"]
-    D1[("elder_profile.step_total<br/>elder_daily_step")]
-    D2[("elder_pet_state.weight_grams<br/>體重制，非經驗值")]
-    D3[("pet_stage_threshold<br/>5 階等距 20 公斤<br/>第 5 階 max 為 NULL")]
-    D4[("pet_season<br/>pet_season_settlement")]
-  end
-
-  S1 --> P1 --> P3
-  S1 --> P2 --> P3
-  P3 --> B1 --> D1
+  ST_S1 --> S1
+  ST_S2 --> S2
+  S1 --> P1
+  P1 --> P3
+  S1 --> P2
+  P2 --> P3
+  P3 --> B1
+  B1 --> D1
   D1 --> D2
-  S2 --> A1 --> S3
-  S3 -- 查看成長階段與賽季 --> B2 --> A2
+  S2 --> A1
+  A1 --> S3
+  S3 -->|"[查看成長階段與賽季]"| B2
+  B2 --> A2
   B2 --- D3
   B2 --- D4
-  S3 -- 查看排行榜 --> B3 --> A3
-  S3 -- 餵食小豬 --> B4 --> A4
-  A4 -- 是 --> A5 --> B5 --> D2
-  A4 -- 否 --> A6
+  S3 -->|"[查看排行榜]"| B3
+  B3 --> A3
+  S3 -->|"[餵食小豬]"| B4
+  B4 --> A4
+  A4 -->|"[是]"| A5
+  A5 --> B5
+  B5 --> D2
+  A4 -->|"[否]"| A6
   A5 --> S4
   D2 --> A1
-        </script>
+  S4 --> EN_S4
+  A2 --> EN_A2
+  A3 --> EN_A3
+  A6 --> EN_A6
+
+  classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+</script>
       </figure>
       <figure class="dia" data-id="A07" data-sec="s53" data-role="elder" data-kind="activity">
         <div class="dia-head">
@@ -1516,44 +1642,64 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
 flowchart TD
-  subgraph LE["長輩 A（發起方）"]
-    S1([開啟『加好友』])
-    S2["輸入對方 4 碼好友代碼"]
-    S3(["瀏覽好友動態<br/>按讚與留言"])
+  subgraph ROLE["長輩 A（發起方）"]
+    ST_S1(("&nbsp;")):::term
+    S1([開啟『加好友』]):::act
+    S2["輸入對方 4 碼好友代碼"]:::act
+    S3(["瀏覽好友動態<br/>按讚與留言"]):::act
+  end
+  subgraph ROLE2["長輩 B（受邀方）"]
+    T1["查看好友邀請"]:::act
+    T2{"是否同意？"}:::dec
+    R1(["維持未成立<br/>雙方看不到彼此動態"]):::act
+    EN_R1(("&nbsp;")):::term
+  end
+  subgraph FE["長輩機 App"]
+    A1["ElderAddFriendScreen"]:::act
+    A2["ElderFriendFeedScreen"]:::act
+    A3["提示『查無此人』"]:::act
+    EN_A3(("&nbsp;")):::term
+  end
+  subgraph BE["uban-api 後端"]
+    B1["GET /api/friend/search"]:::act
+    B2{"代碼存在<br/>且非本人？"}:::dec
+    B3["POST /api/friend/request<br/>寫入 elder_friendship（pending）"]:::act
+    B4["GET /api/friend/requests"]:::act
+    B5["POST /api/friend/respond<br/>狀態改為 accepted"]:::act
+    B6["GET /api/friend/feed"]:::act
+    B7["POST /post/{id}/like<br/>POST /post/{id}/comment"]:::act
+    DB[("elder_friendship<br/>UNIQUE(elder_id_low, elder_id_high)<br/>friend_post / _comment / _like")]:::act
   end
 
-  subgraph LB["長輩 B（受邀方）"]
-    T1["查看好友邀請"]
-    T2{"是否同意？"}
-  end
+  ST_S1 --> S1
+  S1 --> A1
+  A1 --> S2
+  S2 --> B1
+  B1 --> B2
+  B2 -->|"[否]"| A3
+  B2 -->|"[是]"| B3
+  B3 --> DB
+  B3 --> B4
+  B4 --> T1
+  T1 --> T2
+  T2 -->|"[拒絕]"| R1
+  T2 -->|"[同意]"| B5
+  B5 --> DB
+  B5 --> B6
+  B6 --> A2
+  A2 --> S3
+  S3 --> B7
+  B7 --> DB
+  R1 --> EN_R1
+  A3 --> EN_A3
 
-  subgraph LA["長輩機 App"]
-    A1["ElderAddFriendScreen"]
-    A2["ElderFriendFeedScreen"]
-    A3["提示『查無此人』"]
-  end
-
-  subgraph API["uban-api 後端"]
-    B1["GET /api/friend/search"]
-    B2{"代碼存在<br/>且非本人？"}
-    B3["POST /api/friend/request<br/>寫入 elder_friendship（pending）"]
-    B4["GET /api/friend/requests"]
-    B5["POST /api/friend/respond<br/>狀態改為 accepted"]
-    B6["GET /api/friend/feed"]
-    B7["POST /post/{id}/like<br/>POST /post/{id}/comment"]
-  end
-
-  DB[("elder_friendship<br/>UNIQUE(elder_id_low, elder_id_high)<br/>friend_post / _comment / _like")]
-
-  S1 --> A1 --> S2 --> B1 --> B2
-  B2 -- 否 --> A3
-  B2 -- 是 --> B3 --> DB
-  B3 --> B4 --> T1 --> T2
-  T2 -- 拒絕 --> R1(["維持未成立<br/>雙方看不到彼此動態"])
-  T2 -- 同意 --> B5 --> DB
-  B5 --> B6 --> A2 --> S3 --> B7 --> DB
-        </script>
+  classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+</script>
       </figure>
 
       <figure class="dia" data-id="A08" data-sec="s53" data-role="elder" data-kind="activity">
@@ -1589,32 +1735,52 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
 flowchart TD
-  subgraph LE["長輩"]
-    S1([點選首頁日期卡片])
-    S2{"要語音播報？"}
-    S3(["查看宜忌與神明誕辰"])
-    S4(["聽取語音播報"])
+  subgraph ROLE["長輩"]
+    ST_S1(("&nbsp;")):::term
+    S1([點選首頁日期卡片]):::act
+    S2{"要語音播報？"}:::dec
+    S3(["查看宜忌與神明誕辰"]):::act
+    S4(["聽取語音播報"]):::act
+    EN_S4(("&nbsp;")):::term
+    E1([結束]):::act
+    EN_E1(("&nbsp;")):::term
+  end
+  subgraph FE["長輩機 App（全程本地運算，不連後端）"]
+    A1["FarmerAlmanacScreen 開啟"]:::act
+    A2["lunar 套件換算<br/>農曆・干支・宜忌"]:::act
+    A3["taiwan_deity_calendar<br/>查當日神明誕辰"]:::act
+    A4["chinese_converter<br/>簡繁轉換"]:::act
+    A5["渲染農民曆版面"]:::act
+    A6["flutter_tts 本機朗讀"]:::act
+    A7["僅顯示文字"]:::act
+    EN_A7(("&nbsp;")):::term
+    A8{"裝置有<br/>TTS 引擎？"}:::dec
   end
 
-  subgraph LA["長輩機 App（全程本地運算，不連後端）"]
-    A1["FarmerAlmanacScreen 開啟"]
-    A2["lunar 套件換算<br/>農曆・干支・宜忌"]
-    A3["taiwan_deity_calendar<br/>查當日神明誕辰"]
-    A4["chinese_converter<br/>簡繁轉換"]
-    A5["渲染農民曆版面"]
-    A6["flutter_tts 本機朗讀"]
-    A7["僅顯示文字"]
-    A8{"裝置有<br/>TTS 引擎？"}
-  end
-
-  S1 --> A1 --> A2 --> A3 --> A4 --> A5 --> S3
+  ST_S1 --> S1
+  S1 --> A1
+  A1 --> A2
+  A2 --> A3
+  A3 --> A4
+  A4 --> A5
+  A5 --> S3
   S3 --> S2
-  S2 -- 否 --> E1([結束])
-  S2 -- 是 --> A8
-  A8 -- 是 --> A6 --> S4
-  A8 -- 否 --> A7
-        </script>
+  S2 -->|"[否]"| E1
+  S2 -->|"[是]"| A8
+  A8 -->|"[是]"| A6
+  A6 --> S4
+  A8 -->|"[否]"| A7
+  S4 --> EN_S4
+  E1 --> EN_E1
+  A7 --> EN_A7
+
+  classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+</script>
       </figure>
 
       <figure class="dia" data-id="A09" data-sec="s53" data-role="elder" data-kind="activity">
@@ -1651,33 +1817,50 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
 flowchart TD
-  subgraph LE["長輩"]
-    S1([進入某個底部分頁])
-    S2["點『知道了』前進下一步"]
-    S3(["熟悉該頁操作"])
+  subgraph ROLE["長輩"]
+    ST_S1(("&nbsp;")):::term
+    S1([進入某個底部分頁]):::act
+    S2["點『知道了』前進下一步"]:::act
+    S3(["熟悉該頁操作"]):::act
+    EN_S3(("&nbsp;")):::term
+  end
+  subgraph FE["長輩機 App"]
+    A1["該分頁的 GlobalKey<br/>提供高光量測目標"]:::act
+    A2{"版面量測<br/>是否完成？"}:::dec
+    A3["延後一個 frame 重試"]:::act
+    A4["SpotlightTutorial.showIfNeeded()"]:::act
+    A5{"SharedPreferences<br/>此頁教學已看過？"}:::dec
+    A6["showGeneralDialog 疊遮罩<br/>挖空高光區並顯示提示"]:::act
+    A7{"還有<br/>下一步？"}:::dec
+    A8["寫入『已看過』旗標"]:::act
+    A9(["跳過，不打擾"]):::act
+    EN_A9(("&nbsp;")):::term
   end
 
-  subgraph LA["長輩機 App"]
-    A1["該分頁的 GlobalKey<br/>提供高光量測目標"]
-    A2{"版面量測<br/>是否完成？"}
-    A3["延後一個 frame 重試"]
-    A4["SpotlightTutorial.showIfNeeded()"]
-    A5{"SharedPreferences<br/>此頁教學已看過？"}
-    A6["showGeneralDialog 疊遮罩<br/>挖空高光區並顯示提示"]
-    A7{"還有<br/>下一步？"}
-    A8["寫入『已看過』旗標"]
-    A9(["跳過，不打擾"])
-  end
+  ST_S1 --> S1
+  S1 --> A1
+  A1 --> A2
+  A2 -->|"[否]"| A3
+  A3 --> A2
+  A2 -->|"[是]"| A4
+  A4 --> A5
+  A5 -->|"[是]"| A9
+  A5 -->|"[否]"| A6
+  A6 --> S2
+  S2 --> A7
+  A7 -->|"[是]"| A6
+  A7 -->|"[否]"| A8
+  A8 --> S3
+  S3 --> EN_S3
+  A9 --> EN_A9
 
-  S1 --> A1 --> A2
-  A2 -- 否 --> A3 --> A2
-  A2 -- 是 --> A4 --> A5
-  A5 -- 是 --> A9
-  A5 -- 否 --> A6 --> S2 --> A7
-  A7 -- 是 --> A6
-  A7 -- 否 --> A8 --> S3
-        </script>
+  classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+</script>
       </figure>
 
       <figure class="dia" data-id="A10" data-sec="s53" data-role="elder" data-kind="activity">
@@ -1714,31 +1897,49 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
 flowchart TD
-  subgraph U["使用者（長輩端與家屬端共用）"]
-    S1([首次啟動 App])
-    S2["詳閱隱私權政策"]
-    S3{"是否同意？"}
-    S4(["進入後續流程"])
-    S5(["停留在政策頁<br/>無法繼續使用"])
+  subgraph ROLE["使用者（長輩端與家屬端共用）"]
+    ST_S1(("&nbsp;")):::term
+    S1([首次啟動 App]):::act
+    S2["詳閱隱私權政策"]:::act
+    S3{"是否同意？"}:::dec
+    S4(["進入後續流程"]):::act
+    EN_S4(("&nbsp;")):::term
+    S5(["停留在政策頁<br/>無法繼續使用"]):::act
+    EN_S5(("&nbsp;")):::term
+  end
+  subgraph FE["App"]
+    A1["SplashScreen 讀取<br/>prefs: PrivacyPolicyScreen.prefsKey"]:::act
+    A2{"已同意過？"}:::dec
+    A3["_replaceWith(PrivacyPolicyScreen)"]:::act
+    A4["渲染 privacy_policy_content<br/>影像・語音・向量化記憶<br/>GPS 與室內定位・健康數據"]:::act
+    A5["寫入已同意旗標"]:::act
+    A6["pushAndRemoveUntil<br/>進入身分判定"]:::act
+    A7["請求相機／麥克風／定位權限<br/>刻意排在同意之後"]:::act
   end
 
-  subgraph LA["App"]
-    A1["SplashScreen 讀取<br/>prefs: PrivacyPolicyScreen.prefsKey"]
-    A2{"已同意過？"}
-    A3["_replaceWith(PrivacyPolicyScreen)"]
-    A4["渲染 privacy_policy_content<br/>影像・語音・向量化記憶<br/>GPS 與室內定位・健康數據"]
-    A5["寫入已同意旗標"]
-    A6["pushAndRemoveUntil<br/>進入身分判定"]
-    A7["請求相機／麥克風／定位權限<br/>刻意排在同意之後"]
-  end
+  ST_S1 --> S1
+  S1 --> A1
+  A1 --> A2
+  A2 -->|"[是]"| A6
+  A2 -->|"[否]"| A3
+  A3 --> A4
+  A4 --> S2
+  S2 --> S3
+  S3 -->|"[否]"| S5
+  S3 -->|"[是]"| A5
+  A5 --> A6
+  A6 --> A7
+  A7 --> S4
+  S4 --> EN_S4
+  S5 --> EN_S5
 
-  S1 --> A1 --> A2
-  A2 -- 是 --> A6
-  A2 -- 否 --> A3 --> A4 --> S2 --> S3
-  S3 -- 否 --> S5
-  S3 -- 是 --> A5 --> A6 --> A7 --> S4
-        </script>
+  classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+</script>
       </figure>
 
       <figure class="dia" data-id="A11" data-sec="s53" data-role="elder" data-kind="activity">
@@ -1775,43 +1976,58 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
 flowchart TD
-  subgraph FA["家屬（代長輩填寫）"]
-    S1([於『資料』分頁點編輯長輩檔案])
-    S2["填寫年齡（選填）"]
-    S3{"居住地<br/>如何填？"}
-    S4(["送出儲存"])
+  subgraph ROLE["家屬（代長輩填寫）"]
+    ST_S1(("&nbsp;")):::term
+    S1([於『資料』分頁點編輯長輩檔案]):::act
+    S2["填寫年齡（選填）"]:::act
+    S3{"居住地<br/>如何填？"}:::dec
+    S4(["送出儲存"]):::act
+  end
+  subgraph FE["家屬機 App"]
+    A1["ElderProfileEditScreen"]:::act
+    A2["手動輸入縣市／行政區"]:::act
+    A3{"已授權<br/>GPS？"}:::dec
+    A4["取得座標後反查<br/>縣市／行政區文字"]:::act
+    A5["提示改為手動輸入"]:::act
+    A6["顯示：居住地僅供統計<br/>可不填寫"]:::act
+  end
+  subgraph BE["uban-api 後端"]
+    B1["PATCH /api/user/elder/{elder_id}"]:::act
+    B2{"欄位是否留白？"}:::dec
+    B3["略過該欄<br/>維持原值不動"]:::act
+    EN_B3(("&nbsp;")):::term
+    B4["寫入 elder_profile<br/>age / residence_city / residence_district"]:::act
+    C1["GET /api/admin/stats/demographics<br/>年齡與居住地分布統計<br/>（開發者管理端）"]:::act
+    EN_C1(("&nbsp;")):::term
   end
 
-  subgraph APP["家屬機 App"]
-    A1["ElderProfileEditScreen"]
-    A2["手動輸入縣市／行政區"]
-    A3{"已授權<br/>GPS？"}
-    A4["取得座標後反查<br/>縣市／行政區文字"]
-    A5["提示改為手動輸入"]
-    A6["顯示：居住地僅供統計<br/>可不填寫"]
-  end
+  ST_S1 --> S1
+  S1 --> A1
+  A1 --> A6
+  A6 --> S2
+  S2 --> S3
+  S3 -->|"[手動]"| A2
+  A2 --> S4
+  S3 -->|"[用定位]"| A3
+  A3 -->|"[是]"| A4
+  A4 --> S4
+  A3 -->|"[否]"| A5
+  A5 --> A2
+  S4 --> B1
+  B1 --> B2
+  B2 -->|"[是]"| B3
+  B2 -->|"[否]"| B4
+  B4 --> C1
+  B3 --> EN_B3
+  C1 --> EN_C1
 
-  subgraph API["uban-api 後端"]
-    B1["PATCH /api/user/elder/{elder_id}"]
-    B2{"欄位是否留白？"}
-    B3["略過該欄<br/>維持原值不動"]
-    B4["寫入 elder_profile<br/>age / residence_city / residence_district"]
-  end
-
-  subgraph DEV["開發者管理端"]
-    C1["GET /api/admin/stats/demographics<br/>年齡與居住地分布統計"]
-  end
-
-  S1 --> A1 --> A6 --> S2 --> S3
-  S3 -- 手動 --> A2 --> S4
-  S3 -- 用定位 --> A3
-  A3 -- 是 --> A4 --> S4
-  A3 -- 否 --> A5 --> A2
-  S4 --> B1 --> B2
-  B2 -- 是 --> B3
-  B2 -- 否 --> B4 --> C1
-        </script>
+  classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+</script>
       </figure>
 
       <figure class="dia" data-id="A12" data-sec="s53" data-role="elder" data-kind="activity">
@@ -1853,39 +2069,54 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
 flowchart TD
-  subgraph LE["長輩"]
-    S1([於『我的』分頁看到提問橫幅])
-    S2["點選橫幅開始述說"]
-    S3["錄音並輸入文字"]
-    S4(["故事存入本機"])
+  subgraph ROLE["長輩"]
+    ST_S1(("&nbsp;")):::term
+    S1([於『我的』分頁看到提問橫幅]):::act
+    S2["點選橫幅開始述說"]:::act
+    S3["錄音並輸入文字"]:::act
+    S4(["故事存入本機"]):::act
+    EN_S4(("&nbsp;")):::term
+  end
+  subgraph FE["長輩機 App"]
+    A1["ElderStoryPromptBanner<br/>MemoirService 題庫輪播"]:::act
+    A2["ElderShareStoryDialog"]:::act
+    A3["record 錄音"]:::act
+    A4["組成 MemoirStory 物件"]:::act
+    A5["過濾示範假資料 memoir_00*<br/>並回寫清理結果"]:::act
+    A6{"JSON 解析<br/>成功？"}:::dec
+    A7["回傳空清單<br/>記錄 debug 訊息"]:::act
+    LOCAL[("SharedPreferences<br/>鍵：uban_memoirs_{elderId}<br/>★ 僅存於本機，無後端")]:::gap
+    G1["家屬機藝廊讀的是<br/>家屬機自己的本機儲存<br/>→ 看不到長輩錄的內容"]:::act
+    EN_G1(("&nbsp;")):::term
+    G2["清除資料或換機<br/>→ 故事永久遺失"]:::gap
   end
 
-  subgraph LA["長輩機 App"]
-    A1["ElderStoryPromptBanner<br/>MemoirService 題庫輪播"]
-    A2["ElderShareStoryDialog"]
-    A3["record 錄音"]
-    A4["組成 MemoirStory 物件"]
-    A5["過濾示範假資料 memoir_00*<br/>並回寫清理結果"]
-    A6{"JSON 解析<br/>成功？"}
-    A7["回傳空清單<br/>記錄 debug 訊息"]
-  end
-
-  LOCAL[("SharedPreferences<br/>鍵：uban_memoirs_{elderId}<br/>★ 僅存於本機，無後端")]
-
-  subgraph GAP["與 5-1 的落差"]
-    G1["家屬機藝廊讀的是<br/>家屬機自己的本機儲存<br/>→ 看不到長輩錄的內容"]
-    G2["清除資料或換機<br/>→ 故事永久遺失"]
-  end
-
+  ST_S1 --> S1
   S1 --> A1
-  A1 --> S2 --> A2 --> S3 --> A3 --> A4 --> LOCAL --> S4
+  A1 --> S2
+  S2 --> A2
+  A2 --> S3
+  S3 --> A3
+  A3 --> A4
+  A4 --> LOCAL
+  LOCAL --> S4
   LOCAL --> A6
-  A6 -- 是 --> A5 --> A1
-  A6 -- 否 --> A7 --> A1
+  A6 -->|"[是]"| A5
+  A5 --> A1
+  A6 -->|"[否]"| A7
+  A7 --> A1
   LOCAL -.-> G1
   LOCAL -.-> G2
-        </script>
+  S4 --> EN_S4
+  G1 --> EN_G1
+
+  classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+</script>
       </figure>
       <figure class="dia" data-id="A13" data-sec="s53" data-role="family" data-kind="activity">
         <div class="dia-head">
@@ -1928,57 +2159,86 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
 flowchart TD
-  subgraph FA["家屬"]
-    S1([開啟 App])
-    S2{"已有帳號？"}
-    S3["輸入 Email 與密碼<br/>或用 Google／LINE"]
-    S4{"要做什麼？"}
-    S5(["完成綁定"])
-    S6(["訂閱生效"])
+  subgraph ROLE["家屬"]
+    ST_S1(("&nbsp;")):::term
+    S1([開啟 App]):::act
+    S2{"已有帳號？"}:::dec
+    S3["輸入 Email 與密碼<br/>或用 Google／LINE"]:::act
+    S4{"要做什麼？"}:::dec
+    S5(["完成綁定"]):::act
+    EN_S5(("&nbsp;")):::term
+    S6(["訂閱生效"]):::act
+    EN_S6(("&nbsp;")):::term
+  end
+  subgraph FE["家屬機 App"]
+    A1["RegistrationScreen"]:::act
+    A2["LoginScreen"]:::act
+    A3["寫入 prefs<br/>user_role = saved_role = family"]:::act
+    A4{"has_paired_elder？"}:::dec
+    A5["FamilyOnboardingScreen"]:::act
+    A6["FamilyMainScreen"]:::act
+    A7["CaregiverPairingScreen<br/>輸入 4 碼或掃 QR"]:::act
+    A8["監視機設定<br/>產生 6 碼設定碼"]:::act
+    A9["subscription_test_screen<br/>★ 測試頁，Test Store 金鑰"]:::gap
+    RC[("RevenueCat")]:::act
+  end
+  subgraph BE["uban-api 後端"]
+    B1["POST /api/auth/register<br/>passlib 雜湊密碼"]:::act
+    B2["POST /api/auth/login<br/>簽發 JWT role=family・24h"]:::act
+    B3["POST /api/pairing/confirm"]:::act
+    B4["POST /api/pairing/monitor_setup<br/>產生 6 碼設定碼 · 15 分鐘<br/>效期內可重複兌換"]:::act
+    B4b["POST /api/pairing/monitor_setup/resolve<br/>寫入 monitor_device_binding"]:::act
+    B5{"Socket.IO join 時檢查<br/>4d 層級上限 free 2／gold 3／diamond 5<br/>4e 同 IP 上限 free 4／gold 9／diamond 25"}:::dec
+    B7["POST /api/revenuecat/webhook"]:::act
+    B8["更新 subscription_status<br/>（唯一真相來源）"]:::act
+    B9["GET /api/subscription/{elder_id}<br/>功能鎖查詢"]:::act
+    MON["舊手機輸入 6 碼設定碼"]:::act
+    R1(["emit join-failed<br/>reason: monitor-limit<br/>／ip_limit_exceeded<br/>並中斷連線"]):::act
+    EN_R1(("&nbsp;")):::term
   end
 
-  subgraph APP["家屬機 App"]
-    A1["RegistrationScreen"]
-    A2["LoginScreen"]
-    A3["寫入 prefs<br/>user_role = saved_role = family"]
-    A4{"has_paired_elder？"}
-    A5["FamilyOnboardingScreen"]
-    A6["FamilyMainScreen"]
-    A7["CaregiverPairingScreen<br/>輸入 4 碼或掃 QR"]
-    A8["監視機設定<br/>產生 6 碼設定碼"]
-    A9["subscription_test_screen<br/>★ 測試頁，Test Store 金鑰"]
-  end
-
-  subgraph API["uban-api 後端"]
-    B1["POST /api/auth/register<br/>passlib 雜湊密碼"]
-    B2["POST /api/auth/login<br/>簽發 JWT role=family・24h"]
-    B3["POST /api/pairing/confirm"]
-    B4["POST /api/pairing/monitor_setup<br/>產生 6 碼設定碼 · 15 分鐘<br/>效期內可重複兌換"]
-    B4b["POST /api/pairing/monitor_setup/resolve<br/>寫入 monitor_device_binding"]
-    B5{"Socket.IO join 時檢查<br/>4d 層級上限 free 2／gold 3／diamond 5<br/>4e 同 IP 上限 free 4／gold 9／diamond 25"}
-    B7["POST /api/revenuecat/webhook"]
-    B8["更新 subscription_status<br/>（唯一真相來源）"]
-    B9["GET /api/subscription/{elder_id}<br/>功能鎖查詢"]
-  end
-
-  RC[("RevenueCat")]
-
+  ST_S1 --> S1
   S1 --> S2
-  S2 -- 否 --> A1 --> B1 --> A2
-  S2 -- 是 --> A2 --> S3 --> B2 --> A3 --> A4
-  A4 -- 否 --> A5
-  A4 -- 是 --> A6
+  S2 -->|"[否]"| A1
+  A1 --> B1
+  B1 --> A2
+  S2 -->|"[是]"| A2
+  A2 --> S3
+  S3 --> B2
+  B2 --> A3
+  A3 --> A4
+  A4 -->|"[否]"| A5
+  A4 -->|"[是]"| A6
   A5 --> S4
   A6 --> S4
-  S4 -- 綁定長輩 --> A7 --> B3 --> S5
-  S4 -- 綁定監視機 --> A8 --> B4 --> MON["舊手機輸入 6 碼設定碼"]
-  MON --> B4b --> B5
-  B5 -- 超過 --> R1(["emit join-failed<br/>reason: monitor-limit<br/>／ip_limit_exceeded<br/>並中斷連線"])
-  B5 -- 未超過 --> S5
-  S4 -- 訂閱付費 --> A9 --> RC --> B7 --> B8 --> S6
-  B8 --> B9 --> A6
-        </script>
+  S4 -->|"[綁定長輩]"| A7
+  A7 --> B3
+  B3 --> S5
+  S4 -->|"[綁定監視機]"| A8
+  A8 --> B4
+  B4 --> MON
+  MON --> B4b
+  B4b --> B5
+  B5 -->|"[超過]"| R1
+  B5 -->|"[未超過]"| S5
+  S4 -->|"[訂閱付費]"| A9
+  A9 --> RC
+  RC --> B7
+  B7 --> B8
+  B8 --> S6
+  B8 --> B9
+  B9 --> A6
+  S5 --> EN_S5
+  S6 --> EN_S6
+  R1 --> EN_R1
+
+  classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+</script>
       </figure>
 
       <figure class="dia" data-id="A14" data-sec="s53" data-role="family" data-kind="activity">
@@ -2016,48 +2276,68 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
 flowchart TD
-  subgraph FA["家屬"]
-    S1([進入照護排程])
-    S2{"要做什麼？"}
-    S3["以自然語言描述需求"]
-    S4{"草稿是否<br/>符合預期？"}
-    S5(["排程生效"])
-    S6(["查看情緒報告<br/>與破冰話題建議"])
+  subgraph ROLE["家屬"]
+    ST_S1(("&nbsp;")):::term
+    S1([進入照護排程]):::act
+    S2{"要做什麼？"}:::dec
+    S3["以自然語言描述需求"]:::act
+    S4{"草稿是否<br/>符合預期？"}:::dec
+    S5(["排程生效"]):::act
+    EN_S5(("&nbsp;")):::term
+    S6(["查看情緒報告<br/>與破冰話題建議"]):::act
+    EN_S6(("&nbsp;")):::term
+  end
+  subgraph FE["家屬機 App"]
+    A1["HealthReminderScreen"]:::act
+    A2["FamilyAiCopilotScreen"]:::act
+    A3["顯示排程草稿供逐筆編輯"]:::act
+    A4["首頁 AI 情緒雷達卡"]:::act
+  end
+  subgraph BE["uban-api 後端"]
+    G0{"call_security<br/>家屬－長輩關係<br/>驗證通過？"}:::dec
+    B1["GET /api/reminder/elder/{elder_id}"]:::act
+    B2["POST /api/reminder/<br/>PUT /{id}｜/toggle｜DELETE /{id}"]:::act
+    B3["POST /api/ai/family_copilot/chat"]:::act
+    B4["POST /api/reminder/batch_create"]:::act
+    B5["GET /api/ai/elder_mood_insight/{elder_id}"]:::act
+    J1["check_remote_reminders_job<br/>每分鐘推播給長輩<br/>（APScheduler 排程）"]:::act
+    DB[("remote_reminders")]:::act
+    X(["回傳無權限"]):::act
+    EN_X(("&nbsp;")):::term
   end
 
-  subgraph APP["家屬機 App"]
-    A1["HealthReminderScreen"]
-    A2["FamilyAiCopilotScreen"]
-    A3["顯示排程草稿供逐筆編輯"]
-    A4["首頁 AI 情緒雷達卡"]
-  end
-
-  subgraph API["uban-api 後端"]
-    G0{"call_security<br/>家屬－長輩關係<br/>驗證通過？"}
-    B1["GET /api/reminder/elder/{elder_id}"]
-    B2["POST /api/reminder/<br/>PUT /{id}｜/toggle｜DELETE /{id}"]
-    B3["POST /api/ai/family_copilot/chat"]
-    B4["POST /api/reminder/batch_create"]
-    B5["GET /api/ai/elder_mood_insight/{elder_id}"]
-  end
-
-  subgraph SCH["後端排程"]
-    J1["check_remote_reminders_job<br/>每分鐘推播給長輩"]
-  end
-
-  DB[("remote_reminders")]
-
+  ST_S1 --> S1
   S1 --> G0
-  G0 -- 否 --> X(["回傳無權限"])
-  G0 -- 是 --> A1 --> B1 --> S2
-  S2 -- 查閱與修改 --> B2 --> DB
-  S2 -- AI 安排 --> A2 --> S3 --> B3 --> A3 --> S4
-  S4 -- 否 --> A3
-  S4 -- 是 --> B4 --> DB
-  S2 -- 查閱數據與情緒報告 --> A4 --> B5 --> S6
-  DB --> J1 --> S5
-        </script>
+  G0 -->|"[否]"| X
+  G0 -->|"[是]"| A1
+  A1 --> B1
+  B1 --> S2
+  S2 -->|"[查閱與修改]"| B2
+  B2 --> DB
+  S2 -->|"[AI 安排]"| A2
+  A2 --> S3
+  S3 --> B3
+  B3 --> A3
+  A3 --> S4
+  S4 -->|"[否]"| A3
+  S4 -->|"[是]"| B4
+  B4 --> DB
+  S2 -->|"[查閱數據與情緒報告]"| A4
+  A4 --> B5
+  B5 --> S6
+  DB --> J1
+  J1 --> S5
+  S5 --> EN_S5
+  S6 --> EN_S6
+  X --> EN_X
+
+  classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+</script>
       </figure>
 
       <figure class="dia" data-id="A15" data-sec="s53" data-role="family" data-kind="activity">
@@ -2095,46 +2375,68 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
 flowchart TD
-  subgraph FA["家屬"]
-    S1([於『互動』分頁點選監控裝置])
-    S2(["觀看即時單向影像"])
+  subgraph ROLE["家屬"]
+    ST_S1(("&nbsp;")):::term
+    S1([於『互動』分頁點選監控裝置]):::act
+    S2(["觀看即時單向影像"]):::act
+    EN_S2(("&nbsp;")):::term
   end
-
-  subgraph APP["家屬機 App"]
-    A1["VideoCallScreen 監控模式"]
-    A2["Signaling 單例發起單向串流"]
+  subgraph FE["家屬機 App"]
+    A1["VideoCallScreen 監控模式"]:::act
+    A2["Signaling 單例發起單向串流"]:::act
   end
-
-  subgraph API["uban-api 信令與推論"]
-    G0{"call_security<br/>關係驗證通過？"}
-    B1["Socket.IO 交換<br/>offer／answer／candidate"]
-    B2["POST /api/cctv/frame<br/>監視機約每 2 秒推幀"]
-    B3["YOLO 推論（容器內 CPU）"]
-    B4["更新 cctv_feed_status<br/>連線品質與最後推幀時間"]
-    B5{"30 秒未推幀？"}
-    B6["yolo_monitor_job<br/>標記 inactive 並重置窗口"]
+  subgraph FE2["長輩端監視機（舊手機）"]
+    M1["ElderScreen isCCTVMode = true"]:::act
+    M2["擷取相機影格"]:::act
   end
-
-  subgraph MON["長輩端監視機（舊手機）"]
-    M1["ElderScreen isCCTVMode = true"]
-    M2["擷取相機影格"]
+  subgraph BE["uban-api 信令與推論"]
+    G0{"call_security<br/>關係驗證通過？"}:::dec
+    B1["Socket.IO 交換<br/>offer／answer／candidate"]:::act
+    B2["POST /api/cctv/frame<br/>監視機約每 2 秒推幀"]:::act
+    B3["YOLO 推論（容器內 CPU）"]:::act
+    EN_B3(("&nbsp;")):::term
+    B4["更新 cctv_feed_status<br/>連線品質與最後推幀時間"]:::act
+    B5{"30 秒未推幀？"}:::dec
+    B6["yolo_monitor_job<br/>標記 inactive 並重置窗口"]:::act
+    EN_B6(("&nbsp;")):::term
+    X(["拒絕觀看"]):::act
+    EN_X(("&nbsp;")):::term
   end
-
   subgraph NET["雙軌傳輸（實體分離）"]
-    N1["信令：Tailscale Funnel<br/>TCP／WSS"]
-    N2["媒體：Oracle Cloud Coturn<br/>UDP"]
+    N1["信令：Tailscale Funnel<br/>TCP／WSS"]:::act
+    N2["媒體：Oracle Cloud Coturn<br/>UDP"]:::act
   end
 
+  ST_S1 --> S1
   S1 --> G0
-  G0 -- 否 --> X(["拒絕觀看"])
-  G0 -- 是 --> A1 --> A2 --> N1 --> B1 --> M1
-  M1 --> N2 --> A1 --> S2
-  M1 --> M2 --> B2 --> B3
-  B2 --> B4 --> B5
-  B5 -- 是 --> B6
-  B5 -- 否 --> B4
-        </script>
+  G0 -->|"[否]"| X
+  G0 -->|"[是]"| A1
+  A1 --> A2
+  A2 --> N1
+  N1 --> B1
+  B1 --> M1
+  M1 --> N2
+  N2 --> A1
+  A1 --> S2
+  M1 --> M2
+  M2 --> B2
+  B2 --> B3
+  B2 --> B4
+  B4 --> B5
+  B5 -->|"[是]"| B6
+  B5 -->|"[否]"| B4
+  S2 --> EN_S2
+  B3 --> EN_B3
+  B6 --> EN_B6
+  X --> EN_X
+
+  classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+</script>
       </figure>
 
       <figure class="dia" data-id="A16" data-sec="s53" data-role="family" data-kind="activity">
@@ -2171,48 +2473,68 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
 flowchart TD
-  subgraph FA["家屬"]
-    S1([於『互動』分頁點撥打])
-    S2{"一般通話<br/>或緊急通話？"}
-    S3(["通話中"])
-    S4["點掛斷"]
+  subgraph ROLE["家屬"]
+    ST_S1(("&nbsp;")):::term
+    S1([於『互動』分頁點撥打]):::act
+    S2{"一般通話<br/>或緊急通話？"}:::dec
+    S3(["通話中"]):::act
+    S4["點掛斷"]:::act
+  end
+  subgraph FE["家屬機 App"]
+    A1["Signaling 送出 call-request<br/>targetSocketId = null"]:::act
+    A2["Signaling 送出 emergency-call"]:::act
+    A3["顯示重撥對話框"]:::act
+    EN_A3(("&nbsp;")):::term
+    A4["VideoCallScreen 通話房"]:::act
+    M1[("Oracle Cloud Coturn<br/>UDP 媒體中繼")]:::act
+  end
+  subgraph FE2["長輩機"]
+    E1["一般來電響鈴<br/>有效期 60 秒"]:::act
+    E2["緊急：AndroidIntent 冷啟動<br/>bringToFront ＋ 強制音量<br/>有效期 3600 秒"]:::act
+    E3["接聽"]:::act
+    E4["忙線 → call-busy"]:::act
+  end
+  subgraph BE["uban-api 信令"]
+    B1["廣播給線上長輩 Socket<br/>＋ 所有長輩 FCM token"]:::act
+    B2{"長輩回應？"}:::dec
+    B3["交換 offer／answer／candidate"]:::act
+    B4["end-call → 寫入 call_record<br/>含 is_emergency 欄位"]:::act
+    EN_B4(("&nbsp;")):::term
+    T1(["通話失效"]):::act
+    EN_T1(("&nbsp;")):::term
   end
 
-  subgraph APP["家屬機 App"]
-    A1["Signaling 送出 call-request<br/>targetSocketId = null"]
-    A2["Signaling 送出 emergency-call"]
-    A3["顯示重撥對話框"]
-    A4["VideoCallScreen 通話房"]
-  end
-
-  subgraph API["uban-api 信令"]
-    B1["廣播給線上長輩 Socket<br/>＋ 所有長輩 FCM token"]
-    B2{"長輩回應？"}
-    B3["交換 offer／answer／candidate"]
-    B4["end-call → 寫入 call_record<br/>含 is_emergency 欄位"]
-  end
-
-  subgraph EL["長輩機"]
-    E1["一般來電響鈴<br/>有效期 60 秒"]
-    E2["緊急：AndroidIntent 冷啟動<br/>bringToFront ＋ 強制音量<br/>有效期 3600 秒"]
-    E3["接聽"]
-    E4["忙線 → call-busy"]
-  end
-
-  M1[("Oracle Cloud Coturn<br/>UDP 媒體中繼")]
-
+  ST_S1 --> S1
   S1 --> S2
-  S2 -- 一般 --> A1 --> B1 --> E1
-  S2 -- 緊急 --> A2 --> B1 --> E2
+  S2 -->|"[一般]"| A1
+  A1 --> B1
+  B1 --> E1
+  S2 -->|"[緊急]"| A2
+  A2 --> B1
+  B1 --> E2
   E1 --> B2
   E2 --> B2
-  B2 -- 忙線 --> E4 --> A3
-  B2 -- 逾期未接 --> T1(["通話失效"])
-  B2 -- 接聽 --> E3 --> B3 --> A4 --> S3
-  A4 <--> M1
-  S3 --> S4 --> B4
-        </script>
+  B2 -->|"[忙線]"| E4
+  E4 --> A3
+  B2 -->|"[逾期未接]"| T1
+  B2 -->|"[接聽]"| E3
+  E3 --> B3
+  B3 --> A4
+  A4 --> S3
+  A4 --> M1
+  S3 --> S4
+  S4 --> B4
+  A3 --> EN_A3
+  B4 --> EN_B4
+  T1 --> EN_T1
+
+  classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+</script>
       </figure>
 
       <figure class="dia" data-id="A17" data-sec="s53" data-role="family" data-kind="activity">
@@ -2252,57 +2574,79 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
 flowchart TD
-  subgraph MON["長輩端監視機"]
-    M1(["持續擷取影格"])
-    M2["POST /api/cctv/frame<br/>約每 2 秒"]
+  subgraph ROLE["家屬"]
+    S1(["收到跌倒警報"]):::act
+    S2{"判定結果？"}:::dec
+    S3(["語音橋接直接關心"]):::act
+    EN_S3(("&nbsp;")):::term
+    S4(["標記為誤報"]):::act
+    EN_S4(("&nbsp;")):::term
+  end
+  subgraph FE["家屬機 App"]
+    A0{"App 在前景？"}:::dec
+    A1["前景：FamilyMainScreen 收 Socket<br/>_handleCctvAlert → 彈窗＋朗讀<br/>family_main_screen.dart:1263-1273"]:::act
+    A1b["背景：firebase_bg_handler 收 FCM<br/>cctv_alert_notification 顯示通知<br/>channel uban_cctv_alert_v3<br/>鬧鐘音量・繞過勿擾・鎖屏可見"]:::act
+    A2["家屬主動開啟 AlertCenterScreen<br/>查看快照與歷史"]:::act
+    A3["★ 禁止 fullScreenIntent<br/>與 AndroidIntent 強制開啟"]:::gap
+  end
+  subgraph FE2["長輩端監視機"]
+    ST_M1(("&nbsp;")):::term
+    M1(["持續擷取影格"]):::act
+    M2["POST /api/cctv/frame<br/>約每 2 秒"]:::act
+  end
+  subgraph BE["uban-api 後端（容器內 CPU）"]
+    B1["yolo_detector_service<br/>yolov8n 推論"]:::act
+    B2{"多幀窗口判定<br/>跌倒／爬行／長時間靜止？"}:::dec
+    B3["dispatch_yolo_alert()"]:::act
+    B4["寫入 emergency_alerts<br/>status = active"]:::act
+    EN_B4(("&nbsp;")):::term
+    B5["Socket 發 cctv-alert"]:::act
+    B6["FCM 高優先級推播"]:::act
+    B7["建立 alert_audio_permissions<br/>30 分鐘有效"]:::act
+    EN_B7(("&nbsp;")):::term
+    B8["POST /alerts/{id}/false-alarm<br/>寫入誤報三欄"]:::act
+    B9["POST /alerts/{id}/audio-bridge"]:::act
+    C1["警報與誤報比例統計<br/>（開發者管理端）"]:::act
+    EN_C1(("&nbsp;")):::term
   end
 
-  subgraph API["uban-api 後端（容器內 CPU）"]
-    B1["yolo_detector_service<br/>yolov8n 推論"]
-    B2{"多幀窗口判定<br/>跌倒／爬行／長時間靜止？"}
-    B3["dispatch_yolo_alert()"]
-    B4["寫入 emergency_alerts<br/>status = active"]
-    B5["Socket 發 cctv-alert"]
-    B6["FCM 高優先級推播"]
-    B7["建立 alert_audio_permissions<br/>30 分鐘有效"]
-    B8["POST /alerts/{id}/false-alarm<br/>寫入誤報三欄"]
-    B9["POST /alerts/{id}/audio-bridge"]
-  end
-
-  subgraph APP["家屬機 App"]
-    A0{"App 在前景？"}
-    A1["前景：FamilyMainScreen 收 Socket<br/>_handleCctvAlert → 彈窗＋朗讀<br/>family_main_screen.dart:1263-1273"]
-    A1b["背景：firebase_bg_handler 收 FCM<br/>cctv_alert_notification 顯示通知<br/>channel uban_cctv_alert_v3<br/>鬧鐘音量・繞過勿擾・鎖屏可見"]
-    A2["家屬主動開啟 AlertCenterScreen<br/>查看快照與歷史"]
-    A3["★ 禁止 fullScreenIntent<br/>與 AndroidIntent 強制開啟"]
-  end
-
-  subgraph FA["家屬"]
-    S1(["收到跌倒警報"])
-    S2{"判定結果？"}
-    S3(["語音橋接直接關心"])
-    S4(["標記為誤報"])
-  end
-
-  subgraph DEV["開發者管理端"]
-    C1["警報與誤報比例統計"]
-  end
-
-  M1 --> M2 --> B1 --> B2
-  B2 -- 否 --> M1
-  B2 -- 是 --> B3 --> B4
-  B3 --> B5 --> A0
-  B3 --> B6 --> A0
+  ST_M1 --> M1
+  M1 --> M2
+  M2 --> B1
+  B1 --> B2
+  B2 -->|"[否]"| M1
+  B2 -->|"[是]"| B3
+  B3 --> B4
+  B3 --> B5
+  B5 --> A0
+  B3 --> B6
+  B6 --> A0
   B3 --> B7
-  A0 -- 是 --> A1 --> S1
-  A0 -- 否 --> A1b --> S1
+  A0 -->|"[是]"| A1
+  A1 --> S1
+  A0 -->|"[否]"| A1b
+  A1b --> S1
   A1b --- A3
-  S1 --> A2 --> S2
-  S2 -- 真的跌倒 --> B9 --> S3
-  S2 -- 誤判 --> B8 --> S4
+  S1 --> A2
+  A2 --> S2
+  S2 -->|"[真的跌倒]"| B9
+  B9 --> S3
+  S2 -->|"[誤判]"| B8
+  B8 --> S4
   B8 --> C1
-        </script>
+  S3 --> EN_S3
+  S4 --> EN_S4
+  B4 --> EN_B4
+  B7 --> EN_B7
+  C1 --> EN_C1
+
+  classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+</script>
       </figure>
       <figure class="dia" data-id="A18" data-sec="s53" data-role="family" data-kind="activity">
         <div class="dia-head">
@@ -2338,45 +2682,66 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
 flowchart TD
-  subgraph FA["家屬 A"]
-    S1([開啟『加家屬好友』])
-    S2["輸入對方 4 碼 family_code"]
-    S3(["瀏覽動態・發文・按讚留言"])
+  subgraph ROLE["家屬 A"]
+    ST_S1(("&nbsp;")):::term
+    S1([開啟『加家屬好友』]):::act
+    S2["輸入對方 4 碼 family_code"]:::act
+    S3(["瀏覽動態・發文・按讚留言"]):::act
+  end
+  subgraph ROLE2["家屬 B"]
+    T1["查看好友邀請"]:::act
+    T2{"是否同意？"}:::dec
+    R1(["維持未成立"]):::act
+    EN_R1(("&nbsp;")):::term
+  end
+  subgraph FE["家屬機 App"]
+    A1["FamilyAddFriendScreen<br/>顯示自己的 4 碼代碼"]:::act
+    A2["FamilyFriendFeedBody"]:::act
+    A3["提示『查無此人』"]:::act
+    EN_A3(("&nbsp;")):::term
+  end
+  subgraph BE["uban-api 後端"]
+    B0["GET /api/family-friend/my-code"]:::act
+    B1["GET /api/family-friend/search"]:::act
+    B2{"代碼存在<br/>且非本人？"}:::dec
+    B3["POST /request<br/>寫入 family_friendship（pending）"]:::act
+    B4["GET /requests"]:::act
+    B5["POST /respond → accepted"]:::act
+    B6["GET /feed"]:::act
+    B7["POST /post<br/>/post/{id}/like｜/comment"]:::act
+    DB[("family_friend_code<br/>family_friendship（UNIQUE low, high）<br/>family_friend_post / _comment / _like<br/>★ 與長輩端 friend_* 刻意不共用")]:::gap
   end
 
-  subgraph FB["家屬 B"]
-    T1["查看好友邀請"]
-    T2{"是否同意？"}
-  end
+  ST_S1 --> S1
+  S1 --> B0
+  B0 --> A1
+  A1 --> S2
+  S2 --> B1
+  B1 --> B2
+  B2 -->|"[否]"| A3
+  B2 -->|"[是]"| B3
+  B3 --> DB
+  B3 --> B4
+  B4 --> T1
+  T1 --> T2
+  T2 -->|"[拒絕]"| R1
+  T2 -->|"[同意]"| B5
+  B5 --> DB
+  B5 --> B6
+  B6 --> A2
+  A2 --> S3
+  S3 --> B7
+  B7 --> DB
+  R1 --> EN_R1
+  A3 --> EN_A3
 
-  subgraph APP["家屬機 App"]
-    A1["FamilyAddFriendScreen<br/>顯示自己的 4 碼代碼"]
-    A2["FamilyFriendFeedBody"]
-    A3["提示『查無此人』"]
-  end
-
-  subgraph API["uban-api 後端"]
-    B0["GET /api/family-friend/my-code"]
-    B1["GET /api/family-friend/search"]
-    B2{"代碼存在<br/>且非本人？"}
-    B3["POST /request<br/>寫入 family_friendship（pending）"]
-    B4["GET /requests"]
-    B5["POST /respond → accepted"]
-    B6["GET /feed"]
-    B7["POST /post<br/>/post/{id}/like｜/comment"]
-  end
-
-  DB[("family_friend_code<br/>family_friendship（UNIQUE low, high）<br/>family_friend_post / _comment / _like<br/>★ 與長輩端 friend_* 刻意不共用")]
-
-  S1 --> B0 --> A1 --> S2 --> B1 --> B2
-  B2 -- 否 --> A3
-  B2 -- 是 --> B3 --> DB
-  B3 --> B4 --> T1 --> T2
-  T2 -- 拒絕 --> R1(["維持未成立"])
-  T2 -- 同意 --> B5 --> DB
-  B5 --> B6 --> A2 --> S3 --> B7 --> DB
-        </script>
+  classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+</script>
       </figure>
 
       <figure class="dia" data-id="A19" data-sec="s53" data-role="family" data-kind="activity">
@@ -2414,51 +2779,73 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
 flowchart TD
-  subgraph FA["家屬"]
-    S1([於『互動』分頁開啟 AI 共創助理])
-    S2["以自然語言提問或下指令"]
-    S3{"草稿是否<br/>逐筆確認？"}
-    S4(["取得回覆與關懷建議"])
-    S5(["排程批次建立"])
+  subgraph ROLE["家屬"]
+    ST_S1(("&nbsp;")):::term
+    S1([於『互動』分頁開啟 AI 共創助理]):::act
+    S2["以自然語言提問或下指令"]:::act
+    S3{"草稿是否<br/>逐筆確認？"}:::dec
+    S4(["取得回覆與關懷建議"]):::act
+    EN_S4(("&nbsp;")):::term
+    S5(["排程批次建立"]):::act
+    EN_S5(("&nbsp;")):::term
+  end
+  subgraph FE["家屬機 App"]
+    A1["FamilyAiCopilotScreen"]:::act
+    A2["顯示排程草稿清單"]:::act
+    A3(["不建立任何排程"]):::act
+    EN_A3(("&nbsp;")):::term
+  end
+  subgraph BE["uban-api 後端"]
+    G0{"關係驗證<br/>通過？"}:::dec
+    B1["POST /api/ai/family_copilot/chat"]:::act
+    B2["組裝長輩脈絡：<br/>activity_log ・情緒分析<br/>・Pinecone 長期記憶檢索"]:::act
+    B3{"Ollama 可達？"}:::dec
+    B4["ollama_service"]:::act
+    B5["gemini_service 備援"]:::act
+    B6{"語意屬於<br/>『安排提醒』？"}:::dec
+    B7["產出排程草稿"]:::act
+    B8["POST /api/reminder/batch_create"]:::act
+    B9["GET /daily-suggestions/{elder_id}<br/>GET /dynamic_care_messages/{elder_id}"]:::act
+    DB[("remote_reminders")]:::act
+    PC[("Pinecone")]:::act
+    X(["回傳無權限"]):::act
+    EN_X(("&nbsp;")):::term
   end
 
-  subgraph APP["家屬機 App"]
-    A1["FamilyAiCopilotScreen"]
-    A2["顯示排程草稿清單"]
-    A3(["不建立任何排程"])
-  end
-
-  subgraph API["uban-api 後端"]
-    G0{"關係驗證<br/>通過？"}
-    B1["POST /api/ai/family_copilot/chat"]
-    B2["組裝長輩脈絡：<br/>activity_log ・情緒分析<br/>・Pinecone 長期記憶檢索"]
-    B3{"Ollama 可達？"}
-    B4["ollama_service"]
-    B5["gemini_service 備援"]
-    B6{"語意屬於<br/>『安排提醒』？"}
-    B7["產出排程草稿"]
-    B8["POST /api/reminder/batch_create"]
-    B9["GET /daily-suggestions/{elder_id}<br/>GET /dynamic_care_messages/{elder_id}"]
-  end
-
-  DB[("remote_reminders")]
-  PC[("Pinecone")]
-
+  ST_S1 --> S1
   S1 --> G0
-  G0 -- 否 --> X(["回傳無權限"])
-  G0 -- 是 --> A1 --> S2 --> B1 --> B2
+  G0 -->|"[否]"| X
+  G0 -->|"[是]"| A1
+  A1 --> S2
+  S2 --> B1
+  B1 --> B2
   B2 --- PC
   B2 --> B3
-  B3 -- 是 --> B4
-  B3 -- 否 --> B5
+  B3 -->|"[是]"| B4
+  B3 -->|"[否]"| B5
   B4 --> B6
   B5 --> B6
-  B6 -- 否 --> B9 --> S4
-  B6 -- 是 --> B7 --> A2 --> S3
-  S3 -- 否 --> A3
-  S3 -- 是 --> B8 --> DB --> S5
-        </script>
+  B6 -->|"[否]"| B9
+  B9 --> S4
+  B6 -->|"[是]"| B7
+  B7 --> A2
+  A2 --> S3
+  S3 -->|"[否]"| A3
+  S3 -->|"[是]"| B8
+  B8 --> DB
+  DB --> S5
+  S4 --> EN_S4
+  S5 --> EN_S5
+  A3 --> EN_A3
+  X --> EN_X
+
+  classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+</script>
       </figure>
 
       <figure class="dia" data-id="A20" data-sec="s53" data-role="family" data-kind="activity">
@@ -2501,43 +2888,56 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
 flowchart TD
-  subgraph LE["長輩機"]
-    E1["長輩錄製生命故事"]
-    E2[("SharedPreferences（長輩機）<br/>uban_memoirs_{elderId}")]
+  subgraph ROLE["家屬"]
+    ST_S1(("&nbsp;")):::term
+    S1([於『資料』分頁點『回憶錄』]):::act
+    S2(["看見長輩的故事"]):::act
+    EN_S2(("&nbsp;")):::term
+    S3(["看見空狀態"]):::act
+    EN_S3(("&nbsp;")):::term
+  end
+  subgraph FE["家屬機 App"]
+    A1["MemoirsGalleryScreen"]:::act
+    A2["MemoirService.getMemoirs(elderId)"]:::act
+    A3[("SharedPreferences（家屬機）<br/>uban_memoirs_{elderId}")]:::act
+    A4["過濾示範假資料 memoir_00*"]:::act
+    A5{"本機有資料？"}:::dec
+    A6["MemoirDetailSheet 呈現"]:::act
+  end
+  subgraph FE2["長輩機"]
+    ST_E1(("&nbsp;")):::term
+    E1["長輩錄製生命故事"]:::act
+    E2[("SharedPreferences（長輩機）<br/>uban_memoirs_{elderId}")]:::act
+    N1["上傳 API"]:::act
+    N2[("後端資料表")]:::act
+    N3["下載 API"]:::act
   end
 
-  subgraph MISSING["缺失的同步路徑（目前未實作）"]
-    N1["上傳 API"]
-    N2[("後端資料表")]
-    N3["下載 API"]
-  end
-
-  subgraph FA["家屬"]
-    S1([於『資料』分頁點『回憶錄』])
-    S2(["看見長輩的故事"])
-    S3(["看見空狀態"])
-  end
-
-  subgraph APP["家屬機 App"]
-    A1["MemoirsGalleryScreen"]
-    A2["MemoirService.getMemoirs(elderId)"]
-    A3[("SharedPreferences（家屬機）<br/>uban_memoirs_{elderId}")]
-    A4["過濾示範假資料 memoir_00*"]
-    A5{"本機有資料？"}
-    A6["MemoirDetailSheet 呈現"]
-  end
-
+  ST_S1 --> S1
+  ST_E1 --> E1
   E1 --> E2
-  E2 -.->|未實作| N1
+  E2 -.->|"[未實作]"| N1
   N1 -.-> N2
-  N2 -.->|未實作| N3
+  N2 -.->|"[未實作]"| N3
   N3 -.-> A2
+  S1 --> A1
+  A1 --> A2
+  A2 --> A3
+  A3 --> A4
+  A4 --> A5
+  A5 -->|"[是]"| A6
+  A6 --> S2
+  A5 -->|"[否]"| S3
+  S2 --> EN_S2
+  S3 --> EN_S3
 
-  S1 --> A1 --> A2 --> A3 --> A4 --> A5
-  A5 -- 是 --> A6 --> S2
-  A5 -- 否 --> S3
-        </script>
+  classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+</script>
       </figure>
 
       <figure class="dia" data-id="A21" data-sec="s53" data-role="family" data-kind="activity">
@@ -2574,41 +2974,58 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
 flowchart TD
-  subgraph FA["家屬"]
-    S1([開啟問題回報])
-    S2["填寫標題與內容"]
-    S3(["送出成功"])
+  subgraph ROLE["家屬"]
+    ST_S1(("&nbsp;")):::term
+    S1([開啟問題回報]):::act
+    S2["填寫標題與內容"]:::act
+    S3(["送出成功"]):::act
+    EN_S3(("&nbsp;")):::term
+  end
+  subgraph FE["家屬機 App"]
+    A1["FamilyBugReportScreen"]:::act
+    A2{"標題與內容<br/>皆已填寫？"}:::dec
+    A3["前端擋下並提示"]:::act
+    EN_A3(("&nbsp;")):::term
+    A4["BugReportService<br/>附上裝置資訊與 App 版本"]:::act
+    A5["提示稍後再試<br/>（無本機佇列重送）"]:::act
+    EN_A5(("&nbsp;")):::term
+  end
+  subgraph BE["uban-api 後端"]
+    B1["POST /api/bug-report<br/>★ 不需登入驗證"]:::gap
+    B2{"一分鐘內<br/>超過 5 次？"}:::dec
+    B3["限流拒絕"]:::act
+    EN_B3(("&nbsp;")):::term
+    B4["寫入 bug_report<br/>status = new<br/>reporter_type / reporter_id<br/>★ 刻意不設外鍵"]:::gap
+    C1["/bug-reports 頁檢視與處理<br/>new → in_progress<br/>→ resolved／wontfix<br/>（開發者管理端）"]:::act
+    EN_C1(("&nbsp;")):::term
   end
 
-  subgraph APP["家屬機 App"]
-    A1["FamilyBugReportScreen"]
-    A2{"標題與內容<br/>皆已填寫？"}
-    A3["前端擋下並提示"]
-    A4["BugReportService<br/>附上裝置資訊與 App 版本"]
-    A5["提示稍後再試<br/>（無本機佇列重送）"]
-  end
-
-  subgraph API["uban-api 後端"]
-    B1["POST /api/bug-report<br/>★ 不需登入驗證"]
-    B2{"一分鐘內<br/>超過 5 次？"}
-    B3["限流拒絕"]
-    B4["寫入 bug_report<br/>status = new<br/>reporter_type / reporter_id<br/>★ 刻意不設外鍵"]
-  end
-
-  subgraph DEV["開發者管理端"]
-    C1["/bug-reports 頁檢視與處理<br/>new → in_progress<br/>→ resolved／wontfix"]
-  end
-
-  S1 --> A1 --> S2 --> A2
-  A2 -- 否 --> A3
-  A2 -- 是 --> A4 --> B1
-  B1 -- 連線失敗 --> A5
+  ST_S1 --> S1
+  S1 --> A1
+  A1 --> S2
+  S2 --> A2
+  A2 -->|"[否]"| A3
+  A2 -->|"[是]"| A4
+  A4 --> B1
+  B1 -->|"[連線失敗]"| A5
   B1 --> B2
-  B2 -- 是 --> B3
-  B2 -- 否 --> B4 --> S3
+  B2 -->|"[是]"| B3
+  B2 -->|"[否]"| B4
+  B4 --> S3
   B4 --> C1
-        </script>
+  S3 --> EN_S3
+  A3 --> EN_A3
+  A5 --> EN_A5
+  B3 --> EN_B3
+  C1 --> EN_C1
+
+  classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+</script>
       </figure>
 
       <figure class="dia" data-id="A22" data-sec="s53" data-role="family" data-kind="activity">
@@ -2654,41 +3071,55 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
 flowchart TD
-  subgraph FA["家屬"]
-    S1([想填寫本人年齡與居住地])
-    S2["填寫年齡・縣市・行政區<br/>三欄皆選填"]
-    S3(["資料儲存"])
+  subgraph ROLE["家屬"]
+    ST_S1(("&nbsp;")):::term
+    S1([想填寫本人年齡與居住地]):::act
+    S2["填寫年齡・縣市・行政區<br/>三欄皆選填"]:::act
+    S3(["資料儲存"]):::act
+    EN_S3(("&nbsp;")):::term
+  end
+  subgraph FE["家屬機 App"]
+    N1["FamilyMainScreen 尚無<br/>進入設定頁的按鈕"]:::gap
+    A1["FamilySettingsView<br/>★ 死碼：無任何活畫面 import"]:::gap
+    A2["讀取已儲存資料並回填<br/>:187-203"]:::act
+    A3{"讀取成功？"}:::dec
+    A4["欄位維持空白<br/>記錄 debug 訊息"]:::act
+    A5{"欄位留白？"}:::dec
+    A6["略過該欄<br/>維持原值不動"]:::act
+    EN_A6(("&nbsp;")):::term
+  end
+  subgraph BE["uban-api 後端（已就緒）"]
+    B1["更新使用者個人資料端點"]:::act
+    B2[("user_account_data<br/>age / residence_city<br/>/ residence_district<br/>migration 012")]:::act
+    B3["GET /api/admin/stats/demographics<br/>家屬＝無對應 elder_profile 的列"]:::act
+    EN_B3(("&nbsp;")):::term
   end
 
-  subgraph GAP["缺少的入口（未接線）"]
-    N1["FamilyMainScreen 尚無<br/>進入設定頁的按鈕"]
-  end
-
-  subgraph APP["家屬機 App"]
-    A1["FamilySettingsView<br/>★ 死碼：無任何活畫面 import"]
-    A2["讀取已儲存資料並回填<br/>:187-203"]
-    A3{"讀取成功？"}
-    A4["欄位維持空白<br/>記錄 debug 訊息"]
-    A5{"欄位留白？"}
-    A6["略過該欄<br/>維持原值不動"]
-  end
-
-  subgraph API["uban-api 後端（已就緒）"]
-    B1["更新使用者個人資料端點"]
-    B2[("user_account_data<br/>age / residence_city<br/>/ residence_district<br/>migration 012")]
-    B3["GET /api/admin/stats/demographics<br/>家屬＝無對應 elder_profile 的列"]
-  end
-
-  S1 -.->|入口不存在| N1
+  ST_S1 --> S1
+  S1 -.->|"[入口不存在]"| N1
   N1 -.-> A1
-  A1 --> A2 --> A3
-  A3 -- 否 --> A4 --> S2
-  A3 -- 是 --> S2 --> A5
-  A5 -- 是 --> A6
-  A5 -- 否 --> B1 --> B2 --> S3
+  A1 --> A2
+  A2 --> A3
+  A3 -->|"[否]"| A4
+  A4 --> S2
+  A3 -->|"[是]"| S2
+  S2 --> A5
+  A5 -->|"[是]"| A6
+  A5 -->|"[否]"| B1
+  B1 --> B2
+  B2 --> S3
   B2 --> B3
-        </script>
+  S3 --> EN_S3
+  A6 --> EN_A6
+  B3 --> EN_B3
+
+  classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+</script>
       </figure>
       <figure class="dia" data-id="A23" data-sec="s53" data-role="dev" data-kind="activity">
         <div class="dia-head">
@@ -2730,42 +3161,61 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
 flowchart TD
-  subgraph DEV["開發者"]
-    S1([瀏覽器開啟 /admin])
-    S2["輸入帳號與密碼"]
-    S3(["進入數據總覽"])
+  subgraph ROLE["開發者"]
+    ST_S1(("&nbsp;")):::term
+    S1([瀏覽器開啟 /admin]):::act
+    S2["輸入帳號與密碼"]:::act
+    S3(["進入數據總覽"]):::act
+    EN_S3(("&nbsp;")):::term
+  end
+  subgraph FE["uban-admin（React SPA，烘進後端映像）"]
+    A1["SPAStaticFiles 提供<br/>React Router history fallback"]:::act
+    A2["LoginPage.tsx"]:::act
+    A3["存入 session<br/>後續請求帶 Authorization"]:::act
+    A4["停留登入頁並顯示錯誤"]:::act
+    EN_A4(("&nbsp;")):::term
+    A5["OverviewPage"]:::act
+  end
+  subgraph BE["uban-api 後端"]
+    B0{"static/admin<br/>已建置？"}:::dec
+    B1["503 說明頁"]:::act
+    EN_B1(("&nbsp;")):::term
+    B2["POST /api/developer/auth/login"]:::act
+    B3{"password_hash<br/>驗證通過？"}:::dec
+    B4["簽發 JWT<br/>typ = developer · 12 小時<br/>sub = developer:{id}"]:::act
+    B5["GET /api/developer/auth/me"]:::act
+    B6{"token 仍有效？"}:::dec
+    DB[("developer_account<br/>三位開發者")]:::act
   end
 
-  subgraph SPA["uban-admin（React SPA，烘進後端映像）"]
-    A1["SPAStaticFiles 提供<br/>React Router history fallback"]
-    A2["LoginPage.tsx"]
-    A3["存入 session<br/>後續請求帶 Authorization"]
-    A4["停留登入頁並顯示錯誤"]
-    A5["OverviewPage"]
-  end
-
-  subgraph API["uban-api 後端"]
-    B0{"static/admin<br/>已建置？"}
-    B1["503 說明頁"]
-    B2["POST /api/developer/auth/login"]
-    B3{"password_hash<br/>驗證通過？"}
-    B4["簽發 JWT<br/>typ = developer · 12 小時<br/>sub = developer:{id}"]
-    B5["GET /api/developer/auth/me"]
-    B6{"token 仍有效？"}
-  end
-
-  DB[("developer_account<br/>三位開發者")]
-
+  ST_S1 --> S1
   S1 --> B0
-  B0 -- 否 --> B1
-  B0 -- 是 --> A1 --> A2 --> S2 --> B2 --> DB
+  B0 -->|"[否]"| B1
+  B0 -->|"[是]"| A1
+  A1 --> A2
+  A2 --> S2
+  S2 --> B2
+  B2 --> DB
   DB --> B3
-  B3 -- 否 --> A4
-  B3 -- 是 --> B4 --> A3 --> B5 --> B6
-  B6 -- 否 --> A4
-  B6 -- 是 --> A5 --> S3
-        </script>
+  B3 -->|"[否]"| A4
+  B3 -->|"[是]"| B4
+  B4 --> A3
+  A3 --> B5
+  B5 --> B6
+  B6 -->|"[否]"| A4
+  B6 -->|"[是]"| A5
+  A5 --> S3
+  S3 --> EN_S3
+  A4 --> EN_A4
+  B1 --> EN_B1
+
+  classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+</script>
       </figure>
 
       <figure class="dia" data-id="A24" data-sec="s53" data-role="dev" data-kind="activity">
@@ -2802,43 +3252,65 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
 flowchart TD
-  subgraph DEV["開發者"]
-    S1([進入『開發者帳號』頁])
-    S2(["看見三人明碼密碼"])
-    S3{"要修改<br/>自己的密碼？"}
-    S4["輸入新密碼"]
-    S5(["密碼更新完成"])
+  subgraph ROLE["開發者"]
+    ST_S1(("&nbsp;")):::term
+    S1([進入『開發者帳號』頁]):::act
+    S2(["看見三人明碼密碼"]):::act
+    S3{"要修改<br/>自己的密碼？"}:::dec
+    S4["輸入新密碼"]:::act
+    S5(["密碼更新完成"]):::act
+    EN_S5(("&nbsp;")):::term
+    E1([結束]):::act
+    EN_E1(("&nbsp;")):::term
+  end
+  subgraph FE["uban-admin"]
+    A1["DeveloperAccountsPage.tsx"]:::act
+    A2["顯示『無法解密』"]:::act
+    EN_A2(("&nbsp;")):::term
+  end
+  subgraph BE["uban-api 後端"]
+    G0{"Depends(get_current_developer)<br/>token 驗證通過？"}:::dec
+    B1["GET /api/developer/accounts"]:::act
+    B2["dev_crypto 以 AES-GCM<br/>解密 password_cipher"]:::act
+    B3{"DEVELOPER_PASSWORD_KEY<br/>可用？"}:::dec
+    B4["POST /accounts/me/password<br/>對象由 token 的 dev_id 決定"]:::act
+    B5["同時更新 password_hash<br/>與 password_cipher"]:::act
+    DB[("developer_account<br/>password_hash（驗證用）<br/>password_cipher BLOB（互看用）")]:::act
+    ENV[("環境變數<br/>DEVELOPER_PASSWORD_KEY<br/>★ 不納入版本控制")]:::gap
+    X(["401 導回登入頁"]):::act
+    EN_X(("&nbsp;")):::term
   end
 
-  subgraph SPA["uban-admin"]
-    A1["DeveloperAccountsPage.tsx"]
-    A2["顯示『無法解密』"]
-  end
-
-  subgraph API["uban-api 後端"]
-    G0{"Depends(get_current_developer)<br/>token 驗證通過？"}
-    B1["GET /api/developer/accounts"]
-    B2["dev_crypto 以 AES-GCM<br/>解密 password_cipher"]
-    B3{"DEVELOPER_PASSWORD_KEY<br/>可用？"}
-    B4["POST /accounts/me/password<br/>對象由 token 的 dev_id 決定"]
-    B5["同時更新 password_hash<br/>與 password_cipher"]
-  end
-
-  DB[("developer_account<br/>password_hash（驗證用）<br/>password_cipher BLOB（互看用）")]
-  ENV[("環境變數<br/>DEVELOPER_PASSWORD_KEY<br/>★ 不納入版本控制")]
-
+  ST_S1 --> S1
   S1 --> G0
-  G0 -- 否 --> X(["401 導回登入頁"])
-  G0 -- 是 --> A1 --> B1 --> DB --> B2
+  G0 -->|"[否]"| X
+  G0 -->|"[是]"| A1
+  A1 --> B1
+  B1 --> DB
+  DB --> B2
   ENV --- B2
   B2 --> B3
-  B3 -- 否 --> A2
-  B3 -- 是 --> S2 --> S3
-  S3 -- 否 --> E1([結束])
-  S3 -- 是 --> S4 --> B4 --> B5 --> DB
+  B3 -->|"[否]"| A2
+  B3 -->|"[是]"| S2
+  S2 --> S3
+  S3 -->|"[否]"| E1
+  S3 -->|"[是]"| S4
+  S4 --> B4
+  B4 --> B5
+  B5 --> DB
   B5 --> S5
-        </script>
+  S5 --> EN_S5
+  E1 --> EN_E1
+  A2 --> EN_A2
+  X --> EN_X
+
+  classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+</script>
       </figure>
 
       <figure class="dia" data-id="A25" data-sec="s53" data-role="dev" data-kind="activity">
@@ -2876,53 +3348,66 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
 flowchart TD
-  subgraph DEV["開發者"]
-    S1([登入後進入數據總覽])
-    S2(["檢視三類統計圖表"])
+  subgraph ROLE["開發者"]
+    ST_S1(("&nbsp;")):::term
+    S1([登入後進入數據總覽]):::act
+    S2(["檢視三類統計圖表"]):::act
+    EN_S2(("&nbsp;")):::term
+  end
+  subgraph FE["uban-admin · OverviewPage"]
+    A1["TanStack Query 平行取數"]:::act
+    A2["DemographicsSection"]:::act
+    A3["AlertsStatsSection"]:::act
+    A4["CallsStatsSection"]:::act
+    A5["Recharts 繪圖"]:::act
+    A6["顯示『尚無資料』空狀態"]:::gap
+  end
+  subgraph BE["uban-api · /api/admin/stats"]
+    B1["GET /demographics"]:::act
+    B2["GET /alerts"]:::act
+    B3["GET /calls"]:::act
+    B4["長輩取 elder_profile<br/>家屬＝無對應 elder_profile 的列"]:::act
+    B5["觸發次數 ÷ is_false_alarm<br/>計算誤報比例"]:::act
+    B6["以 is_emergency 區分<br/>緊急與一般通話"]:::act
+    B7{"欄位是否有值？<br/>migration 012 才新增"}:::dec
+    D1[("user_account_data<br/>age / residence_city / residence_district<br/>（MySQL）")]:::act
+    D2[("elder_profile")]:::act
+    D3[("emergency_alerts<br/>is_false_alarm")]:::act
+    D4[("call_record<br/>is_emergency")]:::act
   end
 
-  subgraph SPA["uban-admin · OverviewPage"]
-    A1["TanStack Query 平行取數"]
-    A2["DemographicsSection"]
-    A3["AlertsStatsSection"]
-    A4["CallsStatsSection"]
-    A5["Recharts 繪圖"]
-    A6["顯示『尚無資料』空狀態"]
-  end
-
-  subgraph API["uban-api · /api/admin/stats"]
-    B1["GET /demographics"]
-    B2["GET /alerts"]
-    B3["GET /calls"]
-    B4["長輩取 elder_profile<br/>家屬＝無對應 elder_profile 的列"]
-    B5["觸發次數 ÷ is_false_alarm<br/>計算誤報比例"]
-    B6["以 is_emergency 區分<br/>緊急與一般通話"]
-    B7{"欄位是否有值？<br/>migration 012 才新增"}
-  end
-
-  subgraph DB["MySQL"]
-    D1[("user_account_data<br/>age / residence_city / residence_district")]
-    D2[("elder_profile")]
-    D3[("emergency_alerts<br/>is_false_alarm")]
-    D4[("call_record<br/>is_emergency")]
-  end
-
+  ST_S1 --> S1
   S1 --> A1
-  A1 --> B1 --> B4
+  A1 --> B1
+  B1 --> B4
   B4 --- D1
   B4 --- D2
-  A1 --> B2 --> B5 --- D3
-  A1 --> B3 --> B6 --- D4
+  A1 --> B2
+  B2 --> B5
+  B5 --- D3
+  A1 --> B3
+  B3 --> B6
+  B6 --- D4
   B4 --> B7
   B5 --> B7
   B6 --> B7
-  B7 -- 否 --> A6
-  B7 -- 是 --> A2 --> A5
-  B7 -- 是 --> A3 --> A5
-  B7 -- 是 --> A4 --> A5
+  B7 -->|"[否]"| A6
+  B7 -->|"[是]"| A2
+  A2 --> A5
+  B7 -->|"[是]"| A3
+  A3 --> A5
+  B7 -->|"[是]"| A4
+  A4 --> A5
   A5 --> S2
-        </script>
+  S2 --> EN_S2
+
+  classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+</script>
       </figure>
 
       <figure class="dia" data-id="A26" data-sec="s53" data-role="dev" data-kind="activity">
@@ -2959,53 +3444,72 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
 flowchart TD
-  subgraph DEV["開發者"]
-    S1([進入使用者列表])
-    S2["搜尋並點選個案"]
-    S3(["對照時序排除問題"])
+  subgraph ROLE["開發者"]
+    ST_S1(("&nbsp;")):::term
+    S1([進入使用者列表]):::act
+    S2["搜尋並點選個案"]:::act
+    S3(["對照時序排除問題"]):::act
+    EN_S3(("&nbsp;")):::term
+  end
+  subgraph FE["uban-admin"]
+    A1["EldersPage.tsx"]:::act
+    A2["ElderDetailPage.tsx"]:::act
+    A3["AlertsPage.tsx（含徽章輪詢）"]:::act
+    EN_A3(("&nbsp;")):::term
+    A4["顯示『查無資料』"]:::act
+    EN_A4(("&nbsp;")):::term
+    A5["時間軸為空"]:::act
+    EN_A5(("&nbsp;")):::term
+  end
+  subgraph BE["uban-api · /api/developer"]
+    B1["GET /users"]:::act
+    B2{"elder_id 存在？"}:::dec
+    B3["GET /users/{elder_id}<br/>詳細資料"]:::act
+    B4["GET /users/{elder_id}/metrics<br/>指標"]:::act
+    EN_B4(("&nbsp;")):::term
+    B5["GET /users/{elder_id}/timeline<br/>活動時間軸"]:::act
+    B6["GET /alerts"]:::act
+    B7["彙整 activity_log ・通話 ・警報"]:::act
+    D1[("elder_profile<br/>（MySQL）")]:::act
+    D2[("activity_log<br/>★ 只有 user_id，沒有 elder_id<br/>需經 elder_profile 轉換")]:::gap
+    D3[("call_record")]:::act
+    D4[("emergency_alerts")]:::act
   end
 
-  subgraph SPA["uban-admin"]
-    A1["EldersPage.tsx"]
-    A2["ElderDetailPage.tsx"]
-    A3["AlertsPage.tsx（含徽章輪詢）"]
-    A4["顯示『查無資料』"]
-    A5["時間軸為空"]
-  end
-
-  subgraph API["uban-api · /api/developer"]
-    B1["GET /users"]
-    B2{"elder_id 存在？"}
-    B3["GET /users/{elder_id}<br/>詳細資料"]
-    B4["GET /users/{elder_id}/metrics<br/>指標"]
-    B5["GET /users/{elder_id}/timeline<br/>活動時間軸"]
-    B6["GET /alerts"]
-    B7["彙整 activity_log ・通話 ・警報"]
-  end
-
-  subgraph DB["MySQL"]
-    D1[("elder_profile")]
-    D2[("activity_log<br/>★ 只有 user_id，沒有 elder_id<br/>需經 elder_profile 轉換")]
-    D3[("call_record")]
-    D4[("emergency_alerts")]
-  end
-
-  S1 --> B1 --> A1 --> S2 --> B2
-  B2 -- 否 --> A4
-  B2 -- 是 --> A2
-  A2 --> B3 --- D1
+  ST_S1 --> S1
+  S1 --> B1
+  B1 --> A1
+  A1 --> S2
+  S2 --> B2
+  B2 -->|"[否]"| A4
+  B2 -->|"[是]"| A2
+  A2 --> B3
+  B3 --- D1
   A2 --> B4
-  A2 --> B5 --> B7
+  A2 --> B5
+  B5 --> B7
   D1 --> D2
   B7 --- D2
   B7 --- D3
   B7 --- D4
   B7 --> A2
   A2 --> S3
-  B7 -- 無事件 --> A5
-  S1 --> B6 --> A3
-        </script>
+  B7 -->|"[無事件]"| A5
+  S1 --> B6
+  B6 --> A3
+  S3 --> EN_S3
+  A3 --> EN_A3
+  A4 --> EN_A4
+  A5 --> EN_A5
+  B4 --> EN_B4
+
+  classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+</script>
       </figure>
 
       <figure class="dia" data-id="A27" data-sec="s53" data-role="dev" data-kind="activity">
@@ -3046,50 +3550,67 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
 flowchart TD
-  subgraph DEV["開發者"]
-    S1([進入『帳號管理』頁])
-    S2{"要做什麼？"}
-    S3(["層級調整完成"])
-    S4(["停權狀態已記錄"])
+  subgraph ROLE["開發者"]
+    ST_S1(("&nbsp;")):::term
+    S1([進入『帳號管理』頁]):::act
+    S2{"要做什麼？"}:::dec
+    S3(["層級調整完成"]):::act
+    EN_S3(("&nbsp;")):::term
+    S4(["停權狀態已記錄"]):::act
+    EN_S4(("&nbsp;")):::term
+  end
+  subgraph FE["uban-admin · AccountsPage"]
+    A1["顯示目前層級與停權狀態"]:::act
+  end
+  subgraph BE["uban-api · /api/admin"]
+    G0{"require_admin_or_developer()<br/>驗證通過？"}:::dec
+    B1["GET /elders/{elder_id}/subscription-tier"]:::act
+    B2["POST /elders/{elder_id}/subscription-tier<br/>free 2台 / gold 3台 / diamond 5台"]:::act
+    B3["invalidate_elder_tier_cache()"]:::act
+    B4["POST /accounts/{user_id}/ban"]:::act
+    B5["POST /accounts/{user_id}/unban"]:::act
+    B6["寫入 admin_action_log<br/>staff_id = -dev_id（負值編碼）"]:::act
+    D1[("subscription_status<br/>RevenueCat 真相表<br/>（MySQL）")]:::act
+    D2[("account_ban")]:::act
+    D3[("admin_action_log<br/>append-only・無外鍵・無查詢畫面")]:::act
+    N1["routers/auth.py::login()<br/>未查 account_ban<br/>→ 停權帳號仍可登入"]:::act
+    EN_N1(("&nbsp;")):::term
+    X(["401"]):::act
+    EN_X(("&nbsp;")):::term
   end
 
-  subgraph SPA["uban-admin · AccountsPage"]
-    A1["顯示目前層級與停權狀態"]
-  end
-
-  subgraph API["uban-api · /api/admin"]
-    G0{"require_admin_or_developer()<br/>驗證通過？"}
-    B1["GET /elders/{elder_id}/subscription-tier"]
-    B2["POST /elders/{elder_id}/subscription-tier<br/>free 2台 / gold 3台 / diamond 5台"]
-    B3["invalidate_elder_tier_cache()"]
-    B4["POST /accounts/{user_id}/ban"]
-    B5["POST /accounts/{user_id}/unban"]
-    B6["寫入 admin_action_log<br/>staff_id = -dev_id（負值編碼）"]
-  end
-
-  subgraph DB["MySQL"]
-    D1[("subscription_status<br/>RevenueCat 真相表")]
-    D2[("account_ban")]
-    D3[("admin_action_log<br/>append-only・無外鍵・無查詢畫面")]
-  end
-
-  subgraph GAP["已知缺口"]
-    N1["routers/auth.py::login()<br/>未查 account_ban<br/>→ 停權帳號仍可登入"]
-  end
-
+  ST_S1 --> S1
   S1 --> G0
-  G0 -- 否 --> X(["401"])
-  G0 -- 是 --> B1 --> A1 --> S2
-  S2 -- 調整訂閱層級 --> B2 --> D1
-  B2 --> B3 --> S3
-  S2 -- 停權 --> B4 --> D2 --> S4
-  S2 -- 解除停權 --> B5 --> D2
-  B2 --> B6 --> D3
+  G0 -->|"[否]"| X
+  G0 -->|"[是]"| B1
+  B1 --> A1
+  A1 --> S2
+  S2 -->|"[調整訂閱層級]"| B2
+  B2 --> D1
+  B2 --> B3
+  B3 --> S3
+  S2 -->|"[停權]"| B4
+  B4 --> D2
+  D2 --> S4
+  S2 -->|"[解除停權]"| B5
+  B5 --> D2
+  B2 --> B6
+  B6 --> D3
   B4 --> B6
   B5 --> B6
-  D2 -.->|未生效| N1
-        </script>
+  D2 -.->|"[未生效]"| N1
+  S3 --> EN_S3
+  S4 --> EN_S4
+  N1 --> EN_N1
+  X --> EN_X
+
+  classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+</script>
       </figure>
 
       <figure class="dia" data-id="A28" data-sec="s53" data-role="dev" data-kind="activity">
@@ -3126,50 +3647,71 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
 flowchart TD
-  subgraph USR["使用者（長輩或家屬）"]
-    U1(["送出 BUG 回報<br/>status = new"])
+  subgraph ROLE["開發者"]
+    ST_S1(("&nbsp;")):::term
+    S1([進入『BUG 回饋』頁]):::act
+    S2["檢視內容・裝置資訊・App 版本"]:::act
+    S3{"判定結果？"}:::dec
+    S4(["結案"]):::act
+    EN_S4(("&nbsp;")):::term
+    P1["in_progress"]:::act
+    P2["resolved"]:::act
+    P3["wontfix"]:::act
+  end
+  subgraph ROLE2["使用者（長輩或家屬）"]
+    ST_U1(("&nbsp;")):::term
+    U1(["送出 BUG 回報<br/>status = new"]):::act
+    DB[("bug_report<br/>reporter_type / reporter_id VARCHAR<br/>★ 刻意不設外鍵")]:::gap
+  end
+  subgraph FE["uban-admin · BugReportsPage"]
+    A1["顯示回報清單"]:::act
+    A2["填寫 admin_note"]:::act
+  end
+  subgraph BE["uban-api · /api/admin"]
+    G0{"require_admin_or_developer()"}:::dec
+    B1["GET /bug-reports"]:::act
+    B2["PATCH /bug-reports/{id}"]:::act
+    B3{"狀態值在<br/>BUG_REPORT_STATUSES<br/>白名單內？"}:::dec
+    B4["以 Literal 型別擋下"]:::act
+    EN_B4(("&nbsp;")):::term
+    B5["更新 status ・admin_note<br/>handled_by_staff_id = -dev_id"]:::act
+    X(["401"]):::act
+    EN_X(("&nbsp;")):::term
   end
 
-  subgraph DEV["開發者"]
-    S1([進入『BUG 回饋』頁])
-    S2["檢視內容・裝置資訊・App 版本"]
-    S3{"判定結果？"}
-    S4(["結案"])
-  end
-
-  subgraph SPA["uban-admin · BugReportsPage"]
-    A1["顯示回報清單"]
-    A2["填寫 admin_note"]
-  end
-
-  subgraph API["uban-api · /api/admin"]
-    G0{"require_admin_or_developer()"}
-    B1["GET /bug-reports"]
-    B2["PATCH /bug-reports/{id}"]
-    B3{"狀態值在<br/>BUG_REPORT_STATUSES<br/>白名單內？"}
-    B4["以 Literal 型別擋下"]
-    B5["更新 status ・admin_note<br/>handled_by_staff_id = -dev_id"]
-  end
-
-  DB[("bug_report<br/>reporter_type / reporter_id VARCHAR<br/>★ 刻意不設外鍵")]
-
+  ST_S1 --> S1
+  ST_U1 --> U1
   U1 --> DB
   S1 --> G0
-  G0 -- 否 --> X(["401"])
-  G0 -- 是 --> B1 --> DB
-  DB --> A1 --> S2 --> S3
-  S3 -- 開始處理 --> P1["in_progress"]
-  S3 -- 已修復 --> P2["resolved"]
-  S3 -- 不予處理 --> P3["wontfix"]
+  G0 -->|"[否]"| X
+  G0 -->|"[是]"| B1
+  B1 --> DB
+  DB --> A1
+  A1 --> S2
+  S2 --> S3
+  S3 -->|"[開始處理]"| P1
+  S3 -->|"[已修復]"| P2
+  S3 -->|"[不予處理]"| P3
   P1 --> A2
   P2 --> A2
   P3 --> A2
-  A2 --> B2 --> B3
-  B3 -- 否 --> B4
-  B3 -- 是 --> B5 --> DB
+  A2 --> B2
+  B2 --> B3
+  B3 -->|"[否]"| B4
+  B3 -->|"[是]"| B5
+  B5 --> DB
   B5 --> S4
-        </script>
+  S4 --> EN_S4
+  B4 --> EN_B4
+  X --> EN_X
+
+  classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+</script>
       </figure>
 
       <figure class="dia" data-id="A29" data-sec="s53" data-role="dev" data-kind="activity">
@@ -3205,54 +3747,71 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
 flowchart TD
-  subgraph DEV["開發者"]
-    S1([進入『寵物賽季與皮膚』頁])
-    S2{"要做什麼？"}
-    S3(["新賽季開始"])
-    S4(["造型上架完成"])
+  subgraph ROLE["開發者"]
+    ST_S1(("&nbsp;")):::term
+    S1([進入『寵物賽季與皮膚』頁]):::act
+    S2{"要做什麼？"}:::dec
+    S3(["新賽季開始"]):::act
+    EN_S3(("&nbsp;")):::term
+    S4(["造型上架完成"]):::act
+    EN_S4(("&nbsp;")):::term
+  end
+  subgraph FE["uban-admin · PetSeasonsPage"]
+    A1["顯示賽季清單與結算明細"]:::act
+    A2["造型表單<br/>is_paid・price_cents<br/>required_tier・is_listed"]:::act
+  end
+  subgraph FE2["長輩端"]
+    E1["GET /api/pet/skins 取上架清單"]:::act
+    E2["POST /api/pet/skins/apply<br/>套用已擁有的造型"]:::act
+  end
+  subgraph BE["uban-api · /api/admin"]
+    B1["GET /pet-seasons<br/>GET /{season_no}/settlements"]:::act
+    B2["POST /pet-seasons/reset"]:::act
+    B3["原子 UPDATE 切換 status<br/>（重複執行只生效一次）"]:::act
+    B4["封存最終體重與名次"]:::act
+    B5["全平台體重歸零為 1250 克"]:::act
+    B6["開啟新賽季"]:::act
+    B7["GET/POST /pet-skins<br/>PATCH /pet-skins/{skin_id}"]:::act
+    D1[("pet_season")]:::act
+    D2[("pet_season_settlement<br/>UNIQUE(season_no, elder_id)<br/>（MySQL）")]:::act
+    D3[("elder_pet_state.weight_grams")]:::act
+    D4[("pet_skin")]:::act
+    D5[("elder_pet_skin_ownership<br/>UNIQUE(elder_id, skin_id)")]:::act
+    GAP["★ 付費造型無購買金流<br/>取得途徑僅靠 ownership.source 發放"]:::gap
   end
 
-  subgraph SPA["uban-admin · PetSeasonsPage"]
-    A1["顯示賽季清單與結算明細"]
-    A2["造型表單<br/>is_paid・price_cents<br/>required_tier・is_listed"]
-  end
-
-  subgraph API["uban-api · /api/admin"]
-    B1["GET /pet-seasons<br/>GET /{season_no}/settlements"]
-    B2["POST /pet-seasons/reset"]
-    B3["原子 UPDATE 切換 status<br/>（重複執行只生效一次）"]
-    B4["封存最終體重與名次"]
-    B5["全平台體重歸零為 1250 克"]
-    B6["開啟新賽季"]
-    B7["GET/POST /pet-skins<br/>PATCH /pet-skins/{skin_id}"]
-  end
-
-  subgraph ELDER["長輩端"]
-    E1["GET /api/pet/skins 取上架清單"]
-    E2["POST /api/pet/skins/apply<br/>套用已擁有的造型"]
-  end
-
-  subgraph DB["MySQL"]
-    D1[("pet_season")]
-    D2[("pet_season_settlement<br/>UNIQUE(season_no, elder_id)")]
-    D3[("elder_pet_state.weight_grams")]
-    D4[("pet_skin")]
-    D5[("elder_pet_skin_ownership<br/>UNIQUE(elder_id, skin_id)")]
-  end
-
-  GAP["★ 付費造型無購買金流<br/>取得途徑僅靠 ownership.source 發放"]
-
-  S1 --> B1 --> A1 --> S2
-  S2 -- 賽季結算 --> B2 --> B3 --> D1
-  B3 --> B4 --> D2
-  B4 --> B5 --> D3
-  B5 --> B6 --> D1
+  ST_S1 --> S1
+  S1 --> B1
+  B1 --> A1
+  A1 --> S2
+  S2 -->|"[賽季結算]"| B2
+  B2 --> B3
+  B3 --> D1
+  B3 --> B4
+  B4 --> D2
+  B4 --> B5
+  B5 --> D3
+  B5 --> B6
+  B6 --> D1
   B6 --> S3
-  S2 -- 管理造型 --> A2 --> B7 --> D4 --> S4
-  D4 --> E1 --> E2 --> D5
+  S2 -->|"[管理造型]"| A2
+  A2 --> B7
+  B7 --> D4
+  D4 --> S4
+  D4 --> E1
+  E1 --> E2
+  E2 --> D5
   D4 -.-> GAP
-        </script>
+  S3 --> EN_S3
+  S4 --> EN_S4
+
+  classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
+</script>
       </figure>
     </section>
     <!-- ═══════════════ 5-4 分析類別圖 ═══════════════ -->
@@ -3261,8 +3820,7 @@ flowchart TD
         <span class="sec-no">5-4</span>
         <h2>分析類別圖（Analysis class diagram）</h2>
         <p class="sec-lede">
-          從 5-1 的使用案例推導出的<b>領域概念類別</b>，屬性名稱一律取自 <code>database.py</code> 的實際欄位，
-          讓第八章的資料表可以逐一對上。舊圖 5-41 必須整張重畫——它留著三個程式碼裡不存在的類別。
+          從 5-1 的使用案例推導出的<b>領域概念類別</b>，屬性<b>名稱與型別</b>一律取自 <code>database.py</code> 的 CREATE TABLE，讓第八章的資料表可以逐一對上。舊圖 5-41 必須整張重畫——它留著三個程式碼裡不存在的類別。<br>28 個類別畫成一張會太瘦長（長寬比 0.27）或太扁（3.41，印出來字太小），因此<b>依領域拆成三張</b>：跨領域的 16 條關聯<b>每一條都有一端是 <code>使用者帳戶</code> 或 <code>長輩檔案</code></b>，所以只要在後兩張把這兩類以灰色「引用」樣式重畫當接點，<b>27 條關聯一條都不會漏</b>。
         </p>
       </header>
 
@@ -3278,7 +3836,7 @@ flowchart TD
 
       <figure class="dia" data-id="D541" data-sec="s54" data-role="sys" data-kind="class">
         <div class="dia-head">
-          <p class="dia-title">分析類別圖：六大領域<span class="fig">圖 5-4-1</span></p>
+          <p class="dia-title">帳號與家庭・照護與提醒<span class="fig">圖 5-4-1</span></p>
           <span class="kind">CLASS</span>
           <input class="tick" type="checkbox" aria-label="標記圖 5-4-1 已完成">
         </div>
@@ -3286,8 +3844,7 @@ flowchart TD
         <div class="ucdesc">
           <dl>
             <dt>畫法說明</dt>
-            <dd>以 <code>namespace</code> 分成六個領域：<b>帳號與家庭</b>、<b>照護與提醒</b>、<b>通訊與安全監控</b>、
-              <b>社群</b>、<b>趣味養成</b>、<b>營運與管理</b>。關聯線上的數字為多重度。</dd>
+            <dd>六個領域拆成三張圖：本圖是<b>帳號與家庭</b>＋<b>照護與提醒</b>，圖 5-4-2 是<b>通訊與安全監控</b>＋<b>營運與管理</b>，圖 5-4-3 是<b>社群</b>＋<b>趣味養成</b>。組長的舊圖沒有 <code>namespace</code> 分組，拆完也不需要，因此一併拿掉。關聯線上的數字為多重度，屬性前綴為型別。</dd>
             <dt>三個必須看懂的關聯</dt>
             <dd><ul class="exc">
               <li><code>使用者帳戶</code> 與 <code>長輩檔案</code> 是 1 對 0..1——<b>「沒有對應長輩檔案的帳戶就是家屬」</b>，
@@ -3311,241 +3868,82 @@ flowchart TD
           <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
         </div>
         <script type="text/plain" class="mmsrc">
+%%{init:{"themeVariables":{"textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
 classDiagram
-  direction LR
+  direction TB
 
-  namespace 帳號與家庭 {
-    class 使用者帳戶 {
-      +user_id
-      +user_name
-      +user_email
-      +user_authority 訂閱層級
-      +register_platform
-      +age
-      +residence_city
-      +residence_district
-    }
-    class 長輩檔案 {
-      +elder_id 四碼
-      +elder_name
-      +elder_appellation
-      +gender
-      +age
-      +residence_city
-      +residence_district
-      +ai_persona
-      +heartbeat_frequency
-      +step_total
-    }
-    class 家屬長輩關係 {
-      +relation_id
-      +family_id
-      +elder_id
-      +create_ts
-    }
-    class 配對碼 {
-      +code_id
-      +code 四碼或六碼
-      +creator_id
-      +is_used
-      +expires_at
-    }
-    class 訂閱狀態 {
-      +elder_id
-      +entitlement
-      +is_active
-      +store
-      +purchased_by
-      +expires_at
-    }
+  class 使用者帳戶 {
+    +int user_id
+    +String user_name
+    +String user_email
+    +String user_authority 訂閱層級
+    +String register_platform
+    +int age
+    +String residence_city
+    +String residence_district
   }
-
-  namespace 照護與提醒 {
-    class 遠端提醒 {
-      +id
-      +family_id
-      +elder_id
-      +title
-      +category
-      +time_str
-      +repeat_days
-      +is_active
-    }
-    class 活動日誌 {
-      +log_id
-      +user_id
-      +event_type
-      +content
-      +timestamp
-    }
-    class 對話主題 {
-      +topic_id
-      +elder_id
-      +keyword
-      +topic_type
-    }
-    class 生命故事 {
-      <<本機儲存 無資料表>>
-      +story_id
-      +elder_id
-      +question
-      +content
-    }
+  class 長輩檔案 {
+    +String elder_id 四碼
+    +String elder_name
+    +String elder_appellation
+    +String gender
+    +int age
+    +String residence_city
+    +String residence_district
+    +Text ai_persona
+    +int heartbeat_frequency
+    +int step_total
   }
-
-  namespace 通訊與安全監控 {
-    class 通話紀錄 {
-      +call_id
-      +room_id
-      +caller_id
-      +callee_id
-      +start_time
-      +end_time
-      +status
-      +is_emergency
-    }
-    class 推播權杖 {
-      +user_id
-      +room_id
-      +fcm_token
-      +role
-      +device_mode
-      +app_state
-    }
-    class 監視裝置綁定 {
-      +elder_id
-      +family_id
-      +device_name
-      +device_id
-      +last_seen_at
-    }
-    class 影像串流狀態 {
-      +feed_id
-      +device_id
-      +elder_id
-      +yolo_detection_enabled
-      +last_frame_at
-      +status
-    }
-    class 緊急警報 {
-      +alert_id
-      +elder_id
-      +alert_type
-      +confidence
-      +snapshot_url
-      +status
-      +is_false_alarm
-      +false_alarm_marked_by
-    }
-    class 室內區域事件 {
-      +id
-      +elder_id
-      +from_zone
-      +to_zone
-      +dwell_seconds
-      +occurred_at
-    }
+  class 家屬長輩關係 {
+    +int relation_id
+    +int family_id
+    +String elder_id
+    +DateTime create_ts
   }
-
-  namespace 社群 {
-    class 家庭貼文 {
-      +id
-      +family_id
-      +author_id
-      +author_role
-      +content
-      +image_url
-      +like_count
-    }
-    class 長輩好友關係 {
-      +elder_id_low
-      +elder_id_high
-      +status
-      +requester_elder_id
-    }
-    class 家屬好友關係 {
-      +family_id_low
-      +family_id_high
-      +status
-      +requester_family_id
-    }
-    class 每日新聞 {
-      +id
-      +data_date
-      +category_key
-      +title
-      +content
-      +audio_url
-      +subtitles
-    }
+  class 配對碼 {
+    +int code_id
+    +int code 四碼或六碼
+    +int creator_id
+    +int is_used
+    +DateTime expires_at
   }
-
-  namespace 趣味養成 {
-    class 寵物狀態 {
-      +elder_id
-      +weight_grams 體重制
-      +updated_at
-    }
-    class 成長階段門檻 {
-      +stage_no 一到五
-      +title
-      +min_weight_grams
-      +max_weight_grams
-    }
-    class 賽季 {
-      +season_no
-      +start_date
-      +end_date
-      +status
-    }
-    class 賽季結算 {
-      +season_no
-      +elder_id
-      +final_weight_grams
-      +final_rank
-    }
-    class 寵物造型 {
-      +id
-      +display_name
-      +asset_path
-      +is_paid
-      +price_cents
-      +required_tier
-      +is_listed
-    }
+  class 訂閱狀態 {
+    +String elder_id
+    +String entitlement
+    +int is_active
+    +String store
+    +int purchased_by
+    +DateTime expires_at
   }
-
-  namespace 營運與管理 {
-    class 開發者帳號 {
-      +dev_id
-      +username
-      +password_hash
-      +password_cipher 可逆加密
-      +is_active
-    }
-    class 問題回報 {
-      +id
-      +reporter_type
-      +reporter_id
-      +title
-      +content
-      +status
-      +handled_by_staff_id
-    }
-    class 帳號停權 {
-      +user_id
-      +is_banned
-      +reason
-      +banned_by_staff_id
-    }
-    class 管理操作稽核 {
-      +id
-      +staff_id 負值代表開發者
-      +action_type
-      +target_type
-      +target_id
-      +created_at
-    }
+  class 遠端提醒 {
+    +int id
+    +int family_id
+    +String elder_id
+    +String title
+    +String category
+    +String time_str
+    +String repeat_days
+    +int is_active
+  }
+  class 活動日誌 {
+    +int log_id
+    +int user_id
+    +String event_type
+    +Text content
+    +DateTime timestamp
+  }
+  class 對話主題 {
+    +int topic_id
+    +String elder_id
+    +String keyword
+    +String topic_type
+  }
+  class 生命故事 {
+  <<本機儲存 無資料表>>
+    +story_id
+    +elder_id
+    +question
+    +content
   }
 
   使用者帳戶 "1" -- "0..1" 長輩檔案 : 無長輩檔案者即為家屬
@@ -3554,34 +3952,300 @@ classDiagram
   使用者帳戶 "1" -- "0..*" 配對碼 : 產生
   使用者帳戶 "1" -- "0..*" 活動日誌 : 記錄
   長輩檔案 "1" -- "0..1" 訂閱狀態 : 受益於
-  使用者帳戶 "1" -- "0..*" 推播權杖 : 註冊
-
   長輩檔案 "1" -- "0..*" 遠端提醒 : 被提醒
   長輩檔案 "1" -- "0..*" 對話主題 : 擁有
-  長輩檔案 "1" .. "0..*" 生命故事 : 錄製 僅存本機
 
+  classDef ent fill:#DAE8FC,stroke:#6C8EBF,stroke-width:1.5px,color:#102A43
+  classDef ref fill:#F5F5F5,stroke:#999999,stroke-width:1px,color:#444444
+  class 使用者帳戶:::ent
+  class 長輩檔案:::ent
+  class 家屬長輩關係:::ent
+  class 配對碼:::ent
+  class 訂閱狀態:::ent
+  class 遠端提醒:::ent
+  class 活動日誌:::ent
+  class 對話主題:::ent
+  class 生命故事:::ent
+</script>
+      </figure>
+
+      <figure class="dia" data-id="D542" data-sec="s54" data-role="sys" data-kind="class">
+        <div class="dia-head">
+          <p class="dia-title">通訊與安全監控・營運與管理<span class="fig">圖 5-4-2</span></p>
+          <span class="kind">CLASS</span>
+          <input class="tick" type="checkbox" aria-label="標記圖 5-4-2已完成">
+        </div>
+        <div class="canvas"><div class="mmhost"></div></div>
+        <div class="ucdesc">
+          <dl>
+            <dt>畫法說明</dt>
+            <dd>本圖是圖 5-4-1 的延伸。<code>使用者帳戶</code> 與 <code>長輩檔案</code> 以
+              <b>灰色「引用」樣式</b>重畫，只當接點用，屬性一律以圖 5-4-1 為準，不重複列出。
+              這樣拆得掉，是因為跨領域的 16 條關聯<b>每一條都有一端是這兩個核心類別</b>。</dd>
+            <dt>兩個容易看錯的地方</dt>
+            <dd><ul class="exc">
+              <li><code>緊急警報</code> 掛著兩條線：<code>長輩檔案</code> 是「觸發」（0..*），
+                <code>使用者帳戶</code> 是「標記誤報」（0..1）——誤報是<b>家屬</b>標的，不是長輩。</li>
+              <li><code>管理操作稽核</code> 的 <code>staff_id</code> <b>負值代表開發者</b>；
+                這張表是 append-only，與 <code>活動日誌</code>（長輩行為，見圖 5-4-1）語意完全不同。</li>
+            </ul></dd>
+          </dl>
+        </div>
+        <div class="dia-foot">
+          <div class="srcbar">
+            <button class="copy" type="button">複製 mermaid</button>
+            <span class="hint">佐證：<code>uban-api/database.py</code>（44 個 CREATE TABLE）· <code>routers/admin_stats.py:1-70</code> · <code>services/call_security.py</code></span>
+          </div>
+          <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
+        </div>
+        <script type="text/plain" class="mmsrc">
+%%{init:{"themeVariables":{"textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+classDiagram
+  direction TB
+
+  class 通話紀錄 {
+    +String call_id
+    +String room_id
+    +String caller_id
+    +String callee_id
+    +DateTime start_time
+    +DateTime end_time
+    +String status
+    +int is_emergency
+  }
+  class 推播權杖 {
+    +int user_id
+    +String room_id
+    +String fcm_token
+    +String role
+    +String device_mode
+    +String app_state
+  }
+  class 監視裝置綁定 {
+    +String elder_id
+    +int family_id
+    +String device_name
+    +int device_id
+    +DateTime last_seen_at
+  }
+  class 影像串流狀態 {
+    +int feed_id
+    +int device_id
+    +String elder_id
+    +boolean yolo_detection_enabled
+    +DateTime last_frame_at
+    +String status
+  }
+  class 緊急警報 {
+    +int alert_id
+    +String elder_id
+    +String alert_type
+    +float confidence
+    +String snapshot_url
+    +String status
+    +int is_false_alarm
+    +int false_alarm_marked_by
+  }
+  class 室內區域事件 {
+    +int id
+    +String elder_id
+    +String from_zone
+    +String to_zone
+    +float dwell_seconds
+    +DateTime occurred_at
+  }
+  class 開發者帳號 {
+    +int dev_id
+    +String username
+    +String password_hash
+    +Blob password_cipher 可逆加密
+    +int is_active
+  }
+  class 問題回報 {
+    +int id
+    +String reporter_type
+    +String reporter_id
+    +String title
+    +Text content
+    +String status
+    +int handled_by_staff_id
+  }
+  class 帳號停權 {
+    +int user_id
+    +int is_banned
+    +String reason
+    +int banned_by_staff_id
+  }
+  class 管理操作稽核 {
+    +int id
+    +int staff_id 負值代表開發者
+    +String action_type
+    +String target_type
+    +String target_id
+    +DateTime created_at
+  }
+  class 使用者帳戶 {
+    <<引用・詳見圖 5-4-1>>
+  }
+  class 長輩檔案 {
+    <<引用・詳見圖 5-4-1>>
+  }
+
+  使用者帳戶 "1" -- "0..*" 推播權杖 : 註冊
   使用者帳戶 "1" -- "0..*" 通話紀錄 : 參與
   長輩檔案 "1" -- "0..*" 監視裝置綁定 : 綁定
   監視裝置綁定 "1" -- "0..1" 影像串流狀態 : 回報
   長輩檔案 "1" -- "0..*" 緊急警報 : 觸發
   使用者帳戶 "0..1" -- "0..*" 緊急警報 : 標記誤報
   長輩檔案 "1" -- "0..*" 室內區域事件 : 產生
+  開發者帳號 "1" -- "0..*" 管理操作稽核 : 留下
+  開發者帳號 "1" -- "0..*" 問題回報 : 處理
+  開發者帳號 "1" -- "0..*" 帳號停權 : 執行
+  使用者帳戶 "1" -- "0..1" 帳號停權 : 被停權
+
+  classDef ent fill:#DAE8FC,stroke:#6C8EBF,stroke-width:1.5px,color:#102A43
+  classDef ref fill:#F5F5F5,stroke:#999999,stroke-width:1px,color:#444444
+  class 通話紀錄:::ent
+  class 推播權杖:::ent
+  class 監視裝置綁定:::ent
+  class 影像串流狀態:::ent
+  class 緊急警報:::ent
+  class 室內區域事件:::ent
+  class 開發者帳號:::ent
+  class 問題回報:::ent
+  class 帳號停權:::ent
+  class 管理操作稽核:::ent
+  class 使用者帳戶:::ref
+  class 長輩檔案:::ref
+</script>
+      </figure>
+
+      <figure class="dia" data-id="D543" data-sec="s54" data-role="sys" data-kind="class">
+        <div class="dia-head">
+          <p class="dia-title">社群・趣味養成<span class="fig">圖 5-4-3</span></p>
+          <span class="kind">CLASS</span>
+          <input class="tick" type="checkbox" aria-label="標記圖 5-4-3已完成">
+        </div>
+        <div class="canvas"><div class="mmhost"></div></div>
+        <div class="ucdesc">
+          <dl>
+            <dt>畫法說明</dt>
+            <dd>同圖 5-4-2，核心兩類以<b>灰色「引用」樣式</b>重畫當接點。</dd>
+            <dt>兩個容易看錯的地方</dt>
+            <dd><ul class="exc">
+              <li>寵物是<b>體重制</b>（<code>weight_grams</code>）不是經驗值；
+                <code>成長階段門檻</code> 五階等距 20 公斤，第五階的
+                <code>max_weight_grams</code> 為 <code>NULL</code>。</li>
+              <li><code>家庭貼文</code> 的主鍵是 <code>id</code> <b>不是</b> <code>post_id</code>；
+                <code>寵物造型</code> 同理是 <code>id</code> 不是 <code>skin_id</code>
+                （那兩個只是 URL 路徑參數名）。</li>
+            </ul></dd>
+          </dl>
+        </div>
+        <div class="dia-foot">
+          <div class="srcbar">
+            <button class="copy" type="button">複製 mermaid</button>
+            <span class="hint">佐證：<code>uban-api/database.py</code>（44 個 CREATE TABLE）· <code>routers/admin_stats.py:1-70</code> · <code>services/call_security.py</code></span>
+          </div>
+          <details class="src"><summary>mermaid 原始碼</summary><pre class="srcout"></pre></details>
+        </div>
+        <script type="text/plain" class="mmsrc">
+%%{init:{"themeVariables":{"textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+classDiagram
+  direction TB
+
+  class 家庭貼文 {
+    +int id
+    +int family_id
+    +int author_id
+    +String author_role
+    +Text content
+    +String image_url
+    +int like_count
+  }
+  class 長輩好友關係 {
+    +String elder_id_low
+    +String elder_id_high
+    +String status
+    +String requester_elder_id
+  }
+  class 家屬好友關係 {
+    +int family_id_low
+    +int family_id_high
+    +String status
+    +int requester_family_id
+  }
+  class 每日新聞 {
+    +int id
+    +Date data_date
+    +String category_key
+    +String title
+    +Text content
+    +String audio_url
+    +Text subtitles
+  }
+  class 寵物狀態 {
+    +String elder_id
+    +int weight_grams 體重制
+    +DateTime updated_at
+  }
+  class 成長階段門檻 {
+    +int stage_no 一到五
+    +String title
+    +int min_weight_grams
+    +int max_weight_grams
+  }
+  class 賽季 {
+    +int season_no
+    +Date start_date
+    +Date end_date
+    +String status
+  }
+  class 賽季結算 {
+    +int season_no
+    +String elder_id
+    +int final_weight_grams
+    +int final_rank
+  }
+  class 寵物造型 {
+    +int id
+    +String display_name
+    +String asset_path
+    +int is_paid
+    +int price_cents
+    +String required_tier
+    +int is_listed
+  }
+  class 使用者帳戶 {
+    <<引用・詳見圖 5-4-1>>
+  }
+  class 長輩檔案 {
+    <<引用・詳見圖 5-4-1>>
+  }
 
   使用者帳戶 "1" -- "0..*" 家庭貼文 : 發布
   長輩檔案 "1" -- "0..*" 長輩好友關係 : 交友
   使用者帳戶 "1" -- "0..*" 家屬好友關係 : 交友
-
   長輩檔案 "1" -- "1" 寵物狀態 : 飼養
   寵物狀態 "0..*" -- "1" 成長階段門檻 : 對應階段
   賽季 "1" -- "0..*" 賽季結算 : 封存
   長輩檔案 "1" -- "0..*" 賽季結算 : 名次
   長輩檔案 "0..*" -- "0..*" 寵物造型 : 擁有並套用
 
-  開發者帳號 "1" -- "0..*" 管理操作稽核 : 留下
-  開發者帳號 "1" -- "0..*" 問題回報 : 處理
-  開發者帳號 "1" -- "0..*" 帳號停權 : 執行
-  使用者帳戶 "1" -- "0..1" 帳號停權 : 被停權
-        </script>
+  classDef ent fill:#DAE8FC,stroke:#6C8EBF,stroke-width:1.5px,color:#102A43
+  classDef ref fill:#F5F5F5,stroke:#999999,stroke-width:1px,color:#444444
+  class 家庭貼文:::ent
+  class 長輩好友關係:::ent
+  class 家屬好友關係:::ent
+  class 每日新聞:::ent
+  class 寵物狀態:::ent
+  class 成長階段門檻:::ent
+  class 賽季:::ent
+  class 賽季結算:::ent
+  class 寵物造型:::ent
+  class 使用者帳戶:::ref
+  class 長輩檔案:::ref
+</script>
       </figure>
     </section>
     <p class="empty" id="empty" hidden>目前的篩選條件沒有符合的圖。</p>
