@@ -768,7 +768,33 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
   /// （合計約 406px），改成一行約 113px 的精簡列。新聞抓取與 TTS 聆聽功能
   /// 完全沿用既有邏輯（[_openNewsListenPlayer]／[_openNewsListFromTopEntry]
   /// 皆未改動），只重做呈現。
+  /// 依「這一屏還剩多少高度」決定新聞圖要多大。
+  ///
+  /// 首頁的硬需求是一屏到底不滾動（見 app_theme.dart 的 ElderScale
+  /// docstring：「每屏選項少」）。真實長輩手機可用高度只有約 510px，
+  /// 塞不下原本 406px 的大圖版新聞卡；但在平板或桌機視窗上，砍掉通話
+  /// 大鈕之後會空出兩三百 px，維持精簡列就顯得空盪。
+  ///
+  /// 回傳 0 表示空間不足、走精簡橫列；大於 0 則是大圖的高度。
+  double _availableNewsImageHeight(BuildContext context) {
+    final mq = MediaQuery.of(context);
+    // 版面固定開銷：頂部封面帶 52 ＋ sheet 偏移 42 ＋ 內距 44；
+    // 底部 130 已含浮動導覽列 104 的淨空。
+    final double available = mq.size.height - mq.padding.top - 138 - 130;
+    // 其餘區塊的實測高度：今天卡 182、下一包藥 118、兩個間距 48、
+    // 新聞標題列 36 ＋ 間距 8。下一包藥全部完成時會更矮，這裡取較高值
+    // 保守估計，寧可少長一點也不要讓畫面被迫捲動。
+    const double usedByOthers = 182 + 24 + 118 + 24 + 44;
+    final double leftover = available - usedByOthers;
+
+    // 精簡橫列本身約需 80px。要長成大圖至少得多出 190px 才划算，
+    // 否則只是把小圖放大、反而擠掉呼吸空間。
+    if (leftover < 190) return 0;
+    return (leftover - 70).clamp(120.0, 300.0);
+  }
+
   Widget _buildFeaturedNewsCard() {
+    final double bigImageH = _availableNewsImageHeight(context);
     Widget header = Row(
       children: [
         Container(
@@ -883,14 +909,17 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                   ),
                 ],
               ),
-              child: Row(
+              child: Flex(
+                // 空間夠就大圖在上、標題在下（直排）；不夠就縮圖在左、
+                // 標題在右（橫排）。同一份內容與同一組導覽目的地，只換排法。
+                direction: bigImageH > 0 ? Axis.vertical : Axis.horizontal,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   ClipRRect(
                     borderRadius: BorderRadius.circular(14),
                     child: SizedBox(
-                      width: 64,
-                      height: 64,
+                      width: bigImageH > 0 ? double.infinity : 64,
+                      height: bigImageH > 0 ? bigImageH : 64,
                       child: hasImage
                           ? Image.network(
                               imageUrl,
@@ -902,10 +931,15 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                           : fallbackThumb,
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  // ⚠️ 標題是後端動態文字、長度不可控，包 Expanded＋
-                  // maxLines/ellipsis 避免窄螢幕溢位。
-                  Expanded(
+                  SizedBox(
+                    width: bigImageH > 0 ? 0 : 12,
+                    height: bigImageH > 0 ? 10 : 0,
+                  ),
+                  // ⚠️ 標題是後端動態文字、長度不可控，包 Expanded／Flexible ＋
+                  // maxLines/ellipsis 避免窄螢幕溢位。直排時不能用 Expanded
+                  // （父層高度不受限會拋錯），改用 Flexible(fit: loose)。
+                  Flexible(
+                    fit: bigImageH > 0 ? FlexFit.loose : FlexFit.tight,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
