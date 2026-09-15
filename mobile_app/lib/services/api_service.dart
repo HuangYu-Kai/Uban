@@ -31,7 +31,7 @@ export 'api/community_api.dart';
 /// - [CallApi]: 來電拒接、通話歷史
 /// - [AiChatApi]: AI 對話、串流、ASR/TTS、每日建議、情緒分析
 /// - [ElderDataApi]: 長輩資料、個人檔案、活動紀錄、家庭留言
-/// - [CctvAlertApi]: CCTV 串流、跌倒測試、設備管理、緊急警報歷史、室內定位 (IPS)
+/// - [CctvAlertApi]: CCTV 串流、設備管理、緊急警報歷史、室內定位 (IPS)
 /// - [ReminderApi]: 排程提醒 CRUD 與打卡
 /// - [CommunityApi]: 社群貼文、互動點讚、留言與圖片上傳
 class ApiService {
@@ -248,11 +248,6 @@ class ApiService {
         deviceName: deviceName,
         frameBytes: frameBytes,
       );
-
-  static Future<String?> triggerTestFall({
-    required String elderId,
-    required String deviceName,
-  }) => CctvAlertApi.triggerTestFall(elderId: elderId, deviceName: deviceName);
 
   static Future<bool> deleteMonitorDevice({
     required String elderId,

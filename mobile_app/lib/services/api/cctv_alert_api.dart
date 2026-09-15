@@ -19,7 +19,7 @@ class CctvPushResult {
       const CctvPushResult(detected: false, reason: transportError);
 }
 
-/// CCTV 監視機串流推幀、跌倒測試、設備管理、緊急警報歷史與室內定位 (IPS) API
+/// CCTV 監視機串流推幀、設備管理、緊急警報歷史與室內定位 (IPS) API
 class CctvAlertApi {
   /// CCTV 監視機推送單一影格給後端做 YOLO 跌倒偵測
   static Future<CctvPushResult> pushCctvFrame({
@@ -57,35 +57,6 @@ class CctvAlertApi {
     } catch (e) {
       debugPrint('⚠️ pushCctvFrame error: $e');
       return CctvPushResult.failure();
-    }
-  }
-
-  /// 觸發與 YOLO 相同的跌倒警報派送路徑（測試用途）
-  static Future<String?> triggerTestFall({
-    required String elderId,
-    required String deviceName,
-  }) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse('${ApiClient.baseUrl}/cctv/test-fall'),
-            headers: ApiClient.deviceTokenHeader,
-            body: {'elder_id': elderId, 'device_name': deviceName},
-          )
-          .timeout(ApiClient.timeout);
-      if (response.statusCode == 200) return null;
-      String detail = '送出失敗（HTTP ${response.statusCode}）';
-      try {
-        final decoded = jsonDecode(utf8.decode(response.bodyBytes));
-        if (decoded is Map && decoded['detail'] != null) {
-          detail = decoded['detail'].toString();
-        }
-      } catch (_) {}
-      debugPrint('⚠️ triggerTestFall 被拒: ${response.statusCode} $detail');
-      return detail;
-    } catch (e) {
-      debugPrint('⚠️ triggerTestFall error: $e');
-      return '無法連線到後端，請確認網路狀態';
     }
   }
 

@@ -179,7 +179,6 @@ Future<void> _startCall(String friendName, {required bool isVideo}) async {
 | 家屬 | `family_interaction_tab.dart`:1709 | **卡片 overflow menu**（`PopupMenuButton<String>`） | `rename` → `_showRenameMonitorDeviceDialog`（:1801）→ `PATCH /api/pairing/monitor_device`；`delete` → `_showDeleteMonitorDeviceDialog`（:1752）→ `DELETE /api/pairing/monitor_device` | **第十九輪新增**（需求 3）。兩者結尾都呼叫 `widget.onDevicesChanged?.call()` 讓家屬端立即刷新，不等下一次輪詢 |
 | 家屬 | `family_main_screen.dart`:634（`_presentCctvAlert`，:522） | 跌倒警報彈窗的**「查看監視畫面」** | 同「觀看 CCTV」，先 `pop()` 掉彈窗再 push；**同樣傳 `monitorViewOnly: true`** | 只有 `canView`（有在線監視機）時才顯示。**這是 G55 的第二個合法建構點** |
 | 家屬 | `video_call_screen.dart`:683-702 | **「← 返回」** | `Navigator.pop()` | **只在 `widget.returnByPop == true` 時渲染**（即 CCTV 檢視） |
-| 長輩 | `elder_screen.dart`:1131-1155 | **「🚨 跌倒測試」** | `_sendTestFallAlert()`（:1216）→ `ApiService.triggerTestFall` → `POST /api/cctv/test-fall` | 位於「退出監視機」正下方，**只在 CCTV 模式畫面出現**；`_testFallSending` 防連點。**第二十二輪起，後端回「測試端點未啟用」時改顯示可操作的長文案**（見下方註記） |
 | 長輩 | `elder_screen.dart`:1098-1112 | **「退出監視機」** | `_exitCCTVMode()`（:910） | **第十九輪起會先 `deleteMonitorDevice`（:957）再斷線**，家屬端清單即時移除、不留離線殘影（見 §6.8） |
 
 > **`returnByPop` 的語意**（`video_call_screen.dart`:24-38，預設 `false`）：
@@ -189,22 +188,15 @@ Future<void> _startCall(String friendName, {required bool isVideo}) async {
 > 那條路徑底下沒有可 pop 的頁面，pop 會黑屏（這正是 §5.5 導航規則的由來）。
 > 程式碼中另有 `canPop()` 二次保險（:444）。
 
-> **「跌倒測試」是暫時性測試入口**：走的是與 YOLO 真實偵測**完全相同**的派送路徑
-> （寫 `emergency_alerts` → Socket `cctv-alert` + 高優先級 FCM → 家屬端亮螢幕 + 通知 + 朗讀）。
-> 後端該端點**預設關閉**，見 §6.10。`triggerTestFall` 回傳 `String?`：
-> `null` = 成功，非 null = 可直接顯示給使用者的失敗原因。
-> 🚫 **不要改回 `Future<bool>`**——關閉／密鑰錯誤／查無監視機三種失敗長得一樣，
-> 使用者會完全不知道為什麼按了沒反應。
+> **「跌倒測試」前端按鈕已於 2026-09-13 第四十七輪移除**（原位於「退出監視機」正下方，
+> 只在 CCTV 模式畫面出現；`_testFallSending`／`_sendTestFallAlert()` 與
+> `ApiService.triggerTestFall`／`CctvAlertApi.triggerTestFall` 均已一併刪除）。
 >
-> **2026-08-11 第二十二輪（需求 2）**：使用者回報按下去只看到冷冰冰的
-> 「測試端點未啟用」，無從判斷是 App 壞了還是設定沒開。
-> `_sendTestFallAlert()`（`elder_screen.dart`:1216）現在會比對回傳字串是否含
-> 「測試端點未啟用」（`disabledByServer`，:1224），命中就改顯示一段**說明這不是 App 故障、
-> 並指出要在後端 `.env` 設 `CCTV_TEST_FALL_ENABLED=true` 再重啟**的長文案，
-> 用 `SnackBar(duration: 8s)` 讓人看得完。
-> 🚨 **這是純文案改動，不是修復**：這個開關在**遠端實體伺服器**的 `.env` 上，
-> 本機改不到。要真的能測，必須有人上遠端主機改 `.env` 並重啟後端（測完改回 `false`）。
-> 🚫 **絕對不要**為了「讓按鈕能用」而把後端預設值改成 `true` 或拿掉這道開關——那是 **G43**。
+> 後端端點 `POST /api/cctv/test-fall` 與其安全開關 `CCTV_TEST_FALL_ENABLED`（預設關閉）
+> **均未變動**：走的是與 YOLO 真實偵測**完全相同**的派送路徑（寫 `emergency_alerts` →
+> Socket `cctv-alert` + 高優先級 FCM → 家屬端亮螢幕 + 通知 + 朗讀），保留給需要驗證這條
+> 派送鏈的人以 curl／API 工具觸發——具體指令見 `CLAUDE_call-monitor.md` §6.10。
+> 🚫 **絕對不要**為了「方便測試」而把後端預設值改成 `true` 或拿掉這道開關——那是 **G43**。
 
 #### 監控相關 UI — 2026-08-11 第二十二輪新增
 

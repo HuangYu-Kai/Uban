@@ -16,7 +16,7 @@ import 'api_service.dart';
 /// （團隊要求「不要把離線快取做得比家庭圈複雜」）。
 ///
 /// 錯誤處理慣例沿用 `api_service.dart` 既有寫法（見 `resolveMonitorSetup` /
-/// `triggerTestFall`）：FastAPI 的 HTTPException 一律以 `{"detail": "..."}`
+/// `saveZoneConfig`）：FastAPI 的 HTTPException 一律以 `{"detail": "..."}`
 /// 回傳，非成功回應優先取 `detail` 當白話錯誤訊息；每個「清單型」端點另外用一個
 /// 靜態 `lastXxxError` 欄位記錄「這次失敗的原因」，讓呼叫端能區分「目前沒有資料」
 /// 與「這次真的失敗了、要顯示重試鍵」——兩者用同一個空 list 表示的話，UI 就無法分辨。

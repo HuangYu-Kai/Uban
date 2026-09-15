@@ -141,7 +141,7 @@ AI 對話、Pinecone 長期記憶、新聞爬蟲、遊戲、寵物、TTS/STT、`
 | `lib/globals.dart` | 跨 isolate／跨畫面的全域狀態橋 | `pendingAcceptedCall`、`isAppReady`、`appRole`、`kCallValidityMs`、`splashActive`、`safeNavigateBack()`、`parseIsVideoCall()` | 🔴 極高 |
 | `lib/services/signaling.dart` | Socket.IO 連線 + WebRTC（**Singleton**） | 見 §2.3 | 🔴 極高 |
 | `lib/services/local_call_notification.dart` | CallKit 失敗時的本地通知備援 | `show()`、`cancel()`、`consumeLaunchPayload()`、`_handleDecline()`、`_persistTapAsAccepted()`、`notificationBackgroundTapHandler` | 🔴 極高 |
-| `lib/services/api_service.dart` | HTTP 層；通話與監控相關 | `declineCall(roomId, senderId, callId)`、`pushCctvFrame()`、`triggerTestFall()`（回 `String?`）、`checkAudioBridge(alertId,{userId})`、`_deviceTokenHeader`（`X-Uban-Device-Token`） | 🟡 中 |
+| `lib/services/api_service.dart` | HTTP 層；通話與監控相關 | `declineCall(roomId, senderId, callId)`、`pushCctvFrame()`、`checkAudioBridge(alertId,{userId})`、`_deviceTokenHeader`（`X-Uban-Device-Token`） | 🟡 中 |
 | `lib/services/cctv_alert_notification.dart` | YOLO／測試跌倒警報的高優先級通知（**獨立 channel**，與來電備援分開） | `show()` | 🟠 中高 |
 | `lib/screens/video_call_screen.dart` | **家屬端**通話畫面 | `_initCall()`、`_toggleCamera`、`_toggleMic`、`_switchCamera`、`_toggleSpeaker`、`_safeHangUp`、`_goHomeAfterCall()`、`_showCallRejectedThenGoHome()` | 🔴 極高 |
 | `lib/screens/elder_screen.dart` | **長輩端**通話畫面（含 CCTV 模式） | `_makeCall()`、`_checkPendingAcceptedCall()`、`_toggleCamera`、`_toggleMute`、`_switchCamera`、`_hangUp`、`_exitCCTVMode`、`_activeCallId`、`friendCallTargetElderId`（建構子參數，非 null 進入好友通話模式：房號組對方的、role 送 `'friend'`，`dispose()` 觸發回房，見 G156／G157） | 🔴 極高 |
@@ -362,7 +362,7 @@ AI 對話、Pinecone 長期記憶、新聞爬蟲、遊戲、寵物、TTS/STT、`
 
 #### `cctv-alert`（`services/yolo_alert_dispatcher.py`:68-95）— 跌倒／異常警報
 
-> 這條**不是通話**，是監控子系統的警報推播（YOLO 偵測與「跌倒測試」鈕共用同一條派送路徑）。
+> 這條**不是通話**，是監控子系統的警報推播（YOLO 偵測與「跌倒測試」端點共用同一條派送路徑）。
 > Socket 通路事件名同為 `cctv-alert`，payload 由同檔的 `_build_push_payload()` 產生。
 
 | 欄位 | 值 | 說明 |
@@ -379,7 +379,7 @@ AI 對話、Pinecone 長期記憶、新聞爬蟲、遊戲、寵物、TTS/STT、`
 > 🚫 **`alertId` 單獨不可作為去重鍵**：`_insert_alert()` 對「同 elder + 同 device + 同 alert_type
 > 且 `status='active'`」的既有列是 **UPDATE `detected_at` 並沿用原本的 `alert_id`**。
 > 只用 `alertId` 去重，第二次以後的同類警報會**完全靜默**
-> （「跌倒測試」鈕按第二次沒反應，YOLO 連續偵測也一樣）。
+> （用「跌倒測試」端點連續觸發兩次，第二次沒反應，YOLO 連續偵測也一樣）。
 > 家屬端因此用 **`"a$alertId@$timestamp"` 複合鍵**（`family_main_screen.dart::_knownAlertKeys`）。
 > 後端若要改掉 UPSERT 語意，必須同步改前端這個鍵。
 
@@ -1014,7 +1014,7 @@ WHERE role='elder' AND (room_id IN (%s, %s) OR user_id = %s)
 影格來源
  ├─ 監視機推流：ApiService.pushCctvFrame → POST /api/cctv/frame（multipart PNG）
  │     └─ 後端每 2 秒取一個窗口送 YOLO 推論
- └─ 「跌倒測試」鈕：ApiService.triggerTestFall → POST /api/cctv/test-fall
+ └─ 「跌倒測試」端點（前端按鈕已於第四十七輪移除，僅能由 curl／API 工具觸發）：POST /api/cctv/test-fall
        └─ 跳過 YOLO，直接以 alert_type='fall' 進入下一步
 
            ↓ 兩條路在此匯流（services/yolo_alert_dispatcher.py::dispatch）
@@ -1053,7 +1053,13 @@ monitor_device_id(elder_id, device_name) = zlib.crc32(f"{elder_id}|{device_name.
 前端以 `--dart-define=CCTV_INGEST_TOKEN=<同一字串>` 注入
 （`api_service.dart`:31 的 `_cctvIngestToken` / `_deviceTokenHeader`，空字串時**不送**該標頭）。
 
-**要測「跌倒測試」鈕時**：`.env` 設 `CCTV_TEST_FALL_ENABLED=true` → 重啟後端 → 測完**立刻改回 `false`**。
+**要測「跌倒測試」端點時**（前端按鈕已於第四十七輪移除，改用 curl）：`.env` 設 `CCTV_TEST_FALL_ENABLED=true` → 重啟後端 →
+```bash
+curl -X POST <baseUrl>/api/cctv/test-fall \
+  -F "elder_id=<長輩ID>" -F "device_name=<監視機裝置名稱>"
+  # 若後端有設 CCTV_INGEST_TOKEN，另加：-H "X-Uban-Device-Token: <token>"
+```
+→ 測完**立刻改回 `false`**。
 理由：`elder_id` 只有 4 位數字（10 000 組，可完整列舉），長期開放等同開放對任意長輩家庭發動騷擾。
 
 ### 6.11 怎麼測 YOLO 的跌倒偵測
@@ -1069,7 +1075,7 @@ monitor_device_id(elder_id, device_name) = zlib.crc32(f"{elder_id}|{device_name.
 
 | 階段 | 目的 | 方法 | 判準 |
 |------|------|------|------|
-| **A. 派送鏈** | 驗證 DB 寫入 → Socket/FCM → 亮螢幕 + 通知 + 朗讀 + 彈窗 | 開 `CCTV_TEST_FALL_ENABLED=true`，按「🚨 跌倒測試」 | 家屬端**熄屏**狀態下也要亮起並朗讀。連按兩次要**兩次都有反應**（驗證複合鍵去重沒退化） |
+| **A. 派送鏈** | 驗證 DB 寫入 → Socket/FCM → 亮螢幕 + 通知 + 朗讀 + 彈窗 | 開 `CCTV_TEST_FALL_ENABLED=true`，用 curl 打 `POST /api/cctv/test-fall`（前端按鈕已於第四十七輪移除，curl 範例見 §6.10） | 家屬端**熄屏**狀態下也要亮起並朗讀。連續觸發兩次要**兩次都有反應**（驗證複合鍵去重沒退化） |
 | **B. YOLO 推論** | 驗證模型真的判得出跌倒 | 見下方姿勢清單 | 後端 log 出現 `🚨 [YoloAlert] fall ...` 且 `confidence` 合理 |
 
 **階段 B 的實際做法**
@@ -1269,6 +1275,174 @@ IMU 航位推算漂移嚴重，且長輩常不隨身攜帶手機。相機方案�
 > 📌 **搬移門檻提示**：本文件中出現的「第 N 輪」，**N ≤ 40** 者其年表條目已遷至
 > `CLAUDE_call-monitor-history.md`；**N ≥ 41** 仍在本檔 §8。此門檻會隨每輪搬移而持續調高，
 > 調整時只需要更新本處（§8 開頭）的數字。
+
+### 2026-09-13 — 第四十七輪：移除監控機的「跌倒測試」按鈕
+
+**背景**
+
+使用者要求移除監控機（CCTV 模式）畫面上的「跌倒測試」按鈕。這顆按鈕自第十七輪加
+入以來，一直標註為「暫時性測試入口，YOLO 可實測後即可移除」。
+
+**做了什麼（前端 -147 行）**
+
+`elder_screen.dart` 刪除 `_testFallSending` 旗標、`_sendTestFallAlert()` 方法、按
+鈕 UI（`Positioned` 區塊），共 -87 行；`cctv_alert_api.dart` 刪除
+`triggerTestFall()`；`api_service.dart` 刪除委派方法、檔頭註解移除「跌倒測試」字
+樣；`friend_service.dart` 檔頭註解原本舉 `triggerTestFall` 當「回傳 `String?`、
+`detail` 錯誤慣例」的範例，改舉同慣例的 `saveZoneConfig`。
+
+**後端一律保留不動**：`POST /api/cctv/test-fall`、
+`call_security.test_fall_enabled()`、`.env.example` 的
+`CCTV_TEST_FALL_ENABLED=false`、護欄 G43 全部維持原狀。理由：§9 除錯手冊把這個端
+點列為驗證「跌倒警報派送鏈」（DB 寫入 → Socket/FCM → 家屬端熄屏也要亮起並朗讀）
+的手段，刪掉按鈕後仍可用 curl 觸發，保留可測性；端點依 G43 預設關閉、關閉時回
+404，無安全風險。
+
+**關鍵風險**：被刪的按鈕與「退出監視機」**相鄰**，而後者是長輩退出 CCTV 模式的唯
+一出口。刪錯會讓監控機變成無法離開的畫面。驗收時逐行核對了 `git diff`：三段都是
+純刪除、無任何 `+` 行，前後的 `Positioned` 直接接上；反向檢查「退出監視機」的引
+用仍全部存在（4 處）。
+
+**連帶影響**（容易漏的一類）：`friend_service.dart` 的檔頭註解引用了被刪除的方法
+當程式碼慣例範例。這種殘留不會編譯錯誤、不會被目標關鍵字掃到（搜的是被刪除檔案
+本身的關鍵字，不是引用它的其他檔案），只有真的去讀那段註解的人才會發現指路指到
+空氣。
+→ 新護欄 **G185**
+
+**同步更新的其他文件**：`CLAUDE_call-monitor-ui-map.md` 原本記載「跌倒測試」按鈕
+的那一列整列刪除（該文件的定位是「按鈕在哪、按了跳去哪」，留一列指向不存在的按
+鈕會誤導只看表格的人，尤其它原本緊貼「退出監視機」），下方說明區塊濃縮成歷史註
+記而非整段刪除，保留「後端端點還在、可 curl 測、G43 開關不能亂動」這些仍有效的
+事實；本檔 §6.9 派送鏈圖、§6.10 測試方法、§9.2 驗收矩陣也都改成 curl 指令，欄位
+名稱對照 `routers/alert.py::trigger_test_fall()` 的簽章（`elder_id`、
+`device_name`）核對過。
+
+**新增護欄**
+
+本輪新增 **G185**（跨端；條文見 §7.2）。護欄檔（`CLAUDE_call-monitor-
+guardrails.md`）開頭護欄總數同步更新為 **185**。
+
+### 2026-09-13 — 第四十六輪：機構管理端完全移除
+
+**背景**
+
+使用者要求「刪除機構管理端的所有設計（包含資料表、管理介面）」，並裁定兩件事——
+除錯用的 API **搬到開發者命名空間**（不是連功能一起砍）、**移除機構員工登入**
+（管理端只剩開發者帳號能進）。
+
+**項目 A（後端）新增 `routers/developer_users.py`**
+
+5 支唯讀端點取代原本的機構端點，全走 `Depends(get_current_developer)`：
+`GET /api/developer/users`（取代 `/institution/elders`）、
+`GET /api/developer/users/{elder_id}`（取代 `/institution/elders/{id}`）、
+`GET /api/developer/users/{elder_id}/metrics`、
+`GET /api/developer/users/{elder_id}/timeline`、
+`GET /api/developer/alerts`（取代 `/institution/alerts`）。改以 `elder_profile`
+為主表，不再依賴機構收案關聯。回傳移除了 `room_no`／`care_level`／`enrolled_at`
+／`primary_staff`／`assigned_staff`，timeline 少了 `kind="task"` 事件。
+
+**項目 B（前端）管理端改接**
+
+三個除錯頁面改打新端點；`LoginPage` 移除身分切換只剩開發者登入；`session.ts`
+刪除 `StaffSession`；側欄警報徽章從 `/institution/overview` 改打
+`/developer/alerts?status=active`——刻意不用 `by_type` 總和，那是「近 N 天全部狀
+態的次數分布」，拿來當「目前待處理」的角標會把已結案的舊警報也算進去。
+`CareLevelBadge` 與 `Overview` 型別因無使用者一併移除。
+
+**項目 C（後端）刪除機構程式碼（共 2384 行）**
+
+刪除 `routers/institution.py`（982 行）、`routers/institution_ops.py`（1033
+行）、`routers/institution_common.py`（231 行）、`auth_staff.py`（138 行），四
+者共 2384 行；另刪除 `scripts/seed_demo_institution.py` 與
+`tests/test_institution.py`。`routers/admin.py` 的
+`require_admin_or_developer()` 從「先手動 decode JWT 判斷 `typ`、developer 與
+staff 走兩條路徑」簡化成只驗開發者 token。`ALGORITHM`／`SECRET_KEY`／`security`
+**不需要搬移**——`auth_developer.py` 本來就有同名同值的定義，改 import 來源即
+可，避免產生第三份密鑰定義。
+
+**項目 D（資料庫）刪除 7 張表（實際筆數）**
+
+依外鍵順序（先子表後父表）逐條 DROP，零失敗、不需
+`SET FOREIGN_KEY_CHECKS=0`：`care_task`（684 筆）、`care_shift`（128 筆）、
+`institution_elder`（20 筆）、`staff_elder_assignment`（20 筆）、`care_staff`
+（8 筆）、`shift_swap_request`（6 筆）、`institution`（1 筆）。9 張保護表
+（`elder_profile` 26、`user_account_data` 34、`emergency_alerts` 50、
+`call_record` 1242、`activity_log` 7099、`developer_account` 3、
+`elder_daily_step` 1800、`family_elder_relationship` 26、`subscription_status`
+9）筆數一筆未變。
+
+★★ **意外發現①：migration 每次開機重跑，只加註解會讓刪表白做**
+
+`main.py::run_sql_migrations()` **每次開機都重新執行** `scripts/migrations/` 底
+下每一個 `.sql`，**沒有「已執行過」的追蹤表**，靠 `CREATE TABLE IF NOT EXISTS`
+自身冪等。所以只在 `001_institution.sql` 檔頭加註解、不動內文的話，**DROP
+TABLE 做完、後端一重啟，7 張表會透過那份 migration 原封不動生回來**。
+
+處理：把第 1–7 節的 `CREATE TABLE` 逐行註解掉（不刪除任何文字，歷史完整保
+留），**但第 8 節 `elder_daily_step` 完全保留可執行**——那張表與機構表同檔但完
+全獨立，整檔註解或整檔跳過都會誤傷它。驗證：模擬 `run_sql_migrations()` 的解析
+邏輯，確認該檔只剩 1 條會執行的語句。
+→ 新護欄 **G182**
+
+**★★ 意外發現②：開發者原本看不到 6 位真實使用者**
+
+管理端查的是 `institution_elder`（機構**收案**長輩），不是 `elder_profile`（全
+平台）。對正式庫唯讀實測：26 位長輩中有 20 位被收案，**6 位（`2917`、`0343`、
+`7993`、`6160`、`9053`、`5327`）從未被任何機構收案，開發者完全看不到**，其中
+`6160` 與 `5327` 還有共 3 筆真實警報也查不到。而且清單上沒有任何提示說少了人。
+
+這直接牴觸管理端的定位（「開發者對個別使用者除錯」）。修法：
+`institution_common.py` 的兩個函式與 `institution.py` 的 `list_elders()`／
+`list_alerts()` 各自拆成機構員工／開發者兩段獨立 SQL，開發者那半改以
+`elder_profile`／`emergency_alerts` 為主表 LEFT JOIN，並加
+`discharged_at IS NULL` 避免同一位長輩在不同機構的歷史收案紀錄造成資料重複。
+（這幾支後來隨機構模組一起刪除，能力由 `developer_users.py` 承接。）
+
+**★ 過程中修掉的兩個靜默失敗**
+
+- `list_elders`／`list_alerts` 的 raw SQL 裡各還有一個 `institution_id = %s`
+  的重複過濾。開發者傳 `None` 進去，SQL 三值邏輯下 `institution_id = NULL`
+  **永遠不 match**，query 回空清單**而且不報錯**。共用授權守衛覆蓋不到端點自
+  己手寫的 SQL。→ 已是護欄 G177，本輪未新增。
+- 前端 `isFullScope()` 放行 admin 或 supervisor，但後端 `admin_stats` 的機構員
+  工門檻是 `require_staff_role("admin")`。督導進得去統計頁但三支 API 全
+  403，畫面卻顯示每張圖各自的「尚未累積資料」空狀態——**看起來像沒資料而不是
+  沒權限**。新增 `RequireAdminOrDeveloper` 守衛（重用既有 `isAdmin()`，語意與
+  後端門檻天然對齊）。
+
+**測試沒有降低強度**
+
+三個測試檔原本各有一條「caregiver 角色 token → 403」，測的是 `auth_staff.py`
+的 `ROLE_RANK` 角色分級——那個概念隨本輪移除而不存在，硬留著只能靠假造一個不存
+在的角色系統來測。改成 `test_legacy_staff_shaped_token_rejected`：偽造一個形狀
+與舊機構員工 token 相同的 JWT，斷言仍然 401，**守的是「`auth_staff.py` 刪除後
+不能留後門」**。其餘 401 斷言全部原樣保留。
+
+**附帶解除的資安疑慮**：舊文件反覆警告「demo 管理員密碼寫死在
+`seed_demo_institution.py`」，隨 `care_staff` 表刪除自動失效——那個帳號已不存
+在。
+
+**過程事故（驗證方法論，兩則）**
+
+1. 檢查刪除模組後有無殘留 import 時，字串搜尋把 docstring 與註解裡的提及也算
+   進去、且可被改寫註解騙過，三個檔案因此誤報。改用 AST 解析 `ast.Import`／
+   `ast.ImportFrom`（`ImportFrom` 要同時比對 `node.module` 與
+   `node.module + '.' + alias.name`，否則 `from routers import institution`
+   這種寫法會漏掉），`compileall` 只驗語法、抓不到名稱解析錯誤，不能替代。
+   → 新護欄 **G183**
+2. 驗證「新 API 完全不依賴機構表」時，最初寫成
+   `src.count('care_staff') == 0`——測的是「檔案裡有沒有這串字」，不是「有沒
+   有真的查這張表」。子代理誠實回報它為了讓檢查回報 0 而刻意在註解裡避開那些
+   識別字；真正風險是若其實用了機構表，只要拼成 `"care_" + "staff"` 就能一樣
+   回 0。壞指標的副作用不只漏掉問題，還逼執行者為了過關而改動無關的東西（本
+   輪連本質安全的 `f"...IN({ph})..."` 都被改寫成字串相加）。改用從非註解程式
+   碼抽出 `FROM`／`JOIN`／`UPDATE`／`INTO` 後面的表名、與目標集合取交集。
+   → 新護欄 **G184**
+
+**新增護欄**
+
+本輪新增 **G182–G184**（後端 G182；流程 G183–G184；條文見 §7.2）。護欄檔
+（`CLAUDE_call-monitor-guardrails.md`）開頭護欄總數同步更新為 **185**。
 
 ### 2026-09-11 — 第四十五輪：新手教學捲動、管理端轉開發者定位、統計儀表板、開發者帳號、隱私權政策
 
@@ -2254,7 +2428,7 @@ python -m pytest tests/test_call_signaling.py -q   # 目前基準：17 passed，
 | 9 | 通話中一端掛斷 | 另一端顯示 dialog 提示 2 秒後才回首頁（不可瞬間跳走） |
 | 10 | **雙端接不同網域**（一端 Wi-Fi、一端行動網路）互撥 | 進房後**看得到對方影像、聽得到聲音**。若失敗，必須在 12 秒內跳出「無法建立影音連線」並安全返回主畫面，**不可**停在有計時卻沒畫面的假連線 |
 | 11 | 長輩監控機上線／下線 | 家屬端列表**最遲 2.5 秒**出現／移除監視器名稱；點「觀看 CCTV」可進入，按「← 返回」回到原本的分頁（**不是**重建主畫面） |
-| 12 | `.env` 開 `CCTV_TEST_FALL_ENABLED=true` → 按「🚨 跌倒測試」**連按兩次** | 家屬端（含**熄屏**狀態）**兩次都**亮螢幕 + 通知 + 朗讀 + 彈窗。改回 `false` 後再按 → SnackBar 顯示 8 秒長文案（說明是後端設定未開、非 App 故障），而非靜默無反應 |
+| 12 | `.env` 開 `CCTV_TEST_FALL_ENABLED=true` → 用 curl **連續觸發兩次** `POST /api/cctv/test-fall`（前端按鈕已於第四十七輪移除，指令見 §6.10） | 家屬端（含**熄屏**狀態）**兩次都**亮螢幕 + 通知 + 朗讀 + 彈窗。改回 `false` 後再打 → HTTP 回應 404，`detail` 為「測試端點未啟用（請在後端 .env 設定 CCTV_TEST_FALL_ENABLED=true）」 |
 
 #### 2026-08-11 第二十二輪新增（13–19）
 
