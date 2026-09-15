@@ -1276,6 +1276,151 @@ IMU 航位推算漂移嚴重，且長輩常不隨身攜帶手機。相機方案�
 > `CLAUDE_call-monitor-history.md`；**N ≥ 41** 仍在本檔 §8。此門檻會隨每輪搬移而持續調高，
 > 調整時只需要更新本處（§8 開頭）的數字。
 
+### 2026-09-16 — 第四十八輪：警報彈窗抑制、溢位修正、監控清單消失根因、管理端資料表與主題、隱私權政策
+
+**背景**
+
+使用者提出六項需求：(1) 家屬正在觀看某台監控機的即時畫面時，該台監視機的緊急警
+報不要再彈窗打斷，改成只朗讀提醒；(2) 修正使用者截圖回報的 RenderFlex 溢位
+（`RIGHT OVERFLOWED BY 1.6 PIXELS`）；(3) 管理端網頁補上深色／淺色主題切換，並
+把兩個除錯區塊改成可搜尋清單而非手動輸入 ID——使用者原話：「否則管理者記不住大
+量使用者資料，還要開資料庫來看，那不如直接在資料庫操作就好」；(4) 刪除隱私權政
+策裡的「能否拒絕」條款；(5) 確認 `Uban/` 與 `uban-api/` 兩個 repo 皆為 private，
+不用擔心 `.env`；(6) 排查遠端監控裝置清單偶爾整個消失、切換分頁再切回來才恢復的
+問題。
+
+**項目 A（前端）家屬正在觀看該台監控時，緊急警報只朗讀不彈窗**
+
+`family_main_screen.dart::_presentCctvAlert()`：把既有的 `alreadyViewingThisDevice`
+判斷從「決定要不要顯示『查看監視畫面』鍵」提前到「3) 朗讀」之後、「4) 彈窗」之
+前，同一台正在被觀看時直接 `return`，不再跳出 `AlertDialog`。
+
+四個不可破壞的前提，逐一驗證過：
+- 語音 `_alertTts!.speak(...)` 在 return **之前**已執行，不受影響；
+- `_activeAlerts.insert` 是呼叫端 `_handleCctvAlert` 在呼叫本方法**之前**就完成
+  的，警報卡片高亮不受影響；
+- 只比對**同一台** `deviceIdStr`——家屬在看 B 房間即時畫面時，A 房間的跌倒警報
+  **仍會正常彈窗**；
+- `_cctvAlertDialogOpen` 只在 return 之後才設 `true`，旗標狀態對
+  `_isSafeToShowFamilyTutorial()` 維持一致，不會讓教學誤判成「彈窗開著」。
+
+連帶簡化：原本 `canView` 判斷式裡的 `!alreadyViewingThisDevice` 在提前 return 之
+後恆為 `true`，已拿掉這個多餘判斷（走到那一行時 `alreadyViewingThisDevice` 必為
+`false`）。
+
+**關鍵風險**：`_viewingMonitorDeviceId` 的用途因此被擴大——它原本（第四十輪）只
+決定要不要隱藏一顆按鈕，現在決定的是**整個彈窗要不要出現**。旗標若卡住沒被清
+除，家屬會**靜默**收不到該台監視機的警報彈窗，比第四十輪的「多一顆按鈕」風險高
+得多。已同步更新 `_openMonitorViewForDevice()` 設值處的註解，說明任何新增的
+「離開監控檢視」路徑都必須確保 `.then()` 對本旗標的清除會被觸發，或自行清除。
+→ 新護欄 **G186**
+
+**第四十輪只做了一半**：當時的年表把需求記成已完成，但實際只拿掉了「查看監視畫
+面」鍵，彈窗本身照樣彈出——這輪才是真正做完。
+
+**項目 B（前端）刪除溢位指示**
+
+使用者截圖顯示 `family/family_interaction_tab.dart`「遠端視訊監控」卡片有
+`RIGHT OVERFLOWED BY 1.6 PIXELS`。三處修正：
+1. `_alertTypeLabel(...)` 警報類型徽章 → 包 `Flexible` ＋ `maxLines: 1` ＋
+   `overflow: TextOverflow.ellipsis`；
+2. `'長輩在此'` 徽章（11pt）→ 同上；
+3. `'觀看 CCTV'` 按鈕 → 文字包 `Flexible` 並加 `ellipsis`、縮小 padding／icon、
+   取消預設最小按鈕尺寸。
+
+**機制**：外層 `Row` 裡 `Expanded(裝置名稱)` 只能吸收「扣掉其他元素固有寬度後還
+剩下的」空間；一旦「按鈕＋管理選單」固有寬度總和本身就超出卡片可用寬度一點點，
+`Expanded` 再怎麼收縮也救不了——溢位量正是那一點點，與截圖的 1.6px 相符。兩個徽
+章的成因同源但更隱蔽：徽章本身固定寬度、緊跟在 `Flexible(裝置名稱)` 後面，裝置
+名稱可以收縮到 0 但徽章不行；系統字體放大（textScale）時徽章文字變寬，比窄螢幕
+更容易踩到。
+
+**項目 C（管理端＋後端）深色／淺色主題 ＋ 資料表顯示內容**
+
+- **主題**：「系統／亮／暗」三顆按鈕從側欄 `sidebar-footer` 搬到頂欄
+  `topbar-actions`（`Layout.tsx`）。原因：`index.css` 在 <900px 媒體查詢把
+  `.sidebar-footer` 設 `display: none`，窄螢幕上原本的位置根本看不到。
+  `useTheme()` 設置／移除 `document.documentElement` 的 `data-theme` 並寫入
+  `localStorage['uban_admin_theme']`。
+- **資料表**：`AccountsPage.tsx` 原本兩個區塊都要手動輸入 ID 才查得到東西，正是
+  使用者抱怨的點。改成：`TierSection` 改為可搜尋／排序的長輩清單（沿用
+  `/developer/users`，`queryKey ['elders']` 與 `EldersPage` 共用快取），點選後才
+  進詳情；`BanSection` 接上 `prefill`／`onConsumePrefill` props，可從
+  `TierSection` 的家屬列點「查封禁狀態」直接帶入，另加一份同樣沿用 `['elders']`
+  快取的長輩帳號可搜尋清單，手動輸入入口保留。
+- **後端補兩行**：`routers/developer_users.py` 的 `/users` 與
+  `/users/{elder_id}` 回應 dict 各補 `"user_id": ...`——SQL 本來就已
+  `SELECT ... user_id`（還拿去 JOIN `activity_log`／`call_record`），組回應時漏
+  放，導致前端拿不到長輩本人的帳號編號；`types.ts` 的 `ElderRow`／
+  `ElderDetail` 各補 `user_id: number`。
+- 已確認 `PetSeasonsPage.tsx` 的 `viewingSeason` 是清單點選觸發，不受本輪影響，
+  不需改。
+
+**項目 D（前端）刪除隱私權政策的「能否拒絕」條款**
+
+`lib/data/privacy_policy_content.dart` 刪掉 10 行 `'**能否拒絕**：…'`（218 →
+208 行）。驗證：其餘四類（收集什麼／為什麼／怎麼保護／保存多久）各維持 10 條、
+`PrivacyPolicySection(` 維持 16 個、全 `lib/` 224 個 `.dart` 檔 `能否拒絕` 殘留
+0 處。
+
+**項目 E（無程式碼改動）repo 私有性確認**
+
+使用者確認 `Uban/` 與 `uban-api/` 兩個 repo 皆為 private。據實記錄：`.env` 仍在
+git 追蹤中，含 `DB_PASSWORD`、`PINECONE_API_KEY`、`GEMINI_API_KEY`、
+`REVENUECAT_WEBHOOK_SECRET`、`DEVELOPER_PASSWORD_KEY`——repo 若日後轉為 public
+或對外分享，必須先處理這份檔案。
+
+**項目 F（前端）遠端監控裝置清單偶爾整個消失的根因**
+
+**根因（本輪最重要的發現）**：`ApiService.fetchMonitorDevices()` 的實作是
+`fetchMonitorDevicesOrNull() ?? const []`（見護欄 G78）。任何請求失敗／逾時／後
+端短暫異常都被這層包裝**吞成「成功，但清單是空的」**，型別上與「這位長輩真的一
+台監視機都沒有」**完全無法分辨**；而 `_applyDeviceList()` 對兩者一視同仁，一律
+`setState(() => _monitorDevices = monitors)` 覆蓋。每 10 秒一次的 HTTP 交叉驗證
+只要逾時一次，畫面就被洗成空的，直到下一輪（最快 2.5 秒的 Socket 輪詢或 10 秒後
+的下一次 HTTP）才補回來——使用者回報的「切走再切回來就恢復」，其實是**剛好等到
+了下一輪成功的刷新**，清單一直都在自我修復，不是切分頁這個動作本身修好了它。
+
+**修法**：`family_main_screen.dart` 的 HTTP 交叉驗證路徑加
+`if (devices.isEmpty) return;`，空陣列視為暫時性異常、不套用。
+
+**為什麼不會弄壞離線偵測**（必須寫清楚，否則下一個人會誤判這條修改很危險）：真
+正的「裝置被刪除」走後端 `_broadcast_elder_devices_update` 即時推播、以及本檔刪
+除按鈕成功後的本地 `removeWhere`，兩者都**不經過**這條 HTTP 路徑；「上線→離
+線」由 `_applyDeviceList` 自己的 2.5 秒 debounce 負責，不受本次修改的條件影響。
+→ 新護欄 **G187**
+
+**另一則觀察：鐵律 #14 的例行 8 畫面檢查，在設計上抓不到本輪這處溢位**
+
+例行檢查的判準是「同列有 **≥18pt** 標題且同列還有其他元素」，但項目 B 那處溢位
+的 `'長輩在此'` 徽章是 **11pt**，遠低於門檻。本輪獨立跑了一次 8 畫面靜態掃描
+（長輩端首頁／電話／社群／聊天／我的，家屬端首頁／互動／資料），共 27 處符合字
+級判準，逐一核對後**沒有一處需要動手**（多數是固定短標籤如 `'安全登出'`、
+`'留言'`、單一 emoji，且所在 `Row` 多為 `MainAxisSize.min` 或置中對齊）——也就
+是說例行檢查跑出「乾淨」的同時，使用者眼前正有一處真實溢位。
+
+**結論：例行檢查是必要但不充分的，不能因為它通過就宣稱畫面沒有溢位。** 小字級但
+固定寬度的元件（徽章、按鈕、圖示）擠在同一列時，同樣會溢位，而且更難用靜態判準
+抓到。
+→ 新護欄 **G190**
+
+**附註（本輪流程事故，兩則）**
+
+1. 項目 C 用 `npx tsc` 檢查型別錯誤，帶顏色的輸出把 ANSI 色碼夾在檔名與行號之
+   間（`src/x.tsx` 後接跳脫序列才是行號），讓針對「檔名:行號」的 grep pattern
+   靜默回空、看起來像零錯誤。改用 `tsc --pretty false` 後才抓到實際結果。
+   → 新護欄 **G188**
+2. 項目 C 的 `BanSection` 用 `useRef` 記錄「`prefill` 這個值已消費過」，但只在
+   消費時設定該 ref，沒有在 `prefill` 歸零的分支一併重置——`null → N → null →
+   N` 的第二次會被誤判成重複消費而不觸發。已在歸零分支一併重置 ref。
+   → 新護欄 **G189**
+
+**新增護欄**
+
+本輪新增 **G186–G190**（跨端 G186；前端 G187；流程 G188；管理端 G189；流程／UI
+G190；條文見 §7.2）。護欄檔（`CLAUDE_call-monitor-guardrails.md`）開頭護欄總數
+同步更新為 **190**。
+
 ### 2026-09-13 — 第四十七輪：移除監控機的「跌倒測試」按鈕
 
 **背景**

@@ -2290,35 +2290,51 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                     ),
                     if (hasActiveAlert) ...[
                       const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.red.shade600,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          _alertTypeLabel(mostSevereAlert?['alert_type'] ?? 'fall'),
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: Colors.white,
-                            fontWeight: FontWeight.w800,
+                      // ★ 第四十八輪（item 2）：包 Flexible + ellipsis——這個 badge 原本是固定寬度、
+                      //   緊跟在 Flexible(裝置名稱) 後面。裝置名稱可以無限收縮到 0 吸收擠壓，
+                      //   但 badge 本身不行，於是外層 Row 給這一整個 Expanded 欄位分到的寬度只要
+                      //   小於「badge 固有寬度＋SizedBox(8)」，這個內層 Row 就會溢位；系統字體調大
+                      //   （textScale）時 badge 文字跟著變寬，需要的下限跟著往上升，比窄螢幕更容易
+                      //   踩到（見 CLAUDE_call-monitor-guardrails.md G159）。改用 Flexible 讓它在
+                      //   真的擠不下時退而求其次做省略號截斷，而不是讓 RenderFlex 直接溢出。
+                      Flexible(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.red.shade600,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            _alertTypeLabel(mostSevereAlert?['alert_type'] ?? 'fall'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                            ),
                           ),
                         ),
                       ),
                     ] else if (isElderPresent) ...[
                       const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: cs.primary,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          '長輩在此',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: cs.onPrimary,
-                            fontWeight: FontWeight.w800,
+                      // ★ 第四十八輪（item 2）：同上一個 badge 的理由，一併包 Flexible + ellipsis。
+                      Flexible(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: cs.primary,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            '長輩在此',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: cs.onPrimary,
+                              fontWeight: FontWeight.w800,
+                            ),
                           ),
                         ),
                       ),
@@ -2348,40 +2364,61 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
             ),
           ),
           // 觀看 CCTV 按鈕
-          ElevatedButton.icon(
-            onPressed: isOnline
-                ? () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => VideoCallScreen(
-                          roomId: monitorRoomId,
-                          targetSocketId: socketId,
-                          isEmergency: true,
-                          autoStart: true,
-                          returnByPop: true,
-                          monitorViewOnly: true,
-                          monitorDeviceName: name.toString(),
+          // ★ 第四十八輪（item 2）：包 Flexible，修正「遠端視訊監控」卡片右側的
+          //   RenderFlex 溢位（實測 RIGHT OVERFLOWED BY 1.6 PIXELS）。根因：這顆按鈕原本是
+          //   外層 Row 裡緊跟在 Expanded(裝置名稱/徽章) 後面、PopupMenuButton 之前的固定寬度
+          //   元件——Row 對非 flex 子元件一律先用「無限寬」量出其自然寬度再從總寬度扣除，
+          //   Expanded 只能吸收「扣除後還剩下的」空間，一旦這顆按鈕＋管理選單的固有寬度總和
+          //   本身就已經比卡片可用寬度多出一點點，Expanded 能不能收縮都救不了，溢位的量正是
+          //   那一點點差額（用 widget test 在 screenWidth=340/textScale=1.0 精準重現出 1.7px，
+          //   與截圖的 1.6px 相符）。改成 Flexible 後這顆按鈕才會真的參與版面的寬度分配、
+          //   在空間不足時等比縮小（ElevatedButton.icon 內建的 label 本來就包了一層
+          //   Flexible，這裡再疊一層才會真的生效）；縮小 padding／icon／取消預設最小按鈕尺寸
+          //   則是為了在系統字體調大（textScale > 1.0）時也留有餘裕，
+          //   見 CLAUDE_call-monitor-guardrails.md G159（本 App 的長輩／家屬使用者常把系統字
+          //   體調大，安全邊際會跟著等比例吃掉，不能只用 1.0 倍字級驗證）。
+          Flexible(
+            child: ElevatedButton.icon(
+              onPressed: isOnline
+                  ? () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => VideoCallScreen(
+                            roomId: monitorRoomId,
+                            targetSocketId: socketId,
+                            isEmergency: true,
+                            autoStart: true,
+                            returnByPop: true,
+                            monitorViewOnly: true,
+                            monitorDeviceName: name.toString(),
+                          ),
                         ),
-                      ),
-                    ).then((_) {
-                      widget.onAlertDismissed?.call(deviceId);
-                    });
-                  }
-                : null,
-            icon: const Icon(Icons.videocam_rounded, size: 18),
-            label: const Text('觀看 CCTV'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: isOnline
-                  ? (isDark ? accent.withValues(alpha: 0.16) : cs.primaryContainer)
-                  : cs.surfaceContainerHighest,
-              foregroundColor: isOnline 
-                  ? (isDark ? accent : cs.onPrimaryContainer)
-                  : cs.onSurfaceVariant.withValues(alpha: 0.5),
-              elevation: 0,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+                      ).then((_) {
+                        widget.onAlertDismissed?.call(deviceId);
+                      });
+                    }
+                  : null,
+              icon: const Icon(Icons.videocam_rounded, size: 16),
+              label: const Text(
+                '觀看 CCTV',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: isOnline
+                    ? (isDark ? accent.withValues(alpha: 0.16) : cs.primaryContainer)
+                    : cs.surfaceContainerHighest,
+                foregroundColor: isOnline
+                    ? (isDark ? accent : cs.onPrimaryContainer)
+                    : cs.onSurfaceVariant.withValues(alpha: 0.5),
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
             ),
           ),

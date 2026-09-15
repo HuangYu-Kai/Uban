@@ -838,6 +838,28 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
         return;
       }
       debugPrint('🔁 [Device HTTP] 交叉驗證取得 ${devices.length} 台設備 (elder_id=$elderIdStr)');
+      // ★ 第四十八輪（item 6）：空陣列不套用——這是本函式頂端註解早就寫明、
+      //   但實作從未真的做到的一步。根因：`ApiService.fetchMonitorDevices()` 是
+      //   `fetchMonitorDevicesOrNull() ?? const []`（見 G78），任何請求失敗／逾時／
+      //   後端短暫異常都會被這層包裝吞成「成功、但清單是空的」，跟「這位長輩真的
+      //   一台監視機都沒有」在型別上完全無法分辨；而 `_applyDeviceList()` 對兩者
+      //   一視同仁、一律 `setState(() => _monitorDevices = monitors)` 覆蓋，於是
+      //   每一次 HTTP 交叉驗證只要短暫逾時一次，畫面就會把整份清單洗成空的，直到
+      //   下一輪（最快 2.5 秒的 Socket 輪詢、或 10 秒後的下一次 HTTP）才會補回來
+      //   ——這正是使用者回報「監控清單偶爾整個消失、切換分頁再切回來才恢復」的
+      //   根因：清單其實一直都在自我修復，只是使用者切走再切回來的這段時間裡，
+      //   剛好等到了下一輪成功的刷新。
+      //   真正的「裝置被刪除／全部離線」不依賴這條 HTTP 路徑：刪除會觸發後端
+      //   `_broadcast_elder_devices_update` 即時推播給房內所有家屬 socket（見
+      //   CLAUDE_call-monitor.md §6.6），本檔的刪除按鈕也已經在成功後直接
+      //   `setState(() => _monitorDevices.removeWhere(...))` 做即時本地移除
+      //   （見上方「即時反映」註解），兩者都不經過這裡；「上線→離線」也是
+      //   `_applyDeviceList` 自己的 2.5 秒 debounce 在負責，不受本條件影響。
+      //   因此這裡略過空陣列，並不會讓真正的裝置消失/離線偵測變遲鈍。
+      if (devices.isEmpty) {
+        debugPrint('⚠️ [Device HTTP] 交叉驗證回傳空清單，視為暫時性異常（逾時／後端抖動），不套用，等待下一輪 Socket 或 HTTP 更新');
+        return;
+      }
       _applyDeviceList(devices);
     } catch (e) {
       debugPrint('⚠️ [Device HTTP] 交叉驗證失敗（略過）: $e');
@@ -1033,8 +1055,15 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
             : (_currentElder?.elderId ?? _currentElder?.id.toString() ?? '');
     if (rawElderId.isEmpty) return;
 
-    // ★ 第四十輪（item 2）：記錄目前正在看哪一台，供 _presentCctvAlert() 判斷是否
-    //   要隱藏「查看監視畫面」鍵——已經在看同一台的即時畫面，再給一顆鍵是多餘的干擾。
+    // ★ 第四十輪（item 2）起源：記錄目前正在看哪一台，當初只用來供
+    //   _presentCctvAlert() 判斷是否要隱藏「查看監視畫面」鍵。
+    // ★ 第四十八輪：用途已擴大——_presentCctvAlert() 現在用它決定的是整個警
+    //   報彈窗要不要跳出來（同一台正在被觀看時提前 return，見該處
+    //   alreadyViewingThisDevice），不再只是隱藏一顆按鈕。這代表本旗標若卡
+    //   住沒被清除，家屬會「靜默」收不到這台監視機的警報彈窗——不是少一顆
+    //   按鈕那麼輕微。任何新增的「離開監控檢視」路徑，都必須確保下面
+    //   Navigator.push(...).then() 對本旗標的清除會被觸發，或自行清除本旗
+    //   標（見 G186）。
     _viewingMonitorDeviceId = deviceIdStr;
 
     Navigator.push(
@@ -1128,6 +1157,23 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     //    很可能是通訊機而不是這台監視機，送過去會連到錯的裝置）。
     final String deviceIdStr =
         (alert['device_id'] ?? alert['deviceId'] ?? '').toString();
+
+    // ★ 第四十輪（item 2）：若已經在觀看「同一台」監視機的 CCTV 即時畫面，原本只
+    //   拿掉「查看監視畫面」鍵，彈窗本身照樣彈出——當時只做了一半。
+    // ★ 第四十八輪：改成連彈窗都不彈出——使用者已經看得到這台監視機的即時畫面，
+    //   再跳出一個 AlertDialog 只是擋住視線的干擾。這裡的 return 放在「3) 朗讀」
+    //   之後，語音提醒（上面 _alertTts!.speak(...)）已經執行過，不會被跳過，符合
+    //   「只需語音提醒即可」的需求；步驟 1／2（wakelock／系統通知）發生在更早，
+    //   同樣不受影響。_activeAlerts 的寫入與卡片高亮是呼叫端 _handleCctvAlert 在
+    //   呼叫本方法「之前」就完成的（見該處 _activeAlerts.insert），跟這裡的 return
+    //   無關，一樣不會被跳過。
+    //   只比對「同一台」：家屬可能正在看 B 房間的即時畫面，這時若 A 房間的長輩
+    //   跌倒，家屬看不到 A 的畫面，仍必須彈窗提醒——因此不能用「是否正在看任何
+    //   一台」，只能用 deviceIdStr 逐台比對，別台監視機的警報不受影響。
+    final bool alreadyViewingThisDevice =
+        deviceIdStr.isNotEmpty && _viewingMonitorDeviceId == deviceIdStr;
+    if (alreadyViewingThisDevice) return;
+
     final dynamic device = _monitorDevices.firstWhere(
       (d) =>
           d is Map && (d['deviceId'] ?? d['id'])?.toString() == deviceIdStr,
@@ -1139,14 +1185,9 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
         (device is Map ? (device['id'] as String? ?? '') : '');
     // 解析不出線上的來源設備就不給「查看監視畫面」鍵——寧可少一個功能鍵，
     // 也不要帶著空的 targetSocketId 進房而卡在連線中。
-    // ★ 第四十輪（item 2）：若已經在觀看「同一台」監視機的 CCTV 即時畫面，也不給這顆
-    //   鍵——使用者已經看到即時狀況了，再彈一顆「查看監視畫面」只是多餘的干擾。只比對
-    //   同一台，別台監視機的警報仍要給鍵（不影響通知／朗讀／卡片高亮，只動這顆按鈕）。
-    final bool alreadyViewingThisDevice =
-        deviceIdStr.isNotEmpty && _viewingMonitorDeviceId == deviceIdStr;
-    final bool canView = viewSocketId.isNotEmpty &&
-        _isDeviceOnline(device) &&
-        !alreadyViewingThisDevice;
+    // （原本這裡還有 `!alreadyViewingThisDevice` 一項；上面已經在同一台的情況下
+    //  提前 return，走到這行時該值恆為 false，故拿掉這個恆真的多餘判斷。）
+    final bool canView = viewSocketId.isNotEmpty && _isDeviceOnline(device);
     final String rawElderId =
         (alert['elder_id'] ?? alert['elderId'] ?? '').toString();
 
