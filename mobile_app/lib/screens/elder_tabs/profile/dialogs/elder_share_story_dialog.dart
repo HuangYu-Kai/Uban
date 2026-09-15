@@ -154,7 +154,10 @@ class _ElderShareStoryDialogState extends State<ElderShareStoryDialog>
       tag = '溫馨寄語';
     }
 
-    String title = '阿公的珍貴人生回憶';
+    // ★ 2026-09-15：標題不再寫死「阿公」。這些字串會被存進 MemoirService
+    //   成為長輩的回憶錄標題，阿嬤口述的故事被命名為「阿公的…」並不合理，
+    //   與 memoir_service 的推薦提問是同一類問題。
+    String title = '珍貴的人生回憶';
     if (text.contains('廟口') ||
         text.contains('田裡') ||
         text.contains('玩') ||
@@ -168,7 +171,7 @@ class _ElderShareStoryDialogState extends State<ElderShareStoryDialog>
     } else if (text.contains('阿嬤') ||
         text.contains('約會') ||
         text.contains('新公園')) {
-      title = '新公園水池邊與阿嬤的青澀約會';
+      title = '新公園水池邊的青澀約會';
     } else if (text.contains('紅豆') ||
         text.contains('灶坑') ||
         text.contains('吃') ||
@@ -177,7 +180,7 @@ class _ElderShareStoryDialogState extends State<ElderShareStoryDialog>
     } else if (text.contains('祝福') ||
         text.contains('孫') ||
         text.contains('全家')) {
-      title = '阿公留給全家子孫的一生叮嚀';
+      title = '留給全家子孫的一生叮嚀';
     }
 
     return (title: title, tag: tag, story: transcript);
@@ -192,11 +195,11 @@ class _ElderShareStoryDialogState extends State<ElderShareStoryDialog>
     } else if (q.contains('薪水') || q.contains('工作')) {
       return '我那時候剛退伍，第一份工作是在布行當學徒，第一個月領到薪水只有八百塊錢。雖然不多，但那天下班我立刻買了一袋熱騰騰的包子和半斤茶葉帶回家給父母。看著父母臉上的笑容，心裡覺得一切辛苦都值得了。那份踏實感，一直陪著我走到今天。';
     } else if (q.contains('阿嬤') || q.contains('約會')) {
-      return '那是民國六十幾年，媒人牽線後，我們約在新公園的水池邊散步。阿嬤那天穿著一件天藍色的洋裝，頭髮綁著整齊的馬尾。我手心全是汗，只敢聊些天氣和工作，連手都不敢牽，最後帶她去喝了一杯木瓜牛奶。那一幕，我這輩子都不會忘記。';
+      return '那是民國六十幾年，媒人牽線後，我們約在新公園的水池邊散步。對方那天穿著一件天藍色的洋裝，頭髮綁著整齊的馬尾。我手心全是汗，只敢聊些天氣和工作，連手都不敢牽，最後帶她去喝了一杯木瓜牛奶。那一幕，我這輩子都不會忘記。';
     } else if (q.contains('吃') || q.contains('美食') || q.contains('點心')) {
       return '小時候每到冬天寒流來襲，我母親總會在灶坑生起龍眼木柴火，大鐵鍋裡慢火熬煮著萬丹紅豆。那時候砂糖放得不多，但柴火的煙燻香氣與紅豆天然的甘甜融在一起，每個人捧著一個小碗趁熱喝，手腳立刻就暖了。至今任何甜品都比不上那種家裡的滋味。';
     } else if (q.contains('祝福') || q.contains('孩子') || q.contains('心裡話')) {
-      return '孩子們、孫子們，阿公年紀大了，看著你們各自成家立業、踏實做人，阿公心裡只有滿滿的欣慰。人生就像爬山，有平路也有陡坡，只要全家人心連心、互相扶持包容，就沒有跨不過的難關。願你們大家都平安順心、知足常樂。';
+      return '孩子們、孫子們，我年紀大了，看著你們各自成家立業、踏實做人，我心裡只有滿滿的欣慰。人生就像爬山，有平路也有陡坡，只要全家人心連心、互相扶持包容，就沒有跨不過的難關。願你們大家都平安順心、知足常樂。';
     }
     return '今天跟小豬聊起以前的往事，回想起以前的日子雖然物資沒有現在豐富，但鄰里之間互相關照、真誠厚道。只要腳踏實地、心存善念，生活處處都是福氣。希望把這份平安與溫暖留給子孫後代。';
   }
@@ -208,7 +211,7 @@ class _ElderShareStoryDialogState extends State<ElderShareStoryDialog>
     final story = MemoirStory(
       id: 'memoir_${DateTime.now().millisecondsSinceEpoch}',
       elderId: widget.elderId,
-      title: _aiTitle.isNotEmpty ? _aiTitle : '阿公的珍貴人生回憶',
+      title: _aiTitle.isNotEmpty ? _aiTitle : '珍貴的人生回憶',
       tag: _aiTag,
       preview: _aiTranscription.length > 42
           ? '${_aiTranscription.substring(0, 42)}...'
@@ -308,7 +311,7 @@ class _ElderShareStoryDialogState extends State<ElderShareStoryDialog>
                         ),
                         Text(
                           widget.isFromChild
-                              ? '兒女想聽聽阿公當年的故事'
+                              ? '兒女想聽聽您當年的故事'
                               : '跟小豬說說話，AI 自動為您整理成自傳',
                           style: GoogleFonts.notoSansTc(
                             fontSize: 12.5,
