@@ -1,0 +1,46 @@
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+flowchart LR
+  A(("長輩")):::actor
+  subgraph SYS["Uban 系統 — 長輩端（一）"]
+    direction LR
+    AU1(["長輩登入系統"]):::uc
+    AE1["無密碼登入"]:::ev
+    AU2(["AI 語音陪伴"]):::uc
+    AE2["喚醒 AI 助理"]:::ev
+    AE3["語音日常閒聊"]:::ev
+    AE4["查詢實用資訊"]:::ev
+    AE5["聽取新聞與廣播"]:::ev
+    AE6["AI 自動記錄活動與用藥<br/>（由排程器自動觸發）"]:::auto
+    AU3(["AI 日常提醒"]):::uc
+    AE7["接收自動化提醒<br/>（由排程器自動觸發）"]:::auto
+    AU4(["長輩通訊"]):::uc
+    AE8["發起視訊通話"]:::ev
+    AE9["接聽視訊通話"]:::ev
+    AE10["接聽緊急通話"]:::ev
+    AU5(["長輩社群互動"]):::uc
+    AE11["查看社群貼文"]:::ev
+    AE12["發布社群貼文"]:::ev
+    AE13["查看與收聽新聞"]:::ev
+  end
+  A --- AU1
+  AU1 --- AE1
+  A --- AU2
+  AU2 --- AE2
+  AU2 --- AE3
+  AU2 --- AE4
+  AU2 --- AE5
+  AU2 --- AE6
+  A --- AU3
+  AU3 --- AE7
+  A --- AU4
+  AU4 --- AE8
+  AU4 --- AE9
+  AU4 --- AE10
+  A --- AU5
+  AU5 --- AE11
+  AU5 --- AE12
+  AU5 --- AE13
+  classDef actor fill:#D5E8D4,stroke:#82B366,stroke-width:2px,color:#1B3A17
+  classDef uc fill:#D5E8D4,stroke:#82B366,stroke-width:1.5px,color:#1B3A17
+  classDef ev fill:#EDF6EC,stroke:#82B366,stroke-width:1px,color:#1B3A17
+  classDef auto fill:#F5F5F5,stroke:#666666,stroke-width:1px,color:#222222

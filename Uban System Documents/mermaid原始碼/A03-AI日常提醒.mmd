@@ -1,0 +1,60 @@
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+flowchart TD
+  subgraph ROLE["長輩"]
+    S1(["聽到提醒"]):::act
+    S2{"點選<br/>『我完成了』？"}:::dec
+    S3(["回報完成"]):::act
+    EN_S3(("&nbsp;")):::term
+    S4(["維持未完成<br/>不重複轟炸"]):::act
+    EN_S4(("&nbsp;")):::term
+  end
+  subgraph FE["長輩機 App"]
+    A1["ElderReminderManager<br/>接收 Socket 事件"]:::act
+    A2["firebase_bg_handler<br/>接收 FCM"]:::act
+    A3{"同日同分<br/>已播過？"}:::dec
+    A4["彈出 ElderReminderDialog<br/>flutter_tts 語音播報"]:::act
+    A5["local_reminder_notification<br/>高優先級通知"]:::act
+    A6{"App 在<br/>前景？"}:::dec
+    W1["20 秒看門狗<br/>主動補拉"]:::act
+    X(["忽略重複"]):::act
+    EN_X(("&nbsp;")):::term
+  end
+  subgraph BE["uban-api"]
+    ST_B1(("&nbsp;")):::term
+    B1(["check_remote_reminders_job<br/>每分鐘觸發<br/>（APScheduler 排程）"]):::act
+    B2["掃描 remote_reminders"]:::act
+    B3{"有到期<br/>提醒？"}:::dec
+    B4["emit_threadsafe('remote-reminder')<br/>推 comm_elder_id 與 elder_id 房間"]:::act
+    B5["發送 data-only FCM<br/>離線備援"]:::act
+    C1["POST /api/reminder/{id}/complete"]:::act
+  end
+
+  ST_B1 --> B1
+  B1 --> B2
+  B2 --> B3
+  B3 -->|"[否]"| B1
+  B3 -->|"[是]"| B4
+  B4 --> B5
+  B4 --> A1
+  B5 --> A2
+  A1 --> A3
+  A2 --> A6
+  A6 -->|"[是]"| A3
+  A6 -->|"[否]"| A5
+  A5 --> S1
+  A3 -->|"[是]"| X
+  A3 -->|"[否]"| A4
+  A4 --> S1
+  S1 --> S2
+  S2 -->|"[是]"| C1
+  C1 --> S3
+  S2 -->|"[否]"| S4
+  W1 -.-> A1
+  S3 --> EN_S3
+  S4 --> EN_S4
+  X --> EN_X
+
+  classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3

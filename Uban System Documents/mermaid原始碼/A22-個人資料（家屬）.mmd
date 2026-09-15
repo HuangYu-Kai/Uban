@@ -1,0 +1,48 @@
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+flowchart TD
+  subgraph ROLE["家屬"]
+    ST_S1(("&nbsp;")):::term
+    S1([想填寫本人年齡與居住地]):::act
+    S2["填寫年齡・縣市・行政區<br/>三欄皆選填"]:::act
+    S3(["資料儲存"]):::act
+    EN_S3(("&nbsp;")):::term
+  end
+  subgraph FE["家屬機 App"]
+    N1["FamilyMainScreen 尚無<br/>進入設定頁的按鈕"]:::gap
+    A1["FamilySettingsView<br/>★ 死碼：無任何活畫面 import"]:::gap
+    A2["讀取已儲存資料並回填<br/>:187-203"]:::act
+    A3{"讀取成功？"}:::dec
+    A4["欄位維持空白<br/>記錄 debug 訊息"]:::act
+    A5{"欄位留白？"}:::dec
+    A6["略過該欄<br/>維持原值不動"]:::act
+    EN_A6(("&nbsp;")):::term
+  end
+  subgraph BE["uban-api 後端（已就緒）"]
+    B1["更新使用者個人資料端點"]:::act
+    B2[("user_account_data<br/>age / residence_city<br/>/ residence_district<br/>migration 012")]:::act
+    B3["GET /api/admin/stats/demographics<br/>家屬＝無對應 elder_profile 的列"]:::act
+    EN_B3(("&nbsp;")):::term
+  end
+
+  ST_S1 --> S1
+  S1 -.->|"[入口不存在]"| N1
+  N1 -.-> A1
+  A1 --> A2
+  A2 --> A3
+  A3 -->|"[否]"| A4
+  A4 --> S2
+  A3 -->|"[是]"| S2
+  S2 --> A5
+  A5 -->|"[是]"| A6
+  A5 -->|"[否]"| B1
+  B1 --> B2
+  B2 --> S3
+  B2 --> B3
+  S3 --> EN_S3
+  A6 --> EN_A6
+  B3 --> EN_B3
+
+  classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3

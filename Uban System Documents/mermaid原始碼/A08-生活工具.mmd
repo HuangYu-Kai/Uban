@@ -1,0 +1,45 @@
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+flowchart TD
+  subgraph ROLE["長輩"]
+    ST_S1(("&nbsp;")):::term
+    S1([點選首頁日期卡片]):::act
+    S2{"要語音播報？"}:::dec
+    S3(["查看宜忌與神明誕辰"]):::act
+    S4(["聽取語音播報"]):::act
+    EN_S4(("&nbsp;")):::term
+    E1([結束]):::act
+    EN_E1(("&nbsp;")):::term
+  end
+  subgraph FE["長輩機 App（全程本地運算，不連後端）"]
+    A1["FarmerAlmanacScreen 開啟"]:::act
+    A2["lunar 套件換算<br/>農曆・干支・宜忌"]:::act
+    A3["taiwan_deity_calendar<br/>查當日神明誕辰"]:::act
+    A4["chinese_converter<br/>簡繁轉換"]:::act
+    A5["渲染農民曆版面"]:::act
+    A6["flutter_tts 本機朗讀"]:::act
+    A7["僅顯示文字"]:::act
+    EN_A7(("&nbsp;")):::term
+    A8{"裝置有<br/>TTS 引擎？"}:::dec
+  end
+
+  ST_S1 --> S1
+  S1 --> A1
+  A1 --> A2
+  A2 --> A3
+  A3 --> A4
+  A4 --> A5
+  A5 --> S3
+  S3 --> S2
+  S2 -->|"[否]"| E1
+  S2 -->|"[是]"| A8
+  A8 -->|"[是]"| A6
+  A6 --> S4
+  A8 -->|"[否]"| A7
+  S4 --> EN_S4
+  E1 --> EN_E1
+  A7 --> EN_A7
+
+  classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3

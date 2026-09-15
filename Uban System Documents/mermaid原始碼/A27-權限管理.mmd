@@ -1,0 +1,60 @@
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+flowchart TD
+  subgraph ROLE["開發者"]
+    ST_S1(("&nbsp;")):::term
+    S1([進入『帳號管理』頁]):::act
+    S2{"要做什麼？"}:::dec
+    S3(["層級調整完成"]):::act
+    EN_S3(("&nbsp;")):::term
+    S4(["停權狀態已記錄"]):::act
+    EN_S4(("&nbsp;")):::term
+  end
+  subgraph FE["uban-admin · AccountsPage"]
+    A1["顯示目前層級與停權狀態"]:::act
+  end
+  subgraph BE["uban-api · /api/admin"]
+    G0{"require_admin_or_developer()<br/>驗證通過？"}:::dec
+    B1["GET /elders/{elder_id}/subscription-tier"]:::act
+    B2["POST /elders/{elder_id}/subscription-tier<br/>free 2台 / gold 3台 / diamond 5台"]:::act
+    B3["invalidate_elder_tier_cache()"]:::act
+    B4["POST /accounts/{user_id}/ban"]:::act
+    B5["POST /accounts/{user_id}/unban"]:::act
+    B6["寫入 admin_action_log<br/>staff_id = -dev_id（負值編碼）"]:::act
+    D1[("subscription_status<br/>RevenueCat 真相表<br/>（MySQL）")]:::act
+    D2[("account_ban")]:::act
+    D3[("admin_action_log<br/>append-only・無外鍵・無查詢畫面")]:::act
+    N1["routers/auth.py::login()<br/>未查 account_ban<br/>→ 停權帳號仍可登入"]:::act
+    EN_N1(("&nbsp;")):::term
+    X(["401"]):::act
+    EN_X(("&nbsp;")):::term
+  end
+
+  ST_S1 --> S1
+  S1 --> G0
+  G0 -->|"[否]"| X
+  G0 -->|"[是]"| B1
+  B1 --> A1
+  A1 --> S2
+  S2 -->|"[調整訂閱層級]"| B2
+  B2 --> D1
+  B2 --> B3
+  B3 --> S3
+  S2 -->|"[停權]"| B4
+  B4 --> D2
+  D2 --> S4
+  S2 -->|"[解除停權]"| B5
+  B5 --> D2
+  B2 --> B6
+  B6 --> D3
+  B4 --> B6
+  B5 --> B6
+  D2 -.->|"[未生效]"| N1
+  S3 --> EN_S3
+  S4 --> EN_S4
+  N1 --> EN_N1
+  X --> EN_X
+
+  classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3

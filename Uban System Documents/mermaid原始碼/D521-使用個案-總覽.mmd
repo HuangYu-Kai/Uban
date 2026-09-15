@@ -1,0 +1,55 @@
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+flowchart TB
+  E(("長輩")):::aE
+  F(("家屬")):::aF
+  D(("開發者")):::aD
+  subgraph GE["Uban 系統 — 長輩端"]
+    direction TB
+    E1(["長輩登入系統"]):::ucE
+    E2(["AI 語音陪伴"]):::ucE
+    E3(["AI 日常提醒"]):::ucE
+    E4(["長輩通訊"]):::ucE
+    E5(["長輩社群互動"]):::ucE
+    E6(["趣味養成"]):::ucE
+    E7(["長輩社交"]):::ucE
+    E8(["生活工具"]):::ucE
+    E9(["新手引導"]):::ucE
+    E10(["隱私同意"]):::ucE
+    E11(["個人資料"]):::ucE
+    E12(["生命回顧"]):::ucE
+    E1 ~~~ E2 ~~~ E3 ~~~ E4 ~~~ E5 ~~~ E6 ~~~ E7 ~~~ E8 ~~~ E9 ~~~ E10 ~~~ E11 ~~~ E12
+  end
+  subgraph GF["Uban 系統 — 家屬端"]
+    direction TB
+    F1(["帳號與設備管理"]):::ucF
+    F2(["照護排程管理"]):::ucF
+    F3(["長輩狀態監測"]):::ucF
+    F4(["家屬通訊"]):::ucF
+    F5(["安全監控"]):::ucF
+    F6(["家屬社交"]):::ucF
+    F7(["AI 協作"]):::ucF
+    F8(["生命回顧"]):::ucF
+    F9(["問題回報"]):::ucF
+    F10(["個人資料"]):::ucF
+    F1 ~~~ F2 ~~~ F3 ~~~ F4 ~~~ F5 ~~~ F6 ~~~ F7 ~~~ F8 ~~~ F9 ~~~ F10
+  end
+  subgraph GD["Uban 系統 — 開發者管理端"]
+    direction TB
+    D1(["開發者登入"]):::ucD
+    D2(["帳號安全管理"]):::ucD
+    D3(["平台數據分析"]):::ucD
+    D4(["使用者除錯"]):::ucD
+    D5(["權限管理"]):::ucD
+    D6(["問題處理"]):::ucD
+    D7(["營運管理"]):::ucD
+    D1 ~~~ D2 ~~~ D3 ~~~ D4 ~~~ D5 ~~~ D6 ~~~ D7
+  end
+  E --- GE
+  F --- GF
+  D --- GD
+  classDef aE fill:#D5E8D4,stroke:#82B366,stroke-width:2px,color:#1B3A17
+  classDef aF fill:#F8CECC,stroke:#B85450,stroke-width:2px,color:#4A1512
+  classDef aD fill:#FFF2CC,stroke:#D6B656,stroke-width:2px,color:#4A3A0B
+  classDef ucE fill:#D5E8D4,stroke:#82B366,stroke-width:1.5px,color:#1B3A17
+  classDef ucF fill:#F8CECC,stroke:#B85450,stroke-width:1.5px,color:#4A1512
+  classDef ucD fill:#FFF2CC,stroke:#D6B656,stroke-width:1.5px,color:#4A3A0B

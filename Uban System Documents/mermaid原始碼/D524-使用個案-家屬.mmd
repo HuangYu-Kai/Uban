@@ -1,0 +1,60 @@
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+flowchart LR
+  A(("家屬")):::actor
+  subgraph SYS["Uban 系統 — 家屬端"]
+    direction LR
+    CU1(["帳號與設備管理"]):::uc
+    CE1["登入註冊與綁定設備"]:::ev
+    CE2["訂閱與加值付費"]:::ev
+    CU2(["照護排程管理"]):::uc
+    CE3["查閱與修改排程"]:::ev
+    CE4["手動／AI 安排流程"]:::ev
+    CE5["查閱數據與情緒報告"]:::ev
+    CU3(["長輩狀態監測"]):::uc
+    CE6["遠端單向影像監控"]:::ev
+    CU4(["家屬通訊"]):::uc
+    CE7["撥打視訊通話"]:::ev
+    CE8["撥打緊急通話"]:::ev
+    CU5(["安全監控"]):::uc
+    CE9["接收跌倒自動警報<br/>（由YOLO 偵測服務自動觸發）"]:::auto
+    CE10["標記警報誤報"]:::ev
+    CU6(["家屬社交"]):::uc
+    CE11["家屬好友與動態"]:::ev
+    CU7(["AI 協作"]):::uc
+    CE12["使用 AI 照護共創助理"]:::ev
+    CU8(["生命回顧"]):::uc
+    CE13["瀏覽回憶錄"]:::ev
+    CU9(["問題回報"]):::uc
+    CE14["回報系統問題"]:::ev
+    CU10(["個人資料"]):::uc
+    CE15["填寫年齡與居住地"]:::ev
+  end
+  A --- CU1
+  CU1 --- CE1
+  CU1 --- CE2
+  A --- CU2
+  CU2 --- CE3
+  CU2 --- CE4
+  CU2 --- CE5
+  A --- CU3
+  CU3 --- CE6
+  A --- CU4
+  CU4 --- CE7
+  CU4 --- CE8
+  A --- CU5
+  CU5 --- CE9
+  CU5 --- CE10
+  A --- CU6
+  CU6 --- CE11
+  A --- CU7
+  CU7 --- CE12
+  A --- CU8
+  CU8 --- CE13
+  A --- CU9
+  CU9 --- CE14
+  A --- CU10
+  CU10 --- CE15
+  classDef actor fill:#F8CECC,stroke:#B85450,stroke-width:2px,color:#4A1512
+  classDef uc fill:#F8CECC,stroke:#B85450,stroke-width:1.5px,color:#4A1512
+  classDef ev fill:#FDECEB,stroke:#B85450,stroke-width:1px,color:#4A1512
+  classDef auto fill:#F5F5F5,stroke:#666666,stroke-width:1px,color:#222222

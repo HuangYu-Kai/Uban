@@ -1,0 +1,61 @@
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+flowchart TD
+  subgraph ROLE["家屬"]
+    ST_S1(("&nbsp;")):::term
+    S1([於『互動』分頁點撥打]):::act
+    S2{"一般通話<br/>或緊急通話？"}:::dec
+    S3(["通話中"]):::act
+    S4["點掛斷"]:::act
+  end
+  subgraph FE["家屬機 App"]
+    A1["Signaling 送出 call-request<br/>targetSocketId = null"]:::act
+    A2["Signaling 送出 emergency-call"]:::act
+    A3["顯示重撥對話框"]:::act
+    EN_A3(("&nbsp;")):::term
+    A4["VideoCallScreen 通話房"]:::act
+    M1[("Oracle Cloud Coturn<br/>UDP 媒體中繼")]:::act
+  end
+  subgraph FE2["長輩機"]
+    E1["一般來電響鈴<br/>有效期 60 秒"]:::act
+    E2["緊急：AndroidIntent 冷啟動<br/>bringToFront ＋ 強制音量<br/>有效期 3600 秒"]:::act
+    E3["接聽"]:::act
+    E4["忙線 → call-busy"]:::act
+  end
+  subgraph BE["uban-api 信令"]
+    B1["廣播給線上長輩 Socket<br/>＋ 所有長輩 FCM token"]:::act
+    B2{"長輩回應？"}:::dec
+    B3["交換 offer／answer／candidate"]:::act
+    B4["end-call → 寫入 call_record<br/>含 is_emergency 欄位"]:::act
+    EN_B4(("&nbsp;")):::term
+    T1(["通話失效"]):::act
+    EN_T1(("&nbsp;")):::term
+  end
+
+  ST_S1 --> S1
+  S1 --> S2
+  S2 -->|"[一般]"| A1
+  A1 --> B1
+  B1 --> E1
+  S2 -->|"[緊急]"| A2
+  A2 --> B1
+  B1 --> E2
+  E1 --> B2
+  E2 --> B2
+  B2 -->|"[忙線]"| E4
+  E4 --> A3
+  B2 -->|"[逾期未接]"| T1
+  B2 -->|"[接聽]"| E3
+  E3 --> B3
+  B3 --> A4
+  A4 --> S3
+  A4 --> M1
+  S3 --> S4
+  S4 --> B4
+  A3 --> EN_A3
+  B4 --> EN_B4
+  T1 --> EN_T1
+
+  classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3

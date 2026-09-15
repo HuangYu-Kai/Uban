@@ -1,0 +1,64 @@
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+flowchart TD
+  subgraph ROLE["開發者"]
+    ST_S1(("&nbsp;")):::term
+    S1([進入『寵物賽季與皮膚』頁]):::act
+    S2{"要做什麼？"}:::dec
+    S3(["新賽季開始"]):::act
+    EN_S3(("&nbsp;")):::term
+    S4(["造型上架完成"]):::act
+    EN_S4(("&nbsp;")):::term
+  end
+  subgraph FE["uban-admin · PetSeasonsPage"]
+    A1["顯示賽季清單與結算明細"]:::act
+    A2["造型表單<br/>is_paid・price_cents<br/>required_tier・is_listed"]:::act
+  end
+  subgraph FE2["長輩端"]
+    E1["GET /api/pet/skins 取上架清單"]:::act
+    E2["POST /api/pet/skins/apply<br/>套用已擁有的造型"]:::act
+  end
+  subgraph BE["uban-api · /api/admin"]
+    B1["GET /pet-seasons<br/>GET /{season_no}/settlements"]:::act
+    B2["POST /pet-seasons/reset"]:::act
+    B3["原子 UPDATE 切換 status<br/>（重複執行只生效一次）"]:::act
+    B4["封存最終體重與名次"]:::act
+    B5["全平台體重歸零為 1250 克"]:::act
+    B6["開啟新賽季"]:::act
+    B7["GET/POST /pet-skins<br/>PATCH /pet-skins/{skin_id}"]:::act
+    D1[("pet_season")]:::act
+    D2[("pet_season_settlement<br/>UNIQUE(season_no, elder_id)<br/>（MySQL）")]:::act
+    D3[("elder_pet_state.weight_grams")]:::act
+    D4[("pet_skin")]:::act
+    D5[("elder_pet_skin_ownership<br/>UNIQUE(elder_id, skin_id)")]:::act
+    GAP["★ 付費造型無購買金流<br/>取得途徑僅靠 ownership.source 發放"]:::gap
+  end
+
+  ST_S1 --> S1
+  S1 --> B1
+  B1 --> A1
+  A1 --> S2
+  S2 -->|"[賽季結算]"| B2
+  B2 --> B3
+  B3 --> D1
+  B3 --> B4
+  B4 --> D2
+  B4 --> B5
+  B5 --> D3
+  B5 --> B6
+  B6 --> D1
+  B6 --> S3
+  S2 -->|"[管理造型]"| A2
+  A2 --> B7
+  B7 --> D4
+  D4 --> S4
+  D4 --> E1
+  E1 --> E2
+  E2 --> D5
+  D4 -.-> GAP
+  S3 --> EN_S3
+  S4 --> EN_S4
+
+  classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3

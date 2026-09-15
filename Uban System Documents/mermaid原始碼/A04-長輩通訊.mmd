@@ -1,0 +1,58 @@
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+flowchart TD
+  subgraph ROLE["長輩"]
+    ST_S1(("&nbsp;")):::term
+    S1([於『電話』分頁點選好友]):::act
+    S2{"來電響鈴<br/>是否接聽？"}:::dec
+    S3(["進行視訊通話"]):::act
+    EN_S3(("&nbsp;")):::term
+  end
+  subgraph FE["長輩機 App（Signaling 單例）"]
+    A1["送出 call-request<br/>帶 targetId，不廣播"]:::act
+    A2["收到 call-request<br/>／emergency-call"]:::act
+    A3{"payload<br/>是否逾期？<br/>一般 60s／緊急 3600s"}:::dec
+    A4["顯示來電畫面<br/>CallKit 或備援通知"]:::act
+    A5["回送 call-accept"]:::act
+    A6["建立 RTCPeerConnection<br/>交換 offer／answer／candidate"]:::act
+    A7["ICE candidate 佇列<br/>待 setRemoteDescription 後 flush"]:::act
+    A8(["進入 ElderScreen 通話房"]):::act
+    A9["送出 call-busy"]:::act
+    EN_A9(("&nbsp;")):::term
+    D1(["丟棄，不響鈴"]):::act
+    EN_D1(("&nbsp;")):::term
+  end
+  subgraph BE["uban-api 信令（Socket.IO）"]
+    B1["查 room_fcm_tokens<br/>與 call_registry"]:::act
+    B2["Socket 推送給對方"]:::act
+    B3["FCM 推送（離線備援）"]:::act
+  end
+  subgraph NET["媒體軌（與信令實體分離）"]
+    M1[("Oracle Cloud Coturn<br/>turn:152.69.196.5:3478<br/>UDP 中繼")]:::act
+  end
+
+  ST_S1 --> S1
+  S1 --> A1
+  A1 --> B1
+  B1 --> B2
+  B1 --> B3
+  B2 --> A2
+  B3 --> A2
+  A2 --> A3
+  A3 -->|"[是]"| D1
+  A3 -->|"[否]"| A4
+  A4 --> S2
+  S2 -->|"[忙線中]"| A9
+  S2 -->|"[接聽]"| A5
+  A5 --> A6
+  A6 --> A7
+  A7 --> A8
+  A8 --> S3
+  A6 --> M1
+  S3 --> EN_S3
+  A9 --> EN_A9
+  D1 --> EN_D1
+
+  classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3

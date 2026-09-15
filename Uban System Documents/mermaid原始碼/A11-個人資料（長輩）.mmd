@@ -1,0 +1,51 @@
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+flowchart TD
+  subgraph ROLE["家屬（代長輩填寫）"]
+    ST_S1(("&nbsp;")):::term
+    S1([於『資料』分頁點編輯長輩檔案]):::act
+    S2["填寫年齡（選填）"]:::act
+    S3{"居住地<br/>如何填？"}:::dec
+    S4(["送出儲存"]):::act
+  end
+  subgraph FE["家屬機 App"]
+    A1["ElderProfileEditScreen"]:::act
+    A2["手動輸入縣市／行政區"]:::act
+    A3{"已授權<br/>GPS？"}:::dec
+    A4["取得座標後反查<br/>縣市／行政區文字"]:::act
+    A5["提示改為手動輸入"]:::act
+    A6["顯示：居住地僅供統計<br/>可不填寫"]:::act
+  end
+  subgraph BE["uban-api 後端"]
+    B1["PATCH /api/user/elder/{elder_id}"]:::act
+    B2{"欄位是否留白？"}:::dec
+    B3["略過該欄<br/>維持原值不動"]:::act
+    EN_B3(("&nbsp;")):::term
+    B4["寫入 elder_profile<br/>age / residence_city / residence_district"]:::act
+    C1["GET /api/admin/stats/demographics<br/>年齡與居住地分布統計<br/>（開發者管理端）"]:::act
+    EN_C1(("&nbsp;")):::term
+  end
+
+  ST_S1 --> S1
+  S1 --> A1
+  A1 --> A6
+  A6 --> S2
+  S2 --> S3
+  S3 -->|"[手動]"| A2
+  A2 --> S4
+  S3 -->|"[用定位]"| A3
+  A3 -->|"[是]"| A4
+  A4 --> S4
+  A3 -->|"[否]"| A5
+  A5 --> A2
+  S4 --> B1
+  B1 --> B2
+  B2 -->|"[是]"| B3
+  B2 -->|"[否]"| B4
+  B4 --> C1
+  B3 --> EN_B3
+  C1 --> EN_C1
+
+  classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3

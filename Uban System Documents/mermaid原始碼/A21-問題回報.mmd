@@ -1,0 +1,51 @@
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+flowchart TD
+  subgraph ROLE["家屬"]
+    ST_S1(("&nbsp;")):::term
+    S1([開啟問題回報]):::act
+    S2["填寫標題與內容"]:::act
+    S3(["送出成功"]):::act
+    EN_S3(("&nbsp;")):::term
+  end
+  subgraph FE["家屬機 App"]
+    A1["FamilyBugReportScreen"]:::act
+    A2{"標題與內容<br/>皆已填寫？"}:::dec
+    A3["前端擋下並提示"]:::act
+    EN_A3(("&nbsp;")):::term
+    A4["BugReportService<br/>附上裝置資訊與 App 版本"]:::act
+    A5["提示稍後再試<br/>（無本機佇列重送）"]:::act
+    EN_A5(("&nbsp;")):::term
+  end
+  subgraph BE["uban-api 後端"]
+    B1["POST /api/bug-report<br/>★ 不需登入驗證"]:::gap
+    B2{"一分鐘內<br/>超過 5 次？"}:::dec
+    B3["限流拒絕"]:::act
+    EN_B3(("&nbsp;")):::term
+    B4["寫入 bug_report<br/>status = new<br/>reporter_type / reporter_id<br/>★ 刻意不設外鍵"]:::gap
+    C1["/bug-reports 頁檢視與處理<br/>new → in_progress<br/>→ resolved／wontfix<br/>（開發者管理端）"]:::act
+    EN_C1(("&nbsp;")):::term
+  end
+
+  ST_S1 --> S1
+  S1 --> A1
+  A1 --> S2
+  S2 --> A2
+  A2 -->|"[否]"| A3
+  A2 -->|"[是]"| A4
+  A4 --> B1
+  B1 -->|"[連線失敗]"| A5
+  B1 --> B2
+  B2 -->|"[是]"| B3
+  B2 -->|"[否]"| B4
+  B4 --> S3
+  B4 --> C1
+  S3 --> EN_S3
+  A3 --> EN_A3
+  A5 --> EN_A5
+  B3 --> EN_B3
+  C1 --> EN_C1
+
+  classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3

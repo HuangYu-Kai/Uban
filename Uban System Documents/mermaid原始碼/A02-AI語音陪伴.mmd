@@ -1,0 +1,60 @@
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+flowchart TD
+  subgraph ROLE["長輩"]
+    ST_S1(("&nbsp;")):::term
+    S1([說出『Hey 嘎蛙』]):::act
+    S2["說出問題或閒聊內容"]:::act
+    S3(["聽取語音回覆"]):::act
+    EN_S3(("&nbsp;")):::term
+  end
+  subgraph FE["長輩機 App"]
+    A1["常駐 SpeechToText 監聽喚醒詞<br/>elder_home_screen.dart"]:::act
+    A2{"命中喚醒詞？"}:::dec
+    A3["開啟 GoogleAssistantOverlay<br/>／ElderChatScreen"]:::act
+    A4["record 錄音 → 上傳 wav"]:::act
+    A5["接收 SSE 串流並逐字顯示"]:::act
+    A6["audioplayers 播放<br/>並快取音檔供重播"]:::act
+  end
+  subgraph BE["uban-api 後端"]
+    B1["POST /api/voice/transcribe<br/>ASR"]:::act
+    B2["POST /api/ai/chat_stream<br/>SSE"]:::act
+    B3{"Ollama<br/>可達？"}:::dec
+    B4["ollama_service<br/>gemma4:e4b-it-q4_K_M"]:::act
+    B5["gemini_service<br/>備援軌"]:::act
+    B6{"需要<br/>呼叫工具？"}:::dec
+    B7["tools_service<br/>get_weather_info / get_current_time<br/>search_news / record_elder_activity<br/>record_medication_taken"]:::act
+    B8["GET /api/voice/tts/stream<br/>edge-tts → CosyVoice → gTTS"]:::act
+    B9["背景執行緒<br/>向量化 upsert"]:::act
+    X1[("Pinecone<br/>索引 uban · 768 維<br/>（外部服務）")]:::act
+    X2[("MySQL<br/>activity_log")]:::act
+  end
+
+  ST_S1 --> S1
+  S1 --> A1
+  A1 --> A2
+  A2 -->|"[否]"| A1
+  A2 -->|"[是]"| A3
+  A3 --> S2
+  S2 --> A4
+  A4 --> B1
+  B1 --> B2
+  B2 --> B3
+  B3 -->|"[是]"| B4
+  B3 -->|"[否]"| B5
+  B4 --> B6
+  B5 --> B6
+  B6 -->|"[是]"| B7
+  B7 --> X2
+  B7 --> B8
+  B6 -->|"[否]"| B8
+  B8 --> A5
+  A5 --> A6
+  A6 --> S3
+  B2 --> B9
+  B9 --> X1
+  S3 --> EN_S3
+
+  classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3

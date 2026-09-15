@@ -1,0 +1,44 @@
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+flowchart LR
+  A(("開發者")):::actor
+  subgraph SYS["Uban 開發者管理端（/admin）"]
+    direction LR
+    DU1(["開發者登入"]):::uc
+    DE1["以開發者帳號登入管理端"]:::ev
+    DU2(["帳號安全管理"]):::uc
+    DE2["檢視與修改開發者密碼"]:::ev
+    DU3(["平台數據分析"]):::uc
+    DE3["檢視使用者年齡與居住地分布"]:::ev
+    DE4["檢視警報與誤報統計"]:::ev
+    DE5["檢視緊急通話統計"]:::ev
+    DU4(["使用者除錯"]):::uc
+    DE6["查詢個別使用者資料與時間軸"]:::ev
+    DU5(["權限管理"]):::uc
+    DE7["調整訂閱層級"]:::ev
+    DE8["停權與解除停權帳號"]:::ev
+    DU6(["問題處理"]):::uc
+    DE9["檢視與處理 BUG 回報"]:::ev
+    DU7(["營運管理"]):::uc
+    DE10["管理寵物賽季與付費造型"]:::ev
+  end
+  A --- DU1
+  DU1 --- DE1
+  A --- DU2
+  DU2 --- DE2
+  A --- DU3
+  DU3 --- DE3
+  DU3 --- DE4
+  DU3 --- DE5
+  A --- DU4
+  DU4 --- DE6
+  A --- DU5
+  DU5 --- DE7
+  DU5 --- DE8
+  A --- DU6
+  DU6 --- DE9
+  A --- DU7
+  DU7 --- DE10
+  classDef actor fill:#FFF2CC,stroke:#D6B656,stroke-width:2px,color:#4A3A0B
+  classDef uc fill:#FFF2CC,stroke:#D6B656,stroke-width:1.5px,color:#4A3A0B
+  classDef ev fill:#FFFBF0,stroke:#D6B656,stroke-width:1px,color:#4A3A0B
+  classDef auto fill:#F5F5F5,stroke:#666666,stroke-width:1px,color:#222222

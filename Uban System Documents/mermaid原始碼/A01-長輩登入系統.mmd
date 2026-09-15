@@ -1,0 +1,57 @@
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+flowchart TD
+  subgraph ROLE["長輩"]
+    ST_S1(("&nbsp;")):::term
+    S1([開啟 App]):::act
+    S2["出示 4 碼配對碼與 QR"]:::act
+  end
+  subgraph FE["長輩機 App"]
+    A1["SplashScreen 讀取<br/>prefs: user_role / saved_role"]:::act
+    A2{"本機已有<br/>elder_id？"}:::dec
+    A3["IdentificationScreen<br/>選擇『我是長者』"]:::act
+    A4["ElderPairingDisplayScreen<br/>輪詢 check_status"]:::act
+    A5{"本機角色<br/>為監控機？"}:::dec
+    A6(["進入 ElderScreen<br/>isCCTVMode = true"]):::act
+    EN_A6(("&nbsp;")):::term
+    A7(["進入 ElderHomeScreen<br/>五分頁主畫面"]):::act
+    EN_A7(("&nbsp;")):::term
+  end
+  subgraph FE2["家屬機"]
+    C1["輸入 4 碼或掃描 QR"]:::act
+    E2["家屬產生 6 碼復原碼<br/>15 分鐘有效<br/>POST /verify_recovery"]:::act
+  end
+  subgraph BE["uban-api 後端"]
+    B1["GET /api/user/status/{user_id}<br/>回傳權威 role"]:::act
+    B2["POST /api/pairing/request_code<br/>產生 4 碼 · 10 分鐘有效"]:::act
+    B3["POST /api/pairing/confirm"]:::act
+    B4["建立 user_account_data<br/>elder_profile（4 碼 elder_id）<br/>family_elder_relationship"]:::act
+    E1["配對碼作廢<br/>重新產碼"]:::act
+  end
+
+  ST_S1 --> S1
+  S1 --> A1
+  A1 --> A2
+  A2 -->|"[是]"| B1
+  B1 --> A5
+  A2 -->|"[否]"| A3
+  A3 --> B2
+  B2 --> A4
+  A4 --> S2
+  S2 --> C1
+  C1 --> B3
+  B3 --> B4
+  B4 --> A4
+  A4 --> A5
+  A5 -->|"[是]"| A6
+  A5 -->|"[否]"| A7
+  B2 -.->|"[逾 10 分鐘未使用]"| E1
+  E1 --> A3
+  C1 -.->|"[長輩換機]"| E2
+  E2 --> A5
+  A6 --> EN_A6
+  A7 --> EN_A7
+
+  classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3

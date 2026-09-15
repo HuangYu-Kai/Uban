@@ -1,0 +1,98 @@
+%%{init:{"themeVariables":{"textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+classDiagram
+  direction TB
+
+  class 使用者帳戶 {
+    +int user_id
+    +String user_name
+    +String user_email
+    +String user_authority 訂閱層級
+    +String register_platform
+    +int age
+    +String residence_city
+    +String residence_district
+  }
+  class 長輩檔案 {
+    +String elder_id 四碼
+    +String elder_name
+    +String elder_appellation
+    +String gender
+    +int age
+    +String residence_city
+    +String residence_district
+    +Text ai_persona
+    +int heartbeat_frequency
+    +int step_total
+  }
+  class 家屬長輩關係 {
+    +int relation_id
+    +int family_id
+    +String elder_id
+    +DateTime create_ts
+  }
+  class 配對碼 {
+    +int code_id
+    +int code 四碼或六碼
+    +int creator_id
+    +int is_used
+    +DateTime expires_at
+  }
+  class 訂閱狀態 {
+    +String elder_id
+    +String entitlement
+    +int is_active
+    +String store
+    +int purchased_by
+    +DateTime expires_at
+  }
+  class 遠端提醒 {
+    +int id
+    +int family_id
+    +String elder_id
+    +String title
+    +String category
+    +String time_str
+    +String repeat_days
+    +int is_active
+  }
+  class 活動日誌 {
+    +int log_id
+    +int user_id
+    +String event_type
+    +Text content
+    +DateTime timestamp
+  }
+  class 對話主題 {
+    +int topic_id
+    +String elder_id
+    +String keyword
+    +String topic_type
+  }
+  class 生命故事 {
+  <<本機儲存 無資料表>>
+    +story_id
+    +elder_id
+    +question
+    +content
+  }
+
+  使用者帳戶 "1" -- "0..1" 長輩檔案 : 無長輩檔案者即為家屬
+  使用者帳戶 "1" -- "0..*" 家屬長輩關係 : 家屬身分
+  長輩檔案 "1" -- "0..*" 家屬長輩關係 : 長輩身分
+  使用者帳戶 "1" -- "0..*" 配對碼 : 產生
+  使用者帳戶 "1" -- "0..*" 活動日誌 : 記錄
+  長輩檔案 "1" -- "0..1" 訂閱狀態 : 受益於
+  長輩檔案 "1" -- "0..*" 遠端提醒 : 被提醒
+  長輩檔案 "1" -- "0..*" 對話主題 : 擁有
+
+  classDef ent fill:#DAE8FC,stroke:#6C8EBF,stroke-width:1.5px,color:#102A43
+  classDef ref fill:#F5F5F5,stroke:#999999,stroke-width:1px,color:#444444
+  class 使用者帳戶:::ent
+  class 長輩檔案:::ent
+  class 家屬長輩關係:::ent
+  class 配對碼:::ent
+  class 訂閱狀態:::ent
+  class 遠端提醒:::ent
+  class 活動日誌:::ent
+  class 對話主題:::ent
+  class 生命故事:::ent

@@ -1,0 +1,57 @@
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+flowchart TD
+  subgraph ROLE["長輩 A（發起方）"]
+    ST_S1(("&nbsp;")):::term
+    S1([開啟『加好友』]):::act
+    S2["輸入對方 4 碼好友代碼"]:::act
+    S3(["瀏覽好友動態<br/>按讚與留言"]):::act
+  end
+  subgraph ROLE2["長輩 B（受邀方）"]
+    T1["查看好友邀請"]:::act
+    T2{"是否同意？"}:::dec
+    R1(["維持未成立<br/>雙方看不到彼此動態"]):::act
+    EN_R1(("&nbsp;")):::term
+  end
+  subgraph FE["長輩機 App"]
+    A1["ElderAddFriendScreen"]:::act
+    A2["ElderFriendFeedScreen"]:::act
+    A3["提示『查無此人』"]:::act
+    EN_A3(("&nbsp;")):::term
+  end
+  subgraph BE["uban-api 後端"]
+    B1["GET /api/friend/search"]:::act
+    B2{"代碼存在<br/>且非本人？"}:::dec
+    B3["POST /api/friend/request<br/>寫入 elder_friendship（pending）"]:::act
+    B4["GET /api/friend/requests"]:::act
+    B5["POST /api/friend/respond<br/>狀態改為 accepted"]:::act
+    B6["GET /api/friend/feed"]:::act
+    B7["POST /post/{id}/like<br/>POST /post/{id}/comment"]:::act
+    DB[("elder_friendship<br/>UNIQUE(elder_id_low, elder_id_high)<br/>friend_post / _comment / _like")]:::act
+  end
+
+  ST_S1 --> S1
+  S1 --> A1
+  A1 --> S2
+  S2 --> B1
+  B1 --> B2
+  B2 -->|"[否]"| A3
+  B2 -->|"[是]"| B3
+  B3 --> DB
+  B3 --> B4
+  B4 --> T1
+  T1 --> T2
+  T2 -->|"[拒絕]"| R1
+  T2 -->|"[同意]"| B5
+  B5 --> DB
+  B5 --> B6
+  B6 --> A2
+  A2 --> S3
+  S3 --> B7
+  B7 --> DB
+  R1 --> EN_R1
+  A3 --> EN_A3
+
+  classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3

@@ -1,0 +1,46 @@
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+flowchart LR
+  A(("長輩")):::actor
+  subgraph SYS["Uban 系統 — 長輩端（二）"]
+    direction LR
+    BU1(["趣味養成"]):::uc
+    BE1["走路養小豬"]:::ev
+    BE2["查看小豬排行榜"]:::ev
+    BE3["餵食小豬"]:::ev
+    BE4["查看成長階段與賽季"]:::ev
+    BU2(["長輩社交"]):::uc
+    BE5["加入好友"]:::ev
+    BE6["查看好友動態"]:::ev
+    BU3(["生活工具"]):::uc
+    BE7["查詢農民曆"]:::ev
+    BU4(["新手引導"]):::uc
+    BE8["檢視操作教學"]:::ev
+    BU5(["隱私同意"]):::uc
+    BE9["同意隱私權政策"]:::ev
+    BU6(["個人資料"]):::uc
+    BE10["填寫年齡與居住地"]:::ev
+    BU7(["生命回顧"]):::uc
+    BE11["錄製生命故事"]:::ev
+  end
+  A --- BU1
+  BU1 --- BE1
+  BU1 --- BE2
+  BU1 --- BE3
+  BU1 --- BE4
+  A --- BU2
+  BU2 --- BE5
+  BU2 --- BE6
+  A --- BU3
+  BU3 --- BE7
+  A --- BU4
+  BU4 --- BE8
+  A --- BU5
+  BU5 --- BE9
+  A --- BU6
+  BU6 --- BE10
+  A --- BU7
+  BU7 --- BE11
+  classDef actor fill:#D5E8D4,stroke:#82B366,stroke-width:2px,color:#1B3A17
+  classDef uc fill:#D5E8D4,stroke:#82B366,stroke-width:1.5px,color:#1B3A17
+  classDef ev fill:#EDF6EC,stroke:#82B366,stroke-width:1px,color:#1B3A17
+  classDef auto fill:#F5F5F5,stroke:#666666,stroke-width:1px,color:#222222

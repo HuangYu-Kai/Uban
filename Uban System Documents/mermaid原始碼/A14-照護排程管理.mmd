@@ -1,0 +1,61 @@
+%%{init:{"flowchart":{"curve":"linear","htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+flowchart TD
+  subgraph ROLE["家屬"]
+    ST_S1(("&nbsp;")):::term
+    S1([進入照護排程]):::act
+    S2{"要做什麼？"}:::dec
+    S3["以自然語言描述需求"]:::act
+    S4{"草稿是否<br/>符合預期？"}:::dec
+    S5(["排程生效"]):::act
+    EN_S5(("&nbsp;")):::term
+    S6(["查看情緒報告<br/>與破冰話題建議"]):::act
+    EN_S6(("&nbsp;")):::term
+  end
+  subgraph FE["家屬機 App"]
+    A1["HealthReminderScreen"]:::act
+    A2["FamilyAiCopilotScreen"]:::act
+    A3["顯示排程草稿供逐筆編輯"]:::act
+    A4["首頁 AI 情緒雷達卡"]:::act
+  end
+  subgraph BE["uban-api 後端"]
+    G0{"call_security<br/>家屬－長輩關係<br/>驗證通過？"}:::dec
+    B1["GET /api/reminder/elder/{elder_id}"]:::act
+    B2["POST /api/reminder/<br/>PUT /{id}｜/toggle｜DELETE /{id}"]:::act
+    B3["POST /api/ai/family_copilot/chat"]:::act
+    B4["POST /api/reminder/batch_create"]:::act
+    B5["GET /api/ai/elder_mood_insight/{elder_id}"]:::act
+    J1["check_remote_reminders_job<br/>每分鐘推播給長輩<br/>（APScheduler 排程）"]:::act
+    DB[("remote_reminders")]:::act
+    X(["回傳無權限"]):::act
+    EN_X(("&nbsp;")):::term
+  end
+
+  ST_S1 --> S1
+  S1 --> G0
+  G0 -->|"[否]"| X
+  G0 -->|"[是]"| A1
+  A1 --> B1
+  B1 --> S2
+  S2 -->|"[查閱與修改]"| B2
+  B2 --> DB
+  S2 -->|"[AI 安排]"| A2
+  A2 --> S3
+  S3 --> B3
+  B3 --> A3
+  A3 --> S4
+  S4 -->|"[否]"| A3
+  S4 -->|"[是]"| B4
+  B4 --> DB
+  S2 -->|"[查閱數據與情緒報告]"| A4
+  A4 --> B5
+  B5 --> S6
+  DB --> J1
+  J1 --> S5
+  S5 --> EN_S5
+  S6 --> EN_S6
+  X --> EN_X
+
+  classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3

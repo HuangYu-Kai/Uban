@@ -1,0 +1,118 @@
+%%{init:{"themeVariables":{"textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+classDiagram
+  direction TB
+
+  class 通話紀錄 {
+    +String call_id
+    +String room_id
+    +String caller_id
+    +String callee_id
+    +DateTime start_time
+    +DateTime end_time
+    +String status
+    +int is_emergency
+  }
+  class 推播權杖 {
+    +int user_id
+    +String room_id
+    +String fcm_token
+    +String role
+    +String device_mode
+    +String app_state
+  }
+  class 監視裝置綁定 {
+    +String elder_id
+    +int family_id
+    +String device_name
+    +int device_id
+    +DateTime last_seen_at
+  }
+  class 影像串流狀態 {
+    +int feed_id
+    +int device_id
+    +String elder_id
+    +boolean yolo_detection_enabled
+    +DateTime last_frame_at
+    +String status
+  }
+  class 緊急警報 {
+    +int alert_id
+    +String elder_id
+    +String alert_type
+    +float confidence
+    +String snapshot_url
+    +String status
+    +int is_false_alarm
+    +int false_alarm_marked_by
+  }
+  class 室內區域事件 {
+    +int id
+    +String elder_id
+    +String from_zone
+    +String to_zone
+    +float dwell_seconds
+    +DateTime occurred_at
+  }
+  class 開發者帳號 {
+    +int dev_id
+    +String username
+    +String password_hash
+    +Blob password_cipher 可逆加密
+    +int is_active
+  }
+  class 問題回報 {
+    +int id
+    +String reporter_type
+    +String reporter_id
+    +String title
+    +Text content
+    +String status
+    +int handled_by_staff_id
+  }
+  class 帳號停權 {
+    +int user_id
+    +int is_banned
+    +String reason
+    +int banned_by_staff_id
+  }
+  class 管理操作稽核 {
+    +int id
+    +int staff_id 負值代表開發者
+    +String action_type
+    +String target_type
+    +String target_id
+    +DateTime created_at
+  }
+  class 使用者帳戶 {
+    <<引用・詳見圖 5-4-1>>
+  }
+  class 長輩檔案 {
+    <<引用・詳見圖 5-4-1>>
+  }
+
+  使用者帳戶 "1" -- "0..*" 推播權杖 : 註冊
+  使用者帳戶 "1" -- "0..*" 通話紀錄 : 參與
+  長輩檔案 "1" -- "0..*" 監視裝置綁定 : 綁定
+  監視裝置綁定 "1" -- "0..1" 影像串流狀態 : 回報
+  長輩檔案 "1" -- "0..*" 緊急警報 : 觸發
+  使用者帳戶 "0..1" -- "0..*" 緊急警報 : 標記誤報
+  長輩檔案 "1" -- "0..*" 室內區域事件 : 產生
+  開發者帳號 "1" -- "0..*" 管理操作稽核 : 留下
+  開發者帳號 "1" -- "0..*" 問題回報 : 處理
+  開發者帳號 "1" -- "0..*" 帳號停權 : 執行
+  使用者帳戶 "1" -- "0..1" 帳號停權 : 被停權
+
+  classDef ent fill:#DAE8FC,stroke:#6C8EBF,stroke-width:1.5px,color:#102A43
+  classDef ref fill:#F5F5F5,stroke:#999999,stroke-width:1px,color:#444444
+  class 通話紀錄:::ent
+  class 推播權杖:::ent
+  class 監視裝置綁定:::ent
+  class 影像串流狀態:::ent
+  class 緊急警報:::ent
+  class 室內區域事件:::ent
+  class 開發者帳號:::ent
+  class 問題回報:::ent
+  class 帳號停權:::ent
+  class 管理操作稽核:::ent
+  class 使用者帳戶:::ref
+  class 長輩檔案:::ref

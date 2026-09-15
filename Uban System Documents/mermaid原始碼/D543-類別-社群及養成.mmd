@@ -1,0 +1,95 @@
+%%{init:{"themeVariables":{"textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000"}}}%%
+classDiagram
+  direction TB
+
+  class 家庭貼文 {
+    +int id
+    +int family_id
+    +int author_id
+    +String author_role
+    +Text content
+    +String image_url
+    +int like_count
+  }
+  class 長輩好友關係 {
+    +String elder_id_low
+    +String elder_id_high
+    +String status
+    +String requester_elder_id
+  }
+  class 家屬好友關係 {
+    +int family_id_low
+    +int family_id_high
+    +String status
+    +int requester_family_id
+  }
+  class 每日新聞 {
+    +int id
+    +Date data_date
+    +String category_key
+    +String title
+    +Text content
+    +String audio_url
+    +Text subtitles
+  }
+  class 寵物狀態 {
+    +String elder_id
+    +int weight_grams 體重制
+    +DateTime updated_at
+  }
+  class 成長階段門檻 {
+    +int stage_no 一到五
+    +String title
+    +int min_weight_grams
+    +int max_weight_grams
+  }
+  class 賽季 {
+    +int season_no
+    +Date start_date
+    +Date end_date
+    +String status
+  }
+  class 賽季結算 {
+    +int season_no
+    +String elder_id
+    +int final_weight_grams
+    +int final_rank
+  }
+  class 寵物造型 {
+    +int id
+    +String display_name
+    +String asset_path
+    +int is_paid
+    +int price_cents
+    +String required_tier
+    +int is_listed
+  }
+  class 使用者帳戶 {
+    <<引用・詳見圖 5-4-1>>
+  }
+  class 長輩檔案 {
+    <<引用・詳見圖 5-4-1>>
+  }
+
+  使用者帳戶 "1" -- "0..*" 家庭貼文 : 發布
+  長輩檔案 "1" -- "0..*" 長輩好友關係 : 交友
+  使用者帳戶 "1" -- "0..*" 家屬好友關係 : 交友
+  長輩檔案 "1" -- "1" 寵物狀態 : 飼養
+  寵物狀態 "0..*" -- "1" 成長階段門檻 : 對應階段
+  賽季 "1" -- "0..*" 賽季結算 : 封存
+  長輩檔案 "1" -- "0..*" 賽季結算 : 名次
+  長輩檔案 "0..*" -- "0..*" 寵物造型 : 擁有並套用
+
+  classDef ent fill:#DAE8FC,stroke:#6C8EBF,stroke-width:1.5px,color:#102A43
+  classDef ref fill:#F5F5F5,stroke:#999999,stroke-width:1px,color:#444444
+  class 家庭貼文:::ent
+  class 長輩好友關係:::ent
+  class 家屬好友關係:::ent
+  class 每日新聞:::ent
+  class 寵物狀態:::ent
+  class 成長階段門檻:::ent
+  class 賽季:::ent
+  class 賽季結算:::ent
+  class 寵物造型:::ent
+  class 使用者帳戶:::ref
+  class 長輩檔案:::ref
