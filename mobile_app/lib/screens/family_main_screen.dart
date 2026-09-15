@@ -1015,6 +1015,10 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
         return '長時間躺臥';
       case 'prolonged_inactivity':
         return '長時間無活動';
+      // ★ 2026-09-15：長輩對小嘎開口求救（notify_family_SOS）走同一條警報
+      //   派送鏈路，device_id 為哨兵值 0 表示不是來自監視機。
+      case 'sos_voice':
+        return '長輩開口求救';
       default:
         return '異常狀況';
     }

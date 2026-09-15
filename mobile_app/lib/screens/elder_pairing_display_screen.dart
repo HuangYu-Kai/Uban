@@ -20,14 +20,6 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
     'DEV_BYPASS_LOGIN',
     defaultValue: false,
   );
-  static const int _devBypassUserId = int.fromEnvironment(
-    'DEV_BYPASS_USER_ID',
-    defaultValue: 2,
-  );
-  static const String _devBypassUserName = String.fromEnvironment(
-    'DEV_BYPASS_USER_NAME',
-    defaultValue: '宇璿',
-  );
 
   String? _pairingCode;
   int _secondsLeft = 0;
@@ -97,44 +89,118 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
           context: context,
           barrierDismissible: false,
           builder: (context) => AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: Text(
-              '設備角色選擇',
-              style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold),
-            ),
-            content: Text(
-              '系統偵測到此長輩目前已有其他「通話設備」在線。\n\n您希望將此設備設定為：',
-              style: GoogleFonts.notoSansTc(fontSize: 16),
-            ),
-            actionsAlignment: MainAxisAlignment.spaceEvenly,
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false), // 選擇通話機
-                child: Text(
-                  '設為通話機',
-                  style: GoogleFonts.notoSansTc(
-                    color: const Color(0xFF2E7D78),
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
+            contentPadding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+            title: Row(
+              children: [
+                const Text('👵 ', style: TextStyle(fontSize: 26)),
+                Expanded(
+                  child: Text(
+                    '這台手機平常怎麼用呢？',
+                    style: GoogleFonts.notoSansTc(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 20,
+                      color: const Color(0xFF1E293B),
+                    ),
                   ),
                 ),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(context, true), // 選擇監控機
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFE74C3C),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-                child: Text(
-                  '設為監控機',
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  '請選擇您打算如何使用這台手機：\n（完全免費安心使用，之後隨時可以在設定更換喔！）',
                   style: GoogleFonts.notoSansTc(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
+                    fontSize: 15,
+                    color: const Color(0xFF475569),
+                    height: 1.4,
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 18),
+                // 選項 1：隨身拿著用（打電話、看日曆、養小豬）
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(context, false), // 隨身通話機
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF2E7D78),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    elevation: 2,
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.phone_iphone_rounded, size: 28),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '📱 我隨身拿著用',
+                              style: GoogleFonts.notoSansTc(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Text(
+                              '打電話、看日曆、養小豬',
+                              style: GoogleFonts.notoSansTc(
+                                fontSize: 13,
+                                color: Colors.white70,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: Colors.white70),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                // 選項 2：放在客廳插著電（守護全家平安）
+                OutlinedButton(
+                  onPressed: () => Navigator.pop(context, true), // 定點守護機
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF334155),
+                    side: const BorderSide(color: Color(0xFF94A3B8), width: 1.5),
+                    padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.home_rounded, size: 28, color: Color(0xFF0284C7)),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '🏠 放在客廳插著電',
+                              style: GoogleFonts.notoSansTc(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: const Color(0xFF1E293B),
+                              ),
+                            ),
+                            Text(
+                              '定點守護、全家遠端平安連線',
+                              style: GoogleFonts.notoSansTc(
+                                fontSize: 13,
+                                color: const Color(0xFF64748B),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: Color(0xFF94A3B8)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         );
         if (chooseMonitor != null) {
@@ -382,47 +448,6 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
     await _promptModeAndNavigate(elderId, elderName, elderRoomId);
   }
 
-  Future<void> _quickLoginGawaDemo() async {
-    try {
-      final result = await ApiService.ensureGawaDemoElder();
-      if (!mounted) return;
-
-      print('🔍 Gawa API Response: $result');
-
-      if (result['status'] == 'error') {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content:
-                  Text(result['message'] ?? result['error'] ?? 'gawa帳號建立失敗')),
-        );
-        return;
-      }
-
-      final data = result['data'] as Map<String, dynamic>?;
-      print('🔍 Gawa Data: $data');
-      final rawElderId = data?['elder_user_id'];
-      print('🔍 rawElderId: $rawElderId (type: ${rawElderId.runtimeType})');
-      final elderId =
-          rawElderId is int ? rawElderId : int.tryParse('${rawElderId ?? ''}');
-      print('🔍 elderId after parse: $elderId');
-      final elderName = (data?['elder_name'] ?? 'gawa').toString();
-      final elderRoomId = data?['elder_id']?.toString();
-      if (elderId == null || elderId <= 0) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('gawa帳號建立成功，但登入資料不完整')),
-        );
-        return;
-      }
-
-      await loginAndPersist(elderId: elderId, elderName: elderName, elderRoomId: elderRoomId);
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('登入gawa失敗：$e')),
-      );
-    }
-  }
-
   /// 快速登入宇璿（user_id=2）- 直接以【通話機】身份進入長輩首頁，跳過角色選擇對話框
   Future<void> _quickLoginYuxuanDemo() async {
     try {
@@ -482,25 +507,74 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
     }
   }
 
-  /// 🌟 方案 A：長者自主陪伴模式（單人即用，完全無需子女即可使用）
+  /// 🌟 方案 A：長者自主陪伴模式（單人即用，全新長者向雲端動態申領唯一獨立帳號）
   Future<void> _startAutonomousMode() async {
+    setState(() => _isLoading = true);
     try {
       final prefs = await SharedPreferences.getInstance();
-      final int elderId = prefs.getInt('last_elder_id') ?? 2;
-      final String elderName = prefs.getString('last_elder_name') ?? '長輩朋友';
-      final String elderRoomId = prefs.getString('last_elder_room_id') ?? '6160';
+      int? elderId = prefs.getInt('last_elder_id');
+      String elderName = prefs.getString('last_elder_name') ?? '長輩朋友';
+      String? elderRoomId = prefs.getString('last_elder_room_id');
+
+      // 若全新安裝無帳號，向後端申請專屬唯一的獨立長者帳號與房號（杜絕 ID 衝突）
+      if (elderId == null) {
+        final result = await ApiService.createAutonomousElder();
+        if (result['status'] == 'success' && result['data'] != null) {
+          final data = result['data'];
+          elderId = data['user_id'] as int?;
+          elderName = (data['elder_name'] as String?) ?? '長輩朋友';
+          elderRoomId = (data['room_id']?.toString()) ?? (data['elder_profile_id']?.toString());
+        } else {
+          final err = result['message'] ?? result['error'] ?? '建立帳號失敗';
+          throw Exception(err);
+        }
+      }
+
+      if (elderId == null) {
+        throw Exception('無法獲取長輩帳號識別碼');
+      }
+
+      elderRoomId ??= 'room_$elderId';
 
       await prefs.setBool('is_autonomous_mode', true);
-      await loginAndPersist(
+      await prefs.setInt('caregiver_id', elderId);
+      await prefs.setString('caregiver_name', elderName);
+      await prefs.setString('user_role', 'elder');
+      await prefs.setString('saved_role', 'elder');
+      await prefs.setString('elder_room_id', elderRoomId);
+      await prefs.setBool('saved_is_cctv', false);
+      await prefs.setString('saved_device_name', '$elderName的設備');
+      await prefs.setString('device_role_$elderRoomId', 'comm');
+      await _rememberLastElder(
+        prefs,
         elderId: elderId,
         elderName: elderName,
         elderRoomId: elderRoomId,
       );
+      await prefs.setString('last_elder_device_role', 'comm');
+
+      if (!mounted) return;
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ElderHomeScreen(
+            userId: elderId!,
+            userName: elderName,
+            roomId: elderRoomId!,
+          ),
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('進入自主模式失敗：$e')),
+        SnackBar(
+          content: Text('進入自主模式失敗：$e'),
+          backgroundColor: Colors.redAccent,
+        ),
       );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -617,12 +691,12 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    '💡 沒有家人在身旁？點此直接享受 AI 伴侶、農民曆與小豬養成！日後可隨時補綁家人。',
+                    '無須等待家人，點此先享受 AI 伴侶、農民曆與小豬養成（日後隨時可補綁家人）',
                     textAlign: TextAlign.center,
                     style: GoogleFonts.notoSansTc(
-                      fontSize: 14,
+                      fontSize: 13,
                       color: const Color(0xFF64748B),
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                   const SizedBox(height: 24),
