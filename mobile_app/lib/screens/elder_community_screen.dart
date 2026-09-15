@@ -10,8 +10,10 @@ import 'package:path_provider/path_provider.dart';
 import '../models/community_post.dart';
 import '../services/api_service.dart';
 import '../services/community_service.dart';
+import '../services/friend_service.dart';
 import '../theme/app_theme.dart';
 import 'elder_friend_feed_screen.dart';
+import 'elder_tabs/profile/widgets/friend_id_card.dart';
 import 'widgets/pet_reward_dialog.dart';
 import 'widgets/polaroid_post_card.dart';
 
@@ -77,6 +79,12 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen>
   // vsync ticker。
   TabController? _tabController;
 
+  // ★ 任務 C：長輩自己的朋友圈好友 ID，搬到「朋友」標籤上方的 FriendIdCard
+  //   顯示用。只有長輩端自己的路徑（friendTabContent == null）才需要載入，
+  //   家屬端傳入 friendTabContent 時完全不會用到這個欄位。null 時
+  //   FriendIdCard 自己會顯示「載入中…」。
+  String? _myFriendElderId;
+
   @override
   void initState() {
     super.initState();
@@ -84,6 +92,17 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen>
       _tabController = TabController(length: 2, vsync: this);
     }
     _initialize();
+    if (widget.showFriendTab && widget.friendTabContent == null) {
+      _loadMyFriendElderId();
+    }
+  }
+
+  Future<void> _loadMyFriendElderId() async {
+    final elderId = await FriendService.resolveMyElderId(widget.userId);
+    if (!mounted) return;
+    setState(() {
+      _myFriendElderId = elderId;
+    });
   }
 
   Future<void> _initialize() async {
@@ -955,13 +974,28 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen>
         controller: _tabController,
         children: [
           familyContent,
-          // 朋友標籤：預設（friendTabContent 為 null，長輩端呼叫點的現況）
-          // 100% 重用 FriendFeedBody（elder_friend_feed_screen.dart），與
-          // 「電話 → 朋友 → 朋友圈」（ElderFriendFeedScreen）共用同一份邏輯，
-          // 行為與改動前逐位元組相同；家屬端傳入 friendTabContent
-          // （FamilyFriendFeedBody）時改顯示家屬自己的朋友圈。
+          // 朋友標籤：家屬端傳入 friendTabContent（FamilyFriendFeedBody）時
+          // 維持原樣、完全不變——不會被下面的 FriendIdCard 影響。
+          // 長輩端自己的路徑（friendTabContent 為 null，長輩端呼叫點的現況）
+          // 才在最上方加一張 FriendIdCard（★ 任務 C：從「我的」分頁搬過來，
+          // 文案語境本就屬於朋友圈），下方仍 100% 重用 FriendFeedBody
+          // （elder_friend_feed_screen.dart），與「電話 → 朋友 → 朋友圈」
+          // （ElderFriendFeedScreen）共用同一份邏輯。
           widget.friendTabContent ??
-              FriendFeedBody(userId: widget.userId, userName: widget.userName),
+              Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                    child: FriendIdCard(myFriendElderId: _myFriendElderId),
+                  ),
+                  Expanded(
+                    child: FriendFeedBody(
+                      userId: widget.userId,
+                      userName: widget.userName,
+                    ),
+                  ),
+                ],
+              ),
         ],
       ),
     );

@@ -324,33 +324,9 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
 
-              const SizedBox(height: 12),
-
-// 診斷按鈕：連線測試
-              Center(
-                child: TextButton.icon(
-                  onPressed: () async {
-                    final health = await ApiService.checkHealth();
-                    if (!context.mounted) return;
-                    if (health.containsKey('status') &&
-                        health['status'] == 'ok') {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('✅ 連線成功：後端運作中')),
-                      );
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('❌ 連線失敗：${health['error']}')),
-                      );
-                    }
-                  },
-                  icon: const Icon(Icons.network_check, size: 16),
-                  label: const Text('連線測試 (診斷用)'),
-                ),
-              ),
-
               const SizedBox(height: 16),
 
-// 註冊連結
+              // 註冊連結
               Center(
                 child: TextButton(
                   onPressed: () {

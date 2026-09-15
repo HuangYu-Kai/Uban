@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../data/privacy_policy_content.dart';
 import '../services/api_service.dart';
 import '../widgets/policy_detail_dialog.dart';
+import 'family_onboarding_screen.dart';
+import '../globals.dart';
 
 class RegistrationScreen extends StatefulWidget {
   const RegistrationScreen({super.key});
@@ -17,7 +20,9 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   final TextEditingController _passwordController = TextEditingController();
 
   bool _isLoading = false;
-  bool _agreedToTerms = false;
+  bool _agreedToTerms = true;
+  // ★ 持久化錯誤訊息：取代原本的 SnackBar，避免使用者錯過失敗原因（見第 27 輪卡關根因）
+  String? _errorMessage;
 
   void _showDisclaimerDialog(BuildContext context) {
     PolicyDetailDialog.show(
@@ -92,25 +97,48 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     );
   }
 
+  /// ★ 將後端錯誤負載轉為可顯示的繁體中文字串。
+  /// FastAPI 422 驗證錯誤的 `detail` 是 List（例如密碼長度不足），
+  /// 若直接丟進 Text() 會是執行期型別錯誤，必須先轉字串。
+  String _readableError(dynamic raw) {
+    if (raw is String && raw.trim().isNotEmpty) {
+      return raw.trim();
+    }
+    if (raw is List && raw.isNotEmpty) {
+      final first = raw.first;
+      if (first is Map && first['msg'] != null) {
+        return first['msg'].toString();
+      }
+      return first.toString();
+    }
+    if (raw is Map) {
+      final msg = raw['msg'] ?? raw['detail'] ?? raw['message'];
+      if (msg != null) return msg.toString();
+      return raw.toString();
+    }
+    return '註冊失敗，請稍後再試';
+  }
+
   Future<void> _handleRegister() async {
+    setState(() => _errorMessage = null);
+
     final name = _nameController.text.trim();
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
 
     if (name.isEmpty || email.isEmpty || password.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('請填寫所有欄位')));
+      setState(() => _errorMessage = '請填寫姓名、Email 與密碼');
       return;
     }
 
     if (!_agreedToTerms) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('請先閱讀並同意隱私權政策與醫療免責聲明'),
-          backgroundColor: Colors.redAccent,
-        ),
-      );
+      setState(() => _errorMessage = '請先勾選並同意隱私權政策與醫療免責聲明');
+      return;
+    }
+
+    // ★ 後端 schemas/auth.py 要求密碼至少 6 碼，未先檢查會得到不友善的 422 錯誤
+    if (password.length < 6) {
+      setState(() => _errorMessage = '密碼至少需要 6 個字');
       return;
     }
 
@@ -128,20 +156,50 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       // API 回傳格式: { status: "success", data: { user_id, ... } }
       final data = result['data'];
       if (result['status'] == 'success' && data != null && data['user_id'] != null) {
+        // ★ 核心優化：註冊成功直接自動登入，流暢接續家屬主流程
+        try {
+          final loginResult = await ApiService.login(email, password);
+          if (!mounted) return;
+          final loginData = loginResult['data'];
+          if (loginResult['status'] == 'success' && loginData != null && loginData['user_id'] != null) {
+            final int userId = loginData['user_id'];
+            final String userName = loginData['user_name'] ?? name;
+
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setInt('caregiver_id', userId);
+            await prefs.setString('caregiver_name', userName);
+            await prefs.setString('user_role', 'family');
+            await prefs.setString('saved_role', 'family');
+            appRole = 'family';
+
+            if (!mounted) return;
+            setState(() => _errorMessage = null);
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(
+                builder: (context) => FamilyOnboardingScreen(userId: userId, userName: userName),
+              ),
+              (route) => false,
+            );
+            return;
+          }
+        } catch (_) {}
+
+        if (!mounted) return;
+        setState(() => _errorMessage = null);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('註冊成功，請登入')),
         );
-        Navigator.pop(context); // 回到登入頁
+        Navigator.pop(context); // 備援：回到登入頁
       } else {
-        // 顯示錯誤訊息
-        final errorMsg = result['error'] ?? result['detail'] ?? '註冊失敗';
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(errorMsg)));
+        // ★ 顯示持久化錯誤訊息，避免 SnackBar 稍縱即逝導致使用者看不到失敗原因
+        setState(() {
+          _errorMessage = _readableError(result['error'] ?? result['detail']);
+        });
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('連線失敗: $e')));
+      setState(() => _errorMessage = '連線失敗，請檢查網路後再試一次');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -184,15 +242,26 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
               ),
               const SizedBox(height: 32),
 
-              _buildTextField(_nameController, '您的姓名', Icons.person_outline),
+              _buildTextField(
+                _nameController,
+                '您的姓名',
+                Icons.person_outline,
+                onChanged: (_) => setState(() => _errorMessage = null),
+              ),
               const SizedBox(height: 16),
-              _buildTextField(_emailController, 'Email', Icons.email_outlined),
+              _buildTextField(
+                _emailController,
+                'Email',
+                Icons.email_outlined,
+                onChanged: (_) => setState(() => _errorMessage = null),
+              ),
               const SizedBox(height: 16),
               _buildTextField(
                 _passwordController,
                 '密碼',
                 Icons.lock_outline,
                 isPassword: true,
+                onChanged: (_) => setState(() => _errorMessage = null),
               ),
               const SizedBox(height: 24),
 
@@ -206,6 +275,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                     onChanged: (val) {
                       setState(() {
                         _agreedToTerms = val ?? false;
+                        _errorMessage = null;
                       });
                     },
                   ),
@@ -262,6 +332,40 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
               const SizedBox(height: 24),
 
+              // ★ 持久化錯誤橫幅：取代原本容易被忽略的 SnackBar，
+              //   確保使用者（包含自動化測試代理）能看到失敗原因並停留在畫面上。
+              if (_errorMessage != null) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFEE2E2),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFDC2626)),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(
+                        Icons.error_outline_rounded,
+                        color: Color(0xFFDC2626),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          _errorMessage!,
+                          style: GoogleFonts.notoSansTc(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFF991B1B),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+
               SizedBox(
                 width: double.infinity,
                 height: 56,
@@ -286,29 +390,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                 ),
               ),
 
-              const SizedBox(height: 20),
-
-              // 診斷按鈕：連線測試
-              Center(
-                child: TextButton.icon(
-                  onPressed: () async {
-                    final health = await ApiService.checkHealth();
-                    if (!context.mounted) return;
-                    if (health.containsKey('status') &&
-                        health['status'] == 'ok') {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('✅ 連線成功：後端運作中')),
-                      );
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('❌ 連線失敗：${health['error']}')),
-                      );
-                    }
-                  },
-                  icon: const Icon(Icons.network_check, size: 16),
-                  label: const Text('連線測試 (診斷用)'),
-                ),
-              ),
+              const SizedBox(height: 16),
             ],
           ),
         ),
@@ -322,6 +404,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     IconData icon, {
     bool isPassword = false,
     TextInputType keyboardType = TextInputType.text,
+    ValueChanged<String>? onChanged,
   }) {
     return Container(
       decoration: BoxDecoration(
@@ -333,6 +416,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         controller: controller,
         obscureText: isPassword,
         keyboardType: keyboardType,
+        onChanged: onChanged,
         decoration: InputDecoration(
           hintText: hint,
           prefixIcon: Icon(icon, color: Colors.grey[600]),

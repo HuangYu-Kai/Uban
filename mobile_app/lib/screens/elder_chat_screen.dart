@@ -7,8 +7,11 @@ import 'package:http/http.dart' as http;
 import 'package:record/record.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
+import '../services/friend_service.dart';
+import '../services/memoir_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/youtube_bubble_player.dart';
 import 'news_listen_player/news_listen_player_screen.dart';
@@ -230,6 +233,65 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
           ttsLanguage: 'mandarin',
         ));
       });
+    }
+
+    // ★ 任務 D：聊天歷史載入完成後，讓小嘎在對話中自然提出回憶選題，
+    // 取代原本個人分頁獨立的「小豬想聽你說」橫幅。
+    await _maybeAskMemoirPrompt();
+  }
+
+  /// ★ 任務 D：把回憶選題自然接進 AI 聊天。優先取子女委託的提問
+  /// （MemoirService.getPendingPrompts），沒有才用每日選題
+  /// （getNextPromptQuestion），以小嘎的身分附加一則訊息到 _messages，
+  /// 沿用既有的 _ChatMessage 結構與氣泡樣式，不新增訊息型別或 widget。
+  ///
+  /// 每天只問一次（SharedPreferences 旗標 `memoir_prompt_asked_yyyy-MM-dd`）：
+  /// 長輩端先前吃過「連環彈窗」的苦頭，每次切分頁都重問會是回歸。
+  ///
+  /// 這則訊息刻意不寫進 chat_history_${widget.userId} 快取，只存在於當次
+  /// session 的畫面上，避免每日選題累積污染聊天歷史。
+  Future<void> _maybeAskMemoirPrompt() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final todayKey =
+          'memoir_prompt_asked_${DateFormat('yyyy-MM-dd').format(DateTime.now())}';
+      if (prefs.getBool(todayKey) == true) return;
+
+      // elderKey 規則沿用個人分頁既有寫法：優先用 FriendService 解析出的
+      // 4 位數 elder_id，拿不到才退回 'elder_${widget.userId}'。
+      final resolvedElderId = await FriendService.resolveMyElderId(widget.userId);
+      final elderKey = resolvedElderId ?? 'elder_${widget.userId}';
+
+      final pending = await MemoirService.instance.getPendingPrompts(elderKey);
+      String question;
+      bool isFromChild;
+      if (pending.isNotEmpty) {
+        question = pending.first.question;
+        isFromChild = true;
+      } else {
+        question = await MemoirService.instance.getNextPromptQuestion(elderKey);
+        isFromChild = false;
+      }
+
+      if (!mounted || question.trim().isEmpty) return;
+
+      final greeting = isFromChild
+          ? '跟您聊個天～您的家人想聽您說說：$question'
+          : '跟您聊個天～$question';
+
+      setState(() {
+        _messages.add(_ChatMessage(
+          greeting,
+          false,
+          ttsText: greeting,
+          ttsLanguage: 'mandarin',
+        ));
+      });
+      _scrollToBottom();
+
+      await prefs.setBool(todayKey, true);
+    } catch (e) {
+      debugPrint('⚠️ [MemoirPrompt] error: $e');
     }
   }
 

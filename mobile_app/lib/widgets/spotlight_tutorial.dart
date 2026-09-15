@@ -43,12 +43,15 @@ class SpotlightTutorial {
   SpotlightTutorial._();
 
   static const String _prefsKeyPrefix = 'tutorial_done_';
+  static const String prefsKeyAllDismissed = 'elder_all_tutorials_dismissed';
 
-  /// 顯示教學（若尚未看過）。
+  /// 顯示教學（若尚未看過且未被全域跳過）。
   ///
   /// 🛡️ 防呆設計（皆為刻意行為，請勿「順手」拿掉）：
   /// - SharedPreferences 讀取失敗一律視為「已經看過」直接跳過——寧可少看一次
   ///   教學，也不要讓教學擋住使用者操作 App。
+  /// - 使用者按過「跳過教學」後，會設定全域旗標 `elder_all_tutorials_dismissed`，
+  ///   徹底杜絕首頁與後續分頁連環彈窗轟炸長輩的體驗災難。
   /// - 個別步驟若目標元件尚未 layout（`targetKey.currentContext == null`），
   ///   該步驟自動退化為無挖洞的置中卡片，不會拋例外或卡住。
   /// - 使用者按下實體返回鍵時，等同「跳過教學」：本函式刻意不加
@@ -65,16 +68,18 @@ class SpotlightTutorial {
     if (steps.isEmpty) return;
     final String prefsKey = '$_prefsKeyPrefix$tutorialId';
 
-    bool alreadyDone;
+    bool alreadyDone = false;
+    bool allDismissed = false;
     SharedPreferences? prefs;
     try {
       prefs = await SharedPreferences.getInstance();
+      allDismissed = prefs.getBool(prefsKeyAllDismissed) ?? false;
       alreadyDone = prefs.getBool(prefsKey) ?? false;
     } catch (_) {
       // 讀取失敗 → 視為已完成，直接跳過，絕不擋住使用者。
       return;
     }
-    if (alreadyDone) return;
+    if (allDismissed || alreadyDone) return;
 
     // 確保至少經過一次完整 layout，量測目標元件位置才會準確
     // （呼叫端可能在 setState 之後緊接著呼叫本函式，此時新畫面尚未 layout 完）。
@@ -108,10 +113,59 @@ class SpotlightTutorial {
 
     // 走完全部步驟、按「跳過教學」、或被實體返回鍵關閉，都算「已顯示過」，
     // 不再重複打擾使用者。寫入失敗就算了（最差情況下次再顯示一次，不影響功能）。
-    // 注意：能執行到這裡代表上面的讀取一定成功過（失敗會提早 return），
-    // 因此 prefs 必定已被賦值，不需要再判斷 null。
     try {
       await prefs.setBool(prefsKey, true);
+    } catch (_) {}
+  }
+
+  /// 強制重播教學（用於「我的」分頁中的【重新觀看新手導覽】後悔藥入口）。
+  static Future<void> showForce(
+    BuildContext context, {
+    required String tutorialId,
+    required List<TutorialStep> steps,
+    double titleFontSize = 22,
+    double bodyFontSize = 18,
+    double buttonHeight = 56,
+  }) async {
+    if (steps.isEmpty) return;
+    final Completer<void> frameCompleter = Completer<void>();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!frameCompleter.isCompleted) frameCompleter.complete();
+    });
+    await frameCompleter.future;
+
+    if (!context.mounted) return;
+
+    await showGeneralDialog<void>(
+      context: context,
+      useRootNavigator: true,
+      barrierDismissible: false,
+      barrierColor: Colors.transparent,
+      barrierLabel: tutorialId,
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (dialogContext, animation, secondaryAnimation) {
+        return _SpotlightTutorialView(
+          steps: steps,
+          titleFontSize: titleFontSize,
+          bodyFontSize: bodyFontSize,
+          buttonHeight: buttonHeight,
+        );
+      },
+      transitionBuilder: (ctx, animation, secondaryAnimation, child) {
+        return FadeTransition(opacity: animation, child: child);
+      },
+    );
+  }
+
+  /// 重設所有教學進度（可配合重播或設定重置使用）。
+  static Future<void> resetAllTutorials() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(prefsKeyAllDismissed, false);
+      final keys = prefs.getKeys().where((k) => k.startsWith(_prefsKeyPrefix)).toList();
+      for (final k in keys) {
+        await prefs.remove(k);
+      }
     } catch (_) {}
   }
 }
@@ -174,8 +228,14 @@ class _SpotlightTutorialViewState extends State<_SpotlightTutorialView> {
     _scrollTargetIntoView();
   }
 
-  void _handleSkip() {
-    Navigator.of(context).maybePop();
+  void _handleSkip() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(SpotlightTutorial.prefsKeyAllDismissed, true);
+    } catch (_) {}
+    if (mounted) {
+      Navigator.of(context).maybePop();
+    }
   }
 
   /// 把目前步驟的目標（若有）捲進視野，捲動確定完成後才量測並套用高光矩形。

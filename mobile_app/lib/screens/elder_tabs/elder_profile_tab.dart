@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart' hide Path;
 import 'package:pedometer/pedometer.dart';
@@ -16,22 +15,20 @@ import '../../services/session_manager.dart';
 import '../../services/api_service.dart';
 import '../../services/friend_service.dart';
 import '../pet_companion_studio/models/pet_growth_state.dart';
-import '../pet_companion_studio/pet_studio_screen.dart';
+import '../pet_companion_studio/models/pet_food_item.dart';
+import '../pet_companion_studio/widgets/garden_feeding_sheet.dart';
 import '../../services/elder_reminder_manager.dart';
-import '../../services/memoir_service.dart';
+import '../../widgets/spotlight_tutorial.dart';
 
 // 模組化子元件與彈窗
-import 'profile/models/pet_mood.dart';
+import 'profile/models/pet_mood.dart'; // ⚠️ 只借用 PetHeartParticle，PetMood 列舉本身在小豬之家改版後已不再使用
 import 'profile/utils/coordinate_kalman_filter.dart';
-import 'profile/dialogs/elder_share_story_dialog.dart';
 import 'profile/dialogs/family_pairing_dialog.dart';
 import 'profile/dialogs/ai_assistant_settings_dialog.dart';
-import 'profile/widgets/storybook_header_card.dart';
-import 'profile/widgets/storybook_stage_card.dart';
-import 'profile/widgets/elder_story_prompt_banner.dart';
-import 'profile/widgets/vitality_step_goals_card.dart';
+import 'profile/widgets/pet_hero_stage.dart';
+import 'profile/widgets/pet_stats_sheet.dart';
+import 'profile/widgets/pet_corner_actions.dart';
 import 'profile/widgets/today_tasks_handmade_section.dart';
-import 'profile/widgets/friend_id_card.dart';
 import 'profile/widgets/profile_action_card.dart';
 
 class ElderProfileTab extends StatefulWidget {
@@ -61,35 +58,27 @@ class ElderProfileTab extends StatefulWidget {
 
 class _ElderProfileTabState extends State<ElderProfileTab>
     with TickerProviderStateMixin {
-  // ★ 切換為真實感測模式（關閉模擬假資料）
-  static const bool _useMockRoute = false;
   static const double _maxAccuracyMeters = 35.0;
   static const double _minPointDistanceMeters = 2.0;
   static const double _maxReasonableJumpMeters = 120.0;
   static const double _maxWalkingSpeedMps = 3.2;
   static const double _vehicleSpeedMps = 7.0;
-  static const double _simplifyToleranceMeters = 4.0;
   static const Duration _minSampleInterval = Duration(seconds: 1);
-  static const double _cleanCoordThresholdMeters = 1.0;
-  static const bool _enableSplineSmoothing = true;
+
+  // 小豬預設對話語錄（用於任務打卡的短暫慶祝語結束後回到的預設狀態）
+  static const String _defaultSpeechText = '阿公～今天天氣真好，一起散步活動身體吧！🌿';
 
   // ── 數據 ───────────────────────────────────────────────
   final int dailyStepGoal = 8000;
   int currentSteps = 0; // Will be calculated from distance or fetched
 
-  // ── 步數動畫 ──────────────────────────────────────────────
-  late AnimationController _ctrl;
-
-  // ── GPS 追蹤 ──────────────────────────────────────────────
+  // ── GPS 追蹤（距離仍餵給小豬成長，見 _computeFusedSteps）──────────────
   bool _isTracking = false;
   final List<LatLng> _routePoints = [];
   StreamSubscription<Position>? _positionStream;
-  final MapController _mapController = MapController();
   final Distance _distance = const Distance();
-  List<LatLng> _displayRouteCache = [];
   DateTime? _lastAcceptedTime;
   double _totalDistance = 0.0; // 公里
-  LatLng? _currentPosition;
   StreamSubscription<StepCount>? _stepCountStream;
   int _hardwareBaseSteps = -1;
   int _sessionPedometerSteps = 0;
@@ -99,18 +88,29 @@ class _ElderProfileTabState extends State<ElderProfileTab>
   CoordinateKalmanFilter? _latFilter;
   CoordinateKalmanFilter? _lngFilter;
 
-  // ── 🐾 零負擔守護小寵物狀態 ────────────────────────────
-  int _petIntimacy = 88;
-  int _walkFrame = 1;
-  Timer? _petWalkTimer;
+  // ── 🐾 小豬之家狀態 ────────────────────────────────────────
   late AnimationController _particleController;
   late AnimationController _petBounceController;
   final List<PetHeartParticle> _petParticles = [];
-  bool _isPetHappy = false;
   PetGrowthState? _petGrowthState;
 
-  // ★ 第四十一輪（item 3）：朋友圈好友 ID（見 _buildMyFriendIdCard）。null 代表
-  // 尚未載入完成或載入失敗，卡片自己處理 loading／錯誤態，不影響本畫面其餘邏輯。
+  // 🧺 食匣抽屜開關與庫存（比照 pet_studio_screen.dart 的 _isFeedingSheetOpen
+  // + Positioned.fill 做法——個人分頁本身就是小豬之家，不再跳轉到
+  // PetStudioScreen，餵食流程要在這裡原地重現）。
+  bool _isFeedingSheetOpen = false;
+  final Map<String, int> _feedingInventory = {
+    'carrot': -1, // 常駐無限
+    'apple': 3,
+    'cabbage': 2,
+    'sweet_potato': 2,
+    'corn': 1,
+    'watermelon': 1,
+    'peach_cake': 1,
+  };
+
+  // ★ 第四十一輪（item 3）：朋友圈好友 ID（見 PetCornerActions 內部另行解析，
+  // 本欄位供 _loadElderReminders 讀排程提醒使用）。null 代表尚未載入完成或
+  // 載入失敗。
   String? _myFriendElderId;
 
   // ── 📋 子女排程生活任務 ──────────────────────────────────
@@ -118,36 +118,29 @@ class _ElderProfileTabState extends State<ElderProfileTab>
   Set<int> _completedReminderIds = {};
   bool _isLoadingReminders = false;
 
-  // ── 🎨 手作繪本對話與溫暖語錄 ──────────────────────────────
-  String _speechText = '阿公～今天天氣真好，一起散步活動身體吧！🌿';
+  // ── 🎨 小豬對話氣泡文字 ──────────────────────────────
+  String _speechText = _defaultSpeechText;
   Timer? _speechBubbleTimer;
-  final List<String> _pigQuotes = [
-    '阿公～有您天天陪我，小豬每天都好幸福喔！❤️',
-    '記得要多喝溫水，小豬也陪您喝一杯！🍵',
-    '今天走起路來很有精神呢，我們一起加油！💪',
-    '摸摸我的圓滾肚子，把平安福氣都帶給您！✨',
-    '中午要記得吃飽飽，休息一下再散步唷！🍙',
-    '看到阿公笑瞇瞇的，小豬的心情最開心了！🌸',
-  ];
-  final int _quoteIndex = 0;
-
-  // ── 🎙️ AI 人生故事膠囊提問引導 ──────────────────────────────
-  String? _activeMemoirPrompt;
-  bool _isMemoirPromptFromChild = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    precacheImage(const AssetImage('assets/images/pet_stages/pig_stage_1.png'), context);
-    precacheImage(const AssetImage('assets/images/pet_stages/pig_stage_2.png'), context);
-    precacheImage(const AssetImage('assets/images/pet_stages/pig_stage_3.png'), context);
-    precacheImage(const AssetImage('assets/images/pet_stages/pig_stage_4.png'), context);
-    precacheImage(const AssetImage('assets/images/pet_stages/pig_stage_5.png'), context);
+    precacheImage(
+        const AssetImage('assets/images/pet_stages/pig_stage_1.png'), context);
+    precacheImage(
+        const AssetImage('assets/images/pet_stages/pig_stage_2.png'), context);
+    precacheImage(
+        const AssetImage('assets/images/pet_stages/pig_stage_3.png'), context);
+    precacheImage(
+        const AssetImage('assets/images/pet_stages/pig_stage_4.png'), context);
+    precacheImage(
+        const AssetImage('assets/images/pet_stages/pig_stage_5.png'), context);
     precacheImage(const AssetImage('assets/images/pig_mascot.png'), context);
   }
 
   Future<void> _loadPetGrowthState() async {
-    final state = await PetStorageService.loadState(currentSensorSteps: currentSteps);
+    final state =
+        await PetStorageService.loadState(currentSensorSteps: currentSteps);
     if (mounted) {
       setState(() {
         _petGrowthState = state;
@@ -165,44 +158,12 @@ class _ElderProfileTabState extends State<ElderProfileTab>
       // 出的 elder_id（見該函式說明）。initState 呼叫 _loadElderReminders 時
       // 本欄位通常還沒載入完成而被暫緩，這裡載入完成後補發一次真正的讀取。
       _loadElderReminders();
-      _loadMemoirPrompt();
-    }
-  }
-
-  void _onMemoirServiceUpdate() {
-    if (mounted) {
-      _loadMemoirPrompt();
-    }
-  }
-
-  Future<void> _loadMemoirPrompt() async {
-    final elderKey = _myFriendElderId ?? 'elder_${widget.userId}';
-    final pending = await MemoirService.instance.getPendingPrompts(elderKey);
-    if (!mounted) return;
-    if (pending.isNotEmpty) {
-      setState(() {
-        _activeMemoirPrompt = pending.first.question;
-        _isMemoirPromptFromChild = true;
-        _speechText = '阿公～兒女有悄悄話想問你：「${pending.first.question}」🎙️';
-      });
-    } else {
-      final q = await MemoirService.instance.getNextPromptQuestion(elderKey);
-      if (!mounted) return;
-      setState(() {
-        _activeMemoirPrompt = q;
-        _isMemoirPromptFromChild = false;
-      });
     }
   }
 
   @override
   void initState() {
     super.initState();
-
-    _ctrl = AnimationController(
-      duration: const Duration(milliseconds: 1600),
-      vsync: this,
-    );
 
     _particleController = AnimationController(
       duration: const Duration(milliseconds: 1000),
@@ -214,25 +175,10 @@ class _ElderProfileTabState extends State<ElderProfileTab>
       vsync: this,
     );
 
-    _petWalkTimer = Timer.periodic(const Duration(milliseconds: 450), (timer) {
-      if (!mounted) return;
-      if (_movementState == _MovementState.walking || _isTracking) {
-        setState(() {
-          _walkFrame = _walkFrame == 1 ? 2 : 1;
-        });
-      }
-    });
-
-    Future.delayed(const Duration(milliseconds: 200), () {
-      if (mounted) _ctrl.forward();
-    });
-
     _autoStartTracking();
     _startStepTracking();
     _loadElderReminders();
     ElderReminderManager.instance.addListener(_onReminderManagerUpdate);
-    MemoirService.instance.addListener(_onMemoirServiceUpdate);
-    _loadMemoirPrompt();
     _loadPetGrowthState();
     _loadMyFriendElderId();
   }
@@ -246,11 +192,8 @@ class _ElderProfileTabState extends State<ElderProfileTab>
   @override
   void dispose() {
     ElderReminderManager.instance.removeListener(_onReminderManagerUpdate);
-    MemoirService.instance.removeListener(_onMemoirServiceUpdate);
-    _ctrl.dispose();
     _particleController.dispose();
     _petBounceController.dispose();
-    _petWalkTimer?.cancel();
     _speechBubbleTimer?.cancel();
     _positionStream?.cancel();
     _stepCountStream?.cancel();
@@ -259,12 +202,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
 
   // ── 自動啟動追蹤與持久化初始化 ──────────────────────────────
   Future<void> _autoStartTracking() async {
-    if (_useMockRoute) {
-      _loadMockDemoRoute();
-      await _persistRoute();
-    } else {
-      await _loadPersistedRoute();
-    }
+    await _loadPersistedRoute();
     await _startTracking();
   }
 
@@ -274,19 +212,16 @@ class _ElderProfileTabState extends State<ElderProfileTab>
 
     final dateStr = prefs.getString('last_track_date') ?? '';
     final today = DateTime.now().toIso8601String().substring(0, 10);
-    final wasMock = prefs.getBool('is_mock_route_persisted') ?? false;
 
-    if (dateStr != today || wasMock) {
+    if (dateStr != today) {
       await prefs.remove('route_points');
       await prefs.setDouble('total_distance', 0.0);
       await prefs.setInt('session_pedometer_steps', 0);
       await prefs.setString('last_track_date', today);
-      await prefs.setBool('is_mock_route_persisted', false);
       setState(() {
         _routePoints.clear();
         _totalDistance = 0.0;
         _sessionPedometerSteps = 0;
-        _displayRouteCache.clear();
       });
       return;
     }
@@ -300,7 +235,6 @@ class _ElderProfileTabState extends State<ElderProfileTab>
         );
         _totalDistance = prefs.getDouble('total_distance') ?? 0.0;
         _sessionPedometerSteps = prefs.getInt('session_pedometer_steps') ?? 0;
-        _recomputeDisplayRoute();
       });
     }
   }
@@ -314,54 +248,6 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     await prefs.setString('route_points', pointsJson);
     await prefs.setDouble('total_distance', _totalDistance);
     await prefs.setInt('session_pedometer_steps', _sessionPedometerSteps);
-    await prefs.setBool('is_mock_route_persisted', _useMockRoute);
-  }
-
-  List<LatLng> get _displayRoutePoints {
-    if (_displayRouteCache.isEmpty && _routePoints.isNotEmpty) {
-      _recomputeDisplayRoute();
-    }
-    return _displayRouteCache;
-  }
-
-  // ── [展示用] 載入中正紀念堂到北商的假路徑 ───────────────────
-  void _loadMockDemoRoute() {
-    final mockPoints = [
-      // 中正紀念堂園區繞行一圈
-      const LatLng(25.0346, 121.5218),
-      const LatLng(25.0350, 121.5231),
-      const LatLng(25.0340, 121.5238),
-      const LatLng(25.0328, 121.5231),
-      const LatLng(25.0329, 121.5215),
-      const LatLng(25.0338, 121.5207),
-      const LatLng(25.0351, 121.5210),
-      const LatLng(25.0354, 121.5224),
-      // 沿著可步行主幹道往北商方向
-      const LatLng(25.0362, 121.5225),
-      const LatLng(25.0372, 121.5226),
-      const LatLng(25.0382, 121.5228),
-      const LatLng(25.0391, 121.5231),
-      const LatLng(25.0400, 121.5234),
-      const LatLng(25.0410, 121.5239),
-      const LatLng(25.0418, 121.5245),
-      const LatLng(25.0423, 121.5249), // 抵達北商附近
-    ];
-    setState(() {
-      _routePoints.clear();
-      _routePoints.addAll(mockPoints);
-      _currentPosition = mockPoints.last;
-      _totalDistance = _calculateRouteDistanceKm(mockPoints);
-      _recomputeDisplayRoute();
-    });
-  }
-
-  double _calculateRouteDistanceKm(List<LatLng> points) {
-    if (points.length < 2) return 0;
-    double meters = 0;
-    for (var i = 1; i < points.length; i++) {
-      meters += _distance(points[i - 1], points[i]);
-    }
-    return meters / 1000.0;
   }
 
   // ── 請求位置權限 ────────────────────────────────────────
@@ -485,13 +371,10 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     if (_routePoints.isEmpty) {
       setState(() {
         _routePoints.add(filteredPoint);
-        _currentPosition = filteredPoint;
         _movementState = _MovementState.stationary;
-        _recomputeDisplayRoute();
       });
       _lastAcceptedTime = pos.timestamp;
       unawaited(_persistRoute());
-      _focusCamera();
       return;
     }
 
@@ -499,9 +382,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     final distanceMeters = _distance(lastPoint, filteredPoint);
     if (distanceMeters < _minPointDistanceMeters) {
       _updateMovementState(pos.speed);
-      setState(() {
-        _currentPosition = filteredPoint;
-      });
+      setState(() {});
       return;
     }
     if (distanceMeters > _maxReasonableJumpMeters) {
@@ -530,11 +411,8 @@ class _ElderProfileTabState extends State<ElderProfileTab>
 
     setState(() {
       _routePoints.add(filteredPoint);
-      _currentPosition = filteredPoint;
-      _recomputeDisplayRoute();
     });
     unawaited(_persistRoute());
-    _focusCamera();
   }
 
   bool _isTooFrequent(DateTime? timestamp) {
@@ -566,162 +444,6 @@ class _ElderProfileTabState extends State<ElderProfileTab>
       return;
     }
     _movementState = _MovementState.stationary;
-  }
-
-  void _focusCamera() {
-    final displayPoints = _displayRoutePoints;
-    if (displayPoints.length > 1) {
-      final bounds = LatLngBounds.fromPoints(displayPoints);
-      try {
-        _mapController.fitCamera(
-          CameraFit.bounds(
-            bounds: bounds,
-            padding: const EdgeInsets.all(80.0),
-            maxZoom: 17.0, // ★ 限制自動適應縮放最大為 17.0，避免在短距離或原地時地圖放超大
-            minZoom: 12.0,
-          ),
-        );
-      } catch (_) {}
-      return;
-    }
-    if (_currentPosition != null && _mapController.camera.zoom != 0) {
-      _mapController.move(_currentPosition!, 16.5);
-    }
-  }
-
-  List<LatLng> _simplifyRoute(List<LatLng> points, double epsilonMeters) {
-    if (points.length < 3) return List<LatLng>.from(points);
-    final keep = List<bool>.filled(points.length, false);
-    keep[0] = true;
-    keep[points.length - 1] = true;
-    _markDouglasPeucker(points, 0, points.length - 1, epsilonMeters, keep);
-    return [
-      for (var i = 0; i < points.length; i++)
-        if (keep[i]) points[i],
-    ];
-  }
-
-  void _recomputeDisplayRoute() {
-    final cleaned = _cleanCoords(_routePoints);
-    final simplified = cleaned.length < 3
-        ? List<LatLng>.from(cleaned)
-        : _simplifyRoute(cleaned, _simplifyToleranceMeters);
-    _displayRouteCache =
-        _enableSplineSmoothing ? _bezierLikeSpline(simplified) : simplified;
-  }
-
-  List<LatLng> _cleanCoords(List<LatLng> points) {
-    if (points.length < 2) return List<LatLng>.from(points);
-    final cleaned = <LatLng>[points.first];
-    for (var i = 1; i < points.length; i++) {
-      final previous = cleaned.last;
-      final current = points[i];
-      final d = _distance(previous, current);
-      if (d >= _cleanCoordThresholdMeters) {
-        cleaned.add(current);
-      }
-    }
-    return cleaned;
-  }
-
-  List<LatLng> _bezierLikeSpline(List<LatLng> points) {
-    if (points.length < 4) return points;
-    final smoothed = <LatLng>[points.first];
-    for (var i = 0; i < points.length - 1; i++) {
-      final p0 = points[i == 0 ? i : i - 1];
-      final p1 = points[i];
-      final p2 = points[i + 1];
-      final p3 = points[(i + 2) < points.length ? (i + 2) : i + 1];
-
-      for (var j = 1; j <= 3; j++) {
-        final t = j / 4.0;
-        final tt = t * t;
-        final ttt = tt * t;
-        final lat = 0.5 *
-            ((2 * p1.latitude) +
-                (-p0.latitude + p2.latitude) * t +
-                (2 * p0.latitude -
-                        5 * p1.latitude +
-                        4 * p2.latitude -
-                        p3.latitude) *
-                    tt +
-                (-p0.latitude +
-                        3 * p1.latitude -
-                        3 * p2.latitude +
-                        p3.latitude) *
-                    ttt);
-        final lng = 0.5 *
-            ((2 * p1.longitude) +
-                (-p0.longitude + p2.longitude) * t +
-                (2 * p0.longitude -
-                        5 * p1.longitude +
-                        4 * p2.longitude -
-                        p3.longitude) *
-                    tt +
-                (-p0.longitude +
-                        3 * p1.longitude -
-                        3 * p2.longitude +
-                        p3.longitude) *
-                    ttt);
-        smoothed.add(LatLng(lat, lng));
-      }
-      smoothed.add(p2);
-    }
-    return smoothed;
-  }
-
-  void _markDouglasPeucker(
-    List<LatLng> points,
-    int start,
-    int end,
-    double epsilonMeters,
-    List<bool> keep,
-  ) {
-    if (end - start < 2) return;
-
-    double maxDistance = 0.0;
-    int index = -1;
-    for (var i = start + 1; i < end; i++) {
-      final distance =
-          _distancePointToSegmentMeters(points[i], points[start], points[end]);
-      if (distance > maxDistance) {
-        maxDistance = distance;
-        index = i;
-      }
-    }
-
-    if (index != -1 && maxDistance > epsilonMeters) {
-      keep[index] = true;
-      _markDouglasPeucker(points, start, index, epsilonMeters, keep);
-      _markDouglasPeucker(points, index, end, epsilonMeters, keep);
-    }
-  }
-
-  double _distancePointToSegmentMeters(LatLng point, LatLng start, LatLng end) {
-    final meanLatRad =
-        ((start.latitude + end.latitude) / 2.0) * math.pi / 180.0;
-    final metersPerDegLat = 111320.0;
-    final metersPerDegLng = 111320.0 * math.cos(meanLatRad);
-
-    final sx = start.longitude * metersPerDegLng;
-    final sy = start.latitude * metersPerDegLat;
-    final ex = end.longitude * metersPerDegLng;
-    final ey = end.latitude * metersPerDegLat;
-    final px = point.longitude * metersPerDegLng;
-    final py = point.latitude * metersPerDegLat;
-
-    final dx = ex - sx;
-    final dy = ey - sy;
-    final lenSq = dx * dx + dy * dy;
-    if (lenSq == 0) {
-      return math.sqrt((px - sx) * (px - sx) + (py - sy) * (py - sy));
-    }
-
-    final t = (((px - sx) * dx) + ((py - sy) * dy)) / lenSq;
-    final clampedT = t.clamp(0.0, 1.0);
-    final projX = sx + clampedT * dx;
-    final projY = sy + clampedT * dy;
-    return math.sqrt((px - projX) * (px - projX) + (py - projY) * (py - projY));
   }
 
   void _spawnHeartParticles() {
@@ -790,37 +512,13 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     try {
       final list = await ApiService.getElderReminders(elderKey);
       if (mounted) {
+        // ★ 第四十六輪（E3）：API 回空清單時，過去會塞入 3 筆假提醒
+        // （id 101/102/103：服藥／溫開水／散步），讓真的沒設提醒的長輩
+        // 看到可以「完成」的假任務，還會驅動小豬心情與「全數達標」徽章。
+        // 現在誠實呈現空清單，空狀態文案交給 TodayTasksHandmadeSection
+        // 既有的空狀態分支處理。
         setState(() {
-          if (list.isNotEmpty) {
-            _reminders = List<Map<String, dynamic>>.from(list);
-          } else {
-            _reminders = [
-              {
-                'id': 101,
-                'title': '早上按時服藥',
-                'time_str': '08:30',
-                'category': 'medication',
-                'note': '飯後服用降血壓藥物',
-                'is_active': true,
-              },
-              {
-                'id': 102,
-                'title': '補充溫開水 500cc',
-                'time_str': '11:00',
-                'category': 'water',
-                'note': '多喝溫水促進代謝',
-                'is_active': true,
-              },
-              {
-                'id': 103,
-                'title': '傍晚活力散步 20 分鐘',
-                'time_str': '16:30',
-                'category': 'exercise',
-                'note': '到戶外走走活動筋骨',
-                'is_active': true,
-              },
-            ];
-          }
+          _reminders = List<Map<String, dynamic>>.from(list);
           _isLoadingReminders = false;
         });
       }
@@ -843,8 +541,6 @@ class _ElderProfileTabState extends State<ElderProfileTab>
         _completedReminderIds.remove(reminderId);
       } else {
         _completedReminderIds.add(reminderId);
-        _isPetHappy = true;
-        _petIntimacy = math.min(100, _petIntimacy + 3);
         _speechText = '太棒了！生活排程打卡成功，小豬好開心！🎉';
         _spawnHeartParticles();
         _petBounceController.forward(from: 0.0);
@@ -853,8 +549,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
         _speechBubbleTimer = Timer(const Duration(seconds: 4), () {
           if (mounted) {
             setState(() {
-              _isPetHappy = false;
-              _speechText = _pigQuotes[_quoteIndex];
+              _speechText = _defaultSpeechText;
             });
           }
         });
@@ -865,76 +560,66 @@ class _ElderProfileTabState extends State<ElderProfileTab>
       'completed_tasks_$today',
       _completedReminderIds.map((e) => e.toString()).toList(),
     );
+
+    // ★ 第四十六輪（E1）：比照 elder_home_tab.dart 的 _completeNextDose——
+    // 本機立即更新給即時回饋，另外用不阻塞的方式同步後端，家屬端才看得到
+    // 長輩在「我的」分頁的打卡紀錄。只在「標記為完成」時同步，取消完成不
+    // 呼叫（後端沒有取消端點）。
+    if (!isAlreadyDone) {
+      unawaited(ApiService.completeElderReminder(reminderId));
+    }
   }
 
-  // ── 🧠 寵物心情判定引擎（結合健康步數與子女任務）──────────────
-  PetMood _determinePetMood() {
-    if (_isPetHappy) return PetMood.superHappy;
+  // 小豬成長狀態尚未載入完成前的暫時預設值（與 PetStorageService.loadState
+  // 的出廠預設一致），避免 PetHeroStage／PetStatsSheet 拿到 null。
+  PetGrowthState get _effectiveGrowthState =>
+      _petGrowthState ??
+      PetGrowthState(
+        weightGrams: 1250,
+        vitality: 85,
+        todaySteps: currentSteps,
+        fedFoodIds: const {},
+        lastDateStr: '',
+        isCrownUnlocked: false,
+      );
 
-    final hour = DateTime.now().hour;
-    if (hour < 6 || hour >= 22) {
-      return PetMood.sleeping;
-    }
-
-    if (_movementState == _MovementState.walking || _isTracking) {
-      return PetMood.walking;
-    }
-
-    final double stepProgress = (currentSteps / dailyStepGoal).clamp(0.0, 1.0);
-    final activeReminders =
-        _reminders.where((r) => r['is_active'] != false).toList();
-    final int totalTasks = activeReminders.length;
-    final int completedTasks = activeReminders
-        .where((r) => _completedReminderIds.contains(r['id']))
-        .length;
-
-    // 步數達成 100% 或 子女排程任務全部完成 -> 超開心
-    if (stepProgress >= 1.0 || (totalTasks > 0 && completedTasks >= totalTasks)) {
-      return PetMood.superHappy;
-    }
-
-    // 中午後如果還有子女任務尚未打卡且完成率偏低 -> 貼心叮嚀
-    if (totalTasks > 0 &&
-        completedTasks < totalTasks &&
-        hour >= 12 &&
-        (completedTasks / totalTasks) < 0.5) {
-      return PetMood.reminding;
-    }
-
-    return PetMood.content;
-  }
-
-  // ── 🐾 溫暖手作繪本厚塗油畫風：小豬夥伴生活舞台 ──────────────────────
-  Future<void> _openPetStudio() async {
+  // 🥕 開啟食匣抽屜——個人分頁本身就是小豬之家，不再跳轉到 PetStudioScreen。
+  void _openFeedingSheet() {
     HapticFeedback.selectionClick();
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => PetStudioScreen(
-          initialSteps: currentSteps,
-          userName: widget.userName,
-          userId: widget.userId,
-        ),
-      ),
-    );
-    _loadPetGrowthState();
+    setState(() => _isFeedingSheetOpen = true);
   }
 
-  void _showElderShareStoryDialog(BuildContext context, String prompt) {
-    showElderShareStoryDialog(
-      context: context,
-      promptQuestion: prompt,
-      isFromChild: _isMemoirPromptFromChild,
-      elderId: _myFriendElderId ?? 'elder_${widget.userId}',
-      onSaved: () {
-        _spawnHeartParticles();
-        _petBounceController.forward(from: 0.0);
-        _particleController.forward(from: 0.0);
-        setState(() {
-          _isPetHappy = true;
-          _speechText = '太棒了！阿公的故事小豬好好珍藏在回憶錄裡囉！🐽✨';
-        });
-        _loadMemoirPrompt();
-      },
+  // ── 核心餵食邏輯（逐一比照 pet_studio_screen.dart 的 _handleFeedFood）──
+  void _handleFeedFood(PetFoodItem food) {
+    final growthState = _effectiveGrowthState;
+    final currentCount = _feedingInventory[food.id] ?? food.initialCount;
+    if (!food.isUnlimited && currentCount <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('【${food.name}】已經吃完囉～多散步解鎖新食材吧！🌾')),
+      );
+      return;
+    }
+
+    HapticFeedback.heavyImpact();
+    final newFedFoods = Set<String>.from(growthState.fedFoodIds)..add(food.id);
+    final newState = growthState.copyWith(
+      fedFoodIds: newFedFoods,
+      weightGrams: growthState.weightGrams + food.weightGainGrams,
+      vitality: (growthState.vitality + food.vitalityGain).clamp(0, 100),
+    );
+
+    setState(() {
+      _petGrowthState = newState;
+      if (!food.isUnlimited && currentCount > 0) {
+        _feedingInventory[food.id] = currentCount - 1;
+      }
+    });
+
+    PetStorageService.saveState(newState);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+          content: Text('小豬大口吃下了【${food.name}】！活力 +${food.vitalityGain} ✨')),
     );
   }
 
@@ -986,10 +671,68 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     );
   }
 
+  // 💡 長輩後悔藥：隨時重新觀看新手教學（暖色手作系統，全頁唯一抽出的
+  // inline widget——標題／副標題皆為固定文案，非使用者可控字串，但仍加
+  // maxLines/ellipsis 做防禦）。
+  Widget _buildTutorialReplayCard(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFDF9),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFEADBCE), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF78350F).withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+        leading: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFEF3C7),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: const Icon(Icons.school_rounded,
+              color: Color(0xFFB45309), size: 28),
+        ),
+        title: Text(
+          '📖 重新觀看新手導覽',
+          style: GoogleFonts.notoSansTc(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: const Color(0xFF451A03),
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Text(
+          '忘記功能怎麼用？點此重新開啟操作介紹',
+          style: GoogleFonts.notoSansTc(
+              fontSize: 14, color: const Color(0xFF8C6D58)),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        trailing: const Icon(Icons.arrow_forward_ios_rounded,
+            size: 18, color: Color(0xFFD4C5B9)),
+        onTap: () async {
+          await SpotlightTutorial.resetAllTutorials();
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('✅ 已重新開啟教學！切換至首頁即可重新查看導覽。')),
+            );
+          }
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     currentSteps = _computeFusedSteps();
-    final double progress = (currentSteps / dailyStepGoal).clamp(0.0, 1.0);
     final hour = DateTime.now().hour;
     String greetingTitle = '早安';
     if (hour >= 12 && hour < 18) greetingTitle = '午安';
@@ -997,235 +740,206 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     final orientation = MediaQuery.of(context).orientation;
     final bool isLandscape = orientation == Orientation.landscape &&
         MediaQuery.of(context).size.width >= 720;
-    final mood = _determinePetMood();
-    final activeReminders =
-        _reminders.where((r) => r['is_active'] != false).toList();
-    final int totalTasks = activeReminders.length;
-    final int completedTasks = activeReminders
-        .where((r) => _completedReminderIds.contains(r['id']))
-        .length;
+    final PetGrowthState growthState = _effectiveGrowthState;
+    final String greetingLine = '$greetingTitle，${widget.userName}';
 
-    return Container(
-      color: const Color(0xFFFAF7F2), // 溫暖手作燕麥宣紙底色
-      width: double.infinity,
-      height: double.infinity,
-      child: SafeArea(
-        bottom: false,
-        child: SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
-          padding: EdgeInsets.fromLTRB(
-            16,
-            isLandscape ? 6 : 16,
-            16,
-            isLandscape ? 104 : 110,
+    // ★ 第四十六輪（F）：原本用 LayoutBuilder 包住，但從未讀取
+    // constraints，改成單純的 if (isLandscape)——只建構真正要渲染的那一
+    // 棵版面樹，另一棵完全不建構（避免每次 setState 都白白多組一份不會
+    // 上樹的 widget）。
+    final Widget body = isLandscape
+        ? _buildLandscapeBody(growthState, greetingLine, context)
+        : _buildPortraitBody(growthState, greetingLine, context);
+
+    return Stack(
+      children: [
+        Container(
+          color: const Color(0xFFFAF7F2), // 溫暖手作燕麥宣紙底色
+          width: double.infinity,
+          height: double.infinity,
+          child: SafeArea(
+            bottom: false,
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              padding: EdgeInsets.only(
+                top: isLandscape ? 6 : 0,
+                bottom: isLandscape ? 104 : 110,
+              ),
+              child: body,
+            ),
           ),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              if (isLandscape) {
-                // ── 橫屏模式（平板座充模式）：左右雙欄對稱飽滿排版（零滾動設計） ──
-                return Column(
+        ),
+
+        // 🧺 半透明食匣抽屜（比照 pet_studio_screen.dart 的 _isFeedingSheetOpen
+        // + Positioned.fill 做法）
+        if (_isFeedingSheetOpen)
+          Positioned.fill(
+            child: GardenFeedingSheet(
+              isLandscape: isLandscape,
+              foodInventory: _feedingInventory,
+              currentSteps: currentSteps,
+              onFeedFood: _handleFeedFood,
+              onClose: () => setState(() => _isFeedingSheetOpen = false),
+            ),
+          ),
+      ],
+    );
+  }
+
+  // ── 直屏模式：小豬之家（滿版主視覺，故意不加左右內距，其餘內容統一
+  //    包在下方的 Padding 內）──
+  Widget _buildPortraitBody(
+    PetGrowthState growthState,
+    String greetingLine,
+    BuildContext context,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // 1. 小豬之家主視覺舞台
+        PetHeroStage(
+          key: widget.petKey,
+          growthState: growthState,
+          speechText: _speechText,
+          greetingLine: greetingLine,
+          // 直向手機寬度有限，膠囊改精簡圖示橫排，把空間讓給問候語與對話氣泡
+          topRightActions:
+              PetCornerActions(userId: widget.userId, compact: true),
+        ),
+
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // 2. 資訊卡：負偏移壓在主視覺下緣，比照 Pokémon GO 詳情頁
+              Transform.translate(
+                offset: const Offset(0, -24),
+                child: PetStatsSheet(
+                  growthState: growthState,
+                  onFeedTap: _openFeedingSheet,
+                ),
+              ),
+
+              // 3. 今日生活排程與用藥打卡手帳
+              TodayTasksHandmadeSection(
+                key: widget.tasksKey,
+                reminders: _reminders,
+                completedReminderIds: _completedReminderIds,
+                isLoadingReminders: _isLoadingReminders,
+                onToggleTask: _toggleTaskCompletion,
+              ),
+
+              const SizedBox(height: 16),
+
+              // 4. 底部快捷操作列
+              Row(
+                children: [
+                  Expanded(
+                    child: ProfileActionCard(
+                      key: widget.familyPairingKey,
+                      icon: Icons.family_restroom_rounded,
+                      title: '家人綁定',
+                      subtitle: '出示配對碼',
+                      color: const Color(0xFFF59E0B),
+                      onTap: () => showFamilyPairingDialog(context),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ProfileActionCard(
+                      key: widget.aiAssistantKey,
+                      icon: Icons.assistant_rounded,
+                      title: '語音助理',
+                      subtitle: 'Hey 嘎蛙',
+                      color: const Color(0xFFF59E0B),
+                      onTap: () => showAiAssistantSettingsDialog(
+                        context: context,
+                        userId: widget.userId,
+                        userName: widget.userName,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ProfileActionCard(
+                      icon: Icons.logout_rounded,
+                      title: '切換身分',
+                      subtitle: '登出系統',
+                      color: const Color(0xFFEF4444),
+                      onTap: _handleLogout,
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 16),
+
+              // 5. 重新觀看新手導覽
+              _buildTutorialReplayCard(context),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ── 橫屏模式（平板座充模式）：左欄小豬之家、右欄排程與快捷操作 ──
+  Widget _buildLandscapeBody(
+    PetGrowthState growthState,
+    String greetingLine,
+    BuildContext context,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 👈 左欄：小豬之家主視覺 ＆ 資訊卡（佔 50%）
+              Expanded(
+                flex: 5,
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // 1. 溫馨早午晚標頭
-                    StorybookHeaderCard(
-                      greetingTitle: greetingTitle,
-                      userName: widget.userName,
-                      isLandscape: true,
+                    PetHeroStage(
+                      key: widget.petKey,
+                      growthState: growthState,
+                      speechText: _speechText,
+                      greetingLine: greetingLine,
+                      topRightActions: PetCornerActions(userId: widget.userId),
                     ),
-
-                    SizedBox(height: isLandscape ? 6 : 10),
-
-                    // 2. 雙欄核心內容區（左：夥伴與健康雙環，右：排程打卡與快捷操作）
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // 👈 左欄：手繪小豬生活舞台 ＆ 今日健康活力雙環 (佔 50%)
-                        Expanded(
-                          flex: 5,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              StorybookStageCard(
-                                key: widget.petKey,
-                                isLandscape: true,
-                                petMood: mood,
-                                stepProgress: (dailyStepGoal > 0)
-                                    ? (currentSteps / dailyStepGoal).clamp(0.0, 1.0)
-                                    : 0.0,
-                                totalTasks: totalTasks,
-                                completedTasks: completedTasks,
-                                petGrowthState: _petGrowthState,
-                                speechText: _speechText,
-                                petParticles: _petParticles,
-                                onTap: _openPetStudio,
-                              ),
-                              if (_activeMemoirPrompt != null) ...[
-                                const SizedBox(height: 8),
-                                ElderStoryPromptBanner(
-                                  isLandscape: true,
-                                  prompt: _activeMemoirPrompt ?? '跟小豬說說你年輕時的故事好不好？',
-                                  isFromChild: _isMemoirPromptFromChild,
-                                  onTap: () => _showElderShareStoryDialog(
-                                    context,
-                                    _activeMemoirPrompt ?? '跟小豬說說你年輕時的故事好不好？',
-                                  ),
-                                ),
-                              ],
-                              const SizedBox(height: 8),
-                              VitalityStepGoalsCard(
-                                progress: progress,
-                                currentSteps: currentSteps,
-                                dailyStepGoal: dailyStepGoal,
-                                totalDistance: _totalDistance,
-                                completedReminderIds: _completedReminderIds,
-                                isLandscape: true,
-                              ),
-                            ],
-                          ),
-                        ),
-
-                        const SizedBox(width: 12),
-
-                        // 👉 右欄：今日生活用藥打卡手帳 ＆ 底部快捷操作列 (佔 50%)
-                        Expanded(
-                          flex: 5,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              TodayTasksHandmadeSection(
-                                key: widget.tasksKey,
-                                reminders: _reminders,
-                                completedReminderIds: _completedReminderIds,
-                                isLoadingReminders: _isLoadingReminders,
-                                onToggleTask: _toggleTaskCompletion,
-                                isLandscape: true,
-                              ),
-                              const SizedBox(height: 8),
-                              // 底部快捷操作列（橫排三鍵）
-                              Row(
-                                children: [
-                                  // 👨‍👩‍👧 家人綁定
-                                  Expanded(
-                                    child: ProfileActionCard(
-                                      key: widget.familyPairingKey,
-                                      icon: Icons.family_restroom_rounded,
-                                      title: '家人綁定',
-                                      subtitle: '出示配對碼',
-                                      color: const Color(0xFFEA580C),
-                                      onTap: () => showFamilyPairingDialog(context),
-                                      isLandscape: true,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  // 🤖 語音助理
-                                  Expanded(
-                                    child: ProfileActionCard(
-                                      key: widget.aiAssistantKey,
-                                      icon: Icons.assistant_rounded,
-                                      title: '語音助理',
-                                      subtitle: 'Hey 嘎蛙',
-                                      color: const Color(0xFF0284C7),
-                                      onTap: () => showAiAssistantSettingsDialog(
-                                        context: context,
-                                        userId: widget.userId,
-                                        userName: widget.userName,
-                                      ),
-                                      isLandscape: true,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  // 🚪 切換身分
-                                  Expanded(
-                                    child: ProfileActionCard(
-                                      icon: Icons.logout_rounded,
-                                      title: '切換身分',
-                                      subtitle: '登出系統',
-                                      color: const Color(0xFFEF4444),
-                                      onTap: _handleLogout,
-                                      isLandscape: true,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
+                    Transform.translate(
+                      offset: const Offset(0, -24),
+                      child: PetStatsSheet(
+                        growthState: growthState,
+                        onFeedTap: _openFeedingSheet,
+                        isLandscape: true,
+                      ),
                     ),
                   ],
-                );
-              } else {
-                // ── 直屏模式：垂直手帳滑動流 ──
-                return Column(
+                ),
+              ),
+
+              const SizedBox(width: 12),
+
+              // 👉 右欄：今日生活排程打卡手帳 ＆ 底部快捷操作列（佔 50%）
+              Expanded(
+                flex: 5,
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // 1. 溫馨早午晚標頭
-                    StorybookHeaderCard(
-                      greetingTitle: greetingTitle,
-                      userName: widget.userName,
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    // 2. 小豬生活手繪舞台 ＆ 成長里程碑
-                    StorybookStageCard(
-                      key: widget.petKey,
-                      petMood: mood,
-                      stepProgress: (dailyStepGoal > 0)
-                          ? (currentSteps / dailyStepGoal).clamp(0.0, 1.0)
-                          : 0.0,
-                      totalTasks: totalTasks,
-                      completedTasks: completedTasks,
-                      petGrowthState: _petGrowthState,
-                      speechText: _speechText,
-                      petParticles: _petParticles,
-                      onTap: _openPetStudio,
-                    ),
-
-                    if (_activeMemoirPrompt != null) ...[
-                      const SizedBox(height: 12),
-                      ElderStoryPromptBanner(
-                        prompt: _activeMemoirPrompt ?? '跟小豬說說你年輕時的故事好不好？',
-                        isFromChild: _isMemoirPromptFromChild,
-                        onTap: () => _showElderShareStoryDialog(
-                          context,
-                          _activeMemoirPrompt ?? '跟小豬說說你年輕時的故事好不好？',
-                        ),
-                      ),
-                    ],
-
-                    const SizedBox(height: 16),
-
-                    // 3. 今日生活排程與用藥打卡手帳
                     TodayTasksHandmadeSection(
                       key: widget.tasksKey,
                       reminders: _reminders,
                       completedReminderIds: _completedReminderIds,
                       isLoadingReminders: _isLoadingReminders,
                       onToggleTask: _toggleTaskCompletion,
+                      isLandscape: true,
                     ),
-
-                    const SizedBox(height: 16),
-
-                    // 4. 今日健康活力雙環
-                    VitalityStepGoalsCard(
-                      progress: progress,
-                      currentSteps: currentSteps,
-                      dailyStepGoal: dailyStepGoal,
-                      totalDistance: _totalDistance,
-                      completedReminderIds: _completedReminderIds,
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    // ★ 第四十一輪（item 3）：朋友圈好友 ID 卡片。
-                    FriendIdCard(
-                      myFriendElderId: _myFriendElderId,
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    // 5. 底部快捷操作列
+                    const SizedBox(height: 8),
                     Row(
                       children: [
                         Expanded(
@@ -1234,26 +948,28 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                             icon: Icons.family_restroom_rounded,
                             title: '家人綁定',
                             subtitle: '出示配對碼',
-                            color: const Color(0xFFEA580C),
+                            color: const Color(0xFFF59E0B),
                             onTap: () => showFamilyPairingDialog(context),
+                            isLandscape: true,
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 8),
                         Expanded(
                           child: ProfileActionCard(
                             key: widget.aiAssistantKey,
                             icon: Icons.assistant_rounded,
                             title: '語音助理',
                             subtitle: 'Hey 嘎蛙',
-                            color: const Color(0xFF0284C7),
+                            color: const Color(0xFFF59E0B),
                             onTap: () => showAiAssistantSettingsDialog(
                               context: context,
                               userId: widget.userId,
                               userName: widget.userName,
                             ),
+                            isLandscape: true,
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 8),
                         Expanded(
                           child: ProfileActionCard(
                             icon: Icons.logout_rounded,
@@ -1261,21 +977,25 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                             subtitle: '登出系統',
                             color: const Color(0xFFEF4444),
                             onTap: _handleLogout,
+                            isLandscape: true,
                           ),
                         ),
                       ],
                     ),
                   ],
-                );
-              }
-            },
+                ),
+              ),
+            ],
           ),
-        ),
+
+          const SizedBox(height: 8),
+
+          // ★ 橫向版面原本漏掉「重新觀看新手導覽」，本輪補回
+          _buildTutorialReplayCard(context),
+        ],
       ),
     );
   }
 }
 
 enum _MovementState { stationary, walking, fastTransit }
-
-

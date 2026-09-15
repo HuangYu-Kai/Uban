@@ -2,16 +2,25 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../services/api_service.dart';
 
 /// 🔄 方案 C：隨時後續補綁定家人對話框（Late-Binding）
-void showFamilyPairingDialog(BuildContext context) {
+void showFamilyPairingDialog(BuildContext context, [int? explicitElderId]) {
   HapticFeedback.lightImpact();
+
+  Future<Map<String, dynamic>> fetchCode() async {
+    if (explicitElderId != null) {
+      return ApiService.requestPairingCode(explicitElderId);
+    }
+    final prefs = await SharedPreferences.getInstance();
+    final id = prefs.getInt('caregiver_id') ?? prefs.getInt('last_elder_id');
+    return ApiService.requestPairingCode(id);
+  }
 
   // 對話框可能按「重新取得配對碼」重試多次；用可重指派的 Future 搭配
   // StatefulBuilder，讓每次重試都能重新觸發載入並 rebuild。
-  Future<Map<String, dynamic>> pairingCodeFuture =
-      ApiService.requestPairingCode();
+  Future<Map<String, dynamic>> pairingCodeFuture = fetchCode();
 
   showDialog(
     context: context,
@@ -113,8 +122,7 @@ void showFamilyPairingDialog(BuildContext context) {
                             ElevatedButton.icon(
                               onPressed: () {
                                 setDialogState(() {
-                                  pairingCodeFuture =
-                                      ApiService.requestPairingCode();
+                                  pairingCodeFuture = fetchCode();
                                 });
                               },
                               icon: const Icon(Icons.refresh_rounded,

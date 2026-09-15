@@ -117,12 +117,8 @@ class _PolicyDetailDialogState extends State<PolicyDetailDialog> {
     }
   }
 
-  bool get _isFullyRead {
-    if (!_scrollController.hasClients) return false;
-    final maxScroll = _scrollController.position.maxScrollExtent;
-    if (maxScroll <= 0) return true;
-    return _scrollProgress >= 0.92;
-  }
+  // 2026-09-14 優化：徹底廢除強制滾動 92% 門檻，長輩與家屬隨時可關閉或確認返回
+  bool get _isFullyRead => true;
 
   @override
   Widget build(BuildContext context) {
@@ -202,10 +198,9 @@ class _PolicyDetailDialogState extends State<PolicyDetailDialog> {
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.close_rounded, color: Colors.white, size: 22),
+                    icon: const Icon(Icons.close_rounded, color: Colors.white, size: 26),
+                    tooltip: '關閉說明',
                     onPressed: () => Navigator.pop(context),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
                   ),
                 ],
               ),
