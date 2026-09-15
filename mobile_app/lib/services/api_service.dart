@@ -84,7 +84,13 @@ class ApiService {
   static String? get lastResolveError => PairingApi.lastResolveError;
   static set lastResolveError(String? value) => PairingApi.lastResolveError = value;
 
-  static Future<Map<String, dynamic>> requestPairingCode() => PairingApi.requestPairingCode();
+  static Future<Map<String, dynamic>> createAutonomousElder({
+    String elderName = '長輩朋友',
+    String gender = 'M',
+    int age = 75,
+  }) => PairingApi.createAutonomousElder(elderName: elderName, gender: gender, age: age);
+
+  static Future<Map<String, dynamic>> requestPairingCode([int? elderId]) => PairingApi.requestPairingCode(elderId);
   static Future<Map<String, dynamic>> checkPairingStatus(String code) => PairingApi.checkPairingStatus(code);
   static Future<Map<String, dynamic>> confirmPairing({
     required int familyId,

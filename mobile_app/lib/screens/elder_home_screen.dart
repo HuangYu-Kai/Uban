@@ -520,6 +520,24 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     return text;
   }
 
+  /// 視覺情境感知：獲取長輩當前所在分頁的詳細脈絡，傳給小嘎助理
+  String _getCurrentTabContext() {
+    switch (_selectedIndex) {
+      case 0:
+        return '【首頁】。頁面上包含：「今日天氣（氣溫與降雨機率）與農民曆卡片」、「今日吃藥打卡按鈕（大字綠色打卡）」、以及「今日精選頭條新聞與語音播放」';
+      case 1:
+        return '【電話】分頁。頁面上列出長輩的家人與親友聯絡人卡片，點擊可直接撥打視訊或電話給老伴或子女';
+      case 2:
+        return '【社群】分頁。頁面上顯示親朋好友最近發布的生活動態照片與生活打卡，長輩可以瀏覽並點愛心打招呼';
+      case 3:
+        return '【聊天】分頁。這裡是長輩與您（AI 伴侶小嘎）一對一的語音文字聊天室，長輩可以向您傾訴心情、回憶過去或詢問生活';
+      case 4:
+        return '【我的／小豬之家】分頁。頁面上是一隻可愛粉紅的元氣小豬夥伴，中間有金黃色「餵小豬」大按鈕，並顯示成長階段與活力，下方有今日生活排程與用藥進度';
+      default:
+        return '【主功能頁面】';
+    }
+  }
+
   void _triggerGoogleAssistantOverlay([String? prompt]) async {
     if (_isAssistantShowing) return;
     _isAssistantShowing = true;
@@ -533,8 +551,21 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     _wakeWordListening = false;
     await Future.delayed(const Duration(milliseconds: 200));
 
-    final cleanedPrompt = _extractUserQuery(prompt, _aiName);
-    debugPrint('🎯 [Assistant Launch] rawPrompt="$prompt", cleanedPrompt="$cleanedPrompt"');
+    String? cleanedPrompt = _extractUserQuery(prompt, _aiName);
+
+    // ★ 核心升級：若提問涉及「畫面/怎麼用/這是哪裡」，主動注入當前可見的 UI Context，讓小嘎睜開眼睛！
+    final tabCtx = _getCurrentTabContext();
+    if (cleanedPrompt != null && cleanedPrompt.isNotEmpty) {
+      if (cleanedPrompt.contains('怎麼用') ||
+          cleanedPrompt.contains('這是') ||
+          cleanedPrompt.contains('操作') ||
+          cleanedPrompt.contains('功能') ||
+          cleanedPrompt.contains('做什麼')) {
+        cleanedPrompt = '長輩目前正在 $tabCtx。長輩提問：$cleanedPrompt。請用親切溫暖的台語或國語，具體介紹這個畫面的主要功能，並指引長輩下一步可以點擊哪裡。';
+      }
+    }
+
+    debugPrint('🎯 [Assistant Launch] rawPrompt="$prompt", enrichedPrompt="$cleanedPrompt"');
 
     if (!mounted) return;
 

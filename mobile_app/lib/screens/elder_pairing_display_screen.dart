@@ -20,14 +20,6 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
     'DEV_BYPASS_LOGIN',
     defaultValue: false,
   );
-  static const int _devBypassUserId = int.fromEnvironment(
-    'DEV_BYPASS_USER_ID',
-    defaultValue: 2,
-  );
-  static const String _devBypassUserName = String.fromEnvironment(
-    'DEV_BYPASS_USER_NAME',
-    defaultValue: '宇璿',
-  );
 
   String? _pairingCode;
   int _secondsLeft = 0;
@@ -456,47 +448,6 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
     await _promptModeAndNavigate(elderId, elderName, elderRoomId);
   }
 
-  Future<void> _quickLoginGawaDemo() async {
-    try {
-      final result = await ApiService.ensureGawaDemoElder();
-      if (!mounted) return;
-
-      print('🔍 Gawa API Response: $result');
-
-      if (result['status'] == 'error') {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content:
-                  Text(result['message'] ?? result['error'] ?? 'gawa帳號建立失敗')),
-        );
-        return;
-      }
-
-      final data = result['data'] as Map<String, dynamic>?;
-      print('🔍 Gawa Data: $data');
-      final rawElderId = data?['elder_user_id'];
-      print('🔍 rawElderId: $rawElderId (type: ${rawElderId.runtimeType})');
-      final elderId =
-          rawElderId is int ? rawElderId : int.tryParse('${rawElderId ?? ''}');
-      print('🔍 elderId after parse: $elderId');
-      final elderName = (data?['elder_name'] ?? 'gawa').toString();
-      final elderRoomId = data?['elder_id']?.toString();
-      if (elderId == null || elderId <= 0) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('gawa帳號建立成功，但登入資料不完整')),
-        );
-        return;
-      }
-
-      await loginAndPersist(elderId: elderId, elderName: elderName, elderRoomId: elderRoomId);
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('登入gawa失敗：$e')),
-      );
-    }
-  }
-
   /// 快速登入宇璿（user_id=2）- 直接以【通話機】身份進入長輩首頁，跳過角色選擇對話框
   Future<void> _quickLoginYuxuanDemo() async {
     try {
@@ -556,13 +507,34 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
     }
   }
 
-  /// 🌟 方案 A：長者自主陪伴模式（單人即用，完全無需子女即可使用）
+  /// 🌟 方案 A：長者自主陪伴模式（單人即用，全新長者向雲端動態申領唯一獨立帳號）
   Future<void> _startAutonomousMode() async {
+    setState(() => _isLoading = true);
     try {
       final prefs = await SharedPreferences.getInstance();
-      final int elderId = prefs.getInt('last_elder_id') ?? 2;
-      final String elderName = prefs.getString('last_elder_name') ?? '長輩朋友';
-      final String elderRoomId = prefs.getString('last_elder_room_id') ?? '6160';
+      int? elderId = prefs.getInt('last_elder_id');
+      String elderName = prefs.getString('last_elder_name') ?? '長輩朋友';
+      String? elderRoomId = prefs.getString('last_elder_room_id');
+
+      // 若全新安裝無帳號，向後端申請專屬唯一的獨立長者帳號與房號（杜絕 ID 衝突）
+      if (elderId == null) {
+        final result = await ApiService.createAutonomousElder();
+        if (result['status'] == 'success' && result['data'] != null) {
+          final data = result['data'];
+          elderId = data['user_id'] as int?;
+          elderName = (data['elder_name'] as String?) ?? '長輩朋友';
+          elderRoomId = (data['room_id']?.toString()) ?? (data['elder_profile_id']?.toString());
+        } else {
+          final err = result['message'] ?? result['error'] ?? '建立帳號失敗';
+          throw Exception(err);
+        }
+      }
+
+      if (elderId == null) {
+        throw Exception('無法獲取長輩帳號識別碼');
+      }
+
+      elderRoomId ??= 'room_$elderId';
 
       await prefs.setBool('is_autonomous_mode', true);
       await prefs.setInt('caregiver_id', elderId);
@@ -587,17 +559,22 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
         context,
         MaterialPageRoute(
           builder: (context) => ElderHomeScreen(
-            userId: elderId,
+            userId: elderId!,
             userName: elderName,
-            roomId: elderRoomId,
+            roomId: elderRoomId!,
           ),
         ),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('進入自主模式失敗：$e')),
+        SnackBar(
+          content: Text('進入自主模式失敗：$e'),
+          backgroundColor: Colors.redAccent,
+        ),
       );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -712,31 +689,14 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  InkWell(
-                    onTap: _startAutonomousMode,
-                    borderRadius: BorderRadius.circular(12),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.touch_app_rounded, size: 18, color: Color(0xFF0284C7)),
-                          const SizedBox(width: 6),
-                          Flexible(
-                            child: Text(
-                              '💡 沒有家人在身旁？點此直接享受 AI 伴侶、農民曆與小豬養成！日後可隨時補綁家人。',
-                              textAlign: TextAlign.center,
-                              style: GoogleFonts.notoSansTc(
-                                fontSize: 14,
-                                color: const Color(0xFF0284C7),
-                                fontWeight: FontWeight.w700,
-                                decoration: TextDecoration.underline,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+                  const SizedBox(height: 10),
+                  Text(
+                    '無須等待家人，點此先享受 AI 伴侶、農民曆與小豬養成（日後隨時可補綁家人）',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 13,
+                      color: const Color(0xFF64748B),
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                   const SizedBox(height: 24),

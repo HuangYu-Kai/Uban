@@ -9,11 +9,36 @@ class PairingApi {
   /// 供 monitor_pairing_screen 顯示具體錯誤原因
   static String? lastResolveError;
 
-  static Future<Map<String, dynamic>> requestPairingCode() async {
+  /// 為自主登入的全新長者向雲端申請獨立唯一帳號
+  static Future<Map<String, dynamic>> createAutonomousElder({
+    String elderName = '長輩朋友',
+    String gender = 'M',
+    int age = 75,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('${ApiClient.baseUrl}/pairing/create_autonomous_elder'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'elder_name': elderName,
+          'gender': gender,
+          'age': age,
+        }),
+      ).timeout(const Duration(seconds: 10));
+      return ApiClient.safeDecode(response);
+    } catch (e) {
+      return {'status': 'error', 'message': '自主帳號建立連線失敗: $e'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> requestPairingCode([int? elderId]) async {
     try {
       final response = await http.post(
         Uri.parse('${ApiClient.baseUrl}/pairing/request_code'),
         headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          if (elderId != null) 'elder_id': elderId,
+        }),
       ).timeout(const Duration(seconds: 10));
       return ApiClient.safeDecode(response);
     } catch (e) {
