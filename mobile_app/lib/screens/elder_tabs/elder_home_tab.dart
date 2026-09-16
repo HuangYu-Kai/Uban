@@ -70,6 +70,16 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
   List<Map<String, dynamic>> _reminders = [];
   Set<int> _completedReminderIds = {};
   bool _isLoadingNextDose = true;
+  // ★ 第四十九輪：讀取失敗與「真的沒有提醒／都完成了」原本是同一種畫面
+  // （`_reminders` 維持空陣列，`_buildNextDoseCard` 看到 `next == null` 就顯示
+  // 「今天的提醒都完成了 🌟」）。長輩開 App 那一刻網路不穩，會被誤導成「今天
+  // 沒有藥要吃」。這個旗標讓兩者在畫面上分開顯示，見 [_buildNextDoseCard]。
+  bool _hasNextDoseLoadError = false;
+  // 本頁在 IndexedStack 底下保活、initState 只會跑一次（見上方
+  // `dateCardKey` 的說明）——代表若冷啟動當下第一次讀取就失敗，沒有任何
+  // 其他觸發點會再試一次，長輩會在整個 session 都看到錯誤卡片。因此失敗時
+  // 額外安排最多一次自動重試（見 [_loadNextDoseData] 尾端），而不是只改文案。
+  int _nextDoseLoadAttempt = 0;
 
   @override
   void initState() {
@@ -100,9 +110,18 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
   /// 不可用 `widget.userId`（DB 整數 PK）——兩者是不同的鍵，`elder_profile_tab.dart`
   /// 的 `_loadElderReminders` 對此有詳細說明（第四十三輪修復的鍵不匹配 bug）。
   Future<void> _loadNextDoseData() async {
+    _nextDoseLoadAttempt++;
     final elderId = widget.roomId;
     if (elderId == null || elderId.isEmpty) {
-      if (mounted) setState(() => _isLoadingNextDose = false);
+      // 拿不到 elderId 不是「今天沒有提醒」，是「還不知道長輩是誰」——同樣
+      // 不該顯示慶祝文案，比照下面 catch 分支處理（含自動重試，見尾端說明）。
+      if (mounted) {
+        setState(() {
+          _isLoadingNextDose = false;
+          _hasNextDoseLoadError = true;
+        });
+      }
+      _scheduleNextDoseRetry();
       return;
     }
     try {
@@ -118,10 +137,28 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
         _reminders = List<Map<String, dynamic>>.from(list);
         _completedReminderIds = completedIds;
         _isLoadingNextDose = false;
+        _hasNextDoseLoadError = false;
       });
     } catch (e) {
-      if (mounted) setState(() => _isLoadingNextDose = false);
+      if (mounted) {
+        setState(() {
+          _isLoadingNextDose = false;
+          _hasNextDoseLoadError = true;
+        });
+      }
+      _scheduleNextDoseRetry();
     }
+  }
+
+  /// 讀取失敗時安排最多一次自動重試。本頁在 `IndexedStack` 下 initState
+  /// 只跑一次，若不主動再試，冷啟動當下的一次網路不穩就會讓卡片錯誤畫面
+  /// 卡住一整個 session（見 [_hasNextDoseLoadError] 的說明）。只重試一次
+  /// （`_nextDoseLoadAttempt < 2`），避免對持續離線的裝置無限重試。
+  void _scheduleNextDoseRetry() {
+    if (_nextDoseLoadAttempt >= 2) return;
+    Future.delayed(const Duration(seconds: 8), () {
+      if (mounted) _loadNextDoseData();
+    });
   }
 
   /// 打卡：同時做「本機立即生效」＋「背景同步後端」兩件事——

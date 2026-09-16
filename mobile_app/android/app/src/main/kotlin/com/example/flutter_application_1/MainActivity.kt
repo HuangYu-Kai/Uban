@@ -12,6 +12,10 @@ class MainActivity : FlutterActivity() {
     // ★ 跌倒警報 DND 繞過：查詢/導引授權設定頁、選擇 channel 用的第二條 MethodChannel。
     private val notificationPolicyChannel = "com.example.app/notification_policy"
 
+    // ★ 第四十九輪（item 5 Row 4：家屬端螢幕關閉後約 2 秒自動斷線）：通話期間持有的
+    //   CPU wake lock，詳見 acquireCallWakeLock()／releaseCallWakeLock() 的完整說明。
+    private var callWakeLock: android.os.PowerManager.WakeLock? = null
+
     companion object {
         // 跌倒警報 channel 相關常數，詳見 ensureAlertChannel() 的完整說明。
         private const val ALERT_CHANNEL_NAME = "跌倒警報"
@@ -80,6 +84,70 @@ class MainActivity : FlutterActivity() {
                     android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
                     android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
             )
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    /**
+     * ★ 第四十九輪（item 5 Row 4：家屬端螢幕關閉後約 2 秒自動斷線）。
+     *
+     * 根因：全專案先前沒有任何地方持有 CPU 層級的 `PARTIAL_WAKE_LOCK`——
+     * [showOverLockScreen] 的 `SCREEN_BRIGHT_WAKE_LOCK` 只撐 10 秒，用途是
+     * 「喚醒螢幕」而不是「維持通話期間 CPU 不睡」；`wakelock_plus` 套件雖是
+     * 既有依賴，但底層（`Wakelock.kt`）只是 `FLAG_KEEP_SCREEN_ON`，跟
+     * [showOverLockScreen] 已經在設的旗標是同一種機制，**擋不住使用者按電源
+     * 鍵關螢幕**，加了也無效。使用者按電源鍵關螢幕、又沒有任何 CPU wake lock
+     * 時，系統可能在數秒內就把 CPU 掛起，卡住 WebRTC 媒體執行緒與 Socket.IO
+     * 心跳——這是幾乎所有 VoIP App 通話期間都持有 CPU wake lock 的原因。
+     *
+     * 與 [showOverLockScreen] 的 `SCREEN_BRIGHT_WAKE_LOCK` 是兩個獨立的鎖，
+     * 職責不同：那顆負責「喚醒螢幕」（10 秒短暫），這顆負責「通話期間 CPU
+     * 不睡」（不設 timeout，通話多久就持有多久，成對呼叫、只能靠呼叫端
+     * 主動 release）。
+     *
+     * ⚠️ **CCTV 監控機也要呼叫這個方法**——監控機的工作是持續推幀給 YOLO
+     * 做跌倒偵測，CPU 被掛起會讓推幀靜默停止（不會有任何錯誤或提示，長輩
+     * 跌倒也不會被偵測到），比通話斷線更嚴重。Dart 端因此**不比照**
+     * `showOverLockScreen`／`restoreLockScreen` 的 `!widget.isCCTVMode` 排除
+     * 寫法——這顆鎖對一般通話與 CCTV 監控一視同仁，成對呼叫沒有例外。
+     *
+     * `newAcquire`／`isHeld` 判斷讓本方法冪等：重複呼叫（例如同一畫面因某種
+     * 競態 initState 觸發兩次）不會拋 `WakeLock under-locked`／重複 acquire
+     * 的例外。
+     */
+    private fun acquireCallWakeLock() {
+        try {
+            if (callWakeLock?.isHeld == true) return
+            val powerManager = getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager
+            val wakeLock = powerManager.newWakeLock(
+                android.os.PowerManager.PARTIAL_WAKE_LOCK,
+                "Uban:CallWakeLock"
+            )
+            wakeLock.setReferenceCounted(false)
+            // 刻意不設 timeout——通話／監控多久就該持有多久，逾時自動釋放會
+            // 讓長通話或長時間監控重新踩回本方法要修的同一個 bug，只是延後發生。
+            wakeLock.acquire()
+            callWakeLock = wakeLock
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    /**
+     * ★ 第四十九輪：與 [acquireCallWakeLock] 成對。呼叫端（`video_call_screen.dart`／
+     * `elder_screen.dart`）比照 [restoreLockScreen] 既有的 G114 紀律——release 呼叫
+     * 放在 `dispose()` 第一句，確保任何離場路徑（正常掛斷、按返回鍵、被遠端強制
+     * 結束…）都不會漏放，避免「進入時取得、離開時不釋放」讓裝置永久不休眠。
+     * `isHeld` 判斷避免對已釋放或從未持有的鎖重複呼叫 `release()` 拋例外。
+     */
+    private fun releaseCallWakeLock() {
+        try {
+            val wakeLock = callWakeLock
+            if (wakeLock != null && wakeLock.isHeld) {
+                wakeLock.release()
+            }
+            callWakeLock = null
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -207,6 +275,14 @@ class MainActivity : FlutterActivity() {
                     }
                     "finishAndRemoveTask" -> {
                         finishAndRemoveTaskCompat()
+                        result.success(true)
+                    }
+                    "acquireCallWakeLock" -> {
+                        acquireCallWakeLock()
+                        result.success(true)
+                    }
+                    "releaseCallWakeLock" -> {
+                        releaseCallWakeLock()
                         result.success(true)
                     }
                     else -> result.notImplemented()

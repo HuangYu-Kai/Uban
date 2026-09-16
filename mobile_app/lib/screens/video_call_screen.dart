@@ -211,6 +211,21 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       return null;
     });
 
+    // ★ 第四十九輪（item 5 Row 4：螢幕關閉後約 2 秒自動斷線）：通話期間持有
+    //   CPU 層級的 PARTIAL_WAKE_LOCK，與上面 showOverLockScreen 的
+    //   SCREEN_BRIGHT_WAKE_LOCK 是兩個獨立的鎖——那顆只負責短暫喚醒螢幕
+    //   （10 秒），不會阻止使用者按電源鍵關螢幕後 CPU 被系統掛起，卡住
+    //   WebRTC 媒體執行緒與 Socket.IO 心跳。完整根因見
+    //   MainActivity.kt::acquireCallWakeLock() 的說明。刻意跟上面一樣**不分**
+    //   isEmergency／monitorViewOnly——只要這個畫面有一條活著的 WebRTC 連線
+    //   在跑，就不該讓 CPU 睡著。
+    const MethodChannel('com.example.app/bring_to_front')
+        .invokeMethod('acquireCallWakeLock')
+        .catchError((e) {
+      debugPrint('⚠️ [VideoCall] acquireCallWakeLock 失敗: $e');
+      return null;
+    });
+
     // ★ 2026-08-25（需求 3）：記錄「進場當下」是否鎖定，供 dispose() 決定要不要
     //   關閉整個 App（見 _enteredWhileLocked 欄位說明）。monitorViewOnly（觀看
     //   CCTV）排除在外——那是家屬在已解鎖、前景使用中的 App 裡主動點進去看的
