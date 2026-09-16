@@ -15,6 +15,7 @@ import 'api_service.dart';
 import 'local_call_notification.dart';
 import 'cctv_alert_notification.dart';
 import 'local_reminder_notification.dart';
+import 'elder_question_notification.dart';
 
 /// 檢查當前平台是否支援 CallKit
 bool supportsCallKit() {
@@ -284,6 +285,23 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         await CctvAlertNotification.show(message.data);
       } catch (e) {
         debugPrint('⚠️ [BG] 跌倒警報通知失敗: $e');
+      }
+      return;
+    }
+
+    // 💬 長輩問小嘎、小嘎沒把握而轉交過來的問題（數位助理升級機制）。
+    //    依硬規則 14，這類 FCM 只送純 data payload、不帶 notification block，
+    //    所以系統不會自動彈通知——少了這段，家屬 App 關著時整則會被靜默丟掉。
+    //    ⚠️ 強度刻意低於 cctv-alert：這不是緊急事件，用警報等級半夜吵醒子女
+    //    只會讓他們關掉整個 App 的通知，連真正的跌倒警報都收不到。
+    if (type == 'elder-question') {
+      debugPrint('💬 [BG] 收到長輩提問轉交，顯示一般優先級通知');
+      try {
+        await ElderQuestionNotification.show(
+          Map<String, dynamic>.from(message.data),
+        );
+      } catch (e) {
+        debugPrint('⚠️ [BG] 長輩提問通知失敗: $e');
       }
       return;
     }
