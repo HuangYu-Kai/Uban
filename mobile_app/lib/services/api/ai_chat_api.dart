@@ -256,22 +256,6 @@ class AiChatApi {
   }
 
   /// 根據長期記憶 (RAG) 生成一片對話落葉話題
-  static Future<Map<String, dynamic>> generatePondLeaf(int userId) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse('${ApiClient.baseUrl}/ai/generate_pond_leaf?user_id=$userId'),
-            headers: {'Content-Type': 'application/json'},
-          )
-          .timeout(const Duration(seconds: 45));
-      return ApiClient.safeDecode(response);
-    } on TimeoutException {
-      return {'status': 'error', 'message': '話題生成逾時，請稍後再試'};
-    } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
-    }
-  }
-
   static Future<Map<String, dynamic>?> getElderMoodInsight(String elderId) async {
     try {
       final response = await http

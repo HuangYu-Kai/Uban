@@ -155,7 +155,6 @@ class ApiService {
     String engine = 'edge',
   }) => AiChatApi.synthesizeTts(text: text, emotion: emotion, engine: engine);
 
-  static Future<Map<String, dynamic>> generatePondLeaf(int userId) => AiChatApi.generatePondLeaf(userId);
   static Future<Map<String, dynamic>?> getElderMoodInsight(String elderId) => AiChatApi.getElderMoodInsight(elderId);
 
   // --- Elder Data & Profile ---
