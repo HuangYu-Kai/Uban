@@ -140,6 +140,12 @@ class Signaling {
   Function(String message)? onHeartbeatMessage; // 新增：主動式心跳消息回傳
   Function(String text, String type)? onNewPondLeaf; // 新增：記憶落葉話題推播
 
+  /// 💬 家屬端：收到長輩轉交過來的問題（數位助理升級機制）。
+  Function(dynamic data)? onElderQuestion;
+
+  /// 💬 長輩端：子女已回覆某則提問，小嘎可據此主動轉達。
+  Function(dynamic data)? onElderQuestionAnswered;
+
   String? _currentRoomId;
   String? _peerSocketId;
   String? _currentCallId; // 追蹤當前通話 ID，確保 hangUp 時能傳給後端
@@ -818,6 +824,18 @@ class Signaling {
     socket!.on('heartbeat-message', (data) {
        debugPrint("💓 [Signaling] Received heartbeat-message: ${data['reply']}");
        if (onHeartbeatMessage != null) onHeartbeatMessage!(data['reply']);
+    });
+
+    // 💬 長輩提問轉交家屬（數位助理升級機制）
+    socket!.on('elder-question', (data) {
+      debugPrint("💬 [Signaling] 收到長輩提問轉交: $data");
+      if (onElderQuestion != null) onElderQuestion!(data);
+    });
+
+    // 💬 子女已回覆長輩的提問，推回長輩端讓小嘎轉達
+    socket!.on('elder-question-answered', (data) {
+      debugPrint("💬 [Signaling] 收到子女回覆: $data");
+      if (onElderQuestionAnswered != null) onElderQuestionAnswered!(data);
     });
 
     // 記憶落葉話題推播（由後端排程或 API 觸發）

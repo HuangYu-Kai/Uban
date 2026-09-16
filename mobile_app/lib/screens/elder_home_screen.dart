@@ -632,6 +632,20 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
       }
     };
 
+    // 💬 子女回覆了長輩先前問小嘎、小嘎轉交出去的問題。
+    //    做成一則關懷訊息：CareMessageStore 已經負責留存、首頁顯示對話框、
+    //    聊天分頁接成小嘎的訊息，三個落點一次到位，不必另做一套。
+    Signaling().onElderQuestionAnswered = (data) {
+      if (!mounted || data is! Map) return;
+      final answer = (data['answer'] ?? '').toString().trim();
+      if (answer.isEmpty) return;
+      final question = (data['question'] ?? '').toString().trim();
+      final text = question.isEmpty
+          ? '家人回覆您了：$answer'
+          : '您之前問的「$question」，家人回覆了：$answer';
+      _handleProactiveMessage(jsonEncode({'reply': text, 'type': 'family'}));
+    };
+
     // ★ ⏰ 監聽排程提醒與同步信令
     Signaling().onRemoteReminder = (data) {
       if (mounted) {
@@ -874,6 +888,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     Signaling().onCallRequest = null;
     Signaling().onCancelCall = null;
     Signaling().onRemoteReminder = null;
+    Signaling().onElderQuestionAnswered = null;
     Signaling().onReminderSync = null;
     ElderReminderManager.instance.setContextGetter(null);
     ElderReminderManager.instance.stop();
