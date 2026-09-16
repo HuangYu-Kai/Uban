@@ -49,6 +49,9 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   int _selectedIndex = 0;
   bool _isDarkMode = false; // 子女端 M3 薄荷綠主題：預設為淺色模式 (Light)
   final Signaling _signaling = Signaling();
+  /// 💬 長輩提問收件匣的刷新訊號；收到 Socket `elder-question` 時遞增。
+  int _questionRefreshToken = 0;
+
   bool _isIncomingCallDialogOpen = false;
 
   /// ★ 2026-08-23：供 `_presentCctvAlert` 判斷「App 目前是否在前景」，只在前景
@@ -479,6 +482,14 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     _registerCctvAlertListener();
 
     // 監聽長輩設備狀態更新
+    // 💬 長輩把問題轉交過來時，讓首頁的收件匣即時刷新。
+    //    本畫面持有 IndexedStack，分頁會被保活、initState 只跑一次，
+    //    因此改用遞增 token 推給子元件，而不是依賴它自己重新載入。
+    _signaling.onElderQuestion = (data) {
+      if (!mounted) return;
+      setState(() => _questionRefreshToken++);
+    };
+
     _signaling.onElderDevicesUpdate = (devices) {
       if (!mounted) return;
       debugPrint('📡 [FamilyMainScreen] 收到長輩設備狀態更新: $devices');
@@ -2252,6 +2263,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
               index: _selectedIndex,
               children: [
                 FamilyHomeTab(
+                  questionRefreshToken: _questionRefreshToken,
                   currentElder: _currentElder,
                   isElderOnline: _isElderOnline,
                   activeAlerts: _activeAlerts,
