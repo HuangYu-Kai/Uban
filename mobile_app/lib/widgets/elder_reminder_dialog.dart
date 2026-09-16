@@ -14,6 +14,17 @@ class ElderReminderDialog extends StatefulWidget {
   final String note;
   final String elderName;
   final VoidCallback? onCompleted;
+  // ★ 第四十九輪（item 1）：是否由本彈窗自己朗讀提醒內容。
+  //   `ElderReminderManager` 現在有兩條會一起觸發本彈窗的路徑——
+  //   本機看門狗（`_checkSchedule`）額外會同步發一則 `LocalReminderNotification`
+  //   系統通知，該通知現在也會自己朗讀一次；若彈窗這裡不受控制地永遠朗讀，
+  //   同一次提醒就會出現兩段語音同時播放、互相蓋過。因此改由呼叫端決定：
+  //   看門狗路徑傳 `speak: false`（改由通知端朗讀，理由是通知路徑同時涵蓋
+  //   「畫面顯示不出來（App 在背景／被殺死收到 FCM）」的情境，見
+  //   `local_reminder_notification.dart`）；其餘沒有搭配系統通知的路徑
+  //   （Socket／FCM 前景推播、點擊通知冷啟動）維持預設 `true`，本彈窗仍是
+  //   唯一的朗讀來源。
+  final bool speak;
 
   const ElderReminderDialog({
     super.key,
@@ -24,6 +35,7 @@ class ElderReminderDialog extends StatefulWidget {
     this.note = '',
     this.elderName = '長輩',
     this.onCompleted,
+    this.speak = true,
   });
 
   static Future<void> show(
@@ -35,6 +47,7 @@ class ElderReminderDialog extends StatefulWidget {
     String note = '',
     String elderName = '長輩',
     VoidCallback? onCompleted,
+    bool speak = true,
   }) async {
     await showDialog(
       context: context,
@@ -47,6 +60,7 @@ class ElderReminderDialog extends StatefulWidget {
         note: note,
         elderName: elderName,
         onCompleted: onCompleted,
+        speak: speak,
       ),
     );
   }
@@ -62,7 +76,9 @@ class _ElderReminderDialogState extends State<ElderReminderDialog> {
   @override
   void initState() {
     super.initState();
-    _playVoicePrompt();
+    if (widget.speak) {
+      _playVoicePrompt();
+    }
   }
 
   Future<void> _playVoicePrompt() async {

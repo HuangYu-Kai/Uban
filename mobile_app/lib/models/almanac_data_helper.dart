@@ -199,8 +199,16 @@ class AlmanacDataHelper {
     // 3. 節氣與干支（100% 繁體化）
     String jieQi = lunar.getJieQi();
     if (jieQi.isEmpty) {
-      // 取得前後最近節氣
-      jieQi = lunar.getCurrentJieQi()?.getName() ?? '';
+      // ★ 原本呼叫 getCurrentJieQi()，但它的判斷條件與 getJieQi() 完全相同
+      //   （都是「今天是否恰好是節氣當天」），getJieQi() 為空時 getCurrentJieQi()
+      //   必然也是 null，這行等於死碼——農民曆節氣徽章一年 365 天有約 358 天
+      //   因此不會出現。改用 getPrevJieQi(true) 取得「目前所處的節氣區間」
+      //   （與 elder_tabs/elder_home_tab.dart 的節氣修法一致）。
+      try {
+        jieQi = lunar.getPrevJieQi(true).getName();
+      } catch (e) {
+        jieQi = '';
+      }
     }
     final solarTerm = ChineseConverter.toTraditional(jieQi);
 

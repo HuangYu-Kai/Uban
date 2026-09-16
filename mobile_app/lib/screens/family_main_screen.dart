@@ -1144,11 +1144,18 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     }
 
     // 3) 朗讀
+    // ★ 2026-09-16：'sos_voice'（長輩對小嘎開口求救）走的是同一條 dispatch_yolo_alert
+    //   派送鏈，但 device_id 是哨兵值 0、沒有任何真實監視機——原本這裡不分類型一律念
+    //   「請立即查看監視畫面」，對語音 SOS 是一句不存在的指示（螢幕上也真的沒有可看的
+    //   監視畫面）。下面彈窗內容比照處理。
     try {
       _alertTts ??= FlutterTts();
       await _alertTts!.setLanguage('zh-TW');
       await _alertTts!.setSpeechRate(0.45);
-      await _alertTts!.speak('注意，偵測到長輩可能$typeLabel，請立即查看監視畫面');
+      final String ttsMessage = alertType == 'sos_voice'
+          ? '注意，長輩剛透過語音助理開口求救，請立即聯繫或致電確認狀況'
+          : '注意，偵測到長輩可能$typeLabel，請立即查看監視畫面';
+      await _alertTts!.speak(ttsMessage);
     } catch (e) {
       debugPrint('⚠️ [FamilyMainScreen] 跌倒警報朗讀失敗: $e');
     }
@@ -1226,15 +1233,20 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('監視機：$deviceName'),
+              // ★ 2026-09-16：'sos_voice' 的 device_id 是哨兵值 0，_monitorDevices
+              //   查不到對應設備，deviceName 會退回寫死的「監視機」字面值——顯示
+              //   「監視機：監視機」對語音 SOS 沒有意義，故此列只在有真實監視機時顯示。
+              if (alertType != 'sos_voice') Text('監視機：$deviceName'),
               if (confText.isNotEmpty) ...[
                 const SizedBox(height: 4),
                 Text(confText, style: const TextStyle(color: Colors.black54)),
               ],
               const SizedBox(height: 8),
-              const Text(
-                '請立即查看監視畫面確認長輩狀況。',
-                style: TextStyle(color: Colors.black87),
+              Text(
+                alertType == 'sos_voice'
+                    ? '長輩剛透過語音助理開口求救，這次沒有監視畫面可查看，請盡快主動聯繫或致電長輩確認狀況；如情況危急請直接撥打 119。'
+                    : '請立即查看監視畫面確認長輩狀況。',
+                style: const TextStyle(color: Colors.black87),
               ),
             ],
           ),
