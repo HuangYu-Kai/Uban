@@ -26,6 +26,9 @@ import '../widgets/spotlight_tutorial.dart';
 // ⏰ 排程提醒管理器
 import '../services/elder_reminder_manager.dart';
 import '../services/local_reminder_notification.dart';
+import '../widgets/heartbeat_overlay.dart';
+import 'package:intl/intl.dart';
+import '../services/care_message_store.dart';
 
 /// ★ 第四十輪（item 4）：取消來電時清除待處理通話 prefs 的共用邏輯。
 /// 與 `main.dart::_clearPendingCallPrefsOnCancel` 同一邏輯（該函式對本檔
@@ -292,6 +295,10 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
       }
       wakeWordEnabledNotifier.value = wakeWordEnabled;
       _initWakeWordListener();
+
+      // ★ 載入這位長輩既有的主動關懷訊息，讓「小嘎說過的話」在重開 App
+      //   之後仍查得到。
+      await CareMessageStore.instance.load(widget.userId);
     } catch (e) {
       debugPrint('🤖 [_loadAssistantSettings Error] $e');
     }
@@ -635,9 +642,39 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     Signaling().onReminderSync = (data) {
       if (mounted) {
         debugPrint('🔄 [ElderHomeScreen] 收到 onReminderSync 信令: $data');
+        // ★ 2026-09-15：action='complete' 時把該筆寫進本機當日完成清單。
+        //   「我的」分頁與首頁「下一包藥」讀的都是本機 completed_tasks_<date>，
+        //   後端只寫 activity_log、UI 從來不讀。少了這段，透過提醒 API 或
+        //   語音（「我吃過藥了」）完成的打卡，長輩畫面上永遠不會變。
+        _applyRemoteReminderCompletion(data);
         ElderReminderManager.instance.syncReminders();
       }
     };
+  }
+
+  /// 把遠端回報的「提醒已完成」寫入本機當日清單，與「我的」分頁的
+  /// `_toggleTaskCompletion`、提醒彈窗使用同一個鍵，確保三條打卡路徑
+  /// （清單點擊／提醒彈窗／對小嘎說「我吃過藥了」）看到同一個狀態。
+  Future<void> _applyRemoteReminderCompletion(dynamic data) async {
+    try {
+      if (data is! Map) return;
+      if ((data['action'] ?? '').toString() != 'complete') return;
+      final rid = data['reminderId'];
+      if (rid == null) return;
+
+      final prefs = await SharedPreferences.getInstance();
+      final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+      final key = 'completed_tasks_$today';
+      final done = prefs.getStringList(key) ?? <String>[];
+      final id = rid.toString();
+      if (!done.contains(id)) {
+        done.add(id);
+        await prefs.setStringList(key, done);
+        debugPrint('✅ [ElderHomeScreen] 遠端打卡已同步至本機清單: $id');
+      }
+    } catch (e) {
+      debugPrint('⚠️ [ElderHomeScreen] 同步遠端打卡失敗: $e');
+    }
   }
 
   bool _isIncomingCallDialogOpen = false;
@@ -772,10 +809,16 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
 
   Future<void> _handleProactiveMessage(String message) async {
     String displayText = message;
+    // ★ 2026-09-15：type 與 emotion 原本在首頁被整個丟掉（只有通話畫面會用），
+    //   同一則關懷訊息在兩個畫面的呈現因此天差地遠。這裡一併解析出來。
+    String type = 'chat';
+    String emotion = 'caring';
     try {
       final data = jsonDecode(message);
       if (data is Map && data.containsKey('reply')) {
         displayText = data['reply'];
+        type = (data['type'] ?? 'chat').toString();
+        emotion = (data['emotion'] ?? 'caring').toString();
         // 檢查是否為禮物
         if (data['type'] == 'family_gift') {
           displayText = "嘎挖！大驚喜！🎁 子女給您送禮物來了：\n$displayText";
@@ -783,6 +826,27 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
       }
     } catch (e) {
       debugPrint("Home Heartbeat is plain text.");
+    }
+
+    // ★ 留存：先前首頁只朗讀、畫面什麼都不留。重聽長輩、手機靜音、或人不在
+    //   旁邊時，關懷訊息完全遺失且無法回溯——沒有任何地方查得到「今天小嘎
+    //   跟我說過什麼」。
+    await CareMessageStore.instance
+        .add(text: displayText, type: type, emotion: emotion);
+
+    // ★ 視覺呈現：沿用通話畫面既有的 HeartbeatOverlay，不另做一套樣式。
+    //   那個精美的毛玻璃對話框原本只掛在 elder_screen（長輩最少待的畫面）。
+    if (mounted) {
+      showDialog(
+        context: context,
+        barrierColor: Colors.black54,
+        builder: (dialogCtx) => HeartbeatOverlay(
+          message: displayText,
+          type: type,
+          emotion: emotion,
+          onDismiss: () => Navigator.of(dialogCtx).pop(),
+        ),
+      );
     }
 
     // 1. 發出「豬叫」音效 (oink!) - 暫時用 TTS 模擬高頻短促音

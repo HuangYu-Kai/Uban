@@ -19,6 +19,7 @@ import '../widgets/call_retry_dialog.dart';
 import 'identification_screen.dart';
 import 'elder_home_screen.dart';
 import '../globals.dart';
+import '../services/care_message_store.dart';
 
 class ElderScreen extends StatefulWidget {
   final String roomId;
@@ -1231,6 +1232,11 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
         } catch (e) {
           debugPrint("Heartbeat is plain text or malformed JSON.");
         }
+
+        // ★ 2026-09-15：通話畫面收到的關懷訊息同樣要留存，否則長輩正在
+        //   通話時收到的關心，掛斷後就查不到了。
+        CareMessageStore.instance
+            .add(text: displayText, type: type, emotion: emotion);
 
         // 統一顯示精美的毛玻璃對話框
         showDialog(

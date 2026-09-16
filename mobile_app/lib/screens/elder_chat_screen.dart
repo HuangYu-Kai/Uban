@@ -16,6 +16,7 @@ import '../theme/app_theme.dart';
 import '../widgets/youtube_bubble_player.dart';
 import 'news_listen_player/news_listen_player_screen.dart';
 import 'elder_screen.dart';
+import '../services/care_message_store.dart';
 
 /// 長輩端「和小嘎聊天」—— AI 聊天頁（串流 + Markdown 渲染）。
 ///
@@ -126,6 +127,13 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
     _loadUserAppellation();
     _initSpeech();
     _loadChatHistory();
+
+    // ★ 2026-09-15：小嘎主動關懷的訊息接進聊天室。
+    //   關懷訊息本來就是「小嘎說的話」，放在與小嘎的聊天裡最合理，長輩
+    //   不必再學一個新的地方去找。用 ValueNotifier 而非回呼欄位，才不會
+    //   被其他畫面覆寫；而且本頁在 IndexedStack 中會被保活、initState 只跑
+    //   一次，靠監聽才能即時接到新訊息。
+    CareMessageStore.instance.latest.addListener(_onCareMessage);
   }
 
   /// 載入由長輩或子女設定的專屬稱呼（優先從本機快取讀取，並向後端 API 同步）
@@ -250,6 +258,26 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
   ///
   /// 這則訊息刻意不寫進 chat_history_${widget.userId} 快取，只存在於當次
   /// session 的畫面上，避免每日選題累積污染聊天歷史。
+  /// 小嘎主動關懷訊息抵達 → 以小嘎的身分附加一則聊天訊息，
+  /// 讓長輩事後在聊天室裡找得到「今天小嘎跟我說過什麼」。
+  void _onCareMessage() {
+    final msg = CareMessageStore.instance.latest.value;
+    if (msg == null || !mounted) return;
+    // 同一則不重複加入（ValueNotifier 在相同物件時不會通知，這裡多一層防護）
+    if (_messages.isNotEmpty && _messages.last.text == msg.text) return;
+    setState(() {
+      _messages.add(_ChatMessage(
+        msg.text,
+        false,
+        ttsText: msg.text,
+        ttsLanguage: 'mandarin',
+      ));
+    });
+    _scrollToBottom();
+    // 主動關懷屬於真的對話內容，與每日回憶選題不同，要寫進歷史保留下來。
+    _saveLocalChatHistory();
+  }
+
   Future<void> _maybeAskMemoirPrompt() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -472,6 +500,7 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
 
   @override
   void dispose() {
+    CareMessageStore.instance.latest.removeListener(_onCareMessage);
     _recorder.dispose();
     _audioPlayer.dispose();
     _controller.dispose();
