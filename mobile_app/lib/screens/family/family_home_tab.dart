@@ -9,6 +9,7 @@ import 'home/widgets/home_monitor_device_card.dart';
 import 'home/widgets/home_ai_mood_radar_card.dart';
 import 'home/widgets/home_alert_preview_card.dart';
 import 'home/widgets/home_elder_life_feed.dart';
+import 'widgets/elder_question_inbox.dart';
 
 /// 🏠 子女端首頁 Tab (模組化架構：極光玻璃、AI 情緒氣象台、IPS 室內位置、生活時光牆與最新警示)
 class FamilyHomeTab extends StatefulWidget {
@@ -19,6 +20,11 @@ class FamilyHomeTab extends StatefulWidget {
   /// ★ 2026-08-10 第十九輪（需求 4）：「撥打電話聊聊 → 開始撥號」的實際動作。
   /// 由父層 `FamilyMainScreen` 注入 `VideoCallScreen` 路徑。
   final List<Map<String, dynamic>> activeAlerts;
+
+  /// 💬 長輩提問收件匣的重新整理訊號：父層收到 Socket `elder-question` 時遞增。
+  /// 本分頁在 IndexedStack 底下會被保活、initState 只跑一次，因此必須靠這個
+  /// 訊號才能即時反映新問題。
+  final int questionRefreshToken;
   final VoidCallback? onStartVideoCall;
 
   /// ★ 2026-08-18 IPS prototype：長輩目前所在區域卡片所需資料，由父層提供。
@@ -43,6 +49,7 @@ class FamilyHomeTab extends StatefulWidget {
 
   const FamilyHomeTab({
     super.key,
+    this.questionRefreshToken = 0,
     this.currentElder,
     this.isElderOnline = false,
     this.activeAlerts = const [],
@@ -142,6 +149,12 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // 💬 長輩提問收件匣：沒有待回覆問題時自動隱藏不佔位
+                        if (widget.userId != null)
+                          ElderQuestionInbox(
+                            familyId: widget.userId!,
+                            refreshToken: widget.questionRefreshToken,
+                          ),
                         HomeElderHeaderCard(
                           headerKey: widget.elderHeaderKey,
                           currentElder: widget.currentElder,

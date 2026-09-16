@@ -183,6 +183,44 @@ Scheduled jobs (defined in `main.py`):
 
 ---
 
+### 2.9 數位助理：小嘎沒把握時轉交子女（2026-09-15 第四十八輪）
+
+長輩問小嘎、小嘎沒把握 → 問題連同「長輩當下在哪一頁」送到子女手機 →
+子女回一次 → 小嘎主動轉達給長輩。
+
+| 檔案 | 職責 |
+|------|------|
+| `lib/services/api/elder_question_api.dart` | 三個端點的 API 層 |
+| `lib/screens/family/widgets/elder_question_inbox.dart` | 家屬端收件匣（無待回覆時自動隱藏） |
+| `lib/services/elder_question_notification.dart` | 家屬 App 關著時的 FCM 通知 |
+| `Signaling.onElderQuestion` / `onElderQuestionAnswered` | 兩端的 Socket 回呼 |
+
+**設計約束**：
+
+- **通知強度必須低於跌倒警報**：`Importance.defaultImportance`、不 `fullScreenIntent`、
+  不繞過勿擾。日常問題用警報等級半夜吵醒子女，只會讓他們把整個 App 的通知關掉——
+  連真正的跌倒警報都一起收不到。**不要「順手」對齊 `CctvAlertNotification`。**
+- **Socket 推播只是「去刷新」的訊號**，實際資料一律從 `GET /api/elder_question/...`
+  撈。單一真相在資料庫，推播漏收也不會永久遺失。
+- 家屬首頁在 `IndexedStack` 下會被保活、`initState` 只跑一次，因此靠
+  `questionRefreshToken` 遞增推給子元件觸發重載，不能依賴它自己重新初始化。
+- **前景不需要補 FCM**：後端 `_get_family_fcm_tokens` 只收集 socket 不在線的家屬
+  token，在線家屬走 Socket，不會重複。
+
+### 2.10 主動關懷的留存（2026-09-15 第四十七輪）
+
+`lib/services/care_message_store.dart` 留存最近 30 則主動關懷訊息並以
+`ValueNotifier` 即時通知。首頁顯示 `HeartbeatOverlay`、聊天分頁接成小嘎的一則
+訊息，子女回覆長輩提問時也走同一條路。
+
+⚠️ **刻意不放進 `Signaling` singleton**——該類別已有多個回呼互相覆寫的歷史，
+護欄明文禁止在其中新增顯示狀態旗標；`ValueNotifier` 也允許多個畫面同時監聽，
+不會被後掛載者蓋掉。
+
+> 修正前的狀況：首頁只做 TTS 朗讀、畫面什麼都不留，而精美的 `HeartbeatOverlay`
+> 只掛在 `elder_screen`（長輩最少待的通話畫面）。重聽長輩、手機靜音或人不在
+> 旁邊時，關懷訊息完全遺失且無法回溯。
+
 ## 3. Hard Rules
 
 ### 3.1 通用

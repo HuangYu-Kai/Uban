@@ -138,7 +138,12 @@ class Signaling {
   /// ICE 連線失敗且自動 ICE restart 也救不回來時觸發（參數為給使用者看的訊息）。
   ErrorCallback? onPeerConnectionFailed;
   Function(String message)? onHeartbeatMessage; // 新增：主動式心跳消息回傳
-  Function(String text, String type)? onNewPondLeaf; // 新增：記憶落葉話題推播
+
+  /// 💬 家屬端：收到長輩轉交過來的問題（數位助理升級機制）。
+  Function(dynamic data)? onElderQuestion;
+
+  /// 💬 長輩端：子女已回覆某則提問，小嘎可據此主動轉達。
+  Function(dynamic data)? onElderQuestionAnswered;
 
   String? _currentRoomId;
   String? _peerSocketId;
@@ -820,15 +825,18 @@ class Signaling {
        if (onHeartbeatMessage != null) onHeartbeatMessage!(data['reply']);
     });
 
-    // 記憶落葉話題推播（由後端排程或 API 觸發）
-    socket!.on('new-pond-leaf', (data) {
-      final text = (data['text'] ?? '').toString();
-      final type = (data['type'] ?? 'memory').toString();
-      debugPrint("🍂 [Signaling] Received new-pond-leaf: $text");
-      if (text.isNotEmpty && onNewPondLeaf != null) {
-        onNewPondLeaf!(text, type);
-      }
+    // 💬 長輩提問轉交家屬（數位助理升級機制）
+    socket!.on('elder-question', (data) {
+      debugPrint("💬 [Signaling] 收到長輩提問轉交: $data");
+      if (onElderQuestion != null) onElderQuestion!(data);
     });
+
+    // 💬 子女已回覆長輩的提問，推回長輩端讓小嘎轉達
+    socket!.on('elder-question-answered', (data) {
+      debugPrint("💬 [Signaling] 收到子女回覆: $data");
+      if (onElderQuestionAnswered != null) onElderQuestionAnswered!(data);
+    });
+
   }
 
   Future<bool> _showCallkitIncoming(String callerName) async {

@@ -66,7 +66,10 @@ class _ElderProfileTabState extends State<ElderProfileTab>
   static const Duration _minSampleInterval = Duration(seconds: 1);
 
   // 小豬預設對話語錄（用於任務打卡的短暫慶祝語結束後回到的預設狀態）
-  static const String _defaultSpeechText = '阿公～今天天氣真好，一起散步活動身體吧！🌿';
+  // ★ 2026-09-15 溢位巡檢時發現：這句沿用自舊的 _pigQuotes，寫死了「阿公」。
+  //   自主模式的長輩預設叫「長輩朋友」、性別未知，阿嬤看到小豬喊她阿公會困惑
+  //   ——與 memoir_service 先前修掉的是同一類問題。改為中性稱呼。
+  static const String _defaultSpeechText = '今天天氣真好，一起散步活動身體吧！🌿';
 
   // ── 數據 ───────────────────────────────────────────────
   final int dailyStepGoal = 8000;
