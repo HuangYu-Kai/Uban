@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../almanac/farmer_almanac_screen.dart';
 import '../news_listen_player/news_listen_player_screen.dart';
 import '../../models/almanac_data_helper.dart';
+import '../../models/chinese_converter.dart';
 import '../../services/api_service.dart';
 import '../../services/subscription_service.dart';
 import '../../services/weather_service.dart';
@@ -302,6 +303,13 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
           _solarTerm = '';
         }
       }
+      // ★ 第四十九輪：`lunar` 套件的 24 節氣表本身是簡體字，其中「驚蟄／
+      // 處暑／芒種／穀雨／小滿」這 5 個（每個約 15 天、一年約 75 天）沒有
+      // 特別轉繁體。兩條路徑（上面直接命中的 getJieQi()、下面 fallback 的
+      // getPrevJieQi）都可能回傳簡體，因此在兩者匯流之後、只包一次，涵蓋
+      // 全部情況——同一套修法已用在 models/almanac_data_helper.dart（農民曆
+      // 頁面），這裡是本頁首頁卡片獨立的第二處，兩者是不同檔案、必須分開改。
+      _solarTerm = ChineseConverter.toTraditional(_solarTerm);
 
       try {
         _dayName = DateFormat('EEEE', 'zh_TW').format(now);
@@ -572,6 +580,20 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
           overflow: TextOverflow.ellipsis,
           textAlign: TextAlign.end,
         ),
+        // ★ 第四十九輪：WeatherInfo.isFromCache 之前定義了卻從沒被畫面讀過
+        // （全 repo 搜尋只有 weather_service.dart 自己的定義處）——連線失敗
+        // 時頂替的舊資料，長輩看起來跟剛查到的一模一樣。現在補上這行小字，
+        // 只在 isFromCache 為 true 時顯示，不影響平常（新資料）的畫面。
+        if (weather.isFromCache) ...[
+          const SizedBox(height: 2),
+          Text(
+            '（上次查到的資料）',
+            style: ElderScale.caption.copyWith(color: AppColors.textSecondary),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.end,
+          ),
+        ],
       ],
     );
   }
@@ -610,6 +632,30 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
 
     final next = nextDue(_reminders, _completedReminderIds, DateTime.now());
     if (next == null) {
+      // ★ 第四十九輪：「讀取失敗」與「真的沒有提醒／都已完成」以前是同一張卡片
+      // （`_reminders` 空陣列時兩者都會走到這裡），長輩開 App 那一刻網路不穩
+      // 會被誤導成「今天沒有藥要吃」。改用 [_hasNextDoseLoadError] 分流成兩種
+      // 語氣不同的文案：讀取失敗用中性圖示與措辭，不使用 🌟 慶祝語氣。
+      if (_hasNextDoseLoadError) {
+        return GlassCard(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 22),
+          child: Row(
+            children: [
+              const Icon(Icons.wifi_off_rounded,
+                  size: 28, color: Color(0xFF9CA3AF)),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Text(
+                  '提醒暫時讀不到，請確認網路連線',
+                  style: ElderScale.body,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        );
+      }
       return GlassCard(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 22),
         child: Row(

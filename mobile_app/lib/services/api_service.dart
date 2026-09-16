@@ -11,6 +11,7 @@ import 'api/elder_data_api.dart';
 import 'api/cctv_alert_api.dart';
 import 'api/reminder_api.dart';
 import 'api/community_api.dart';
+import 'api/family_insight_api.dart';
 
 export 'api/cctv_alert_api.dart' show CctvPushResult;
 export 'api/api_client.dart';
@@ -22,6 +23,7 @@ export 'api/elder_data_api.dart';
 export 'api/cctv_alert_api.dart';
 export 'api/reminder_api.dart';
 export 'api/community_api.dart';
+export 'api/family_insight_api.dart';
 
 /// 專案 API 門面 (Facade Pattern)
 ///
@@ -34,6 +36,7 @@ export 'api/community_api.dart';
 /// - [CctvAlertApi]: CCTV 串流、設備管理、緊急警報歷史、室內定位 (IPS)
 /// - [ReminderApi]: 排程提醒 CRUD 與打卡
 /// - [CommunityApi]: 社群貼文、互動點讚、留言與圖片上傳
+/// - [FamilyInsightApi]: 家屬端情緒／健康趨勢真實資料（步數、負面情緒事件、體重身高）
 class ApiService {
   // --- 基礎 URL 與通用請求 ---
   static String get baseUrl => ApiClient.baseUrl;
@@ -236,6 +239,40 @@ class ApiService {
 
   static Future<List<dynamic>> getElderActivityLogs(String elderId, {int limit = 10}) =>
       ElderDataApi.getElderActivityLogs(elderId, limit: limit);
+
+  // --- Family Insight（情緒／健康趨勢真實資料，第四十九輪）---
+  static Future<Map<String, dynamic>> getStepsTrend(
+    String elderId, {
+    int? familyId,
+    int days = 30,
+  }) => FamilyInsightApi.getStepsTrend(elderId, familyId: familyId, days: days);
+
+  static Future<Map<String, dynamic>> getEmotionEvents(
+    String elderId, {
+    int? familyId,
+    int days = 30,
+    int limit = 50,
+  }) => FamilyInsightApi.getEmotionEvents(elderId, familyId: familyId, days: days, limit: limit);
+
+  static Future<Map<String, dynamic>> getBodyMetricsTrend(
+    String elderId, {
+    int? familyId,
+    int days = 365,
+  }) => FamilyInsightApi.getBodyMetricsTrend(elderId, familyId: familyId, days: days);
+
+  static Future<Map<String, dynamic>> submitBodyMetrics({
+    required String elderId,
+    required int familyId,
+    String? measuredAt,
+    double? weightKg,
+    double? heightCm,
+  }) => FamilyInsightApi.submitBodyMetrics(
+        elderId: elderId,
+        familyId: familyId,
+        measuredAt: measuredAt,
+        weightKg: weightKg,
+        heightCm: heightCm,
+      );
 
   // --- CCTV, Alerts, Audio Bridge & IPS ---
   static Future<CctvPushResult> pushCctvFrame({

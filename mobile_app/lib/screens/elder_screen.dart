@@ -441,6 +441,22 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       });
     }
 
+    // ★ 第四十九輪（item 5 Row 4／item 6 CCTV 靜默死亡）：通話期間持有 CPU 層
+    //   級的 PARTIAL_WAKE_LOCK，避免螢幕關閉後系統把 CPU 掛起、卡住 WebRTC
+    //   媒體執行緒與 Socket.IO 心跳（完整根因見 MainActivity.kt 對應方法的
+    //   說明）。
+    //   ⚠️ 這裡**刻意不跟上面一樣包 `!widget.isCCTVMode`**——CCTV 監控機的
+    //   工作是持續推幀給 YOLO 做跌倒偵測，CPU 被掛起會讓推幀**靜默**停止
+    //   （不會有任何錯誤或提示，長輩跌倒也不會被偵測到），後果比通話斷線
+    //   更嚴重。一般通話與監控模式在這顆鎖上一視同仁，成對呼叫沒有例外；
+    //   對應的 release（見 dispose()）同理也不跟著 `!widget.isCCTVMode` 排除。
+    const MethodChannel('com.example.app/bring_to_front')
+        .invokeMethod('acquireCallWakeLock')
+        .catchError((e) {
+      debugPrint('⚠️ [ElderScreen] acquireCallWakeLock 失敗: $e');
+      return null;
+    });
+
     WidgetsBinding.instance.addObserver(this);
     isAppReady = true;
     _checkPermissions();
@@ -1710,6 +1726,11 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     if (confirm == true) {
       if (_isExiting) return;
       _isExiting = true;
+      // ★ 第四十九輪：這裡**不**額外呼叫 releaseCallWakeLock()——本函式結尾的
+      //   `pushAndRemoveUntil` 會把這個 ElderScreen route 從樹上移除，隨之觸發
+      //   的 dispose()（見該方法最前面的區塊）已經是無條件呼叫，會處理釋放。
+      //   在這裡重複呼叫一次不會出錯（isHeld 冪等），但沒有必要，也會讓兩個
+      //   呼叫點的職責混淆——保留單一的釋放時機比較不容易日後漏改其中一處。
       // ★ 2026-08-10 第二十輪（需求 5）：這裡原本只 remove 七個 prefs 鍵，
       //   漏掉 `access_token`、`user_id`、`elder_room_id`、`device_role_*` 等等，
       //   而且**從不通知後端註銷 FCM token**。後果就是使用者回報的：
@@ -1813,6 +1834,23 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
         return null;
       });
     }
+
+    // ★ 第四十九輪：與 initState() 的 acquireCallWakeLock 成對，同樣**不**包
+    //   `!widget.isCCTVMode`（跟上面 restoreLockScreen 的排除範圍刻意不同，
+    //   理由見 initState 對應註解）。放在 dispose() 最前面這個區塊，是因為
+    //   本畫面涵蓋的所有離開路徑（掛斷／對方掛斷／忙線／斷線／連線失敗／
+    //   撥打逾時／CCTV 的 `_exitCCTVMode()` 觸發 pushAndRemoveUntil）最終都
+    //   會讓本 route 被移除而觸發這裡——這是唯一保證「不論怎麼離開都會執行」
+    //   的收尾點，不依賴 `_exitCCTVMode()` 自己另外呼叫一次 release（那條
+    //   路徑最終也是靠 pushAndRemoveUntil 間接觸發本 dispose()）。
+    //   isHeld 內建於 MainActivity.kt::releaseCallWakeLock()，對未持有的鎖
+    //   呼叫是安全的 no-op，不需要在這裡自行判斷是否曾經 acquire 過。
+    const MethodChannel('com.example.app/bring_to_front')
+        .invokeMethod('releaseCallWakeLock')
+        .catchError((e) {
+      debugPrint('⚠️ [ElderScreen] releaseCallWakeLock 失敗: $e');
+      return null;
+    });
 
     // ★ 2026-08-25（需求 3）：這通電話是從鎖屏／背景喚醒才進來的
     //   （_enteredWhileLocked，見欄位宣告處說明）→ 通話結束時不留在 App

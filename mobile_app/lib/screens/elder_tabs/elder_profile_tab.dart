@@ -120,6 +120,10 @@ class _ElderProfileTabState extends State<ElderProfileTab>
   List<Map<String, dynamic>> _reminders = [];
   Set<int> _completedReminderIds = {};
   bool _isLoadingReminders = false;
+  // ★ 第四十九輪：見 _loadElderReminders 的 catch 區塊與
+  // TodayTasksHandmadeSection.hasLoadError 的說明——讀取失敗不該跟「真的
+  // 沒有安排提醒」顯示成同一張空狀態卡片。
+  bool _hasReminderLoadError = false;
 
   // ── 🎨 小豬對話氣泡文字 ──────────────────────────────
   String _speechText = _defaultSpeechText;
@@ -523,11 +527,21 @@ class _ElderProfileTabState extends State<ElderProfileTab>
         setState(() {
           _reminders = List<Map<String, dynamic>>.from(list);
           _isLoadingReminders = false;
+          _hasReminderLoadError = false;
         });
       }
     } catch (e) {
+      // ★ 第四十九輪：讀取失敗與「真的沒有安排提醒」以前是同一種空清單畫面
+      // （`_reminders` 維持空陣列），長輩會被誤導成「今天沒有藥要吃」。
+      // 本函式有三個呼叫點（initState／_loadMyFriendElderId 完成後／
+      // ElderReminderManager 通知監聽器，見上方 _onReminderManagerUpdate），
+      // 後者會在約每 2 分鐘一次的後端排程同步成功時觸發，等同已經有自動
+      // 重試機制，不需要像 elder_home_tab.dart 那樣額外排一次性重試計時器。
       if (mounted) {
-        setState(() => _isLoadingReminders = false);
+        setState(() {
+          _isLoadingReminders = false;
+          _hasReminderLoadError = true;
+        });
       }
     }
   }
@@ -831,6 +845,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                 completedReminderIds: _completedReminderIds,
                 isLoadingReminders: _isLoadingReminders,
                 onToggleTask: _toggleTaskCompletion,
+                hasLoadError: _hasReminderLoadError,
               ),
 
               const SizedBox(height: 16),
@@ -941,6 +956,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                       isLoadingReminders: _isLoadingReminders,
                       onToggleTask: _toggleTaskCompletion,
                       isLandscape: true,
+                      hasLoadError: _hasReminderLoadError,
                     ),
                     const SizedBox(height: 8),
                     Row(
