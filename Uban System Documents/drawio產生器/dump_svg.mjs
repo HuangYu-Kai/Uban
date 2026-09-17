@@ -14,7 +14,7 @@ for (const f of files) {
     + '<script>window.GX=' + JSON.stringify(xml) + ';</scr' + 'ipt>'
     + '<script src="https://viewer.diagrams.net/js/viewer-static.min.js"></scr' + 'ipt>'
     + '<script>document.getElementById("g").setAttribute("data-mxgraph",JSON.stringify({xml:window.GX,toolbar:"",nav:false,zoom:1}));GraphViewer.processElements();</scr' + 'ipt>';
-  const tmp = path.join(outDir, '_tmp.html');
+  const tmp = path.join(outDir, '_tmp.html');  // 暫存檔放輸出資料夾，不要污染 drawio圖/
   fs.writeFileSync(tmp, html, 'utf8');
   await p.goto('file:///' + tmp.split(String.fromCharCode(92)).join('/'), {waitUntil:'networkidle0', timeout:60000});
   await new Promise(r => setTimeout(r, 700));
