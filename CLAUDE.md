@@ -79,8 +79,11 @@ cd uban-api
 
 pip install -r requirements.txt          # Python 3.12 only, NOT 3.13+
 uvicorn main:app --host 0.0.0.0 --port 8000
-pytest tests/
-pytest tests/test_call_signaling.py -q   # 通話迴歸套件，目前 17 passed（會隨測試增加而成長，以套件當下實際輸出為準）
+# ⚠️ .env 的 DB_HOST 指向正式 MySQL，conftest.py 的 autouse cleanup_db 每個
+#    測試前後都會 DELETE，直接跑 pytest 可能寫到正式資料庫。conftest.py
+#    已預設 DISABLE_DB=true，仍建議明確帶上；要刻意連正式庫才帶 DISABLE_DB=false。
+DISABLE_DB=true pytest tests/
+DISABLE_DB=true pytest tests/test_call_signaling.py -q   # 通話迴歸套件，本輪實測 41 passed（會隨測試增加而成長，以套件當下實際輸出為準）
 python -m py_compile services/socket_app.py
 ```
 
@@ -127,8 +130,8 @@ Key service addresses:
 | 撥打 → 接聽 → 掛斷 完整流程（含冷啟動五層兜底） | §4 通話生命週期 |
 | **按鈕在哪、按了跳去哪、可以安全改什麼** | `CLAUDE_call-monitor-ui-map.md`（原 §5，2026-08-25 起獨立成檔） |
 | 監控機／CCTV／裝置角色指派 | §6 監控子系統 |
-| **190 條護欄（絕對不可單點修改）** | `CLAUDE_call-monitor-guardrails.md`（原 §7，2026-09-04 起獨立成檔） |
-| 這段程式碼為什麼長這樣（48 輪修復年表；近期輪次在 §8，第一至三十五輪在 `CLAUDE_call-monitor-history.md`） | §8 |
+| **197 條護欄（絕對不可單點修改）** | `CLAUDE_call-monitor-guardrails.md`（原 §7，2026-09-04 起獨立成檔） |
+| 這段程式碼為什麼長這樣（49 輪修復年表；近期輪次在 §8，第一至三十五輪在 `CLAUDE_call-monitor-history.md`） | §8 |
 | 出問題了怎麼查（三層 A/B/C 定位法、MIUI 檢查表） | §9 |
 | 改完要做什麼 | §10 修改 SOP |
 
@@ -245,7 +248,7 @@ Scheduled jobs (defined in `main.py`):
 
 ### 3.2 通話與監控
 
-**完整規則見 [`CLAUDE_call-monitor-guardrails.md`](CLAUDE_call-monitor-guardrails.md)（190 條護欄）。**
+**完整規則見 [`CLAUDE_call-monitor-guardrails.md`](CLAUDE_call-monitor-guardrails.md)（197 條護欄）。**
 以下僅列最高頻的幾條，動手前仍必須讀完整版：
 
 - **Never merge signaling and media tracks** — they are on separate hosts by design
@@ -277,7 +280,7 @@ Flutter 前端在 `Uban/mobile_app/` 下沒有更細的 CLAUDE.md，本檔即為
 
 ## 5. 變更歷史
 
-通話與監控子系統的完整修復年表（2026-06-05 起，已累積 48 輪）已逐條核對，內容全數存在於
+通話與監控子系統的完整修復年表（2026-06-05 起，已累積 49 輪）已逐條核對，內容全數存在於
 [`CLAUDE_call-monitor.md`](CLAUDE_call-monitor.md) §8（近期輪次）與
 [`CLAUDE_call-monitor-history.md`](CLAUDE_call-monitor-history.md)（第一至三十五輪，含本節原本
 記載的全部早期輪次），故不再於本檔重複列出。部分項目在遷移後已修正過期或錯誤的敘述（例如不

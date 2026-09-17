@@ -281,8 +281,9 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
     try {
       final String? audioUrl = item['audio_url'];
       if (audioUrl != null && audioUrl.isNotEmpty) {
-        final String fullUrl =
-            "https://localhost-0.tail5abf5e.ts.net$audioUrl";
+        // ⚠️ 不可寫死正式站網址（鐵律 #1），且會讓沙盒建置防護誤判——改用
+        // ApiService.serverRootUrl（同一修法見 news_article_screen.dart）。
+        final String fullUrl = "${ApiService.serverRootUrl}$audioUrl";
         await _audioPlayer.stop();
         await _audioPlayer.play(UrlSource(fullUrl));
 

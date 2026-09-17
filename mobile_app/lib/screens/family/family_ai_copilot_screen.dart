@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:speech_to_text/speech_to_text.dart';
 import '../../models/elder.dart';
 import '../../services/api_service.dart';
 
@@ -17,9 +20,17 @@ class FamilyAiCopilotScreen extends StatefulWidget {
 class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  
+
   final List<Map<String, dynamic>> _chatMessages = [];
   bool _isSending = false;
+
+  // 🎙️ 語音輸入（第四十九輪新增）：只把辨識結果寫回輸入框，絕不自動送出
+  // ——語音可能聽錯，必須讓家屬看過文字內容、自己按送出鍵確認，否則等於
+  // 讓系統代替家屬決定要建立什麼排程。
+  final SpeechToText _speechToText = SpeechToText();
+  bool _isListening = false;
+  bool _speechReady = false;
+  bool _speechInitializing = false;
 
   @override
   void initState() {
@@ -31,6 +42,115 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
       'statusSummary': null,
       'scheduleDrafts': null,
     });
+  }
+
+  @override
+  void dispose() {
+    _speechToText.stop();
+    _messageController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  /// 切換語音輸入的開始／停止。
+  ///
+  /// 第一次點擊才會請求麥克風權限並初始化 STT（`_speechReady` 快取結果，
+  /// 之後點擊不用重新跑一次）；辨識結果只即時寫回 [_messageController]，
+  /// **絕對不會**在辨識完成時自動呼叫 [_sendMessage]——語音辨識可能聽錯，
+  /// 必須讓家屬自己看過文字內容、按下送出鍵確認，否則等於讓系統代替家屬
+  /// 決定要建立什麼排程或問了什麼問題。
+  Future<void> _toggleVoiceInput() async {
+    if (_isListening) {
+      await _speechToText.stop();
+      if (mounted) setState(() => _isListening = false);
+      return;
+    }
+    if (_isSending || _speechInitializing) return;
+
+    if (!_speechReady) {
+      _speechInitializing = true;
+      try {
+        final permStatus = await Permission.microphone.request();
+        if (!permStatus.isGranted) {
+          if (!mounted) return;
+          final messenger = ScaffoldMessenger.of(context);
+          messenger.clearSnackBars();
+          messenger.showSnackBar(SnackBar(
+            content: Text(
+              permStatus.isPermanentlyDenied
+                  ? '尚未開啟麥克風權限，請至系統設定開啟後再試一次'
+                  : '需要麥克風權限才能使用語音輸入',
+              style: GoogleFonts.notoSansTc(),
+            ),
+            action: permStatus.isPermanentlyDenied
+                ? SnackBarAction(label: '前往設定', onPressed: openAppSettings)
+                : null,
+            backgroundColor: const Color(0xFFEF4444),
+          ));
+          return;
+        }
+
+        try {
+          _speechReady = await _speechToText.initialize(
+            onStatus: (status) {
+              // 靜音一段時間後 speech_to_text 會自動停止聆聽（done/notListening），
+              // 這裡只同步視覺狀態，不做任何送出動作。
+              if ((status == 'done' || status == 'notListening') && _isListening && mounted) {
+                setState(() => _isListening = false);
+              }
+            },
+            onError: (err) {
+              debugPrint('⚠️ [FamilyCopilot STT Error] ${err.errorMsg}');
+              if (!mounted) return;
+              setState(() => _isListening = false);
+              ScaffoldMessenger.of(context)
+                ..clearSnackBars()
+                ..showSnackBar(SnackBar(
+                  content: Text('語音辨識發生錯誤，請改用打字或再試一次', style: GoogleFonts.notoSansTc()),
+                  backgroundColor: const Color(0xFFEF4444),
+                ));
+            },
+          );
+        } catch (e) {
+          debugPrint('⚠️ [FamilyCopilot STT Init Exception] $e');
+          _speechReady = false;
+        }
+
+        if (!_speechReady) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context)
+            ..clearSnackBars()
+            ..showSnackBar(SnackBar(
+              content: Text('這台裝置目前無法使用語音輸入，請改用打字', style: GoogleFonts.notoSansTc()),
+              backgroundColor: const Color(0xFFEF4444),
+            ));
+          return;
+        }
+      } finally {
+        _speechInitializing = false;
+      }
+    }
+
+    if (!mounted) return;
+    setState(() => _isListening = true);
+    await _speechToText.listen(
+      localeId: 'zh_TW',
+      listenOptions: SpeechListenOptions(
+        partialResults: true,
+        cancelOnError: false,
+        listenMode: ListenMode.dictation,
+      ),
+      listenFor: const Duration(seconds: 30),
+      pauseFor: const Duration(seconds: 3),
+      onResult: (result) {
+        if (!mounted) return;
+        // 只寫回輸入框、游標移到最後；不可在 result.finalResult 時自動送出。
+        _messageController.value = TextEditingValue(
+          text: result.recognizedWords,
+          selection: TextSelection.collapsed(offset: result.recognizedWords.length),
+        );
+      },
+    );
   }
 
   void _scrollToBottom() {
@@ -49,6 +169,23 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
     final text = (presetText ?? _messageController.text).trim();
     if (text.isEmpty || _isSending) return;
 
+    setState(() => _isSending = true);
+
+    // 🔒 第四十九輪追加：後端現在會依 family_user_id 驗證家屬與長輩的綁定
+    // 關係（無綁定回 404），不能再頂著寫死的 1 送出——那會讓真正的家屬
+    // 全部被判定成「無權」。讀不到真實身分就 fail-closed：不送出請求、
+    // 不用任何預設值頂替，比照 alert_center_screen.dart 既有慣例。
+    final prefs = await SharedPreferences.getInstance();
+    final familyUserId = prefs.getInt('caregiver_id');
+    if (familyUserId == null) {
+      if (!mounted) return;
+      setState(() => _isSending = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('無法確認家屬身分，請重新登入後再試', style: GoogleFonts.notoSansTc())),
+      );
+      return;
+    }
+
     if (presetText == null) {
       _messageController.clear();
     }
@@ -60,7 +197,6 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
         'statusSummary': null,
         'scheduleDrafts': null,
       });
-      _isSending = true;
     });
     _scrollToBottom();
 
@@ -69,7 +205,7 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
 
     try {
       final res = await ApiService.post('/api/ai/family_copilot/chat', {
-        'family_user_id': 1,
+        'family_user_id': familyUserId,
         'elder_id': elderIdStr,
         'elder_name': elderName,
         'message': text,
@@ -112,6 +248,21 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
     final elderIdStr = widget.currentElder?.elderId ?? widget.currentElder?.id.toString() ?? '2';
     final messenger = ScaffoldMessenger.of(context);
 
+    // 🔒 第四十九輪追加：family_id 同樣改讀真實家屬身分（見 _sendMessage
+    // 的說明）。/api/reminder/batch_create 這支端點本身還沒有綁定驗證
+    // （已回報、本輪不動），但繼續寫死 1 會讓每個家庭建立的排程全部被
+    // 記成同一個假帳號建立，本身就是資料錯誤，讀不到就 fail-closed。
+    final prefs = await SharedPreferences.getInstance();
+    final familyUserId = prefs.getInt('caregiver_id');
+    if (familyUserId == null) {
+      if (!mounted) return;
+      messenger.clearSnackBars();
+      messenger.showSnackBar(
+        SnackBar(content: Text('無法確認家屬身分，請重新登入後再試', style: GoogleFonts.notoSansTc())),
+      );
+      return;
+    }
+
     // 1. 立即更新 UI 反饋，按鈕轉為成功狀態
     setState(() {
       _chatMessages[messageIndex]['isApplied'] = true;
@@ -130,7 +281,7 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
     // 2. 背景異步同步寫入資料庫
     try {
       await ApiService.post('/api/reminder/batch_create', {
-        'family_id': 1,
+        'family_id': familyUserId,
         'elder_id': elderIdStr,
         'reminders': drafts,
       });
@@ -237,39 +388,22 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
       };
     }
 
-    final now = DateTime.now();
-    final hour = now.hour;
-    String medText;
-    String actText;
-    String moodTitle;
-    int moodScore;
-
-    if (hour < 12) {
-      medText = '✅ 今日晨間用藥與早安打卡已於 08:15 順利完成';
-      actText = '☀️ 早晨作息正常，有在客廳活動與收聽廣播';
-      moodTitle = '精神飽滿 ☀️';
-      moodScore = 88;
-    } else if (hour < 18) {
-      medText = '✅ 晨間與午間服藥提醒皆已按時打卡完成';
-      actText = '🚶 午後在室內外散步活動約 20 分鐘';
-      moodTitle = '愉快舒適 🍃';
-      moodScore = 85;
-    } else {
-      medText = '✅ 今日各時段用藥與關懷打卡皆已全數完成';
-      actText = '🌙 今日活動量良好，目前正在客廳休息放鬆';
-      moodTitle = '平靜放鬆 🌙';
-      moodScore = 90;
-    }
-
+    // ⚠️ 第四十九輪誠實性修復：這個分支只在完全連不上後端時才會走到
+    // （見 _sendMessage 的 catch）。舊版在這裡依「現在幾點」編一段看起來
+    // 煞有其事、其實與長輩真實狀況完全無關的假近況（例如固定寫死「今日
+    // 各時段用藥與關懷打卡皆已全數完成」）。既然是離線也查不到任何真實
+    // 資料，唯一誠實的做法就是照實告知「現在連不上，這不是真的近況」，
+    // 不能因為畫面要有東西顯示就編數字——這正是本輪要根除的問題本身，
+    // 沒有理由只修後端、留著前端這個離線分支繼續騙。
     return {
-      'reply_text': '$elderName 今天整體狀況非常穩定良好喔！以下是為您整理的最新近況速報：',
+      'reply_text': '目前無法連線到伺服器，暫時無法查詢 $elderName 的即時近況。請檢查網路連線後再試一次。',
       'status_summary': {
-        'mood_title': moodTitle,
-        'mood_score': moodScore,
-        'medication_status': medText,
-        'activity_status': actText,
-        'recent_topics': ['日常健康作息', '生活休閒話題'],
-        'next_appointment': '本週生活作息與血壓追蹤平穩'
+        'mood_status': '目前無法連線，查不到情緒紀錄。',
+        'mood_score': null,
+        'medication_status': '目前無法連線，查不到用藥打卡紀錄。',
+        'activity_status': '目前無法連線，查不到活動與步數資料。',
+        'recent_topics': [],
+        'next_appointment': '目前無法連線，查不到排程資料。',
       },
       'schedule_drafts': [],
     };
@@ -476,7 +610,7 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
                         controller: _messageController,
                         style: GoogleFonts.notoSansTc(color: Colors.white, fontSize: 14),
                         decoration: InputDecoration(
-                          hintText: '詢問長輩近況，或對話建立排程...',
+                          hintText: _isListening ? '🎤 聆聽中，請說話…' : '詢問長輩近況，或對話建立排程...',
                           hintStyle: GoogleFonts.notoSansTc(color: const Color(0xFF64748B), fontSize: 13),
                           border: InputBorder.none,
                           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -485,7 +619,44 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 8),
+                  // 🎙️ 語音輸入按鈕（第四十九輪新增）。固定寬度圖示鈕，左側輸入框
+                  // 已用 Expanded 吸收剩餘空間，窄螢幕下不會造成 RenderFlex 溢位
+                  // （鐵律 #14）。收聽中改紅色漸層＋麥克風實心圖示，明顯區分狀態。
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: _isListening
+                            ? [const Color(0xFFEF4444), const Color(0xFFF87171)]
+                            : [const Color(0xFF334155), const Color(0xFF1C2541)],
+                      ),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: _isListening
+                            ? const Color(0xFFEF4444).withValues(alpha: 0.6)
+                            : const Color(0xFF475569),
+                      ),
+                      boxShadow: _isListening
+                          ? [
+                              BoxShadow(
+                                color: const Color(0xFFEF4444).withValues(alpha: 0.4),
+                                blurRadius: 10,
+                              ),
+                            ]
+                          : null,
+                    ),
+                    child: IconButton(
+                      icon: Icon(
+                        _isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                      onPressed: _isSending ? null : _toggleVoiceInput,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                   Container(
                     width: 46,
                     height: 46,
@@ -561,23 +732,36 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
         children: [
           Row(
             children: [
-              Text(
-                summary['mood_title'] ?? '良好 ☀️',
-                style: GoogleFonts.notoSansTc(fontSize: 16, fontWeight: FontWeight.bold, color: const Color(0xFF38BDF8)),
-              ),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF10B981).withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.4)),
-                ),
+              // ★ 第四十九輪誠實性修復：mood_title 改名 mood_status，內容從
+              //   模型自由發揮的「心情愉悅 ☀️」短標籤改成 Python 依真實資料
+              //   組出的完整句子（例如「今天偵測到 1 次負面情緒…」），長度不
+              //   再可控，因此改用 Expanded + ellipsis，避免窄螢幕溢位（鐵律
+              //   #14）。
+              Expanded(
                 child: Text(
-                  '情緒: ${summary['mood_score'] ?? 90} 分',
-                  style: GoogleFonts.notoSansTc(fontSize: 12, fontWeight: FontWeight.bold, color: const Color(0xFF10B981)),
+                  summary['mood_status'] ?? '目前沒有情緒紀錄',
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 2,
+                  style: GoogleFonts.notoSansTc(fontSize: 16, fontWeight: FontWeight.bold, color: const Color(0xFF38BDF8)),
                 ),
               ),
+              // mood_score 沒有真實依據時一律為 null——不顯示分數徽章，
+              // 不要顯示 0、也不要自己補一個數字（第四十九輪明訂）。
+              if (summary['mood_score'] != null) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.4)),
+                  ),
+                  child: Text(
+                    '情緒: ${summary['mood_score']} 分',
+                    style: GoogleFonts.notoSansTc(fontSize: 12, fontWeight: FontWeight.bold, color: const Color(0xFF10B981)),
+                  ),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 12),
@@ -602,22 +786,41 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: (summary['recent_topics'] as List<dynamic>? ?? []).map((t) {
-              return Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF0284C7).withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFF0284C7).withValues(alpha: 0.3)),
+          // 📅 近期排程（第四十九輪新增顯示欄位）：這個欄位過去雖然由後端
+          // 回傳，但前端從未渲染過，等於白算——現在後端已經是查
+          // remote_reminders 得到的真實下一筆提醒，補上對應的顯示列。
+          if ((summary['next_appointment'] as String?)?.isNotEmpty == true) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Icon(Icons.event_rounded, color: Color(0xFFF59E0B), size: 16),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(summary['next_appointment'], style: GoogleFonts.notoSansTc(fontSize: 13, color: const Color(0xFFCBD5E1))),
                 ),
-                child: Text('# $t', style: GoogleFonts.notoSansTc(fontSize: 11, color: const Color(0xFF38BDF8), fontWeight: FontWeight.bold)),
-              );
-            }).toList(),
-          ),
+              ],
+            ),
+          ],
+          // recent_topics 沒有真實話題來源時，後端回空陣列——不顯示整個
+          // 話題標籤區塊，不用空的 Wrap 留下多餘留白（第四十九輪明訂）。
+          if ((summary['recent_topics'] as List<dynamic>?)?.isNotEmpty == true) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: (summary['recent_topics'] as List<dynamic>).map((t) {
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0284C7).withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFF0284C7).withValues(alpha: 0.3)),
+                  ),
+                  child: Text('# $t', style: GoogleFonts.notoSansTc(fontSize: 11, color: const Color(0xFF38BDF8), fontWeight: FontWeight.bold)),
+                );
+              }).toList(),
+            ),
+          ],
         ],
       ),
     );

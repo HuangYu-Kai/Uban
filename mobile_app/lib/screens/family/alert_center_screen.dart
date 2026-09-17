@@ -61,6 +61,8 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
   bool _isLoading = true;
   // ★ 第四十五輪：正在送出「標記誤報」請求的項目 id（防重複點擊／顯示 loading）。
   final Set<String> _falseAlarmPending = {};
+  // ★ 第四十九輪 item 12：正在送出「回報已處理」請求的項目 id，用途同上。
+  final Set<String> _resolvePending = {};
 
   @override
   void initState() {
@@ -179,6 +181,16 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
         'sortTs': DateTime.tryParse(detectedAt),
         'alertId': persistedAlertIdRaw != null ? int.tryParse(persistedAlertIdRaw) : null,
         'isFalseAlarm': rawIsFalseAlarm == true || rawIsFalseAlarm == 1,
+        // ★ 第四十九輪 item 12：警報狀態機第三態（已完成）——
+        //   `_buildResolveAction` 靠這個欄位決定顯示「回報已處理」按鈕
+        //   還是「已回報處理完畢」徽章。
+        'status': (row['status'] ?? '').toString(),
+        // ★ 第四十九輪 item 12（收尾）：結案來源——'family'／'developer'／
+        //   'false_alarm'／'legacy_auto'，`_buildResolveAction` 靠它把
+        //   「已完成」徽章依來源分流文案，尤其 legacy_auto（舊警報上線時
+        //   系統自動結案）不可顯示成家屬已處理。空字串（尚未結案，或後端
+        //   未提供此欄位的舊快取）落入該函式的「其他」分支。
+        'resolution_source': (row['resolution_source'] ?? '').toString(),
       };
     });
 
@@ -418,6 +430,91 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
     }
   }
 
+  /// ★ 第四十九輪 item 12：家屬主動回報一筆警報「已處理完畢」——警報狀態機
+  /// 第三態。與 `_markFalseAlarm` 是完全獨立的動作（本畫面同時提供兩個
+  /// 按鈕），冪等行為交給後端 `POST /alerts/{alert_id}/resolve` 判斷，
+  /// 前端只負責防重複點擊與樂觀更新畫面上的 `status`。
+  Future<void> _resolveAlertAction(String itemId, int alertId) async {
+    if (_resolvePending.contains(itemId)) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+          '回報已處理？',
+          style: GoogleFonts.notoSansTc(fontWeight: FontWeight.w800),
+        ),
+        content: Text(
+          '確定這則警報已經處理完畢了嗎？標記後將不再收到相關的重複提醒。',
+          style: GoogleFonts.notoSansTc(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('取消', style: GoogleFonts.notoSansTc()),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              '確定回報',
+              style: GoogleFonts.notoSansTc(
+                color: const Color(0xFF59B294),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    // 沿用 _loadHistoryAlerts／_markFalseAlarm 既有慣例：家屬 user_id 讀
+    // SharedPreferences 的 'caregiver_id'，不額外要求呼叫端多傳一個
+    // widget 參數。
+    final prefs = await SharedPreferences.getInstance();
+    final familyUserId = prefs.getInt('caregiver_id');
+    if (familyUserId == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('無法確認家屬身分，請重新登入後再試', style: GoogleFonts.notoSansTc())),
+      );
+      return;
+    }
+
+    setState(() => _resolvePending.add(itemId));
+    try {
+      final data = await ApiService.resolveAlert(alertId: alertId, userId: familyUserId);
+      if (!mounted) return;
+      if (data != null) {
+        setState(() {
+          final idx = _historyAlertItems.indexWhere((it) => it['id'] == itemId);
+          if (idx != -1) {
+            _historyAlertItems[idx] = {
+              ..._historyAlertItems[idx],
+              'status': 'resolved',
+              // 家屬自己在本畫面回報，來源固定是 'family'——與後端
+              // `resolve_alert_endpoint` 呼叫 `alert_state.resolve_alert()`
+              // 時沿用的預設值一致（見該端點說明）。
+              'resolution_source': 'family',
+            };
+          }
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('已回報處理完畢', style: GoogleFonts.notoSansTc()),
+            backgroundColor: const Color(0xFF59B294),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('回報失敗，請稍後再試', style: GoogleFonts.notoSansTc())),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _resolvePending.remove(itemId));
+    }
+  }
+
   /// 跌倒歷史（`_emergencyAlerts`）與活動警示（`_realLogs`）合併後的單筆卡片。
   /// 視覺語言沿用本畫面既有的 `_buildAlertCard`（白底卡＋色框＋圖示徽章），
   /// 刻意比上方即時警報卡片內斂——那些是「正在發生」，這裡是「曾經發生」。
@@ -487,14 +584,136 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
             ],
           ),
           // ★ 第四十五輪：只有查得到真實 alert_id 的持久化警報才提供「這是
-          //   誤報」操作——logItems（活動流水）沒有對應的 emergency_alerts
-          //   列，alertId 恆為 null，不會顯示這個區塊。
+          //   誤報」／「回報已處理」操作——logItems（活動流水）沒有對應的
+          //   emergency_alerts 列，alertId 恆為 null，不會顯示這個區塊。
+          // ★ 第四十九輪 item 12：兩個動作用 Wrap（不是 Row）並排——兩者
+          //   都是後端動態決定要不要顯示、寬度不固定的按鈕／徽章，Wrap 在
+          //   空間不足時會自動換行，避免 RenderFlex 溢位（鐵律 #14）。
           if (alertId != null) ...[
             const SizedBox(height: 10),
-            _buildFalseAlarmAction(itemId, alertId, isFalseAlarm),
+            Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 12,
+              runSpacing: 6,
+              children: [
+                _buildResolveAction(
+                  itemId,
+                  alertId,
+                  item['status'] as String?,
+                  item['resolution_source'] as String?,
+                  isFalseAlarm,
+                ),
+                _buildFalseAlarmAction(itemId, alertId, isFalseAlarm),
+              ],
+            ),
           ],
         ],
       ),
+    );
+  }
+
+  /// ★ 第四十九輪 item 12：「回報已處理」操作區——未回報時是可點擊按鈕，
+  /// 已回報則依 [resolutionSource] 顯示對應的唯讀徽章。與
+  /// [_buildFalseAlarmAction] 並排顯示（見 `_buildHistoryAlertCard` 的
+  /// `Wrap`）。
+  ///
+  /// ★ 第四十九輪 item 12（收尾）：結案來源分流——不能讓「舊警報上線時
+  /// 系統自動結案」（`legacy_auto`）或「開發者主控台代為結案」
+  /// （`developer`）顯示成家屬自己回報的『已回報處理完畢』，那會誤導家屬
+  /// 以為有人（甚至自己）已經確認過這則警報。
+  Widget _buildResolveAction(
+    String itemId,
+    int alertId,
+    String? status,
+    String? resolutionSource,
+    bool isFalseAlarm,
+  ) {
+    // 誤報已經有「已標記為誤報」徽章，後端 mark_false_alarm 也會自動把
+    // status 連動轉成 resolved（見 routers/alert.py），這裡不重複顯示第二
+    // 個語意重疊的「已完成」徽章。
+    if (isFalseAlarm) return const SizedBox.shrink();
+
+    if (status == 'resolved') {
+      switch (resolutionSource) {
+        case 'family':
+          return _buildResolvedBadge(
+            icon: Icons.check_circle_rounded,
+            color: const Color(0xFF59B294),
+            label: '已回報處理完畢',
+          );
+        case 'developer':
+          return _buildResolvedBadge(
+            icon: Icons.verified_user_rounded,
+            color: const Color(0xFF59B294),
+            label: '已由 Uban 團隊結案',
+          );
+        case 'legacy_auto':
+          // 中性灰色＋歷史圖示：刻意與其餘「有人確認過」的綠色徽章區分，
+          // 避免看起來像家屬處理過——這筆是系統上線時自動結案的舊警報，
+          // 從來沒有人真的看過。
+          return _buildResolvedBadge(
+            icon: Icons.history_rounded,
+            color: const Color(0xFF94A3B8),
+            label: '舊警報，系統已自動結案',
+          );
+        default:
+          return _buildResolvedBadge(
+            icon: Icons.check_circle_rounded,
+            color: const Color(0xFF59B294),
+            label: '已結案',
+          );
+      }
+    }
+
+    final isPending = _resolvePending.contains(itemId);
+    return SizedBox(
+      height: 30,
+      child: TextButton.icon(
+        onPressed: isPending ? null : () => _resolveAlertAction(itemId, alertId),
+        icon: Icon(
+          isPending ? Icons.hourglass_top_rounded : Icons.check_circle_outline_rounded,
+          size: 15,
+        ),
+        label: Text(
+          isPending ? '回報中…' : '回報已處理',
+          style: GoogleFonts.notoSansTc(fontSize: 12, fontWeight: FontWeight.w700),
+        ),
+        style: TextButton.styleFrom(
+          foregroundColor: const Color(0xFF59B294),
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          minimumSize: Size.zero,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+      ),
+    );
+  }
+
+  /// 「已結案」唯讀徽章的共用外觀，供 [_buildResolveAction] 依
+  /// `resolutionSource` 分流呼叫。維持既有的 `Row` + `Flexible` +
+  /// `TextOverflow.ellipsis` 結構（鐵律 #14：同列有圖示＋文字時，文字必須
+  /// 可收縮，避免 RenderFlex 溢位）。
+  Widget _buildResolvedBadge({
+    required IconData icon,
+    required Color color,
+    required String label,
+  }) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: color),
+        const SizedBox(width: 4),
+        Flexible(
+          child: Text(
+            label,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.notoSansTc(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+        ),
+      ],
     );
   }
 

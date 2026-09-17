@@ -87,8 +87,9 @@ class ApiService {
   static String? get lastResolveError => PairingApi.lastResolveError;
   static set lastResolveError(String? value) => PairingApi.lastResolveError = value;
 
+  // ⚠️ 第四十九輪 item 2：elderName 改為必填，理由見 pairing_api.dart 同名函式註解。
   static Future<Map<String, dynamic>> createAutonomousElder({
-    String elderName = '長輩朋友',
+    required String elderName,
     String gender = 'M',
     int age = 75,
   }) => PairingApi.createAutonomousElder(elderName: elderName, gender: gender, age: age);
@@ -109,8 +110,6 @@ class ApiService {
         age: age,
       );
 
-  static Future<Map<String, dynamic>> ensureYuxuanDemoElder() => PairingApi.ensureYuxuanDemoElder();
-  static Future<Map<String, dynamic>> ensureGawaDemoElder() => PairingApi.ensureGawaDemoElder();
   static Future<Map<String, dynamic>> unbindElder(int familyId, Object elderId) => PairingApi.unbindElder(familyId, elderId);
 
   static Future<Map<String, dynamic>?> createMonitorSetup(int familyId, String elderId, String deviceName) =>
@@ -334,6 +333,22 @@ class ApiService {
     required int alertId,
     required int userId,
   }) => CctvAlertApi.markFalseAlarm(alertId: alertId, userId: userId);
+
+  /// 第四十九輪 item 12：警報狀態機——處理中／已完成。
+  static Future<bool> markAlertProcessing({
+    required String elderId,
+    required String deviceId,
+    required int userId,
+  }) => CctvAlertApi.markAlertProcessing(
+        elderId: elderId,
+        deviceId: deviceId,
+        userId: userId,
+      );
+
+  static Future<Map<String, dynamic>?> resolveAlert({
+    required int alertId,
+    required int userId,
+  }) => CctvAlertApi.resolveAlert(alertId: alertId, userId: userId);
 
   static Future<List<dynamic>> getEmergencyAlerts(
     String elderId, {

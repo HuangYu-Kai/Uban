@@ -223,6 +223,62 @@ class CctvAlertApi {
     }
   }
 
+  /// ★ 第四十九輪 item 12：把某長輩／某監視機目前未結案的警報轉為「處理
+  /// 中」。供 `family_main_screen.dart::_openMonitorViewForDevice()` 在
+  /// 開啟監控畫面時 fire-and-forget 呼叫——呼叫端不關心細節，只在意「有
+  /// 沒有噴例外」，故回傳值只用布林表示是否成功送達後端；找不到任何未
+  /// 結案警報也算成功（後端本來就把這當合法情況，見端點 docstring）。
+  static Future<bool> markAlertProcessing({
+    required String elderId,
+    required String deviceId,
+    required int userId,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('${ApiClient.baseUrl}/alerts/mark-processing'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'elder_id': elderId,
+              'device_id': deviceId,
+              'user_id': userId,
+            }),
+          )
+          .timeout(ApiClient.timeout);
+      final data = ApiClient.safeDecode(response);
+      return data['status'] == 'success';
+    } catch (e) {
+      debugPrint('⚠️ markAlertProcessing error: $e');
+      return false;
+    }
+  }
+
+  /// ★ 第四十九輪 item 12：家屬主動回報一筆警報「已處理完畢」（狀態機第三
+  /// 態）。授權與冪等行為見後端 `routers/alert.py::resolve_alert_endpoint`。
+  static Future<Map<String, dynamic>?> resolveAlert({
+    required int alertId,
+    required int userId,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('${ApiClient.baseUrl}/alerts/$alertId/resolve'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'user_id': userId}),
+          )
+          .timeout(ApiClient.timeout);
+      final data = ApiClient.safeDecode(response);
+      if (data['status'] == 'success') {
+        final payload = data['data'];
+        return payload is Map ? Map<String, dynamic>.from(payload) : <String, dynamic>{};
+      }
+      return null;
+    } catch (e) {
+      debugPrint('⚠️ resolveAlert error: $e');
+      return null;
+    }
+  }
+
   /// 長輩跌倒／緊急警報的持久歷史記錄
   static Future<List<dynamic>> getEmergencyAlerts(
     String elderId, {

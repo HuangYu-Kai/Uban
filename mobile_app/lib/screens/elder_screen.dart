@@ -151,6 +151,31 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   /// 風險點。
   bool _navigatedAway = false;
 
+  // ★ G102（CLAUDE_call-monitor-guardrails.md）：`Signaling` 單例的回呼欄位只
+  // 有一份，最後賦值者獨佔。`dispose()` 若無條件把它們設成 null，會誤清
+  // 「接手畫面」剛註冊好的閉包——最直接的受害者是 `onHeartbeatMessage`：
+  // `elder_home_screen.dart::_restoreSignalingCallbacks()` 是在
+  // `Navigator.push(...ElderScreen...).then()` 這個 microtask 裡重新綁定，
+  // 但本畫面的 `dispose()` 要等退場動畫跑完才執行，順序因此是「首頁先重新
+  // 綁定 → 本畫面才把回呼清成 null」——長輩講完一通電話回到首頁後就再也收
+  // 不到主動關懷，直到 App 重啟。保留自己這一份 closure 的參考，
+  // `dispose()` 只在「單例上掛的仍是我這一份」時才清除（`identical()` 比
+  // 對）。其餘幾個目前雖然只有本畫面會指派，仍一併加上同樣的守衛——寫法
+  // 一致，日後才不會有人漏掉。
+  StreamStateCallback? _ownLocalStream;
+  StreamStateCallback? _ownAddRemoteStream;
+  VoidCallback? _ownPeerConnected;
+  Function(String message, {String? reason})? _ownJoinFailed;
+  CallAcceptedCallback? _ownCallAcceptedByRemote;
+  VoidCallback? _ownCallEnded;
+  CallAcceptedCallback? _ownCallBusy;
+  VoidCallback? _ownConnectionLost;
+  ErrorCallback? _ownPeerConnectionFailed;
+  IncomingCallCallback? _ownIncomingCall;
+  Function(String message)? _ownHeartbeatMessage;
+  Function(Map<String, dynamic>)? _ownMonitorRenamed;
+  Function(Map<String, dynamic>)? _ownMonitorRemoved;
+
   int? _userId; // ★ issue 3/10：用於安全導航回主畫面時建構 ElderHomeScreen
   String? _prefsUserName; // ★ Issue 1 硬化：真實 caregiver_name，供 _buildFallbackHome 使用
 
@@ -847,12 +872,15 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     await _localRenderer.initialize();
     await _remoteRenderer.initialize();
 
-    _signaling.onLocalStream = ((stream) {
+    // ★ G102：先存進 _own* 欄位、再指派給單例，讓 dispose() 能用 identical() 判斷
+    //   自己是否仍是持有者（見欄位宣告處的完整說明）。
+    _ownLocalStream = (stream) {
       debugPrint("🤳 [ElderScreen] Local stream set! Tracks: ${stream.getTracks().length}");
       if (mounted) setState(() => _localRenderer.srcObject = stream);
-    });
+    };
+    _signaling.onLocalStream = _ownLocalStream;
 
-    _signaling.onAddRemoteStream = ((stream) {
+    _ownAddRemoteStream = (stream) {
       debugPrint("📺 [ElderScreen] Remote stream added! Tracks: ${stream.getTracks().length}");
       // ★ 2026-08-05 第十七輪：onAddRemoteStream 只代表 SDP 談成，不代表 ICE 已連通、
       //   有任何媒體在流動，_startCallTimer() 改移到真正連上時才觸發的 onPeerConnected。
@@ -864,10 +892,11 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
           _callDuration = 0;
         });
       }
-    });
+    };
+    _signaling.onAddRemoteStream = _ownAddRemoteStream;
 
     // ★ 2026-08-05 第十七輪：ICE 真正連通時才開始計時，避免「有通話計時卻沒有影音」的假象。
-    _signaling.onPeerConnected = () {
+    _ownPeerConnected = () {
       // ★ 2026-08-11 第二十二輪（需求 9）：真的看到對方了就停掉緊急提示音，
       //   否則會出現「畫面已接通、警示音還在響」。
       _stopEmergencyTone();
@@ -875,8 +904,9 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
         _startCallTimer();
       }
     };
+    _signaling.onPeerConnected = _ownPeerConnected;
 
-    _signaling.onJoinFailed = (errorMessage, {String? reason}) {
+    _ownJoinFailed = (errorMessage, {String? reason}) {
       // ★ issue 5：通話已建立時，忽略遲到的 join-failed（例如重新 join 房間時的競態），
       //   避免誤把進行中的通話導向「連線失敗」對話框，間接觸發 dispose -> hangUp ->
       //   end-call，導致家屬端被彈回主畫面、長輩端畫面變黑。
@@ -952,12 +982,14 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
         );
       }
     };
+    _signaling.onJoinFailed = _ownJoinFailed;
 
-    _signaling.onCallAcceptedByRemote = (accepterId, callId) {
+    _ownCallAcceptedByRemote = (accepterId, callId) {
       debugPrint("✅ 家屬($accepterId) 已接聽 (CallId: $callId)，開始定向發送 Offer...");
       if (mounted) setState(() { _status = "連線建立中..."; _isInCall = true; });
       _signaling.createOffer(targetId: accepterId, isEmergency: false);
     };
+    _signaling.onCallAcceptedByRemote = _ownCallAcceptedByRemote;
 
     // ★ 只要是通話（無論是語音還是視訊），在連線前都必須初始化媒體以取得音訊軌道
     if (!_mediaInitialized) {
@@ -1057,7 +1089,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       if (mounted) setState(() => _isCameraOff = false);
     }
 
-    _signaling.onCallEnded = () {
+    _ownCallEnded = () {
       _callTimer?.cancel();
       _activeCallId = null;
       if (mounted) {
@@ -1077,8 +1109,9 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
         }
       }
     };
+    _signaling.onCallEnded = _ownCallEnded;
 
-    _signaling.onCallBusy = (targetId, callId) {
+    _ownCallBusy = (targetId, callId) {
       if (mounted) {
         _showElderCallFailToast(callBusyMessageFor(_signaling.lastCallBusyReason));
         // ★ issue 15：對方拒接/忙線時，呼叫端結束「等待連線」狀態並安全返回
@@ -1096,9 +1129,10 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
         }
       }
     };
+    _signaling.onCallBusy = _ownCallBusy;
 
     // ★ issue 5：通話中發生無法復原的連線中斷（已超過 signaling.dart 的 2 秒重連寬限期）
-    _signaling.onConnectionLost = () {
+    _ownConnectionLost = () {
       _callTimer?.cancel();
       if (!mounted) return;
 
@@ -1136,10 +1170,11 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
         _verifyMonitorStillExists();
       }
     };
+    _signaling.onConnectionLost = _ownConnectionLost;
 
     // ★ 2026-08-05 第十七輪：ICE 連線失敗時據實回報並安全返回主畫面，避免通話停在
     //   「已連線」卻完全沒有影音的假狀態。沿用本檔既有的「掛斷後安全導航」方法。
-    _signaling.onPeerConnectionFailed = (msg) {
+    _ownPeerConnectionFailed = (msg) {
       _callTimer?.cancel();
       if (mounted) {
         debugPrint('⚠️ [ElderScreen] PeerConnection 失敗: $msg');
@@ -1156,6 +1191,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
         }
       }
     };
+    _signaling.onPeerConnectionFailed = _ownPeerConnectionFailed;
 
     // ★ 2026-08-23：本畫面過去在這裡直接掛一個 `force-logout` 原生 socket
     //   監聽（對應 dispose() 內原本的 `socket.off('force-logout',
@@ -1176,7 +1212,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     //   `RoleSelectionScreen` 改成現行入口 `IdentificationScreen`。
     //   🚫 不要在這裡加回 `_signaling.socket?.on('force-logout', ...)`——
     //   這正是本次要移除的重複註冊。
-    _signaling.onIncomingCall = (callerId, callType) async {
+    _ownIncomingCall = (callerId, callType) async {
       debugPrint("📞 [ElderScreen] Incoming Offer from $callerId (Type: $callType)");
       // ★ 2026-08-25（第三十三輪）：舊註解「只要在 ElderScreen 內就代表已經
       //   進入通話準備狀態，一律接聽」不成立——長輩端可能因為上一通通話、
@@ -1230,8 +1266,9 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       }
       return accepted;
     };
+    _signaling.onIncomingCall = _ownIncomingCall;
 
-    _signaling.onHeartbeatMessage = (message) async {
+    _ownHeartbeatMessage = (message) async {
       debugPrint("💓 [ElderScreen] Heartbeat: $message");
       if (mounted && !_isInCall) {
         String displayText = message;
@@ -1273,13 +1310,14 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
         await flutterTts.speak(displayText);
       }
     };
+    _signaling.onHeartbeatMessage = _ownHeartbeatMessage;
 
     // ★ 2026-08-06 第十九輪（D4）：監視機被家屬端改名時，同步更新本機記憶
     //   （SharedPreferences saved_device_name）與畫面內部狀態，避免退出監控時
     //   仍用改名前的舊名稱去比對後端（後端以 device_name 字串精確比對）。
     //   只在監視機模式註冊，一般通訊模式沒有「監控設備改名」這個概念。
     if (widget.isCCTVMode) {
-      _signaling.onMonitorRenamed = (data) async {
+      _ownMonitorRenamed = (data) async {
         final String eventElderId = (data['elderId'] ?? '').toString();
         final String oldName = (data['oldDeviceName'] ?? '').toString();
         final String newName = (data['newDeviceName'] ?? '').toString();
@@ -1296,6 +1334,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
           setState(() => _currentDeviceName = newName);
         }
       };
+      _signaling.onMonitorRenamed = _ownMonitorRenamed;
 
       // ★ 2026-08-10 第二十輪（需求 4＋5）：家屬端刪除本監視器時，立刻退回主畫面。
       //   過去後端只是把這台裝置踢線，監控機端無從區分「被刪除」與「網路斷線」，
@@ -1304,7 +1343,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       //   ——同一台裝置之後輸入正確綁定碼也一律「綁定碼過期或錯誤」（需求 5）。
       //   現在改為：收到事件 → 走 SessionManager 完整釋放 → pushAndRemoveUntil
       //   回身分選擇頁（護欄：回首頁一律 pushAndRemoveUntil，不可 pop）。
-      _signaling.onMonitorRemoved = (data) async {
+      _ownMonitorRemoved = (data) async {
         if (_isExiting) return;
         final String eventElderId = (data['elderId'] ?? '').toString();
         final String deviceName = (data['deviceName'] ?? '').toString();
@@ -1325,6 +1364,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
           (route) => false,
         );
       };
+      _signaling.onMonitorRemoved = _ownMonitorRemoved;
     }
 
   }
@@ -1895,20 +1935,51 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       disposeLocalStream: widget.isCCTVMode,
     );
 
-    // ★ 清空 UI 相關的 callbacks，讓全域的 callbacks 重拾控制權
-    _signaling.onCallAcceptedByRemote = null;
-    _signaling.onCallBusy = null;
-    _signaling.onCallEnded = null;
-    _signaling.onConnectionLost = null;
-    _signaling.onPeerConnected = null;
-    _signaling.onPeerConnectionFailed = null;
-    _signaling.onAddRemoteStream = null;
-    _signaling.onLocalStream = null;
-    _signaling.onJoinFailed = null;
-    _signaling.onIncomingCall = null;
-    _signaling.onHeartbeatMessage = null;
-    _signaling.onMonitorRenamed = null;
-    _signaling.onMonitorRemoved = null;
+    // ★ G102：歸還 UI 相關的 callbacks，讓全域／下一個接手畫面重拾控制權。
+    //   每一個都先用 identical() 確認單例上掛的仍是「我這一份」才清成 null——
+    //   見欄位宣告處的完整說明：長輩結束通話 → safeNavigateBack() pop() →
+    //   首頁在 Navigator.push(...).then() 的 microtask 裡搶先重新綁定
+    //   onHeartbeatMessage，但本畫面的 dispose() 要等退場動畫跑完才執行，
+    //   若無條件 = null 會把首頁剛綁好的回呼清掉，導致長輩之後收不到主動關懷。
+    if (identical(_signaling.onCallAcceptedByRemote, _ownCallAcceptedByRemote)) {
+      _signaling.onCallAcceptedByRemote = null;
+    }
+    if (identical(_signaling.onCallBusy, _ownCallBusy)) {
+      _signaling.onCallBusy = null;
+    }
+    if (identical(_signaling.onCallEnded, _ownCallEnded)) {
+      _signaling.onCallEnded = null;
+    }
+    if (identical(_signaling.onConnectionLost, _ownConnectionLost)) {
+      _signaling.onConnectionLost = null;
+    }
+    if (identical(_signaling.onPeerConnected, _ownPeerConnected)) {
+      _signaling.onPeerConnected = null;
+    }
+    if (identical(_signaling.onPeerConnectionFailed, _ownPeerConnectionFailed)) {
+      _signaling.onPeerConnectionFailed = null;
+    }
+    if (identical(_signaling.onAddRemoteStream, _ownAddRemoteStream)) {
+      _signaling.onAddRemoteStream = null;
+    }
+    if (identical(_signaling.onLocalStream, _ownLocalStream)) {
+      _signaling.onLocalStream = null;
+    }
+    if (identical(_signaling.onJoinFailed, _ownJoinFailed)) {
+      _signaling.onJoinFailed = null;
+    }
+    if (identical(_signaling.onIncomingCall, _ownIncomingCall)) {
+      _signaling.onIncomingCall = null;
+    }
+    if (identical(_signaling.onHeartbeatMessage, _ownHeartbeatMessage)) {
+      _signaling.onHeartbeatMessage = null;
+    }
+    if (identical(_signaling.onMonitorRenamed, _ownMonitorRenamed)) {
+      _signaling.onMonitorRenamed = null;
+    }
+    if (identical(_signaling.onMonitorRemoved, _ownMonitorRemoved)) {
+      _signaling.onMonitorRemoved = null;
+    }
 
     // ★ 第四十二輪：好友通話結束時，必須離開對方的房間並重新以 'elder' 身分
     //   加入「自己」的房間。`Signaling` 是單例，`_currentRoomId`/`_role` 此刻

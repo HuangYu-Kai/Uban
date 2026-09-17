@@ -967,12 +967,20 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
                 child: Icon(Icons.elderly_rounded, color: cs.onPrimary, size: 22),
               ),
               const SizedBox(width: 10),
-              Text(
-                '受關照長輩檔案',
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
-                  color: cs.onSurface,
+              // ★ 鐵律 #14 例行檢查（第四十九輪）：標題與後方 Spacer／
+              // 「編輯資料」按鈕同列，字級 18pt，未提供可收縮空間時窄螢幕
+              // 或放大系統字級可能超出可用寬度；包 Flexible 並加 ellipsis
+              // 可收縮，比照本檔 :1021-1032（elder.displayName）既有寫法。
+              Flexible(
+                child: Text(
+                  '受關照長輩檔案',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    color: cs.onSurface,
+                  ),
                 ),
               ),
               const Spacer(),

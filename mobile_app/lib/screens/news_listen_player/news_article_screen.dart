@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../services/api_service.dart';
+
 /// 新聞文章閱讀頁面
 ///
 /// 提供無干擾的閱讀體驗，22px 內文字體，
@@ -40,8 +42,13 @@ class NewsArticleScreen extends StatelessWidget {
     final date = _formatNewsDate(newsItem);
     final rawImageUrl =
         ((newsItem['image_url'] ?? newsItem['image']) ?? '').toString().trim();
+    // ⚠️ 不可寫死正式站網址（鐵律 #1）：這裡曾經直接寫死正式站的 Tailscale
+    // 網域，會讓沙盒的建置防護（run_autonomous_sandbox.py 的
+    // _assert_web_build_is_not_production）誤判成每一個建置都指向正式站而
+    // 一律拒絕執行。改用 ApiService.serverRootUrl，讓建置時的
+    // --dart-define=SERVER_IP 真正生效。
     final imageUrl = rawImageUrl.startsWith('/')
-        ? "https://localhost-0.tail5abf5e.ts.net$rawImageUrl"
+        ? "${ApiService.serverRootUrl}$rawImageUrl"
         : rawImageUrl;
     final hasImage = imageUrl.startsWith('http');
 

@@ -483,7 +483,11 @@ class _PetStudioScreenState extends State<PetStudioScreen>
                         Navigator.of(context).pushReplacement(
                           MaterialPageRoute(
                             builder: (_) => ElderHomeScreen(
-                              userId: 1,
+                              // ⚠️ 第四十九輪修復：原本寫死 userId: 1，會在無法
+                              // pop 時把使用者送回別人（user_id=1）的帳號主頁。
+                              // 這個畫面本來就有 widget.userId（見類別欄位註解：
+                              // 登入使用者的 user_account_data.user_id），改用它。
+                              userId: widget.userId,
                               userName: widget.userName,
                             ),
                           ),
@@ -587,7 +591,9 @@ class _PetStudioScreenState extends State<PetStudioScreen>
                 Navigator.of(context).pushReplacement(
                   MaterialPageRoute(
                     builder: (_) => ElderHomeScreen(
-                      userId: 1,
+                      // ⚠️ 第四十九輪修復：同上方懸浮返回鈕，原本寫死
+                      // userId: 1 會把使用者送回別人的帳號，改用 widget.userId。
+                      userId: widget.userId,
                       userName: widget.userName,
                     ),
                   ),

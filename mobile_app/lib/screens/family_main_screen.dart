@@ -98,6 +98,15 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   CallRequestCallback? _ownEmergencyCall;
   CallRequestCallback? _ownCancelCall;
 
+  // ★ 第四十九輪：`onElderDevicesUpdate`／`onElderZoneUpdate` 補上同一套
+  //   identical() 守衛（原本這兩個是無條件 `= null`，與上面三個不一致）。
+  //   `onElderDevicesUpdate` 另有 `device_selection_screen.dart`／
+  //   `camera_screen.dart` 也會指派——家屬在本畫面之後短暫開「選擇裝置」
+  //   畫面又返回，若對方 dispose() 無條件清空，本畫面剛註冊好的回呼會被
+  //   誤清，裝置在線清單自此不再更新直到重啟 App。
+  Function(List<dynamic>)? _ownElderDevicesUpdate;
+  Function(Map<String, dynamic>)? _ownElderZoneUpdate;
+
   // ★ 移植自 family_dashboard_view.dart：監控裝置清單、CCTV 警報、訂閱層級
   //   （型別對齊該檔實際宣告：_monitorDevices 為 List<dynamic>、_tierLevel 為 String）
   List<dynamic> _monitorDevices = [];
@@ -490,18 +499,20 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
       setState(() => _questionRefreshToken++);
     };
 
-    _signaling.onElderDevicesUpdate = (devices) {
+    _ownElderDevicesUpdate = (devices) {
       if (!mounted) return;
       debugPrint('📡 [FamilyMainScreen] 收到長輩設備狀態更新: $devices');
       _applyDeviceList(devices);
     };
+    _signaling.onElderDevicesUpdate = _ownElderDevicesUpdate;
 
     // ★ 2026-08-18 IPS prototype：監聽長輩室內定位區域切換推播。
-    _signaling.onElderZoneUpdate = (payload) {
+    _ownElderZoneUpdate = (payload) {
       if (!mounted) return;
       debugPrint('📍 [FamilyMainScreen] 收到 elder-zone-update: $payload');
       _applyZoneUpdate(payload);
     };
+    _signaling.onElderZoneUpdate = _ownElderZoneUpdate;
   }
 
   /// ★ 2026-08-10 第十九輪（需求 5 / A4）：設備清單的**唯一**套用點。
@@ -1070,6 +1081,21 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
             : (_currentElder?.elderId ?? _currentElder?.id.toString() ?? '');
     if (rawElderId.isEmpty) return;
 
+    // ★ 第四十九輪 item 12：開啟監控畫面＝家屬正在查看，該裝置目前未結案的
+    //   警報轉為「處理中」。Fire-and-forget：失敗必須吞掉、不可擋住監控
+    //   畫面開啟，也完全不碰下面的 `_viewingMonitorDeviceId`／
+    //   `Navigator.push`／`.then()` 清除邏輯（G186 不受影響）。
+    unawaited(
+      ApiService.markAlertProcessing(
+        elderId: rawElderId,
+        deviceId: deviceIdStr,
+        userId: widget.userId,
+      ).catchError((e) {
+        debugPrint('⚠️ [FamilyMainScreen] markAlertProcessing 失敗（不影響監控畫面）: $e');
+        return false;
+      }),
+    );
+
     // ★ 第四十輪（item 2）起源：記錄目前正在看哪一台，當初只用來供
     //   _presentCctvAlert() 判斷是否要隱藏「查看監視畫面」鍵。
     // ★ 第四十八輪：用途已擴大——_presentCctvAlert() 現在用它決定的是整個警
@@ -1120,6 +1146,12 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     final String alertType =
         (alert['alert_type'] ?? alert['alertType'] ?? 'fall').toString();
     final String typeLabel = _alertTypeLabel(alertType);
+    // ★ 第四十九輪 item 12：這是「逾時未處理」的重複提醒，還是第一次偵測
+    //   到？後端 Socket payload 用 snake_case 'is_reminder'（見
+    //   yolo_alert_dispatcher.py::_build_push_payload）。文案分流，避免
+    //   家屬把第 N 次提醒誤會成又一次新事件。
+    final bool isReminder =
+        (alert['is_reminder'] ?? alert['isReminder'])?.toString() == 'true';
 
     // 1) 保持螢幕亮著——僅限 App 本來就在前景時（見 _lifecycleState 欄位說明）。
     //   背景時開啟對「目前看不見的視窗」沒有實際點亮效果，只會讓 wakelock
@@ -1149,6 +1181,9 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
         'elderName': (alert['elder_name'] ?? alert['elderName'])?.toString(),
         'alertId': (alert['alert_id'] ?? alert['alertId'] ?? '').toString(),
         'alertType': alertType,
+        // ★ 第四十九輪 item 12：告訴 CctvAlertNotification.show() 這是
+        //   逾時未處理的重複提醒還是第一次偵測，切換通知標題／內文文案。
+        'isReminder': isReminder.toString(),
       });
     } catch (e) {
       debugPrint('⚠️ [FamilyMainScreen] 跌倒警報通知發送失敗: $e');
@@ -1163,9 +1198,15 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
       _alertTts ??= FlutterTts();
       await _alertTts!.setLanguage('zh-TW');
       await _alertTts!.setSpeechRate(0.45);
-      final String ttsMessage = alertType == 'sos_voice'
-          ? '注意，長輩剛透過語音助理開口求救，請立即聯繫或致電確認狀況'
-          : '注意，偵測到長輩可能$typeLabel，請立即查看監視畫面';
+      // ★ 第四十九輪 item 12：提醒（isReminder）與首次偵測分流文案，避免
+      //   家屬把第 N 次提醒誤會成又一次新事件。
+      final String ttsMessage = isReminder
+          ? (alertType == 'sos_voice'
+              ? '提醒您，長輩先前開口求救的狀況仍未處理，請盡快聯繫確認'
+              : '提醒您，長輩$typeLabel的狀況仍未處理，請盡快查看監視畫面')
+          : (alertType == 'sos_voice'
+              ? '注意，長輩剛透過語音助理開口求救，請立即聯繫或致電確認狀況'
+              : '注意，偵測到長輩可能$typeLabel，請立即查看監視畫面');
       await _alertTts!.speak(ttsMessage);
     } catch (e) {
       debugPrint('⚠️ [FamilyMainScreen] 跌倒警報朗讀失敗: $e');
@@ -1231,7 +1272,8 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  '偵測到$typeLabel',
+                  isReminder ? '提醒：$typeLabel尚未處理' : '偵測到$typeLabel',
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     color: Color(0xFFB91C1C),
@@ -1254,9 +1296,13 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
               ],
               const SizedBox(height: 8),
               Text(
-                alertType == 'sos_voice'
-                    ? '長輩剛透過語音助理開口求救，這次沒有監視畫面可查看，請盡快主動聯繫或致電長輩確認狀況；如情況危急請直接撥打 119。'
-                    : '請立即查看監視畫面確認長輩狀況。',
+                isReminder
+                    ? (alertType == 'sos_voice'
+                        ? '長輩先前開口求救的狀況目前仍未處理，請盡快主動聯繫或致電長輩確認狀況；如情況危急請直接撥打 119。'
+                        : '這是提醒通知：長輩的狀況目前仍未處理，請盡快查看監視畫面確認狀況。')
+                    : (alertType == 'sos_voice'
+                        ? '長輩剛透過語音助理開口求救，這次沒有監視畫面可查看，請盡快主動聯繫或致電長輩確認狀況；如情況危急請直接撥打 119。'
+                        : '請立即查看監視畫面確認長輩狀況。'),
                 style: const TextStyle(color: Colors.black87),
               ),
             ],
@@ -1959,8 +2005,15 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     //   singleton 上（Signaling 是全域單例，不會隨本畫面銷毀），closure 持續
     //   持有已 dispose 的 State。
     //   ⚠️ 只清「還是自己那一份」的，理由見欄位宣告處的 pushAndRemoveUntil 說明。
-    _signaling.onElderDevicesUpdate = null;
-    _signaling.onElderZoneUpdate = null;
+    // ★ 第四十九輪：onElderDevicesUpdate／onElderZoneUpdate 補上同一套
+    //   identical() 守衛（原本這兩個是無條件 = null，與下面三個不一致，見
+    //   _ownElderDevicesUpdate／_ownElderZoneUpdate 欄位宣告處的說明）。
+    if (identical(_signaling.onElderDevicesUpdate, _ownElderDevicesUpdate)) {
+      _signaling.onElderDevicesUpdate = null;
+    }
+    if (identical(_signaling.onElderZoneUpdate, _ownElderZoneUpdate)) {
+      _signaling.onElderZoneUpdate = null;
+    }
     if (identical(_signaling.onCallRequest, _ownCallRequest)) {
       _signaling.onCallRequest = null;
     }

@@ -10,8 +10,13 @@ class PairingApi {
   static String? lastResolveError;
 
   /// 為自主登入的全新長者向雲端申請獨立唯一帳號
+  ///
+  /// ⚠️ 第四十九輪 item 2：`elderName` 改為必填。原本帶預設值 '長輩朋友'，
+  /// 但呼叫端（elder_pairing_display_screen.dart）從未實際傳入這個參數，
+  /// 於是預設值被當成真正的姓名送進後端寫入 elder_profile——這正是正式庫
+  /// 「長輩朋友」幽靈帳號的成因。後端現在也會拒絕空白或不像人名的值（400）。
   static Future<Map<String, dynamic>> createAutonomousElder({
-    String elderName = '長輩朋友',
+    required String elderName,
     String gender = 'M',
     int age = 75,
   }) async {
@@ -80,34 +85,6 @@ class PairingApi {
             }),
           )
           .timeout(ApiClient.timeout);
-      return ApiClient.safeDecode(response);
-    } on TimeoutException {
-      return {'status': 'error', 'message': '連線逾時，請檢查網路'};
-    } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
-    }
-  }
-
-  static Future<Map<String, dynamic>> ensureYuxuanDemoElder() async {
-    try {
-      final response = await http.post(
-        Uri.parse('${ApiClient.baseUrl}/pairing/dev/ensure-yuxuan-demo'),
-        headers: {'Content-Type': 'application/json'},
-      ).timeout(ApiClient.timeout);
-      return ApiClient.safeDecode(response);
-    } on TimeoutException {
-      return {'status': 'error', 'message': '連線逾時，請檢查網路'};
-    } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
-    }
-  }
-
-  static Future<Map<String, dynamic>> ensureGawaDemoElder() async {
-    try {
-      final response = await http.post(
-        Uri.parse('${ApiClient.baseUrl}/pairing/dev/ensure-gawa-demo'),
-        headers: {'Content-Type': 'application/json'},
-      ).timeout(ApiClient.timeout);
       return ApiClient.safeDecode(response);
     } on TimeoutException {
       return {'status': 'error', 'message': '連線逾時，請檢查網路'};

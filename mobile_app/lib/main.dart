@@ -785,9 +785,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                                           'last_elder_room_id', elderIdUuid);
                                     }
                                     // ⚠️ 刻意不寫 last_elder_device_role：與
-                                    //   elder_pairing_display_screen.dart 的「登入宇璿」
-                                    //   按鈕不同，本流程沒有在任何地方明確寫死
-                                    //   saved_is_cctv（全 main.dart 對這個鍵只讀不寫，
+                                    //   elder_pairing_display_screen.dart 的
+                                    //   _promptModeAndNavigate（QR 配對／自主模式共用
+                                    //   的角色指派流程）不同，本流程沒有在任何地方明確
+                                    //   寫死 saved_is_cctv（全 main.dart 對這個鍵只讀不寫，
                                     //   ElderHomeScreen.initState 也不會呼叫
                                     //   hasCommDevice 或讀寫這個鍵），沒有足夠把握斷言
                                     //   這台裝置這次登入一定是通話機——寫錯值會讓通話機

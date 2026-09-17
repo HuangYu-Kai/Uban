@@ -872,23 +872,35 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
-            children: [
-              CircleAvatar(
-                backgroundColor: AppColors.primary,
-                radius: 20,
-                child: const Text('嘎', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                '和小嘎聊天',
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.textPrimary,
+          // ★ 鐵律 #14 例行檢查（第四十九輪）：這一列的固定內容（頭像＋標題）
+          // 與右側固定寬度的語言切換鈕（130px）＋兩顆 IconButton 同列競爭
+          // 空間，外層 Row 用 spaceBetween、兩側皆未提供可收縮空間；長輩端
+          // 常見放大系統字級，22pt 標題疊加窄螢幕時可能超出可用寬度。包
+          // Flexible（非 Expanded，避免搶走右側固定按鈕的空間）並讓標題可
+          // ellipsis 收縮，右側按鈕群維持原樣不動。
+          Flexible(
+            child: Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: AppColors.primary,
+                  radius: 20,
+                  child: const Text('嘎', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
                 ),
-              ),
-            ],
+                const SizedBox(width: 10),
+                Flexible(
+                  child: Text(
+                    '和小嘎聊天',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
           Row(
             children: [

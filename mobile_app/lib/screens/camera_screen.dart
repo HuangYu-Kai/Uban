@@ -19,6 +19,17 @@ class _CameraScreenState extends State<CameraScreen> {
   bool _isConnecting = true;
   String? _targetMonitorId;
 
+  // ★ G102（CLAUDE_call-monitor-guardrails.md）：`dispose()` 原本完全不歸還
+  // `onElderDevicesUpdate`，只呼叫 `_signaling.clearSession()`——但
+  // `clearSession()` 只清 `onAddRemoteStream`／`onLocalStream`／
+  // `onCallAcceptedByRemote`／`onCallBusy`／`onCallEnded` 五個「單次通話」
+  // 回呼，不含 `onElderDevicesUpdate`。這正是護欄「不可略過歸還」的那一
+  // 半：離開本畫面後閉包仍持續指向已卸載的 State，回呼開頭的
+  // `if (!mounted) return;` 會靜默吞掉之後每一次裝置清單更新，且不會有任
+  // 何錯誤或 log。先存自己這一份 closure 的參考，`dispose()` 才能用
+  // `identical()` 確認單例上掛的仍是自己這一份才清除。
+  Function(List<dynamic>)? _ownElderDevicesUpdate;
+
   @override
   void initState() {
     super.initState();
@@ -46,7 +57,7 @@ class _CameraScreenState extends State<CameraScreen> {
       }
     };
 
-    _signaling.onElderDevicesUpdate = (devices) async {
+    _ownElderDevicesUpdate = (devices) async {
       if (!mounted) return;
       
       // 尋找作為監視器的設備 (video-peer)
@@ -70,6 +81,7 @@ class _CameraScreenState extends State<CameraScreen> {
         }
       }
     };
+    _signaling.onElderDevicesUpdate = _ownElderDevicesUpdate;
 
     _initCameraAndConnect();
   }
@@ -122,6 +134,13 @@ class _CameraScreenState extends State<CameraScreen> {
   void dispose() {
     WakelockPlus.disable();
     _signaling.clearSession();
+    // ★ G102：`clearSession()` 只清單次通話相關的 5 個回呼，不含
+    //   `onElderDevicesUpdate`（見 _ownElderDevicesUpdate 欄位宣告處的說
+    //   明），必須在這裡另外歸還；比照同類修法，只在單例上掛的仍是自己這
+    //   一份時才清除。
+    if (identical(_signaling.onElderDevicesUpdate, _ownElderDevicesUpdate)) {
+      _signaling.onElderDevicesUpdate = null;
+    }
     _remoteRenderer.dispose();
     super.dispose();
   }

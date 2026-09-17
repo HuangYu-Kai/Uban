@@ -18,8 +18,15 @@ class MainActivity : FlutterActivity() {
 
     companion object {
         // 跌倒警報 channel 相關常數，詳見 ensureAlertChannel() 的完整說明。
-        private const val ALERT_CHANNEL_NAME = "跌倒警報"
-        private const val ALERT_CHANNEL_DESC = "YOLO 監視機偵測到疑似跌倒時的高優先級提醒"
+        // ★ 第四十九輪：文字與 cctv_alert_notification.dart 的 _channelName／
+        //   _channelDesc 同步更新，涵蓋現已分流的多種警報情境（跌倒／疑似爬行／
+        //   長時間躺臥或無活動／長輩開口求救）。這裡才是實際建立系統 channel 的
+        //   地方（見下方 ensureAlertChannel()），name／description 之後仍可安全
+        //   再改；但 ALERT_CHANNEL_ID_NORMAL／_DND 與 IMPORTANCE_HIGH／
+        //   setBypassDnd／setSound 一旦要改，一律要換新 channel id 並清掉舊的
+        //   （channel 建立後這幾項會被系統靜默忽略更新，見下方大段註解）。
+        private const val ALERT_CHANNEL_NAME = "長輩緊急警報"
+        private const val ALERT_CHANNEL_DESC = "偵測到跌倒、疑似爬行、長時間躺臥或無活動，以及長輩開口求救時的高優先級提醒"
         // 不具 bypassDnd 的版本（尚未取得「通知政策存取」權限時使用）。
         private const val ALERT_CHANNEL_ID_NORMAL = "uban_cctv_alert_v3"
         // 具 bypassDnd 的版本（已取得「通知政策存取」權限時使用）。

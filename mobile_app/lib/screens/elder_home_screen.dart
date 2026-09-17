@@ -633,13 +633,27 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     }
   }
 
+  // ★ G102（CLAUDE_call-monitor-guardrails.md）：`Signaling` 單例的回呼欄位只
+  // 有一份，最後賦值者獨佔。本方法會被呼叫**多次**（initState、以及從
+  // ElderScreen 返回的兩處 `.then()`），每次都要更新這些欄位，讓它們永遠
+  // 代表「我最後一次指派的那一份」——`dispose()` 才能用 `identical()` 比對
+  // 出單例上掛的是不是還是本畫面的閉包，而不是本畫面更早一次指派、後來又
+  // 被自己蓋掉的舊閉包。
+  CallRequestCallback? _ownCallRequest;
+  CallRequestCallback? _ownCancelCall;
+  Function(String message)? _ownHeartbeatMessage;
+  Function(dynamic data)? _ownElderQuestionAnswered;
+  void Function(Map<String, dynamic>)? _ownRemoteReminder;
+  void Function(Map<String, dynamic>)? _ownReminderSync;
+
   void _restoreSignalingCallbacks() {
     debugPrint("🔄 [ElderHomeScreen] 重新綁定 Signaling Callbacks");
     // 監聽來自家屬的來電請求
-    Signaling().onCallRequest = (roomId, senderId, callId, [senderName]) {
+    _ownCallRequest = (roomId, senderId, callId, [senderName]) {
       if (!mounted) return;
       _showIncomingCallDialog(roomId, senderId, callId);
     };
+    Signaling().onCallRequest = _ownCallRequest;
     // ★ issue 4 fix: 監聽家屬取消來電，關閉彈窗
     // ★ 第四十輪（item 4）：`Signaling` 的回呼欄位只有一份，長輩停在本畫面時
     //   本檔這份會覆蓋 main.dart 的全域版本（見 CLAUDE_call-monitor.md §2.3），
@@ -647,7 +661,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     //   畫面／備援本機通知，家屬撥打逾時取消後，長輩端可能還留著響鈴中的
     //   CallKit／備援通知。endAllCalls() 沿用 main.dart 既有 try/catch 慣例
     //   （MIUI 會拋 content-is-null）。
-    Signaling().onCancelCall = (roomId, senderId, callId, [senderName]) {
+    _ownCancelCall = (roomId, senderId, callId, [senderName]) {
       if (!mounted) return;
       debugPrint('🔕 [ElderHomeScreen] 家屬取消來電，關閉彈窗');
       if (_isIncomingCallDialogOpen && Navigator.canPop(context)) {
@@ -662,18 +676,20 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
       unawaited(LocalCallNotification.cancel());
       unawaited(_clearPendingCallPrefsOnCancel());
     };
+    Signaling().onCancelCall = _ownCancelCall;
 
     // 監聽家屬發送的主動關心留言 (Heartbeat)
-    Signaling().onHeartbeatMessage = (message) {
+    _ownHeartbeatMessage = (message) {
       if (mounted) {
         _handleProactiveMessage(message);
       }
     };
+    Signaling().onHeartbeatMessage = _ownHeartbeatMessage;
 
     // 💬 子女回覆了長輩先前問小嘎、小嘎轉交出去的問題。
     //    做成一則關懷訊息：CareMessageStore 已經負責留存、首頁顯示對話框、
     //    聊天分頁接成小嘎的訊息，三個落點一次到位，不必另做一套。
-    Signaling().onElderQuestionAnswered = (data) {
+    _ownElderQuestionAnswered = (data) {
       if (!mounted || data is! Map) return;
       final answer = (data['answer'] ?? '').toString().trim();
       if (answer.isEmpty) return;
@@ -683,15 +699,17 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
           : '您之前問的「$question」，家人回覆了：$answer';
       _handleProactiveMessage(jsonEncode({'reply': text, 'type': 'family'}));
     };
+    Signaling().onElderQuestionAnswered = _ownElderQuestionAnswered;
 
     // ★ ⏰ 監聽排程提醒與同步信令
-    Signaling().onRemoteReminder = (data) {
+    _ownRemoteReminder = (data) {
       if (mounted) {
         debugPrint('⏰ [ElderHomeScreen] 收到 onRemoteReminder 信令: $data');
         ElderReminderManager.instance.handleIncomingReminder(data);
       }
     };
-    Signaling().onReminderSync = (data) {
+    Signaling().onRemoteReminder = _ownRemoteReminder;
+    _ownReminderSync = (data) {
       if (mounted) {
         debugPrint('🔄 [ElderHomeScreen] 收到 onReminderSync 信令: $data');
         // ★ 2026-09-15：action='complete' 時把該筆寫進本機當日完成清單。
@@ -702,6 +720,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
         ElderReminderManager.instance.syncReminders();
       }
     };
+    Signaling().onReminderSync = _ownReminderSync;
   }
 
   /// 把遠端回報的「提醒已完成」寫入本機當日清單，與「我的」分頁的
@@ -922,12 +941,27 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     pendingAcceptedCall.removeListener(_onPendingCallChanged);
     isMediaPlayingNotifier.removeListener(_onMediaPlayingChanged);
     wakeWordEnabledNotifier.removeListener(_onWakeWordEnabledChanged);
-    Signaling().onHeartbeatMessage = null;
-    Signaling().onCallRequest = null;
-    Signaling().onCancelCall = null;
-    Signaling().onRemoteReminder = null;
-    Signaling().onElderQuestionAnswered = null;
-    Signaling().onReminderSync = null;
+    // ★ G102（CLAUDE_call-monitor-guardrails.md）：無條件 = null 會誤清「接手
+    //   畫面」剛註冊好的閉包——本畫面與 ElderScreen 互相導來導去時，兩邊都會
+    //   指派同一批欄位，只有 identical() 判斷自己仍是持有者才可以清除。
+    if (identical(Signaling().onHeartbeatMessage, _ownHeartbeatMessage)) {
+      Signaling().onHeartbeatMessage = null;
+    }
+    if (identical(Signaling().onCallRequest, _ownCallRequest)) {
+      Signaling().onCallRequest = null;
+    }
+    if (identical(Signaling().onCancelCall, _ownCancelCall)) {
+      Signaling().onCancelCall = null;
+    }
+    if (identical(Signaling().onRemoteReminder, _ownRemoteReminder)) {
+      Signaling().onRemoteReminder = null;
+    }
+    if (identical(Signaling().onElderQuestionAnswered, _ownElderQuestionAnswered)) {
+      Signaling().onElderQuestionAnswered = null;
+    }
+    if (identical(Signaling().onReminderSync, _ownReminderSync)) {
+      Signaling().onReminderSync = null;
+    }
     ElderReminderManager.instance.setContextGetter(null);
     ElderReminderManager.instance.stop();
     super.dispose();

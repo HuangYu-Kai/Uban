@@ -1276,6 +1276,241 @@ IMU 航位推算漂移嚴重，且長輩常不隨身攜帶手機。相機方案�
 > `CLAUDE_call-monitor-history.md`；**N ≥ 41** 仍在本檔 §8。此門檻會隨每輪搬移而持續調高，
 > 調整時只需要更新本處（§8 開頭）的數字。
 
+### 2026-09-17 — 第四十九輪：警報狀態機、時間基準統一、誠實性收尾
+
+**背景**
+
+本輪延續使用者一份 14 項的待辦清單。與通話／監控子系統相關的是 item 2、
+3、5、6、7、8、11、12（其餘 item 1、9、10、13、14 屬排程提醒、管理端與寵
+物子系統，已於本輪較早的檢查點完成，不在本檔範圍）。另加上本輪過程中查出
+的幾項誠實性與資料正確性問題（通知文案分流、G102 違規、`activity.py` 資料
+外洩、用藥打卡誠實性、健康與情緒圖表假資料、節氣顯示、鐵律 #1 同類問題、
+測試環境誤連正式庫）。
+
+⚠️ **兩項本輪未完成、下一輪必須接手**：
+- **item 5 的「App 在背景」情境**——長輩在背景撥出視訊時進得了房但 WebRTC
+  連不上。需要 Android 實機先診斷才能確定是哪一層被系統凍結；方案 A（重用
+  `flutter_callkit_incoming` 內建的 `phoneCall` 前景服務）已核准但未實作。
+  **不可在沒有實機的情況下盲改**。
+- **item 4（正式庫清理／「蛙」的好友／E2E 貼文測試）**——腳本與備份已備
+  妥，但卡在兩件事：正式主機的 Tailscale 節點金鑰過期（整台連不上），以及
+  刪除 16 個帳號與 52 篇測試貼文屬不可逆操作、需要使用者明確授權。
+
+**item 12 警報狀態機（本輪最大項）**
+
+根因：`POST /api/alerts/{id}/acknowledge` 與 Socket `cctv-alert-ack` 在本
+輪之前**呼叫次數為 0**，`acknowledged`／`resolved` 從未被寫入過，每一筆警
+報永遠停在 `active`——`routers/developer_users.py::_risk_level()` 的「活
+躍警報」因此等於「這位長輩曾經跌倒過」，全平台長輩一律被判定高風險。第二
+個根因藏在 `services/yolo_alert_dispatcher.py::_insert_alert()`：對同一長
+輩＋同裝置＋同類型的既有列是 UPSERT，每次重新偵測都把 `detected_at` 洗成
+`NOW()`——持續發生中的跌倒（最該升級的情境）永遠不會老化。新增
+`first_detected_at`，只在真正新建時寫入，作為 2 小時逾時判斷唯一正確的起
+算點。
+
+三態沿用既有字串 `active`／`acknowledged`／`resolved`，不新增列舉值。新增
+`services/alert_state.py`，由 REST（`routers/alert.py`）與 Socket
+（`services/socket_app.py::on_cctv_alert_ack`／`on_audio_bridge_request`）
+**共用同一個函式**，讓 G44（兩路徑行為一致）由程式結構保證，不再只靠人工
+對齊。
+
+新增 `services/alert_watchdog.py`（每分鐘排程）：待處理每 **10 分鐘**重
+推、從 `first_detected_at` 起滿 **2 小時**升級給開發者（處理中照樣計
+時）、處理中閒置 **20 分鐘**退回待處理，三個數字都是使用者拍板。
+
+合併窗口本身也踩過兩次坑：家屬一開監控畫面，警報就轉 `acknowledged`；若
+合併只認 `active`，同一次跌倒 15 秒後（`FALL_COOLDOWN_S`）再被偵測就會另
+開新列、重複推播。但只放寬成「未結案就合併」又會讓新跌倒併進幾天前的舊
+列、沿用舊 `first_detected_at`，一建立就被判逾時。最終採「未結案 **且**
+上次偵測在 `SAME_EVENT_WINDOW_MINUTES=30` 分鐘內」。
+→ 新護欄 **G191**
+
+誠實性：`_broadcast_alert()` 改回傳 `{socket_targets, socket_sent,
+fcm_targets, fcm_sent}`；主控台「聯絡家屬」在 0 個對象時必須明講沒有可推
+播的家屬裝置，不得顯示「已通知」。
+→ 新護欄 **G193**
+
+舊警報處理依使用者裁示「上線時自動結案」：migration 014
+（`014_alert_state_machine.sql`）的 backfill 0 把「本輪之前建立、仍未結
+案」的警報一次轉 `resolved` ＋ `resolution_source='legacy_auto'`，排在補
+`first_detected_at` 的 backfill 之前——判定依據是「新程式碼的兩條 INSERT
+路徑都一定寫 `first_detected_at`，所以第一次執行時 NULL 的就是舊資料」，
+並以 `tests/test_alert_insert_paths.py`（AST 靜態掃描）守住這個前提。
+→ 新護欄 **G195**
+
+開發者決策端點 `POST /api/developer/alerts/{id}/decision`：聯絡家屬（立即
+重推）／建議報醫（只記錄，回傳長輩地址與家屬姓名 email，並明講系統沒有留
+存電話號碼）／結案。**不做任何電話號碼設計**（使用者明確要求）。
+
+看門狗執行模型：DB 巡檢一律同步跑在排程執行緒，只有重推那一步橋接主事件
+迴圈（通話信令共用該迴圈）；非阻塞 `threading.Lock` 防重入；提醒採「先用
+條件式 UPDATE 蓋 `last_reminder_at`（比對原始舊值、`rowcount==1` 才算搶
+到）、再送」。
+→ 新護欄 **G192**
+
+**item 11 時間基準統一**
+
+使用者裁示統一存 UTC。`database.py` 每次取得 MySQL 連線都
+`SET time_zone='+00:00'`；SQLite wrapper 的 `NOW()` 由
+`datetime('now','localtime')` 改為 `datetime('now')`；新增
+`services/time_utils.py`（`now_utc`／`now_tw`／`to_tw`／`assume_utc`／
+`utc_epoch_seconds`／`tw_day_range_to_utc`）。
+
+修好的確定 bug：`routers/alert.py` 的 `last_frame_at` 由 SQL `NOW()` 寫
+入，卻用 Python `utcnow()` 相減——若 MySQL session 是 +08，`age_seconds`
+約 −28500，`recent_frame` 恆為 False，**監視機持續推幀卻永遠回報「沒有裝
+置在推流」**，疑為歷史上大量「監控清單空白」故障的同類病灶。
+`services/yolo_alert_dispatcher.py` 也有兩處同樣的 `utcnow().timestamp()`
+問題；多處 `DATE()`／`CURDATE()` 日期分桶改為台灣日曆日換算成 UTC 區間
+（此 bug 是雙向的，台灣 00:00–08:00 兩邊都會歸錯天）。
+
+未做：DATETIME→TIMESTAMP 的欄位型別變更——本機只有 SQLite，wrapper 一律忽
+略 `ALTER TABLE ... MODIFY`，在這台機器上測不出任何結果；`call_record`／
+`subscription_status` 在 MySQL 完全沒有建表程式碼，真實型別必須先拿到正
+式庫的 `DESCRIBE`。
+
+**item 2／3 幽靈帳號與家人綁定**
+
+`routers/pairing.py::create_autonomous_elder` 的 `elder_name` 原本預設
+`"長輩朋友"`，而前端自主模式從未傳這個參數——預設值被當成真名寫進
+`elder_profile`，這就是正式庫「長輩朋友」幽靈帳號與「0.0」帳號的成因。改
+為必填＋基本合法性檢查（至少一個字母／中文字、長度 ≤40），不合格回 400。
+
+移除兩支**不需登入**就能建立／改寫帳號的端點
+`/api/pairing/dev/ensure-yuxuan-demo`、`/dev/ensure-gawa-demo`（共 294
+行）與前端四個死呼叫；移除長輩配對畫面的「登入宇璿」測試鍵與「無 session
+就自動登入宇璿」的退路。
+
+`sandbox/run_autonomous_sandbox.py` 新增 fail-closed 防護：掃 `build/web`
+底下的 `.js` 找正式站主機名稱，找到就拒絕啟動；**掃不到任何 `.js` 檔也拒
+絕**（例如 `--wasm` 建置看不懂）。判斷依據是用 `dart compile js -O4` 實測
+過 `String.fromEnvironment` 的 defaultValue 會以明文字串留在輸出中。
+
+item 3：長輩「我的」分頁開配對對話框時，兩個呼叫點都沒傳
+`explicitElderId`，對話框退回猜 `caregiver_id ?? last_elder_id`；兩鍵都
+讀不到時 id 為 null，後端照樣回一組看起來正常的配對碼，家屬確認時
+`confirm_pairing()` 因為配對碼沒有 `creator_id` 而走「新長輩註冊」分支，
+建出一個長輩看不到的幽靈帳號、家屬被綁到幽靈上（沒有 crash、沒有錯誤，綁
+定就是沒發生）。改為兩個呼叫點明確傳入，解析不到改 fail-closed。
+
+**item 5／6 通話**
+
+「螢幕關閉後約 2 秒斷線」的根因是全專案**沒有任何 CPU 層級 wake lock**
+（唯一的是只撐 10 秒、用途是喚醒螢幕的 `SCREEN_BRIGHT_WAKE_LOCK`）。
+`MainActivity.kt`／`elder_screen.dart`／`video_call_screen.dart` 補上
+`PARTIAL_WAKE_LOCK`，並補齊 release（先前只有 acquire，全專案
+`releaseCallWakeLock` 呼叫處是 0）。監控機那份尤其重要——CPU 被掛起會讓
+YOLO 推幀靜默停止。
+
+「一方掛斷、另一方卡在等待中」：`services/socket_app.py::on_disconnect`
+從未查 `call_registry`、也從未通知通話對象（只 emit 前端無人監聽的死事件
+`user-left`）。改為延遲 `_DISCONNECT_CALL_GRACE_SEC=17` 秒再通知，比前端
+既有 15 秒重連寬限期略長，避免破壞「訊令瞬斷不該立即殺死通話」的既有設
+計。
+
+未修：長輩在 App 背景時撥出視訊「進得了房但 WebRTC 連不上」。需要 Android
+實機先診斷，方案 A（重用 `flutter_callkit_incoming` 內建的 `phoneCall` 前
+景服務）已核准但尚未實作。
+
+**item 7／8 AI 助理誠實性**
+
+`services/tools_service.py::notify_family_SOS` 原本只用長輩自己的 4 碼
+`elder_id` 查 `family_elder_relationship`，而派送端
+`yolo_alert_dispatcher` 查同一件事用的是三向 OR（該表的 `elder_id` 實際
+存在「存成 user_id」的資料形狀）。後果是反方向的說謊——謊稱「你沒有綁定
+家人」、直接叫長輩自己打 119，即使同一位長輩跌倒時派送鏈其實找得到家屬。
+
+五條「最終只能叫長輩打 119」的分支全部先推開發者主控台
+（`services/developer_escalation.py`，migration 013
+（`013_escalate_emergency_alerts.sql`）的 `escalated_to_developer`／
+`escalated_at`／`escalation_reason` 三欄，與 item 12 共用同一張表）。
+
+語音撥號：`widgets/google_assistant_overlay.dart` 原本完全不解析任何動作
+標記（連既有的 `[VIDEO_ID:xxx]` 都會被原文念出來）。新增
+`[AUTO_CALL:video|audio]` 與 `[AUTO_CALL_FRIEND:...]` 解析，由**長輩端自
+己**建構 `ElderScreen(autoCall: true)`，後端不代替長輩發起 WebRTC offer。
+
+確認語的安全網：`flutter_tts` 4.2.5 沒開 `awaitSpeakCompletion` 時
+`speak()` 一開始念就返回，畫面會在長輩聽到「我幫您打電話給某某」之前就跳
+走；而直接開 `awaitSpeakCompletion` 更糟——兩個 `onError` 多載都只設
+`speaking=false`、從不呼叫 `speakCompletion()`，TTS 一出錯 Future 永遠不
+返回、撥號被卡死。改為 `_speakAndWait()`：完成與錯誤兩個處理器加 8 秒逾
+時兜底。
+
+家屬端排程助理（`routers/ai.py::family_copilot_chat` 的
+`QUERY_ELDER_STATUS`）原本心情分數、用藥狀態、活動狀態全部由模型自由發
+揮，規則備援更直接寫死「今日用藥全數完成」「正在客廳休息放鬆」、
+`mood_score=90`。改為 Python 端先查真實資料、`status_summary` 由 Python
+組出、模型只負責轉述；`mood_score` 改為 null（沒有任何真實依據）。並新增
+家屬端麥克風輸入（辨識結果只填進輸入框，**不自動送出**；不加任何背景常駐
+監聽）。
+
+未做：長輩端「語音排行程」——`TOOL_MAP` 沒有建立提醒的工具，需要另外設計
+「小嘎念出行程、長輩確認」的流程，留待下一輪。
+
+**通知文案依類型分流**
+
+`lib/services/cctv_alert_notification.dart::show()` 原本標題與內文一律寫
+「🚨 偵測到跌倒」「XX 可能跌倒，請立即查看監視畫面」，完全不看
+`alertType`——長輩對小嘎開口求救（`sos_voice`，**沒有**監視畫面）時，家屬
+在背景收到的卻是跌倒通知還被叫去看監視畫面。改為六類型 × 首次／提醒共
+12 組文案。channel 的 `name`／`description` 一併更新（**`_channelId` 不
+可改**，改了等於建新 channel，使用者既有設定全部失效）。
+→ 新護欄 **G196**
+
+**G102 違規（本輪查出的既有缺陷）**
+
+`elder_screen.dart::dispose()` 與 `elder_home_screen.dart::dispose()` 無
+條件把 `Signaling` 單例的回呼設為 null。長輩結束通話走
+`globals.dart::safeNavigateBack()` → `navigator.pop()`，首頁在
+`Navigator.push(...).then()` 的 microtask 裡重新綁定，**但 ElderScreen
+的 `dispose()` 要等退場動畫結束才執行**——順序是「首頁先重新綁定 → 通話
+畫面才清成 null」，於是長輩每講完一通電話，首頁就再也收不到主動關懷訊
+息，直到 App 重啟。改為 G102 要求的 `identical()` 守衛。
+→ 新護欄 **G197**
+
+**其他**
+
+- 🚨 `routers/activity.py` 資料外洩：`family_id` 是 Optional，沒帶就完全
+  跳過綁定檢查；解析不到長輩時 fallback 成「全系統最新建立的那位長輩」，
+  再不行寫死 `elder_user_id = 13`，然後回傳完整 `activity_log`。合法家屬
+  打錯一個字就會看到陌生長輩的紀錄。改為解析不到回 404、不 fallback。
+- 用藥打卡誠實性：`completeElderReminder` 的三個呼叫點原本兩個是
+  `unawaited(...)`、連回傳值都不等，API 失敗照樣寫入本機「已完成」，三個
+  畫面一起顯示已完成，長輩反而比修之前更無從察覺。改為讀 bool，失敗回退
+  樂觀更新（含收回小豬已經講出口的「打卡成功」台詞）。
+- 健康與情緒圖表移除全部假資料：心率／血壓／血糖全庫零欄位，保留版面顯
+  示「--」且不畫任何曲線；身高體重新增 `elder_body_metrics` 時間序表真實
+  串接；情緒改為「近期負面情緒關注事件」列表（`happy`／`calm` 從不落地，
+  連續曲線在資料上不可能成立）。
+- 節氣：`almanac_data_helper.dart::getCurrentJieQi()` 的 fallback 是死碼
+  （判斷條件與 `getJieQi()` 完全相同），節氣徽章一年約 358 天不出現；另
+  修 5 個節氣的簡體字。
+- 鐵律 #1 同類問題：新聞三個畫面寫死正式站網址（也會讓沙盒防護對每一個建
+  置誤判）、`pet_studio_screen.dart` 兩處寫死 `ElderHomeScreen(userId:
+  1)`。
+- `tests/conftest.py` 預設 `DISABLE_DB=true`：`.env` 的 `DB_HOST` 指向正
+  式庫、`load_dotenv()` 不覆蓋既有環境變數、autouse 的 `cleanup_db` 每個
+  測試前後都會 DELETE——原本任何人跑 pytest 都可能直接寫到正式資料庫。
+  → 新護欄 **G194**
+
+**已知限制（本輪刻意不改）**
+
+`sos_voice` 與 CCTV 警報共用同一個固定通知 ID 8811，時間相近時後到的會覆
+蓋前一則；持續中的跌倒每 15 秒推播一次是既有設計。
+
+**新增護欄**
+
+本輪新增 **G191–G197**（狀態機合併窗口 G191；排程執行模型 G192；推播誠
+實性 G193；測試環境 G194；一次性 migration 判定 G195；通知文案分流
+G196；G102 守衛時機 G197；條文見 §7.2）。護欄檔
+（`CLAUDE_call-monitor-guardrails.md`）開頭護欄總數同步更新為 **197**。
+
+**驗證**：隔離 SQLite 腳本 25/25；`pytest tests/test_call_signaling.py`
+41 passed（與基準一致）＋ `test_alert_insert_paths.py` 3 passed；
+`flutter analyze` 0 error／87 issues；`tsc -b --noEmit` 0 錯誤；
+`npm run build` 成功。**本輪未同步 graphify**（使用者已要求暫停）。
+
 ### 2026-09-16 — 第四十八輪：警報彈窗抑制、溢位修正、監控清單消失根因、管理端資料表與主題、隱私權政策
 
 **背景**
@@ -2486,7 +2721,9 @@ diamond 5。`boyo@uban.com` 用 **email 比對**（而非寫死 `user_id`，因�
   ⚠️ **實際落點與原始判斷不同**：原本以為要擋的兩處 INSERT 是
 `/dev/ensure-yuxuan-demo`／`/dev/ensure-gawa-demo` 這兩個**開發測試端點**
 （`family_id` 是寫死常數），但真正的配對流程其實是 `confirm_pairing()`。dev 端點
-**刻意不擋**——擋了會讓「登入宇璿」這條測試路徑無預警壞掉。
+當時**刻意不擋**——擋了會讓「登入宇璿」這條測試路徑無預警壞掉；但這兩支端點本身
+**不需登入就能建立／改寫帳號**，已於第四十九輪移除（見該輪年表「item 2／3」），
+程式庫中已無此路徑，「刻意不擋」的豁免自此不再適用。
   另外補上一個缺口：`routers/relationship.py::create_relationship`
 （`POST /api/relationship/`）是**完全沒有配對碼驗證、也沒有授權檢查的裸 INSERT**，
 能繞過上限。已補上限檢查，以及「關係已存在就不重複 INSERT」的冪等判斷（上限檢查排在
@@ -2551,7 +2788,10 @@ flutter build apk --debug    # 須 BUILD SUCCESSFUL
 # 後端
 cd D:\114project\uban-api
 python -m py_compile services/socket_app.py main.py
-python -m pytest tests/test_call_signaling.py -q   # 目前基準：17 passed，不可退步
+# ⚠️ .env 的 DB_HOST 指向正式 MySQL，conftest.py 的 autouse cleanup_db 每個
+#    測試前後都會 DELETE，直接跑 pytest 可能寫到正式資料庫（見 G194）。
+#    conftest.py 已預設 DISABLE_DB=true，仍建議明確帶上。
+DISABLE_DB=true python -m pytest tests/test_call_signaling.py -q   # 目前基準：41 passed，不可退步
 ```
 
 > 既有 **135** 項 `withOpacity` 等 info/warning 是歷史遺留，**不算退步**，但你改動的檔案必須 0 issue。
@@ -2656,9 +2896,9 @@ python -m pytest tests/test_call_signaling.py -q   # 目前基準：17 passed，
 ### 10.3 改完後
 
 ```
-1. flutter analyze lib                              → 0 error
-2. python -m pytest tests/test_call_signaling.py -q → 17 passed（不退步）
-3. flutter build apk --debug                        → BUILD SUCCESSFUL
+1. flutter analyze lib → 0 error
+2. DISABLE_DB=true python -m pytest tests/test_call_signaling.py -q → 41 passed（不退步）
+3. flutter build apk --debug → BUILD SUCCESSFUL
 4. 跑 §9.2 真機驗收矩陣中與你改動相關的項目
 5. 在 §8 補一筆修復記錄（日期 / 症狀 / 根因 / 修復 / 驗證）
 6. 若新增了不可回退的設計 → 在 §7 補一條護欄
