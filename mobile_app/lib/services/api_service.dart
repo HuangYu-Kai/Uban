@@ -263,13 +263,13 @@ class ApiService {
   static Future<Map<String, dynamic>> submitBodyMetrics({
     required String elderId,
     required int familyId,
-    String? measuredAt,
+    required String metricDate,
     double? weightKg,
     double? heightCm,
   }) => FamilyInsightApi.submitBodyMetrics(
         elderId: elderId,
         familyId: familyId,
-        measuredAt: measuredAt,
+        metricDate: metricDate,
         weightKg: weightKg,
         heightCm: heightCm,
       );

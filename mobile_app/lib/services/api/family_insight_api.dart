@@ -86,12 +86,17 @@ class FamilyInsightApi {
     }
   }
 
-  /// 新增／更新一筆體重身高紀錄。`familyId` 為必填——這是會真的寫入資料庫的
-  /// 操作，後端要求一定要能驗證是哪位家屬、綁定哪位長輩。
+  /// 新增／更新一筆體重身高紀錄。
+  ///
+  /// `familyId` 為必填——這是會真的寫入資料庫的操作，後端要求一定要能驗證
+  /// 是哪位家屬、綁定哪位長輩。`metricDate` 也是必填，且**呼叫端必須自己算
+  /// 好裝置本地日期字串（YYYY-MM-DD）再傳進來**——後端刻意不接受省略、也
+  /// 不會用伺服器時間補預設值：後端統一存 UTC，若讓伺服器自己補「今天」，
+  /// 台灣時間 00:00–08:00 送出的紀錄會被錯記成前一天。
   static Future<Map<String, dynamic>> submitBodyMetrics({
     required String elderId,
     required int familyId,
-    String? measuredAt,
+    required String metricDate,
     double? weightKg,
     double? heightCm,
   }) async {
@@ -102,7 +107,7 @@ class FamilyInsightApi {
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({
               'family_id': familyId,
-              if (measuredAt != null) 'measured_at': measuredAt,
+              'metric_date': metricDate,
               if (weightKg != null) 'weight_kg': weightKg,
               if (heightCm != null) 'height_cm': heightCm,
             }),

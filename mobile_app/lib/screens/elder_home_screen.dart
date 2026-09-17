@@ -576,7 +576,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
 
     if (!mounted) return;
 
-    await GoogleAssistantOverlay.show(
+    final assistantResult = await GoogleAssistantOverlay.show(
       context,
       userName: _userName,
       aiName: _aiName,
@@ -592,6 +592,44 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
       Future.delayed(const Duration(milliseconds: 1500), () {
         if (mounted) _safeRestartWakeWordListening('overlay_closed');
       });
+    }
+
+    // ★ 第四十九輪 item 8：長輩說「幫我打電話／視訊給家人／好友」時，
+    //   GoogleAssistantOverlay 已經念完確認語並帶出撥號請求，這裡接手實際
+    //   撥出——完全比照 friends_screen.dart::_startCall() /
+    //   _startFriendCall() 的既有配方，透過建構 ElderScreen(autoCall:true,
+    //   ...) 完成，不呼叫 Signaling() 任何方法。`friendElderId` 有值時
+    //   （後端 tools_service.py::initiate_video_call 已在真實好友清單裡唯一
+    //   定位到對象）走好友通話（進對方房間、指定對象）；為 null 時走家人
+    //   通話（整戶已綁定家屬的手機一起響，不支援指定某一位）——兩者都是
+    //   ElderScreen 既有支援的公開建構參數，本檔沒有新增或修改該檔任何邏輯。
+    if (mounted && assistantResult != null && assistantResult['autoCall'] == true) {
+      String? roomId;
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        roomId = prefs.getString('elder_room_id')?.trim();
+      } catch (e) {
+        debugPrint('⚠️ [ElderHomeScreen] 讀取 elder_room_id 失敗: $e');
+      }
+      if (!mounted) return;
+      if (roomId == null || roomId.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('找不到您的通話帳號資料，請重新登入後再試')),
+        );
+      } else {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ElderScreen(
+              roomId: roomId!,
+              friendCallTargetElderId: assistantResult['friendElderId'] as String?,
+              deviceName: _userName,
+              autoCall: true,
+              isVideoCall: assistantResult['isVideo'] == true,
+            ),
+          ),
+        );
+      }
     }
   }
 

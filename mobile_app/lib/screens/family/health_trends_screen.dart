@@ -769,12 +769,14 @@ class _HealthTrendsScreenState extends State<HealthTrendsScreen> {
                               submitting = true;
                               errorText = null;
                             });
-                            final measuredAt =
+                            // 裝置本地日期字串，不能用伺服器時間——後端刻意要求
+                            // 呼叫端自己算好這個值，理由見 family_insight_api.dart。
+                            final metricDate =
                                 '${selectedDate.year.toString().padLeft(4, '0')}-${selectedDate.month.toString().padLeft(2, '0')}-${selectedDate.day.toString().padLeft(2, '0')}';
                             final resp = await ApiService.submitBodyMetrics(
                               elderId: widget.elderId.toString(),
                               familyId: familyId,
-                              measuredAt: measuredAt,
+                              metricDate: metricDate,
                               weightKg: w,
                               heightCm: h,
                             );

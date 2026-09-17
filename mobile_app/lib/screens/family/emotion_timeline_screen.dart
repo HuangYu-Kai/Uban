@@ -1,18 +1,27 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import '../../models/emotion_data.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../services/api_service.dart';
 
-
-/// 😊 情緒時間軸完整頁面
-/// 
-/// 顯示長輩完整一天的情緒變化曲線
-/// 支援點擊查看詳細對話記錄
+/// 😊 情緒關注事件（第四十九輪：拿掉假造的一整天情緒曲線，改真實資料）
+///
+/// 原本的 `_generateMockData()` 每次進畫面隨機生 12 個點，在
+/// 開心/平靜/焦慮/悲傷 四類之間輪替，畫成一整天的平滑曲線與百分比分佈——
+/// 這在資料上不可能成立：`routers/ai.py::run_emotion_analysis()` 只在偵測到
+/// sad/angry 且信心度 ≥0.4 時才會把結果寫進 `activity_log`，開心／平靜／
+/// 中性的時刻從未被持久化，重建不出一整天的情緒曲線，也算不出四類分佈。
+///
+/// 這裡改成誠實的呈現方式：近期「負面情緒關注事件」清單，每一筆都是真的
+/// 從長輩發言分析出來的紀錄（見 `GET /api/family_insight/emotion_events`），
+/// 而不是連續曲線。清單是空的，代表這段期間沒有偵測到明顯負面情緒——但也
+/// 可能是長輩這段期間很少用語音對話，兩者在資料上無法區分，畫面上會誠實
+/// 提示這一點，不假裝「一切都好」。
 class EmotionTimelineScreen extends StatefulWidget {
   final String elderName;
   final int? elderId;
+  // 保留參數相容既有呼叫端（目前沒有呼叫端會傳）；清單型畫面改用時間範圍
+  // 篩選，不再依賴單一日期的前後翻頁。
   final DateTime? initialDate;
 
   const EmotionTimelineScreen({
@@ -26,160 +35,92 @@ class EmotionTimelineScreen extends StatefulWidget {
   State<EmotionTimelineScreen> createState() => _EmotionTimelineScreenState();
 }
 
-class _EmotionTimelineScreenState extends State<EmotionTimelineScreen> {
-  late DateTime _selectedDate;
-  List<EmotionData> _emotionData = [];
-  bool _isLoading = true;
-  int? _selectedPointIndex;
+enum _EventsRange { week, month, halfYear }
 
+enum _SectionStatus { loading, hasData, empty, error }
+
+class _EmotionTimelineScreenState extends State<EmotionTimelineScreen> {
+  _EventsRange _range = _EventsRange.month;
+  _SectionStatus _status = _SectionStatus.loading;
+  List<Map<String, dynamic>> _events = [];
+  String _errorMsg = '';
+  int? _familyId;
 
   @override
   void initState() {
     super.initState();
-    _selectedDate = widget.initialDate ?? DateTime.now();
-    _loadEmotionData();
+    _load();
   }
 
-  Future<void> _loadEmotionData() async {
-    setState(() => _isLoading = true);
-    
-    // TODO: 從 API 或本地存儲加載真實數據
-    // 目前使用模擬數據
-    await Future.delayed(const Duration(milliseconds: 500));
-    
-    final mockData = _generateMockData();
-    
-    setState(() {
-      _emotionData = mockData;
-      _isLoading = false;
-    });
-  }
-
-  List<EmotionData> _generateMockData() {
-    final random = DateTime.now().millisecond;
-    final baseDate = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
-    
-    return List.generate(12, (index) {
-      final hour = index * 2; // 每2小時一個數據點
-      final emotions = [EmotionType.happy, EmotionType.calm, EmotionType.anxious, EmotionType.sad];
-      final emotionType = emotions[(random + index) % emotions.length];
-      
-      return EmotionData(
-        id: 'emotion_$index',
-        elderId: widget.elderId ?? 1,
-        timestamp: baseDate.add(Duration(hours: hour)),
-        emotionType: emotionType,
-        confidenceScore: 0.6 + (index % 4) * 0.1,
-        metadata: {
-          'dialogSnippet': _getDialogSnippet(emotionType),
-          'trigger': _getTrigger(emotionType),
-        },
-      );
-    });
-  }
-
-  String _getDialogSnippet(EmotionType type) {
-    switch (type) {
-      case EmotionType.happy:
-        return '「孫子今天來看我，真開心！」';
-      case EmotionType.calm:
-        return '「今天天氣不錯，很舒服。」';
-      case EmotionType.anxious:
-        return '「不知道藥吃對了沒...」';
-      case EmotionType.sad:
-        return '「有點想念老伴了...」';
-      default:
-        return '「...」';
+  int _daysFor(_EventsRange r) {
+    switch (r) {
+      case _EventsRange.week:
+        return 7;
+      case _EventsRange.month:
+        return 30;
+      case _EventsRange.halfYear:
+        return 180;
     }
   }
 
-  String _getTrigger(EmotionType type) {
-    switch (type) {
-      case EmotionType.happy:
-        return '家人探訪';
-      case EmotionType.calm:
-        return '日常活動';
-      case EmotionType.anxious:
-        return '健康擔憂';
-      case EmotionType.sad:
-        return '懷念往事';
-      default:
-        return '未知';
+  String _rangeLabel(_EventsRange r) {
+    switch (r) {
+      case _EventsRange.week:
+        return '週';
+      case _EventsRange.month:
+        return '月';
+      case _EventsRange.halfYear:
+        return '半年';
     }
   }
 
-  Color _getEmotionColor(EmotionType type) {
-    switch (type) {
-      case EmotionType.happy:
-        return const Color(0xFF10B981);
-      case EmotionType.calm:
-        return const Color(0xFF3B82F6);
-      case EmotionType.anxious:
-        return const Color(0xFFF59E0B);
-      case EmotionType.sad:
-        return const Color(0xFFEF4444);
-      default:
-        return const Color(0xFF64748B);
-    }
-  }
+  Future<void> _load() async {
+    setState(() => _status = _SectionStatus.loading);
 
-  String _getEmotionLabel(EmotionType type) {
-    switch (type) {
-      case EmotionType.happy:
-        return '開心';
-      case EmotionType.calm:
-        return '平靜';
-      case EmotionType.anxious:
-        return '焦慮';
-      case EmotionType.sad:
-        return '悲傷';
-      default:
-        return '其他';
-    }
-  }
-
-  String _getEmotionEmoji(EmotionType type) {
-    switch (type) {
-      case EmotionType.happy:
-        return '😊';
-      case EmotionType.calm:
-        return '😌';
-      case EmotionType.anxious:
-        return '😰';
-      case EmotionType.sad:
-        return '😢';
-      default:
-        return '😐';
-    }
-  }
-
-  void _previousDay() {
-    HapticFeedback.lightImpact();
-    setState(() {
-      _selectedDate = _selectedDate.subtract(const Duration(days: 1));
-      _selectedPointIndex = null;
-    });
-    _loadEmotionData();
-  }
-
-  void _nextDay() {
-    HapticFeedback.lightImpact();
-    if (_selectedDate.isBefore(DateTime.now())) {
+    if (widget.elderId == null) {
       setState(() {
-        _selectedDate = _selectedDate.add(const Duration(days: 1));
-        _selectedPointIndex = null;
+        _status = _SectionStatus.error;
+        _errorMsg = '尚未配對長輩';
       });
-      _loadEmotionData();
+      return;
     }
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _familyId = prefs.getInt('caregiver_id');
+    } catch (_) {
+      _familyId = null;
+    }
+
+    final resp = await ApiService.getEmotionEvents(
+      widget.elderId.toString(),
+      familyId: _familyId,
+      days: _daysFor(_range),
+      limit: 100,
+    );
+
+    if (!mounted) return;
+
+    if (resp['status'] != 'success') {
+      setState(() {
+        _status = _SectionStatus.error;
+        _errorMsg = (resp['message'] ?? resp['error'] ?? '情緒事件載入失敗').toString();
+      });
+      return;
+    }
+
+    final data = resp['data'] as Map<String, dynamic>?;
+    final events = ((data?['events'] as List?) ?? []).cast<Map<String, dynamic>>();
+    setState(() {
+      _events = events;
+      _status = events.isEmpty ? _SectionStatus.empty : _SectionStatus.hasData;
+    });
   }
 
-  Map<String, int> _getEmotionStatistics() {
-    final stats = <String, int>{};
-    for (final emotion in _emotionData) {
-      final label = _getEmotionLabel(emotion.emotionType);
-      stats[label] = (stats[label] ?? 0) + 1;
-    }
-    return stats;
+  void _changeRange(_EventsRange r) {
+    if (r == _range) return;
+    setState(() => _range = r);
+    _load();
   }
 
   @override
@@ -203,471 +144,230 @@ class _EmotionTimelineScreenState extends State<EmotionTimelineScreen> {
         ),
         centerTitle: true,
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              child: Column(
-                children: [
-                  // 日期選擇器
-                  _buildDateSelector(),
-                  
-                  // 情緒曲線圖
-                  _buildEmotionChart(),
-                  
-                  // 選中點詳情
-                  if (_selectedPointIndex != null)
-                    _buildSelectedPointDetail(),
-                  
-                  // 情緒統計
-                  _buildEmotionStatistics(),
-                  
-                  const SizedBox(height: 32),
-                ],
-              ),
-            ),
+      body: RefreshIndicator(
+        onRefresh: _load,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: Column(
+            children: [
+              _buildRangeSelector(),
+              _buildExplainerBanner(),
+              _buildContent(),
+              const SizedBox(height: 32),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
-  Widget _buildDateSelector() {
+  Widget _buildRangeSelector() {
     return Container(
-      margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      padding: const EdgeInsets.all(6),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          IconButton(
-            icon: const Icon(Icons.chevron_left_rounded),
-            onPressed: _previousDay,
-            color: const Color(0xFF3B82F6),
-          ),
-          Column(
-            children: [
-              Text(
-                '${_selectedDate.year}年${_selectedDate.month}月${_selectedDate.day}日',
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  color: const Color(0xFF1E293B),
+        children: _EventsRange.values.map((r) {
+          final selected = r == _range;
+          return Expanded(
+            child: GestureDetector(
+              onTap: () => _changeRange(r),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: selected ? const Color(0xFF3B82F6) : Colors.transparent,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  _rangeLabel(r),
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: selected ? Colors.white : const Color(0xFF64748B),
+                  ),
                 ),
               ),
-              Text(
-                _getWeekdayLabel(_selectedDate.weekday),
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: const Color(0xFF64748B),
-                ),
-              ),
-            ],
-          ),
-          IconButton(
-            icon: const Icon(Icons.chevron_right_rounded),
-            onPressed: _selectedDate.isBefore(DateTime.now()) ? _nextDay : null,
-            color: _selectedDate.isBefore(DateTime.now())
-                ? const Color(0xFF3B82F6)
-                : const Color(0xFFE2E8F0),
-          ),
-        ],
+            ),
+          );
+        }).toList(),
       ),
     ).animate().fadeIn(duration: 300.ms);
   }
 
-  String _getWeekdayLabel(int weekday) {
-    const labels = ['週一', '週二', '週三', '週四', '週五', '週六', '週日'];
-    return labels[weekday - 1];
-  }
-
-  Widget _buildEmotionChart() {
-    if (_emotionData.isEmpty) {
-      return Container(
-        margin: const EdgeInsets.all(16),
-        padding: const EdgeInsets.all(40),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(24),
-        ),
-        child: Center(
-          child: Text(
-            '此日期暫無情緒數據',
-            style: GoogleFonts.notoSansTc(
-              color: const Color(0xFF64748B),
-              fontSize: 14,
-            ),
-          ),
-        ),
-      );
-    }
-
+  Widget _buildExplainerBanner() {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.all(20),
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        color: const Color(0xFFEFF6FF),
+        borderRadius: BorderRadius.circular(12),
       ),
-      child: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '情緒變化曲線',
-            style: GoogleFonts.notoSansTc(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              color: const Color(0xFF1E293B),
-            ),
-          ),
-          const SizedBox(height: 20),
-          SizedBox(
-            height: 250,
-            child: LineChart(
-              LineChartData(
-                gridData: FlGridData(
-                  show: true,
-                  drawVerticalLine: false,
-                  horizontalInterval: 0.25,
-                  getDrawingHorizontalLine: (value) {
-                    return FlLine(
-                      color: const Color(0xFFE2E8F0),
-                      strokeWidth: 1,
-                    );
-                  },
-                ),
-                titlesData: FlTitlesData(
-                  leftTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      reservedSize: 40,
-                      getTitlesWidget: (value, meta) {
-                        const labels = ['悲傷', '焦慮', '平靜', '開心'];
-                        if (value >= 0 && value < labels.length) {
-                          return Text(
-                            labels[value.toInt()],
-                            style: GoogleFonts.notoSansTc(
-                              fontSize: 11,
-                              color: const Color(0xFF64748B),
-                            ),
-                          );
-                        }
-                        return const SizedBox();
-                      },
-                    ),
-                  ),
-                  bottomTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      reservedSize: 30,
-                      getTitlesWidget: (value, meta) {
-                        return Text(
-                          '${value.toInt()}:00',
-                          style: GoogleFonts.notoSansTc(
-                            fontSize: 11,
-                            color: const Color(0xFF64748B),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                ),
-                borderData: FlBorderData(show: false),
-                lineBarsData: [
-                  LineChartBarData(
-                    spots: _emotionData.asMap().entries.map((entry) {
-                      final hour = entry.value.timestamp.hour.toDouble();
-                      final emotionValue = _emotionTypeToValue(entry.value.emotionType);
-                      return FlSpot(hour, emotionValue);
-                    }).toList(),
-                    isCurved: true,
-                    color: const Color(0xFF3B82F6),
-                    barWidth: 3,
-                    dotData: FlDotData(
-                      show: true,
-                      getDotPainter: (spot, percent, barData, index) {
-                        final emotion = _emotionData[index];
-                        return FlDotCirclePainter(
-                          radius: emotion.isAbnormal ? 6 : 4,
-                          color: _getEmotionColor(emotion.emotionType),
-                          strokeWidth: emotion.isAbnormal ? 2 : 0,
-                          strokeColor: Colors.white,
-                        );
-                      },
-                    ),
-                    belowBarData: BarAreaData(
-                      show: true,
-                      color: const Color(0xFF3B82F6).withValues(alpha: 0.1),
-                    ),
-                  ),
-                ],
-                lineTouchData: LineTouchData(
-                  touchCallback: (FlTouchEvent event, LineTouchResponse? response) {
-                    if (response?.lineBarSpots != null && response!.lineBarSpots!.isNotEmpty) {
-                      setState(() {
-                        _selectedPointIndex = response.lineBarSpots!.first.spotIndex;
-                      });
-                    }
-                  },
-                  touchTooltipData: LineTouchTooltipData(
-                    getTooltipColor: (touchedSpot) => Colors.white,
-                    getTooltipItems: (touchedSpots) {
-                      return touchedSpots.map((spot) {
-                        final emotion = _emotionData[spot.spotIndex];
-                        return LineTooltipItem(
-                          '${_getEmotionEmoji(emotion.emotionType)} ${_getEmotionLabel(emotion.emotionType)}\n${emotion.timestamp.hour}:00',
-                          GoogleFonts.notoSansTc(
-                            color: _getEmotionColor(emotion.emotionType),
-                            fontWeight: FontWeight.w700,
-                            fontSize: 12,
-                          ),
-                        );
-                      }).toList();
-                    },
-                  ),
-                ),
-                minY: 0,
-                maxY: 3,
-                minX: 0,
-                maxX: 24,
-              ),
+          const Icon(Icons.info_outline_rounded, size: 16, color: Color(0xFF3B82F6)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '這裡只列出系統從對話中偵測到的負面情緒（悲傷／生氣），不是完整的一整天情緒曲線；沒有紀錄不代表長輩心情一定平穩，也可能是這段期間互動較少。',
+              style: GoogleFonts.notoSansTc(fontSize: 12, color: const Color(0xFF3B82F6), height: 1.5),
             ),
           ),
         ],
       ),
-    ).animate().fadeIn(delay: 100.ms, duration: 400.ms);
+    ).animate().fadeIn(delay: 100.ms, duration: 300.ms);
   }
 
-  double _emotionTypeToValue(EmotionType type) {
-    switch (type) {
-      case EmotionType.sad:
-        return 0.5;
-      case EmotionType.anxious:
-        return 1.2;
-      case EmotionType.calm:
-        return 2.0;
-      case EmotionType.happy:
-        return 2.8;
-      default:
-        return 1.5;
+  Widget _buildContent() {
+    switch (_status) {
+      case _SectionStatus.loading:
+        return const Padding(
+          padding: EdgeInsets.only(top: 60),
+          child: Center(child: CircularProgressIndicator()),
+        );
+      case _SectionStatus.error:
+        return Padding(
+          padding: const EdgeInsets.only(top: 40),
+          child: Center(
+            child: Column(
+              children: [
+                const Icon(Icons.error_outline_rounded, color: Color(0xFFEF4444), size: 32),
+                const SizedBox(height: 10),
+                Text(
+                  _errorMsg,
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.notoSansTc(color: const Color(0xFFEF4444), fontSize: 14),
+                ),
+                const SizedBox(height: 12),
+                TextButton.icon(
+                  onPressed: _load,
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: Text('重試', style: GoogleFonts.notoSansTc(fontWeight: FontWeight.w700)),
+                ),
+              ],
+            ),
+          ),
+        );
+      case _SectionStatus.empty:
+        return Padding(
+          padding: const EdgeInsets.only(top: 40),
+          child: Center(
+            child: Column(
+              children: [
+                const Text('🙂', style: TextStyle(fontSize: 40)),
+                const SizedBox(height: 12),
+                Text(
+                  '這段期間沒有偵測到負面情緒事件',
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF1E293B),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ).animate().fadeIn(duration: 300.ms);
+      case _SectionStatus.hasData:
+        return _buildEventsList();
     }
   }
 
-  Widget _buildSelectedPointDetail() {
-    final emotion = _emotionData[_selectedPointIndex!];
-    
+  Widget _buildEventsList() {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              '近${_rangeLabel(_range)}內共 ${_events.length} 次負面情緒關注事件',
+              style: GoogleFonts.notoSansTc(fontSize: 13, fontWeight: FontWeight.w700, color: const Color(0xFF64748B)),
+            ),
+          ),
+        ),
+        ..._events.map(_buildEventCard),
+      ],
+    );
+  }
+
+  Widget _buildEventCard(Map<String, dynamic> event) {
+    final emotion = event['emotion'] as String?;
+    final isAngry = emotion == 'angry';
+    final color = isAngry ? const Color(0xFFEF4444) : const Color(0xFF3B82F6);
+    final emoji = isAngry ? '😠' : '😢';
+    final label = isAngry ? '生氣' : '悲傷';
+
+    final ts = DateTime.tryParse((event['timestamp'] ?? '').toString());
+    final timeLabel = ts != null
+        ? '${ts.year}/${ts.month}/${ts.day} ${ts.hour.toString().padLeft(2, '0')}:${ts.minute.toString().padLeft(2, '0')}'
+        : '時間未知';
+
+    final confidence = event['confidence'];
+    final confidencePct = confidence is num ? (confidence * 100).round() : null;
+    final rawText = (event['raw_text'] as String?)?.trim();
+
     return Container(
-      margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.all(20),
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            _getEmotionColor(emotion.emotionType).withValues(alpha: 0.1),
-            _getEmotionColor(emotion.emotionType).withValues(alpha: 0.05),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: _getEmotionColor(emotion.emotionType).withValues(alpha: 0.3),
-          width: 2,
-        ),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border(left: BorderSide(color: color, width: 4)),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 10, offset: const Offset(0, 2)),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Text(
-                _getEmotionEmoji(emotion.emotionType),
-                style: const TextStyle(fontSize: 32),
-              ),
-              const SizedBox(width: 12),
+              Text(emoji, style: const TextStyle(fontSize: 22)),
+              const SizedBox(width: 8),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '${emotion.timestamp.hour.toString().padLeft(2, '0')}:${emotion.timestamp.minute.toString().padLeft(2, '0')} ${_getEmotionLabel(emotion.emotionType)}',
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        color: _getEmotionColor(emotion.emotionType),
-                      ),
-                    ),
-                    Text(
-                      '信心分數：${(emotion.confidenceScore * 100).toInt()}%',
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        color: const Color(0xFF64748B),
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  '$label · $timeLabel',
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.notoSansTc(fontSize: 14, fontWeight: FontWeight.w800, color: color),
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.chat_bubble_outline, size: 16, color: _getEmotionColor(emotion.emotionType)),
-                    const SizedBox(width: 8),
-                    Text(
-                      '對話片段',
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: const Color(0xFF1E293B),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  emotion.metadata?['dialogSnippet'] ?? '無對話記錄',
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: const Color(0xFF475569),
-                    height: 1.5,
-                  ),
-                ),
-                const SizedBox(height: 12),
+              if (confidencePct != null)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: _getEmotionColor(emotion.emotionType).withValues(alpha: 0.1),
+                    color: color.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
-                    '觸發因素：${emotion.metadata?['trigger'] ?? '未知'}',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: _getEmotionColor(emotion.emotionType),
-                    ),
+                    '信心度 $confidencePct%',
+                    style: GoogleFonts.notoSansTc(fontSize: 11, fontWeight: FontWeight.w700, color: color),
                   ),
                 ),
-              ],
-            ),
+            ],
           ),
-        ],
-      ),
-    ).animate().fadeIn(duration: 300.ms).slideY(begin: 0.1, end: 0);
-  }
-
-  Widget _buildEmotionStatistics() {
-    final stats = _getEmotionStatistics();
-    final total = stats.values.fold(0, (sum, count) => sum + count);
-    
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '今日情緒分佈',
-            style: GoogleFonts.notoSansTc(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              color: const Color(0xFF1E293B),
-            ),
-          ),
-          const SizedBox(height: 16),
-          ...stats.entries.map((entry) {
-            final percentage = ((entry.value / total) * 100).toInt();
-            final emotionType = _labelToEmotionType(entry.key);
-            
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        children: [
-                          Text(
-                            _getEmotionEmoji(emotionType),
-                            style: const TextStyle(fontSize: 20),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            entry.key,
-                            style: GoogleFonts.notoSansTc(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: const Color(0xFF1E293B),
-                            ),
-                          ),
-                        ],
-                      ),
-                      Text(
-                        '$percentage%',
-                        style: GoogleFonts.notoSansTc(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w800,
-                          color: _getEmotionColor(emotionType),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  LinearProgressIndicator(
-                    value: entry.value / total,
-                    backgroundColor: const Color(0xFFE2E8F0),
-                    valueColor: AlwaysStoppedAnimation(_getEmotionColor(emotionType)),
-                    minHeight: 6,
-                    borderRadius: BorderRadius.circular(3),
-                  ),
-                ],
+          if (rawText != null && rawText.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(12),
               ),
-            );
-          }),
+              child: Text(
+                '「$rawText」',
+                style: GoogleFonts.notoSansTc(fontSize: 13, color: const Color(0xFF475569), height: 1.5),
+              ),
+            ),
+          ],
         ],
       ),
-    ).animate().fadeIn(delay: 200.ms, duration: 400.ms);
-  }
-
-  EmotionType _labelToEmotionType(String label) {
-    switch (label) {
-      case '開心':
-        return EmotionType.happy;
-      case '平靜':
-        return EmotionType.calm;
-      case '焦慮':
-        return EmotionType.anxious;
-      case '悲傷':
-        return EmotionType.sad;
-      default:
-        return EmotionType.calm;
-    }
+    ).animate().fadeIn(duration: 300.ms).slideY(begin: 0.05, end: 0);
   }
 }

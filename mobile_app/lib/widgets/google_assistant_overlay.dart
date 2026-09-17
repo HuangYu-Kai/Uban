@@ -21,15 +21,21 @@ class GoogleAssistantOverlay extends StatefulWidget {
     this.initialPrompt,
   });
 
-  /// 靜態便利方法：開啟 Uban AI 助理 BottomSheet 視窗
-  static Future<void> show(
+  /// 靜態便利方法：開啟 Uban AI 助理 BottomSheet 視窗。
+  ///
+  /// 2026-09-16 第四十九輪 item 8：回傳型別由 `Future<void>` 改為
+  /// `Future<Map<String, dynamic>?>`——純加法，既有不接回傳值的呼叫端
+  /// （例如 `ai_assistant_settings_dialog.dart` 的「試用小嘎」入口）行為不變。
+  /// 若長輩透過語音觸發了「幫我打電話／視訊」，關閉視窗時會帶回
+  /// `{'autoCall': true, 'isVideo': bool}`；一般關閉（無撥號請求）回傳 null。
+  static Future<Map<String, dynamic>?> show(
     BuildContext context, {
     required String userName,
     required String aiName,
     required int userId,
     String? initialPrompt,
   }) async {
-    await showModalBottomSheet(
+    return showModalBottomSheet<Map<String, dynamic>?>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -190,6 +196,27 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
     }
   }
 
+  /// [AUTO_CALL:video] / [AUTO_CALL:audio]：語音觸發自動撥號（家人，整戶響）
+  /// 的動作標記，比照 ai_chat_screen.dart 對 [VIDEO_ID:xxx] 的既有處理方式
+  /// （第四十九輪 item 8）。不帶人名——長輩端撥給家人本來就是整戶手機一起響，
+  /// 不支援指定對象，標記裡放一個兌現不了的名字只會製造誤解。
+  static final RegExp _autoCallPattern = RegExp(r'\[AUTO_CALL:(video|audio)\]');
+
+  /// [AUTO_CALL_FRIEND:video:<elder_id>] / [AUTO_CALL_FRIEND:audio:<elder_id>]：
+  /// 語音觸發指定好友撥號的動作標記（第四十九輪 item 8 好友路徑）。刻意用
+  /// 跟上面完全不同的標記名稱，而不是在同一個正則裡加可選尾碼——兩個正則
+  /// 互斥，各自處理固定形狀，不必讓前端判斷「這次有沒有帶尾碼」。elder_id
+  /// 由後端 tools_service.py::initiate_video_call 查完好友清單、確定唯一
+  /// 相符後才給，前端不做第二次名字比對，直接拿來用。
+  static final RegExp _autoCallFriendPattern =
+      RegExp(r'\[AUTO_CALL_FRIEND:(video|audio):([A-Za-z0-9]+)\]');
+
+  /// 剝除兩種動作標記，避免原始標記字樣顯示在對話氣泡、或被 TTS 逐字唸出來。
+  String _stripAutoCallMarker(String text) => text
+      .replaceAll(_autoCallPattern, '')
+      .replaceAll(_autoCallFriendPattern, '')
+      .trim();
+
   /// 處理使用者提問
   Future<void> _processUserQuery(String query) async {
     if (query.isEmpty || _isThinking) return;
@@ -217,13 +244,16 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
           if (firstChunk) {
             _isThinking = false;
             fullResponse = token;
-            _dialogHistory.add({"role": "assistant", "text": fullResponse});
+            _dialogHistory.add({
+              "role": "assistant",
+              "text": _stripAutoCallMarker(fullResponse),
+            });
             firstChunk = false;
           } else {
             fullResponse += token;
             if (_dialogHistory.isNotEmpty &&
                 _dialogHistory.last["role"] == "assistant") {
-              _dialogHistory.last["text"] = fullResponse;
+              _dialogHistory.last["text"] = _stripAutoCallMarker(fullResponse);
             }
           }
         });
@@ -239,8 +269,38 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
         });
       }
 
-      // 朗讀 AI 回覆
-      await _flutterTts.speak(fullResponse);
+      // ★ 第四十九輪 item 8：偵測撥號動作標記。必須用「串流結束後組完的
+      //   完整 fullResponse」判斷，不能逐 token 判斷——標記字樣可能被切在
+      //   兩個 token 之間，逐 token 正則永遠對不上。兩個正則互斥（後端只會
+      //   回傳其中一種），先查好友標記、查無再查家人標記即可。
+      final friendMatch = _autoCallFriendPattern.firstMatch(fullResponse);
+      final familyMatch = friendMatch == null
+          ? _autoCallPattern.firstMatch(fullResponse)
+          : null;
+      final bool hasAutoCall = friendMatch != null || familyMatch != null;
+      final bool wantsVideoCall =
+          (friendMatch?.group(1) ?? familyMatch?.group(1)) == 'video';
+      final String? friendElderId = friendMatch?.group(2);
+
+      // 朗讀 AI 回覆（念剝除標記後的乾淨文字，不把標記唸出來）。好友路徑的
+      // 確認語已經在後端把好友名字寫進乾淨文字裡（見 tools_service.py），
+      // 這裡不需要、也不應該再自己組一句不帶名字的話蓋過去。
+      await _flutterTts.speak(_stripAutoCallMarker(fullResponse));
+
+      // ★ 念完確認語才關閉視窗並帶出撥號請求，讓長輩聽完「我幫您打電話給
+      //   誰」才跳畫面，不要話講到一半人就被拉去別的畫面。實際撥出由呼叫端
+      //   （elder_home_screen.dart）比照 friends_screen.dart::_startCall() /
+      //   _startFriendCall() 的既有配方，透過建構 ElderScreen(autoCall:true,
+      //   ...) 完成——這裡只負責回報「要不要撥、視訊還是語音、指定哪位好友」，
+      //   不直接碰 Signaling。
+      if (hasAutoCall && mounted) {
+        Navigator.of(context).pop({
+          'autoCall': true,
+          'isVideo': wantsVideoCall,
+          'friendElderId': friendElderId,
+        });
+        return;
+      }
     } catch (e) {
       debugPrint("🤖 [UbanAssistant] Query Error: $e");
       final errReply = "抱歉 ${widget.userName}，網路連線稍微有點狀況，請再跟我說一次喔！";
