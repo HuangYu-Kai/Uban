@@ -1,0 +1,62 @@
+<mxfile host="uban-doc"><diagram name="D523-使用個案-長輩二">
+<mxGraphModel dx="1400" dy="900" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="806" pageHeight="1014" math="0" shadow="0">
+<root><mxCell id="0"/><mxCell id="1" parent="0"/>
+<mxCell id="box_SYS" value="Uban 系統 — 長輩端（二）" style="rounded=0;html=1;fillColor=none;strokeColor=#000000;verticalAlign=top;fontSize=23;fontColor=#000000;" vertex="1" parent="1">
+<mxGeometry x="184" y="28" width="542" height="878" as="geometry"/></mxCell>
+<mxCell id="n_A" value="長輩" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;fontSize=20;fillColor=#D5E8D4;strokeColor=#82B366;fontColor=#1B3A17;whiteSpace=wrap;fillColor=none;" vertex="1" parent="1">
+<mxGeometry x="10" y="530" width="74" height="112" as="geometry"/></mxCell>
+<mxCell id="n_BU1" value="趣味養成" style="ellipse;html=1;fontSize=20;fillColor=#D5E8D4;strokeColor=#82B366;fontColor=#1B3A17;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="210" y="176" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_BE1" value="走路養小豬" style="rounded=1;arcSize=20;html=1;fontSize=20;fillColor=#EDF6EC;strokeColor=#82B366;fontColor=#1B3A17;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="480" y="62" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_BE2" value="查看小豬排行榜" style="rounded=1;arcSize=20;html=1;fontSize=20;fillColor=#EDF6EC;strokeColor=#82B366;fontColor=#1B3A17;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="480" y="138" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_BE3" value="餵食小豬" style="rounded=1;arcSize=20;html=1;fontSize=20;fillColor=#EDF6EC;strokeColor=#82B366;fontColor=#1B3A17;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="480" y="214" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_BE4" value="查看成長階段與賽季" style="rounded=1;arcSize=20;html=1;fontSize=20;fillColor=#EDF6EC;strokeColor=#82B366;fontColor=#1B3A17;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="480" y="290" width="220" height="50" as="geometry"/></mxCell>
+<mxCell id="n_BU2" value="長輩社交" style="ellipse;html=1;fontSize=20;fillColor=#D5E8D4;strokeColor=#82B366;fontColor=#1B3A17;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="210" y="404" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_BE5" value="加入好友" style="rounded=1;arcSize=20;html=1;fontSize=20;fillColor=#EDF6EC;strokeColor=#82B366;fontColor=#1B3A17;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="480" y="366" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_BE6" value="查看好友動態" style="rounded=1;arcSize=20;html=1;fontSize=20;fillColor=#EDF6EC;strokeColor=#82B366;fontColor=#1B3A17;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="480" y="442" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_BU3" value="生活工具" style="ellipse;html=1;fontSize=20;fillColor=#D5E8D4;strokeColor=#82B366;fontColor=#1B3A17;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="210" y="518" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_BE7" value="查詢農民曆" style="rounded=1;arcSize=20;html=1;fontSize=20;fillColor=#EDF6EC;strokeColor=#82B366;fontColor=#1B3A17;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="480" y="518" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_BU4" value="新手引導" style="ellipse;html=1;fontSize=20;fillColor=#D5E8D4;strokeColor=#82B366;fontColor=#1B3A17;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="210" y="594" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_BE8" value="檢視操作教學" style="rounded=1;arcSize=20;html=1;fontSize=20;fillColor=#EDF6EC;strokeColor=#82B366;fontColor=#1B3A17;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="480" y="594" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_BU5" value="隱私同意" style="ellipse;html=1;fontSize=20;fillColor=#D5E8D4;strokeColor=#82B366;fontColor=#1B3A17;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="210" y="670" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_BE9" value="同意隱私權政策" style="rounded=1;arcSize=20;html=1;fontSize=20;fillColor=#EDF6EC;strokeColor=#82B366;fontColor=#1B3A17;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="480" y="670" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_BU6" value="個人資料" style="ellipse;html=1;fontSize=20;fillColor=#D5E8D4;strokeColor=#82B366;fontColor=#1B3A17;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="210" y="746" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_BE10" value="填寫年齡與居住地" style="rounded=1;arcSize=20;html=1;fontSize=20;fillColor=#EDF6EC;strokeColor=#82B366;fontColor=#1B3A17;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="480" y="746" width="200" height="50" as="geometry"/></mxCell>
+<mxCell id="n_BU7" value="生命回顧" style="ellipse;html=1;fontSize=20;fillColor=#D5E8D4;strokeColor=#82B366;fontColor=#1B3A17;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="210" y="822" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_BE11" value="錄製生命故事" style="rounded=1;arcSize=20;html=1;fontSize=20;fillColor=#EDF6EC;strokeColor=#82B366;fontColor=#1B3A17;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="480" y="822" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="l0" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;strokeColor=#000000;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="n_A" target="n_BU1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="l1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;strokeColor=#000000;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="n_BU1" target="n_BE1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="l2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;strokeColor=#000000;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="n_BU1" target="n_BE2"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="l3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;strokeColor=#000000;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="n_BU1" target="n_BE3"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="l4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;strokeColor=#000000;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="n_BU1" target="n_BE4"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="l5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;strokeColor=#000000;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="n_A" target="n_BU2"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="l6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;strokeColor=#000000;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="n_BU2" target="n_BE5"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="l7" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;strokeColor=#000000;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="n_BU2" target="n_BE6"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="l8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;strokeColor=#000000;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="n_A" target="n_BU3"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="l9" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;strokeColor=#000000;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="n_BU3" target="n_BE7"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="l10" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;strokeColor=#000000;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="n_A" target="n_BU4"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="l11" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;strokeColor=#000000;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="n_BU4" target="n_BE8"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="l12" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;strokeColor=#000000;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="n_A" target="n_BU5"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="l13" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;strokeColor=#000000;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="n_BU5" target="n_BE9"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="l14" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;strokeColor=#000000;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="n_A" target="n_BU6"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="l15" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;strokeColor=#000000;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="n_BU6" target="n_BE10"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="l16" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;strokeColor=#000000;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="n_A" target="n_BU7"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="l17" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;strokeColor=#000000;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="n_BU7" target="n_BE11"><mxGeometry relative="1" as="geometry"/></mxCell>
+</root></mxGraphModel></diagram></mxfile>

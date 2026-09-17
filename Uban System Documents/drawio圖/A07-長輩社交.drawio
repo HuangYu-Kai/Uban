@@ -1,0 +1,131 @@
+<mxfile host="uban-doc"><diagram name="A07-長輩社交">
+<mxGraphModel dx="1400" dy="900" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1426" pageHeight="2181" math="0" shadow="0">
+<root><mxCell id="0"/><mxCell id="1" parent="0"/>
+<mxCell id="lane_ROLE" value="長輩 A（發起方）" style="swimlane;html=1;horizontal=1;startSize=40;fillColor=none;strokeColor=#000000;fontSize=24;fontColor=#000000;fontStyle=0;swimlaneFillColor=none;collapsible=0;" vertex="1" parent="1">
+<mxGeometry x="0" y="0" width="295" height="2101" as="geometry"/></mxCell>
+<mxCell id="lane_ROLE2" value="長輩 B（受邀方）" style="swimlane;html=1;horizontal=1;startSize=40;fillColor=none;strokeColor=#000000;fontSize=24;fontColor=#000000;fontStyle=0;swimlaneFillColor=none;collapsible=0;" vertex="1" parent="1">
+<mxGeometry x="295" y="0" width="264" height="2101" as="geometry"/></mxCell>
+<mxCell id="lane_FE" value="長輩機 App" style="swimlane;html=1;horizontal=1;startSize=40;fillColor=none;strokeColor=#000000;fontSize=24;fontColor=#000000;fontStyle=0;swimlaneFillColor=none;collapsible=0;" vertex="1" parent="1">
+<mxGeometry x="559" y="0" width="413" height="2101" as="geometry"/></mxCell>
+<mxCell id="lane_BE" value="uban-api 後端" style="swimlane;html=1;horizontal=1;startSize=40;fillColor=none;strokeColor=#000000;fontSize=24;fontColor=#000000;fontStyle=0;swimlaneFillColor=none;collapsible=0;" vertex="1" parent="1">
+<mxGeometry x="972" y="0" width="374" height="2101" as="geometry"/></mxCell>
+<mxCell id="n_ST_S1" value="" style="ellipse;html=1;fillColor=#000000;strokeColor=#000000;" vertex="1" parent="lane_ROLE">
+<mxGeometry x="124" y="87" width="46" height="46" as="geometry"/></mxCell>
+<mxCell id="n_S1" value="開啟『加好友』" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_ROLE">
+<mxGeometry x="62" y="187" width="170" height="48" as="geometry"/></mxCell>
+<mxCell id="n_S2" value="輸入對方 4 碼好友代碼" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_ROLE">
+<mxGeometry x="26" y="391" width="243" height="48" as="geometry"/></mxCell>
+<mxCell id="n_S3" value="瀏覽好友動態&lt;br&gt;按讚與留言" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_ROLE">
+<mxGeometry x="62" y="1627" width="170" height="74" as="geometry"/></mxCell>
+<mxCell id="n_T1" value="查看好友邀請" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_ROLE2">
+<mxGeometry x="47" y="1031" width="170" height="48" as="geometry"/></mxCell>
+<mxCell id="n_T2" value="是否同意？" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_ROLE2">
+<mxGeometry x="26" y="1133" width="212" height="82" as="geometry"/></mxCell>
+<mxCell id="n_R1" value="維持未成立&lt;br&gt;雙方看不到彼此動態" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_ROLE2">
+<mxGeometry x="27" y="1269" width="210" height="74" as="geometry"/></mxCell>
+<mxCell id="n_EN_R1" value="" style="ellipse;html=1;shape=endState;fillColor=#000000;strokeColor=#000000;" vertex="1" parent="lane_ROLE2">
+<mxGeometry x="109" y="1398" width="46" height="46" as="geometry"/></mxCell>
+<mxCell id="n_A1" value="ElderAddFriendScreen 加好友畫面" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_FE">
+<mxGeometry x="26" y="289" width="361" height="48" as="geometry"/></mxCell>
+<mxCell id="n_A2" value="ElderFriendFeedScreen 朋友&lt;br&gt;動態牆畫面" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_FE">
+<mxGeometry x="51" y="1499" width="312" height="74" as="geometry"/></mxCell>
+<mxCell id="n_A3" value="提示『查無此人』" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_FE">
+<mxGeometry x="111" y="801" width="190" height="48" as="geometry"/></mxCell>
+<mxCell id="n_EN_A3" value="" style="ellipse;html=1;shape=endState;fillColor=#000000;strokeColor=#000000;" vertex="1" parent="lane_FE">
+<mxGeometry x="183" y="930" width="46" height="46" as="geometry"/></mxCell>
+<mxCell id="n_B1" value="search 搜尋長輩好友" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_BE">
+<mxGeometry x="74" y="493" width="227" height="48" as="geometry"/></mxCell>
+<mxCell id="n_B2" value="代碼存在&lt;br&gt;且非本人？" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_BE">
+<mxGeometry x="81" y="595" width="212" height="126" as="geometry"/></mxCell>
+<mxCell id="n_B3" value="friend/request&lt;br&gt;寫入 elder_friendship&lt;br&gt;（pending）" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_BE">
+<mxGeometry x="58" y="775" width="257" height="100" as="geometry"/></mxCell>
+<mxCell id="n_B4" value="requests 查詢待回應好友邀請" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_BE">
+<mxGeometry x="32" y="929" width="309" height="48" as="geometry"/></mxCell>
+<mxCell id="n_B5" value="friend/respond&lt;br&gt;狀態改為 accepted" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_BE">
+<mxGeometry x="82" y="1269" width="209" height="74" as="geometry"/></mxCell>
+<mxCell id="n_B6" value="feed 查詢朋友圈動態" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_BE">
+<mxGeometry x="74" y="1397" width="225" height="48" as="geometry"/></mxCell>
+<mxCell id="n_B7" value="like 按讚貼文&lt;br&gt;comment 留言貼文" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_BE">
+<mxGeometry x="88" y="1755" width="198" height="74" as="geometry"/></mxCell>
+<mxCell id="n_DB" value="elder_friendship 長輩好友關&lt;br&gt;係・單向去重&lt;br&gt;UNIQUE(elder_id_low,&lt;br&gt;elder_id_high)&lt;br&gt;friend_post 貼文・留言・按讚" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=9;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_BE">
+<mxGeometry x="26" y="1883" width="322" height="164" as="geometry"/></mxCell>
+<mxCell id="e0" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_ST_S1" target="n_S1">
+<mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e1" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_S1" target="n_A1">
+<mxGeometry relative="1" as="geometry"><Array as="points">
+<mxPoint x="147" y="241"/>
+<mxPoint x="765.5" y="241"/>
+</Array></mxGeometry></mxCell>
+<mxCell id="e2" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_A1" target="n_S2">
+<mxGeometry relative="1" as="geometry"><Array as="points">
+<mxPoint x="765.5" y="343"/>
+<mxPoint x="147.5" y="343"/>
+</Array></mxGeometry></mxCell>
+<mxCell id="e3" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_S2" target="n_B1">
+<mxGeometry relative="1" as="geometry"><Array as="points">
+<mxPoint x="147.5" y="445"/>
+<mxPoint x="1159.5" y="445"/>
+</Array></mxGeometry></mxCell>
+<mxCell id="e4" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_B1" target="n_B2">
+<mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e5" value="[否]" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_B2" target="n_A3">
+<mxGeometry relative="1" as="geometry"><Array as="points">
+<mxPoint x="1159" y="727"/>
+<mxPoint x="765" y="727"/>
+</Array></mxGeometry></mxCell>
+<mxCell id="e6" value="[是]" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_B2" target="n_B3">
+<mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e7" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_B3" target="n_DB">
+<mxGeometry relative="1" as="geometry"><Array as="points">
+<mxPoint x="1158.5" y="881"/>
+<mxPoint x="989" y="881"/>
+<mxPoint x="989" y="1863"/>
+<mxPoint x="1159" y="1863"/>
+</Array></mxGeometry></mxCell>
+<mxCell id="e8" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_B3" target="n_B4">
+<mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e9" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_B4" target="n_T1">
+<mxGeometry relative="1" as="geometry"><Array as="points">
+<mxPoint x="1158.5" y="993"/>
+<mxPoint x="427" y="993"/>
+</Array></mxGeometry></mxCell>
+<mxCell id="e10" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_T1" target="n_T2">
+<mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e11" value="[拒絕]" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_T2" target="n_R1">
+<mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e12" value="[同意]" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_T2" target="n_B5">
+<mxGeometry relative="1" as="geometry"><Array as="points">
+<mxPoint x="427" y="1221"/>
+<mxPoint x="1158.5" y="1221"/>
+</Array></mxGeometry></mxCell>
+<mxCell id="e13" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_B5" target="n_DB">
+<mxGeometry relative="1" as="geometry"><Array as="points">
+<mxPoint x="1158.5" y="1349"/>
+<mxPoint x="1029" y="1349"/>
+<mxPoint x="1029" y="1863"/>
+<mxPoint x="1159" y="1863"/>
+</Array></mxGeometry></mxCell>
+<mxCell id="e14" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_B5" target="n_B6">
+<mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e15" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_B6" target="n_A2">
+<mxGeometry relative="1" as="geometry"><Array as="points">
+<mxPoint x="1158.5" y="1451"/>
+<mxPoint x="766" y="1451"/>
+</Array></mxGeometry></mxCell>
+<mxCell id="e16" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_A2" target="n_S3">
+<mxGeometry relative="1" as="geometry"><Array as="points">
+<mxPoint x="766" y="1579"/>
+<mxPoint x="147" y="1579"/>
+</Array></mxGeometry></mxCell>
+<mxCell id="e17" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_S3" target="n_B7">
+<mxGeometry relative="1" as="geometry"><Array as="points">
+<mxPoint x="147" y="1707"/>
+<mxPoint x="1159" y="1707"/>
+</Array></mxGeometry></mxCell>
+<mxCell id="e18" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_B7" target="n_DB">
+<mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e19" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_R1" target="n_EN_R1">
+<mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e20" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_A3" target="n_EN_A3">
+<mxGeometry relative="1" as="geometry"/></mxCell>
+</root></mxGraphModel></diagram></mxfile>

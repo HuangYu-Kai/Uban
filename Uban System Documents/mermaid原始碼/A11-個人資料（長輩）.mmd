@@ -1,7 +1,6 @@
-%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false,"nodePlacementStrategy":"NETWORK_SIMPLEX"},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["家屬（代長輩填寫）"]
-    LS_S1["開始"]:::lbl
     ST_S1(("&nbsp;")):::term
     S1([於『資料』分頁點編輯長輩檔案]):::act
     S2["填寫年齡（選填）"]:::act
@@ -9,7 +8,8 @@ flowchart TD
     S4(["送出儲存"]):::act
   end
   subgraph FE["家屬機 App"]
-    A1["ElderProfileEditScreen"]:::act
+    PAD_FE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
+    A1["ElderProfileEditScreen 長輩資料編輯畫面"]:::act
     A2["手動輸入縣市／行政區"]:::act
     A3{"已授權<br/>GPS？"}:::dec
     A4["取得座標後反查<br/>縣市／行政區文字"]:::act
@@ -17,18 +17,16 @@ flowchart TD
     A6["顯示：居住地僅供統計<br/>可不填寫"]:::act
   end
   subgraph BE["uban-api 後端"]
-    B1["PATCH /api/user/elder/{elder_id}"]:::act
+    PAD_BE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
+    B1["elder 更新長輩資料・空白欄位略過"]:::act
     B2{"欄位是否留白？"}:::dec
     B3["略過該欄<br/>維持原值不動"]:::act
-    LE_B3["結束"]:::lbl
-    EN_B3(("&nbsp;")):::term
+    EN_B3(("●")):::endterm
     B4["寫入 elder_profile<br/>age / residence_city / residence_district"]:::act
-    C1["GET /api/admin/stats/demographics<br/>年齡與居住地分布統計<br/>（開發者管理端）"]:::act
-    LE_C1["結束"]:::lbl
-    EN_C1(("&nbsp;")):::term
+    C1["admin/stats/demographics<br/>年齡與居住地分布統計<br/>（開發者管理端）"]:::act
+    EN_C1(("●")):::endterm
   end
 
-  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
   S1 --> A1
   A1 --> A6
@@ -47,14 +45,13 @@ flowchart TD
   B2 -->|"[否]"| B4
   B4 --> C1
   B3 --> EN_B3
-  LE_B3 ~~~ EN_B3
   C1 --> EN_C1
-  LE_C1 ~~~ EN_C1
   %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
   ROLE ~~~ FE ~~~ BE
 
+  classDef pad  fill:none,stroke:none,color:#FFFFFF
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef endterm fill:#FFFFFF,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
-  classDef lbl  fill:none,stroke:none,color:#000000

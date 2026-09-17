@@ -1,13 +1,12 @@
-%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false,"nodePlacementStrategy":"NETWORK_SIMPLEX"},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["長輩"]
-    LS_S1["開始"]:::lbl
+    PAD_ROLE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
     ST_S1(("&nbsp;")):::term
     S1([說出『Hey 嘎蛙』]):::act
     S2["說出問題或閒聊內容"]:::act
     S3(["聽取語音回覆"]):::act
-    LE_S3["結束"]:::lbl
-    EN_S3(("&nbsp;")):::term
+    EN_S3(("●")):::endterm
   end
   subgraph FE["長輩機 App"]
     A1["常駐 SpeechToText 監聽喚醒詞<br/>elder_home_screen.dart"]:::act
@@ -18,20 +17,20 @@ flowchart TD
     A6["audioplayers 播放<br/>並快取音檔供重播"]:::act
   end
   subgraph BE["uban-api 後端"]
-    B1["POST /api/voice/transcribe<br/>ASR"]:::act
-    B2["POST /api/ai/chat_stream<br/>SSE"]:::act
+    PAD_BE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
+    B1["transcribe 上傳音檔轉文字<br/>ASR 語音辨識（Faster-Whisper）"]:::act
+    B2["chat_stream AI 對話串流回覆<br/>SSE 逐字串流協定"]:::act
     B3{"Ollama<br/>可達？"}:::dec
-    B4["ollama_service<br/>gemma4:e4b-it-q4_K_M"]:::act
+    B4["ollama_service 主要 AI 引擎<br/>gemma4:e4b-it-q4_K_M 目前使用模型"]:::act
     B5["gemini_service<br/>備援軌"]:::act
     B6{"需要<br/>呼叫工具？"}:::dec
-    B7["tools_service<br/>get_weather_info / get_current_time<br/>search_news / record_elder_activity<br/>record_medication_taken"]:::act
-    B8["GET /api/voice/tts/stream<br/>edge-tts → CosyVoice → gTTS"]:::act
+    B7["tools_service AI 可呼叫的工具集<br/>get_weather_info 查天氣 / get_current_time 報時間<br/>search_news 查新聞 / record_elder_activity 記錄活動心情<br/>record_medication_taken 記錄已服藥"]:::act
+    B8["tts/stream 語音合成串流輸出<br/>edge-tts → CosyVoice → gTTS 依序後備"]:::act
     B9["背景執行緒<br/>向量化 upsert"]:::act
     X1[("Pinecone<br/>索引 uban · 768 維<br/>（外部服務）")]:::act
-    X2[("MySQL<br/>activity_log")]:::act
+    X2[("activity_log 長輩活動紀錄")]:::act
   end
 
-  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
   S1 --> A1
   A1 --> A2
@@ -56,12 +55,12 @@ flowchart TD
   B2 --> B9
   B9 --> X1
   S3 --> EN_S3
-  LE_S3 ~~~ EN_S3
   %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
   ROLE ~~~ FE ~~~ BE
 
+  classDef pad  fill:none,stroke:none,color:#FFFFFF
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef endterm fill:#FFFFFF,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
-  classDef lbl  fill:none,stroke:none,color:#000000

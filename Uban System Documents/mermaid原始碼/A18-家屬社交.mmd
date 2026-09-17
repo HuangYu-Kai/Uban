@@ -1,39 +1,38 @@
-%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false,"nodePlacementStrategy":"NETWORK_SIMPLEX"},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["家屬 A"]
-    LS_S1["開始"]:::lbl
+    PAD_ROLE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
     ST_S1(("&nbsp;")):::term
     S1([開啟『加家屬好友』]):::act
     S2["輸入對方 4 碼 family_code"]:::act
     S3(["瀏覽動態・發文・按讚留言"]):::act
   end
   subgraph ROLE2["家屬 B"]
+    PAD_ROLE2["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
     T1["查看好友邀請"]:::act
     T2{"是否同意？"}:::dec
     R1(["維持未成立"]):::act
-    LE_R1["結束"]:::lbl
-    EN_R1(("&nbsp;")):::term
+    EN_R1(("●")):::endterm
   end
   subgraph FE["家屬機 App"]
+    PAD_FE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
     A1["FamilyAddFriendScreen<br/>顯示自己的 4 碼代碼"]:::act
-    A2["FamilyFriendFeedBody"]:::act
+    A2["FamilyFriendFeedBody 家屬朋友圈動態畫面"]:::act
     A3["提示『查無此人』"]:::act
-    LE_A3["結束"]:::lbl
-    EN_A3(("&nbsp;")):::term
+    EN_A3(("●")):::endterm
   end
   subgraph BE["uban-api 後端"]
-    B0["GET /api/family-friend/my-code"]:::act
-    B1["GET /api/family-friend/search"]:::act
+    B0["my-code 取得自己的4碼好友代碼"]:::act
+    B1["search 依代碼查詢好友"]:::act
     B2{"代碼存在<br/>且非本人？"}:::dec
-    B3["POST /request<br/>寫入 family_friendship（pending）"]:::act
-    B4["GET /requests"]:::act
-    B5["POST /respond → accepted"]:::act
-    B6["GET /feed"]:::act
-    B7["POST /post<br/>/post/{id}/like｜/comment"]:::act
+    B3["request<br/>寫入 family_friendship（pending）"]:::act
+    B4["requests 列出待回應的邀請"]:::act
+    B5["respond 回應邀請並更新為 accepted"]:::act
+    B6["feed 取得朋友圈動態列表"]:::act
+    B7["post 發表貼文<br/>like 按讚<br/>comment 留言"]:::act
     DB[("family_friend_code<br/>family_friendship（UNIQUE low, high）<br/>family_friend_post / _comment / _like<br/>★ 與長輩端 friend_* 刻意不共用")]:::gap
   end
 
-  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
   S1 --> B0
   B0 --> A1
@@ -55,14 +54,13 @@ flowchart TD
   S3 --> B7
   B7 --> DB
   R1 --> EN_R1
-  LE_R1 ~~~ EN_R1
   A3 --> EN_A3
-  LE_A3 ~~~ EN_A3
   %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
   ROLE ~~~ ROLE2 ~~~ FE ~~~ BE
 
+  classDef pad  fill:none,stroke:none,color:#FFFFFF
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef endterm fill:#FFFFFF,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
-  classDef lbl  fill:none,stroke:none,color:#000000

@@ -1,0 +1,59 @@
+<mxfile host="uban-doc"><diagram name="D525-使用個案-開發者">
+<mxGraphModel dx="1400" dy="900" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="866" pageHeight="990" math="0" shadow="0">
+<root><mxCell id="0"/><mxCell id="1" parent="0"/>
+<mxCell id="box_SYS" value="Uban 開發者管理端（/admin）" style="rounded=0;html=1;fillColor=none;strokeColor=#000000;verticalAlign=top;fontSize=23;fontColor=#000000;" vertex="1" parent="1">
+<mxGeometry x="184" y="28" width="602" height="854" as="geometry"/></mxCell>
+<mxCell id="n_A" value="開發者" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;fontSize=20;fillColor=#FFF2CC;strokeColor=#D6B656;fontColor=#4A3A0B;whiteSpace=wrap;fillColor=none;" vertex="1" parent="1">
+<mxGeometry x="10" y="414" width="74" height="112" as="geometry"/></mxCell>
+<mxCell id="n_DU1" value="開發者登入" style="ellipse;html=1;fontSize=20;fillColor=#FFF2CC;strokeColor=#D6B656;fontColor=#4A3A0B;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="210" y="62" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_DE1" value="以開發者帳號登入管理端" style="rounded=1;arcSize=20;html=1;fontSize=20;fillColor=#FFFBF0;strokeColor=#D6B656;fontColor=#4A3A0B;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="480" y="62" width="260" height="50" as="geometry"/></mxCell>
+<mxCell id="n_DU2" value="帳號安全管理" style="ellipse;html=1;fontSize=20;fillColor=#FFF2CC;strokeColor=#D6B656;fontColor=#4A3A0B;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="210" y="138" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_DE2" value="檢視與修改開發者密碼" style="rounded=1;arcSize=20;html=1;fontSize=20;fillColor=#FFFBF0;strokeColor=#D6B656;fontColor=#4A3A0B;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="480" y="138" width="240" height="50" as="geometry"/></mxCell>
+<mxCell id="n_DU3" value="平台數據分析" style="ellipse;html=1;fontSize=20;fillColor=#FFF2CC;strokeColor=#D6B656;fontColor=#4A3A0B;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="210" y="303" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_DE3" value="檢視使用者年齡與居住地分&lt;br&gt;布" style="rounded=1;arcSize=20;html=1;fontSize=20;fillColor=#FFFBF0;strokeColor=#D6B656;fontColor=#4A3A0B;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="480" y="214" width="280" height="76" as="geometry"/></mxCell>
+<mxCell id="n_DE4" value="檢視警報與誤報統計" style="rounded=1;arcSize=20;html=1;fontSize=20;fillColor=#FFFBF0;strokeColor=#D6B656;fontColor=#4A3A0B;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="480" y="316" width="220" height="50" as="geometry"/></mxCell>
+<mxCell id="n_DE5" value="檢視緊急通話統計" style="rounded=1;arcSize=20;html=1;fontSize=20;fillColor=#FFFBF0;strokeColor=#D6B656;fontColor=#4A3A0B;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="480" y="392" width="200" height="50" as="geometry"/></mxCell>
+<mxCell id="n_DU4" value="使用者除錯" style="ellipse;html=1;fontSize=20;fillColor=#FFF2CC;strokeColor=#D6B656;fontColor=#4A3A0B;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="210" y="481" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_DE6" value="查詢個別使用者資料與時間&lt;br&gt;軸" style="rounded=1;arcSize=20;html=1;fontSize=20;fillColor=#FFFBF0;strokeColor=#D6B656;fontColor=#4A3A0B;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="480" y="468" width="280" height="76" as="geometry"/></mxCell>
+<mxCell id="n_DU5" value="權限管理" style="ellipse;html=1;fontSize=20;fillColor=#FFF2CC;strokeColor=#D6B656;fontColor=#4A3A0B;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="210" y="608" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_DE7" value="調整訂閱層級" style="rounded=1;arcSize=20;html=1;fontSize=20;fillColor=#FFFBF0;strokeColor=#D6B656;fontColor=#4A3A0B;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="480" y="570" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_DE8" value="停權與解除停權帳號" style="rounded=1;arcSize=20;html=1;fontSize=20;fillColor=#FFFBF0;strokeColor=#D6B656;fontColor=#4A3A0B;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="480" y="646" width="220" height="50" as="geometry"/></mxCell>
+<mxCell id="n_DU6" value="問題處理" style="ellipse;html=1;fontSize=20;fillColor=#FFF2CC;strokeColor=#D6B656;fontColor=#4A3A0B;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="210" y="722" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_DE9" value="檢視與處理 BUG 回報" style="rounded=1;arcSize=20;html=1;fontSize=20;fillColor=#FFFBF0;strokeColor=#D6B656;fontColor=#4A3A0B;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="480" y="722" width="235" height="50" as="geometry"/></mxCell>
+<mxCell id="n_DU7" value="營運管理" style="ellipse;html=1;fontSize=20;fillColor=#FFF2CC;strokeColor=#D6B656;fontColor=#4A3A0B;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="210" y="798" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_DE10" value="管理寵物賽季與付費造型" style="rounded=1;arcSize=20;html=1;fontSize=20;fillColor=#FFFBF0;strokeColor=#D6B656;fontColor=#4A3A0B;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="480" y="798" width="260" height="50" as="geometry"/></mxCell>
+<mxCell id="l0" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;strokeColor=#000000;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="n_A" target="n_DU1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="l1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;strokeColor=#000000;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="n_DU1" target="n_DE1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="l2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;strokeColor=#000000;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="n_A" target="n_DU2"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="l3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;strokeColor=#000000;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="n_DU2" target="n_DE2"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="l4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;strokeColor=#000000;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="n_A" target="n_DU3"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="l5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;strokeColor=#000000;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="n_DU3" target="n_DE3"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="l6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;strokeColor=#000000;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="n_DU3" target="n_DE4"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="l7" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;strokeColor=#000000;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="n_DU3" target="n_DE5"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="l8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;strokeColor=#000000;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="n_A" target="n_DU4"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="l9" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;strokeColor=#000000;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="n_DU4" target="n_DE6"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="l10" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;strokeColor=#000000;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="n_A" target="n_DU5"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="l11" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;strokeColor=#000000;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="n_DU5" target="n_DE7"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="l12" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;strokeColor=#000000;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="n_DU5" target="n_DE8"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="l13" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;strokeColor=#000000;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="n_A" target="n_DU6"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="l14" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;strokeColor=#000000;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="n_DU6" target="n_DE9"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="l15" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;strokeColor=#000000;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="n_A" target="n_DU7"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="l16" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;strokeColor=#000000;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="n_DU7" target="n_DE10"><mxGeometry relative="1" as="geometry"/></mxCell>
+</root></mxGraphModel></diagram></mxfile>

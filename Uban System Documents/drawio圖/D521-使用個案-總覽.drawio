@@ -1,0 +1,74 @@
+<mxfile host="uban-doc"><diagram name="D521-使用個案-總覽">
+<mxGraphModel dx="1400" dy="900" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1448" pageHeight="1098" math="0" shadow="0">
+<root><mxCell id="0"/><mxCell id="1" parent="0"/>
+<mxCell id="box_GE" value="Uban 系統 — 長輩端" style="rounded=0;html=1;fillColor=none;strokeColor=#000000;verticalAlign=top;fontSize=23;fontColor=#000000;" vertex="1" parent="1">
+<mxGeometry x="144" y="32" width="232" height="954" as="geometry"/></mxCell>
+<mxCell id="box_GF" value="Uban 系統 — 家屬端" style="rounded=0;html=1;fillColor=none;strokeColor=#000000;verticalAlign=top;fontSize=23;fontColor=#000000;" vertex="1" parent="1">
+<mxGeometry x="600" y="32" width="232" height="954" as="geometry"/></mxCell>
+<mxCell id="box_GD" value="Uban 系統 — 開發者管理端" style="rounded=0;html=1;fillColor=none;strokeColor=#000000;verticalAlign=top;fontSize=23;fontColor=#000000;" vertex="1" parent="1">
+<mxGeometry x="1056" y="32" width="232" height="954" as="geometry"/></mxCell>
+<mxCell id="n_E" value="長輩" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;fontSize=20;fillColor=#D5E8D4;strokeColor=#82B366;fontColor=#1B3A17;whiteSpace=wrap;fillColor=none;" vertex="1" parent="1">
+<mxGeometry x="10" y="66" width="74" height="112" as="geometry"/></mxCell>
+<mxCell id="n_F" value="家屬" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;fontSize=20;fillColor=#F8CECC;strokeColor=#B85450;fontColor=#4A1512;whiteSpace=wrap;fillColor=none;" vertex="1" parent="1">
+<mxGeometry x="10" y="204" width="74" height="112" as="geometry"/></mxCell>
+<mxCell id="n_D" value="開發者" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;fontSize=20;fillColor=#FFF2CC;strokeColor=#D6B656;fontColor=#4A3A0B;whiteSpace=wrap;fillColor=none;" vertex="1" parent="1">
+<mxGeometry x="10" y="342" width="74" height="112" as="geometry"/></mxCell>
+<mxCell id="n_E1" value="長輩登入系統" style="ellipse;html=1;fontSize=20;fillColor=#D5E8D4;strokeColor=#82B366;fontColor=#1B3A17;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="170" y="66" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_E2" value="AI 語音陪伴" style="ellipse;html=1;fontSize=20;fillColor=#D5E8D4;strokeColor=#82B366;fontColor=#1B3A17;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="170" y="142" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_E3" value="AI 日常提醒" style="ellipse;html=1;fontSize=20;fillColor=#D5E8D4;strokeColor=#82B366;fontColor=#1B3A17;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="170" y="218" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_E4" value="長輩通訊" style="ellipse;html=1;fontSize=20;fillColor=#D5E8D4;strokeColor=#82B366;fontColor=#1B3A17;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="170" y="294" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_E5" value="長輩社群互動" style="ellipse;html=1;fontSize=20;fillColor=#D5E8D4;strokeColor=#82B366;fontColor=#1B3A17;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="170" y="370" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_E6" value="趣味養成" style="ellipse;html=1;fontSize=20;fillColor=#D5E8D4;strokeColor=#82B366;fontColor=#1B3A17;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="170" y="446" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_E7" value="長輩社交" style="ellipse;html=1;fontSize=20;fillColor=#D5E8D4;strokeColor=#82B366;fontColor=#1B3A17;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="170" y="522" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_E8" value="生活工具" style="ellipse;html=1;fontSize=20;fillColor=#D5E8D4;strokeColor=#82B366;fontColor=#1B3A17;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="170" y="598" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_E9" value="新手引導" style="ellipse;html=1;fontSize=20;fillColor=#D5E8D4;strokeColor=#82B366;fontColor=#1B3A17;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="170" y="674" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_E10" value="隱私同意" style="ellipse;html=1;fontSize=20;fillColor=#D5E8D4;strokeColor=#82B366;fontColor=#1B3A17;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="170" y="750" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_E11" value="個人資料" style="ellipse;html=1;fontSize=20;fillColor=#D5E8D4;strokeColor=#82B366;fontColor=#1B3A17;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="170" y="826" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_E12" value="生命回顧" style="ellipse;html=1;fontSize=20;fillColor=#D5E8D4;strokeColor=#82B366;fontColor=#1B3A17;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="170" y="902" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_F1" value="帳號與設備管理" style="ellipse;html=1;fontSize=20;fillColor=#F8CECC;strokeColor=#B85450;fontColor=#4A1512;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="626" y="66" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_F2" value="照護排程管理" style="ellipse;html=1;fontSize=20;fillColor=#F8CECC;strokeColor=#B85450;fontColor=#4A1512;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="626" y="142" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_F3" value="長輩狀態監測" style="ellipse;html=1;fontSize=20;fillColor=#F8CECC;strokeColor=#B85450;fontColor=#4A1512;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="626" y="218" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_F4" value="家屬通訊" style="ellipse;html=1;fontSize=20;fillColor=#F8CECC;strokeColor=#B85450;fontColor=#4A1512;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="626" y="294" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_F5" value="安全監控" style="ellipse;html=1;fontSize=20;fillColor=#F8CECC;strokeColor=#B85450;fontColor=#4A1512;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="626" y="370" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_F6" value="家屬社交" style="ellipse;html=1;fontSize=20;fillColor=#F8CECC;strokeColor=#B85450;fontColor=#4A1512;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="626" y="446" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_F7" value="AI 協作" style="ellipse;html=1;fontSize=20;fillColor=#F8CECC;strokeColor=#B85450;fontColor=#4A1512;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="626" y="522" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_F8" value="生命回顧" style="ellipse;html=1;fontSize=20;fillColor=#F8CECC;strokeColor=#B85450;fontColor=#4A1512;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="626" y="598" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_F9" value="問題回報" style="ellipse;html=1;fontSize=20;fillColor=#F8CECC;strokeColor=#B85450;fontColor=#4A1512;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="626" y="674" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_F10" value="個人資料" style="ellipse;html=1;fontSize=20;fillColor=#F8CECC;strokeColor=#B85450;fontColor=#4A1512;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="626" y="750" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_D1" value="開發者登入" style="ellipse;html=1;fontSize=20;fillColor=#FFF2CC;strokeColor=#D6B656;fontColor=#4A3A0B;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="1082" y="66" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_D2" value="帳號安全管理" style="ellipse;html=1;fontSize=20;fillColor=#FFF2CC;strokeColor=#D6B656;fontColor=#4A3A0B;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="1082" y="142" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_D3" value="平台數據分析" style="ellipse;html=1;fontSize=20;fillColor=#FFF2CC;strokeColor=#D6B656;fontColor=#4A3A0B;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="1082" y="218" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_D4" value="使用者除錯" style="ellipse;html=1;fontSize=20;fillColor=#FFF2CC;strokeColor=#D6B656;fontColor=#4A3A0B;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="1082" y="294" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_D5" value="權限管理" style="ellipse;html=1;fontSize=20;fillColor=#FFF2CC;strokeColor=#D6B656;fontColor=#4A3A0B;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="1082" y="370" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_D6" value="問題處理" style="ellipse;html=1;fontSize=20;fillColor=#FFF2CC;strokeColor=#D6B656;fontColor=#4A3A0B;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="1082" y="446" width="180" height="50" as="geometry"/></mxCell>
+<mxCell id="n_D7" value="營運管理" style="ellipse;html=1;fontSize=20;fillColor=#FFF2CC;strokeColor=#D6B656;fontColor=#4A3A0B;whiteSpace=wrap;" vertex="1" parent="1">
+<mxGeometry x="1082" y="522" width="180" height="50" as="geometry"/></mxCell>
+</root></mxGraphModel></diagram></mxfile>

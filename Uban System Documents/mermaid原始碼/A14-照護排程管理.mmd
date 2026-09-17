@@ -1,40 +1,37 @@
-%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false,"nodePlacementStrategy":"NETWORK_SIMPLEX"},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["家屬"]
-    LS_S1["開始"]:::lbl
+    PAD_ROLE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
     ST_S1(("&nbsp;")):::term
     S1([進入照護排程]):::act
     S2{"要做什麼？"}:::dec
     S3["以自然語言描述需求"]:::act
     S4{"草稿是否<br/>符合預期？"}:::dec
     S5(["排程生效"]):::act
-    LE_S5["結束"]:::lbl
-    EN_S5(("&nbsp;")):::term
+    EN_S5(("●")):::endterm
     S6(["查看情緒報告<br/>與破冰話題建議"]):::act
-    LE_S6["結束"]:::lbl
-    EN_S6(("&nbsp;")):::term
+    EN_S6(("●")):::endterm
   end
   subgraph FE["家屬機 App"]
-    A1["HealthReminderScreen"]:::act
-    A2["FamilyAiCopilotScreen"]:::act
+    PAD_FE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
+    A1["HealthReminderScreen 遠端排程提醒畫面"]:::act
+    A2["FamilyAiCopilotScreen AI 照護共創助理"]:::act
     A3["顯示排程草稿供逐筆編輯"]:::act
     A4["首頁 AI 情緒雷達卡"]:::act
   end
   subgraph BE["uban-api 後端"]
     G0{"call_security<br/>家屬－長輩關係<br/>驗證通過？"}:::dec
-    B1["GET /api/reminder/elder/{elder_id}"]:::act
-    B2["POST /api/reminder/<br/>PUT /{id}｜/toggle｜DELETE /{id}"]:::act
-    B3["POST /api/ai/family_copilot/chat"]:::act
-    B4["POST /api/reminder/batch_create"]:::act
-    B5["GET /api/ai/elder_mood_insight/{elder_id}"]:::act
+    B1["reminder 查詢長輩提醒清單"]:::act
+    B2["reminder 新增提醒<br/>toggle 啟用或停用<br/>delete 刪除提醒"]:::act
+    B3["family_copilot AI 對話・生成排程草稿"]:::act
+    B4["batch_create AI 草稿批次建立提醒"]:::act
+    B5["elder_mood_insight 情緒氣象台分析與破冰話題"]:::act
     J1["check_remote_reminders_job<br/>每分鐘推播給長輩<br/>（APScheduler 排程）"]:::act
-    DB[("remote_reminders")]:::act
+    DB[("remote_reminders 遠端照護提醒資料表")]:::act
     X(["回傳無權限"]):::act
-    LE_X["結束"]:::lbl
-    EN_X(("&nbsp;")):::term
+    EN_X(("●")):::endterm
   end
 
-  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
   S1 --> G0
   G0 -->|"[否]"| X
@@ -57,16 +54,14 @@ flowchart TD
   DB --> J1
   J1 --> S5
   S5 --> EN_S5
-  LE_S5 ~~~ EN_S5
   S6 --> EN_S6
-  LE_S6 ~~~ EN_S6
   X --> EN_X
-  LE_X ~~~ EN_X
   %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
   ROLE ~~~ FE ~~~ BE
 
+  classDef pad  fill:none,stroke:none,color:#FFFFFF
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef endterm fill:#FFFFFF,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
-  classDef lbl  fill:none,stroke:none,color:#000000

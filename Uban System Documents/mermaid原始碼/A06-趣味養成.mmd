@@ -1,49 +1,43 @@
-%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false,"nodePlacementStrategy":"NETWORK_SIMPLEX"},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["長輩"]
-    LS_S1["開始"]:::lbl
+    PAD_ROLE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
     ST_S1(("&nbsp;")):::term
     S1([日常走路]):::act
-    LS_S2["開始"]:::lbl
     ST_S2(("&nbsp;")):::term
     S2([開啟寵物花園]):::act
     S3{"要做什麼？"}:::dec
     S4(["看見小豬長大"]):::act
-    LE_S4["結束"]:::lbl
-    EN_S4(("&nbsp;")):::term
+    EN_S4(("●")):::endterm
   end
   subgraph FE["長輩機 App"]
     P1["pedometer StepCount 串流"]:::act
     P2["geolocator GPS 軌跡<br/>Kalman 濾波"]:::act
     P3["兩者取最大值"]:::act
-    A1["PetStudioScreen"]:::act
+    A1["PetStudioScreen 寵物花園畫面"]:::act
     A2["顯示成長階段門檻<br/>與賽季剩餘天數"]:::act
-    LE_A2["結束"]:::lbl
-    EN_A2(("&nbsp;")):::term
+    EN_A2(("●")):::endterm
     A3["顯示好友體重排名"]:::act
-    LE_A3["結束"]:::lbl
-    EN_A3(("&nbsp;")):::term
+    EN_A3(("●")):::endterm
     A4{"已解鎖<br/>果實？"}:::dec
     A5["餵食動畫<br/>體重增加"]:::act
     A6["提示所需步數<br/>按鈕停用"]:::act
-    LE_A6["結束"]:::lbl
-    EN_A6(("&nbsp;")):::term
+    EN_A6(("●")):::endterm
   end
   subgraph BE["uban-api 後端"]
-    B1["POST /api/game/update_steps"]:::act
-    B2["GET /api/pet/thresholds<br/>GET /api/pet/season"]:::act
-    B3["GET /api/pet/leaderboard/{elder_id}"]:::act
-    B4["GET /api/pet/food-unlocks/{elder_id}"]:::act
-    B5["POST /api/pet/state"]:::act
-    D1[("elder_profile.step_total<br/>elder_daily_step<br/>（MySQL）")]:::act
+    PAD_BE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
+    B1["update_steps 上傳今日步數"]:::act
+    B2["thresholds 查詢五階成長門檻<br/>season 查詢目前賽季資訊"]:::act
+    B3["leaderboard 查詢小豬體重排行榜"]:::act
+    B4["food-unlocks 查詢今日解鎖進度（步數・服藥・運動）"]:::act
+    B5["state 更新寵物體重狀態"]:::act
+    D1[("elder_profile.step_total 本輪累計步數<br/>elder_daily_step 逐日步數歷史")]:::act
     D2[("elder_pet_state.weight_grams<br/>體重制，非經驗值")]:::act
     D3[("pet_stage_threshold<br/>5 階等距 20 公斤<br/>第 5 階 max 為 NULL")]:::act
-    D4[("pet_season<br/>pet_season_settlement")]:::act
+    D4[("pet_season 賽季資料<br/>pet_season_settlement 名次結算")]:::act
   end
 
-  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
-  LS_S2 ~~~ ST_S2
   ST_S2 --> S2
   S1 --> P1
   P1 --> P3
@@ -69,18 +63,15 @@ flowchart TD
   A5 --> S4
   D2 --> A1
   S4 --> EN_S4
-  LE_S4 ~~~ EN_S4
   A2 --> EN_A2
-  LE_A2 ~~~ EN_A2
   A3 --> EN_A3
-  LE_A3 ~~~ EN_A3
   A6 --> EN_A6
-  LE_A6 ~~~ EN_A6
   %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
   ROLE ~~~ FE ~~~ BE
 
+  classDef pad  fill:none,stroke:none,color:#FFFFFF
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef endterm fill:#FFFFFF,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
-  classDef lbl  fill:none,stroke:none,color:#000000

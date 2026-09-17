@@ -1,0 +1,150 @@
+<mxfile host="uban-doc"><diagram name="A24-帳號安全管理">
+<mxGraphModel dx="1400" dy="900" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1351" pageHeight="2231" math="0" shadow="0">
+<root><mxCell id="0"/><mxCell id="1" parent="0"/>
+<mxCell id="lane_ROLE" value="開發者" style="swimlane;html=1;horizontal=1;startSize=40;fillColor=none;strokeColor=#000000;fontSize=24;fontColor=#000000;fontStyle=0;swimlaneFillColor=none;collapsible=0;" vertex="1" parent="1">
+<mxGeometry x="0" y="0" width="436" height="2151" as="geometry"/></mxCell>
+<mxCell id="lane_FE" value="uban-admin" style="swimlane;html=1;horizontal=1;startSize=40;fillColor=none;strokeColor=#000000;fontSize=24;fontColor=#000000;fontStyle=0;swimlaneFillColor=none;collapsible=0;" vertex="1" parent="1">
+<mxGeometry x="436" y="0" width="364" height="2151" as="geometry"/></mxCell>
+<mxCell id="lane_BE" value="uban-api 後端" style="swimlane;html=1;horizontal=1;startSize=40;fillColor=none;strokeColor=#000000;fontSize=24;fontColor=#000000;fontStyle=0;swimlaneFillColor=none;collapsible=0;" vertex="1" parent="1">
+<mxGeometry x="800" y="0" width="471" height="2151" as="geometry"/></mxCell>
+<mxCell id="n_ST_S1" value="" style="ellipse;html=1;fillColor=#000000;strokeColor=#000000;" vertex="1" parent="lane_ROLE">
+<mxGeometry x="195" y="120" width="46" height="46" as="geometry"/></mxCell>
+<mxCell id="n_S1" value="進入『開發者帳號』頁" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_ROLE">
+<mxGeometry x="103" y="253" width="230" height="48" as="geometry"/></mxCell>
+<mxCell id="n_S2" value="看見三人明碼密碼" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_ROLE">
+<mxGeometry x="123" y="1309" width="190" height="48" as="geometry"/></mxCell>
+<mxCell id="n_S3" value="要修改&lt;br&gt;自己的密碼？" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_ROLE">
+<mxGeometry x="112" y="1411" width="212" height="126" as="geometry"/></mxCell>
+<mxCell id="n_S4" value="輸入新密碼" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_ROLE">
+<mxGeometry x="26" y="1591" width="170" height="48" as="geometry"/></mxCell>
+<mxCell id="n_S5" value="密碼更新完成" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_ROLE">
+<mxGeometry x="133" y="1949" width="170" height="48" as="geometry"/></mxCell>
+<mxCell id="n_EN_S5" value="" style="ellipse;html=1;shape=endState;fillColor=#000000;strokeColor=#000000;" vertex="1" parent="lane_ROLE">
+<mxGeometry x="195" y="2051" width="46" height="46" as="geometry"/></mxCell>
+<mxCell id="n_E1" value="結束" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_ROLE">
+<mxGeometry x="240" y="1591" width="170" height="48" as="geometry"/></mxCell>
+<mxCell id="n_EN_E1" value="" style="ellipse;html=1;shape=endState;fillColor=#000000;strokeColor=#000000;" vertex="1" parent="lane_ROLE">
+<mxGeometry x="195" y="1707" width="46" height="46" as="geometry"/></mxCell>
+<mxCell id="n_A1" value="DeveloperAccountsPage 開發&lt;br&gt;者帳號管理頁" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_FE">
+<mxGeometry x="26" y="579" width="312" height="74" as="geometry"/></mxCell>
+<mxCell id="n_A2" value="顯示『無法解密』" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_FE">
+<mxGeometry x="87" y="1309" width="190" height="48" as="geometry"/></mxCell>
+<mxCell id="n_EN_A2" value="" style="ellipse;html=1;shape=endState;fillColor=#000000;strokeColor=#000000;" vertex="1" parent="lane_FE">
+<mxGeometry x="159" y="1451" width="46" height="46" as="geometry"/></mxCell>
+<mxCell id="n_G0" value="Depends&lt;br&gt;(get_current_developer)&lt;br&gt;token 驗證通過？" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_BE">
+<mxGeometry x="58" y="355" width="354" height="170" as="geometry"/></mxCell>
+<mxCell id="n_B1" value="accounts 列出開發者帳號（含明&lt;br&gt;碼密碼）" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_BE">
+<mxGeometry x="26" y="707" width="329" height="74" as="geometry"/></mxCell>
+<mxCell id="n_B2" value="dev_crypto 以 AES-GCM&lt;br&gt;解密 password_cipher" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_BE">
+<mxGeometry x="106" y="1001" width="259" height="74" as="geometry"/></mxCell>
+<mxCell id="n_B3" value="DEVELOPER_PASSWORD_KEY&lt;br&gt;可用？" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_BE">
+<mxGeometry x="66" y="1129" width="340" height="126" as="geometry"/></mxCell>
+<mxCell id="n_B4" value="accounts/me/password&lt;br&gt;對象由 token 的 dev_id 決定" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_BE">
+<mxGeometry x="78" y="1693" width="315" height="74" as="geometry"/></mxCell>
+<mxCell id="n_B5" value="同時更新 password_hash&lt;br&gt;與 password_cipher" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_BE">
+<mxGeometry x="104" y="1821" width="264" height="74" as="geometry"/></mxCell>
+<mxCell id="n_DB" value="developer_account&lt;br&gt;password_hash（驗證用）&lt;br&gt;password_cipher BLOB（互看用）" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=9;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_BE">
+<mxGeometry x="60" y="835" width="350" height="112" as="geometry"/></mxCell>
+<mxCell id="n_ENV" value="環境變數&lt;br&gt;DEVELOPER_PASSWORD_KEY&lt;br&gt;★ 不納入版本控制" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=9;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;dashed=1;" vertex="1" parent="lane_BE">
+<mxGeometry x="100" y="87" width="272" height="112" as="geometry"/></mxCell>
+<mxCell id="n_X" value="401 導回登入頁" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_BE">
+<mxGeometry x="148" y="592" width="174" height="48" as="geometry"/></mxCell>
+<mxCell id="n_EN_X" value="" style="ellipse;html=1;shape=endState;fillColor=#000000;strokeColor=#000000;" vertex="1" parent="lane_BE">
+<mxGeometry x="399" y="721" width="46" height="46" as="geometry"/></mxCell>
+<mxCell id="e0" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_ST_S1" target="n_S1">
+<mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e1" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_S1" target="n_G0">
+<mxGeometry relative="1" as="geometry"><Array as="points">
+<mxPoint x="218" y="307"/>
+<mxPoint x="1035" y="307"/>
+</Array></mxGeometry></mxCell>
+<mxCell id="e2" value="[否]" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_G0" target="n_X">
+<mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e3" value="[是]" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_G0" target="n_A1">
+<mxGeometry relative="1" as="geometry"><Array as="points">
+<mxPoint x="1035" y="531"/>
+<mxPoint x="618" y="531"/>
+</Array></mxGeometry></mxCell>
+<mxCell id="e4" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_A1" target="n_B1">
+<mxGeometry relative="1" as="geometry"><Array as="points">
+<mxPoint x="618" y="659"/>
+<mxPoint x="990.5" y="659"/>
+</Array></mxGeometry></mxCell>
+<mxCell id="e5" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_B1" target="n_DB">
+<mxGeometry relative="1" as="geometry"><Array as="points">
+<mxPoint x="990.5" y="787"/>
+<mxPoint x="1175" y="787"/>
+<mxPoint x="1175" y="815"/>
+<mxPoint x="1035" y="815"/>
+</Array></mxGeometry></mxCell>
+<mxCell id="e6" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_DB" target="n_B2">
+<mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e7" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=none;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_ENV" target="n_B2">
+<mxGeometry relative="1" as="geometry"><Array as="points">
+<mxPoint x="1036" y="220"/>
+<mxPoint x="805.5" y="220"/>
+<mxPoint x="805.5" y="981"/>
+<mxPoint x="1035.5" y="981"/>
+</Array></mxGeometry></mxCell>
+<mxCell id="e8" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_B2" target="n_B3">
+<mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e9" value="[否]" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_B3" target="n_A2">
+<mxGeometry relative="1" as="geometry"><Array as="points">
+<mxPoint x="1036" y="1261"/>
+<mxPoint x="618" y="1261"/>
+</Array></mxGeometry></mxCell>
+<mxCell id="e10" value="[是]" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_B3" target="n_S2">
+<mxGeometry relative="1" as="geometry"><Array as="points">
+<mxPoint x="1036" y="1261"/>
+<mxPoint x="218" y="1261"/>
+</Array></mxGeometry></mxCell>
+<mxCell id="e11" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_S2" target="n_S3">
+<mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e12" value="[否]" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_S3" target="n_E1">
+<mxGeometry relative="1" as="geometry"><Array as="points">
+<mxPoint x="218" y="1543"/>
+<mxPoint x="345" y="1543"/>
+<mxPoint x="345" y="1571"/>
+<mxPoint x="325" y="1571"/>
+</Array></mxGeometry></mxCell>
+<mxCell id="e13" value="[是]" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_S3" target="n_S4">
+<mxGeometry relative="1" as="geometry"><Array as="points">
+<mxPoint x="218" y="1543"/>
+<mxPoint x="91" y="1543"/>
+<mxPoint x="91" y="1571"/>
+<mxPoint x="111" y="1571"/>
+</Array></mxGeometry></mxCell>
+<mxCell id="e14" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_S4" target="n_B4">
+<mxGeometry relative="1" as="geometry"><Array as="points">
+<mxPoint x="111" y="1655"/>
+<mxPoint x="1035.5" y="1655"/>
+</Array></mxGeometry></mxCell>
+<mxCell id="e15" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_B4" target="n_B5">
+<mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e16" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.25;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_B5" target="n_DB">
+<mxGeometry relative="1" as="geometry"><Array as="points">
+<mxPoint x="1036" y="1901"/>
+<mxPoint x="834" y="1901"/>
+<mxPoint x="834" y="829"/>
+<mxPoint x="947.5" y="829"/>
+</Array></mxGeometry></mxCell>
+<mxCell id="e17" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_B5" target="n_S5">
+<mxGeometry relative="1" as="geometry"><Array as="points">
+<mxPoint x="1036" y="1901"/>
+<mxPoint x="218" y="1901"/>
+</Array></mxGeometry></mxCell>
+<mxCell id="e18" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_S5" target="n_EN_S5">
+<mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e19" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_E1" target="n_EN_E1">
+<mxGeometry relative="1" as="geometry"><Array as="points">
+<mxPoint x="325" y="1660"/>
+<mxPoint x="218" y="1660"/>
+</Array></mxGeometry></mxCell>
+<mxCell id="e20" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_A2" target="n_EN_A2">
+<mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e21" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_X" target="n_EN_X">
+<mxGeometry relative="1" as="geometry"><Array as="points">
+<mxPoint x="1035" y="674"/>
+<mxPoint x="1222" y="674"/>
+</Array></mxGeometry></mxCell>
+</root></mxGraphModel></diagram></mxfile>

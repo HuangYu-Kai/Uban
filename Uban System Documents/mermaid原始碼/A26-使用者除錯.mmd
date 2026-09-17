@@ -1,44 +1,39 @@
-%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false,"nodePlacementStrategy":"NETWORK_SIMPLEX"},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["開發者"]
-    LS_S1["開始"]:::lbl
+    PAD_ROLE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
     ST_S1(("&nbsp;")):::term
     S1([進入使用者列表]):::act
     S2["搜尋並點選個案"]:::act
     S3(["對照時序排除問題"]):::act
-    LE_S3["結束"]:::lbl
-    EN_S3(("&nbsp;")):::term
+    EN_S3(("●")):::endterm
   end
   subgraph FE["uban-admin"]
-    A1["EldersPage.tsx"]:::act
-    A2["ElderDetailPage.tsx"]:::act
+    PAD_FE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
+    A1["EldersPage 使用者列表頁"]:::act
+    A2["ElderDetailPage 使用者詳情頁"]:::act
     A3["AlertsPage.tsx（含徽章輪詢）"]:::act
-    LE_A3["結束"]:::lbl
-    EN_A3(("&nbsp;")):::term
+    EN_A3(("●")):::endterm
     A4["顯示『查無資料』"]:::act
-    LE_A4["結束"]:::lbl
-    EN_A4(("&nbsp;")):::term
+    EN_A4(("●")):::endterm
     A5["時間軸為空"]:::act
-    LE_A5["結束"]:::lbl
-    EN_A5(("&nbsp;")):::term
+    EN_A5(("●")):::endterm
   end
   subgraph BE["uban-api · /api/developer"]
-    B1["GET /users"]:::act
+    B1["users 全平台使用者列表"]:::act
     B2{"elder_id 存在？"}:::dec
-    B3["GET /users/{elder_id}<br/>詳細資料"]:::act
-    B4["GET /users/{elder_id}/metrics<br/>指標"]:::act
-    LE_B4["結束"]:::lbl
-    EN_B4(("&nbsp;")):::term
-    B5["GET /users/{elder_id}/timeline<br/>活動時間軸"]:::act
-    B6["GET /alerts"]:::act
+    B3["users<br/>詳細資料"]:::act
+    B4["users/metrics<br/>指標"]:::act
+    EN_B4(("●")):::endterm
+    B5["users/timeline<br/>活動時間軸"]:::act
+    B6["alerts 跨使用者警報清單"]:::act
     B7["彙整 activity_log ・通話 ・警報"]:::act
-    D1[("elder_profile<br/>（MySQL）")]:::act
+    D1[("elder_profile 長輩檔案資料表")]:::act
     D2[("activity_log<br/>★ 只有 user_id，沒有 elder_id<br/>需經 elder_profile 轉換")]:::gap
-    D3[("call_record")]:::act
-    D4[("emergency_alerts")]:::act
+    D3[("call_record 通話紀錄資料表")]:::act
+    D4[("emergency_alerts 緊急警報資料表")]:::act
   end
 
-  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
   S1 --> B1
   B1 --> A1
@@ -61,20 +56,16 @@ flowchart TD
   S1 --> B6
   B6 --> A3
   S3 --> EN_S3
-  LE_S3 ~~~ EN_S3
   A3 --> EN_A3
-  LE_A3 ~~~ EN_A3
   A4 --> EN_A4
-  LE_A4 ~~~ EN_A4
   A5 --> EN_A5
-  LE_A5 ~~~ EN_A5
   B4 --> EN_B4
-  LE_B4 ~~~ EN_B4
   %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
   ROLE ~~~ FE ~~~ BE
 
+  classDef pad  fill:none,stroke:none,color:#FFFFFF
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef endterm fill:#FFFFFF,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
-  classDef lbl  fill:none,stroke:none,color:#000000

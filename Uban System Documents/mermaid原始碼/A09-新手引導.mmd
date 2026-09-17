@@ -1,29 +1,26 @@
-%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false,"nodePlacementStrategy":"NETWORK_SIMPLEX"},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["長輩"]
-    LS_S1["開始"]:::lbl
+    PAD_ROLE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
     ST_S1(("&nbsp;")):::term
     S1([進入某個底部分頁]):::act
     S2["點『知道了』前進下一步"]:::act
     S3(["熟悉該頁操作"]):::act
-    LE_S3["結束"]:::lbl
-    EN_S3(("&nbsp;")):::term
+    EN_S3(("●")):::endterm
   end
   subgraph FE["長輩機 App"]
     A1["該分頁的 GlobalKey<br/>提供高光量測目標"]:::act
     A2{"版面量測<br/>是否完成？"}:::dec
     A3["延後一個 frame 重試"]:::act
-    A4["SpotlightTutorial.showIfNeeded()"]:::act
+    A4["SpotlightTutorial 顯示新手導覽・首次到訪才跳出"]:::act
     A5{"SharedPreferences<br/>此頁教學已看過？"}:::dec
     A6["showGeneralDialog 疊遮罩<br/>挖空高光區並顯示提示"]:::act
     A7{"還有<br/>下一步？"}:::dec
     A8["寫入『已看過』旗標"]:::act
     A9(["跳過，不打擾"]):::act
-    LE_A9["結束"]:::lbl
-    EN_A9(("&nbsp;")):::term
+    EN_A9(("●")):::endterm
   end
 
-  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
   S1 --> A1
   A1 --> A2
@@ -39,14 +36,13 @@ flowchart TD
   A7 -->|"[否]"| A8
   A8 --> S3
   S3 --> EN_S3
-  LE_S3 ~~~ EN_S3
   A9 --> EN_A9
-  LE_A9 ~~~ EN_A9
   %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
   ROLE ~~~ FE
 
+  classDef pad  fill:none,stroke:none,color:#FFFFFF
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef endterm fill:#FFFFFF,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
-  classDef lbl  fill:none,stroke:none,color:#000000

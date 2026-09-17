@@ -1,36 +1,35 @@
-%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false,"nodePlacementStrategy":"NETWORK_SIMPLEX"},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["開發者"]
-    LS_S1["開始"]:::lbl
+    PAD_ROLE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
     ST_S1(("&nbsp;")):::term
     S1([登入後進入數據總覽]):::act
     S2(["檢視三類統計圖表"]):::act
-    LE_S2["結束"]:::lbl
-    EN_S2(("&nbsp;")):::term
+    EN_S2(("●")):::endterm
   end
   subgraph FE["uban-admin · OverviewPage"]
     A1["TanStack Query 平行取數"]:::act
-    A2["DemographicsSection"]:::act
-    A3["AlertsStatsSection"]:::act
-    A4["CallsStatsSection"]:::act
+    A2["DemographicsSection 人口統計圖表區塊"]:::act
+    A3["AlertsStatsSection 警報統計圖表區塊"]:::act
+    A4["CallsStatsSection 通話統計圖表區塊"]:::act
     A5["Recharts 繪圖"]:::act
     A6["顯示『尚無資料』空狀態"]:::gap
   end
   subgraph BE["uban-api · /api/admin/stats"]
-    B1["GET /demographics"]:::act
-    B2["GET /alerts"]:::act
-    B3["GET /calls"]:::act
+    PAD_BE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
+    B1["demographics 使用者年齡與居住地統計"]:::act
+    B2["alerts 緊急警報推送與誤報統計"]:::act
+    B3["calls 緊急通話使用次數統計"]:::act
     B4["長輩取 elder_profile<br/>家屬＝無對應 elder_profile 的列"]:::act
     B5["觸發次數 ÷ is_false_alarm<br/>計算誤報比例"]:::act
     B6["以 is_emergency 區分<br/>緊急與一般通話"]:::act
     B7{"欄位是否有值？<br/>migration 012 才新增"}:::dec
-    D1[("user_account_data<br/>age / residence_city / residence_district<br/>（MySQL）")]:::act
-    D2[("elder_profile")]:::act
-    D3[("emergency_alerts<br/>is_false_alarm")]:::act
-    D4[("call_record<br/>is_emergency")]:::act
+    D1[("user_account_data 家屬端帳號資料<br/>age / residence_city / residence_district 年齡與居住地欄位")]:::act
+    D2[("elder_profile 長輩檔案資料表")]:::act
+    D3[("emergency_alerts 緊急警報紀錄<br/>is_false_alarm 是否為誤報")]:::act
+    D4[("call_record 通話紀錄<br/>is_emergency 是否為緊急通話")]:::act
   end
 
-  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
   S1 --> A1
   A1 --> B1
@@ -55,12 +54,12 @@ flowchart TD
   A4 --> A5
   A5 --> S2
   S2 --> EN_S2
-  LE_S2 ~~~ EN_S2
   %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
   ROLE ~~~ FE ~~~ BE
 
+  classDef pad  fill:none,stroke:none,color:#FFFFFF
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef endterm fill:#FFFFFF,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
-  classDef lbl  fill:none,stroke:none,color:#000000

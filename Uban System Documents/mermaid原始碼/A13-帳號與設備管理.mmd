@@ -1,48 +1,45 @@
-%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false,"nodePlacementStrategy":"NETWORK_SIMPLEX"},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["家屬"]
-    LS_S1["開始"]:::lbl
+    PAD_ROLE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
     ST_S1(("&nbsp;")):::term
     S1([開啟 App]):::act
     S2{"已有帳號？"}:::dec
     S3["輸入 Email 與密碼<br/>或用 Google／LINE"]:::act
     S4{"要做什麼？"}:::dec
     S5(["完成綁定"]):::act
-    LE_S5["結束"]:::lbl
-    EN_S5(("&nbsp;")):::term
+    EN_S5(("●")):::endterm
     S6(["訂閱生效"]):::act
-    LE_S6["結束"]:::lbl
-    EN_S6(("&nbsp;")):::term
+    EN_S6(("●")):::endterm
   end
   subgraph FE["家屬機 App"]
-    A1["RegistrationScreen"]:::act
-    A2["LoginScreen"]:::act
+    A1["RegistrationScreen 帳號註冊畫面"]:::act
+    A2["LoginScreen 登入畫面"]:::act
     A3["寫入 prefs<br/>user_role = saved_role = family"]:::act
-    A4{"has_paired_elder？"}:::dec
-    A5["FamilyOnboardingScreen"]:::act
-    A6["FamilyMainScreen"]:::act
+    A4{"has_paired_elder 是否已綁定長輩？"}:::dec
+    A5["FamilyOnboardingScreen 家屬新手導覽"]:::act
+    A6["FamilyMainScreen 家屬端主畫面"]:::act
     A7["CaregiverPairingScreen<br/>輸入 4 碼或掃 QR"]:::act
     A8["監視機設定<br/>產生 6 碼設定碼"]:::act
     A9["subscription_test_screen<br/>★ 測試頁，Test Store 金鑰"]:::gap
-    RC[("RevenueCat")]:::act
+    RC[("RevenueCat 訂閱金流服務・觸發後端 webhook")]:::act
   end
   subgraph BE["uban-api 後端"]
-    B1["POST /api/auth/register<br/>passlib 雜湊密碼"]:::act
-    B2["POST /api/auth/login<br/>簽發 JWT role=family・24h"]:::act
-    B3["POST /api/pairing/confirm"]:::act
-    B4["POST /api/pairing/monitor_setup<br/>產生 6 碼設定碼 · 15 分鐘<br/>效期內可重複兌換"]:::act
-    B4b["POST /api/pairing/monitor_setup/resolve<br/>寫入 monitor_device_binding"]:::act
+    PAD_BE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
+    B1["auth/register<br/>passlib 雜湊密碼"]:::act
+    B2["auth/login<br/>簽發 JWT role=family・24h"]:::act
+    B3["confirm 建立長輩帳號並完成綁定"]:::act
+    B4["pairing/monitor_setup<br/>產生 6 碼設定碼 · 15 分鐘<br/>效期內可重複兌換"]:::act
+    B4b["pairing/monitor_setup/resolve<br/>寫入 monitor_device_binding"]:::act
     B5{"Socket.IO join 時檢查<br/>4d 層級上限 free 2／gold 3／diamond 5<br/>4e 同 IP 上限 free 4／gold 9／diamond 25"}:::dec
-    B7["POST /api/revenuecat/webhook"]:::act
+    B7["webhook 寫入訂閱真相・更新 subscription_status"]:::act
     B8["更新 subscription_status<br/>（唯一真相來源）"]:::act
-    B9["GET /api/subscription/{elder_id}<br/>功能鎖查詢"]:::act
+    B9["subscription<br/>功能鎖查詢"]:::act
     MON["舊手機輸入 6 碼設定碼"]:::act
     R1(["emit join-failed<br/>reason: monitor-limit<br/>／ip_limit_exceeded<br/>並中斷連線"]):::act
-    LE_R1["結束"]:::lbl
-    EN_R1(("&nbsp;")):::term
+    EN_R1(("●")):::endterm
   end
 
-  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
   S1 --> S2
   S2 -->|"[否]"| A1
@@ -75,16 +72,14 @@ flowchart TD
   B8 --> B9
   B9 --> A6
   S5 --> EN_S5
-  LE_S5 ~~~ EN_S5
   S6 --> EN_S6
-  LE_S6 ~~~ EN_S6
   R1 --> EN_R1
-  LE_R1 ~~~ EN_R1
   %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
   ROLE ~~~ FE ~~~ BE
 
+  classDef pad  fill:none,stroke:none,color:#FFFFFF
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef endterm fill:#FFFFFF,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
-  classDef lbl  fill:none,stroke:none,color:#000000

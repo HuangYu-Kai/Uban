@@ -1,29 +1,26 @@
-%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false,"nodePlacementStrategy":"NETWORK_SIMPLEX"},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["使用者（長輩端與家屬端共用）"]
-    LS_S1["開始"]:::lbl
     ST_S1(("&nbsp;")):::term
     S1([首次啟動 App]):::act
     S2["詳閱隱私權政策"]:::act
     S3{"是否同意？"}:::dec
     S4(["進入後續流程"]):::act
-    LE_S4["結束"]:::lbl
-    EN_S4(("&nbsp;")):::term
+    EN_S4(("●")):::endterm
     S5(["停留在政策頁<br/>無法繼續使用"]):::act
-    LE_S5["結束"]:::lbl
-    EN_S5(("&nbsp;")):::term
+    EN_S5(("●")):::endterm
   end
   subgraph FE["App"]
+    PAD_FE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
     A1["SplashScreen 讀取<br/>prefs: PrivacyPolicyScreen.prefsKey"]:::act
     A2{"已同意過？"}:::dec
-    A3["_replaceWith(PrivacyPolicyScreen)"]:::act
+    A3["PrivacyPolicyScreen 轉到隱私政策頁"]:::act
     A4["渲染 privacy_policy_content<br/>影像・語音・向量化記憶<br/>GPS 與室內定位・健康數據"]:::act
     A5["寫入已同意旗標"]:::act
     A6["pushAndRemoveUntil<br/>進入身分判定"]:::act
     A7["請求相機／麥克風／定位權限<br/>刻意排在同意之後"]:::act
   end
 
-  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
   S1 --> A1
   A1 --> A2
@@ -38,14 +35,13 @@ flowchart TD
   A6 --> A7
   A7 --> S4
   S4 --> EN_S4
-  LE_S4 ~~~ EN_S4
   S5 --> EN_S5
-  LE_S5 ~~~ EN_S5
   %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
   ROLE ~~~ FE
 
+  classDef pad  fill:none,stroke:none,color:#FFFFFF
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef endterm fill:#FFFFFF,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
-  classDef lbl  fill:none,stroke:none,color:#000000

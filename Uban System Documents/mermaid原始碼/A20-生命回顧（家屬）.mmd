@@ -1,26 +1,24 @@
-%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false,"nodePlacementStrategy":"NETWORK_SIMPLEX"},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["家屬"]
-    LS_S1["開始"]:::lbl
+    PAD_ROLE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
     ST_S1(("&nbsp;")):::term
     S1([於『資料』分頁點『回憶錄』]):::act
     S2(["看見長輩的故事"]):::act
-    LE_S2["結束"]:::lbl
-    EN_S2(("&nbsp;")):::term
+    EN_S2(("●")):::endterm
     S3(["看見空狀態"]):::act
-    LE_S3["結束"]:::lbl
-    EN_S3(("&nbsp;")):::term
+    EN_S3(("●")):::endterm
   end
   subgraph FE["家屬機 App"]
-    A1["MemoirsGalleryScreen"]:::act
-    A2["MemoirService.getMemoirs(elderId)"]:::act
+    A1["MemoirsGalleryScreen 回憶錄畫廊畫面"]:::act
+    A2["MemoirService 讀取長輩回憶清單"]:::act
     A3[("SharedPreferences（家屬機）<br/>uban_memoirs_{elderId}")]:::act
     A4["過濾示範假資料 memoir_00*"]:::act
     A5{"本機有資料？"}:::dec
     A6["MemoirDetailSheet 呈現"]:::act
   end
   subgraph FE2["長輩機"]
-    LS_E1["開始"]:::lbl
+    PAD_FE2["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
     ST_E1(("&nbsp;")):::term
     E1["長輩錄製生命故事"]:::act
     E2[("SharedPreferences（長輩機）<br/>uban_memoirs_{elderId}")]:::act
@@ -29,9 +27,7 @@ flowchart TD
     N3["下載 API"]:::act
   end
 
-  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
-  LS_E1 ~~~ ST_E1
   ST_E1 --> E1
   E1 --> E2
   E2 -.->|"[未實作]"| N1
@@ -47,14 +43,13 @@ flowchart TD
   A6 --> S2
   A5 -->|"[否]"| S3
   S2 --> EN_S2
-  LE_S2 ~~~ EN_S2
   S3 --> EN_S3
-  LE_S3 ~~~ EN_S3
   %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
   ROLE ~~~ FE ~~~ FE2
 
+  classDef pad  fill:none,stroke:none,color:#FFFFFF
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef endterm fill:#FFFFFF,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
-  classDef lbl  fill:none,stroke:none,color:#000000

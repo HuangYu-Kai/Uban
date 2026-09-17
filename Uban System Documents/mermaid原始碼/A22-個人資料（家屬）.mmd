@@ -1,13 +1,12 @@
-%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false,"nodePlacementStrategy":"NETWORK_SIMPLEX"},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["家屬"]
-    LS_S1["開始"]:::lbl
+    PAD_ROLE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
     ST_S1(("&nbsp;")):::term
     S1([想填寫本人年齡與居住地]):::act
     S2["填寫年齡・縣市・行政區<br/>三欄皆選填"]:::act
     S3(["資料儲存"]):::act
-    LE_S3["結束"]:::lbl
-    EN_S3(("&nbsp;")):::term
+    EN_S3(("●")):::endterm
   end
   subgraph FE["家屬機 App"]
     N1["FamilyMainScreen 尚無<br/>進入設定頁的按鈕"]:::gap
@@ -17,18 +16,16 @@ flowchart TD
     A4["欄位維持空白<br/>記錄 debug 訊息"]:::act
     A5{"欄位留白？"}:::dec
     A6["略過該欄<br/>維持原值不動"]:::act
-    LE_A6["結束"]:::lbl
-    EN_A6(("&nbsp;")):::term
+    EN_A6(("●")):::endterm
   end
   subgraph BE["uban-api 後端（已就緒）"]
+    PAD_BE["&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
     B1["更新使用者個人資料端點"]:::act
-    B2[("user_account_data<br/>age / residence_city<br/>/ residence_district<br/>migration 012")]:::act
-    B3["GET /api/admin/stats/demographics<br/>家屬＝無對應 elder_profile 的列"]:::act
-    LE_B3["結束"]:::lbl
-    EN_B3(("&nbsp;")):::term
+    B2[("user_account_data 家屬帳號資料表<br/>age / residence_city / residence_district 年齡與居住地欄位")]:::act
+    B3["admin/stats/demographics<br/>家屬＝無對應 elder_profile 的列"]:::act
+    EN_B3(("●")):::endterm
   end
 
-  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
   S1 -.->|"[入口不存在]"| N1
   N1 -.-> A1
@@ -44,16 +41,14 @@ flowchart TD
   B2 --> S3
   B2 --> B3
   S3 --> EN_S3
-  LE_S3 ~~~ EN_S3
   A6 --> EN_A6
-  LE_A6 ~~~ EN_A6
   B3 --> EN_B3
-  LE_B3 ~~~ EN_B3
   %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
   ROLE ~~~ FE ~~~ BE
 
+  classDef pad  fill:none,stroke:none,color:#FFFFFF
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef endterm fill:#FFFFFF,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
-  classDef lbl  fill:none,stroke:none,color:#000000

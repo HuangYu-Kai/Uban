@@ -1,38 +1,37 @@
-%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false,"nodePlacementStrategy":"NETWORK_SIMPLEX"},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["長輩 A（發起方）"]
-    LS_S1["開始"]:::lbl
+    PAD_ROLE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
     ST_S1(("&nbsp;")):::term
     S1([開啟『加好友』]):::act
     S2["輸入對方 4 碼好友代碼"]:::act
     S3(["瀏覽好友動態<br/>按讚與留言"]):::act
   end
   subgraph ROLE2["長輩 B（受邀方）"]
+    PAD_ROLE2["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
     T1["查看好友邀請"]:::act
     T2{"是否同意？"}:::dec
     R1(["維持未成立<br/>雙方看不到彼此動態"]):::act
-    LE_R1["結束"]:::lbl
-    EN_R1(("&nbsp;")):::term
+    EN_R1(("●")):::endterm
   end
   subgraph FE["長輩機 App"]
-    A1["ElderAddFriendScreen"]:::act
-    A2["ElderFriendFeedScreen"]:::act
+    PAD_FE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
+    A1["ElderAddFriendScreen 加好友畫面"]:::act
+    A2["ElderFriendFeedScreen 朋友動態牆畫面"]:::act
     A3["提示『查無此人』"]:::act
-    LE_A3["結束"]:::lbl
-    EN_A3(("&nbsp;")):::term
+    EN_A3(("●")):::endterm
   end
   subgraph BE["uban-api 後端"]
-    B1["GET /api/friend/search"]:::act
+    B1["search 搜尋長輩好友"]:::act
     B2{"代碼存在<br/>且非本人？"}:::dec
-    B3["POST /api/friend/request<br/>寫入 elder_friendship（pending）"]:::act
-    B4["GET /api/friend/requests"]:::act
-    B5["POST /api/friend/respond<br/>狀態改為 accepted"]:::act
-    B6["GET /api/friend/feed"]:::act
-    B7["POST /post/{id}/like<br/>POST /post/{id}/comment"]:::act
-    DB[("elder_friendship<br/>UNIQUE(elder_id_low, elder_id_high)<br/>friend_post / _comment / _like")]:::act
+    B3["friend/request<br/>寫入 elder_friendship（pending）"]:::act
+    B4["requests 查詢待回應好友邀請"]:::act
+    B5["friend/respond<br/>狀態改為 accepted"]:::act
+    B6["feed 查詢朋友圈動態"]:::act
+    B7["like 按讚貼文<br/>comment 留言貼文"]:::act
+    DB[("elder_friendship 長輩好友關係・單向去重<br/>UNIQUE(elder_id_low, elder_id_high)<br/>friend_post 貼文・留言・按讚")]:::act
   end
 
-  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
   S1 --> A1
   A1 --> S2
@@ -53,14 +52,13 @@ flowchart TD
   S3 --> B7
   B7 --> DB
   R1 --> EN_R1
-  LE_R1 ~~~ EN_R1
   A3 --> EN_A3
-  LE_A3 ~~~ EN_A3
   %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
   ROLE ~~~ ROLE2 ~~~ FE ~~~ BE
 
+  classDef pad  fill:none,stroke:none,color:#FFFFFF
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef endterm fill:#FFFFFF,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
-  classDef lbl  fill:none,stroke:none,color:#000000

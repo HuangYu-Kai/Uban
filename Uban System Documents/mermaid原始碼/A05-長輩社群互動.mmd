@@ -1,48 +1,40 @@
-%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false,"nodePlacementStrategy":"NETWORK_SIMPLEX"},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["長輩"]
-    LS_S1["開始"]:::lbl
+    PAD_ROLE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
     ST_S1(("&nbsp;")):::term
     S1([點選底部『社群』分頁]):::act
     S2{"要做什麼？"}:::dec
     S3(["瀏覽並按讚留言"]):::act
     S4(["收聽新聞"]):::act
-    LE_S4["結束"]:::lbl
-    EN_S4(("&nbsp;")):::term
+    EN_S4(("●")):::endterm
   end
   subgraph FE["長輩機 App"]
+    PAD_FE["&nbsp;&nbsp;&nbsp;"]:::pad
     A1["ElderCommunityScreen<br/>CommunityService 遠端優先"]:::act
     A2["image_picker 拍照或選圖"]:::act
     A3["彈出『活力幣 +N』獎勵動畫"]:::act
-    LE_A3["結束"]:::lbl
-    EN_A3(("&nbsp;")):::term
+    EN_A3(("●")):::endterm
     A4["NewsListenPlayerScreen<br/>播放語音並顯示字幕"]:::act
     A5["退守 SharedPreferences<br/>本機快取（僅供瀏覽）"]:::act
-    LE_A5["結束"]:::lbl
-    EN_A5(("&nbsp;")):::term
+    EN_A5(("●")):::endterm
   end
   subgraph BE["uban-api 後端"]
-    B1["GET /api/community/posts<br/>依 family_elder_relationship<br/>解析可見親屬圈"]:::act
-    B2["POST /api/community/upload"]:::act
-    B3["POST /api/community/posts"]:::act
-    B4["POST /posts/{id}/like<br/>POST /posts/{id}/comments"]:::act
-    LE_B4["結束"]:::lbl
-    EN_B4(("&nbsp;")):::term
-    B5["GET /api/news<br/>當日 11 分類"]:::act
-    LS_J1["開始"]:::lbl
+    B1["community/posts<br/>依 family_elder_relationship<br/>解析可見親屬圈"]:::act
+    B2["upload 上傳社群照片"]:::act
+    B3["posts 發佈新貼文"]:::act
+    B4["like 切換關心狀態<br/>comments 新增留言"]:::act
+    EN_B4(("●")):::endterm
+    B5["news<br/>當日 11 分類"]:::act
     ST_J1(("&nbsp;")):::term
     J1["daily_news_crawl_job 06:00<br/>中央社 CNA 自建爬蟲<br/>（APScheduler 排程）"]:::act
-    LS_J2["開始"]:::lbl
     ST_J2(("&nbsp;")):::term
     J2["pre_generate_news_audio 03:00<br/>TTS 預先合成"]:::act
-    DB[("daily_news_items")]:::act
+    DB[("daily_news_items 每日新聞快取（含語音）")]:::act
   end
 
-  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
-  LS_J1 ~~~ ST_J1
   ST_J1 --> J1
-  LS_J2 ~~~ ST_J2
   ST_J2 --> J2
   S1 --> A1
   A1 --> B1
@@ -61,18 +53,15 @@ flowchart TD
   J2 --> DB
   DB --> B5
   S4 --> EN_S4
-  LE_S4 ~~~ EN_S4
   A3 --> EN_A3
-  LE_A3 ~~~ EN_A3
   A5 --> EN_A5
-  LE_A5 ~~~ EN_A5
   B4 --> EN_B4
-  LE_B4 ~~~ EN_B4
   %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
   ROLE ~~~ FE ~~~ BE
 
+  classDef pad  fill:none,stroke:none,color:#FFFFFF
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef endterm fill:#FFFFFF,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
-  classDef lbl  fill:none,stroke:none,color:#000000

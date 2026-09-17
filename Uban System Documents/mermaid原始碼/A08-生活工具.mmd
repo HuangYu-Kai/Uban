@@ -1,17 +1,15 @@
-%%{init:{"layout":"elk","elk":{"mergeEdges":false},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
+%%{init:{"layout":"elk","elk":{"mergeEdges":false,"nodePlacementStrategy":"NETWORK_SIMPLEX"},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
   subgraph ROLE["長輩"]
-    LS_S1["開始"]:::lbl
+    PAD_ROLE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
     ST_S1(("&nbsp;")):::term
     S1([點選首頁日期卡片]):::act
     S2{"要語音播報？"}:::dec
     S3(["查看宜忌與神明誕辰"]):::act
     S4(["聽取語音播報"]):::act
-    LE_S4["結束"]:::lbl
-    EN_S4(("&nbsp;")):::term
+    EN_S4(("●")):::endterm
     E1([結束]):::act
-    LE_E1["結束"]:::lbl
-    EN_E1(("&nbsp;")):::term
+    EN_E1(("●")):::endterm
   end
   subgraph FE["長輩機 App（全程本地運算，不連後端）"]
     A1["FarmerAlmanacScreen 開啟"]:::act
@@ -21,12 +19,10 @@ flowchart TD
     A5["渲染農民曆版面"]:::act
     A6["flutter_tts 本機朗讀"]:::act
     A7["僅顯示文字"]:::act
-    LE_A7["結束"]:::lbl
-    EN_A7(("&nbsp;")):::term
+    EN_A7(("●")):::endterm
     A8{"裝置有<br/>TTS 引擎？"}:::dec
   end
 
-  LS_S1 ~~~ ST_S1
   ST_S1 --> S1
   S1 --> A1
   A1 --> A2
@@ -41,16 +37,14 @@ flowchart TD
   A6 --> S4
   A8 -->|"[否]"| A7
   S4 --> EN_S4
-  LE_S4 ~~~ EN_S4
   E1 --> EN_E1
-  LE_E1 ~~~ EN_E1
   A7 --> EN_A7
-  LE_A7 ~~~ EN_A7
   %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
   ROLE ~~~ FE
 
+  classDef pad  fill:none,stroke:none,color:#FFFFFF
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef endterm fill:#FFFFFF,stroke:#000000,stroke-width:3px,color:#000000
   classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3
-  classDef lbl  fill:none,stroke:none,color:#000000
