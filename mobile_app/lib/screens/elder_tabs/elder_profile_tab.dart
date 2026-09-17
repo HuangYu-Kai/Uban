@@ -579,11 +579,65 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     );
 
     // ★ 第四十六輪（E1）：比照 elder_home_tab.dart 的 _completeNextDose——
-    // 本機立即更新給即時回饋，另外用不阻塞的方式同步後端，家屬端才看得到
-    // 長輩在「我的」分頁的打卡紀錄。只在「標記為完成」時同步，取消完成不
-    // 呼叫（後端沒有取消端點）。
+    // 本機立即更新給即時回饋，另外同步後端，家屬端才看得到長輩在「我的」
+    // 分頁的打卡紀錄。只在「標記為完成」時同步，取消完成（isAlreadyDone
+    // 為 true）不呼叫——後端沒有取消端點，這是既有限制，不在本次修復
+    // 範圍內。⚠️ 已知後果：長輩取消打卡後，後端 activity_log 仍留著那筆
+    // medication 紀錄不會被撤銷；只要有消費端是直接讀 activity_log（而非
+    // 本機 completed_tasks_<date>）判斷「今天吃藥了沒」，就可能誤判成
+    // 已完成。
+    //
+    // ★ 第四十九輪修復：原本用 unawaited 完全不管成不成功，網路失敗時
+    // 畫面照樣顯示打卡完成（含小豬慶祝動畫），家屬端資料庫其實沒有這筆
+    // 紀錄，是用藥安全問題。改成 await 讀 bool，失敗時要把上面 setState
+    // 區塊在「標記為完成」分支寫入的三份樂觀更新狀態全部回退：記憶體中的
+    // _completedReminderIds、SharedPreferences 的 completed_tasks_<today>、
+    // 以及被提前導向慶祝文案的 _speechText（連同尚未觸發的
+    // _speechBubbleTimer 一併取消)——否則小豬會在打卡其實失敗時仍開心地說
+    // 「打卡成功」。粒子與彈跳動畫（_spawnHeartParticles／
+    // _petBounceController／_particleController）屬於已播放的短暫視覺
+    // 效果，等網路來回一趟通常早已播完，不追加回滾。
+    // ApiService.completeElderReminder 內部已經把逾時／連線失敗／後端
+    // 錯誤全部吞成 false、不會對外拋例外（見 reminder_api.dart），這裡的
+    // try/catch 只是防禦未來改版又開始拋例外，不能取代讀 bool。
     if (!isAlreadyDone) {
-      unawaited(ApiService.completeElderReminder(reminderId));
+      bool success;
+      try {
+        success = await ApiService.completeElderReminder(reminderId);
+      } catch (e) {
+        debugPrint('⚠️ [ElderProfileTab] completeElderReminder 例外: $e');
+        success = false;
+      }
+      if (!mounted) return;
+      if (!success) {
+        _speechBubbleTimer?.cancel();
+        setState(() {
+          _completedReminderIds.remove(reminderId);
+          _speechText = _defaultSpeechText;
+        });
+        await prefs.setStringList(
+          'completed_tasks_$today',
+          _completedReminderIds.map((e) => e.toString()).toList(),
+        );
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '打卡沒有送出成功，請確認網路後再按一次',
+              style: GoogleFonts.notoSansTc(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+            backgroundColor: const Color(0xFFB91C1C),
+            behavior: SnackBarBehavior.floating,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            margin: const EdgeInsets.all(20),
+          ),
+        );
+      }
     }
   }
 
@@ -860,7 +914,14 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                       title: '家人綁定',
                       subtitle: '出示配對碼',
                       color: const Color(0xFFF59E0B),
-                      onTap: () => showFamilyPairingDialog(context),
+                      // ★ 第四十九輪修復：過去沒傳 explicitElderId，對話框內部
+                      // 只能猜 SharedPreferences 的 caregiver_id/last_elder_id，
+                      // 兩鍵都讀不到時會靜默送出缺 id 的配對碼請求，被後端當成
+                      // 新長輩註冊、家屬綁到幽靈帳號（見
+                      // family_pairing_dialog.dart 的 fetchCode 說明）。這裡是
+                      // 呼叫端手上現成、保證非空的正確長輩 id，直接明確傳入。
+                      onTap: () =>
+                          showFamilyPairingDialog(context, widget.userId),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -968,7 +1029,10 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                             title: '家人綁定',
                             subtitle: '出示配對碼',
                             color: const Color(0xFFF59E0B),
-                            onTap: () => showFamilyPairingDialog(context),
+                            // ★ 第四十九輪修復：理由同直屏版本，見上方
+                            // _buildPortraitBody 對應按鈕的註解。
+                            onTap: () =>
+                                showFamilyPairingDialog(context, widget.userId),
                             isLandscape: true,
                           ),
                         ),

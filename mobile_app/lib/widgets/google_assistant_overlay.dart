@@ -217,6 +217,32 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
       .replaceAll(_autoCallFriendPattern, '')
       .trim();
 
+  /// 等待 TTS **真正念完**這句話才返回——僅供撥號前的確認語使用（第四十九輪
+  /// item 8 補強）。`flutter_tts` 的 `speak()` 這個 Future 預設在「引擎開始
+  /// 念」就完成，不是「念完」才完成；本檔 `_initTtsAndGreeting`（上方）已經
+  /// 因為同一個限制改用 `setCompletionHandler` + 逾時兜底，這裡是同一問題在
+  /// 撥號安全網上的版本——`_processUserQuery` 下方念完確認語才 `pop()` 的
+  /// 設計，前提是「念完」真的等到念完，不能只是呼叫了 `speak()`。
+  /// 刻意不用 `awaitSpeakCompletion(true)`：查過 flutter_tts 4.2.5 的
+  /// Android 原生原始碼（`FlutterTtsPlugin.kt` 的 `onError`）後發現那個開關
+  /// 在引擎出錯時不會釋放 pending 的 speak() Future，會讓撥號被無限期卡住，
+  /// 比現在「沒念完就跳轉」更糟。改用 completionHandler／errorHandler 雙保
+  /// 險＋逾時兜底，任一條路徑都能讓函式正常返回，撥號請求一定會被送出。
+  Future<void> _speakAndWait(
+    String text, {
+    Duration timeout = const Duration(seconds: 8),
+  }) async {
+    final completer = Completer<void>();
+    void finish() {
+      if (!completer.isCompleted) completer.complete();
+    }
+
+    _flutterTts.setCompletionHandler(finish);
+    _flutterTts.setErrorHandler((_) => finish());
+    await _flutterTts.speak(text);
+    await completer.future.timeout(timeout, onTimeout: () {});
+  }
+
   /// 處理使用者提問
   Future<void> _processUserQuery(String query) async {
     if (query.isEmpty || _isThinking) return;
@@ -285,10 +311,18 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
       // 朗讀 AI 回覆（念剝除標記後的乾淨文字，不把標記唸出來）。好友路徑的
       // 確認語已經在後端把好友名字寫進乾淨文字裡（見 tools_service.py），
       // 這裡不需要、也不應該再自己組一句不帶名字的話蓋過去。
-      await _flutterTts.speak(_stripAutoCallMarker(fullResponse));
+      // ⚠️ 有撥號標記時改走 `_speakAndWait`——單純 `await speak()` 不會等真正
+      // 念完（見該函式註解），沿用它會讓下面「聽完才跳畫面」形同虛設；一般
+      // 對話回覆維持原本的寫法，不需要為每一句閒聊都多等一輪逾時。
+      if (hasAutoCall) {
+        await _speakAndWait(_stripAutoCallMarker(fullResponse));
+      } else {
+        await _flutterTts.speak(_stripAutoCallMarker(fullResponse));
+      }
 
       // ★ 念完確認語才關閉視窗並帶出撥號請求，讓長輩聽完「我幫您打電話給
-      //   誰」才跳畫面，不要話講到一半人就被拉去別的畫面。實際撥出由呼叫端
+      //   誰」才跳畫面，不要話講到一半人就被拉去別的畫面（上方已改用
+      //   `_speakAndWait` 真正等到念完，不是只等呼叫）。實際撥出由呼叫端
       //   （elder_home_screen.dart）比照 friends_screen.dart::_startCall() /
       //   _startFriendCall() 的既有配方，透過建構 ElderScreen(autoCall:true,
       //   ...) 完成——這裡只負責回報「要不要撥、視訊還是語音、指定哪位好友」，

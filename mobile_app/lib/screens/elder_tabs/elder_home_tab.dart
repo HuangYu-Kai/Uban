@@ -180,8 +180,47 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
       _completedReminderIds.map((e) => e.toString()).toList(),
     );
 
-    // 背景同步後端，不阻塞 UI（打卡回饋已經即時顯示了）。
-    unawaited(ApiService.completeElderReminder(id));
+    // ★ 第四十九輪修復：這裡是「先更新本機再同步後端」的樂觀更新（點下去
+    // 畫面立刻打勾），過去用 unawaited 完全不管成不成功——網路失敗時畫面
+    // 照樣顯示打卡完成，家屬端資料庫其實沒有這筆用藥紀錄，是用藥安全
+    // 問題。改成 await 讀 bool，失敗時把上面剛寫入的兩份樂觀更新狀態都
+    // 回退（記憶體中的 _completedReminderIds、SharedPreferences 的
+    // completed_tasks_<today>），並提示使用者可以再按一次。
+    // ApiService.completeElderReminder 內部已經把逾時／連線失敗／後端
+    // 錯誤全部吞成 false、不會對外拋例外（見 reminder_api.dart），這裡的
+    // try/catch 只是防禦未來改版又開始拋例外，不能取代讀 bool。
+    bool success;
+    try {
+      success = await ApiService.completeElderReminder(id);
+    } catch (e) {
+      debugPrint('⚠️ [ElderHomeTab] completeElderReminder 例外: $e');
+      success = false;
+    }
+    if (!mounted) return;
+    if (!success) {
+      setState(() => _completedReminderIds.remove(id));
+      await prefs.setStringList(
+        'completed_tasks_$today',
+        _completedReminderIds.map((e) => e.toString()).toList(),
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '打卡沒有送出成功，請確認網路後再按一次「打卡」',
+            style: GoogleFonts.notoSansTc(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+          backgroundColor: const Color(0xFFB91C1C),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          margin: const EdgeInsets.all(20),
+        ),
+      );
+    }
   }
 
   /// 長輩端的 roomId 即 elder_profile.elder_id（見 main.dart 的 elderIdUuid）。

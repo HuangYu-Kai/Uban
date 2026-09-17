@@ -10,11 +10,31 @@ void showFamilyPairingDialog(BuildContext context, [int? explicitElderId]) {
   HapticFeedback.lightImpact();
 
   Future<Map<String, dynamic>> fetchCode() async {
-    if (explicitElderId != null) {
-      return ApiService.requestPairingCode(explicitElderId);
+    int? id = explicitElderId;
+    if (id == null) {
+      final prefs = await SharedPreferences.getInstance();
+      id = prefs.getInt('caregiver_id') ?? prefs.getInt('last_elder_id');
     }
-    final prefs = await SharedPreferences.getInstance();
-    final id = prefs.getInt('caregiver_id') ?? prefs.getInt('last_elder_id');
+
+    // ★ 第四十九輪修復：本對話框的唯一使用情境是「已登入的長輩要補綁
+    // 家人」，不可能是後端 uban-api/routers/pairing.py::confirm_pairing()
+    // 也支援的「原始註冊」情境（配對碼帶 creator_id → 綁到既有長輩；不帶
+    // → 新建長輩帳號。後者是合法的原始註冊流程，見該檔案，不可更動）。
+    // 過去這裡在解析不到 id 時仍會用 null 呼叫 requestPairingCode()——
+    // PairingApi.requestPairingCode 對 null 的處理是直接不帶 elder_id 欄位
+    // 送出請求，後端因此收到一個「看起來像新註冊」的配對碼請求：沒有例外、
+    // 沒有錯誤訊息，QR 碼正常顯示，但家屬掃碼後會被綁到一個長輩端完全看
+    // 不到、憑空生出的幽靈帳號。改成 fail-closed：解析不出 id 就不呼叫
+    // API，直接回傳終端錯誤狀態，交給下面的錯誤 UI 顯示明確訊息並停在
+    // 那裡——這樣日後就算又有呼叫端漏傳 explicitElderId，也只會看到
+    // 「無法確認您的帳號」，不會再默默產生幽靈帳號。
+    if (id == null) {
+      return {
+        'status': 'error',
+        'error_code': 'unresolved_elder_id',
+        'message': '無法確認您的帳號，請重新登入後再試',
+      };
+    }
     return ApiService.requestPairingCode(id);
   }
 
@@ -88,6 +108,41 @@ void showFamilyPairingDialog(BuildContext context, [int? explicitElderId]) {
                     final result = snapshot.data;
                     final data = result?['data'] as Map<String, dynamic>?;
                     final String? code = data?['pairing_code'] as String?;
+
+                    // ★ 第四十九輪修復：id 無法解析（見上方 fetchCode 的說明）
+                    //   屬於「出錯」而非暫時性的連線問題——呼叫端漏傳
+                    //   explicitElderId 或 SharedPreferences 沒寫入，不會
+                    //   因為使用者按「重新取得配對碼」就自己好，所以不顯示
+                    //   一般錯誤那組重試按鈕，只給明確訊息，請使用者用對話框
+                    //   既有的「知道了」離開後重新登入。
+                    if (result?['error_code'] == 'unresolved_elder_id') {
+                      return Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFEF2F2),
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(
+                              color: const Color(0xFFFECACA), width: 1.5),
+                        ),
+                        child: Column(
+                          children: [
+                            const Icon(Icons.error_outline_rounded,
+                                color: Color(0xFFDC2626), size: 32),
+                            const SizedBox(height: 8),
+                            Text(
+                              (result?['message'] as String?) ??
+                                  '無法確認您的帳號，請重新登入後再試',
+                              textAlign: TextAlign.center,
+                              style: GoogleFonts.notoSansTc(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: const Color(0xFFB91C1C),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
 
                     // ★ 失敗（連線失敗／逾時／後端回傳 error／欄位缺漏）一律
                     //   顯示白話錯誤＋重試鍵，絕不用猜測值兜底。
