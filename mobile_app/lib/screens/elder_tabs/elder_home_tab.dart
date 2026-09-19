@@ -428,8 +428,17 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
                                 // ★ 一屏到底修復：首頁只留三塊（今天卡／下一包藥／新聞），
-                                // 天氣併入今天卡、日期卡與天氣卡合一，新聞卡壓成精簡列，
+                                // 天氣併入今天卡、日期卡與天氣卡合一，
                                 // 移除跟底部導覽列「電話」分頁重複的「打電話給家人」大按鈕。
+                                //
+                                // ★ 第五十輪（任務 A）：新聞卡不再壓成精簡列（見
+                                // `_availableNewsImageHeight` 註解），改回大圖直式的醒目
+                                // 頭條版面。刻意**不**把新聞卡的順序搬到「今天」／
+                                // 「下一包藥」前面——這兩塊是健康相關資訊，優先度更高，
+                                // 不應該被排到新聞後面。三塊都完整保留原尺寸／可讀性，
+                                // 新聞卡變大後若螢幕裝不下，交給外層既有的
+                                // `SingleChildScrollView` 捲動（本頁本來就可捲動，
+                                // 並非新增行為）。
                                 _buildTodayCard(),
                                 const SizedBox(height: AppSpacing.lg),
                                 _buildNextDoseCard(),
@@ -897,7 +906,19 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
   /// 塞不下原本 406px 的大圖版新聞卡；但在平板或桌機視窗上，砍掉通話
   /// 大鈕之後會空出兩三百 px，維持精簡列就顯得空盪。
   ///
-  /// 回傳 0 表示空間不足、走精簡橫列；大於 0 則是大圖的高度。
+  /// ★ 第五十輪（任務 A）：舊邏輯在真實長輩手機（可用高度約 510px）算出
+  /// `leftover < 190`，永遠退回精簡橫列（縮圖＋兩行標題），這正是長輩覺得
+  /// 「今日頭條不見了」的根因——功能其實還在拉真實新聞，只是被壓成一列
+  /// 不起眼的小字。
+  ///
+  /// 改法：不再有「空間不足就退回小列」的分支，一律採用大圖直式的醒目頭條
+  /// 版面；空間真的不夠時交給外層既有的 `SingleChildScrollView`
+  /// （`elder_home_tab.dart` 首頁 Column 外層，`BouncingScrollPhysics`）捲動，
+  /// 不犧牲新聞的可讀性，也不去動「今天」／「下一包藥」兩張健康相關卡片
+  /// 的大小與可讀性。
+  ///
+  /// 回傳值恆大於 0，為大圖的高度（依剩餘空間微調，但有明確下限，不會再
+  /// 縮到讓人以為功能消失的程度）。
   double _availableNewsImageHeight(BuildContext context) {
     final mq = MediaQuery.of(context);
     // 版面固定開銷：頂部封面帶 52 ＋ sheet 偏移 42 ＋ 內距 44；
@@ -905,33 +926,34 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     final double available = mq.size.height - mq.padding.top - 138 - 130;
     // 其餘區塊的實測高度：今天卡 182、下一包藥 118、兩個間距 48、
     // 新聞標題列 36 ＋ 間距 8。下一包藥全部完成時會更矮，這裡取較高值
-    // 保守估計，寧可少長一點也不要讓畫面被迫捲動。
+    // 保守估計。
     const double usedByOthers = 182 + 24 + 118 + 24 + 44;
     final double leftover = available - usedByOthers;
 
-    // 精簡橫列本身約需 80px。要長成大圖至少得多出 190px 才划算，
-    // 否則只是把小圖放大、反而擠掉呼吸空間。
-    if (leftover < 190) return 0;
-    return (leftover - 70).clamp(120.0, 300.0);
+    // 下限 170：比舊版「精簡橫列」的 64px 縮圖明顯醒目許多，即使 leftover
+    // 算出來是負值（超小螢幕）也維持這個下限，多出來的部分交給捲動吸收。
+    return leftover.clamp(170.0, 260.0);
   }
 
   Widget _buildFeaturedNewsCard() {
     final double bigImageH = _availableNewsImageHeight(context);
+    // ★ 第五十輪（任務 A）：標題字級 20→26，紅點提示也跟著放大，讓「今日
+    // 頭條」這個區塊標籤本身就更醒目，不再像是順手加的小標籤。
     Widget header = Row(
       children: [
         Container(
-          width: 10,
-          height: 10,
+          width: 14,
+          height: 14,
           decoration: const BoxDecoration(
             color: Colors.redAccent,
             shape: BoxShape.circle,
           ),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: 10),
         Text(
           '今日頭條',
           style: GoogleFonts.notoSansTc(
-            fontSize: 20,
+            fontSize: 26,
             fontWeight: FontWeight.w900,
             color: AppColors.textPrimary,
           ),
@@ -945,16 +967,18 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
         children: [
           header,
           const SizedBox(height: 8),
+          // 載入中的佔位框跟著大圖版面等高，避免「標題大、內容框小」的
+          // 視覺落差，也讓使用者感覺得到「這裡本來就是一張大卡片」。
           Container(
-            height: 72,
+            height: bigImageH,
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(20),
             ),
             child: const SizedBox(
-              width: 24,
-              height: 24,
+              width: 28,
+              height: 28,
               child: CircularProgressIndicator(strokeWidth: 3),
             ),
           ),
@@ -963,6 +987,10 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     }
 
     if (_newsItems.isEmpty) {
+      // ★ 第五十輪（任務 A）：舊文案「目前沒有新聞，稍後再看看」太不起眼，
+      // 長輩會誤以為「頭條」這個功能被拿掉了。改成明確的「還在整理中」，
+      // 並保留跟有新聞時一樣大的卡片框架（含大圖佔位區），不整塊塌成一行
+      // 小字——外觀上仍然是「今日頭條」那張大卡片，只是內容還沒到。
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -974,7 +1002,30 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
               color: Colors.white,
               borderRadius: BorderRadius.circular(20),
             ),
-            child: Text('目前沒有新聞，稍後再看看', style: ElderScale.body),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: double.infinity,
+                  height: bigImageH,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(
+                    Icons.newspaper_rounded,
+                    size: 40,
+                    color: AppColors.primary.withValues(alpha: 0.6),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  '今天的新聞還在整理中，請稍候',
+                  style: ElderScale.body,
+                ),
+              ],
+            ),
           ),
         ],
       );
@@ -1019,7 +1070,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
             onTap: () => _openNewsListenPlayer(item),
             borderRadius: BorderRadius.circular(20),
             child: Container(
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.all(14), // 8→14，卡片更有份量
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(20),
@@ -1032,8 +1083,9 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                 ],
               ),
               child: Flex(
-                // 空間夠就大圖在上、標題在下（直排）；不夠就縮圖在左、
-                // 標題在右（橫排）。同一份內容與同一組導覽目的地，只換排法。
+                // 第五十輪起 `_availableNewsImageHeight` 恆回傳正值，這裡
+                // 實務上一律走「大圖在上、標題在下」的直排；橫排（縮圖在左）
+                // 分支保留當作極端情況的防禦性後備，不刪除既有邏輯。
                 direction: bigImageH > 0 ? Axis.vertical : Axis.horizontal,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1065,14 +1117,16 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // ★ 第五十輪（任務 A）：標題 17→22，符合「大標題」的
+                        // 長輩閱讀需求；仍保留 maxLines/ellipsis 防止溢位。
                         Text(
                           title,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: GoogleFonts.notoSansTc(
-                            fontSize: 17,
+                            fontSize: 22,
                             fontWeight: FontWeight.w800,
-                            height: 1.25,
+                            height: 1.3,
                             color: AppColors.textPrimary,
                           ),
                         ),

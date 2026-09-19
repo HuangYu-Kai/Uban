@@ -15,6 +15,14 @@ import '../../models/memoir_story.dart';
 import '../../services/memoir_service.dart';
 import '../../widgets/memoir_detail_sheet.dart';
 import 'memoirs_gallery_screen.dart';
+// ★ 第五十輪：健康趨勢與情緒關注卡片做好了卻沒有入口（`AiHubScreen` 從未被
+// 建構或導覽到，見該檔），本輪把這兩個「真的有資料」的畫面接回本分頁。
+// `VitalSignsWidget`（心率/步數/卡路里/睡眠）刻意不接——它的資料 100% 是
+// initState 硬編的假數字，`_loadVitalSigns()` 只是 delay 後填回同樣的常數，
+// 接進來等於在誠實的分頁裡塞一張假資料卡片，違反本輪誠實性要求，故留待
+// 之後真的接上裝置資料再處理。
+import 'health_trends_screen.dart';
+import 'widgets/emotion_preview_card.dart';
 
 /// ⚙️ 子女端「資料與設定」Tab (FamilyDataTab)
 /// 包含：照顧者資訊、關照長輩完整檔案、AI 陪伴偏好、人生故事膠囊、安全通知設定、裝置與訂閱管理
@@ -612,6 +620,15 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
                 _buildElderSummaryCard(),
                 const SizedBox(height: 18),
 
+                // 2.5 健康趨勢入口 + 情緒關注預覽卡（第五十輪：接回導覽，見檔頭註解）
+                _buildHealthTrendsEntryCard(),
+                const SizedBox(height: 18),
+                EmotionPreviewCard(
+                  elderName: widget.currentElder!.displayName,
+                  elderId: widget.currentElder!.id,
+                ),
+                const SizedBox(height: 18),
+
                 // 3. 長輩人生故事膠囊 (Memoirs & Family Legacy)
                 _buildMemoirsCard(),
                 const SizedBox(height: 18),
@@ -1126,6 +1143,90 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
         ],
       ),
     ).animate().fadeIn(delay: 50.ms, duration: 350.ms);
+  }
+
+  // ─── 2.5 健康趨勢入口卡 (Health Trends Entry) ───
+  // 第五十輪新增：`HealthTrendsScreen` 早就做好真實資料串接（步數/體重/身高），
+  // 但全專案沒有任何入口導覽過去，屬於死碼。這裡補一張入口卡，點下去進
+  // `HealthTrendsScreen`；心率/血壓/血糖仍會顯示 `--`，那是該畫面自己誠實
+  // 標示「需穿戴裝置，目前無法偵測」，不在本卡片重複描述細節。
+
+  Widget _buildHealthTrendsEntryCard() {
+    if (widget.currentElder == null) return const SizedBox.shrink();
+    final elder = widget.currentElder!;
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(24),
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => HealthTrendsScreen(
+              elderName: elder.displayName,
+              elderId: elder.id,
+            ),
+          ),
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: cs.surface,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: cs.outline, width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: (isDark ? Colors.black : cs.outline).withValues(alpha: isDark ? 0.35 : 0.08),
+              blurRadius: 6,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: cs.secondary,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: cs.outline, width: 1.2),
+              ),
+              child: Icon(Icons.show_chart_rounded, color: cs.onSecondary, size: 24),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // ★ 鐵律 #14：同列還有固定寬度的箭頭 icon，標題包 Flexible +
+                  // ellipsis 可收縮，避免窄螢幕或放大字級時溢位。
+                  Flexible(
+                    child: Text(
+                      '健康趨勢',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                        color: cs.onSurface,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '步數、體重與身高的時間序紀錄',
+                    style: GoogleFonts.notoSansTc(fontSize: 13, color: cs.onSurfaceVariant, fontWeight: FontWeight.w500),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.arrow_forward_ios_rounded, color: cs.outline, size: 16),
+          ],
+        ),
+      ),
+    ).animate().fadeIn(delay: 75.ms, duration: 350.ms);
   }
 
   // ─── 3. 人生故事膠囊 (Memoirs & Family Legacy) ───

@@ -14,8 +14,11 @@ import '../identification_screen.dart';
 import '../../services/session_manager.dart';
 import '../../services/api_service.dart';
 import '../../services/friend_service.dart';
+import '../../utils/error_handler.dart';
 import '../pet_companion_studio/models/pet_growth_state.dart';
 import '../pet_companion_studio/models/pet_food_item.dart';
+import '../pet_companion_studio/services/pet_leaderboard_service.dart';
+import '../pet_companion_studio/services/pet_progress_service.dart';
 import '../pet_companion_studio/widgets/garden_feeding_sheet.dart';
 import '../../services/elder_reminder_manager.dart';
 import '../../widgets/spotlight_tutorial.dart';
@@ -115,7 +118,22 @@ class _ElderProfileTabState extends State<ElderProfileTab>
   // ★ 第四十一輪（item 3）：朋友圈好友 ID（見 PetCornerActions 內部另行解析，
   // 本欄位供 _loadElderReminders 讀排程提醒使用）。null 代表尚未載入完成或
   // 載入失敗。
+  // ★ 第五十輪：同時也是好友寵物排行榜（PetLeaderboardService）與今日食物
+  // 解鎖來源（PetProgressService.loadFoodUnlocks）要用的權威 elder_id，
+  // 三者共用同一把鍵，理由同 _loadElderReminders 的既有註解——不可各自
+  // 用 widget.userId 補零臆測。
   String? _myFriendElderId;
+
+  // ★ 第五十輪：好友寵物排行榜「初次同步」只做一次，避免每次 setState／
+  // rebuild 都重打一次後端。比照 pet_studio_screen.dart 的
+  // _hasSyncedInitialWeight 做法。
+  bool _hasSyncedInitialWeight = false;
+
+  // ★ 第五十輪：今日食物解鎖來源（步數／服藥打卡次數，
+  // `GET /api/pet/food-unlocks/{elder_id}`）。null 代表尚未載入成功，此時
+  // 退回裝置端既有的步數來源、服藥打卡次數視為 0（等同「只靠步數解鎖」的
+  // 舊行為，見下方 _effectiveStepsForUnlock／_medicationCheckinsToday）。
+  PetFoodUnlockSource? _unlockSource;
 
   // ── 📋 子女排程生活任務 ──────────────────────────────────
   List<Map<String, dynamic>> _reminders = [];
@@ -153,7 +171,29 @@ class _ElderProfileTabState extends State<ElderProfileTab>
       setState(() {
         _petGrowthState = state;
       });
+      // ★ 第五十輪：本機存檔載入完成是「進場初次同步」兩個先決條件之一
+      // （另一個是 _myFriendElderId 解析完成，見 _loadMyFriendElderId），見
+      // _maybeSyncInitialWeight 的說明。
+      _maybeSyncInitialWeight();
     }
+  }
+
+  // ★ 第五十輪：讀取食物庫存持久化狀態（PetStorageService.loadFoodInventory），
+  // 蓋掉 _feedingInventory 的出廠預設值——沒有持久化紀錄的食物 id（例如舊
+  // 使用者第一次升級到本輪、或該食物從未被扣過庫存）維持出廠預設不變。
+  // carrot 是常駐無限，即使持久化資料裡意外出現這把鍵也不採用，避免手滑
+  // 把常駐食物寫死成有限量。
+  Future<void> _loadFeedingInventory() async {
+    final saved = await PetStorageService.loadFoodInventory();
+    if (!mounted || saved.isEmpty) return;
+    setState(() {
+      for (final entry in saved.entries) {
+        if (entry.key == 'carrot') continue;
+        if (_feedingInventory.containsKey(entry.key)) {
+          _feedingInventory[entry.key] = entry.value;
+        }
+      }
+    });
   }
 
   // ★ 第四十一輪（item 3）：讀取朋友圈好友 ID。權威來源是後端 elder_profile
@@ -166,6 +206,86 @@ class _ElderProfileTabState extends State<ElderProfileTab>
       // 出的 elder_id（見該函式說明）。initState 呼叫 _loadElderReminders 時
       // 本欄位通常還沒載入完成而被暫緩，這裡載入完成後補發一次真正的讀取。
       _loadElderReminders();
+      // ★ 第五十輪：elder_id 解析完成是「進場初次同步」另一個先決條件，見
+      // _maybeSyncInitialWeight 的說明。同時順便刷新今日食物解鎖來源
+      // （步數／服藥打卡次數），讓用藥打卡真的能換到食物解鎖（過去
+      // medicationCheckinsToday 恆為 0，見 _refreshFoodUnlocks 說明）。
+      _maybeSyncInitialWeight();
+      _refreshFoodUnlocks();
+    }
+  }
+
+  /// 進入小豬之家時做一次初次體重同步，讓「從沒餵過食」的長輩也會出現在
+  /// 好友排行榜——否則 `my_rank` 永遠是 null（見
+  /// `pet_leaderboard_card.dart:223` 的空狀態文案「你的寵物體重還沒同步上榜」）。
+  ///
+  /// 比照 `pet_studio_screen.dart` 的 `_maybeSyncInitialWeight`：本機存檔
+  /// （[_loadPetGrowthState]）與好友 elder_id 解析（[_loadMyFriendElderId]）
+  /// 是兩個互相獨立的非同步流程，哪個先完成都在這裡因為另一項還沒就緒而
+  /// 先行返回，等兩者都到齊時才由後完成的一方補上這一次同步——這樣才不會
+  /// 用還沒套用本機存檔的預設體重（1250g）搶先上傳。
+  ///
+  /// 刻意只做背景同步、不彈訊息——被動進場同步失敗不像主動餵食（見
+  /// [_handleFeedFood]）那樣需要長輩立刻注意，下次餵食或重新整理時會自然
+  /// 再試一次，此處若也跳警示只會讓長輩一打開畫面就看到看不懂的錯誤提示。
+  void _maybeSyncInitialWeight() {
+    if (_hasSyncedInitialWeight ||
+        _petGrowthState == null ||
+        _myFriendElderId == null) {
+      return;
+    }
+    _hasSyncedInitialWeight = true;
+    unawaited(_syncWeightToLeaderboard(_petGrowthState!.weightGrams).then((ok) {
+      if (!ok) {
+        debugPrint('⚠️ [ElderProfileTab] 初次寵物體重同步到排行榜失敗，不影響既有寵物養成功能');
+      }
+    }));
+  }
+
+  /// 重新整理「今日食物解鎖來源」（步數／服藥打卡次數，
+  /// `GET /api/pet/food-unlocks/{elder_id}`）。elder_id 還沒解析出來時直接
+  /// 跳過——[_unlockSource] 維持 null，[_effectiveStepsForUnlock]／
+  /// [_medicationCheckinsToday] 會自動退回裝置端步數與 0 次打卡，等同
+  /// 「只靠步數解鎖」的既有行為，不影響既有的餵食流程。失敗只記 log
+  /// （[PetProgressService] 內部已處理過），不彈錯誤對話框——這只是食匣裡
+  /// 「今天達成了沒」的顯示資訊，不是餵食動作本身，失敗不需要打斷長輩。
+  Future<void> _refreshFoodUnlocks() async {
+    final eid = _myFriendElderId;
+    if (eid == null) return;
+    final source = await PetProgressService.loadFoodUnlocks(eid);
+    if (mounted && source != null) {
+      setState(() => _unlockSource = source);
+    }
+  }
+
+  /// 今日步數——優先用後端答案（`elder_daily_step` 的即時資料），答不出來
+  /// （null，代表後端查詢失敗或該表在目前環境不存在）時退回裝置端既有的
+  /// 步數來源（[currentSteps]，GPS＋計步器融合值，見 [_computeFusedSteps]）。
+  int get _effectiveStepsForUnlock => _unlockSource?.todaySteps ?? currentSteps;
+
+  /// 今日服藥打卡次數；還沒有後端資料時視為 0（等同不提供打卡解鎖加成，
+  /// 只靠步數，不影響既有行為）。
+  int get _medicationCheckinsToday =>
+      _unlockSource?.medicationCheckinsToday ?? 0;
+
+  /// 把目前體重同步到後端好友排行榜（`POST /api/pet/state`）。
+  ///
+  /// 比照 `pet_studio_screen.dart::_syncWeightToLeaderboard`：
+  /// `PetLeaderboardService.uploadMyState` 內部已經 try/catch 過一層，這裡
+  /// 再包一層防禦性 try/catch 只是避免未來改版又開始拋例外，回傳
+  /// bool 讓呼叫端（[_handleFeedFood] 主動餵食／[_maybeSyncInitialWeight]
+  /// 被動進場）各自決定要不要提示使用者。
+  Future<bool> _syncWeightToLeaderboard(int weightGrams) async {
+    final eid = _myFriendElderId;
+    if (eid == null) return false;
+    try {
+      return await PetLeaderboardService.uploadMyState(
+        elderId: eid,
+        weightGrams: weightGrams,
+      );
+    } catch (e) {
+      debugPrint('⚠️ [ElderProfileTab] 寵物體重同步到排行榜例外: $e');
+      return false;
     }
   }
 
@@ -188,6 +308,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     _loadElderReminders();
     ElderReminderManager.instance.addListener(_onReminderManagerUpdate);
     _loadPetGrowthState();
+    _loadFeedingInventory();
     _loadMyFriendElderId();
   }
 
@@ -658,16 +779,36 @@ class _ElderProfileTabState extends State<ElderProfileTab>
   // 🥕 開啟食匣抽屜——個人分頁本身就是小豬之家，不再跳轉到 PetStudioScreen。
   void _openFeedingSheet() {
     HapticFeedback.selectionClick();
+    // ★ 第五十輪：開抽屜前順便刷新一次今日食物解鎖來源，避免長輩剛完成
+    // 用藥打卡／散步達標，食匣卻還顯示舊資料的「鎖定」狀態。失敗不影響開
+    // 抽屜本身（見 _refreshFoodUnlocks 的說明）。
+    unawaited(_refreshFoodUnlocks());
     setState(() => _isFeedingSheetOpen = true);
   }
 
   // ── 核心餵食邏輯（逐一比照 pet_studio_screen.dart 的 _handleFeedFood）──
-  void _handleFeedFood(PetFoodItem food) {
+  //
+  // ★ 第五十輪修復：過去本函式只更新本機 state＋PetStorageService.saveState，
+  // 全檔沒有任何 PetLeaderboardService 呼叫——長輩因此從不存在於後端
+  // elder_pet_state 表，好友排行榜的 my_rank 永遠是 null（見
+  // pet_leaderboard_card.dart:223 的空狀態文案）。現在餵食後會額外：
+  // ① 把新體重同步到後端排行榜；② 把新庫存持久化（見 PetStorageService.
+  // saveFoodInventory，任務 C），讓「食物有限」在重開 App 後依然有限。
+  //
+  // ⚠️ 誠實性鐵律：本機餵食（體重／活力／已餵食物集合）一律照常成功並
+  // 立即套用——小豬「已經把食物吃下去」是真實發生、不需要網路確認的本機
+  // 事實，不能因為後端同步失敗就整個回滾（那樣反而是另一種造假：長輩明明
+  // 看到小豬吃了東西，畫面卻假裝沒發生過）。但**顯示的訊息**必須誠實反映
+  // 後端同步的實際結果：同步成功才顯示「餵食成功」，同步失敗要換成可重試
+  // 的提示文案，不可以讓長輩以為排行榜已經更新。
+  Future<void> _handleFeedFood(PetFoodItem food) async {
     final growthState = _effectiveGrowthState;
     final currentCount = _feedingInventory[food.id] ?? food.initialCount;
     if (!food.isUnlimited && currentCount <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('【${food.name}】已經吃完囉～多散步解鎖新食材吧！🌾')),
+      if (!mounted) return;
+      ErrorHandler.showWarning(
+        context,
+        '【${food.name}】已經吃完囉～多散步解鎖新食材吧！🌾',
       );
       return;
     }
@@ -687,12 +828,30 @@ class _ElderProfileTabState extends State<ElderProfileTab>
       }
     });
 
-    PetStorageService.saveState(newState);
+    await PetStorageService.saveState(newState);
+    // 任務 C：食物庫存持久化，不 await——庫存寫檔慢不應該拖慢餵食後的
+    // 排行榜同步與訊息顯示，且與體重存檔（上面那行）一樣屬於「盡力而為」
+    // 的本機寫入，SharedPreferences 幾乎不會失敗。
+    unawaited(PetStorageService.saveFoodInventory(_feedingInventory));
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-          content: Text('小豬大口吃下了【${food.name}】！活力 +${food.vitalityGain} ✨')),
-    );
+    final bool synced = await _syncWeightToLeaderboard(newState.weightGrams);
+    if (!mounted) return;
+
+    if (synced) {
+      ErrorHandler.showSuccess(
+        context,
+        '小豬大口吃下了【${food.name}】！活力 +${food.vitalityGain} ✨',
+      );
+    } else {
+      // 誠實性鐵律：本機餵食已經生效（上面 setState／saveState 都已完成），
+      // 但排行榜同步失敗，不可以顯示「餵食成功」誤導長輩以為排行榜也更新
+      // 了。下次餵食會自然重新呼叫本函式再試一次同步，不需要額外的重試
+      // 按鈕。
+      ErrorHandler.showWarning(
+        context,
+        '小豬已經吃下【${food.name}】，但體重排行榜同步失敗，下次餵食會自動重試',
+      );
+    }
   }
 
   void _handleLogout() {
@@ -849,7 +1008,14 @@ class _ElderProfileTabState extends State<ElderProfileTab>
             child: GardenFeedingSheet(
               isLandscape: isLandscape,
               foodInventory: _feedingInventory,
-              currentSteps: currentSteps,
+              // ★ 第五十輪修復：過去這裡永遠傳裝置端 currentSteps，
+              // medicationCheckinsToday 恆為預設值 0——用藥打卡換食物解鎖
+              // 在正式畫面從未生效。改用 _effectiveStepsForUnlock／
+              // _medicationCheckinsToday，優先採後端 GET /api/pet/
+              // food-unlocks/{elder_id} 的答案，答不出來才退回裝置端步數
+              // 與 0 次打卡（見兩個 getter 的說明）。
+              currentSteps: _effectiveStepsForUnlock,
+              medicationCheckinsToday: _medicationCheckinsToday,
               onFeedFood: _handleFeedFood,
               onClose: () => setState(() => _isFeedingSheetOpen = false),
             ),
@@ -877,6 +1043,9 @@ class _ElderProfileTabState extends State<ElderProfileTab>
           // 直向手機寬度有限，膠囊改精簡圖示橫排，把空間讓給問候語與對話氣泡
           topRightActions:
               PetCornerActions(userId: widget.userId, compact: true),
+          // ★ 第五十輪修復：拖曳餵食與食匣按鈕餵食走同一條路徑，見
+          // PetHeroStage.onFoodAccepted 欄位說明。
+          onFoodAccepted: _handleFeedFood,
         ),
 
         Padding(
@@ -990,6 +1159,9 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                       speechText: _speechText,
                       greetingLine: greetingLine,
                       topRightActions: PetCornerActions(userId: widget.userId),
+                      // ★ 第五十輪修復：理由同直屏版本，見上方
+                      // _buildPortraitBody 對應的 PetHeroStage 註解。
+                      onFoodAccepted: _handleFeedFood,
                     ),
                     Transform.translate(
                       offset: const Offset(0, -24),

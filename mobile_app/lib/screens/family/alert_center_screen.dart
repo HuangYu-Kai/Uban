@@ -5,6 +5,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/predictive_alert_service.dart';
 import '../../services/api_service.dart';
+import '../../utils/error_handler.dart';
 
 /// 🚨 警示中心頁面
 ///
@@ -394,9 +395,9 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
     final familyUserId = prefs.getInt('caregiver_id');
     if (familyUserId == null) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('無法確認家屬身分，請重新登入後再試', style: GoogleFonts.notoSansTc())),
-      );
+      // ★ 第五十輪（適老化）：讀不到家屬身分是可重試的狀況（重新登入即可
+      // 解決），語意上是「警告」而非硬錯誤，改走 ErrorHandler.showWarning。
+      ErrorHandler.showWarning(context, '無法確認家屬身分，請重新登入後再試');
       return;
     }
 
@@ -414,16 +415,11 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
             };
           }
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('已標記為誤報', style: GoogleFonts.notoSansTc()),
-            backgroundColor: const Color(0xFF59B294),
-          ),
-        );
+        // ★ 第五十輪（適老化）：改用統一的大字級／高對比 SnackBar。
+        ErrorHandler.showSuccess(context, '已標記為誤報');
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('標記誤報失敗，請稍後再試', style: GoogleFonts.notoSansTc())),
-        );
+        // 可重試的失敗（後端暫時性錯誤），不是使用者操作錯誤，用 showWarning。
+        ErrorHandler.showWarning(context, '標記誤報失敗，請稍後再試');
       }
     } finally {
       if (mounted) setState(() => _falseAlarmPending.remove(itemId));
@@ -475,9 +471,8 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
     final familyUserId = prefs.getInt('caregiver_id');
     if (familyUserId == null) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('無法確認家屬身分，請重新登入後再試', style: GoogleFonts.notoSansTc())),
-      );
+      // ★ 第五十輪（適老化）：同 _markFalseAlarm，可重試的狀況用 showWarning。
+      ErrorHandler.showWarning(context, '無法確認家屬身分，請重新登入後再試');
       return;
     }
 
@@ -499,16 +494,9 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
             };
           }
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('已回報處理完畢', style: GoogleFonts.notoSansTc()),
-            backgroundColor: const Color(0xFF59B294),
-          ),
-        );
+        ErrorHandler.showSuccess(context, '已回報處理完畢');
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('回報失敗，請稍後再試', style: GoogleFonts.notoSansTc())),
-        );
+        ErrorHandler.showWarning(context, '回報失敗，請稍後再試');
       }
     } finally {
       if (mounted) setState(() => _resolvePending.remove(itemId));

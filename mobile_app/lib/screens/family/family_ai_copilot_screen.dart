@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import '../../models/elder.dart';
 import '../../services/api_service.dart';
+import '../../utils/error_handler.dart';
 
 /// 🤖 AI 照護共創助理對話視窗 (Family AI Care Co-pilot Screen) - 全新極光黑金極致 UI
 class FamilyAiCopilotScreen extends StatefulWidget {
@@ -73,20 +74,21 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
         final permStatus = await Permission.microphone.request();
         if (!permStatus.isGranted) {
           if (!mounted) return;
-          final messenger = ScaffoldMessenger.of(context);
-          messenger.clearSnackBars();
-          messenger.showSnackBar(SnackBar(
-            content: Text(
-              permStatus.isPermanentlyDenied
-                  ? '尚未開啟麥克風權限，請至系統設定開啟後再試一次'
-                  : '需要麥克風權限才能使用語音輸入',
-              style: GoogleFonts.notoSansTc(),
-            ),
+          // ★ 第五十輪（適老化）：改用統一的大字級／高對比 SnackBar 封裝，
+          // 「前往設定」操作用 showWarning 的 action 參數保留下來。
+          ErrorHandler.showWarning(
+            context,
+            permStatus.isPermanentlyDenied
+                ? '尚未開啟麥克風權限，請至系統設定開啟後再試一次'
+                : '需要麥克風權限才能使用語音輸入',
             action: permStatus.isPermanentlyDenied
-                ? SnackBarAction(label: '前往設定', onPressed: openAppSettings)
+                ? SnackBarAction(
+                    label: '前往設定',
+                    textColor: Colors.white,
+                    onPressed: openAppSettings,
+                  )
                 : null,
-            backgroundColor: const Color(0xFFEF4444),
-          ));
+          );
           return;
         }
 
@@ -103,12 +105,8 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
               debugPrint('⚠️ [FamilyCopilot STT Error] ${err.errorMsg}');
               if (!mounted) return;
               setState(() => _isListening = false);
-              ScaffoldMessenger.of(context)
-                ..clearSnackBars()
-                ..showSnackBar(SnackBar(
-                  content: Text('語音辨識發生錯誤，請改用打字或再試一次', style: GoogleFonts.notoSansTc()),
-                  backgroundColor: const Color(0xFFEF4444),
-                ));
+              // 可重試（改用打字或再試一次），非硬錯誤，用 showWarning。
+              ErrorHandler.showWarning(context, '語音辨識發生錯誤，請改用打字或再試一次');
             },
           );
         } catch (e) {
@@ -118,12 +116,8 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
 
         if (!_speechReady) {
           if (!mounted) return;
-          ScaffoldMessenger.of(context)
-            ..clearSnackBars()
-            ..showSnackBar(SnackBar(
-              content: Text('這台裝置目前無法使用語音輸入，請改用打字', style: GoogleFonts.notoSansTc()),
-              backgroundColor: const Color(0xFFEF4444),
-            ));
+          // 裝置能力限制、可改用打字繼續完成任務，用 showWarning 而非硬錯誤。
+          ErrorHandler.showWarning(context, '這台裝置目前無法使用語音輸入，請改用打字');
           return;
         }
       } finally {
@@ -180,9 +174,8 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
     if (familyUserId == null) {
       if (!mounted) return;
       setState(() => _isSending = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('無法確認家屬身分，請重新登入後再試', style: GoogleFonts.notoSansTc())),
-      );
+      // 可重試（重新登入即可解決），用 showWarning。
+      ErrorHandler.showWarning(context, '無法確認家屬身分，請重新登入後再試');
       return;
     }
 
@@ -246,7 +239,6 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
 
   Future<void> _confirmBatchSchedule(List<dynamic> drafts, int messageIndex) async {
     final elderIdStr = widget.currentElder?.elderId ?? widget.currentElder?.id.toString() ?? '2';
-    final messenger = ScaffoldMessenger.of(context);
 
     // 🔒 第四十九輪追加：family_id 同樣改讀真實家屬身分（見 _sendMessage
     // 的說明）。/api/reminder/batch_create 這支端點本身還沒有綁定驗證
@@ -256,27 +248,22 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
     final familyUserId = prefs.getInt('caregiver_id');
     if (familyUserId == null) {
       if (!mounted) return;
-      messenger.clearSnackBars();
-      messenger.showSnackBar(
-        SnackBar(content: Text('無法確認家屬身分，請重新登入後再試', style: GoogleFonts.notoSansTc())),
-      );
+      // 可重試（重新登入即可解決），用 showWarning。
+      ErrorHandler.showWarning(context, '無法確認家屬身分，請重新登入後再試');
       return;
     }
+    // ★ 上面 await SharedPreferences 之後才拿到 familyUserId，這裡是穿過
+    // async gap 後第一次要用 context，必須補一次 mounted 檢查（analyzer
+    // use_build_context_synchronously）。
+    if (!mounted) return;
 
     // 1. 立即更新 UI 反饋，按鈕轉為成功狀態
     setState(() {
       _chatMessages[messageIndex]['isApplied'] = true;
     });
 
-    messenger.clearSnackBars();
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text('✅ 已成功建立 ${drafts.length} 筆關懷排程，並同步至長輩端！', style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold)),
-        backgroundColor: const Color(0xFF10B981),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      ),
-    );
+    // ★ 第五十輪（適老化）：改用統一的大字級／高對比 SnackBar 封裝。
+    ErrorHandler.showSuccess(context, '已成功建立 ${drafts.length} 筆關懷排程，並同步至長輩端！');
 
     // 2. 背景異步同步寫入資料庫
     try {

@@ -198,7 +198,13 @@ class _HealthTrendsScreenState extends State<HealthTrendsScreen> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        automaticallyImplyLeading: false,
+        // ★ 第五十輪：本畫面原本 automaticallyImplyLeading: false 且沒有自訂
+        // leading，一旦用 Navigator.push 導覽進來就沒有返回鍵，是死路。
+        // 比照 emotion_timeline_screen.dart 補上明確的返回按鈕。
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Color(0xFF1E293B)),
+          onPressed: () => Navigator.pop(context),
+        ),
         title: Text(
           '健康趨勢',
           style: GoogleFonts.notoSansTc(

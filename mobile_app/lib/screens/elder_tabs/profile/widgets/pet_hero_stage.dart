@@ -4,10 +4,13 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../pet_companion_studio/models/pet_food_item.dart';
 import '../../../pet_companion_studio/models/pet_growth_state.dart';
+import '../../../pet_companion_studio/services/garden_ambient_audio_service.dart';
 import '../../../pet_companion_studio/widgets/animated_piglet_actor.dart';
 import '../../../pet_companion_studio/widgets/hand_drawn_piglet_actor.dart';
 import '../../../pet_companion_studio/widgets/pet_particle_canvas.dart';
+import 'pet_music_marquee.dart';
 
 /// 🏡🐷 小豬之家「主視覺舞台」──版面借用 Pokémon GO 寶可夢詳情頁的結構：
 /// 滿版主視覺 ＋ 置中大隻角色 ＋ 柔光粒子，但**只借版面、不借配色**。
@@ -33,6 +36,23 @@ class PetHeroStage extends StatefulWidget {
   /// 這個主視覺舞台佔螢幕高度的比例（0~1）。
   final double heightFactor;
 
+  /// ★ 第五十輪修復：拖曳食物到小豬身上時的餵食回呼。過去
+  /// [HandDrawnPigletActor] 內建的 `DragTarget<PetFoodItem>` 完全沒接線
+  /// （呼叫端沒傳這個參數），拖曳只會播放咀嚼動畫、不會真的餵食，長輩會以
+  /// 為拖曳餵食「壞掉了」。呼叫端請傳入與食匣按鈕餵食（`onFeedTap` 開啟的
+  /// `GardenFeedingSheet.onFeedFood`）**同一個**處理函式，讓兩條路徑走同一
+  /// 套邏輯（扣庫存、更新體重活力、寫回本機存檔、同步排行榜），不要各自
+  /// 兜一份邏輯出來，否則以後兩邊很容易改一邊漏一邊。null 時維持原行為
+  /// （拖曳只播動畫、不餵食）。
+  ///
+  /// ⚠️ 型別刻意比照 [HandDrawnPigletActor.onFoodAccepted] 用寬鬆的
+  /// `Function(PetFoodItem food)` 而非 `void Function(...)`——呼叫端
+  /// （elder_profile_tab.dart 的 `_handleFeedFood`）因為要 `await` 排行榜
+  /// 同步結果才能決定顯示成功或警告訊息，簽章是 `Future<void> Function(...)`；
+  /// Dart 允許非 void 回傳值的函式指派給期待 void 回傳的函式型別，但用同一
+  /// 種寬鬆型別更直接，不必依賴這條容易被忽略的語言細節。
+  final Function(PetFoodItem food)? onFoodAccepted;
+
   const PetHeroStage({
     super.key,
     required this.growthState,
@@ -40,6 +60,7 @@ class PetHeroStage extends StatefulWidget {
     required this.greetingLine,
     this.topRightActions,
     this.heightFactor = 0.42,
+    this.onFoodAccepted,
   });
 
   @override
@@ -143,7 +164,10 @@ class _PetHeroStageState extends State<PetHeroStage>
   /// 精簡圖示橫排（40px 圓鈕）＋ 上下內距；直向手機用這個值。
   /// 先前設 76 是沿用完整文字膠囊的高度，膠囊改精簡後等於白白吃掉
   /// 20px，小豬被壓得比該有的小。
-  static const double _topBarReserve = 56.0;
+  /// ★ 第五十輪：音樂出處跑馬燈（[PetMusicMarquee]）加到問候語列正上方後，
+  /// 頂部整體多佔用約 22px（18px 跑馬燈本體＋4px 與問候語列的間距），這裡
+  /// 從 56 調整為 78，避免小豬與跑馬燈打架、對話氣泡穿到跑馬燈後面變鬼影。
+  static const double _topBarReserve = 78.0;
 
   @override
   Widget build(BuildContext context) {
@@ -238,6 +262,8 @@ class _PetHeroStageState extends State<PetHeroStage>
                     mood: ActorMood.idle,
                     speechText: widget.speechText,
                     isCrownUnlocked: widget.growthState.isCrownUnlocked,
+                    // ★ 第五十輪修復：見上方 widget.onFoodAccepted 欄位說明。
+                    onFoodAccepted: widget.onFoodAccepted,
                   ),
                 );
               },
@@ -280,53 +306,76 @@ class _PetHeroStageState extends State<PetHeroStage>
               bottom: false,
               child: Padding(
                 padding: const EdgeInsets.only(top: 8),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Expanded(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color:
-                              const Color(0xFFFFFDF9).withValues(alpha: 0.82),
-                          borderRadius: BorderRadius.circular(18),
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(0xFF78350F)
-                                  .withValues(alpha: 0.10),
-                              blurRadius: 10,
-                              offset: const Offset(0, 3),
-                            ),
-                          ],
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            // ⚠️ 問候語含使用者姓名，長度不可控 → 必須
-                            // Flexible + ellipsis（鐵律 #14／護欄 G159）。
-                            Flexible(
-                              child: Text(
-                                widget.greetingLine,
-                                style: GoogleFonts.notoSansTc(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w900,
-                                  color: const Color(0xFF451A03),
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                    // 🎵 音樂出處跑馬燈——只在背景音樂播放中顯示，停播（含尚
+                    // 未初始化完成、被靜音）就整個隱藏，見
+                    // GardenAmbientAudioService.nowPlayingNotifier 的說明。
+                    // 字級刻意壓到最小（見 PetMusicMarquee 內部說明），純粹
+                    // 是版權標注、不是長輩需要辨讀的功能性文字，比照小豬之家
+                    // 其餘裝飾性文字（例如下方問候語膠囊、對話氣泡）一律用
+                    // 自訂小字級而非 ElderScale 的既有慣例。
+                    ValueListenableBuilder<GardenNowPlaying?>(
+                      valueListenable:
+                          GardenAmbientAudioService.nowPlayingNotifier,
+                      builder: (context, nowPlaying, _) {
+                        if (nowPlaying == null) return const SizedBox.shrink();
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: PetMusicMarquee(text: nowPlaying.attribution),
+                        );
+                      },
                     ),
-                    if (widget.topRightActions != null) ...[
-                      const SizedBox(width: 12),
-                      widget.topRightActions!,
-                    ],
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFFDF9)
+                                  .withValues(alpha: 0.82),
+                              borderRadius: BorderRadius.circular(18),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFF78350F)
+                                      .withValues(alpha: 0.10),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 3),
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                // ⚠️ 問候語含使用者姓名，長度不可控 → 必須
+                                // Flexible + ellipsis（鐵律 #14／護欄 G159）。
+                                Flexible(
+                                  child: Text(
+                                    widget.greetingLine,
+                                    style: GoogleFonts.notoSansTc(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.w900,
+                                      color: const Color(0xFF451A03),
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        if (widget.topRightActions != null) ...[
+                          const SizedBox(width: 12),
+                          widget.topRightActions!,
+                        ],
+                      ],
+                    ),
                   ],
                 ),
               ),

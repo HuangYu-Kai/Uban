@@ -1712,11 +1712,16 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       barrierDismissible: false,
       builder: (c) {
         _activeCallDialogContext = c;
+        // ★ 第五十輪：需求只要長輩端放大 100%，但本函式是家屬端／長輩端 FCM 前景
+        //   備援**共用**同一份 build。這裡刻意不加 appRole/senderRole 判斷去分流
+        //   樣式——本檔屬 🔴 極高風險檔，新增任何條件分支都可能牽動來電路徑；
+        //   純視覺放大不值得為了「只放大一端」去承擔這個風險。取捨：家屬端的
+        //   app 內來電通知文字/按鈕也會一併變大，非需求本意但風險最低。
         return AlertDialog(
           title: Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(16), // 8→16，跟著圖示等比放大
                 decoration: BoxDecoration(
                   color: isEmergency ? Colors.red.shade100 : Colors.green.shade100,
                   borderRadius: BorderRadius.circular(12),
@@ -1724,16 +1729,28 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                 child: Icon(
                   isEmergency ? Icons.warning : Icons.phone_callback,
                   color: isEmergency ? Colors.red : Colors.green,
-                  size: 28,
+                  size: 56, // 28→56（100%）
                 ),
               ),
-              const SizedBox(width: 12),
-              Text(isEmergency ? '🚨 緊急來電' : '📞 來電通知'),
+              const SizedBox(width: 24), // 12→24
+              // 標題原本沒有 style（吃 AlertDialog 預設），這裡明確給放大後的樣式；
+              // 包 Flexible + ellipsis：同列還有圖示，避免窄螢幕溢位（硬規則 14）。
+              Flexible(
+                child: Text(
+                  isEmergency ? '🚨 緊急來電' : '📞 來電通知',
+                  style: const TextStyle(fontSize: 40, fontWeight: FontWeight.bold),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             ],
           ),
-          content: Text(
-            '$callerLabel 正在呼叫您！',
-            style: const TextStyle(fontSize: 18),
+          // 內容 18→36（100%）；外包 SingleChildScrollView 讓過長內容可捲動，
+          // 避免小螢幕高度不夠時溢位（硬規則 14）。
+          content: SingleChildScrollView(
+            child: Text(
+              '$callerLabel 正在呼叫您！',
+              style: const TextStyle(fontSize: 36),
+            ),
           ),
           backgroundColor: isEmergency ? Colors.red.shade50 : Colors.green.shade50,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -1744,12 +1761,22 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                 Navigator.pop(c);
                 sig.Signaling().sendCallBusy(senderId, callId: callId, room: roomId);
               },
-              icon: const Icon(Icons.call_end),
-              label: const Text('拒接', style: TextStyle(fontSize: 16)),
+              icon: const Icon(Icons.call_end, size: 40), // 圖示跟著放大
+              // 按鈕文字 16→32（100%）；包 Flexible + ellipsis：兩顆按鈕同列，
+              // 字放大後必須可收縮，否則窄螢幕（如 320dp）會撐爆 Row（硬規則 14）。
+              label: const Flexible(
+                child: Text(
+                  '拒接',
+                  style: TextStyle(fontSize: 32),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.red,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                // 20/12→40/24（100%），並保證最小點擊高度跟著放大。
+                padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
+                minimumSize: const Size(64, 84),
               ),
             ),
             ElevatedButton.icon(
@@ -1758,12 +1785,20 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                 Navigator.pop(c);
                 _navigateToVideoCall(roomId, senderId, callId: callId);
               },
-              icon: const Icon(Icons.videocam),
-              label: const Text('接聽', style: TextStyle(fontSize: 16)),
+              icon: const Icon(Icons.videocam, size: 40), // 圖示跟著放大
+              // 同上「拒接」按鈕的放大＋可收縮處理。
+              label: const Flexible(
+                child: Text(
+                  '接聽',
+                  style: TextStyle(fontSize: 32),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
+                minimumSize: const Size(64, 84),
               ),
             ),
           ],
