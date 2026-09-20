@@ -260,7 +260,10 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
   Future<void> _requestNewCode() async {
     setState(() => _isLoading = true);
     try {
-      final result = await ApiService.requestPairingCode();
+      // ★ 第五十輪任務 D：本畫面是「我是長者」首次上手（尚無帳號，由家屬
+      //   掃碼時建立），是唯一該送 newElder 的呼叫點。改成顯式宣告後，
+      //   其他流程若漏傳 elderId 會被後端擋下，不會再誤走這條註冊分支。
+      final result = await ApiService.requestPairingCode(null, newElder: true);
       if (!mounted) return;
 
 // 檢查 API 是否回傳錯誤

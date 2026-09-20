@@ -94,7 +94,9 @@ class ApiService {
     int age = 75,
   }) => PairingApi.createAutonomousElder(elderName: elderName, gender: gender, age: age);
 
-  static Future<Map<String, dynamic>> requestPairingCode([int? elderId]) => PairingApi.requestPairingCode(elderId);
+  static Future<Map<String, dynamic>> requestPairingCode(int? elderId,
+          {bool newElder = false}) =>
+      PairingApi.requestPairingCode(elderId, newElder: newElder);
   static Future<Map<String, dynamic>> checkPairingStatus(String code) => PairingApi.checkPairingStatus(code);
   static Future<Map<String, dynamic>> confirmPairing({
     required int familyId,

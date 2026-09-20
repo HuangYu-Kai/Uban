@@ -273,39 +273,6 @@ class CommunityService {
     );
   }
 
-  List<CommunityPost> _buildWelcomePosts(String userName) {
-    final now = DateTime.now();
-    return [
-      CommunityPost(
-        id: 'welcome-family',
-        authorName: '小美',
-        authorRole: 'family',
-        content: '$userName，今天有記得多喝水嗎？晚上再打電話給您！',
-        mood: '❤️',
-        createdAt: now.subtract(const Duration(minutes: 35)),
-        likeCount: 3,
-        comments: [
-          CommunityComment(
-            id: 'welcome-comment',
-            authorName: '阿明',
-            authorRole: 'family',
-            message: '大家都要記得喝水喔！',
-            createdAt: now.subtract(const Duration(minutes: 20)),
-          ),
-        ],
-      ),
-      CommunityPost(
-        id: 'welcome-neighbor',
-        authorName: '王阿姨',
-        authorRole: 'elder',
-        content: '早上去公園散步，桂花開了，聞起來很香。',
-        mood: '🌼',
-        createdAt: now.subtract(const Duration(hours: 3)),
-        likeCount: 5,
-      ),
-    ];
-  }
-
   String _storageKey(int userId) => '${_storageKeyPrefix}_$userId';
 
   void _ensureInitialized() {
