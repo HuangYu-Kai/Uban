@@ -1,6 +1,6 @@
 <mxfile host="app.diagrams.net">
   <diagram name="A01-長輩登入系統" id="0">
-    <mxGraphModel dx="3855" dy="2255" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1559" pageHeight="1853" math="0" shadow="0">
+    <mxGraphModel dx="1573" dy="1573" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1559" pageHeight="1853" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -16,31 +16,31 @@
         <mxCell id="zSQVsPfYB0kKDTqIQ2hv-4" parent="zSQVsPfYB0kKDTqIQ2hv-1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" value="出示 4 碼配對碼與 QR" vertex="1">
           <mxGeometry height="48" width="236" x="26" y="1007" as="geometry" />
         </mxCell>
-        <mxCell id="zSQVsPfYB0kKDTqIQ2hv-5" parent="1" style="swimlane;html=1;horizontal=1;startSize=40;fillColor=none;strokeColor=#000000;fontSize=24;fontColor=#000000;fontStyle=0;swimlaneFillColor=none;collapsible=0;" value="長輩機 App" vertex="1">
+        <mxCell id="zSQVsPfYB0kKDTqIQ2hv-5" parent="1" style="swimlane;html=1;horizontal=1;startSize=40;fillColor=none;strokeColor=#000000;fontSize=24;fontColor=#000000;fontStyle=0;swimlaneFillColor=none;collapsible=0;" value="長輩端 App" vertex="1">
           <mxGeometry height="1773" width="559" x="327.99993896484375" y="40" as="geometry" />
         </mxCell>
-        <mxCell id="zSQVsPfYB0kKDTqIQ2hv-6" parent="zSQVsPfYB0kKDTqIQ2hv-5" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" value="SplashScreen 讀取&lt;br&gt;prefs: user_role /&lt;br&gt;saved_role" vertex="1">
+        <mxCell id="zSQVsPfYB0kKDTqIQ2hv-6" parent="zSQVsPfYB0kKDTqIQ2hv-5" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" value="啟動讀取已儲存的使用者" vertex="1">
           <mxGeometry height="100" width="228" x="166" y="289" as="geometry" />
         </mxCell>
-        <mxCell id="zSQVsPfYB0kKDTqIQ2hv-7" parent="zSQVsPfYB0kKDTqIQ2hv-5" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" value="本機已有&lt;br&gt;elder_id？" vertex="1">
+        <mxCell id="zSQVsPfYB0kKDTqIQ2hv-7" parent="zSQVsPfYB0kKDTqIQ2hv-5" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;align=center;" value="&lt;div&gt;本機是否已綁定&lt;br&gt;&lt;/div&gt;&lt;div&gt;長輩帳號&lt;/div&gt;" vertex="1">
           <mxGeometry height="126" width="212" x="174" y="443" as="geometry" />
         </mxCell>
-        <mxCell id="zSQVsPfYB0kKDTqIQ2hv-8" parent="zSQVsPfYB0kKDTqIQ2hv-5" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" value="IdentificationScreen&lt;br&gt;選擇『我是長者』" vertex="1">
+        <mxCell id="zSQVsPfYB0kKDTqIQ2hv-8" parent="zSQVsPfYB0kKDTqIQ2hv-5" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" value="身份選擇頁&lt;br&gt;選擇『我是長者』" vertex="1">
           <mxGeometry height="74" width="250" x="154" y="623" as="geometry" />
         </mxCell>
-        <mxCell id="zSQVsPfYB0kKDTqIQ2hv-9" parent="zSQVsPfYB0kKDTqIQ2hv-5" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" value="ElderPairingDisplayScreen&lt;br&gt;輪詢 check_status" vertex="1">
+        <mxCell id="zSQVsPfYB0kKDTqIQ2hv-9" parent="zSQVsPfYB0kKDTqIQ2hv-5" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" value="顯示配對碼並等待綁定&lt;div&gt;定時查詢是否已完成配對&lt;/div&gt;" vertex="1">
           <mxGeometry height="74" width="305" x="127" y="879" as="geometry" />
         </mxCell>
         <mxCell id="zSQVsPfYB0kKDTqIQ2hv-10" parent="zSQVsPfYB0kKDTqIQ2hv-5" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" value="本機角色&lt;br&gt;為監控機？" vertex="1">
           <mxGeometry height="126" width="212" x="174" y="1365" as="geometry" />
         </mxCell>
-        <mxCell id="zSQVsPfYB0kKDTqIQ2hv-11" parent="zSQVsPfYB0kKDTqIQ2hv-5" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" value="進入 ElderScreen&lt;br&gt;isCCTVMode = true" vertex="1">
+        <mxCell id="zSQVsPfYB0kKDTqIQ2hv-11" parent="zSQVsPfYB0kKDTqIQ2hv-5" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" value="進入監控機模式" vertex="1">
           <mxGeometry height="74" width="217" x="26" y="1545" as="geometry" />
         </mxCell>
         <mxCell id="zSQVsPfYB0kKDTqIQ2hv-12" parent="zSQVsPfYB0kKDTqIQ2hv-5" style="ellipse;html=1;shape=endState;fillColor=#000000;strokeColor=#000000;" value="" vertex="1">
           <mxGeometry height="46" width="46" x="111.5" y="1673" as="geometry" />
         </mxCell>
-        <mxCell id="zSQVsPfYB0kKDTqIQ2hv-13" parent="zSQVsPfYB0kKDTqIQ2hv-5" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" value="進入 ElderHomeScreen&lt;br&gt;五分頁主畫面" vertex="1">
+        <mxCell id="zSQVsPfYB0kKDTqIQ2hv-13" parent="zSQVsPfYB0kKDTqIQ2hv-5" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" value="進入長輩主頁面" vertex="1">
           <mxGeometry height="74" width="246" x="287" y="1545" as="geometry" />
         </mxCell>
         <mxCell id="zSQVsPfYB0kKDTqIQ2hv-14" parent="zSQVsPfYB0kKDTqIQ2hv-5" style="ellipse;html=1;shape=endState;fillColor=#000000;strokeColor=#000000;" value="" vertex="1">
@@ -58,13 +58,13 @@
             <mxPoint x="409.76006103515647" y="1673" as="targetPoint" />
           </mxGeometry>
         </mxCell>
-        <mxCell id="zSQVsPfYB0kKDTqIQ2hv-15" parent="1" style="swimlane;html=1;horizontal=1;startSize=40;fillColor=none;strokeColor=#000000;fontSize=24;fontColor=#000000;fontStyle=0;swimlaneFillColor=none;collapsible=0;" value="家屬機" vertex="1">
+        <mxCell id="zSQVsPfYB0kKDTqIQ2hv-15" parent="1" style="swimlane;html=1;horizontal=1;startSize=40;fillColor=none;strokeColor=#000000;fontSize=24;fontColor=#000000;fontStyle=0;swimlaneFillColor=none;collapsible=0;" value="家屬端 App" vertex="1">
           <mxGeometry height="1773" width="275" x="886.9999389648438" y="40" as="geometry" />
         </mxCell>
         <mxCell id="zSQVsPfYB0kKDTqIQ2hv-16" parent="zSQVsPfYB0kKDTqIQ2hv-15" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" value="輸入 4 碼或掃描 QR" vertex="1">
           <mxGeometry height="48" width="216" x="29" y="1109" as="geometry" />
         </mxCell>
-        <mxCell id="zSQVsPfYB0kKDTqIQ2hv-17" parent="zSQVsPfYB0kKDTqIQ2hv-15" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" value="家屬產生 6 碼復原碼&lt;br&gt;15 分鐘有效&lt;br&gt;verify_recovery" vertex="1">
+        <mxCell id="zSQVsPfYB0kKDTqIQ2hv-17" parent="zSQVsPfYB0kKDTqIQ2hv-15" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" value="家屬產生 6 碼復原碼&lt;br&gt;（15 分鐘有效）" vertex="1">
           <mxGeometry height="100" width="223" x="26" y="1211" as="geometry" />
         </mxCell>
         <mxCell id="zSQVsPfYB0kKDTqIQ2hv-41" edge="1" parent="zSQVsPfYB0kKDTqIQ2hv-15" source="zSQVsPfYB0kKDTqIQ2hv-23" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.998;entryY=0.394;entryDx=0;entryDy=0;entryPerimeter=0;" value="">
@@ -81,16 +81,16 @@
         <mxCell id="zSQVsPfYB0kKDTqIQ2hv-18" parent="1" style="swimlane;html=1;horizontal=1;startSize=40;fillColor=none;strokeColor=#000000;fontSize=24;fontColor=#000000;fontStyle=0;swimlaneFillColor=none;collapsible=0;" value="uban-api 後端" vertex="1">
           <mxGeometry height="1773" width="357" x="1161.9999389648438" y="40" as="geometry" />
         </mxCell>
-        <mxCell id="zSQVsPfYB0kKDTqIQ2hv-19" parent="zSQVsPfYB0kKDTqIQ2hv-18" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" value="user/status&lt;br&gt;回傳權威 role" vertex="1">
+        <mxCell id="zSQVsPfYB0kKDTqIQ2hv-19" parent="zSQVsPfYB0kKDTqIQ2hv-18" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" value="確認使用者身份" vertex="1">
           <mxGeometry height="74" width="170" x="94" y="623" as="geometry" />
         </mxCell>
-        <mxCell id="zSQVsPfYB0kKDTqIQ2hv-20" parent="zSQVsPfYB0kKDTqIQ2hv-18" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" value="pairing/request_code&lt;br&gt;產生 4 碼 · 10 分鐘有效" vertex="1">
+        <mxCell id="zSQVsPfYB0kKDTqIQ2hv-20" parent="zSQVsPfYB0kKDTqIQ2hv-18" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" value="產生家庭配對碼&lt;br&gt;（產生 4 碼 · 10 分鐘有效）" vertex="1">
           <mxGeometry height="74" width="269" x="44" y="751" as="geometry" />
         </mxCell>
-        <mxCell id="zSQVsPfYB0kKDTqIQ2hv-21" parent="zSQVsPfYB0kKDTqIQ2hv-18" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" value="confirm 確認配對碼" vertex="1">
+        <mxCell id="zSQVsPfYB0kKDTqIQ2hv-21" parent="zSQVsPfYB0kKDTqIQ2hv-18" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" value="確認配對碼" vertex="1">
           <mxGeometry height="48" width="218" x="70" y="1237" as="geometry" />
         </mxCell>
-        <mxCell id="zSQVsPfYB0kKDTqIQ2hv-22" parent="zSQVsPfYB0kKDTqIQ2hv-18" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" value="建立 user_account_data&lt;br&gt;elder_profile（4 碼&lt;br&gt;elder_id）&lt;br&gt;family_elder_relationship" vertex="1">
+        <mxCell id="zSQVsPfYB0kKDTqIQ2hv-22" parent="zSQVsPfYB0kKDTqIQ2hv-18" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" value="建立帳號與連結家庭關係" vertex="1">
           <mxGeometry height="126" width="305" x="26" y="1365" as="geometry" />
         </mxCell>
         <mxCell id="zSQVsPfYB0kKDTqIQ2hv-23" parent="zSQVsPfYB0kKDTqIQ2hv-18" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" value="配對碼作廢&lt;br&gt;重新產碼" vertex="1">
