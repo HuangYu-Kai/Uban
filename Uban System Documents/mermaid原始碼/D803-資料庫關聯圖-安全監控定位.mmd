@@ -1,0 +1,117 @@
+%%{init:{"layout":"elk","themeVariables":{"lineColor":"#000000","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","fontSize":"22px"}}}%%
+classDiagram
+  direction TB
+
+  class 長者檔案_參照 {
+    <<外部實體・T02>>
+    +String elder_id (PK)
+    +String elder_name
+  }
+
+  class 使用者帳戶_參照 {
+    <<外部實體・T01>>
+    +int user_id (PK)
+    +String user_name
+  }
+
+  class 串流狀態_cctv_feed_status {
+    +int feed_id (PK)
+    +int device_id
+    +String elder_id (FK)
+    +boolean yolo_detection_enabled
+    +DateTime last_frame_at
+    +String resolution_quality
+    +String status
+  }
+
+  class 緊急警報_emergency_alerts {
+    +int alert_id (PK)
+    +String elder_id (FK)
+    +int device_id
+    +String alert_type
+    +float confidence
+    +String snapshot_url
+    +String status
+    +int acknowledged_by (FK)
+    +int is_false_alarm
+    +int false_alarm_marked_by (FK)
+  }
+
+  class 監聽授權_alert_audio_permissions {
+    +int permission_id (PK)
+    +int alert_id (FK)
+    +int from_id (FK)
+    +int to_device_id
+    +boolean granted
+    +DateTime expire_at
+  }
+
+  class 設備綁定_monitor_device_binding {
+    +int id (PK)
+    +String elder_id (FK)
+    +int family_id (FK)
+    +String device_name
+    +int device_id
+    +DateTime last_seen_at
+  }
+
+  class 監控配對碼_monitor_setup_code {
+    +String code (PK)
+    +String elder_id (FK)
+    +int family_id (FK)
+    +String device_name
+    +DateTime expires_at
+    +DateTime used_at
+  }
+
+  class 連線防刷_monitor_device_ip {
+    +int id (PK)
+    +String elder_id (FK)
+    +String fcm_token_hash
+    +String ip_hash
+    +DateTime connected_at
+  }
+
+  class 防護分區設定_elder_zone_config {
+    +int id (PK)
+    +String elder_id (FK)
+    +int device_id
+    +Text zones
+    +DateTime updated_at
+  }
+
+  class 跨區滯留日誌_elder_zone_event {
+    +int id (PK)
+    +String elder_id (FK)
+    +int device_id
+    +String from_zone
+    +String to_zone
+    +float dwell_seconds
+    +DateTime occurred_at
+  }
+
+  長者檔案_參照 "1" -- "0..*" 串流狀態_cctv_feed_status : 畫面串流
+  長者檔案_參照 "1" -- "0..*" 緊急警報_emergency_alerts : 異常通報
+  使用者帳戶_參照 "0..1" -- "0..*" 緊急警報_emergency_alerts : 家屬覆核
+  緊急警報_emergency_alerts "1" -- "0..*" 監聽授權_alert_audio_permissions : 授權對話
+  使用者帳戶_參照 "1" -- "0..*" 監聽授權_alert_audio_permissions : 申請授權
+  長者檔案_參照 "1" -- "0..*" 設備綁定_monitor_device_binding : 安裝監視機
+  使用者帳戶_參照 "1" -- "0..*" 設備綁定_monitor_device_binding : 家屬綁定
+  使用者帳戶_參照 "1" -- "0..*" 監控配對碼_monitor_setup_code : 發行配對碼
+  長者檔案_參照 "1" -- "0..*" 監控配對碼_monitor_setup_code : 綁定長輩
+  長者檔案_參照 "1" -- "0..*" 連線防刷_monitor_device_ip : 連線稽核
+  長者檔案_參照 "1" -- "0..*" 防護分區設定_elder_zone_config : 室內電子圍籬
+  長者檔案_參照 "1" -- "0..*" 跨區滯留日誌_elder_zone_event : 移動足跡
+
+  classDef ent fill:#DAE8FC,stroke:#6C8EBF,stroke-width:1.5px,color:#102A43
+  classDef ref fill:#F5F5F5,stroke:#999999,stroke-width:1px,color:#444444
+  class 長者檔案_參照:::ref
+  class 使用者帳戶_參照:::ref
+  class 串流狀態_cctv_feed_status:::ent
+  class 緊急警報_emergency_alerts:::ent
+  class 監聽授權_alert_audio_permissions:::ent
+  class 設備綁定_monitor_device_binding:::ent
+  class 監控配對碼_monitor_setup_code:::ent
+  class 連線防刷_monitor_device_ip:::ent
+  class 防護分區設定_elder_zone_config:::ent
+  class 跨區滯留日誌_elder_zone_event:::ent

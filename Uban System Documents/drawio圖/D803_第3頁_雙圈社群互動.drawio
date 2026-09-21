@@ -1,0 +1,343 @@
+<mxfile host="uban-handbook">
+<diagram name="第3頁 社群動態與長輩家屬雙朋友圈 (T19~T31)" id="第3頁 社群動態與長輩家屬雙朋友圈 (T19~T31)">
+  <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1169" background="#FFFFFF" pageBackgroundColor="#FFFFFF" math="0" shadow="0">
+    <root>
+      <mxCell id="0"/>
+      <mxCell id="1" parent="0"/>
+<mxCell id="t19" value="T19 elder_fellowship_data 長輩交友舊版" style="swimlane;fontStyle=1;childLayout=stackLayout;horizontal=1;startSize=38;horizontalStack=0;resizeParent=0;resizeParentMax=0;resizeLast=0;collapsible=0;marginBottom=0;html=1;fontSize=17;fillColor=#E1D5E7;strokeColor=#9673A6;fontColor=#102A43;swimlaneFillColor=#FFFFFF;rounded=1;arcSize=6;" vertex="1" parent="1">
+  <mxGeometry x="60" y="60" width="340" height="190" as="geometry"/>
+</mxCell>
+<mxCell id="t19_a0" value="+varchar(4) requester_id (PK/FK)" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#B91C1C;fontStyle=1;fontSize=15;" vertex="1" parent="t19">
+  <mxGeometry y="38" width="340" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t19_a1" value="+varchar(4) addressee_id (PK/FK)" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#B91C1C;fontStyle=1;fontSize=15;" vertex="1" parent="t19">
+  <mxGeometry y="64" width="340" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t19_a2" value="+enum status" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#374151;fontStyle=0;fontSize=15;" vertex="1" parent="t19">
+  <mxGeometry y="90" width="340" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t19_a3" value="+timestamp create_ts" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#374151;fontStyle=0;fontSize=15;" vertex="1" parent="t19">
+  <mxGeometry y="116" width="340" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t20" value="T20 elder_friendship 長輩好友關係新版" style="swimlane;fontStyle=1;childLayout=stackLayout;horizontal=1;startSize=38;horizontalStack=0;resizeParent=0;resizeParentMax=0;resizeLast=0;collapsible=0;marginBottom=0;html=1;fontSize=17;fillColor=#E1D5E7;strokeColor=#9673A6;fontColor=#102A43;swimlaneFillColor=#FFFFFF;rounded=1;arcSize=6;" vertex="1" parent="1">
+  <mxGeometry x="440" y="60" width="340" height="230" as="geometry"/>
+</mxCell>
+<mxCell id="t20_a0" value="+int id (PK)" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#B91C1C;fontStyle=1;fontSize=15;" vertex="1" parent="t20">
+  <mxGeometry y="38" width="340" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t20_a1" value="+varchar(4) elder_id_low (FK)" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#1D4ED8;fontStyle=1;fontSize=15;" vertex="1" parent="t20">
+  <mxGeometry y="64" width="340" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t20_a2" value="+varchar(4) elder_id_high (FK)" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#1D4ED8;fontStyle=1;fontSize=15;" vertex="1" parent="t20">
+  <mxGeometry y="90" width="340" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t20_a3" value="+varchar status" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#374151;fontStyle=0;fontSize=15;" vertex="1" parent="t20">
+  <mxGeometry y="116" width="340" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t20_a4" value="+varchar(4) requester_elder_id (FK)" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#1D4ED8;fontStyle=1;fontSize=15;" vertex="1" parent="t20">
+  <mxGeometry y="142" width="340" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t20_a5" value="+timestamp created_at" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#374151;fontStyle=0;fontSize=15;" vertex="1" parent="t20">
+  <mxGeometry y="168" width="340" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t21" value="T21 friend_post 長輩動態貼文" style="swimlane;fontStyle=1;childLayout=stackLayout;horizontal=1;startSize=38;horizontalStack=0;resizeParent=0;resizeParentMax=0;resizeLast=0;collapsible=0;marginBottom=0;html=1;fontSize=17;fillColor=#E1D5E7;strokeColor=#9673A6;fontColor=#102A43;swimlaneFillColor=#FFFFFF;rounded=1;arcSize=6;" vertex="1" parent="1">
+  <mxGeometry x="250" y="350" width="370" height="220" as="geometry"/>
+</mxCell>
+<mxCell id="t21_a0" value="+int id (PK)" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#B91C1C;fontStyle=1;fontSize=15;" vertex="1" parent="t21">
+  <mxGeometry y="38" width="370" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t21_a1" value="+varchar(4) author_elder_id (FK)" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#1D4ED8;fontStyle=1;fontSize=15;" vertex="1" parent="t21">
+  <mxGeometry y="64" width="370" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t21_a2" value="+text content" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#374151;fontStyle=0;fontSize=15;" vertex="1" parent="t21">
+  <mxGeometry y="90" width="370" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t21_a3" value="+varchar image_url" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#374151;fontStyle=0;fontSize=15;" vertex="1" parent="t21">
+  <mxGeometry y="116" width="370" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t21_a4" value="+int like_count" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#374151;fontStyle=0;fontSize=15;" vertex="1" parent="t21">
+  <mxGeometry y="142" width="370" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t21_a5" value="+timestamp created_at" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#374151;fontStyle=0;fontSize=15;" vertex="1" parent="t21">
+  <mxGeometry y="168" width="370" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t22" value="T22 friend_post_comment 長輩貼文留言" style="swimlane;fontStyle=1;childLayout=stackLayout;horizontal=1;startSize=38;horizontalStack=0;resizeParent=0;resizeParentMax=0;resizeLast=0;collapsible=0;marginBottom=0;html=1;fontSize=17;fillColor=#E1D5E7;strokeColor=#9673A6;fontColor=#102A43;swimlaneFillColor=#FFFFFF;rounded=1;arcSize=6;" vertex="1" parent="1">
+  <mxGeometry x="60" y="630" width="340" height="190" as="geometry"/>
+</mxCell>
+<mxCell id="t22_a0" value="+int id (PK)" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#B91C1C;fontStyle=1;fontSize=15;" vertex="1" parent="t22">
+  <mxGeometry y="38" width="340" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t22_a1" value="+int post_id (FK)" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#1D4ED8;fontStyle=1;fontSize=15;" vertex="1" parent="t22">
+  <mxGeometry y="64" width="340" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t22_a2" value="+varchar(4) author_elder_id (FK)" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#1D4ED8;fontStyle=1;fontSize=15;" vertex="1" parent="t22">
+  <mxGeometry y="90" width="340" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t22_a3" value="+text content" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#374151;fontStyle=0;fontSize=15;" vertex="1" parent="t22">
+  <mxGeometry y="116" width="340" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t22_a4" value="+timestamp created_at" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#374151;fontStyle=0;fontSize=15;" vertex="1" parent="t22">
+  <mxGeometry y="142" width="340" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t23" value="T23 friend_post_like 長輩貼文按讚" style="swimlane;fontStyle=1;childLayout=stackLayout;horizontal=1;startSize=38;horizontalStack=0;resizeParent=0;resizeParentMax=0;resizeLast=0;collapsible=0;marginBottom=0;html=1;fontSize=17;fillColor=#E1D5E7;strokeColor=#9673A6;fontColor=#102A43;swimlaneFillColor=#FFFFFF;rounded=1;arcSize=6;" vertex="1" parent="1">
+  <mxGeometry x="440" y="630" width="340" height="190" as="geometry"/>
+</mxCell>
+<mxCell id="t23_a0" value="+int id (PK)" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#B91C1C;fontStyle=1;fontSize=15;" vertex="1" parent="t23">
+  <mxGeometry y="38" width="340" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t23_a1" value="+int post_id (FK)" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#1D4ED8;fontStyle=1;fontSize=15;" vertex="1" parent="t23">
+  <mxGeometry y="64" width="340" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t23_a2" value="+varchar(4) elder_id (FK)" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#1D4ED8;fontStyle=1;fontSize=15;" vertex="1" parent="t23">
+  <mxGeometry y="90" width="340" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t23_a3" value="+timestamp created_at" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#374151;fontStyle=0;fontSize=15;" vertex="1" parent="t23">
+  <mxGeometry y="116" width="340" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t24" value="T24 community_posts 家庭生活貼文板" style="swimlane;fontStyle=1;childLayout=stackLayout;horizontal=1;startSize=38;horizontalStack=0;resizeParent=0;resizeParentMax=0;resizeLast=0;collapsible=0;marginBottom=0;html=1;fontSize=17;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontColor=#102A43;swimlaneFillColor=#FFFFFF;rounded=1;arcSize=6;" vertex="1" parent="1">
+  <mxGeometry x="640" y="870" width="380" height="230" as="geometry"/>
+</mxCell>
+<mxCell id="t24_a0" value="+int id (PK)" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#B91C1C;fontStyle=1;fontSize=15;" vertex="1" parent="t24">
+  <mxGeometry y="38" width="380" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t24_a1" value="+int family_id" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#374151;fontStyle=0;fontSize=15;" vertex="1" parent="t24">
+  <mxGeometry y="64" width="380" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t24_a2" value="+int author_id (FK)" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#1D4ED8;fontStyle=1;fontSize=15;" vertex="1" parent="t24">
+  <mxGeometry y="90" width="380" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t24_a3" value="+varchar author_name" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#374151;fontStyle=0;fontSize=15;" vertex="1" parent="t24">
+  <mxGeometry y="116" width="380" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t24_a4" value="+text content" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#374151;fontStyle=0;fontSize=15;" vertex="1" parent="t24">
+  <mxGeometry y="142" width="380" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t24_a5" value="+int like_count" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#374151;fontStyle=0;fontSize=15;" vertex="1" parent="t24">
+  <mxGeometry y="168" width="380" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t24_a6" value="+timestamp created_at" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#374151;fontStyle=0;fontSize=15;" vertex="1" parent="t24">
+  <mxGeometry y="194" width="380" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t25" value="T25 community_comments 家庭貼文留言" style="swimlane;fontStyle=1;childLayout=stackLayout;horizontal=1;startSize=38;horizontalStack=0;resizeParent=0;resizeParentMax=0;resizeLast=0;collapsible=0;marginBottom=0;html=1;fontSize=17;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontColor=#102A43;swimlaneFillColor=#FFFFFF;rounded=1;arcSize=6;" vertex="1" parent="1">
+  <mxGeometry x="240" y="890" width="350" height="190" as="geometry"/>
+</mxCell>
+<mxCell id="t25_a0" value="+int id (PK)" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#B91C1C;fontStyle=1;fontSize=15;" vertex="1" parent="t25">
+  <mxGeometry y="38" width="350" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t25_a1" value="+int post_id (FK)" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#1D4ED8;fontStyle=1;fontSize=15;" vertex="1" parent="t25">
+  <mxGeometry y="64" width="350" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t25_a2" value="+int author_id (FK)" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#1D4ED8;fontStyle=1;fontSize=15;" vertex="1" parent="t25">
+  <mxGeometry y="90" width="350" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t25_a3" value="+text message" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#374151;fontStyle=0;fontSize=15;" vertex="1" parent="t25">
+  <mxGeometry y="116" width="350" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t25_a4" value="+timestamp created_at" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#374151;fontStyle=0;fontSize=15;" vertex="1" parent="t25">
+  <mxGeometry y="142" width="350" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t26" value="T26 community_post_likes 家庭貼文按讚" style="swimlane;fontStyle=1;childLayout=stackLayout;horizontal=1;startSize=38;horizontalStack=0;resizeParent=0;resizeParentMax=0;resizeLast=0;collapsible=0;marginBottom=0;html=1;fontSize=17;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontColor=#102A43;swimlaneFillColor=#FFFFFF;rounded=1;arcSize=6;" vertex="1" parent="1">
+  <mxGeometry x="1070" y="890" width="350" height="180" as="geometry"/>
+</mxCell>
+<mxCell id="t26_a0" value="+int id (PK)" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#B91C1C;fontStyle=1;fontSize=15;" vertex="1" parent="t26">
+  <mxGeometry y="38" width="350" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t26_a1" value="+int post_id (FK)" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#1D4ED8;fontStyle=1;fontSize=15;" vertex="1" parent="t26">
+  <mxGeometry y="64" width="350" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t26_a2" value="+int user_id (FK)" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#1D4ED8;fontStyle=1;fontSize=15;" vertex="1" parent="t26">
+  <mxGeometry y="90" width="350" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t26_a3" value="+timestamp created_at" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#374151;fontStyle=0;fontSize=15;" vertex="1" parent="t26">
+  <mxGeometry y="116" width="350" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t27" value="T27 family_friend_code 家屬專屬交友代碼" style="swimlane;fontStyle=1;childLayout=stackLayout;horizontal=1;startSize=38;horizontalStack=0;resizeParent=0;resizeParentMax=0;resizeLast=0;collapsible=0;marginBottom=0;html=1;fontSize=17;fillColor=#D5E8D4;strokeColor=#82B366;fontColor=#102A43;swimlaneFillColor=#FFFFFF;rounded=1;arcSize=6;" vertex="1" parent="1">
+  <mxGeometry x="860" y="60" width="340" height="180" as="geometry"/>
+</mxCell>
+<mxCell id="t27_a0" value="+int family_id (PK/FK)" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#B91C1C;fontStyle=1;fontSize=15;" vertex="1" parent="t27">
+  <mxGeometry y="38" width="340" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t27_a1" value="+varchar(4) family_code" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#374151;fontStyle=0;fontSize=15;" vertex="1" parent="t27">
+  <mxGeometry y="64" width="340" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t27_a2" value="+timestamp created_at" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#374151;fontStyle=0;fontSize=15;" vertex="1" parent="t27">
+  <mxGeometry y="90" width="340" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t28" value="T28 family_friendship 家屬好友關係" style="swimlane;fontStyle=1;childLayout=stackLayout;horizontal=1;startSize=38;horizontalStack=0;resizeParent=0;resizeParentMax=0;resizeLast=0;collapsible=0;marginBottom=0;html=1;fontSize=17;fillColor=#D5E8D4;strokeColor=#82B366;fontColor=#102A43;swimlaneFillColor=#FFFFFF;rounded=1;arcSize=6;" vertex="1" parent="1">
+  <mxGeometry x="1250" y="60" width="340" height="230" as="geometry"/>
+</mxCell>
+<mxCell id="t28_a0" value="+int id (PK)" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#B91C1C;fontStyle=1;fontSize=15;" vertex="1" parent="t28">
+  <mxGeometry y="38" width="340" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t28_a1" value="+int family_id_low (FK)" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#1D4ED8;fontStyle=1;fontSize=15;" vertex="1" parent="t28">
+  <mxGeometry y="64" width="340" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t28_a2" value="+int family_id_high (FK)" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#1D4ED8;fontStyle=1;fontSize=15;" vertex="1" parent="t28">
+  <mxGeometry y="90" width="340" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t28_a3" value="+varchar status" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#374151;fontStyle=0;fontSize=15;" vertex="1" parent="t28">
+  <mxGeometry y="116" width="340" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t28_a4" value="+int requester_family_id (FK)" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#1D4ED8;fontStyle=1;fontSize=15;" vertex="1" parent="t28">
+  <mxGeometry y="142" width="340" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t28_a5" value="+timestamp created_at" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#374151;fontStyle=0;fontSize=15;" vertex="1" parent="t28">
+  <mxGeometry y="168" width="340" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t29" value="T29 family_friend_post 家屬動態貼文" style="swimlane;fontStyle=1;childLayout=stackLayout;horizontal=1;startSize=38;horizontalStack=0;resizeParent=0;resizeParentMax=0;resizeLast=0;collapsible=0;marginBottom=0;html=1;fontSize=17;fillColor=#D5E8D4;strokeColor=#82B366;fontColor=#102A43;swimlaneFillColor=#FFFFFF;rounded=1;arcSize=6;" vertex="1" parent="1">
+  <mxGeometry x="1050" y="350" width="370" height="220" as="geometry"/>
+</mxCell>
+<mxCell id="t29_a0" value="+int id (PK)" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#B91C1C;fontStyle=1;fontSize=15;" vertex="1" parent="t29">
+  <mxGeometry y="38" width="370" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t29_a1" value="+int author_family_id (FK)" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#1D4ED8;fontStyle=1;fontSize=15;" vertex="1" parent="t29">
+  <mxGeometry y="64" width="370" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t29_a2" value="+text content" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#374151;fontStyle=0;fontSize=15;" vertex="1" parent="t29">
+  <mxGeometry y="90" width="370" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t29_a3" value="+varchar image_url" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#374151;fontStyle=0;fontSize=15;" vertex="1" parent="t29">
+  <mxGeometry y="116" width="370" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t29_a4" value="+int like_count" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#374151;fontStyle=0;fontSize=15;" vertex="1" parent="t29">
+  <mxGeometry y="142" width="370" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t29_a5" value="+timestamp created_at" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#374151;fontStyle=0;fontSize=15;" vertex="1" parent="t29">
+  <mxGeometry y="168" width="370" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t30" value="T30 family_friend_post_comment 家屬貼文留言" style="swimlane;fontStyle=1;childLayout=stackLayout;horizontal=1;startSize=38;horizontalStack=0;resizeParent=0;resizeParentMax=0;resizeLast=0;collapsible=0;marginBottom=0;html=1;fontSize=17;fillColor=#D5E8D4;strokeColor=#82B366;fontColor=#102A43;swimlaneFillColor=#FFFFFF;rounded=1;arcSize=6;" vertex="1" parent="1">
+  <mxGeometry x="860" y="630" width="340" height="190" as="geometry"/>
+</mxCell>
+<mxCell id="t30_a0" value="+int id (PK)" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#B91C1C;fontStyle=1;fontSize=15;" vertex="1" parent="t30">
+  <mxGeometry y="38" width="340" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t30_a1" value="+int post_id (FK)" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#1D4ED8;fontStyle=1;fontSize=15;" vertex="1" parent="t30">
+  <mxGeometry y="64" width="340" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t30_a2" value="+int author_family_id (FK)" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#1D4ED8;fontStyle=1;fontSize=15;" vertex="1" parent="t30">
+  <mxGeometry y="90" width="340" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t30_a3" value="+text content" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#374151;fontStyle=0;fontSize=15;" vertex="1" parent="t30">
+  <mxGeometry y="116" width="340" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t30_a4" value="+timestamp created_at" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#374151;fontStyle=0;fontSize=15;" vertex="1" parent="t30">
+  <mxGeometry y="142" width="340" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t31" value="T31 family_friend_post_like 家屬貼文按讚" style="swimlane;fontStyle=1;childLayout=stackLayout;horizontal=1;startSize=38;horizontalStack=0;resizeParent=0;resizeParentMax=0;resizeLast=0;collapsible=0;marginBottom=0;html=1;fontSize=17;fillColor=#D5E8D4;strokeColor=#82B366;fontColor=#102A43;swimlaneFillColor=#FFFFFF;rounded=1;arcSize=6;" vertex="1" parent="1">
+  <mxGeometry x="1250" y="630" width="340" height="190" as="geometry"/>
+</mxCell>
+<mxCell id="t31_a0" value="+int id (PK)" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#B91C1C;fontStyle=1;fontSize=15;" vertex="1" parent="t31">
+  <mxGeometry y="38" width="340" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t31_a1" value="+int post_id (FK)" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#1D4ED8;fontStyle=1;fontSize=15;" vertex="1" parent="t31">
+  <mxGeometry y="64" width="340" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t31_a2" value="+int family_id (FK)" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#1D4ED8;fontStyle=1;fontSize=15;" vertex="1" parent="t31">
+  <mxGeometry y="90" width="340" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="t31_a3" value="+timestamp created_at" style="text;strokeColor=none;fillColor=#FFFFFF;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontColor=#374151;fontStyle=0;fontSize=15;" vertex="1" parent="t31">
+  <mxGeometry y="116" width="340" height="26" as="geometry"/>
+</mxCell>
+<mxCell id="e3_1" value="發表貼文" style="edgeStyle=none;rounded=1;orthogonalLoop=1;html=1;exitX=0.50;exitY=1.00;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0.50;entryY=0.00;entryDx=0;entryDy=0;entryPerimeter=0;endArrow=classic;endFill=1;strokeColor=#4B5563;strokeWidth=2;fontSize=12;fontColor=#111827;labelBackgroundColor=#FFFFFF;labelBorderColor=#D1D5DB;" edge="1" parent="1" source="t20" target="t21">
+  <mxGeometry relative="1" as="geometry"><Array as="points">
+    <mxPoint x="610" y="320"/>
+    <mxPoint x="435" y="320"/>
+  </Array></mxGeometry>
+</mxCell>
+<mxCell id="e3_1_sc" value="1" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=12;fontStyle=1;fontColor=#4B5563;labelBackgroundColor=#FFFFFF;labelBorderColor=#D1D5DB;rounded=1;" vertex="1" connectable="0" parent="e3_1">
+  <mxGeometry x="-0.85" relative="1" as="geometry"><mxPoint as="offset"/></mxGeometry>
+</mxCell>
+<mxCell id="e3_1_ec" value="0..*" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=12;fontStyle=1;fontColor=#4B5563;labelBackgroundColor=#FFFFFF;labelBorderColor=#D1D5DB;rounded=1;" vertex="1" connectable="0" parent="e3_1">
+  <mxGeometry x="0.85" relative="1" as="geometry"><mxPoint as="offset"/></mxGeometry>
+</mxCell>
+<mxCell id="e3_2" value="評論留言" style="edgeStyle=none;rounded=1;orthogonalLoop=1;html=1;exitX=0.24;exitY=1.00;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0.50;entryY=0.00;entryDx=0;entryDy=0;entryPerimeter=0;endArrow=classic;endFill=1;strokeColor=#4B5563;strokeWidth=2;fontSize=12;fontColor=#111827;labelBackgroundColor=#FFFFFF;labelBorderColor=#D1D5DB;" edge="1" parent="1" source="t21" target="t22">
+  <mxGeometry relative="1" as="geometry"><Array as="points">
+    <mxPoint x="340" y="600"/>
+    <mxPoint x="230" y="600"/>
+  </Array></mxGeometry>
+</mxCell>
+<mxCell id="e3_2_sc" value="1" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=12;fontStyle=1;fontColor=#4B5563;labelBackgroundColor=#FFFFFF;labelBorderColor=#D1D5DB;rounded=1;" vertex="1" connectable="0" parent="e3_2">
+  <mxGeometry x="-0.85" relative="1" as="geometry"><mxPoint as="offset"/></mxGeometry>
+</mxCell>
+<mxCell id="e3_2_ec" value="0..*" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=12;fontStyle=1;fontColor=#4B5563;labelBackgroundColor=#FFFFFF;labelBorderColor=#D1D5DB;rounded=1;" vertex="1" connectable="0" parent="e3_2">
+  <mxGeometry x="0.85" relative="1" as="geometry"><mxPoint as="offset"/></mxGeometry>
+</mxCell>
+<mxCell id="e3_3" value="獲得按讚" style="edgeStyle=none;rounded=1;orthogonalLoop=1;html=1;exitX=0.76;exitY=1.00;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0.50;entryY=0.00;entryDx=0;entryDy=0;entryPerimeter=0;endArrow=classic;endFill=1;strokeColor=#4B5563;strokeWidth=2;fontSize=12;fontColor=#111827;labelBackgroundColor=#FFFFFF;labelBorderColor=#D1D5DB;" edge="1" parent="1" source="t21" target="t23">
+  <mxGeometry relative="1" as="geometry"><Array as="points">
+    <mxPoint x="530" y="600"/>
+    <mxPoint x="610" y="600"/>
+  </Array></mxGeometry>
+</mxCell>
+<mxCell id="e3_3_sc" value="1" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=12;fontStyle=1;fontColor=#4B5563;labelBackgroundColor=#FFFFFF;labelBorderColor=#D1D5DB;rounded=1;" vertex="1" connectable="0" parent="e3_3">
+  <mxGeometry x="-0.85" relative="1" as="geometry"><mxPoint as="offset"/></mxGeometry>
+</mxCell>
+<mxCell id="e3_3_ec" value="0..*" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=12;fontStyle=1;fontColor=#4B5563;labelBackgroundColor=#FFFFFF;labelBorderColor=#D1D5DB;rounded=1;" vertex="1" connectable="0" parent="e3_3">
+  <mxGeometry x="0.85" relative="1" as="geometry"><mxPoint as="offset"/></mxGeometry>
+</mxCell>
+<mxCell id="e3_4" value="好友配對代碼" style="edgeStyle=none;rounded=1;orthogonalLoop=1;html=1;exitX=1.00;exitY=0.44;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0.00;entryY=0.35;entryDx=0;entryDy=0;entryPerimeter=0;endArrow=classic;endFill=1;strokeColor=#4B5563;strokeWidth=2;fontSize=12;fontColor=#111827;labelBackgroundColor=#FFFFFF;labelBorderColor=#D1D5DB;" edge="1" parent="1" source="t27" target="t28">
+  <mxGeometry relative="1" as="geometry"/>
+</mxCell>
+<mxCell id="e3_4_sc" value="1" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=12;fontStyle=1;fontColor=#4B5563;labelBackgroundColor=#FFFFFF;labelBorderColor=#D1D5DB;rounded=1;" vertex="1" connectable="0" parent="e3_4">
+  <mxGeometry x="-0.85" relative="1" as="geometry"><mxPoint as="offset"/></mxGeometry>
+</mxCell>
+<mxCell id="e3_4_ec" value="0..*" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=12;fontStyle=1;fontColor=#4B5563;labelBackgroundColor=#FFFFFF;labelBorderColor=#D1D5DB;rounded=1;" vertex="1" connectable="0" parent="e3_4">
+  <mxGeometry x="0.85" relative="1" as="geometry"><mxPoint as="offset"/></mxGeometry>
+</mxCell>
+<mxCell id="e3_5" value="發表貼文" style="edgeStyle=none;rounded=1;orthogonalLoop=1;html=1;exitX=0.50;exitY=1.00;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0.50;entryY=0.00;entryDx=0;entryDy=0;entryPerimeter=0;endArrow=classic;endFill=1;strokeColor=#4B5563;strokeWidth=2;fontSize=12;fontColor=#111827;labelBackgroundColor=#FFFFFF;labelBorderColor=#D1D5DB;" edge="1" parent="1" source="t28" target="t29">
+  <mxGeometry relative="1" as="geometry"><Array as="points">
+    <mxPoint x="1420" y="320"/>
+    <mxPoint x="1235" y="320"/>
+  </Array></mxGeometry>
+</mxCell>
+<mxCell id="e3_5_sc" value="1" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=12;fontStyle=1;fontColor=#4B5563;labelBackgroundColor=#FFFFFF;labelBorderColor=#D1D5DB;rounded=1;" vertex="1" connectable="0" parent="e3_5">
+  <mxGeometry x="-0.85" relative="1" as="geometry"><mxPoint as="offset"/></mxGeometry>
+</mxCell>
+<mxCell id="e3_5_ec" value="0..*" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=12;fontStyle=1;fontColor=#4B5563;labelBackgroundColor=#FFFFFF;labelBorderColor=#D1D5DB;rounded=1;" vertex="1" connectable="0" parent="e3_5">
+  <mxGeometry x="0.85" relative="1" as="geometry"><mxPoint as="offset"/></mxGeometry>
+</mxCell>
+<mxCell id="e3_6" value="評論留言" style="edgeStyle=none;rounded=1;orthogonalLoop=1;html=1;exitX=0.24;exitY=1.00;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0.50;entryY=0.00;entryDx=0;entryDy=0;entryPerimeter=0;endArrow=classic;endFill=1;strokeColor=#4B5563;strokeWidth=2;fontSize=12;fontColor=#111827;labelBackgroundColor=#FFFFFF;labelBorderColor=#D1D5DB;" edge="1" parent="1" source="t29" target="t30">
+  <mxGeometry relative="1" as="geometry"><Array as="points">
+    <mxPoint x="1140" y="600"/>
+    <mxPoint x="1030" y="600"/>
+  </Array></mxGeometry>
+</mxCell>
+<mxCell id="e3_6_sc" value="1" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=12;fontStyle=1;fontColor=#4B5563;labelBackgroundColor=#FFFFFF;labelBorderColor=#D1D5DB;rounded=1;" vertex="1" connectable="0" parent="e3_6">
+  <mxGeometry x="-0.85" relative="1" as="geometry"><mxPoint as="offset"/></mxGeometry>
+</mxCell>
+<mxCell id="e3_6_ec" value="0..*" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=12;fontStyle=1;fontColor=#4B5563;labelBackgroundColor=#FFFFFF;labelBorderColor=#D1D5DB;rounded=1;" vertex="1" connectable="0" parent="e3_6">
+  <mxGeometry x="0.85" relative="1" as="geometry"><mxPoint as="offset"/></mxGeometry>
+</mxCell>
+<mxCell id="e3_7" value="獲得按讚" style="edgeStyle=none;rounded=1;orthogonalLoop=1;html=1;exitX=0.76;exitY=1.00;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0.50;entryY=0.00;entryDx=0;entryDy=0;entryPerimeter=0;endArrow=classic;endFill=1;strokeColor=#4B5563;strokeWidth=2;fontSize=12;fontColor=#111827;labelBackgroundColor=#FFFFFF;labelBorderColor=#D1D5DB;" edge="1" parent="1" source="t29" target="t31">
+  <mxGeometry relative="1" as="geometry"><Array as="points">
+    <mxPoint x="1330" y="600"/>
+    <mxPoint x="1420" y="600"/>
+  </Array></mxGeometry>
+</mxCell>
+<mxCell id="e3_7_sc" value="1" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=12;fontStyle=1;fontColor=#4B5563;labelBackgroundColor=#FFFFFF;labelBorderColor=#D1D5DB;rounded=1;" vertex="1" connectable="0" parent="e3_7">
+  <mxGeometry x="-0.85" relative="1" as="geometry"><mxPoint as="offset"/></mxGeometry>
+</mxCell>
+<mxCell id="e3_7_ec" value="0..*" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=12;fontStyle=1;fontColor=#4B5563;labelBackgroundColor=#FFFFFF;labelBorderColor=#D1D5DB;rounded=1;" vertex="1" connectable="0" parent="e3_7">
+  <mxGeometry x="0.85" relative="1" as="geometry"><mxPoint as="offset"/></mxGeometry>
+</mxCell>
+<mxCell id="e3_8" value="包含留言" style="edgeStyle=none;rounded=1;orthogonalLoop=1;html=1;exitX=0.00;exitY=0.43;exitDx=0;exitDy=0;exitPerimeter=0;entryX=1.00;entryY=0.42;entryDx=0;entryDy=0;entryPerimeter=0;endArrow=classic;endFill=1;strokeColor=#4B5563;strokeWidth=2;fontSize=12;fontColor=#111827;labelBackgroundColor=#FFFFFF;labelBorderColor=#D1D5DB;" edge="1" parent="1" source="t24" target="t25">
+  <mxGeometry relative="1" as="geometry"/>
+</mxCell>
+<mxCell id="e3_8_sc" value="1" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=12;fontStyle=1;fontColor=#4B5563;labelBackgroundColor=#FFFFFF;labelBorderColor=#D1D5DB;rounded=1;" vertex="1" connectable="0" parent="e3_8">
+  <mxGeometry x="-0.85" relative="1" as="geometry"><mxPoint as="offset"/></mxGeometry>
+</mxCell>
+<mxCell id="e3_8_ec" value="0..*" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=12;fontStyle=1;fontColor=#4B5563;labelBackgroundColor=#FFFFFF;labelBorderColor=#D1D5DB;rounded=1;" vertex="1" connectable="0" parent="e3_8">
+  <mxGeometry x="0.85" relative="1" as="geometry"><mxPoint as="offset"/></mxGeometry>
+</mxCell>
+<mxCell id="e3_9" value="包含按讚" style="edgeStyle=none;rounded=1;orthogonalLoop=1;html=1;exitX=1.00;exitY=0.43;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0.00;entryY=0.44;entryDx=0;entryDy=0;entryPerimeter=0;endArrow=classic;endFill=1;strokeColor=#4B5563;strokeWidth=2;fontSize=12;fontColor=#111827;labelBackgroundColor=#FFFFFF;labelBorderColor=#D1D5DB;" edge="1" parent="1" source="t24" target="t26">
+  <mxGeometry relative="1" as="geometry"/>
+</mxCell>
+<mxCell id="e3_9_sc" value="1" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=12;fontStyle=1;fontColor=#4B5563;labelBackgroundColor=#FFFFFF;labelBorderColor=#D1D5DB;rounded=1;" vertex="1" connectable="0" parent="e3_9">
+  <mxGeometry x="-0.85" relative="1" as="geometry"><mxPoint as="offset"/></mxGeometry>
+</mxCell>
+<mxCell id="e3_9_ec" value="0..*" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=12;fontStyle=1;fontColor=#4B5563;labelBackgroundColor=#FFFFFF;labelBorderColor=#D1D5DB;rounded=1;" vertex="1" connectable="0" parent="e3_9">
+  <mxGeometry x="0.85" relative="1" as="geometry"><mxPoint as="offset"/></mxGeometry>
+</mxCell>
+    </root>
+  </mxGraphModel>
+</diagram>
+</mxfile>

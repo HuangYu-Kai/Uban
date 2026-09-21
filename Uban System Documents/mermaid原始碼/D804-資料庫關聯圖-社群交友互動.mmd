@@ -1,0 +1,158 @@
+%%{init:{"layout":"elk","themeVariables":{"lineColor":"#000000","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","fontSize":"22px"}}}%%
+classDiagram
+  direction TB
+
+  class 長者檔案_參照 {
+    <<外部實體・T02>>
+    +String elder_id (PK)
+    +String elder_name
+  }
+
+  class 使用者帳戶_參照 {
+    <<外部實體・T01>>
+    +int user_id (PK)
+    +String user_name
+  }
+
+  class 長者交友舊版_elder_fellowship_data {
+    +String requester_id (PK/FK)
+    +String addressee_id (PK/FK)
+    +String status
+    +DateTime create_ts
+  }
+
+  class 長者好友關係_elder_friendship {
+    +int id (PK)
+    +String elder_id_low (FK)
+    +String elder_id_high (FK)
+    +String status
+    +String requester_elder_id (FK)
+    +DateTime created_at
+  }
+
+  class 長者動態貼文_friend_post {
+    +int id (PK)
+    +String author_elder_id (FK)
+    +Text content
+    +String image_url
+    +int like_count
+    +DateTime created_at
+  }
+
+  class 長者貼文留言_friend_post_comment {
+    +int id (PK)
+    +int post_id (FK)
+    +String author_elder_id (FK)
+    +Text content
+    +DateTime created_at
+  }
+
+  class 長者貼文按讚_friend_post_like {
+    +int id (PK)
+    +int post_id (FK)
+    +String elder_id (FK)
+    +DateTime created_at
+  }
+
+  class 家庭圈貼文_community_posts {
+    +int id (PK)
+    +int family_id
+    +int author_id (FK)
+    +String author_name
+    +String author_role
+    +Text content
+    +int like_count
+    +DateTime created_at
+  }
+
+  class 家庭貼文留言_community_comments {
+    +int id (PK)
+    +int post_id (FK)
+    +int author_id (FK)
+    +Text message
+    +DateTime created_at
+  }
+
+  class 家庭貼文按讚_community_post_likes {
+    +int id (PK)
+    +int post_id (FK)
+    +int user_id (FK)
+    +DateTime created_at
+  }
+
+  class 家屬交友代碼_family_friend_code {
+    +int family_id (PK/FK)
+    +String family_code
+    +DateTime created_at
+  }
+
+  class 家屬好友關係_family_friendship {
+    +int id (PK)
+    +int family_id_low (FK)
+    +int family_id_high (FK)
+    +String status
+    +int requester_family_id (FK)
+  }
+
+  class 家屬朋友圈貼文_family_friend_post {
+    +int id (PK)
+    +int author_family_id (FK)
+    +Text content
+    +int like_count
+    +DateTime created_at
+  }
+
+  class 家屬貼文留言_family_friend_post_comment {
+    +int id (PK)
+    +int post_id (FK)
+    +int author_family_id (FK)
+    +Text content
+    +DateTime created_at
+  }
+
+  class 家屬貼文按讚_family_friend_post_like {
+    +int id (PK)
+    +int post_id (FK)
+    +int family_id (FK)
+    +DateTime created_at
+  }
+
+  長者檔案_參照 "1" -- "0..*" 長者交友舊版_elder_fellowship_data : 配對舊制
+  長者檔案_參照 "1" -- "0..*" 長者好友關係_elder_friendship : 結交好友
+  長者檔案_參照 "1" -- "0..*" 長者動態貼文_friend_post : 發布貼文
+  長者動態貼文_friend_post "1" -- "0..*" 長者貼文留言_friend_post_comment : 貼文留言
+  長者檔案_參照 "1" -- "0..*" 長者貼文留言_friend_post_comment : 發表評論
+  長者動態貼文_friend_post "1" -- "0..*" 長者貼文按讚_friend_post_like : 獲得按讚
+  長者檔案_參照 "1" -- "0..*" 長者貼文按讚_friend_post_like : 送出按讚
+
+  使用者帳戶_參照 "1" -- "0..*" 家庭圈貼文_community_posts : 發布家庭動態
+  家庭圈貼文_community_posts "1" -- "0..*" 家庭貼文留言_community_comments : 包含留言
+  使用者帳戶_參照 "1" -- "0..*" 家庭貼文留言_community_comments : 留言家屬
+  家庭圈貼文_community_posts "1" -- "0..*" 家庭貼文按讚_community_post_likes : 包含按讚
+  使用者帳戶_參照 "1" -- "0..*" 家庭貼文按讚_community_post_likes : 按讚家屬
+
+  使用者帳戶_參照 "1" -- "0..1" 家屬交友代碼_family_friend_code : 擁有代碼
+  使用者帳戶_參照 "1" -- "0..*" 家屬好友關係_family_friendship : 家屬好友
+  使用者帳戶_參照 "1" -- "0..*" 家屬朋友圈貼文_family_friend_post : 發布朋友圈
+  家屬朋友圈貼文_family_friend_post "1" -- "0..*" 家屬貼文留言_family_friend_post_comment : 包含留言
+  使用者帳戶_參照 "1" -- "0..*" 家屬貼文留言_family_friend_post_comment : 留言家屬
+  家屬朋友圈貼文_family_friend_post "1" -- "0..*" 家屬貼文按讚_family_friend_post_like : 包含按讚
+  使用者帳戶_參照 "1" -- "0..*" 家屬貼文按讚_family_friend_post_like : 按讚家屬
+
+  classDef ent fill:#DAE8FC,stroke:#6C8EBF,stroke-width:1.5px,color:#102A43
+  classDef ref fill:#F5F5F5,stroke:#999999,stroke-width:1px,color:#444444
+  class 長者檔案_參照:::ref
+  class 使用者帳戶_參照:::ref
+  class 長者交友舊版_elder_fellowship_data:::ent
+  class 長者好友關係_elder_friendship:::ent
+  class 長者動態貼文_friend_post:::ent
+  class 長者貼文留言_friend_post_comment:::ent
+  class 長者貼文按讚_friend_post_like:::ent
+  class 家庭圈貼文_community_posts:::ent
+  class 家庭貼文留言_community_comments:::ent
+  class 家庭貼文按讚_community_post_likes:::ent
+  class 家屬交友代碼_family_friend_code:::ent
+  class 家屬好友關係_family_friendship:::ent
+  class 家屬朋友圈貼文_family_friend_post:::ent
+  class 家屬貼文留言_family_friend_post_comment:::ent
+  class 家屬貼文按讚_family_friend_post_like:::ent

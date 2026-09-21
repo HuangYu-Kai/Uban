@@ -1,0 +1,482 @@
+<mxfile host="Electron">
+  <diagram name="D805-資料庫關聯圖-AI陪伴遊戲" id="0">
+    <mxGraphModel dx="1201" dy="828" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="3884" pageHeight="1358" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="c0" parent="1" style="swimlane;fontStyle=1;childLayout=stackLayout;horizontal=1;startSize=42;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=0;marginBottom=0;html=1;fontSize=21;fillColor=#F5F5F5;strokeColor=#999999;fontColor=#444444;" value="長者檔案_參照" vertex="1">
+          <mxGeometry height="192" width="303" x="1760.5" y="30" as="geometry" />
+        </mxCell>
+        <mxCell id="c0_a0" parent="c0" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#444444;" value="&lt;&lt;外部實體・T02&gt;&gt;" vertex="1">
+          <mxGeometry height="28" width="303" y="42" as="geometry" />
+        </mxCell>
+        <mxCell id="c0_a1" parent="c0" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#444444;" value="+String elder_id (PK)" vertex="1">
+          <mxGeometry height="28" width="303" y="70" as="geometry" />
+        </mxCell>
+        <mxCell id="c0_a2" parent="c0" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#444444;" value="+String elder_name" vertex="1">
+          <mxGeometry height="28" width="303" y="98" as="geometry" />
+        </mxCell>
+        <mxCell id="c0_a3" parent="c0" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#444444;" value="+int step_total" vertex="1">
+          <mxGeometry height="28" width="303" y="126" as="geometry" />
+        </mxCell>
+        <mxCell id="c0_a4" parent="c0" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#444444;" value="+int gawa_id (FK)" vertex="1">
+          <mxGeometry height="28" width="303" y="154" as="geometry" />
+        </mxCell>
+        <mxCell id="c1" parent="1" style="swimlane;fontStyle=1;childLayout=stackLayout;horizontal=1;startSize=42;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=0;marginBottom=0;html=1;fontSize=21;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontColor=#102A43;" value="對話話題_elder_talk_topics" vertex="1">
+          <mxGeometry height="164" width="350" x="30" y="346" as="geometry" />
+        </mxCell>
+        <mxCell id="c1_a0" parent="c1" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+int topic_id (PK)" vertex="1">
+          <mxGeometry height="28" width="350" y="42" as="geometry" />
+        </mxCell>
+        <mxCell id="c1_a1" parent="c1" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+String elder_id (FK)" vertex="1">
+          <mxGeometry height="28" width="350" y="70" as="geometry" />
+        </mxCell>
+        <mxCell id="c1_a2" parent="c1" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+String keyword" vertex="1">
+          <mxGeometry height="28" width="350" y="98" as="geometry" />
+        </mxCell>
+        <mxCell id="c1_a3" parent="c1" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+String topic_type" vertex="1">
+          <mxGeometry height="28" width="350" y="126" as="geometry" />
+        </mxCell>
+        <mxCell id="c2" parent="1" style="swimlane;fontStyle=1;childLayout=stackLayout;horizontal=1;startSize=42;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=0;marginBottom=0;html=1;fontSize=21;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontColor=#102A43;" value="每日新聞_daily_news_items" vertex="1">
+          <mxGeometry height="276" width="338" x="1743" y="992" as="geometry" />
+        </mxCell>
+        <mxCell id="c2_a0" parent="c2" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+int id (PK)" vertex="1">
+          <mxGeometry height="28" width="338" y="42" as="geometry" />
+        </mxCell>
+        <mxCell id="c2_a1" parent="c2" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+Date data_date" vertex="1">
+          <mxGeometry height="28" width="338" y="70" as="geometry" />
+        </mxCell>
+        <mxCell id="c2_a2" parent="c2" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+String category_key" vertex="1">
+          <mxGeometry height="28" width="338" y="98" as="geometry" />
+        </mxCell>
+        <mxCell id="c2_a3" parent="c2" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+String category_label" vertex="1">
+          <mxGeometry height="28" width="338" y="126" as="geometry" />
+        </mxCell>
+        <mxCell id="c2_a4" parent="c2" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+String title" vertex="1">
+          <mxGeometry height="28" width="338" y="154" as="geometry" />
+        </mxCell>
+        <mxCell id="c2_a5" parent="c2" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+Text content" vertex="1">
+          <mxGeometry height="28" width="338" y="182" as="geometry" />
+        </mxCell>
+        <mxCell id="c2_a6" parent="c2" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+String audio_url" vertex="1">
+          <mxGeometry height="28" width="338" y="210" as="geometry" />
+        </mxCell>
+        <mxCell id="c2_a7" parent="c2" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+Text subtitles" vertex="1">
+          <mxGeometry height="28" width="338" y="238" as="geometry" />
+        </mxCell>
+        <mxCell id="c3" parent="1" style="swimlane;fontStyle=1;childLayout=stackLayout;horizontal=1;startSize=42;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=0;marginBottom=0;html=1;fontSize=21;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontColor=#102A43;" value="逐日步數_elder_daily_step" vertex="1">
+          <mxGeometry height="192" width="338" x="460" y="332" as="geometry" />
+        </mxCell>
+        <mxCell id="c3_a0" parent="c3" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+int id (PK)" vertex="1">
+          <mxGeometry height="28" width="338" y="42" as="geometry" />
+        </mxCell>
+        <mxCell id="c3_a1" parent="c3" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+String elder_id (FK)" vertex="1">
+          <mxGeometry height="28" width="338" y="70" as="geometry" />
+        </mxCell>
+        <mxCell id="c3_a2" parent="c3" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+Date metric_date" vertex="1">
+          <mxGeometry height="28" width="338" y="98" as="geometry" />
+        </mxCell>
+        <mxCell id="c3_a3" parent="c3" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+int steps" vertex="1">
+          <mxGeometry height="28" width="338" y="126" as="geometry" />
+        </mxCell>
+        <mxCell id="c3_a4" parent="c3" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+DateTime updated_at" vertex="1">
+          <mxGeometry height="28" width="338" y="154" as="geometry" />
+        </mxCell>
+        <mxCell id="c4" parent="1" style="swimlane;fontStyle=1;childLayout=stackLayout;horizontal=1;startSize=42;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=0;marginBottom=0;html=1;fontSize=21;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontColor=#102A43;" value="寵物外觀舊版_gawa_appearance" vertex="1">
+          <mxGeometry height="164" width="367" x="878" y="346" as="geometry" />
+        </mxCell>
+        <mxCell id="c4_a0" parent="c4" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+int gawa_id (PK)" vertex="1">
+          <mxGeometry height="28" width="367" y="42" as="geometry" />
+        </mxCell>
+        <mxCell id="c4_a1" parent="c4" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+String gawa_name" vertex="1">
+          <mxGeometry height="28" width="367" y="70" as="geometry" />
+        </mxCell>
+        <mxCell id="c4_a2" parent="c4" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+String gawa_rarity" vertex="1">
+          <mxGeometry height="28" width="367" y="98" as="geometry" />
+        </mxCell>
+        <mxCell id="c4_a3" parent="c4" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+float bonus" vertex="1">
+          <mxGeometry height="28" width="367" y="126" as="geometry" />
+        </mxCell>
+        <mxCell id="c5" parent="1" style="swimlane;fontStyle=1;childLayout=stackLayout;horizontal=1;startSize=42;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=0;marginBottom=0;html=1;fontSize=21;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontColor=#102A43;" value="餵養歷程_get_appearance_list" vertex="1">
+          <mxGeometry height="182" width="412" x="1325" y="332" as="geometry" />
+        </mxCell>
+        <mxCell id="c5_a0" parent="c5" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+String elder_id (PK/FK)" vertex="1">
+          <mxGeometry height="28" width="412" y="42" as="geometry" />
+        </mxCell>
+        <mxCell id="c5_a1" parent="c5" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+int gawa_id (PK/FK)" vertex="1">
+          <mxGeometry height="28" width="412" y="70" as="geometry" />
+        </mxCell>
+        <mxCell id="c5_a2" parent="c5" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+DateTime feed_starttime (PK)" vertex="1">
+          <mxGeometry height="28" width="412" y="98" as="geometry" />
+        </mxCell>
+        <mxCell id="c5_a3" parent="c5" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+DateTime feed_endtime" vertex="1">
+          <mxGeometry height="28" width="412" y="126" as="geometry" />
+        </mxCell>
+        <mxCell id="c5_a4" parent="c5" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+int gawa_size" vertex="1">
+          <mxGeometry height="28" width="412" y="154" as="geometry" />
+        </mxCell>
+        <mxCell id="c6" parent="1" style="swimlane;fontStyle=1;childLayout=stackLayout;horizontal=1;startSize=42;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=0;marginBottom=0;html=1;fontSize=21;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontColor=#102A43;" value="寵物即時體重_elder_pet_state" vertex="1">
+          <mxGeometry height="136" width="367" x="1817" y="360" as="geometry" />
+        </mxCell>
+        <mxCell id="c6_a0" parent="c6" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+String elder_id (PK/FK)" vertex="1">
+          <mxGeometry height="28" width="367" y="42" as="geometry" />
+        </mxCell>
+        <mxCell id="c6_a1" parent="c6" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+int weight_grams" vertex="1">
+          <mxGeometry height="28" width="367" y="70" as="geometry" />
+        </mxCell>
+        <mxCell id="c6_a2" parent="c6" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+DateTime updated_at" vertex="1">
+          <mxGeometry height="28" width="367" y="98" as="geometry" />
+        </mxCell>
+        <mxCell id="c7" parent="1" style="swimlane;fontStyle=1;childLayout=stackLayout;horizontal=1;startSize=42;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=0;marginBottom=0;html=1;fontSize=21;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontColor=#102A43;" value="成長階段門檻_pet_stage_threshold" vertex="1">
+          <mxGeometry height="192" width="412" x="1319" y="662" as="geometry" />
+        </mxCell>
+        <mxCell id="c7_a0" parent="c7" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+int stage_no (PK)" vertex="1">
+          <mxGeometry height="28" width="412" y="42" as="geometry" />
+        </mxCell>
+        <mxCell id="c7_a1" parent="c7" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+String title" vertex="1">
+          <mxGeometry height="28" width="412" y="70" as="geometry" />
+        </mxCell>
+        <mxCell id="c7_a2" parent="c7" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+int min_weight_grams" vertex="1">
+          <mxGeometry height="28" width="412" y="98" as="geometry" />
+        </mxCell>
+        <mxCell id="c7_a3" parent="c7" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+int max_weight_grams" vertex="1">
+          <mxGeometry height="28" width="412" y="126" as="geometry" />
+        </mxCell>
+        <mxCell id="c7_a4" parent="c7" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+String image_asset_path" vertex="1">
+          <mxGeometry height="28" width="412" y="154" as="geometry" />
+        </mxCell>
+        <mxCell id="c8" parent="1" style="swimlane;fontStyle=1;childLayout=stackLayout;horizontal=1;startSize=42;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=0;marginBottom=0;html=1;fontSize=21;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontColor=#102A43;" value="賽季週期設定_pet_season" vertex="1">
+          <mxGeometry height="164" width="311" x="1811" y="676" as="geometry" />
+        </mxCell>
+        <mxCell id="c8_a0" parent="c8" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+int season_no (PK)" vertex="1">
+          <mxGeometry height="28" width="311" y="42" as="geometry" />
+        </mxCell>
+        <mxCell id="c8_a1" parent="c8" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+Date start_date" vertex="1">
+          <mxGeometry height="28" width="311" y="70" as="geometry" />
+        </mxCell>
+        <mxCell id="c8_a2" parent="c8" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+Date end_date" vertex="1">
+          <mxGeometry height="28" width="311" y="98" as="geometry" />
+        </mxCell>
+        <mxCell id="c8_a3" parent="c8" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+String status" vertex="1">
+          <mxGeometry height="28" width="311" y="126" as="geometry" />
+        </mxCell>
+        <mxCell id="c9" parent="1" style="swimlane;fontStyle=1;childLayout=stackLayout;horizontal=1;startSize=42;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=0;marginBottom=0;html=1;fontSize=21;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontColor=#102A43;" value="賽季結算成績_pet_season_settlement" vertex="1">
+          <mxGeometry height="192" width="434" x="2264" y="332" as="geometry" />
+        </mxCell>
+        <mxCell id="c9_a0" parent="c9" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+int id (PK)" vertex="1">
+          <mxGeometry height="28" width="434" y="42" as="geometry" />
+        </mxCell>
+        <mxCell id="c9_a1" parent="c9" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+int season_no (FK)" vertex="1">
+          <mxGeometry height="28" width="434" y="70" as="geometry" />
+        </mxCell>
+        <mxCell id="c9_a2" parent="c9" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+String elder_id (FK)" vertex="1">
+          <mxGeometry height="28" width="434" y="98" as="geometry" />
+        </mxCell>
+        <mxCell id="c9_a3" parent="c9" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+int final_weight_grams" vertex="1">
+          <mxGeometry height="28" width="434" y="126" as="geometry" />
+        </mxCell>
+        <mxCell id="c9_a4" parent="c9" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+int final_rank" vertex="1">
+          <mxGeometry height="28" width="434" y="154" as="geometry" />
+        </mxCell>
+        <mxCell id="c10" parent="1" style="swimlane;fontStyle=1;childLayout=stackLayout;horizontal=1;startSize=42;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=0;marginBottom=0;html=1;fontSize=21;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontColor=#102A43;" value="造型商品定義_pet_skin" vertex="1">
+          <mxGeometry height="248" width="303" x="2202" y="634" as="geometry" />
+        </mxCell>
+        <mxCell id="c10_a0" parent="c10" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+int id (PK)" vertex="1">
+          <mxGeometry height="28" width="303" y="42" as="geometry" />
+        </mxCell>
+        <mxCell id="c10_a1" parent="c10" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+String display_name" vertex="1">
+          <mxGeometry height="28" width="303" y="70" as="geometry" />
+        </mxCell>
+        <mxCell id="c10_a2" parent="c10" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+String asset_path" vertex="1">
+          <mxGeometry height="28" width="303" y="98" as="geometry" />
+        </mxCell>
+        <mxCell id="c10_a3" parent="c10" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+int is_paid" vertex="1">
+          <mxGeometry height="28" width="303" y="126" as="geometry" />
+        </mxCell>
+        <mxCell id="c10_a4" parent="c10" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+int price_cents" vertex="1">
+          <mxGeometry height="28" width="303" y="154" as="geometry" />
+        </mxCell>
+        <mxCell id="c10_a5" parent="c10" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+String required_tier" vertex="1">
+          <mxGeometry height="28" width="303" y="182" as="geometry" />
+        </mxCell>
+        <mxCell id="c10_a6" parent="c10" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+int is_listed" vertex="1">
+          <mxGeometry height="28" width="303" y="210" as="geometry" />
+        </mxCell>
+        <mxCell id="c11" parent="1" style="swimlane;fontStyle=1;childLayout=stackLayout;horizontal=1;startSize=42;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=0;marginBottom=0;html=1;fontSize=21;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontColor=#102A43;" value="造型持有憑證_elder_pet_skin_ownership" vertex="1">
+          <mxGeometry height="192" width="468" x="2778" y="332" as="geometry" />
+        </mxCell>
+        <mxCell id="c11_a0" parent="c11" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+int id (PK)" vertex="1">
+          <mxGeometry height="28" width="468" y="42" as="geometry" />
+        </mxCell>
+        <mxCell id="c11_a1" parent="c11" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+String elder_id (FK)" vertex="1">
+          <mxGeometry height="28" width="468" y="70" as="geometry" />
+        </mxCell>
+        <mxCell id="c11_a2" parent="c11" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+int skin_id (FK)" vertex="1">
+          <mxGeometry height="28" width="468" y="98" as="geometry" />
+        </mxCell>
+        <mxCell id="c11_a3" parent="c11" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+String source" vertex="1">
+          <mxGeometry height="28" width="468" y="126" as="geometry" />
+        </mxCell>
+        <mxCell id="c11_a4" parent="c11" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+DateTime acquired_at" vertex="1">
+          <mxGeometry height="28" width="468" y="154" as="geometry" />
+        </mxCell>
+        <mxCell id="c12" parent="1" style="swimlane;fontStyle=1;childLayout=stackLayout;horizontal=1;startSize=42;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=0;marginBottom=0;html=1;fontSize=21;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontColor=#102A43;" value="當前裝備造型_elder_pet_skin_selection" vertex="1">
+          <mxGeometry height="136" width="468" x="3326" y="360" as="geometry" />
+        </mxCell>
+        <mxCell id="c12_a0" parent="c12" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+String elder_id (PK/FK)" vertex="1">
+          <mxGeometry height="28" width="468" y="42" as="geometry" />
+        </mxCell>
+        <mxCell id="c12_a1" parent="c12" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+int skin_id (FK)" vertex="1">
+          <mxGeometry height="28" width="468" y="70" as="geometry" />
+        </mxCell>
+        <mxCell id="c12_a2" parent="c12" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=12;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=20;fontColor=#102A43;" value="+DateTime updated_at" vertex="1">
+          <mxGeometry height="28" width="468" y="98" as="geometry" />
+        </mxCell>
+        <mxCell id="r0" edge="1" parent="1" source="c0" style="edgeStyle=none;rounded=0;html=1;endArrow=none;endFill=0;startArrow=none;startFill=0;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;entryX=0.5;entryY=0;;" target="c1" value="話題偏好">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1912" y="228" />
+              <mxPoint x="205" y="228" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="r0_am" connectable="0" parent="r0" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;" value="1" vertex="1">
+          <mxGeometry relative="1" x="-0.75" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="r0_bm" connectable="0" parent="r0" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;" value="0..*" vertex="1">
+          <mxGeometry relative="1" x="0.75" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="r1" edge="1" parent="1" source="c0" style="edgeStyle=none;rounded=0;html=1;endArrow=none;endFill=0;startArrow=none;startFill=0;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;entryX=0.5;entryY=0;;" target="c3" value="步數累計">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1912" y="228" />
+              <mxPoint x="629" y="228" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="r1_am" connectable="0" parent="r1" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;" value="1" vertex="1">
+          <mxGeometry relative="1" x="-0.75" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="r1_bm" connectable="0" parent="r1" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;" value="0..*" vertex="1">
+          <mxGeometry relative="1" x="0.75" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="r2" edge="1" parent="1" source="c0" style="edgeStyle=none;rounded=0;html=1;endArrow=none;endFill=0;startArrow=none;startFill=0;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;entryX=0.5;entryY=0;;" target="c4" value="穿戴外觀">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1912" y="228" />
+              <mxPoint x="1061.5" y="228" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="r2_am" connectable="0" parent="r2" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;" value="0..*" vertex="1">
+          <mxGeometry relative="1" x="-0.75" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="r2_bm" connectable="0" parent="r2" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;" value="0..1" vertex="1">
+          <mxGeometry relative="1" x="0.75" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="r3" edge="1" parent="1" source="c0" style="edgeStyle=none;rounded=0;html=1;endArrow=none;endFill=0;startArrow=none;startFill=0;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;entryX=0.5;entryY=0;;" target="c5" value="餵養歷程">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1912" y="228" />
+              <mxPoint x="1531" y="228" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="r3_am" connectable="0" parent="r3" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;" value="1" vertex="1">
+          <mxGeometry relative="1" x="-0.75" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="r3_bm" connectable="0" parent="r3" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;" value="0..*" vertex="1">
+          <mxGeometry relative="1" x="0.75" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="r4" edge="1" parent="1" source="c4" style="edgeStyle=none;rounded=0;html=1;endArrow=none;endFill=0;startArrow=none;startFill=0;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;entryX=0.25;entryY=0;;" target="c5" value="外觀對照">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1061.5" y="530" />
+              <mxPoint x="852" y="530" />
+              <mxPoint x="852" y="326" />
+              <mxPoint x="1428" y="326" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="r4_am" connectable="0" parent="r4" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;" value="1" vertex="1">
+          <mxGeometry relative="1" x="-0.75" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="r4_bm" connectable="0" parent="r4" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;" value="0..*" vertex="1">
+          <mxGeometry relative="1" x="0.75" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="r5" edge="1" parent="1" source="c0" style="edgeStyle=none;rounded=0;html=1;endArrow=none;endFill=0;startArrow=none;startFill=0;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;entryX=0.5;entryY=0;;" target="c6" value="養成福豬">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1912" y="228" />
+              <mxPoint x="2080.5" y="228" />
+              <mxPoint x="2080.5" y="312" />
+              <mxPoint x="2000.5" y="312" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="r5_am" connectable="0" parent="r5" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;" value="1" vertex="1">
+          <mxGeometry relative="1" x="-0.75" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="r5_bm" connectable="0" parent="r5" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;" value="1" vertex="1">
+          <mxGeometry relative="1" x="0.75" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="r6" edge="1" parent="1" source="c6" style="edgeStyle=none;rounded=0;html=1;endArrow=none;endFill=0;startArrow=none;startFill=0;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;entryX=0.5;entryY=0;;" target="c7" value="體重對應等級">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="2000.5" y="540" />
+              <mxPoint x="1525" y="540" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="r6_am" connectable="0" parent="r6" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;" value="0..*" vertex="1">
+          <mxGeometry relative="1" x="-0.75" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="r6_bm" connectable="0" parent="r6" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;" value="1" vertex="1">
+          <mxGeometry relative="1" x="0.75" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="r7" edge="1" parent="1" source="c8" style="edgeStyle=none;rounded=0;html=1;endArrow=none;endFill=0;startArrow=none;startFill=0;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;entryX=0.25;entryY=0;;" target="c9" value="賽季歸檔">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1966.5" y="888" />
+              <mxPoint x="1785" y="888" />
+              <mxPoint x="1785" y="326" />
+              <mxPoint x="2372.5" y="326" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="r7_am" connectable="0" parent="r7" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;" value="1" vertex="1">
+          <mxGeometry relative="1" x="-0.75" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="r7_bm" connectable="0" parent="r7" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;" value="0..*" vertex="1">
+          <mxGeometry relative="1" x="0.75" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="r8" edge="1" parent="1" source="c0" style="edgeStyle=none;rounded=0;html=1;endArrow=none;endFill=0;startArrow=none;startFill=0;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;entryX=0.5;entryY=0;;" target="c9" value="結算名次">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1912" y="228" />
+              <mxPoint x="2481" y="228" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="r8_am" connectable="0" parent="r8" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;" value="1" vertex="1">
+          <mxGeometry relative="1" x="-0.75" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="r8_bm" connectable="0" parent="r8" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;" value="0..*" vertex="1">
+          <mxGeometry relative="1" x="0.75" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="r9" edge="1" parent="1" source="c10" style="edgeStyle=none;rounded=0;html=1;endArrow=none;endFill=0;startArrow=none;startFill=0;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;entryX=0.25;entryY=0;;" target="c11" value="售出外觀">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="2353.5" y="902" />
+              <mxPoint x="1798" y="902" />
+              <mxPoint x="1798" y="312" />
+              <mxPoint x="2895" y="312" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="r9_am" connectable="0" parent="r9" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;" value="1" vertex="1">
+          <mxGeometry relative="1" x="-0.75" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="r9_bm" connectable="0" parent="r9" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;" value="0..*" vertex="1">
+          <mxGeometry relative="1" x="0.75" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="r10" edge="1" parent="1" source="c0" style="edgeStyle=none;rounded=0;html=1;endArrow=none;endFill=0;startArrow=none;startFill=0;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;entryX=0.5;entryY=0;;" target="c11" value="長輩購入">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1912" y="228" />
+              <mxPoint x="3012" y="228" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="r10_am" connectable="0" parent="r10" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;" value="1" vertex="1">
+          <mxGeometry relative="1" x="-0.75" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="r10_bm" connectable="0" parent="r10" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;" value="0..*" vertex="1">
+          <mxGeometry relative="1" x="0.75" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="r11" edge="1" parent="1" source="c10" style="edgeStyle=none;rounded=0;html=1;endArrow=none;endFill=0;startArrow=none;startFill=0;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;entryX=0.25;entryY=0;;" target="c12" value="套用外觀">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="2353.5" y="902" />
+              <mxPoint x="1798" y="902" />
+              <mxPoint x="1798" y="312" />
+              <mxPoint x="3443" y="312" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="r11_am" connectable="0" parent="r11" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;" value="1" vertex="1">
+          <mxGeometry relative="1" x="-0.75" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="r11_bm" connectable="0" parent="r11" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;" value="0..*" vertex="1">
+          <mxGeometry relative="1" x="0.75" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="r12" edge="1" parent="1" source="c0" style="edgeStyle=none;rounded=0;html=1;endArrow=none;endFill=0;startArrow=none;startFill=0;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;entryX=0.5;entryY=0;;" target="c12" value="當前裝備">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1912" y="228" />
+              <mxPoint x="3560" y="228" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="r12_am" connectable="0" parent="r12" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;" value="1" vertex="1">
+          <mxGeometry relative="1" x="-0.75" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="r12_bm" connectable="0" parent="r12" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;" value="1" vertex="1">
+          <mxGeometry relative="1" x="0.75" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
