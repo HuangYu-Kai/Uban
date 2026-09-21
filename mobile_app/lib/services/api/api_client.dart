@@ -28,21 +28,14 @@ class ApiClient {
         : 'http://$serverIp:8000';
   }
 
-  // 本機 AI Server（Ollama）
-  static const String localAiServerIp = String.fromEnvironment(
-    'LOCAL_AI_IP',
-    defaultValue: 'boyo-desktop.tail531c8a.ts.net',
-  );
-
-  static String get localAiBaseUrl {
-    if (localAiServerIp.startsWith('http://') || localAiServerIp.startsWith('https://')) {
-      return localAiServerIp.endsWith('/api') ? localAiServerIp : '$localAiServerIp/api';
-    }
-    if (localAiServerIp.contains('ts.net')) {
-      return 'https://$localAiServerIp/api';
-    }
-    return 'http://$localAiServerIp:8000/api';
-  }
+  // ★ 第五十一輪：原本這裡有一組獨立的本機 AI Server（Ollama，`boyo-desktop.
+  // tail531c8a.ts.net`）位址設定（`localAiServerIp` / `localAiBaseUrl`）。
+  // 該主機是 Tailscale MagicDNS 名稱，不在公開 DNS 上，任何未加入該 tailnet
+  // 的手機呼叫它一律得到 `OS Error: No address associated with host name,
+  // errno = 7`；而 `run.ps1`／`run.sh` 也從未帶過 `--dart-define=LOCAL_AI_IP`，
+  // 所以這組設定實質上永遠指向一台真機連不到的主機。所有 AI 呼叫（對話、
+  // 串流、ASR、TTS）已全部改走主後端（`baseUrl`／`serverRootUrl`），故整組
+  // 移除；不要再加回獨立的 AI 主機設定。
 
   // 統一超時時間
   static const Duration timeout = Duration(seconds: 15);
@@ -138,34 +131,15 @@ class ApiClient {
           return decoded;
         }
       }
-      if (url.contains('ts.net') || response.statusCode == 404 || response.statusCode == 405) {
-        final cleanPath = path.startsWith('/api') ? path.substring(4) : path;
-        final fallbackUrl = 'http://10.0.2.2:8000/api$cleanPath';
-        debugPrint('🔄 [ApiService.put Fallback] -> $fallbackUrl');
-        final fbRes = await http.put(
-          Uri.parse(fallbackUrl),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode(body),
-        ).timeout(const Duration(seconds: 4));
-        if (fbRes.statusCode == 200 || fbRes.statusCode == 201) {
-          return safeDecode(fbRes);
-        }
-      }
+      // ★ 第五十一輪：這裡原本在失敗／404／405 時會退而求其次打
+      // `http://10.0.2.2:8000`。`10.0.2.2` 只在 Android 模擬器裡有意義
+      // （指向宿主機的 loopback），實機上是死位址，只會多等好幾秒逾時才
+      // 讓真正的錯誤浮現。`signaling.dart` 的 `onConnectError`（見該檔
+      // 約 347-358 行）早就記錄過同一個結論並移除了對應的備援，這裡
+      // 一併移除，不要再加回來。
       return safeDecode(response);
     } catch (e) {
       debugPrint('⚠️ ApiService.put error: $e');
-      try {
-        final cleanPath = path.startsWith('/api') ? path.substring(4) : path;
-        final fallbackUrl = 'http://10.0.2.2:8000/api$cleanPath';
-        final fbRes = await http.put(
-          Uri.parse(fallbackUrl),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode(body),
-        ).timeout(const Duration(seconds: 4));
-        if (fbRes.statusCode == 200 || fbRes.statusCode == 201) {
-          return safeDecode(fbRes);
-        }
-      } catch (_) {}
       return null;
     }
   }
@@ -182,26 +156,12 @@ class ApiClient {
           return decoded;
         }
       }
-      if (url.contains('ts.net') || response.statusCode == 404) {
-        final cleanPath = path.startsWith('/api') ? path.substring(4) : path;
-        final fallbackUrl = 'http://10.0.2.2:8000/api$cleanPath';
-        debugPrint('🔄 [ApiService.delete Fallback] -> $fallbackUrl');
-        final fbRes = await http.delete(Uri.parse(fallbackUrl)).timeout(const Duration(seconds: 4));
-        if (fbRes.statusCode == 200 || fbRes.statusCode == 201) {
-          return safeDecode(fbRes);
-        }
-      }
+      // ★ 第五十一輪：同 put() 上方註解——移除只在 Android 模擬器有意義的
+      // `http://10.0.2.2:8000` 備援，理由與 signaling.dart:350-355 的既有
+      // 說明一致，不要再加回來。
       return safeDecode(response);
     } catch (e) {
       debugPrint('⚠️ ApiService.delete error: $e');
-      try {
-        final cleanPath = path.startsWith('/api') ? path.substring(4) : path;
-        final fallbackUrl = 'http://10.0.2.2:8000/api$cleanPath';
-        final fbRes = await http.delete(Uri.parse(fallbackUrl)).timeout(const Duration(seconds: 4));
-        if (fbRes.statusCode == 200 || fbRes.statusCode == 201) {
-          return safeDecode(fbRes);
-        }
-      } catch (_) {}
       return null;
     }
   }

@@ -652,13 +652,13 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
         return;
       }
 
-      // 2. 構建多伺服器候選位址（優先存取配置了 Yating API 金鑰的高效能 AI Hub: boyo-desktop）
+      // 2. 構建伺服器位址（第五十一輪：移除 boyo-desktop 候選——那是 Tailscale
+      // MagicDNS 名稱，未加入該 tailnet 的手機在公開 DNS 上解析不到，只會白白
+      // 卡到逾時才輪到下一候選；主後端已同時提供 /api/voice/tts/stream）。
       final encodedText = Uri.encodeComponent(cleanText);
       final candidateUrls = [
-        'https://boyo-desktop.tail531c8a.ts.net/api/voice/tts/stream?text=$encodedText&engine=$engine',
-        '${ApiService.localAiBaseUrl}/voice/tts/stream?text=$encodedText&engine=$engine',
         '${ApiService.baseUrl.replaceFirst('/api', '')}/api/voice/tts/stream?text=$encodedText&engine=$engine',
-      ].toSet().toList();
+      ];
 
       final dir = await getApplicationDocumentsDirectory();
       final cacheDir = Directory('${dir.path}/tts_cache');

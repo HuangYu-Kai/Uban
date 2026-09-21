@@ -13,7 +13,7 @@ import 'api/reminder_api.dart';
 import 'api/community_api.dart';
 import 'api/family_insight_api.dart';
 
-export 'api/cctv_alert_api.dart' show CctvPushResult;
+export 'api/cctv_alert_api.dart' show CctvPushResult, AlertActionResult;
 export 'api/api_client.dart';
 export 'api/auth_api.dart';
 export 'api/pairing_api.dart';
@@ -41,7 +41,8 @@ class ApiService {
   // --- 基礎 URL 與通用請求 ---
   static String get baseUrl => ApiClient.baseUrl;
   static String get serverRootUrl => ApiClient.serverRootUrl;
-  static String get localAiBaseUrl => ApiClient.localAiBaseUrl;
+  // ★ 第五十一輪：`localAiBaseUrl` passthrough 已隨 ApiClient 移除，見
+  // api_client.dart 的說明——AI 呼叫已全部改走 baseUrl。
 
   static Future<Map<String, dynamic>?> get(String path) => ApiClient.get(path);
   static Future<Map<String, dynamic>?> post(String path, Map<String, dynamic> body) => ApiClient.post(path, body);
@@ -331,7 +332,7 @@ class ApiService {
   static Future<Map<String, dynamic>?> checkAudioBridge(int alertId, {int? userId}) =>
       CctvAlertApi.checkAudioBridge(alertId, userId: userId);
 
-  static Future<Map<String, dynamic>?> markFalseAlarm({
+  static Future<AlertActionResult> markFalseAlarm({
     required int alertId,
     required int userId,
   }) => CctvAlertApi.markFalseAlarm(alertId: alertId, userId: userId);
@@ -347,7 +348,7 @@ class ApiService {
         userId: userId,
       );
 
-  static Future<Map<String, dynamic>?> resolveAlert({
+  static Future<AlertActionResult> resolveAlert({
     required int alertId,
     required int userId,
   }) => CctvAlertApi.resolveAlert(alertId: alertId, userId: userId);

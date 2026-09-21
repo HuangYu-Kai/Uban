@@ -440,9 +440,13 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                                 // `SingleChildScrollView` 捲動（本頁本來就可捲動，
                                 // 並非新增行為）。
                                 _buildTodayCard(),
-                                const SizedBox(height: AppSpacing.lg),
+                                // ★ 第五十一輪（任務 3）：24→16。省下的每一點
+                                // 垂直空間都直接換成新聞卡在第一屏內能多露出
+                                // 多少——見 `_availableNewsImageHeight` 開頭的
+                                // 完整測量與理由，這裡只改間距，不動字級。
+                                const SizedBox(height: AppSpacing.md),
                                 _buildNextDoseCard(),
-                                const SizedBox(height: AppSpacing.lg),
+                                const SizedBox(height: AppSpacing.md),
                                 _buildFeaturedNewsCard(),
                               ],
                             ),
@@ -457,11 +461,65 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                     right: 20,
                     child: _buildHeader(),
                   ),
+                  // ★ 第五十一輪（任務 3）：「還有更多」提示，固定貼在第一屏
+                  // 底部、不隨內容捲動——即使把上面兩張卡片的留白縮到最緊，
+                  // 這一屏仍然裝不下完整的新聞大圖，頁面本身可以往下滑看到
+                  // 剩下的內容，但長輩不主動滑就完全看不出來（原始回報的
+                  // 根因）。這裡疊一個固定位置的大 chevron＋短文字純視覺
+                  // 提示：`IgnorePointer` 讓它完全不吃點擊，不會擋到下面
+                  // 新聞卡片或外層浮動導覽列的觸控範圍。
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 14,
+                    child: IgnorePointer(
+                      child: Center(child: _buildScrollHint()),
+                    ),
+                  ),
                 ],
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// 「還有更多」的固定提示：大 chevron＋短文字，貼在第一屏底部（見上方
+  /// `Positioned` 呼叫點的完整理由）。純視覺提示，不吃點擊、不影響任何
+  /// 既有導覽或捲動邏輯。
+  Widget _buildScrollHint() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.88),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.12),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '還有更多',
+            style: GoogleFonts.notoSansTc(
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+              color: AppColors.primaryDark,
+            ),
+          ),
+          const SizedBox(width: 4),
+          const Icon(
+            Icons.keyboard_double_arrow_down_rounded,
+            size: 22,
+            color: AppColors.primaryDark,
+          ),
+        ],
       ),
     );
   }
@@ -654,9 +712,13 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
   /// 沿用暖色會讓整頁風格分裂成兩套系統；暖色系留給「我的」分頁自己的
   /// 清單語境即可。
   Widget _buildNextDoseCard() {
+    // ★ 第五十一輪（任務 3）：以下四個 GlassCard 的 vertical padding
+    // 22/20→16/14，理由與幅度說明見 `_availableNewsImageHeight` 開頭；
+    // 只縮容器留白，文字字級（body/sectionTitle/34pt emoji/20pt 打卡按鈕）
+    // 完全不動。
     if (_isLoadingNextDose) {
       return GlassCard(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 22),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
         child: Row(
           children: [
             const SizedBox(
@@ -686,7 +748,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
       // 語氣不同的文案：讀取失敗用中性圖示與措辭，不使用 🌟 慶祝語氣。
       if (_hasNextDoseLoadError) {
         return GlassCard(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 22),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
           child: Row(
             children: [
               const Icon(Icons.wifi_off_rounded,
@@ -705,7 +767,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
         );
       }
       return GlassCard(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 22),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
         child: Row(
           children: [
             const Text('🌟', style: TextStyle(fontSize: 28)),
@@ -729,7 +791,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     final title = (next['title'] ?? '提醒').toString();
 
     return GlassCard(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
       child: Row(
         children: [
           Text(emoji, style: const TextStyle(fontSize: 34)),
@@ -833,7 +895,11 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
           ),
         );
       },
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      // ★ 第五十一輪（任務 3）：vertical 14→10。只縮容器的留白，卡片內文字
+      // 大小（44/26/24/22pt）完全不動——見 `_availableNewsImageHeight` 開頭
+      // 的完整說明：這是「一屏到底」與「新聞被擠到摺線外」之間的垂直空間
+      // 重新分配，不是縮小可讀性。
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       child: Column(
         children: [
           Row(
@@ -853,10 +919,10 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
               Expanded(flex: 2, child: _buildWeatherHalf()),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           // 🌿 農民曆與神明吉凶資訊導引列（薄荷綠毛玻璃質感，融於首頁主視覺）
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
             decoration: BoxDecoration(
               color: AppColors.primary.withValues(alpha: 0.09),
               borderRadius: BorderRadius.circular(14),
@@ -919,15 +985,25 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
   ///
   /// 回傳值恆大於 0，為大圖的高度（依剩餘空間微調，但有明確下限，不會再
   /// 縮到讓人以為功能消失的程度）。
+  ///
+  /// ★ 第五十一輪（任務 3）：真機量測發現即使有下限，實際可用高度（約
+  /// 510px）扣掉下面 `usedByOthers` 之後，新聞卡的標題列＋圖片幾乎整段
+  /// 落在第一屏之外，長輩不主動往下滑就會誤以為「今日頭條」這個功能被拿
+  /// 掉了（原始回報）。根因是「今天卡」與「下一包藥」兩張卡片的**留白**
+  /// 偏多，不是文字本身佔用空間——因此這裡只緊縮 padding／卡片間距，兩張
+  /// 卡片的字級與 `_buildFeaturedNewsCard` 的三態文案（讀取中／`還在整理
+  /// 中`／有資料）完全不動。
   double _availableNewsImageHeight(BuildContext context) {
     final mq = MediaQuery.of(context);
     // 版面固定開銷：頂部封面帶 52 ＋ sheet 偏移 42 ＋ 內距 44；
     // 底部 130 已含浮動導覽列 104 的淨空。
     final double available = mq.size.height - mq.padding.top - 138 - 130;
-    // 其餘區塊的實測高度：今天卡 182、下一包藥 118、兩個間距 48、
-    // 新聞標題列 36 ＋ 間距 8。下一包藥全部完成時會更矮，這裡取較高值
-    // 保守估計。
-    const double usedByOthers = 182 + 24 + 118 + 24 + 44;
+    // 其餘區塊的實測高度（第五十一輪重新量測，已反映本輪縮減的留白）：
+    // 今天卡 164（原 182，padding 14→10、卡內間距 12→8、農民曆導引列
+    // padding 9→6）、下一包藥 106（原 118，padding 20→14）、兩個卡片間距
+    // 各由 AppSpacing.lg(24) 改成 AppSpacing.md(16)、新聞標題列 36 ＋
+    // 間距 8。下一包藥全部完成時會更矮，這裡取較高值保守估計。
+    const double usedByOthers = 164 + 16 + 106 + 16 + 44;
     final double leftover = available - usedByOthers;
 
     // 下限 170：比舊版「精簡橫列」的 64px 縮圖明顯醒目許多，即使 leftover

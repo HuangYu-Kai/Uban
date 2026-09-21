@@ -6,17 +6,21 @@ import '../../../../services/friend_service.dart';
 import '../../../pet_companion_studio/services/garden_ambient_audio_service.dart';
 import '../../../pet_companion_studio/services/pet_progress_service.dart';
 import '../../../pet_companion_studio/widgets/pet_leaderboard_card.dart';
+import '../../../pet_companion_studio/widgets/pet_season_card.dart';
 
 /// 🗓️🏆🎵 小豬之家右上角懸浮膠囊群：賽季／好友排行榜／背景音樂控制。
 ///
-/// 從 `PetStudioScreen._buildSeasonBadge`／`_buildLeaderboardButton`／
-/// `_buildMusicControlButton`（連同各自開啟的 `_showLeaderboardSheet`／
-/// `_showMusicSettingsSheet`）逐一複製抽離而成，樣式與互動邏輯保持一致；
-/// 差別只在本元件自己負責解析 elder_id、載入賽季資訊、持有一份背景音樂
-/// 服務——呼叫端不需要額外傳入這些資料／服務。
+/// 從 `PetStudioScreen._buildLeaderboardButton`／`_buildMusicControlButton`
+/// （連同各自開啟的 `_showLeaderboardSheet`／`_showMusicSettingsSheet`）
+/// 逐一複製抽離而成，樣式與互動邏輯保持一致；差別只在本元件自己負責解析
+/// elder_id、載入賽季資訊、持有一份背景音樂服務——呼叫端不需要額外傳入
+/// 這些資料／服務。賽季那一顆本來也是複製，第五十一輪改成與
+/// `PetStudioScreen` 共用同一個 [PetSeasonCard]（見該檔說明），不再各自
+/// 維護一份。
 ///
 /// ⚠️ `pet_studio_screen.dart` 仍是 `lib/main_pet_preview.dart` 使用中的
-/// 獨立入口畫面，本元件是「複製」而非「搬走」，該檔完全未被改動。
+/// 獨立入口畫面，本元件（除了共用的 [PetSeasonCard] 之外）是「複製」而非
+/// 「搬走」，該檔其餘部分未被改動。
 class PetCornerActions extends StatefulWidget {
   /// 登入使用者的資料庫整數 PK，用來解析好友排行榜要用的 elder_id
   /// （見 `PetStudioScreen.userId` 的欄位說明——這不是 elder_id 本身，
@@ -94,7 +98,7 @@ class _PetCornerActionsState extends State<PetCornerActions> {
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         if (_season != null) ...[
-          _buildSeasonBadge(_season!),
+          PetSeasonCard(season: _season!),
           const SizedBox(height: 10),
         ],
         _buildLeaderboardButton(),
@@ -191,46 +195,9 @@ class _PetCornerActionsState extends State<PetCornerActions> {
     );
   }
 
-  // 🗓️ 頂部賽季膠囊：顯示第幾季、還剩幾天（文案與理由沿用 PetStudioScreen）。
-  Widget _buildSeasonBadge(PetSeasonInfo season) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFFDF8).withValues(alpha: 0.94),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFFBBF7D0), width: 1.5),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF059669).withValues(alpha: 0.16),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Text('🗓️', style: TextStyle(fontSize: 15)),
-          const SizedBox(width: 6),
-          // 季數與剩餘天數理論上都是短數字（季數頂多 2~3 位、剩餘天數
-          // 0~92），但仍包 Flexible + ellipsis——同列已有圖示，符合鐵律
-          // #14／護欄 G159「同列多元素時標題需可收縮」的判準。
-          Flexible(
-            child: Text(
-              '第 ${season.seasonNo} 季 · 還剩 ${season.daysRemaining} 天',
-              style: GoogleFonts.notoSansTc(
-                fontSize: 14,
-                fontWeight: FontWeight.w900,
-                color: const Color(0xFF047857),
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  // 🗓️ 頂部賽季卡片：實際內容抽到共用元件 [PetSeasonCard]（與
+  // `pet_studio_screen.dart` 共用，理由見該元件檔案說明），本檔不再自己
+  // 維護一份複製。
 
   // 🏆 頂部排行榜控制膠囊按鈕（開啟好友寵物排行榜面板）
   Widget _buildLeaderboardButton() {

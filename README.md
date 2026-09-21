@@ -442,6 +442,64 @@ void initPedometer() {
 > 但只寫進 `CLAUDE_call-monitor.md` 沒進本日誌的通話／監控工作）。
 > 內容依 commit diff 與該文件重建，細節可能不如當事人寫得完整。
 
+### 2026-09-21 🛠️ 第五十一輪：來電同意權、連線真相、賺取制寵物食物
+
+> 使用者實機回報 14 項缺陷（家屬端 8、長輩端 6）。查證後**過半不是新 bug**，而是三個
+> 跨切面根因造成的連鎖症狀——最重要的是「正式後端自第四十九輪起就沒部署成功」，
+> 讓多項已修好的程式在真機上根本不存在，看起來像回歸。
+
+**跨切面根因**
+- **根因 A｜線上後端是舊版**：`GET /api/alerts/{id}/resolve` 與 `/api/family_insight/*`
+  在正式站回 404（本機程式有、線上沒有）。家屬端「回報已處理」失敗與「情緒時間軸載入
+  失敗」兩項都由此而來，程式本身沒壞。**需重跑部署 workflow**。
+- **根因 B｜寫死的 AI 主機在手機上必然 DNS 失敗**：`boyo-desktop.tail531c8a.ts.net`
+  是 Tailscale MagicDNS 名稱，公開 DNS 查不到（`nslookup … 8.8.8.8` → Non-existent
+  domain），而兩個 launcher 從未傳過 `--dart-define=LOCAL_AI_IP`，所以每個 build 都用
+  這台。未加入 tailnet 的手機走它必拋 `errno = 7`。已全面移除，AI 呼叫一律走主後端。
+- **根因 C｜AI 串流路徑拼錯**：App 打 `/api/ai/chat/stream`（斜線），主後端註冊的是
+  `/api/ai/chat_stream`（底線）→ 404，與畫面上的 `[ERROR] 伺服器錯誤: 404` 逐字相符。
+- **根因 D｜長輩步數從未寫進後端**：計步只上傳寵物體重，從不呼叫
+  `POST /api/game/elder/update_steps`，所以 `elder_daily_step` 永遠是空的。
+
+**長輩端**
+- 🔴 **第一通來電不再未經同意直接開視訊**：備援來電通知的 `actionId == null`（通知本體
+  被點，**或鎖屏時系統自動觸發 `fullScreenIntent`**）原本一律當成「已接聽」寫入
+  `pendingAcceptedCall`，冷啟動就把長輩直接送進通話房。現在改寫新的「待接聽」鍵
+  `pendingLocalRingCall`，由既有的 `_showIncomingCallDialog` 讓長輩自己選。只有明確按下
+  ✓ 接聽才算接聽。**緊急通話不受影響**（`LocalCallNotification.show()` 本來就只在
+  `!isEmergency` 分支被呼叫）。見護欄 **G198**。
+- 🎤 **語音辨識率**：`google_assistant_overlay` 寫死 `localeId: 'zh_TW'`，裝置若只認得
+  `cmn-Hant-TW` 會靜默退回系統預設（常是 en-US）。改用共用的
+  `lib/utils/stt_locale.dart`：從 `locales()` 實際清單挑，挑不到才回 `null`。
+- 🥕 **寵物食物改為賺取制**：「陽光脆胡蘿蔔」不再是 `stepMilestone: 0` + `initialCount: -1`
+  的無限常駐。每 500 步 +1、每次排程打卡 +1、每日上限 5 份，並以後端
+  `elder_food_ledger` 記帳，重開 App 不會刷新。庫存讀不到時**保守顯示為不可餵**。
+- 🗓️ **賽季改為卡片**：季數 24pt、剩餘天數 20pt、進度條與白話說明，兩處重複的
+  `_buildSeasonBadge()` 合併成 `PetSeasonCard`。
+- 📰 **今日頭條回到第一屏**：資料與版面都是好的，問題是固定開銷 392px vs 可用高度約
+  510px，整張卡落在折線外。縮減兩張健康卡的留白（**不動字級**）至 346px，並加上
+  「還有更多」向下提示。
+
+**家屬端**
+- 🔔 **滑掉的警示不再重新出現**：`_dismissedAlertKeys` 原本純記憶體、冷啟動歸零，改為
+  持久化（僅持久化後端 PK 形式的 `alert:` / `log:` id，30 天與 500 筆上限）。
+- 🩹 **「資料」分頁不再整片空白**：該分頁在 `IndexedStack` 下被保活、卡片又是 eager
+  同步建構，任一張丟例外就會炸穿整個 `build()` 換成 `ErrorWidget`，且每 2.5 秒輪詢重建
+  會一直重現（同類前科見護欄 G78）。新增 `ErrorBoundary` 逐張隔離＋可重試，並在切回
+  該分頁時重新載入。
+- 💬 **錯誤訊息不再塌成同一句**：警示回報與情緒時間軸改為顯示後端的 `detail`
+  （找不到警報／尚未綁定／伺服器錯誤）。
+
+**雙端**
+- 🔑 **好友代碼擴大**：字母表由 `0123456789` 改為 `23456789ABCDEFGHJKLMNPQRSTUVWXYZ`
+  （32 進位，排除易混淆的 0/O/1/I），4 碼組合數 10,000 → 1,048,576。**不動 schema**
+  （兩張表本來就是 `VARCHAR(4)`），既有純數字代碼仍然有效。前端同步解除「只能輸入
+  數字」的限制（順帶修好 `E075` 這類早就存在的英數 elder_id 完全搜不到的問題）。
+- 🧹 移除 `api_client.dart` 的 `http://10.0.2.2:8000` 模擬器專用備援；新增連線自檢
+  （`connection_check.dart`），DNS 失敗會明確說出是哪一台主機解析不到。
+
+---
+
 ### 2026-08-24 👥 長輩與家庭溫馨社群系統（雙向時光牆 + 後端資料庫串接 + 照片發佈）
 
 > **封閉式家庭親友圈社群系統**正式前後端打通上線！支援長輩與子女雙向發文、拍照上傳、心情記錄、一鍵送關心 ❤️ 與留言互動。

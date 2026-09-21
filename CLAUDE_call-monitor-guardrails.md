@@ -2119,6 +2119,33 @@ fcm_targets, fcm_sent}` 這類實際送出對象數，呼叫端依此區分「�
 > `elder_home_screen.dart::dispose()` 無條件把回呼設為 null，導致長輩講
 > 完電話回首頁後再也收不到主動關懷訊息，直到 App 重啟。
 
+**G198 — 備援通知的 `actionId == null` 不算「使用者已接聽」，只能改寫「待接聽」鍵**
+`local_call_notification.dart::notificationBackgroundTapHandler` 與
+`consumeLaunchPayload()` 只有 `response.actionId == actionAcceptId`（明確按下
+「✓ 接聽」）才可以呼叫 `_persistTapAsAccepted` 寫 `pendingAcceptedCall`；
+`actionId == null`——涵蓋「通知本體被點」與「螢幕鎖定時系統因
+`fullScreenIntent: true` 自動觸發的 content PendingIntent」兩種情況——一律
+改呼叫 `_persistTapAsPendingRing` 寫**新鍵** `pendingLocalRingCall`（欄位集合
+與 `pendingAcceptedCall` 相同：`roomId`/`senderId`/`callId`/`issuedAt`/
+`expiresAt`/`senderRole`/`isVideoCall`/`timestamp`）。
+`main.dart::_checkPendingLocalRingCall`（由 `_scheduleLocalRingCallFallback`
+排程，冷啟動輪詢 `splashActive`；resume 直接呼叫）消費該鍵時，改用既有的
+`_showIncomingCallDialog` 顯示接聽／拒接畫面，讓使用者自己決定，**不可**
+直接寫 `pendingAcceptedCall` 逕自進房。
+🚫 **不可**把 `pendingLocalRingCall` 併回 `pendingRingCallData`——後者由
+BG FCM handler 的 `call-request` 分支預寫、也被 CallKit accept 路徑更新為
+`isAccepted: true`，語意是「這通來電目前的最新狀態」，混用會讓兩條互相
+獨立的來源互相覆蓋，導致「已接聽」被「還在響」蓋掉或反之。
+> **原因**：第五十一輪查出 `show()` 發出的備援來電通知帶
+> `fullScreenIntent: true`，但 `notificationBackgroundTapHandler` 舊版只把
+> `actionId == actionDeclineId` 當拒接，**其餘一切**（含 `actionId == null`）
+> 都落到 `_persistTapAsAccepted`——螢幕鎖定時系統自動觸發 fullScreenIntent
+> 的 content PendingIntent 也會被誤判成「使用者已接聽」，長輩端第一通來電
+> （CallKit 尚未暖機、走備援通知這條路）因此沒有經過同意就直接開啟視訊。
+> 只有這條備援通知路徑受影響——CallKit 路徑本來就要求原生確認
+> `isAccepted == true` 才算接聽（`main.dart::_checkInitialCall` /
+> `actionCallAccept`），見 G10。
+
 ### 7.3 已知的文件錯誤（以程式碼為準）
 
 > 這些是歷史文件與現行程式碼不符之處。已在本文件中修正，此處保留記錄以免後續 AI 又被舊敘述誤導。

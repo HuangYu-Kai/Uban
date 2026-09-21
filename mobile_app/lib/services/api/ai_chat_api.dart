@@ -6,128 +6,116 @@ import 'api_client.dart';
 
 /// AI 對話、串流 SSE、語音 ASR/TTS、心情分析與每日建議 API
 class AiChatApi {
-  // AI 相關功能（使用本機 AI Server 與自動降級連線備援）
+  // AI 相關功能（統一走主後端，見下方第五十一輪說明）
   static Future<Map<String, dynamic>> aiChat(
     int userId,
     String message, {
     String? imageUrl,
   }) async {
-    final List<String> candidateUrls = [
-      'https://boyo-desktop.tail531c8a.ts.net/api/ai/chat',
-      '${ApiClient.localAiBaseUrl}/ai/chat',
-      '${ApiClient.baseUrl.replaceFirst('/api', '')}/api/ai/chat',
-    ];
-    final uniqueUrls = candidateUrls.toSet().toList();
-
-    for (final url in uniqueUrls) {
-      try {
-        final response = await http
-            .post(
-              Uri.parse(url),
-              headers: {'Content-Type': 'application/json'},
-              body: jsonEncode({
-                'user_id': userId,
-                'message': message,
-                if (imageUrl != null) 'image_url': imageUrl,
-              }),
-            )
-            .timeout(const Duration(seconds: 30));
-        if (response.statusCode == 200) {
-          return ApiClient.safeDecode(response);
-        }
-      } catch (_) {}
+    try {
+      final response = await http
+          .post(
+            Uri.parse('${ApiClient.baseUrl}/ai/chat'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'user_id': userId,
+              'message': message,
+              if (imageUrl != null) 'image_url': imageUrl,
+            }),
+          )
+          .timeout(const Duration(seconds: 30));
+      if (response.statusCode == 200) {
+        return ApiClient.safeDecode(response);
+      }
+      return {'status': 'error', 'message': '伺服器錯誤: ${response.statusCode}'};
+    } catch (e) {
+      return {'status': 'error', 'message': '網路連線失敗: $e'};
     }
-    return {'status': 'error', 'message': '網路連線失敗，請檢查 AI Server 是否開啟'};
   }
 
-  /// AI 串流聊天（SSE）- 逐 token 回傳，支援多候選 IP 自動降級連線，支援自訂長輩稱謂 (appellation)
+  /// AI 串流聊天（SSE）- 逐 token 回傳，支援自訂長輩稱謂 (appellation)
+  ///
+  /// ★ 第五十一輪：移除原本的多候選主機降級清單。`boyo-desktop.tail531c8a.ts.net`
+  /// 是 Tailscale MagicDNS 名稱，未加入該 tailnet 的手機在公開 DNS 上解析不到
+  /// （`OS Error: No address associated with host name, errno = 7`），而
+  /// `run.ps1`／`run.sh` 從未帶過 `--dart-define=LOCAL_AI_IP`，所以這台候選主機
+  /// 在真機上永遠連不上、每次都要先等它逾時才會輪到下一候選。AI 對話端點其實
+  /// 已同時掛在主後端（`ApiClient.baseUrl`），故直接改走主後端；路徑同步修正為
+  /// 後端實際註冊的 `/ai/chat_stream`（底線）——原本用的 `/ai/chat/stream`
+  /// （斜線）從未被註冊過，打中主後端也只會拿到 404。
   static Stream<String> aiChatStream(
     int userId,
     String message, {
     String? appellation,
     String? userName,
   }) async* {
-    final List<String> candidateUrls = [
-      'https://boyo-desktop.tail531c8a.ts.net/api/ai/chat/stream',
-      '${ApiClient.localAiBaseUrl}/ai/chat/stream',
-      '${ApiClient.baseUrl.replaceFirst('/api', '')}/api/ai/chat/stream',
-    ];
-    final uniqueUrls = candidateUrls.toSet().toList();
+    final targetUrl = '${ApiClient.baseUrl}/ai/chat_stream';
+    final client = http.Client();
+    try {
+      debugPrint('📡 [aiChatStream] -> $targetUrl');
+      final request = http.Request('POST', Uri.parse(targetUrl));
+      request.headers['Content-Type'] = 'application/json';
+      request.body = jsonEncode({
+        'user_id': userId,
+        'message': message,
+        if (appellation != null && appellation.isNotEmpty) 'appellation': appellation,
+        if (userName != null && userName.isNotEmpty) 'user_name': userName,
+      });
 
-    for (int idx = 0; idx < uniqueUrls.length; idx++) {
-      final targetUrl = uniqueUrls[idx];
-      final client = http.Client();
-      try {
-        debugPrint('📡 [aiChatStream Attempt ${idx + 1}] -> $targetUrl');
-        final request = http.Request('POST', Uri.parse(targetUrl));
-        request.headers['Content-Type'] = 'application/json';
-        request.body = jsonEncode({
-          'user_id': userId,
-          'message': message,
-          if (appellation != null && appellation.isNotEmpty) 'appellation': appellation,
-          if (userName != null && userName.isNotEmpty) 'user_name': userName,
-        });
+      final streamedResponse = await client.send(request).timeout(const Duration(seconds: 15));
 
-        final streamedResponse = await client.send(request).timeout(const Duration(seconds: 15));
+      if (streamedResponse.statusCode != 200) {
+        client.close();
+        yield '[ERROR] 伺服器錯誤: ${streamedResponse.statusCode}';
+        return;
+      }
 
-        if (streamedResponse.statusCode != 200) {
-          client.close();
-          if (idx < uniqueUrls.length - 1) continue;
-          yield '[ERROR] 伺服器錯誤: ${streamedResponse.statusCode}';
-          return;
-        }
+      final StringBuffer lineBuf = StringBuffer();
 
-        final StringBuffer lineBuf = StringBuffer();
-        bool receivedData = false;
-
-        await for (final chunk in streamedResponse.stream) {
-          receivedData = true;
-          final decoded = utf8.decode(chunk, allowMalformed: true);
-          for (int i = 0; i < decoded.length; i++) {
-            final ch = decoded[i];
-            if (ch == '\n') {
-              final line = lineBuf.toString().trimRight();
-              lineBuf.clear();
-              if (line.startsWith('data: ')) {
-                final payload = line.substring(6).trim();
-                if (payload == '[DONE]') {
-                  client.close();
-                  return;
-                }
-                if (payload.startsWith('[ERROR]')) {
-                  client.close();
-                  yield payload;
-                  return;
-                }
-                try {
-                  final token = jsonDecode(payload) as String;
-                  if (token.isNotEmpty) yield token;
-                } catch (_) {
-                  if (payload.isNotEmpty) yield payload;
-                }
+      await for (final chunk in streamedResponse.stream) {
+        final decoded = utf8.decode(chunk, allowMalformed: true);
+        for (int i = 0; i < decoded.length; i++) {
+          final ch = decoded[i];
+          if (ch == '\n') {
+            final line = lineBuf.toString().trimRight();
+            lineBuf.clear();
+            if (line.startsWith('data: ')) {
+              final payload = line.substring(6).trim();
+              if (payload == '[DONE]') {
+                client.close();
+                return;
               }
-            } else {
-              lineBuf.write(ch);
+              if (payload.startsWith('[ERROR]')) {
+                client.close();
+                yield payload;
+                return;
+              }
+              try {
+                final token = jsonDecode(payload) as String;
+                if (token.isNotEmpty) yield token;
+              } catch (_) {
+                if (payload.isNotEmpty) yield payload;
+              }
             }
+          } else {
+            lineBuf.write(ch);
           }
         }
-        client.close();
-        if (receivedData) return;
-      } catch (e) {
-        debugPrint('⚠️ [aiChatStream Fail] $targetUrl error: $e');
-        client.close();
-        if (idx < uniqueUrls.length - 1) continue;
-        yield '[ERROR] $e';
       }
+      client.close();
+    } catch (e) {
+      debugPrint('⚠️ [aiChatStream Fail] $targetUrl error: $e');
+      client.close();
+      yield '[ERROR] $e';
     }
   }
 
-  /// 語音轉文字 (ASR/STT) - 上傳本地錄音檔至 AI Server
+  /// 語音轉文字 (ASR/STT) - 上傳本地錄音檔至主後端
   static Future<String?> transcribeAudio(String filePath) async {
     try {
       final request = http.MultipartRequest(
         'POST',
-        Uri.parse('${ApiClient.localAiBaseUrl}/voice/transcribe'),
+        Uri.parse('${ApiClient.baseUrl}/voice/transcribe'),
       );
       request.files.add(await http.MultipartFile.fromPath('file', filePath));
       request.fields['language'] = 'zh';

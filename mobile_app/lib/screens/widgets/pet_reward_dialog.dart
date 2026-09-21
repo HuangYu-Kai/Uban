@@ -155,10 +155,16 @@ class _PetRewardDialogState extends State<PetRewardDialog>
                 ),
                 const SizedBox(height: 20),
                 // 獎勵勳章膠囊
+                // 鐵律 #14：兩顆膠囊原本用 Row(mainAxisSize.min) 並排，數字變多位數、
+                // 視窗變窄或系統字級放大時會超出外層 Container 的固定 margin/padding，
+                // 產生黃黑斜紋溢位警示。改用 Wrap 讓膠囊在容不下時自動換行，
+                // 而不是硬擠出邊界。
                 ScaleTransition(
                   scale: _bounceAnimation,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
+                  child: Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: 12,
+                    runSpacing: 8,
                     children: [
                       _buildRewardChip(
                         icon: '💖',
@@ -167,7 +173,6 @@ class _PetRewardDialogState extends State<PetRewardDialog>
                         textColor: const Color(0xFFE11D48),
                         borderColor: const Color(0xFFFDA4AF),
                       ),
-                      const SizedBox(width: 12),
                       _buildRewardChip(
                         icon: '🪙',
                         label: '活力幣 +${widget.coins}',
@@ -213,12 +218,18 @@ class _PetRewardDialogState extends State<PetRewardDialog>
         children: [
           Text(icon, style: const TextStyle(fontSize: 18)),
           const SizedBox(width: 6),
-          Text(
-            label,
-            style: GoogleFonts.notoSansTc(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              color: textColor,
+          // maxLines/overflow：膠囊本身寬度不固定，但仍要保證單行文字不會被
+          // 極端字級或極長數字撐爆，寧可省略號也不要溢位。
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.notoSansTc(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: textColor,
+              ),
             ),
           ),
         ],

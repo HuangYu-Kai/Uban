@@ -115,12 +115,15 @@ class _FamilyAddFriendScreenState extends State<FamilyAddFriendScreen> {
   }
 
   Future<void> _performSearch(String code) async {
-    final trimmed = code.trim();
-    if (trimmed.length != 4 || int.tryParse(trimmed) == null) {
-      setState(() => _searchError = '請輸入 4 位數的好友代碼');
+    // ★ 第五十一輪：好友代碼改為 4 碼大寫英數字（排除易混淆的 0/O/1/I），
+    // 不再只能是數字，原本的 int.tryParse 檢查會讓含英文字母的代碼一律
+    // 搜尋不到。
+    final normalized = code.trim().toUpperCase();
+    if (!RegExp(r'^[0-9A-Z]{4}$').hasMatch(normalized)) {
+      setState(() => _searchError = '請輸入 4 碼的好友代碼');
       return;
     }
-    if (_myCode != null && trimmed == _myCode) {
+    if (_myCode != null && normalized == _myCode!.toUpperCase()) {
       setState(() {
         _searchError = '這是您自己的代碼，換一組朋友的代碼試試看';
         _searchResult = null;
@@ -134,7 +137,7 @@ class _FamilyAddFriendScreenState extends State<FamilyAddFriendScreen> {
       _sendResultMessage = null;
     });
     final result = await FamilyFriendService.searchFamily(
-      familyCode: trimmed,
+      familyCode: normalized,
       requesterFamilyId: widget.familyId,
     );
     if (!mounted) return;
@@ -427,21 +430,27 @@ class _FamilyAddFriendScreenState extends State<FamilyAddFriendScreen> {
   Widget _buildSearchBody() {
     return Column(
       children: [
-        Text('輸入朋友的 4 位數好友代碼', style: AppTextStyles.body),
+        Text('輸入朋友的 4 碼好友代碼', style: AppTextStyles.body),
         const SizedBox(height: 14),
         TextField(
           controller: _searchController,
-          keyboardType: TextInputType.number,
+          keyboardType: TextInputType.text,
           textAlign: TextAlign.center,
+          textCapitalization: TextCapitalization.characters,
           maxLength: 4,
           inputFormatters: [
-            FilteringTextInputFormatter.digitsOnly,
+            // ★ 第五十一輪：好友代碼改為 4 碼大寫英數字（後端同步排除易混淆
+            // 的 0/O/1/I），允許輸入英數字並即時轉大寫，不再限制只能輸入數字。
+            FilteringTextInputFormatter.allow(RegExp(r'[0-9A-Za-z]')),
             LengthLimitingTextInputFormatter(4),
+            TextInputFormatter.withFunction(
+              (oldValue, newValue) => newValue.copyWith(text: newValue.text.toUpperCase()),
+            ),
           ],
           style: GoogleFonts.inter(fontSize: 32, fontWeight: FontWeight.w900, letterSpacing: 8),
           decoration: InputDecoration(
             counterText: '',
-            hintText: '0000',
+            hintText: 'ABCD',
             filled: true,
             fillColor: Colors.white,
             border: OutlineInputBorder(

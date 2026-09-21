@@ -287,6 +287,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     }
     _setupSignalingListener();
     sig.Signaling().updateAppForeground(true);
+    // ★ 2026-09-21 第五十一輪：備援通知「待接聽」鍵的冷啟動消費。見
+    //   _scheduleLocalRingCallFallback 的函式註解。
+    if (!kIsWeb) {
+      _scheduleLocalRingCallFallback();
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // ★ 2026-08-31 第三十七輪：原本在此無條件請求權限，但 splash 的
       //   `_replaceWith` 用 Navigator.pushReplacement——它移除的是堆疊最上層的
@@ -910,6 +915,96 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     }
   }
 
+  /// ★ 2026-09-21 第五十一輪：冷啟動時「待接聽」鍵必須等 Splash 的冷啟動導航
+  /// 塵埃落定才能消費，理由與 [_scheduleRecoveryCodeFallback] 完全相同——
+  /// `_showIncomingCallDialog` 用的是 `navigatorKey.currentContext` 這個 root
+  /// Navigator，若在 Splash 還沒 `pushReplacement`／`pushAndRemoveUntil` 前
+  /// 彈出對話框，會被 Splash 換頁悄悄打斷（見 globals.dart::splashActive 與
+  /// 護欄 G13）。同樣輪詢 `splashActive`，逾時上限與 [_scheduleRecoveryCodeFallback]
+  /// 一致（20s，高於 Splash 15 秒導航看門狗上限）。
+  ///
+  /// 只在這裡「排程」，實際消費／顯示 UI 全部交給 [_checkPendingLocalRingCall]，
+  /// resume 路徑直接呼叫該函式即可（此時 Splash 早已結束，不需要再等）。
+  void _scheduleLocalRingCallFallback() {
+    const int maxTicks = 100; // 100 × 200ms = 20s
+    int tick = 0;
+    Timer.periodic(const Duration(milliseconds: 200), (timer) {
+      tick++;
+      if (splashActive && tick < maxTicks) return;
+      timer.cancel();
+      _checkPendingLocalRingCall();
+    });
+  }
+
+  /// ★ 2026-09-21 第五十一輪：消費備援通知的「待接聽」鍵
+  /// `pendingLocalRingCall`（見 `local_call_notification.dart::_persistTapAsPendingRing`）。
+  ///
+  /// 這個鍵代表「備援通知曾經響過，但使用者尚未明確按下 ✓ 接聽／✕ 拒絕」——
+  /// 可能是點了通知本體，也可能是螢幕鎖定時系統因 `fullScreenIntent: true`
+  /// 自動觸發的 content PendingIntent。兩者都**不等於使用者已同意接聽**，
+  /// 因此這裡改用既有的 [_showIncomingCallDialog] 顯示接聽／拒接畫面，讓
+  /// 使用者自己決定，而不是像修復前那樣直接寫 `pendingAcceptedCall` 逕自進房。
+  ///
+  /// 🚫 只處理**一般通話**：`local_call_notification.dart::show()` 只會在
+  /// `firebase_bg_handler.dart::showFullScreenCallkit` 判定「非緊急」時才被
+  /// 呼叫，緊急通話從未經過備援通知這條路徑（緊急通話走的是無條件自動接聽
+  /// `_autoAcceptEmergencyCall`，見 G81），因此這裡不需要、也不應該再做一次
+  /// `isEmergency` 分流——傳給 `_showIncomingCallDialog` 時固定給 `false`。
+  Future<void> _checkPendingLocalRingCall() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.reload();
+      final str = prefs.getString('pendingLocalRingCall');
+      if (str == null) return;
+      // 一次性消費：不論後面判斷結果如何都先清掉，避免重複彈窗。
+      await prefs.remove('pendingLocalRingCall');
+      final Map<String, dynamic> decoded = jsonDecode(str);
+
+      // 有效期比照 pendingAcceptedCall／pendingRingCallData：缺 timestamp 或
+      // 超過 kCallValidityMs 一律視為過期，不彈出早已結束的舊來電。
+      final int? ts = int.tryParse('${decoded['timestamp'] ?? ''}');
+      final int ageMs =
+          ts != null ? DateTime.now().millisecondsSinceEpoch - ts : -1;
+      if (ts == null || ageMs > kCallValidityMs) {
+        debugPrint('🗑️ [Main] Discarding stale pendingLocalRingCall '
+            '(ts=$ts, age: ${ageMs}ms)');
+        return;
+      }
+
+      final String roomId = (decoded['roomId'] ?? '').toString();
+      final String senderId = (decoded['senderId'] ?? '').toString();
+      if (roomId.isEmpty || senderId.isEmpty) {
+        debugPrint('⚠️ [Main] pendingLocalRingCall 缺 roomId/senderId，略過');
+        return;
+      }
+      final String rawCallId = (decoded['callId'] ?? '').toString();
+      final String? callId = rawCallId.isNotEmpty ? rawCallId : null;
+
+      // 已經被其他通路處理過（同一 callId 已宣告去重 token），不重複彈窗。
+      if (callId != null && callId == sig.Signaling().lastProcessedCallId) {
+        debugPrint('🗑️ [Main] pendingLocalRingCall 已由其他通路處理，略過 '
+            '(callId=$callId)');
+        return;
+      }
+      // 已經有一通「已明確接聽」的通話在等待導航，不要疊加一個舊的接聽/拒接彈窗。
+      if (pendingAcceptedCall.value != null) {
+        debugPrint('ℹ️ [Main] pendingAcceptedCall 已有值，略過 pendingLocalRingCall 彈窗');
+        return;
+      }
+
+      _claimCallDedupToken(callId, isVideoCallRaw: decoded['isVideoCall']);
+      _showIncomingCallDialog(
+        roomId,
+        senderId,
+        callId: callId,
+        isEmergency: false, // 見上方函式註解：這條路徑永遠是一般通話
+        senderRole: decoded['senderRole']?.toString(),
+      );
+    } catch (e) {
+      debugPrint('⚠️ [Main] _checkPendingLocalRingCall 失敗: $e');
+    }
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
@@ -918,6 +1013,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       sig.Signaling().updateAppForeground(true);
       sig.Signaling().reconnect();
       _checkPendingCallFromSharedPreferences();
+      // ★ 2026-09-21 第五十一輪：回前景時也要檢查備援通知的「待接聽」鍵——
+      //   BG isolate 的 notificationBackgroundTapHandler 可能在 App 只是被
+      //   切到背景（沒被殺死）時寫入，回前景是這種情況下唯一的消費時機。
+      _checkPendingLocalRingCall();
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive ||
         state == AppLifecycleState.detached ||

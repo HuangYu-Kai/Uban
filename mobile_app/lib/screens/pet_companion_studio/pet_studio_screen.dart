@@ -18,6 +18,7 @@ import 'widgets/pet_evolution_dialog.dart';
 import 'widgets/pet_growth_scale_card.dart';
 import 'widgets/pet_leaderboard_card.dart';
 import 'widgets/pet_particle_canvas.dart';
+import 'widgets/pet_season_card.dart';
 
 class PetStudioScreen extends StatefulWidget {
   final int initialSteps;
@@ -66,8 +67,13 @@ class _PetStudioScreenState extends State<PetStudioScreen>
 
   // 🧺 食物庫存與抽屜開關
   bool _isFeedingSheetOpen = false;
+  // ⚠️ 第五十一輪修復：carrot 不再是常駐無限——使用者實機發現可以無限次
+  // 投餵同一顆胡蘿蔔。這裡的 0 只是首幀渲染前的安全預設值，實際可餵份數
+  // 由 build() 每次用 [_carrotAvailable]（賺得－已消耗，見該 getter 說明）
+  // 覆蓋，不採用這個字面值。其餘食物維持舊制（本畫面本來就未持久化這些
+  // 值，本輪不擴大處理範圍，見任務說明）。
   final Map<String, int> _foodInventory = {
-    'carrot': -1, // 常駐無限
+    'carrot': 0,
     'apple': 3,
     'cabbage': 2,
     'sweet_potato': 2,
@@ -75,6 +81,11 @@ class _PetStudioScreenState extends State<PetStudioScreen>
     'watermelon': 1,
     'peach_cake': 1,
   };
+
+  // 🥕 陽光脆胡蘿蔔今天已消耗幾份（`GET /api/pet/food-ledger/{elder_id}` 的
+  // `consumed.carrot`）。null 代表尚未成功讀到後端帳本——見
+  // _ElderProfileTabState 的同名欄位說明（本畫面比照同一套邏輯）。
+  int? _carrotConsumedToday;
 
   // 粒子系統
   final List<StudioParticle> _particles = [];
@@ -125,6 +136,8 @@ class _PetStudioScreenState extends State<PetStudioScreen>
     setState(() => _myElderId = id);
     _maybeSyncInitialWeight();
     _refreshFoodUnlocks();
+    // ★ 第五十一輪：同時讀一次今日食物帳本，見 _refreshCarrotLedger 說明。
+    _refreshCarrotLedger();
   }
 
   /// 載入「目前生效中」的成長階段門檻與賽季資訊（`GET /api/pet/thresholds`
@@ -168,6 +181,44 @@ class _PetStudioScreenState extends State<PetStudioScreen>
   /// 今日服藥打卡次數；還沒有後端資料時視為 0（等同不提供打卡解鎖加成，
   /// 只靠步數，不影響既有行為）。
   int get _medicationCheckinsToday => _unlockSource?.medicationCheckinsToday ?? 0;
+
+  // 🥕 陽光脆胡蘿蔔「賺取制」相關換算（第五十一輪新增，比照
+  // `ElderProfileTab` 的同名成員，理由見該檔案說明）。
+
+  PetFoodItem get _carrotFoodItem =>
+      PetFoodItem.milestoneMenu.firstWhere((f) => f.id == 'carrot');
+
+  String get _todayLedgerDate {
+    final now = DateTime.now();
+    final mm = now.month.toString().padLeft(2, '0');
+    final dd = now.day.toString().padLeft(2, '0');
+    return '${now.year}-$mm-$dd';
+  }
+
+  int get _carrotEarnedToday => _carrotFoodItem.earnedCountFor(
+        steps: _effectiveSteps,
+        checkins: _medicationCheckinsToday,
+      );
+
+  int get _carrotAvailable {
+    final consumed = _carrotConsumedToday;
+    if (consumed == null) return 0;
+    final earned = _carrotEarnedToday;
+    return (earned - consumed).clamp(0, earned);
+  }
+
+  /// 重新整理今日食物帳本中胡蘿蔔已消耗的份數。elder_id 還沒解析出來時
+  /// 直接跳過——[_carrotConsumedToday] 維持 null，[_carrotAvailable] 會
+  /// 保守顯示成不可餵。失敗只記 log，不影響其餘食物的既有餵食流程。
+  Future<void> _refreshCarrotLedger() async {
+    final eid = _myElderId;
+    if (eid == null) return;
+    final ledger =
+        await PetProgressService.loadFoodLedger(eid, _todayLedgerDate);
+    if (mounted && ledger != null) {
+      setState(() => _carrotConsumedToday = ledger.consumedOf('carrot'));
+    }
+  }
 
   /// 進入寵物介面時，把體重同步一次到好友排行榜。
   ///
@@ -251,7 +302,8 @@ class _PetStudioScreenState extends State<PetStudioScreen>
   }
 
   // ── 核心餵食邏輯 ──
-  void _handleFeedFood(PetFoodItem food) {
+  Future<void> _handleFeedFood(PetFoodItem food) async {
+    final bool isCarrot = food.id == 'carrot';
     final currentCount = _foodInventory[food.id] ?? food.initialCount;
     if (!food.isUnlimited && currentCount <= 0) {
       _showSnackToast('【${food.name}】已經吃完囉～多散步解鎖新食材吧！🌾');
@@ -274,7 +326,11 @@ class _PetStudioScreenState extends State<PetStudioScreen>
     setState(() {
       _growthState = newState;
       _actorMood = ActorMood.chewing;
-      if (!food.isUnlimited && currentCount > 0) {
+      if (isCarrot) {
+        // 賺取制食物：本機樂觀先 +1「今天已消耗」，見 ElderProfileTab
+        // ._handleFeedFood 的同一段說明（本畫面比照同一套邏輯）。
+        _carrotConsumedToday = (_carrotConsumedToday ?? 0) + 1;
+      } else if (!food.isUnlimited && currentCount > 0) {
         _foodInventory[food.id] = currentCount - 1;
       }
     });
@@ -283,6 +339,21 @@ class _PetStudioScreenState extends State<PetStudioScreen>
     _spawnHearts(const Offset(350, 480), color: food.themeColor, count: 20);
     PetStorageService.saveState(newState);
     _syncWeightToLeaderboard();
+
+    if (isCarrot) {
+      final eid = _myElderId;
+      final bool ledgerOk = eid != null &&
+          await PetProgressService.recordFoodConsumption(
+            elderId: eid,
+            ledgerDate: _todayLedgerDate,
+            foodId: 'carrot',
+          );
+      if (!ledgerOk) {
+        // 後端帳本沒記到這一份，本機樂觀 +1 的消耗數不可信任，整份重讀
+        // 帳本校正，不用「減 1」去猜後端真實狀態（理由同 ElderProfileTab）。
+        unawaited(_refreshCarrotLedger());
+      }
+    }
 
     _moodResetTimer?.cancel();
     _moodResetTimer = Timer(const Duration(milliseconds: 2600), () {
@@ -400,6 +471,10 @@ class _PetStudioScreenState extends State<PetStudioScreen>
       );
     }
 
+    // ★ 第五十一輪：胡蘿蔔可餵份數每次 build() 都重新覆蓋，見
+    // ElderProfileTab.build() 對應那行的說明（本畫面比照同一套邏輯）。
+    _foodInventory['carrot'] = _carrotAvailable;
+
     return Scaffold(
       backgroundColor: const Color(0xFFFAF7F2),
       body: OrientationBuilder(
@@ -465,6 +540,8 @@ class _PetStudioScreenState extends State<PetStudioScreen>
                     // 打開食匣前重新整理一次今日打卡次數，避免顯示過期的
                     // 解鎖狀態（例如長輩剛在別的畫面完成服藥打卡）。
                     _refreshFoodUnlocks();
+                    // ★ 第五十一輪：同理，重讀一次胡蘿蔔的今日食物帳本。
+                    _refreshCarrotLedger();
                   },
                 ),
               ),
@@ -529,7 +606,7 @@ class _PetStudioScreenState extends State<PetStudioScreen>
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       if (_season != null) ...[
-                        _buildSeasonBadge(_season!),
+                        PetSeasonCard(season: _season!),
                         const SizedBox(height: 10),
                       ],
                       _buildLeaderboardButton(),
@@ -1027,55 +1104,20 @@ class _PetStudioScreenState extends State<PetStudioScreen>
     );
   }
 
-  // 🗓️ 頂部賽季膠囊：顯示第幾季、還剩幾天。
+  // 🗓️ 頂部賽季卡片：顯示第幾季、還剩幾天、進度條與白話說明。
   //
   // 放在這個懸浮膠囊群組（而非底部的即時互動面板／步數卡）是刻意的：
-  // 這三個膠囊已經是「小豬的家」全螢幕中，唯一常駐可見、不需要額外點擊
+  // 這幾個元件已經是「小豬的家」全螢幕中，唯一常駐可見、不需要額外點擊
   // 就能看到的資訊區——賽季是「背景倒數」資訊，長輩不需要每次都特別去查，
   // 放在視線常經過的角落比放進要點開才看得到的面板更合適。一個賽季三個月
   // 、季末會重置體重（重置功能屬管理者端，尚未在本畫面實作），所以文案
   // 用「還剩 N 天」而非只顯示日期——長輩看得懂「還剩幾天」，不需要自己
   // 拿起訖日期去算。取不到賽季資料時 [_season] 是 null，呼叫端（build）
-  // 直接不渲染這顆膠囊，不顯示編造的數字。
-  Widget _buildSeasonBadge(PetSeasonInfo season) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFFDF8).withValues(alpha: 0.94),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFFBBF7D0), width: 1.5),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF059669).withValues(alpha: 0.16),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Text('🗓️', style: TextStyle(fontSize: 15)),
-          const SizedBox(width: 6),
-          // 季數與剩餘天數理論上都是短數字（季數頂多 2~3 位、剩餘天數
-          // 0~92），但仍包 Flexible + ellipsis——同列已有圖示，符合鐵律
-          // #14／護欄 G159「同列多元素時標題需可收縮」的判準。
-          Flexible(
-            child: Text(
-              '第 ${season.seasonNo} 季 · 還剩 ${season.daysRemaining} 天',
-              style: GoogleFonts.notoSansTc(
-                fontSize: 14,
-                fontWeight: FontWeight.w900,
-                color: const Color(0xFF047857),
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  // 直接不渲染這顆卡片，不顯示編造的數字。
+  //
+  // ⚠️ 實際卡片內容抽到共用元件 [PetSeasonCard]（見該檔說明）——
+  // `pet_corner_actions.dart` 有幾乎相同的一份複製，抽出共用元件避免再長出
+  // 第三份。
 
   // 🏆 頂部排行榜控制膠囊按鈕（開啟好友寵物排行榜面板）
   Widget _buildLeaderboardButton() {

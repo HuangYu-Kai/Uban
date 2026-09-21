@@ -3,6 +3,7 @@ import 'package:flutter/services.dart'; // 添加觸覺反饋
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
+import 'dart:convert';
 import 'dart:ui';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'family/family_home_tab.dart';
@@ -140,15 +141,59 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   /// 在實務上不可能發生，清空反而會違反上一段引用的既有契約
   /// （子分頁明確要求這個集合要撐過 `didUpdateWidget`，也就是切換長輩那次）。
   ///
-  /// **刻意不設上限、不做 LRU 淘汰、不寫入 SharedPreferences**：
-  /// 這是單次 App 執行期間的記憶體內狀態（未持久化，冷啟動即歸零），
-  /// 首頁清單本身也只顯示最近 30 筆（`family_home_tab.dart:3013`），
-  /// 使用者一個 session 內能滑掉的筆數遠遠不到需要淘汰的量級；
-  /// 若改用「淘汰最舊一筆」的上限機制，一旦被淘汰的那筆剛好還在目前
-  /// 30 筆的顯示範圍內，等於讓一個已經被使用者明確關閉的警示自己復活
-  /// ——這正是本輪任務要修的問題（滑掉又跳回來），不能為了設上限
-  /// 而重新引入它。
+  /// **第五十輪的「刻意不設上限、不做 LRU 淘汰、不寫入 SharedPreferences」
+  /// 已於第五十一輪過期**：上面幾段理由成立的前提是「這是單次 App 執行期間
+  /// 的記憶體內狀態，冷啟動即歸零」——量體因此不可能累積。第五十一輪把它
+  /// 接上持久化之後，這個前提不再成立：使用者用半年、一年，每一則被滑掉的
+  /// 警示都會一直留在 SharedPreferences 裡，後端只會持續新增警報／活動
+  /// 記錄，不會反向清空，若不設上限就會變成無止盡成長、拖慢每次冷啟動的
+  /// 讀取。因此第五十一輪為**持久化的那一份**（`_persistedDismissedTimestamps`）
+  /// 補上 30 天過期＋500 筆上限（見下方欄位），但**這個記憶體內 Set 本身
+  /// 仍然不設上限**——本頁存活期間同一個 session 滑掉的筆數遠遠不到需要
+  /// 淘汰的量級，這段既有理由不變；真正會無限成長的是持久化那一份，因為
+  /// 它會跨越 App 的一生持續累積，不會隨冷啟動歸零。
   final Set<String> _dismissedAlertKeys = {};
+
+  /// ★ 第五十一輪（任務 1）：`_dismissedAlertKeys` 的持久化備份，key＝已滑掉
+  /// 的複合鍵、value＝滑掉當下的時間戳（epoch ms）。只寫入 `alert:`／`log:`
+  /// 開頭的鍵——這兩種格式來自後端資料表的 `INTEGER PRIMARY KEY
+  /// AUTOINCREMENT`（`emergency_alerts.alert_id`／`activity_log.log_id`，見
+  /// 上方 `_dismissedAlertKeys` 欄位宣告引用的兩處），同一筆記錄重新拉取時
+  /// id 不會變，適合跨 App 重啟比對。
+  ///
+  /// **`live:$type:$deviceId:$liveTs` 與 `log-fallback:$logTs:$descHash`
+  /// 這兩種複合鍵刻意不持久化**（組法見
+  /// `family/home/widgets/home_alert_preview_card.dart:63-65` 與
+  /// `:92-96`）：兩者都內嵌了 timestamp 或雜湊，是後端沒給穩定 PK 時的
+  /// 退路，同一筆警示在下一輪輪詢重新拼出來的鍵極可能已經不同（尤其
+  /// `alert_id`/`log_id` 缺漏時，兩次輪詢抓到的 timestamp 精度或雜湊輸入
+  /// 稍有差異就會漂移）。持久化這種會漂移的鍵不會讓「滑掉又跳回來」的
+  /// 問題變好——下次重開 App 後新產生的複合鍵大概率對不上舊的持久化值，
+  /// 只會白佔一筆 SharedPreferences 空間；因此這兩種格式繼續維持原本純
+  /// 記憶體內的行為（只進 `_dismissedAlertKeys`，不進這個 Map），冷啟動後
+  /// 一樣會歸零、可能重新出現——這是已知取捨，不是遺漏。
+  Map<String, int> _persistedDismissedTimestamps = {};
+
+  /// [_persistedDismissedTimestamps] 的 SharedPreferences 鍵。
+  static const String _dismissedAlertsPrefsKey = 'family_dismissed_alert_keys';
+
+  /// 持久化紀錄的過期視窗——30 天沒人再看過就視為過期，見
+  /// [_persistedDismissedTimestamps] 欄位宣告的完整理由。
+  static const Duration _dismissedKeyMaxAge = Duration(days: 30);
+
+  /// 持久化紀錄的筆數上限，超過時只保留最新的 500 筆（依滑掉時間排序）。
+  static const int _dismissedKeyCap = 500;
+
+  /// ★ 第五十一輪（任務 2）：「資料」分頁（IndexedStack index 2）的重新整理
+  /// 訊號。比照本檔既有的 `_questionRefreshToken`（見該欄位宣告與
+  /// `_setupSignalingCallbacks` 內的用法）同一套「遞增 token 往下傳」作法
+  /// ——`FamilyDataTab` 活在 `IndexedStack` 底下被保活，`initState` 只跑
+  /// 一次、`didUpdateWidget` 只在切換長輩時才會觸發，使用者切到別的分頁
+  /// 再切回來**不會**重新載入，這正是「資料分頁整片空白、切分頁再回來仍
+  /// 空白」問題的成因之一（另一半是本輪同時修的 `ErrorBoundary`）。
+  /// 只在 `_onItemTapped` 判定「這一次是從別的分頁切進 index 2」時遞增
+  /// （見該方法），不會因為 2.5 秒輪詢的其他 `setState` 而誤觸發。
+  int _dataTabRefreshToken = 0;
 
   /// ★ 2026-08-18 IPS prototype：目前長輩的室內定位（presence）狀態，正規化自
   /// REST `ApiService.getCurrentZone`（快照）與 Socket `elder-zone-update`
@@ -302,6 +347,12 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     _initializeElderManagerAndConnect();
     _loadSubscriptionTier();
     _loadThemePreference();
+    // ★ 第五十一輪（任務 1）：把上次持久化的「已滑掉警示」紀錄讀回來，
+    //   解決「首頁滑掉的警示，重開 App 又跑出來」的問題。不 await——
+    //   跟其餘初始化一樣不能拖慢 initState，讀取完成前 `_dismissedAlertKeys`
+    //   維持空集合，最壞情況只是短暫看到已滑掉的警示又出現一下，讀取完成
+    //   後會立刻 setState 補上，不影響其餘既有流程。
+    _loadDismissedAlertKeys();
 
     // ★ 2026-08-20 新增：MIUI 家族裝置的「鎖定螢幕顯示／後台彈出介面」權限
     //   引導。等第一影格畫出後才檢查與導航，且完全不 await、不擋任何既有的
@@ -1626,17 +1677,96 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     );
   }
 
+  /// ★ 第五十一輪（任務 1）：App 冷啟動時把上次持久化的「已滑掉警示」紀錄
+  /// 讀回來。讀取的同時順手做一次過期／上限清理（見
+  /// `_persistedDismissedTimestamps` 欄位宣告的完整理由）；若清理後筆數
+  /// 有變（有東西被淘汰），立刻寫回，不必等到使用者下一次滑動才校正。
+  /// 任何一步失敗（SharedPreferences 不可用、格式壞掉）都靜默略過並維持
+  /// 空集合——這是輔助性的持久化，失敗頂多退回「本輪任務前」的行為
+  /// （滑掉的警示在冷啟動後可能又出現），不影響 App 其餘功能。
+  Future<void> _loadDismissedAlertKeys() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_dismissedAlertsPrefsKey);
+      if (raw == null || raw.isEmpty) return;
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return;
+      final Map<String, int> parsed = {};
+      for (final entry in decoded.entries) {
+        final ts = entry.value;
+        if (ts is int) {
+          parsed[entry.key.toString()] = ts;
+        } else if (ts is num) {
+          parsed[entry.key.toString()] = ts.toInt();
+        }
+      }
+      final pruned = _pruneDismissedTimestamps(parsed);
+      if (!mounted) return;
+      setState(() {
+        _persistedDismissedTimestamps = pruned;
+        _dismissedAlertKeys.addAll(pruned.keys);
+      });
+      if (pruned.length != parsed.length) {
+        // 清理過程中真的淘汰了東西，立刻寫回，避免下次冷啟動又重算一次。
+        unawaited(_saveDismissedAlertKeys());
+      }
+    } catch (e) {
+      debugPrint('⚠️ [FamilyMainScreen] 讀取已滑掉警示紀錄失敗（略過，不影響其餘功能）: $e');
+    }
+  }
+
+  /// 過期（30 天）＋上限（500 筆，新的優先保留）清理，回傳新的 Map，
+  /// 不改動傳入的參數。
+  Map<String, int> _pruneDismissedTimestamps(Map<String, int> input) {
+    final int cutoff =
+        DateTime.now().subtract(_dismissedKeyMaxAge).millisecondsSinceEpoch;
+    final entries = input.entries.where((e) => e.value >= cutoff).toList()
+      ..sort((a, b) => b.value.compareTo(a.value)); // 新到舊
+    return {
+      for (final e in entries.take(_dismissedKeyCap)) e.key: e.value,
+    };
+  }
+
+  /// 把目前的 [_persistedDismissedTimestamps] 寫入 SharedPreferences。
+  /// 失敗一律靜默略過（見 [_loadDismissedAlertKeys] 同樣的理由），不拋例外
+  /// 影響呼叫端（`_handleAlertItemDismissed` 是 fire-and-forget 呼叫這個）。
+  Future<void> _saveDismissedAlertKeys() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        _dismissedAlertsPrefsKey,
+        jsonEncode(_persistedDismissedTimestamps),
+      );
+    } catch (e) {
+      debugPrint('⚠️ [FamilyMainScreen] 寫入已滑掉警示紀錄失敗（略過，不影響其餘功能）: $e');
+    }
+  }
+
   /// ★ 2026-08-24（首頁「最新警示」滑動關閉，父層一半）：
   /// `FamilyHomeTab.onAlertItemDismissed` 的實作——把該複合鍵加入
   /// `_dismissedAlertKeys`（欄位宣告與完整理由見上方 `_activeAlerts` 附近）
   /// 並 `setState`，讓 `family_home_tab.dart:3009` 的 `.where(...)` 在下一次
   /// build 立即排除該筆；之後每 2.5 秒的裝置／警報輪詢觸發的重建也會沿用
   /// 同一份已更新的集合，不會讓滑掉的警示在下一輪輪詢又跳回來。
+  ///
+  /// ★ 第五十一輪（任務 1）：滑掉的當下若 `itemId` 是穩定的 `alert:`／
+  /// `log:` 開頭複合鍵，額外寫進 [_persistedDismissedTimestamps] 並非同步
+  /// 寫回 SharedPreferences（fire-and-forget，不 await——使用者滑動手勢
+  /// 的回饋不該被一次磁碟寫入卡住），讓「重開 App 又跑出來」的問題真正
+  /// 解決。`live:`／`log-fallback:` 開頭的鍵維持原樣只進記憶體 Set，理由見
+  /// [_persistedDismissedTimestamps] 欄位宣告。
   void _handleAlertItemDismissed(String itemId) {
     if (!mounted) return;
     setState(() {
       _dismissedAlertKeys.add(itemId);
     });
+    if (itemId.startsWith('alert:') || itemId.startsWith('log:')) {
+      _persistedDismissedTimestamps[itemId] =
+          DateTime.now().millisecondsSinceEpoch;
+      _persistedDismissedTimestamps =
+          _pruneDismissedTimestamps(_persistedDismissedTimestamps);
+      unawaited(_saveDismissedAlertKeys());
+    }
   }
 
   Future<void> _switchElder(Elder elder) async {
@@ -2028,8 +2158,18 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
 
   void _onItemTapped(int index) {
     HapticFeedback.lightImpact(); // 添加觸覺反饋
+    // ★ 第五十一輪（任務 2）：只在「這一次是從別的分頁切進資料分頁
+    //   （index 2）」才遞增 `_dataTabRefreshToken`，必須在 `_selectedIndex`
+    //   被覆寫之前先判斷——判斷式若寫在 setState 之後，`_selectedIndex`
+    //   早已等於 `index`，永遠判斷不出「切換前是別的分頁」。同一分頁內
+    //   其餘每 2.5 秒輪詢觸發的 `setState` 不會經過 `_onItemTapped`，
+    //   不會誤觸發重複刷新。
+    final bool enteringDataTab = index == 2 && _selectedIndex != 2;
     setState(() {
       _selectedIndex = index;
+      if (enteringDataTab) {
+        _dataTabRefreshToken++;
+      }
     });
     // ★ 第四十一輪 item 2（第二階段）：偵測「使用者第一次切到某個分頁」並
     //   排程該分頁的新手指引。比照 elder_home_screen.dart::_onNavTap 同一輪
@@ -2466,6 +2606,9 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                   userName: widget.userName,
                   isDarkMode: _isDarkMode,
                   onToggleDarkMode: _setDarkMode,
+                  // ★ 第五十一輪（任務 2）：切到「資料」分頁時觸發重新整理，
+                  //   見欄位宣告處與 `_onItemTapped` 的說明。
+                  refreshToken: _dataTabRefreshToken,
                   onElderUpdated: () {
                     _refreshElders();
                   },

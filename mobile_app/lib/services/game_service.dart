@@ -1,10 +1,24 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'api_service.dart';
 
 class GameService {
-  // 動態讀取 .env 中的 IP
-  static String get baseUrl => '${dotenv.env['API_BASE_URL'] ?? 'http://10.0.2.2:5000'}/api/game';
+  // ⚠️ 第五十一輪修復：原本讀 dotenv 的 `API_BASE_URL`，但專案 `.env` 從未
+  // 定義這把鍵，因此永遠拿到寫死的預設值 `http://10.0.2.2:5000`——只在
+  // Android 模擬器連本機 Flask（5000 埠）時碰巧可用，實機或改連現行的
+  // FastAPI 後端（8000 埠）一律連不到，且不會有任何錯誤提示，容易誤導
+  // 下一個人以為這個服務仍在正常運作。改用專案統一的 [ApiService.baseUrl]
+  // （底層即 `ApiClient.baseUrl`，走 `--dart-define=SERVER_IP`，鐵律 #1
+  // 「不可寫死 IP／伺服器網址」的既有機制），不再自行猜測位址。
+  //
+  // ⚠️ 目前找不到任何從 main.dart 可達的呼叫鏈會用到本類別——grep 全專案，
+  // 呼叫端只有 `widgets/desktop_pet.dart`／`screens/admin_appearance_screen.dart`
+  // ／`screens/leaderboard_screen.dart`／`screens/pet_profile_screen.dart`／
+  // `screens/test_home_page.dart`，五者互相引用成一個封閉小群，但沒有任何
+  // 檔案從 `main.dart` 或其他可達路徑建構 `TestHomePage`／`DesktopPet`，
+  // 整群都是死碼。本輪不刪除檔案（不在本次任務範圍內），僅修正這個會
+  // 誤導人的寫死位址，避免下一個人依賴它連不到後端卻查不出原因。
+  static String get baseUrl => '${ApiService.baseUrl}/game';
 
   Future<Map<String, dynamic>> distributeAppearances({String? elderId}) async {
     final response = await http.post(

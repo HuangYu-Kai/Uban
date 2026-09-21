@@ -9,6 +9,7 @@ import 'health_trends_screen.dart';
 import 'family_collaboration_screen.dart';
 
 import 'alert_center_screen.dart';
+import '../../services/api/connection_check.dart';
 import '../video_call_screen.dart';
 import '../camera_screen.dart';
 import 'family_settings_view.dart';
@@ -521,6 +522,10 @@ class _AiHubScreenState extends State<AiHubScreen> {
       return;
     }
 
+    // 供緊急通話按鈕的連線自檢流程（await 之後）使用——BottomSheet builder
+    // 的 context 會在 Navigator.pop 之後失效，不能跨 await 沿用。
+    final outerContext = context;
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
@@ -579,11 +584,29 @@ class _AiHubScreenState extends State<AiHubScreen> {
                 subtitle: '強制喚醒長輩設備並自動接聽視訊',
                 icon: Icons.warning_rounded,
                 color: const Color(0xFFEF4444),
-                onTap: () {
+                onTap: () async {
                   Navigator.pop(context);
                   final String rawId = _currentElder!.elderId ?? _currentElder!.id.toString();
+
+                  // ★ 第五十一輪：緊急通話會強制喚醒長輩設備，比一般通話更需要
+                  // 讓使用者先知道連不上的原因（DNS 解析失敗／逾時／伺服器異常），
+                  // 而不是讓 VideoCallScreen 內部的原始 socket 例外直接冒出來。
+                  // 一般通話按鈕刻意維持原行為，不加這道檢查。
+                  final checkResult = await ConnectionChecker.check();
+                  if (!mounted) return;
+                  if (!checkResult.isOk) {
+                    ScaffoldMessenger.of(outerContext).showSnackBar(
+                      SnackBar(
+                        content: Text(checkResult.userMessage),
+                        backgroundColor: const Color(0xFFEF4444),
+                        duration: const Duration(seconds: 4),
+                      ),
+                    );
+                    return;
+                  }
+
                   Navigator.push(
-                    context,
+                    outerContext,
                     MaterialPageRoute(
                       builder: (context) => VideoCallScreen(
                         roomId: 'comm_elder_$rawId',

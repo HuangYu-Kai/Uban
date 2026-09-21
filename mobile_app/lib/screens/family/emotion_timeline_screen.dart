@@ -104,7 +104,11 @@ class _EmotionTimelineScreenState extends State<EmotionTimelineScreen> {
     if (resp['status'] != 'success') {
       setState(() {
         _status = _SectionStatus.error;
-        _errorMsg = (resp['message'] ?? resp['error'] ?? '情緒事件載入失敗').toString();
+        // ★ 第五十一輪：FastAPI 錯誤回應只有 `detail`（沒有 `message`／
+        // `error`），原本的 fallback 鏈永遠找不到值、必然落到最後那句寫死的
+        // 訊息，等於把「查無此長輩」「未與該長輩綁定，無權限查看」等實際
+        // 原因都吃掉了——優先顯示 `detail`。
+        _errorMsg = (resp['detail'] ?? resp['message'] ?? resp['error'] ?? '情緒事件載入失敗').toString();
       });
       return;
     }

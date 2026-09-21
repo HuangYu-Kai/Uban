@@ -402,8 +402,9 @@ AI 對話、Pinecone 長期記憶、新聞爬蟲、遊戲、寵物、TTS/STT、`
 | `pendingAcceptedCall` | `main.dart`:185（BG emergency）、:416（BG CallKit accept）、:1588（FG CallKit accept）、`local_call_notification.dart::_persistTapAsAccepted` | `main.dart`:525（冷啟動）、:1137（resume） | :124、:400、:1141、:1832 | 「使用者已接聽」→ 待導航 |
 | `pendingRingCallData` | `main.dart`:216（BG 長輩 call-request）、:248（BG 家屬 call-request）、:428（accept 時更新 `isAccepted:true`） | :555 | :125、:401、:1833 | 「正在響鈴」預寫，防 accept 事件遺失 |
 | `pendingRingCall` | ⚠️ **`main.dart` 中無任何寫入點** | — | :126、:402、:1834 | **遺留鍵**，只被清除。歷史文件說它是預寫鍵是**過時的**（現行是 `pendingRingCallData`） |
+| **`pendingLocalRingCall`** | **2026-09-21 第五十一輪新增**。`local_call_notification.dart::_persistTapAsPendingRing`，由 `notificationBackgroundTapHandler` / `consumeLaunchPayload()` 在 `response.actionId == null`（通知本體被點，或螢幕鎖定時系統因 `fullScreenIntent` 自動觸發的 content PendingIntent）時呼叫——**不是**使用者明確按下「✓ 接聽」 | `main.dart::_checkPendingLocalRingCall`（由 `_scheduleLocalRingCallFallback` 排程，冷啟動輪詢 `splashActive`；resume 直接呼叫） | 讀取當下即消費並移除（一次性） | 「備援通知響過但尚未明確接聽／拒接」→ 消費時改顯示 `_showIncomingCallDialog`（接聽／拒接畫面），**不會**直接進房。欄位集合與 `pendingAcceptedCall` 相同（見 G198） |
 
-> **拒接／取消時三個鍵必須一起清**（護欄 #15）。殘留 `pendingRingCallData` 會讓下次冷啟動 `main()` 誤重建 pending → 假來電／角色反轉。
+> **拒接／取消時三個鍵必須一起清**（護欄 #15，指 `pendingAcceptedCall`／`pendingRingCallData`／`pendingRingCall`）。殘留 `pendingRingCallData` 會讓下次冷啟動 `main()` 誤重建 pending → 假來電／角色反轉。`pendingLocalRingCall` 是獨立的第四個鍵，語意與寫入來源都與前三者不同，**不併入**這條「三個鍵一起清」的既有規則，見 G198。
 
 #### 緊急通話鍵
 
@@ -1275,6 +1276,68 @@ IMU 航位推算漂移嚴重，且長輩常不隨身攜帶手機。相機方案�
 > 📌 **搬移門檻提示**：本文件中出現的「第 N 輪」，**N ≤ 40** 者其年表條目已遷至
 > `CLAUDE_call-monitor-history.md`；**N ≥ 41** 仍在本檔 §8。此門檻會隨每輪搬移而持續調高，
 > 調整時只需要更新本處（§8 開頭）的數字。
+
+### 2026-09-21 — 第五十一輪：備援通知的 `actionId == null` 被誤判為「已接聽」，長輩端第一通來電未經同意直接開視訊
+
+**症狀**：長輩端**第一通**來電時，App 沒有經過長輩同意就直接開啟視訊通話；
+第二通以後才會正常出現接聽／拒接畫面。
+
+**根因**：`services/firebase_bg_handler.dart::showFullScreenCallkit`（約
+:202-233）在原生 CallKit 建立失敗（輪詢 8×250ms 仍未確認 `activeCalls()`
+非空）時，才退到 `LocalCallNotification.show(data)` 補發備援來電通知——冷
+啟動／App 剛被殺死時原生外掛通常還沒暖機，第一通因此幾乎必定走這條路，
+第二通以後 CallKit 已暖機就不會。`services/local_call_notification.dart`
+的 `show()`（:109-182）發出的備援通知帶 `fullScreenIntent: true`，只定義
+兩顆 action（`actionAcceptId` / `actionDeclineId`）。舊版
+`notificationBackgroundTapHandler`（:294-310）與 `consumeLaunchPayload()`
+（:266-284）只把 `response.actionId == actionDeclineId` 當拒接，**其餘一切
+（含 `actionId == null`）都落到 `_persistTapAsAccepted`**，直接寫
+`pendingAcceptedCall`——而 `actionId == null` 涵蓋「通知本體被點」與「螢幕
+鎖定時系統因 `fullScreenIntent` 自動觸發的 content PendingIntent」兩種情況，
+**兩者都不是使用者主動按下「✓ 接聽」**。`main.dart::_bootstrap()`
+（約 :139-162）讀到 `pendingAcceptedCall` 後，`elder_home_screen.dart::
+_onPendingCallChanged`（約 :1010-1078）會直接把長輩送進 `ElderScreen`，
+全程沒有出現接聽／拒接畫面。對比組：CallKit 路徑本來就要求原生確認
+`isAccepted == true` 才算接聽（`main.dart::_checkInitialCall` /
+`actionCallAccept`，見 G10），是整條通話系統裡**唯一**沒有這道確認的接聽
+路徑。
+
+**修復**（見 **G198**）：
+
+- 新增 SharedPreferences 鍵 `pendingLocalRingCall`——語意是「備援通知響
+  過，但使用者尚未明確接聽／拒接」，欄位集合與 `pendingAcceptedCall` 相同
+  （`roomId`/`senderId`/`callId`/`issuedAt`/`expiresAt`/`senderRole`/
+  `isVideoCall`/`timestamp`），與 `callId` 綁定、讀不到就當過期丟棄（比照
+  `lastProcessedCallId` 的純資料模式，**沒有**在 `Signaling` 單例新增顯示
+  狀態旗標，見 G27）。
+- `local_call_notification.dart`：新增 `_persistTapAsPendingRing()`。
+  `notificationBackgroundTapHandler` 與 `consumeLaunchPayload()` 改為三分支：
+  `actionId == actionDeclineId` → 拒接；`actionId == actionAcceptId` → 呼叫
+  既有 `_persistTapAsAccepted()`；其餘（`== null`）→ 呼叫
+  `_persistTapAsPendingRing()`。`fullScreenIntent: true` 與兩顆 action
+  按鈕維持不變（鐵律 #13 明文允許來電響鈴畫面例外）。
+- `main.dart`：新增 `_checkPendingLocalRingCall()` 讀取並消費該鍵——有效期
+  判斷比照 `pendingAcceptedCall`（`kCallValidityMs`）、跳過已由其他通路
+  `lastProcessedCallId` 處理過的 callId、若已有 `pendingAcceptedCall` 待
+  導航就不疊加彈窗；符合條件才呼叫**既有的** `_showIncomingCallDialog`
+  （原本只給 FCM 前景備援與 Socket `onCallRequest` 用），讓使用者自己按
+  接聽／拒接，不重做一套 UI。新增 `_scheduleLocalRingCallFallback()`，
+  比照既有 `_scheduleRecoveryCodeFallback` 的模式輪詢 `splashActive`
+  （200ms/次，上限 20s）後才消費，避免 dialog 在 Splash 冷啟動導航塵埃
+  落定前彈出被 `pushReplacement` 打斷（G13）；冷啟動於 `initState()` 排程，
+  回前景（`AppLifecycleState.resumed`）直接呼叫一次（此時 Splash 已結束
+  無需再等）。
+- **刻意沒做**：緊急通話（`type == 'emergency-call'`）完全不動——
+  `firebase_bg_handler.dart::showFullScreenCallkit` 本來就只在
+  `if (!isEmergency)` 分支內才呼叫 `LocalCallNotification.show()`，緊急
+  通話從未經過備援通知這條路，故 `local_call_notification.dart` 與
+  `_checkPendingLocalRingCall` 都不需要（也不應該）另外判斷
+  `isEmergency`，程式碼裡已加註解說明這個不變式。CallKit 路徑、
+  `signaling.dart`、FCM 背景 handler 的角色守門（`AndroidIntent` 只在
+  `role == 'elder' && type == 'emergency-call'`，鐵律 #13）一律未動。
+
+**驗證**：`flutter analyze lib` 0 error（本輪新增程式碼無新增警示）。
+本輪未接觸後端，`uban-api` 迴歸套件未受影響（見 §10 的例行指令）。
 
 ### 2026-09-17 — 第四十九輪：警報狀態機、時間基準統一、誠實性收尾
 

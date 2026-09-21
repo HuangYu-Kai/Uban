@@ -22,6 +22,24 @@ class PetFoodItem {
   final String soundType; // crunch, sweet, chew, feast
   final int initialCount; // -1 for unlimited
 
+  /// 「賺取制」食物專用參數——目前只有 carrot 使用，其餘食物一律是 null。
+  /// null 代表沿用舊制「解鎖後給固定份數」的模型（[initialCount] 直接就是
+  /// 當天可餵份數，庫存打完就沒了，不再補）。
+  ///
+  /// ⚠️ 第五十一輪修復：carrot 原本 [stepMilestone]=0 且 [initialCount]=-1，
+  /// 等於「恆解鎖＋無限量」——使用者實機發現可以無限次投餵同一顆
+  /// 胡蘿蔔。改為「賺取制」：每走 [earnStepsPerUnit] 步、或每完成
+  /// [earnCheckinsPerUnit] 次生活排程打卡各兌換 1 份，兩者相加後再夾在
+  /// [earnDailyCap] 這個每日上限內；已賺得的份數扣掉今天已經吃掉的份數
+  /// （由後端食物帳本 `GET/POST /api/pet/food-ledger` 持久化，見
+  /// `PetProgressService.loadFoodLedger`／`recordFoodConsumption`），
+  /// 才是目前真正可餵的份數。實際的「已賺得－已消耗」換算邏輯在呼叫端
+  /// （`ElderProfileTab`／`PetStudioScreen`），本類別只保存規則參數與
+  /// [earnedCountFor] 這個純函式換算。
+  final int? earnStepsPerUnit;
+  final int? earnCheckinsPerUnit;
+  final int? earnDailyCap;
+
   const PetFoodItem({
     required this.stepMilestone,
     this.medicationCheckinMilestone = 0,
@@ -38,9 +56,34 @@ class PetFoodItem {
     this.intimacyGain = 6,
     this.soundType = 'crunch',
     this.initialCount = 1,
+    this.earnStepsPerUnit,
+    this.earnCheckinsPerUnit,
+    this.earnDailyCap,
   });
 
   bool get isUnlimited => initialCount == -1;
+
+  /// 是否為「賺取制」食物（見 [earnStepsPerUnit] 等欄位說明）。
+  bool get isEarnedQuantity => earnDailyCap != null;
+
+  /// 依賺取規則換算「今天已賺得」的份數（尚未扣掉今天已消耗的部分——扣除
+  /// 邏輯在呼叫端合併食物帳本後處理）。非賺取制食物（[isEarnedQuantity]
+  /// 為 false）一律回傳 0，呼叫端不應該對這類食物呼叫本方法。
+  int earnedCountFor({required int steps, required int checkins}) {
+    final cap = earnDailyCap;
+    final stepsPerUnit = earnStepsPerUnit;
+    final checkinsPerUnit = earnCheckinsPerUnit;
+    if (cap == null ||
+        stepsPerUnit == null ||
+        stepsPerUnit <= 0 ||
+        checkinsPerUnit == null ||
+        checkinsPerUnit <= 0) {
+      return 0;
+    }
+    final int fromSteps = steps ~/ stepsPerUnit;
+    final int fromCheckins = checkins ~/ checkinsPerUnit;
+    return (fromSteps + fromCheckins).clamp(0, cap);
+  }
 
   /// 判斷這項食物「今天」是否已解鎖：散步步數達標「或」服藥打卡次數達
   /// 標，兩者擇一即可（對應 [unlockCondition] 的文案）。
@@ -68,14 +111,24 @@ class PetFoodItem {
       emoji: '🥕',
       imageAsset: 'assets/images/pet_foods/food_carrot.png',
       subtitle: '爽脆多汁，保護好眼力',
-      unlockCondition: '田園常駐基礎鮮食',
+      // ⚠️ 第五十一輪修復：文案從「田園常駐基礎鮮食」改成寫實描述賺取
+      // 規則——舊文案配合 initialCount:-1 給人「隨便吃」的印象，這正是
+      // 使用者實機發現可以無限次投餵同一顆胡蘿蔔的根因之一。
+      unlockCondition: '每走 500 步或完成 1 次生活排程打卡兌換 1 份，每日最多 5 份',
       reactionQuote: '咔滋咔滋！晨採胡蘿蔔最清甜，小豬耳朵高興抖動～🥕✨',
       themeColor: Color(0xFFF97316),
       vitalityGain: 10,
       weightGainGrams: 40,
       intimacyGain: 5,
       soundType: 'crunch',
-      initialCount: -1, // 無限量
+      // 不再是 -1（無限量）。賺取制食物的實際可餵份數由呼叫端用
+      // earnedCountFor() 換算「今天已賺得」再扣掉食物帳本的「今天已消耗」
+      // 算出，這裡的 initialCount 只是資料形狀需要的預設值，不會被讀取
+      // （見 ElderProfileTab/_PetStudioScreenState 的庫存計算邏輯）。
+      initialCount: 0,
+      earnStepsPerUnit: 500,
+      earnCheckinsPerUnit: 1,
+      earnDailyCap: 5,
     ),
     PetFoodItem(
       stepMilestone: 1000,

@@ -26,6 +26,7 @@ import 'package:flutter_webrtc/flutter_webrtc.dart'
         createPeerConnection;
 import '../../services/api_service.dart';
 import '../../widgets/youtube_bubble_player.dart';
+import '../../utils/stt_locale.dart';
 
 // Oracle Cloud TURN 伺服器配置 (與 signaling.dart 同步)
 const String _turnServer =
@@ -374,30 +375,11 @@ class ElderChatTabState extends State<ElderChatTab>
               }
               debugPrint('-------------------------------------------');
 
-              final zhTw = locales.where(
-                (l) =>
-                    l.localeId.toLowerCase() == 'zh_tw' ||
-                    l.localeId.toLowerCase() == 'zh-tw',
-              );
-
-              if (zhTw.isNotEmpty) {
-                _sttLocaleToUse = zhTw.first.localeId;
-                debugPrint(
-                    'STT Diagnostic: Picked Exact zh_TW -> $_sttLocaleToUse');
-              } else {
-                // 退而求其次找任何中文
-                final anyZh = locales.where((l) =>
-                    l.localeId.contains('zh') || l.localeId.contains('cmn'));
-                if (anyZh.isNotEmpty) {
-                  _sttLocaleToUse = anyZh.first.localeId;
-                  debugPrint(
-                      'STT Diagnostic: Fallback to any Chinese -> $_sttLocaleToUse');
-                } else {
-                  _sttLocaleToUse = null;
-                  debugPrint(
-                      'STT Diagnostic: No Chinese found, using system default');
-                }
-              }
+              // ★ 第五十一輪：挑選邏輯抽成 utils/stt_locale.dart 共用實作
+              // （google_assistant_overlay.dart 也改用同一份），避免兩處
+              // 各自維護一份幾乎相同又容易漂移的判斷。
+              _sttLocaleToUse = pickChineseSttLocale(locales);
+              debugPrint('STT Diagnostic: Picked locale -> $_sttLocaleToUse');
             });
           }
         } catch (e) {
@@ -467,8 +449,17 @@ class ElderChatTabState extends State<ElderChatTab>
         },
         listenFor: const Duration(seconds: 30),
         pauseFor: const Duration(seconds: 4),
-        // 先改用系統預設語系，避免部分裝置在指定 zh-TW 時回傳空辨識。
-        localeId: null,
+        // ★ 第五十一輪：改傳 [_sttLocaleToUse]（由 pickChineseSttLocale 從
+        //   `_speechToText.locales()` 實際回報的清單挑出來），而不是繼續寫死
+        //   `null`。
+        //
+        //   這裡原本的註解是「先改用系統預設語系，避免部分裝置在指定 zh-TW
+        //   時回傳空辨識」——那個教訓針對的是**寫死** `'zh_TW'`：裝置的辨識器
+        //   可能只認得 `cmn-Hant-TW` 或 `zh-TW`，收到不認得的 ID 就靜默回空。
+        //   改用「從裝置回報的清單裡挑」之後這個風險消失了，而且挑不到任何
+        //   中文語系時 [pickChineseSttLocale] 本來就回 `null`，退化成與舊行為
+        //   完全相同——所以這個改法嚴格優於寫死 null，不會重演當年的空辨識。
+        localeId: _sttLocaleToUse,
         listenOptions: SpeechListenOptions(
           partialResults: true,
           cancelOnError: true,

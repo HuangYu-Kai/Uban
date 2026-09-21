@@ -5,6 +5,7 @@ import 'package:flutter_tts/flutter_tts.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import '../services/api_service.dart';
+import '../utils/stt_locale.dart';
 
 /// Uban 專屬全域長輩 AI 語音助理彈出視窗與服務
 class GoogleAssistantOverlay extends StatefulWidget {
@@ -65,6 +66,9 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
   bool _isListening = false;
   bool _isThinking = false;
   bool _speechReady = false;
+  // ★ 第五十一輪：改用 utils/stt_locale.dart 挑選裝置實際支援的中文語系，
+  // 不再寫死 'zh_TW'（見 _initSpeech／_startListening）。
+  String? _sttLocaleToUse;
   final List<Map<String, String>> _dialogHistory = [];
 
   @override
@@ -149,6 +153,15 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
           }
         },
       );
+
+      // ★ 第五十一輪：列舉裝置實際支援的語系，挑出可用的中文 localeId
+      // （見 utils/stt_locale.dart 說明），不再直接寫死 'zh_TW'——部分
+      // Android 辨識引擎不認得這個 ID，會靜默退回英文等裝置預設語系。
+      if (_speechReady) {
+        final locales = await _speechToText.locales();
+        _sttLocaleToUse = pickChineseSttLocale(locales);
+        debugPrint('🤖 [ASR Locale] 選用語系: $_sttLocaleToUse');
+      }
     } catch (e) {
       debugPrint('🤖 [ASR Init Exception] $e');
     }
@@ -164,7 +177,9 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
         _isListening = true;
       });
       await _speechToText.listen(
-        localeId: 'zh_TW',
+        // 使用 _initSpeech() 掃描裝置語系後選出的 ID；找不到中文語系時為
+        // null，交給系統預設（見 utils/stt_locale.dart）。
+        localeId: _sttLocaleToUse,
         listenOptions: SpeechListenOptions(
           partialResults: true,
           cancelOnError: false,

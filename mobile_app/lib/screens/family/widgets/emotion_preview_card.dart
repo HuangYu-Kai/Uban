@@ -79,7 +79,9 @@ class _EmotionPreviewCardState extends State<EmotionPreviewCard> {
     if (resp['status'] != 'success') {
       setState(() {
         _status = _PreviewStatus.error;
-        _errorMsg = (resp['message'] ?? resp['error'] ?? '載入失敗').toString();
+        // ★ 第五十一輪：同 emotion_timeline_screen.dart——FastAPI 錯誤回應
+        // 只有 `detail`，原本的 fallback 鏈永遠取不到值，優先顯示 `detail`。
+        _errorMsg = (resp['detail'] ?? resp['message'] ?? resp['error'] ?? '載入失敗').toString();
       });
       return;
     }

@@ -403,9 +403,9 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
 
     setState(() => _falseAlarmPending.add(itemId));
     try {
-      final data = await ApiService.markFalseAlarm(alertId: alertId, userId: familyUserId);
+      final result = await ApiService.markFalseAlarm(alertId: alertId, userId: familyUserId);
       if (!mounted) return;
-      if (data != null) {
+      if (result.success) {
         setState(() {
           final idx = _historyAlertItems.indexWhere((it) => it['id'] == itemId);
           if (idx != -1) {
@@ -418,8 +418,9 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
         // ★ 第五十輪（適老化）：改用統一的大字級／高對比 SnackBar。
         ErrorHandler.showSuccess(context, '已標記為誤報');
       } else {
-        // 可重試的失敗（後端暫時性錯誤），不是使用者操作錯誤，用 showWarning。
-        ErrorHandler.showWarning(context, '標記誤報失敗，請稍後再試');
+        // ★ 第五十一輪：改顯示後端實際原因（找不到這筆警報／尚未與這位長輩
+        // 綁定／伺服器錯誤），不再全部塌成同一句「標記誤報失敗」。
+        ErrorHandler.showWarning(context, '標記誤報失敗：${result.friendlyReason}');
       }
     } finally {
       if (mounted) setState(() => _falseAlarmPending.remove(itemId));
@@ -478,9 +479,9 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
 
     setState(() => _resolvePending.add(itemId));
     try {
-      final data = await ApiService.resolveAlert(alertId: alertId, userId: familyUserId);
+      final result = await ApiService.resolveAlert(alertId: alertId, userId: familyUserId);
       if (!mounted) return;
-      if (data != null) {
+      if (result.success) {
         setState(() {
           final idx = _historyAlertItems.indexWhere((it) => it['id'] == itemId);
           if (idx != -1) {
@@ -496,7 +497,8 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
         });
         ErrorHandler.showSuccess(context, '已回報處理完畢');
       } else {
-        ErrorHandler.showWarning(context, '回報失敗，請稍後再試');
+        // ★ 第五十一輪：同 _markFalseAlarm，顯示後端實際原因。
+        ErrorHandler.showWarning(context, '回報失敗：${result.friendlyReason}');
       }
     } finally {
       if (mounted) setState(() => _resolvePending.remove(itemId));
