@@ -1,6 +1,6 @@
 <mxfile host="app.diagrams.net">
   <diagram name="A01-長輩登入系統" id="0">
-    <mxGraphModel dx="1573" dy="1573" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1559" pageHeight="1853" math="0" shadow="0">
+    <mxGraphModel dx="1240" dy="899" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1559" pageHeight="1853" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -16,7 +16,7 @@
         <mxCell id="zSQVsPfYB0kKDTqIQ2hv-4" parent="zSQVsPfYB0kKDTqIQ2hv-1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" value="出示 4 碼配對碼與 QR" vertex="1">
           <mxGeometry height="48" width="236" x="26" y="1007" as="geometry" />
         </mxCell>
-        <mxCell id="zSQVsPfYB0kKDTqIQ2hv-5" parent="1" style="swimlane;html=1;horizontal=1;startSize=40;fillColor=none;strokeColor=#000000;fontSize=24;fontColor=#000000;fontStyle=0;swimlaneFillColor=none;collapsible=0;" value="長輩端 App" vertex="1">
+        <mxCell id="zSQVsPfYB0kKDTqIQ2hv-5" parent="1" style="swimlane;html=1;horizontal=1;startSize=40;fillColor=none;strokeColor=#000000;fontSize=24;fontColor=#000000;fontStyle=0;swimlaneFillColor=none;collapsible=0;" value="長輩端" vertex="1">
           <mxGeometry height="1773" width="559" x="327.99993896484375" y="40" as="geometry" />
         </mxCell>
         <mxCell id="zSQVsPfYB0kKDTqIQ2hv-6" parent="zSQVsPfYB0kKDTqIQ2hv-5" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" value="啟動讀取已儲存的使用者" vertex="1">
