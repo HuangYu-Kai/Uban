@@ -55,16 +55,22 @@ class CommunityService {
         userId: userId,
       );
 
-      final posts = remoteData
+      // null＝這次呼叫失敗（見 CommunityApi.getCommunityPosts），要退守本機快取；
+      // 空清單則是後端的權威答案，照樣覆蓋快取。
+      if (remoteData == null) {
+        debugPrint('⚠️ [CommunityService] 遠端呼叫失敗，改用本機快取');
+      } else {
+        final posts = remoteData
           .whereType<Map>()
           .map((post) => CommunityPost.fromJson(
                 post.map((key, value) => MapEntry(key.toString(), value)),
               ))
           .toList();
-      posts.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-      await _savePosts(userId, posts);
-      lastFetchWasOffline = false;
-      return posts;
+        posts.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        await _savePosts(userId, posts);
+        lastFetchWasOffline = false;
+        return posts;
+      }
     } catch (e) {
       debugPrint('⚠️ [CommunityService] Remote fetch failed, fallback to local: $e');
     }

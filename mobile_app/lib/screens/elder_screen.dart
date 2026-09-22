@@ -20,6 +20,7 @@ import 'identification_screen.dart';
 import 'elder_home_screen.dart';
 import '../globals.dart';
 import '../services/care_message_store.dart';
+import '../widgets/global_assistant_button.dart';
 
 class ElderScreen extends StatefulWidget {
   final String roomId;
@@ -2020,6 +2021,12 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
         builder: (context, pendingCall, _) {
           return Stack(
             children: [
+              // ★ 2026-09-22 第五十一輪（長5）：通話中不得出現全域語音助理浮動鈕，
+              //   否則會擋到接聽／掛斷鍵。這裡只是一個零尺寸的標記 widget，
+              //   它活著的期間浮動鈕就讓位——刻意不動本畫面的
+              //   initState/dispose（`CLAUDE_call-monitor-ui-map.md` §5.4 列為
+              //   「絕對不要碰」），改用 widget 樹上的標記。
+              const AssistantHiddenZone(child: SizedBox.shrink()),
               // 1. 全螢幕視訊區塊
               Positioned.fill(
                 child: Container(

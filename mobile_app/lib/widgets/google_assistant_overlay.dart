@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import '../services/api_service.dart';
 import '../utils/stt_locale.dart';
+import 'global_assistant_button.dart';
 
 /// Uban 專屬全域長輩 AI 語音助理彈出視窗與服務
 class GoogleAssistantOverlay extends StatefulWidget {
@@ -41,11 +42,14 @@ class GoogleAssistantOverlay extends StatefulWidget {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       barrierColor: Colors.black.withValues(alpha: 0.55),
-      builder: (ctx) => GoogleAssistantOverlay(
-        userName: userName,
-        aiName: aiName,
-        userId: userId,
-        initialPrompt: initialPrompt,
+      // ★ 第五十一輪：助理面板自己撐開時，全域浮動麥克風鈕讓位，不要疊在面板上。
+      builder: (ctx) => AssistantHiddenZone(
+        child: GoogleAssistantOverlay(
+          userName: userName,
+          aiName: aiName,
+          userId: userId,
+          initialPrompt: initialPrompt,
+        ),
       ),
     );
   }

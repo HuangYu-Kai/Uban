@@ -45,6 +45,7 @@ import 'services/local_reminder_notification.dart';
 import 'services/elder_reminder_manager.dart';
 import 'services/firebase_bg_handler.dart';
 import 'widgets/main_painters.dart';
+import 'widgets/global_assistant_button.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 final StreamController<String> callKitDeclineStream =
@@ -1816,7 +1817,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         //   樣式——本檔屬 🔴 極高風險檔，新增任何條件分支都可能牽動來電路徑；
         //   純視覺放大不值得為了「只放大一端」去承擔這個風險。取捨：家屬端的
         //   app 內來電通知文字/按鈕也會一併變大，非需求本意但風險最低。
-        return AlertDialog(
+        // ★ 第五十一輪（長5）：來電響鈴畫面上，全域語音助理浮動鈕必須讓位，
+        //   不可以擋到接聽／拒接鍵。純外層包裝，不動任何來電邏輯。
+        return AssistantHiddenZone(
+          child: AlertDialog(
           title: Row(
             children: [
               Container(
@@ -1901,6 +1905,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
               ),
             ),
           ],
+          ),
         );
       },
     ).then((_) {
@@ -2172,6 +2177,22 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       title: 'UBan',
       debugShowCheckedModeBanner: false,
       theme: buildAppTheme(context),
+      // ★ 2026-09-22 第五十一輪（長5）：長輩端語音助理的全域浮動鈕。掛在
+      //   `builder` 這一層（比 Navigator 更外面），所以連 `Navigator.push`
+      //   出去的畫面——通話房、監控、新聞播放器、配對頁——也叫得出小嘎。
+      //   只有長輩端 session 會顯示（登記者是 ElderHomeScreen），且通話／來電／
+      //   監控畫面會自行讓位，見 widgets/global_assistant_button.dart。
+      builder: (context, child) {
+        // `StackFit.expand`：讓 Navigator 拿到和沒包 Stack 時一樣的「全螢幕
+        //   緊約束」，不會因為預設的 loose 約束改變任何既有畫面的版面。
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            if (child != null) child,
+            const GlobalAssistantButton(),
+          ],
+        );
+      },
       // ★★★ 還原為原始入口：SplashScreen ★★★
       home: const SplashScreen(),
       /*

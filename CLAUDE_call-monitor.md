@@ -1277,6 +1277,62 @@ IMU 航位推算漂移嚴重，且長輩常不隨身攜帶手機。相機方案�
 > `CLAUDE_call-monitor-history.md`；**N ≥ 41** 仍在本檔 §8。此門檻會隨每輪搬移而持續調高，
 > 調整時只需要更新本處（§8 開頭）的數字。
 
+### 2026-09-22 — 第五十一輪（續）：語音助理全域入口，與它對通話畫面的讓位規則
+
+**症狀**：使用者回報「長輩端語音助理叫不出來」。
+
+**根因**：助理只有兩個呼叫點，兩個都活在 `ElderHomeScreen` 的 `Stack` 裡
+（喚醒詞監聽與隨身救生圈 FAB，`elder_home_screen.dart`:549-586；另一處是
+`elder_tabs/profile/dialogs/ai_assistant_settings_dialog.dart`:130），
+只覆蓋 5 個分頁。任何 `Navigator.push` 出去的畫面——通話房、監控、
+新聞播放器、配對頁——都沒有入口。
+
+**修復**（見 **G199**）：
+
+- 新增 `widgets/global_assistant_button.dart`：可拖曳、放開吸附最近邊、
+  閒置 5 秒收成半透明小圓點的浮動麥克風鈕；位置（以可用區域比例儲存，
+  換裝置／轉向都不會跑到畫面外）與收邊狀態存 SharedPreferences
+  （`assistant_fab_dx` / `assistant_fab_dy` / `assistant_fab_collapsed`）。
+- 掛在 `main.dart` 的 `MaterialApp.builder`（`Stack(fit: StackFit.expand, …)`，
+  用 `expand` 讓 Navigator 拿到與改動前完全相同的全螢幕緊約束，不動任何
+  既有畫面的版面）。**沿用既有的 `navigatorKey`**，沒有新增全域導航機制。
+- **不重做助理邏輯**：`ElderHomeScreen` 在 `initState` 把既有的
+  `_triggerGoogleAssistantOverlay` 登記到 `elderAssistantLauncherNotifier`，
+  浮動鈕只負責呼叫；`dispose` 時用 `==` 比對自己仍是持有者才清空（同 G102）。
+  喚醒詞暫停、畫面情境注入、`autoCall` 撥號接手因此仍只有一份實作。
+  登記者是長輩端首頁，所以這顆鈕**只在長輩端登入後存在**——家屬端與登入前
+  畫面上 notifier 是 null，什麼都不會畫。
+- **通話安全**：`AssistantHiddenZone`（同檔）是一個零尺寸標記 widget，活著
+  的期間浮動鈕讓位。已放進 `elder_screen.dart`（通話房／CCTV）、
+  `camera_screen.dart`（監控）、兩處來電響鈴 dialog
+  （`elder_home_screen.dart` 與 `main.dart` 的 `_showIncomingCallDialog`），
+  以及助理面板自己（`google_assistant_overlay.dart::show()`）。
+  刻意用 widget 樹上的標記，**沒有**去動這些畫面的 `initState`/`dispose`
+  （§5.4 列為「絕對不要碰」）。來電 dialog 只是在最外層多包一層，
+  接聽／拒接的按鈕、`_activeCallDialogContext` 的 guard 與
+  `.then((_) => …)` 重置全部未動。
+
+**順帶修好的既有回歸（護欄 G59）**：`elder_home_screen.dart::
+_loadAssistantSettings` 每次載入都把語音喚醒旗標**強制寫回 `true`**
+（長輩在設定頁關掉，下次進首頁又被打開，麥克風恢復成無限開開關關），
+且 `globals.dart` 的 `wakeWordEnabledNotifier` 預設值也被改成過 `true`——
+兩處都違反 G59「預設關閉、禁止把預設值改成 true」。現在首頁只讀不寫，
+預設值改回 `false`，唯一寫入點回到設定頁。
+
+**順帶修好的第二件事**：`CommunityApi.getCommunityPosts` 把連線失敗吞掉回
+`[]`，使 `CommunityService.getPosts`（第五十輪改成「遠端成功即為單一真相」）
+**分不出「離線」與「後端說一則都沒有」**——離線時會拿空清單覆蓋本機快取，
+長輩沒網路時發的貼文下次載入就消失，`lastFetchWasOffline` 也永遠是 false
+（離線提示從不出現）。改為 **null＝呼叫失敗、空清單＝真的沒貼文**，
+`getPosts` 只在 null 時退守快取。唯一呼叫點是 `community_service.dart`。
+
+**驗證**：`flutter analyze lib` **0 error**（88 issues，與本輪基準相同）、
+`flutter build apk --debug` 成功、`flutter test` **54 passed**
+（`community_service_test.dart` 原本 3 項失敗：它斷言的是第五十輪已移除的
+寫死歡迎貼文，且每次都真的打正式站等逾時；已改為用 `HttpOverrides` 強制
+離線並改斷言「離線且無快取時回空清單」，整組測試從 60 秒降到 5 秒）。
+本輪未接觸後端。
+
 ### 2026-09-21 — 第五十一輪：備援通知的 `actionId == null` 被誤判為「已接聽」，長輩端第一通來電未經同意直接開視訊
 
 **症狀**：長輩端**第一通**來電時，App 沒有經過長輩同意就直接開啟視訊通話；

@@ -20,6 +20,12 @@
 | `DeviceSelectionScreen` | `screens/device_selection_screen.dart` | 家屬 | 長輩有多台裝置時選擇撥打對象 |
 | `FriendsScreen` | `screens/friends_screen.dart` | 長輩 | **長輩端唯一的撥出入口** |
 
+> **浮動語音助理鈕（2026-09-22 第五十一輪新增）**：`GlobalAssistantButton` 掛在
+> `MaterialApp.builder`，蓋在所有路由之上。上表的 `ElderScreen`、`CameraScreen`
+> 與兩處來電響鈴 dialog 都已放入 `AssistantHiddenZone` 標記讓它隱藏。
+> **新增任何全螢幕通話／來電畫面時，同一個 commit 要補上這個標記**，否則浮動鈕
+> 會蓋在接聽／掛斷鍵上。條文見護欄 **G199**。
+
 > **`MonitorViewScreen` 不存在。** 歷史文件（2026-06-07 記錄）宣稱建立過此畫面，
 > 但現行程式碼中沒有這個 class。監控畫面就是 `CameraScreen`。
 

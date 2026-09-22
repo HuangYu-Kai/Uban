@@ -405,7 +405,8 @@ class ApiService {
   static Future<bool> completeElderReminder(int reminderId) => ReminderApi.completeElderReminder(reminderId);
 
   // --- Community ---
-  static Future<List<dynamic>> getCommunityPosts({
+  /// null＝呼叫失敗（離線／伺服器錯誤），空清單＝真的沒有貼文。
+  static Future<List<dynamic>?> getCommunityPosts({
     int? familyId,
     int? userId,
     int limit = 50,

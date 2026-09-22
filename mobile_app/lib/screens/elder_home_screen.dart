@@ -20,6 +20,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import '../widgets/google_assistant_overlay.dart';
+import '../widgets/global_assistant_button.dart';
 // ★ 第四十輪（item 4）：onCancelCall 現在也要關備援本機通知，見下方說明。
 import '../services/local_call_notification.dart';
 // ★ 第四十一輪（item 2）：步驟式高光新手指引元件。
@@ -218,6 +219,13 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
 
     pendingAcceptedCall.addListener(_onPendingCallChanged);
     isMediaPlayingNotifier.addListener(_onMediaPlayingChanged);
+    // ★ 2026-09-22 第五十一輪（長5）：把本畫面的助理啟動流程登記為全域啟動器，
+    //   讓掛在 MaterialApp.builder 的浮動麥克風鈕在**任何**畫面上都能叫出小嘎。
+    //   刻意共用同一個方法而不是複製一份——喚醒詞暫停、畫面情境注入、
+    //   autoCall 撥號接手都只有這一份實作。本畫面在推出去的路由底下仍然
+    //   mounted，`context` 也仍然有效，彈出的 bottom sheet 走的是同一個
+    //   root Navigator，所以會蓋在當前畫面之上。
+    elderAssistantLauncherNotifier.value = _triggerGoogleAssistantOverlay;
     // ★ 2026-08-10 第二十輪（需求 6）：語音喚醒總開關的即時生效。
     wakeWordEnabledNotifier.addListener(_onWakeWordEnabledChanged);
     // 檢查是否有在背景接聽的通話初始化前就傳入的待接聽電話
@@ -288,12 +296,11 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
               '嘎蛙';
         });
       }
-      // ★ 確保長輩端「全時語音喚醒詞」預設啟用（true），長輩呼叫「Hey 嘎蛙 / 嘎挖」能即時喚醒
-      bool wakeWordEnabled = prefs.getBool(kWakeWordEnabledKey) ?? true;
-      if (!wakeWordEnabled) {
-        wakeWordEnabled = true;
-        await prefs.setBool(kWakeWordEnabledKey, true);
-      }
+      // ★ 護欄 G59：語音喚醒預設「關閉」，且只讀不寫。
+      //   這裡以前會在讀到 false 時強制寫回 true，等於長輩在個人資料頁關掉麥克風，
+      //   下次進首頁又被打開（麥克風無限開開關關）。開關唯一的寫入點是
+      //   `elder_tabs/elder_profile_tab.dart`。
+      final bool wakeWordEnabled = prefs.getBool(kWakeWordEnabledKey) ?? false;
       wakeWordEnabledNotifier.value = wakeWordEnabled;
       _initWakeWordListener();
 
@@ -776,7 +783,10 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) {
-        return AlertDialog(
+        // ★ 第五十一輪（長5）：來電響鈴畫面上，全域語音助理浮動鈕必須讓位，
+        //   不可以擋到接聽／拒接鍵。
+        return AssistantHiddenZone(
+          child: AlertDialog(
           // ★ 第五十輪：長輩端「app 內來電通知」按鈕與文字放大 100%（需求 B）。
           //   只改字級／尺寸／間距等純視覺屬性，未動任何接聽/拒接邏輯或導航方式。
           title: Row(
@@ -911,6 +921,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
               ),
             ),
           ],
+          ),
         );
       },
     ).then((_) => _isIncomingCallDialogOpen = false);
@@ -980,6 +991,14 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     isAppReady = false;
     pendingAcceptedCall.removeListener(_onPendingCallChanged);
     isMediaPlayingNotifier.removeListener(_onMediaPlayingChanged);
+    // 與 G102 同樣的道理：只有自己仍是登記者時才清掉，避免把「接手畫面」
+    //   剛登記好的啟動器誤清成 null（長輩端首頁重建時會前後重疊一瞬間）。
+    // （用 `==` 不用 `identical`：Dart 只保證同一物件同一方法的 tear-off 相等，
+    //   不保證是同一個實例。）
+    if (elderAssistantLauncherNotifier.value ==
+        _triggerGoogleAssistantOverlay) {
+      elderAssistantLauncherNotifier.value = null;
+    }
     wakeWordEnabledNotifier.removeListener(_onWakeWordEnabledChanged);
     // ★ G102（CLAUDE_call-monitor-guardrails.md）：無條件 = null 會誤清「接手
     //   畫面」剛註冊好的閉包——本畫面與 ElderScreen 互相導來導去時，兩邊都會

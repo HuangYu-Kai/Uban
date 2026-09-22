@@ -19,13 +19,15 @@ ValueNotifier<bool> isMediaPlayingNotifier = ValueNotifier(false);
 /// 每次重啟都是一次麥克風 acquire/release，系統的麥克風指示燈於是不停閃爍，
 /// 而這個 App 的核心是「環繞長輩語音操作」，環境雜音又會不斷觸發誤判重啟。
 ///
-/// 預設 **true（啟用）**，長輩端開機即支援免持呼叫「Hey 嘎蛙 / 嘎挖」。
-/// 可由長輩端設定頁手動切換關閉。
+/// 預設 **false（關閉）**——見護欄 G59。上面那五條重啟路徑會互相把對方拉起來，
+/// 只要預設為開，長輩沒主動要求也會被要走麥克風權限、並在環境雜音下誤啟動 AI 對話。
+/// 長輩要免持呼叫「Hey 嘎蛙 / 嘎挖」時，自行到設定頁打開；
+/// 沒打開的人改用**全域浮動麥克風鈕**（`widgets/global_assistant_button.dart`）。
 ///
 /// 這個 notifier 讓設定頁的切換能即時生效，不必重開 App；
 /// 持久化鍵位為 [kWakeWordEnabledKey]，屬於「與帳號無關的裝置偏好」，
 /// 因此**刻意不列入** `SessionManager._sessionKeys`，登出不會被清掉。
-ValueNotifier<bool> wakeWordEnabledNotifier = ValueNotifier(true);
+ValueNotifier<bool> wakeWordEnabledNotifier = ValueNotifier(false);
 
 /// [wakeWordEnabledNotifier] 的 SharedPreferences 鍵位。
 const String kWakeWordEnabledKey = 'wake_word_enabled';

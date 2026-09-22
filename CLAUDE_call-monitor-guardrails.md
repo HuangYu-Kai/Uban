@@ -31,7 +31,7 @@
 
 ## 7. 護欄（合併後的唯一權威清單）
 
-> 目前共 **197 條**（G1–G197）：G1–G36 合併自 `CLAUDE.md`（13 條）與 `Uban/CLAUDE.md`（26 條）並去重、
+> 目前共 **199 條**（G1–G199）：G1–G36 合併自 `CLAUDE.md`（13 條）與 `Uban/CLAUDE.md`（26 條）並去重、
 > 修正矛盾；G37–G46 為 2026-08-05 第十七輪新增（連線可靠性 4 條、監控警報 2 條、安全 4 條）；
 > G47–G52 為 2026-08-05 第十八輪新增（前端 4 條：監控機連線、冷啟動衝刺、鎖屏覆蓋、掛斷提示；
 > 後端 2 條：裝置清單同名去重、CCTV 端點部署）；
@@ -124,6 +124,9 @@
 > **G67 已於第二十二輪修訂**（`pendingRingCallData` 窗口 120000 → 60000；並更正其中誤植的 G24 條號）。
 > **G77 已於第二十三輪擴充**（自動接聽的範圍由「`ElderScreen` 內」擴大到**四條抵達通路**，見 G81；
 > 提示音改為救護車雙音並搬進全域單例 `EmergencyTone`）。
+> **G198–G199 為 2026-09-21／09-22 第五十一輪新增**（皆為前端：備援來電通知的
+> `actionId == null` 不算「使用者已接聽」、全域語音助理浮動鈕在通話房／來電響鈴／
+> 監控畫面必須讓位）。
 > **除非明確知道連鎖影響並能同步改完整條鏈路，不要單點修改。**
 
 ### 7.1 前端護欄
@@ -2145,6 +2148,31 @@ BG FCM handler 的 `call-request` 分支預寫、也被 CallKit accept 路徑更
 > 只有這條備援通知路徑受影響——CallKit 路徑本來就要求原生確認
 > `isAccepted == true` 才算接聽（`main.dart::_checkInitialCall` /
 > `actionCallAccept`），見 G10。
+
+**G199 — 全域語音助理浮動鈕在通話房／來電響鈴／監控畫面必須讓位**
+`widgets/global_assistant_button.dart` 的 `GlobalAssistantButton` 掛在
+`main.dart` 的 `MaterialApp.builder`，蓋在**所有**路由之上。凡是「按錯就會
+影響一通電話」的畫面，都必須在自己的 widget 樹裡放一個
+`const AssistantHiddenZone(child: SizedBox.shrink())` 讓浮動鈕隱藏：
+目前是 `elder_screen.dart`（通話房／CCTV）、`camera_screen.dart`（監控）、
+`elder_home_screen.dart::_showIncomingCallDialog` 與
+`main.dart::_showIncomingCallDialog`（兩處來電響鈴 dialog）、
+以及 `google_assistant_overlay.dart::show()`（助理面板自己）。
+新增任何全螢幕通話／來電畫面時，**同一個 commit 內**就要補上這個標記。
+🚫 **不可**改成去動這些畫面的 `initState()` / `dispose()` 做計數——
+`CLAUDE_call-monitor-ui-map.md` §5.4 把通話畫面的 `initState`/`dispose`
+順序列為「絕對不要碰」；`AssistantHiddenZone` 刻意做成 widget 樹上的標記，
+它自己的 `State` 生命週期與被包住的路由同生共死，計數不會漏。
+🚫 **不可**在浮動鈕裡另外實作一套助理啟動流程。啟動器由
+`ElderHomeScreen` 在 `initState` 登記到 `elderAssistantLauncherNotifier`
+（值就是既有的 `_triggerGoogleAssistantOverlay`），`dispose` 時用 `==`
+比對自己仍是持有者才清空（同 G102 的道理）。複製一份等於讓喚醒詞暫停、
+畫面情境注入、`autoCall` 撥號接手三件事出現兩套會漂移的實作。
+> **原因**：第五十一輪使用者回報「長輩端語音助理叫不出來」。查出助理的兩個
+> 呼叫點都活在 `ElderHomeScreen` 的 `Stack` 裡，只覆蓋 5 個分頁，任何
+> `Navigator.push` 出去的畫面（通話房、監控、新聞播放器、配對頁）都叫不出來。
+> 掛到 `MaterialApp.builder` 解決了覆蓋範圍，但也帶來新風險：一顆浮在最上層
+> 的按鈕若蓋住接聽／掛斷鍵，就會製造出比原本更嚴重的故障。
 
 ### 7.3 已知的文件錯誤（以程式碼為準）
 

@@ -3,6 +3,7 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import '../services/signaling.dart';
+import '../widgets/global_assistant_button.dart';
 
 class CameraScreen extends StatefulWidget {
   final String roomId;
@@ -162,6 +163,9 @@ class _CameraScreenState extends State<CameraScreen> {
       ),
       body: Column(
         children: [
+          // ★ 2026-09-22 第五十一輪（長5）：監控畫面上讓全域語音助理浮動鈕讓位，
+          //   不要蓋住監控畫面與控制列。
+          const AssistantHiddenZone(child: SizedBox.shrink()),
           Expanded(
             child: _isConnecting 
               ? const Center(child: Column(
