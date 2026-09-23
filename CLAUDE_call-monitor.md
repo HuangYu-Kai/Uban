@@ -1242,7 +1242,7 @@ IMU 航位推算漂移嚴重，且長輩常不隨身攜帶手機。相機方案�
 
 ## 7. 護欄
 
-> 🚨 **完整護欄清單（G1–G181）已於 2026-09-04 獨立成檔**：
+> 🚨 **完整護欄清單（目前 G1–G205）已於 2026-09-04 獨立成檔**：
 > **[`CLAUDE_call-monitor-guardrails.md`](CLAUDE_call-monitor-guardrails.md)**
 >
 > 遷出原因：主檔逼近 262,144 bytes 的單次讀取上限，一旦超過，子代理就無法一次讀完，
@@ -1276,6 +1276,106 @@ IMU 航位推算漂移嚴重，且長輩常不隨身攜帶手機。相機方案�
 > 📌 **搬移門檻提示**：本文件中出現的「第 N 輪」，**N ≤ 40** 者其年表條目已遷至
 > `CLAUDE_call-monitor-history.md`；**N ≥ 41** 仍在本檔 §8。此門檻會隨每輪搬移而持續調高，
 > 調整時只需要更新本處（§8 開頭）的數字。
+
+### 2026-09-23 — 第五十二輪：三輪回歸清算——兩個「把整片畫面弄死」的版面陷阱
+
+**背景**
+
+本輪起因是使用者實機回報 10 項問題，並要求判讀第四十九／五十／五十一輪的取捨。結論是不
+整批回退：三輪各有正確的修復，問題集中在兩個版面陷阱與幾件修了一半的事。
+
+**1. 長輩端所有通話房黑屏、完全無法操作（本輪最嚴重）**
+
+根因：第五十一輪依護欄 **G199 的字面要求**，在 `elder_screen.dart` 的 `Stack` children 裡
+插入 `const AssistantHiddenZone(child: SizedBox.shrink())`。`RenderStack._computeSize()`
+的規則是「只要有任何非 `Positioned` 子元件，`Stack` 就由它們決定尺寸；全部都是
+`Positioned` 時才退回吃滿 `constraints.biggest`」，而 `Scaffold` 的 body 拿到的是寬鬆約束
+（min 為 0）——原本 children 全是 `Positioned.fill`，多了這個 0×0 的非 Positioned 子元件
+後，**整個 `Stack` 塌成 0×0**，視訊與所有按鈕變零尺寸、沒有任何 hit-test 目標。家屬掛斷時
+長輩端是被程式自動 pop、不需點擊，因此使用者觀察到的「只能由家屬掛完電話才恢復」完全
+吻合。
+
+修法：改為 `AssistantHiddenZone` 包住整個 `Scaffold`（純 pass-through，不影響版面）；**並
+改寫 G199 本身**——原條文等於教下一個人再犯同一個錯。
+
+證據：`test/screens/elder_screen_stack_sizing_test.dart` 先重現舊結構得到 `Size.zero`，再
+驗證新結構等於螢幕尺寸。
+
+**2. 家屬「資料」分頁整片空白且所有按鍵失效**
+
+根因：第五十輪（commit `688a2a1`）把 `Flexible` 包在 `SliverList` 項目內的**垂直
+`Column`** 直接子節點上。`Flexible`／`Expanded` 出現在主軸無界的 Flex 底下會丟
+`RenderFlex children have non-zero flex but incoming height constraints are unbounded`，
+而且**發生在 layout 階段而非 build 階段**——第五十一輪為此新增的 `ErrorBoundary` 只包得住
+build 期間的同步呼叫，完全攔不到；例外炸穿 `SliverList`／`Viewport`，整條
+`CustomScrollView` 那一影格的版面計算全毀，於是畫面空白且沒有 hit-test 目標。
+
+全 App 掃描 47 處 `Flexible`／`Expanded`，確認只有這一處誤用；`elder_chat_tab.dart:905` 有
+同款形狀但整支是無人引用的死碼，未動並留註記。
+
+**3. 今日頭條實機看不到（已失敗三輪）**
+
+後端新聞 API 實測有真實資料（2026-09-22 的中央社新聞），問題純在版面：第五十輪把新聞卡從
+精簡列改成大圖直式，整張被推出第一屏；第五十一輪加的「還有更多」提示沒有解決「長輩不會
+主動下滑」的問題。本輪改回精簡列（縮圖 76px），並以 widget test 在 `360x640` 與
+`412x915` 量測標題座標證明已落在第一屏內（412×915 時 top=352.8、第一屏可視底線 785）。
+**教訓：三輪都在猜「是不是被擠到下面」，沒有人去量。**
+
+**4. 語音助理：備援從寫出來那天就是死碼**
+
+Ollama 主機回 502 時，`services/ollama_service.py` 把例外吞掉、把錯誤字串當成正常回覆
+`yield` 出去，呼叫端 `routers/ai.py` 的 Gemini 備援永遠不會被觸發，長輩直接聽到「對話服務
+異常: (status code:502)」。另查出串流版的備援判斷用字串前綴 `"(流式服務出錯:"` 偵測，而
+實際產生的是 `"(對話服務異常:"`，兩者從來對不上。修法：改為 raise（以 `has_yielded` 區分
+「未送出內容→raise 讓備援接手」與「已送出一半→友善收尾不重講」）；Gemini 最終兜底不再把
+英文 SDK 錯誤唸給長輩；`/pet_greeting` 補上原本沒有的 try/except。
+
+**5. 麥克風錄到助理自己的 TTS**
+
+`google_assistant_overlay.dart` 的問候語用 `setCompletionHandler` 加一個
+`Future.delayed(2500ms)` 兜底，兩者賽跑；而語速被設為 0.5，一句問候常講不完 2.5 秒，兜底
+先到就在助理還在講話時開麥克風，把喇叭聲錄成使用者輸入（使用者實例：助理問「怎麼了嗎，
+蛙」→ 辨識成「怎麼了媽媽」）。改為單一 `_speakAndWait()` 判定，並加雙向防呆（開口前先停
+STT、開聽前先停 TTS）。
+
+**6. 喚醒詞關不掉**
+
+設定對話框讀 `?? true` 與 `globals.dart`／首頁的 `?? false` 不一致，一存檔就寫回開啟；且
+第五十一輪之前的版本會在每次載入首頁時**強制寫入 true**（不是使用者的選擇）。改為一致，並
+加版本化一次性遷移 `wake_word_pref_reset_v52`，冷啟動路徑與設定頁各一份。
+
+**7. 家屬警示中心**
+
+已結案（含四種 `resolution_source`）仍顯示可按的「誤報」——已改為唯讀徽章；未結案收斂成
+單一 `PopupMenuButton`；新增本週／本月／全部時間篩選，後端 `get_alerts` 新增選填
+`days`（用 `now_utc()` 在 Python 端算起點，不在 SQL 用 `NOW()`）。
+
+**8. 雙端加好友**
+
+功能從未被刪除（第五十一輪反而把代碼驗證從「只能 4 位數字」放寬成 4 碼英數字），真正缺
+的是**社群分頁裡的入口**。兩端都補上；家屬端新增 QR 顯示／掃描／分享。另修一個真的會發生
+的 bug：家屬朋友圈在載入中或載入失敗時會把「加好友」入口一起蓋掉——網路一抖就找不到入口。
+
+**9. 家屬首頁冷啟動競態（本輪任務一）**
+
+已滑掉的警示清單是非同步讀取，卡片會在載入完成前先畫一次。`family_main_screen.dart::
+initState()` 呼叫 `_loadDismissedAlertKeys()` 不 await——App 冷啟動 → 首頁「最新警示」卡片
+先畫一次（此時過濾集合是空的）→ 已滑掉的警示出現 → 幾百毫秒後才被過濾掉。新增
+`_dismissedKeysLoaded` 旗標：讀取完成（不論成功或失敗）前，`HomeAlertPreviewCard` 一律不
+渲染任何警示項目，也不顯示「目前沒有任何警示」（那句話在旗標為 false 時無法被驗證是否
+成立），改用中性的「警示讀取中…」骨架，沿用既有空狀態的版面結構只換圖示與文字。已排除
+一次性副作用疑慮：`HomeAlertPreviewCard`／`HomeAlertItem` 是純 `StatelessWidget`，朗讀
+（`_alertTts`）與 `WakelockPlus` 皆由 `_handleCctvAlert`（Socket `cctv-alert` 事件）觸發，
+與這張卡片的渲染時機完全無關，因此這次閃現純粹是視覺問題。
+
+**新增護欄**
+
+本輪新增 **G200–G205**（前端 G200、G203、G204、G205；後端 G201–G202；條文見
+§7.1／§7.2）。護欄檔（`CLAUDE_call-monitor-guardrails.md`）開頭護欄總數同步更新為
+**205**。
+
+**驗證**：`flutter analyze` 88 issues／0 error；`flutter test` 93 passed／0 failed；後端
+`py_compile` 全過；AI 備援隔離腳本 8/8。**本輪未同步 graphify**（使用者已要求暫停）。
 
 ### 2026-09-22 — 第五十一輪（續）：語音助理全域入口，與它對通話畫面的讓位規則
 

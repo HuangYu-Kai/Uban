@@ -190,7 +190,29 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   /// `test/screens/family/home_alert_preview_card_dismiss_key_test.dart`
   /// 釘住的回歸測試（含 canary：同時驗證「有 id 才會是 alert: 前綴」與
   /// 「沒有 id 才會退回 live: 前綴」）。
+  ///
+  /// **第五十二輪追加（同一輪的另一項任務找到真正成因）**：上面的複查結論
+  /// 沒有錯——鍵格式本身沒有問題——但使用者回報的「重新執行 flutter run
+  /// 開啟新版本 App 後，已滑掉的最新警示仍會重新出現」是另一個獨立的 bug，
+  /// 根因在 `initState()` 對 `_loadDismissedAlertKeys()` 的呼叫**沒有
+  /// await**：App 冷啟動時，`FamilyHomeTab` 的「最新警示」卡片會在這個
+  /// 非同步讀取完成**之前**先畫一次，此時 `_dismissedAlertKeys` 與
+  /// `_persistedDismissedTimestamps` 都還是空的，於是已經滑掉的警示會先
+  /// 閃現，幾百毫秒後讀取完成、`setState` 補上過濾集合，才被濾掉——鍵格式
+  /// 從頭到尾都是對的，只是「濾掉的時機晚於第一次畫面」。修法見下方
+  /// `_dismissedKeysLoaded` 欄位與 `_loadDismissedAlertKeys()` 的
+  /// try/finally：讀取完成前 `HomeAlertPreviewCard` 完全不渲染任何警示
+  /// 項目（也不顯示「目前沒有警示」，因為當下還不知道是真是假），成功或
+  /// 失敗都會在讀取結尾把旗標翻正。
   Map<String, int> _persistedDismissedTimestamps = {};
+
+  /// ★ 第五十二輪（任務一）：`_loadDismissedAlertKeys()`（下方）是否已經跑完
+  /// （不論成功或失敗）。`initState()` 呼叫該函式時刻意不 await，讀取完成
+  /// 前這個旗標維持 `false`，傳給 `FamilyHomeTab` → `HomeAlertPreviewCard`
+  /// 後讓卡片停在中性的「讀取中」骨架、不渲染任何警示項目——避免上一個
+  /// session 已滑掉的警示在冷啟動的第一影格閃現。完整根因見上方
+  /// `_persistedDismissedTimestamps` 欄位宣告的「第五十二輪追加」。
+  bool _dismissedKeysLoaded = false;
 
   /// [_persistedDismissedTimestamps] 的 SharedPreferences 鍵。
   static const String _dismissedAlertsPrefsKey = 'family_dismissed_alert_keys';
@@ -367,9 +389,14 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     _loadThemePreference();
     // ★ 第五十一輪（任務 1）：把上次持久化的「已滑掉警示」紀錄讀回來，
     //   解決「首頁滑掉的警示，重開 App 又跑出來」的問題。不 await——
-    //   跟其餘初始化一樣不能拖慢 initState，讀取完成前 `_dismissedAlertKeys`
-    //   維持空集合，最壞情況只是短暫看到已滑掉的警示又出現一下，讀取完成
-    //   後會立刻 setState 補上，不影響其餘既有流程。
+    //   跟其餘初始化一樣不能拖慢 initState。
+    //   ⚠️ 第五十二輪更正：原本這裡寫著「最壞情況只是短暫看到已滑掉的警示
+    //   又出現一下」，但這個「短暫閃現」正是使用者實際回報的 bug（見
+    //   `_dismissedKeysLoaded` 與 `_persistedDismissedTimestamps` 欄位宣告
+    //   的完整根因）。現在讀取完成前 `_dismissedKeysLoaded` 維持 false，
+    //   `FamilyHomeTab` 會停在中性的讀取中骨架、不渲染任何警示項目；讀取
+    //   完成（不論成功或失敗）後才會 setState 翻正旗標並顯示正確過濾後的
+    //   結果。
     _loadDismissedAlertKeys();
 
     // ★ 2026-08-20 新增：MIUI 家族裝置的「鎖定螢幕顯示／後台彈出介面」權限
@@ -1723,6 +1750,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
       setState(() {
         _persistedDismissedTimestamps = pruned;
         _dismissedAlertKeys.addAll(pruned.keys);
+        _dismissedKeysLoaded = true;
       });
       if (pruned.length != parsed.length) {
         // 清理過程中真的淘汰了東西，立刻寫回，避免下次冷啟動又重算一次。
@@ -1730,6 +1758,16 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
       }
     } catch (e) {
       debugPrint('⚠️ [FamilyMainScreen] 讀取已滑掉警示紀錄失敗（略過，不影響其餘功能）: $e');
+    } finally {
+      // ★ 第五十二輪（任務一）：above 的 setState 只覆蓋「成功」這一條路徑；
+      //   `raw` 為空、解析失敗、或 `!mounted` 提早 return 時都不會走到那裡，
+      //   若不在這裡補上，旗標會永遠卡在 false、警示卡片永遠停在讀取中骨架。
+      //   `!_dismissedKeysLoaded` 只是避免成功路徑多一次不必要的 setState。
+      if (mounted && !_dismissedKeysLoaded) {
+        setState(() {
+          _dismissedKeysLoaded = true;
+        });
+      }
     }
   }
 
@@ -2568,6 +2606,9 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                   //   2.5 秒輪詢又跳回來）。_dismissedAlertKeys／
                   //   _handleAlertItemDismissed 宣告與完整理由見本檔上方欄位註解。
                   dismissedAlertKeys: _dismissedAlertKeys,
+                  // ★ 第五十二輪（任務一）：`_dismissedAlertKeys` 讀取完成前不得渲染
+                  //   任何警示項目，見 `_dismissedKeysLoaded` 欄位宣告的完整根因。
+                  dismissedKeysLoaded: _dismissedKeysLoaded,
                   onAlertItemDismissed: _handleAlertItemDismissed,
                   // ★ 2026-08-31 第三十八輪：首頁「最新警示」的 CCTV／跌倒項目點擊入口。
                   //   在此之前本參數從未被傳入，導致該類警示永遠不可點擊（見

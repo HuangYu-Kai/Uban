@@ -35,6 +35,13 @@ class FamilyHomeTab extends StatefulWidget {
   /// ★ 2026-08-24（首頁「最新警示」互動化）：已被使用者滑掉／按下已讀鍵的警示複合鍵集合。
   final Set<String> dismissedAlertKeys;
 
+  /// ★ 第五十二輪（任務一）：[dismissedAlertKeys] 是否已經從 SharedPreferences
+  /// 讀取完成（見 `family_main_screen.dart::_dismissedKeysLoaded` 欄位宣告）。
+  /// 預設 `true`：其他尚未接上這個旗標的呼叫端（例如未來新增的測試或畫面）
+  /// 維持原本「一律照常渲染」的行為，只有目前唯一的正式呼叫端
+  /// （`family_main_screen.dart`）會在冷啟動讀取完成前傳入 `false`。
+  final bool dismissedKeysLoaded;
+
   /// 使用者滑掉或按下關閉鍵時回呼，通知父層把該複合鍵加入集合。
   final ValueChanged<String>? onAlertItemDismissed;
 
@@ -59,6 +66,7 @@ class FamilyHomeTab extends StatefulWidget {
     this.onNavigateToAlerts,
     this.onStartVideoCall,
     this.dismissedAlertKeys = const {},
+    this.dismissedKeysLoaded = true,
     this.onAlertItemDismissed,
     this.onOpenMonitorView,
     this.elderHeaderKey,
@@ -191,6 +199,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                           realLogs: _realLogs,
                           emergencyAlerts: _emergencyAlerts,
                           dismissedAlertKeys: widget.dismissedAlertKeys,
+                          dismissedKeysLoaded: widget.dismissedKeysLoaded,
                           onNavigateToAlerts: widget.onNavigateToAlerts,
                           onAlertItemDismissed: widget.onAlertItemDismissed,
                           onOpenMonitorView: widget.onOpenMonitorView,
@@ -286,6 +295,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                       realLogs: _realLogs,
                       emergencyAlerts: _emergencyAlerts,
                       dismissedAlertKeys: widget.dismissedAlertKeys,
+                      dismissedKeysLoaded: widget.dismissedKeysLoaded,
                       onNavigateToAlerts: widget.onNavigateToAlerts,
                       onAlertItemDismissed: widget.onAlertItemDismissed,
                       onOpenMonitorView: widget.onOpenMonitorView,

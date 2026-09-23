@@ -59,11 +59,6 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
   List<Map<String, dynamic>> _newsItems = [];
   bool _isLoadingNews = true;
 
-  // ★ 第五十一輪（任務 3）：「還有更多」提示只在「真的還有內容沒看到」時出現。
-  //   固定常駐的話，長輩滑到底之後它還在喊「還有更多」——那是騙人的介面，
-  //   對本來就不熟悉捲動的長輩尤其糟糕（會一直找不到那個「更多」在哪）。
-  //   由 [_handleScrollMetrics] 依實際捲動量維護。
-  bool _showScrollHint = false;
   int _topNewsIndex = 0;
 
   /// 家屬是否已為這位長輩開通 PRO（真相在後端，見 SubscriptionService）。
@@ -427,50 +422,37 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                       ),
                       child: Padding(
                         padding: const EdgeInsets.only(top: 44),
-                        child: NotificationListener<ScrollMetricsNotification>(
-                          // ScrollMetricsNotification 會在「內容高度確定／改變」
-                          // 時就送出（不必等使用者真的滑），所以新聞還在載入、
-                          // 卡片高度變動時提示也會跟著出現或消失。
-                          onNotification: (n) =>
-                              _handleScrollMetrics(n.metrics),
-                          child: NotificationListener<ScrollNotification>(
-                            onNotification: (n) =>
-                                _handleScrollMetrics(n.metrics),
-                            child: SingleChildScrollView(
-                              physics: const BouncingScrollPhysics(),
-                              child: Padding(
-                                padding:
-                                    const EdgeInsets.fromLTRB(20, 0, 20, 130),
-                                child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.stretch,
-                                  children: [
-                                    // ★ 一屏到底修復：首頁只留三塊（今天卡／下一包藥／新聞），
-                                    // 天氣併入今天卡、日期卡與天氣卡合一，
-                                    // 移除跟底部導覽列「電話」分頁重複的「打電話給家人」大按鈕。
-                                    //
-                                    // ★ 第五十輪（任務 A）／第五十二輪（任務 A，見
-                                    // `_buildFeaturedNewsCard` 開頭完整說明）：新聞卡歷經
-                                    // 「精簡列→大圖直式→精簡列」的來回調整，第五十二輪定案
-                                    // 為固定尺寸縮圖的精簡列——大圖直式在真實長輩手機上會把
-                                    // 整張卡片擠出第一屏，這正是「今日頭條看不到」的根因。
-                                    // 刻意**不**把新聞卡的順序搬到「今天」／「下一包藥」前面
-                                    // ——這兩塊是健康相關資訊，優先度更高，不應該被排到新聞
-                                    // 後面。三塊都完整保留原尺寸／可讀性，若系統字體被調大等
-                                    // 邊界情況仍裝不下，交給外層既有的 `SingleChildScrollView`
-                                    // 捲動（本頁本來就可捲動，並非新增行為）。
-                                    _buildTodayCard(),
-                                    // ★ 第五十一輪（任務 3）：24→16。省下的每一點
-                                    // 垂直空間都直接換成新聞卡在第一屏內能多露出
-                                    // 多少——見 `_buildFeaturedNewsCard` 開頭的
-                                    // 完整測量與理由，這裡只改間距，不動字級。
-                                    const SizedBox(height: AppSpacing.md),
-                                    _buildNextDoseCard(),
-                                    const SizedBox(height: AppSpacing.md),
-                                    _buildFeaturedNewsCard(),
-                                  ],
-                                ),
-                              ),
+                        child: SingleChildScrollView(
+                          physics: const BouncingScrollPhysics(),
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(20, 0, 20, 130),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                // ★ 一屏到底修復：首頁只留三塊（今天卡／下一包藥／新聞），
+                                // 天氣併入今天卡、日期卡與天氣卡合一，
+                                // 移除跟底部導覽列「電話」分頁重複的「打電話給家人」大按鈕。
+                                //
+                                // ★ 第五十輪（任務 A）／第五十二輪（任務 A，見
+                                // `_buildFeaturedNewsCard` 開頭完整說明）：新聞卡歷經
+                                // 「精簡列→大圖直式→精簡列」的來回調整，第五十二輪定案
+                                // 為固定尺寸縮圖的精簡列——大圖直式在真實長輩手機上會把
+                                // 整張卡片擠出第一屏，這正是「今日頭條看不到」的根因。
+                                // 刻意**不**把新聞卡的順序搬到「今天」／「下一包藥」前面
+                                // ——這兩塊是健康相關資訊，優先度更高，不應該被排到新聞
+                                // 後面。三塊都完整保留原尺寸／可讀性，若系統字體被調大等
+                                // 邊界情況仍裝不下，交給外層既有的 `SingleChildScrollView`
+                                // 捲動（本頁本來就可捲動，並非新增行為）。
+                                _buildTodayCard(),
+                                // ★ 第五十一輪（任務 3）：24→16。省下的每一點
+                                // 垂直空間都直接換成新聞卡在第一屏內能多露出
+                                // 多少——見 `_buildFeaturedNewsCard` 開頭的
+                                // 完整測量與理由，這裡只改間距，不動字級。
+                                const SizedBox(height: AppSpacing.md),
+                                _buildNextDoseCard(),
+                                const SizedBox(height: AppSpacing.md),
+                                _buildFeaturedNewsCard(),
+                              ],
                             ),
                           ),
                         ),
@@ -483,94 +465,11 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                     right: 20,
                     child: _buildHeader(),
                   ),
-                  // ★ 第五十一輪（任務 3）：「還有更多」提示，貼在第一屏底部、
-                  // 不隨內容捲動——即使把上面兩張卡片的留白縮到最緊，這一屏
-                  // 仍然裝不下完整的新聞大圖，頁面本身可以往下滑看到剩下的
-                  // 內容，但長輩不主動滑就完全看不出來（原始回報的根因）。
-                  // 這裡疊一個大 chevron＋短文字的純視覺提示：
-                  // `IgnorePointer` 讓它完全不吃點擊，不會擋到下面新聞卡片
-                  // 或外層浮動導覽列的觸控範圍。
-                  //
-                  // 顯示與否由 [_showScrollHint]／[_handleScrollMetrics] 依
-                  // 實際捲動狀態決定——捲到底（或內容根本不需要捲）時要淡出，
-                  // 否則提示會在長輩已經看到全部內容之後還在喊「還有更多」，
-                  // 變成一個永遠兌現不了的指示。
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: 14,
-                    child: IgnorePointer(
-                      child: Center(
-                        child: AnimatedOpacity(
-                          opacity: _showScrollHint ? 1 : 0,
-                          duration: const Duration(milliseconds: 180),
-                          child: _buildScrollHint(),
-                        ),
-                      ),
-                    ),
-                  ),
                 ],
               ),
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  /// 依目前的捲動狀態決定要不要顯示「還有更多」提示。
-  ///
-  /// 兩個條件都要成立才顯示：① 內容真的比視窗高（`maxScrollExtent > 0`）；
-  /// ② 還沒捲到（接近）底部。留 24px 的緩衝是因為 `BouncingScrollPhysics`
-  /// 會讓 `pixels` 在回彈時略微超過或不足 `maxScrollExtent`，嚴格比較會讓
-  /// 提示在回彈動畫期間閃爍。
-  ///
-  /// 回傳 false：不攔截通知，讓它繼續往上傳給其他可能的監聽者。
-  bool _handleScrollMetrics(ScrollMetrics metrics) {
-    const double bottomSlack = 24;
-    final bool shouldShow = metrics.maxScrollExtent > 0 &&
-        metrics.pixels < metrics.maxScrollExtent - bottomSlack;
-    if (shouldShow != _showScrollHint && mounted) {
-      setState(() => _showScrollHint = shouldShow);
-    }
-    return false;
-  }
-
-  /// 「還有更多」提示：大 chevron＋短文字，貼在第一屏底部（見上方
-  /// `Positioned` 呼叫點的完整理由）。純視覺提示，不吃點擊、不影響任何
-  /// 既有導覽或捲動邏輯。
-  Widget _buildScrollHint() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.88),
-        borderRadius: BorderRadius.circular(AppRadius.pill),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.12),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            '還有更多',
-            style: GoogleFonts.notoSansTc(
-              fontSize: 15,
-              fontWeight: FontWeight.w800,
-              color: AppColors.primaryDark,
-            ),
-          ),
-          const SizedBox(width: 4),
-          const Icon(
-            Icons.keyboard_double_arrow_down_rounded,
-            size: 22,
-            color: AppColors.primaryDark,
-          ),
-        ],
       ),
     );
   }
