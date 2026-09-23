@@ -12,6 +12,7 @@ import '../services/api_service.dart';
 import '../services/community_service.dart';
 import '../services/friend_service.dart';
 import '../theme/app_theme.dart';
+import 'elder_add_friend_screen.dart';
 import 'elder_friend_feed_screen.dart';
 import 'elder_tabs/profile/widgets/friend_id_card.dart';
 import 'widgets/pet_reward_dialog.dart';
@@ -988,6 +989,17 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen>
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                     child: FriendIdCard(myFriendElderId: _myFriendElderId),
                   ),
+                  // ★ 第五十二輪任務 A：社群「朋友」分頁補回明確的加好友
+                  // 入口。這裡原本（第四十二／五十一輪）只有上面那張唯讀
+                  // 的 FriendIdCard，完全沒有按鈕導去 ElderAddFriendScreen
+                  // ——長輩只能繞去「電話 → 朋友」（friends_screen.dart
+                  // 既有的 _buildAddFriendButton，原樣保留不動）才找得到，
+                  // 使用者因此誤以為社群裡的加好友功能被拿掉了。兩個入口
+                  // 導去同一個畫面、共用同一份邏輯，互不影響。
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                    child: _buildAddFriendButton(),
+                  ),
                   Expanded(
                     child: FriendFeedBody(
                       userId: widget.userId,
@@ -997,6 +1009,39 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen>
                 ],
               ),
         ],
+      ),
+    );
+  }
+
+  /// 加好友大按鈕——文案／圖示／字級與 friends_screen.dart 的
+  /// `_buildAddFriendButton` 刻意保持一致（同樣導去 ElderAddFriendScreen，
+  /// 長輩不會因為從哪個入口進來而看到不同的用詞）。長輩字級／點擊區
+  /// （ElderScale.buttonHeight = 84），不重寫任何加好友邏輯。回來後重新
+  /// 載入自己的好友 ID，讓剛送出的邀請／新好友狀態能反映在 FriendIdCard。
+  Widget _buildAddFriendButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: ElderScale.buttonHeight,
+      child: ElevatedButton.icon(
+        onPressed: () async {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ElderAddFriendScreen(
+                userId: widget.userId,
+                userName: widget.userName,
+              ),
+            ),
+          );
+          if (mounted) _loadMyFriendElderId();
+        },
+        icon: const Icon(Icons.person_add_alt_1_rounded, size: ElderScale.buttonIcon),
+        label: Text('加好友', style: ElderScale.button.copyWith(color: Colors.white)),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppColors.primary,
+          elevation: 0,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(ElderScale.cardRadius)),
+        ),
       ),
     );
   }

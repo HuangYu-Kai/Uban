@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import '../../services/api_service.dart';
 import '../../services/family_friend_service.dart';
@@ -539,13 +540,17 @@ class _FamilyFriendFeedBodyState extends State<FamilyFriendFeedBody> {
     return SafeArea(bottom: false, child: _buildBody());
   }
 
+  // ★ 第五十二輪任務 B 收尾（social52 中斷後接續）：原本 _isLoadingFeed／
+  // _loadError 兩個早期 return 會讓「整頁」只剩讀取圈或整頁錯誤重試畫面，
+  // 連帶把上面的 _buildFriendEntryCard()／_buildCreatePostButton() 也一起
+  // 蓋掉。getFeed 走真實網路（見 family_friend_service.dart:299「無法連線
+  // 到後端」），只要家屬那一刻網路不穩或後端剛好重啟，這個入口就會整個
+  // 消失、直到下次重試成功——這正是本輪「家屬端找不到加好友入口」複查時
+  // 應該一併堵住的路徑，不能讓「動態牆」的載入狀態連帶決定「加好友」入口
+  // 是否可見。改成一律走同一個 RefreshIndicator + ListView，只把讀取中／
+  // 錯誤重試換成「動態區塊」自己的一個項目，入口卡片與發文按鈕永遠在最上方、
+  // 永遠看得到、永遠點得到。
   Widget _buildBody() {
-    if (_isLoadingFeed && _posts.isEmpty) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (_loadError != null && _posts.isEmpty) {
-      return _buildFullError(_loadError!, () => _loadFeed(reset: true));
-    }
     return RefreshIndicator(
       onRefresh: () => _loadFeed(reset: true),
       child: ListView(
@@ -556,12 +561,31 @@ class _FamilyFriendFeedBodyState extends State<FamilyFriendFeedBody> {
           const SizedBox(height: 14),
           _buildCreatePostButton(),
           const SizedBox(height: 18),
-          if (_posts.isEmpty) _buildEmptyState(),
-          ..._posts.map(_buildPostCard),
-          if (_posts.isNotEmpty) _buildLoadMoreControl(),
+          ..._buildFeedSection(),
         ],
       ),
     );
+  }
+
+  /// 動態牆本身的讀取中／整頁錯誤／清單三態，與上方加好友入口的顯示與否
+  /// 無關（見 [_buildBody] 的說明）。
+  List<Widget> _buildFeedSection() {
+    if (_isLoadingFeed && _posts.isEmpty) {
+      return const [
+        Padding(
+          padding: EdgeInsets.symmetric(vertical: 40),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      ];
+    }
+    if (_loadError != null && _posts.isEmpty) {
+      return [_buildFullError(_loadError!, () => _loadFeed(reset: true))];
+    }
+    return [
+      if (_posts.isEmpty) _buildEmptyState(),
+      ..._posts.map(_buildPostCard),
+      if (_posts.isNotEmpty) _buildLoadMoreControl(),
+    ];
   }
 
   /// 加好友的入口卡片——第 4 項需求刻意放在朋友標籤內，而不是
@@ -626,7 +650,37 @@ class _FamilyFriendFeedBodyState extends State<FamilyFriendFeedBody> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('我的好友', style: AppTextStyles.heading, overflow: TextOverflow.ellipsis),
+                    // ★ 第五十二輪任務 B：使用者回報找不到家屬端的加好友
+                    // 入口——這張卡片其實一直都在（第五項需求就有），但主標
+                    // 「我的好友」讀起來像「管理現有好友」而不是「新增」，
+                    // 容易被略過。加一個「加好友」小標籤讓動作更明確；卡片
+                    // 本身的 onTap／導頁目標（_openAddFriend）完全不變，
+                    // 純屬視覺補強，零邏輯回歸風險。同列多一個元素，比照
+                    // 上面同一條鐵律用 Flexible 包住標題文字。
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text('我的好友',
+                              style: AppTextStyles.heading, overflow: TextOverflow.ellipsis),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: AppColors.primaryLight,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '＋加好友',
+                            style: GoogleFonts.notoSansTc(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.primaryDark,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                     Text(
                       _pendingRequestCount > 0 ? '有 $_pendingRequestCount 則新邀請' : '加好友、看邀請、管理好友清單',
                       maxLines: 1,

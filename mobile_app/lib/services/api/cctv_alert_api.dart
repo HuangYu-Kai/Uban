@@ -342,11 +342,18 @@ class CctvAlertApi {
   }
 
   /// 長輩跌倒／緊急警報的持久歷史記錄
+  ///
+  /// ★ 第五十二輪 F2：新增選填 `days`——只回傳 `detected_at` 在最近 N 天內
+  /// 的紀錄，供家屬端警示中心「本週／本月／全部」時間篩選使用。對應後端
+  /// `routers/alert.py::get_alerts` 的同名選填參數；`null`（預設）時完全
+  /// 不帶這個查詢參數，後端維持既有的「不套時間篩選」行為，其餘既有呼叫
+  /// 端不受影響。
   static Future<List<dynamic>> getEmergencyAlerts(
     String elderId, {
     required int userId,
     String? status,
     int limit = 20,
+    int? days,
   }) async {
     try {
       final queryParameters = <String, String>{
@@ -355,6 +362,9 @@ class CctvAlertApi {
       };
       if (status != null && status.isNotEmpty) {
         queryParameters['status'] = status;
+      }
+      if (days != null) {
+        queryParameters['days'] = days.toString();
       }
       final uri = Uri.parse('${ApiClient.baseUrl}/alerts/$elderId')
           .replace(queryParameters: queryParameters);

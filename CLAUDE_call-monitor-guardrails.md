@@ -19,7 +19,7 @@
 > 任何要改視訊通話／來電通知／監控（CCTV）程式碼的人，`CLAUDE_call-monitor.md` 與**這份文件
 > 都要讀**，缺一不可——不要因為它被獨立成檔就誤以為是選讀。
 >
-> **收錄範圍**：全部 197 條護欄（G1–G197），即原文件 §7 的完整內容：
+> **收錄範圍**：全部 199 條護欄（G1–G199），即原文件 §7 的完整內容：
 > §7.1 前端護欄／§7.2 後端護欄／§7.3 已知的文件錯誤（以程式碼為準）／
 > §7.4 已知且刻意保留的安全缺口。
 >
@@ -127,6 +127,11 @@
 > **G198–G199 為 2026-09-21／09-22 第五十一輪新增**（皆為前端：備援來電通知的
 > `actionId == null` 不算「使用者已接聽」、全域語音助理浮動鈕在通話房／來電響鈴／
 > 監控畫面必須讓位）。
+> **G199 已於第五十二輪修訂**（原文只寫「在畫面自己的 widget 樹裡放一個
+> `AssistantHiddenZone(child: SizedBox.shrink())`」，沒有明講該放在哪一層，
+> 第五十一輪因此塞進 `elder_screen.dart` 通話房的 `Stack` children，導致
+> `RenderStack` 塌成 0×0、長輩端通話房黑屏；已改為只能包住畫面根 widget，
+> 並明文禁止塞進 `Stack`，見該條文）。
 > **除非明確知道連鎖影響並能同步改完整條鏈路，不要單點修改。**
 
 ### 7.1 前端護欄
@@ -2149,30 +2154,82 @@ BG FCM handler 的 `call-request` 分支預寫、也被 CallKit accept 路徑更
 > `isAccepted == true` 才算接聽（`main.dart::_checkInitialCall` /
 > `actionCallAccept`），見 G10。
 
-**G199 — 全域語音助理浮動鈕在通話房／來電響鈴／監控畫面必須讓位**
+**G199 — 全域語音助理浮動鈕在通話房／來電響鈴／監控畫面必須讓位；標記只能包住畫面根 widget，絕對不可塞進 `Stack` 的 children**
+
 `widgets/global_assistant_button.dart` 的 `GlobalAssistantButton` 掛在
 `main.dart` 的 `MaterialApp.builder`，蓋在**所有**路由之上。凡是「按錯就會
-影響一通電話」的畫面，都必須在自己的 widget 樹裡放一個
-`const AssistantHiddenZone(child: SizedBox.shrink())` 讓浮動鈕隱藏：
-目前是 `elder_screen.dart`（通話房／CCTV）、`camera_screen.dart`（監控）、
-`elder_home_screen.dart::_showIncomingCallDialog` 與
-`main.dart::_showIncomingCallDialog`（兩處來電響鈴 dialog）、
-以及 `google_assistant_overlay.dart::show()`（助理面板自己）。
-新增任何全螢幕通話／來電畫面時，**同一個 commit 內**就要補上這個標記。
-🚫 **不可**改成去動這些畫面的 `initState()` / `dispose()` 做計數——
-`CLAUDE_call-monitor-ui-map.md` §5.4 把通話畫面的 `initState`/`dispose`
-順序列為「絕對不要碰」；`AssistantHiddenZone` 刻意做成 widget 樹上的標記，
-它自己的 `State` 生命週期與被包住的路由同生共死，計數不會漏。
-🚫 **不可**在浮動鈕裡另外實作一套助理啟動流程。啟動器由
-`ElderHomeScreen` 在 `initState` 登記到 `elderAssistantLauncherNotifier`
-（值就是既有的 `_triggerGoogleAssistantOverlay`），`dispose` 時用 `==`
-比對自己仍是持有者才清空（同 G102 的道理）。複製一份等於讓喚醒詞暫停、
-畫面情境注入、`autoCall` 撥號接手三件事出現兩套會漂移的實作。
+影響一通電話」的畫面，都必須用 `AssistantHiddenZone` 把浮動鈕蓋住。
+
+✅ **正確做法：包住畫面的根 widget**——`return AssistantHiddenZone(child: Scaffold(...));`。
+`AssistantHiddenZone` 是純 pass-through（`build()` 直接回傳 `widget.child`），
+包在最外層不會改變任何版面；它自己的計數只依賴 `State` 生命週期，
+與被包住的路由同生共死，不會漏算。
+
+🚫 **絕對不可放進 `Stack` 的 children**（即
+`Stack(children: [..., const AssistantHiddenZone(child: SizedBox.shrink()), ...])`）。
+機制：`RenderStack._computeSize()` 的規則是——**只要 `Stack` 的 children 裡有任何
+一個「非 `Positioned`」子元件，`Stack` 自己的尺寸就由那些非 `Positioned` 子元件中
+最大的一個決定**（各自以放寬後的約束量測取最大寬高，再套用外部約束收斂）；
+**只有全部 children 都是 `Positioned`／`Positioned.fill` 時，`Stack` 才會退回
+吃滿外部約束（`constraints.biggest`）**。`Scaffold` 的 `body` 給的是寬鬆約束
+（`minWidth`/`minHeight` 皆為 0）。一個原本 children 全是 `Positioned`／
+`Positioned.fill`（靠「退回吃滿約束」撐滿整個畫面）的 `Stack`，只要混入一個
+非 `Positioned` 且本體 0×0 的 `AssistantHiddenZone(child: SizedBox.shrink())`，
+判斷分支就會切換成「用非 Positioned 子元件決定尺寸」——而這個唯一的非
+Positioned 子元件是 0×0，套用寬鬆約束（min 為 0）收斂後仍是 0×0，整個
+`Stack` 因此塌成 0×0，底下所有 `Positioned` 子元件（視訊畫面、按鈕）都被壓縮
+到零尺寸、沒有任何 hit-test 目標。
+
+**實際後果（不是理論風險）**：第五十一輪照本護欄原始條文「在畫面自己的
+widget 樹裡放一個 `AssistantHiddenZone(child: SizedBox.shrink())`」字面實作，
+選擇塞進 `elder_screen.dart` 通話房 `Stack` 的 children，觸發上述塌陷——
+長輩端**所有**通話房（含緊急通話）黑屏、無法掛斷、無法操作，只能等家屬端
+掛斷後被動 `pop` 回首頁。第五十二輪改為包住整個 `Scaffold`
+（`return AssistantHiddenZone(child: Scaffold(...));`），並改寫本條文字本身
+——原文字沒有明講「放哪一層」，正是造成這次回歸的禍首。
+
+✅ **`camera_screen.dart:168` 為什麼安全**：那裡的
+`AssistantHiddenZone(child: SizedBox.shrink())` 放在 `Column` 的 children
+裡，不是 `Stack`。`Column`（`RenderFlex`）沒有「非 flex 子元件會反過來決定
+父層尺寸」這條規則——`Column` 預設 `mainAxisSize: MainAxisSize.max`，其主軸
+尺寸直接取外部約束給的上限，與各個子元件本身多大無關；一個 0 高度的非
+`Expanded` 子元件在配置空間時只貢獻 0，`Expanded` 兄弟元件依然拿到全部剩餘
+空間，`Column` 本身的尺寸不受影響。這正是 `Stack` 與 `Column`／`Row` 在
+「子元件尺寸如何回饋給父層」上的關鍵差異，也是本條要求「只能包根 widget、
+不可塞進 `Stack`」，而不是一概禁止塞進任何容器的原因。
+
+以下三點為 G199 原文仍然正確、不因本次改寫而變動的部分：
+- 浮動鈕必須在通話／來電響鈴／監控畫面讓位，不可省略。
+- 🚫 **不可**改成去動這些畫面的 `initState()` / `dispose()` 做計數——
+  `CLAUDE_call-monitor-ui-map.md` §5.4 把通話畫面的 `initState`/`dispose`
+  順序列為「絕對不要碰」；`AssistantHiddenZone` 刻意做成 widget 樹上的標記，
+  它自己的 `State` 生命週期與被包住的路由同生共死，計數不會漏。
+- 新增任何全螢幕通話／來電畫面時，**同一個 commit 內**就要補上這個標記
+  （包根 widget，不塞進 `Stack`）。
+- 🚫 **不可**在浮動鈕裡另外實作一套助理啟動流程。啟動器由
+  `ElderHomeScreen` 在 `initState` 登記到 `elderAssistantLauncherNotifier`
+  （值就是既有的 `_triggerGoogleAssistantOverlay`），`dispose` 時用 `==`
+  比對自己仍是持有者才清空（同 G102 的道理）。複製一份等於讓喚醒詞暫停、
+  畫面情境注入、`autoCall` 撥號接手三件事出現兩套會漂移的實作。
+
+**目前正確的使用點**：
+
+| 檔案 | 位置 | 所在容器 | 包法 |
+|------|------|---------|------|
+| `elder_screen.dart` | `build()`（:2035） | `Scaffold` 外層 | 包根 widget（第五十二輪修正） |
+| `camera_screen.dart` | :168 | `Column` | 塞進 children（對 `Column` 無害，見上） |
+| `elder_home_screen.dart` | :788（`_showIncomingCallDialog`） | `AlertDialog` 外層 | 包根 widget |
+| `main.dart` | :1822（`_showIncomingCallDialog`） | `AlertDialog` 外層 | 包根 widget |
+| `google_assistant_overlay.dart` | :46（`show()`） | `GoogleAssistantOverlay` 外層 | 包根 widget |
+
 > **原因**：第五十一輪使用者回報「長輩端語音助理叫不出來」。查出助理的兩個
 > 呼叫點都活在 `ElderHomeScreen` 的 `Stack` 裡，只覆蓋 5 個分頁，任何
 > `Navigator.push` 出去的畫面（通話房、監控、新聞播放器、配對頁）都叫不出來。
-> 掛到 `MaterialApp.builder` 解決了覆蓋範圍，但也帶來新風險：一顆浮在最上層
-> 的按鈕若蓋住接聽／掛斷鍵，就會製造出比原本更嚴重的故障。
+> 掛到 `MaterialApp.builder` 解決了覆蓋範圍，但條文本身只寫「放一個
+> `AssistantHiddenZone`」、沒有明講放在畫面 widget 樹的哪一層——第五十一輪
+> 選擇塞進 `elder_screen.dart` 通話房的 `Stack` children，把「叫不出語音
+> 助理」換成了「打不通電話」，是更嚴重的回歸。第五十二輪定位根因並改寫本
+> 條，把「包根 widget」訂為唯一容許的寫法，並明文禁止塞進 `Stack`。
 
 ### 7.3 已知的文件錯誤（以程式碼為準）
 

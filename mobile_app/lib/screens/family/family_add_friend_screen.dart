@@ -1,24 +1,69 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../services/family_friend_service.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/friend_avatar.dart';
 
-/// 家屬「加好友」畫面（第五項需求：家屬好友系統，家屬端一半，item 4）。
+/// 家屬「加好友」畫面（第五項需求：家屬好友系統，家屬端一半，item 4；
+/// 第五十二輪任務 C 補上 QR 顯示／分享／掃描）。
 ///
-/// 流程設計參考長輩端 `elder_add_friend_screen.dart`（我的代碼／搜尋／
-/// 好友管理三個分頁切換，不做成多層跳轉），但刻意不用 `ElderScale`——
-/// 家屬是一般使用者，不需要長輩端那種特大字級，這裡改用一般的
-/// [AppTextStyles]／[AppColors]，按鈕高度、圖示尺寸也對應縮小。刻意不做
-/// QR 掃描（長輩版三模式之一）：需求只要求代碼查詢＋邀請＋清單管理，掃碼
-/// 對家屬這個使用情境不是必要功能，先不做以縮小風險面。
+/// 流程設計參考長輩端 `elder_add_friend_screen.dart` 的三個分頁（我的
+/// QR 碼／掃描朋友／輸入 ID，見該檔 `_AddFriendMode`，不做成多層跳轉），
+/// 但多加第四個分頁「好友管理」——長輩端沒有這個分頁，長輩管理好友清單
+/// 走別的畫面（`FriendFeedBody`／`friends_screen.dart`）；家屬端刻意把
+/// 待回應邀請與好友清單合併進同一個畫面，四個分頁一次到位，不用再多開一層
+/// 導頁。也刻意不用 `ElderScale`——家屬是一般使用者，不需要長輩端那種特大
+/// 字級，這裡改用一般的 [AppTextStyles]／[AppColors]，按鈕高度、圖示尺寸
+/// 也對應縮小。
 ///
-/// 三個分頁：
-/// - 我的代碼：顯示（必要時觸發後端惰性產生）自己的 4 碼 `family_code`。
+/// ★ 第五十二輪以前這裡刻意不做 QR 掃描（理由是「不是必要功能，先縮小風險
+/// 面」，見本檔 git 歷史）；第五十二輪任務 C 依使用者與 team-lead 的明確
+/// 要求補上——長輩端已有穩定運作的 mobile_scanner 實作可以比照，風險可控，
+/// 因此不再維持原本「先不做」的判斷，直接重用長輩端同一套權限處理與偵測
+/// 邏輯（`detectionSpeed: DetectionSpeed.noDuplicates`、`_hasHandledScan`
+/// 防重複觸發）。
+///
+/// 四個分頁：
+/// - 我的代碼：顯示（必要時觸發後端惰性產生）自己的 4 碼 `family_code`，
+///   並排 QR 碼（`qr_flutter`）與複製／分享（`share_plus`）三種取得方式。
+/// - 掃描：用 `mobile_scanner` 掃朋友的 QR 碼（格式 `uban-family:<CODE>`，
+///   見 [kFamilyFriendQrPrefix]／[decodeFamilyFriendQr]），掃到後直接走與
+///   「搜尋加好友」相同的 [_performSearch]。
 /// - 搜尋加好友：輸入對方 4 碼代碼查詢並送出邀請。
 /// - 好友管理：待回應邀請（接受／拒絕）＋已是好友的清單（可解除）。
+///
+/// ⚠️ 誠實性要求：`android/app/src/main/AndroidManifest.xml` 目前只註冊了
+/// `uban://recovery` 一組 deep link，沒有「點連結就自動加好友」的處理，
+/// 分享文案（見 [_shareMyCode]）因此只講「代碼」，請對方手動輸入或掃描，
+/// 不可以寫成「點連結就能加好友」這種目前做不到的承諾。
+
+/// QR 內容格式 `uban-family:<4碼代碼>`——刻意帶字首而不是裸代碼，讓掃描端
+/// 能明確分辨「這是不是 Uban 好友的 QR 碼」，與長輩端 `_qrPrefix`
+/// （`uban-friend:`，見 elder_add_friend_screen.dart）同一套設計，只是
+/// 命名空間不同，避免長輩／家屬雙方互掃到對方陣營的 QR 碼時誤判成功。
+///
+/// ★ 第五十二輪任務 C：這個常數與下面兩個函式刻意拉到 State 類別外面、
+/// 宣告成頂層符號（不是類別的私有成員）——單純字串組合／解析，不依賴任何
+/// widget 狀態，這樣測試（見 test/screens/family/family_add_friend_screen_test.dart）
+/// 能直接呼叫真正在跑的程式碼驗證「產生的字串」與「解析函式」互相對應，
+/// 不用另外重寫一份平行邏輯，也不需要碰觸 `_FamilyAddFriendScreenState`
+/// 的私有成員。
+const String kFamilyFriendQrPrefix = 'uban-family:';
+
+/// 把 4 碼好友代碼編碼成 QR 內容。
+String encodeFamilyFriendQr(String code) => '$kFamilyFriendQrPrefix$code';
+
+/// 解析掃描到的原始字串；不是 Uban 家屬好友 QR（字首不符）回傳 null。
+String? decodeFamilyFriendQr(String raw) {
+  if (!raw.startsWith(kFamilyFriendQrPrefix)) return null;
+  return raw.substring(kFamilyFriendQrPrefix.length).trim();
+}
+
 class FamilyAddFriendScreen extends StatefulWidget {
   final int familyId;
   final String familyName;
@@ -33,13 +78,16 @@ class FamilyAddFriendScreen extends StatefulWidget {
   State<FamilyAddFriendScreen> createState() => _FamilyAddFriendScreenState();
 }
 
-enum _FamilyFriendMode { myCode, search, manage }
+enum _FamilyFriendMode { myCode, scan, search, manage }
 
 class _FamilyAddFriendScreenState extends State<FamilyAddFriendScreen> {
   _FamilyFriendMode _mode = _FamilyFriendMode.myCode;
 
   String? _myCode;
   bool _isLoadingMyCode = true;
+
+  MobileScannerController? _scannerController;
+  bool _hasHandledScan = false;
 
   final TextEditingController _searchController = TextEditingController();
   bool _isSearching = false;
@@ -64,6 +112,7 @@ class _FamilyAddFriendScreenState extends State<FamilyAddFriendScreen> {
 
   @override
   void dispose() {
+    _scannerController?.dispose();
     _searchController.dispose();
     super.dispose();
   }
@@ -104,14 +153,73 @@ class _FamilyAddFriendScreenState extends State<FamilyAddFriendScreen> {
 
   void _switchMode(_FamilyFriendMode mode) {
     if (_mode == mode) return;
+    // 離開任何分頁前一律先釋放掃描器（比照長輩端 elder_add_friend_screen.dart
+    // 的 _switchMode）——鏡頭是稀缺資源，不能等下次切到「掃描」分頁時才發現
+    // 舊的 controller 還沒關掉。
+    _scannerController?.dispose();
+    _scannerController = null;
     setState(() {
       _mode = mode;
-      if (mode == _FamilyFriendMode.search) {
+      if (mode == _FamilyFriendMode.search || mode == _FamilyFriendMode.scan) {
         _searchResult = null;
         _searchError = null;
         _sendResultMessage = null;
+        _hasHandledScan = false;
       }
     });
+    if (mode == _FamilyFriendMode.scan) {
+      _scannerController = MobileScannerController(
+        detectionSpeed: DetectionSpeed.noDuplicates,
+        facing: CameraFacing.back,
+      );
+    }
+  }
+
+  void _restartScan() {
+    setState(() {
+      _searchResult = null;
+      _searchError = null;
+      _sendResultMessage = null;
+      _hasHandledScan = false;
+    });
+    _scannerController?.start();
+  }
+
+  void _onScanDetect(BarcodeCapture capture) {
+    if (_hasHandledScan) return;
+    for (final barcode in capture.barcodes) {
+      final raw = barcode.rawValue;
+      if (raw == null) continue;
+      _hasHandledScan = true;
+      _scannerController?.stop();
+      _handleScannedValue(raw.trim());
+      break;
+    }
+  }
+
+  Future<void> _handleScannedValue(String raw) async {
+    final targetCode = decodeFamilyFriendQr(raw);
+    if (targetCode == null) {
+      setState(() => _searchError = '這不是 Uban 家屬好友的 QR 碼，請確認掃描的對象');
+      return;
+    }
+    await _performSearch(targetCode);
+  }
+
+  Future<void> _shareMyCode() async {
+    if (_myCode == null) return;
+    // 見檔頭「誠實性要求」：目前沒有 deep link 能點了就自動加好友，文案只
+    // 講代碼／QR，請對方手動輸入或掃描。
+    final shareText = '【Uban 加好友】\n'
+        '我是 ${widget.familyName}，我的 Uban 好友代碼是：${_myCode!}\n\n'
+        '請在 Uban App 開啟「社群 → 朋友 → 我的好友」，用「搜尋加好友」輸入這組代碼，'
+        '或直接掃描我分享的 QR 碼，即可送出好友邀請。';
+    await SharePlus.instance.share(
+      ShareParams(
+        text: shareText,
+        subject: 'Uban 好友代碼',
+      ),
+    );
   }
 
   Future<void> _performSearch(String code) async {
@@ -273,6 +381,7 @@ class _FamilyAddFriendScreenState extends State<FamilyAddFriendScreen> {
       child: Row(
         children: [
           _modeTab(_FamilyFriendMode.myCode, Icons.qr_code_2_rounded, '我的代碼'),
+          _modeTab(_FamilyFriendMode.scan, Icons.qr_code_scanner_rounded, '掃描'),
           _modeTab(_FamilyFriendMode.search, Icons.person_search_rounded, '搜尋加好友'),
           _modeTab(_FamilyFriendMode.manage, Icons.group_rounded, '好友管理',
               badge: _requests.length),
@@ -349,6 +458,8 @@ class _FamilyAddFriendScreenState extends State<FamilyAddFriendScreen> {
     switch (_mode) {
       case _FamilyFriendMode.myCode:
         return _buildMyCodeBody();
+      case _FamilyFriendMode.scan:
+        return _buildScanBody();
       case _FamilyFriendMode.search:
         return _buildSearchBody();
       case _FamilyFriendMode.manage:
@@ -401,27 +512,134 @@ class _FamilyAddFriendScreenState extends State<FamilyAddFriendScreen> {
                   ),
                 ),
               ),
+              const SizedBox(height: 20),
+              // ★ 第五十二輪任務 C：QR 碼顯示，格式見 [encodeFamilyFriendQr]。
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  border: Border.all(color: AppColors.border),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: QrImageView(
+                  data: encodeFamilyFriendQr(_myCode!),
+                  version: QrVersions.auto,
+                  size: 160,
+                  backgroundColor: Colors.white,
+                ),
+              ),
             ],
           ),
         ),
         const SizedBox(height: 16),
-        SizedBox(
-          height: 48,
-          child: OutlinedButton.icon(
-            onPressed: () {
-              Clipboard.setData(ClipboardData(text: _myCode!));
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已複製代碼')));
-            },
-            icon: const Icon(Icons.copy_rounded, size: 18),
-            label: const Text('複製代碼'),
-          ),
+        Row(
+          children: [
+            Expanded(
+              child: SizedBox(
+                height: 48,
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    Clipboard.setData(ClipboardData(text: _myCode!));
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已複製代碼')));
+                  },
+                  icon: const Icon(Icons.copy_rounded, size: 18),
+                  label: const Text('複製代碼', maxLines: 1, overflow: TextOverflow.ellipsis),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: SizedBox(
+                height: 48,
+                // ★ 第五十二輪任務 C：分享（share_plus），文案見 [_shareMyCode]。
+                child: ElevatedButton.icon(
+                  onPressed: _shareMyCode,
+                  icon: const Icon(Icons.share_rounded, size: 18),
+                  label: const Text('分享代碼', maxLines: 1, overflow: TextOverflow.ellipsis),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 12),
         Text(
-          '把這組代碼分享給朋友，讓對方在「搜尋加好友」輸入即可送出邀請',
+          '把這組代碼或 QR 碼分享給朋友。請對方在「搜尋加好友」輸入代碼，或用「掃描」對準您的 QR 碼，即可送出邀請',
           textAlign: TextAlign.center,
           style: AppTextStyles.secondary,
         ),
+      ],
+    );
+  }
+
+  // ── 掃描朋友 ────────────────────────────────────────────
+  Widget _buildScanBody() {
+    if (_isSearching) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 60),
+        child: Center(
+          child: Column(
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 12),
+              Text('查詢中…'),
+            ],
+          ),
+        ),
+      );
+    }
+    if (_searchResult != null) {
+      return Column(
+        children: [
+          _buildResultCard(),
+          const SizedBox(height: 14),
+          TextButton.icon(
+            onPressed: _restartScan,
+            icon: const Icon(Icons.refresh_rounded, size: 18),
+            label: Text('重新掃描', style: AppTextStyles.secondary),
+          ),
+        ],
+      );
+    }
+    if (_hasHandledScan && _searchError != null) {
+      return Column(
+        children: [
+          _buildErrorBanner(_searchError!),
+          const SizedBox(height: 16),
+          SizedBox(
+            height: 48,
+            child: ElevatedButton.icon(
+              onPressed: _restartScan,
+              icon: const Icon(Icons.refresh_rounded, size: 20),
+              label: const Text('重新掃描', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+    return Column(
+      children: [
+        Text('把朋友的 Uban QR 碼對準框框', textAlign: TextAlign.center, style: AppTextStyles.body),
+        const SizedBox(height: 12),
+        if (_scannerController != null)
+          ClipRRect(
+            borderRadius: BorderRadius.circular(18),
+            child: SizedBox(
+              height: 300,
+              child: MobileScanner(
+                controller: _scannerController!,
+                onDetect: _onScanDetect,
+              ),
+            ),
+          ),
       ],
     );
   }

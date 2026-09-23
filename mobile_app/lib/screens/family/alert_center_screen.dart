@@ -7,6 +7,19 @@ import '../../services/predictive_alert_service.dart';
 import '../../services/api_service.dart';
 import '../../utils/error_handler.dart';
 
+/// ★ 第五十二輪 F2：警示紀錄清單的時間範圍篩選。放在檔案頂層（非
+/// State 內部類別）純粹是 Dart enum 慣例，值本身只有這個畫面在用。
+enum _AlertTimeRange { week, month, all }
+
+/// 「全部」篩選給的較大 limit——如實告知使用者這不是真的「無限」，只是
+/// 顯示較多筆（見 [_AlertCenterScreenState._buildAllRangeHint]）。與後端
+/// `routers/alert.py::get_alerts` 的 `limit` 參數對應。
+const int _kAllRangeLimit = 200;
+
+/// ★ 第五十二輪 F2：警示紀錄卡片的單一動作控制項（PopupMenuButton）可選
+/// 的兩個選項——取代原本「回報已處理」／「這是誤報」兩個並排按鈕。
+enum _AlertMenuAction { resolve, falseAlarm }
+
 /// 🚨 警示中心頁面
 ///
 /// 顯示所有預測性警示和建議
@@ -39,12 +52,26 @@ class AlertCenterScreen extends StatefulWidget {
   /// REST 抓取，所有入口拿到的資料因此仍會一致。
   final List<Map<String, dynamic>> activeAlerts;
 
+  /// 測試專用注入點：提供時直接當成警示紀錄清單使用，略過
+  /// `_loadHistoryAlerts()` 原本的網路抓取（見該方法開頭的判斷）。
+  /// App 正常執行時一律是 `null`。
+  ///
+  /// ★ 第五十二輪 F2 新增：`_buildHistoryAlertCard`／`_buildAlertActionArea`
+  /// 是本檔的 library-private 方法，測試檔案（不同檔案＝不同 library）
+  /// 無法直接呼叫；`activeAlerts` 餵的是即時 CCTV 警報，不是這裡要驗證的
+  /// 「已結案不得再有動作鍵」「未結案只有單一動作控制項」這兩項針對
+  /// 持久化警示紀錄卡片的驗收項目。沒有這個注入點，對應的 widget test
+  /// 就只能在測試檔裡另外手刻一份結構相近的重建版（有與正式程式碼漂移
+  /// 不同步的風險），而不是命中真正的實作。
+  final List<Map<String, dynamic>>? historyAlertItemsOverride;
+
   const AlertCenterScreen({
     super.key,
     required this.elderName,
     this.elderId,
     this.elderRoomId,
     this.activeAlerts = const [],
+    this.historyAlertItemsOverride,
   });
 
   @override
@@ -65,10 +92,36 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
   // ★ 第四十九輪 item 12：正在送出「回報已處理」請求的項目 id，用途同上。
   final Set<String> _resolvePending = {};
 
+  // ★ 第五十二輪 F2：警示紀錄時間篩選（本週／本月／全部）。只存在本畫面
+  // 的 State 裡——任務要求「記住目前選擇、不需要持久化」，`IndexedStack`
+  // 保活即足夠讓使用者切分頁再切回來時維持選擇，不必寫 SharedPreferences。
+  _AlertTimeRange _timeRange = _AlertTimeRange.week;
+  // 警示紀錄區塊自己的局部載入狀態——切換時間篩選只重抓這個區塊，不影響
+  // 上方已經載入完成的即時警報／健康建議，也不觸發整頁滿版 loading（那
+  // 會讓使用者失去目前的捲動位置）。
+  bool _historyLoading = false;
+  // 這次載入是否失敗。「這個時間範圍內沒有紀錄」與「載入失敗」在 UI 上
+  // 必須長得不一樣（見 _buildHistoryError／_buildHistoryEmpty），不能都
+  // 塌成同一個空清單。
+  bool _historyLoadFailed = false;
+
   @override
   void initState() {
     super.initState();
     _loadAlerts();
+  }
+
+  /// 依目前選取的時間範圍換算成後端 `days` 參數；`null` 代表「全部」，
+  /// 不套用時間篩選（見 `routers/alert.py::get_alerts` 的 `days` 語意）。
+  int? _daysForRange(_AlertTimeRange range) {
+    switch (range) {
+      case _AlertTimeRange.week:
+        return 7;
+      case _AlertTimeRange.month:
+        return 30;
+      case _AlertTimeRange.all:
+        return null;
+    }
   }
 
   Future<void> _loadAlerts() async {
@@ -90,41 +143,90 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
       healthData: healthData,
       lookbackDays: 7,
     );
-    final historyItems = await _loadHistoryAlerts();
 
     if (!mounted) return;
     setState(() {
       _alerts = alerts;
-      _historyAlertItems = historyItems;
       _isLoading = false;
     });
+
+    // ★ 第五十二輪 F2：警示紀錄改走獨立的局部載入狀態，不再共用上面的
+    // `_isLoading`（原因見該欄位宣告處註解）。初次載入／下拉重新整理仍會
+    // 一併重抓這個區塊，只是不再讓它卡住上面兩個區塊的顯示時機。
+    await _loadHistoryAlerts();
   }
 
   /// 抓取並合併 family_home_tab.dart 預覽區另外兩個真實來源：
   /// `_realLogs`（`GET /activity/elder/{elder_id}`，活動流水）與
   /// `_emergencyAlerts`（`GET /alerts/{elder_id}`，持久化跌倒／異常警報）。
-  /// 抓法與寬容失敗處理逐一比照該檔 `_loadDynamicData`（:822-849）：
-  /// user_id 讀不到就略過 `_emergencyAlerts` 這一段抓取，任何例外都吞掉——
-  /// 警示中心只是少一批資料，不得整頁擲出例外或空白。
-  Future<List<Map<String, dynamic>>> _loadHistoryAlerts() async {
+  /// 抓法逐一比照該檔 `_loadDynamicData`（:822-849）：user_id 讀不到就略過
+  /// `_emergencyAlerts` 這一段抓取。
+  ///
+  /// ★ 第五十二輪 F2：改為自行管理 `_historyAlertItems`／`_historyLoading`／
+  /// `_historyLoadFailed` 三個 State 欄位（不再是回傳值交給呼叫端
+  /// setState）——現在有兩個呼叫時機：`_loadAlerts()`（整頁初次載入／下拉
+  /// 重新整理）與使用者切換時間篩選 chip（只重抓這個區塊）。同時新增依
+  /// [_timeRange] 決定的 `days`／`limit`：
+  ///   - 送給後端 `GET /alerts/{elder_id}?days=` 只影響 `emergencyAlerts`
+  ///     （持久化跌倒警報，見 `routers/alert.py::get_alerts` 的 `days`）。
+  ///   - `logs`（活動流水）後端沒有對應的按天篩選端點，改在下方合併排序
+  ///     後對整個 `combined` 清單再套一次以 `sortTs` 為準的用戶端篩選，
+  ///     否則切到「本週」時仍會看到數月前的健康警示混在清單裡，篩選形同
+  ///     虛設（見下方篩選區塊的完整說明）。
+  /// ⚠️ 例外不再整段吞掉——`failed` 旗標會讓使用者看到明確的「載入失敗」
+  /// 而不是被誤判成「這個範圍沒有紀錄」（見 _buildHistoryError／
+  /// _buildHistoryEmpty 的不同呈現）。
+  Future<void> _loadHistoryAlerts() async {
+    if (_historyLoading) return; // 防止快速切換時間篩選造成的競態載入
+
+    // 測試專用注入點（見 [AlertCenterScreen.historyAlertItemsOverride]）：
+    // 提供時直接採用，略過下面的網路抓取與時間篩選——測試資料已經是
+    // 呼叫端刻意準備好的最終清單。
+    if (widget.historyAlertItemsOverride != null) {
+      if (!mounted) return;
+      setState(() {
+        _historyAlertItems = widget.historyAlertItemsOverride!;
+        _historyLoading = false;
+        _historyLoadFailed = false;
+      });
+      return;
+    }
+
+    setState(() {
+      _historyLoading = true;
+      _historyLoadFailed = false;
+    });
+
     final elderIdForApi = widget.elderRoomId ?? widget.elderId?.toString();
-    if (elderIdForApi == null || elderIdForApi.isEmpty) return [];
+    if (elderIdForApi == null || elderIdForApi.isEmpty) {
+      if (!mounted) return;
+      setState(() {
+        _historyAlertItems = [];
+        _historyLoading = false;
+      });
+      return;
+    }
+
+    final int? days = _daysForRange(_timeRange);
+    final int fetchLimit = _timeRange == _AlertTimeRange.all ? _kAllRangeLimit : 30;
 
     List<dynamic> logs = [];
     List<dynamic> emergencyAlerts = [];
+    bool failed = false;
     try {
-      logs = await ApiService.getElderActivityLogs(elderIdForApi, limit: 30);
+      logs = await ApiService.getElderActivityLogs(elderIdForApi, limit: fetchLimit);
       final prefs = await SharedPreferences.getInstance();
       final familyUserId = prefs.getInt('caregiver_id');
       if (familyUserId != null) {
-        emergencyAlerts = await ApiService.getEmergencyAlerts(
+        emergencyAlerts = await CctvAlertApi.getEmergencyAlerts(
           elderIdForApi,
           userId: familyUserId,
-          limit: 30,
+          limit: fetchLimit,
+          days: days,
         );
       }
     } catch (e) {
-      // 沿用 family_home_tab.dart 既有慣例：任何失敗都吞掉，不擲出例外。
+      failed = true;
     }
 
     // dedupe：與即時警報（activeAlerts）同一筆的持久化跌倒警報不重複顯示，
@@ -230,7 +332,28 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
       if (tsB == null) return -1;
       return tsB.compareTo(tsA);
     });
-    return combined;
+
+    // ★ 第五十二輪 F2：後端 `days` 篩選只涵蓋 emergencyAlerts（見本函式
+    // 檔頭說明），這裡對合併後的完整清單再篩一次，確保 logItems 也遵守
+    // 同一個時間範圍。缺時間戳的項目（sortTs == null，例如活動流水解析
+    // 失敗）一律視為「無法確認是否落在範圍內」而排除，避免把時間不明的
+    // 舊資料誤判成落在「本週／本月」範圍內；「全部」（days == null）不
+    // 套用此篩選，維持原有全部顯示的行為。
+    List<Map<String, dynamic>> filtered = combined;
+    if (days != null) {
+      final cutoff = DateTime.now().subtract(Duration(days: days));
+      filtered = combined.where((item) {
+        final ts = item['sortTs'] as DateTime?;
+        return ts != null && !ts.isBefore(cutoff);
+      }).toList();
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _historyAlertItems = filtered;
+      _historyLoading = false;
+      _historyLoadFailed = failed;
+    });
   }
 
   @override
@@ -298,15 +421,29 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
 
   Widget _buildContent() {
     final realtimeAlerts = _filteredActiveAlerts();
-    if (_alerts.isEmpty && realtimeAlerts.isEmpty && _historyAlertItems.isEmpty) {
-      return _buildEmptyState();
-    }
+    // ★ 第五十二輪 F2：警示紀錄區塊（含時間篩選器）一律渲染在下方
+    // ListView 裡，不再用「完全沒有警示」的整頁空狀態去頂替、隱藏它——
+    // 否則使用者切到「本週」剛好沒有紀錄，若即時警報／健康建議恰好也
+    // 都是空的，會被整頁空狀態蓋掉、連篩選器都看不到，等於走不出目前
+    // 選到的空篩選範圍（正是這次「要找某筆記錄」問題的翻版）。
+    // 改成：即時警報／健康建議兩個來源都空時，把原本的「🎉 目前沒有
+    // 警示」卡片當成 ListView 的第一個項目（而不是整頁替換 body）——
+    // `_buildEmptyState()` 內部只有 Container/SizedBox/Text，沒有
+    // Expanded/Flexible，包進無界高度的 ListView item 不會有鐵律 #14
+    // 那種 RenderFlex 例外，只是不再垂直置中，改成貼齊頂端顯示。
+    // 警示紀錄區塊照樣接在後面，讓使用者能繼續切換到本月／全部查找
+    // 較舊的紀錄。
+    final bool otherSourcesEmpty = _alerts.isEmpty && realtimeAlerts.isEmpty;
 
     return RefreshIndicator(
       onRefresh: _loadAlerts,
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          if (otherSourcesEmpty) ...[
+            _buildEmptyState(),
+            const SizedBox(height: 20),
+          ],
           // ★ 即時跌倒／CCTV 警報排最前面、視覺上更醒目：緊急事件不能被
           // 下方的健康建議淹沒。樣式與文案沿用 family_home_tab.dart 預覽區
           // 既有寫法（紅色系、🚨 標題、信心度百分比）。
@@ -317,10 +454,9 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
             const SizedBox(height: 20),
           ],
           // ★ 第四十一輪（item 1 追加）：跌倒歷史 + 活動警示，依時間新到舊。
-          if (_historyAlertItems.isNotEmpty) ...[
-            _buildHistoryAlertsSection(_historyAlertItems),
-            const SizedBox(height: 20),
-          ],
+          // ★ 第五十二輪 F2：一律渲染（見上方註解），不再用 isNotEmpty 守門。
+          _buildHistoryAlertsSection(_historyAlertItems),
+          const SizedBox(height: 20),
           if (_alerts.isNotEmpty) ...[
             _buildSummaryCard(),
             const SizedBox(height: 20),
@@ -344,8 +480,165 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        ...items.map(_buildHistoryAlertCard),
+        // ★ 第五十二輪 F2：本週／本月／全部時間篩選器，取代原本「持續往下
+        // 滑動」找舊紀錄的唯一方式。
+        _buildTimeRangeSelector(),
+        const SizedBox(height: 12),
+        if (_historyLoading)
+          _buildHistoryLoading()
+        else if (_historyLoadFailed)
+          _buildHistoryError()
+        else if (items.isEmpty)
+          _buildHistoryEmpty()
+        else ...[
+          ...items.map(_buildHistoryAlertCard),
+          if (_timeRange == _AlertTimeRange.all) _buildAllRangeHint(),
+        ],
       ],
+    );
+  }
+
+  /// ★ 第五十二輪 F2：警示紀錄的時間範圍篩選器（本週／本月／全部）。用
+  /// `ChoiceChip`——與 `family_interaction_tab.dart::_buildCatChip` 既有的
+  /// 分類篩選同一套元件，維持家屬端一致的篩選 UI 語言。三顆固定中文短
+  /// 標籤（非後端動態內容），外層仍包一層 `Wrap` 防窄螢幕換行時溢位
+  /// （鐵律 #14）。
+  Widget _buildTimeRangeSelector() {
+    Widget chip(_AlertTimeRange value, String label) {
+      final bool isSel = _timeRange == value;
+      return ChoiceChip(
+        label: Text(
+          label,
+          style: GoogleFonts.notoSansTc(
+            fontSize: 13,
+            fontWeight: isSel ? FontWeight.w800 : FontWeight.w600,
+            color: isSel ? Colors.white : const Color(0xFF475569),
+          ),
+        ),
+        selected: isSel,
+        selectedColor: const Color(0xFF59B294),
+        backgroundColor: const Color(0xFFF1F5F9),
+        side: BorderSide(
+          color: isSel ? const Color(0xFF59B294) : const Color(0xFFCBD5E1),
+        ),
+        // 載入中不接受切換——避免快速連續點擊造成競態載入（見
+        // _loadHistoryAlerts 開頭的 _historyLoading 重入防護）。
+        onSelected: _historyLoading
+            ? null
+            : (_) {
+                if (_timeRange == value) return;
+                HapticFeedback.selectionClick();
+                setState(() => _timeRange = value);
+                _loadHistoryAlerts();
+              },
+      );
+    }
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        chip(_AlertTimeRange.week, '本週'),
+        chip(_AlertTimeRange.month, '本月'),
+        chip(_AlertTimeRange.all, '全部'),
+      ],
+    );
+  }
+
+  /// 警示紀錄局部載入中——只影響這個區塊，不是整頁滿版 loading（那會讓
+  /// 使用者失去目前的捲動位置）。
+  Widget _buildHistoryLoading() {
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: 24),
+      child: Center(child: CircularProgressIndicator(strokeWidth: 2.5)),
+    );
+  }
+
+  /// ★ 第五十二輪 F2：警示紀錄載入失敗——刻意與「這個時間範圍內沒有紀錄」
+  /// 的空狀態（見 [_buildHistoryEmpty]）做視覺區分（紅色系＋錯誤圖示＋
+  /// 重試按鈕，而非中性灰階），使用者才能分辨「這個篩選範圍真的沒事」
+  /// 與「其實可能有資料，只是這次沒抓到」。
+  Widget _buildHistoryError() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFEF2F2),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFFECACA)),
+      ),
+      child: Column(
+        children: [
+          const Icon(Icons.cloud_off_rounded, color: Color(0xFFDC2626), size: 32),
+          const SizedBox(height: 8),
+          Text(
+            '警示紀錄載入失敗，請檢查網路後重試',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.notoSansTc(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFFB91C1C),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextButton.icon(
+            onPressed: () => _loadHistoryAlerts(),
+            icon: const Icon(Icons.refresh_rounded, size: 18),
+            label: Text('重新載入', style: GoogleFonts.notoSansTc(fontWeight: FontWeight.w700)),
+            style: TextButton.styleFrom(foregroundColor: const Color(0xFFB91C1C)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 目前所選時間範圍內沒有警示紀錄——中性提示，刻意與 [_buildHistoryError]
+  /// 做視覺區分（見該函式註解）。
+  Widget _buildHistoryEmpty() {
+    final String rangeLabel = switch (_timeRange) {
+      _AlertTimeRange.week => '本週',
+      _AlertTimeRange.month => '本月',
+      _AlertTimeRange.all => '',
+    };
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        children: [
+          const Icon(Icons.inbox_rounded, color: Color(0xFF94A3B8), size: 28),
+          const SizedBox(height: 8),
+          Text(
+            '$rangeLabel沒有警示紀錄',
+            style: GoogleFonts.notoSansTc(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: const Color(0xFF64748B),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// ★ 第五十二輪 F2：「全部」不套用時間篩選，但 limit 提高到
+  /// [_kAllRangeLimit]——如實告知使用者這不是真的「無限」，避免以為漏了
+  /// 更早的紀錄卻找不到原因。
+  Widget _buildAllRangeHint() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Text(
+        '僅顯示最近 $_kAllRangeLimit 筆紀錄',
+        style: GoogleFonts.notoSansTc(
+          fontSize: 11,
+          fontWeight: FontWeight.w500,
+          color: const Color(0xFF94A3B8),
+        ),
+      ),
     );
   }
 
@@ -573,28 +866,19 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
               ),
             ],
           ),
-          // ★ 第四十五輪：只有查得到真實 alert_id 的持久化警報才提供「這是
-          //   誤報」／「回報已處理」操作——logItems（活動流水）沒有對應的
-          //   emergency_alerts 列，alertId 恆為 null，不會顯示這個區塊。
-          // ★ 第四十九輪 item 12：兩個動作用 Wrap（不是 Row）並排——兩者
-          //   都是後端動態決定要不要顯示、寬度不固定的按鈕／徽章，Wrap 在
-          //   空間不足時會自動換行，避免 RenderFlex 溢位（鐵律 #14）。
+          // ★ 第四十五輪：只有查得到真實 alert_id 的持久化警報才提供動作
+          //   控制項——logItems（活動流水）沒有對應的 emergency_alerts
+          //   列，alertId 恆為 null，不會顯示這個區塊。
+          // ★ 第五十二輪 F2：原本「回報已處理」／「這是誤報」兩個並排
+          //   按鈕收斂成單一控制項，見 [_buildAlertActionArea]。
           if (alertId != null) ...[
             const SizedBox(height: 10),
-            Wrap(
-              alignment: WrapAlignment.end,
-              spacing: 12,
-              runSpacing: 6,
-              children: [
-                _buildResolveAction(
-                  itemId,
-                  alertId,
-                  item['status'] as String?,
-                  item['resolution_source'] as String?,
-                  isFalseAlarm,
-                ),
-                _buildFalseAlarmAction(itemId, alertId, isFalseAlarm),
-              ],
+            _buildAlertActionArea(
+              itemId,
+              alertId,
+              item['status'] as String?,
+              item['resolution_source'] as String?,
+              isFalseAlarm,
             ),
           ],
         ],
@@ -602,86 +886,177 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
     );
   }
 
-  /// ★ 第四十九輪 item 12：「回報已處理」操作區——未回報時是可點擊按鈕，
-  /// 已回報則依 [resolutionSource] 顯示對應的唯讀徽章。與
-  /// [_buildFalseAlarmAction] 並排顯示（見 `_buildHistoryAlertCard` 的
-  /// `Wrap`）。
+  /// ★ 第五十二輪 F2：警示紀錄卡片的動作區——取代原本各自獨立的
+  /// `_buildResolveAction`／`_buildFalseAlarmAction` 兩個並排按鈕。
   ///
-  /// ★ 第四十九輪 item 12（收尾）：結案來源分流——不能讓「舊警報上線時
-  /// 系統自動結案」（`legacy_auto`）或「開發者主控台代為結案」
-  /// （`developer`）顯示成家屬自己回報的『已回報處理完畢』，那會誤導家屬
-  /// 以為有人（甚至自己）已經確認過這則警報。
-  Widget _buildResolveAction(
+  /// 已結案（`status == 'resolved'`，`isFalseAlarm` 併入判斷以相容
+  /// `alert_state.mark_false_alarm()` 尚未連動 status 之前寫入的極舊資料
+  /// ——正常情況下兩者必然同步，見 `database.py` 開機時對這批舊資料的
+  /// backfill）一律只顯示唯讀徽章＋一行「已結案的紀錄不能再更改」說明，
+  /// 不提供任何可按動作（任務 A：已結案不得再有動作鍵）。
+  ///
+  /// 未結案（active／acknowledged）顯示單一 `PopupMenuButton`：本體按鈕
+  /// 顯示目前狀態（待處理／處理中），展開後提供「回報已處理」／「標記為
+  /// 誤報」兩個選項（任務 B）。**刻意不提供「退回待處理」**——`resolved`
+  /// 是後端刻意鎖死的終態（見 `services/alert_state.py` 檔頭），提供一個
+  /// 後端會拒絕的選項只會讓家屬以為壞掉；若日後要支援「誤按反悔」，應該
+  /// 是撤銷視窗（例如 5 秒內可撤銷）而不是重新開放已結案紀錄。
+  Widget _buildAlertActionArea(
     String itemId,
     int alertId,
     String? status,
     String? resolutionSource,
     bool isFalseAlarm,
   ) {
-    // 誤報已經有「已標記為誤報」徽章，後端 mark_false_alarm 也會自動把
-    // status 連動轉成 resolved（見 routers/alert.py），這裡不重複顯示第二
-    // 個語意重疊的「已完成」徽章。
-    if (isFalseAlarm) return const SizedBox.shrink();
-
-    if (status == 'resolved') {
-      switch (resolutionSource) {
-        case 'family':
-          return _buildResolvedBadge(
-            icon: Icons.check_circle_rounded,
-            color: const Color(0xFF59B294),
-            label: '已回報處理完畢',
-          );
-        case 'developer':
-          return _buildResolvedBadge(
-            icon: Icons.verified_user_rounded,
-            color: const Color(0xFF59B294),
-            label: '已由 Uban 團隊結案',
-          );
-        case 'legacy_auto':
-          // 中性灰色＋歷史圖示：刻意與其餘「有人確認過」的綠色徽章區分，
-          // 避免看起來像家屬處理過——這筆是系統上線時自動結案的舊警報，
-          // 從來沒有人真的看過。
-          return _buildResolvedBadge(
-            icon: Icons.history_rounded,
-            color: const Color(0xFF94A3B8),
-            label: '舊警報，系統已自動結案',
-          );
-        default:
-          return _buildResolvedBadge(
-            icon: Icons.check_circle_rounded,
-            color: const Color(0xFF59B294),
-            label: '已結案',
-          );
-      }
+    final bool resolved = status == 'resolved' || isFalseAlarm;
+    if (resolved) {
+      // 舊資料相容：is_false_alarm=1 但 resolution_source 尚未連動寫入時
+      // （理論上不會發生，見上方函式註解），仍讓徽章顯示成誤報而非落入
+      // 語意較模糊的「已結案」預設分支。
+      final String? effectiveSource =
+          (isFalseAlarm && (resolutionSource == null || resolutionSource.isEmpty))
+              ? 'false_alarm'
+              : resolutionSource;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          _buildResolvedBadgeForSource(effectiveSource),
+          const SizedBox(height: 4),
+          Text(
+            '已結案的紀錄不能再更改',
+            style: GoogleFonts.notoSansTc(
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              color: const Color(0xFF94A3B8),
+            ),
+          ),
+        ],
+      );
     }
 
-    final isPending = _resolvePending.contains(itemId);
-    return SizedBox(
-      height: 30,
-      child: TextButton.icon(
-        onPressed: isPending ? null : () => _resolveAlertAction(itemId, alertId),
-        icon: Icon(
-          isPending ? Icons.hourglass_top_rounded : Icons.check_circle_outline_rounded,
-          size: 15,
-        ),
-        label: Text(
-          isPending ? '回報中…' : '回報已處理',
-          style: GoogleFonts.notoSansTc(fontSize: 12, fontWeight: FontWeight.w700),
-        ),
-        style: TextButton.styleFrom(
-          foregroundColor: const Color(0xFF59B294),
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          minimumSize: Size.zero,
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    final bool isPending = _resolvePending.contains(itemId) || _falseAlarmPending.contains(itemId);
+    final String currentLabel = status == 'acknowledged' ? '處理中' : '待處理';
+    return Align(
+      alignment: Alignment.centerRight,
+      child: PopupMenuButton<_AlertMenuAction>(
+        enabled: !isPending,
+        tooltip: '警報動作選單',
+        onSelected: (action) {
+          switch (action) {
+            case _AlertMenuAction.resolve:
+              _resolveAlertAction(itemId, alertId);
+              break;
+            case _AlertMenuAction.falseAlarm:
+              _markFalseAlarm(itemId, alertId);
+              break;
+          }
+        },
+        itemBuilder: (ctx) => [
+          PopupMenuItem(
+            value: _AlertMenuAction.resolve,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.check_circle_outline_rounded, size: 18, color: Color(0xFF59B294)),
+                const SizedBox(width: 8),
+                Text('回報已處理', style: GoogleFonts.notoSansTc(fontSize: 14)),
+              ],
+            ),
+          ),
+          PopupMenuItem(
+            value: _AlertMenuAction.falseAlarm,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.flag_outlined, size: 18, color: Color(0xFF64748B)),
+                const SizedBox(width: 8),
+                Text('標記為誤報', style: GoogleFonts.notoSansTc(fontSize: 14)),
+              ],
+            ),
+          ),
+        ],
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF1F5F9),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: const Color(0xFFCBD5E1)),
+          ),
+          // ★ 鐵律 #14：本體標籤雖是固定短字串（待處理／處理中／回報中…），
+          // 仍包 Flexible+ellipsis 以防裝置字級被使用者調大時擠壓版面。
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                isPending ? Icons.hourglass_top_rounded : Icons.pending_actions_rounded,
+                size: 15,
+                color: const Color(0xFF475569),
+              ),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  isPending ? '處理中…' : currentLabel,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF475569),
+                  ),
+                ),
+              ),
+              const Icon(Icons.arrow_drop_down_rounded, size: 18, color: Color(0xFF475569)),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  /// 「已結案」唯讀徽章的共用外觀，供 [_buildResolveAction] 依
-  /// `resolutionSource` 分流呼叫。維持既有的 `Row` + `Flexible` +
-  /// `TextOverflow.ellipsis` 結構（鐵律 #14：同列有圖示＋文字時，文字必須
-  /// 可收縮，避免 RenderFlex 溢位）。
+  /// 已結案徽章依 [resolutionSource] 分流文案／顏色，供 [_buildAlertActionArea]
+  /// 呼叫。四種來源沿用第四十九／五十輪既有分類：`family`（家屬自己回報）、
+  /// `developer`（開發者主控台代為結案）、`false_alarm`（標記誤報連動結案，
+  /// 圖示／顏色沿用原本 `_buildFalseAlarmAction` 的「已標記為誤報」外觀）、
+  /// `legacy_auto`（舊警報上線時系統自動結案，中性灰色＋歷史圖示，刻意與
+  /// 其餘「有人確認過」的綠色系徽章區分）；其餘（含 null／空字串，理論上
+  /// 不會出現在已結案分支）落入「已結案」預設文案。
+  Widget _buildResolvedBadgeForSource(String? resolutionSource) {
+    switch (resolutionSource) {
+      case 'family':
+        return _buildResolvedBadge(
+          icon: Icons.check_circle_rounded,
+          color: const Color(0xFF59B294),
+          label: '已回報處理完畢',
+        );
+      case 'developer':
+        return _buildResolvedBadge(
+          icon: Icons.verified_user_rounded,
+          color: const Color(0xFF59B294),
+          label: '已由 Uban 團隊結案',
+        );
+      case 'false_alarm':
+        return _buildResolvedBadge(
+          icon: Icons.flag_rounded,
+          color: const Color(0xFF94A3B8),
+          label: '已標記為誤報',
+        );
+      case 'legacy_auto':
+        return _buildResolvedBadge(
+          icon: Icons.history_rounded,
+          color: const Color(0xFF94A3B8),
+          label: '舊警報，系統已自動結案',
+        );
+      default:
+        return _buildResolvedBadge(
+          icon: Icons.check_circle_rounded,
+          color: const Color(0xFF59B294),
+          label: '已結案',
+        );
+    }
+  }
+
+  /// 「已結案」唯讀徽章的共用外觀，供 [_buildResolvedBadgeForSource] 呼叫。
+  /// 維持既有的 `Row` + `Flexible` + `TextOverflow.ellipsis` 結構（鐵律
+  /// #14：同列有圖示＋文字時，文字必須可收縮，避免 RenderFlex 溢位）。
   Widget _buildResolvedBadge({
     required IconData icon,
     required Color color,
@@ -704,57 +1079,6 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
           ),
         ),
       ],
-    );
-  }
-
-  /// 「這是誤報」操作區：未標記時是可點擊按鈕，已標記則顯示唯讀徽章。
-  /// 按鈕文案為固定短字串（非後端動態內容），不受 RenderFlex 溢位規則的
-  /// 「動態字串」情境約束，但仍以 Flexible+ellipsis 包住徽章文字以求保險。
-  Widget _buildFalseAlarmAction(String itemId, int alertId, bool isFalseAlarm) {
-    if (isFalseAlarm) {
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.flag_rounded, size: 14, color: Color(0xFF94A3B8)),
-          const SizedBox(width: 4),
-          Flexible(
-            child: Text(
-              '已標記為誤報',
-              overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.notoSansTc(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: const Color(0xFF94A3B8),
-              ),
-            ),
-          ),
-        ],
-      );
-    }
-
-    final isPending = _falseAlarmPending.contains(itemId);
-    return Align(
-      alignment: Alignment.centerRight,
-      child: SizedBox(
-        height: 30,
-        child: TextButton.icon(
-          onPressed: isPending ? null : () => _markFalseAlarm(itemId, alertId),
-          icon: Icon(
-            isPending ? Icons.hourglass_top_rounded : Icons.flag_outlined,
-            size: 15,
-          ),
-          label: Text(
-            isPending ? '標記中…' : '這是誤報',
-            style: GoogleFonts.notoSansTc(fontSize: 12, fontWeight: FontWeight.w700),
-          ),
-          style: TextButton.styleFrom(
-            foregroundColor: const Color(0xFF64748B),
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            minimumSize: Size.zero,
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          ),
-        ),
-      ),
     );
   }
 

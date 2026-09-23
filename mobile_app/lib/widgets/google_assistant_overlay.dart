@@ -113,25 +113,21 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
       if (widget.initialPrompt != null && widget.initialPrompt!.isNotEmpty) {
         _processUserQuery(widget.initialPrompt!);
       } else {
-        // 單純呼叫喚醒詞（如「Hey 嘎蛙」），播報完後自動開啟麥克風聆聽長輩說話
-        bool autoStarted = false;
-        void autoStartMic() {
-          if (!autoStarted && mounted && !_isThinking && !_isListening) {
-            autoStarted = true;
-            _startListening();
-          }
+        // 單純呼叫喚醒詞（如「Hey 嘎蛙」），播報完後才自動開啟麥克風聆聽長輩說話。
+        //
+        // ⚠️ 第五十二輪修正：原本這裡自己 setCompletionHandler，又另外排一個
+        // Future.delayed(2500ms) 當「兜底」跟它賽跑——上面 setSpeechRate(0.5)
+        // 把語速放慢一半，一句「怎麼了嗎 ○○」常常講不完 2.5 秒，兜底計時器
+        // 先到、就在助理還在講話時判定「講完了」而開啟麥克風，把喇叭外放的
+        // 「怎麼了嗎」錄進自己的麥克風，STT 精度又低，於是被誤辨識成長輩
+        // 說的話（使用者回報的「怎麼了媽媽」正是這樣來的——本質是聽到自己）。
+        // 改用既有的 _speakAndWait()：completion／error handler 雙保險 + 8
+        // 秒逾時兜底，只有一條路徑會判定「講完了」，不會有兩個計時器互相
+        // 賽跑；它內部也已經加了「念之前先關麥克風」的對稱防呆（見下方）。
+        await _speakAndWait(greeting);
+        if (mounted && !_isThinking && !_isListening) {
+          _startListening();
         }
-
-        _flutterTts.setCompletionHandler(() {
-          autoStartMic();
-        });
-
-        await _flutterTts.speak(greeting);
-
-        // 兜底保護：若特定裝置 TTS 未觸發 completionHandler，2.5 秒後自動啟動麥克風
-        Future.delayed(const Duration(milliseconds: 2500), () {
-          autoStartMic();
-        });
       }
     } catch (e) {
       debugPrint("🤖 [UbanAssistant] TTS init error: $e");
@@ -173,6 +169,11 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
 
   /// 開始語音聆聽
   Future<void> _startListening() async {
+    // ⚠️ 第五十二輪：開始聽之前先確保 TTS 真的停了——不管是自動流程還是
+    // 長輩手動點麥克風鈕觸發，都不該讓「助理還在講話」與「麥克風同時開著」
+    // 同時成立，否則喇叭外放的助理語音會被自己的麥克風錄進去、誤判成長輩
+    // 說的話（見 _speakAndWait 的對稱防呆）。
+    await _flutterTts.stop();
     if (!_speechReady) {
       _speechReady = await _speechToText.initialize();
     }
@@ -251,6 +252,15 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
     String text, {
     Duration timeout = const Duration(seconds: 8),
   }) async {
+    // ⚠️ 第五十二輪：開口念之前先確保麥克風是關的——TTS 播放期間如果 STT
+    // 還開著，喇叭外放的內容會被自己的麥克風錄進去，變成聽自己講話
+    // （見 _initTtsAndGreeting 的說明）。這裡是唯一的「開口念」入口，把
+    // 防呆放在這裡，往後不管哪個呼叫端要念話都自動受保護。
+    if (_isListening) {
+      await _speechToText.stop();
+      if (mounted) setState(() => _isListening = false);
+    }
+
     final completer = Completer<void>();
     void finish() {
       if (!completer.isCompleted) completer.complete();
@@ -269,6 +279,13 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
     // 清除問候語 completionHandler，防止 AI 回覆完誤觸
     _flutterTts.setCompletionHandler(() {});
     await _flutterTts.stop();
+    // ⚠️ 第五十二輪：送出提問前也把麥克風真的關掉——稍後 AI 回覆的 TTS
+    // 開始播放時，如果聆聽還沒關（例如打字送出時剛好還沒收到 STT 的
+    // done 回呼），就會把自己的回覆錄進自己的麥克風。
+    if (_isListening) {
+      await _speechToText.stop();
+      if (mounted) setState(() => _isListening = false);
+    }
 
     setState(() {
       _dialogHistory.add({"role": "user", "text": query});

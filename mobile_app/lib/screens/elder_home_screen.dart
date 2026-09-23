@@ -296,6 +296,21 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
               '嘎蛙';
         });
       }
+      // 🚨 2026-09-23 第五十二輪：喚醒詞遷移補在冷啟動路徑（與
+      //   ai_assistant_settings_dialog.dart 共用同一把版本化旗標鍵
+      //   wake_word_pref_reset_v52）。第五十一輪之前的版本會在「每次載入
+      //   首頁」時把 kWakeWordEnabledKey 強制寫成 true（不是使用者的選
+      //   擇），而使用者的裝置多半從未打開過 AI 語音助理設定頁，只在那邊
+      //   遷移救不到這些裝置——必須在下面讀取 kWakeWordEnabledKey **之
+      //   前**先跑同一套遷移，否則這次啟動仍會讀到舊值。旗標不存在 →
+      //   這是第一次套用本次遷移，把鍵強制拉回 false 並寫入旗標；旗標
+      //   一旦存在，代表使用者之後自己的開關選擇（不論開或關）都不會
+      //   再被本遷移覆蓋。
+      const wakeWordMigrationFlagKey = 'wake_word_pref_reset_v52';
+      if (!(prefs.getBool(wakeWordMigrationFlagKey) ?? false)) {
+        await prefs.setBool(kWakeWordEnabledKey, false);
+        await prefs.setBool(wakeWordMigrationFlagKey, true);
+      }
       // ★ 護欄 G59：語音喚醒預設「關閉」，且只讀不寫。
       //   這裡以前會在讀到 false 時強制寫回 true，等於長輩在個人資料頁關掉麥克風，
       //   下次進首頁又被打開（麥克風無限開開關關）。開關唯一的寫入點是

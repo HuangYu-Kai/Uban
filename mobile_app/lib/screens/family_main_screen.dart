@@ -172,6 +172,24 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   /// 只會白佔一筆 SharedPreferences 空間；因此這兩種格式繼續維持原本純
   /// 記憶體內的行為（只進 `_dismissedAlertKeys`，不進這個 Map），冷啟動後
   /// 一樣會歸零、可能重新出現——這是已知取捨，不是遺漏。
+  ///
+  /// **第五十二輪複查（結論：這個「已知取捨」目前不會被觸發）**：逐行追查
+  /// `home_alert_preview_card.dart` 的複合鍵組法與後端
+  /// `yolo_alert_dispatcher.py`（`_insert_alert`／`_broadcast_alert`／
+  /// `_build_push_payload`）後確認，所有共用 `dispatch_yolo_alert` 派送鏈
+  /// 的警報型別（`fall`／`crawl`／`lying_down`／`prolonged_inactivity`／
+  /// `sos_voice`，含長輩語音求救 `notify_family_SOS`）都保證帶
+  /// `alert_id`，下方 `_handleCctvAlert` 甚至在解析失敗時直接 `return`、
+  /// 根本不會把該筆塞進 `_activeAlerts`。因此「即時推播的鍵是
+  /// `live:...`、不會被持久化」這件事在目前程式碼下**不會發生**——即時
+  /// 警示的鍵已經優先解析成 `alert:$alert_id`，本輪未對本檔或
+  /// `home_alert_preview_card.dart` 的複合鍵邏輯做任何行為變更。若日後
+  /// 使用者仍回報「滑掉的最新警示重新出現」，根因不在這裡，應改查
+  /// `emergencyAlerts` 的合併窗口（G191：同一事件逾 30 分鐘會另建新列、
+  /// 產生新的 `alert_id`）或 App 重新安裝／清除資料等環境因素。見
+  /// `test/screens/family/home_alert_preview_card_dismiss_key_test.dart`
+  /// 釘住的回歸測試（含 canary：同時驗證「有 id 才會是 alert: 前綴」與
+  /// 「沒有 id 才會退回 live: 前綴」）。
   Map<String, int> _persistedDismissedTimestamps = {};
 
   /// [_persistedDismissedTimestamps] 的 SharedPreferences 鍵。

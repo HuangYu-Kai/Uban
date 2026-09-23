@@ -1252,18 +1252,34 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // ★ 鐵律 #14：同列還有固定寬度的箭頭 icon，標題包 Flexible +
-                  // ellipsis 可收縮，避免窄螢幕或放大字級時溢位。
-                  Flexible(
-                    child: Text(
-                      '健康趨勢',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
-                        color: cs.onSurface,
-                      ),
+                  // ★ 第五十二輪修正：這裡原本用 `Flexible` 包標題（鐵律 #14 的
+                  // 「同列有固定寬度 icon，標題要可收縮」模式），但套錯了層級
+                  // ——這個 `Text`是 `Column` 的直接子節點，`Column`（垂直
+                  // `RenderFlex`）本身又活在 `SliverList` 的清單項目裡、拿到
+                  // 的是無界（0~Infinity）高度。`Flexible`/`Expanded` 一旦是
+                  // 「主軸方向無界的 Flex」的直接子節點，Flutter 會直接丟出
+                  // 「RenderFlex children have non-zero flex but incoming
+                  // height constraints are unbounded」，且這個例外發生在
+                  // *layout* 階段而非 build 階段，`ErrorBoundary`（只包住
+                  // build 期間同步呼叫）完全攔不到；例外沿著 RenderObject
+                  // 樹一路往上炸穿 SliverList／SliverPadding／Viewport，導致
+                  // 整條 CustomScrollView 這一影格的版面計算全部失敗——這正
+                  // 是使用者回報「資料分頁一片空白、所有按鍵都按不動」的根因
+                  // （命中測試：test/screens/family/family_data_tab_test.dart）。
+                  // 「同列有固定寬度 icon 需要可收縮」的正確位置是 Flexible
+                  // 包在 *Row* 的直接子節點上（見 `_buildElderSummaryCard`／
+                  // `_buildCaregiverCard` 的寫法），不是 Row 底下再包一層
+                  // Column 之後的 Column 子節點。這裡改回一般 `Text`：寬度早
+                  // 已被外層 `Expanded`（在 Row 裡）夾住，`maxLines`／
+                  // `overflow` 一樣能在寬度不足時正常省略，不需要 Flexible。
+                  Text(
+                    '健康趨勢',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      color: cs.onSurface,
                     ),
                   ),
                   const SizedBox(height: 4),
