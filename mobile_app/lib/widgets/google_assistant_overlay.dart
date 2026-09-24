@@ -5,6 +5,7 @@ import 'package:flutter_tts/flutter_tts.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import '../services/api_service.dart';
+import '../theme/app_theme.dart';
 import '../utils/stt_locale.dart';
 import 'global_assistant_button.dart';
 
@@ -75,6 +76,16 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
   String? _sttLocaleToUse;
   final List<Map<String, String>> _dialogHistory = [];
 
+  /// 第五十三輪新增：語音辨識出「最終結果」後，是否正在等待長輩親自確認
+  /// （true 時 build() 會在輸入列上方插入 _buildVoiceConfirmPanel()，顯示
+  /// 「送出」／「重新說一次」兩個大按鈕）。
+  ///
+  /// ⚠️ 背景：語音輸入的偵測精度過低（連年輕人使用也常誤辨識），辨識一
+  /// 結束就自動送出等於把辨識錯誤直接發給 AI，長輩完全沒有機會看到、
+  /// 更沒機會修正——這是本輪回報的最大問題。修法是把「聆聽結束」與
+  /// 「真的送出」拆成兩個獨立步驟，中間插入這個確認狀態。
+  bool _awaitingVoiceConfirm = false;
+
   @override
   void initState() {
     super.initState();
@@ -144,10 +155,15 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
           if (status == 'done' || status == 'notListening') {
             if (mounted && _isListening) {
               setState(() => _isListening = false);
-              // 長輩說完停頓後自動提交已辨識的文字
+              // ⚠️ 第五十三輪：這裡是「引擎自行判定聆聽結束」的路徑（例如
+              // pauseFor 逾時、長輩停頓過久），跟 onResult 的 finalResult
+              // 分支是兩條各自獨立的觸發路徑——先前兩條都直接呼叫
+              // _processUserQuery，只堵住其中一條，語音精度不足時仍會從
+              // 這裡自動送出、繞過確認畫面。統一改走 _enterVoiceConfirm()，
+              // 交給長輩看過文字、按下「送出」才會真的問 AI。
               final text = _textController.text.trim();
               if (text.isNotEmpty && !_isThinking) {
-                _processUserQuery(text);
+                _enterVoiceConfirm();
               }
             }
           }
@@ -180,6 +196,9 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
     if (_speechReady && !_isListening) {
       setState(() {
         _isListening = true;
+        // 開始新一輪聆聽時，把上一輪殘留的確認區塊（若有）一併收起，避免
+        // 舊的辨識文字跟新一輪的聆聽狀態同時顯示、讓長輩搞不清楚在確認哪句話。
+        _awaitingVoiceConfirm = false;
       });
       await _speechToText.listen(
         // 使用 _initSpeech() 掃描裝置語系後選出的 ID；找不到中文語系時為
@@ -197,23 +216,58 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
             _textController.text = result.recognizedWords;
           });
           if (result.finalResult && result.recognizedWords.trim().isNotEmpty) {
-            _stopListeningAndSend();
+            // ⚠️ 第五十三輪：語音輸入的偵測精度過低（即使年輕人使用也常誤
+            // 辨識），辨識結束不能直接送出——改成停止聆聽、把文字留在輸入框
+            // 讓長輩看過，交給 _buildVoiceConfirmPanel() 的「送出」／
+            // 「重新說一次」兩個大按鈕決定下一步，不在這裡直接呼叫 AI。
+            _stopListeningForConfirm();
           }
         },
       );
     }
   }
 
-  /// 停止語音並發送至 AI
-  Future<void> _stopListeningAndSend() async {
+  /// 停止語音聆聽，轉入「確認區塊」等待長輩確認或重新說一次。
+  ///
+  /// 第五十三輪：取代原本聆聽結束就直接送出的 _stopListeningAndSend()——
+  /// 語音辨識精度不足以在沒有人工確認的情況下就直接發給 AI。這裡同時是
+  /// 「onResult 收到 finalResult」與「長輩聆聽中手動點麥克風鈕提前停止」
+  /// 兩種情境的共用進入點（見下方 build() 內的送出/麥克風鈕）。
+  Future<void> _stopListeningForConfirm() async {
     if (_isListening) {
       await _speechToText.stop();
-      setState(() => _isListening = false);
+      if (mounted) setState(() => _isListening = false);
     }
+    _enterVoiceConfirm();
+  }
+
+  /// 把輸入框裡目前的辨識文字轉為「等待確認」狀態，交給
+  /// _buildVoiceConfirmPanel() 的「送出」／「重新說一次」讓長輩決定下一步。
+  /// 刻意不在這裡呼叫 _processUserQuery——這正是本輪要修的「誤辨識也會
+  /// 自動送出」問題的關鍵分界點。
+  void _enterVoiceConfirm() {
+    if (!mounted) return;
     final text = _textController.text.trim();
+    if (text.isEmpty || _isThinking) return;
+    setState(() => _awaitingVoiceConfirm = true);
+  }
+
+  /// 確認區塊「送出」：長輩確認辨識文字無誤，這時才真的送出去問 AI。
+  void _confirmVoiceInput() {
+    final text = _textController.text.trim();
+    setState(() => _awaitingVoiceConfirm = false);
     if (text.isNotEmpty) {
       _processUserQuery(text);
     }
+  }
+
+  /// 確認區塊「重新說一次」：清空辨識錯誤（或長輩不滿意）的文字，重新開始聆聽。
+  Future<void> _retryVoiceInput() async {
+    setState(() {
+      _awaitingVoiceConfirm = false;
+      _textController.clear();
+    });
+    await _startListening();
   }
 
   /// [AUTO_CALL:video] / [AUTO_CALL:audio]：語音觸發自動撥號（家人，整戶響）
@@ -291,6 +345,9 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
       _dialogHistory.add({"role": "user", "text": query});
       _textController.clear();
       _isThinking = true;
+      // 第五十三輪：不管從哪個入口送出（確認區塊／既有送出鈕／打字
+      // onSubmitted／快捷 chip），一旦真的送出就收起確認區塊，避免殘留。
+      _awaitingVoiceConfirm = false;
     });
 
     _scrollToBottom();
@@ -575,6 +632,13 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
 
               const SizedBox(height: 16),
 
+              // 第五十三輪：語音辨識出最終結果後的確認區塊，插在快捷 chip
+              // 與輸入列之間；下方的 TextField 仍可直接用鍵盤修改文字。
+              if (_awaitingVoiceConfirm) ...[
+                _buildVoiceConfirmPanel(),
+                const SizedBox(height: 16),
+              ],
+
               // 輸入欄位與麥克風按鈕
               Row(
                 children: [
@@ -611,7 +675,7 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
                   // Send or Mic button
                   GestureDetector(
                     onTap: _isListening
-                        ? _stopListeningAndSend
+                        ? _stopListeningForConfirm
                         : () {
                             if (_textController.text.trim().isNotEmpty) {
                               _processUserQuery(_textController.text.trim());
@@ -780,6 +844,107 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
             color: Colors.white.withValues(alpha: 0.9),
           ),
         ),
+      ),
+    );
+  }
+
+  /// 語音辨識完成後的確認區塊——第五十三輪新增。
+  ///
+  /// 用大字級＋ElderScale.buttonHeight（長輩端統一的大按鈕高度）讓長輩一眼
+  /// 看懂「這是我剛剛說的話嗎」，並給「送出」／「重新說一次」兩個選擇；
+  /// 辨識到的文字本身仍留在上方可編輯的 TextField 中，長輩也可以直接用
+  /// 鍵盤修改後再按送出，不必整句重講。
+  Widget _buildVoiceConfirmPanel() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF10B981).withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: const Color(0xFF10B981).withValues(alpha: 0.45),
+          width: 2,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.hearing_rounded, color: Color(0xFF10B981), size: 26),
+              const SizedBox(width: 10),
+              // 文案刻意具體（「我聽到您說的是上面這句話，這樣對嗎？」），
+              // 不用「確認送出」這類抽象詞——長輩要判斷的是「這句話對不
+              // 對」，不是理解一個操作術語。固定字串，仍包 Expanded／
+              // overflow 是比照本檔其他標題列的一貫寫法（鐵律 #14）。
+              Expanded(
+                child: Text(
+                  '我聽到您說的是上面這句話，這樣對嗎？',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                    height: 1.3,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: ElderScale.buttonHeight,
+                  child: OutlinedButton.icon(
+                    onPressed: _retryVoiceInput,
+                    icon: const Icon(Icons.mic_rounded, size: 26),
+                    label: Text(
+                      '重新說一次',
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: 19,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      side: const BorderSide(color: Colors.white54, width: 2),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: SizedBox(
+                  height: ElderScale.buttonHeight,
+                  child: ElevatedButton.icon(
+                    onPressed: _confirmVoiceInput,
+                    icon: const Icon(Icons.send_rounded, size: 26),
+                    label: Text(
+                      '送出',
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: 19,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF10B981),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
