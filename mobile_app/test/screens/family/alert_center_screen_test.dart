@@ -150,11 +150,18 @@ void main() {
 
       // 剛好只有一個動作控制項（不是兩個並排按鈕）。
       expect(popupMenuFinder(), findsOneWidget);
-      // 本體顯示目前狀態。
-      expect(find.text('處理中'), findsOneWidget);
+      // 本體顯示目前狀態——限定在 PopupMenuButton 底下找，而不是裸的
+      // find.text。★ 第五十三輪 familyfix53：畫面上方新增了狀態篩選器
+      // （見 _buildStatusFilterSelector），其中固定有一顆文字同樣是
+      // 「處理中」的 ChoiceChip（篩選「處理中」狀態用），與這裡要驗證的
+      // 「這張卡片本體顯示的狀態」是兩個不同語意的 UI 元素、只是恰好同字
+      // ——裸的 find.text 會把兩者都算進去，破壞 findsOneWidget。
+      final Finder currentLabelFinder =
+          find.descendant(of: popupMenuFinder(), matching: find.text('處理中'));
+      expect(currentLabelFinder, findsOneWidget);
 
       // 點開下拉選單。
-      await tester.tap(find.text('處理中'));
+      await tester.tap(currentLabelFinder);
       await tester.pumpAndSettle();
 
       expect(find.text('回報已處理'), findsOneWidget);
@@ -172,8 +179,17 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
 
       expect(popupMenuFinder(), findsOneWidget);
-      expect(find.text('待處理'), findsOneWidget);
-      expect(find.text('處理中'), findsNothing);
+      // 同上一組測試的說明：限定在 PopupMenuButton 底下，避開畫面上方狀態
+      // 篩選器裡同樣文字為「處理中」的 ChoiceChip（第五十三輪新增，兩者是
+      // 不同語意的 UI 元素，只是恰好同字）。
+      expect(
+        find.descendant(of: popupMenuFinder(), matching: find.text('待處理')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: popupMenuFinder(), matching: find.text('處理中')),
+        findsNothing,
+      );
     });
   });
 

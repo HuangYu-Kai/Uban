@@ -9,7 +9,36 @@ import '../../utils/error_handler.dart';
 
 /// ★ 第五十二輪 F2：警示紀錄清單的時間範圍篩選。放在檔案頂層（非
 /// State 內部類別）純粹是 Dart enum 慣例，值本身只有這個畫面在用。
-enum _AlertTimeRange { week, month, all }
+/// ★ 第五十三輪 familyfix53：新增 `custom`——使用者自行挑選起訖日期，取代
+/// 原本只能用「本週／本月／全部」三段固定區間查找特定紀錄的限制。
+enum _AlertTimeRange { week, month, all, custom }
+
+/// ★ 第五十三輪 familyfix53：警示紀錄狀態篩選。對應後端 `emergency_alerts.status`
+/// 狀態機（`active`→`acknowledged`→`resolved`，見 `routers/alert.py::get_alerts`
+/// docstring）。`all` 代表不套用狀態篩選（維持既有行為：持久化警報＋一般
+/// 活動提醒都顯示）；其餘三者只保留有真實 `alertId` 的持久化警報——一般
+/// 活動提醒（`logItems`，見 `_loadHistoryAlerts`）沒有狀態機概念，選擇
+/// 特定狀態時不應該混在裡面誤導使用者「這也是待處理的」。
+enum _AlertStatusFilter { all, active, acknowledged, resolved }
+
+extension on _AlertStatusFilter {
+  /// 對應後端 `GET /alerts/{elder_id}?status=` 的值；`all` 回傳 null 代表
+  /// 不帶這個查詢參數。
+  String? get apiValue => switch (this) {
+        _AlertStatusFilter.all => null,
+        _AlertStatusFilter.active => 'active',
+        _AlertStatusFilter.acknowledged => 'acknowledged',
+        _AlertStatusFilter.resolved => 'resolved',
+      };
+
+  /// 家屬看得懂的中文標籤——不直接把英文狀態碼露出來（team-lead 要求）。
+  String get label => switch (this) {
+        _AlertStatusFilter.all => '全部狀態',
+        _AlertStatusFilter.active => '未處理',
+        _AlertStatusFilter.acknowledged => '處理中',
+        _AlertStatusFilter.resolved => '已結案',
+      };
+}
 
 /// 「全部」篩選給的較大 limit——如實告知使用者這不是真的「無限」，只是
 /// 顯示較多筆（見 [_AlertCenterScreenState._buildAllRangeHint]）。與後端
@@ -96,6 +125,15 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
   // 的 State 裡——任務要求「記住目前選擇、不需要持久化」，`IndexedStack`
   // 保活即足夠讓使用者切分頁再切回來時維持選擇，不必寫 SharedPreferences。
   _AlertTimeRange _timeRange = _AlertTimeRange.week;
+  // ★ 第五十三輪 familyfix53：使用者透過 showDateRangePicker 選定的自訂
+  // 起訖日期（本地時間的日曆日，只取年/月/日）。只有 `_timeRange ==
+  // custom` 時才有意義；尚未選過時為 null，此時 UI 會退回上一個非 custom
+  // 的篩選（見 _selectCustomRange）。
+  DateTime? _customStartDate;
+  DateTime? _customEndDate;
+  // ★ 第五十三輪 familyfix53：警示紀錄狀態篩選，預設「全部狀態」（維持
+  // 既有行為）。
+  _AlertStatusFilter _statusFilter = _AlertStatusFilter.all;
   // 警示紀錄區塊自己的局部載入狀態——切換時間篩選只重抓這個區塊，不影響
   // 上方已經載入完成的即時警報／健康建議，也不觸發整頁滿版 loading（那
   // 會讓使用者失去目前的捲動位置）。
@@ -111,8 +149,9 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
     _loadAlerts();
   }
 
-  /// 依目前選取的時間範圍換算成後端 `days` 參數；`null` 代表「全部」，
-  /// 不套用時間篩選（見 `routers/alert.py::get_alerts` 的 `days` 語意）。
+  /// 依目前選取的時間範圍換算成後端 `days` 參數；`null` 代表「全部」或
+  /// 「自訂範圍」（後者改用 `start_date`/`end_date`，見 `_loadHistoryAlerts`），
+  /// 不套用 `days` 篩選（見 `routers/alert.py::get_alerts` 的 `days` 語意）。
   int? _daysForRange(_AlertTimeRange range) {
     switch (range) {
       case _AlertTimeRange.week:
@@ -120,8 +159,44 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
       case _AlertTimeRange.month:
         return 30;
       case _AlertTimeRange.all:
+      case _AlertTimeRange.custom:
         return null;
     }
+  }
+
+  /// 'YYYY-MM-DD'，供 `start_date`/`end_date` 查詢參數使用。
+  String _formatDateForApi(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  /// 開啟日期範圍選擇器；使用者確定選擇後切到 `custom` 篩選並重新載入。
+  /// 取消（回傳 null）則完全不變動現有篩選——不會誤把 `_timeRange` 切到
+  /// `custom` 卻沒有實際日期可用。
+  Future<void> _selectCustomRange() async {
+    final now = DateTime.now();
+    final initialRange = (_customStartDate != null && _customEndDate != null)
+        ? DateTimeRange(start: _customStartDate!, end: _customEndDate!)
+        : DateTimeRange(start: now.subtract(const Duration(days: 6)), end: now);
+
+    final picked = await showDateRangePicker(
+      context: context,
+      // 長輩帳號建立時間不可考，抓一個足夠寬鬆的下限；不開放選到未來。
+      firstDate: DateTime(now.year - 3),
+      lastDate: now,
+      initialDateRange: initialRange,
+      helpText: '選擇警示紀錄查詢範圍',
+      cancelText: '取消',
+      confirmText: '確定',
+      saveText: '確定',
+    );
+    if (picked == null || !mounted) return;
+
+    HapticFeedback.selectionClick();
+    setState(() {
+      _timeRange = _AlertTimeRange.custom;
+      _customStartDate = picked.start;
+      _customEndDate = picked.end;
+    });
+    _loadHistoryAlerts();
   }
 
   Future<void> _loadAlerts() async {
@@ -208,7 +283,22 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
     }
 
     final int? days = _daysForRange(_timeRange);
-    final int fetchLimit = _timeRange == _AlertTimeRange.all ? _kAllRangeLimit : 30;
+    // ★ 第五十三輪 familyfix53：`custom` 範圍可能橫跨數月甚至數年（見
+    // _selectCustomRange 的 firstDate），比照「全部」提高 limit，不要沿用
+    // 30 筆讓長範圍的查詢結果被過早截斷。
+    final bool isUnboundedRange =
+        _timeRange == _AlertTimeRange.all || _timeRange == _AlertTimeRange.custom;
+    final int fetchLimit = isUnboundedRange ? _kAllRangeLimit : 30;
+    // 只有 `custom` 才會有值；後端優先採用這兩個參數、與 `days` 互斥（見
+    // CctvAlertApi.getEmergencyAlerts／routers/alert.py::get_alerts 的說明）。
+    final String? startDateForApi =
+        _timeRange == _AlertTimeRange.custom && _customStartDate != null
+            ? _formatDateForApi(_customStartDate!)
+            : null;
+    final String? endDateForApi =
+        _timeRange == _AlertTimeRange.custom && _customEndDate != null
+            ? _formatDateForApi(_customEndDate!)
+            : null;
 
     List<dynamic> logs = [];
     List<dynamic> emergencyAlerts = [];
@@ -223,6 +313,11 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
           userId: familyUserId,
           limit: fetchLimit,
           days: days,
+          startDate: startDateForApi,
+          endDate: endDateForApi,
+          // ★ 第五十三輪 familyfix53：狀態篩選（見 [_AlertStatusFilter]）。
+          // `all` 對應 null——不帶這個查詢參數，維持既有「不篩狀態」行為。
+          status: _statusFilter.apiValue,
         );
       }
     } catch (e) {
@@ -321,7 +416,14 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
       };
     });
 
-    final combined = [...persistedItems, ...logItems];
+    // ★ 第五十三輪 familyfix53：狀態篩選只對有真實狀態機的持久化警報
+    // （persistedItems）有意義——logItems（活動流水）沒有 status 欄位，
+    // 見 [_AlertStatusFilter] enum 定義處的說明。選了非「全部狀態」時，
+    // 不能讓 logItems 混進來變成一批看不出狀態的「未分類」項目。
+    final bool statusFilterActive = _statusFilter != _AlertStatusFilter.all;
+    final combined = statusFilterActive
+        ? [...persistedItems]
+        : [...persistedItems, ...logItems];
     // 其餘（跌倒歷史 + 活動警示）依時間新到舊排序；缺時間戳的排最後，
     // 不擠到最前面誤導使用者以為是最新事件。
     combined.sort((a, b) {
@@ -339,8 +441,34 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
     // 失敗）一律視為「無法確認是否落在範圍內」而排除，避免把時間不明的
     // 舊資料誤判成落在「本週／本月」範圍內；「全部」（days == null）不
     // 套用此篩選，維持原有全部顯示的行為。
+    // ★ 第五十三輪 familyfix53：`custom` 比照辦理，改用選定的起訖日期
+    // （含端點的當地曆日整天）當邊界。⚠️ 已知限制：這裡的 `sortTs` 是用
+    // `DateTime.tryParse()` 解析後端回傳、未帶時區標記的 UTC 字串——Dart
+    // 在字串沒有 'Z'／offset 標記時會當成「裝置本地時間」解讀，不是真的
+    // 換算時區，因此日界前後 8 小時內的 logItems 可能被誤篩（emergencyAlerts
+    // 的日期範圍是後端用 `tw_day_range_to_utc()` 正確換算，不受影響）。這是
+    // round 41 就存在的既有解析方式，round 53 沿用同一套慣例、不在本輪修
+    // 正——要修正得盤點全檔對時間字串的解析方式，範圍與風險都超出「新增
+    // 自訂日期範圍」這個任務，留給之後專門一輪處理。
     List<Map<String, dynamic>> filtered = combined;
-    if (days != null) {
+    if (_timeRange == _AlertTimeRange.custom &&
+        _customStartDate != null &&
+        _customEndDate != null) {
+      final rangeStart = DateTime(
+        _customStartDate!.year,
+        _customStartDate!.month,
+        _customStartDate!.day,
+      );
+      final rangeEndExclusive = DateTime(
+        _customEndDate!.year,
+        _customEndDate!.month,
+        _customEndDate!.day,
+      ).add(const Duration(days: 1));
+      filtered = combined.where((item) {
+        final ts = item['sortTs'] as DateTime?;
+        return ts != null && !ts.isBefore(rangeStart) && ts.isBefore(rangeEndExclusive);
+      }).toList();
+    } else if (days != null) {
       final cutoff = DateTime.now().subtract(Duration(days: days));
       filtered = combined.where((item) {
         final ts = item['sortTs'] as DateTime?;
@@ -482,7 +610,14 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
         const SizedBox(height: 12),
         // ★ 第五十二輪 F2：本週／本月／全部時間篩選器，取代原本「持續往下
         // 滑動」找舊紀錄的唯一方式。
+        // ★ 第五十三輪 familyfix53：新增「自訂」日期範圍（見
+        // _buildTimeRangeSelector／_selectCustomRange）。
         _buildTimeRangeSelector(),
+        if (_timeRange == _AlertTimeRange.custom) _buildCustomRangeHint(),
+        const SizedBox(height: 12),
+        // ★ 第五十三輪 familyfix53：狀態篩選器（全部狀態／未處理／處理中／
+        // 已結案），與時間範圍篩選器並列，讓家屬能同時縮小兩個維度查找。
+        _buildStatusFilterSelector(),
         const SizedBox(height: 12),
         if (_historyLoading)
           _buildHistoryLoading()
@@ -492,7 +627,8 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
           _buildHistoryEmpty()
         else ...[
           ...items.map(_buildHistoryAlertCard),
-          if (_timeRange == _AlertTimeRange.all) _buildAllRangeHint(),
+          if (_timeRange == _AlertTimeRange.all || _timeRange == _AlertTimeRange.custom)
+            _buildAllRangeHint(),
         ],
       ],
     );
@@ -534,6 +670,37 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
       );
     }
 
+    // ★ 第五十三輪 familyfix53：「自訂」與其餘三顆固定範圍不同——本身不是
+    // 可以直接切換的固定值，而是開啟 [_selectCustomRange] 日期選擇器的
+    // 入口，選完才會把 [_timeRange] 切到 custom。標籤刻意維持固定文字
+    // 「自訂」、不隨已選日期變動（實際選了哪個範圍見 [_buildCustomRangeHint]），
+    // 避免在 Wrap 裡的 ChoiceChip 標籤塞進長度不固定的日期字串。
+    // ⚠️ 不像上面 chip() 會在「點擊目前已選中的那顆」時提早 return——已經
+    // 是 custom 時再點一次仍要重新開啟選擇器，讓使用者能調整已選範圍。
+    final bool isCustomSel = _timeRange == _AlertTimeRange.custom;
+    final Widget customChip = ChoiceChip(
+      avatar: Icon(
+        Icons.date_range_rounded,
+        size: 16,
+        color: isCustomSel ? Colors.white : const Color(0xFF475569),
+      ),
+      label: Text(
+        '自訂',
+        style: GoogleFonts.notoSansTc(
+          fontSize: 13,
+          fontWeight: isCustomSel ? FontWeight.w800 : FontWeight.w600,
+          color: isCustomSel ? Colors.white : const Color(0xFF475569),
+        ),
+      ),
+      selected: isCustomSel,
+      selectedColor: const Color(0xFF59B294),
+      backgroundColor: const Color(0xFFF1F5F9),
+      side: BorderSide(
+        color: isCustomSel ? const Color(0xFF59B294) : const Color(0xFFCBD5E1),
+      ),
+      onSelected: _historyLoading ? null : (_) => _selectCustomRange(),
+    );
+
     return Wrap(
       spacing: 8,
       runSpacing: 8,
@@ -541,7 +708,74 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
         chip(_AlertTimeRange.week, '本週'),
         chip(_AlertTimeRange.month, '本月'),
         chip(_AlertTimeRange.all, '全部'),
+        customChip,
       ],
+    );
+  }
+
+  /// ★ 第五十三輪 familyfix53：目前自訂範圍實際選取的起訖日期——「自訂」
+  /// chip 本身文字固定不變（見上方註解），改用這個獨立的 [Text] 顯示目前
+  /// 生效的範圍，並提示可以再點一次「自訂」調整。純 [Text]（非 [Row]），
+  /// 寬度不足時交由文字自動換行，不會有鐵律 #14 的 RenderFlex 溢位風險。
+  Widget _buildCustomRangeHint() {
+    if (_customStartDate == null || _customEndDate == null) {
+      return const SizedBox.shrink();
+    }
+    String fmt(DateTime d) => '${d.year}/${d.month}/${d.day}';
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Text(
+        '已選取 ${fmt(_customStartDate!)} – ${fmt(_customEndDate!)}，可再次點擊「自訂」調整',
+        style: GoogleFonts.notoSansTc(
+          fontSize: 11,
+          fontWeight: FontWeight.w500,
+          color: const Color(0xFF94A3B8),
+        ),
+      ),
+    );
+  }
+
+  /// ★ 第五十三輪 familyfix53：警示紀錄狀態篩選器（全部狀態／未處理／處理
+  /// 中／已結案），與時間範圍篩選器並列。只有真正查得到 `alertId` 的持久化
+  /// 警報才有狀態機概念（見 [_AlertStatusFilter] enum 定義處的說明）；選了
+  /// 非「全部狀態」時 [_loadHistoryAlerts] 會把沒有狀態概念的活動流水
+  /// （logItems）整段排除，不會混進一批看不出狀態的「未分類」項目。用另一
+  /// 個 selectedColor（藍）與時間範圍篩選器（綠）區分，避免兩排 chip 混淆
+  /// 成同一組篩選。
+  Widget _buildStatusFilterSelector() {
+    Widget chip(_AlertStatusFilter value) {
+      final bool isSel = _statusFilter == value;
+      return ChoiceChip(
+        label: Text(
+          value.label,
+          style: GoogleFonts.notoSansTc(
+            fontSize: 13,
+            fontWeight: isSel ? FontWeight.w800 : FontWeight.w600,
+            color: isSel ? Colors.white : const Color(0xFF475569),
+          ),
+        ),
+        selected: isSel,
+        selectedColor: const Color(0xFF3B82F6),
+        backgroundColor: const Color(0xFFF1F5F9),
+        side: BorderSide(
+          color: isSel ? const Color(0xFF3B82F6) : const Color(0xFFCBD5E1),
+        ),
+        // 載入中不接受切換，理由同時間範圍篩選器（防競態載入）。
+        onSelected: _historyLoading
+            ? null
+            : (_) {
+                if (_statusFilter == value) return;
+                HapticFeedback.selectionClick();
+                setState(() => _statusFilter = value);
+                _loadHistoryAlerts();
+              },
+      );
+    }
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: _AlertStatusFilter.values.map(chip).toList(),
     );
   }
 
@@ -595,11 +829,22 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
   /// 目前所選時間範圍內沒有警示紀錄——中性提示，刻意與 [_buildHistoryError]
   /// 做視覺區分（見該函式註解）。
   Widget _buildHistoryEmpty() {
+    // ★ 第五十三輪 familyfix53：新增 `custom` 分支——少了它會是編譯期的
+    // non_exhaustive_switch_expression 錯誤（switch expression 必須窮舉）。
     final String rangeLabel = switch (_timeRange) {
       _AlertTimeRange.week => '本週',
       _AlertTimeRange.month => '本月',
       _AlertTimeRange.all => '',
+      _AlertTimeRange.custom =>
+        _customStartDate != null && _customEndDate != null
+            ? '${_customStartDate!.month}/${_customStartDate!.day}–'
+                '${_customEndDate!.month}/${_customEndDate!.day}'
+            : '所選範圍',
     };
+    // ★ 第五十三輪 familyfix53：狀態篩選啟用時一併說明「是在這個狀態下」
+    // 沒有紀錄，避免使用者誤以為這個時間範圍完全沒有任何警示。
+    final String statusSuffix =
+        _statusFilter == _AlertStatusFilter.all ? '' : '（${_statusFilter.label}）';
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
@@ -613,7 +858,7 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
           const Icon(Icons.inbox_rounded, color: Color(0xFF94A3B8), size: 28),
           const SizedBox(height: 8),
           Text(
-            '$rangeLabel沒有警示紀錄',
+            '$rangeLabel沒有警示紀錄$statusSuffix',
             style: GoogleFonts.notoSansTc(
               fontSize: 13,
               fontWeight: FontWeight.w600,

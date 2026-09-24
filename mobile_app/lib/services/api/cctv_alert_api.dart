@@ -348,12 +348,22 @@ class CctvAlertApi {
   /// `routers/alert.py::get_alerts` 的同名選填參數；`null`（預設）時完全
   /// 不帶這個查詢參數，後端維持既有的「不套時間篩選」行為，其餘既有呼叫
   /// 端不受影響。
+  ///
+  /// ★ 第五十三輪 familyfix53：新增選填 `startDate`／`endDate`（格式
+  /// 'YYYY-MM-DD'，代表台灣日曆日）——供家屬端警示中心「自訂日期範圍」
+  /// 查詢使用。對應後端同名新增參數；兩者必須成對提供，且**優先於**
+  /// `days`（同時提供時 `days` 會被後端忽略，見該端點 docstring）。呼叫端
+  /// （`alert_center_screen.dart`）已確保這三者不會同時帶入衝突的值——
+  /// `_timeRange == custom` 時只送 `startDate`/`endDate`，其餘既有時間
+  /// 篩選（本週／本月／全部）只送 `days`。
   static Future<List<dynamic>> getEmergencyAlerts(
     String elderId, {
     required int userId,
     String? status,
     int limit = 20,
     int? days,
+    String? startDate,
+    String? endDate,
   }) async {
     try {
       final queryParameters = <String, String>{
@@ -363,7 +373,10 @@ class CctvAlertApi {
       if (status != null && status.isNotEmpty) {
         queryParameters['status'] = status;
       }
-      if (days != null) {
+      if (startDate != null && endDate != null) {
+        queryParameters['start_date'] = startDate;
+        queryParameters['end_date'] = endDate;
+      } else if (days != null) {
         queryParameters['days'] = days.toString();
       }
       final uri = Uri.parse('${ApiClient.baseUrl}/alerts/$elderId')
