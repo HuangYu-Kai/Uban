@@ -130,7 +130,7 @@ Key service addresses:
 | 撥打 → 接聽 → 掛斷 完整流程（含冷啟動五層兜底） | §4 通話生命週期 |
 | **按鈕在哪、按了跳去哪、可以安全改什麼** | `CLAUDE_call-monitor-ui-map.md`（原 §5，2026-08-25 起獨立成檔） |
 | 監控機／CCTV／裝置角色指派 | §6 監控子系統 |
-| **205 條護欄（絕對不可單點修改）** | `CLAUDE_call-monitor-guardrails.md`（原 §7，2026-09-04 起獨立成檔） |
+| **205 條護欄（絕對不可單點修改）** | `CLAUDE_call-monitor-guardrails.md`（索引，2026-09-04 起獨立成檔；2026-09-24 起正文分存 `-frontend.md`／`-backend.md` 兩卷） |
 | 這段程式碼為什麼長這樣（52 輪修復年表；近期輪次在 §8，第一至三十五輪在 `CLAUDE_call-monitor-history.md`） | §8 |
 | 出問題了怎麼查（三層 A/B/C 定位法、MIUI 檢查表） | §9 |
 | 改完要做什麼 | §10 修改 SOP |
@@ -248,7 +248,7 @@ Scheduled jobs (defined in `main.py`):
 
 ### 3.2 通話與監控
 
-**完整規則見 [`CLAUDE_call-monitor-guardrails.md`](CLAUDE_call-monitor-guardrails.md)（205 條護欄）。**
+**完整規則見 [`CLAUDE_call-monitor-guardrails.md`](CLAUDE_call-monitor-guardrails.md)（索引，205 條護欄分存兩卷：前端 111 條、後端 94 條，見該檔開頭的定向閱讀指引）。**
 以下僅列最高頻的幾條，動手前仍必須讀完整版：
 
 - **Never merge signaling and media tracks** — they are on separate hosts by design
