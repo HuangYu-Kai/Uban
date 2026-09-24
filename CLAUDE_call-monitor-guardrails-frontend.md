@@ -1158,3 +1158,59 @@ handler 與逾時兜底各自獨立運作。
 > `_dismissedKeysLoaded` 旗標與 `HomeAlertPreviewCard.dismissedKeysLoaded`
 > 參數。
 
+**G206 — SSE／串流解析：無法辨識的訊框不得 `yield` 到畫面**
+解析後端 SSE `data:` 訊息時，遇到型別或格式不符預期的內容，`catch` 區塊絕不能把原始
+payload 直接 `yield`／顯示給使用者——那等於把解析失敗的除錯資訊當成回覆內容，讓使用者
+看到形如 `{"chunk": "..."}` 的原始 JSON 字面文字。
+✅ 解析失敗一律 `debugPrint` 記錄後略過該行，等待串流的下一行或 `done` 標記；需要診斷時
+看 log，不要靠「反正會顯示在畫面上」除錯。
+🚫 **禁止**用 `catch (_) { yield payload; }` 這種寫法當作「反正有內容就先顯示」的保底——
+那是 bug 放大器，不是容錯。
+> **原因**：`routers/ai.py::ai_chat_stream()` 送出的每一行 `data:` 都是 JSON **物件**
+> （`{"chunk": "..."}` / `{"audio_ready": true}` / `{"done": true}`），舊版
+> `lib/services/api/ai_chat_api.dart` 寫 `jsonDecode(payload) as String`，對物件必定拋
+> 型別例外，落到 `catch (_) { yield payload; }` 把整段 JSON 原文顯示給長輩看
+> （2026-09-24 第五十三輪，`elder_chat_tab.dart` 既有的 SSE 處理一直是對的，只有這條路徑錯）。
+
+**G207 — 長輩端語音辨識結果必須經使用者確認才送出**
+語音輸入辨識完成（`onResult` 的 `finalResult`，或引擎自行判定聆聽結束如
+`status == 'done'/'notListening'`）之後，不得直接把辨識文字送給 AI 或視為使用者的
+最終輸入。
+✅ 辨識結束後停止聆聽、把文字留在輸入框讓長輩看過，交由明確的「送出」／「重新說一次」
+兩個按鈕決定下一步；所有會觸發「送出」的路徑（含逾時等非典型結束）都要收斂到同一個
+確認流程，不要只堵住最常見的那一條。
+🚫 **禁止**在任何語音辨識的「結束」回呼裡直接呼叫送出／發問邏輯。
+> **原因**：長輩端 `google_assistant_overlay.dart` 的 `onResult` 原本只要 `finalResult`
+> 為真就直接呼叫 `_processUserQuery`，長輩沒有機會看到或修正辨識結果；語音辨識精度對
+> 長輩不可靠，誤送等於替長輩說出他沒說過的話。家屬端 `family_ai_copilot_screen.dart`
+> 本來就只寫回輸入框、不曾自動送出——長輩端補齊後兩端行為一致（2026-09-24 第五十三輪）。
+
+**G208 — `splash_screen.dart` 的資料完整度守門必須重用 `_resolveElderDestination()` 的判斷結果，不得重新實作**
+需要在「長輩冷啟動導向哪個畫面」之前插入任何額外檢查（例如個人資料完整度）時，一律
+先呼叫既有的 `_resolveElderDestination()` 拿到它已經決定好的 widget 型別，再依型別決定
+要不要做額外的非同步檢查——不要另外重寫一份「有沒有有效待接聽來電」「是不是監控機」
+的判斷邏輯。
+✅ 只有回傳型別是 `ElderHomeScreen`（代表沒有監控機、也沒有有效待接聽來電）才做非同步
+資料檢查並 `await`；其餘型別一律直接原樣導航，不 await 任何網路請求，避免拖慢或擋住
+來電路徑。
+🚫 **禁止**重複定義「來電是否過期」「角色是否反轉」這類判斷——第十六輪的角色雙鍵漂移
+就是同一件事在兩個地方各自定義、彼此不同步造成的。
+> **原因**：`_replaceWithElderDestinationOrOnboarding()`（2026-09-24 第五十三輪
+> `callfix53b`）補上長輩端年齡／居住地必填檢查在冷啟動既有 session 路徑上的缺口，
+> 做法就是只呼叫 `_resolveElderDestination()` 一次、檢查其回傳型別，不重新判斷來電有效
+> 性或監控機旗標。
+
+**G209 — 長輩端「既有 session 導向哪個畫面」目前有四個呼叫點，改動前務必四個都確認**
+`splash_screen.dart` 中會導向 `_resolveElderDestination()`（或收斂後的
+`_replaceWithElderDestinationOrOnboarding()`）的既有呼叫點，實測共 **4 處**：標準流程
+（:363）、API 失敗回退（:400）、`_sprintToPendingCall()` 衝刺通道（:465）、
+`_goNextOrRestoreElder()`（:583）。任何「長輩進首頁前要先檢查／攔截什麼」的新需求，
+都必須確認這四處全部涵蓋。
+✅ 修改前先用 `grep -n "_resolveElderDestination(\|_replaceWithElderDestinationOrOnboarding("`
+重新清點呼叫點數量，不要沿用文件或程式註解裡寫的舊數字。
+🚫 **禁止**只找到「看起來合理」的幾個呼叫點就視為清點完成。
+> **原因**：`onboard53` 第一輪只把完整度檢查接進 `login_screen.dart` 與
+> `elder_pairing_display_screen.dart`（配對／登入相關的三條入口），完全漏了
+> `splash_screen.dart` 冷啟動既有 session 這一大類路徑；補洞的 `callfix53b` 自己的
+> 程式註解寫「三個既有呼叫的地方」，但實際 grep 清點是 **4 處**——連補洞的人自己都
+> 少算一個，足見這類清點必須用 grep 驗證、不能憑印象（2026-09-24 第五十三輪）。
