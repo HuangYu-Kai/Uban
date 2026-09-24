@@ -55,7 +55,18 @@ class ApiService {
     required String email,
     required String password,
     required String role,
-  }) => AuthApi.register(username: username, email: email, password: password, role: role);
+    int? age,
+    String? residenceCity,
+    String? residenceDistrict,
+  }) => AuthApi.register(
+        username: username,
+        email: email,
+        password: password,
+        role: role,
+        age: age,
+        residenceCity: residenceCity,
+        residenceDistrict: residenceDistrict,
+      );
 
   static Future<Map<String, dynamic>> login(String email, String password) => AuthApi.login(email, password);
 
