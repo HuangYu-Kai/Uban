@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../services/friend_service.dart';
+import '../../../../theme/app_theme.dart';
 import '../../../pet_companion_studio/services/garden_ambient_audio_service.dart';
 import '../../../pet_companion_studio/services/pet_progress_service.dart';
 import '../../../pet_companion_studio/widgets/pet_leaderboard_card.dart';
@@ -33,10 +34,24 @@ class PetCornerActions extends StatefulWidget {
   /// 「晚…」，賽季膠囊也會壓到小豬的對話氣泡。
   final bool compact;
 
+  /// ⚠️ 僅供 widget test 注入假賽季資料使用。production 呼叫端
+  /// （`elder_profile_tab.dart`／`pet_studio_screen.dart`）恆不傳這個
+  /// 欄位，不影響任何現有行為。
+  ///
+  /// 背景：`_loadSeason()` 打的是真實 `GET /api/pet/season`，
+  /// `flutter test` 的 `TestWidgetsFlutterBinding` 會攔截所有 HTTP 請求
+  /// 並一律回傳失敗（比照 `elder_home_tab_news_visibility_test.dart` 檔頭
+  /// 說明），導致 `_season` 恆為 null、賽季圖示與本彈窗永遠不會被建出來
+  /// ——沒有這個欄位就無法用 widget test 驗證第五十三輪 item 6 新增的
+  /// 說明彈窗。
+  @visibleForTesting
+  final PetSeasonInfo? debugInitialSeasonForTest;
+
   const PetCornerActions({
     super.key,
     required this.userId,
     this.compact = false,
+    this.debugInitialSeasonForTest,
   });
 
   @override
@@ -54,7 +69,14 @@ class _PetCornerActionsState extends State<PetCornerActions> {
   void initState() {
     super.initState();
     _resolveElderId();
-    _loadSeason();
+    // ⚠️ 見 `widget.debugInitialSeasonForTest` 欄位說明：僅供 widget test
+    // 注入假資料，production 呼叫端恆為 null，行為與原本完全相同。
+    final debugSeason = widget.debugInitialSeasonForTest;
+    if (debugSeason != null) {
+      _season = debugSeason;
+    } else {
+      _loadSeason();
+    }
     _audioService.initAndStartAmbience();
   }
 
@@ -76,6 +98,54 @@ class _PetCornerActionsState extends State<PetCornerActions> {
     if (mounted && season != null) {
       setState(() => _season = season);
     }
+  }
+
+  /// 🗓️ 賽季說明彈窗（精簡橫排模式下點擊賽季圖示的入口）。
+  ///
+  /// 第五十三輪 item 6 之前：精簡模式點下去只會彈出 2 秒鐘就自動消失的
+  /// [SnackBar]（走 [_showSnackToast]、預設字級，內容僅「第 N 季，還剩 N
+  /// 天」），長輩既看不清楚幾個字，也看不懂這跟自己有什麼關係、時間到了
+  /// 會怎樣——這正是本輪使用者回報「僅顯示『第一季，還有 XX 天』」的來源。
+  /// 非精簡模式（橫屏／`pet_studio_screen.dart`）其實早就换成了圖文並茂、
+  /// 白話說明的 [PetSeasonCard]，只是精簡模式這個進入點沒有跟著換。
+  ///
+  /// 修法：直接重用 [PetSeasonCard]（[ElderScale.seasonTitle] 24pt／
+  /// [ElderScale.seasonSubtitle] 20pt／[ElderScale.caption] 18pt 的白話
+  /// 說明句「時間到會結算排名，小豬會從頭養起」），改成長輩自己按「知道了」
+  /// 才會關閉的彈出對話框，不再受 2 秒自動消失的時間壓力限制。
+  void _showSeasonInfoDialog() {
+    if (_season == null) return;
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            PetSeasonCard(season: _season!, maxWidth: 320),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF059669),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 36, vertical: 14),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20)),
+              ),
+              child: Text(
+                '知道了',
+                style: ElderScale.body.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _showSnackToast(String msg) {
@@ -123,9 +193,9 @@ class _PetCornerActionsState extends State<PetCornerActions> {
                 '第 ${_season!.seasonNo} 季 · 還剩 ${_season!.daysRemaining} 天',
             onTap: () {
               HapticFeedback.lightImpact();
-              _showSnackToast(
-                '🗓️ 第 ${_season!.seasonNo} 季，還剩 ${_season!.daysRemaining} 天',
-              );
+              // ★ 第五十三輪 item 6：改彈出說明對話框（見 [_showSeasonInfoDialog]
+              // 檔頭說明），不再用看不清楚也來不及讀完的 2 秒 SnackBar。
+              _showSeasonInfoDialog();
             },
           ),
           const SizedBox(width: 8),

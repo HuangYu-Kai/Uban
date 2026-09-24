@@ -8,6 +8,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../globals.dart';
 import '../../services/api_service.dart';
+import '../../theme/app_theme.dart';
 import 'widgets/news_card_list.dart';
 import 'widgets/news_category_selector.dart';
 import 'widgets/news_sound_wave_indicator.dart';
@@ -663,9 +664,13 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
           const SizedBox(height: 4),
           // 動態高度與縮放的標題：邊往上擠邊把文字縮小以符合寬度
           _buildAnimatedTitle(),
-          const SizedBox(height: 20),
+          // ★ 第五十三輪 item 8：20→12、下方 15→10，理由見
+          // `_buildPlayerHeader()` 尾端合併雙重 SizedBox 處的完整說明——
+          // 同一輪 widget test 量出的既有溢位，這兩處都是通用留白（不屬於
+          // 任何品牌化元素），一併貢獻出空間。
+          const SizedBox(height: 12),
           _buildPlayerHeader(),
-          const SizedBox(height: 15),
+          const SizedBox(height: 10),
           // 字幕顯示區域
           Expanded(
             child: NewsSubtitleViewer(
@@ -674,8 +679,24 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
               subtitleProgress: _subtitleProgress,
             ),
           ),
-          const SizedBox(height: 10),
-          // 提示文字（與第二張圖一致：往下滑查看更多 + 向下箭頭 V）
+          const SizedBox(height: 6),
+          // 提示文字：第五十三輪 item 8——原文「往下滑查看更多新聞」方向寫反了
+          // （見上方 onVerticalDragUpdate 的註解：往上滑〔負值 delta〕才會展開
+          // 面板露出更多新聞，`velocity < -300` 觸發的也是往上滑手勢），且長輩
+          // 端反映字級太小、顏色不夠顯眼。改成「在此處往上滑查看更多新聞」，
+          // 字級沿用 [ElderScale.body]（22pt，「長輩可讀最小值」，比原本硬寫死
+          // 的 18pt 更大），顏色改用 [AppColors.accent]（品牌橘色強調色，與本
+          // 畫面原本的綠色漸層背景形成互補色對比，比 `Colors.white70` 顯眼）。
+          // 箭頭方向同步從向下改成向上，避免文字與圖示互相矛盾。
+          //
+          // ⚠️ `maxLines: 1` 是防禦性寫法（鐵律 #14）：字級放大＋文字變長，
+          // widget test 實測若不設上限會在較矮的可視高度換成兩行，讓整個
+          // `_buildListeningView()` 的外層 Column（無 Expanded 可再吸收）
+          // 溢位（實測過：不設 maxLines 時在測試視窗溢位 26px）。本文字在
+          // 一般手機寬度下本來就一行就能顯示完，`maxLines: 1` 不會造成實際
+          // 裁切，純粹是保險。同一理由把前後 SizedBox 從 10→6，換回放大
+          // 字級所需的空間（比照 `elder_home_tab.dart` 第五十一輪的既有作法：
+          // 省下的垂直空間直接讓給需要放大的內容）。
           AnimatedOpacity(
             opacity: _isSheetExpanded ? 0.0 : 1.0,
             duration: const Duration(milliseconds: 200),
@@ -684,21 +705,24 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: _expandPanel,
-                child: const Column(
+                child: Column(
                   children: [
-                    Text('往下滑查看更多新聞',
-                        style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600)),
-                    Icon(Icons.keyboard_arrow_down_rounded,
-                        color: Colors.white70, size: 32),
+                    Text('在此處往上滑查看更多新聞',
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: ElderScale.body.copyWith(
+                          color: AppColors.accent,
+                          fontWeight: FontWeight.w800,
+                        )),
+                    const Icon(Icons.keyboard_arrow_up_rounded,
+                        color: AppColors.accent, size: 32),
                   ],
                 ),
               ),
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 6),
         ],
       ),
     );
@@ -978,7 +1002,11 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
       children: [
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+          // ★ 第五十三輪 item 8：16/18→12/14，理由見
+          // `_buildListeningView()` 尾端合併雙重 SizedBox 處的說明——同一輪
+          // widget test 量出 360x640 這個常見窄機尺寸下既有的 RenderFlex
+          // 溢位，這裡的卡片內距是通用留白，一併貢獻出空間。
+          padding: const EdgeInsets.fromLTRB(18, 12, 18, 14),
           decoration: BoxDecoration(
             color: Colors.white.withValues(alpha: 0.2),
             borderRadius: BorderRadius.circular(24),
@@ -1014,7 +1042,7 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
                     fontWeight: FontWeight.w600,
                     height: 1.3),
               ),
-              const SizedBox(height: 18),
+              const SizedBox(height: 10),
               // 音波波動畫 (已模組化)
               NewsSoundWaveIndicator(isPlaying: _isPlaying),
               if (_error != null) ...[
@@ -1030,8 +1058,19 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
             ],
           ),
         ),
-        const SizedBox(height: 28),
-        const SizedBox(height: 10),
+        // ★ 第五十三輪 item 8：本檔第一次有 widget test 覆蓋（見
+        // `news_listen_player_scroll_hint_test.dart`），實測發現本畫面在
+        // 360x640／375x667 這兩個常見手機尺寸下，即使完全不改動任何文字
+        // 內容，`_buildListeningView()` 外層 Column 本來就已經 RenderFlex
+        // 溢位（分別溢位 10px／25px；360x640 正是本專案 `elder_home_tab`
+        // 系列測試一直沿用的「窄機」基準）——鐵律 #14 是無條件的
+        // 硬性規則，不是「只管新增的部分」，這是修這裡的既有問題，不是
+        // 為了塞任務 8 的字級刻意去動別的地方。這裡原本是緊鄰的兩個
+        // SizedBox（28＋10＝38px），疑似歷史上分次修改留下的重複間距，
+        // 合併縮小成一個，把省下的空間讓給下方（含任務 8 放大後的提示
+        // 文字）。播放控制列與上方卡片之間仍保留足夠視覺區隔，只是不再
+        // 多此一舉地疊兩層留白。
+        const SizedBox(height: 18),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [

@@ -180,4 +180,134 @@ void main() {
       report('額外 pump 6 輪（1.8s）後');
     });
   }
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 第五十三輪 item 7：「新聞頭條版面被縮小，可以插入更多新聞頭條」。
+  //
+  // 上面兩個既有測試只覆蓋 loading／無資料兩態（見檔頭說明：
+  // `TestWidgetsFlutterBinding` 攔截所有 HTTP 一律回 400，`_newsItems`
+  // 恆為空陣列），沒有任何一個既有測試能碰到「已經有真實新聞資料」這個
+  // 分支——而本輪新增的「主卡片之外再補幾則精簡新聞列」正好只存在於這個
+  // 分支。因此透過 `ElderHomeTab.debugInitialNewsItemsForTest`
+  // （`@visibleForTesting`，production 呼叫端恆為 null，見該欄位說明）
+  // 直接注入假資料，繞開網路，讓測試環境也能量到這個分支的真實版面。
+  group('第五十三輪 item 7：主卡片之外的精簡新聞列', () {
+    // ⚠️ 型別必須明確標成 `List<Map<String, dynamic>>`——若讓型別推論退回
+    // `List<Map<String, String>>`（因為底下的 map 字面量剛好每個值都是
+    // String），`_newsItems` 這個欄位在執行期會被換成一個 reified type 是
+    // `List<Map<String, String>>` 的 List 物件；之後 `_buildFeaturedNewsCard`
+    // 內的 `_newsItems.firstWhere(itemHasImage, orElse: () =>
+    // _newsItems[...])` 那個 `orElse` 閉包是依照欄位「宣告」型別
+    // （`Map<String, dynamic> Function()`）編譯出來的，兩者不相容，會在
+    // build 當下直接丟出 `_TypeError`（實測過，見本行修正前的失敗訊息）。
+    final fakeNewsItems = List<Map<String, dynamic>>.generate(
+      5,
+      (i) => <String, dynamic>{
+        'id': 'fake-$i',
+        'title': 'TEST_NEWS_ITEM_${i + 1}',
+        // 刻意不給 image_url／image：讓主卡片與精簡列都走 fallbackThumb，
+        // 避免測試環境對 Image.network 發出真實請求造成雜訊或不穩定。
+      },
+    );
+
+    testWidgets('360x640（窄機）：預算不足，不應該擠出任何精簡列', (tester) async {
+      tester.view.physicalSize = const Size(360.0, 640.0);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ElderHomeTab(
+              userId: 1,
+              userName: '測試長輩',
+              roomId: 'test-elder-room',
+              debugInitialNewsItemsForTest: fakeNewsItems,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(tester.takeException(), isNull);
+      // 主卡片（第一則）必須顯示。
+      expect(find.text('TEST_NEWS_ITEM_1'), findsOneWidget,
+          reason: '主卡片必須顯示第一則新聞標題');
+      // ★ 核心斷言：360x640 的預算（見 [_extraHeadlineCount] 量測基準，
+      // header 到可視底線僅 ~120px，扣掉主卡片後不到 20px）容不下任何一則
+      // 精簡列，第 2～5 則都不應該被畫出來——這是本測試「有可能失敗」的
+      // 那一半：若未來有人把門檻改鬆、或誤用「能塞就塞」邏輯，這裡就會
+      // 冒出 TEST_NEWS_ITEM_2 而讓測試失敗。
+      for (final title in ['TEST_NEWS_ITEM_2', 'TEST_NEWS_ITEM_3']) {
+        expect(find.text(title), findsNothing,
+            reason: '360x640 預算不足，不應該顯示「$title」這則精簡列');
+      }
+
+      final headerRect = tester.getRect(find.text('今日頭條'));
+      const double visibleBottom = 640.0 - 130; // navClearance，見上方常數
+      // ignore: avoid_print
+      print('[量測/360x640＋真實資料] 今日頭條標題 bottom='
+          '${headerRect.bottom.toStringAsFixed(1)}，可視底線=$visibleBottom');
+      expect(headerRect.bottom, lessThanOrEqualTo(visibleBottom),
+          reason: '有真實新聞資料時，標題仍必須落在第一屏可視範圍內');
+    });
+
+    testWidgets('412x915（大機）：預算充足，補滿 2 則精簡列且不超過上限', (tester) async {
+      tester.view.physicalSize = const Size(412.0, 915.0);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ElderHomeTab(
+              userId: 1,
+              userName: '測試長輩',
+              roomId: 'test-elder-room',
+              debugInitialNewsItemsForTest: fakeNewsItems,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('TEST_NEWS_ITEM_1'), findsOneWidget,
+          reason: '主卡片必須顯示第一則新聞標題');
+
+      // ★ 核心斷言之一：412x915 預算充足（見 [_extraHeadlineCount]），
+      // 第 2、3 則精簡列必須真的補上——證明「填滿可視區域」確實生效，不是
+      // 空談。這是本測試「有可能失敗」的另一半：若未來改壞（例如
+      // `extraCount` 誤植成 0），這裡會找不到 TEST_NEWS_ITEM_2 而失敗。
+      expect(find.text('TEST_NEWS_ITEM_2'), findsOneWidget,
+          reason: '412x915 預算充足，第 2 則精簡列必須顯示');
+      expect(find.text('TEST_NEWS_ITEM_3'), findsOneWidget,
+          reason: '412x915 預算充足，第 3 則精簡列必須顯示');
+
+      // ★ 核心斷言之二：「不用太多，僅填滿就好」——上限 2 則，第 4、5 則
+      // 不應該被畫出來，避免未來有人誤把上限拿掉、變成「能塞多少塞多少」
+      // （即使空間真的夠，也不是這次使用者要的效果）。
+      for (final title in ['TEST_NEWS_ITEM_4', 'TEST_NEWS_ITEM_5']) {
+        expect(find.text(title), findsNothing,
+            reason: '412x915 上限是 2 則精簡列，不應該顯示「$title」');
+      }
+
+      final headerRect = tester.getRect(find.text('今日頭條'));
+      final lastRowRect = tester.getRect(find.text('TEST_NEWS_ITEM_3'));
+      const double visibleBottom = 915.0 - 130; // navClearance，見上方常數
+      // ignore: avoid_print
+      print('[量測/412x915＋真實資料] 今日頭條標題 bottom='
+          '${headerRect.bottom.toStringAsFixed(1)}，'
+          '最後一則精簡列（TEST_NEWS_ITEM_3）bottom='
+          '${lastRowRect.bottom.toStringAsFixed(1)}，'
+          '可視底線=$visibleBottom');
+      expect(headerRect.bottom, lessThanOrEqualTo(visibleBottom),
+          reason: '有真實新聞資料時，標題仍必須落在第一屏可視範圍內');
+      expect(lastRowRect.bottom, lessThanOrEqualTo(visibleBottom),
+          reason: '補上的精簡新聞列整體仍必須落在第一屏可視範圍內，'
+              '不能為了填滿而擠出第一屏');
+    });
+  });
 }

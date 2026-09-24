@@ -34,6 +34,18 @@ class ElderHomeTab extends StatefulWidget {
   final GlobalKey? newsCardKey;
   final GlobalKey? moreNewsKey;
 
+  /// ⚠️ 僅供 widget test 注入假新聞資料使用（見
+  /// `elder_home_tab_news_visibility_test.dart`）。正式呼叫端
+  /// （`elder_home_screen.dart`）恆不傳這個欄位，不影響任何現有行為。
+  ///
+  /// 背景：`flutter test` 的 `TestWidgetsFlutterBinding` 會攔截整個測試
+  /// 套件的 HTTP 請求並一律回傳 400（見上述測試檔頭說明），導致
+  /// `_fetchNews()` 永遠落在失敗分支、`_newsItems` 恆為空陣列——沒有這個
+  /// 欄位就無法用 widget test 驗證「已經有真實新聞資料」那個分支的版面
+  /// 配置（第五十三輪 item 7 新增的「主卡片之外再補幾則精簡新聞列」）。
+  @visibleForTesting
+  final List<Map<String, dynamic>>? debugInitialNewsItemsForTest;
+
   const ElderHomeTab({
     super.key,
     required this.userId,
@@ -43,6 +55,7 @@ class ElderHomeTab extends StatefulWidget {
     this.dateCardKey,
     this.newsCardKey,
     this.moreNewsKey,
+    this.debugInitialNewsItemsForTest,
   });
 
   @override
@@ -87,7 +100,15 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
   void initState() {
     super.initState();
     _updateTime();
-    _fetchNews();
+    // ⚠️ 見 `widget.debugInitialNewsItemsForTest` 欄位說明：僅供 widget
+    // test 注入假資料，production 呼叫端恆為 null，行為與原本完全相同。
+    final debugNews = widget.debugInitialNewsItemsForTest;
+    if (debugNews != null) {
+      _newsItems = debugNews;
+      _isLoadingNews = false;
+    } else {
+      _fetchNews();
+    }
     _loadSubscription();
     _fetchWeather();
     _loadNextDoseData();
@@ -1071,6 +1092,15 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     final hasImage = itemHasImage(item);
     final title = (item['title'] ?? '無標題').toString();
 
+    // ★ 第五十三輪 item 7（回應「新聞頭條版面被縮小，可以插入更多新聞頭條」）：
+    // 主卡片之後視螢幕高度補上最多 [_extraHeadlineCount] 則精簡新聞列，見該
+    // 方法的完整量測基準說明。用 `!=`（參照相等）排除掉已經是主卡片的那一則
+    // ——`item` 本身就是 `_newsItems`裡的某個元素參照，不是複製品。
+    final int extraCount = _extraHeadlineCount(context);
+    final List<Map<String, dynamic>> extraItems = extraCount <= 0
+        ? const []
+        : _newsItems.where((it) => it != item).take(extraCount).toList();
+
     // 無圖時的縮圖底
     Widget fallbackThumb = Container(
       color: AppColors.primary,
@@ -1209,7 +1239,102 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
             ),
           ),
         ),
+        // ★ 第五十三輪 item 7：主卡片之後，視螢幕高度補上更多精簡新聞列，
+        // 填滿第一屏剩餘空間，不再讓長輩覺得「新聞版面被縮小到只剩一則」。
+        // 空清單時 `extraItems.isEmpty` 直接不渲染，維持原本外觀不變。
+        if (extraItems.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.08),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Column(
+              children: [
+                for (int i = 0; i < extraItems.length; i++) ...[
+                  if (i > 0)
+                    const Divider(
+                        height: 1, thickness: 1, color: Color(0xFFEFEFEF)),
+                  _buildCompactHeadlineRow(extraItems[i]),
+                ],
+              ],
+            ),
+          ),
+        ],
       ],
+    );
+  }
+
+  /// 主卡片之外，還要視「螢幕總高度」補幾則精簡新聞列（見呼叫端
+  /// [_buildFeaturedNewsCard] 的說明）。
+  ///
+  /// 刻意只讀 `MediaQuery.size.height` 這一個穩定數字做粗粒度分級，**不**
+  /// 反推「扣掉今天卡／下一包藥卡之後還剩多少空間」——後者依賴其他卡片
+  /// 當下的動態高度（天氣文字長度、用藥資料筆數都會變動），正是第五十輪
+  /// `_availableNewsImageHeight` 讓卡片暴衝、把整張「今日頭條」擠出第一屏
+  /// 的根因（見 `_buildFeaturedNewsCard` 開頭的完整說明）。單純的螢幕高度
+  /// 分級沒有這個問題：數字固定、每列高度也固定（單行 ellipsis，不像主
+  /// 卡片標題可能跳 1～2 行），上限有界，不會重蹈覆轍。
+  ///
+  /// 門檻依 `elder_home_tab_news_visibility_test.dart` 兩組實測基準訂定：
+  ///   - 360x640（窄機）：header 到第一屏可視底線僅 ~120px 預算，扣掉主
+  ///     卡片本身（含 padding，約 100～111px）後剩不到 20px——連一則精簡列
+  ///     （約 34px）都放不下，故回傳 0，不勉強塞。
+  ///   - 412x915（大機）：預算約 387px，主卡片＋2 則精簡列（約 85px）後仍
+  ///     有 100px 以上餘裕，故回傳上限 2（「不用太多，僅填滿就好」，見
+  ///     使用者原話，不是能塞多少就塞多少）。
+  ///   700 是兩組實測值（640／915）中間、留有餘裕的分界點，尚未涵蓋的機型
+  ///   尺寸屬合理外插，非任意數字。
+  int _extraHeadlineCount(BuildContext context) {
+    final double screenHeight = MediaQuery.of(context).size.height;
+    if (screenHeight >= 700) return 2;
+    return 0;
+  }
+
+  /// 精簡新聞列：比主卡片更輕量的單行標題，用於 [_extraHeadlineCount] > 0
+  /// 時補在主卡片下方。刻意不含縮圖／「點我聆聽」子列，只保留「可點擊＋
+  /// 一行省略號標題」，讓每列高度固定可預期（見 [_extraHeadlineCount] 的
+  /// 計算基準）。點擊行為與主卡片一致，沿用既有 [_openNewsListenPlayer]。
+  Widget _buildCompactHeadlineRow(Map<String, dynamic> item) {
+    final title = (item['title'] ?? '無標題').toString();
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => _openNewsListenPlayer(item),
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 4),
+          child: Row(
+            children: [
+              const Icon(Icons.chevron_right_rounded,
+                  size: 18, color: AppColors.primary),
+              const SizedBox(width: 6),
+              // ⚠️ 標題是後端動態文字、長度不可控，包 Expanded／ellipsis
+              // 避免窄螢幕溢位（鐵律 #14）。
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
