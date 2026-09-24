@@ -4,6 +4,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../data/privacy_policy_content.dart';
 import '../services/api_service.dart';
 import '../widgets/policy_detail_dialog.dart';
+import '../widgets/age_stepper_field.dart';
+import '../widgets/city_district_picker.dart';
 import 'family_onboarding_screen.dart';
 import '../globals.dart';
 
@@ -23,6 +25,14 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   bool _agreedToTerms = true;
   // ★ 持久化錯誤訊息：取代原本的 SnackBar，避免使用者錯過失敗原因（見第 27 輪卡關根因）
   String? _errorMessage;
+
+  // ★ 第五十三輪 onboard53：年齡／居住地改為必填（家 4）。使用者明確決定
+  //   「由選填改為必填，不再允許沒填就跳過」，故這三個欄位沒有預設值、
+  //   沒有「以後再說」的出路——送出前會擋在 _handleRegister() 裡。
+  //   僅收集到縣市／行政區（不含街道門牌），因為這筆資料只用於開發者統計。
+  int? _age;
+  String? _residenceCity;
+  String? _residenceDistrict;
 
   void _showDisclaimerDialog(BuildContext context) {
     PolicyDetailDialog.show(
@@ -142,6 +152,15 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       return;
     }
 
+    // ★ 第五十三輪 onboard53：年齡／居住地改為必填，不提供略過。這裡是唯一
+    //   的擋點——三個欄位任一未填都不送出註冊請求。後端 routers/auth.py::
+    //   register() 仍會再驗證一次範圍／白名單，這裡的檢查只是提早給出
+    //   對使用者友善的錯誤訊息，不是唯一防線。
+    if (_age == null || _residenceCity == null || _residenceDistrict == null) {
+      setState(() => _errorMessage = '請填寫年齡與居住地（縣市／行政區）');
+      return;
+    }
+
     setState(() => _isLoading = true);
     try {
       final result = await ApiService.register(
@@ -149,6 +168,9 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         email: email,
         password: password,
         role: 'family', // 子女端註冊
+        age: _age,
+        residenceCity: _residenceCity,
+        residenceDistrict: _residenceDistrict,
       );
 
       if (!mounted) return;
@@ -262,6 +284,41 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                 Icons.lock_outline,
                 isPassword: true,
                 onChanged: (_) => setState(() => _errorMessage = null),
+              ),
+              const SizedBox(height: 24),
+
+              // ★ 第五十三輪 onboard53（家 4）：年齡／居住地改為必填，
+              //   在註冊表單一次收集，不再另開一個可略過的畫面。
+              Text(
+                '年齡與居住地',
+                style: GoogleFonts.notoSansTc(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: const Color(0xFF333333),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '僅用於平台統計分析，不會對外公開',
+                style: GoogleFonts.notoSansTc(fontSize: 12, color: Colors.grey[600]),
+              ),
+              const SizedBox(height: 12),
+              AgeStepperField(
+                value: _age,
+                onChanged: (v) => setState(() {
+                  _age = v;
+                  _errorMessage = null;
+                }),
+              ),
+              const SizedBox(height: 16),
+              CityDistrictPicker(
+                initialCity: _residenceCity,
+                initialDistrict: _residenceDistrict,
+                onChanged: (city, district) => setState(() {
+                  _residenceCity = city;
+                  _residenceDistrict = district;
+                  _errorMessage = null;
+                }),
               ),
               const SizedBox(height: 24),
 

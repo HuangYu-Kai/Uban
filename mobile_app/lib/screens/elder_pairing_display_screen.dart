@@ -5,6 +5,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import 'elder_home_screen.dart';
 import 'elder_screen.dart'; // ★ 監控機模式導向
+import 'elder_profile_onboarding_screen.dart'; // ★ 第五十三輪 onboard53：長 9 強制補填
+import '../utils/profile_completeness.dart';
 import 'dart:async';
 
 class ElderPairingDisplayScreen extends StatefulWidget {
@@ -243,17 +245,78 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
         (route) => false,
       );
     } else {
+      // ★ 第五十三輪 onboard53b（長 9）：導向通話機首頁前先檢查年齡／居住地
+      //   是否已補齊，見下方 [_goToElderHome] 說明。
+      await _goToElderHome(elderId, elderName, elderRoom);
+    }
+  }
+
+  /// ★ 第五十三輪 onboard53b（長 9）：長輩帳號「年齡／居住地」完整度檢查後
+  /// 導向通話機首頁。呼叫點：本檔案 [_promptModeAndNavigate] 的 comm 分支、
+  /// [_startAutonomousMode]（涵蓋 [loginAndPersist] 間接呼叫 [_promptModeAndNavigate]
+  /// 的情況，故共三條文件記載的長輩端入口都會經過這裡）。
+  ///
+  /// ⚠️ 刻意只覆蓋這裡，不覆蓋 [_promptModeAndNavigate] 的 isMonitor 分支——
+  /// 監控機／CCTV 路徑維持直接導向 [ElderScreen]，理由見
+  /// `elder_profile_onboarding_screen.dart` 檔頭：`ElderScreen` 是通話／CCTV
+  /// 生命週期最複雜、風險最高的畫面，本輪任務明確劃出的紅線，不在其前面插入
+  /// 任何新邏輯，以免干擾它自己對背景來電狀態的處理。
+  ///
+  /// ⚠️ fail-open，不是 fail-closed：只有在「讀得到資料、且資料確定是空的」
+  /// 才會導去補填畫面；讀取失敗（逾時、離線、伺服器錯誤）一律視為「已完整」
+  /// 直接放行——長輩連不上網路時被卡在補填畫面外面進不了 App，比資料晚一點
+  /// 補嚴重得多。判斷邏輯抽到 `utils/profile_completeness.dart`（與
+  /// `login_screen.dart::_handleLogin` 的家屬端檢查共用同一份定義），
+  /// `ApiService.getElderProfile()` 內部已經 try/catch 過，逾時或
+  /// 例外都回傳 `{'status': 'error', ...}` 而不是丟例外。
+  ///
+  /// ⚠️ 已知範圍限制（已回報任務協調者，需要另行決定是否派工）：只覆蓋本檔案
+  /// 內的入口，不覆蓋冷啟動流程——`splash_screen.dart` 偵測到既有 session
+  /// 時會直接 `ElderHomeScreen`／`ElderScreen`，不經過這裡。該檔是通話／監控
+  /// 子系統最高風險檔案之一，本輪任務明確劃入不得更動的範圍，故「一直沒登出
+  /// 過」的既有長輩使用者重開 App 時暫時不會被攔下來補填。
+  Future<void> _goToElderHome(
+      int elderId, String elderName, String elderRoom) async {
+    bool profileConfirmedIncomplete = false;
+    try {
+      final profileResult = await ApiService.getElderProfile(elderId);
+      profileConfirmedIncomplete = isProfileConfirmedIncomplete(profileResult);
+    } catch (_) {
+      // 理論上 ApiService.getElderProfile 不會丟到這裡，多一層保險維持 fail-open。
+      profileConfirmedIncomplete = false;
+    }
+
+    if (!mounted) return;
+
+    if (profileConfirmedIncomplete) {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (context) => ElderHomeScreen(
+          builder: (context) => ElderProfileOnboardingScreen(
             userId: elderId,
             userName: elderName,
             roomId: elderRoom,
+            nextScreenBuilder: (context) => ElderHomeScreen(
+              userId: elderId,
+              userName: elderName,
+              roomId: elderRoom,
+            ),
           ),
         ),
       );
+      return;
     }
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ElderHomeScreen(
+          userId: elderId,
+          userName: elderName,
+          roomId: elderRoom,
+        ),
+      ),
+    );
   }
 
 
@@ -631,16 +694,10 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
 
       if (!mounted) return;
 
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) => ElderHomeScreen(
-            userId: elderId!,
-            userName: elderName,
-            roomId: elderRoomId!,
-          ),
-        ),
-      );
+      // ★ 第五十三輪 onboard53b（長 9）：自主模式新建帳號同樣要經過完整度
+      //   檢查（見 [_goToElderHome]）——新帳號多半缺年齡／居住地，正是本輪
+      //   要攔的情況；讀取失敗仍 fail-open 直接放行，不卡住剛建立帳號的長輩。
+      await _goToElderHome(elderId, elderName, elderRoomId);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
