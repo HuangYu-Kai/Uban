@@ -1336,7 +1336,10 @@ class Signaling {
     };
   }
 
-  Future<void> _createPeerConnection({required bool useLocalStream, bool preferRelay = false}) async {
+  Future<void> _createPeerConnection({ // 非同步建立 WebRTC 對等連線之內部方法
+    required bool useLocalStream, // 方法參數：指定通話是否啟用本機視訊鏡頭與麥克風
+    bool preferRelay = false, // 方法參數：指定是否優先使用 TURN 伺服器進行中繼轉發
+  }) async { // 非同步方法實作區塊起始
     // ★ 2026-08-26（回退 relay-only 優化）：iceTransportPolicy 現在無條件 'all'，
     //   完整原因見 [_generateDynamicTURNConfig] 內的註解。[preferRelay] 參數仍保留
     //   在簽章上（呼叫端：[createOffer]／[_acceptCall]），但目前不會被讀取、不影響
