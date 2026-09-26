@@ -143,6 +143,7 @@ flutter:
     #   （960Hz／770Hz 每 0.5 秒交替，7 秒）；舊的 emergency_alert.wav 已刪除。
     #   由 lib/services/emergency_tone.dart 單例播放。
     - assets/sounds/
+    - assets/fonts/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
