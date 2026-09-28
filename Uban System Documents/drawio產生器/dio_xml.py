@@ -25,18 +25,20 @@ def esc(s):
 def label_html(label):
     return '&lt;br&gt;'.join(esc(l) for l in wrap(label)) if label else ''
 
+PAD = 40          # 圖與頁面四邊的留白；泳道從 (PAD, PAD) 開始畫，圖才會置中在頁面裡
+
 def to_xml(model, title='圖'):
     g = model['geom']; nodes = model['nodes']
     rank = {k: v['rank'] for k, v in nodes.items()}
     o = ['<mxfile host="uban-doc"><diagram name="%s">' % esc(title),
          '<mxGraphModel dx="1400" dy="900" grid="0" gridSize="10" guides="1" tooltips="1" '
          'connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="%g" pageHeight="%g" math="0" shadow="0">'
-         % (g['total_w'] + 80, g['total_h'] + 80),
+         % (g['total_w'] + PAD * 2, g['total_h'] + PAD * 2),
          '<root><mxCell id="0"/><mxCell id="1" parent="0"/>']
     for lid, ttl in model['lanes']:
         o.append('<mxCell id="lane_%s" value="%s" style="%s" vertex="1" parent="1">' % (lid, esc(ttl), LANE))
-        o.append('<mxGeometry x="%g" y="0" width="%g" height="%g" as="geometry"/></mxCell>'
-                 % (g['lane_x'][lid], g['lane_w'][lid], g['total_h']))
+        o.append('<mxGeometry x="%g" y="%g" width="%g" height="%g" as="geometry"/></mxCell>'
+                 % (g['lane_x'][lid] + PAD, PAD, g['lane_w'][lid], g['total_h']))
     for nid in model['order']:
         n = nodes[nid]
         st = STYLE[n['shape']]
@@ -81,7 +83,7 @@ def to_xml(model, title='圖'):
                 assert abs(ax - bx) < 2 or abs(ay - by) < 2,                     '非正交線段 %s→%s' % (e['src'], e['dst'])
             o.append('<mxGeometry relative="1" as="geometry"><Array as="points">')
             for (px, py) in pts:
-                o.append('<mxPoint x="%g" y="%g"/>' % (px, py))
+                o.append('<mxPoint x="%g" y="%g"/>' % (px + PAD, py + PAD))
             o.append('</Array></mxGeometry></mxCell>')
         else:
             o.append('<mxGeometry relative="1" as="geometry"/></mxCell>')

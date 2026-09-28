@@ -4,6 +4,7 @@
 mermaid 的類別框只能平塗；draw.io 用 swimlane + stackLayout 可以做出組長原圖那種
 「類別名一欄、屬性一欄」的標準 UML 類別框，而且組員可以直接拖拉修改。
 """
+import center_pages
 import re, os, sys, glob
 from collections import defaultdict, deque
 import dio_route
@@ -230,6 +231,7 @@ if __name__ == '__main__':
         stem = os.path.basename(f)[:-4]
         m = layout(parse(f))
         open(os.path.join(OUT, stem + '.drawio'), 'w', encoding='utf-8', newline='').write(to_xml(m, stem))
+        center_pages.center_file(os.path.join(OUT, stem + '.drawio'))   # 置中到頁面，四邊留 40
         print('%-26s %4d x %4d  類別%d 關聯%d 屬性%d'
               % (stem[:24], m['W'], m['H'], len(m['classes']), len(m['rels']),
                  sum(len(v) for v in m['classes'].values())))

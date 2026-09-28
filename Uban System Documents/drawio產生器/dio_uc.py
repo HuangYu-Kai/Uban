@@ -3,6 +3,7 @@
 
 mermaid 畫不出火柴人，只能用圓形代替；draw.io 有 umlActor，這裡改回組長原圖的畫法。
 """
+import center_pages
 import re, os, sys, glob
 
 ACTOR = re.compile(r'^\s*(\w+)\(\("(.*?)"\)\)(?::::(\w+))?\s*$')
@@ -246,6 +247,7 @@ if __name__ == '__main__':
         stem = os.path.basename(f)[:-4]
         m = layout(parse(f))
         open(os.path.join(OUT, stem + '.drawio'), 'w', encoding='utf-8', newline='').write(to_xml(m, stem))
+        center_pages.center_file(os.path.join(OUT, stem + '.drawio'))   # 置中到頁面，四邊留 40
         print('%-24s %4d x %4d  火柴人%d 使用案例%d 事件%d'
               % (stem[:22], m['W'], m['H'], len(m['actors']),
                  sum(1 for n in m['nodes'].values() if n['kind'] == 'uc'),
