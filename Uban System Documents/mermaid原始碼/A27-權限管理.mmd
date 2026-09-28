@@ -10,22 +10,22 @@ flowchart TD
     S4(["停權狀態已記錄"]):::act
     EN_S4(("●")):::endterm
   end
-  subgraph FE["uban-admin · AccountsPage"]
+  subgraph FE["開發者管理端（帳號管理頁）"]
     PAD_FE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
     A1["顯示目前層級與停權狀態"]:::act
   end
-  subgraph BE["uban-api · /api/admin"]
-    G0{"require_admin_or_developer()<br/>驗證通過？"}:::dec
-    B1["subscription-tier 查詢長輩訂閱層級"]:::act
-    B2["elders/subscription-tier<br/>free 2台 / gold 3台 / diamond 5台"]:::act
-    B3["invalidate_elder_tier_cache 清除層級快取"]:::act
-    B4["ban 封禁帳號"]:::act
-    B5["unban 解除封禁"]:::act
-    B6["寫入 admin_action_log<br/>staff_id = -dev_id（負值編碼）"]:::act
-    D1[("subscription_status<br/>RevenueCat 真相表<br/>（MySQL）")]:::act
-    D2[("account_ban 帳號封禁狀態紀錄")]:::act
-    D3[("admin_action_log<br/>append-only・無外鍵・無查詢畫面")]:::act
-    N1["routers/auth.py::login()<br/>未查 account_ban<br/>→ 停權帳號仍可登入"]:::act
+  subgraph BE["uban-api 後端"]
+    G0{"開發者身分<br/>驗證通過？"}:::dec
+    B1["查詢長輩訂閱層級"]:::act
+    B2["調整訂閱層級<br/>（免費 2 台、黃金 3 台、鑽石 5 台）"]:::act
+    B3["清除層級快取<br/>立即生效"]:::act
+    B4["停權帳號"]:::act
+    B5["解除停權"]:::act
+    B6["寫入管理操作紀錄"]:::act
+    D1[("訂閱狀態資料表<br/>（以 RevenueCat 為準）")]:::act
+    D2[("帳號停權紀錄表")]:::act
+    D3[("管理操作紀錄表<br/>（只新增不修改）")]:::act
+    N1["★ 登入時未檢查停權狀態<br/>→ 停權帳號仍可登入"]:::act
     EN_N1(("●")):::endterm
     X(["401 未授權，擋下請求"]):::act
     EN_X(("●")):::endterm

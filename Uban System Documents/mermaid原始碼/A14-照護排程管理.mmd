@@ -12,22 +12,22 @@ flowchart TD
     S6(["查看情緒報告<br/>與破冰話題建議"]):::act
     EN_S6(("●")):::endterm
   end
-  subgraph FE["家屬機 App"]
+  subgraph FE["家屬端"]
     PAD_FE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
-    A1["HealthReminderScreen 遠端排程提醒畫面"]:::act
-    A2["FamilyAiCopilotScreen AI 照護共創助理"]:::act
+    A1["遠端提醒排程畫面"]:::act
+    A2["AI 照護共創助理畫面"]:::act
     A3["顯示排程草稿供逐筆編輯"]:::act
     A4["首頁 AI 情緒雷達卡"]:::act
   end
   subgraph BE["uban-api 後端"]
-    G0{"call_security<br/>家屬－長輩關係<br/>驗證通過？"}:::dec
-    B1["reminder 查詢長輩提醒清單"]:::act
-    B2["reminder 新增提醒<br/>toggle 啟用或停用<br/>delete 刪除提醒"]:::act
-    B3["family_copilot AI 對話・生成排程草稿"]:::act
-    B4["batch_create AI 草稿批次建立提醒"]:::act
-    B5["elder_mood_insight 情緒氣象台分析與破冰話題"]:::act
-    J1["check_remote_reminders_job<br/>每分鐘推播給長輩<br/>（APScheduler 排程）"]:::act
-    DB[("remote_reminders 遠端照護提醒資料表")]:::act
+    G0{"家屬與長輩<br/>關係驗證通過？"}:::dec
+    B1["查詢長輩提醒清單"]:::act
+    B2["新增、啟用或停用、刪除提醒"]:::act
+    B3["AI 對話並生成排程草稿"]:::act
+    B4["依草稿批次建立提醒"]:::act
+    B5["情緒氣象台分析<br/>與破冰話題建議"]:::act
+    J1["APScheduler 每分鐘<br/>檢查並推播提醒給長輩"]:::act
+    DB[("遠端提醒資料表")]:::act
     X(["回傳無權限"]):::act
     EN_X(("●")):::endterm
   end

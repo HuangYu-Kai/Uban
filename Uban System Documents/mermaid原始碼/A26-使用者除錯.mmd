@@ -8,30 +8,30 @@ flowchart TD
     S3(["對照時序排除問題"]):::act
     EN_S3(("●")):::endterm
   end
-  subgraph FE["uban-admin"]
+  subgraph FE["開發者管理端"]
     PAD_FE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
-    A1["EldersPage 使用者列表頁"]:::act
-    A2["ElderDetailPage 使用者詳情頁"]:::act
-    A3["AlertsPage.tsx（含徽章輪詢）"]:::act
+    A1["使用者列表頁"]:::act
+    A2["使用者詳情頁"]:::act
+    A3["警報列表頁<br/>（定時更新未讀數）"]:::act
     EN_A3(("●")):::endterm
     A4["顯示『查無資料』"]:::act
     EN_A4(("●")):::endterm
     A5["時間軸為空"]:::act
     EN_A5(("●")):::endterm
   end
-  subgraph BE["uban-api · /api/developer"]
-    B1["users 全平台使用者列表"]:::act
-    B2{"elder_id 存在？"}:::dec
-    B3["users<br/>詳細資料"]:::act
-    B4["users/metrics<br/>指標"]:::act
+  subgraph BE["uban-api 後端"]
+    B1["查詢全平台使用者列表"]:::act
+    B2{"使用者<br/>是否存在？"}:::dec
+    B3["查詢使用者詳細資料"]:::act
+    B4["查詢使用者使用指標"]:::act
     EN_B4(("●")):::endterm
-    B5["users/timeline<br/>活動時間軸"]:::act
-    B6["alerts 跨使用者警報清單"]:::act
-    B7["彙整 activity_log ・通話 ・警報"]:::act
-    D1[("elder_profile 長輩檔案資料表")]:::act
-    D2[("activity_log<br/>★ 只有 user_id，沒有 elder_id<br/>需經 elder_profile 轉換")]:::gap
-    D3[("call_record 通話紀錄資料表")]:::act
-    D4[("emergency_alerts 緊急警報資料表")]:::act
+    B5["查詢活動時間軸"]:::act
+    B6["查詢所有使用者的警報"]:::act
+    B7["彙整活動紀錄、通話、警報"]:::act
+    D1[("長輩資料表")]:::act
+    D2[("活動紀錄表<br/>★ 需經長輩資料表對應使用者")]:::gap
+    D3[("通話紀錄表")]:::act
+    D4[("緊急警報紀錄表")]:::act
   end
 
   ST_S1 --> S1

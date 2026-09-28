@@ -8,27 +8,27 @@ flowchart TD
     S3(["通話中"]):::act
     S4["點掛斷"]:::act
   end
-  subgraph FE["家屬機 App"]
+  subgraph FE["家屬端"]
     PAD_FE["&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
-    A1["Signaling 送出 call-request<br/>targetSocketId = null"]:::act
-    A2["Signaling 送出 emergency-call"]:::act
+    A1["發起一般通話請求"]:::act
+    A2["發起緊急通話請求"]:::act
     A3["顯示重撥對話框"]:::act
     EN_A3(("●")):::endterm
-    A4["VideoCallScreen 通話房"]:::act
-    M1[("Oracle Cloud Coturn<br/>UDP 媒體中繼")]:::act
+    A4["進入視訊通話畫面"]:::act
+    M1[("Oracle Cloud TURN 媒體中繼<br/>（UDP）")]:::act
   end
-  subgraph FE2["長輩機"]
+  subgraph FE2["長輩端"]
     PAD_FE2["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
-    E1["一般來電響鈴<br/>有效期 60 秒"]:::act
-    E2["緊急：AndroidIntent 冷啟動<br/>bringToFront ＋ 強制音量<br/>有效期 3600 秒"]:::act
+    E1["一般來電響鈴<br/>（60 秒內有效）"]:::act
+    E2["緊急來電：自動喚醒畫面<br/>並強制調高音量<br/>（1 小時內有效）"]:::act
     E3["接聽"]:::act
-    E4["忙線 → call-busy"]:::act
+    E4["忙線，回覆忙線訊號"]:::act
   end
-  subgraph BE["uban-api 信令"]
-    B1["廣播給線上長輩 Socket<br/>＋ 所有長輩 FCM token"]:::act
+  subgraph BE["uban-api 信令（Socket.IO）"]
+    B1["通知長輩所有裝置<br/>（線上用 Socket.IO、離線用 FCM）"]:::act
     B2{"長輩回應？"}:::dec
-    B3["交換 offer／answer／candidate"]:::act
-    B4["end-call → 寫入 call_record<br/>含 is_emergency 欄位"]:::act
+    B3["交換 WebRTC 連線資訊"]:::act
+    B4["掛斷並寫入通話紀錄<br/>（標記是否為緊急通話）"]:::act
     EN_B4(("●")):::endterm
     T1(["通話失效"]):::act
     EN_T1(("●")):::endterm

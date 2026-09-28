@@ -8,25 +8,25 @@ flowchart TD
     S3(["進入數據總覽"]):::act
     EN_S3(("●")):::endterm
   end
-  subgraph FE["uban-admin（React SPA，烘進後端映像）"]
-    A1["SPAStaticFiles 提供<br/>React Router history fallback"]:::act
-    A2["LoginPage 開發者登入頁"]:::act
-    A3["存入 session<br/>後續請求帶 Authorization"]:::act
+  subgraph FE["開發者管理端（React 網頁）"]
+    A1["載入管理端網頁"]:::act
+    A2["開發者登入頁"]:::act
+    A3["保存登入狀態<br/>後續請求附帶 JWT"]:::act
     A4["停留登入頁並顯示錯誤"]:::act
     EN_A4(("●")):::endterm
-    A5["OverviewPage 平台數據總覽頁"]:::act
+    A5["平台數據總覽頁"]:::act
   end
   subgraph BE["uban-api 後端"]
     PAD_BE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
-    B0{"static/admin<br/>已建置？"}:::dec
-    B1["503 說明頁"]:::act
+    B0{"管理端網頁<br/>是否已部署？"}:::dec
+    B1["顯示 503 維護說明頁"]:::act
     EN_B1(("●")):::endterm
-    B2["login 開發者登入驗證"]:::act
-    B3{"password_hash<br/>驗證通過？"}:::dec
-    B4["簽發 JWT<br/>typ = developer · 12 小時<br/>sub = developer:{id}"]:::act
-    B5["me 查詢目前登入的開發者"]:::act
-    B6{"token 仍有效？"}:::dec
-    DB[("developer_account<br/>三位開發者")]:::act
+    B2["驗證開發者帳號密碼"]:::act
+    B3{"密碼雜湊<br/>驗證通過？"}:::dec
+    B4["簽發 JWT<br/>（12 小時有效）"]:::act
+    B5["查詢目前登入的開發者"]:::act
+    B6{"JWT<br/>仍有效？"}:::dec
+    DB[("開發者帳號資料表<br/>（三位開發者）")]:::act
   end
 
   ST_S1 --> S1

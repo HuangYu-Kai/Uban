@@ -7,27 +7,27 @@ flowchart TD
     S2(["檢視三類統計圖表"]):::act
     EN_S2(("●")):::endterm
   end
-  subgraph FE["uban-admin · OverviewPage"]
-    A1["TanStack Query 平行取數"]:::act
-    A2["DemographicsSection 人口統計圖表區塊"]:::act
-    A3["AlertsStatsSection 警報統計圖表區塊"]:::act
-    A4["CallsStatsSection 通話統計圖表區塊"]:::act
-    A5["Recharts 繪圖"]:::act
-    A6["顯示『尚無資料』空狀態"]:::gap
+  subgraph FE["開發者管理端（數據總覽頁）"]
+    A1["同時查詢三類統計資料"]:::act
+    A2["人口統計圖表"]:::act
+    A3["警報統計圖表"]:::act
+    A4["通話統計圖表"]:::act
+    A5["Recharts 繪製圖表"]:::act
+    A6["顯示『尚無資料』"]:::gap
   end
-  subgraph BE["uban-api · /api/admin/stats"]
+  subgraph BE["uban-api 後端（統計 API）"]
     PAD_BE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
-    B1["demographics 使用者年齡與居住地統計"]:::act
-    B2["alerts 緊急警報推送與誤報統計"]:::act
-    B3["calls 緊急通話使用次數統計"]:::act
-    B4["長輩取 elder_profile<br/>家屬＝無對應 elder_profile 的列"]:::act
-    B5["觸發次數 ÷ is_false_alarm<br/>計算誤報比例"]:::act
-    B6["以 is_emergency 區分<br/>緊急與一般通話"]:::act
-    B7{"欄位是否有值？<br/>migration 012 才新增"}:::dec
-    D1[("user_account_data 家屬端帳號資料<br/>age / residence_city / residence_district 年齡與居住地欄位")]:::act
-    D2[("elder_profile 長輩檔案資料表")]:::act
-    D3[("emergency_alerts 緊急警報紀錄<br/>is_false_alarm 是否為誤報")]:::act
-    D4[("call_record 通話紀錄<br/>is_emergency 是否為緊急通話")]:::act
+    B1["年齡與居住地統計"]:::act
+    B2["警報推送與誤報統計"]:::act
+    B3["緊急通話次數統計"]:::act
+    B4["區分長輩與家屬"]:::act
+    B5["依警報次數<br/>計算誤報比例"]:::act
+    B6["區分緊急與一般通話"]:::act
+    B7{"欄位是否有值？<br/>（舊資料可能沒有）"}:::dec
+    D1[("家屬帳號資料表<br/>（年齡、居住地）")]:::act
+    D2[("長輩資料表")]:::act
+    D3[("緊急警報紀錄表<br/>（含是否為誤報）")]:::act
+    D4[("通話紀錄表<br/>（含是否為緊急通話）")]:::act
   end
 
   ST_S1 --> S1

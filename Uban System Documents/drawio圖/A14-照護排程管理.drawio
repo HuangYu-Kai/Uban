@@ -1,154 +1,154 @@
 <mxfile host="uban-doc"><diagram name="A14-照護排程管理">
-<mxGraphModel dx="1400" dy="900" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1431.75" pageHeight="2249" math="0" shadow="0">
+<mxGraphModel dx="1400" dy="900" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1219" pageHeight="2075" math="0" shadow="0">
 <root><mxCell id="0"/><mxCell id="1" parent="0"/>
 <mxCell id="lane_ROLE" value="家屬" style="swimlane;html=1;horizontal=1;startSize=40;fillColor=none;strokeColor=#000000;fontSize=24;fontColor=#000000;fontStyle=0;swimlaneFillColor=none;collapsible=0;" vertex="1" parent="1">
-<mxGeometry x="0" y="0" width="285.75" height="2169" as="geometry"/></mxCell>
-<mxCell id="lane_FE" value="家屬機 App" style="swimlane;html=1;horizontal=1;startSize=40;fillColor=none;strokeColor=#000000;fontSize=24;fontColor=#000000;fontStyle=0;swimlaneFillColor=none;collapsible=0;" vertex="1" parent="1">
-<mxGeometry x="285.75" y="0" width="635" height="2169" as="geometry"/></mxCell>
+<mxGeometry x="0" y="0" width="264" height="1995" as="geometry"/></mxCell>
+<mxCell id="lane_FE" value="家屬端" style="swimlane;html=1;horizontal=1;startSize=40;fillColor=none;strokeColor=#000000;fontSize=24;fontColor=#000000;fontStyle=0;swimlaneFillColor=none;collapsible=0;" vertex="1" parent="1">
+<mxGeometry x="264" y="0" width="533" height="1995" as="geometry"/></mxCell>
 <mxCell id="lane_BE" value="uban-api 後端" style="swimlane;html=1;horizontal=1;startSize=40;fillColor=none;strokeColor=#000000;fontSize=24;fontColor=#000000;fontStyle=0;swimlaneFillColor=none;collapsible=0;" vertex="1" parent="1">
-<mxGeometry x="920.75" y="0" width="431" height="2169" as="geometry"/></mxCell>
+<mxGeometry x="797" y="0" width="342" height="1995" as="geometry"/></mxCell>
 <mxCell id="n_ST_S1" value="" style="ellipse;html=1;fillColor=#000000;strokeColor=#000000;" vertex="1" parent="lane_ROLE">
-<mxGeometry x="120" y="87" width="46" height="46" as="geometry"/></mxCell>
+<mxGeometry x="109" y="87" width="46" height="46" as="geometry"/></mxCell>
 <mxCell id="n_S1" value="進入照護排程" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_ROLE">
-<mxGeometry x="58" y="187" width="170" height="48" as="geometry"/></mxCell>
+<mxGeometry x="47" y="187" width="170" height="48" as="geometry"/></mxCell>
 <mxCell id="n_S2" value="要做什麼？" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_ROLE">
-<mxGeometry x="37" y="743" width="212" height="82" as="geometry"/></mxCell>
+<mxGeometry x="26" y="673" width="212" height="82" as="geometry"/></mxCell>
 <mxCell id="n_S3" value="以自然語言描述需求" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_ROLE">
-<mxGeometry x="38" y="1046" width="210" height="48" as="geometry"/></mxCell>
+<mxGeometry x="27" y="924" width="210" height="48" as="geometry"/></mxCell>
 <mxCell id="n_S4" value="草稿是否&lt;br&gt;符合預期？" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_ROLE">
-<mxGeometry x="37" y="1391" width="212" height="126" as="geometry"/></mxCell>
+<mxGeometry x="26" y="1269" width="212" height="126" as="geometry"/></mxCell>
 <mxCell id="n_S5" value="排程生效" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_ROLE">
-<mxGeometry x="58" y="1967" width="170" height="48" as="geometry"/></mxCell>
+<mxGeometry x="47" y="1793" width="170" height="48" as="geometry"/></mxCell>
 <mxCell id="n_EN_S5" value="" style="ellipse;html=1;shape=endState;fillColor=#000000;strokeColor=#000000;" vertex="1" parent="lane_ROLE">
-<mxGeometry x="120" y="2069" width="46" height="46" as="geometry"/></mxCell>
+<mxGeometry x="109" y="1895" width="46" height="46" as="geometry"/></mxCell>
 <mxCell id="n_S6" value="查看情緒報告&lt;br&gt;與破冰話題建議" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_ROLE">
-<mxGeometry x="58" y="1161" width="170" height="74" as="geometry"/></mxCell>
+<mxGeometry x="47" y="1039" width="170" height="74" as="geometry"/></mxCell>
 <mxCell id="n_EN_S6" value="" style="ellipse;html=1;shape=endState;fillColor=#000000;strokeColor=#000000;" vertex="1" parent="lane_ROLE">
-<mxGeometry x="120" y="1290" width="46" height="46" as="geometry"/></mxCell>
-<mxCell id="n_A1" value="HealthReminderScreen 遠端排&lt;br&gt;程提醒畫面" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_FE">
-<mxGeometry x="157.25" y="513" width="321" height="74" as="geometry"/></mxCell>
-<mxCell id="n_A2" value="FamilyAiCopilotScreen AI 照&lt;br&gt;護共創助理" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_FE">
-<mxGeometry x="26.25" y="892" width="325" height="74" as="geometry"/></mxCell>
+<mxGeometry x="109" y="1168" width="46" height="46" as="geometry"/></mxCell>
+<mxCell id="n_A1" value="遠端提醒排程畫面" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_FE">
+<mxGeometry x="172" y="469" width="190" height="48" as="geometry"/></mxCell>
+<mxCell id="n_A2" value="AI 照護共創助理畫面" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_FE">
+<mxGeometry x="26" y="809" width="223" height="48" as="geometry"/></mxCell>
 <mxCell id="n_A3" value="顯示排程草稿供逐筆編輯" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_FE">
-<mxGeometry x="192.25" y="1289" width="250" height="48" as="geometry"/></mxCell>
+<mxGeometry x="142" y="1167" width="250" height="48" as="geometry"/></mxCell>
 <mxCell id="n_A4" value="首頁 AI 情緒雷達卡" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_FE">
-<mxGeometry x="395.25" y="905" width="214" height="48" as="geometry"/></mxCell>
-<mxCell id="n_G0" value="call_security&lt;br&gt;家屬－長輩關係&lt;br&gt;驗證通過？" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_BE">
-<mxGeometry x="107.25" y="289" width="216" height="170" as="geometry"/></mxCell>
-<mxCell id="n_B1" value="reminder 查詢長輩提醒清單" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_BE">
-<mxGeometry x="26.25" y="641" width="289" height="48" as="geometry"/></mxCell>
-<mxCell id="n_B2" value="reminder 新增提醒&lt;br&gt;toggle 啟用或停用&lt;br&gt;delete 刪除提醒" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_BE">
-<mxGeometry x="111.25" y="879" width="209" height="100" as="geometry"/></mxCell>
-<mxCell id="n_B3" value="family_copilot AI 對話・生成&lt;br&gt;排程草稿" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_BE">
-<mxGeometry x="51.25" y="1161" width="328" height="74" as="geometry"/></mxCell>
-<mxCell id="n_B4" value="batch_create AI 草稿批次建立提醒" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_BE">
-<mxGeometry x="32.25" y="1571" width="366" height="48" as="geometry"/></mxCell>
-<mxCell id="n_B5" value="elder_mood_insight 情緒氣象&lt;br&gt;台分析與破冰話題" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_BE">
-<mxGeometry x="56.25" y="1033" width="319" height="74" as="geometry"/></mxCell>
-<mxCell id="n_J1" value="check_remote_reminders_job&lt;br&gt;每分鐘推播給長輩&lt;br&gt;（APScheduler 排程）" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_BE">
-<mxGeometry x="57.25" y="1813" width="316" height="100" as="geometry"/></mxCell>
-<mxCell id="n_DB" value="remote_reminders 遠端照護提&lt;br&gt;醒資料表" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=9;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_BE">
-<mxGeometry x="57.25" y="1673" width="317" height="86" as="geometry"/></mxCell>
+<mxGeometry x="293" y="809" width="214" height="48" as="geometry"/></mxCell>
+<mxCell id="n_G0" value="家屬與長輩&lt;br&gt;關係驗證通過？" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_BE">
+<mxGeometry x="65" y="289" width="212" height="126" as="geometry"/></mxCell>
+<mxCell id="n_B1" value="查詢長輩提醒清單" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_BE">
+<mxGeometry x="31" y="571" width="190" height="48" as="geometry"/></mxCell>
+<mxCell id="n_B2" value="新增、啟用或停用、刪除提醒" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_BE">
+<mxGeometry x="26" y="809" width="290" height="48" as="geometry"/></mxCell>
+<mxCell id="n_B3" value="AI 對話並生成排程草稿" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_BE">
+<mxGeometry x="49" y="1052" width="243" height="48" as="geometry"/></mxCell>
+<mxCell id="n_B4" value="依草稿批次建立提醒" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_BE">
+<mxGeometry x="66" y="1449" width="210" height="48" as="geometry"/></mxCell>
+<mxCell id="n_B5" value="情緒氣象台分析&lt;br&gt;與破冰話題建議" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_BE">
+<mxGeometry x="86" y="911" width="170" height="74" as="geometry"/></mxCell>
+<mxCell id="n_J1" value="APScheduler 每分鐘&lt;br&gt;檢查並推播提醒給長輩" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_BE">
+<mxGeometry x="56" y="1665" width="230" height="74" as="geometry"/></mxCell>
+<mxCell id="n_DB" value="遠端提醒資料表" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=9;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_BE">
+<mxGeometry x="86" y="1551" width="170" height="60" as="geometry"/></mxCell>
 <mxCell id="n_X" value="回傳無權限" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" vertex="1" parent="lane_BE">
-<mxGeometry x="130.25" y="526" width="170" height="48" as="geometry"/></mxCell>
+<mxGeometry x="86" y="469" width="170" height="48" as="geometry"/></mxCell>
 <mxCell id="n_EN_X" value="" style="ellipse;html=1;shape=endState;fillColor=#000000;strokeColor=#000000;" vertex="1" parent="lane_BE">
-<mxGeometry x="359.25" y="642" width="46" height="46" as="geometry"/></mxCell>
+<mxGeometry x="265" y="572" width="46" height="46" as="geometry"/></mxCell>
 <mxCell id="e0" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_ST_S1" target="n_S1">
 <mxGeometry relative="1" as="geometry"/></mxCell>
 <mxCell id="e1" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_S1" target="n_G0">
 <mxGeometry relative="1" as="geometry"><Array as="points">
-<mxPoint x="143" y="241"/>
-<mxPoint x="1136" y="241"/>
+<mxPoint x="132" y="241"/>
+<mxPoint x="968" y="241"/>
 </Array></mxGeometry></mxCell>
 <mxCell id="e2" value="[否]" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_G0" target="n_X">
 <mxGeometry relative="1" as="geometry"/></mxCell>
 <mxCell id="e3" value="[是]" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_G0" target="n_A1">
 <mxGeometry relative="1" as="geometry"><Array as="points">
-<mxPoint x="1136" y="465"/>
-<mxPoint x="603.5" y="465"/>
+<mxPoint x="968" y="421"/>
+<mxPoint x="531" y="421"/>
 </Array></mxGeometry></mxCell>
 <mxCell id="e4" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_A1" target="n_B1">
 <mxGeometry relative="1" as="geometry"><Array as="points">
-<mxPoint x="603.5" y="593"/>
-<mxPoint x="1091.5" y="593"/>
+<mxPoint x="531" y="533"/>
+<mxPoint x="923" y="533"/>
 </Array></mxGeometry></mxCell>
 <mxCell id="e5" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_B1" target="n_S2">
 <mxGeometry relative="1" as="geometry"><Array as="points">
-<mxPoint x="1091.5" y="695"/>
-<mxPoint x="143" y="695"/>
+<mxPoint x="923" y="625"/>
+<mxPoint x="132" y="625"/>
 </Array></mxGeometry></mxCell>
 <mxCell id="e6" value="[查閱與修改]" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_S2" target="n_B2">
 <mxGeometry relative="1" as="geometry"><Array as="points">
-<mxPoint x="143" y="831"/>
-<mxPoint x="1136.5" y="831"/>
+<mxPoint x="132" y="761"/>
+<mxPoint x="968" y="761"/>
 </Array></mxGeometry></mxCell>
 <mxCell id="e7" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_B2" target="n_DB">
 <mxGeometry relative="1" as="geometry"><Array as="points">
-<mxPoint x="1136.5" y="985"/>
-<mxPoint x="936.5" y="985"/>
-<mxPoint x="936.5" y="1653"/>
-<mxPoint x="1136.5" y="1653"/>
+<mxPoint x="968" y="863"/>
+<mxPoint x="808" y="863"/>
+<mxPoint x="808" y="1531"/>
+<mxPoint x="968" y="1531"/>
 </Array></mxGeometry></mxCell>
 <mxCell id="e8" value="[AI 安排]" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_S2" target="n_A2">
 <mxGeometry relative="1" as="geometry"><Array as="points">
-<mxPoint x="143" y="831"/>
-<mxPoint x="474.5" y="831"/>
+<mxPoint x="132" y="761"/>
+<mxPoint x="401.5" y="761"/>
 </Array></mxGeometry></mxCell>
 <mxCell id="e9" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_A2" target="n_S3">
 <mxGeometry relative="1" as="geometry"><Array as="points">
-<mxPoint x="474.5" y="1000"/>
-<mxPoint x="143" y="1000"/>
+<mxPoint x="401.5" y="878"/>
+<mxPoint x="132" y="878"/>
 </Array></mxGeometry></mxCell>
 <mxCell id="e10" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_S3" target="n_B3">
 <mxGeometry relative="1" as="geometry"><Array as="points">
-<mxPoint x="143" y="1123"/>
-<mxPoint x="1136" y="1123"/>
+<mxPoint x="132" y="1001"/>
+<mxPoint x="967.5" y="1001"/>
 </Array></mxGeometry></mxCell>
 <mxCell id="e11" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_B3" target="n_A3">
 <mxGeometry relative="1" as="geometry"><Array as="points">
-<mxPoint x="1136" y="1241"/>
-<mxPoint x="603" y="1241"/>
+<mxPoint x="967.5" y="1119"/>
+<mxPoint x="531" y="1119"/>
 </Array></mxGeometry></mxCell>
 <mxCell id="e12" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_A3" target="n_S4">
 <mxGeometry relative="1" as="geometry"><Array as="points">
-<mxPoint x="603" y="1353"/>
-<mxPoint x="143" y="1353"/>
+<mxPoint x="531" y="1231"/>
+<mxPoint x="132" y="1231"/>
 </Array></mxGeometry></mxCell>
 <mxCell id="e13" value="[否]" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.25;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_S4" target="n_A3">
 <mxGeometry relative="1" as="geometry"><Array as="points">
-<mxPoint x="143" y="1523"/>
-<mxPoint x="261" y="1523"/>
-<mxPoint x="261" y="1283"/>
-<mxPoint x="540.5" y="1283"/>
+<mxPoint x="132" y="1401"/>
+<mxPoint x="250" y="1401"/>
+<mxPoint x="250" y="1161"/>
+<mxPoint x="468.5" y="1161"/>
 </Array></mxGeometry></mxCell>
 <mxCell id="e14" value="[是]" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_S4" target="n_B4">
 <mxGeometry relative="1" as="geometry"><Array as="points">
-<mxPoint x="143" y="1523"/>
-<mxPoint x="1136" y="1523"/>
+<mxPoint x="132" y="1401"/>
+<mxPoint x="968" y="1401"/>
 </Array></mxGeometry></mxCell>
 <mxCell id="e15" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_B4" target="n_DB">
 <mxGeometry relative="1" as="geometry"/></mxCell>
 <mxCell id="e16" value="[查閱數據與情緒報告]" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_S2" target="n_A4">
 <mxGeometry relative="1" as="geometry"><Array as="points">
-<mxPoint x="143" y="831"/>
-<mxPoint x="788" y="831"/>
+<mxPoint x="132" y="761"/>
+<mxPoint x="664" y="761"/>
 </Array></mxGeometry></mxCell>
 <mxCell id="e17" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_A4" target="n_B5">
 <mxGeometry relative="1" as="geometry"><Array as="points">
-<mxPoint x="788" y="1015"/>
-<mxPoint x="1136.5" y="1015"/>
+<mxPoint x="664" y="893"/>
+<mxPoint x="968" y="893"/>
 </Array></mxGeometry></mxCell>
 <mxCell id="e18" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_B5" target="n_S6">
 <mxGeometry relative="1" as="geometry"><Array as="points">
-<mxPoint x="1136.5" y="1128"/>
-<mxPoint x="143" y="1128"/>
+<mxPoint x="968" y="1006"/>
+<mxPoint x="132" y="1006"/>
 </Array></mxGeometry></mxCell>
 <mxCell id="e19" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_DB" target="n_J1">
 <mxGeometry relative="1" as="geometry"/></mxCell>
 <mxCell id="e20" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_J1" target="n_S5">
 <mxGeometry relative="1" as="geometry"><Array as="points">
-<mxPoint x="1136" y="1919"/>
-<mxPoint x="143" y="1919"/>
+<mxPoint x="968" y="1745"/>
+<mxPoint x="132" y="1745"/>
 </Array></mxGeometry></mxCell>
 <mxCell id="e21" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_S5" target="n_EN_S5">
 <mxGeometry relative="1" as="geometry"/></mxCell>
@@ -156,7 +156,7 @@
 <mxGeometry relative="1" as="geometry"/></mxCell>
 <mxCell id="e23" value="" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="n_X" target="n_EN_X">
 <mxGeometry relative="1" as="geometry"><Array as="points">
-<mxPoint x="1136" y="608"/>
-<mxPoint x="1303" y="608"/>
+<mxPoint x="968" y="538"/>
+<mxPoint x="1085" y="538"/>
 </Array></mxGeometry></mxCell>
 </root></mxGraphModel></diagram></mxfile>

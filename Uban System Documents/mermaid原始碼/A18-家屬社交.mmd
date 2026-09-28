@@ -4,8 +4,8 @@ flowchart TD
     PAD_ROLE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
     ST_S1(("&nbsp;")):::term
     S1([開啟『加家屬好友』]):::act
-    S2["輸入對方 4 碼 family_code"]:::act
-    S3(["瀏覽動態・發文・按讚留言"]):::act
+    S2["輸入對方 4 碼好友代碼"]:::act
+    S3(["瀏覽動態、發文、按讚留言"]):::act
   end
   subgraph ROLE2["家屬 B"]
     PAD_ROLE2["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
@@ -14,23 +14,23 @@ flowchart TD
     R1(["維持未成立"]):::act
     EN_R1(("●")):::endterm
   end
-  subgraph FE["家屬機 App"]
+  subgraph FE["家屬端"]
     PAD_FE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
-    A1["FamilyAddFriendScreen<br/>顯示自己的 4 碼代碼"]:::act
-    A2["FamilyFriendFeedBody 家屬朋友圈動態畫面"]:::act
+    A1["加好友畫面<br/>顯示自己的 4 碼代碼"]:::act
+    A2["家屬朋友圈動態畫面"]:::act
     A3["提示『查無此人』"]:::act
     EN_A3(("●")):::endterm
   end
   subgraph BE["uban-api 後端"]
-    B0["my-code 取得自己的4碼好友代碼"]:::act
-    B1["search 依代碼查詢好友"]:::act
+    B0["取得自己的 4 碼好友代碼"]:::act
+    B1["依代碼搜尋家屬"]:::act
     B2{"代碼存在<br/>且非本人？"}:::dec
-    B3["request<br/>寫入 family_friendship（pending）"]:::act
-    B4["requests 列出待回應的邀請"]:::act
-    B5["respond 回應邀請並更新為 accepted"]:::act
-    B6["feed 取得朋友圈動態列表"]:::act
-    B7["post 發表貼文<br/>like 按讚<br/>comment 留言"]:::act
-    DB[("family_friend_code<br/>family_friendship（UNIQUE low, high）<br/>family_friend_post / _comment / _like<br/>★ 與長輩端 friend_* 刻意不共用")]:::gap
+    B3["送出好友邀請<br/>（狀態：待回應）"]:::act
+    B4["查詢待回應的好友邀請"]:::act
+    B5["同意邀請<br/>好友關係成立"]:::act
+    B6["查詢朋友圈動態"]:::act
+    B7["發表貼文、按讚、留言"]:::act
+    DB[("家屬好友代碼資料表<br/>家屬好友關係資料表<br/>家屬貼文、留言、按讚資料表<br/>★ 與長輩端社交資料分開存放")]:::gap
   end
 
   ST_S1 --> S1

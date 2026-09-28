@@ -7,33 +7,33 @@ flowchart TD
     S2(["觀看即時單向影像"]):::act
     EN_S2(("●")):::endterm
   end
-  subgraph FE["家屬機 App"]
+  subgraph FE["家屬端"]
     PAD_FE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
-    A1["VideoCallScreen 監控模式"]:::act
-    A2["Signaling 單例發起單向串流"]:::act
+    A1["視訊畫面（監控模式）"]:::act
+    A2["發起單向 WebRTC 影像串流"]:::act
   end
   subgraph FE2["長輩端監視機（舊手機）"]
     PAD_FE2["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
-    M1["ElderScreen isCCTVMode 監控模式啟動"]:::act
+    M1["啟動監控模式"]:::act
     M2["擷取相機影格"]:::act
   end
-  subgraph BE["uban-api 信令與推論"]
-    G0{"call_security<br/>關係驗證通過？"}:::dec
-    B1["Socket.IO 交換<br/>offer／answer／candidate"]:::act
-    B2["cctv/frame<br/>監視機約每 2 秒推幀"]:::act
-    B3["YOLO 推論（容器內 CPU）"]:::act
+  subgraph BE["uban-api 後端（信令與 AI 推論）"]
+    G0{"家屬與長輩<br/>關係驗證通過？"}:::dec
+    B1["Socket.IO 交換<br/>WebRTC 連線資訊"]:::act
+    B2["接收監視機畫面<br/>（約每 2 秒一張）"]:::act
+    B3["YOLO 影像辨識推論"]:::act
     EN_B3(("●")):::endterm
-    B4["更新 cctv_feed_status<br/>連線品質與最後推幀時間"]:::act
-    B5{"30 秒未推幀？"}:::dec
-    B6["yolo_monitor_job<br/>標記 inactive 並重置窗口"]:::act
+    B4["更新監視機連線品質<br/>與最後回傳時間"]:::act
+    B5{"超過 30 秒<br/>未收到畫面？"}:::dec
+    B6["標記監視機離線<br/>並重置判定窗口"]:::act
     EN_B6(("●")):::endterm
     X(["拒絕觀看"]):::act
     EN_X(("●")):::endterm
   end
   subgraph NET["雙軌傳輸（實體分離）"]
     PAD_NET["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
-    N1["信令：Tailscale Funnel<br/>TCP／WSS"]:::act
-    N2["媒體：Oracle Cloud Coturn<br/>UDP"]:::act
+    N1["信令：Tailscale Funnel<br/>（TCP、WSS）"]:::act
+    N2["媒體：Oracle Cloud TURN 中繼<br/>（UDP）"]:::act
   end
 
   ST_S1 --> S1

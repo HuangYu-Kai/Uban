@@ -4,25 +4,25 @@ flowchart TD
     PAD_ROLE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
     ST_S1(("&nbsp;")):::term
     S1([想填寫本人年齡與居住地]):::act
-    S2["填寫年齡・縣市・行政區<br/>三欄皆選填"]:::act
+    S2["填寫年齡、縣市、行政區<br/>三欄皆選填"]:::act
     S3(["資料儲存"]):::act
     EN_S3(("●")):::endterm
   end
-  subgraph FE["家屬機 App"]
-    N1["FamilyMainScreen 尚無<br/>進入設定頁的按鈕"]:::gap
-    A1["FamilySettingsView<br/>★ 死碼：無任何活畫面 import"]:::gap
-    A2["讀取已儲存資料並回填<br/>:187-203"]:::act
+  subgraph FE["家屬端"]
+    N1["家屬主畫面尚無<br/>進入設定頁的按鈕"]:::gap
+    A1["家屬設定頁<br/>★ 已寫好但尚未接上"]:::gap
+    A2["讀取已儲存資料並回填"]:::act
     A3{"讀取成功？"}:::dec
-    A4["欄位維持空白<br/>記錄 debug 訊息"]:::act
+    A4["欄位維持空白<br/>並記錄錯誤訊息"]:::act
     A5{"欄位留白？"}:::dec
     A6["略過該欄<br/>維持原值不動"]:::act
     EN_A6(("●")):::endterm
   end
-  subgraph BE["uban-api 後端（已就緒）"]
+  subgraph BE["uban-api 後端（已完成）"]
     PAD_BE["&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
-    B1["更新使用者個人資料端點"]:::act
-    B2[("user_account_data 家屬帳號資料表<br/>age / residence_city / residence_district 年齡與居住地欄位")]:::act
-    B3["admin/stats/demographics<br/>家屬＝無對應 elder_profile 的列"]:::act
+    B1["更新個人資料"]:::act
+    B2[("家屬帳號資料表<br/>（年齡、居住縣市、行政區）")]:::act
+    B3["年齡與居住地分布統計<br/>（開發者管理端）"]:::act
     EN_B3(("●")):::endterm
   end
 

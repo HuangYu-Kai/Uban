@@ -10,27 +10,27 @@ flowchart TD
     S5(["排程批次建立"]):::act
     EN_S5(("●")):::endterm
   end
-  subgraph FE["家屬機 App"]
+  subgraph FE["家屬端"]
     PAD_FE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
-    A1["FamilyAiCopilotScreen AI 照護共創助理畫面"]:::act
+    A1["AI 照護共創助理畫面"]:::act
     A2["顯示排程草稿清單"]:::act
     A3(["不建立任何排程"]):::act
     EN_A3(("●")):::endterm
   end
   subgraph BE["uban-api 後端"]
     PAD_BE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
-    G0{"關係驗證<br/>通過？"}:::dec
-    B1["family_copilot/chat 意圖辨識・近況摘要或排程草稿"]:::act
-    B2["組裝長輩脈絡：<br/>activity_log ・情緒分析<br/>・Pinecone 長期記憶檢索"]:::act
-    B3{"Ollama 可達？"}:::dec
-    B4["ollama_service 本地 Ollama 主引擎"]:::act
-    B5["gemini_service 備援"]:::act
-    B6{"語意屬於<br/>『安排提醒』？"}:::dec
+    G0{"家屬與長輩<br/>關係驗證通過？"}:::dec
+    B1["意圖辨識：回覆近況摘要<br/>或產生排程草稿"]:::act
+    B2["組裝長輩脈絡：<br/>活動紀錄、情緒分析、<br/>Pinecone 長期記憶檢索"]:::act
+    B3{"Ollama<br/>可用？"}:::dec
+    B4["Ollama 本地主要 AI 引擎"]:::act
+    B5["Gemini 備援引擎"]:::act
+    B6{"是否為<br/>『安排提醒』？"}:::dec
     B7["產出排程草稿"]:::act
-    B8["batch_create 批次建立提醒"]:::act
-    B9["daily-suggestions 今日智能建議<br/>dynamic_care_messages 動態關懷短句"]:::act
-    DB[("remote_reminders 家屬設定的遠端提醒")]:::act
-    PC[("Pinecone 長期記憶向量檢索")]:::act
+    B8["批次建立提醒"]:::act
+    B9["今日智能建議<br/>與動態關懷短句"]:::act
+    DB[("遠端提醒資料表")]:::act
+    PC[("Pinecone 長期記憶<br/>（向量資料庫）")]:::act
     X(["回傳無權限"]):::act
     EN_X(("●")):::endterm
   end

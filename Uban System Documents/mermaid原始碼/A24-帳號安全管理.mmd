@@ -12,22 +12,22 @@ flowchart TD
     E1([結束]):::act
     EN_E1(("●")):::endterm
   end
-  subgraph FE["uban-admin"]
+  subgraph FE["開發者管理端"]
     PAD_FE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
-    A1["DeveloperAccountsPage 開發者帳號管理頁"]:::act
+    A1["開發者帳號管理頁"]:::act
     A2["顯示『無法解密』"]:::act
     EN_A2(("●")):::endterm
   end
   subgraph BE["uban-api 後端"]
-    G0{"Depends(get_current_developer)<br/>token 驗證通過？"}:::dec
-    B1["accounts 列出開發者帳號（含明碼密碼）"]:::act
-    B2["dev_crypto 以 AES-GCM<br/>解密 password_cipher"]:::act
-    B3{"DEVELOPER_PASSWORD_KEY<br/>可用？"}:::dec
-    B4["accounts/me/password<br/>對象由 token 的 dev_id 決定"]:::act
-    B5["同時更新 password_hash<br/>與 password_cipher"]:::act
-    DB[("developer_account<br/>password_hash（驗證用）<br/>password_cipher BLOB（互看用）")]:::act
-    ENV[("環境變數<br/>DEVELOPER_PASSWORD_KEY<br/>★ 不納入版本控制")]:::gap
-    X(["401 導回登入頁"]):::act
+    G0{"JWT<br/>驗證通過？"}:::dec
+    B1["列出開發者帳號（含密碼）"]:::act
+    B2["以 AES-GCM 解密密碼"]:::act
+    B3{"解密金鑰<br/>可用？"}:::dec
+    B4["修改自己的密碼"]:::act
+    B5["同時更新密碼雜湊<br/>與加密密碼"]:::act
+    DB[("開發者帳號資料表<br/>密碼雜湊（登入驗證用）<br/>加密密碼（互相查看用）")]:::act
+    ENV[("伺服器環境變數<br/>（存放解密金鑰）<br/>★ 不納入版本控制")]:::gap
+    X(["401 未授權，導回登入頁"]):::act
     EN_X(("●")):::endterm
   end
 

@@ -9,22 +9,22 @@ flowchart TD
     S3(["看見空狀態"]):::act
     EN_S3(("●")):::endterm
   end
-  subgraph FE["家屬機 App"]
-    A1["MemoirsGalleryScreen 回憶錄畫廊畫面"]:::act
-    A2["MemoirService 讀取長輩回憶清單"]:::act
-    A3[("SharedPreferences（家屬機）<br/>uban_memoirs_{elderId}")]:::act
-    A4["過濾示範假資料 memoir_00*"]:::act
+  subgraph FE["家屬端"]
+    A1["回憶錄畫廊畫面"]:::act
+    A2["讀取長輩回憶清單"]:::act
+    A3[("家屬手機本機儲存<br/>（SharedPreferences）")]:::act
+    A4["過濾示範用假資料"]:::act
     A5{"本機有資料？"}:::dec
-    A6["MemoirDetailSheet 呈現"]:::act
+    A6["顯示故事內容"]:::act
   end
-  subgraph FE2["長輩機"]
+  subgraph FE2["長輩端"]
     PAD_FE2["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
     ST_E1(("&nbsp;")):::term
     E1["長輩錄製生命故事"]:::act
-    E2[("SharedPreferences（長輩機）<br/>uban_memoirs_{elderId}")]:::act
-    N1["上傳 API"]:::act
+    E2[("長輩手機本機儲存<br/>（SharedPreferences）")]:::act
+    N1["上傳功能"]:::act
     N2[("後端資料表")]:::act
-    N3["下載 API"]:::act
+    N3["下載功能"]:::act
   end
 
   ST_S1 --> S1
