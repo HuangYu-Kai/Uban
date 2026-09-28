@@ -1,0 +1,126 @@
+<mxfile host="app.diagrams.net">
+  <diagram name="A09-新手引導" id="0">
+    <mxGraphModel dx="4453" dy="2255" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1033" pageHeight="1699" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="lane_ROLE" parent="1" style="swimlane;html=1;horizontal=1;startSize=40;fillColor=none;strokeColor=#000000;fontSize=24;fontColor=#000000;fontStyle=0;swimlaneFillColor=none;collapsible=0;" value="長輩" vertex="1">
+          <mxGeometry height="1619" width="302" x="40" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="n_ST_S1" parent="lane_ROLE" style="ellipse;html=1;fillColor=#000000;strokeColor=#000000;" value="" vertex="1">
+          <mxGeometry height="46" width="46" x="128" y="87" as="geometry" />
+        </mxCell>
+        <mxCell id="n_S1" parent="lane_ROLE" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" value="進入某個底部分頁" vertex="1">
+          <mxGeometry height="48" width="190" x="56" y="187" as="geometry" />
+        </mxCell>
+        <mxCell id="n_S2" parent="lane_ROLE" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" value="點『知道了』前進下一步" vertex="1">
+          <mxGeometry height="48" width="250" x="26" y="1033" as="geometry" />
+        </mxCell>
+        <mxCell id="n_S3" parent="lane_ROLE" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" value="熟悉該頁操作" vertex="1">
+          <mxGeometry height="48" width="170" x="66" y="1417" as="geometry" />
+        </mxCell>
+        <mxCell id="n_EN_S3" parent="lane_ROLE" style="ellipse;html=1;shape=endState;fillColor=#000000;strokeColor=#000000;" value="" vertex="1">
+          <mxGeometry height="46" width="46" x="128" y="1519" as="geometry" />
+        </mxCell>
+        <mxCell id="lane_FE" parent="1" style="swimlane;html=1;horizontal=1;startSize=40;fillColor=none;strokeColor=#000000;fontSize=24;fontColor=#000000;fontStyle=0;swimlaneFillColor=none;collapsible=0;" value="長輩端" vertex="1">
+          <mxGeometry height="1619" width="651" x="342" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="n_A1" parent="lane_FE" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" value="&amp;nbsp;以 GlobalKey 定位要高光的按鈕" vertex="1">
+          <mxGeometry height="74" width="220" x="216" y="289" as="geometry" />
+        </mxCell>
+        <mxCell id="n_A2" parent="lane_FE" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" value="版面量測&lt;br&gt;是否完成？" vertex="1">
+          <mxGeometry height="126" width="212" x="220" y="417" as="geometry" />
+        </mxCell>
+        <mxCell id="n_A3" parent="lane_FE" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" value="延後一幀再重試" vertex="1">
+          <mxGeometry height="48" width="194" x="60" y="610" as="geometry" />
+        </mxCell>
+        <mxCell id="n_A4" parent="lane_FE" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" value="顯示新手導覽" vertex="1">
+          <mxGeometry height="48" width="190" x="415" y="610" as="geometry" />
+        </mxCell>
+        <mxCell id="n_A5" parent="lane_FE" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" value="此頁教學已看過？" vertex="1">
+          <mxGeometry height="91.5" width="212" x="404" y="719" as="geometry" />
+        </mxCell>
+        <mxCell id="n_A6" parent="lane_FE" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" value="畫面變暗、圈出按鈕並顯示提示" vertex="1">
+          <mxGeometry height="53" width="288" x="76" y="918" as="geometry" />
+        </mxCell>
+        <mxCell id="n_A7" parent="lane_FE" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" value="還有&lt;br&gt;下一步？" vertex="1">
+          <mxGeometry height="126" width="212" x="220" y="1135" as="geometry" />
+        </mxCell>
+        <mxCell id="n_A8" parent="lane_FE" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" value="寫入『已看過』旗標" vertex="1">
+          <mxGeometry height="48" width="210" x="220" y="1315" as="geometry" />
+        </mxCell>
+        <mxCell id="n_A9" parent="lane_FE" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=20;fontColor=#000000;" value="跳過，不打擾" vertex="1">
+          <mxGeometry height="48" width="170" x="425" y="918" as="geometry" />
+        </mxCell>
+        <mxCell id="n_EN_A9" parent="lane_FE" style="ellipse;html=1;shape=endState;fillColor=#000000;strokeColor=#000000;" value="" vertex="1">
+          <mxGeometry height="46" width="46" x="487" y="1009" as="geometry" />
+        </mxCell>
+        <mxCell id="e0" edge="1" parent="1" source="n_ST_S1" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="n_S1" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" edge="1" parent="1" source="n_S1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="n_A1" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" edge="1" parent="1" source="n_A1" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="n_A2" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" edge="1" parent="1" source="n_A2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="n_A3" value="[否]">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" edge="1" parent="1" source="n_A3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="n_A2" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="374.86" y="674" />
+              <mxPoint x="374.86" y="520" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e5" edge="1" parent="1" source="n_A2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="n_A4" value="[是]">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6" edge="1" parent="1" source="n_A4" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="n_A5" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e7" edge="1" parent="1" source="n_A5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="n_A9" value="[是]">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e8" edge="1" parent="1" source="n_A5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;entryPerimeter=0;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="n_A6" value="[否]">
+          <mxGeometry relative="1" x="-0.447" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e9" edge="1" parent="1" source="n_A6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="n_S2" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e10" edge="1" parent="1" source="n_S2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="n_A7" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e11" edge="1" parent="1" source="n_A7" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="n_A6" value="[是]">
+          <mxGeometry relative="1" x="-0.6454" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="375.83" y="1238" />
+              <mxPoint x="375.83" y="984.5" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e12" edge="1" parent="1" source="n_A7" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="n_A8" value="[否]">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e13" edge="1" parent="1" source="n_A8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="n_S3" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e14" edge="1" parent="1" source="n_S3" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="n_EN_S3" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e15" edge="1" parent="1" source="n_A9" style="edgeStyle=none;rounded=0;html=1;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;endArrow=classic;endFill=1;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="n_EN_A9" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points" />
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
