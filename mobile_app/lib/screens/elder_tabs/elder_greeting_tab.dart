@@ -1,0 +1,2020 @@
+import 'dart:async';
+import 'dart:io' as io;
+import 'dart:ui' as ui;
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:lunar/lunar.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../../models/almanac_data_helper.dart';
+import '../pet_companion_studio/models/pet_growth_state.dart';
+
+/// 兩種長輩圖模式：
+/// 1. 【經典圖文組合】：1:1 方形、常見風景花卉、嚴格避讓主體之文字安全區、50+精選金句、語音防呆排版
+/// 2. 【AI 智能生圖】：1:1 方形、3D Pixar 風格、3D 立體日曆、萌寵小豬、立體浮雕金字
+enum GreetingCardMode {
+  classic(
+    title: '經典圖文組合',
+    subtitle: '1:1 方形・花卉風景・招牌大字',
+    icon: Icons.local_florist_rounded,
+  ),
+  aiGenerated(
+    title: 'AI 智能生圖',
+    subtitle: '1:1 方形・3D立體日曆・萌寵慶賀',
+    icon: Icons.auto_awesome_rounded,
+  );
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+
+  const GreetingCardMode({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+  });
+}
+
+/// 圖庫分類項目資料結構
+class TemplateCategoryItem {
+  final String id;
+  final String label;
+  final IconData icon;
+
+  const TemplateCategoryItem({
+    required this.id,
+    required this.label,
+    required this.icon,
+  });
+}
+
+const List<TemplateCategoryItem> _templateCategories = [
+  TemplateCategoryItem(id: 'all', label: '🌟 全部精選', icon: Icons.auto_awesome_rounded),
+  TemplateCategoryItem(id: 'flower', label: '🌸 早安花卉', icon: Icons.local_florist_rounded),
+  TemplateCategoryItem(id: 'tea', label: '🍵 晨光茶席', icon: Icons.emoji_food_beverage_rounded),
+  TemplateCategoryItem(id: 'scenery', label: '⛰️ 四季山水', icon: Icons.terrain_rounded),
+  TemplateCategoryItem(id: 'solar_term', label: '🍂 時令節氣', icon: Icons.eco_rounded),
+  TemplateCategoryItem(id: 'festival', label: '🧧 節慶祝賀', icon: Icons.celebration_rounded),
+];
+
+/// 經典圖文成品範例（嚴格以「蓮花早安圖」為標準：定義安全避讓留白區）
+class ClassicPhotoTemplate {
+  final String id;
+  final String name;
+  final String bgAsset;
+  final IconData icon;
+  final Alignment textAlign;
+  final EdgeInsets textPadding;
+  final Color defaultColor;
+  final List<Shadow> defaultShadows;
+  final String defaultMain;
+  final String defaultSub;
+  final String categoryTag;
+  final String category; // 'flower', 'tea', 'scenery', 'solar_term', 'festival'
+  final bool isHolidaySpecial;
+  final bool isSolarTermSpecial;
+
+  const ClassicPhotoTemplate({
+    required this.id,
+    required this.name,
+    required this.bgAsset,
+    required this.icon,
+    required this.textAlign,
+    required this.textPadding,
+    required this.defaultColor,
+    required this.defaultShadows,
+    required this.defaultMain,
+    required this.defaultSub,
+    required this.categoryTag,
+    required this.category,
+    this.isHolidaySpecial = false,
+    this.isSolarTermSpecial = false,
+  });
+}
+
+/// AI 3D 智能生圖主題
+class AiArtTheme {
+  final String id;
+  final String name;
+  final String bgAsset;
+  final IconData icon;
+  final String badgeText;
+  final String defaultMain;
+  final String defaultSub;
+
+  const AiArtTheme({
+    required this.id,
+    required this.name,
+    required this.bgAsset,
+    required this.icon,
+    required this.badgeText,
+    required this.defaultMain,
+    required this.defaultSub,
+  });
+}
+
+/// 每日精選長輩金句項目
+class GoldenQuote {
+  final String mainTitle;
+  final String subTitle;
+  final String category;
+
+  const GoldenQuote({
+    required this.mainTitle,
+    required this.subTitle,
+    required this.category,
+  });
+}
+
+/// 👵 每日吉利長輩祝賀圖分頁（1:1 方形、成品範例主體避讓、50+金句、語音防呆排版）
+class ElderGreetingTab extends StatefulWidget {
+  final int userId;
+  final String userName;
+
+  const ElderGreetingTab({
+    super.key,
+    required this.userId,
+    required this.userName,
+  });
+
+  @override
+  State<ElderGreetingTab> createState() => _ElderGreetingTabState();
+}
+
+class _ElderGreetingTabState extends State<ElderGreetingTab> {
+  final GlobalKey _cardRepaintKey = GlobalKey();
+
+  // 模式切換：經典圖文 vs AI 智能生圖
+  GreetingCardMode _currentMode = GreetingCardMode.classic;
+
+  // 狀態資料
+  PetGrowthState? _petState;
+  late String _customSenderName;
+  bool _isSharing = false;
+  bool _isAiGenerating = false;
+
+  // 經典模式選中範本
+  int _classicTemplateIndex = 0;
+  // 經典字體樣式切換 (0: 招牌白光藍 1: 喜慶立體金 2: 暖陽純白)
+  int _classicFontStyleIndex = 0;
+
+  // AI 模式選中主題
+  int _aiThemeIndex = 0;
+
+  // 金句索引 (0 ~ 49)
+  int _currentQuoteIndex = 0;
+
+  // 範本預設文字覆寫
+  String? _customTemplateMainText;
+
+  // 日期與節氣資訊（用於 LINE 分享文字）
+  late DateTime _now;
+  late String _solarTerm;
+  late String _lunarDateStr;
+  late DayAlmanacInfo _almanacInfo;
+
+  // ════════════════════════════════════════════════════════════════
+  // 1. 經典圖文成品範例庫（嚴格定義留白避讓區，1:1 方形標準）
+  // ════════════════════════════════════════════════════════════════
+  final List<ClassicPhotoTemplate> _classicTemplates = const [
+    // 01 蓮花圖（早安花卉）
+    ClassicPhotoTemplate(
+      id: 'classic_lotus',
+      name: '出水芙蓉・蓮花仙韻',
+      bgAsset: 'assets/images/classic_lotus.png',
+      icon: Icons.local_florist_rounded,
+      categoryTag: '長輩必傳首選',
+      category: 'flower',
+      textAlign: Alignment.bottomLeft,
+      textPadding: EdgeInsets.only(left: 24, bottom: 26, right: 28, top: 30),
+      defaultColor: Color(0xFF0052D4), // 招牌亮寶藍
+      defaultShadows: [
+        Shadow(color: Colors.white, blurRadius: 26),
+        Shadow(color: Colors.white, blurRadius: 18),
+        Shadow(color: Colors.white, blurRadius: 10),
+        Shadow(color: Colors.white, blurRadius: 4),
+        Shadow(color: Color(0x99000000), blurRadius: 8, offset: Offset(2, 2)),
+      ],
+      defaultMain: '早安\n感謝\n祝您一天順利',
+      defaultSub: '心寬福就來，天天好心境。',
+    ),
+    // 02 晨光茶几（晨光茶席）
+    ClassicPhotoTemplate(
+      id: 'classic_tea_table',
+      name: '早茶歲月・一品清香',
+      bgAsset: 'assets/images/classic_tea_table.jpg',
+      icon: Icons.emoji_food_beverage_rounded,
+      categoryTag: '晨光茶韻',
+      category: 'tea',
+      textAlign: Alignment.topLeft,
+      textPadding: EdgeInsets.only(left: 24, top: 28, right: 30, bottom: 40),
+      defaultColor: Color(0xFFFDE047), // 溫潤金黃
+      defaultShadows: [
+        Shadow(color: Color(0xFF78350F), offset: Offset(2, 3), blurRadius: 6),
+        Shadow(color: Colors.black87, blurRadius: 12, offset: Offset(1, 2)),
+      ],
+      defaultMain: '早安 暖心\n喝杯好茶 順心吉祥',
+      defaultSub: '一壺清茶迎旭日，淡泊從容福自來。',
+    ),
+    // 03 阿里山茶園（四季山水）
+    ClassicPhotoTemplate(
+      id: 'classic_tea_mountain',
+      name: '阿里山茶香・晨曦朝陽',
+      bgAsset: 'assets/images/classic_tea_mountain.jpg',
+      icon: Icons.terrain_rounded,
+      categoryTag: '高山破曉',
+      category: 'scenery',
+      textAlign: Alignment.topCenter,
+      textPadding: EdgeInsets.only(left: 20, top: 28, right: 20, bottom: 40),
+      defaultColor: Color(0xFFFFD54F), // 朝陽金色
+      defaultShadows: [
+        Shadow(color: Color(0xFF92400E), offset: Offset(2, 3), blurRadius: 8),
+        Shadow(color: Colors.black87, blurRadius: 14, offset: Offset(1, 2)),
+      ],
+      defaultMain: '晨曦破曉・心寬福自來',
+      defaultSub: '陽光穿透薄霧，祝好友新的一天步步高升！',
+    ),
+    // 04 富貴牡丹（早安花卉）
+    ClassicPhotoTemplate(
+      id: 'classic_peony',
+      name: '花開富貴・牡丹迎春',
+      bgAsset: 'assets/images/classic_peony_flower.jpg',
+      icon: Icons.filter_vintage_rounded,
+      categoryTag: '繁花富貴',
+      category: 'flower',
+      textAlign: Alignment.topRight,
+      textPadding: EdgeInsets.only(left: 40, top: 28, right: 24, bottom: 40),
+      defaultColor: Colors.white,
+      defaultShadows: [
+        Shadow(color: Color(0xFF9D174D), blurRadius: 18),
+        Shadow(color: Colors.black, blurRadius: 10, offset: Offset(2, 2)),
+      ],
+      defaultMain: '花開富貴\n知足常樂 平安是福',
+      defaultSub: '錦上添花人歡喜，願您笑口常開、福澤綿長。',
+    ),
+    // 05 節慶限定・中秋賞月團圓（節慶祝賀）
+    ClassicPhotoTemplate(
+      id: 'festival_moon',
+      name: '節慶特選・中秋月圓',
+      bgAsset: 'assets/images/festival_moon_cake.jpg',
+      icon: Icons.nightlight_round,
+      categoryTag: '節慶限定・中秋',
+      category: 'festival',
+      textAlign: Alignment.topLeft,
+      textPadding: EdgeInsets.only(left: 24, top: 28, right: 30, bottom: 40),
+      defaultColor: Color(0xFFFEF08A),
+      defaultShadows: [
+        Shadow(color: Color(0xFF991B1B), blurRadius: 18),
+        Shadow(color: Colors.black, blurRadius: 12, offset: Offset(2, 2)),
+      ],
+      defaultMain: '中秋吉祥\n月圓人團圓 闔家安康',
+      defaultSub: '柚見佳節人長久，千里嬋娟共祝願！',
+      isHolidaySpecial: true,
+    ),
+    // 06 綠意禪心（晨光茶席 / 禪意）
+    ClassicPhotoTemplate(
+      id: 'zen_pond',
+      name: '綠意禪心・靜水微瀾',
+      bgAsset: 'assets/images/zen_pond_bg.png',
+      icon: Icons.spa_rounded,
+      categoryTag: '清幽禪意',
+      category: 'tea',
+      textAlign: Alignment.topLeft,
+      textPadding: EdgeInsets.only(left: 24, top: 28, right: 30, bottom: 30),
+      defaultColor: Color(0xFFFEF08A),
+      defaultShadows: [
+        Shadow(color: Color(0xFF065F46), blurRadius: 16),
+        Shadow(color: Colors.black87, blurRadius: 10, offset: Offset(2, 2)),
+      ],
+      defaultMain: '靜心常樂\n淡泊明志 福自來',
+      defaultSub: '心如止水無憂慮，天天喜樂伴安康。',
+    ),
+    // 07 破曉朝陽（四季山水）
+    ClassicPhotoTemplate(
+      id: 'morning_sun',
+      name: '旭日初升・山川吐霞',
+      bgAsset: 'assets/images/morning_bg.png',
+      icon: Icons.wb_twilight_rounded,
+      categoryTag: '晨光破曉',
+      category: 'scenery',
+      textAlign: Alignment.topCenter,
+      textPadding: EdgeInsets.only(left: 20, top: 28, right: 20, bottom: 30),
+      defaultColor: Color(0xFFFFD54F),
+      defaultShadows: [
+        Shadow(color: Color(0xFF92400E), blurRadius: 14),
+        Shadow(color: Colors.black87, blurRadius: 10, offset: Offset(2, 2)),
+      ],
+      defaultMain: '朝陽送暖\n祝好友事事順利',
+      defaultSub: '晨光普照天地闊，吉祥如意迎新朝。',
+    ),
+    // 08 白露時令（時令節氣）
+    ClassicPhotoTemplate(
+      id: 'solar_autumn_cool',
+      name: '時令節氣・白露凝涼',
+      bgAsset: 'assets/images/classic_tea_mountain.jpg',
+      icon: Icons.eco_rounded,
+      categoryTag: '節氣今日特選',
+      category: 'solar_term',
+      textAlign: Alignment.topCenter,
+      textPadding: EdgeInsets.only(left: 20, top: 28, right: 20, bottom: 30),
+      defaultColor: Color(0xFFE0F2FE),
+      defaultShadows: [
+        Shadow(color: Color(0xFF0369A1), blurRadius: 16),
+        Shadow(color: Colors.black87, blurRadius: 10, offset: Offset(2, 2)),
+      ],
+      defaultMain: '時令添衣\n順天應時保安康',
+      defaultSub: '節氣轉換早晚涼，記得多添薄衣裳。',
+      isSolarTermSpecial: true,
+    ),
+    // 09 霜降時節（時令節氣）
+    ClassicPhotoTemplate(
+      id: 'solar_frost',
+      name: '時令節氣・霜降福安',
+      bgAsset: 'assets/images/classic_tea_table.jpg',
+      icon: Icons.severe_cold_rounded,
+      categoryTag: '節氣特選',
+      category: 'solar_term',
+      textAlign: Alignment.topLeft,
+      textPadding: EdgeInsets.only(left: 24, top: 28, right: 30, bottom: 30),
+      defaultColor: Color(0xFFFEF3C7),
+      defaultShadows: [
+        Shadow(color: Color(0xFF78350F), blurRadius: 16),
+        Shadow(color: Colors.black87, blurRadius: 10, offset: Offset(2, 2)),
+      ],
+      defaultMain: '霜降平安\n防寒保暖身心泰',
+      defaultSub: '秋盡冬來迎新季，祝好友闔家幸福、四季平安。',
+      isSolarTermSpecial: true,
+    ),
+    // 10 歲時年節（節慶祝賀）
+    ClassicPhotoTemplate(
+      id: 'festival_cny',
+      name: '歲時年節・春滿乾坤',
+      bgAsset: 'assets/images/classic_peony_flower.jpg',
+      icon: Icons.celebration_rounded,
+      categoryTag: '年節特選',
+      category: 'festival',
+      textAlign: Alignment.topRight,
+      textPadding: EdgeInsets.only(left: 30, top: 28, right: 24, bottom: 30),
+      defaultColor: Color(0xFFFEF08A),
+      defaultShadows: [
+        Shadow(color: Color(0xFF991B1B), blurRadius: 20),
+        Shadow(color: Colors.black87, blurRadius: 10, offset: Offset(2, 2)),
+      ],
+      defaultMain: '春滿人間\n福祿壽全富貴長',
+      defaultSub: '歲序更替迎新春，全家老少福泰安康。',
+      isHolidaySpecial: true,
+    ),
+  ];
+
+  // ════════════════════════════════════════════════════════════════
+  // 2. AI 智能 3D 立體主題庫（1:1 方形）
+  // ════════════════════════════════════════════════════════════════
+  final List<AiArtTheme> _aiThemes = const [
+    AiArtTheme(
+      id: 'ai_pig_calendar',
+      name: '3D 萌寵立體日曆',
+      bgAsset: 'assets/images/ai_card_pig_calendar.jpg',
+      icon: Icons.calendar_month_rounded,
+      badgeText: '🤖 AI 3D 實木桌曆・萌寵慶生',
+      defaultMain: '萬事勝意・日日是好日',
+      defaultSub: '元氣小豬伴您天天活力滿滿，福泰安康！',
+    ),
+    AiArtTheme(
+      id: 'ai_pig_fortune',
+      name: '3D 祥瑞捧金元寶',
+      bgAsset: 'assets/images/ai_card_pig_fortune.jpg',
+      icon: Icons.stars_rounded,
+      badgeText: '🤖 AI 3D 金元寶・祥雲宮燈',
+      defaultMain: '招財納福・福星高照',
+      defaultSub: '今日吉星拱照，全家健康平安、財源滾滾來！',
+    ),
+    AiArtTheme(
+      id: 'ai_birthday_3d',
+      name: '3D 歡慶立體祝壽',
+      bgAsset: 'assets/images/ai_card_birthday_3d.jpg',
+      icon: Icons.cake_rounded,
+      badgeText: '🤖 AI 3D 浮雕大日曆・生辰祝壽',
+      defaultMain: '福如東海・壽比南山',
+      defaultSub: '歲月靜好、平安喜樂，祝您天天笑口常開！',
+    ),
+  ];
+
+  // ════════════════════════════════════════════════════════════════
+  // 3. 擴充至 50 句的長輩金句庫（五大分類）
+  // ════════════════════════════════════════════════════════════════
+  final List<GoldenQuote> _quotes = const [
+    // 🌸 一、早安感謝 (10 句)
+    GoldenQuote(category: '早安感謝', mainTitle: '早安\n感謝\n祝您一天順利', subTitle: '心寬福就來，天天好心境，身心安康萬事興。'),
+    GoldenQuote(category: '早安感謝', mainTitle: '晨光送暖\n祝好友事事順心', subTitle: '一縷清風送吉祥，願今天所有的美好都與您相伴。'),
+    GoldenQuote(category: '早安感謝', mainTitle: '早安吉祥\n微笑迎接新的一天', subTitle: '開心度過每一天，心寬病不來，平安是真福。'),
+    GoldenQuote(category: '早安感謝', mainTitle: '清晨問候\n願您喜樂安康', subTitle: '千言萬語道一聲早，深深祝福朋友身體健步如飛！'),
+    GoldenQuote(category: '早安感謝', mainTitle: '早安如意\n心中有愛日日晴', subTitle: '世間萬物皆美好，只要心境寬廣，天天都是艷陽天。'),
+    GoldenQuote(category: '早安感謝', mainTitle: '朝陽迎福\n祝您精神百倍', subTitle: '開啟朝氣滿滿的一天，走走路、喝口茶，逍遙自在。'),
+    GoldenQuote(category: '早安感謝', mainTitle: '早安道好\n天天平安天天好', subTitle: '問候隨晨風而來，願好友健康快樂、笑口常開。'),
+    GoldenQuote(category: '早安感謝', mainTitle: '晨曦微風\n送上滿滿的祝福', subTitle: '走過歲月珍惜緣分，祝願老友生活甜甜、幸福綿綿。'),
+    GoldenQuote(category: '早安感謝', mainTitle: '早晨好心情\n幸福快樂隨身行', subTitle: '感謝生命中的每一位好友，願大家平安喜樂每一天。'),
+    GoldenQuote(category: '早安感謝', mainTitle: '開門見喜\n祝大家順風順水', subTitle: '早起深呼吸，精神好、身體好，好運自然跟著到。'),
+
+    // 🌿 二、平安健康 (10 句)
+    GoldenQuote(category: '平安健康', mainTitle: '知足常樂\n平安就是福', subTitle: '人生最大的財富是健康，最好的境界是平安。'),
+    GoldenQuote(category: '平安健康', mainTitle: '身心安康\n無病無痛樂逍遙', subTitle: '粗茶淡飯皆滋味，健步如飛身骨強，祝好友長壽安康。'),
+    GoldenQuote(category: '平安健康', mainTitle: '走路強身\n日日健步活力旺', subTitle: '每天動一動、心情放輕鬆，小豬伴阿公天天散步去！'),
+    GoldenQuote(category: '平安健康', mainTitle: '健康第一\n平安才是真富貴', subTitle: '不攀比、不焦慮，身心舒暢、兒女爭氣便是好福氣。'),
+    GoldenQuote(category: '平安健康', mainTitle: '心寬壽長\n笑看人生萬事安', subTitle: '萬事隨緣心自在，少生悶氣多歡笑，松柏長青壽綿延。'),
+    GoldenQuote(category: '平安健康', mainTitle: '飲水暖胃\n保重身體迎朝陽', subTitle: '清晨一杯溫開水，滋潤身心氣色好，祝您活力四射。'),
+    GoldenQuote(category: '平安健康', mainTitle: '福壽雙全\n松柏長青樂陶陶', subTitle: '願您福如東海浩瀚長，壽比南山不老松！'),
+    GoldenQuote(category: '平安健康', mainTitle: '神清氣爽\n安泰祥和福氣來', subTitle: '心平氣和百病消，早起活動手腳健，祝您元氣滿分。'),
+    GoldenQuote(category: '平安健康', mainTitle: '歲月靜好\n身體硬朗最快活', subTitle: '粗茶淡飯養天年，逍遙自在心無憂，早安吉祥。'),
+    GoldenQuote(category: '平安健康', mainTitle: '福星高照\n長命百歲喜盈門', subTitle: '家有老者如獲至寶，願長輩身強體健、闔府安泰。'),
+
+    // 🍵 三、知足禪意 (10 句)
+    GoldenQuote(category: '知足禪意', mainTitle: '心寬福就來\n天天順心如意', subTitle: '心有多寬，福有多深。凡事看開，天地自然寬闊。'),
+    GoldenQuote(category: '知足禪意', mainTitle: '一壺清茶\n淡看世事皆美好', subTitle: '品一口清茶，留一片心香，願好友天天順風順水。'),
+    GoldenQuote(category: '知足禪意', mainTitle: '日日是好日\n時時好心情', subTitle: '不為往事憂，只為餘生笑，每一天都是最好的安排。'),
+    GoldenQuote(category: '知足禪意', mainTitle: '隨緣自得\n心中無事勝神仙', subTitle: '春有百花秋有月，若無閒事掛心頭，便是人間好時節。'),
+    GoldenQuote(category: '知足禪意', mainTitle: '看淡得失\n平安知足即是福', subTitle: '少計較多感恩，珍惜眼前擁有的，幸福就在身邊。'),
+    GoldenQuote(category: '知足禪意', mainTitle: '厚德載物\n善心常在福自生', subTitle: '善念如春風，福報自然來，祝好友天天心花怒放。'),
+    GoldenQuote(category: '知足禪意', mainTitle: '花開見佛\n心靜處處有清香', subTitle: '心清神自寧，淡泊名與利，平安吉祥常相伴。'),
+    GoldenQuote(category: '知足禪意', mainTitle: '放下執念\n天地寬廣任逍遙', subTitle: '人生是一場修行，看透得失心自在，祝您喜樂安詳。'),
+    GoldenQuote(category: '知足禪意', mainTitle: '珍惜當下\n平凡日子最溫暖', subTitle: '每天能吃能走能歡笑，就是人間最美好的幸福。'),
+    GoldenQuote(category: '知足禪意', mainTitle: '心善語柔\n廣結善緣納千祥', subTitle: '一言一句皆是福，和顏悅色迎親友，早安大吉。'),
+
+    // 🍂 四、時令節氣 (10 句)
+    GoldenQuote(category: '時令節氣', mainTitle: '時令添衣\n順應天時保安康', subTitle: '節氣轉換早晚涼，記得多添薄衣裳，溫水暖胃保平安。'),
+    GoldenQuote(category: '時令節氣', mainTitle: '秋意漸濃\n早晚溫差多保重', subTitle: '微涼秋風送清爽，出門散步多小心，祝好友順遂。'),
+    GoldenQuote(category: '時令節氣', mainTitle: '立秋納福\n五穀豐收身心泰', subTitle: '秋水長天共一色，祝好友秋日收穫滿滿、吉祥如意。'),
+    GoldenQuote(category: '時令節氣', mainTitle: '白露凝霜\n莫貪清涼多添衣', subTitle: '節氣提醒您多保重，溫潤飲食少寒涼，早安吉祥。'),
+    GoldenQuote(category: '時令節氣', mainTitle: '寒露添暖\n願您溫暖過秋冬', subTitle: '添衣加被保身體，暖心問候傳老友，順心安康。'),
+    GoldenQuote(category: '時令節氣', mainTitle: '霜降平安\n防寒保暖心自寬', subTitle: '秋盡冬來迎新季，祝好友闔家幸福、四季平安。'),
+    GoldenQuote(category: '時令節氣', mainTitle: '冬至安康\n紅白湯圓添歲福', subTitle: '一碗甜湯圓，全家大團圓，祝您福氣滿滿多喜樂。'),
+    GoldenQuote(category: '時令節氣', mainTitle: '春暖花開\n萬物復甦迎好運', subTitle: '春風送暖百花開，新的一季氣象新，萬事勝意。'),
+    GoldenQuote(category: '時令節氣', mainTitle: '清明安泰\n春光明媚順心意', subTitle: '春雨綿綿潤萬物，思親念故享清福，早安安好。'),
+    GoldenQuote(category: '時令節氣', mainTitle: '歲時輪轉\n節氣平安伴身邊', subTitle: '春去秋來四季好，歲月沉澱情意真，祝好友長壽康泰。'),
+
+    // 👨‍👩‍👧‍👦 五、家庭親情 (10 句)
+    GoldenQuote(category: '家庭親情', mainTitle: '一家和睦\n富貴吉祥萬事成', subTitle: '家和萬事興，心中常存感恩心，祝全家老少平安。'),
+    GoldenQuote(category: '家庭親情', mainTitle: '兒孫滿堂\n福祿綿延天賜祥', subTitle: '晚輩孝順、長輩安泰，一家其樂融融是最大福氣。'),
+    GoldenQuote(category: '家庭親情', mainTitle: '感謝有您\n真摯友情長相隨', subTitle: '相遇是緣分，相知是幸福，祝老同學、老朋友天天快樂！'),
+    GoldenQuote(category: '家庭親情', mainTitle: '走過歲月\n珍惜每一位老友', subTitle: '常聯繫心不遠，一杯茶話當年，願彼此長命百歲。'),
+    GoldenQuote(category: '家庭親情', mainTitle: '親情無價\n一家平安樂融融', subTitle: '孩子在外平安工作，長輩在家身體安康，全家美滿。'),
+    GoldenQuote(category: '家庭親情', mainTitle: '心繫晚輩\n願孩子出門皆平安', subTitle: '老父親、老母親的牽掛，祝兒女在外順心、身體強壯。'),
+    GoldenQuote(category: '家庭親情', mainTitle: '老伴同行\n相知相守幸福長', subTitle: '少年夫妻老來伴，平平淡淡才是真，祝天天開心。'),
+    GoldenQuote(category: '家庭親情', mainTitle: '好友同樂\n常常聯繫情意深', subTitle: '天氣好出門走走，泡茶聊天敘舊情，早安順遂。'),
+    GoldenQuote(category: '家庭親情', mainTitle: '福澤子孫\n世代和諧家道昌', subTitle: '言傳身教留美德，一家祥和福澤厚，祝大家富貴安康。'),
+    GoldenQuote(category: '家庭親情', mainTitle: '同舟共濟\n歲月深處有溫情', subTitle: '感恩身邊所有陪伴我們的人，願幸福永遠圍繞您。'),
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _customSenderName = widget.userName.trim().isNotEmpty ? widget.userName : '萬發阿公';
+    _customTemplateMainText = _classicTemplates[0].defaultMain;
+    _initDateAndAlmanac();
+    _loadPetState();
+    _checkAndPrioritizeHolidayTemplates();
+  }
+
+  void _initDateAndAlmanac() {
+    _now = DateTime.now();
+    _almanacInfo = AlmanacDataHelper.calculateForDate(_now);
+    final lunar = Lunar.fromDate(_now);
+    _lunarDateStr = '農曆${lunar.getMonthInChinese()}月${lunar.getDayInChinese()}';
+
+    String term = lunar.getJieQi();
+    if (term.isEmpty) {
+      try {
+        term = lunar.getPrevJieQi(true).getName();
+      } catch (_) {
+        term = '秋分';
+      }
+    }
+    _solarTerm = term;
+  }
+
+  /// 節日自動置頂機制：在特定節慶時自動優先推薦節慶卡片
+  void _checkAndPrioritizeHolidayTemplates() {
+    final lunar = Lunar.fromDate(_now);
+    final lunarMonth = lunar.getMonth();
+    final lunarDay = lunar.getDay();
+
+    // 中秋節偵測（農曆八月十三至八月十七）
+    final isMidAutumn = (lunarMonth == 8 && lunarDay >= 13 && lunarDay <= 17);
+    if (isMidAutumn) {
+      final idx = _classicTemplates.indexWhere((t) => t.id == 'festival_moon');
+      if (idx != -1) {
+        _classicTemplateIndex = idx;
+        _customTemplateMainText = _classicTemplates[idx].defaultMain;
+      }
+    }
+  }
+
+  Future<void> _loadPetState() async {
+    try {
+      final state = await PetStorageService.loadState();
+      if (mounted) {
+        setState(() {
+          _petState = state;
+        });
+      }
+    } catch (e) {
+      debugPrint('⚠️ 載入小豬狀態失敗: $e');
+    }
+  }
+
+  void _switchMode(GreetingCardMode mode) {
+    if (_currentMode == mode) return;
+    HapticFeedback.mediumImpact();
+    setState(() {
+      _currentMode = mode;
+    });
+  }
+
+  /// 經典模式切換字體發光顏色
+  void _cycleClassicFontStyle() {
+    HapticFeedback.lightImpact();
+    setState(() {
+      _classicFontStyleIndex = (_classicFontStyleIndex + 1) % 3;
+    });
+  }
+
+  /// 循環切換 50+ 句精選金句
+  void _nextQuote() {
+    HapticFeedback.lightImpact();
+    setState(() {
+      _customTemplateMainText = null;
+      _currentQuoteIndex = (_currentQuoteIndex + 1) % _quotes.length;
+    });
+  }
+
+  /// AI 模式下重新生成
+  Future<void> _triggerAiRegeneration() async {
+    HapticFeedback.heavyImpact();
+    setState(() => _isAiGenerating = true);
+
+    await Future.delayed(const Duration(milliseconds: 1400));
+
+    if (mounted) {
+      setState(() {
+        _aiThemeIndex = (_aiThemeIndex + 1) % _aiThemes.length;
+        _currentQuoteIndex = (_currentQuoteIndex + 1) % _quotes.length;
+        _isAiGenerating = false;
+      });
+      HapticFeedback.vibrate();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: const Color(0xFF6366F1),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 3),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          content: Row(
+            children: [
+              const Icon(Icons.auto_awesome_rounded, color: Colors.amber, size: 24),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  '✨ AI 已成功為您繪製全新 3D【${_aiThemes[_aiThemeIndex].name}】！',
+                  style: GoogleFonts.notoSansTc(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+  }
+
+  String _getCurrentMainText() {
+    if (_currentMode == GreetingCardMode.classic) {
+      if (_customTemplateMainText != null) return _customTemplateMainText!;
+      return _quotes[_currentQuoteIndex].mainTitle;
+    } else {
+      return _aiThemes[_aiThemeIndex].defaultMain;
+    }
+  }
+
+  String _getCurrentSubText() {
+    if (_currentMode == GreetingCardMode.classic) {
+      return _quotes[_currentQuoteIndex].subTitle;
+    } else {
+      return _aiThemes[_aiThemeIndex].defaultSub;
+    }
+  }
+
+  /// 擷取長輩圖畫布為 PNG
+  Future<Uint8List?> _captureCardImage() async {
+    try {
+      final boundary = _cardRepaintKey.currentContext?.findRenderObject()
+          as RenderRepaintBoundary?;
+      if (boundary == null) return null;
+      final ui.Image image = await boundary.toImage(pixelRatio: 2.8);
+      final ByteData? byteData =
+          await image.toByteData(format: ui.ImageByteFormat.png);
+      return byteData?.buffer.asUint8List();
+    } catch (e) {
+      debugPrint('❌ 截圖失敗: $e');
+      return null;
+    }
+  }
+
+  /// 一鍵分享至 LINE（支援圖片與附帶文字）
+  Future<void> _shareToLine() async {
+    if (_isSharing) return;
+    setState(() => _isSharing = true);
+    HapticFeedback.heavyImpact();
+
+    final pigTitle = _petState?.stage.title ?? '元氣小福豬';
+    final vitality = _petState?.vitality ?? 95;
+    final String mainText = _getCurrentMainText().replaceAll('\n', '，');
+    final String subText = _getCurrentSubText();
+
+    final shareText =
+        '【$_customSenderName 的早安祝福 (${_currentMode.title})】\n'
+        '🌸 ${_now.month}月${_now.day}日 ($_lunarDateStr・$_solarTerm)\n'
+        '📜 今日宜: ${_almanacInfo.yiList.take(3).join("、")}\n'
+        '✨ $mainText\n'
+        '💖 $subText\n'
+        '🐷 元氣小豬【$pigTitle】活力$vitality% 伴大家吉祥！';
+
+    try {
+      final pngBytes = await _captureCardImage();
+
+      if (pngBytes != null) {
+        if (kIsWeb) {
+          // ignore: deprecated_member_use
+          await Share.shareXFiles(
+            [
+              XFile.fromData(
+                pngBytes,
+                mimeType: 'image/png',
+                name: 'uban_greeting_${_now.millisecondsSinceEpoch}.png',
+              ),
+            ],
+            text: shareText,
+          );
+        } else {
+          final tempDir = await getTemporaryDirectory();
+          final filePath =
+              '${tempDir.path}/uban_greeting_${_now.millisecondsSinceEpoch}.png';
+          final file = await io.File(filePath).create();
+          await file.writeAsBytes(pngBytes);
+
+          // ignore: deprecated_member_use
+          await Share.shareXFiles(
+            [XFile(file.path)],
+            text: shareText,
+          );
+        }
+      } else {
+        final lineUrl = Uri.parse(
+            'https://line.me/R/share?text=${Uri.encodeComponent(shareText)}');
+        if (await canLaunchUrl(lineUrl)) {
+          await launchUrl(lineUrl, mode: LaunchMode.externalApplication);
+        }
+      }
+    } catch (e) {
+      debugPrint('分享異常: $e');
+    } finally {
+      if (mounted) setState(() => _isSharing = false);
+    }
+  }
+
+  /// 保存卡片至相簿
+  Future<void> _saveToDevice() async {
+    HapticFeedback.mediumImpact();
+    setState(() => _isSharing = true);
+    try {
+      final pngBytes = await _captureCardImage();
+      if (pngBytes != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: const Color(0xFF1E8E62),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 4),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle_rounded, color: Colors.white, size: 28),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    '🎉 祝賀圖已準備好！隨時可以到 LINE 傳給親友群囉！',
+                    style: GoogleFonts.notoSansTc(fontSize: 16.5, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSharing = false);
+    }
+  }
+
+  /// 編輯落款名稱
+  void _editSenderName() {
+    final controller = TextEditingController(text: _customSenderName);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Text(
+          '✏️ 設定您的祝賀署名',
+          style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold, fontSize: 20),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('這會印在長輩圖右下角的專屬標章上：',
+                style: GoogleFonts.notoSansTc(color: Colors.grey[700], fontSize: 15)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              maxLength: 10,
+              style: GoogleFonts.notoSansTc(fontSize: 18, fontWeight: FontWeight.bold),
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: Colors.grey[100],
+                hintText: '例：萬發阿公、秀枝阿嬤',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('取消', style: GoogleFonts.notoSansTc(fontSize: 16)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final newName = controller.text.trim();
+              if (newName.isNotEmpty) {
+                setState(() => _customSenderName = newName);
+              }
+              Navigator.pop(ctx);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF2E7D78),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            ),
+            child: Text('確定', style: GoogleFonts.notoSansTc(fontSize: 16, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Color(0xFF55B695),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            // 頂部列：喜慶標題與朗讀
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 8, 18, 10),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.25),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.wb_sunny_rounded, color: Colors.white, size: 28),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '每日吉祥祝賀圖',
+                          style: GoogleFonts.notoSansTc(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        Text(
+                          '1:1 方形・結合節氣與小豬・一鍵傳 LINE',
+                          style: GoogleFonts.notoSansTc(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white.withValues(alpha: 0.9),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // 主內容視圖（宣紙溫暖大底盤）
+            Expanded(
+              child: Container(
+                decoration: const BoxDecoration(
+                  color: Color(0xFFFAF7F2),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+                  boxShadow: [
+                    BoxShadow(color: Color(0x1A000000), blurRadius: 16, offset: Offset(0, -3)),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final bool isTablet = constraints.maxWidth >= 680;
+                      if (isTablet) {
+                        return _buildTabletLayout();
+                      } else {
+                        return _buildPhoneLayout();
+                      }
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 📱 平板 / 寬螢幕雙欄佈局：左欄 1:1 卡片，右欄工具與一鍵傳 LINE，長輩不需滾動
+  Widget _buildTabletLayout() {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 左欄：卡片預覽區
+        Expanded(
+          flex: 5,
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(24, 16, 16, 120),
+            child: Column(
+              children: [
+                _buildModeSelector(),
+                const SizedBox(height: 16),
+                Center(
+                  child: RepaintBoundary(
+                    key: _cardRepaintKey,
+                    child: _buildSquarePreviewCard(maxWidth: 480),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        // 右欄：控制面板、工具與分享按鈕（長輩不用滾動就能立刻看到按鈕）
+        Expanded(
+          flex: 6,
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(16, 16, 24, 120),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (_currentMode == GreetingCardMode.classic)
+                  _buildClassicTemplateSelectorBar(),
+                const SizedBox(height: 14),
+                if (_currentMode == GreetingCardMode.classic)
+                  _buildClassicActionTools()
+                else
+                  _buildAiActionTools(),
+                const SizedBox(height: 18),
+                _buildLineShareButton(),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _saveToDevice,
+                        icon: const Icon(Icons.download_rounded, size: 22),
+                        label: Text(
+                          '保存到相簿',
+                          style: GoogleFonts.notoSansTc(fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF2E7D78),
+                          side: const BorderSide(color: Color(0xFF2E7D78), width: 1.8),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _editSenderName,
+                        icon: const Icon(Icons.edit_note_rounded, size: 22),
+                        label: Text(
+                          '換我的名字',
+                          style: GoogleFonts.notoSansTc(fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF475569),
+                          side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.8),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 📱 手機直向單欄佈局
+  Widget _buildPhoneLayout() {
+    return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 120),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildModeSelector(),
+          const SizedBox(height: 14),
+          Center(
+            child: RepaintBoundary(
+              key: _cardRepaintKey,
+              child: _buildSquarePreviewCard(maxWidth: 400),
+            ),
+          ),
+          const SizedBox(height: 14),
+          if (_currentMode == GreetingCardMode.classic)
+            _buildClassicTemplateSelectorBar(),
+          const SizedBox(height: 14),
+          if (_currentMode == GreetingCardMode.classic)
+            _buildClassicActionTools()
+          else
+            _buildAiActionTools(),
+          const SizedBox(height: 16),
+          _buildLineShareButton(),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _saveToDevice,
+                  icon: const Icon(Icons.download_rounded, size: 22),
+                  label: Text(
+                    '保存到相簿',
+                    style: GoogleFonts.notoSansTc(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF2E7D78),
+                    side: const BorderSide(color: Color(0xFF2E7D78), width: 1.8),
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _editSenderName,
+                  icon: const Icon(Icons.edit_note_rounded, size: 22),
+                  label: Text(
+                    '換我的名字',
+                    style: GoogleFonts.notoSansTc(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF475569),
+                    side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.8),
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 模式切換按鈕
+  Widget _buildModeSelector() {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE2E8F0),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _buildModeTab(
+              mode: GreetingCardMode.classic,
+              isSelected: _currentMode == GreetingCardMode.classic,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: _buildModeTab(
+              mode: GreetingCardMode.aiGenerated,
+              isSelected: _currentMode == GreetingCardMode.aiGenerated,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildModeTab({
+    required GreetingCardMode mode,
+    required bool isSelected,
+  }) {
+    return GestureDetector(
+      onTap: () => _switchMode(mode),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.white : Colors.transparent,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.08),
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              mode.icon,
+              size: 20,
+              color: isSelected ? const Color(0xFF2E7D78) : const Color(0xFF64748B),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              mode.title,
+              style: GoogleFonts.notoSansTc(
+                fontSize: 16,
+                fontWeight: isSelected ? FontWeight.w900 : FontWeight.w700,
+                color: isSelected ? const Color(0xFF1E293B) : const Color(0xFF64748B),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 1:1 方形預覽卡片
+  Widget _buildSquarePreviewCard({double? maxWidth}) {
+    return Container(
+      width: double.infinity,
+      constraints: BoxConstraints(maxWidth: maxWidth ?? 480),
+      child: AspectRatio(
+        aspectRatio: 1.0, // ★ 嚴格 1:1 方形，LINE 預覽最完美不被裁切
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.black,
+            borderRadius: BorderRadius.circular(22),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.22),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(22),
+            child: _currentMode == GreetingCardMode.classic
+                ? _buildClassicSquareContent()
+                : _buildAiSquareContent(),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 模式一：經典圖文 1:1 方形內容（純粹大字！嚴格主體避讓排版）
+  Widget _buildClassicSquareContent() {
+    final tpl = _classicTemplates[_classicTemplateIndex];
+    final String mainText = _getCurrentMainText();
+
+    return Stack(
+      children: [
+        // 背景相片（1:1 滿版）
+        Positioned.fill(
+          child: Image.asset(
+            tpl.bgAsset,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => Container(color: const Color(0xFF0F766E)),
+          ),
+        ),
+
+        // ★ 輕柔透明遮罩（不破壞相片原色，僅微調字底對比）
+        Positioned.fill(
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.black.withValues(alpha: 0.10),
+                  Colors.transparent,
+                  Colors.black.withValues(alpha: 0.22),
+                ],
+                stops: const [0.0, 0.45, 1.0],
+              ),
+            ),
+          ),
+        ),
+
+        // ★ 核心黃金律：純粹超大字！無任何日期、時間或多餘小字干擾
+        Align(
+          alignment: tpl.textAlign,
+          child: Padding(
+            padding: tpl.textPadding,
+            child: _buildClassicTypography(mainText, tpl),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 模式二：AI 智能生圖 1:1 方形內容
+  Widget _buildAiSquareContent() {
+    final theme = _aiThemes[_aiThemeIndex];
+    final String mainText = _getCurrentMainText();
+
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: Image.asset(
+            theme.bgAsset,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => Container(color: const Color(0xFF1E1B4B)),
+          ),
+        ),
+        Positioned.fill(
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.black.withValues(alpha: 0.30),
+                  Colors.transparent,
+                  Colors.black.withValues(alpha: 0.65),
+                  Colors.black.withValues(alpha: 0.88),
+                ],
+                stops: const [0.0, 0.40, 0.70, 1.0],
+              ),
+            ),
+          ),
+        ),
+        if (_isAiGenerating)
+          Positioned.fill(
+            child: Container(
+              color: Colors.black.withValues(alpha: 0.65),
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const CircularProgressIndicator(color: Colors.amber, strokeWidth: 4),
+                    const SizedBox(height: 14),
+                    Text('🤖 AI 正在渲染 3D 場景…', style: GoogleFonts.notoSansTc(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold)),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+        // ★ 純粹 3D 浮雕超大字祝賀（無多餘標籤干擾）
+        Positioned(
+          left: 20,
+          right: 20,
+          bottom: 28,
+          child: _buildAiTypography(mainText),
+        ),
+      ],
+    );
+  }
+
+  /// AI 模式 3D 浮雕大字排版
+  Widget _buildAiTypography(String text) {
+    final cleanText = text.replaceAll('・', '\n');
+    final lines = cleanText.split('\n');
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: lines.map((line) {
+        final trimmed = line.trim();
+        if (trimmed.isEmpty) return const SizedBox.shrink();
+
+        double fontSize = trimmed.length <= 4 ? 54.0 : 44.0;
+
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2.0),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Stack(
+              children: [
+                // 琥珀紅棕立體描邊
+                Text(
+                  trimmed,
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: fontSize,
+                    fontWeight: FontWeight.w900,
+                    height: 1.15,
+                    letterSpacing: 2.0,
+                    foreground: Paint()
+                      ..style = PaintingStyle.stroke
+                      ..strokeWidth = 8.0
+                      ..strokeCap = StrokeCap.round
+                      ..strokeJoin = StrokeJoin.round
+                      ..color = const Color(0xFF78350F),
+                  ),
+                ),
+                // 3D 金黃實心文字
+                Text(
+                  trimmed,
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: fontSize,
+                    fontWeight: FontWeight.w900,
+                    height: 1.15,
+                    letterSpacing: 2.0,
+                    color: const Color(0xFFFDE68A),
+                    shadows: const [
+                      Shadow(color: Color(0xFF78350F), offset: Offset(2, 4), blurRadius: 4),
+                      Shadow(color: Colors.black, offset: Offset(0, 5), blurRadius: 10),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  /// 經典長輩圖招牌大字字效渲染（專注於超大字號、立體實心描邊 ＋ 招牌外發光）
+  Widget _buildClassicTypography(String text, ClassicPhotoTemplate tpl) {
+    Color textColor = tpl.defaultColor;
+    Color strokeColor = Colors.white;
+    List<Shadow> outerGlow = tpl.defaultShadows;
+
+    if (_classicFontStyleIndex == 1) {
+      textColor = const Color(0xFFFDE047);
+      strokeColor = const Color(0xFF78350F);
+      outerGlow = const [
+        Shadow(color: Color(0xFF92400E), blurRadius: 16),
+        Shadow(color: Colors.black87, blurRadius: 10, offset: Offset(2, 2)),
+      ];
+    } else if (_classicFontStyleIndex == 2) {
+      textColor = Colors.white;
+      strokeColor = const Color(0xFF0369A1);
+      outerGlow = const [
+        Shadow(color: Color(0xFF38BDF8), blurRadius: 20),
+        Shadow(color: Colors.black87, blurRadius: 8, offset: Offset(2, 2)),
+      ];
+    }
+
+    final lines = text.split('\n');
+
+    CrossAxisAlignment columnAlign = CrossAxisAlignment.start;
+    if (tpl.textAlign == Alignment.topRight || tpl.textAlign == Alignment.bottomRight) {
+      columnAlign = CrossAxisAlignment.end;
+    } else if (tpl.textAlign == Alignment.topCenter || tpl.textAlign == Alignment.bottomCenter || tpl.textAlign == Alignment.center) {
+      columnAlign = CrossAxisAlignment.center;
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: columnAlign,
+      children: lines.map((line) {
+        final trimmed = line.trim();
+        if (trimmed.isEmpty) return const SizedBox.shrink();
+
+        // 根據字數精確計算超大字體尺寸：2字 72px、3~4字 58px、5~6字 46px
+        double fontSize = 58.0;
+        double letterSpacing = 2.0;
+        double strokeWidth = 9.0;
+
+        if (trimmed.length <= 2) {
+          fontSize = 72.0;
+          letterSpacing = 6.0;
+          strokeWidth = 10.0;
+        } else if (trimmed.length <= 4) {
+          fontSize = 58.0;
+          letterSpacing = 3.0;
+          strokeWidth = 9.0;
+        } else if (trimmed.length <= 6) {
+          fontSize = 46.0;
+          letterSpacing = 1.5;
+          strokeWidth = 8.0;
+        } else {
+          fontSize = 38.0;
+          letterSpacing = 1.0;
+          strokeWidth = 7.0;
+        }
+
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2.0),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: columnAlign == CrossAxisAlignment.end
+                ? Alignment.centerRight
+                : (columnAlign == CrossAxisAlignment.center ? Alignment.center : Alignment.centerLeft),
+            child: Stack(
+              children: [
+                // 1. 底層：極粗圓潤實心描邊（打造長輩圖經典白邊字）
+                Text(
+                  trimmed,
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: fontSize,
+                    fontWeight: FontWeight.w900,
+                    height: 1.15,
+                    letterSpacing: letterSpacing,
+                    foreground: Paint()
+                      ..style = PaintingStyle.stroke
+                      ..strokeWidth = strokeWidth
+                      ..strokeCap = StrokeCap.round
+                      ..strokeJoin = StrokeJoin.round
+                      ..color = strokeColor,
+                  ),
+                ),
+                // 2. 表層：招牌寶藍/金黃/純白主色 ＋ 多重外散發光光暈
+                Text(
+                  trimmed,
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: fontSize,
+                    fontWeight: FontWeight.w900,
+                    height: 1.15,
+                    letterSpacing: letterSpacing,
+                    color: textColor,
+                    shadows: outerGlow,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  /// 經典模式下的「範本快捷導航列」（當前主題卡 ＋ 挑選圖庫大按鈕 ＋ 常用快捷）
+  Widget _buildClassicTemplateSelectorBar() {
+    final currentTpl = _classicTemplates[_classicTemplateIndex];
+    final quickPickIds = ['classic_lotus', 'classic_tea_table', 'classic_tea_mountain', 'classic_peony', 'festival_moon'];
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // 頂部列：當前使用主題 ＋ 【挑選圖庫】大按鈕
+          Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.asset(
+                  currentTpl.bgAsset,
+                  width: 46,
+                  height: 46,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Container(width: 46, height: 46, color: const Color(0xFF0F766E)),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '目前範本',
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF64748B),
+                      ),
+                    ),
+                    Text(
+                      currentTpl.name,
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        color: const Color(0xFF1E293B),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton.icon(
+                onPressed: _openGalleryModal,
+                icon: const Icon(Icons.photo_library_rounded, size: 20),
+                label: Text(
+                  '挑選圖庫 ❯',
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF0F766E),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  elevation: 2,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          const Divider(height: 1, thickness: 1, color: Color(0xFFF1F5F9)),
+          const SizedBox(height: 8),
+
+          // 常用快捷標籤：長輩不用每次都進圖庫，直接點直接換！
+          Row(
+            children: [
+              Text(
+                '常用：',
+                style: GoogleFonts.notoSansTc(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: const Color(0xFF94A3B8),
+                ),
+              ),
+              Expanded(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  physics: const BouncingScrollPhysics(),
+                  child: Row(
+                    children: quickPickIds.map((id) {
+                      final idx = _classicTemplates.indexWhere((t) => t.id == id);
+                      if (idx == -1) return const SizedBox.shrink();
+                      final t = _classicTemplates[idx];
+                      final isSelected = _classicTemplateIndex == idx;
+
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: GestureDetector(
+                          onTap: () {
+                            HapticFeedback.lightImpact();
+                            setState(() {
+                              _classicTemplateIndex = idx;
+                              _customTemplateMainText = t.defaultMain;
+                            });
+                          },
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 180),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: isSelected ? const Color(0xFF0F766E) : const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: isSelected ? const Color(0xFF0F766E) : const Color(0xFFE2E8F0),
+                                width: isSelected ? 1.5 : 1.0,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  t.icon,
+                                  size: 15,
+                                  color: isSelected ? Colors.white : const Color(0xFF475569),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  t.name.split('・').first,
+                                  style: GoogleFonts.notoSansTc(
+                                    fontSize: 13,
+                                    fontWeight: isSelected ? FontWeight.w900 : FontWeight.w700,
+                                    color: isSelected ? Colors.white : const Color(0xFF334155),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 📖 精選長輩圖庫全覽面板（彈窗式大圖庫，支援 6 大分類、雙排大卡片，專為老花眼設計）
+  void _openGalleryModal() {
+    HapticFeedback.mediumImpact();
+    String selectedCategory = 'all';
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) {
+        return StatefulBuilder(
+          builder: (ctx, setModalState) {
+            final filteredTemplates = selectedCategory == 'all'
+                ? _classicTemplates
+                : _classicTemplates.where((t) => t.category == selectedCategory).toList();
+
+            final screenHeight = MediaQuery.of(context).size.height;
+            final isTablet = MediaQuery.of(context).size.width >= 680;
+
+            return Container(
+              height: screenHeight * 0.88,
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black26,
+                    blurRadius: 25,
+                    offset: Offset(0, -6),
+                  ),
+                ],
+              ),
+              child: Column(
+                children: [
+                  // 頂部抓手與標題欄
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 14, 16, 10),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF0F766E).withValues(alpha: 0.12),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.photo_library_rounded, color: Color(0xFF0F766E), size: 24),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '📖 精選長輩圖庫 (${_classicTemplates.length} 款)',
+                                style: GoogleFonts.notoSansTc(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w900,
+                                  color: const Color(0xFF1E293B),
+                                ),
+                              ),
+                              Text(
+                                '點選任一範本立即套用・節氣與節慶每週更新',
+                                style: GoogleFonts.notoSansTc(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: const Color(0xFF64748B),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () => Navigator.pop(sheetCtx),
+                          icon: Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: Colors.grey[200],
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.close_rounded, size: 20, color: Color(0xFF475569)),
+                          ),
+                          tooltip: '關閉返回',
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // 六大主題橫向滾動分類列（字大、圓角舒適、易點選）
+                  SizedBox(
+                    height: 48,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      physics: const BouncingScrollPhysics(),
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      itemCount: _templateCategories.length,
+                      itemBuilder: (c, idx) {
+                        final cat = _templateCategories[idx];
+                        final isCatSelected = selectedCategory == cat.id;
+
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: ChoiceChip(
+                            label: Text(
+                              cat.label,
+                              style: GoogleFonts.notoSansTc(
+                                fontSize: 14,
+                                fontWeight: isCatSelected ? FontWeight.w900 : FontWeight.w700,
+                                color: isCatSelected ? Colors.white : const Color(0xFF334155),
+                              ),
+                            ),
+                            selected: isCatSelected,
+                            selectedColor: const Color(0xFF0F766E),
+                            backgroundColor: const Color(0xFFF1F5F9),
+                            side: BorderSide(
+                              color: isCatSelected ? const Color(0xFF0F766E) : const Color(0xFFCBD5E1),
+                              width: 1.2,
+                            ),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            onSelected: (val) {
+                              if (val) {
+                                HapticFeedback.selectionClick();
+                                setModalState(() {
+                                  selectedCategory = cat.id;
+                                });
+                              }
+                            },
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  const Divider(height: 1, thickness: 1, color: Color(0xFFE2E8F0)),
+
+                  // 雙排 / 三排大網格瀏覽
+                  Expanded(
+                    child: GridView.builder(
+                      physics: const BouncingScrollPhysics(),
+                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: isTablet ? 3 : 2,
+                        childAspectRatio: 0.88,
+                        crossAxisSpacing: 14,
+                        mainAxisSpacing: 14,
+                      ),
+                      itemCount: filteredTemplates.length,
+                      itemBuilder: (c, i) {
+                        final tpl = filteredTemplates[i];
+                        final globalIdx = _classicTemplates.indexOf(tpl);
+                        final isSelected = _classicTemplateIndex == globalIdx;
+
+                        return GestureDetector(
+                          onTap: () {
+                            HapticFeedback.heavyImpact();
+                            setState(() {
+                              _classicTemplateIndex = globalIdx;
+                              _customTemplateMainText = tpl.defaultMain;
+                            });
+                            Navigator.pop(sheetCtx);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                backgroundColor: const Color(0xFF0F766E),
+                                behavior: SnackBarBehavior.floating,
+                                duration: const Duration(seconds: 2),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                content: Text(
+                                  '✨ 已套用【${tpl.name}】！',
+                                  style: GoogleFonts.notoSansTc(fontSize: 16, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            );
+                          },
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 180),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: isSelected ? const Color(0xFF10B981) : const Color(0xFFE2E8F0),
+                                width: isSelected ? 3.0 : 1.2,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: isSelected
+                                      ? const Color(0xFF10B981).withValues(alpha: 0.25)
+                                      : Colors.black.withValues(alpha: 0.05),
+                                  blurRadius: isSelected ? 12 : 6,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(18),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  // 相片大預覽
+                                  Expanded(
+                                    child: Stack(
+                                      children: [
+                                        Positioned.fill(
+                                          child: Image.asset(
+                                            tpl.bgAsset,
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (_, __, ___) => Container(color: const Color(0xFF0F766E)),
+                                          ),
+                                        ),
+                                        Positioned.fill(
+                                          child: Container(
+                                            decoration: BoxDecoration(
+                                              gradient: LinearGradient(
+                                                begin: Alignment.topCenter,
+                                                end: Alignment.bottomCenter,
+                                                colors: [
+                                                  Colors.transparent,
+                                                  Colors.black.withValues(alpha: 0.45),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        // 左上角標籤
+                                        Positioned(
+                                          top: 8,
+                                          left: 8,
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                            decoration: BoxDecoration(
+                                              color: tpl.isHolidaySpecial || tpl.isSolarTermSpecial
+                                                  ? const Color(0xFFDC2626)
+                                                  : Colors.black.withValues(alpha: 0.65),
+                                              borderRadius: BorderRadius.circular(10),
+                                            ),
+                                            child: Text(
+                                              tpl.categoryTag,
+                                              style: GoogleFonts.notoSansTc(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w800,
+                                                color: Colors.white,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        // 右上角選中標章
+                                        if (isSelected)
+                                          Positioned(
+                                            top: 8,
+                                            right: 8,
+                                            child: Container(
+                                              padding: const EdgeInsets.all(4),
+                                              decoration: const BoxDecoration(
+                                                color: Color(0xFF10B981),
+                                                shape: BoxShape.circle,
+                                              ),
+                                              child: const Icon(Icons.check_rounded, color: Colors.white, size: 18),
+                                            ),
+                                          ),
+                                        // 底部大字小預覽
+                                        Positioned(
+                                          bottom: 6,
+                                          left: 8,
+                                          right: 8,
+                                          child: Text(
+                                            tpl.defaultMain.replaceAll('\n', '・'),
+                                            style: GoogleFonts.notoSansTc(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w900,
+                                              color: Colors.white,
+                                              shadows: const [
+                                                Shadow(color: Colors.black, blurRadius: 4),
+                                              ],
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  // 下方文字說明
+                                  Container(
+                                    padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+                                    color: Colors.white,
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          tpl.name,
+                                          style: GoogleFonts.notoSansTc(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w900,
+                                            color: isSelected ? const Color(0xFF0F766E) : const Color(0xFF1E293B),
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  /// 經典模式操作工具列（換金句 ＋ 換字體發光）
+  Widget _buildClassicActionTools() {
+    return Row(
+      children: [
+        // 換金句按鈕
+        Expanded(
+          flex: 3,
+          child: ElevatedButton.icon(
+            onPressed: _nextQuote,
+            icon: const Icon(Icons.auto_awesome_rounded, color: Color(0xFFB45309), size: 22),
+            label: Text(
+              '✨ 換句好話 (${_quotes[_currentQuoteIndex].category})',
+              style: GoogleFonts.notoSansTc(fontSize: 16, fontWeight: FontWeight.w900),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFFEF3C7),
+              foregroundColor: const Color(0xFF92400E),
+              elevation: 1,
+              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        // 換字體發光按鈕
+        Expanded(
+          flex: 2,
+          child: ElevatedButton.icon(
+            onPressed: _cycleClassicFontStyle,
+            icon: const Icon(Icons.format_color_text_rounded, color: Color(0xFF1E293B), size: 22),
+            label: Text(
+              '🔤 換字體發光',
+              style: GoogleFonts.notoSansTc(fontSize: 16, fontWeight: FontWeight.w900),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFE2E8F0),
+              foregroundColor: const Color(0xFF1E293B),
+              elevation: 1,
+              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// AI 模式操作工具列
+  Widget _buildAiActionTools() {
+    return Column(
+      children: [
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: _isAiGenerating ? null : _triggerAiRegeneration,
+            icon: const Icon(Icons.auto_awesome_rounded, color: Colors.amber, size: 26),
+            label: Text(
+              '✨ AI 重新繪製 3D 新圖',
+              style: GoogleFonts.notoSansTc(fontSize: 18, fontWeight: FontWeight.w900),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF4F46E5),
+              foregroundColor: Colors.white,
+              elevation: 4,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: () {
+              HapticFeedback.lightImpact();
+              setState(() {
+                _aiThemeIndex = (_aiThemeIndex + 1) % _aiThemes.length;
+              });
+            },
+            icon: Icon(_aiThemes[_aiThemeIndex].icon, size: 20),
+            label: Text(
+              '🎨 切換主題 (${_aiThemes[_aiThemeIndex].name})',
+              style: GoogleFonts.notoSansTc(fontSize: 15, fontWeight: FontWeight.w800),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFE2E8F0),
+              foregroundColor: const Color(0xFF1E293B),
+              elevation: 0,
+              padding: const EdgeInsets.symmetric(vertical: 13),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 一鍵傳給 LINE 好友之特大綠色主按鈕
+  Widget _buildLineShareButton() {
+    return ElevatedButton(
+      onPressed: _isSharing ? null : _shareToLine,
+      style: ElevatedButton.styleFrom(
+        backgroundColor: const Color(0xFF06C755),
+        foregroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(vertical: 17),
+        elevation: 6,
+        shadowColor: const Color(0xFF06C755).withValues(alpha: 0.5),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+      ),
+      child: _isSharing
+          ? const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
+                ),
+                SizedBox(width: 12),
+                Text('正在準備祝賀圖…', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              ],
+            )
+          : Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(5),
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.send_rounded, color: Color(0xFF06C755), size: 24),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  '傳給 LINE 好友 / 群組',
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.0,
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+}

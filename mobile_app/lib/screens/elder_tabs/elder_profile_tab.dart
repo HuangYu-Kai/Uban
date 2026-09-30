@@ -14,6 +14,8 @@ import '../identification_screen.dart';
 import '../../services/session_manager.dart';
 import '../../services/api_service.dart';
 import '../../services/friend_service.dart';
+import '../../services/elder_location_service.dart';
+import '../../services/api/location_api.dart';
 import '../pet_companion_studio/models/pet_growth_state.dart';
 import '../pet_companion_studio/models/pet_food_item.dart';
 import '../pet_companion_studio/widgets/garden_feeding_sheet.dart';
@@ -65,11 +67,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
   static const double _vehicleSpeedMps = 7.0;
   static const Duration _minSampleInterval = Duration(seconds: 1);
 
-  // 小豬預設對話語錄（用於任務打卡的短暫慶祝語結束後回到的預設狀態）
-  // ★ 2026-09-15 溢位巡檢時發現：這句沿用自舊的 _pigQuotes，寫死了「阿公」。
-  //   自主模式的長輩預設叫「長輩朋友」、性別未知，阿嬤看到小豬喊她阿公會困惑
-  //   ——與 memoir_service 先前修掉的是同一類問題。改為中性稱呼。
-  static const String _defaultSpeechText = '今天天氣真好，一起散步活動身體吧！🌿';
+
 
   // ── 數據 ───────────────────────────────────────────────
   final int dailyStepGoal = 8000;
@@ -116,14 +114,17 @@ class _ElderProfileTabState extends State<ElderProfileTab>
   // 載入失敗。
   String? _myFriendElderId;
 
+  // ── 🛰️ 與家人分享 GPS 位置（戶外定位軌跡，與上方本機步數用途的 GPS 追蹤
+  //   是不同的東西——見 ElderLocationService 檔頭說明）───────────────
+  bool _locationSharingEnabled = false;
+  bool _locationSharingBusy = false;
+
   // ── 📋 子女排程生活任務 ──────────────────────────────────
   List<Map<String, dynamic>> _reminders = [];
   Set<int> _completedReminderIds = {};
   bool _isLoadingReminders = false;
 
-  // ── 🎨 小豬對話氣泡文字 ──────────────────────────────
-  String _speechText = _defaultSpeechText;
-  Timer? _speechBubbleTimer;
+
 
   @override
   void didChangeDependencies() {
@@ -184,6 +185,37 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     ElderReminderManager.instance.addListener(_onReminderManagerUpdate);
     _loadPetGrowthState();
     _loadMyFriendElderId();
+    _loadLocationSharingState();
+  }
+
+  /// 讀取目前「與家人分享我的位置」開關狀態，供 [_buildLocationSharingCard] 顯示。
+  /// 失敗（離線／尚未配對）時維持預設關閉，不影響畫面其餘功能。
+  Future<void> _loadLocationSharingState() async {
+    final elderId = await FriendService.resolveMyElderId(widget.userId);
+    if (elderId == null || !mounted) return;
+    final enabled = await LocationApi.getSharingEnabled(
+      elderId: elderId,
+      userId: widget.userId,
+    );
+    if (enabled != null && mounted) {
+      setState(() => _locationSharingEnabled = enabled);
+    }
+  }
+
+  Future<void> _handleLocationSharingToggle(bool value) async {
+    if (_locationSharingBusy) return;
+    setState(() => _locationSharingBusy = true);
+    final ok = await ElderLocationService.instance.setSharingEnabled(value);
+    if (!mounted) return;
+    setState(() {
+      _locationSharingBusy = false;
+      if (ok) _locationSharingEnabled = value;
+    });
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('設定失敗，請檢查網路連線後再試一次')),
+      );
+    }
   }
 
   void _onReminderManagerUpdate() {
@@ -197,7 +229,6 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     ElderReminderManager.instance.removeListener(_onReminderManagerUpdate);
     _particleController.dispose();
     _petBounceController.dispose();
-    _speechBubbleTimer?.cancel();
     _positionStream?.cancel();
     _stepCountStream?.cancel();
     super.dispose();
@@ -544,18 +575,9 @@ class _ElderProfileTabState extends State<ElderProfileTab>
         _completedReminderIds.remove(reminderId);
       } else {
         _completedReminderIds.add(reminderId);
-        _speechText = '太棒了！生活排程打卡成功，小豬好開心！🎉';
         _spawnHeartParticles();
         _petBounceController.forward(from: 0.0);
         _particleController.forward(from: 0.0);
-        _speechBubbleTimer?.cancel();
-        _speechBubbleTimer = Timer(const Duration(seconds: 4), () {
-          if (mounted) {
-            setState(() {
-              _speechText = _defaultSpeechText;
-            });
-          }
-        });
       }
     });
 
@@ -598,7 +620,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     final currentCount = _feedingInventory[food.id] ?? food.initialCount;
     if (!food.isUnlimited && currentCount <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('【${food.name}】已經吃完囉～多散步解鎖新食材吧！🌾')),
+        SnackBar(content: Text('【${food.name}】已經吃完囉～多散步解鎖新食材吧！')),
       );
       return;
     }
@@ -622,7 +644,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-          content: Text('小豬大口吃下了【${food.name}】！活力 +${food.vitalityGain} ✨')),
+          content: Text('小豬大口吃下了【${food.name}】！活力 +${food.vitalityGain}')),
     );
   }
 
@@ -703,7 +725,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
               color: Color(0xFFB45309), size: 28),
         ),
         title: Text(
-          '📖 重新觀看新手導覽',
+          '重新觀看新手導覽',
           style: GoogleFonts.notoSansTc(
             fontSize: 18,
             fontWeight: FontWeight.bold,
@@ -725,10 +747,63 @@ class _ElderProfileTabState extends State<ElderProfileTab>
           await SpotlightTutorial.resetAllTutorials();
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('✅ 已重新開啟教學！切換至首頁即可重新查看導覽。')),
+              const SnackBar(content: Text('已重新開啟教學！切換至首頁即可重新查看導覽。')),
             );
           }
         },
+      ),
+    );
+  }
+
+  // 🛰️ 與家人分享我的位置：長輩本人的隱私開關，預設關閉。關閉時家屬即使
+  // 已配對也看不到位置資料（伺服器端讀取端會再檢查一次，這裡的開關只
+  // 決定裝置要不要持續耗電回報）。標題／副標題為固定文案，仍加
+  // maxLines/ellipsis 防禦（Row 內含開關元件，同列有其他元素）。
+  Widget _buildLocationSharingCard(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFDF9),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFEADBCE), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF78350F).withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: SwitchListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+        secondary: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFEF3C7),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: const Icon(Icons.route_rounded,
+              color: Color(0xFFB45309), size: 28),
+        ),
+        title: Text(
+          '與家人分享我的位置',
+          style: GoogleFonts.notoSansTc(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: const Color(0xFF451A03),
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Text(
+          _locationSharingEnabled ? '子女可以看到您的位置與移動路線' : '目前未分享，子女無法看到您的位置',
+          style: GoogleFonts.notoSansTc(
+              fontSize: 14, color: const Color(0xFF8C6D58)),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        value: _locationSharingEnabled,
+        onChanged: _locationSharingBusy ? null : _handleLocationSharingToggle,
+        activeThumbColor: const Color(0xFFB45309),
       ),
     );
   }
@@ -803,9 +878,6 @@ class _ElderProfileTabState extends State<ElderProfileTab>
         PetHeroStage(
           key: widget.petKey,
           growthState: growthState,
-          speechText: _speechText,
-          greetingLine: greetingLine,
-          // 直向手機寬度有限，膠囊改精簡圖示橫排，把空間讓給問候語與對話氣泡
           topRightActions:
               PetCornerActions(userId: widget.userId, compact: true),
         ),
@@ -845,7 +917,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                       title: '家人綁定',
                       subtitle: '出示配對碼',
                       color: const Color(0xFFF59E0B),
-                      onTap: () => showFamilyPairingDialog(context),
+                      onTap: () => showFamilyPairingDialog(context, widget.userId),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -880,6 +952,11 @@ class _ElderProfileTabState extends State<ElderProfileTab>
 
               // 5. 重新觀看新手導覽
               _buildTutorialReplayCard(context),
+
+              const SizedBox(height: 12),
+
+              // 6. 與家人分享我的位置（GPS 移動軌跡隱私開關）
+              _buildLocationSharingCard(context),
             ],
           ),
         ),
@@ -910,8 +987,6 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                     PetHeroStage(
                       key: widget.petKey,
                       growthState: growthState,
-                      speechText: _speechText,
-                      greetingLine: greetingLine,
                       topRightActions: PetCornerActions(userId: widget.userId),
                     ),
                     Transform.translate(
@@ -952,7 +1027,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                             title: '家人綁定',
                             subtitle: '出示配對碼',
                             color: const Color(0xFFF59E0B),
-                            onTap: () => showFamilyPairingDialog(context),
+                            onTap: () => showFamilyPairingDialog(context, widget.userId),
                             isLandscape: true,
                           ),
                         ),
@@ -995,6 +1070,10 @@ class _ElderProfileTabState extends State<ElderProfileTab>
 
           // ★ 橫向版面原本漏掉「重新觀看新手導覽」，本輪補回
           _buildTutorialReplayCard(context),
+
+          const SizedBox(height: 8),
+
+          _buildLocationSharingCard(context),
         ],
       ),
     );

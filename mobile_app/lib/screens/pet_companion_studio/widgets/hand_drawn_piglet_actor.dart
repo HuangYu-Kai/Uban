@@ -1,11 +1,9 @@
-import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../models/pet_food_item.dart';
 import '../models/pet_growth_state.dart';
-import '../models/piglet_sequence_manifest.dart';
 import 'animated_piglet_actor.dart';
 
 /// 🐷 手繪油畫正面小豬逐格幀動畫組件（逐格幀播放 ✕ 100% 組員水彩油畫手作風）
@@ -37,17 +35,10 @@ class HandDrawnPigletActor extends StatefulWidget {
 
 class _HandDrawnPigletActorState extends State<HandDrawnPigletActor>
     with TickerProviderStateMixin {
-  // 逐格幀控制器
-  int _currentFrameIndex = 0;
-  Timer? _sequenceTimer;
-  PigletSequenceType _currentSeqType = PigletSequenceType.idle;
-
   // 互動單次彈跳控制器 (450ms)
   late AnimationController _interactiveBounceController;
   // 祥瑞光環控制器 (8.0秒極柔和旋轉)
   late AnimationController _auraController;
-
-  bool _isDragHovering = false;
 
   @override
   void initState() {
@@ -62,74 +53,10 @@ class _HandDrawnPigletActorState extends State<HandDrawnPigletActor>
       vsync: this,
       duration: const Duration(milliseconds: 8000),
     )..repeat();
-
-    _startSequenceForMood(widget.mood);
-  }
-
-  @override
-  void reassemble() {
-    super.reassemble();
-    _startSequenceForMood(widget.mood);
-  }
-
-  @override
-  void didUpdateWidget(covariant HandDrawnPigletActor oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.mood != oldWidget.mood) {
-      _startSequenceForMood(widget.mood);
-    }
-  }
-
-  void _startSequenceForMood(ActorMood mood) {
-    _sequenceTimer?.cancel();
-
-    PigletSequenceType newSeq;
-    switch (mood) {
-      case ActorMood.chewing:
-        newSeq = PigletSequenceType.chewing;
-        break;
-      case ActorMood.anticipating:
-        newSeq = PigletSequenceType.anticipate;
-        break;
-      case ActorMood.superHappy:
-      case ActorMood.celebratingGoal:
-        newSeq = PigletSequenceType.celebration;
-        _interactiveBounceController.forward(from: 0.0);
-        break;
-      case ActorMood.sleeping:
-        newSeq = PigletSequenceType.sleep;
-        break;
-      case ActorMood.idle:
-      default:
-        newSeq = PigletSequenceType.idle;
-        break;
-    }
-
-    _currentSeqType = newSeq;
-    _currentFrameIndex = 0;
-
-    final info = PigletSequenceManifest.getInfo(newSeq);
-    final int frameIntervalMs = (info.frameDuration.inMilliseconds / info.frameCount).round();
-
-    _sequenceTimer = Timer.periodic(Duration(milliseconds: frameIntervalMs), (timer) {
-      if (!mounted) return;
-      setState(() {
-        if (info.isLooping) {
-          _currentFrameIndex = (_currentFrameIndex + 1) % info.frameCount;
-        } else {
-          if (_currentFrameIndex < info.frameCount - 1) {
-            _currentFrameIndex++;
-          } else {
-            _sequenceTimer?.cancel();
-          }
-        }
-      });
-    });
   }
 
   @override
   void dispose() {
-    _sequenceTimer?.cancel();
     _interactiveBounceController.dispose();
     _auraController.dispose();
     super.dispose();
@@ -138,33 +65,16 @@ class _HandDrawnPigletActorState extends State<HandDrawnPigletActor>
   void _handleTap() {
     HapticFeedback.lightImpact();
     _interactiveBounceController.forward(from: 0.0);
-    _startSequenceForMood(ActorMood.superHappy);
-    Timer(const Duration(milliseconds: 1500), () {
-      if (mounted && widget.mood == ActorMood.idle) {
-        _startSequenceForMood(ActorMood.idle);
-      }
-    });
     widget.onPetHead?.call();
   }
 
   void _handleLongPress() {
     HapticFeedback.mediumImpact();
     _interactiveBounceController.forward(from: 0.0);
-    _startSequenceForMood(ActorMood.anticipating);
-    Timer(const Duration(milliseconds: 1500), () {
-      if (mounted && widget.mood == ActorMood.idle) {
-        _startSequenceForMood(ActorMood.idle);
-      }
-    });
     widget.onPokeBelly?.call();
   }
 
   String get _currentFramePath {
-    final info = PigletSequenceManifest.getInfo(_currentSeqType);
-    final paths = info.framePaths;
-    if (_currentFrameIndex >= 0 && _currentFrameIndex < paths.length) {
-      return paths[_currentFrameIndex];
-    }
     return widget.stage.imageAssetPath;
   }
 
@@ -185,23 +95,13 @@ class _HandDrawnPigletActorState extends State<HandDrawnPigletActor>
 
     return DragTarget<PetFoodItem>(
       onWillAcceptWithDetails: (details) {
-        setState(() => _isDragHovering = true);
-        _startSequenceForMood(ActorMood.anticipating);
         HapticFeedback.selectionClick();
         return true;
       },
-      onLeave: (data) {
-        setState(() => _isDragHovering = false);
-        _startSequenceForMood(widget.mood);
-      },
+      onLeave: (data) {},
       onAcceptWithDetails: (details) {
-        setState(() => _isDragHovering = false);
-        _startSequenceForMood(ActorMood.chewing);
-        Timer(const Duration(milliseconds: 2500), () {
-          if (mounted && widget.mood == ActorMood.idle) {
-            _startSequenceForMood(ActorMood.idle);
-          }
-        });
+        HapticFeedback.mediumImpact();
+        _interactiveBounceController.forward(from: 0.0);
         widget.onFoodAccepted?.call(details.data);
       },
       builder: (context, candidateData, rejectedData) {

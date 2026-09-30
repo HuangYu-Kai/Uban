@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'elder_tabs/elder_home_tab.dart';
 import 'friends_screen.dart';
-import 'elder_community_screen.dart';
+import 'elder_tabs/elder_greeting_tab.dart';
 import 'elder_chat_screen.dart';
 import 'elder_tabs/elder_profile_tab.dart';
 import '../globals.dart';
@@ -14,6 +14,7 @@ import 'emergency_permission_guide_screen.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'dart:convert';
 import '../services/signaling.dart';
+import '../services/elder_location_service.dart';
 import 'dart:async';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -87,11 +88,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
   final GlobalKey _phoneTabBarKey = GlobalKey();
   final GlobalKey _phoneCallKey = GlobalKey();
   final GlobalKey _phoneVideoKey = GlobalKey();
-  // 社群分頁
-  final GlobalKey _communityPrivacyKey = GlobalKey();
-  final GlobalKey _communityCreatePostKey = GlobalKey();
-  final GlobalKey _communityLikeKey = GlobalKey();
-  final GlobalKey _communityCommentKey = GlobalKey();
+
   // 聊天分頁
   final GlobalKey _chatVoiceToggleKey = GlobalKey();
   final GlobalKey _chatInputAreaKey = GlobalKey();
@@ -206,6 +203,12 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     isAppReady = true;
     _requestPermissions();
     _loadAssistantSettings();
+
+    // ★ 戶外 GPS 定位：App 常駐前景服務，不綁定特定分頁，家屬才能看到長輩
+    //   整天的移動軌跡。是否真的啟動由長輩自己在「我的」分頁設定的分享開關
+    //   決定（見 ElderLocationService.startIfEnabled 的說明），關閉時這裡
+    //   不會索取定位權限。畫面關閉時見下方 dispose() 的對應 stop()。
+    unawaited(ElderLocationService.instance.startIfEnabled(userId: widget.userId));
 
     // ★ 核心修復：強制使用長輩的專屬配對房間號 (elder_id)，且帶有 comm_elder_ 字首，確保與後端格式及權限匹配
     final String rawRoomId = widget.roomId ?? widget.userId.toString();
@@ -535,7 +538,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
       case 1:
         return '【電話】分頁。頁面上列出長輩的家人與親友聯絡人卡片，點擊可直接撥打視訊或電話給老伴或子女';
       case 2:
-        return '【社群】分頁。頁面上顯示親朋好友最近發布的生活動態照片與生活打卡，長輩可以瀏覽並點愛心打招呼';
+        return '【每日祝賀圖】分頁。頁面上會自動結合今天的農民曆、節氣與元氣小豬狀態，生成精美喜氣的早安祝賀圖，長輩可以一鍵分享到 LINE 給親友群拜早安';
       case 3:
         return '【聊天】分頁。這裡是長輩與您（AI 伴侶小嘎）一對一的語音文字聊天室，長輩可以向您傾訴心情、回憶過去或詢問生活';
       case 4:
@@ -892,6 +895,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     Signaling().onReminderSync = null;
     ElderReminderManager.instance.setContextGetter(null);
     ElderReminderManager.instance.stop();
+    unawaited(ElderLocationService.instance.stop());
     super.dispose();
   }
 
@@ -1053,7 +1057,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
         _showPhoneTutorial();
         break;
       case 2:
-        _showCommunityTutorial();
+        _showGreetingTutorial();
         break;
       case 3:
         _showChatTutorial();
@@ -1116,30 +1120,14 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     );
   }
 
-  void _showCommunityTutorial() {
+  void _showGreetingTutorial() {
     SpotlightTutorial.showIfNeeded(
       context,
-      tutorialId: 'elder_community_v1',
+      tutorialId: 'elder_greeting_v1',
       steps: [
-        TutorialStep(
-          targetKey: _communityPrivacyKey,
-          title: '放心分享',
-          body: '這裡只有家人和認識的朋友看得到，請放心分享您的近況。',
-        ),
-        TutorialStep(
-          targetKey: _communityCreatePostKey,
-          title: '分享近況',
-          body: '按這裡可以拍照、寫幾句話，跟家人分享您現在在做什麼。',
-        ),
-        TutorialStep(
-          targetKey: _communityLikeKey,
-          title: '送爪印',
-          body: '看到家人的分享，按這裡送一個愛心，讓他們知道您有看到、很關心。',
-        ),
-        TutorialStep(
-          targetKey: _communityCommentKey,
-          title: '留言',
-          body: '想跟家人說說話，也可以按這裡留言。',
+        const TutorialStep(
+          title: '每日吉利祝賀圖',
+          body: '每天早上這裡會自動為您準備喜氣的早安祝賀圖，點一下就能傳到 LINE 給朋友！',
         ),
       ],
     );
@@ -1200,9 +1188,19 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF1F5F9),
-      body: Stack(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (_selectedIndex != 0) {
+          setState(() {
+            _selectedIndex = 0;
+          });
+        }
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF1F5F9),
+        body: Stack(
         children: [
           // 頁面內容切換
           IndexedStack(
@@ -1226,15 +1224,10 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
                 firstCallKey: _phoneCallKey,
                 firstVideoKey: _phoneVideoKey,
               ),
-              // 2 社群（家人與熟人限定；第四十二輪加「家人／朋友」頂部標籤）
-              ElderCommunityScreen(
+              // 2 每日吉利祝賀圖（長輩圖、節氣與小豬結合）
+              ElderGreetingTab(
                 userId: widget.userId,
                 userName: widget.userName,
-                showFriendTab: true,
-                privacyCardKey: _communityPrivacyKey,
-                createPostButtonKey: _communityCreatePostKey,
-                firstPostLikeKey: _communityLikeKey,
-                firstPostCommentKey: _communityCommentKey,
               ),
               // 3 聊天（小雲 AI 聊天）
               ElderChatScreen(
@@ -1270,8 +1263,9 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildHelpButton() {
     return Material(
@@ -1498,7 +1492,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
         children: [
           _buildNavItem(0, Icons.home_rounded, '首頁'),
           _buildNavItem(1, Icons.phone_rounded, '電話'),
-          _buildNavItem(2, Icons.groups_rounded, '社群'),
+          _buildNavItem(2, Icons.local_florist_rounded, '祝福圖'),
           _buildNavItem(3, Icons.chat_bubble_rounded, '聊天'),
           _buildNavItem(4, Icons.person_rounded, '我的'),
         ],

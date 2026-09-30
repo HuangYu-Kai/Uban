@@ -49,7 +49,7 @@ class GardenAmbientAudioService {
   final AudioPlayer _bgmPlayer = AudioPlayer();
   final AudioPlayer _sfxPlayer = AudioPlayer();
 
-  bool _isMuted = false;
+  bool _isMuted = true;
   bool get isMuted => _isMuted;
 
   double _volume = 0.28;
@@ -66,7 +66,8 @@ class GardenAmbientAudioService {
   Future<void> initAndStartAmbience() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      _isMuted = !(prefs.getBool(kPrefBgmEnabled) ?? true);
+      // ★ 預設關閉背景音效（kPrefBgmEnabled 預設為 false，_isMuted 為 true）
+      _isMuted = !(prefs.getBool(kPrefBgmEnabled) ?? false);
       _currentTrackId = prefs.getString(kPrefBgmTrackId) ?? 'piano_calm';
       _volume = (prefs.getDouble(kPrefBgmVolume) ?? 0.28).clamp(0.05, 1.0);
 

@@ -910,6 +910,7 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen>
       return Scaffold(
         backgroundColor: const Color(0xFFF8FAFC),
         appBar: AppBar(
+          automaticallyImplyLeading: false,
           toolbarHeight: 70,
           backgroundColor: Colors.white,
           elevation: 0,
@@ -933,6 +934,7 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen>
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         toolbarHeight: 70,
         backgroundColor: Colors.white,
         elevation: 0,

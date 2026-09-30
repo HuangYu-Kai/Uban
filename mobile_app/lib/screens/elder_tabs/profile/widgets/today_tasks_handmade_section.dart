@@ -78,12 +78,16 @@ class _TodayTasksHandmadeSectionState
           Row(
             children: [
               Container(
-                padding: EdgeInsets.all(isLandscape ? 5 : 7),
+                padding: EdgeInsets.all(isLandscape ? 6 : 8),
                 decoration: const BoxDecoration(
                   color: Color(0xFFFEF3C7),
                   shape: BoxShape.circle,
                 ),
-                child: Text('📋', style: TextStyle(fontSize: isLandscape ? 15 : 18)),
+                child: Icon(
+                  Icons.event_note_rounded,
+                  size: isLandscape ? 16 : 20,
+                  color: const Color(0xFFB45309),
+                ),
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -127,7 +131,7 @@ class _TodayTasksHandmadeSectionState
                   ),
                 ),
                 child: Text(
-                  isAllCompleted ? '全數達標 🌟' : '已完成 $completedTasks/$totalTasks',
+                  isAllCompleted ? '全數達標' : '已完成 $completedTasks/$totalTasks',
                   style: GoogleFonts.notoSansTc(
                     fontSize: isLandscape ? 12 : 13,
                     fontWeight: FontWeight.w900,
@@ -159,7 +163,7 @@ class _TodayTasksHandmadeSectionState
               child: Column(
                 children: [
                   Text(
-                    '今天還沒有安排提醒 🌿',
+                    '今天還沒有安排提醒',
                     style: GoogleFonts.notoSansTc(
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
@@ -198,7 +202,11 @@ class _TodayTasksHandmadeSectionState
             ),
             child: Row(
               children: [
-                Text('💡', style: TextStyle(fontSize: isLandscape ? 13 : 15)),
+                Icon(
+                  Icons.lightbulb_outline_rounded,
+                  size: isLandscape ? 14 : 18,
+                  color: const Color(0xFFD97706),
+                ),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
@@ -352,16 +360,20 @@ class _TodayTasksHandmadeSectionState
     final bool isDone = widget.completedReminderIds.contains(rId);
     final String cat = (r['category'] ?? '').toString();
 
-    String catEmoji = '⏰';
+    IconData catIcon = Icons.access_time_rounded;
+    Color catColor = const Color(0xFF64748B);
     Color catBg = const Color(0xFFF1F5F9);
     if (cat == 'medication') {
-      catEmoji = '💊';
+      catIcon = Icons.medication_rounded;
+      catColor = const Color(0xFFE11D48);
       catBg = const Color(0xFFFFE4E6);
     } else if (cat == 'water') {
-      catEmoji = '💧';
+      catIcon = Icons.water_drop_rounded;
+      catColor = const Color(0xFF0284C7);
       catBg = const Color(0xFFE0F2FE);
     } else if (cat == 'exercise') {
-      catEmoji = '👟';
+      catIcon = Icons.directions_walk_rounded;
+      catColor = const Color(0xFFD97706);
       catBg = const Color(0xFFFEF3C7);
     }
 
@@ -388,7 +400,7 @@ class _TodayTasksHandmadeSectionState
           ),
           child: Row(
             children: [
-              // 類別 Emoji 圖標
+              // 類別圖標
               Container(
                 width: isLandscape ? 30 : 44,
                 height: isLandscape ? 30 : 44,
@@ -397,9 +409,10 @@ class _TodayTasksHandmadeSectionState
                   shape: BoxShape.circle,
                 ),
                 child: Center(
-                  child: Text(
-                    catEmoji,
-                    style: TextStyle(fontSize: isLandscape ? 15 : 22),
+                  child: Icon(
+                    catIcon,
+                    color: catColor,
+                    size: isLandscape ? 16 : 22,
                   ),
                 ),
               ),

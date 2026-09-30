@@ -31,13 +31,26 @@ class PairingApi {
     }
   }
 
-  static Future<Map<String, dynamic>> requestPairingCode([int? elderId]) async {
+  /// 取得配對碼。
+  ///
+  /// 意圖必須顯式宣告，二擇一——
+  /// * [elderId] 有值：綁定**既有**長輩（長輩端「補綁家人」）。後端會先驗證
+  ///   這位長輩真的存在於 `elder_profile`，不存在就回 404。
+  /// * [newElder] 為 true：**尚未有帳號**的長輩首次註冊，由家屬掃碼時建立帳號。
+  ///
+  /// 兩者都不給（或都給）後端一律回 400——對齊後端 `routers/pairing.py::request_code`
+  /// 的顯式意圖契約，避免漏傳 elder_id 時無聲綁出幽靈長輩帳號。
+  static Future<Map<String, dynamic>> requestPairingCode(
+    int? elderId, {
+    bool newElder = false,
+  }) async {
     try {
       final response = await http.post(
         Uri.parse('${ApiClient.baseUrl}/pairing/request_code'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           if (elderId != null) 'elder_id': elderId,
+          if (newElder) 'new_elder': true,
         }),
       ).timeout(const Duration(seconds: 10));
       return ApiClient.safeDecode(response);

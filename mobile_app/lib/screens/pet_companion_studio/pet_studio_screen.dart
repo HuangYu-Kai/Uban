@@ -1532,6 +1532,16 @@ class _PetStudioScreenState extends State<PetStudioScreen>
                     ),
                   );
                 }),
+                const SizedBox(height: 10),
+                Center(
+                  child: Text(
+                    '音樂來源：Kevin MacLeod (incompetech.com) / CC BY 4.0 授權',
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 11,
+                      color: const Color(0xFF94A3B8),
+                    ),
+                  ),
+                ),
               ],
             ),
           );

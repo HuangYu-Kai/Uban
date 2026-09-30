@@ -24,17 +24,17 @@ class ProfileActionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: const Color(0xFFFFFDF9),
-      borderRadius: BorderRadius.circular(isLandscape ? 16 : 24),
+      borderRadius: BorderRadius.circular(isLandscape ? 20 : 24),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(isLandscape ? 16 : 24),
+        borderRadius: BorderRadius.circular(isLandscape ? 20 : 24),
         child: Container(
           padding: EdgeInsets.symmetric(
             horizontal: isLandscape ? 10 : 16,
             vertical: isLandscape ? 7 : 16,
           ),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(isLandscape ? 16 : 24),
+            borderRadius: BorderRadius.circular(isLandscape ? 20 : 24),
             border: Border.all(color: const Color(0xFFEADBCE), width: 1.5),
             boxShadow: [
               BoxShadow(

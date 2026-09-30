@@ -5,6 +5,7 @@ import '../../models/elder.dart';
 import '../../services/api_service.dart';
 import 'home/widgets/home_elder_header_card.dart';
 import 'home/widgets/home_zone_card.dart';
+import 'home/widgets/home_gps_trail_card.dart';
 import 'home/widgets/home_monitor_device_card.dart';
 import 'home/widgets/home_ai_mood_radar_card.dart';
 import 'home/widgets/home_alert_preview_card.dart';
@@ -167,6 +168,11 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                           elderZone: widget.elderZone,
                         ),
                         const SizedBox(height: 16),
+                        HomeGpsTrailCard(
+                          currentElder: widget.currentElder,
+                          userId: widget.userId,
+                        ),
+                        const SizedBox(height: 16),
                         HomeMonitorDeviceCard(
                           monitorStatusKey: widget.monitorStatusKey,
                           monitorDevices: widget.monitorDevices,
@@ -246,6 +252,13 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                     HomeZoneCard(
                       monitorDevices: widget.monitorDevices,
                       elderZone: widget.elderZone,
+                    ),
+                    const SizedBox(height: 16),
+
+                    // 1.55 🛰️ 戶外 GPS 定位／每日移動軌跡（與上面的 IPS 是不同子系統）
+                    HomeGpsTrailCard(
+                      currentElder: widget.currentElder,
+                      userId: widget.userId,
                     ),
                     const SizedBox(height: 16),
 

@@ -248,7 +248,7 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
         (route) => false,
       );
     } else {
-      Navigator.pushReplacement(
+      Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(
           builder: (context) => ElderHomeScreen(
@@ -257,6 +257,7 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
             roomId: elderRoom,
           ),
         ),
+        (route) => false,
       );
     }
   }
@@ -265,7 +266,10 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
   Future<void> _requestNewCode() async {
     setState(() => _isLoading = true);
     try {
-      final result = await ApiService.requestPairingCode();
+      // 本畫面是「我是長者」首次上手（尚無帳號，由家屬掃碼時建立），是唯一
+      // 該送 newElder 的呼叫點——對齊後端 request_code 的顯式意圖契約
+      // （elder_id 綁既有長輩／new_elder=true 新註冊，兩者擇一，否則 400）。
+      final result = await ApiService.requestPairingCode(null, newElder: true);
       if (!mounted) return;
 
 // 檢查 API 是否回傳錯誤
@@ -489,7 +493,7 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
       if (!mounted) return;
 
       // 直接導向長輩首頁（通話機模式）
-      Navigator.pushReplacement(
+      Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(
           builder: (context) => ElderHomeScreen(
@@ -498,6 +502,7 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
             roomId: elderRoomId,
           ),
         ),
+        (route) => false,
       );
     } catch (e) {
       if (!mounted) return;
@@ -507,27 +512,157 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
     }
   }
 
-  /// 🌟 方案 A：長者自主陪伴模式（單人即用，全新長者向雲端動態申領唯一獨立帳號）
+  /// 提示長者輸入稱呼的適老化對話框
+  Future<String?> _promptElderNameDialog() async {
+    final controller = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        backgroundColor: const Color(0xFFFFFDF9),
+        titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+        actionsPadding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: const BoxDecoration(
+                color: Color(0xFFDCFCE7),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.person_rounded,
+                color: Color(0xFF15803D),
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                '請問怎麼稱呼您呢？',
+                style: GoogleFonts.notoSansTc(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 22,
+                  color: const Color(0xFF1E293B),
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '讓 AI 助理與小豬可以用您最習慣的稱呼陪伴您：',
+              style: GoogleFonts.notoSansTc(
+                fontSize: 15,
+                color: const Color(0xFF64748B),
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              maxLength: 10,
+              style: GoogleFonts.notoSansTc(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: const Color(0xFF1E293B),
+              ),
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: const Color(0xFFF8FAFC),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
+                hintText: '例如：王爺爺、陳奶奶',
+                hintStyle: GoogleFonts.notoSansTc(
+                  fontSize: 18,
+                  color: const Color(0xFF94A3B8),
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: const BorderSide(
+                    color: Color(0xFF59B294),
+                    width: 2,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, '長輩朋友'),
+            child: Text(
+              '略過',
+              style: GoogleFonts.notoSansTc(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: const Color(0xFF64748B),
+              ),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final text = controller.text.trim();
+              Navigator.pop(ctx, text.isNotEmpty ? text : '長輩朋友');
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF59B294),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+            child: Text(
+              '開始使用',
+              style: GoogleFonts.notoSansTc(
+                fontSize: 16,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 方案 A：長者自主陪伴模式（單人即用，全新長者向雲端動態申領唯一獨立帳號）
   Future<void> _startAutonomousMode() async {
-    setState(() => _isLoading = true);
     try {
       final prefs = await SharedPreferences.getInstance();
       int? elderId = prefs.getInt('last_elder_id');
       String elderName = prefs.getString('last_elder_name') ?? '長輩朋友';
       String? elderRoomId = prefs.getString('last_elder_room_id');
 
-      // 若全新安裝無帳號，向後端申請專屬唯一的獨立長者帳號與房號（杜絕 ID 衝突）
+      // 若全新安裝無帳號，彈出稱呼輸入框並向後端申請專屬唯一的獨立長者帳號與房號
       if (elderId == null) {
-        final result = await ApiService.createAutonomousElder();
+        final chosenName = await _promptElderNameDialog() ?? '長輩朋友';
+        if (!mounted) return;
+        setState(() => _isLoading = true);
+
+        final result = await ApiService.createAutonomousElder(elderName: chosenName);
         if (result['status'] == 'success' && result['data'] != null) {
           final data = result['data'];
           elderId = data['user_id'] as int?;
-          elderName = (data['elder_name'] as String?) ?? '長輩朋友';
+          elderName = (data['elder_name'] as String?) ?? chosenName;
           elderRoomId = (data['room_id']?.toString()) ?? (data['elder_profile_id']?.toString());
         } else {
           final err = result['message'] ?? result['error'] ?? '建立帳號失敗';
           throw Exception(err);
         }
+      } else {
+        setState(() => _isLoading = true);
       }
 
       if (elderId == null) {
@@ -555,7 +690,7 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
 
       if (!mounted) return;
 
-      Navigator.pushReplacement(
+      Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(
           builder: (context) => ElderHomeScreen(
@@ -564,6 +699,7 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
             roomId: elderRoomId!,
           ),
         ),
+        (route) => false,
       );
     } catch (e) {
       if (!mounted) return;
@@ -672,7 +808,7 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
                       onPressed: _startAutonomousMode,
                       icon: const Icon(Icons.auto_awesome_rounded, size: 24),
                       label: Text(
-                        '🌟 我自己使用（直接進入體驗）',
+                        '我自己使用（直接進入體驗）',
                         style: GoogleFonts.notoSansTc(
                           fontSize: 20,
                           fontWeight: FontWeight.w900,

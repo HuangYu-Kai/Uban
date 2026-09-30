@@ -282,89 +282,61 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      // 頂部封面漸層（Figma：55B695 → FFFFFF）
+      // 頂部背景色
       decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0xFF55B695), Color(0xFFFFFFFF)],
-        ),
+        color: Color(0xFF55B695),
       ),
       child: SafeArea(
         bottom: false,
         child: Column(
           children: [
-            const SizedBox(height: 52), // 第一層：teal 封面帶
-            Expanded(
-              child: Stack(
-                clipBehavior: Clip.none,
+            // 頂部列：會員徽章與頭像，平順靠右對齊
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 14),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  // 第二層：DFFFF4 → 白（偏左、右側內縮露出圓角，往上露出一截）
-                  Positioned(
-                    top: 0,
-                    left: 0,
-                    right: 58,
-                    bottom: 0,
-                    child: Container(
-                      decoration: const BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [Color(0xFFDFFFF4), Color(0xFFFFFFFF)],
-                          stops: [0.0, 0.5],
-                        ),
-                        borderRadius: BorderRadius.only(
-                          topLeft: Radius.circular(20),
-                          topRight: Radius.circular(20),
-                        ),
-                      ),
-                    ),
-                  ),
-                  // 第三層：DDE6DE 主內容 sheet（往下 offset，露出第二層）
-                  Positioned(
-                    top: 42,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    child: Container(
-                      decoration: const BoxDecoration(
-                        color: Color(0xFFDDE6DE),
-                        borderRadius: BorderRadius.only(
-                          topLeft: Radius.circular(20),
-                          topRight: Radius.circular(20),
-                        ),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 44),
-                        child: SingleChildScrollView(
-                          physics: const BouncingScrollPhysics(),
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(20, 0, 20, 130),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                // ★ 一屏到底修復：首頁只留三塊（今天卡／下一包藥／新聞），
-                                // 天氣併入今天卡、日期卡與天氣卡合一，新聞卡壓成精簡列，
-                                // 移除跟底部導覽列「電話」分頁重複的「打電話給家人」大按鈕。
-                                _buildTodayCard(),
-                                const SizedBox(height: AppSpacing.lg),
-                                _buildNextDoseCard(),
-                                const SizedBox(height: AppSpacing.lg),
-                                _buildFeaturedNewsCard(),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  // 會員徽章 + 頭像（浮在右上、坐在第三層 sheet 上緣）
-                  Positioned(
-                    top: 20,
-                    right: 20,
-                    child: _buildHeader(),
-                  ),
+                  _buildHeader(),
                 ],
+              ),
+            ),
+            // 主內容 Sheet：溫暖宣紙底色，頂部大圓角 28px，平滑陰影自然交接
+            Expanded(
+              child: Container(
+                decoration: const BoxDecoration(
+                  color: Color(0xFFFAF7F2),
+                  borderRadius: BorderRadius.vertical(
+                    top: Radius.circular(28),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Color(0x1A000000),
+                      blurRadius: 16,
+                      offset: Offset(0, -3),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(28),
+                  ),
+                  child: SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 20, 20, 130),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _buildTodayCard(),
+                          const SizedBox(height: AppSpacing.lg),
+                          _buildNextDoseCard(),
+                          const SizedBox(height: AppSpacing.lg),
+                          _buildFeaturedNewsCard(),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ),
           ],
@@ -439,7 +411,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
               badgeAsset,
               fit: BoxFit.contain,
               errorBuilder: (_, __, ___) => const Center(
-                  child: Text('🐷', style: TextStyle(fontSize: 24))),
+                  child: Icon(Icons.stars_rounded, color: textColor, size: 24)),
             ),
           ),
           const SizedBox(width: 8),
@@ -577,11 +549,15 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 22),
         child: Row(
           children: [
-            const Text('🌟', style: TextStyle(fontSize: 28)),
+            const Icon(
+              Icons.check_circle_rounded,
+              color: Color(0xFF047857),
+              size: 30,
+            ),
             const SizedBox(width: 14),
             Expanded(
               child: Text(
-                '今天的提醒都完成了 🌟',
+                '今天的提醒都完成了',
                 style: ElderScale.body,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
@@ -593,15 +569,45 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     }
 
     final category = (next['category'] ?? '').toString();
-    final emoji = _reminderEmoji(category);
     final timeStr = (next['time_str'] ?? '').toString();
     final title = (next['title'] ?? '提醒').toString();
 
+    IconData doseIcon = Icons.alarm_rounded;
+    Color doseColor = const Color(0xFF64748B);
+    Color doseBg = const Color(0xFFF1F5F9);
+    if (category == 'medication') {
+      doseIcon = Icons.medication_rounded;
+      doseColor = const Color(0xFFE11D48);
+      doseBg = const Color(0xFFFFE4E6);
+    } else if (category == 'water') {
+      doseIcon = Icons.water_drop_rounded;
+      doseColor = const Color(0xFF0284C7);
+      doseBg = const Color(0xFFE0F2FE);
+    } else if (category == 'exercise') {
+      doseIcon = Icons.directions_walk_rounded;
+      doseColor = const Color(0xFFD97706);
+      doseBg = const Color(0xFFFEF3C7);
+    }
+
     return GlassCard(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
       child: Row(
         children: [
-          Text(emoji, style: const TextStyle(fontSize: 34)),
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: doseBg,
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Icon(
+                doseIcon,
+                color: doseColor,
+                size: 24,
+              ),
+            ),
+          ),
           const SizedBox(width: 14),
           // ⚠️ 時間＋標題同列且皆為動態長度（後端自訂文字），包 Expanded／
           // ellipsis 避免窄螢幕溢位。
@@ -650,21 +656,6 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     );
   }
 
-  /// 提醒分類對應的 emoji 圖示。無法辨識的分類一律回傳鬧鐘，跟「我的」
-  /// 分頁其他提醒相關畫面的預設圖示保持一致的保守作法。
-  String _reminderEmoji(String category) {
-    switch (category) {
-      case 'medication':
-        return '💊';
-      case 'water':
-        return '🚰';
-      case 'exercise':
-        return '🚶';
-      default:
-        return '⏰';
-    }
-  }
-
   /// 「今天」卡（毛玻璃，日期／農曆＋天氣合一，點擊跳轉至農民曆與神明誕辰）。
   ///
   /// ★ 一屏到底修復：原本天氣卡與日期／農曆卡是首頁兩張獨立的卡片（合計
@@ -677,16 +668,16 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     final now = DateTime.now();
     final almanac = AlmanacDataHelper.calculateForDate(now);
 
-    // 提煉今日精華摘要（神誕 / 宜忌精簡）
+    // 提煉今日精華摘要（神誕 / 宜忌精簡，移除 emoji）
     String summaryText;
     if (almanac.hasDeityBirthday) {
       final deityName = almanac.deities.first.name;
-      summaryText = '🌟 今日【$deityName】・宜 ${almanac.yiList.take(2).join('、')}';
+      summaryText = '今日【$deityName】・宜 ${almanac.yiList.take(2).join('、')}';
     } else if (almanac.yiList.isNotEmpty && almanac.jiList.isNotEmpty) {
       summaryText =
-          '📜 今日農民曆：宜 ${almanac.yiList.take(2).join('、')} ｜ 忌 ${almanac.jiList.take(2).join('、')}';
+          '今日農民曆：宜 ${almanac.yiList.take(2).join('、')} ｜ 忌 ${almanac.jiList.take(2).join('、')}';
     } else {
-      summaryText = '📜 點此查看今日農民曆・神明誕辰與吉凶';
+      summaryText = '點此查看今日農民曆・神明誕辰與吉凶';
     }
 
     return GlassCard(
@@ -778,9 +769,9 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
   /// 回傳 0 表示空間不足、走精簡橫列；大於 0 則是大圖的高度。
   double _availableNewsImageHeight(BuildContext context) {
     final mq = MediaQuery.of(context);
-    // 版面固定開銷：頂部封面帶 52 ＋ sheet 偏移 42 ＋ 內距 44；
+    // 版面固定開銷：頂部列與內距約 84px；
     // 底部 130 已含浮動導覽列 104 的淨空。
-    final double available = mq.size.height - mq.padding.top - 138 - 130;
+    final double available = mq.size.height - mq.padding.top - 84 - 130;
     // 其餘區塊的實測高度：今天卡 182、下一包藥 118、兩個間距 48、
     // 新聞標題列 36 ＋ 間距 8。下一包藥全部完成時會更矮，這裡取較高值
     // 保守估計，寧可少長一點也不要讓畫面被迫捲動。

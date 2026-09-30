@@ -25,7 +25,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -206,12 +206,34 @@ class DatabaseHelper {
       )
     ''');
 
+    // ========================================
+    // 11. 長輩端 GPS 離線回報佇列（version 2）
+    // ========================================
+    await _createLocationPointsTable(db);
+
     appLogger.d('✅ [DatabaseHelper] Database created successfully');
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    // 未來版本升級邏輯
     appLogger.d('📦 [DatabaseHelper] Upgrading database from $oldVersion to $newVersion');
+    if (oldVersion < 2) {
+      await _createLocationPointsTable(db);
+    }
+  }
+
+  /// GPS 離線回報佇列：長輩端送出 `LocationApi.sendPing` 失敗（離線/逾時）時
+  /// 先寫在這裡（`synced=0`），恢復連線後由 `ElderLocationService` 依序補送。
+  Future<void> _createLocationPointsTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS location_points (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        latitude REAL NOT NULL,
+        longitude REAL NOT NULL,
+        accuracy_m REAL,
+        recorded_at TEXT NOT NULL,
+        synced INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
   }
 
   // ========================================
