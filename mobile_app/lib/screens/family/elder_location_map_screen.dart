@@ -1,5 +1,6 @@
 // lib/screens/family/elder_location_map_screen.dart
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -40,6 +41,9 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
   int? _staleAfterMs;
   // 已清理／分段／簡化的當日軌跡（原始點由 LocationTrailProcessor 處理）
   ProcessedTrail _trail = const ProcessedTrail();
+  // 除錯用：未經處理的原始點（依時間排序），僅供 debug 版疊圖比對
+  List<TrailPoint> _rawPoints = const [];
+  bool _showRaw = false;
   Timer? _pollTimer;
   final MapController _mapController = MapController();
 
@@ -102,19 +106,21 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
         _state = _LoadState.sharingDisabled;
         _currentPoint = null;
         _trail = const ProcessedTrail();
+        _rawPoints = const [];
       });
       return;
     }
 
     final point = currentResult['point'] as Map<String, dynamic>?;
     final pointsRaw = (trailResult['points'] as List?) ?? const [];
-    final trail = LocationTrailProcessor.process(
-      pointsRaw
-          .whereType<Map>()
-          .map(TrailPoint.fromJson)
-          .whereType<TrailPoint>()
-          .toList(),
-    );
+    final raw = pointsRaw
+        .whereType<Map>()
+        .map(TrailPoint.fromJson)
+        .whereType<TrailPoint>()
+        .toList()
+      ..sort((a, b) => a.time.compareTo(b.time));
+    final trail = LocationTrailProcessor.process(raw);
+    if (kDebugMode && !silent) _debugPrintRawJumps(raw);
 
     setState(() {
       _state = _LoadState.ready;
@@ -123,6 +129,7 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
           point != null ? LocationApi.parseRecordedAt(point['recorded_at']) : null;
       _staleAfterMs = currentResult['stale_after_ms'] as int?;
       _trail = trail;
+      _rawPoints = raw;
     });
 
     // 靜默輪詢（45 秒）絕不動鏡頭——家屬可能正在拖曳地圖；
@@ -133,6 +140,35 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
 
     _schedulePolling();
   }
+
+  /// 除錯：印出原始點中距離最大的前 5 個相鄰跳躍（瀏覽器 console 可見）。
+  void _debugPrintRawJumps(List<TrailPoint> raw) {
+    final jumps = _rawJumps(raw)..sort((a, b) => b.meters.compareTo(a.meters));
+    debugPrint('[TrailRaw] 原始 ${raw.length} 點，最大相鄰跳躍前 5：');
+    for (final j in jumps.take(5)) {
+      debugPrint(
+        '[TrailRaw] ${_hhmm(j.from.time)} → ${_hhmm(j.to.time)} '
+        '${j.seconds} 秒 / ${j.meters.round()} 公尺 '
+        '誤差 ${j.from.accuracyM ?? '-'} → ${j.to.accuracyM ?? '-'}',
+      );
+    }
+  }
+
+  List<_RawJump> _rawJumps(List<TrailPoint> raw) {
+    const dist = Distance();
+    return [
+      for (int i = 1; i < raw.length; i++)
+        _RawJump(
+          raw[i - 1],
+          raw[i],
+          dist(raw[i - 1].position, raw[i].position),
+          raw[i].time.difference(raw[i - 1].time).inSeconds,
+        ),
+    ];
+  }
+
+  /// 除錯：原始點疊圖是否生效（只在 debug 版）。
+  bool get _rawOn => kDebugMode && _showRaw && _rawPoints.isNotEmpty;
 
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
@@ -332,6 +368,31 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
                     ),
               ],
             ),
+            // 除錯：原始點疊圖（在處理後軌跡之上、標記之下）
+            if (_rawOn) ...[
+              PolylineLayer(
+                polylines: [
+                  Polyline(
+                    points: [for (final p in _rawPoints) p.position],
+                    strokeWidth: 1.5,
+                    color: const Color(0x99616161),
+                  ),
+                ],
+              ),
+              CircleLayer(
+                circles: [
+                  for (final p in _rawPoints)
+                    CircleMarker(
+                      point: p.position,
+                      radius: 3,
+                      color: (p.accuracyM == null ||
+                              p.accuracyM! <= LocationTrailProcessor.lineAccuracyMaxM)
+                          ? const Color(0xFF616161)
+                          : const Color(0xFFF97316),
+                    ),
+                ],
+              ),
+            ],
             MarkerLayer(
               markers: [
                 if (startPoint != null)
@@ -394,6 +455,16 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (kDebugMode) ...[
+                FloatingActionButton.small(
+                  heroTag: 'elder_map_debug_raw',
+                  tooltip: '顯示原始點（除錯）',
+                  backgroundColor: _showRaw ? Colors.orange : null,
+                  onPressed: () => setState(() => _showRaw = !_showRaw),
+                  child: const Icon(Icons.scatter_plot_rounded),
+                ),
+                if (currentLatLng != null || canFit) const SizedBox(height: 8),
+              ],
               if (currentLatLng != null)
                 FloatingActionButton.small(
                   heroTag: 'elder_map_my_location',
@@ -413,7 +484,7 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
           ),
         ),
         // 兩行都不會顯示時不畫空白外框（例如查看過去日期且當日無軌跡）
-        if ((_isToday && currentLatLng != null) || !_trail.isEmpty)
+        if ((_isToday && currentLatLng != null) || !_trail.isEmpty || _rawOn)
           Positioned(
             left: 16,
             right: 16,
@@ -436,6 +507,21 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
     }
     var text = parts.join(' ・ ');
     if (_trail.gaps.isNotEmpty) text += ' ・ 虛線為訊號中斷';
+    return text;
+  }
+
+  /// 除錯：原始點統計（總數、誤差過大點數、最大間隔）。
+  String _rawDebugText() {
+    final over = _rawPoints
+        .where((p) =>
+            p.accuracyM != null && p.accuracyM! > LocationTrailProcessor.lineAccuracyMaxM)
+        .length;
+    var text = '原始 ${_rawPoints.length} 點 ・ 誤差>35m $over 點';
+    final jumps = _rawJumps(_rawPoints);
+    if (jumps.isNotEmpty) {
+      final max = jumps.reduce((a, b) => a.meters >= b.meters ? a : b);
+      text += ' ・ 最大間隔 ${max.seconds} 秒 / ${max.meters.round()} 公尺 @ ${_hhmm(max.from.time)}';
+    }
     return text;
   }
 
@@ -502,6 +588,21 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
                 ),
               ],
             ),
+          if (_rawOn) ...[
+            if (showLastUpdate || !_trail.isEmpty) const SizedBox(height: 4),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _rawDebugText(),
+                    style: GoogleFonts.notoSansTc(fontSize: 11, color: Colors.orange[800]),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -534,4 +635,14 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
       ],
     );
   }
+}
+
+/// 除錯用：相鄰兩個原始點之間的跳躍。
+class _RawJump {
+  final TrailPoint from;
+  final TrailPoint to;
+  final double meters;
+  final int seconds;
+
+  const _RawJump(this.from, this.to, this.meters, this.seconds);
 }

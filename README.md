@@ -450,6 +450,7 @@ void initPedometer() {
 - 鏡頭改為初始即框住整段軌跡；靜默輪詢（45 秒）不再移動鏡頭，只有切換日期／下拉重新整理才重新框選；右側新增「回到目前位置」與「顯示整段軌跡」按鈕。
 - 底部資訊列新增當日摘要（`移動 2.3 公里 ・ 停留 3 處 ・ 08:12–17:40`，有斷訊時附註「虛線為訊號中斷」）。
 - 新增測試 `mobile_app/test/services/location_trail_processor_test.dart`。規劃與決策見 [`docs/technical/GPS_TRAIL_RENDERING_PLAN.md`](docs/technical/GPS_TRAIL_RENDERING_PLAN.md)；第二階段（長輩端採集品質）尚未實作。
+- **除錯用原始點疊圖（僅 debug 版）**：地圖右側按鈕列最上方多一顆「顯示原始點（除錯）」，開啟後在處理後軌跡之上疊畫未經清理的原始點（灰點；誤差 > 35m 為橘點）與細灰連線，底部資訊列多一行「原始 N 點 ・ 誤差>35m K 點 ・ 最大間隔 X 秒 / Y 公尺 @ HH:mm」，並於 console `debugPrint` 最大的 5 個相鄰跳躍，用來判斷長直線是原始資料缺漏或被處理器丟掉。release 版不顯示。
 
 ### 2026-09-30 🛰️ 長輩「與家人分享我的位置」系統預設改為開啟
 
