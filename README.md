@@ -442,6 +442,15 @@ void initPedometer() {
 > 但只寫進 `CLAUDE_call-monitor.md` 沒進本日誌的通話／監控工作）。
 > 內容依 commit diff 與該文件重建，細節可能不如當事人寫得完整。
 
+### 2026-09-30 🗺️ 家屬端移動軌跡呈現改善（第一階段）
+
+- 新增 `mobile_app/lib/services/location_trail_processor.dart`（純 Dart、可單元測試）：在**讀取端**清理 `/trail` 原始點——速度離群點（> 40 m/s）與尖刺剔除、精確度 > 35m 的點不畫線、半徑 50m 內停留 ≥ 5 分鐘合併為停留點、Douglas-Peucker（8m）簡化。後端仍照存原始資料。
+- 斷訊（間隔 > 10 分鐘且距離 > 200m）拆成多段 `Polyline`，段與段之間改畫**淡色虛線**；同地點長時間沒回報（裝置只在移動時回報）視為停留而非斷訊。
+- `elder_location_map_screen.dart`：軌跡加白色外框並由淺到深漸層（淺 = 較早）；新增綠色起點標記與琥珀色停留標記（點擊顯示 `14:05–14:40 停留 35 分鐘`）。
+- 鏡頭改為初始即框住整段軌跡；靜默輪詢（45 秒）不再移動鏡頭，只有切換日期／下拉重新整理才重新框選；右側新增「回到目前位置」與「顯示整段軌跡」按鈕。
+- 底部資訊列新增當日摘要（`移動 2.3 公里 ・ 停留 3 處 ・ 08:12–17:40`，有斷訊時附註「虛線為訊號中斷」）。
+- 新增測試 `mobile_app/test/services/location_trail_processor_test.dart`。規劃與決策見 [`docs/technical/GPS_TRAIL_RENDERING_PLAN.md`](docs/technical/GPS_TRAIL_RENDERING_PLAN.md)；第二階段（長輩端採集品質）尚未實作。
+
 ### 2026-09-30 🛰️ 長輩「與家人分享我的位置」系統預設改為開啟
 
 - 分享開關仍**完全由長輩本人決定**（家屬無法代為切換），只是新帳號的預設值由關閉改為開啟。
