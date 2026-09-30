@@ -19,7 +19,8 @@ import 'api/location_api.dart';
 /// 而不是綁定某一個特定分頁——這樣家屬才能看到長輩「整天」的軌跡，不會
 /// 因為長輩沒開特定畫面而斷點。
 ///
-/// 分享開關（`elder_profile.location_sharing_enabled`，預設關閉）是唯一
+/// 分享開關（`elder_profile.location_sharing_enabled`，系統預設開啟，僅長輩
+/// 本人可關閉）是唯一
 /// 決定家屬看不看得到資料的防線，且伺服器端讀取端也會再檢查一次
 /// （defense-in-depth，見 `Uban-api/routers/location.py`）；這裡的開關只
 /// 負責「長輩要不要讓裝置持續耗電回報」。

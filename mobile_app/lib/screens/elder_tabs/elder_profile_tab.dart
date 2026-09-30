@@ -150,7 +150,9 @@ class _ElderProfileTabState extends State<ElderProfileTab>
 
   // ── 🛰️ 與家人分享 GPS 位置（戶外定位軌跡，與上方本機步數用途的 GPS 追蹤
   //   是不同的東西——見 ElderLocationService 檔頭說明）───────────────
-  bool _locationSharingEnabled = false;
+  // 系統預設開啟（與後端 elder_profile.location_sharing_enabled DEFAULT 1 一致），
+  // 實際值以 _loadLocationSharingState() 讀回的後端狀態為準。
+  bool _locationSharingEnabled = true;
   bool _locationSharingBusy = false;
 
   // ★ 第五十輪：好友寵物排行榜「初次同步」只做一次，避免每次 setState／
@@ -400,7 +402,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
   }
 
   /// 讀取目前「與家人分享我的位置」開關狀態，供 [_buildLocationSharingCard] 顯示。
-  /// 失敗（離線／尚未配對）時維持預設關閉，不影響畫面其餘功能。
+  /// 失敗（離線／尚未配對）時維持預設開啟的顯示，不影響畫面其餘功能。
   Future<void> _loadLocationSharingState() async {
     final elderId = await FriendService.resolveMyElderId(widget.userId);
     if (elderId == null || !mounted) return;
@@ -1134,7 +1136,8 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     );
   }
 
-  // 🛰️ 與家人分享我的位置：長輩本人的隱私開關，預設關閉。關閉時家屬即使
+  // 🛰️ 與家人分享我的位置：長輩本人的隱私開關，系統預設開啟，長輩可隨時
+  // 自行關閉（完全由長輩本人決定，家屬無法代為切換）。關閉時家屬即使
   // 已配對也看不到位置資料（伺服器端讀取端會再檢查一次，這裡的開關只
   // 決定裝置要不要持續耗電回報）。標題／副標題為固定文案，仍加
   // maxLines/ellipsis 防禦（Row 內含開關元件，同列有其他元素）。

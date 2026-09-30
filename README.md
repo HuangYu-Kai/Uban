@@ -442,6 +442,11 @@ void initPedometer() {
 > 但只寫進 `CLAUDE_call-monitor.md` 沒進本日誌的通話／監控工作）。
 > 內容依 commit diff 與該文件重建，細節可能不如當事人寫得完整。
 
+### 2026-09-30 🛰️ 長輩「與家人分享我的位置」系統預設改為開啟
+
+- 分享開關仍**完全由長輩本人決定**（家屬無法代為切換），只是新帳號的預設值由關閉改為開啟。
+- 前端：`elder_profile_tab.dart` 開關初始顯示改為開啟，實際狀態仍以後端 `GET /api/location/sharing` 為準。
+- 後端需同步將 `elder_profile.location_sharing_enabled` 的 DB 預設值改為 `1`（uban-api 另行處理）。
 ### 2026-09-30 🕗 家屬端 GPS「最後更新」固定差 8 小時
 
 - **症狀**：長輩手機正在移動回報，家屬端「移動軌跡」卻一直顯示「最後更新：8 小時前（已過期）」。
