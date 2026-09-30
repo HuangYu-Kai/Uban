@@ -7,6 +7,17 @@ import 'api_client.dart';
 /// 與 IPS（攝影機式室內房間定位）是完全不同的子系統，不要混用。
 /// 對應後端 `Uban-api/routers/location.py`。
 class LocationApi {
+  /// 解析後端回傳的 `recorded_at`，轉成裝置本地時間。
+  ///
+  /// 後端存的是 UTC；若字串沒有時區標記（舊版後端不帶 `Z`），`DateTime.parse`
+  /// 會把它當成本地時間，台灣就會固定差 8 小時——所以缺時區時一律補 `Z`。
+  static DateTime? parseRecordedAt(Object? raw) {
+    if (raw is! String || raw.isEmpty) return null;
+    final hasZone = raw.endsWith('Z') || RegExp(r'[+-]\d{2}:?\d{2}$').hasMatch(raw);
+    final normalized = hasZone ? raw : '${raw.replaceFirst(' ', 'T')}Z';
+    return DateTime.tryParse(normalized)?.toLocal();
+  }
+
   /// 長輩裝置回報一筆 GPS 座標。
   static Future<bool> sendPing({
     required String elderId,
@@ -55,7 +66,9 @@ class LocationApi {
     final dateStr = date != null
         ? '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}'
         : null;
-    final path = '/location/trail/$elderId?user_id=$userId'
+    // 「某一天」是裝置本地的一天，帶上時區偏移讓後端換算成 UTC 區間。
+    final tzOffset = (date ?? DateTime.now()).timeZoneOffset.inMinutes;
+    final path = '/location/trail/$elderId?user_id=$userId&tz_offset=$tzOffset'
         '${dateStr != null ? '&date=$dateStr' : ''}';
     final result = await ApiClient.get(path);
     if (result != null && result['status'] == 'success') {

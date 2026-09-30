@@ -70,7 +70,7 @@ class _HomeGpsTrailCardState extends State<HomeGpsTrailCard> {
     setState(() {
       _state = _CardState.ready;
       _recordedAt =
-          point != null ? DateTime.tryParse(point['recorded_at'] as String) : null;
+          point != null ? LocationApi.parseRecordedAt(point['recorded_at']) : null;
     });
   }
 

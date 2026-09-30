@@ -442,6 +442,15 @@ void initPedometer() {
 > 但只寫進 `CLAUDE_call-monitor.md` 沒進本日誌的通話／監控工作）。
 > 內容依 commit diff 與該文件重建，細節可能不如當事人寫得完整。
 
+### 2026-09-30 🕗 家屬端 GPS「最後更新」固定差 8 小時
+
+- **症狀**：長輩手機正在移動回報，家屬端「移動軌跡」卻一直顯示「最後更新：8 小時前（已過期）」。
+- **根因**：後端 `recorded_at` 存 naive UTC、回傳時沒帶 `Z`，`DateTime.parse` 把它當本地時間（UTC+8）解析。
+- **修正**：後端回傳改帶 `Z`；前端新增 `LocationApi.parseRecordedAt()`（缺時區一律視為 UTC 再 `toLocal()`），
+  `elder_location_map_screen.dart` 與 `home_gps_trail_card.dart` 改用它。
+- **連帶修正**：`GET /api/location/trail` 新增 `tz_offset`（分鐘，預設 480），依本地日換算 UTC 區間查詢，
+  台灣 00:00–08:00 的軌跡不再被歸到前一天。
+
 ### 2026-09-21 🛠️ 第五十一輪：來電同意權、連線真相、賺取制寵物食物
 
 > 使用者實機回報 14 項缺陷（家屬端 8、長輩端 6）。查證後**過半不是新 bug**，而是三個

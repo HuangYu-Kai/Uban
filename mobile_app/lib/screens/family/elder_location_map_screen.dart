@@ -118,7 +118,7 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
       _state = _LoadState.ready;
       _currentPoint = point;
       _currentRecordedAt =
-          point != null ? DateTime.tryParse(point['recorded_at'] as String) : null;
+          point != null ? LocationApi.parseRecordedAt(point['recorded_at']) : null;
       _staleAfterMs = currentResult['stale_after_ms'] as int?;
       _trailPoints = points;
     });
