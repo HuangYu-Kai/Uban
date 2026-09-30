@@ -45,6 +45,7 @@ import 'services/local_reminder_notification.dart';
 import 'services/elder_reminder_manager.dart';
 import 'services/firebase_bg_handler.dart';
 import 'widgets/main_painters.dart';
+import 'widgets/global_assistant_button.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 final StreamController<String> callKitDeclineStream =
@@ -287,6 +288,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     }
     _setupSignalingListener();
     sig.Signaling().updateAppForeground(true);
+    // ★ 2026-09-21 第五十一輪：備援通知「待接聽」鍵的冷啟動消費。見
+    //   _scheduleLocalRingCallFallback 的函式註解。
+    if (!kIsWeb) {
+      _scheduleLocalRingCallFallback();
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // ★ 2026-08-31 第三十七輪：原本在此無條件請求權限，但 splash 的
       //   `_replaceWith` 用 Navigator.pushReplacement——它移除的是堆疊最上層的
@@ -785,9 +791,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                                           'last_elder_room_id', elderIdUuid);
                                     }
                                     // ⚠️ 刻意不寫 last_elder_device_role：與
-                                    //   elder_pairing_display_screen.dart 的「登入宇璿」
-                                    //   按鈕不同，本流程沒有在任何地方明確寫死
-                                    //   saved_is_cctv（全 main.dart 對這個鍵只讀不寫，
+                                    //   elder_pairing_display_screen.dart 的
+                                    //   _promptModeAndNavigate（QR 配對／自主模式共用
+                                    //   的角色指派流程）不同，本流程沒有在任何地方明確
+                                    //   寫死 saved_is_cctv（全 main.dart 對這個鍵只讀不寫，
                                     //   ElderHomeScreen.initState 也不會呼叫
                                     //   hasCommDevice 或讀寫這個鍵），沒有足夠把握斷言
                                     //   這台裝置這次登入一定是通話機——寫錯值會讓通話機
@@ -909,6 +916,96 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     }
   }
 
+  /// ★ 2026-09-21 第五十一輪：冷啟動時「待接聽」鍵必須等 Splash 的冷啟動導航
+  /// 塵埃落定才能消費，理由與 [_scheduleRecoveryCodeFallback] 完全相同——
+  /// `_showIncomingCallDialog` 用的是 `navigatorKey.currentContext` 這個 root
+  /// Navigator，若在 Splash 還沒 `pushReplacement`／`pushAndRemoveUntil` 前
+  /// 彈出對話框，會被 Splash 換頁悄悄打斷（見 globals.dart::splashActive 與
+  /// 護欄 G13）。同樣輪詢 `splashActive`，逾時上限與 [_scheduleRecoveryCodeFallback]
+  /// 一致（20s，高於 Splash 15 秒導航看門狗上限）。
+  ///
+  /// 只在這裡「排程」，實際消費／顯示 UI 全部交給 [_checkPendingLocalRingCall]，
+  /// resume 路徑直接呼叫該函式即可（此時 Splash 早已結束，不需要再等）。
+  void _scheduleLocalRingCallFallback() {
+    const int maxTicks = 100; // 100 × 200ms = 20s
+    int tick = 0;
+    Timer.periodic(const Duration(milliseconds: 200), (timer) {
+      tick++;
+      if (splashActive && tick < maxTicks) return;
+      timer.cancel();
+      _checkPendingLocalRingCall();
+    });
+  }
+
+  /// ★ 2026-09-21 第五十一輪：消費備援通知的「待接聽」鍵
+  /// `pendingLocalRingCall`（見 `local_call_notification.dart::_persistTapAsPendingRing`）。
+  ///
+  /// 這個鍵代表「備援通知曾經響過，但使用者尚未明確按下 ✓ 接聽／✕ 拒絕」——
+  /// 可能是點了通知本體，也可能是螢幕鎖定時系統因 `fullScreenIntent: true`
+  /// 自動觸發的 content PendingIntent。兩者都**不等於使用者已同意接聽**，
+  /// 因此這裡改用既有的 [_showIncomingCallDialog] 顯示接聽／拒接畫面，讓
+  /// 使用者自己決定，而不是像修復前那樣直接寫 `pendingAcceptedCall` 逕自進房。
+  ///
+  /// 🚫 只處理**一般通話**：`local_call_notification.dart::show()` 只會在
+  /// `firebase_bg_handler.dart::showFullScreenCallkit` 判定「非緊急」時才被
+  /// 呼叫，緊急通話從未經過備援通知這條路徑（緊急通話走的是無條件自動接聽
+  /// `_autoAcceptEmergencyCall`，見 G81），因此這裡不需要、也不應該再做一次
+  /// `isEmergency` 分流——傳給 `_showIncomingCallDialog` 時固定給 `false`。
+  Future<void> _checkPendingLocalRingCall() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.reload();
+      final str = prefs.getString('pendingLocalRingCall');
+      if (str == null) return;
+      // 一次性消費：不論後面判斷結果如何都先清掉，避免重複彈窗。
+      await prefs.remove('pendingLocalRingCall');
+      final Map<String, dynamic> decoded = jsonDecode(str);
+
+      // 有效期比照 pendingAcceptedCall／pendingRingCallData：缺 timestamp 或
+      // 超過 kCallValidityMs 一律視為過期，不彈出早已結束的舊來電。
+      final int? ts = int.tryParse('${decoded['timestamp'] ?? ''}');
+      final int ageMs =
+          ts != null ? DateTime.now().millisecondsSinceEpoch - ts : -1;
+      if (ts == null || ageMs > kCallValidityMs) {
+        debugPrint('🗑️ [Main] Discarding stale pendingLocalRingCall '
+            '(ts=$ts, age: ${ageMs}ms)');
+        return;
+      }
+
+      final String roomId = (decoded['roomId'] ?? '').toString();
+      final String senderId = (decoded['senderId'] ?? '').toString();
+      if (roomId.isEmpty || senderId.isEmpty) {
+        debugPrint('⚠️ [Main] pendingLocalRingCall 缺 roomId/senderId，略過');
+        return;
+      }
+      final String rawCallId = (decoded['callId'] ?? '').toString();
+      final String? callId = rawCallId.isNotEmpty ? rawCallId : null;
+
+      // 已經被其他通路處理過（同一 callId 已宣告去重 token），不重複彈窗。
+      if (callId != null && callId == sig.Signaling().lastProcessedCallId) {
+        debugPrint('🗑️ [Main] pendingLocalRingCall 已由其他通路處理，略過 '
+            '(callId=$callId)');
+        return;
+      }
+      // 已經有一通「已明確接聽」的通話在等待導航，不要疊加一個舊的接聽/拒接彈窗。
+      if (pendingAcceptedCall.value != null) {
+        debugPrint('ℹ️ [Main] pendingAcceptedCall 已有值，略過 pendingLocalRingCall 彈窗');
+        return;
+      }
+
+      _claimCallDedupToken(callId, isVideoCallRaw: decoded['isVideoCall']);
+      _showIncomingCallDialog(
+        roomId,
+        senderId,
+        callId: callId,
+        isEmergency: false, // 見上方函式註解：這條路徑永遠是一般通話
+        senderRole: decoded['senderRole']?.toString(),
+      );
+    } catch (e) {
+      debugPrint('⚠️ [Main] _checkPendingLocalRingCall 失敗: $e');
+    }
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
@@ -917,6 +1014,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       sig.Signaling().updateAppForeground(true);
       sig.Signaling().reconnect();
       _checkPendingCallFromSharedPreferences();
+      // ★ 2026-09-21 第五十一輪：回前景時也要檢查備援通知的「待接聽」鍵——
+      //   BG isolate 的 notificationBackgroundTapHandler 可能在 App 只是被
+      //   切到背景（沒被殺死）時寫入，回前景是這種情況下唯一的消費時機。
+      _checkPendingLocalRingCall();
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive ||
         state == AppLifecycleState.detached ||
@@ -1711,11 +1812,19 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       barrierDismissible: false,
       builder: (c) {
         _activeCallDialogContext = c;
-        return AlertDialog(
+        // ★ 第五十輪：需求只要長輩端放大 100%，但本函式是家屬端／長輩端 FCM 前景
+        //   備援**共用**同一份 build。這裡刻意不加 appRole/senderRole 判斷去分流
+        //   樣式——本檔屬 🔴 極高風險檔，新增任何條件分支都可能牽動來電路徑；
+        //   純視覺放大不值得為了「只放大一端」去承擔這個風險。取捨：家屬端的
+        //   app 內來電通知文字/按鈕也會一併變大，非需求本意但風險最低。
+        // ★ 第五十一輪（長5）：來電響鈴畫面上，全域語音助理浮動鈕必須讓位，
+        //   不可以擋到接聽／拒接鍵。純外層包裝，不動任何來電邏輯。
+        return AssistantHiddenZone(
+          child: AlertDialog(
           title: Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(16), // 8→16，跟著圖示等比放大
                 decoration: BoxDecoration(
                   color: isEmergency ? Colors.red.shade100 : Colors.green.shade100,
                   borderRadius: BorderRadius.circular(12),
@@ -1723,16 +1832,28 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                 child: Icon(
                   isEmergency ? Icons.warning : Icons.phone_callback,
                   color: isEmergency ? Colors.red : Colors.green,
-                  size: 28,
+                  size: 56, // 28→56（100%）
                 ),
               ),
-              const SizedBox(width: 12),
-              Text(isEmergency ? '🚨 緊急來電' : '📞 來電通知'),
+              const SizedBox(width: 24), // 12→24
+              // 標題原本沒有 style（吃 AlertDialog 預設），這裡明確給放大後的樣式；
+              // 包 Flexible + ellipsis：同列還有圖示，避免窄螢幕溢位（硬規則 14）。
+              Flexible(
+                child: Text(
+                  isEmergency ? '🚨 緊急來電' : '📞 來電通知',
+                  style: const TextStyle(fontSize: 40, fontWeight: FontWeight.bold),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             ],
           ),
-          content: Text(
-            '$callerLabel 正在呼叫您！',
-            style: const TextStyle(fontSize: 18),
+          // 內容 18→36（100%）；外包 SingleChildScrollView 讓過長內容可捲動，
+          // 避免小螢幕高度不夠時溢位（硬規則 14）。
+          content: SingleChildScrollView(
+            child: Text(
+              '$callerLabel 正在呼叫您！',
+              style: const TextStyle(fontSize: 36),
+            ),
           ),
           backgroundColor: isEmergency ? Colors.red.shade50 : Colors.green.shade50,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -1743,12 +1864,22 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                 Navigator.pop(c);
                 sig.Signaling().sendCallBusy(senderId, callId: callId, room: roomId);
               },
-              icon: const Icon(Icons.call_end),
-              label: const Text('拒接', style: TextStyle(fontSize: 16)),
+              icon: const Icon(Icons.call_end, size: 40), // 圖示跟著放大
+              // 按鈕文字 16→32（100%）；包 Flexible + ellipsis：兩顆按鈕同列，
+              // 字放大後必須可收縮，否則窄螢幕（如 320dp）會撐爆 Row（硬規則 14）。
+              label: const Flexible(
+                child: Text(
+                  '拒接',
+                  style: TextStyle(fontSize: 32),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.red,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                // 20/12→40/24（100%），並保證最小點擊高度跟著放大。
+                padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
+                minimumSize: const Size(64, 84),
               ),
             ),
             ElevatedButton.icon(
@@ -1757,15 +1888,24 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                 Navigator.pop(c);
                 _navigateToVideoCall(roomId, senderId, callId: callId);
               },
-              icon: const Icon(Icons.videocam),
-              label: const Text('接聽', style: TextStyle(fontSize: 16)),
+              icon: const Icon(Icons.videocam, size: 40), // 圖示跟著放大
+              // 同上「拒接」按鈕的放大＋可收縮處理。
+              label: const Flexible(
+                child: Text(
+                  '接聽',
+                  style: TextStyle(fontSize: 32),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
+                minimumSize: const Size(64, 84),
               ),
             ),
           ],
+          ),
         );
       },
     ).then((_) {
@@ -2037,6 +2177,22 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       title: 'UBan',
       debugShowCheckedModeBanner: false,
       theme: buildAppTheme(context),
+      // ★ 2026-09-22 第五十一輪（長5）：長輩端語音助理的全域浮動鈕。掛在
+      //   `builder` 這一層（比 Navigator 更外面），所以連 `Navigator.push`
+      //   出去的畫面——通話房、監控、新聞播放器、配對頁——也叫得出小嘎。
+      //   只有長輩端 session 會顯示（登記者是 ElderHomeScreen），且通話／來電／
+      //   監控畫面會自行讓位，見 widgets/global_assistant_button.dart。
+      builder: (context, child) {
+        // `StackFit.expand`：讓 Navigator 拿到和沒包 Stack 時一樣的「全螢幕
+        //   緊約束」，不會因為預設的 loose 約束改變任何既有畫面的版面。
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            if (child != null) child,
+            const GlobalAssistantButton(),
+          ],
+        );
+      },
       // ★★★ 還原為原始入口：SplashScreen ★★★
       home: const SplashScreen(),
       /*

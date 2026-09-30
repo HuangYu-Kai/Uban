@@ -97,6 +97,18 @@ class WeatherService {
   static const Duration _cacheValidity = Duration(hours: 1);
   static const Duration _networkTimeout = Duration(seconds: 8);
 
+  // ★ 第四十九輪：連線失敗時拿舊快取頂替的「年齡上限」。修之前完全沒有
+  // 上限——只要 SharedPreferences 裡有任何一筆舊資料就會被當成今天的天氣
+  // 顯示，可能是好幾天前查到的。這裡的 daily 預報本質上是「以查詢當下那一
+  // 天」為準（`daily[0]` 對應查詢當下的日期），超過一天的資料已經是別天的
+  // 預報，繼續拿來頂替「今天天氣」會誤導長輩（溫度、降雨機率都可能完全不
+  // 同）。選 24 小時而不是更嚴格的「跨自然日就丟棄」，是為了避免額外引入
+  // 「跨午夜比較日期」的邊界判斷（時區處理容易出錯、且本檔案 fetchedAt／
+  // 比對用的 DateTime.now() 兩邊都是裝置本地時間，內部一致，不涉及前後端
+  // 時區不一致的問題）；24 小時是一個簡單、保守、好驗證的上限，超過就寧可
+  // 回傳 null 讓畫面顯示「暫時看不到」，也不要顯示可能已經不對的舊資料。
+  static const Duration _maxFallbackAge = Duration(hours: 24);
+
   /// 台灣 22 縣市座標表。比對時採「子字串包含」，且同時列出「台」「臺」
   /// 兩種寫法的候選字串。新竹縣／嘉義縣刻意排在對應的市之前，讓「嘉義縣
   /// 民雄鄉」這種完整縣名優先命中縣、而不是被單純「嘉義」誤判成市。
@@ -258,7 +270,12 @@ class WeatherService {
         return info;
       } catch (e) {
         debugPrint('⚠️ [WeatherService] 連線取得天氣失敗，改用舊資料頂替: $e');
-        if (cached != null) return cached.copyWith(isFromCache: true);
+        // ★ 第四十九輪：舊資料也要在 _maxFallbackAge 之內才能頂替，見該常數
+        // 說明——超過就寧可回傳 null，不要顯示可能已經是別天的舊預報。
+        if (cached != null &&
+            DateTime.now().difference(cached.fetchedAt) < _maxFallbackAge) {
+          return cached.copyWith(isFromCache: true);
+        }
         return null;
       }
     } catch (e) {

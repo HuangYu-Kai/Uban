@@ -10,16 +10,32 @@ void showFamilyPairingDialog(BuildContext context, [int? explicitElderId]) {
   HapticFeedback.lightImpact();
 
   Future<Map<String, dynamic>> fetchCode() async {
-    try {
-      int? targetId = explicitElderId;
-      if (targetId == null) {
-        final prefs = await SharedPreferences.getInstance();
-        targetId = prefs.getInt('caregiver_id') ?? prefs.getInt('last_elder_id');
-      }
-      return await ApiService.requestPairingCode(targetId);
-    } catch (e) {
-      return {'status': 'error', 'message': '取得配對碼失敗: $e'};
+    int? id = explicitElderId;
+    if (id == null) {
+      final prefs = await SharedPreferences.getInstance();
+      id = prefs.getInt('caregiver_id') ?? prefs.getInt('last_elder_id');
     }
+
+    // ★ 第四十九輪修復：本對話框的唯一使用情境是「已登入的長輩要補綁
+    // 家人」，不可能是後端 uban-api/routers/pairing.py::confirm_pairing()
+    // 也支援的「原始註冊」情境（配對碼帶 creator_id → 綁到既有長輩；不帶
+    // → 新建長輩帳號。後者是合法的原始註冊流程，見該檔案，不可更動）。
+    // 過去這裡在解析不到 id 時仍會用 null 呼叫 requestPairingCode()——
+    // PairingApi.requestPairingCode 對 null 的處理是直接不帶 elder_id 欄位
+    // 送出請求，後端因此收到一個「看起來像新註冊」的配對碼請求：沒有例外、
+    // 沒有錯誤訊息，QR 碼正常顯示，但家屬掃碼後會被綁到一個長輩端完全看
+    // 不到、憑空生出的幽靈帳號。改成 fail-closed：解析不出 id 就不呼叫
+    // API，直接回傳終端錯誤狀態，交給下面的錯誤 UI 顯示明確訊息並停在
+    // 那裡——這樣日後就算又有呼叫端漏傳 explicitElderId，也只會看到
+    // 「無法確認您的帳號」，不會再默默產生幽靈帳號。
+    if (id == null) {
+      return {
+        'status': 'error',
+        'error_code': 'unresolved_elder_id',
+        'message': '無法確認您的帳號，請重新登入後再試',
+      };
+    }
+    return ApiService.requestPairingCode(id);
   }
 
   // 對話框可能按「重新取得配對碼」重試多次；用可重指派的 Future 搭配
@@ -30,309 +46,253 @@ void showFamilyPairingDialog(BuildContext context, [int? explicitElderId]) {
     context: context,
     builder: (dialogCtx) => StatefulBuilder(
       builder: (context, setDialogState) {
-        return Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(28),
+        return AlertDialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEA580C).withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.family_restroom_rounded,
+                    color: Color(0xFFEA580C), size: 28),
+              ),
+              const SizedBox(width: 12),
+              Flexible(
+                child: Text(
+                  '家人／照護者綁定',
+                  style: GoogleFonts.notoSansTc(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 22,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
           ),
-          backgroundColor: Colors.white,
-          elevation: 8,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 380),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // 1. 標題列
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFEA580C).withValues(alpha: 0.12),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.family_restroom_rounded,
-                          color: Color(0xFFEA580C),
-                          size: 28,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          '家人／照護者綁定',
-                          style: GoogleFonts.notoSansTc(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 22,
-                            color: const Color(0xFF1E293B),
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '請子女開啟手機上的 Uban App，掃描下方 QR Code 或輸入配對碼即可完成連線：',
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 16,
+                    color: const Color(0xFF64748B),
+                    fontWeight: FontWeight.w600,
                   ),
-                  const SizedBox(height: 16),
-
-                  // 2. 說明文字
-                  Text(
-                    '請子女開啟手機上的 Uban App，掃描下方 QR Code 或輸入配對碼即可完成連線：',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 15,
-                      color: const Color(0xFF64748B),
-                      fontWeight: FontWeight.w600,
-                      height: 1.4,
-                    ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '💡 這是給家人綁定用的臨時配對碼，過期即失效，和您的「好友 ID」不是同一組號碼喔',
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 13,
+                    color: const Color(0xFF94A3B8),
+                    fontWeight: FontWeight.w600,
                   ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '💡 這是給家人綁定用的臨時配對碼，過期即失效，和您的「好友 ID」不是同一組號碼喔',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 12.5,
-                      color: const Color(0xFF94A3B8),
-                      fontWeight: FontWeight.w500,
-                      height: 1.3,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
+                ),
+                const SizedBox(height: 16),
+                FutureBuilder<Map<String, dynamic>>(
+                  future: pairingCodeFuture,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState != ConnectionState.done) {
+                      return const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 32),
+                        child: Center(child: CircularProgressIndicator()),
+                      );
+                    }
 
-                  // 3. 非同步載入配對碼
-                  FutureBuilder<Map<String, dynamic>>(
-                    future: pairingCodeFuture,
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState != ConnectionState.done) {
-                        return Container(
-                          padding: const EdgeInsets.symmetric(vertical: 40),
-                          alignment: Alignment.center,
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const CircularProgressIndicator(
-                                color: Color(0xFFEA580C),
-                              ),
-                              const SizedBox(height: 14),
-                              Text(
-                                '正在產生安全配對碼...',
-                                style: GoogleFonts.notoSansTc(
-                                  fontSize: 14,
-                                  color: const Color(0xFF64748B),
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      }
+                    final result = snapshot.data;
+                    final data = result?['data'] as Map<String, dynamic>?;
+                    final String? code = data?['pairing_code'] as String?;
 
-                      final result = snapshot.data;
-                      final data = result?['data'] as Map<String, dynamic>?;
-                      final String? code = data?['pairing_code'] as String?;
-
-                      // ★ 失敗處理
-                      if (snapshot.hasError ||
-                          result == null ||
-                          result['status'] == 'error' ||
-                          code == null ||
-                          code.isEmpty) {
-                        return Container(
-                          padding: const EdgeInsets.all(20),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFEF2F2),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: const Color(0xFFFECACA),
-                              width: 1.5,
-                            ),
-                          ),
-                          child: Column(
-                            children: [
-                              const Icon(
-                                Icons.error_outline_rounded,
-                                color: Color(0xFFDC2626),
-                                size: 32,
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                '暫時無法取得配對碼，請稍後再試',
-                                textAlign: TextAlign.center,
-                                style: GoogleFonts.notoSansTc(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.bold,
-                                  color: const Color(0xFFB91C1C),
-                                ),
-                              ),
-                              const SizedBox(height: 14),
-                              ElevatedButton.icon(
-                                onPressed: () {
-                                  setDialogState(() {
-                                    pairingCodeFuture = fetchCode();
-                                  });
-                                },
-                                icon: const Icon(Icons.refresh_rounded, size: 18),
-                                label: Text(
-                                  '重新取得配對碼',
-                                  style: GoogleFonts.notoSansTc(
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFFDC2626),
-                                  foregroundColor: Colors.white,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(14),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      }
-
-                      final int expiresInSeconds =
-                          (data?['expires_in_seconds'] as int?) ?? 600;
-
+                    // ★ 第四十九輪修復：id 無法解析（見上方 fetchCode 的說明）
+                    //   屬於「出錯」而非暫時性的連線問題——呼叫端漏傳
+                    //   explicitElderId 或 SharedPreferences 沒寫入，不會
+                    //   因為使用者按「重新取得配對碼」就自己好，所以不顯示
+                    //   一般錯誤那組重試按鈕，只給明確訊息，請使用者用對話框
+                    //   既有的「知道了」離開後重新登入。
+                    if (result?['error_code'] == 'unresolved_elder_id') {
                       return Container(
-                        padding: const EdgeInsets.symmetric(
-                          vertical: 18,
-                          horizontal: 16,
-                        ),
+                        padding: const EdgeInsets.all(20),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFFFF7ED),
-                          borderRadius: BorderRadius.circular(22),
+                          color: const Color(0xFFFEF2F2),
+                          borderRadius: BorderRadius.circular(24),
                           border: Border.all(
-                            color: const Color(0xFFFDBA74),
-                            width: 1.5,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.orange.withValues(alpha: 0.08),
-                              blurRadius: 16,
-                              offset: const Offset(0, 6),
-                            ),
-                          ],
+                              color: const Color(0xFFFECACA), width: 1.5),
                         ),
                         child: Column(
                           children: [
+                            const Icon(Icons.error_outline_rounded,
+                                color: Color(0xFFDC2626), size: 32),
+                            const SizedBox(height: 8),
                             Text(
-                              code,
-                              style: GoogleFonts.inter(
-                                fontSize: 44,
-                                fontWeight: FontWeight.w900,
-                                color: const Color(0xFFEA580C),
-                                letterSpacing: 6,
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            // 使用 CustomPaint + QrPainter 取代 QrImageView，
-                            // 徹底杜絕 LayoutBuilder 引起的對話框白屏問題
-                            Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: const Color(0xFFFED7AA),
-                                  width: 1,
-                                ),
-                              ),
-                              child: CustomPaint(
-                                size: const Size(140, 140),
-                                painter: QrPainter(
-                                  data: code,
-                                  version: QrVersions.auto,
-                                  gapless: true,
-                                  eyeStyle: const QrEyeStyle(
-                                    eyeShape: QrEyeShape.square,
-                                    color: Color(0xFF1E293B),
-                                  ),
-                                  dataModuleStyle: const QrDataModuleStyle(
-                                    dataModuleShape: QrDataModuleShape.square,
-                                    color: Color(0xFF1E293B),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            Text(
-                              '配對倒數: $expiresInSeconds 秒',
-                              style: const TextStyle(
-                                color: Colors.redAccent,
+                              (result?['message'] as String?) ??
+                                  '無法確認您的帳號，請重新登入後再試',
+                              textAlign: TextAlign.center,
+                              style: GoogleFonts.notoSansTc(
+                                fontSize: 16,
                                 fontWeight: FontWeight.bold,
-                                fontSize: 13.5,
+                                color: const Color(0xFFB91C1C),
                               ),
                             ),
                           ],
                         ),
                       );
-                    },
-                  ),
-                  const SizedBox(height: 16),
+                    }
 
-                  // 4. 效益提示條
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFECFDF5),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: const Color(0xFFA7F3D0)),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Padding(
-                          padding: EdgeInsets.only(top: 1),
-                          child: Icon(
-                            Icons.check_circle_rounded,
-                            color: Color(0xFF059669),
-                            size: 18,
-                          ),
+                    // ★ 失敗（連線失敗／逾時／後端回傳 error／欄位缺漏）一律
+                    //   顯示白話錯誤＋重試鍵，絕不用猜測值兜底。
+                    if (snapshot.hasError ||
+                        result == null ||
+                        result['status'] == 'error' ||
+                        code == null ||
+                        code.isEmpty) {
+                      return Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFEF2F2),
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(
+                              color: const Color(0xFFFECACA), width: 1.5),
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            '綁定後，子女可遠端排定吃藥，並即時關心您的每日健康與小豬！',
-                            style: GoogleFonts.notoSansTc(
-                              fontSize: 13,
-                              color: const Color(0xFF065F46),
-                              fontWeight: FontWeight.w700,
-                              height: 1.35,
+                        child: Column(
+                          children: [
+                            const Icon(Icons.error_outline_rounded,
+                                color: Color(0xFFDC2626), size: 32),
+                            const SizedBox(height: 8),
+                            Text(
+                              '暫時無法取得配對碼，請稍後再試',
+                              textAlign: TextAlign.center,
+                              style: GoogleFonts.notoSansTc(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: const Color(0xFFB91C1C),
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+                            ElevatedButton.icon(
+                              onPressed: () {
+                                setDialogState(() {
+                                  pairingCodeFuture = fetchCode();
+                                });
+                              },
+                              icon: const Icon(Icons.refresh_rounded,
+                                  size: 18),
+                              label: Text(
+                                '重新取得配對碼',
+                                style: GoogleFonts.notoSansTc(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFFDC2626),
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+
+                    final int expiresInSeconds =
+                        (data?['expires_in_seconds'] as int?) ?? 600;
+                    return Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF7ED),
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(
+                            color: const Color(0xFFFDBA74), width: 1.5),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.orange.withValues(alpha: 0.08),
+                            blurRadius: 16,
+                            offset: const Offset(0, 6),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        children: [
+                          Text(
+                            code,
+                            style: GoogleFonts.inter(
+                              fontSize: 48,
+                              fontWeight: FontWeight.w900,
+                              color: const Color(0xFFEA580C),
+                              letterSpacing: 6,
                             ),
                           ),
-                        ),
-                      ],
-                    ),
+                          const SizedBox(height: 12),
+                          QrImageView(
+                            data: code,
+                            version: QrVersions.auto,
+                            size: 140.0,
+                            backgroundColor: Colors.white,
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            '配對倒數: $expiresInSeconds 秒',
+                            style: const TextStyle(
+                              color: Colors.redAccent,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFECFDF5),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFFA7F3D0)),
                   ),
-                  const SizedBox(height: 16),
-
-                  // 5. 關閉按鈕
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton(
-                      onPressed: () => Navigator.pop(dialogCtx),
-                      style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 10,
+                  child: Row(
+                    children: [
+                      const Icon(Icons.check_circle_rounded,
+                          color: Color(0xFF059669), size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '綁定後，子女可遠端排定吃藥，並即時關心您的每日健康與小豬！',
+                          style: GoogleFonts.notoSansTc(
+                            fontSize: 13.5,
+                            color: const Color(0xFF065F46),
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
-                      child: Text(
-                        '知道了',
-                        style: GoogleFonts.notoSansTc(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: const Color(0xFF59B294),
-                        ),
-                      ),
-                    ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogCtx),
+              child: Text(
+                '知道了',
+                style: GoogleFonts.notoSansTc(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: const Color(0xFF59B294),
+                ),
+              ),
+            ),
+          ],
         );
       },
     ),

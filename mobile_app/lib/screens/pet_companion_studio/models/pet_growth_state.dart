@@ -182,6 +182,15 @@ class PetStorageService {
   static const String _keyFedFoods = 'uban_pet_fed_foods_json';
   static const String _keyCrownUnlocked = 'uban_pet_crown_unlocked';
 
+  // ★ 第五十輪：食物庫存持久化——過去 `elder_profile_tab.dart` 的
+  // `_feedingInventory` 純活在記憶體，重開 App 或該分頁 State 重建就補滿，
+  // 「食物有限」形同虛設。這裡新增一組獨立的鍵，與上面體重/活力/日期/
+  // 已餵食物/皇冠是不同概念（那組是 [PetGrowthState] 值物件本身的欄位，
+  // 庫存則是「還剩幾份」——刻意不塞進 [PetGrowthState]，因為那樣會讓這個
+  // 廣泛使用的值物件多一個所有呼叫端都要處理的必填欄位，波及不相關的用法，
+  // 改用平行的一組靜態方法，呼叫端各自決定何時讀寫）。
+  static const String _keyFoodInventory = 'uban_pet_food_inventory_json';
+
   static Future<PetGrowthState> loadState({int currentSensorSteps = 3500}) async {
     final prefs = await SharedPreferences.getInstance();
     final String todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
@@ -232,5 +241,41 @@ class PetStorageService {
     await prefs.setString(_keyLastDate, state.lastDateStr);
     await prefs.setString(_keyFedFoods, jsonEncode(state.fedFoodIds.toList()));
     await prefs.setBool(_keyCrownUnlocked, state.isCrownUnlocked);
+  }
+
+  /// 讀取食物庫存持久化狀態，鍵為 `PetFoodItem.id`、值為剩餘份數。
+  ///
+  /// ⚠️ 舊版本 App（第五十輪以前）沒有這個鍵，過去餵食紀錄只活在記憶體，
+  /// 讀不到時回傳空 Map——呼叫端本來就會對每個查不到的 food.id 用
+  /// `food.initialCount` 頂替出廠預設值（見 elder_profile_tab.dart 的
+  /// `_feedingInventory` 初始化），所以空 Map 等同「視為還沒吃過任何東西」，
+  /// 是安全、不會讓舊使用者讀檔失敗的預設。格式損毀（例如舊版留下的髒資料）
+  /// 也是回空 Map，不拋例外阻斷長輩開啟小豬之家。
+  static Future<Map<String, int>> loadFoodInventory() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? raw = prefs.getString(_keyFoodInventory);
+    if (raw == null) return {};
+    try {
+      final Map<String, dynamic> decoded = jsonDecode(raw);
+      return decoded.map(
+        (key, value) => MapEntry(key, (value as num).toInt()),
+      );
+    } catch (_) {
+      return {};
+    }
+  }
+
+  /// 寫入食物庫存持久化狀態。
+  ///
+  /// 常駐無限（`initialCount == -1`，目前只有 carrot）的食物本來就不會被
+  /// 扣庫存，過濾掉可以縮小存檔體積；就算呼叫端漏過濾也不影響正確性——
+  /// [loadFoodInventory] 的讀取端一樣是用「查不到鍵」時退回
+  /// `food.initialCount`，-1 混進去頂多是多存一筆沒意義的資料，不會誤判成
+  /// 有限量。
+  static Future<void> saveFoodInventory(Map<String, int> inventory) async {
+    final prefs = await SharedPreferences.getInstance();
+    final Map<String, int> persistable = Map<String, int>.from(inventory)
+      ..removeWhere((_, count) => count < 0);
+    await prefs.setString(_keyFoodInventory, jsonEncode(persistable));
   }
 }

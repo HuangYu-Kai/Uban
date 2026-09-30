@@ -16,6 +16,17 @@ class ElderReminderDialog extends StatefulWidget {
   final String note;
   final String elderName;
   final VoidCallback? onCompleted;
+  // ★ 第四十九輪（item 1）：是否由本彈窗自己朗讀提醒內容。
+  //   `ElderReminderManager` 現在有兩條會一起觸發本彈窗的路徑——
+  //   本機看門狗（`_checkSchedule`）額外會同步發一則 `LocalReminderNotification`
+  //   系統通知，該通知現在也會自己朗讀一次；若彈窗這裡不受控制地永遠朗讀，
+  //   同一次提醒就會出現兩段語音同時播放、互相蓋過。因此改由呼叫端決定：
+  //   看門狗路徑傳 `speak: false`（改由通知端朗讀，理由是通知路徑同時涵蓋
+  //   「畫面顯示不出來（App 在背景／被殺死收到 FCM）」的情境，見
+  //   `local_reminder_notification.dart`）；其餘沒有搭配系統通知的路徑
+  //   （Socket／FCM 前景推播、點擊通知冷啟動）維持預設 `true`，本彈窗仍是
+  //   唯一的朗讀來源。
+  final bool speak;
 
   const ElderReminderDialog({
     super.key,
@@ -26,6 +37,7 @@ class ElderReminderDialog extends StatefulWidget {
     this.note = '',
     this.elderName = '長輩',
     this.onCompleted,
+    this.speak = true,
   });
 
   static Future<void> show(
@@ -37,6 +49,7 @@ class ElderReminderDialog extends StatefulWidget {
     String note = '',
     String elderName = '長輩',
     VoidCallback? onCompleted,
+    bool speak = true,
   }) async {
     await showDialog(
       context: context,
@@ -49,6 +62,7 @@ class ElderReminderDialog extends StatefulWidget {
         note: note,
         elderName: elderName,
         onCompleted: onCompleted,
+        speak: speak,
       ),
     );
   }
@@ -64,7 +78,9 @@ class _ElderReminderDialogState extends State<ElderReminderDialog> {
   @override
   void initState() {
     super.initState();
-    _playVoicePrompt();
+    if (widget.speak) {
+      _playVoicePrompt();
+    }
   }
 
   Future<void> _playVoicePrompt() async {
@@ -143,25 +159,52 @@ class _ElderReminderDialogState extends State<ElderReminderDialog> {
     }
   }
 
+  /// ★ 第四十九輪：修「不管後端成不成功，一律顯示打卡成功」的誠實性問題。
+  ///
+  /// 根因（team-lead 複驗過）：`ApiService.completeElderReminder` 一路委派到
+  /// `ReminderApi.completeElderReminder`，後者自己把逾時／連線失敗／後端錯誤
+  /// 全部吞成 `return false`、**從不對外拋例外**。原本包在外面的 `try/catch`
+  /// 因此是死碼，`bool` 回傳值又沒被讀，導致「後端記錄成功」與「後端記錄失敗」
+  /// 在畫面上長得一模一樣，長輩以為藥已記錄、家屬端資料庫其實沒有這筆。
+  /// 合併自上游的 `_markCompletedLocally()` 方向正確（三個入口該看到同一狀態），
+  /// 但原本無條件呼叫，等於把「未經驗證的完成」也同步寫進本機清單，讓「我的」
+  /// 分頁與首頁卡片一起說謊——現在改成只有 API 真的回 `true` 才寫。
   Future<void> _handleComplete() async {
     if (_isSubmitting) return;
     setState(() => _isSubmitting = true);
     HapticFeedback.heavyImpact();
 
-    try {
-      if (widget.reminderId > 0) {
-        await ApiService.completeElderReminder(widget.reminderId);
-        // ★ 2026-09-15：同時寫入本機當日完成清單。
-        //   這個彈窗原本只打 API、不寫本機，但「我的」分頁的用藥清單與首頁
-        //   「下一包藥」卡片讀的都是 completed_tasks_<yyyy-MM-dd>——長輩在
-        //   彈窗按了「我做好了」，畫面上那包藥卻還是顯示未完成，提醒也會再跳。
+    bool success;
+    if (widget.reminderId > 0) {
+      try {
+        success = await ApiService.completeElderReminder(widget.reminderId);
+      } catch (e) {
+        // completeElderReminder 目前不會走到這裡（它自己吞例外回傳 false），
+        // 保留這層只是防禦未來改版又開始對外拋例外，不能取代讀 bool。
+        debugPrint('⚠️ [ElderReminderDialog] completeElderReminder 例外: $e');
+        success = false;
+      }
+      if (success) {
+        // 只有後端真的記錄成功才寫本機當日完成清單——這份清單同時餵給
+        // 「我的」分頁與首頁卡片，寫錯了三個畫面會一起說謊。
         await _markCompletedLocally(widget.reminderId);
       }
-    } catch (e) {
-      debugPrint("⚠️ Complete reminder error: $e");
+    } else {
+      // reminderId <= 0：呼叫端（ElderReminderManager）在解析不出後端給的 id
+      // 時一律退回 0（`int.tryParse(...) ?? 0`），代表這筆提醒本身的 id 資料
+      // 缺漏，不是「打卡失敗」——沒有合法 id 可回報後端，重試同一個假 id 也
+      // 不會有幫助。長輩實際上已完成這件事的動作，這裡選擇仍視為完成（不寫
+      // 本機清單、不打 API，兩者都沒有合法 id 可用），而不是讓長輩對著一個他
+      // 無從理解、重試也沒用的「失敗」反覆重按。
+      debugPrint(
+          '⚠️ [ElderReminderDialog] reminderId=${widget.reminderId} 缺乏有效 id，略過後端與本機打卡記錄');
+      success = true;
     }
 
-    if (mounted) {
+    if (!mounted) return;
+    setState(() => _isSubmitting = false);
+
+    if (success) {
       widget.onCompleted?.call();
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(
@@ -175,6 +218,25 @@ class _ElderReminderDialogState extends State<ElderReminderDialog> {
             ),
           ),
           backgroundColor: const Color(0xFF10B981),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          margin: const EdgeInsets.all(20),
+        ),
+      );
+    } else {
+      // ★ 不 pop()——彈窗留著讓長輩可以再按一次「我做好了」重試；一旦關掉，
+      //   長輩會以為流程結束，不會知道還要重新找回這筆提醒才能再打卡。
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '打卡沒有送出成功，請確認網路後再按一次「我做好了」',
+            style: GoogleFonts.notoSansTc(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+          backgroundColor: const Color(0xFFB91C1C),
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           margin: const EdgeInsets.all(20),

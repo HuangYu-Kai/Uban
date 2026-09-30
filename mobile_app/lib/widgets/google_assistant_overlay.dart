@@ -5,6 +5,9 @@ import 'package:flutter_tts/flutter_tts.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import '../services/api_service.dart';
+import '../theme/app_theme.dart';
+import '../utils/stt_locale.dart';
+import 'global_assistant_button.dart';
 
 /// Uban 專屬全域長輩 AI 語音助理彈出視窗與服務
 class GoogleAssistantOverlay extends StatefulWidget {
@@ -21,24 +24,33 @@ class GoogleAssistantOverlay extends StatefulWidget {
     this.initialPrompt,
   });
 
-  /// 靜態便利方法：開啟 Uban AI 助理 BottomSheet 視窗
-  static Future<void> show(
+  /// 靜態便利方法：開啟 Uban AI 助理 BottomSheet 視窗。
+  ///
+  /// 2026-09-16 第四十九輪 item 8：回傳型別由 `Future<void>` 改為
+  /// `Future<Map<String, dynamic>?>`——純加法，既有不接回傳值的呼叫端
+  /// （例如 `ai_assistant_settings_dialog.dart` 的「試用小嘎」入口）行為不變。
+  /// 若長輩透過語音觸發了「幫我打電話／視訊」，關閉視窗時會帶回
+  /// `{'autoCall': true, 'isVideo': bool}`；一般關閉（無撥號請求）回傳 null。
+  static Future<Map<String, dynamic>?> show(
     BuildContext context, {
     required String userName,
     required String aiName,
     required int userId,
     String? initialPrompt,
   }) async {
-    await showModalBottomSheet(
+    return showModalBottomSheet<Map<String, dynamic>?>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       barrierColor: Colors.black.withValues(alpha: 0.55),
-      builder: (ctx) => GoogleAssistantOverlay(
-        userName: userName,
-        aiName: aiName,
-        userId: userId,
-        initialPrompt: initialPrompt,
+      // ★ 第五十一輪：助理面板自己撐開時，全域浮動麥克風鈕讓位，不要疊在面板上。
+      builder: (ctx) => AssistantHiddenZone(
+        child: GoogleAssistantOverlay(
+          userName: userName,
+          aiName: aiName,
+          userId: userId,
+          initialPrompt: initialPrompt,
+        ),
       ),
     );
   }
@@ -59,7 +71,20 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
   bool _isListening = false;
   bool _isThinking = false;
   bool _speechReady = false;
+  // ★ 第五十一輪：改用 utils/stt_locale.dart 挑選裝置實際支援的中文語系，
+  // 不再寫死 'zh_TW'（見 _initSpeech／_startListening）。
+  String? _sttLocaleToUse;
   final List<Map<String, String>> _dialogHistory = [];
+
+  /// 第五十三輪新增：語音辨識出「最終結果」後，是否正在等待長輩親自確認
+  /// （true 時 build() 會在輸入列上方插入 _buildVoiceConfirmPanel()，顯示
+  /// 「送出」／「重新說一次」兩個大按鈕）。
+  ///
+  /// ⚠️ 背景：語音輸入的偵測精度過低（連年輕人使用也常誤辨識），辨識一
+  /// 結束就自動送出等於把辨識錯誤直接發給 AI，長輩完全沒有機會看到、
+  /// 更沒機會修正——這是本輪回報的最大問題。修法是把「聆聽結束」與
+  /// 「真的送出」拆成兩個獨立步驟，中間插入這個確認狀態。
+  bool _awaitingVoiceConfirm = false;
 
   @override
   void initState() {
@@ -99,25 +124,21 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
       if (widget.initialPrompt != null && widget.initialPrompt!.isNotEmpty) {
         _processUserQuery(widget.initialPrompt!);
       } else {
-        // 單純呼叫喚醒詞（如「Hey 嘎蛙」），播報完後自動開啟麥克風聆聽長輩說話
-        bool autoStarted = false;
-        void autoStartMic() {
-          if (!autoStarted && mounted && !_isThinking && !_isListening) {
-            autoStarted = true;
-            _startListening();
-          }
+        // 單純呼叫喚醒詞（如「Hey 嘎蛙」），播報完後才自動開啟麥克風聆聽長輩說話。
+        //
+        // ⚠️ 第五十二輪修正：原本這裡自己 setCompletionHandler，又另外排一個
+        // Future.delayed(2500ms) 當「兜底」跟它賽跑——上面 setSpeechRate(0.5)
+        // 把語速放慢一半，一句「怎麼了嗎 ○○」常常講不完 2.5 秒，兜底計時器
+        // 先到、就在助理還在講話時判定「講完了」而開啟麥克風，把喇叭外放的
+        // 「怎麼了嗎」錄進自己的麥克風，STT 精度又低，於是被誤辨識成長輩
+        // 說的話（使用者回報的「怎麼了媽媽」正是這樣來的——本質是聽到自己）。
+        // 改用既有的 _speakAndWait()：completion／error handler 雙保險 + 8
+        // 秒逾時兜底，只有一條路徑會判定「講完了」，不會有兩個計時器互相
+        // 賽跑；它內部也已經加了「念之前先關麥克風」的對稱防呆（見下方）。
+        await _speakAndWait(greeting);
+        if (mounted && !_isThinking && !_isListening) {
+          _startListening();
         }
-
-        _flutterTts.setCompletionHandler(() {
-          autoStartMic();
-        });
-
-        await _flutterTts.speak(greeting);
-
-        // 兜底保護：若特定裝置 TTS 未觸發 completionHandler，2.5 秒後自動啟動麥克風
-        Future.delayed(const Duration(milliseconds: 2500), () {
-          autoStartMic();
-        });
       }
     } catch (e) {
       debugPrint("🤖 [UbanAssistant] TTS init error: $e");
@@ -134,15 +155,29 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
           if (status == 'done' || status == 'notListening') {
             if (mounted && _isListening) {
               setState(() => _isListening = false);
-              // 長輩說完停頓後自動提交已辨識的文字
+              // ⚠️ 第五十三輪：這裡是「引擎自行判定聆聽結束」的路徑（例如
+              // pauseFor 逾時、長輩停頓過久），跟 onResult 的 finalResult
+              // 分支是兩條各自獨立的觸發路徑——先前兩條都直接呼叫
+              // _processUserQuery，只堵住其中一條，語音精度不足時仍會從
+              // 這裡自動送出、繞過確認畫面。統一改走 _enterVoiceConfirm()，
+              // 交給長輩看過文字、按下「送出」才會真的問 AI。
               final text = _textController.text.trim();
               if (text.isNotEmpty && !_isThinking) {
-                _processUserQuery(text);
+                _enterVoiceConfirm();
               }
             }
           }
         },
       );
+
+      // ★ 第五十一輪：列舉裝置實際支援的語系，挑出可用的中文 localeId
+      // （見 utils/stt_locale.dart 說明），不再直接寫死 'zh_TW'——部分
+      // Android 辨識引擎不認得這個 ID，會靜默退回英文等裝置預設語系。
+      if (_speechReady) {
+        final locales = await _speechToText.locales();
+        _sttLocaleToUse = pickChineseSttLocale(locales);
+        debugPrint('🤖 [ASR Locale] 選用語系: $_sttLocaleToUse');
+      }
     } catch (e) {
       debugPrint('🤖 [ASR Init Exception] $e');
     }
@@ -150,15 +185,25 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
 
   /// 開始語音聆聽
   Future<void> _startListening() async {
+    // ⚠️ 第五十二輪：開始聽之前先確保 TTS 真的停了——不管是自動流程還是
+    // 長輩手動點麥克風鈕觸發，都不該讓「助理還在講話」與「麥克風同時開著」
+    // 同時成立，否則喇叭外放的助理語音會被自己的麥克風錄進去、誤判成長輩
+    // 說的話（見 _speakAndWait 的對稱防呆）。
+    await _flutterTts.stop();
     if (!_speechReady) {
       _speechReady = await _speechToText.initialize();
     }
     if (_speechReady && !_isListening) {
       setState(() {
         _isListening = true;
+        // 開始新一輪聆聽時，把上一輪殘留的確認區塊（若有）一併收起，避免
+        // 舊的辨識文字跟新一輪的聆聽狀態同時顯示、讓長輩搞不清楚在確認哪句話。
+        _awaitingVoiceConfirm = false;
       });
       await _speechToText.listen(
-        localeId: 'zh_TW',
+        // 使用 _initSpeech() 掃描裝置語系後選出的 ID；找不到中文語系時為
+        // null，交給系統預設（見 utils/stt_locale.dart）。
+        localeId: _sttLocaleToUse,
         listenOptions: SpeechListenOptions(
           partialResults: true,
           cancelOnError: false,
@@ -171,23 +216,114 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
             _textController.text = result.recognizedWords;
           });
           if (result.finalResult && result.recognizedWords.trim().isNotEmpty) {
-            _stopListeningAndSend();
+            // ⚠️ 第五十三輪：語音輸入的偵測精度過低（即使年輕人使用也常誤
+            // 辨識），辨識結束不能直接送出——改成停止聆聽、把文字留在輸入框
+            // 讓長輩看過，交給 _buildVoiceConfirmPanel() 的「送出」／
+            // 「重新說一次」兩個大按鈕決定下一步，不在這裡直接呼叫 AI。
+            _stopListeningForConfirm();
           }
         },
       );
     }
   }
 
-  /// 停止語音並發送至 AI
-  Future<void> _stopListeningAndSend() async {
+  /// 停止語音聆聽，轉入「確認區塊」等待長輩確認或重新說一次。
+  ///
+  /// 第五十三輪：取代原本聆聽結束就直接送出的 _stopListeningAndSend()——
+  /// 語音辨識精度不足以在沒有人工確認的情況下就直接發給 AI。這裡同時是
+  /// 「onResult 收到 finalResult」與「長輩聆聽中手動點麥克風鈕提前停止」
+  /// 兩種情境的共用進入點（見下方 build() 內的送出/麥克風鈕）。
+  Future<void> _stopListeningForConfirm() async {
     if (_isListening) {
       await _speechToText.stop();
-      setState(() => _isListening = false);
+      if (mounted) setState(() => _isListening = false);
     }
+    _enterVoiceConfirm();
+  }
+
+  /// 把輸入框裡目前的辨識文字轉為「等待確認」狀態，交給
+  /// _buildVoiceConfirmPanel() 的「送出」／「重新說一次」讓長輩決定下一步。
+  /// 刻意不在這裡呼叫 _processUserQuery——這正是本輪要修的「誤辨識也會
+  /// 自動送出」問題的關鍵分界點。
+  void _enterVoiceConfirm() {
+    if (!mounted) return;
     final text = _textController.text.trim();
+    if (text.isEmpty || _isThinking) return;
+    setState(() => _awaitingVoiceConfirm = true);
+  }
+
+  /// 確認區塊「送出」：長輩確認辨識文字無誤，這時才真的送出去問 AI。
+  void _confirmVoiceInput() {
+    final text = _textController.text.trim();
+    setState(() => _awaitingVoiceConfirm = false);
     if (text.isNotEmpty) {
       _processUserQuery(text);
     }
+  }
+
+  /// 確認區塊「重新說一次」：清空辨識錯誤（或長輩不滿意）的文字，重新開始聆聽。
+  Future<void> _retryVoiceInput() async {
+    setState(() {
+      _awaitingVoiceConfirm = false;
+      _textController.clear();
+    });
+    await _startListening();
+  }
+
+  /// [AUTO_CALL:video] / [AUTO_CALL:audio]：語音觸發自動撥號（家人，整戶響）
+  /// 的動作標記，比照 ai_chat_screen.dart 對 [VIDEO_ID:xxx] 的既有處理方式
+  /// （第四十九輪 item 8）。不帶人名——長輩端撥給家人本來就是整戶手機一起響，
+  /// 不支援指定對象，標記裡放一個兌現不了的名字只會製造誤解。
+  static final RegExp _autoCallPattern = RegExp(r'\[AUTO_CALL:(video|audio)\]');
+
+  /// [AUTO_CALL_FRIEND:video:<elder_id>] / [AUTO_CALL_FRIEND:audio:<elder_id>]：
+  /// 語音觸發指定好友撥號的動作標記（第四十九輪 item 8 好友路徑）。刻意用
+  /// 跟上面完全不同的標記名稱，而不是在同一個正則裡加可選尾碼——兩個正則
+  /// 互斥，各自處理固定形狀，不必讓前端判斷「這次有沒有帶尾碼」。elder_id
+  /// 由後端 tools_service.py::initiate_video_call 查完好友清單、確定唯一
+  /// 相符後才給，前端不做第二次名字比對，直接拿來用。
+  static final RegExp _autoCallFriendPattern =
+      RegExp(r'\[AUTO_CALL_FRIEND:(video|audio):([A-Za-z0-9]+)\]');
+
+  /// 剝除兩種動作標記，避免原始標記字樣顯示在對話氣泡、或被 TTS 逐字唸出來。
+  String _stripAutoCallMarker(String text) => text
+      .replaceAll(_autoCallPattern, '')
+      .replaceAll(_autoCallFriendPattern, '')
+      .trim();
+
+  /// 等待 TTS **真正念完**這句話才返回——僅供撥號前的確認語使用（第四十九輪
+  /// item 8 補強）。`flutter_tts` 的 `speak()` 這個 Future 預設在「引擎開始
+  /// 念」就完成，不是「念完」才完成；本檔 `_initTtsAndGreeting`（上方）已經
+  /// 因為同一個限制改用 `setCompletionHandler` + 逾時兜底，這裡是同一問題在
+  /// 撥號安全網上的版本——`_processUserQuery` 下方念完確認語才 `pop()` 的
+  /// 設計，前提是「念完」真的等到念完，不能只是呼叫了 `speak()`。
+  /// 刻意不用 `awaitSpeakCompletion(true)`：查過 flutter_tts 4.2.5 的
+  /// Android 原生原始碼（`FlutterTtsPlugin.kt` 的 `onError`）後發現那個開關
+  /// 在引擎出錯時不會釋放 pending 的 speak() Future，會讓撥號被無限期卡住，
+  /// 比現在「沒念完就跳轉」更糟。改用 completionHandler／errorHandler 雙保
+  /// 險＋逾時兜底，任一條路徑都能讓函式正常返回，撥號請求一定會被送出。
+  Future<void> _speakAndWait(
+    String text, {
+    Duration timeout = const Duration(seconds: 8),
+  }) async {
+    // ⚠️ 第五十二輪：開口念之前先確保麥克風是關的——TTS 播放期間如果 STT
+    // 還開著，喇叭外放的內容會被自己的麥克風錄進去，變成聽自己講話
+    // （見 _initTtsAndGreeting 的說明）。這裡是唯一的「開口念」入口，把
+    // 防呆放在這裡，往後不管哪個呼叫端要念話都自動受保護。
+    if (_isListening) {
+      await _speechToText.stop();
+      if (mounted) setState(() => _isListening = false);
+    }
+
+    final completer = Completer<void>();
+    void finish() {
+      if (!completer.isCompleted) completer.complete();
+    }
+
+    _flutterTts.setCompletionHandler(finish);
+    _flutterTts.setErrorHandler((_) => finish());
+    await _flutterTts.speak(text);
+    await completer.future.timeout(timeout, onTimeout: () {});
   }
 
   /// 處理使用者提問
@@ -197,11 +333,21 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
     // 清除問候語 completionHandler，防止 AI 回覆完誤觸
     _flutterTts.setCompletionHandler(() {});
     await _flutterTts.stop();
+    // ⚠️ 第五十二輪：送出提問前也把麥克風真的關掉——稍後 AI 回覆的 TTS
+    // 開始播放時，如果聆聽還沒關（例如打字送出時剛好還沒收到 STT 的
+    // done 回呼），就會把自己的回覆錄進自己的麥克風。
+    if (_isListening) {
+      await _speechToText.stop();
+      if (mounted) setState(() => _isListening = false);
+    }
 
     setState(() {
       _dialogHistory.add({"role": "user", "text": query});
       _textController.clear();
       _isThinking = true;
+      // 第五十三輪：不管從哪個入口送出（確認區塊／既有送出鈕／打字
+      // onSubmitted／快捷 chip），一旦真的送出就收起確認區塊，避免殘留。
+      _awaitingVoiceConfirm = false;
     });
 
     _scrollToBottom();
@@ -217,13 +363,16 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
           if (firstChunk) {
             _isThinking = false;
             fullResponse = token;
-            _dialogHistory.add({"role": "assistant", "text": fullResponse});
+            _dialogHistory.add({
+              "role": "assistant",
+              "text": _stripAutoCallMarker(fullResponse),
+            });
             firstChunk = false;
           } else {
             fullResponse += token;
             if (_dialogHistory.isNotEmpty &&
                 _dialogHistory.last["role"] == "assistant") {
-              _dialogHistory.last["text"] = fullResponse;
+              _dialogHistory.last["text"] = _stripAutoCallMarker(fullResponse);
             }
           }
         });
@@ -239,8 +388,46 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
         });
       }
 
-      // 朗讀 AI 回覆
-      await _flutterTts.speak(fullResponse);
+      // ★ 第四十九輪 item 8：偵測撥號動作標記。必須用「串流結束後組完的
+      //   完整 fullResponse」判斷，不能逐 token 判斷——標記字樣可能被切在
+      //   兩個 token 之間，逐 token 正則永遠對不上。兩個正則互斥（後端只會
+      //   回傳其中一種），先查好友標記、查無再查家人標記即可。
+      final friendMatch = _autoCallFriendPattern.firstMatch(fullResponse);
+      final familyMatch = friendMatch == null
+          ? _autoCallPattern.firstMatch(fullResponse)
+          : null;
+      final bool hasAutoCall = friendMatch != null || familyMatch != null;
+      final bool wantsVideoCall =
+          (friendMatch?.group(1) ?? familyMatch?.group(1)) == 'video';
+      final String? friendElderId = friendMatch?.group(2);
+
+      // 朗讀 AI 回覆（念剝除標記後的乾淨文字，不把標記唸出來）。好友路徑的
+      // 確認語已經在後端把好友名字寫進乾淨文字裡（見 tools_service.py），
+      // 這裡不需要、也不應該再自己組一句不帶名字的話蓋過去。
+      // ⚠️ 有撥號標記時改走 `_speakAndWait`——單純 `await speak()` 不會等真正
+      // 念完（見該函式註解），沿用它會讓下面「聽完才跳畫面」形同虛設；一般
+      // 對話回覆維持原本的寫法，不需要為每一句閒聊都多等一輪逾時。
+      if (hasAutoCall) {
+        await _speakAndWait(_stripAutoCallMarker(fullResponse));
+      } else {
+        await _flutterTts.speak(_stripAutoCallMarker(fullResponse));
+      }
+
+      // ★ 念完確認語才關閉視窗並帶出撥號請求，讓長輩聽完「我幫您打電話給
+      //   誰」才跳畫面，不要話講到一半人就被拉去別的畫面（上方已改用
+      //   `_speakAndWait` 真正等到念完，不是只等呼叫）。實際撥出由呼叫端
+      //   （elder_home_screen.dart）比照 friends_screen.dart::_startCall() /
+      //   _startFriendCall() 的既有配方，透過建構 ElderScreen(autoCall:true,
+      //   ...) 完成——這裡只負責回報「要不要撥、視訊還是語音、指定哪位好友」，
+      //   不直接碰 Signaling。
+      if (hasAutoCall && mounted) {
+        Navigator.of(context).pop({
+          'autoCall': true,
+          'isVideo': wantsVideoCall,
+          'friendElderId': friendElderId,
+        });
+        return;
+      }
     } catch (e) {
       debugPrint("🤖 [UbanAssistant] Query Error: $e");
       final errReply = "抱歉 ${widget.userName}，網路連線稍微有點狀況，請再跟我說一次喔！";
@@ -445,6 +632,13 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
 
               const SizedBox(height: 16),
 
+              // 第五十三輪：語音辨識出最終結果後的確認區塊，插在快捷 chip
+              // 與輸入列之間；下方的 TextField 仍可直接用鍵盤修改文字。
+              if (_awaitingVoiceConfirm) ...[
+                _buildVoiceConfirmPanel(),
+                const SizedBox(height: 16),
+              ],
+
               // 輸入欄位與麥克風按鈕
               Row(
                 children: [
@@ -481,7 +675,7 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
                   // Send or Mic button
                   GestureDetector(
                     onTap: _isListening
-                        ? _stopListeningAndSend
+                        ? _stopListeningForConfirm
                         : () {
                             if (_textController.text.trim().isNotEmpty) {
                               _processUserQuery(_textController.text.trim());
@@ -650,6 +844,107 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
             color: Colors.white.withValues(alpha: 0.9),
           ),
         ),
+      ),
+    );
+  }
+
+  /// 語音辨識完成後的確認區塊——第五十三輪新增。
+  ///
+  /// 用大字級＋ElderScale.buttonHeight（長輩端統一的大按鈕高度）讓長輩一眼
+  /// 看懂「這是我剛剛說的話嗎」，並給「送出」／「重新說一次」兩個選擇；
+  /// 辨識到的文字本身仍留在上方可編輯的 TextField 中，長輩也可以直接用
+  /// 鍵盤修改後再按送出，不必整句重講。
+  Widget _buildVoiceConfirmPanel() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF10B981).withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: const Color(0xFF10B981).withValues(alpha: 0.45),
+          width: 2,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.hearing_rounded, color: Color(0xFF10B981), size: 26),
+              const SizedBox(width: 10),
+              // 文案刻意具體（「我聽到您說的是上面這句話，這樣對嗎？」），
+              // 不用「確認送出」這類抽象詞——長輩要判斷的是「這句話對不
+              // 對」，不是理解一個操作術語。固定字串，仍包 Expanded／
+              // overflow 是比照本檔其他標題列的一貫寫法（鐵律 #14）。
+              Expanded(
+                child: Text(
+                  '我聽到您說的是上面這句話，這樣對嗎？',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                    height: 1.3,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: ElderScale.buttonHeight,
+                  child: OutlinedButton.icon(
+                    onPressed: _retryVoiceInput,
+                    icon: const Icon(Icons.mic_rounded, size: 26),
+                    label: Text(
+                      '重新說一次',
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: 19,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      side: const BorderSide(color: Colors.white54, width: 2),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: SizedBox(
+                  height: ElderScale.buttonHeight,
+                  child: ElevatedButton.icon(
+                    onPressed: _confirmVoiceInput,
+                    icon: const Icon(Icons.send_rounded, size: 26),
+                    label: Text(
+                      '送出',
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: 19,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF10B981),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

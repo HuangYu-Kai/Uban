@@ -161,27 +161,39 @@ class ElderReminderManager {
         final note = r['note']?.toString() ?? '';
 
         debugPrint('⏰ [ElderReminderManager] 本地看門狗命中排程: $title ($reminderTime)');
+        // speak: false — 下面的 LocalReminderNotification 會負責朗讀，見該處
+        // 第四十九輪說明；兩邊都朗讀會疊出兩段語音互相蓋過。
         _showDialog(
           reminderId: id,
           title: title,
           category: category,
           timeStr: reminderTime,
           note: note,
+          speak: false,
         );
 
-        // 同步發送本機系統通知備援
+        // 同步發送本機系統通知備援（★ 第四十九輪起本身會朗讀，涵蓋彈窗
+        // 拿不到 context 的情境，見 local_reminder_notification.dart 檔頭說明）
         LocalReminderNotification.showReminderNotification(
           id: id,
           title: title,
           timeStr: reminderTime,
           note: note,
           category: category,
+          elderName: _elderName,
         );
       }
     }
   }
 
   /// 彈出長輩專屬醒目對話框
+  ///
+  /// [speak]：本彈窗是否自己朗讀提醒內容。預設 `true`；本地看門狗
+  /// （[_checkSchedule]）會另外同步發送 [LocalReminderNotification]，該通知
+  /// 現在自己也會朗讀一次（見該檔第四十九輪的說明），因此看門狗呼叫本方法時
+  /// 會傳 `speak: false`，避免同一次提醒疊出兩段語音。其餘呼叫端
+  /// （[handleIncomingReminder]，涵蓋 Socket／FCM 前景推播與點擊通知冷啟動）
+  /// 沒有搭配系統通知，維持預設值，本彈窗仍是唯一的朗讀來源。
   void _showDialog({
     required int reminderId,
     required String title,
@@ -189,6 +201,7 @@ class ElderReminderManager {
     required String timeStr,
     required String note,
     int retryCount = 0,
+    bool speak = true,
   }) {
     if (_isDialogOpen) {
       debugPrint('⏰ [ElderReminderManager] 目前已有彈窗開啟中，延遲顯示');
@@ -211,6 +224,7 @@ class ElderReminderManager {
             timeStr: timeStr,
             note: note,
             retryCount: retryCount + 1,
+            speak: speak,
           );
         });
       }
@@ -229,6 +243,7 @@ class ElderReminderManager {
       onCompleted: () {
         syncReminders();
       },
+      speak: speak,
     ).then((_) {
       _isDialogOpen = false;
     });

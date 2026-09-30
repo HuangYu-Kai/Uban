@@ -20,6 +20,7 @@ import 'identification_screen.dart';
 import 'elder_home_screen.dart';
 import '../globals.dart';
 import '../services/care_message_store.dart';
+import '../widgets/global_assistant_button.dart';
 
 class ElderScreen extends StatefulWidget {
   final String roomId;
@@ -150,6 +151,31 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   /// 之前。加一個沒有對應合法使用場景的重置，只會多一個「忘記重置」的
   /// 風險點。
   bool _navigatedAway = false;
+
+  // ★ G102（CLAUDE_call-monitor-guardrails.md）：`Signaling` 單例的回呼欄位只
+  // 有一份，最後賦值者獨佔。`dispose()` 若無條件把它們設成 null，會誤清
+  // 「接手畫面」剛註冊好的閉包——最直接的受害者是 `onHeartbeatMessage`：
+  // `elder_home_screen.dart::_restoreSignalingCallbacks()` 是在
+  // `Navigator.push(...ElderScreen...).then()` 這個 microtask 裡重新綁定，
+  // 但本畫面的 `dispose()` 要等退場動畫跑完才執行，順序因此是「首頁先重新
+  // 綁定 → 本畫面才把回呼清成 null」——長輩講完一通電話回到首頁後就再也收
+  // 不到主動關懷，直到 App 重啟。保留自己這一份 closure 的參考，
+  // `dispose()` 只在「單例上掛的仍是我這一份」時才清除（`identical()` 比
+  // 對）。其餘幾個目前雖然只有本畫面會指派，仍一併加上同樣的守衛——寫法
+  // 一致，日後才不會有人漏掉。
+  StreamStateCallback? _ownLocalStream;
+  StreamStateCallback? _ownAddRemoteStream;
+  VoidCallback? _ownPeerConnected;
+  Function(String message, {String? reason})? _ownJoinFailed;
+  CallAcceptedCallback? _ownCallAcceptedByRemote;
+  VoidCallback? _ownCallEnded;
+  CallAcceptedCallback? _ownCallBusy;
+  VoidCallback? _ownConnectionLost;
+  ErrorCallback? _ownPeerConnectionFailed;
+  IncomingCallCallback? _ownIncomingCall;
+  Function(String message)? _ownHeartbeatMessage;
+  Function(Map<String, dynamic>)? _ownMonitorRenamed;
+  Function(Map<String, dynamic>)? _ownMonitorRemoved;
 
   int? _userId; // ★ issue 3/10：用於安全導航回主畫面時建構 ElderHomeScreen
   String? _prefsUserName; // ★ Issue 1 硬化：真實 caregiver_name，供 _buildFallbackHome 使用
@@ -440,6 +466,22 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
         return null;
       });
     }
+
+    // ★ 第四十九輪（item 5 Row 4／item 6 CCTV 靜默死亡）：通話期間持有 CPU 層
+    //   級的 PARTIAL_WAKE_LOCK，避免螢幕關閉後系統把 CPU 掛起、卡住 WebRTC
+    //   媒體執行緒與 Socket.IO 心跳（完整根因見 MainActivity.kt 對應方法的
+    //   說明）。
+    //   ⚠️ 這裡**刻意不跟上面一樣包 `!widget.isCCTVMode`**——CCTV 監控機的
+    //   工作是持續推幀給 YOLO 做跌倒偵測，CPU 被掛起會讓推幀**靜默**停止
+    //   （不會有任何錯誤或提示，長輩跌倒也不會被偵測到），後果比通話斷線
+    //   更嚴重。一般通話與監控模式在這顆鎖上一視同仁，成對呼叫沒有例外；
+    //   對應的 release（見 dispose()）同理也不跟著 `!widget.isCCTVMode` 排除。
+    const MethodChannel('com.example.app/bring_to_front')
+        .invokeMethod('acquireCallWakeLock')
+        .catchError((e) {
+      debugPrint('⚠️ [ElderScreen] acquireCallWakeLock 失敗: $e');
+      return null;
+    });
 
     WidgetsBinding.instance.addObserver(this);
     isAppReady = true;
@@ -831,12 +873,15 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     await _localRenderer.initialize();
     await _remoteRenderer.initialize();
 
-    _signaling.onLocalStream = ((stream) {
+    // ★ G102：先存進 _own* 欄位、再指派給單例，讓 dispose() 能用 identical() 判斷
+    //   自己是否仍是持有者（見欄位宣告處的完整說明）。
+    _ownLocalStream = (stream) {
       debugPrint("🤳 [ElderScreen] Local stream set! Tracks: ${stream.getTracks().length}");
       if (mounted) setState(() => _localRenderer.srcObject = stream);
-    });
+    };
+    _signaling.onLocalStream = _ownLocalStream;
 
-    _signaling.onAddRemoteStream = ((stream) {
+    _ownAddRemoteStream = (stream) {
       debugPrint("📺 [ElderScreen] Remote stream added! Tracks: ${stream.getTracks().length}");
       // ★ 2026-08-05 第十七輪：onAddRemoteStream 只代表 SDP 談成，不代表 ICE 已連通、
       //   有任何媒體在流動，_startCallTimer() 改移到真正連上時才觸發的 onPeerConnected。
@@ -848,10 +893,11 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
           _callDuration = 0;
         });
       }
-    });
+    };
+    _signaling.onAddRemoteStream = _ownAddRemoteStream;
 
     // ★ 2026-08-05 第十七輪：ICE 真正連通時才開始計時，避免「有通話計時卻沒有影音」的假象。
-    _signaling.onPeerConnected = () {
+    _ownPeerConnected = () {
       // ★ 2026-08-11 第二十二輪（需求 9）：真的看到對方了就停掉緊急提示音，
       //   否則會出現「畫面已接通、警示音還在響」。
       _stopEmergencyTone();
@@ -859,8 +905,9 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
         _startCallTimer();
       }
     };
+    _signaling.onPeerConnected = _ownPeerConnected;
 
-    _signaling.onJoinFailed = (errorMessage, {String? reason}) {
+    _ownJoinFailed = (errorMessage, {String? reason}) {
       // ★ issue 5：通話已建立時，忽略遲到的 join-failed（例如重新 join 房間時的競態），
       //   避免誤把進行中的通話導向「連線失敗」對話框，間接觸發 dispose -> hangUp ->
       //   end-call，導致家屬端被彈回主畫面、長輩端畫面變黑。
@@ -936,12 +983,14 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
         );
       }
     };
+    _signaling.onJoinFailed = _ownJoinFailed;
 
-    _signaling.onCallAcceptedByRemote = (accepterId, callId) {
+    _ownCallAcceptedByRemote = (accepterId, callId) {
       debugPrint("✅ 家屬($accepterId) 已接聽 (CallId: $callId)，開始定向發送 Offer...");
       if (mounted) setState(() { _status = "連線建立中..."; _isInCall = true; });
       _signaling.createOffer(targetId: accepterId, isEmergency: false);
     };
+    _signaling.onCallAcceptedByRemote = _ownCallAcceptedByRemote;
 
     // ★ 只要是通話（無論是語音還是視訊），在連線前都必須初始化媒體以取得音訊軌道
     if (!_mediaInitialized) {
@@ -1041,7 +1090,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       if (mounted) setState(() => _isCameraOff = false);
     }
 
-    _signaling.onCallEnded = () {
+    _ownCallEnded = () {
       _callTimer?.cancel();
       _activeCallId = null;
       if (mounted) {
@@ -1061,8 +1110,9 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
         }
       }
     };
+    _signaling.onCallEnded = _ownCallEnded;
 
-    _signaling.onCallBusy = (targetId, callId) {
+    _ownCallBusy = (targetId, callId) {
       if (mounted) {
         _showElderCallFailToast(callBusyMessageFor(_signaling.lastCallBusyReason));
         // ★ issue 15：對方拒接/忙線時，呼叫端結束「等待連線」狀態並安全返回
@@ -1080,9 +1130,10 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
         }
       }
     };
+    _signaling.onCallBusy = _ownCallBusy;
 
     // ★ issue 5：通話中發生無法復原的連線中斷（已超過 signaling.dart 的 2 秒重連寬限期）
-    _signaling.onConnectionLost = () {
+    _ownConnectionLost = () {
       _callTimer?.cancel();
       if (!mounted) return;
 
@@ -1120,10 +1171,11 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
         _verifyMonitorStillExists();
       }
     };
+    _signaling.onConnectionLost = _ownConnectionLost;
 
     // ★ 2026-08-05 第十七輪：ICE 連線失敗時據實回報並安全返回主畫面，避免通話停在
     //   「已連線」卻完全沒有影音的假狀態。沿用本檔既有的「掛斷後安全導航」方法。
-    _signaling.onPeerConnectionFailed = (msg) {
+    _ownPeerConnectionFailed = (msg) {
       _callTimer?.cancel();
       if (mounted) {
         debugPrint('⚠️ [ElderScreen] PeerConnection 失敗: $msg');
@@ -1140,6 +1192,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
         }
       }
     };
+    _signaling.onPeerConnectionFailed = _ownPeerConnectionFailed;
 
     // ★ 2026-08-23：本畫面過去在這裡直接掛一個 `force-logout` 原生 socket
     //   監聽（對應 dispose() 內原本的 `socket.off('force-logout',
@@ -1160,7 +1213,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     //   `RoleSelectionScreen` 改成現行入口 `IdentificationScreen`。
     //   🚫 不要在這裡加回 `_signaling.socket?.on('force-logout', ...)`——
     //   這正是本次要移除的重複註冊。
-    _signaling.onIncomingCall = (callerId, callType) async {
+    _ownIncomingCall = (callerId, callType) async {
       debugPrint("📞 [ElderScreen] Incoming Offer from $callerId (Type: $callType)");
       // ★ 2026-08-25（第三十三輪）：舊註解「只要在 ElderScreen 內就代表已經
       //   進入通話準備狀態，一律接聽」不成立——長輩端可能因為上一通通話、
@@ -1214,8 +1267,9 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       }
       return accepted;
     };
+    _signaling.onIncomingCall = _ownIncomingCall;
 
-    _signaling.onHeartbeatMessage = (message) async {
+    _ownHeartbeatMessage = (message) async {
       debugPrint("💓 [ElderScreen] Heartbeat: $message");
       if (mounted && !_isInCall) {
         String displayText = message;
@@ -1257,13 +1311,14 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
         await flutterTts.speak(displayText);
       }
     };
+    _signaling.onHeartbeatMessage = _ownHeartbeatMessage;
 
     // ★ 2026-08-06 第十九輪（D4）：監視機被家屬端改名時，同步更新本機記憶
     //   （SharedPreferences saved_device_name）與畫面內部狀態，避免退出監控時
     //   仍用改名前的舊名稱去比對後端（後端以 device_name 字串精確比對）。
     //   只在監視機模式註冊，一般通訊模式沒有「監控設備改名」這個概念。
     if (widget.isCCTVMode) {
-      _signaling.onMonitorRenamed = (data) async {
+      _ownMonitorRenamed = (data) async {
         final String eventElderId = (data['elderId'] ?? '').toString();
         final String oldName = (data['oldDeviceName'] ?? '').toString();
         final String newName = (data['newDeviceName'] ?? '').toString();
@@ -1280,6 +1335,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
           setState(() => _currentDeviceName = newName);
         }
       };
+      _signaling.onMonitorRenamed = _ownMonitorRenamed;
 
       // ★ 2026-08-10 第二十輪（需求 4＋5）：家屬端刪除本監視器時，立刻退回主畫面。
       //   過去後端只是把這台裝置踢線，監控機端無從區分「被刪除」與「網路斷線」，
@@ -1288,7 +1344,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       //   ——同一台裝置之後輸入正確綁定碼也一律「綁定碼過期或錯誤」（需求 5）。
       //   現在改為：收到事件 → 走 SessionManager 完整釋放 → pushAndRemoveUntil
       //   回身分選擇頁（護欄：回首頁一律 pushAndRemoveUntil，不可 pop）。
-      _signaling.onMonitorRemoved = (data) async {
+      _ownMonitorRemoved = (data) async {
         if (_isExiting) return;
         final String eventElderId = (data['elderId'] ?? '').toString();
         final String deviceName = (data['deviceName'] ?? '').toString();
@@ -1309,6 +1365,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
           (route) => false,
         );
       };
+      _signaling.onMonitorRemoved = _ownMonitorRemoved;
     }
 
   }
@@ -1710,6 +1767,11 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     if (confirm == true) {
       if (_isExiting) return;
       _isExiting = true;
+      // ★ 第四十九輪：這裡**不**額外呼叫 releaseCallWakeLock()——本函式結尾的
+      //   `pushAndRemoveUntil` 會把這個 ElderScreen route 從樹上移除，隨之觸發
+      //   的 dispose()（見該方法最前面的區塊）已經是無條件呼叫，會處理釋放。
+      //   在這裡重複呼叫一次不會出錯（isHeld 冪等），但沒有必要，也會讓兩個
+      //   呼叫點的職責混淆——保留單一的釋放時機比較不容易日後漏改其中一處。
       // ★ 2026-08-10 第二十輪（需求 5）：這裡原本只 remove 七個 prefs 鍵，
       //   漏掉 `access_token`、`user_id`、`elder_room_id`、`device_role_*` 等等，
       //   而且**從不通知後端註銷 FCM token**。後果就是使用者回報的：
@@ -1814,6 +1876,23 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       });
     }
 
+    // ★ 第四十九輪：與 initState() 的 acquireCallWakeLock 成對，同樣**不**包
+    //   `!widget.isCCTVMode`（跟上面 restoreLockScreen 的排除範圍刻意不同，
+    //   理由見 initState 對應註解）。放在 dispose() 最前面這個區塊，是因為
+    //   本畫面涵蓋的所有離開路徑（掛斷／對方掛斷／忙線／斷線／連線失敗／
+    //   撥打逾時／CCTV 的 `_exitCCTVMode()` 觸發 pushAndRemoveUntil）最終都
+    //   會讓本 route 被移除而觸發這裡——這是唯一保證「不論怎麼離開都會執行」
+    //   的收尾點，不依賴 `_exitCCTVMode()` 自己另外呼叫一次 release（那條
+    //   路徑最終也是靠 pushAndRemoveUntil 間接觸發本 dispose()）。
+    //   isHeld 內建於 MainActivity.kt::releaseCallWakeLock()，對未持有的鎖
+    //   呼叫是安全的 no-op，不需要在這裡自行判斷是否曾經 acquire 過。
+    const MethodChannel('com.example.app/bring_to_front')
+        .invokeMethod('releaseCallWakeLock')
+        .catchError((e) {
+      debugPrint('⚠️ [ElderScreen] releaseCallWakeLock 失敗: $e');
+      return null;
+    });
+
     // ★ 2026-08-25（需求 3）：這通電話是從鎖屏／背景喚醒才進來的
     //   （_enteredWhileLocked，見欄位宣告處說明）→ 通話結束時不留在 App
     //   任何畫面，直接關閉整個 App 與背景 Task，回到裝置鎖定畫面。
@@ -1857,20 +1936,51 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       disposeLocalStream: widget.isCCTVMode,
     );
 
-    // ★ 清空 UI 相關的 callbacks，讓全域的 callbacks 重拾控制權
-    _signaling.onCallAcceptedByRemote = null;
-    _signaling.onCallBusy = null;
-    _signaling.onCallEnded = null;
-    _signaling.onConnectionLost = null;
-    _signaling.onPeerConnected = null;
-    _signaling.onPeerConnectionFailed = null;
-    _signaling.onAddRemoteStream = null;
-    _signaling.onLocalStream = null;
-    _signaling.onJoinFailed = null;
-    _signaling.onIncomingCall = null;
-    _signaling.onHeartbeatMessage = null;
-    _signaling.onMonitorRenamed = null;
-    _signaling.onMonitorRemoved = null;
+    // ★ G102：歸還 UI 相關的 callbacks，讓全域／下一個接手畫面重拾控制權。
+    //   每一個都先用 identical() 確認單例上掛的仍是「我這一份」才清成 null——
+    //   見欄位宣告處的完整說明：長輩結束通話 → safeNavigateBack() pop() →
+    //   首頁在 Navigator.push(...).then() 的 microtask 裡搶先重新綁定
+    //   onHeartbeatMessage，但本畫面的 dispose() 要等退場動畫跑完才執行，
+    //   若無條件 = null 會把首頁剛綁好的回呼清掉，導致長輩之後收不到主動關懷。
+    if (identical(_signaling.onCallAcceptedByRemote, _ownCallAcceptedByRemote)) {
+      _signaling.onCallAcceptedByRemote = null;
+    }
+    if (identical(_signaling.onCallBusy, _ownCallBusy)) {
+      _signaling.onCallBusy = null;
+    }
+    if (identical(_signaling.onCallEnded, _ownCallEnded)) {
+      _signaling.onCallEnded = null;
+    }
+    if (identical(_signaling.onConnectionLost, _ownConnectionLost)) {
+      _signaling.onConnectionLost = null;
+    }
+    if (identical(_signaling.onPeerConnected, _ownPeerConnected)) {
+      _signaling.onPeerConnected = null;
+    }
+    if (identical(_signaling.onPeerConnectionFailed, _ownPeerConnectionFailed)) {
+      _signaling.onPeerConnectionFailed = null;
+    }
+    if (identical(_signaling.onAddRemoteStream, _ownAddRemoteStream)) {
+      _signaling.onAddRemoteStream = null;
+    }
+    if (identical(_signaling.onLocalStream, _ownLocalStream)) {
+      _signaling.onLocalStream = null;
+    }
+    if (identical(_signaling.onJoinFailed, _ownJoinFailed)) {
+      _signaling.onJoinFailed = null;
+    }
+    if (identical(_signaling.onIncomingCall, _ownIncomingCall)) {
+      _signaling.onIncomingCall = null;
+    }
+    if (identical(_signaling.onHeartbeatMessage, _ownHeartbeatMessage)) {
+      _signaling.onHeartbeatMessage = null;
+    }
+    if (identical(_signaling.onMonitorRenamed, _ownMonitorRenamed)) {
+      _signaling.onMonitorRenamed = null;
+    }
+    if (identical(_signaling.onMonitorRemoved, _ownMonitorRemoved)) {
+      _signaling.onMonitorRemoved = null;
+    }
 
     // ★ 第四十二輪：好友通話結束時，必須離開對方的房間並重新以 'elder' 身分
     //   加入「自己」的房間。`Signaling` 是單例，`_currentRoomId`/`_role` 此刻
@@ -1904,397 +2014,417 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: ValueListenableBuilder(
-        valueListenable: pendingAcceptedCall,
-        builder: (context, pendingCall, _) {
-          return Stack(
-            children: [
-              // 1. 全螢幕視訊區塊
-              Positioned.fill(
-                child: Container(
-                  color: const Color(0xFF121212),
-                  child: widget.isCCTVMode
-                      ? RTCVideoView(
-                          _localRenderer,
-                          mirror: true,
-                          objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
-                        )
-                      : _remoteRenderer.srcObject != null
-                          ? RTCVideoView(
-                              _remoteRenderer,
-                              objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
-                            )
-                          : Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
+    // ★ 2026-09-23 第五十二輪：AssistantHiddenZone 必須包住整個 Scaffold，
+    //   不可再塞進下面的 Stack 當 children 之一（第五十一輪的寫法）。
+    //   RenderStack._computeSize() 的規則：只要 Stack 的 children 裡有任何
+    //   一個「非 Positioned」子元件，Stack 的尺寸就由那些非 Positioned 子
+    //   元件決定（取最大寬高、再套用外部約束）；完全沒有非 Positioned 子
+    //   元件時才會退回吃滿 constraints.biggest。這裡的 Stack 原本 children
+    //   全是 Positioned／Positioned.fill；`AssistantHiddenZone(child:
+    //   SizedBox.shrink())` 是非 Positioned 且本體 0×0，混進來就讓整個
+    //   Stack 的固有尺寸塌成 0×0。而 Scaffold 的 body 拿到的是寬鬆約束
+    //   （minWidth/minHeight 皆為 0），Stack 因此真的縮成 0×0，底下所有
+    //   Positioned.fill 的視訊畫面與 Positioned 按鈕全部變成零尺寸、沒有
+    //   任何 hit-test 目標——長輩端進到通話房只看到 Scaffold 的黑底，無法
+    //   掛斷也無法操作，只能等家屬端掛斷後被動 pop 回首頁（見
+    //   `CLAUDE_call-monitor.md` §8 第五十二輪年表、G199）。
+    //   AssistantHiddenZone 是純 pass-through（build() 直接回傳
+    //   widget.child，見 `widgets/global_assistant_button.dart`），包在
+    //   Scaffold 最外層不會改變任何版面；它自己的計數只依賴 State 生命
+    //   週期，包在這裡與包在 Stack 內效果相同，且不再影響 Stack 尺寸計算。
+    return AssistantHiddenZone(
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: ValueListenableBuilder(
+          valueListenable: pendingAcceptedCall,
+          builder: (context, pendingCall, _) {
+            return Stack(
+              children: [
+                // 1. 全螢幕視訊區塊
+                Positioned.fill(
+                  child: Container(
+                    color: const Color(0xFF121212),
+                    child: widget.isCCTVMode
+                        ? RTCVideoView(
+                            _localRenderer,
+                            mirror: true,
+                            objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                          )
+                        : _remoteRenderer.srcObject != null
+                            ? RTCVideoView(
+                                _remoteRenderer,
+                                objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                              )
+                            : Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    if (_isInCall)
+                                      const CircularProgressIndicator(color: Colors.orangeAccent),
+                                    const SizedBox(height: 24),
+                                    Text(
+                                      _status,
+                                      style: const TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 22,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                  ),
+                ),
+
+                // 2. 本地 PIP（僅雙向通話模式顯示）
+                if (!widget.isCCTVMode)
+                  Positioned(
+                    right: 20,
+                    top: MediaQuery.of(context).padding.top + 20,
+                    width: 110,
+                    height: 160,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.4),
+                            blurRadius: 8,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                        border: Border.all(color: Colors.white24, width: 1.5),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(14),
+                        child: RTCVideoView(_localRenderer, mirror: true, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
+                      ),
+                    ),
+                  ),
+
+                // ★ CCTV 模式：頂部退出按鈕與底部「CCTV 監視中」標籤
+                if (widget.isCCTVMode) ...[
+                  Positioned(
+                    top: MediaQuery.of(context).padding.top + 10,
+                    right: 16,
+                    child: GestureDetector(
+                      onTap: _exitCCTVMode,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.6),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: Colors.white30, width: 1),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.logout_rounded, color: Colors.white, size: 16),
+                            SizedBox(width: 6),
+                            Text(
+                              '退出監視機',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    bottom: 12,
+                    left: 0,
+                    right: 0,
+                    child: Center(
+                      child: Container(
+                        // ★ 2026-08-25：新增的推送狀態文字是執行期資料（後端 reason
+                        //   字串長度不定），限制最大寬度＋下面 Text 的
+                        //   maxLines/overflow 雙重保險，避免撐爆版面或造成
+                        //   RenderFlex overflow。
+                        constraints: const BoxConstraints(maxWidth: 300),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.45),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'CCTV 監視中…',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.6),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w400,
+                                letterSpacing: 1.0,
+                              ),
+                            ),
+                            // ★ 2026-08-25：把每 2 秒一輪 pushCctvFrame 的最新結果翻成
+                            //   中文顯示在這裡（見 _recordCctvPushResult／
+                            //   _describeCctvPushResult）。這是使用者唯一拿得到的
+                            //   推幀診斷資訊來源——他們不是伺服器管理員，查不了
+                            //   /cctv/yolo_status 之類的診斷端點，只能站在監視機
+                            //   前面看畫面。純顯示，不影響 G75 的三層自癒推幀迴圈。
+                            const SizedBox(height: 2),
+                            Text(
+                              _cctvPushStatusText,
+                              textAlign: TextAlign.center,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.85),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            // 原始 reason 字串（小字），方便使用者原樣回報給我們核對。
+                            if (_cctvPushRawReason != null)
+                              Text(
+                                _cctvPushRawReason!,
+                                textAlign: TextAlign.center,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.4),
+                                  fontSize: 9,
+                                ),
+                              ),
+                            // ★ 2026-08-26：偵測器載入失敗的原因（後端
+                            //   `routers/alert.py` 在 reason == 'yolo_unavailable'
+                            //   時才附上，已由後端 _sanitize_load_error() 折單行、
+                            //   裁切至 200 字並遮蔽 URL 內嵌憑證樣式）。使用者不是
+                            //   伺服器管理員，查不了 /cctv/yolo_status 之類的診斷
+                            //   端點，這行字是他們唯一拿得到、可以原樣回報給我們
+                            //   核對的線索——因此刻意**不**用 maxLines: 1 +
+                            //   ellipsis 單行截斷（那樣會把最關鍵的內容切掉，等於
+                            //   白顯示）。改用較高的 maxLines 讓它自然換行；外層
+                            //   Container 已有 maxWidth: 300 限制寬度，這裡的
+                            //   maxLines: 5 在該寬度、此字級下足以完整顯示後端
+                            //   裁切後的 200 字上限，overflow: ellipsis 只是防禦
+                            //   性上限（正常情況不會觸發），不是主要截斷手段。
+                            //   純顯示、不影響 G75 的三層自癒推幀迴圈。
+                            if (_cctvPushLoadError != null)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: Text(
+                                  _cctvPushLoadError!,
+                                  textAlign: TextAlign.center,
+                                  maxLines: 5,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.55),
+                                    fontSize: 9,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+
+                              // 4. 底部控制列 (大按鈕，便於操作)
+                if (!widget.isCCTVMode)
+                  Positioned(
+                    bottom: 60,
+                    left: 0,
+                    right: 0,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // ★ 通話時長顯示（僅在通話中顯示）
+                        if (_isInCall)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 20),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: Colors.black38,
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(color: Colors.white24, width: 1),
+                              ),
+                              child: Text(
+                                '通話時間: ${_formatDuration(_callDuration)}',
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ),
+                      
+                        // ★ 通話控制按鈕（水平排列）
+                        if (_isInCall)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                              children: [
+                                // 攝像頭開關
+                                Container(
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black26,
+                                        blurRadius: 8,
+                                      ),
+                                    ],
+                                  ),
+                                  child: FloatingActionButton(
+                                    onPressed: _toggleCamera,
+                                    heroTag: 'camera',
+                                    mini: true,
+                                    backgroundColor: _isCameraOff ? Colors.grey.shade600 : Colors.blue.shade500,
+                                    child: Icon(
+                                      _isCameraOff ? Icons.videocam_off : Icons.videocam,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                              
+                                // ★ issue 12：前後鏡頭切換按鈕
+                                Container(
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black26,
+                                        blurRadius: 8,
+                                      ),
+                                    ],
+                                  ),
+                                  child: FloatingActionButton(
+                                    onPressed: _isCameraOff ? null : _switchCamera,
+                                    heroTag: 'switchCamera',
+                                    mini: true,
+                                    backgroundColor: _isCameraOff ? Colors.grey.shade400 : Colors.blue.shade500,
+                                    child: Icon(
+                                      _isFrontCamera ? Icons.cameraswitch : Icons.cameraswitch_outlined,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+
+                                // 靜音按鈕
+                                Container(
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black26,
+                                        blurRadius: 8,
+                                      ),
+                                    ],
+                                  ),
+                                  child: FloatingActionButton(
+                                    onPressed: _toggleMute,
+                                    heroTag: 'mute',
+                                    mini: true,
+                                    backgroundColor: _isMuted ? Colors.red.shade600 : Colors.blue.shade500,
+                                    child: Icon(
+                                      _isMuted ? Icons.mic_off : Icons.mic,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+
+                                // ★ 2026-08-05 第十八輪（需求 1）：擴音／聽筒切換
+                                Container(
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black26,
+                                        blurRadius: 8,
+                                      ),
+                                    ],
+                                  ),
+                                  child: FloatingActionButton(
+                                    onPressed: _toggleSpeaker,
+                                    heroTag: 'speaker',
+                                    mini: true,
+                                    backgroundColor: _isSpeakerOn ? Colors.blue.shade500 : Colors.grey.shade600,
+                                    child: Icon(
+                                      _isSpeakerOn ? Icons.volume_up : Icons.phone_in_talk,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+
+                                // 掛斷按鈕（紅色、較大）
+                                GestureDetector(
+                                  onTap: _hangUp,
+                                  child: Container(
+                                    width: 90,
+                                    height: 90,
+                                    decoration: BoxDecoration(
+                                      color: Colors.redAccent,
+                                      shape: BoxShape.circle,
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.red.shade300.withValues(alpha: 0.5),
+                                          blurRadius: 12,
+                                          spreadRadius: 2,
+                                        ),
+                                      ],
+                                    ),
+                                    child: const Icon(Icons.call_end, color: Colors.white, size: 48),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        else
+                          // 呼叫按鈕（未在通話中時）
+                          GestureDetector(
+                            onTap: _makeCall,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 20),
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [Color(0xFF4CAF50), Color(0xFF2E7D32)],
+                                ),
+                                borderRadius: BorderRadius.circular(40),
+                                boxShadow: const [
+                                  BoxShadow(
+                                    color: Colors.black26,
+                                    blurRadius: 10,
+                                    offset: Offset(0, 4),
+                                  ),
+                                ],
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  if (_isInCall)
-                                    const CircularProgressIndicator(color: Colors.orangeAccent),
-                                  const SizedBox(height: 24),
+                                  Icon(Icons.call, color: Colors.white, size: 28),
+                                  SizedBox(width: 12),
                                   Text(
-                                    _status,
-                                    style: const TextStyle(
-                                      color: Colors.white70,
-                                      fontSize: 22,
-                                      fontWeight: FontWeight.w500,
+                                    "呼叫家人",
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.bold,
                                     ),
                                   ),
                                 ],
                               ),
                             ),
-                ),
-              ),
-
-              // 2. 本地 PIP（僅雙向通話模式顯示）
-              if (!widget.isCCTVMode)
-                Positioned(
-                  right: 20,
-                  top: MediaQuery.of(context).padding.top + 20,
-                  width: 110,
-                  height: 160,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.4),
-                          blurRadius: 8,
-                          offset: const Offset(0, 4),
-                        ),
+                          ),
                       ],
-                      border: Border.all(color: Colors.white24, width: 1.5),
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(14),
-                      child: RTCVideoView(_localRenderer, mirror: true, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
                     ),
                   ),
-                ),
 
-              // ★ CCTV 模式：頂部退出按鈕與底部「CCTV 監視中」標籤
-              if (widget.isCCTVMode) ...[
-                Positioned(
-                  top: MediaQuery.of(context).padding.top + 10,
-                  right: 16,
-                  child: GestureDetector(
-                    onTap: _exitCCTVMode,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.6),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Colors.white30, width: 1),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.logout_rounded, color: Colors.white, size: 16),
-                          SizedBox(width: 6),
-                          Text(
-                            '退出監視機',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  bottom: 12,
-                  left: 0,
-                  right: 0,
-                  child: Center(
-                    child: Container(
-                      // ★ 2026-08-25：新增的推送狀態文字是執行期資料（後端 reason
-                      //   字串長度不定），限制最大寬度＋下面 Text 的
-                      //   maxLines/overflow 雙重保險，避免撐爆版面或造成
-                      //   RenderFlex overflow。
-                      constraints: const BoxConstraints(maxWidth: 300),
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.45),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            'CCTV 監視中…',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.6),
-                              fontSize: 12,
-                              fontWeight: FontWeight.w400,
-                              letterSpacing: 1.0,
-                            ),
-                          ),
-                          // ★ 2026-08-25：把每 2 秒一輪 pushCctvFrame 的最新結果翻成
-                          //   中文顯示在這裡（見 _recordCctvPushResult／
-                          //   _describeCctvPushResult）。這是使用者唯一拿得到的
-                          //   推幀診斷資訊來源——他們不是伺服器管理員，查不了
-                          //   /cctv/yolo_status 之類的診斷端點，只能站在監視機
-                          //   前面看畫面。純顯示，不影響 G75 的三層自癒推幀迴圈。
-                          const SizedBox(height: 2),
-                          Text(
-                            _cctvPushStatusText,
-                            textAlign: TextAlign.center,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.85),
-                              fontSize: 11,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          // 原始 reason 字串（小字），方便使用者原樣回報給我們核對。
-                          if (_cctvPushRawReason != null)
-                            Text(
-                              _cctvPushRawReason!,
-                              textAlign: TextAlign.center,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.4),
-                                fontSize: 9,
-                              ),
-                            ),
-                          // ★ 2026-08-26：偵測器載入失敗的原因（後端
-                          //   `routers/alert.py` 在 reason == 'yolo_unavailable'
-                          //   時才附上，已由後端 _sanitize_load_error() 折單行、
-                          //   裁切至 200 字並遮蔽 URL 內嵌憑證樣式）。使用者不是
-                          //   伺服器管理員，查不了 /cctv/yolo_status 之類的診斷
-                          //   端點，這行字是他們唯一拿得到、可以原樣回報給我們
-                          //   核對的線索——因此刻意**不**用 maxLines: 1 +
-                          //   ellipsis 單行截斷（那樣會把最關鍵的內容切掉，等於
-                          //   白顯示）。改用較高的 maxLines 讓它自然換行；外層
-                          //   Container 已有 maxWidth: 300 限制寬度，這裡的
-                          //   maxLines: 5 在該寬度、此字級下足以完整顯示後端
-                          //   裁切後的 200 字上限，overflow: ellipsis 只是防禦
-                          //   性上限（正常情況不會觸發），不是主要截斷手段。
-                          //   純顯示、不影響 G75 的三層自癒推幀迴圈。
-                          if (_cctvPushLoadError != null)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 2),
-                              child: Text(
-                                _cctvPushLoadError!,
-                                textAlign: TextAlign.center,
-                                maxLines: 5,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.55),
-                                  fontSize: 9,
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
+                // 5. 測試/登出按鈕 (已移除，避免長輩誤觸登出)
               ],
-
-                            // 4. 底部控制列 (大按鈕，便於操作)
-              if (!widget.isCCTVMode)
-                Positioned(
-                  bottom: 60,
-                  left: 0,
-                  right: 0,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // ★ 通話時長顯示（僅在通話中顯示）
-                      if (_isInCall)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 20),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: Colors.black38,
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: Colors.white24, width: 1),
-                            ),
-                            child: Text(
-                              '通話時間: ${_formatDuration(_callDuration)}',
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ),
-                        ),
-                      
-                      // ★ 通話控制按鈕（水平排列）
-                      if (_isInCall)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 20),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                            children: [
-                              // 攝像頭開關
-                              Container(
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black26,
-                                      blurRadius: 8,
-                                    ),
-                                  ],
-                                ),
-                                child: FloatingActionButton(
-                                  onPressed: _toggleCamera,
-                                  heroTag: 'camera',
-                                  mini: true,
-                                  backgroundColor: _isCameraOff ? Colors.grey.shade600 : Colors.blue.shade500,
-                                  child: Icon(
-                                    _isCameraOff ? Icons.videocam_off : Icons.videocam,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
-                              
-                              // ★ issue 12：前後鏡頭切換按鈕
-                              Container(
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black26,
-                                      blurRadius: 8,
-                                    ),
-                                  ],
-                                ),
-                                child: FloatingActionButton(
-                                  onPressed: _isCameraOff ? null : _switchCamera,
-                                  heroTag: 'switchCamera',
-                                  mini: true,
-                                  backgroundColor: _isCameraOff ? Colors.grey.shade400 : Colors.blue.shade500,
-                                  child: Icon(
-                                    _isFrontCamera ? Icons.cameraswitch : Icons.cameraswitch_outlined,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
-
-                              // 靜音按鈕
-                              Container(
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black26,
-                                      blurRadius: 8,
-                                    ),
-                                  ],
-                                ),
-                                child: FloatingActionButton(
-                                  onPressed: _toggleMute,
-                                  heroTag: 'mute',
-                                  mini: true,
-                                  backgroundColor: _isMuted ? Colors.red.shade600 : Colors.blue.shade500,
-                                  child: Icon(
-                                    _isMuted ? Icons.mic_off : Icons.mic,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
-
-                              // ★ 2026-08-05 第十八輪（需求 1）：擴音／聽筒切換
-                              Container(
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black26,
-                                      blurRadius: 8,
-                                    ),
-                                  ],
-                                ),
-                                child: FloatingActionButton(
-                                  onPressed: _toggleSpeaker,
-                                  heroTag: 'speaker',
-                                  mini: true,
-                                  backgroundColor: _isSpeakerOn ? Colors.blue.shade500 : Colors.grey.shade600,
-                                  child: Icon(
-                                    _isSpeakerOn ? Icons.volume_up : Icons.phone_in_talk,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
-
-                              // 掛斷按鈕（紅色、較大）
-                              GestureDetector(
-                                onTap: _hangUp,
-                                child: Container(
-                                  width: 90,
-                                  height: 90,
-                                  decoration: BoxDecoration(
-                                    color: Colors.redAccent,
-                                    shape: BoxShape.circle,
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.red.shade300.withValues(alpha: 0.5),
-                                        blurRadius: 12,
-                                        spreadRadius: 2,
-                                      ),
-                                    ],
-                                  ),
-                                  child: const Icon(Icons.call_end, color: Colors.white, size: 48),
-                                ),
-                              ),
-                            ],
-                          ),
-                        )
-                      else
-                        // 呼叫按鈕（未在通話中時）
-                        GestureDetector(
-                          onTap: _makeCall,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 20),
-                            decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [Color(0xFF4CAF50), Color(0xFF2E7D32)],
-                              ),
-                              borderRadius: BorderRadius.circular(40),
-                              boxShadow: const [
-                                BoxShadow(
-                                  color: Colors.black26,
-                                  blurRadius: 10,
-                                  offset: Offset(0, 4),
-                                ),
-                              ],
-                            ),
-                            child: const Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.call, color: Colors.white, size: 28),
-                                SizedBox(width: 12),
-                                Text(
-                                  "呼叫家人",
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 24,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-
-              // 5. 測試/登出按鈕 (已移除，避免長輩誤觸登出)
-            ],
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }

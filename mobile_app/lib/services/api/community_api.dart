@@ -7,8 +7,15 @@ import 'api_client.dart';
 
 /// 家庭溫馨社群貼文、點讚、留言與圖片上傳 API
 class CommunityApi {
-  /// 取得家庭社群貼文列表
-  static Future<List<dynamic>> getCommunityPosts({
+  /// 取得家庭社群貼文列表。
+  ///
+  /// ★ 2026-09-22 第五十一輪：回傳型別改為可為 null——**null＝這次呼叫失敗**
+  /// （離線、逾時、伺服器錯誤或回傳非 success），**空清單＝真的一則貼文都沒有**。
+  /// 舊版兩種情況都回 `[]`，於是 `CommunityService.getPosts` 的「遠端成功即為
+  /// 單一真相」會把離線誤判成「後端說沒有貼文」，拿空清單覆蓋本機快取——長輩
+  /// 在沒網路時發的貼文下一次載入就會消失，`lastFetchWasOffline` 也永遠是
+  /// false（離線提示從來不會出現）。
+  static Future<List<dynamic>?> getCommunityPosts({
     int? familyId,
     int? userId,
     int limit = 50,
@@ -26,10 +33,11 @@ class CommunityApi {
       if (data['status'] == 'success' && data['data'] is List) {
         return data['data'];
       }
-      return [];
+      debugPrint('⚠️ getCommunityPosts: 後端回應非 success，視為呼叫失敗');
+      return null;
     } catch (e) {
       debugPrint('⚠️ getCommunityPosts error: $e');
-      return [];
+      return null;
     }
   }
 

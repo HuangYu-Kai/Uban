@@ -3,20 +3,25 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../services/friend_service.dart';
+import '../../../../theme/app_theme.dart';
 import '../../../pet_companion_studio/services/garden_ambient_audio_service.dart';
 import '../../../pet_companion_studio/services/pet_progress_service.dart';
 import '../../../pet_companion_studio/widgets/pet_leaderboard_card.dart';
+import '../../../pet_companion_studio/widgets/pet_season_card.dart';
 
 /// 🗓️🏆🎵 小豬之家右上角懸浮膠囊群：賽季／好友排行榜／背景音樂控制。
 ///
-/// 從 `PetStudioScreen._buildSeasonBadge`／`_buildLeaderboardButton`／
-/// `_buildMusicControlButton`（連同各自開啟的 `_showLeaderboardSheet`／
-/// `_showMusicSettingsSheet`）逐一複製抽離而成，樣式與互動邏輯保持一致；
-/// 差別只在本元件自己負責解析 elder_id、載入賽季資訊、持有一份背景音樂
-/// 服務——呼叫端不需要額外傳入這些資料／服務。
+/// 從 `PetStudioScreen._buildLeaderboardButton`／`_buildMusicControlButton`
+/// （連同各自開啟的 `_showLeaderboardSheet`／`_showMusicSettingsSheet`）
+/// 逐一複製抽離而成，樣式與互動邏輯保持一致；差別只在本元件自己負責解析
+/// elder_id、載入賽季資訊、持有一份背景音樂服務——呼叫端不需要額外傳入
+/// 這些資料／服務。賽季那一顆本來也是複製，第五十一輪改成與
+/// `PetStudioScreen` 共用同一個 [PetSeasonCard]（見該檔說明），不再各自
+/// 維護一份。
 ///
 /// ⚠️ `pet_studio_screen.dart` 仍是 `lib/main_pet_preview.dart` 使用中的
-/// 獨立入口畫面，本元件是「複製」而非「搬走」，該檔完全未被改動。
+/// 獨立入口畫面，本元件（除了共用的 [PetSeasonCard] 之外）是「複製」而非
+/// 「搬走」，該檔其餘部分未被改動。
 class PetCornerActions extends StatefulWidget {
   /// 登入使用者的資料庫整數 PK，用來解析好友排行榜要用的 elder_id
   /// （見 `PetStudioScreen.userId` 的欄位說明——這不是 elder_id 本身，
@@ -29,10 +34,24 @@ class PetCornerActions extends StatefulWidget {
   /// 「晚…」，賽季膠囊也會壓到小豬的對話氣泡。
   final bool compact;
 
+  /// ⚠️ 僅供 widget test 注入假賽季資料使用。production 呼叫端
+  /// （`elder_profile_tab.dart`／`pet_studio_screen.dart`）恆不傳這個
+  /// 欄位，不影響任何現有行為。
+  ///
+  /// 背景：`_loadSeason()` 打的是真實 `GET /api/pet/season`，
+  /// `flutter test` 的 `TestWidgetsFlutterBinding` 會攔截所有 HTTP 請求
+  /// 並一律回傳失敗（比照 `elder_home_tab_news_visibility_test.dart` 檔頭
+  /// 說明），導致 `_season` 恆為 null、賽季圖示與本彈窗永遠不會被建出來
+  /// ——沒有這個欄位就無法用 widget test 驗證第五十三輪 item 6 新增的
+  /// 說明彈窗。
+  @visibleForTesting
+  final PetSeasonInfo? debugInitialSeasonForTest;
+
   const PetCornerActions({
     super.key,
     required this.userId,
     this.compact = false,
+    this.debugInitialSeasonForTest,
   });
 
   @override
@@ -50,7 +69,14 @@ class _PetCornerActionsState extends State<PetCornerActions> {
   void initState() {
     super.initState();
     _resolveElderId();
-    _loadSeason();
+    // ⚠️ 見 `widget.debugInitialSeasonForTest` 欄位說明：僅供 widget test
+    // 注入假資料，production 呼叫端恆為 null，行為與原本完全相同。
+    final debugSeason = widget.debugInitialSeasonForTest;
+    if (debugSeason != null) {
+      _season = debugSeason;
+    } else {
+      _loadSeason();
+    }
     _audioService.initAndStartAmbience();
   }
 
@@ -74,6 +100,54 @@ class _PetCornerActionsState extends State<PetCornerActions> {
     }
   }
 
+  /// 🗓️ 賽季說明彈窗（精簡橫排模式下點擊賽季圖示的入口）。
+  ///
+  /// 第五十三輪 item 6 之前：精簡模式點下去只會彈出 2 秒鐘就自動消失的
+  /// [SnackBar]（走 [_showSnackToast]、預設字級，內容僅「第 N 季，還剩 N
+  /// 天」），長輩既看不清楚幾個字，也看不懂這跟自己有什麼關係、時間到了
+  /// 會怎樣——這正是本輪使用者回報「僅顯示『第一季，還有 XX 天』」的來源。
+  /// 非精簡模式（橫屏／`pet_studio_screen.dart`）其實早就换成了圖文並茂、
+  /// 白話說明的 [PetSeasonCard]，只是精簡模式這個進入點沒有跟著換。
+  ///
+  /// 修法：直接重用 [PetSeasonCard]（[ElderScale.seasonTitle] 24pt／
+  /// [ElderScale.seasonSubtitle] 20pt／[ElderScale.caption] 18pt 的白話
+  /// 說明句「時間到會結算排名，小豬會從頭養起」），改成長輩自己按「知道了」
+  /// 才會關閉的彈出對話框，不再受 2 秒自動消失的時間壓力限制。
+  void _showSeasonInfoDialog() {
+    if (_season == null) return;
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            PetSeasonCard(season: _season!, maxWidth: 320),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF059669),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 36, vertical: 14),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20)),
+              ),
+              child: Text(
+                '知道了',
+                style: ElderScale.body.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showSnackToast(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -94,7 +168,7 @@ class _PetCornerActionsState extends State<PetCornerActions> {
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         if (_season != null) ...[
-          _buildSeasonBadge(_season!),
+          PetSeasonCard(season: _season!),
           const SizedBox(height: 10),
         ],
         _buildLeaderboardButton(),
@@ -119,9 +193,9 @@ class _PetCornerActionsState extends State<PetCornerActions> {
                 '第 ${_season!.seasonNo} 季 · 還剩 ${_season!.daysRemaining} 天',
             onTap: () {
               HapticFeedback.lightImpact();
-              _showSnackToast(
-                '🗓️ 第 ${_season!.seasonNo} 季，還剩 ${_season!.daysRemaining} 天',
-              );
+              // ★ 第五十三輪 item 6：改彈出說明對話框（見 [_showSeasonInfoDialog]
+              // 檔頭說明），不再用看不清楚也來不及讀完的 2 秒 SnackBar。
+              _showSeasonInfoDialog();
             },
           ),
           const SizedBox(width: 8),
@@ -191,46 +265,9 @@ class _PetCornerActionsState extends State<PetCornerActions> {
     );
   }
 
-  // 🗓️ 頂部賽季膠囊：顯示第幾季、還剩幾天（文案與理由沿用 PetStudioScreen）。
-  Widget _buildSeasonBadge(PetSeasonInfo season) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFFDF8).withValues(alpha: 0.94),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFFBBF7D0), width: 1.5),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF059669).withValues(alpha: 0.16),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Text('🗓️', style: TextStyle(fontSize: 15)),
-          const SizedBox(width: 6),
-          // 季數與剩餘天數理論上都是短數字（季數頂多 2~3 位、剩餘天數
-          // 0~92），但仍包 Flexible + ellipsis——同列已有圖示，符合鐵律
-          // #14／護欄 G159「同列多元素時標題需可收縮」的判準。
-          Flexible(
-            child: Text(
-              '第 ${season.seasonNo} 季 · 還剩 ${season.daysRemaining} 天',
-              style: GoogleFonts.notoSansTc(
-                fontSize: 14,
-                fontWeight: FontWeight.w900,
-                color: const Color(0xFF047857),
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  // 🗓️ 頂部賽季卡片：實際內容抽到共用元件 [PetSeasonCard]（與
+  // `pet_studio_screen.dart` 共用，理由見該元件檔案說明），本檔不再自己
+  // 維護一份複製。
 
   // 🏆 頂部排行榜控制膠囊按鈕（開啟好友寵物排行榜面板）
   Widget _buildLeaderboardButton() {

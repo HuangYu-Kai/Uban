@@ -22,6 +22,13 @@ class _DeviceSelectionScreenState extends State<DeviceSelectionScreen> {
   Timer? _refreshTimer;
   DateTime? _lastUpdateTime;
 
+  // ★ G102（CLAUDE_call-monitor-guardrails.md）：`Signaling` 單例的
+  // `onElderDevicesUpdate` 欄位只有一份，最後賦值者獨佔。原本 `dispose()`
+  // 無條件 `= null`，會誤清「接手畫面」（例如返回後的 `family_main_screen.dart`）
+  // 剛註冊好的閉包，讓對方的裝置在線清單自此不再更新，直到重啟 App。先存自己
+  // 這一份 closure 的參考，`dispose()` 只在單例上掛的仍是自己這一份時才清除。
+  Function(List<dynamic>)? _ownElderDevicesUpdate;
+
   @override
   void initState() {
     super.initState();
@@ -45,7 +52,7 @@ class _DeviceSelectionScreenState extends State<DeviceSelectionScreen> {
     // ★ 使用新的房間命名格式進行設備監聽
     final roomId = 'comm_elder_${widget.elderId}';
     _signaling.connect(roomId, 'family', userId: actualUserId, deviceName: 'FamilySelector');
-    _signaling.onElderDevicesUpdate = (devices) {
+    _ownElderDevicesUpdate = (devices) {
       if (mounted) {
         setState(() {
           _onlineDevices = devices;
@@ -55,14 +62,18 @@ class _DeviceSelectionScreenState extends State<DeviceSelectionScreen> {
         });
       }
     };
+    _signaling.onElderDevicesUpdate = _ownElderDevicesUpdate;
   }
 
   @override
   void dispose() {
     _refreshTimer?.cancel();
     // Do NOT call _signaling.dispose() here because it's a Singleton.
-    // We just clear our specific callback.
-    _signaling.onElderDevicesUpdate = null;
+    // ★ G102：只在單例上掛的仍是「我這一份」時才清除，避免誤清接手畫面剛
+    //   註冊好的回呼（見 _ownElderDevicesUpdate 欄位宣告處的說明）。
+    if (identical(_signaling.onElderDevicesUpdate, _ownElderDevicesUpdate)) {
+      _signaling.onElderDevicesUpdate = null;
+    }
     super.dispose();
   }
 

@@ -9,6 +9,7 @@ import 'elder_tabs/elder_greeting_tab.dart';
 import 'elder_chat_screen.dart';
 import 'elder_tabs/elder_profile_tab.dart';
 import '../globals.dart';
+import '../theme/app_theme.dart'; // ElderScale：長輩端字級慣例（第五十輪來電通知放大用）
 import 'elder_screen.dart';
 import 'emergency_permission_guide_screen.dart';
 import 'package:flutter_tts/flutter_tts.dart';
@@ -20,6 +21,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import '../widgets/google_assistant_overlay.dart';
+import '../widgets/global_assistant_button.dart';
 // ★ 第四十輪（item 4）：onCancelCall 現在也要關備援本機通知，見下方說明。
 import '../services/local_call_notification.dart';
 // ★ 第四十一輪（item 2）：步驟式高光新手指引元件。
@@ -220,6 +222,13 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
 
     pendingAcceptedCall.addListener(_onPendingCallChanged);
     isMediaPlayingNotifier.addListener(_onMediaPlayingChanged);
+    // ★ 2026-09-22 第五十一輪（長5）：把本畫面的助理啟動流程登記為全域啟動器，
+    //   讓掛在 MaterialApp.builder 的浮動麥克風鈕在**任何**畫面上都能叫出小嘎。
+    //   刻意共用同一個方法而不是複製一份——喚醒詞暫停、畫面情境注入、
+    //   autoCall 撥號接手都只有這一份實作。本畫面在推出去的路由底下仍然
+    //   mounted，`context` 也仍然有效，彈出的 bottom sheet 走的是同一個
+    //   root Navigator，所以會蓋在當前畫面之上。
+    elderAssistantLauncherNotifier.value = _triggerGoogleAssistantOverlay;
     // ★ 2026-08-10 第二十輪（需求 6）：語音喚醒總開關的即時生效。
     wakeWordEnabledNotifier.addListener(_onWakeWordEnabledChanged);
     // 檢查是否有在背景接聽的通話初始化前就傳入的待接聽電話
@@ -290,12 +299,26 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
               '嘎蛙';
         });
       }
-      // ★ 確保長輩端「全時語音喚醒詞」預設啟用（true），長輩呼叫「Hey 嘎蛙 / 嘎挖」能即時喚醒
-      bool wakeWordEnabled = prefs.getBool(kWakeWordEnabledKey) ?? true;
-      if (!wakeWordEnabled) {
-        wakeWordEnabled = true;
-        await prefs.setBool(kWakeWordEnabledKey, true);
+      // 🚨 2026-09-23 第五十二輪：喚醒詞遷移補在冷啟動路徑（與
+      //   ai_assistant_settings_dialog.dart 共用同一把版本化旗標鍵
+      //   wake_word_pref_reset_v52）。第五十一輪之前的版本會在「每次載入
+      //   首頁」時把 kWakeWordEnabledKey 強制寫成 true（不是使用者的選
+      //   擇），而使用者的裝置多半從未打開過 AI 語音助理設定頁，只在那邊
+      //   遷移救不到這些裝置——必須在下面讀取 kWakeWordEnabledKey **之
+      //   前**先跑同一套遷移，否則這次啟動仍會讀到舊值。旗標不存在 →
+      //   這是第一次套用本次遷移，把鍵強制拉回 false 並寫入旗標；旗標
+      //   一旦存在，代表使用者之後自己的開關選擇（不論開或關）都不會
+      //   再被本遷移覆蓋。
+      const wakeWordMigrationFlagKey = 'wake_word_pref_reset_v52';
+      if (!(prefs.getBool(wakeWordMigrationFlagKey) ?? false)) {
+        await prefs.setBool(kWakeWordEnabledKey, false);
+        await prefs.setBool(wakeWordMigrationFlagKey, true);
       }
+      // ★ 護欄 G59：語音喚醒預設「關閉」，且只讀不寫。
+      //   這裡以前會在讀到 false 時強制寫回 true，等於長輩在個人資料頁關掉麥克風，
+      //   下次進首頁又被打開（麥克風無限開開關關）。開關唯一的寫入點是
+      //   `elder_tabs/elder_profile_tab.dart`。
+      final bool wakeWordEnabled = prefs.getBool(kWakeWordEnabledKey) ?? false;
       wakeWordEnabledNotifier.value = wakeWordEnabled;
       _initWakeWordListener();
 
@@ -579,7 +602,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
 
     if (!mounted) return;
 
-    await GoogleAssistantOverlay.show(
+    final assistantResult = await GoogleAssistantOverlay.show(
       context,
       userName: _userName,
       aiName: _aiName,
@@ -596,15 +619,67 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
         if (mounted) _safeRestartWakeWordListening('overlay_closed');
       });
     }
+
+    // ★ 第四十九輪 item 8：長輩說「幫我打電話／視訊給家人／好友」時，
+    //   GoogleAssistantOverlay 已經念完確認語並帶出撥號請求，這裡接手實際
+    //   撥出——完全比照 friends_screen.dart::_startCall() /
+    //   _startFriendCall() 的既有配方，透過建構 ElderScreen(autoCall:true,
+    //   ...) 完成，不呼叫 Signaling() 任何方法。`friendElderId` 有值時
+    //   （後端 tools_service.py::initiate_video_call 已在真實好友清單裡唯一
+    //   定位到對象）走好友通話（進對方房間、指定對象）；為 null 時走家人
+    //   通話（整戶已綁定家屬的手機一起響，不支援指定某一位）——兩者都是
+    //   ElderScreen 既有支援的公開建構參數，本檔沒有新增或修改該檔任何邏輯。
+    if (mounted && assistantResult != null && assistantResult['autoCall'] == true) {
+      String? roomId;
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        roomId = prefs.getString('elder_room_id')?.trim();
+      } catch (e) {
+        debugPrint('⚠️ [ElderHomeScreen] 讀取 elder_room_id 失敗: $e');
+      }
+      if (!mounted) return;
+      if (roomId == null || roomId.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('找不到您的通話帳號資料，請重新登入後再試')),
+        );
+      } else {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ElderScreen(
+              roomId: roomId!,
+              friendCallTargetElderId: assistantResult['friendElderId'] as String?,
+              deviceName: _userName,
+              autoCall: true,
+              isVideoCall: assistantResult['isVideo'] == true,
+            ),
+          ),
+        );
+      }
+    }
   }
+
+  // ★ G102（CLAUDE_call-monitor-guardrails.md）：`Signaling` 單例的回呼欄位只
+  // 有一份，最後賦值者獨佔。本方法會被呼叫**多次**（initState、以及從
+  // ElderScreen 返回的兩處 `.then()`），每次都要更新這些欄位，讓它們永遠
+  // 代表「我最後一次指派的那一份」——`dispose()` 才能用 `identical()` 比對
+  // 出單例上掛的是不是還是本畫面的閉包，而不是本畫面更早一次指派、後來又
+  // 被自己蓋掉的舊閉包。
+  CallRequestCallback? _ownCallRequest;
+  CallRequestCallback? _ownCancelCall;
+  Function(String message)? _ownHeartbeatMessage;
+  Function(dynamic data)? _ownElderQuestionAnswered;
+  void Function(Map<String, dynamic>)? _ownRemoteReminder;
+  void Function(Map<String, dynamic>)? _ownReminderSync;
 
   void _restoreSignalingCallbacks() {
     debugPrint("🔄 [ElderHomeScreen] 重新綁定 Signaling Callbacks");
     // 監聽來自家屬的來電請求
-    Signaling().onCallRequest = (roomId, senderId, callId, [senderName]) {
+    _ownCallRequest = (roomId, senderId, callId, [senderName]) {
       if (!mounted) return;
       _showIncomingCallDialog(roomId, senderId, callId);
     };
+    Signaling().onCallRequest = _ownCallRequest;
     // ★ issue 4 fix: 監聽家屬取消來電，關閉彈窗
     // ★ 第四十輪（item 4）：`Signaling` 的回呼欄位只有一份，長輩停在本畫面時
     //   本檔這份會覆蓋 main.dart 的全域版本（見 CLAUDE_call-monitor.md §2.3），
@@ -612,7 +687,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     //   畫面／備援本機通知，家屬撥打逾時取消後，長輩端可能還留著響鈴中的
     //   CallKit／備援通知。endAllCalls() 沿用 main.dart 既有 try/catch 慣例
     //   （MIUI 會拋 content-is-null）。
-    Signaling().onCancelCall = (roomId, senderId, callId, [senderName]) {
+    _ownCancelCall = (roomId, senderId, callId, [senderName]) {
       if (!mounted) return;
       debugPrint('🔕 [ElderHomeScreen] 家屬取消來電，關閉彈窗');
       if (_isIncomingCallDialogOpen && Navigator.canPop(context)) {
@@ -627,18 +702,20 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
       unawaited(LocalCallNotification.cancel());
       unawaited(_clearPendingCallPrefsOnCancel());
     };
+    Signaling().onCancelCall = _ownCancelCall;
 
     // 監聽家屬發送的主動關心留言 (Heartbeat)
-    Signaling().onHeartbeatMessage = (message) {
+    _ownHeartbeatMessage = (message) {
       if (mounted) {
         _handleProactiveMessage(message);
       }
     };
+    Signaling().onHeartbeatMessage = _ownHeartbeatMessage;
 
     // 💬 子女回覆了長輩先前問小嘎、小嘎轉交出去的問題。
     //    做成一則關懷訊息：CareMessageStore 已經負責留存、首頁顯示對話框、
     //    聊天分頁接成小嘎的訊息，三個落點一次到位，不必另做一套。
-    Signaling().onElderQuestionAnswered = (data) {
+    _ownElderQuestionAnswered = (data) {
       if (!mounted || data is! Map) return;
       final answer = (data['answer'] ?? '').toString().trim();
       if (answer.isEmpty) return;
@@ -648,15 +725,17 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
           : '您之前問的「$question」，家人回覆了：$answer';
       _handleProactiveMessage(jsonEncode({'reply': text, 'type': 'family'}));
     };
+    Signaling().onElderQuestionAnswered = _ownElderQuestionAnswered;
 
     // ★ ⏰ 監聽排程提醒與同步信令
-    Signaling().onRemoteReminder = (data) {
+    _ownRemoteReminder = (data) {
       if (mounted) {
         debugPrint('⏰ [ElderHomeScreen] 收到 onRemoteReminder 信令: $data');
         ElderReminderManager.instance.handleIncomingReminder(data);
       }
     };
-    Signaling().onReminderSync = (data) {
+    Signaling().onRemoteReminder = _ownRemoteReminder;
+    _ownReminderSync = (data) {
       if (mounted) {
         debugPrint('🔄 [ElderHomeScreen] 收到 onReminderSync 信令: $data');
         // ★ 2026-09-15：action='complete' 時把該筆寫進本機當日完成清單。
@@ -667,6 +746,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
         ElderReminderManager.instance.syncReminders();
       }
     };
+    Signaling().onReminderSync = _ownReminderSync;
   }
 
   /// 把遠端回報的「提醒已完成」寫入本機當日清單，與「我的」分頁的
@@ -721,23 +801,46 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) {
-        return AlertDialog(
+        // ★ 第五十一輪（長5）：來電響鈴畫面上，全域語音助理浮動鈕必須讓位，
+        //   不可以擋到接聽／拒接鍵。
+        return AssistantHiddenZone(
+          child: AlertDialog(
+          // ★ 第五十輪：長輩端「app 內來電通知」按鈕與文字放大 100%（需求 B）。
+          //   只改字級／尺寸／間距等純視覺屬性，未動任何接聽/拒接邏輯或導航方式。
           title: Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(16), // 8→16，跟著圖示等比放大
                 decoration: BoxDecoration(
                   color: Colors.green.shade100,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(Icons.phone_in_talk,
-                    color: Colors.green, size: 28),
+                    color: Colors.green, size: 56), // 28→56（100%）
               ),
-              SizedBox(width: 12),
-              Text('家屬來電'),
+              const SizedBox(width: 24), // 12→24
+              // 標題原本沒有 style（吃 AlertDialog 預設，約 22sp），這裡明確給一個
+              // 放大後的樣式；沿用專案既有的 ElderScale.displayTitle（40sp）。
+              // 包 Flexible + ellipsis：硬規則 14——同列還有圖示，長輩若把系統字級
+              // 調更大，標題必須可收縮，否則會撐出 RenderFlex 溢位。
+              Flexible(
+                child: Text(
+                  '家屬來電',
+                  style: ElderScale.displayTitle,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             ],
           ),
-          content: const Text('您的家人正在呼叫您！', style: TextStyle(fontSize: 18)),
+          // 內容文字 18→36（100%），沿用 ElderScale.body 當基底再覆寫字級；
+          // 外面包 SingleChildScrollView：字放大後窄螢幕/小螢幕高度可能不夠，
+          // 讓內容可捲動，避免溢位（硬規則 14）。
+          content: SingleChildScrollView(
+            child: Text(
+              '您的家人正在呼叫您！',
+              style: ElderScale.body.copyWith(fontSize: 36),
+            ),
+          ),
           backgroundColor: Colors.green.shade50,
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -749,13 +852,24 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
                 Navigator.of(dialogContext).pop();
                 _isIncomingCallDialogOpen = false;
               },
-              icon: const Icon(Icons.call_end),
-              label: const Text('拒接', style: TextStyle(fontSize: 16)),
+              icon: const Icon(Icons.call_end, size: ElderScale.buttonIcon), // 圖示跟著放大
+              // 按鈕文字 16→32（100%），沿用 ElderScale.button 當基底再覆寫字級；
+              // 包 Flexible + ellipsis：兩顆按鈕同列，字放大後必須可收縮，
+              // 否則窄螢幕（如 320dp）會把 Row 撐爆、出現黃黑溢位條（硬規則 14）。
+              label: Flexible(
+                child: Text(
+                  '拒接',
+                  style: ElderScale.button.copyWith(fontSize: 32, color: Colors.white),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.red,
                 foregroundColor: Colors.white,
+                // 20/12→40/24（100%），並保證最小點擊高度跟著放大，避免文字撐爆按鈕。
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
+                minimumSize: const Size(64, ElderScale.buttonHeight),
               ),
             ),
             ElevatedButton.icon(
@@ -807,16 +921,25 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
                   }
                 });
               },
-              icon: const Icon(Icons.videocam),
-              label: const Text('接聽', style: TextStyle(fontSize: 16)),
+              icon: const Icon(Icons.videocam, size: ElderScale.buttonIcon), // 圖示跟著放大
+              // 同上「拒接」按鈕的放大＋可收縮處理。
+              label: Flexible(
+                child: Text(
+                  '接聽',
+                  style: ElderScale.button.copyWith(fontSize: 32, color: Colors.white),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green,
                 foregroundColor: Colors.white,
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
+                minimumSize: const Size(64, ElderScale.buttonHeight),
               ),
             ),
           ],
+          ),
         );
       },
     ).then((_) => _isIncomingCallDialogOpen = false);
@@ -886,13 +1009,36 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     isAppReady = false;
     pendingAcceptedCall.removeListener(_onPendingCallChanged);
     isMediaPlayingNotifier.removeListener(_onMediaPlayingChanged);
+    // 與 G102 同樣的道理：只有自己仍是登記者時才清掉，避免把「接手畫面」
+    //   剛登記好的啟動器誤清成 null（長輩端首頁重建時會前後重疊一瞬間）。
+    // （用 `==` 不用 `identical`：Dart 只保證同一物件同一方法的 tear-off 相等，
+    //   不保證是同一個實例。）
+    if (elderAssistantLauncherNotifier.value ==
+        _triggerGoogleAssistantOverlay) {
+      elderAssistantLauncherNotifier.value = null;
+    }
     wakeWordEnabledNotifier.removeListener(_onWakeWordEnabledChanged);
-    Signaling().onHeartbeatMessage = null;
-    Signaling().onCallRequest = null;
-    Signaling().onCancelCall = null;
-    Signaling().onRemoteReminder = null;
-    Signaling().onElderQuestionAnswered = null;
-    Signaling().onReminderSync = null;
+    // ★ G102（CLAUDE_call-monitor-guardrails.md）：無條件 = null 會誤清「接手
+    //   畫面」剛註冊好的閉包——本畫面與 ElderScreen 互相導來導去時，兩邊都會
+    //   指派同一批欄位，只有 identical() 判斷自己仍是持有者才可以清除。
+    if (identical(Signaling().onHeartbeatMessage, _ownHeartbeatMessage)) {
+      Signaling().onHeartbeatMessage = null;
+    }
+    if (identical(Signaling().onCallRequest, _ownCallRequest)) {
+      Signaling().onCallRequest = null;
+    }
+    if (identical(Signaling().onCancelCall, _ownCancelCall)) {
+      Signaling().onCancelCall = null;
+    }
+    if (identical(Signaling().onRemoteReminder, _ownRemoteReminder)) {
+      Signaling().onRemoteReminder = null;
+    }
+    if (identical(Signaling().onElderQuestionAnswered, _ownElderQuestionAnswered)) {
+      Signaling().onElderQuestionAnswered = null;
+    }
+    if (identical(Signaling().onReminderSync, _ownReminderSync)) {
+      Signaling().onReminderSync = null;
+    }
     ElderReminderManager.instance.setContextGetter(null);
     ElderReminderManager.instance.stop();
     unawaited(ElderLocationService.instance.stop());

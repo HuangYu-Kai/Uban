@@ -107,6 +107,13 @@ class LocalCallNotification {
   }
 
   /// 顯示來電備援通知。**僅在 CallKit 確認未建立時呼叫**（見 `_showFullScreenCallkit`）。
+  ///
+  /// ★ 2026-09-21 第五十一輪：呼叫端 `firebase_bg_handler.dart::showFullScreenCallkit`
+  /// 把本函式包在 `if (!isEmergency) { ... }` 內才呼叫（緊急通話永遠走
+  /// `_autoAcceptEmergencyCall` 無條件自動接聽，不需要、也不該顯示任何來電 UI）。
+  /// 因此本檔全部的點擊／自動拉起處理（見下方 `notificationBackgroundTapHandler`
+  /// 與 [consumeLaunchPayload]）**只可能對應一般通話**，故意不再另外判斷
+  /// `isEmergency`——那個分流已經在呼叫端做完了。
   static Future<void> show(Map<String, dynamic> data) async {
     if (kIsWeb) return;
     try {
@@ -275,8 +282,18 @@ class LocalCallNotification {
         debugPrint('🔕 [LocalNotif] 冷啟動 launch details 為拒接，忽略');
         return;
       }
-      debugPrint('✅ [LocalNotif] 冷啟動偵測到備援通知點擊，寫入 pendingAcceptedCall');
-      await _persistTapAsAccepted(response.payload);
+      // ★ 2026-09-21 第五十一輪：只有 launch details 明確帶「✓ 接聽」action
+      //   才算使用者已接聽。點擊通知本體啟動 APP（`actionId == null`）不代表
+      //   同意接聽，改寫 `pendingLocalRingCall`，交由 main.dart 顯示既有的
+      //   接聽／拒接畫面，讓使用者自己決定（根因與細節見
+      //   CLAUDE_call-monitor.md §8 第五十一輪年表）。
+      if (response.actionId == actionAcceptId) {
+        debugPrint('✅ [LocalNotif] 冷啟動偵測到備援通知「接聽」點擊，寫入 pendingAcceptedCall');
+        await _persistTapAsAccepted(response.payload);
+      } else {
+        debugPrint('🔔 [LocalNotif] 冷啟動偵測到備援通知本體點擊，寫入 pendingLocalRingCall（待使用者於接聽畫面決定）');
+        await _persistTapAsPendingRing(response.payload);
+      }
       await cancel();
     } catch (e) {
       debugPrint('⚠️ [LocalNotif] consumeLaunchPayload 失敗: $e');
@@ -306,7 +323,17 @@ Future<void> notificationBackgroundTapHandler(NotificationResponse response) asy
     await _handleDecline(response.payload);
     return;
   }
-  await _persistTapAsAccepted(response.payload);
+  // ★ 2026-09-21 第五十一輪：只有明確按下「✓ 接聽」才算使用者已接聽同意。
+  //   `actionId == null` 涵蓋兩種情況——通知本體被點、以及螢幕鎖定時系統
+  //   因 `fullScreenIntent: true` 自動觸發的 content PendingIntent——兩者都
+  //   不是使用者主動選擇接聽。舊版把這兩種與 `actionAcceptId` 一視同仁直接
+  //   寫 `pendingAcceptedCall`，等同「長輩沒同意就被接通視訊」，是第五十一輪
+  //   要修的最高風險缺陷（詳見 CLAUDE_call-monitor.md §8）。
+  if (response.actionId == LocalCallNotification.actionAcceptId) {
+    await _persistTapAsAccepted(response.payload);
+    return;
+  }
+  await _persistTapAsPendingRing(response.payload);
 }
 
 /// 點擊備援通知 / 按「視訊」= 接聽：寫入 pendingAcceptedCall，
@@ -333,6 +360,46 @@ Future<void> _persistTapAsAccepted(String? payload) async {
     debugPrint('✅ [LocalNotif] 點擊接聽 → 已寫入 pendingAcceptedCall (callId=${data['callId']})');
   } catch (e) {
     debugPrint('⚠️ [LocalNotif] 處理通知點擊失敗: $e');
+  }
+}
+
+/// ★ 2026-09-21 第五十一輪新增：通知本體被點擊、或螢幕鎖定時系統因
+/// `fullScreenIntent: true` 自動觸發的 content PendingIntent，兩者都**不代表
+/// 使用者已明確接聽**——只代表「使用者的注意力被拉到這通來電」。
+///
+/// 因此寫入的是「待接聽」鍵 `pendingLocalRingCall`，語意與 [_persistTapAsAccepted]
+/// 寫的 `pendingAcceptedCall`（「使用者已接聽」）刻意不同，欄位集合則完全相同
+/// （比照 `pendingAcceptedCall` 的既有寫法：`roomId`/`senderId`/`callId`/
+/// `issuedAt`/`expiresAt`/`senderRole`/`isVideoCall`，外加本機 `timestamp`）。
+///
+/// 由 `main.dart::_checkPendingLocalRingCall` 消費：讀到後改用既有的
+/// `_showIncomingCallDialog` 顯示接聽／拒接畫面，讓使用者自己決定，而不是
+/// 直接進房。詳見 CLAUDE_call-monitor.md §3.3（鍵位表）與 §8（第五十一輪）。
+///
+/// 🚫 只會被非緊急通話呼叫（見 [show] 函式頂端註解），不需要在這裡另外判斷
+/// `isEmergency`。
+Future<void> _persistTapAsPendingRing(String? payload) async {
+  if (payload == null || payload.isEmpty) return;
+  try {
+    final Map<String, dynamic> data = jsonDecode(payload);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      'pendingLocalRingCall',
+      jsonEncode({
+        'roomId': (data['roomId'] ?? '').toString(),
+        'senderId': (data['senderId'] ?? '').toString(),
+        'callId': (data['callId'] ?? '').toString(),
+        'issuedAt': (data['issuedAt'] ?? '').toString(),
+        'expiresAt': (data['expiresAt'] ?? '').toString(),
+        'senderRole': (data['senderRole'] ?? '').toString(),
+        'isVideoCall': (data['isVideoCall'] ?? 'true').toString(),
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+      }),
+    );
+    debugPrint('🔔 [LocalNotif] 通知本體被點擊／系統自動拉起 → 寫入 pendingLocalRingCall，'
+        '待使用者於接聽畫面決定 (callId=${data['callId']})');
+  } catch (e) {
+    debugPrint('⚠️ [LocalNotif] 處理通知點擊（待接聽）失敗: $e');
   }
 }
 

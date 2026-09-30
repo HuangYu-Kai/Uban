@@ -2,11 +2,15 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
+import '../../../pet_companion_studio/models/pet_food_item.dart';
 import '../../../pet_companion_studio/models/pet_growth_state.dart';
+import '../../../pet_companion_studio/services/garden_ambient_audio_service.dart';
 import '../../../pet_companion_studio/widgets/animated_piglet_actor.dart';
 import '../../../pet_companion_studio/widgets/hand_drawn_piglet_actor.dart';
 import '../../../pet_companion_studio/widgets/pet_particle_canvas.dart';
+import 'pet_music_marquee.dart';
 
 /// 🏡🐷 小豬之家「主視覺舞台」──版面借用 Pokémon GO 寶可夢詳情頁的結構：
 /// 滿版主視覺 ＋ 置中大隻角色 ＋ 柔光粒子，但**只借版面、不借配色**。
@@ -32,13 +36,31 @@ class PetHeroStage extends StatefulWidget {
   /// 這個主視覺舞台佔螢幕高度的比例（0~1）。
   final double heightFactor;
 
+  /// ★ 第五十輪修復：拖曳食物到小豬身上時的餵食回呼。過去
+  /// [HandDrawnPigletActor] 內建的 `DragTarget<PetFoodItem>` 完全沒接線
+  /// （呼叫端沒傳這個參數），拖曳只會播放咀嚼動畫、不會真的餵食，長輩會以
+  /// 為拖曳餵食「壞掉了」。呼叫端請傳入與食匣按鈕餵食（`onFeedTap` 開啟的
+  /// `GardenFeedingSheet.onFeedFood`）**同一個**處理函式，讓兩條路徑走同一
+  /// 套邏輯（扣庫存、更新體重活力、寫回本機存檔、同步排行榜），不要各自
+  /// 兜一份邏輯出來，否則以後兩邊很容易改一邊漏一邊。null 時維持原行為
+  /// （拖曳只播動畫、不餵食）。
+  ///
+  /// ⚠️ 型別刻意比照 [HandDrawnPigletActor.onFoodAccepted] 用寬鬆的
+  /// `Function(PetFoodItem food)` 而非 `void Function(...)`——呼叫端
+  /// （elder_profile_tab.dart 的 `_handleFeedFood`）因為要 `await` 排行榜
+  /// 同步結果才能決定顯示成功或警告訊息，簽章是 `Future<void> Function(...)`；
+  /// Dart 允許非 void 回傳值的函式指派給期待 void 回傳的函式型別，但用同一
+  /// 種寬鬆型別更直接，不必依賴這條容易被忽略的語言細節。
+  final Function(PetFoodItem food)? onFoodAccepted;
+
   const PetHeroStage({
     super.key,
     required this.growthState,
-    this.speechText = '',
-    this.greetingLine = '',
+    required this.speechText,
+    required this.greetingLine,
     this.topRightActions,
     this.heightFactor = 0.42,
+    this.onFoodAccepted,
   });
 
   @override
@@ -142,7 +164,10 @@ class _PetHeroStageState extends State<PetHeroStage>
   /// 精簡圖示橫排（40px 圓鈕）＋ 上下內距；直向手機用這個值。
   /// 先前設 76 是沿用完整文字膠囊的高度，膠囊改精簡後等於白白吃掉
   /// 20px，小豬被壓得比該有的小。
-  static const double _topBarReserve = 20.0;
+  /// ★ 第五十輪：音樂出處跑馬燈（[PetMusicMarquee]）加到問候語列正上方後，
+  /// 頂部整體多佔用約 22px（18px 跑馬燈本體＋4px 與問候語列的間距），這裡
+  /// 從 56 調整為 78，避免小豬與跑馬燈打架、對話氣泡穿到跑馬燈後面變鬼影。
+  static const double _topBarReserve = 78.0;
 
   @override
   Widget build(BuildContext context) {
@@ -205,34 +230,40 @@ class _PetHeroStageState extends State<PetHeroStage>
             ),
           ),
 
-          // 4. 置中大隻手繪小豬（版面核心，依階段與體重升級數據動態縮放體積）
+          // 4. 置中大隻手繪小豬（版面核心，比照寶可夢詳情頁大隻角色置中呈現）
+          //
+          // ⚠️ 尺寸必須由「實際可用高度」推算，不能寫死。HandDrawnPigletActor
+          //    的舞台是 size * 1.32，speechText 非空時還會在上方疊一個對話
+          //    氣泡；固定 260 在較矮的視窗會直接擠爆，實測出現
+          //    BOTTOM OVERFLOWED BY 94 PIXELS（鐵律 #14），且被擠上去的氣泡
+          //    會穿到頂部問候列後面變成鬼影文字。
+          //    上方另外讓開 _topBarReserve，避免小豬與問候列／膠囊群打架。
           Padding(
             padding: const EdgeInsets.only(
               top: _topBarReserve,
-              bottom: 16,
+              bottom: 24,
             ),
             child: LayoutBuilder(
               builder: (context, constraints) {
-                // 依照階段與體重升級數據，建立動態體積縮放比例
-                final int stageIdx = widget.growthState.stage.index; // 0 ~ 4
-                final double progress = widget.growthState.stageProgress.clamp(0.0, 1.0);
-                
-                // 階段基底比例（第 1 階約 0.82，隨升級顯著放大到第 5 階 1.25）
-                final double stageBaseScale = 0.82 + (stageIdx * 0.08) + (progress * 0.05);
-
-                final double cap = isLandscape ? 360.0 : 310.0;
-                final double byHeight = constraints.maxHeight / 1.15;
-                final double byWidth = constraints.maxWidth / 1.15;
-                final double baseSize = math.min(math.min(byHeight, byWidth), cap);
-                final double actorSize = (baseSize * stageBaseScale).clamp(170.0, cap * 1.2);
+                final double bubbleReserve =
+                    widget.speechText.trim().isEmpty ? 0.0 : 96.0;
+                final double availH = constraints.maxHeight - bubbleReserve;
+                final double cap = isLandscape ? 300.0 : 260.0;
+                // 同時受高度與寬度限制，取最小者再夾到合理範圍
+                final double byHeight = availH / 1.32;
+                final double byWidth = constraints.maxWidth / 1.32;
+                final double actorSize =
+                    math.min(math.min(byHeight, byWidth), cap).clamp(96.0, cap);
 
                 return Center(
                   child: HandDrawnPigletActor(
                     size: actorSize,
                     stage: widget.growthState.stage,
                     mood: ActorMood.idle,
-                    speechText: '', // 移除上方對話氣泡，騰出空間給放大的小豬
+                    speechText: widget.speechText,
                     isCrownUnlocked: widget.growthState.isCrownUnlocked,
+                    // ★ 第五十輪修復：見上方 widget.onFoodAccepted 欄位說明。
+                    onFoodAccepted: widget.onFoodAccepted,
                   ),
                 );
               },
@@ -265,19 +296,91 @@ class _PetHeroStageState extends State<PetHeroStage>
             ),
           ),
 
-          // 7. 右上角懸浮膠囊群（季節／排行榜／音樂），頂部問候橫幅已移除
-          if (widget.topRightActions != null)
-            Positioned(
-              top: 0,
-              right: 16,
-              child: SafeArea(
-                bottom: false,
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: widget.topRightActions!,
+          // 7＋8. 頂部問候語（左）與懸浮膠囊群（右）同一列，用 Expanded
+          // 讓問候語自然收縮，不必猜測膠囊群的實際寬度。
+          Positioned(
+            top: 0,
+            left: 16,
+            right: 16,
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // 🎵 音樂出處跑馬燈——只在背景音樂播放中顯示，停播（含尚
+                    // 未初始化完成、被靜音）就整個隱藏，見
+                    // GardenAmbientAudioService.nowPlayingNotifier 的說明。
+                    // 字級刻意壓到最小（見 PetMusicMarquee 內部說明），純粹
+                    // 是版權標注、不是長輩需要辨讀的功能性文字，比照小豬之家
+                    // 其餘裝飾性文字（例如下方問候語膠囊、對話氣泡）一律用
+                    // 自訂小字級而非 ElderScale 的既有慣例。
+                    ValueListenableBuilder<GardenNowPlaying?>(
+                      valueListenable:
+                          GardenAmbientAudioService.nowPlayingNotifier,
+                      builder: (context, nowPlaying, _) {
+                        if (nowPlaying == null) return const SizedBox.shrink();
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: PetMusicMarquee(text: nowPlaying.attribution),
+                        );
+                      },
+                    ),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFFDF9)
+                                  .withValues(alpha: 0.82),
+                              borderRadius: BorderRadius.circular(18),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFF78350F)
+                                      .withValues(alpha: 0.10),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 3),
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                // ⚠️ 問候語含使用者姓名，長度不可控 → 必須
+                                // Flexible + ellipsis（鐵律 #14／護欄 G159）。
+                                Flexible(
+                                  child: Text(
+                                    widget.greetingLine,
+                                    style: GoogleFonts.notoSansTc(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.w900,
+                                      color: const Color(0xFF451A03),
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        if (widget.topRightActions != null) ...[
+                          const SizedBox(width: 12),
+                          widget.topRightActions!,
+                        ],
+                      ],
+                    ),
+                  ],
                 ),
               ),
             ),
+          ),
         ],
       ),
     );

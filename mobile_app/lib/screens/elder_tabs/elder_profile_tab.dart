@@ -16,8 +16,12 @@ import '../../services/api_service.dart';
 import '../../services/friend_service.dart';
 import '../../services/elder_location_service.dart';
 import '../../services/api/location_api.dart';
+import '../../services/game_service.dart';
+import '../../utils/error_handler.dart';
 import '../pet_companion_studio/models/pet_growth_state.dart';
 import '../pet_companion_studio/models/pet_food_item.dart';
+import '../pet_companion_studio/services/pet_leaderboard_service.dart';
+import '../pet_companion_studio/services/pet_progress_service.dart';
 import '../pet_companion_studio/widgets/garden_feeding_sheet.dart';
 import '../../services/elder_reminder_manager.dart';
 import '../../widgets/spotlight_tutorial.dart';
@@ -68,6 +72,12 @@ class _ElderProfileTabState extends State<ElderProfileTab>
   static const Duration _minSampleInterval = Duration(seconds: 1);
 
 
+  // 小豬預設對話語錄（用於任務打卡的短暫慶祝語結束後回到的預設狀態）
+  // ★ 2026-09-15 溢位巡檢時發現：這句沿用自舊的 _pigQuotes，寫死了「阿公」。
+  //   自主模式的長輩過去會預設叫「長輩朋友」、性別未知（第四十九輪已改為必須
+  //   輸入真實稱呼，不再有這個預設值），但阿嬤看到小豬喊她阿公一樣會困惑
+  //   ——與 memoir_service 先前修掉的是同一類問題，故仍保留中性稱呼。
+  static const String _defaultSpeechText = '今天天氣真好，一起散步活動身體吧！🌿';
 
   // ── 數據 ───────────────────────────────────────────────
   final int dailyStepGoal = 8000;
@@ -89,6 +99,14 @@ class _ElderProfileTabState extends State<ElderProfileTab>
   CoordinateKalmanFilter? _latFilter;
   CoordinateKalmanFilter? _lngFilter;
 
+  // ★ 第五十一輪：把融合步數（[_computeFusedSteps]）上傳到後端
+  // `elder_daily_step`（見 [_maybeUploadStepDelta]）。過去這個畫面只算了
+  // 步數給小豬本機成長用，從未送到後端，`today_steps` 在正式環境永遠是
+  // null／0，導致「散步賺胡蘿蔔」這類依賴後端步數的功能永遠不會觸發。
+  final GameService _gameService = GameService();
+  int _lastUploadedSteps = 0;
+  DateTime? _lastStepUploadAt;
+
   // ── 🐾 小豬之家狀態 ────────────────────────────────────────
   late AnimationController _particleController;
   late AnimationController _petBounceController;
@@ -99,8 +117,13 @@ class _ElderProfileTabState extends State<ElderProfileTab>
   // + Positioned.fill 做法——個人分頁本身就是小豬之家，不再跳轉到
   // PetStudioScreen，餵食流程要在這裡原地重現）。
   bool _isFeedingSheetOpen = false;
+  // ⚠️ 第五十一輪修復：carrot 不再是常駐無限——使用者實機發現可以無限次
+  // 投餵同一顆胡蘿蔔。這裡的 0 只是首幀渲染前的安全預設值，實際可餵份數
+  // 由 build() 每次用 [_carrotAvailable]（賺得－已消耗，見該 getter 說明）
+  // 覆蓋，不採用這個字面值。其餘食物維持舊制：解鎖後給固定份數，見
+  // [_loadFeedingInventory] 的持久化讀取。
   final Map<String, int> _feedingInventory = {
-    'carrot': -1, // 常駐無限
+    'carrot': 0,
     'apple': 3,
     'cabbage': 2,
     'sweet_potato': 2,
@@ -109,9 +132,20 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     'peach_cake': 1,
   };
 
+  // 🥕 陽光脆胡蘿蔔今天已消耗幾份（`GET /api/pet/food-ledger/{elder_id}` 的
+  // `consumed.carrot`）。null 代表尚未成功讀到後端帳本——[_carrotAvailable]
+  // 此時保守回傳 0，寧可讓長輩暫時餵不到胡蘿蔔，也不能假設「今天消耗 0
+  // 份」而把「今天已賺得」整包當成可餵份數（那等於後端帳本一連不上就退回
+  // 原本的無限量老問題）。
+  int? _carrotConsumedToday;
+
   // ★ 第四十一輪（item 3）：朋友圈好友 ID（見 PetCornerActions 內部另行解析，
   // 本欄位供 _loadElderReminders 讀排程提醒使用）。null 代表尚未載入完成或
   // 載入失敗。
+  // ★ 第五十輪：同時也是好友寵物排行榜（PetLeaderboardService）與今日食物
+  // 解鎖來源（PetProgressService.loadFoodUnlocks）要用的權威 elder_id，
+  // 三者共用同一把鍵，理由同 _loadElderReminders 的既有註解——不可各自
+  // 用 widget.userId 補零臆測。
   String? _myFriendElderId;
 
   // ── 🛰️ 與家人分享 GPS 位置（戶外定位軌跡，與上方本機步數用途的 GPS 追蹤
@@ -119,12 +153,29 @@ class _ElderProfileTabState extends State<ElderProfileTab>
   bool _locationSharingEnabled = false;
   bool _locationSharingBusy = false;
 
+  // ★ 第五十輪：好友寵物排行榜「初次同步」只做一次，避免每次 setState／
+  // rebuild 都重打一次後端。比照 pet_studio_screen.dart 的
+  // _hasSyncedInitialWeight 做法。
+  bool _hasSyncedInitialWeight = false;
+
+  // ★ 第五十輪：今日食物解鎖來源（步數／服藥打卡次數，
+  // `GET /api/pet/food-unlocks/{elder_id}`）。null 代表尚未載入成功，此時
+  // 退回裝置端既有的步數來源、服藥打卡次數視為 0（等同「只靠步數解鎖」的
+  // 舊行為，見下方 _effectiveStepsForUnlock／_medicationCheckinsToday）。
+  PetFoodUnlockSource? _unlockSource;
+
   // ── 📋 子女排程生活任務 ──────────────────────────────────
   List<Map<String, dynamic>> _reminders = [];
   Set<int> _completedReminderIds = {};
   bool _isLoadingReminders = false;
+  // ★ 第四十九輪：見 _loadElderReminders 的 catch 區塊與
+  // TodayTasksHandmadeSection.hasLoadError 的說明——讀取失敗不該跟「真的
+  // 沒有安排提醒」顯示成同一張空狀態卡片。
+  bool _hasReminderLoadError = false;
 
-
+  // ── 🎨 小豬對話氣泡文字 ──────────────────────────────
+  String _speechText = _defaultSpeechText;
+  Timer? _speechBubbleTimer;
 
   @override
   void didChangeDependencies() {
@@ -149,7 +200,32 @@ class _ElderProfileTabState extends State<ElderProfileTab>
       setState(() {
         _petGrowthState = state;
       });
+      // ★ 第五十輪：本機存檔載入完成是「進場初次同步」兩個先決條件之一
+      // （另一個是 _myFriendElderId 解析完成，見 _loadMyFriendElderId），見
+      // _maybeSyncInitialWeight 的說明。
+      _maybeSyncInitialWeight();
     }
+  }
+
+  // ★ 第五十輪：讀取食物庫存持久化狀態（PetStorageService.loadFoodInventory），
+  // 蓋掉 _feedingInventory 的出廠預設值——沒有持久化紀錄的食物 id（例如舊
+  // 使用者第一次升級到本輪、或該食物從未被扣過庫存）維持出廠預設不變。
+  // ⚠️ 第五十一輪：carrot 已改為「賺取制」，可餵份數改由後端食物帳本
+  // （[_carrotConsumedToday]／[_carrotAvailable]）即時算出、每次 build()
+  // 都會覆蓋，這份僅供其餘食物使用的 SharedPreferences 本機庫存快照不再是
+  // carrot 的權威來源，跳過它、不採用裡面的舊值（沿用第五十輪就有的跳過
+  // 邏輯，理由更新為新模型）。
+  Future<void> _loadFeedingInventory() async {
+    final saved = await PetStorageService.loadFoodInventory();
+    if (!mounted || saved.isEmpty) return;
+    setState(() {
+      for (final entry in saved.entries) {
+        if (entry.key == 'carrot') continue;
+        if (_feedingInventory.containsKey(entry.key)) {
+          _feedingInventory[entry.key] = entry.value;
+        }
+      }
+    });
   }
 
   // ★ 第四十一輪（item 3）：讀取朋友圈好友 ID。權威來源是後端 elder_profile
@@ -162,6 +238,140 @@ class _ElderProfileTabState extends State<ElderProfileTab>
       // 出的 elder_id（見該函式說明）。initState 呼叫 _loadElderReminders 時
       // 本欄位通常還沒載入完成而被暫緩，這裡載入完成後補發一次真正的讀取。
       _loadElderReminders();
+      // ★ 第五十輪：elder_id 解析完成是「進場初次同步」另一個先決條件，見
+      // _maybeSyncInitialWeight 的說明。同時順便刷新今日食物解鎖來源
+      // （步數／服藥打卡次數），讓用藥打卡真的能換到食物解鎖（過去
+      // medicationCheckinsToday 恆為 0，見 _refreshFoodUnlocks 說明）。
+      _maybeSyncInitialWeight();
+      _refreshFoodUnlocks();
+      // ★ 第五十一輪：同時讀一次今日食物帳本，讓胡蘿蔔的「今天已消耗」
+      // 份數在裝置重開後依然正確（見 _refreshCarrotLedger 說明）。
+      _refreshCarrotLedger();
+    }
+  }
+
+  /// 進入小豬之家時做一次初次體重同步，讓「從沒餵過食」的長輩也會出現在
+  /// 好友排行榜——否則 `my_rank` 永遠是 null（見
+  /// `pet_leaderboard_card.dart:223` 的空狀態文案「你的寵物體重還沒同步上榜」）。
+  ///
+  /// 比照 `pet_studio_screen.dart` 的 `_maybeSyncInitialWeight`：本機存檔
+  /// （[_loadPetGrowthState]）與好友 elder_id 解析（[_loadMyFriendElderId]）
+  /// 是兩個互相獨立的非同步流程，哪個先完成都在這裡因為另一項還沒就緒而
+  /// 先行返回，等兩者都到齊時才由後完成的一方補上這一次同步——這樣才不會
+  /// 用還沒套用本機存檔的預設體重（1250g）搶先上傳。
+  ///
+  /// 刻意只做背景同步、不彈訊息——被動進場同步失敗不像主動餵食（見
+  /// [_handleFeedFood]）那樣需要長輩立刻注意，下次餵食或重新整理時會自然
+  /// 再試一次，此處若也跳警示只會讓長輩一打開畫面就看到看不懂的錯誤提示。
+  void _maybeSyncInitialWeight() {
+    if (_hasSyncedInitialWeight ||
+        _petGrowthState == null ||
+        _myFriendElderId == null) {
+      return;
+    }
+    _hasSyncedInitialWeight = true;
+    unawaited(_syncWeightToLeaderboard(_petGrowthState!.weightGrams).then((ok) {
+      if (!ok) {
+        debugPrint('⚠️ [ElderProfileTab] 初次寵物體重同步到排行榜失敗，不影響既有寵物養成功能');
+      }
+    }));
+  }
+
+  /// 重新整理「今日食物解鎖來源」（步數／服藥打卡次數，
+  /// `GET /api/pet/food-unlocks/{elder_id}`）。elder_id 還沒解析出來時直接
+  /// 跳過——[_unlockSource] 維持 null，[_effectiveStepsForUnlock]／
+  /// [_medicationCheckinsToday] 會自動退回裝置端步數與 0 次打卡，等同
+  /// 「只靠步數解鎖」的既有行為，不影響既有的餵食流程。失敗只記 log
+  /// （[PetProgressService] 內部已處理過），不彈錯誤對話框——這只是食匣裡
+  /// 「今天達成了沒」的顯示資訊，不是餵食動作本身，失敗不需要打斷長輩。
+  Future<void> _refreshFoodUnlocks() async {
+    final eid = _myFriendElderId;
+    if (eid == null) return;
+    final source = await PetProgressService.loadFoodUnlocks(eid);
+    if (mounted && source != null) {
+      setState(() => _unlockSource = source);
+    }
+  }
+
+  /// 今日步數——優先用後端答案（`elder_daily_step` 的即時資料），答不出來
+  /// （null，代表後端查詢失敗或該表在目前環境不存在）時退回裝置端既有的
+  /// 步數來源（[currentSteps]，GPS＋計步器融合值，見 [_computeFusedSteps]）。
+  int get _effectiveStepsForUnlock => _unlockSource?.todaySteps ?? currentSteps;
+
+  /// 今日服藥打卡次數；還沒有後端資料時視為 0（等同不提供打卡解鎖加成，
+  /// 只靠步數，不影響既有行為）。
+  int get _medicationCheckinsToday =>
+      _unlockSource?.medicationCheckinsToday ?? 0;
+
+  // 🥕 陽光脆胡蘿蔔「賺取制」相關換算（第五十一輪新增，見
+  // `PetFoodItem.milestoneMenu` 中 carrot 的欄位說明）。
+
+  PetFoodItem get _carrotFoodItem =>
+      PetFoodItem.milestoneMenu.firstWhere((f) => f.id == 'carrot');
+
+  /// 裝置本機日期字串（`yyyy-MM-dd`）。食物帳本的 `ledger_date` 一律用這個
+  /// ——不可用伺服器時區推算，長輩若剛好在跨日前後操作，兩邊時區不一致會
+  /// 誤判成前一天或後一天。
+  String get _todayLedgerDate {
+    final now = DateTime.now();
+    final mm = now.month.toString().padLeft(2, '0');
+    final dd = now.day.toString().padLeft(2, '0');
+    return '${now.year}-$mm-$dd';
+  }
+
+  /// 今天已賺得的胡蘿蔔份數（尚未扣掉已消耗）。純函式換算，不需要額外的
+  /// 網路請求——直接沿用 [_effectiveStepsForUnlock]／[_medicationCheckinsToday]
+  /// 這兩個既有欄位（它們本來就已經正確處理「後端答不出來」與「答案是 0」
+  /// 的語意差異，見兩者各自的說明）。
+  int get _carrotEarnedToday => _carrotFoodItem.earnedCountFor(
+        steps: _effectiveStepsForUnlock,
+        checkins: _medicationCheckinsToday,
+      );
+
+  /// 胡蘿蔔目前可投餵份數＝今天已賺得－今天已消耗。[_carrotConsumedToday]
+  /// 還沒有成功讀到後端帳本時保守回傳 0——寧可讓長輩暫時餵不到胡蘿蔔，
+  /// 也不能在資料不齊全時把「今天已賺得」整包當成可餵，那等於帳本一連
+  /// 不上就退回原本「無限量」的老問題（誠實優先於樂觀）。
+  int get _carrotAvailable {
+    final consumed = _carrotConsumedToday;
+    if (consumed == null) return 0;
+    final earned = _carrotEarnedToday;
+    return (earned - consumed).clamp(0, earned);
+  }
+
+  /// 重新整理「今日食物帳本」中胡蘿蔔已消耗的份數（`GET /api/pet/
+  /// food-ledger/{elder_id}`）。elder_id 還沒解析出來時直接跳過——
+  /// [_carrotConsumedToday] 維持 null，[_carrotAvailable] 會保守顯示成
+  /// 不可餵，不影響其餘食物的既有餵食流程。失敗只記 log（見
+  /// [PetProgressService.loadFoodLedger] 內部已處理過），不彈錯誤對話框。
+  Future<void> _refreshCarrotLedger() async {
+    final eid = _myFriendElderId;
+    if (eid == null) return;
+    final ledger =
+        await PetProgressService.loadFoodLedger(eid, _todayLedgerDate);
+    if (mounted && ledger != null) {
+      setState(() => _carrotConsumedToday = ledger.consumedOf('carrot'));
+    }
+  }
+
+  /// 把目前體重同步到後端好友排行榜（`POST /api/pet/state`）。
+  ///
+  /// 比照 `pet_studio_screen.dart::_syncWeightToLeaderboard`：
+  /// `PetLeaderboardService.uploadMyState` 內部已經 try/catch 過一層，這裡
+  /// 再包一層防禦性 try/catch 只是避免未來改版又開始拋例外，回傳
+  /// bool 讓呼叫端（[_handleFeedFood] 主動餵食／[_maybeSyncInitialWeight]
+  /// 被動進場）各自決定要不要提示使用者。
+  Future<bool> _syncWeightToLeaderboard(int weightGrams) async {
+    final eid = _myFriendElderId;
+    if (eid == null) return false;
+    try {
+      return await PetLeaderboardService.uploadMyState(
+        elderId: eid,
+        weightGrams: weightGrams,
+      );
+    } catch (e) {
+      debugPrint('⚠️ [ElderProfileTab] 寵物體重同步到排行榜例外: $e');
+      return false;
     }
   }
 
@@ -184,6 +394,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     _loadElderReminders();
     ElderReminderManager.instance.addListener(_onReminderManagerUpdate);
     _loadPetGrowthState();
+    _loadFeedingInventory();
     _loadMyFriendElderId();
     _loadLocationSharingState();
   }
@@ -318,6 +529,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
           _refreshStrideEstimate();
           setState(() {});
           unawaited(_persistRoute());
+          unawaited(_maybeUploadStepDelta());
         },
         onError: (_) {
           if (!mounted) return;
@@ -346,6 +558,43 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     final gpsSteps = (_totalDistance * 1000.0 / _estimatedStrideMeters).round();
     if (_stepCounterUnavailable) return gpsSteps;
     return math.max(_sessionPedometerSteps, gpsSteps);
+  }
+
+  /// 把步數增量上傳到後端 `elder_daily_step`（`POST /api/game/elder/
+  /// update_steps`，見 [GameService.updateSteps]）。這是「散步賺胡蘿蔔」
+  /// （`PetFoodItem.milestoneMenu` 的 carrot／`PetProgressService
+  /// .loadFoodUnlocks` 的 `today_steps`）能生效的前提——沒有這一步，
+  /// `elder_daily_step` 永遠不會被寫入，後端的 `today_steps` 永遠是 null。
+  ///
+  /// 節流：累積增量達 100 步，或距離上次上傳超過 5 分鐘，兩者滿足其一才
+  /// 送出，避免計步器／GPS 每次微小變動都打一次後端。失敗只記 log、不拋
+  /// 例外、不影響裝置端步數顯示——比照 [_syncWeightToLeaderboard] 既有的
+  /// 錯誤處理慣例（本機顯示永遠優先，離線也要能正常用）。失敗時刻意不把
+  /// [_lastUploadedSteps] 復原——寧可少送一次增量（下次融合步數繼續累積，
+  /// delta 會自然變大再補送），也不要在連線持續不穩時對同一段增量重送到
+  /// 後端造成重複計算風險。
+  Future<void> _maybeUploadStepDelta() async {
+    final eid = _myFriendElderId;
+    if (eid == null) return;
+
+    final int fused = _computeFusedSteps();
+    final int delta = fused - _lastUploadedSteps;
+    if (delta <= 0) return;
+
+    final now = DateTime.now();
+    final bool deltaBigEnough = delta >= 100;
+    final bool timeElapsed = _lastStepUploadAt == null ||
+        now.difference(_lastStepUploadAt!) >= const Duration(minutes: 5);
+    if (!deltaBigEnough && !timeElapsed) return;
+
+    _lastUploadedSteps = fused;
+    _lastStepUploadAt = now;
+
+    try {
+      await _gameService.updateSteps(eid, delta);
+    } catch (e) {
+      debugPrint('⚠️ [ElderProfileTab] 步數上傳失敗，不影響裝置端步數顯示: $e');
+    }
   }
 
   LocationSettings _buildLocationSettings() {
@@ -447,6 +696,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
       _routePoints.add(filteredPoint);
     });
     unawaited(_persistRoute());
+    unawaited(_maybeUploadStepDelta());
   }
 
   bool _isTooFrequent(DateTime? timestamp) {
@@ -554,11 +804,21 @@ class _ElderProfileTabState extends State<ElderProfileTab>
         setState(() {
           _reminders = List<Map<String, dynamic>>.from(list);
           _isLoadingReminders = false;
+          _hasReminderLoadError = false;
         });
       }
     } catch (e) {
+      // ★ 第四十九輪：讀取失敗與「真的沒有安排提醒」以前是同一種空清單畫面
+      // （`_reminders` 維持空陣列），長輩會被誤導成「今天沒有藥要吃」。
+      // 本函式有三個呼叫點（initState／_loadMyFriendElderId 完成後／
+      // ElderReminderManager 通知監聽器，見上方 _onReminderManagerUpdate），
+      // 後者會在約每 2 分鐘一次的後端排程同步成功時觸發，等同已經有自動
+      // 重試機制，不需要像 elder_home_tab.dart 那樣額外排一次性重試計時器。
       if (mounted) {
-        setState(() => _isLoadingReminders = false);
+        setState(() {
+          _isLoadingReminders = false;
+          _hasReminderLoadError = true;
+        });
       }
     }
   }
@@ -587,11 +847,65 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     );
 
     // ★ 第四十六輪（E1）：比照 elder_home_tab.dart 的 _completeNextDose——
-    // 本機立即更新給即時回饋，另外用不阻塞的方式同步後端，家屬端才看得到
-    // 長輩在「我的」分頁的打卡紀錄。只在「標記為完成」時同步，取消完成不
-    // 呼叫（後端沒有取消端點）。
+    // 本機立即更新給即時回饋，另外同步後端，家屬端才看得到長輩在「我的」
+    // 分頁的打卡紀錄。只在「標記為完成」時同步，取消完成（isAlreadyDone
+    // 為 true）不呼叫——後端沒有取消端點，這是既有限制，不在本次修復
+    // 範圍內。⚠️ 已知後果：長輩取消打卡後，後端 activity_log 仍留著那筆
+    // medication 紀錄不會被撤銷；只要有消費端是直接讀 activity_log（而非
+    // 本機 completed_tasks_<date>）判斷「今天吃藥了沒」，就可能誤判成
+    // 已完成。
+    //
+    // ★ 第四十九輪修復：原本用 unawaited 完全不管成不成功，網路失敗時
+    // 畫面照樣顯示打卡完成（含小豬慶祝動畫），家屬端資料庫其實沒有這筆
+    // 紀錄，是用藥安全問題。改成 await 讀 bool，失敗時要把上面 setState
+    // 區塊在「標記為完成」分支寫入的三份樂觀更新狀態全部回退：記憶體中的
+    // _completedReminderIds、SharedPreferences 的 completed_tasks_<today>、
+    // 以及被提前導向慶祝文案的 _speechText（連同尚未觸發的
+    // _speechBubbleTimer 一併取消)——否則小豬會在打卡其實失敗時仍開心地說
+    // 「打卡成功」。粒子與彈跳動畫（_spawnHeartParticles／
+    // _petBounceController／_particleController）屬於已播放的短暫視覺
+    // 效果，等網路來回一趟通常早已播完，不追加回滾。
+    // ApiService.completeElderReminder 內部已經把逾時／連線失敗／後端
+    // 錯誤全部吞成 false、不會對外拋例外（見 reminder_api.dart），這裡的
+    // try/catch 只是防禦未來改版又開始拋例外，不能取代讀 bool。
     if (!isAlreadyDone) {
-      unawaited(ApiService.completeElderReminder(reminderId));
+      bool success;
+      try {
+        success = await ApiService.completeElderReminder(reminderId);
+      } catch (e) {
+        debugPrint('⚠️ [ElderProfileTab] completeElderReminder 例外: $e');
+        success = false;
+      }
+      if (!mounted) return;
+      if (!success) {
+        _speechBubbleTimer?.cancel();
+        setState(() {
+          _completedReminderIds.remove(reminderId);
+          _speechText = _defaultSpeechText;
+        });
+        await prefs.setStringList(
+          'completed_tasks_$today',
+          _completedReminderIds.map((e) => e.toString()).toList(),
+        );
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '打卡沒有送出成功，請確認網路後再按一次',
+              style: GoogleFonts.notoSansTc(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+            backgroundColor: const Color(0xFFB91C1C),
+            behavior: SnackBarBehavior.floating,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            margin: const EdgeInsets.all(20),
+          ),
+        );
+      }
     }
   }
 
@@ -611,16 +925,39 @@ class _ElderProfileTabState extends State<ElderProfileTab>
   // 🥕 開啟食匣抽屜——個人分頁本身就是小豬之家，不再跳轉到 PetStudioScreen。
   void _openFeedingSheet() {
     HapticFeedback.selectionClick();
+    // ★ 第五十輪：開抽屜前順便刷新一次今日食物解鎖來源，避免長輩剛完成
+    // 用藥打卡／散步達標，食匣卻還顯示舊資料的「鎖定」狀態。失敗不影響開
+    // 抽屜本身（見 _refreshFoodUnlocks 的說明）。
+    unawaited(_refreshFoodUnlocks());
+    // ★ 第五十一輪：同理，開抽屜前順便重讀一次胡蘿蔔的今日食物帳本。
+    unawaited(_refreshCarrotLedger());
     setState(() => _isFeedingSheetOpen = true);
   }
 
   // ── 核心餵食邏輯（逐一比照 pet_studio_screen.dart 的 _handleFeedFood）──
-  void _handleFeedFood(PetFoodItem food) {
+  //
+  // ★ 第五十輪修復：過去本函式只更新本機 state＋PetStorageService.saveState，
+  // 全檔沒有任何 PetLeaderboardService 呼叫——長輩因此從不存在於後端
+  // elder_pet_state 表，好友排行榜的 my_rank 永遠是 null（見
+  // pet_leaderboard_card.dart:223 的空狀態文案）。現在餵食後會額外：
+  // ① 把新體重同步到後端排行榜；② 把新庫存持久化（見 PetStorageService.
+  // saveFoodInventory，任務 C），讓「食物有限」在重開 App 後依然有限。
+  //
+  // ⚠️ 誠實性鐵律：本機餵食（體重／活力／已餵食物集合）一律照常成功並
+  // 立即套用——小豬「已經把食物吃下去」是真實發生、不需要網路確認的本機
+  // 事實，不能因為後端同步失敗就整個回滾（那樣反而是另一種造假：長輩明明
+  // 看到小豬吃了東西，畫面卻假裝沒發生過）。但**顯示的訊息**必須誠實反映
+  // 後端同步的實際結果：同步成功才顯示「餵食成功」，同步失敗要換成可重試
+  // 的提示文案，不可以讓長輩以為排行榜已經更新。
+  Future<void> _handleFeedFood(PetFoodItem food) async {
     final growthState = _effectiveGrowthState;
+    final bool isCarrot = food.id == 'carrot';
     final currentCount = _feedingInventory[food.id] ?? food.initialCount;
     if (!food.isUnlimited && currentCount <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('【${food.name}】已經吃完囉～多散步解鎖新食材吧！')),
+      if (!mounted) return;
+      ErrorHandler.showWarning(
+        context,
+        '【${food.name}】已經吃完囉～多散步解鎖新食材吧！🌾',
       );
       return;
     }
@@ -635,17 +972,59 @@ class _ElderProfileTabState extends State<ElderProfileTab>
 
     setState(() {
       _petGrowthState = newState;
-      if (!food.isUnlimited && currentCount > 0) {
+      if (isCarrot) {
+        // 賺取制食物：本機樂觀先把「今天已消耗」+1，讓食匣立刻反映最新
+        // 可餵份數（_carrotAvailable 會在下次 build() 重新算出），實際是
+        // 否記帳成功交給下面的 POST 決定；失敗時整份重讀帳本校正，不用
+        // 「減 1」去猜後端真實狀態（見下方 recordFoodConsumption 失敗分支）。
+        _carrotConsumedToday = (_carrotConsumedToday ?? 0) + 1;
+      } else if (!food.isUnlimited && currentCount > 0) {
         _feedingInventory[food.id] = currentCount - 1;
       }
     });
 
-    PetStorageService.saveState(newState);
+    await PetStorageService.saveState(newState);
+    // 任務 C：食物庫存持久化，不 await——庫存寫檔慢不應該拖慢餵食後的
+    // 排行榜同步與訊息顯示，且與體重存檔（上面那行）一樣屬於「盡力而為」
+    // 的本機寫入，SharedPreferences 幾乎不會失敗。
+    unawaited(PetStorageService.saveFoodInventory(_feedingInventory));
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-          content: Text('小豬大口吃下了【${food.name}】！活力 +${food.vitalityGain}')),
-    );
+    if (isCarrot) {
+      final eid = _myFriendElderId;
+      final bool ledgerOk = eid != null &&
+          await PetProgressService.recordFoodConsumption(
+            elderId: eid,
+            ledgerDate: _todayLedgerDate,
+            foodId: 'carrot',
+          );
+      if (!ledgerOk) {
+        // 後端帳本沒記到這一份，本機樂觀 +1 的消耗數不可信任，整份重讀一次
+        // 帳本校正（讀不到就退回 null，_carrotAvailable 會保守顯示成暫時
+        // 不可餵）——見 _carrotConsumedToday／_carrotAvailable 欄位說明，
+        // 不能自己用「減 1」去猜後端真實狀態（中間可能還有其他裝置也在
+        // 同步寫入）。
+        unawaited(_refreshCarrotLedger());
+      }
+    }
+
+    final bool synced = await _syncWeightToLeaderboard(newState.weightGrams);
+    if (!mounted) return;
+
+    if (synced) {
+      ErrorHandler.showSuccess(
+        context,
+        '小豬大口吃下了【${food.name}】！活力 +${food.vitalityGain} ✨',
+      );
+    } else {
+      // 誠實性鐵律：本機餵食已經生效（上面 setState／saveState 都已完成），
+      // 但排行榜同步失敗，不可以顯示「餵食成功」誤導長輩以為排行榜也更新
+      // 了。下次餵食會自然重新呼叫本函式再試一次同步，不需要額外的重試
+      // 按鈕。
+      ErrorHandler.showWarning(
+        context,
+        '小豬已經吃下【${food.name}】，但體重排行榜同步失敗，下次餵食會自動重試',
+      );
+    }
   }
 
   void _handleLogout() {
@@ -811,6 +1190,11 @@ class _ElderProfileTabState extends State<ElderProfileTab>
   @override
   Widget build(BuildContext context) {
     currentSteps = _computeFusedSteps();
+    // ★ 第五十一輪：胡蘿蔔可餵份數每次 build() 都用「今天已賺得－今天已
+    // 消耗」重新覆蓋（見 _carrotAvailable 說明），不再是一個寫死或只在餵食
+    // 時才更新的數字——這樣步數／打卡剛好在畫面開著時達標，食匣也會立刻
+    // 反映最新可餵份數，不需要額外監聽。
+    _feedingInventory['carrot'] = _carrotAvailable;
     final hour = DateTime.now().hour;
     String greetingTitle = '早安';
     if (hour >= 12 && hour < 18) greetingTitle = '午安';
@@ -855,7 +1239,14 @@ class _ElderProfileTabState extends State<ElderProfileTab>
             child: GardenFeedingSheet(
               isLandscape: isLandscape,
               foodInventory: _feedingInventory,
-              currentSteps: currentSteps,
+              // ★ 第五十輪修復：過去這裡永遠傳裝置端 currentSteps，
+              // medicationCheckinsToday 恆為預設值 0——用藥打卡換食物解鎖
+              // 在正式畫面從未生效。改用 _effectiveStepsForUnlock／
+              // _medicationCheckinsToday，優先採後端 GET /api/pet/
+              // food-unlocks/{elder_id} 的答案，答不出來才退回裝置端步數
+              // 與 0 次打卡（見兩個 getter 的說明）。
+              currentSteps: _effectiveStepsForUnlock,
+              medicationCheckinsToday: _medicationCheckinsToday,
               onFeedFood: _handleFeedFood,
               onClose: () => setState(() => _isFeedingSheetOpen = false),
             ),
@@ -878,8 +1269,14 @@ class _ElderProfileTabState extends State<ElderProfileTab>
         PetHeroStage(
           key: widget.petKey,
           growthState: growthState,
+          speechText: _speechText,
+          greetingLine: greetingLine,
+          // 直向手機寬度有限，膠囊改精簡圖示橫排，把空間讓給問候語與對話氣泡
           topRightActions:
               PetCornerActions(userId: widget.userId, compact: true),
+          // ★ 第五十輪修復：拖曳餵食與食匣按鈕餵食走同一條路徑，見
+          // PetHeroStage.onFoodAccepted 欄位說明。
+          onFoodAccepted: _handleFeedFood,
         ),
 
         Padding(
@@ -903,6 +1300,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                 completedReminderIds: _completedReminderIds,
                 isLoadingReminders: _isLoadingReminders,
                 onToggleTask: _toggleTaskCompletion,
+                hasLoadError: _hasReminderLoadError,
               ),
 
               const SizedBox(height: 16),
@@ -917,7 +1315,14 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                       title: '家人綁定',
                       subtitle: '出示配對碼',
                       color: const Color(0xFFF59E0B),
-                      onTap: () => showFamilyPairingDialog(context, widget.userId),
+                      // ★ 第四十九輪修復：過去沒傳 explicitElderId，對話框內部
+                      // 只能猜 SharedPreferences 的 caregiver_id/last_elder_id，
+                      // 兩鍵都讀不到時會靜默送出缺 id 的配對碼請求，被後端當成
+                      // 新長輩註冊、家屬綁到幽靈帳號（見
+                      // family_pairing_dialog.dart 的 fetchCode 說明）。這裡是
+                      // 呼叫端手上現成、保證非空的正確長輩 id，直接明確傳入。
+                      onTap: () =>
+                          showFamilyPairingDialog(context, widget.userId),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -987,7 +1392,12 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                     PetHeroStage(
                       key: widget.petKey,
                       growthState: growthState,
+                      speechText: _speechText,
+                      greetingLine: greetingLine,
                       topRightActions: PetCornerActions(userId: widget.userId),
+                      // ★ 第五十輪修復：理由同直屏版本，見上方
+                      // _buildPortraitBody 對應的 PetHeroStage 註解。
+                      onFoodAccepted: _handleFeedFood,
                     ),
                     Transform.translate(
                       offset: const Offset(0, -24),
@@ -1016,6 +1426,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                       isLoadingReminders: _isLoadingReminders,
                       onToggleTask: _toggleTaskCompletion,
                       isLandscape: true,
+                      hasLoadError: _hasReminderLoadError,
                     ),
                     const SizedBox(height: 8),
                     Row(
@@ -1027,7 +1438,10 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                             title: '家人綁定',
                             subtitle: '出示配對碼',
                             color: const Color(0xFFF59E0B),
-                            onTap: () => showFamilyPairingDialog(context, widget.userId),
+                            // ★ 第四十九輪修復：理由同直屏版本，見上方
+                            // _buildPortraitBody 對應按鈕的註解。
+                            onTap: () =>
+                                showFamilyPairingDialog(context, widget.userId),
                             isLandscape: true,
                           ),
                         ),

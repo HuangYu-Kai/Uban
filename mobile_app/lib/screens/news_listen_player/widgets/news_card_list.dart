@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../services/api_service.dart';
 import '../news_article_screen.dart';
 
 class NewsCardList extends StatelessWidget {
@@ -64,8 +65,10 @@ class NewsCardList extends StatelessWidget {
         final date = _formatNewsDate(item);
         final rawImageUrl =
             ((item['image_url'] ?? item['image']) ?? '').toString().trim();
+        // ⚠️ 不可寫死正式站網址（鐵律 #1），且會讓沙盒建置防護誤判——改用
+        // ApiService.serverRootUrl（同一修法見 news_article_screen.dart）。
         final imageUrl = rawImageUrl.startsWith('/')
-            ? "https://localhost-0.tail5abf5e.ts.net$rawImageUrl"
+            ? "${ApiService.serverRootUrl}$rawImageUrl"
             : rawImageUrl;
         final hasImage = imageUrl.startsWith('http');
 

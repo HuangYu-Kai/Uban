@@ -14,6 +14,30 @@ import 'elder_screen.dart'; // ★ 新增
 import 'video_call_screen.dart'; // ★ 2026-07-19：家屬冷啟動待接聽來電直接進視訊房
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart'; // ★ 2026-07-23：splash activeCalls 輪詢
 import 'privacy_policy_screen.dart'; // ★ 2026-08-23：首次安裝隱私權政策關卡
+import 'elder_profile_onboarding_screen.dart'; // ★ 2026-09-24 第五十三輪：既有長輩 session 補上必填檢查
+import '../utils/profile_completeness.dart'; // ★ 同上：與 login_screen.dart／elder_pairing_display_screen.dart 共用判斷
+
+/// ★ 2026-09-24 第五十三輪（callfix53b）：「來電／監控機優先於必填補填」這條
+/// 紅線實際落地的判斷式，刻意抽成頂層純函式（不依賴 `State`、不做任何 I/O）。
+///
+/// `_resolveElderDestination()` 已經是「有效待接聽來電（一般／緊急）或監控機
+/// → `ElderScreen`；其餘情況 → `ElderHomeScreen`」唯一的判斷入口，含過期／
+/// 角色反轉檢查。本函式**不重新實作**那組條件，只檢查它已經決定好的 widget
+/// 型別——這是唯一需要鎖住迴歸的地方：只要 `_resolveElderDestination()` 的
+/// 「一般情況」分支繼續回傳 `ElderHomeScreen`，這裡就會繼續正確地只在那個
+/// 分支才觸發資料完整度檢查，來電／監控機分支（回傳 `ElderScreen`）則保證
+/// 不會被要求 `await` 任何網路請求。
+///
+/// 抽成頂層純函式的理由：`_replaceWithElderDestinationOrOnboarding` 本身依賴
+/// `State` 生命週期（`mounted`／`_replaceWith`／SharedPreferences／
+/// `ApiService.getElderProfile`），沒有現成的 widget 測試基礎設施能低成本
+/// 覆蓋；但「來電優先於補填」這條規則的**鑑別邏輯**其實就是這一行判斷式，
+/// 抽出來後可以不掛載任何畫面、不 mock 任何平台通道，直接用建構好的
+/// `ElderScreen`／`ElderHomeScreen` 實例單元測試（見
+/// `test/screens/splash_elder_destination_gate_test.dart`）。
+bool shouldCheckProfileCompletenessBeforeEntering(Widget destination) {
+  return destination is ElderHomeScreen;
+}
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -153,8 +177,41 @@ class _SplashScreenState extends State<SplashScreen> {
         debugPrint('⚠️ [Splash] 衝刺通道條件不足，回退標準流程');
       }
 
-      // 若有待接聽的緊急通話，直接跳過開機動畫以加速進入視訊房間
-      if (pendingAcceptedCall.value == null) {
+      // ★ 2026-09-24 第五十三輪（長輩端「一般來電繞過鎖屏開 App，卻要在 App
+      //   內等很久才看到來電通知」）：備援通知的「待接聽」鍵 pendingLocalRingCall
+      //   （見 local_call_notification.dart::_persistTapAsPendingRing／
+      //   main.dart::_checkPendingLocalRingCall）代表 CallKit 在背景 isolate
+      //   靜默建立失敗、已改用 fullScreenIntent 備援通知——螢幕鎖定時系統會
+      //   自動觸發這個通知的 content PendingIntent，繞過鎖屏把整個 App 拉起來
+      //   （這一步是 Android 對 fullScreenIntent 通知的標準行為，不是本檔或
+      //   main.dart 主動呼叫任何 bringToFront／AndroidIntent，未違反硬規則
+      //   #13 的角色守門）。
+      //   問題是：main.dart::_scheduleLocalRingCallFallback 要等
+      //   `splashActive == false`（即本檔整段標準流程，含下面固定 4 秒動畫與
+      //   後面的 getStatus／session 檢查）才會顯示接聽／拒接對話框。這個鍵
+      //   沒有 pendingAcceptedCall 那樣的 ValueNotifier 鏡像，本檔原本完全不
+      //   知道它的存在，導致使用者被強制拉進 App 之後，還要多等 4 秒以上的
+      //   開場動畫才看得到任何來電 UI——正是使用者回報「先繞過螢幕鎖打開
+      //   App，然後才在 App 內收到來電通知」的主要延遲來源。
+      //   這裡只「偷看」prefs 是否存在這把鍵，藉此決定要不要跳過開場動畫；
+      //   **不消費、不寫入 pendingAcceptedCall**——真正的讀取／移除／顯示對
+      //   話框仍統一交給 main.dart::_checkPendingLocalRingCall（單一消費者，
+      //   避免兩處搶著處理同一把鑰匙、重複彈窗，也避免這裡誤判過期/角色反轉
+      //   後仍逕自進房，那些檢查邏輯只在 main.dart 那份，不在此重複）。
+      bool hasPendingLocalRingCall = false;
+      try {
+        final ringPrefs = await SharedPreferences.getInstance()
+            .timeout(const Duration(seconds: 2));
+        final raw = ringPrefs.getString('pendingLocalRingCall');
+        hasPendingLocalRingCall = raw != null && raw.isNotEmpty;
+      } catch (e) {
+        debugPrint('⚠️ [Splash] 檢查 pendingLocalRingCall 失敗（不影響標準流程）: $e');
+      }
+
+      // 若有待接聽的緊急通話，或備援通知的待接聽一般來電，直接跳過開機動畫
+      // 以加速進入主畫面／視訊房間（一般來電的接聽／拒接對話框由 main.dart
+      // 在 splashActive 轉 false 後立刻接手顯示，見上方新增註解）。
+      if (pendingAcceptedCall.value == null && !hasPendingLocalRingCall) {
         await Future.delayed(const Duration(milliseconds: 4000));
       } else {
         debugPrint("🚨 [Splash] 檢測到待接聽來電，跳過開機動畫延遲");
@@ -303,13 +360,13 @@ class _SplashScreenState extends State<SplashScreen> {
               await prefs.remove('pendingRingCall');
             }
 
-            _replaceWith(_resolveElderDestination(
+            await _replaceWithElderDestinationOrOnboarding(
               isCCTV: isCCTV,
               deviceName: deviceName,
               elderRoomId: elderRoomId,
               effectiveUserId: effectiveUserId,
               effectiveUserName: effectiveUserName,
-            ));
+            );
             return;
           }
 
@@ -340,13 +397,13 @@ class _SplashScreenState extends State<SplashScreen> {
               final String deviceName = prefs.getString('saved_device_name') ?? effectiveUserName;
               final String elderRoomId = prefs.getString('elder_room_id') ?? effectiveUserId.toString();
 
-              _replaceWith(_resolveElderDestination(
+              await _replaceWithElderDestinationOrOnboarding(
                 isCCTV: isCCTV,
                 deviceName: deviceName,
                 elderRoomId: elderRoomId,
                 effectiveUserId: effectiveUserId,
                 effectiveUserName: effectiveUserName,
-              ));
+              );
             } else {
               // ★ Issue 3 硬化：effectiveLocalRole 只是進入本函式當下的快照，
               //   API 失敗不代表本機真的不是長輩帳號；改由 _goNextOrRestoreElder
@@ -405,13 +462,13 @@ class _SplashScreenState extends State<SplashScreen> {
 
         debugPrint(
             '🚀 [Splash] 衝刺通道：長輩端直接進入通話畫面 (room=$elderRoomId, cctv=$isCCTV)');
-        _replaceWith(_resolveElderDestination(
+        await _replaceWithElderDestinationOrOnboarding(
           isCCTV: isCCTV,
           deviceName: deviceName,
           elderRoomId: elderRoomId,
           effectiveUserId: uid,
           effectiveUserName: uname,
-        ));
+        );
         return true;
       }
 
@@ -523,13 +580,13 @@ class _SplashScreenState extends State<SplashScreen> {
 
         debugPrint('🛡️ [Splash] 偵測到本機長輩 session，改導向長輩主畫面而非身分頁');
 
-        _replaceWith(_resolveElderDestination(
+        await _replaceWithElderDestinationOrOnboarding(
           isCCTV: isCCTV,
           deviceName: deviceName,
           elderRoomId: elderRoomId,
           effectiveUserId: uid ?? 0,
           effectiveUserName: uname ?? deviceName,
-        ));
+        );
         return;
       }
 
@@ -753,6 +810,86 @@ class _SplashScreenState extends State<SplashScreen> {
       userName: effectiveUserName,
       roomId: elderRoomId,
     );
+  }
+
+  /// ★ 2026-09-24 第五十三輪（callfix53b，補上 onboard53b 已知缺口）：
+  ///
+  /// `onboard53b` 把「年齡／居住地」必填檢查接進了 `login_screen.dart`（家屬
+  /// 首次登入）與 `elder_pairing_display_screen.dart`（長輩配對／快速登入），
+  /// 但在該檔頭明確記載了一個已知範圍限制並回報給任務協調者：**冷啟動偵測到
+  /// 既有 session 時，`splash_screen.dart` 會直接導向 `_resolveElderDestination()`
+  /// 決定的畫面，完全不經過上述兩個檔案**——「一直沒登出過」的既有長輩使用
+  /// 者重開 App 永遠不會被攔下來補填。本函式就是補上這個缺口，三個既有呼叫
+  /// `_resolveElderDestination()` 的地方（標準流程、API 失敗回退、
+  /// `_sprintToPendingCall()` 衝刺通道）統一改呼叫這裡，確保涵蓋一致。
+  ///
+  /// 三條紅線（任務協調者原文，逐一對應下面的實作）：
+  ///
+  /// 1. **fail-open，不是 fail-closed**：讀不到資料（斷網／逾時）一律視為
+  ///    「已完整」直接放行。判斷邏輯完全交給共用函式
+  ///    `isProfileConfirmedIncomplete()`（`utils/profile_completeness.dart`），
+  ///    這裡不重寫一份自己的規則，且比照 `elder_pairing_display_screen.dart`
+  ///    的寫法，`getElderProfile` 之外再包一層 try/catch 與 `.timeout()`
+  ///    （第二十一輪硬教訓：Dart 的 try/catch 攔不到「卡住」）。
+  ///
+  /// 2. **不可擋住來電路徑**：`_resolveElderDestination()` 本身就是「有效
+  ///    待接聽來電（一般／緊急）或監控機 → `ElderScreen`；其餘情況 →
+  ///    `ElderHomeScreen`」唯一的判斷入口（含過期／角色反轉檢查）。這裡
+  ///    **不重新實作**那組條件——而是隻呼叫它一次、檢查它已經決定好的
+  ///    widget 型別：只有型別是 `ElderHomeScreen`（代表沒有監控機、也沒有
+  ///    有效待接聽來電）才會做非同步的資料完整度檢查並 `await`；只要不是
+  ///    `ElderHomeScreen`，就直接原樣 `_replaceWith`，**不 await 任何東西**，
+  ///    包含 `_sprintToPendingCall()` 衝刺通道在內——那條路徑進來時
+  ///    `pendingAcceptedCall.value` 必定非 null，`_resolveElderDestination()`
+  ///    幾乎必然回傳 `ElderScreen`，天然不會被本函式多繞一次網路請求。
+  ///
+  /// 3. **監控機路徑不檢查**：`isCCTV == true` 時 `_resolveElderDestination()`
+  ///    恆回傳 `ElderScreen(isCCTVMode: true)`，本來就不是 `ElderHomeScreen`，
+  ///    自動符合這條紅線，不需要另外判斷 `isCCTV`——與
+  ///    `elder_pairing_display_screen.dart` 刻意跳過監控機分支的做法一致。
+  Future<void> _replaceWithElderDestinationOrOnboarding({
+    required bool isCCTV,
+    required String deviceName,
+    required String elderRoomId,
+    required int effectiveUserId,
+    required String effectiveUserName,
+  }) async {
+    final Widget destination = _resolveElderDestination(
+      isCCTV: isCCTV,
+      deviceName: deviceName,
+      elderRoomId: elderRoomId,
+      effectiveUserId: effectiveUserId,
+      effectiveUserName: effectiveUserName,
+    );
+
+    if (!shouldCheckProfileCompletenessBeforeEntering(destination)) {
+      // 監控機，或有效待接聽來電（一般／緊急）：立即導航，紅線 2／3。
+      _replaceWith(destination);
+      return;
+    }
+
+    bool profileConfirmedIncomplete = false;
+    try {
+      final profileResult = await ApiService.getElderProfile(effectiveUserId)
+          .timeout(const Duration(seconds: 4));
+      profileConfirmedIncomplete = isProfileConfirmedIncomplete(profileResult);
+    } catch (_) {
+      // fail-open：逾時／例外一律視為「已完整」，紅線 1。
+      profileConfirmedIncomplete = false;
+    }
+
+    if (!mounted) return;
+
+    if (profileConfirmedIncomplete) {
+      _replaceWith(ElderProfileOnboardingScreen(
+        userId: effectiveUserId,
+        userName: effectiveUserName,
+        roomId: elderRoomId,
+        nextScreenBuilder: (context) => destination,
+      ));
+    } else {
+      _replaceWith(destination);
+    }
   }
 
   @override

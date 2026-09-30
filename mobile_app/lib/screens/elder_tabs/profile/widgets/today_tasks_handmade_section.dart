@@ -15,6 +15,11 @@ class TodayTasksHandmadeSection extends StatefulWidget {
   final bool isLoadingReminders;
   final ValueChanged<int> onToggleTask;
   final bool isLandscape;
+  // ★ 第四十九輪：讀取失敗與「真的沒有安排提醒」原本共用同一個空清單空狀態
+  // （`reminders` 為空陣列時兩者長得一模一樣），長輩開 App 那一刻網路不穩，
+  // 會被誤導成「今天沒有藥要吃」。預設 `false`——呼叫端沒有明確傳入時，
+  // 維持既有「真的沒有提醒」的語氣，不影響其他既有用法。
+  final bool hasLoadError;
 
   const TodayTasksHandmadeSection({
     super.key,
@@ -23,6 +28,7 @@ class TodayTasksHandmadeSection extends StatefulWidget {
     required this.isLoadingReminders,
     required this.onToggleTask,
     this.isLandscape = false,
+    this.hasLoadError = false,
   });
 
   @override
@@ -78,16 +84,12 @@ class _TodayTasksHandmadeSectionState
           Row(
             children: [
               Container(
-                padding: EdgeInsets.all(isLandscape ? 6 : 8),
+                padding: EdgeInsets.all(isLandscape ? 5 : 7),
                 decoration: const BoxDecoration(
                   color: Color(0xFFFEF3C7),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(
-                  Icons.event_note_rounded,
-                  size: isLandscape ? 16 : 20,
-                  color: const Color(0xFFB45309),
-                ),
+                child: Text('📋', style: TextStyle(fontSize: isLandscape ? 15 : 18)),
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -131,7 +133,7 @@ class _TodayTasksHandmadeSectionState
                   ),
                 ),
                 child: Text(
-                  isAllCompleted ? '全數達標' : '已完成 $completedTasks/$totalTasks',
+                  isAllCompleted ? '全數達標 🌟' : '已完成 $completedTasks/$totalTasks',
                   style: GoogleFonts.notoSansTc(
                     fontSize: isLandscape ? 12 : 13,
                     fontWeight: FontWeight.w900,
@@ -157,31 +159,65 @@ class _TodayTasksHandmadeSectionState
             // ★ 第四十六輪（E3）：API 回空清單時，過去會由呼叫端塞入 3 筆假
             // 提醒（服藥／溫開水／散步），讓真的沒設提醒的長輩看到可以打卡
             // 的假任務。現在呼叫端誠實回傳空清單，這裡改用誠實的空狀態文案。
+            // ★ 第四十九輪：上面那句「誠實」在讀取失敗時其實仍不誠實——
+            // `reminders` 讀取失敗也是空陣列，跟「真的沒有安排」長得一樣。
+            // 改用 [hasLoadError] 分流成兩種語氣不同的文案，失敗時不使用
+            // 🌿 這種歲月靜好的語氣。
             Container(
               padding: const EdgeInsets.symmetric(vertical: 16),
               alignment: Alignment.center,
               child: Column(
-                children: [
-                  Text(
-                    '今天還沒有安排提醒',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: const Color(0xFF8C6D58),
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '可以請家人幫您設定喔！',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w600,
-                      color: const Color(0xFFB08968),
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
+                children: widget.hasLoadError
+                    ? [
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.wifi_off_rounded,
+                                size: 18, color: Color(0xFF9CA3AF)),
+                            const SizedBox(width: 6),
+                            Text(
+                              '提醒暫時讀不到',
+                              style: GoogleFonts.notoSansTc(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: const Color(0xFF6B7280),
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '請確認網路連線，稍後會再自動嘗試',
+                          style: GoogleFonts.notoSansTc(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                            color: const Color(0xFF9CA3AF),
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ]
+                    : [
+                        Text(
+                          '今天還沒有安排提醒 🌿',
+                          style: GoogleFonts.notoSansTc(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: const Color(0xFF8C6D58),
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '可以請家人幫您設定喔！',
+                          style: GoogleFonts.notoSansTc(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                            color: const Color(0xFFB08968),
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
               ),
             )
           else
@@ -202,11 +238,7 @@ class _TodayTasksHandmadeSectionState
             ),
             child: Row(
               children: [
-                Icon(
-                  Icons.lightbulb_outline_rounded,
-                  size: isLandscape ? 14 : 18,
-                  color: const Color(0xFFD97706),
-                ),
+                Text('💡', style: TextStyle(fontSize: isLandscape ? 13 : 15)),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
@@ -360,20 +392,16 @@ class _TodayTasksHandmadeSectionState
     final bool isDone = widget.completedReminderIds.contains(rId);
     final String cat = (r['category'] ?? '').toString();
 
-    IconData catIcon = Icons.access_time_rounded;
-    Color catColor = const Color(0xFF64748B);
+    String catEmoji = '⏰';
     Color catBg = const Color(0xFFF1F5F9);
     if (cat == 'medication') {
-      catIcon = Icons.medication_rounded;
-      catColor = const Color(0xFFE11D48);
+      catEmoji = '💊';
       catBg = const Color(0xFFFFE4E6);
     } else if (cat == 'water') {
-      catIcon = Icons.water_drop_rounded;
-      catColor = const Color(0xFF0284C7);
+      catEmoji = '💧';
       catBg = const Color(0xFFE0F2FE);
     } else if (cat == 'exercise') {
-      catIcon = Icons.directions_walk_rounded;
-      catColor = const Color(0xFFD97706);
+      catEmoji = '👟';
       catBg = const Color(0xFFFEF3C7);
     }
 
@@ -400,7 +428,7 @@ class _TodayTasksHandmadeSectionState
           ),
           child: Row(
             children: [
-              // 類別圖標
+              // 類別 Emoji 圖標
               Container(
                 width: isLandscape ? 30 : 44,
                 height: isLandscape ? 30 : 44,
@@ -409,10 +437,9 @@ class _TodayTasksHandmadeSectionState
                   shape: BoxShape.circle,
                 ),
                 child: Center(
-                  child: Icon(
-                    catIcon,
-                    color: catColor,
-                    size: isLandscape ? 16 : 22,
+                  child: Text(
+                    catEmoji,
+                    style: TextStyle(fontSize: isLandscape ? 15 : 22),
                   ),
                 ),
               ),

@@ -14,6 +14,14 @@ class HomeAlertPreviewCard extends StatelessWidget {
   final List<dynamic> realLogs;
   final List<dynamic> emergencyAlerts;
   final Set<String> dismissedAlertKeys;
+
+  /// ★ 第五十二輪（任務一）：[dismissedAlertKeys] 是否已經載入完成（見
+  /// `family_main_screen.dart::_dismissedKeysLoaded` 欄位宣告的完整根因）。
+  /// 為 `false` 時，即使 [activeAlerts]／[realLogs]／[emergencyAlerts] 已經
+  /// 有資料，也一律視為「還不能顯示」——[dismissedAlertKeys] 在這個時間點
+  /// 不可信（可能還是空集合），照常渲染會讓使用者已經滑掉的警示重新閃現。
+  /// 預設 `true`：維持既有呼叫端（含本檔既有測試）「一律照常渲染」的行為。
+  final bool dismissedKeysLoaded;
   final VoidCallback? onNavigateToAlerts;
   final ValueChanged<String>? onAlertItemDismissed;
   final ValueChanged<String?>? onOpenMonitorView;
@@ -26,6 +34,7 @@ class HomeAlertPreviewCard extends StatelessWidget {
     this.realLogs = const [],
     this.emergencyAlerts = const [],
     this.dismissedAlertKeys = const {},
+    this.dismissedKeysLoaded = true,
     this.onNavigateToAlerts,
     this.onAlertItemDismissed,
     this.onOpenMonitorView,
@@ -161,7 +170,12 @@ class HomeAlertPreviewCard extends StatelessWidget {
     final visibleAlerts = allCombinedAlerts
         .where((item) => !dismissedAlertKeys.contains(item['id']))
         .toList();
-    final displayAlerts = visibleAlerts.take(30).toList();
+    // ★ 第五十二輪（任務一）：dismissedKeysLoaded 為 false 時 dismissedAlertKeys
+    //   不可信（見欄位宣告），一律當作「沒有可顯示的項目」，不使用上面算出的
+    //   visibleAlerts——旗標翻正後才會用真正過濾過的結果重新計算一次。
+    final displayAlerts = dismissedKeysLoaded
+        ? visibleAlerts.take(30).toList()
+        : const <Map<String, dynamic>>[];
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -278,7 +292,41 @@ class HomeAlertPreviewCard extends StatelessWidget {
 
           const SizedBox(height: 16),
 
-          if (displayAlerts.isEmpty)
+          if (!dismissedKeysLoaded)
+            // ★ 第五十二輪（任務一）：沿用「目前沒有任何警示」同一副版面
+            //   （置中圖示 + 8px 間距 + 說明文字），只換掉圖示與文字——當下
+            //   還不知道濾掉已讀警示後是否真的沒有項目，不可以宣稱「目前
+            //   沒有任何警示」（那句話當下並不成立、也可能不成立）。
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Column(
+                  children: [
+                    SizedBox(
+                      width: 44,
+                      height: 44,
+                      child: Padding(
+                        padding: const EdgeInsets.all(11),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.4,
+                          color: cs.onSurfaceVariant.withValues(alpha: 0.4),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '警示讀取中…',
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: 14,
+                        color: cs.onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else if (displayAlerts.isEmpty)
             Center(
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 12),

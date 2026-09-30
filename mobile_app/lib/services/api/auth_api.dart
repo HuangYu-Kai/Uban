@@ -11,6 +11,12 @@ class AuthApi {
     required String email,
     required String password,
     required String role,
+    // ★ 第五十三輪 onboard53：年齡／居住地改為必填。家屬端註冊表單把這三欄
+    //   併入同一張表單一次送出，後端 routers/auth.py::register() 仍會用
+    //   services/taiwan_regions 白名單驗證一次，不因為是註冊流程就放寬。
+    int? age,
+    String? residenceCity,
+    String? residenceDistrict,
   }) async {
     try {
       final response = await http
@@ -22,6 +28,9 @@ class AuthApi {
               'email': email,
               'password': password,
               'role': role,
+              if (age != null) 'age': age,
+              if (residenceCity != null) 'residence_city': residenceCity,
+              if (residenceDistrict != null) 'residence_district': residenceDistrict,
             }),
           )
           .timeout(ApiClient.timeout);

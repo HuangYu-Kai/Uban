@@ -159,6 +159,22 @@ class ElderScale {
         color: AppColors.textSecondary,
       );
 
+  /// 賽季卡片主標題（如「第 3 季」）。獨立於 [sectionTitle] 是刻意的——
+  /// 賽季卡片是懸浮在畫面角落的窄卡片，30pt 的 [sectionTitle] 在該寬度下
+  /// 容易換行或被裁切，24pt 是量過後仍讀得清楚、又能在窄卡片單行顯示的折衷。
+  static TextStyle get seasonTitle => GoogleFonts.notoSansTc(
+        fontSize: 24,
+        fontWeight: FontWeight.w900,
+        color: AppColors.textPrimary,
+      );
+
+  /// 賽季卡片副標題（如「還有 12 天結束」）。
+  static TextStyle get seasonSubtitle => GoogleFonts.notoSansTc(
+        fontSize: 20,
+        fontWeight: FontWeight.w700,
+        color: AppColors.textPrimary,
+      );
+
   // --- 尺寸 ---
   /// 主要大按鈕高度（最小點擊區）。
   static const double buttonHeight = 84;

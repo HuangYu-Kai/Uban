@@ -6,8 +6,10 @@ import '../services/api_service.dart';
 import 'registration_screen.dart';
 import 'family_onboarding_screen.dart';
 import 'family_main_screen.dart';
+import 'family_profile_onboarding_screen.dart';
 import '../globals.dart';
 import '../services/auth_service.dart';
+import '../utils/profile_completeness.dart';
 
 // 家屬/照護者登入畫面
 class LoginScreen extends StatefulWidget {
@@ -63,23 +65,57 @@ class _LoginScreenState extends State<LoginScreen> {
 
         final bool hasPaired = data['has_paired_elder'] ?? false;
 
-        if (hasPaired) {
+        // 登入後的下一步（依是否已配對長輩而不同），供補填完成後接續導向。
+        WidgetBuilder nextScreenBuilder = hasPaired
+            ? (context) => FamilyMainScreen(userId: userId, userName: userName)
+            : (context) => FamilyOnboardingScreen(userId: userId, userName: userName);
+
+        // ★ 第五十三輪 onboard53（家 4）：年齡／居住地改為必填，既有帳號（在
+        //   這次改動上線前就註冊過）第一次登入時強制補填，不提供略過。
+        //
+        //   ⚠️ fail-open，不是 fail-closed：這裡只有在「讀得到資料、且資料
+        //   確定是空的」才會導去補填畫面；讀取失敗（逾時、離線、伺服器錯誤）
+        //   一律當作「已完整」直接放行——斷線時把使用者鎖在補填畫面外面、
+        //   進不了 App，是比「資料晚一點補」嚴重得多的問題。
+        //   ApiService.getElderProfile() 內部已經 try/catch 過，逾時或例外
+        //   都回傳 {'status': 'error', ...} 而不是丟例外，這裡不需要再包一層。
+        //   判斷邏輯本身抽到 utils/profile_completeness.dart（與長輩端
+        //   elder_pairing_display_screen.dart::_goToElderHome 共用），
+        //   避免兩端各自維護一份「必填」定義而逐漸分歧。
+        bool profileConfirmedIncomplete = false;
+        try {
+          final profileResult = await ApiService.getElderProfile(userId);
+          profileConfirmedIncomplete = isProfileConfirmedIncomplete(profileResult);
+        } catch (_) {
+          // 理論上 ApiService.getElderProfile 不會丟到這裡，多一層保險維持 fail-open。
+          profileConfirmedIncomplete = false;
+        }
+
+        if (!mounted) return;
+
+        if (profileConfirmedIncomplete) {
           Navigator.pushAndRemoveUntil(
             context,
             MaterialPageRoute(
-              builder: (context) =>
-                  FamilyMainScreen(userId: userId, userName: userName),
+              builder: (context) => FamilyProfileOnboardingScreen(
+                userId: userId,
+                userName: userName,
+                nextScreenBuilder: nextScreenBuilder,
+              ),
             ),
+            (route) => false,
+          );
+        } else if (hasPaired) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: nextScreenBuilder),
             (route) => false,
           );
         } else {
           // 未配對時，引導進入溫馨介紹畫面
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(
-              builder: (context) =>
-                  FamilyOnboardingScreen(userId: userId, userName: userName),
-            ),
+            MaterialPageRoute(builder: nextScreenBuilder),
           );
         }
       } else {

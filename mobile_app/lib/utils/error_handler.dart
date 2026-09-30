@@ -20,32 +20,66 @@ class ErrorHandler {
     );
   }
 
+  // ★ 第五十輪（適老化）：以下三個 SnackBar 共用同一套「長輩讀得到」的樣式
+  // 常數，字級／圖示／配色／時長都比照 `ElderScale`（見 `lib/theme/app_theme.dart`）
+  // 的精神一次調整，不要各自為政再度分裂出不一致的樣式。
+  //
+  // - 字級：14 → 20pt，粗體，行高加大，讀起來像一句話而不是一行小字。
+  // - 配色：原本 白字配 #EF4444/#10B981/#F59E0B 三色，飽和度高但對白色文字的
+  //   對比不足（#10B981、#F59E0B 對白字的對比度都低於 WCAG AA 大字最低要求
+  //   3:1）。改用更深的同色系（red-700 / emerald-700 / amber-800），對白字
+  //   對比度都在 5:1 以上，長輩與色弱使用者都看得清楚。
+  // - 圖示：24 → 32pt，跟文字一樣放大，不是只放大文字忘記圖示。
+  // - 時長：長輩讀字慢，預設 3~4 秒對一句話而言太短；錯誤/警告類需要使用者
+  //   看懂並決定下一步，拉到 5 秒，成功類只是確認訊息，拉到 4 秒即可。
+  // - Padding：內距加大，觸控與視覺呼吸空間都比照大字版面。
+  static const double _kSnackBarFontSize = 20;
+  static const double _kSnackBarIconSize = 32;
+
+  static TextStyle _snackBarTextStyle() => GoogleFonts.notoSansTc(
+        fontSize: _kSnackBarFontSize,
+        fontWeight: FontWeight.w700,
+        color: Colors.white,
+        height: 1.3,
+      );
+
+  /// SnackBar 內容共用版面：圖示 + 文字。
+  /// ⚠️ 鐵律 #14：訊息字串長度不可控（後端錯誤訊息、使用者輸入回顯等），
+  /// 字級放大後更容易溢位，`Text` 一律包 `Flexible` 並允許最多 3 行 + 省略
+  /// 號，不能假設一行放得下。
+  static Widget _snackBarContent(IconData icon, String message) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: Colors.white, size: _kSnackBarIconSize),
+          const SizedBox(width: 14),
+          Flexible(
+            child: Text(
+              message,
+              style: _snackBarTextStyle(),
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// 顯示錯誤 SnackBar
   static void showErrorSnackBar(
     BuildContext context,
     String message, {
-    Duration duration = const Duration(seconds: 3),
+    Duration duration = const Duration(seconds: 5),
   }) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.error_outline_rounded, color: Colors.white),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                message,
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ],
-        ),
-        backgroundColor: const Color(0xFFEF4444),
+        content: _snackBarContent(Icons.error_outline_rounded, message),
+        backgroundColor: const Color(0xFFB91C1C),
         behavior: SnackBarBehavior.floating,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         duration: duration,
       ),
@@ -56,28 +90,14 @@ class ErrorHandler {
   static void showSuccess(
     BuildContext context,
     String message, {
-    Duration duration = const Duration(seconds: 2),
+    Duration duration = const Duration(seconds: 4),
   }) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.check_circle_rounded, color: Colors.white),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                message,
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ],
-        ),
-        backgroundColor: const Color(0xFF10B981),
+        content: _snackBarContent(Icons.check_circle_rounded, message),
+        backgroundColor: const Color(0xFF047857),
         behavior: SnackBarBehavior.floating,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         duration: duration,
       ),
@@ -85,33 +105,24 @@ class ErrorHandler {
   }
 
   /// 顯示警告訊息
+  /// [action] 選填：部分警告需要提供操作捷徑（例如「前往設定」開啟權限），
+  /// 呼叫端可自行組一個 `SnackBarAction` 傳進來，不必為此另外寫一個原生
+  /// SnackBar 繞過本封裝，才能讓樣式維持統一。
   static void showWarning(
     BuildContext context,
     String message, {
-    Duration duration = const Duration(seconds: 3),
+    Duration duration = const Duration(seconds: 5),
+    SnackBarAction? action,
   }) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.warning_amber_rounded, color: Colors.white),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                message,
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ],
-        ),
-        backgroundColor: const Color(0xFFF59E0B),
+        content: _snackBarContent(Icons.warning_amber_rounded, message),
+        backgroundColor: const Color(0xFF92400E),
         behavior: SnackBarBehavior.floating,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         duration: duration,
+        action: action,
       ),
     );
   }

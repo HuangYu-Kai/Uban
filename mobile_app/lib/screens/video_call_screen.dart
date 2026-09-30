@@ -211,6 +211,21 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       return null;
     });
 
+    // ★ 第四十九輪（item 5 Row 4：螢幕關閉後約 2 秒自動斷線）：通話期間持有
+    //   CPU 層級的 PARTIAL_WAKE_LOCK，與上面 showOverLockScreen 的
+    //   SCREEN_BRIGHT_WAKE_LOCK 是兩個獨立的鎖——那顆只負責短暫喚醒螢幕
+    //   （10 秒），不會阻止使用者按電源鍵關螢幕後 CPU 被系統掛起，卡住
+    //   WebRTC 媒體執行緒與 Socket.IO 心跳。完整根因見
+    //   MainActivity.kt::acquireCallWakeLock() 的說明。刻意跟上面一樣**不分**
+    //   isEmergency／monitorViewOnly——只要這個畫面有一條活著的 WebRTC 連線
+    //   在跑，就不該讓 CPU 睡著。
+    const MethodChannel('com.example.app/bring_to_front')
+        .invokeMethod('acquireCallWakeLock')
+        .catchError((e) {
+      debugPrint('⚠️ [VideoCall] acquireCallWakeLock 失敗: $e');
+      return null;
+    });
+
     // ★ 2026-08-25（需求 3）：記錄「進場當下」是否鎖定，供 dispose() 決定要不要
     //   關閉整個 App（見 _enteredWhileLocked 欄位說明）。monitorViewOnly（觀看
     //   CCTV）排除在外——那是家屬在已解鎖、前景使用中的 App 裡主動點進去看的
@@ -777,6 +792,22 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       return null;
     });
 
+    // ★ 第四十九輪：與上面的 restoreLockScreen 是**同一種防線**，不是重複貼上
+    //   ——initState() 呼叫的 acquireCallWakeLock（見該處註解）必須有對應的
+    //   release，否則 CPU wake lock 會一路握到 App 被殺掉，持續耗電（比「螢幕
+    //   關閉 2 秒斷線」這個本來要修的 bug 更嚴重，因為它是**無聲**發生的）。
+    //   與 restoreLockScreen 一樣，這裡與 _goHomeAfterCall() 各放一份：本畫面
+    //   沒有 PopScope／WillPopScope，使用者按返回鍵時只會觸發 dispose()、不會
+    //   經過 _goHomeAfterCall()，這一份就是那條路徑唯一的釋放時機。
+    //   MainActivity.kt::releaseCallWakeLock() 內建 isHeld 檢查，兩處都呼叫、
+    //   或呼叫到一個本來就沒持有鎖的狀態，都是安全的 no-op。
+    const MethodChannel('com.example.app/bring_to_front')
+        .invokeMethod('releaseCallWakeLock')
+        .catchError((e) {
+      debugPrint('⚠️ [VideoCall] dispose() releaseCallWakeLock 失敗: $e');
+      return null;
+    });
+
     // ★ 2026-08-25（需求 3）：這通電話是從鎖屏／背景喚醒才進來的
     //   （_enteredWhileLocked，見欄位宣告處說明）→ 通話結束時不留在 App
     //   任何畫面，直接關閉整個 App 與背景 Task，回到裝置鎖定畫面。
@@ -883,6 +914,17 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
         .invokeMethod('restoreLockScreen')
         .catchError((e) {
       debugPrint('⚠️ [VideoCall] restoreLockScreen 失敗: $e');
+      return null;
+    });
+    // ★ 第四十九輪：與 dispose() 最前面那份 releaseCallWakeLock 是同一種雙保險
+    //   （比照 restoreLockScreen 兩處都放的既有理由）——這是「正常掛斷／逾時／
+    //   對方忙線」等主動導覽回主畫面的路徑，dispose() 稍後仍會被觸發並再呼叫
+    //   一次，但不能只靠那裡：那份是「防止漏放」的最後防線，這裡才是本來就該
+    //   在通話真正結束當下釋放鎖的地方。isHeld 內建冪等，重複呼叫安全。
+    const MethodChannel('com.example.app/bring_to_front')
+        .invokeMethod('releaseCallWakeLock')
+        .catchError((e) {
+      debugPrint('⚠️ [VideoCall] releaseCallWakeLock 失敗: $e');
       return null;
     });
     if (widget.returnByPop && Navigator.of(context).canPop()) {

@@ -11,6 +11,22 @@ Future<void> showAiAssistantSettingsDialog({
   required String userName,
 }) async {
   final prefs = await SharedPreferences.getInstance();
+
+  // 🚨 第五十二輪一次性遷移：第五十一輪之前的版本會在「每次載入首頁」時
+  // 強制把 kWakeWordEnabledKey 寫成 true（不是使用者自己的選擇），所以
+  // 既有裝置上這把鍵大多已經被寫成 true——光是把下面的預設值改成 false
+  // 救不了這些裝置（`?? false` 只在鍵「不存在」時才生效，鍵一旦有值就
+  // 不會走預設值那條路）。用一把版本化旗標鍵確保只重設這一次：旗標不
+  // 存在 → 這是第一次套用本次遷移，把喚醒詞強制拉回 false 並寫入旗標；
+  // 旗標一旦存在，代表使用者之後自己的開關選擇（不論開或關）都不會再
+  // 被本遷移覆蓋。
+  const migrationFlagKey = 'wake_word_pref_reset_v52';
+  if (!(prefs.getBool(migrationFlagKey) ?? false)) {
+    await prefs.setBool(kWakeWordEnabledKey, false);
+    wakeWordEnabledNotifier.value = false;
+    await prefs.setBool(migrationFlagKey, true);
+  }
+
   final currentAiName = prefs.getString('ai_assistant_name') ??
       prefs.getString('ai_name') ??
       '嘎蛙';
@@ -19,8 +35,11 @@ Future<void> showAiAssistantSettingsDialog({
       prefs.getString('elder_name') ??
       (userName.isNotEmpty ? userName : '宇璿');
   bool isPortableMode = prefs.getBool('is_portable_mode') ?? true;
-  // ★ 語音喚醒總開關，長輩端預設啟用（true）。
-  bool wakeWordEnabled = prefs.getBool(kWakeWordEnabledKey) ?? true;
+  // ★ 語音喚醒總開關。單一預設值真相在 globals.dart 的
+  // wakeWordEnabledNotifier（第五十一輪起預設關閉，護欄 G59）——這裡的
+  // `?? false` 必須跟那邊一致，否則長輩一打開這個設定頁存檔，就會把
+  // 喚醒詞寫回「開啟」（第五十二輪修正前就是這裡的 `?? true` 造成的）。
+  bool wakeWordEnabled = prefs.getBool(kWakeWordEnabledKey) ?? false;
 
   final aiNameController = TextEditingController(text: currentAiName);
   final userNameController = TextEditingController(text: currentUserName);

@@ -199,8 +199,8 @@ Future<void> showFullScreenCallkit(Map<String, dynamic> data) async {
     releaseBgHold('缺 roomId/senderId，沒有可等待的事件');
   }
 
+  bool callkitAlive = false;
   if (!isEmergency) {
-    bool callkitAlive = false;
     for (int i = 0; i < 8; i++) {
       await Future.delayed(const Duration(milliseconds: 250));
       try {
@@ -225,11 +225,69 @@ Future<void> showFullScreenCallkit(Map<String, dynamic> data) async {
           if (activeCalls is List && activeCalls.isNotEmpty) {
             debugPrint('✅ [BG-CallKit] CallKit 事後建立成功，撤銷備援通知');
             await LocalCallNotification.cancel();
+            callkitAlive = true;
             break;
           }
         } catch (_) {}
       }
     }
+  }
+
+  // ★ 2026-09-24 第五十三輪（長輩端「App 被殺死時拒接鍵完全無反應」）：
+  //   `bgSub` 的 onEvent 監聽依賴 CallKit 原生層把 actionCallDecline／
+  //   actionCallTimeout 事件正確投遞回這個背景 isolate——這條投遞路徑與
+  //   G18/G19 已經記錄過的「CallKit 通知建立本身會靜默失敗」是同一類原生
+  //   plugin 可靠度問題，只是失敗的步驟從「建立通知」換成「事件送達」。
+  //   一旦事件遺失，bgSub 永遠不會觸發，declineCall 永遠送不出去，使用者
+  //   體感就是「按了拒接沒有任何反應」，家屬端也永遠等不到拒接/逾時通知。
+  //   比照上面偵測「CallKit 是否已建立」的作法，加一道輪詢備援：通話原生層
+  //   確定建立過（callkitAlive）之後，若連續兩次（間隔 1s）偵測到
+  //   activeCalls() 變空、但 bgDecision 仍未被 onEvent 完成——代表原生層已
+  //   經結束這通來電（使用者拒接或響鈴逾時），只是事件沒送達 Dart，於是這裡
+  //   補送 declineCall 並清理，不再乾等到 50 秒上限才放棄。
+  //   🚫 只在 callkitAlive==true 時才啟動：CallKit 從未建立時 activeCalls()
+  //   本來就是空的，不能拿來當「已結束」的訊號——那種情境走的是
+  //   LocalNotification 備援通知自己的拒接鍵（notificationBackgroundTapHandler
+  //   ／_handleDecline，見 local_call_notification.dart），與 CallKit 的
+  //   activeCalls() 無關。
+  //   每一步 await 之後都重新檢查 `bgDecision.isCompleted`，避免與 onEvent
+  //   監聽在極端時序下重複送出 declineCall（G14 的「單一拒接通路」精神）。
+  Timer? implicitEndPoll;
+  if (callkitAlive && senderId.isNotEmpty && roomId.isNotEmpty) {
+    int emptyStreak = 0;
+    implicitEndPoll = Timer.periodic(const Duration(seconds: 1), (timer) async {
+      if (bgDecision.isCompleted) {
+        timer.cancel();
+        return;
+      }
+      bool isEmpty = false;
+      try {
+        final activeCalls = await FlutterCallkitIncoming.activeCalls();
+        isEmpty = !(activeCalls is List && activeCalls.isNotEmpty);
+      } catch (_) {
+        return; // 查詢本身失敗不計入，避免瞬時例外誤判為「已結束」。
+      }
+      emptyStreak = isEmpty ? emptyStreak + 1 : 0;
+      if (emptyStreak < 2 || bgDecision.isCompleted) return;
+      timer.cancel();
+      debugPrint('🕵️ [BG-CallKit] activeCalls() 連續 2 次為空但未收到 onEvent，'
+          '判定為原生層事件遺失，補送 declineCall (call=$callId)');
+      await LocalCallNotification.cancel();
+      if (bgDecision.isCompleted) return;
+      final bool declineOk = await ApiService.declineCall(
+        roomId: roomId,
+        senderId: senderId,
+        callId: callId,
+      );
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('pendingAcceptedCall');
+        await prefs.remove('pendingRingCallData');
+        await prefs.remove('pendingRingCall');
+      } catch (_) {}
+      debugPrint('🔕 [BG-CallKit] 事件遺失備援已補送 declineCall，結果=$declineOk (call=$callId)');
+      releaseBgHold('activeCalls() 偵測到原生層已結束（事件遺失備援）');
+    });
   }
 
   if (!bgDecision.isCompleted) {
@@ -245,6 +303,7 @@ Future<void> showFullScreenCallkit(Map<String, dynamic> data) async {
       await bgSub?.cancel();
     } catch (_) {}
   }
+  implicitEndPoll?.cancel();
 }
 
 /// Firebase 背景推播訊息處理函式 (需具備 @pragma('vm:entry-point'))
