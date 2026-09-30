@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:flutter_application_1/models/elder_place.dart';
 import 'package:flutter_application_1/services/location_trail_processor.dart';
 
 // 約 1e-5 度 ≈ 1.1 公尺
@@ -190,6 +191,42 @@ void main() {
       final t = LocationTrailProcessor.process([]);
       expect(t.events, isEmpty);
       expect(t.stayClusters, isEmpty);
+    });
+  });
+
+  group('matchPlace', () {
+    ElderPlace place(int id, double northM, double eastM, int radius, {bool home = false}) {
+      final p = _pt(northM, eastM, Duration.zero).position;
+      return ElderPlace(
+        id: id,
+        name: 'p$id',
+        latitude: p.latitude,
+        longitude: p.longitude,
+        radiusM: radius,
+        isHome: home,
+      );
+    }
+
+    LatLng at(double northM, double eastM) => _pt(northM, eastM, Duration.zero).position;
+
+    test('半徑內命中、半徑外回傳 null', () {
+      final home = place(1, 0, 0, 100, home: true);
+      expect(matchPlace(at(50, 0), [home])?.id, 1);
+      expect(matchPlace(at(0, 99), [home])?.id, 1);
+      expect(matchPlace(at(150, 0), [home]), isNull);
+    });
+
+    test('範圍重疊時取圓心最近者（不偏袒家）', () {
+      final home = place(1, 0, 0, 200, home: true);
+      final market = place(2, 120, 0, 200);
+      // 距離家 100m、距離市場 20m → 市場
+      expect(matchPlace(at(100, 0), [home, market])?.id, 2);
+      // 距離家 30m、距離市場 90m → 家
+      expect(matchPlace(at(30, 0), [market, home])?.id, 1);
+    });
+
+    test('空清單回傳 null', () {
+      expect(matchPlace(at(0, 0), const []), isNull);
     });
   });
 }

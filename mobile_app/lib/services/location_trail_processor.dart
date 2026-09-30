@@ -1,6 +1,7 @@
 // lib/services/location_trail_processor.dart
 import 'dart:math' as math;
 import 'package:latlong2/latlong.dart';
+import '../models/elder_place.dart';
 import 'api/location_api.dart';
 
 /// 後端 `/trail` 回傳的單一原始定位點。
@@ -512,6 +513,26 @@ class LocationTrailProcessor {
         if (keep[k]) pts[k]
     ];
   }
+}
+
+/// 找出 [point] 所在的常去地點。
+///
+/// 只考慮「[point] 落在該地點 `radiusM` 以內」的地點（邊界含在內）；
+/// 多個地點的範圍重疊時，取**圓心距離最近**者（不因為是「家」就優先——
+/// 家旁邊的超市若圓心更近，就該算超市）；距離完全相同時取清單中較前者。
+/// 沒有任何地點包含該點（或清單為空）回傳 `null`。
+ElderPlace? matchPlace(LatLng point, List<ElderPlace> places) {
+  const dist = Distance();
+  ElderPlace? best;
+  double bestD = double.infinity;
+  for (final p in places) {
+    final d = dist(point, p.position);
+    if (d <= p.radiusM && d < bestD) {
+      best = p;
+      bestD = d;
+    }
+  }
+  return best;
 }
 
 /// 路線上的一個點；停留中心的 [time]～[endTime] 是整段停留時間。

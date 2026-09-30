@@ -10,7 +10,10 @@ import '../almanac/farmer_almanac_screen.dart';
 import '../news_listen_player/news_listen_player_screen.dart';
 import '../../models/almanac_data_helper.dart';
 import '../../models/chinese_converter.dart';
+import '../../models/elder_place.dart';
 import '../../services/api_service.dart';
+import '../../services/elder_home_place_service.dart';
+import '../../services/friend_service.dart';
 import '../../services/subscription_service.dart';
 import '../../services/weather_service.dart';
 import '../../theme/app_theme.dart';
@@ -96,6 +99,9 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
   // 額外安排最多一次自動重試（見 [_loadNextDoseData] 尾端），而不是只改文案。
   int _nextDoseLoadAttempt = 0;
 
+  /// 「帶我回家」的目的地；null 代表尚未設定家（按鈕隱藏）。
+  ElderPlace? _homePlace;
+
   @override
   void initState() {
     super.initState();
@@ -112,6 +118,93 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     _loadSubscription();
     _fetchWeather();
     _loadNextDoseData();
+    _loadHomePlace();
+  }
+
+  /// 「帶我回家」：先用本機快取立即顯示，再向後端同步最新的「家」。
+  ///
+  /// elder_id 優先用 `widget.roomId`（長輩端 roomId 即 elder_profile.elder_id，
+  /// 見 [_loadNextDoseData] 說明）；拿不到才退回 [FriendService.resolveMyElderId]。
+  /// 快取依 elder_id 分開存放，所以必須先確定 elder_id 才能讀快取——
+  /// 否則同一支手機換長輩帳號時，會短暫顯示前一位長輩的家。
+  Future<void> _loadHomePlace() async {
+    var elderId = widget.roomId;
+    if (elderId == null || elderId.isEmpty) {
+      elderId = await FriendService.resolveMyElderId(widget.userId);
+    }
+    if (elderId == null || elderId.isEmpty || !mounted) return;
+
+    final cached = await ElderHomePlaceService.loadCached(elderId: elderId);
+    if (!mounted) return;
+    if (cached != null) setState(() => _homePlace = cached);
+
+    final home = await ElderHomePlaceService.refresh(
+      elderId: elderId,
+      userId: widget.userId,
+    );
+    if (!mounted) return;
+    setState(() => _homePlace = home);
+  }
+
+  Future<void> _goHome() async {
+    final home = _homePlace;
+    if (home == null) return;
+    HapticFeedback.mediumImpact();
+    final ok = await ElderHomePlaceService.openNavigation(home);
+    if (ok || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '無法開啟地圖，請確認已安裝 Google 地圖',
+          style: GoogleFonts.notoSansTc(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+        backgroundColor: const Color(0xFFB91C1C),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        margin: const EdgeInsets.all(20),
+      ),
+    );
+  }
+
+  /// 「帶我回家」大按鈕（只有已設定家時才會顯示）。
+  ///
+  /// 高度 72（比 [ElderScale.buttonHeight] 84 略矮）：首頁有「一屏到底」的垂直空間
+  /// 預算（見 [build] 內說明），按鈕放在最上方、字級仍用 26pt 大字。
+  Widget _buildGoHomeButton() {
+    return SizedBox(
+      height: 72,
+      child: ElevatedButton(
+        onPressed: _goHome,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppColors.primaryDark,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.pill),
+          ),
+        ),
+        // ⚠️ 固定字串，但仍用 Flexible／ellipsis 防系統字體放大時溢位（鐵律 #14）。
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.home_rounded, size: ElderScale.buttonIcon - 6),
+            const SizedBox(width: 12),
+            Flexible(
+              child: Text(
+                '帶我回家',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: ElderScale.button.copyWith(fontSize: 26),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   /// 抓取天氣（見 [WeatherService]）。內含快取與失敗兜底，這裡只負責
@@ -464,6 +557,11 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                                 // 後面。三塊都完整保留原尺寸／可讀性，若系統字體被調大等
                                 // 邊界情況仍裝不下，交給外層既有的 `SingleChildScrollView`
                                 // 捲動（本頁本來就可捲動，並非新增行為）。
+                                // 「帶我回家」：只有家屬設定了家才出現，放在最上方。
+                                if (_homePlace != null) ...[
+                                  _buildGoHomeButton(),
+                                  const SizedBox(height: AppSpacing.md),
+                                ],
                                 _buildTodayCard(),
                                 // ★ 第五十一輪（任務 3）：24→16。省下的每一點
                                 // 垂直空間都直接換成新聞卡在第一屏內能多露出

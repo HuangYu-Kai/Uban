@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import '../../models/elder_place.dart';
 import 'api_client.dart';
 
 /// 戶外 GPS 定位與每日移動軌跡 API。
@@ -7,6 +8,10 @@ import 'api_client.dart';
 /// 與 IPS（攝影機式室內房間定位）是完全不同的子系統，不要混用。
 /// 對應後端 `Uban-api/routers/location.py`。
 class LocationApi {
+  /// 日期格式化成後端要的 `YYYY-MM-DD`（裝置本地日期）。
+  static String _formatDate(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
   /// 解析後端回傳的 `recorded_at`，轉成裝置本地時間。
   ///
   /// 後端存的是 UTC；若字串沒有時區標記（舊版後端不帶 `Z`），`DateTime.parse`
@@ -69,9 +74,7 @@ class LocationApi {
     DateTime? date,
     int? sinceId,
   }) async {
-    final dateStr = date != null
-        ? '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}'
-        : null;
+    final dateStr = date != null ? _formatDate(date) : null;
     // 「某一天」是裝置本地的一天，帶上時區偏移讓後端換算成 UTC 區間。
     final tzOffset = (date ?? DateTime.now()).timeZoneOffset.inMinutes;
     final path = '/location/trail/$elderId?user_id=$userId&tz_offset=$tzOffset'
@@ -111,6 +114,143 @@ class LocationApi {
     } catch (e) {
       debugPrint('⚠️ LocationApi.setSharingEnabled error: $e');
       return false;
+    }
+  }
+
+  /// 讀取長輩的常去地點清單（長輩本人或已配對家屬；不受位置分享開關限制）。
+  /// 失敗（含無權限）回傳 `null`；成功但沒有任何地點回傳空清單。
+  static Future<List<ElderPlace>?> getPlaces({
+    required String elderId,
+    required int userId,
+  }) async {
+    try {
+      final result = await ApiClient.get('/location/places/$elderId?user_id=$userId');
+      if (result != null && result['status'] == 'success') {
+        final raw = result['data']?['places'];
+        if (raw is! List) return const [];
+        final places = <ElderPlace>[];
+        for (final p in raw) {
+          if (p is! Map) continue;
+          try {
+            places.add(ElderPlace.fromJson(Map<String, dynamic>.from(p)));
+          } catch (e) {
+            // 單筆壞資料略過，不讓整份清單失效。
+            debugPrint('⚠️ LocationApi.getPlaces skip invalid place: $e');
+          }
+        }
+        return places;
+      }
+    } catch (e) {
+      debugPrint('⚠️ LocationApi.getPlaces error: $e');
+    }
+    return null;
+  }
+
+  /// 家屬新增地點。成功回傳後端建立的 [ElderPlace]，失敗回傳 `null`。
+  static Future<ElderPlace?> createPlace({
+    required String elderId,
+    required int userId,
+    required String name,
+    required double latitude,
+    required double longitude,
+    int? radiusM,
+    bool? isHome,
+  }) async {
+    try {
+      final result = await ApiClient.post('/location/places/$elderId', {
+        'user_id': userId,
+        'name': name,
+        'latitude': latitude,
+        'longitude': longitude,
+        if (radiusM != null) 'radius_m': radiusM,
+        if (isHome != null) 'is_home': isHome,
+      });
+      return _parsePlace(result);
+    } catch (e) {
+      debugPrint('⚠️ LocationApi.createPlace error: $e');
+      return null;
+    }
+  }
+
+  /// 家屬修改地點（只送有傳入的欄位）。成功回傳更新後的 [ElderPlace]，失敗回傳 `null`。
+  static Future<ElderPlace?> updatePlace({
+    required String elderId,
+    required int placeId,
+    required int userId,
+    String? name,
+    double? latitude,
+    double? longitude,
+    int? radiusM,
+    bool? isHome,
+  }) async {
+    try {
+      final result = await ApiClient.put('/location/places/$elderId/$placeId', {
+        'user_id': userId,
+        if (name != null) 'name': name,
+        if (latitude != null) 'latitude': latitude,
+        if (longitude != null) 'longitude': longitude,
+        if (radiusM != null) 'radius_m': radiusM,
+        if (isHome != null) 'is_home': isHome,
+      });
+      return _parsePlace(result);
+    } catch (e) {
+      debugPrint('⚠️ LocationApi.updatePlace error: $e');
+      return null;
+    }
+  }
+
+  /// 家屬刪除地點。成功回傳 `true`。
+  static Future<bool> deletePlace({
+    required String elderId,
+    required int placeId,
+    required int userId,
+  }) async {
+    try {
+      final result =
+          await ApiClient.delete('/location/places/$elderId/$placeId?user_id=$userId');
+      return result != null && result['status'] == 'success';
+    } catch (e) {
+      debugPrint('⚠️ LocationApi.deletePlace error: $e');
+      return false;
+    }
+  }
+
+  /// 讀取指定日期（省略則今天）的移動摘要。
+  /// 回傳 `{sharing_enabled, date, has_home, distance_m, outing_count, outside_minutes,
+  /// at_home, last_update, point_count}`；分享關閉時只有 `{sharing_enabled: false, date}`。
+  /// `outing_count`／`outside_minutes`／`at_home` 在沒設定「家」時為 `null`。
+  /// 查無權限或失敗時回傳 `null`。時區處理與 [getTrail] 相同。
+  static Future<Map<String, dynamic>?> getSummary({
+    required String elderId,
+    required int userId,
+    DateTime? date,
+  }) async {
+    final d = date ?? DateTime.now();
+    final tzOffset = d.timeZoneOffset.inMinutes;
+    // 摘要一律明確帶日期（省略時用裝置今天），避免後端以 UTC 日期解讀「今天」。
+    final path = '/location/summary/$elderId?user_id=$userId&tz_offset=$tzOffset'
+        '&date=${_formatDate(d)}';
+    try {
+      final result = await ApiClient.get(path);
+      if (result != null && result['status'] == 'success') {
+        return result['data'] as Map<String, dynamic>;
+      }
+    } catch (e) {
+      debugPrint('⚠️ LocationApi.getSummary error: $e');
+    }
+    return null;
+  }
+
+  /// 從 `{status, data: {place}}` 取出 [ElderPlace]；格式不符回傳 `null`。
+  static ElderPlace? _parsePlace(Map<String, dynamic>? result) {
+    if (result == null || result['status'] != 'success') return null;
+    final raw = result['data']?['place'];
+    if (raw is! Map) return null;
+    try {
+      return ElderPlace.fromJson(Map<String, dynamic>.from(raw));
+    } catch (e) {
+      debugPrint('⚠️ LocationApi._parsePlace error: $e');
+      return null;
     }
   }
 }

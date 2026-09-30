@@ -7,8 +7,10 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../config/map_tiles.dart';
+import '../../models/elder_place.dart';
 import '../../services/api/location_api.dart';
 import '../../services/location_trail_processor.dart';
+import 'elder_places_screen.dart';
 
 /// 家屬端：長輩戶外 GPS 定位 + 指定日期完整移動軌跡。
 ///
@@ -46,6 +48,8 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
   // 除錯用：未經處理的原始點（依時間排序），僅供 debug 版疊圖比對
   List<TrailPoint> _rawPoints = const [];
   bool _showRaw = false;
+  // 長輩的常去地點（家、公園…）；不受位置分享開關限制，載入失敗時保留舊值。
+  List<ElderPlace> _places = const [];
   // 增量查詢游標（後端回傳的 `cursor`＝目前已取得的最大資料列 id）；
   // null 代表尚未取得，下一次載入（含靜默輪詢）一律做完整查詢。
   int? _cursor;
@@ -98,6 +102,11 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
     final int? sinceId = silent ? _cursor : null;
     final bool incremental = sinceId != null;
 
+    // 常去地點與定位同時載入（僅非靜默：輪詢不需要重抓，編輯後另行重載）。
+    final placesFuture = silent
+        ? null
+        : LocationApi.getPlaces(elderId: widget.elderId, userId: widget.userId);
+
     final currentResult = await LocationApi.getCurrentLocation(
       elderId: widget.elderId,
       userId: widget.userId,
@@ -109,7 +118,11 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
       sinceId: sinceId,
     );
 
+    final loadedPlaces = await placesFuture;
+
     if (!mounted || seq != _loadSeq) return;
+    // 地點與分享開關無關，早於下方各分支先更新（失敗回傳 null 則保留舊值）。
+    if (loadedPlaces != null) _places = loadedPlaces;
 
     if (currentResult == null || trailResult == null) {
       if (silent) {
@@ -169,6 +182,54 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
     }
 
     _schedulePolling();
+  }
+
+  /// 編輯地點後重新載入（失敗時保留舊清單）。
+  Future<void> _reloadPlaces() async {
+    final places = await LocationApi.getPlaces(
+      elderId: widget.elderId,
+      userId: widget.userId,
+    );
+    if (!mounted || places == null) return;
+    setState(() => _places = places);
+  }
+
+  /// 該座標所在的常去地點名稱；不在任何地點範圍內回傳 null。
+  String? _placeNameAt(LatLng p) => matchPlace(p, _places)?.name;
+
+  /// 新增地點（長按地圖或由停留點建立）；成功後重載地點。
+  Future<void> _createPlaceAt(LatLng position, {bool presetHome = false}) async {
+    final saved = await showPlaceEditorDialog(
+      context,
+      elderId: widget.elderId,
+      userId: widget.userId,
+      position: position,
+      presetHome: presetHome,
+    );
+    if (saved) await _reloadPlaces();
+  }
+
+  Future<void> _editPlace(ElderPlace place) async {
+    final saved = await showPlaceEditorDialog(
+      context,
+      elderId: widget.elderId,
+      userId: widget.userId,
+      existing: place,
+    );
+    if (saved) await _reloadPlaces();
+  }
+
+  Future<void> _openPlaces() async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => ElderPlacesScreen(
+          elderId: widget.elderId,
+          userId: widget.userId,
+          elderName: widget.elderName,
+        ),
+      ),
+    );
+    if (changed == true) await _reloadPlaces();
   }
 
   /// 除錯：印出原始點中距離最大的前 5 個相鄰跳躍（瀏覽器 console 可見）。
@@ -247,8 +308,15 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
+        // 窄螢幕（360dp）空間有限：標題靠左貼齊、按鈕一律 compact，標題由 Text 自行省略。
+        titleSpacing: 0,
         actions: [
-          // 窄螢幕（360dp）空間有限：按鈕一律 compact，標題由 Text 自行省略。
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            tooltip: '常去地點',
+            onPressed: _openPlaces,
+            icon: const Icon(Icons.bookmark_border_rounded),
+          ),
           IconButton(
             visualDensity: VisualDensity.compact,
             tooltip: '前一天',
@@ -258,7 +326,7 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
           TextButton.icon(
             style: TextButton.styleFrom(
               visualDensity: VisualDensity.compact,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 4),
             ),
             onPressed: _pickDate,
             icon: const Icon(Icons.calendar_today_rounded, size: 18),
@@ -404,19 +472,24 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
 
   /// 停留群集標記：琥珀色膠囊（時鐘 + 總停留時間 + 多次停留的 ×N）。
   Marker _buildClusterMarker(StayCluster cluster) {
-    final label = _formatDurationShort(cluster.totalDuration) +
+    final durationLabel = _formatDurationShort(cluster.totalDuration) +
         (cluster.count > 1 ? ' ×${cluster.count}' : '');
-    // 依字數估算寬度，避免文字被截斷（中文字較寬，每字以 8 估算再加圖示與內距）。
-    final width = (30 + 8 * label.length).clamp(56, 140).toDouble();
+    // 已命名的地點：膠囊前面加上名稱（最多 4 字），例如「公園 35 分」。
+    final placeName = _placeNameAt(cluster.center);
+    final prefix = placeName == null ? '' : _truncateName(placeName, 4);
+    final label = prefix.isEmpty ? durationLabel : '$prefix $durationLabel';
+    // 依字數估算寬度，避免文字被截斷（時間部分每字以 8 估算；名稱是中文字較寬，
+    // 每字以 13 估算；再加圖示與內距）。
+    final nameWidth = prefix.isEmpty ? 0 : 13 * prefix.runes.length + 4;
+    final width =
+        (30 + 8 * durationLabel.length + nameWidth).clamp(56, 180).toDouble();
     return Marker(
       point: cluster.center,
       width: width,
       height: 28,
       alignment: Alignment.center,
       child: GestureDetector(
-        onTap: () => cluster.count == 1
-            ? _showStay(cluster.stays.first)
-            : _showClusterStays(cluster),
+        onTap: () => _showClusterSheet(cluster),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 6),
           decoration: BoxDecoration(
@@ -449,8 +522,30 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
     );
   }
 
-  /// 同一地點多次停留：列出每一次的時段與時間長度。
-  void _showClusterStays(StayCluster cluster) {
+  /// 取前 [max] 個字（以 Unicode 字元計，不會切壞 emoji）。
+  String _truncateName(String name, int max) {
+    final runes = name.runes.toList();
+    return runes.length <= max ? name : String.fromCharCodes(runes.take(max));
+  }
+
+  /// 停留點底部面板：停留資訊 + 命名／設為家／編輯地點。
+  ///
+  /// 單次停留與多次停留共用（取代原本單次停留的 SnackBar）；每一次停留都列出時段。
+  void _showClusterSheet(StayCluster cluster) {
+    final place = matchPlace(cluster.center, _places);
+    final String title;
+    if (cluster.count == 1) {
+      title = place != null ? '在${place.name}' : '停留地點';
+    } else {
+      final where = place != null ? '在${place.name}' : '此處';
+      title = '$where停留 ${cluster.count} 次，共 ${_formatDuration(cluster.totalDuration)}';
+    }
+    final Color iconColor = place == null
+        ? const Color(0xFFF59E0B)
+        : (place.isHome ? const Color(0xFF22C55E) : const Color(0xFF6366F1));
+    final IconData icon = place == null
+        ? Icons.access_time_rounded
+        : (place.isHome ? Icons.home_rounded : Icons.place_rounded);
     showModalBottomSheet<void>(
       context: context,
       builder: (ctx) => SafeArea(
@@ -462,12 +557,11 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
             children: [
               Row(
                 children: [
-                  const Icon(Icons.access_time_rounded,
-                      size: 20, color: Color(0xFFF59E0B)),
+                  Icon(icon, size: 20, color: iconColor),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      '此處停留 ${cluster.count} 次，共 ${_formatDuration(cluster.totalDuration)}',
+                      title,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.notoSansTc(
@@ -500,6 +594,59 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
                   ],
                 ),
               ),
+              const SizedBox(height: 8),
+              if (place != null)
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.tonalIcon(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _editPlace(place);
+                    },
+                    icon: const Icon(Icons.edit_rounded, size: 18),
+                    label: Text(
+                      '編輯「${place.name}」',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.notoSansTc(),
+                    ),
+                  ),
+                )
+              else ...[
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.tonalIcon(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _createPlaceAt(cluster.center);
+                    },
+                    icon: const Icon(Icons.place_rounded, size: 18),
+                    label: Text(
+                      '命名這個地點',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.notoSansTc(),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _createPlaceAt(cluster.center, presetHome: true);
+                    },
+                    icon: const Icon(Icons.home_rounded, size: 18),
+                    label: Text(
+                      '設為家',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.notoSansTc(),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -507,16 +654,48 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
     );
   }
 
-  void _showStay(StayPoint stay) {
-    final messenger = ScaffoldMessenger.of(context);
-    messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(
-          '${_hhmm(stay.start)}–${_hhmm(stay.end)} 停留 ${_formatDuration(stay.duration)}',
-          style: GoogleFonts.notoSansTc(),
+  /// 常去地點名稱標籤：白底圓角膠囊（圖示 + 名稱），錨在地點圓心正上方。
+  Marker _buildPlaceLabelMarker(ElderPlace place) {
+    final color = place.isHome ? const Color(0xFF22C55E) : const Color(0xFF6366F1);
+    // 依字數估算寬度（中文字每字以 12 估算，加上圖示與內距），限制在 60～160。
+    final width = (30 + 12 * place.name.runes.length).clamp(60, 160).toDouble();
+    return Marker(
+      point: place.position,
+      width: width,
+      height: 24,
+      alignment: Alignment.topCenter,
+      child: GestureDetector(
+        onTap: () => _editPlace(place),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: color.withValues(alpha: 0.5)),
+            boxShadow: [
+              BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 3),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                place.isHome ? Icons.home_rounded : Icons.place_rounded,
+                size: 14,
+                color: color,
+              ),
+              const SizedBox(width: 3),
+              Flexible(
+                child: Text(
+                  place.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.notoSansTc(fontSize: 12),
+                ),
+              ),
+            ],
+          ),
         ),
-        duration: const Duration(seconds: 3),
       ),
     );
   }
@@ -549,13 +728,31 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
             initialZoom: 16,
             // 有 2 個以上不同的點時框住整段軌跡
             initialCameraFit: canFit ? _trailFit(boundsPts) : null,
+            // 長按地圖任一點：在該處新增常去地點
+            onLongPress: (tapPos, latLng) => _createPlaceAt(latLng),
           ),
           children: [
             TileLayer(
               urlTemplate: MapTiles.urlTemplate,
               userAgentPackageName: MapTiles.userAgentPackageName,
             ),
-            // 斷訊缺口畫在最底層：淡色虛線，不代表真的走過這條直線
+            // 常去地點範圍（以公尺為單位的圓）：畫在軌跡之下；家用綠色、其他用靛色
+            if (_places.isNotEmpty)
+              CircleLayer(
+                circles: [
+                  for (final p in _places)
+                    CircleMarker(
+                      point: p.position,
+                      radius: p.radiusM.toDouble(),
+                      useRadiusInMeter: true,
+                      color: p.isHome ? const Color(0x2622C55E) : const Color(0x1A6366F1),
+                      borderColor:
+                          p.isHome ? const Color(0xFF22C55E) : const Color(0xFF6366F1),
+                      borderStrokeWidth: 1.5,
+                    ),
+                ],
+              ),
+            // 斷訊缺口畫在軌跡底層：淡色虛線，不代表真的走過這條直線
             if (_trail.gaps.isNotEmpty)
               PolylineLayer(
                 polylines: [
@@ -607,6 +804,11 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
                 ],
               ),
             ],
+            // 地點名稱標籤：在軌跡之上、停留膠囊之下
+            if (_places.isNotEmpty)
+              MarkerLayer(
+                markers: [for (final p in _places) _buildPlaceLabelMarker(p)],
+              ),
             MarkerLayer(
               markers: [
                 if (startPoint != null)
@@ -747,7 +949,9 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
     final ongoing = _ongoingStay;
     if (ongoing != null) {
       // 長輩目前仍待在最後一次停留的範圍內：改顯示已停留多久。
-      text = '目前已在此停留 ${_formatDuration(DateTime.now().difference(ongoing.start))}';
+      final placeName = _placeNameAt(ongoing.center);
+      final dur = _formatDuration(DateTime.now().difference(ongoing.start));
+      text = placeName != null ? '目前在$placeName・已停留 $dur' : '目前已在此停留 $dur';
     } else if (recordedAt != null) {
       final diff = DateTime.now().difference(recordedAt);
       if (diff.inMinutes < 1) {
@@ -888,9 +1092,12 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
         // 不到 1 分鐘的移動不補時間，避免出現「（0 分鐘）」。
         return e.duration.inMinutes < 1 ? dist : '$dist（${_formatDuration(e.duration)}）';
       case TrailEventType.stay:
+        final stay = e.stay;
+        final placeName = stay != null ? _placeNameAt(stay.center) : null;
+        final where = placeName != null ? '在$placeName・' : '';
         return ongoing
-            ? '停留中・已 ${_formatDuration(DateTime.now().difference(e.start))}'
-            : '停留 ${_formatDuration(e.duration)}';
+            ? '$where停留中・已 ${_formatDuration(DateTime.now().difference(e.start))}'
+            : '$where停留 ${_formatDuration(e.duration)}';
       case TrailEventType.gap:
         return '訊號中斷 ${_formatDuration(e.duration)}';
     }

@@ -442,6 +442,18 @@ void initPedometer() {
 > 但只寫進 `CLAUDE_call-monitor.md` 沒進本日誌的通話／監控工作）。
 > 內容依 commit diff 與該文件重建，細節可能不如當事人寫得完整。
 
+### 2026-09-30 📍 移動軌跡延伸（第一階段）：地點、今日外出摘要、帶我回家
+
+- **常去地點（前端資料層）**：新增 `mobile_app/lib/models/elder_place.dart`（不可變 `ElderPlace`：`id／name／latitude／longitude／radiusM／isHome`，含 `position`、`fromJson`、`toJson`）；`LocationApi` 新增 `getPlaces`、`createPlace`、`updatePlace`、`deletePlace`（對應後端 `/location/places/{elderId}`，建立／修改／刪除僅家屬），失敗回傳 `null`／`false`。
+- **今日外出摘要**：`LocationApi.getSummary`（`GET /location/summary/{elderId}`，帶 `tz_offset` 與本地日期，與 `getTrail` 共用日期格式化）回傳外出次數、移動距離、目前是否在家、最後更新時間；分享關閉時只回 `{sharing_enabled:false}`。
+- **地點比對**：`location_trail_processor.dart` 新增 `matchPlace(point, places)`——回傳「半徑內且圓心最近」的地點（範圍重疊時不偏袒家），並補上單元測試（半徑內外、重疊取最近、空清單）。
+- **家屬首頁「GPS 移動軌跡」卡片**：改用今日摘要，顯示「今天外出 N 次・X.X 公里」（未滿 1 公里顯示公尺）與「目前在家／目前外出中・最後更新 N 分鐘前」；尚未設定家時改提示「到地圖設定家的位置，就能看到外出次數」。保留未開啟分享、無法讀取的狀態與點擊進地圖的行為；第二行允許換行並加省略號，避免 RenderFlex 溢位。
+- **長輩首頁「帶我回家」**：新增 `lib/services/elder_home_place_service.dart`——啟動時先讀 SharedPreferences 快取（`elder_home_place_v1`）立即顯示，再向後端同步並更新／清除快取；長輩首頁（`elder_home_tab.dart`）在已設定家時最上方顯示大按鈕，點擊以 Google 地圖步行導航回家，開不了時提示「無法開啟地圖，請確認已安裝 Google 地圖」。
+- **地圖上的常去地點**：`elder_location_map_screen.dart` 在載入軌跡時一併載入地點（不受位置分享開關限制，載入失敗保留舊清單），以 `CircleLayer`（`useRadiusInMeter`）畫出每個地點的範圍圓——家為綠色、其他為靛色，畫在軌跡之下；圓心上方有白底圓角名稱標籤（家／一般地點圖示 + 名稱，點標籤可編輯），位於軌跡之上、停留膠囊之下。
+- **時間軸與資訊列顯示地點名稱**：停留點落在某個地點範圍內（`matchPlace`）時，行程時間軸改顯示「在公園・停留 35 分鐘」「在家・停留中・已 2 小時 15 分鐘」，底部資訊列改顯示「目前在家・已停留 2 小時 15 分鐘」，停留膠囊前面加上名稱（最多 4 字，例如「公園 35 分」）。
+- **從停留點或長按建立地點**：點停留膠囊（單次、多次皆同）改開底部面板（取代原本單次停留的 SnackBar），列出停留時段；尚未命名時提供「命名這個地點」「設為家」，已命名時提供「編輯「名稱」」。長按地圖任一點也會開啟同一個新增對話框。共用對話框 `showPlaceEditorDialog`（`elder_places_screen.dart`）：名稱（必填、最多 32 字）、半徑（100／150／300／500 公尺，預設 150）、「設為家」開關（以「設為家」進入時名稱預填「家」）；儲存失敗顯示「儲存失敗，請稍後再試」。
+- **常去地點管理畫面**：新增 `mobile_app/lib/screens/family/elder_places_screen.dart`（`ElderPlacesScreen`），地圖 AppBar 新增書籤圖示（`常去地點`）進入；列表家排最前，每列顯示名稱與「半徑 N 公尺」，右側選單提供編輯／設為家（已是家則隱藏）／刪除（確認對話框）；無地點時顯示說明文字。返回時帶回是否有變更，地圖據此重新載入地點。
+
 ### 2026-09-30 🗺️ 移動軌跡第二輪優化
 
 - **軌跡增量查詢**：後端 `GET /api/location/trail/{elder_id}` 新增選用參數 `since_id`（`elder_location_ping.id`）並回傳 `cursor`；前端 `LocationApi.getTrail` 新增 `sinceId` 參數。游標刻意用資料列 id 而非時間——避開時區換算問題，也能撈到長輩端離線佇列補傳、`recorded_at` 很舊的點。詳見 uban-api `readme.md`。
