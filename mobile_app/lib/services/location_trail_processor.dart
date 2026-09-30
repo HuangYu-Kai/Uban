@@ -63,12 +63,67 @@ class StayPoint {
   Duration get duration => end.difference(start);
 }
 
+/// 時間軸事件類型：出發、移動、停留、斷訊。
+enum TrailEventType { depart, move, stay, gap }
+
+/// 時間軸上的一個事件（依時間先後排列，供地圖畫面組成「今日行程」）。
+class TrailEvent {
+  final TrailEventType type;
+  final DateTime start;
+  final DateTime end;
+
+  /// move：該段路線座標（含前一個錨點，未簡化）；stay／depart：[中心／位置]；
+  /// gap：[斷訊前最後位置, 斷訊後第一個位置]。
+  final List<LatLng> points;
+
+  /// 僅 move 有值（沿 [points] 逐點累加的公尺數），其餘為 0。
+  final double distanceMeters;
+
+  /// 僅 stay 有值。
+  final StayPoint? stay;
+
+  const TrailEvent({
+    required this.type,
+    required this.start,
+    required this.end,
+    required this.points,
+    this.distanceMeters = 0,
+    this.stay,
+  });
+
+  Duration get duration => end.difference(start);
+}
+
+/// 同一個地方（例如住家、公園）的多次停留彙整。
+class StayCluster {
+  /// 成員停留中心的平均位置。
+  final LatLng center;
+  final List<StayPoint> stays;
+
+  const StayCluster({required this.center, required this.stays});
+
+  /// 所有停留時間加總。
+  Duration get totalDuration =>
+      stays.fold(Duration.zero, (sum, s) => sum + s.duration);
+
+  /// 停留次數。
+  int get count => stays.length;
+}
+
 /// 處理完成的當日軌跡。
 class ProcessedTrail {
   final List<TrailSegment> segments;
   final List<TrailGap> gaps;
   final List<StayPoint> stays;
+
+  /// 依時間排序的事件：depart → (move / stay / gap)…。
+  final List<TrailEvent> events;
+
+  /// 相近位置的停留彙整（依首次出現順序）。
+  final List<StayCluster> stayClusters;
   final TrailPoint? start;
+
+  /// 各段 move 距離總和（簡化前、不含斷訊缺口）。
   final double totalDistanceMeters;
   final DateTime? firstTime;
   final DateTime? lastTime;
@@ -77,6 +132,8 @@ class ProcessedTrail {
     this.segments = const [],
     this.gaps = const [],
     this.stays = const [],
+    this.events = const [],
+    this.stayClusters = const [],
     this.start,
     this.totalDistanceMeters = 0,
     this.firstTime,
@@ -127,6 +184,10 @@ class LocationTrailProcessor {
   /// 斷訊判定的最短距離（公尺）：長時間沒回報但位置沒變，是「停留」而非斷訊
   /// （長輩裝置只在移動時回報）。
   static const double gapMinDistanceM = 200;
+
+  /// 停留聚合半徑（公尺）：停留中心與既有群集中心相距在此範圍內視為同一個地方
+  /// （比 [stayRadiusM] 寬，容許同一地點多次停留的 GPS 中心有偏移）。
+  static const double stayClusterRadiusM = 100;
 
   /// Douglas-Peucker 簡化容差（公尺）。
   static const double simplifyToleranceM = 8;
@@ -243,7 +304,7 @@ class LocationTrailProcessor {
       if (s != null) {
         if (emittedStay.add(s)) {
           final st = stays[s];
-          route.add(_RoutePoint(st.center, st.start, st.end));
+          route.add(_RoutePoint(st.center, st.start, st.end, stay: st));
         }
         continue;
       }
@@ -252,37 +313,134 @@ class LocationTrailProcessor {
       route.add(_RoutePoint(pts[k].position, pts[k].time, pts[k].time));
     }
 
-    // 6. 斷訊分段
+    // 6. 斷訊分段，同時產生時間軸事件
     final rawSegments = <List<_RoutePoint>>[];
     final gaps = <TrailGap>[];
-    for (final rp in route) {
-      if (rawSegments.isEmpty) {
-        rawSegments.add([rp]);
-        continue;
+    final events = <TrailEvent>[
+      TrailEvent(
+        type: TrailEventType.depart,
+        start: pts.first.time,
+        end: pts.first.time,
+        points: [pts.first.position],
+      ),
+    ];
+    double total = 0;
+    // 正在累積的 move：第一個點是錨點（前一個停留中心或同段前一點）。
+    var moveAcc = <LatLng>[];
+    var moveStart = pts.first.time;
+    var moveEnd = pts.first.time;
+    void flushMove() {
+      if (moveAcc.length >= 2) {
+        double d = 0;
+        for (int k = 1; k < moveAcc.length; k++) {
+          d += _d(moveAcc[k - 1], moveAcc[k]);
+        }
+        if (d > 0) {
+          total += d;
+          events.add(TrailEvent(
+            type: TrailEventType.move,
+            start: moveStart,
+            end: moveEnd,
+            points: moveAcc,
+            distanceMeters: d,
+          ));
+        }
       }
-      final prev = rawSegments.last.last;
-      final dt = rp.time.difference(prev.endTime);
-      if (dt > gapMinDuration && _d(prev.pos, rp.pos) > gapMinDistanceM) {
-        gaps.add(TrailGap(
-          from: prev.pos,
-          to: rp.pos,
-          fromTime: prev.endTime,
-          toTime: rp.time,
-        ));
-        rawSegments.add([rp]);
-      } else {
-        rawSegments.last.add(rp);
-      }
+      moveAcc = <LatLng>[];
     }
 
-    // 7–8. 距離（簡化前）與簡化
-    double total = 0;
+    for (final rp in route) {
+      bool isGap = false;
+      if (rawSegments.isEmpty) {
+        rawSegments.add([rp]);
+      } else {
+        final prev = rawSegments.last.last;
+        final dt = rp.time.difference(prev.endTime);
+        if (dt > gapMinDuration && _d(prev.pos, rp.pos) > gapMinDistanceM) {
+          isGap = true;
+          gaps.add(TrailGap(
+            from: prev.pos,
+            to: rp.pos,
+            fromTime: prev.endTime,
+            toTime: rp.time,
+          ));
+          rawSegments.add([rp]);
+        } else {
+          rawSegments.last.add(rp);
+        }
+      }
+
+      if (isGap) {
+        final g = gaps.last;
+        flushMove();
+        events.add(TrailEvent(
+          type: TrailEventType.gap,
+          start: g.fromTime,
+          end: g.toTime,
+          points: [g.from, g.to],
+        ));
+      } else if (moveAcc.isNotEmpty) {
+        moveAcc.add(rp.pos);
+        moveEnd = rp.time;
+      }
+
+      final st = rp.stay;
+      if (st != null) {
+        // 走到停留中心為止算一段 move，接著是 stay，並以停留中心當下一段的錨點。
+        flushMove();
+        events.add(TrailEvent(
+          type: TrailEventType.stay,
+          start: st.start,
+          end: st.end,
+          points: [st.center],
+          stay: st,
+        ));
+        moveAcc = [st.center];
+        moveStart = st.end;
+        moveEnd = st.end;
+      } else if (moveAcc.isEmpty) {
+        // 新分段（或第一個點）的起點。
+        moveAcc = [rp.pos];
+        moveStart = rp.time;
+        moveEnd = rp.time;
+      }
+    }
+    flushMove();
+
+    // 停留聚合：依時間順序貪婪歸群，群集中心為成員中心平均。
+    final clusterStays = <List<StayPoint>>[];
+    final clusterCenters = <LatLng>[];
+    for (final st in stays) {
+      int found = -1;
+      for (int c = 0; c < clusterCenters.length; c++) {
+        if (_d(clusterCenters[c], st.center) <= stayClusterRadiusM) {
+          found = c;
+          break;
+        }
+      }
+      if (found < 0) {
+        clusterStays.add([st]);
+        clusterCenters.add(st.center);
+      } else {
+        clusterStays[found].add(st);
+        double lat = 0, lng = 0;
+        for (final m in clusterStays[found]) {
+          lat += m.center.latitude;
+          lng += m.center.longitude;
+        }
+        final cnt = clusterStays[found].length;
+        clusterCenters[found] = LatLng(lat / cnt, lng / cnt);
+      }
+    }
+    final stayClusters = [
+      for (int c = 0; c < clusterStays.length; c++)
+        StayCluster(center: clusterCenters[c], stays: clusterStays[c]),
+    ];
+
+    // 7–8. 簡化（距離已於上方由各段 move 累加，簡化前、不含缺口）
     final segments = <TrailSegment>[];
     for (final seg in rawSegments) {
       final latlngs = seg.map((e) => e.pos).toList();
-      for (int k = 1; k < latlngs.length; k++) {
-        total += _d(latlngs[k - 1], latlngs[k]);
-      }
       segments.add(TrailSegment(
         points: _simplify(latlngs),
         start: seg.first.time,
@@ -294,6 +452,8 @@ class LocationTrailProcessor {
       segments: segments,
       gaps: gaps,
       stays: stays,
+      events: events,
+      stayClusters: stayClusters,
       start: pts.first,
       totalDistanceMeters: total,
       firstTime: pts.first.time,
@@ -360,5 +520,8 @@ class _RoutePoint {
   final DateTime time;
   final DateTime endTime;
 
-  const _RoutePoint(this.pos, this.time, this.endTime);
+  /// 非 null 代表這個點是停留中心。
+  final StayPoint? stay;
+
+  const _RoutePoint(this.pos, this.time, this.endTime, {this.stay});
 }

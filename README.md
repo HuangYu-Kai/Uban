@@ -442,6 +442,19 @@ void initPedometer() {
 > 但只寫進 `CLAUDE_call-monitor.md` 沒進本日誌的通話／監控工作）。
 > 內容依 commit diff 與該文件重建，細節可能不如當事人寫得完整。
 
+### 2026-09-30 🗺️ 移動軌跡第二輪優化
+
+- **軌跡增量查詢**：後端 `GET /api/location/trail/{elder_id}` 新增選用參數 `since_id`（`elder_location_ping.id`）並回傳 `cursor`；前端 `LocationApi.getTrail` 新增 `sinceId` 參數。游標刻意用資料列 id 而非時間——避開時區換算問題，也能撈到長輩端離線佇列補傳、`recorded_at` 很舊的點。詳見 uban-api `readme.md`。
+- **API 日誌截斷**：`ApiClient` 的 debug 日誌只印回應 body 前 300 字，超過附註 `…（共 N 字）`，避免軌跡等大型回應洗版 console（僅影響日誌）。
+- **地圖底圖設定與版權標示**：新增 `mobile_app/lib/config/map_tiles.dart`，圖磚網址改由 `--dart-define=MAP_TILE_URL=` 注入（未設定時退回 OSM 公用圖磚，僅限開發；`run.sh` 會在環境變數 `MAP_TILE_URL` 有設定時自動帶入）；集中管理 `userAgentPackageName`（`tw.uban.family`）與版權標示來源（OpenStreetMap contributors，使用 MapTiler 時另加 MapTiler）。
+- **隱私權政策**：第 9 節「怎麼保護」補充說明地圖底圖由第三方圖磚服務提供、該服務僅收到畫面範圍的圖磚請求，不會收到長輩身分或軌跡資料（同意版本 `_v3` 尚未發布，故未再升版）。
+- **停留群集膠囊**：`elder_location_map_screen.dart` 的停留標記改為「每個地點一顆」琥珀色膠囊（時鐘圖示 + 該處總停留時間，例如 `35 分`、`1 時 20 分`，多次停留加 `×N`）；單次停留點擊顯示 SnackBar，多次停留點擊開啟清單「此處停留 N 次，共 X」。群集由 `LocationTrailProcessor` 依 100m 半徑彙整。
+- **目前停留狀態**：查看今天且長輩目前位置仍在最後一次停留半徑（50m）內時，底部資訊列第一行改為「目前已在此停留 2 小時 15 分鐘」；單次停留的膠囊在此情況下不重複繪製（紅色定位針即在該處）。
+- **行程時間軸**：底部資訊列可點擊（右側 `expand_less` 提示），開啟可拖曳的「今日行程／M/D 行程」底部面板，依時間列出 出發／移動／停留／訊號中斷；點選任一列會收起面板並聚焦地圖（移動與斷訊框住整段路線，出發與停留拉近到該點），進行中的停留標示為「停留中・已 N 分鐘」。
+- **前後一天按鈕**：AppBar 新增「前一天／後一天」箭頭（日期按鈕改顯示 `M/D`，仍可開啟選擇器）；前一天於 90 天上限停用、後一天於今天停用。
+- **靜默輪詢改用 `since_id` 游標**：每 45 秒只向後端取 `id > cursor` 的新點並併入既有原始點再重算，不再整日重抓；切換日期、下拉重新整理或尚無游標時做完整查詢並重設游標。
+- **底圖設定接線與版權標示**：地圖 `TileLayer` 改用 `MapTiles.urlTemplate` 與 `userAgentPackageName`（`tw.uban.family`），啟動時於 debug console 提醒是否退回 OSM 公用圖磚；左下角新增 `RichAttributionWidget` 顯示圖磚版權（可點擊開啟授權頁），位置避開底部資訊列與右側按鈕。
+
 ### 2026-09-30 🗺️ 家屬端移動軌跡呈現改善（第一階段）
 
 - 新增 `mobile_app/lib/services/location_trail_processor.dart`（純 Dart、可單元測試）：在**讀取端**清理 `/trail` 原始點——速度離群點（> 40 m/s）與尖刺剔除、精確度 > 35m 的點不畫線、半徑 50m 內停留 ≥ 5 分鐘合併為停留點、Douglas-Peucker（8m）簡化。後端仍照存原始資料。

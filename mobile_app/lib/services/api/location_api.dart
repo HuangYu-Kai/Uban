@@ -57,11 +57,17 @@ class LocationApi {
   }
 
   /// 家屬（或長輩本人）讀取指定日期（省略則今天）的完整移動軌跡。
-  /// 回傳 `{sharing_enabled, date, points: [...]}`，查無權限時回傳 `null`。
+  /// 回傳 `{sharing_enabled, date, points: [...], cursor}`，查無權限時回傳 `null`。
+  ///
+  /// 增量查詢：帶 [sinceId]（上一次回應的 `cursor`）時，後端只回傳 `id > sinceId`
+  /// 的新點；`cursor` 為本次回傳列的最大 id，沒有新點則原樣回傳 [sinceId]（未帶為 0）。
+  /// 游標刻意用資料列 id 而非時間——避開時區問題，也能撈到離線佇列補傳、
+  /// `recorded_at` 很舊的點。
   static Future<Map<String, dynamic>?> getTrail({
     required String elderId,
     required int userId,
     DateTime? date,
+    int? sinceId,
   }) async {
     final dateStr = date != null
         ? '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}'
@@ -69,7 +75,8 @@ class LocationApi {
     // 「某一天」是裝置本地的一天，帶上時區偏移讓後端換算成 UTC 區間。
     final tzOffset = (date ?? DateTime.now()).timeZoneOffset.inMinutes;
     final path = '/location/trail/$elderId?user_id=$userId&tz_offset=$tzOffset'
-        '${dateStr != null ? '&date=$dateStr' : ''}';
+        '${dateStr != null ? '&date=$dateStr' : ''}'
+        '${sinceId != null ? '&since_id=$sinceId' : ''}';
     final result = await ApiClient.get(path);
     if (result != null && result['status'] == 'success') {
       return result['data'] as Map<String, dynamic>;

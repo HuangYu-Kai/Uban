@@ -104,4 +104,92 @@ void main() {
     expect(one.allPoints.length, 1);
     expect(one.totalDistanceMeters, 0);
   });
+
+  group('時間軸事件與停留群集', () {
+    // 在 (north, east) 附近停留，每分鐘一點、數公尺抖動。
+    List<TrailPoint> stayAt(double north, double east, int fromMin, int toMin) {
+      return [
+        for (int m = fromMin; m <= toMin; m++)
+          _pt(north + (m.isEven ? 3 : -3), east + (m % 3 - 1) * 3.0, Duration(minutes: m)),
+      ];
+    }
+
+    List<TrailPoint> scenario() => [
+          // 走 5 分鐘
+          for (int k = 0; k < 5; k++) _pt(0, k * 90.0, Duration(minutes: k)),
+          // 停留 7 分鐘
+          ...stayAt(0, 450, 5, 12),
+          // 再走
+          for (int k = 0; k < 5; k++) _pt(0, 540 + k * 90.0, Duration(minutes: 13 + k)),
+          // 靜默 2 小時後出現在 3 公里外，再走
+          for (int k = 0; k < 4; k++)
+            _pt(3000, 3000 + k * 90.0, Duration(hours: 2, minutes: 20 + k)),
+        ];
+
+    test('事件順序：depart, move, stay, move, gap, move', () {
+      final t = LocationTrailProcessor.process(scenario());
+      expect(t.events.map((e) => e.type).toList(), [
+        TrailEventType.depart,
+        TrailEventType.move,
+        TrailEventType.stay,
+        TrailEventType.move,
+        TrailEventType.gap,
+        TrailEventType.move,
+      ]);
+      expect(t.events[2].stay, same(t.stays.first));
+      expect(t.events[1].points.length, greaterThanOrEqualTo(2));
+      expect(t.events[3].points.length, greaterThanOrEqualTo(2));
+      expect(t.events[4].points.length, 2);
+    });
+
+    test('所有 move 距離加總 = totalDistanceMeters', () {
+      final t = LocationTrailProcessor.process(scenario());
+      final sum = t.events
+          .where((e) => e.type == TrailEventType.move)
+          .fold<double>(0, (a, e) => a + e.distanceMeters);
+      expect(sum, greaterThan(0));
+      expect(sum, closeTo(t.totalDistanceMeters, 1));
+    });
+
+    test('同地三次停留（相距不超過 80 公尺）-> 1 個群集', () {
+      final raw = <TrailPoint>[
+        ...stayAt(0, 0, 0, 6),
+        _pt(0, 100, const Duration(minutes: 7)),
+        _pt(0, 200, const Duration(minutes: 8)),
+        _pt(0, 300, const Duration(minutes: 9)),
+        _pt(0, 200, const Duration(minutes: 10)),
+        _pt(0, 130, const Duration(minutes: 11)),
+        ...stayAt(0, 60, 12, 18),
+        _pt(40, 160, const Duration(minutes: 19)),
+        _pt(40, 260, const Duration(minutes: 20)),
+        _pt(40, 200, const Duration(minutes: 21)),
+        _pt(40, 130, const Duration(minutes: 22)),
+        ...stayAt(40, 0, 23, 29),
+      ];
+      final t = LocationTrailProcessor.process(raw);
+      expect(t.stays.length, 3);
+      expect(t.stayClusters.length, 1);
+      final c = t.stayClusters.first;
+      expect(c.count, 3);
+      final sum = t.stays.fold<Duration>(Duration.zero, (a, s) => a + s.duration);
+      expect(c.totalDuration, sum);
+    });
+
+    test('兩個停留相距 1 公里 -> 2 個群集', () {
+      final raw = <TrailPoint>[
+        ...stayAt(0, 0, 0, 6),
+        for (int k = 1; k <= 9; k++) _pt(0, k * 100.0, Duration(minutes: 6 + k)),
+        ...stayAt(0, 1000, 16, 22),
+      ];
+      final t = LocationTrailProcessor.process(raw);
+      expect(t.stays.length, 2);
+      expect(t.stayClusters.length, 2);
+    });
+
+    test('空輸入：events 與 stayClusters 皆為空', () {
+      final t = LocationTrailProcessor.process([]);
+      expect(t.events, isEmpty);
+      expect(t.stayClusters, isEmpty);
+    });
+  });
 }

@@ -61,6 +61,14 @@ class ApiClient {
     return '$baseUrl$cleanPath';
   }
 
+  /// 僅供 debug 日誌：回應 body 最多印前 300 字，超過則附註總長度，
+  /// 避免軌跡等大型回應把 console 洗版。不影響實際回傳內容。
+  static String _bodyPreview(String body) {
+    const maxChars = 300;
+    if (body.length <= maxChars) return body;
+    return '${body.substring(0, maxChars)}…（共 ${body.length} 字）';
+  }
+
   static Map<String, dynamic> safeDecode(http.Response response) {
     try {
       return jsonDecode(response.body);
@@ -74,7 +82,7 @@ class ApiClient {
       final url = fullUrl(path);
       debugPrint('📡 [ApiService.get] -> $url');
       final response = await http.get(Uri.parse(url)).timeout(timeout);
-      debugPrint('📡 [ApiService.get] <- status: ${response.statusCode}, body: ${response.body}');
+      debugPrint('📡 [ApiService.get] <- status: ${response.statusCode}, body: ${_bodyPreview(response.body)}');
       if (response.statusCode == 200) {
         final decoded = safeDecode(response);
         if (decoded['status'] == 'success') {
@@ -99,7 +107,7 @@ class ApiClient {
             body: jsonEncode(body),
           )
           .timeout(timeout);
-      debugPrint('📡 [ApiService.post] <- status: ${response.statusCode}, body: ${response.body}');
+      debugPrint('📡 [ApiService.post] <- status: ${response.statusCode}, body: ${_bodyPreview(response.body)}');
       if (response.statusCode == 200 || response.statusCode == 201) {
         final decoded = safeDecode(response);
         if (decoded['status'] == 'success') {
@@ -124,7 +132,7 @@ class ApiClient {
             body: jsonEncode(body),
           )
           .timeout(timeout);
-      debugPrint('📡 [ApiService.put] <- status: ${response.statusCode}, body: ${response.body}');
+      debugPrint('📡 [ApiService.put] <- status: ${response.statusCode}, body: ${_bodyPreview(response.body)}');
       if (response.statusCode == 200 || response.statusCode == 201) {
         final decoded = safeDecode(response);
         if (decoded['status'] == 'success') {
@@ -149,7 +157,7 @@ class ApiClient {
       final url = fullUrl(path);
       debugPrint('📡 [ApiService.delete] -> $url');
       final response = await http.delete(Uri.parse(url)).timeout(timeout);
-      debugPrint('📡 [ApiService.delete] <- status: ${response.statusCode}, body: ${response.body}');
+      debugPrint('📡 [ApiService.delete] <- status: ${response.statusCode}, body: ${_bodyPreview(response.body)}');
       if (response.statusCode == 200 || response.statusCode == 201) {
         final decoded = safeDecode(response);
         if (decoded['status'] == 'success') {

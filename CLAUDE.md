@@ -48,7 +48,9 @@ cd Uban/mobile_app
 flutter run --dart-define=SERVER_IP=localhost-0.tail5abf5e.ts.net \
   --dart-define=TURN_SERVER=152.69.196.5:3478 \
   --dart-define=TURN_USER=uban \
-  --dart-define=TURN_PASS=115207
+  --dart-define=TURN_PASS=115207 \
+  --dart-define=MAP_TILE_URL='https://api.maptiler.com/maps/streets-v2-light/{z}/{x}/{y}.png?key=<YOUR_KEY>'
+# MAP_TILE_URL 為家屬端地圖底圖圖磚網址；省略時退回 OSM 公用圖磚（僅限開發，正式版務必帶上）。
 
 # Static analysis（改通話相關檔案後必跑，須 0 error）
 flutter analyze lib

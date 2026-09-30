@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../../config/map_tiles.dart';
 import '../../services/api/location_api.dart';
 import '../../services/location_trail_processor.dart';
 
@@ -44,6 +46,12 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
   // 除錯用：未經處理的原始點（依時間排序），僅供 debug 版疊圖比對
   List<TrailPoint> _rawPoints = const [];
   bool _showRaw = false;
+  // 增量查詢游標（後端回傳的 `cursor`＝目前已取得的最大資料列 id）；
+  // null 代表尚未取得，下一次載入（含靜默輪詢）一律做完整查詢。
+  int? _cursor;
+  // 每次 _load 遞增；await 回來後若序號已被更新的載入取代就丟棄結果，
+  // 避免切換日期時舊請求的資料覆蓋新日期。
+  int _loadSeq = 0;
   Timer? _pollTimer;
   final MapController _mapController = MapController();
 
@@ -64,6 +72,7 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
   @override
   void initState() {
     super.initState();
+    MapTiles.warnIfFallback();
     _load();
   }
 
@@ -81,7 +90,13 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
   }
 
   Future<void> _load({bool silent = false}) async {
+    final seq = ++_loadSeq;
     if (!silent && mounted) setState(() => _state = _LoadState.loading);
+
+    // 靜默輪詢且已有游標 → 只撈新點（id > cursor）再併入既有原始點；
+    // 非靜默（首次／換日期／下拉重新整理）或尚無游標 → 完整查詢。
+    final int? sinceId = silent ? _cursor : null;
+    final bool incremental = sinceId != null;
 
     final currentResult = await LocationApi.getCurrentLocation(
       elderId: widget.elderId,
@@ -91,11 +106,17 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
       elderId: widget.elderId,
       userId: widget.userId,
       date: _selectedDate,
+      sinceId: sinceId,
     );
 
-    if (!mounted) return;
+    if (!mounted || seq != _loadSeq) return;
 
     if (currentResult == null || trailResult == null) {
+      if (silent) {
+        // 靜默輪詢暫時失敗不清掉畫面，下次輪詢再試
+        _schedulePolling();
+        return;
+      }
       setState(() => _state = _LoadState.unavailable);
       return;
     }
@@ -107,20 +128,28 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
         _currentPoint = null;
         _trail = const ProcessedTrail();
         _rawPoints = const [];
+        _cursor = null;
       });
       return;
     }
 
     final point = currentResult['point'] as Map<String, dynamic>?;
     final pointsRaw = (trailResult['points'] as List?) ?? const [];
-    final raw = pointsRaw
+    final parsed = pointsRaw
         .whereType<Map>()
         .map(TrailPoint.fromJson)
         .whereType<TrailPoint>()
-        .toList()
-      ..sort((a, b) => a.time.compareTo(b.time));
-    final trail = LocationTrailProcessor.process(raw);
+        .toList();
+    // 增量：新點附加到既有原始點後再依時間排序（id 游標保證不會重複，不需去重）。
+    final List<TrailPoint> raw = incremental ? [..._rawPoints, ...parsed] : parsed;
+    raw.sort((a, b) => a.time.compareTo(b.time));
+    // 增量查詢沒有新點時軌跡不變，省下重算。
+    final trail = (incremental && parsed.isEmpty)
+        ? _trail
+        : LocationTrailProcessor.process(raw);
     if (kDebugMode && !silent) _debugPrintRawJumps(raw);
+
+    final newCursor = (trailResult['cursor'] as num?)?.toInt();
 
     setState(() {
       _state = _LoadState.ready;
@@ -130,6 +159,7 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
       _staleAfterMs = currentResult['stale_after_ms'] as int?;
       _trail = trail;
       _rawPoints = raw;
+      _cursor = newCursor ?? (incremental ? _cursor : null);
     });
 
     // 靜默輪詢（45 秒）絕不動鏡頭——家屬可能正在拖曳地圖；
@@ -170,23 +200,45 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
   /// 除錯：原始點疊圖是否生效（只在 debug 版）。
   bool get _rawOn => kDebugMode && _showRaw && _rawPoints.isNotEmpty;
 
+  /// 可查詢的最早日期（與日期選擇器的 90 天上限一致，只看年月日）。
+  DateTime get _earliestDate {
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, now.day - 90);
+  }
+
+  bool get _atEarliestDate {
+    final d = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
+    return !d.isAfter(_earliestDate);
+  }
+
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
       context: context,
       initialDate: _selectedDate,
-      firstDate: DateTime.now().subtract(const Duration(days: 90)),
+      firstDate: _earliestDate,
       lastDate: DateTime.now(),
     );
     if (picked == null) return;
+    _changeDate(picked);
+  }
+
+  /// 切換日期：停掉輪詢、重設增量游標，並以完整查詢重新載入。
+  void _changeDate(DateTime d) {
     _pollTimer?.cancel();
-    setState(() => _selectedDate = picked);
-    await _load();
+    setState(() {
+      _selectedDate = d;
+      _cursor = null;
+    });
+    _load();
+  }
+
+  void _shiftDate(int days) {
+    _changeDate(DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day + days));
   }
 
   @override
   Widget build(BuildContext context) {
-    final dateLabel =
-        '${_selectedDate.year}/${_selectedDate.month}/${_selectedDate.day}';
+    final dateLabel = '${_selectedDate.month}/${_selectedDate.day}';
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -196,10 +248,27 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
           overflow: TextOverflow.ellipsis,
         ),
         actions: [
+          // 窄螢幕（360dp）空間有限：按鈕一律 compact，標題由 Text 自行省略。
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            tooltip: '前一天',
+            onPressed: _atEarliestDate ? null : () => _shiftDate(-1),
+            icon: const Icon(Icons.chevron_left_rounded),
+          ),
           TextButton.icon(
+            style: TextButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+            ),
             onPressed: _pickDate,
             icon: const Icon(Icons.calendar_today_rounded, size: 18),
             label: Text(dateLabel, style: GoogleFonts.notoSansTc()),
+          ),
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            tooltip: '後一天',
+            onPressed: _isToday ? null : () => _shiftDate(1),
+            icon: const Icon(Icons.chevron_right_rounded),
           ),
         ],
       ),
@@ -259,10 +328,12 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
     );
   }
 
+  // 底部留白給摘要列與右側按鈕
+  static const EdgeInsets _fitPadding = EdgeInsets.fromLTRB(48, 48, 48, 160);
+
   CameraFit _trailFit(List<LatLng> pts) => CameraFit.bounds(
         bounds: LatLngBounds.fromPoints(pts),
-        // 底部留白給摘要列與右側按鈕
-        padding: const EdgeInsets.fromLTRB(48, 48, 48, 160),
+        padding: _fitPadding,
         maxZoom: 17,
       );
 
@@ -296,6 +367,146 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
     return rest == 0 ? '${mins ~/ 60} 小時' : '${mins ~/ 60} 小時 $rest 分鐘';
   }
 
+  /// 短格式（標記膠囊用）：`35 分`、`1 時 20 分`、`<1 分`。
+  String _formatDurationShort(Duration d) {
+    final mins = d.inMinutes;
+    if (mins < 1) return '<1 分';
+    if (mins < 60) return '$mins 分';
+    final rest = mins % 60;
+    return rest == 0 ? '${mins ~/ 60} 時' : '${mins ~/ 60} 時 $rest 分';
+  }
+
+  String _formatDistance(double m) =>
+      m < 1000 ? '${m.round()} 公尺' : '${(m / 1000).toStringAsFixed(1)} 公里';
+
+  /// 目前仍在進行中的停留：查看今天、有目前位置、最後一個事件是停留，
+  /// 且目前位置仍在該停留半徑內。否則回傳 null。
+  StayPoint? get _ongoingStay {
+    if (!_isToday) return null;
+    final cur = _currentLatLng;
+    if (cur == null) return null;
+    final events = _trail.events;
+    if (events.isEmpty) return null;
+    final last = events.last;
+    final stay = last.stay;
+    if (last.type != TrailEventType.stay || stay == null) return null;
+    final d = const Distance()(cur, stay.center);
+    return d <= LocationTrailProcessor.stayRadiusM ? stay : null;
+  }
+
+  Future<void> _openUrl(String url) async {
+    try {
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    } catch (_) {
+      // 無法開啟外部瀏覽器時忽略，版權文字仍然可讀。
+    }
+  }
+
+  /// 停留群集標記：琥珀色膠囊（時鐘 + 總停留時間 + 多次停留的 ×N）。
+  Marker _buildClusterMarker(StayCluster cluster) {
+    final label = _formatDurationShort(cluster.totalDuration) +
+        (cluster.count > 1 ? ' ×${cluster.count}' : '');
+    // 依字數估算寬度，避免文字被截斷（中文字較寬，每字以 8 估算再加圖示與內距）。
+    final width = (30 + 8 * label.length).clamp(56, 140).toDouble();
+    return Marker(
+      point: cluster.center,
+      width: width,
+      height: 28,
+      alignment: Alignment.center,
+      child: GestureDetector(
+        onTap: () => cluster.count == 1
+            ? _showStay(cluster.stays.first)
+            : _showClusterStays(cluster),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF59E0B),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: Colors.white, width: 2),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.access_time_rounded, size: 16, color: Colors.white),
+              const SizedBox(width: 3),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 同一地點多次停留：列出每一次的時段與時間長度。
+  void _showClusterStays(StayCluster cluster) {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.access_time_rounded,
+                      size: 20, color: Color(0xFFF59E0B)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '此處停留 ${cluster.count} 次，共 ${_formatDuration(cluster.totalDuration)}',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.notoSansTc(
+                          fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    for (final s in cluster.stays)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                '${_hhmm(s.start)}–${_hhmm(s.end)}  停留 ${_formatDuration(s.duration)}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: GoogleFonts.notoSansTc(fontSize: 14),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   void _showStay(StayPoint stay) {
     final messenger = ScaffoldMessenger.of(context);
     messenger.hideCurrentSnackBar();
@@ -325,6 +536,9 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
     final bool canFit = _hasDistinctPoints(boundsPts);
     final LatLng center = currentLatLng ?? boundsPts.last;
     final startPoint = _trail.start;
+    final ongoing = _ongoingStay;
+    final bool showBanner =
+        (_isToday && currentLatLng != null) || !_trail.isEmpty || _rawOn;
 
     return Stack(
       children: [
@@ -338,8 +552,8 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
           ),
           children: [
             TileLayer(
-              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-              userAgentPackageName: 'com.example.flutter_application_1',
+              urlTemplate: MapTiles.urlTemplate,
+              userAgentPackageName: MapTiles.userAgentPackageName,
             ),
             // 斷訊缺口畫在最底層：淡色虛線，不代表真的走過這條直線
             if (_trail.gaps.isNotEmpty)
@@ -408,27 +622,12 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
                       ),
                     ),
                   ),
-                for (final stay in _trail.stays)
-                  Marker(
-                    point: stay.center,
-                    width: 30,
-                    height: 30,
-                    child: GestureDetector(
-                      onTap: () => _showStay(stay),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF59E0B),
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 2),
-                        ),
-                        child: const Icon(
-                          Icons.access_time_rounded,
-                          size: 18,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ),
+                for (final cluster in _trail.stayClusters)
+                  // 長輩目前正待在這個單次停留上：紅色定位針就在那裡，不重複畫膠囊。
+                  if (!(ongoing != null &&
+                      cluster.count == 1 &&
+                      identical(cluster.stays.first, ongoing)))
+                    _buildClusterMarker(cluster),
               ],
             ),
             // 目前位置最後畫，永遠在最上層
@@ -447,6 +646,22 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
                   ),
                 ],
               ),
+            // 版權標示放左下角（右下是按鈕列），並避開底部資訊列。
+            Padding(
+              padding: EdgeInsets.only(bottom: showBanner ? 100 : 0),
+              child: RichAttributionWidget(
+                alignment: AttributionAlignment.bottomLeft,
+                popupBackgroundColor: Colors.white,
+                attributions: [
+                  for (final a in MapTiles.attributions)
+                    TextSourceAttribution(
+                      a.label,
+                      prependCopyright: false,
+                      onTap: () => _openUrl(a.url),
+                    ),
+                ],
+              ),
+            ),
           ],
         ),
         Positioned(
@@ -484,7 +699,7 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
           ),
         ),
         // 兩行都不會顯示時不畫空白外框（例如查看過去日期且當日無軌跡）
-        if ((_isToday && currentLatLng != null) || !_trail.isEmpty || _rawOn)
+        if (showBanner)
           Positioned(
             left: 16,
             right: 16,
@@ -497,8 +712,7 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
 
   String _summaryText() {
     final parts = <String>[];
-    final m = _trail.totalDistanceMeters;
-    parts.add(m < 1000 ? '移動 ${m.round()} 公尺' : '移動 ${(m / 1000).toStringAsFixed(1)} 公里');
+    parts.add('移動 ${_formatDistance(_trail.totalDistanceMeters)}');
     parts.add('停留 ${_trail.stays.length} 處');
     final first = _trail.firstTime;
     final last = _trail.lastTime;
@@ -530,7 +744,11 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
     // 「最後更新」只在查看今天且有目前位置時顯示
     final bool showLastUpdate = _isToday && _currentPoint != null;
     String text = '尚無最新位置';
-    if (recordedAt != null) {
+    final ongoing = _ongoingStay;
+    if (ongoing != null) {
+      // 長輩目前仍待在最後一次停留的範圍內：改顯示已停留多久。
+      text = '目前已在此停留 ${_formatDuration(DateTime.now().difference(ongoing.start))}';
+    } else if (recordedAt != null) {
       final diff = DateTime.now().difference(recordedAt);
       if (diff.inMinutes < 1) {
         text = '最後更新：剛剛';
@@ -542,70 +760,290 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
         text = '最後更新：${diff.inDays} 天前';
       }
     }
+    final bool hasTimeline = _trail.events.isNotEmpty;
+    // 外層只負責陰影與圓角；白底與水波紋交給 Material + InkWell，
+    // 否則水波紋會被 Container 的底色蓋住。
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 8),
         ],
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (showLastUpdate)
-            Row(
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: hasTimeline ? _showTimelineSheet : null,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(
-                  _isStale ? Icons.warning_amber_rounded : Icons.check_circle_rounded,
-                  color: _isStale ? Colors.orange : Colors.green,
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    _isStale ? '$text（已過期，可能不是即時位置）' : text,
-                    style: GoogleFonts.notoSansTc(fontSize: 13, fontWeight: FontWeight.w600),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                if (showLastUpdate)
+                  Row(
+                    children: [
+                      Icon(
+                        _isStale ? Icons.warning_amber_rounded : Icons.check_circle_rounded,
+                        color: _isStale ? Colors.orange : Colors.green,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _isStale ? '$text（已過期，可能不是即時位置）' : text,
+                          style: GoogleFonts.notoSansTc(fontSize: 13, fontWeight: FontWeight.w600),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
                   ),
-                ),
+                if (showLastUpdate && !_trail.isEmpty) const SizedBox(height: 4),
+                if (!_trail.isEmpty)
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _summaryText(),
+                          style: GoogleFonts.notoSansTc(fontSize: 12, color: Colors.grey[600]),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      // 提示可點開「今日行程」
+                      if (hasTimeline)
+                        Icon(Icons.expand_less_rounded, size: 22, color: Colors.grey[600]),
+                    ],
+                  ),
+                if (_rawOn) ...[
+                  if (showLastUpdate || !_trail.isEmpty) const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _rawDebugText(),
+                          style: GoogleFonts.notoSansTc(fontSize: 11, color: Colors.orange[800]),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
-          if (showLastUpdate && !_trail.isEmpty) const SizedBox(height: 4),
-          if (!_trail.isEmpty)
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    _summaryText(),
-                    style: GoogleFonts.notoSansTc(fontSize: 12, color: Colors.grey[600]),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-          if (_rawOn) ...[
-            if (showLastUpdate || !_trail.isEmpty) const SizedBox(height: 4),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    _rawDebugText(),
-                    style: GoogleFonts.notoSansTc(fontSize: 11, color: Colors.orange[800]),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ],
+          ),
+        ),
       ),
     );
+  }
+
+  // ───────────────────────── 行程時間軸 ─────────────────────────
+
+  static const Color _depColor = Color(0xFF22C55E);
+  static const Color _moveColor = Color(0xFF3B82F6);
+  static const Color _stayColor = Color(0xFFF59E0B);
+  static const Color _gapColor = Color(0xFF94A3B8);
+
+  IconData _eventIcon(TrailEventType t) {
+    switch (t) {
+      case TrailEventType.depart:
+        return Icons.flag_rounded;
+      case TrailEventType.move:
+        return Icons.directions_walk_rounded;
+      case TrailEventType.stay:
+        return Icons.access_time_rounded;
+      case TrailEventType.gap:
+        return Icons.signal_cellular_connected_no_internet_0_bar_rounded;
+    }
+  }
+
+  Color _eventColor(TrailEventType t) {
+    switch (t) {
+      case TrailEventType.depart:
+        return _depColor;
+      case TrailEventType.move:
+        return _moveColor;
+      case TrailEventType.stay:
+        return _stayColor;
+      case TrailEventType.gap:
+        return _gapColor;
+    }
+  }
+
+  String _eventTime(TrailEvent e) => e.type == TrailEventType.depart
+      ? _hhmm(e.start)
+      : '${_hhmm(e.start)}–${_hhmm(e.end)}';
+
+  String _eventDescription(TrailEvent e, {required bool ongoing}) {
+    switch (e.type) {
+      case TrailEventType.depart:
+        return '出發';
+      case TrailEventType.move:
+        final dist = '移動 ${_formatDistance(e.distanceMeters)}';
+        // 不到 1 分鐘的移動不補時間，避免出現「（0 分鐘）」。
+        return e.duration.inMinutes < 1 ? dist : '$dist（${_formatDuration(e.duration)}）';
+      case TrailEventType.stay:
+        return ongoing
+            ? '停留中・已 ${_formatDuration(DateTime.now().difference(e.start))}'
+            : '停留 ${_formatDuration(e.duration)}';
+      case TrailEventType.gap:
+        return '訊號中斷 ${_formatDuration(e.duration)}';
+    }
+  }
+
+  void _showTimelineSheet() {
+    final events = _trail.events;
+    if (events.isEmpty) return;
+    final ongoing = _ongoingStay;
+    final title = _isToday ? '今日行程' : '${_selectedDate.month}/${_selectedDate.day} 行程';
+    final summary = _summaryText();
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => DraggableScrollableSheet(
+        initialChildSize: 0.5,
+        minChildSize: 0.3,
+        maxChildSize: 0.9,
+        expand: false,
+        builder: (context, scrollController) => Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            children: [
+              const SizedBox(height: 8),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.notoSansTc(
+                                fontSize: 18, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            summary,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.notoSansTc(
+                                fontSize: 12, color: Colors.grey[600]),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: ListView.builder(
+                  controller: scrollController,
+                  padding: const EdgeInsets.only(bottom: 16),
+                  itemCount: events.length,
+                  itemBuilder: (context, i) {
+                    final e = events[i];
+                    final isOngoing =
+                        ongoing != null && i == events.length - 1 && identical(e.stay, ongoing);
+                    return _buildTimelineRow(sheetContext, e, isOngoing);
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTimelineRow(BuildContext sheetContext, TrailEvent e, bool ongoing) {
+    final color = _eventColor(e.type);
+    return InkWell(
+      onTap: () {
+        Navigator.pop(sheetContext);
+        // 等底部面板收起後再動鏡頭，避免與轉場動畫同時進行。
+        WidgetsBinding.instance.addPostFrameCallback((_) => _focusEvent(e));
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 96,
+              child: Text(
+                _eventTime(e),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.notoSansTc(
+                    fontSize: 13, fontWeight: FontWeight.w600, color: Colors.grey[700]),
+              ),
+            ),
+            Icon(_eventIcon(e.type), size: 20, color: color),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                _eventDescription(e, ongoing: ongoing),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.notoSansTc(
+                  fontSize: 14,
+                  fontWeight: ongoing ? FontWeight.bold : FontWeight.normal,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 點選時間軸事件：移動／斷訊框住整段路線，出發／停留則拉近到該點。
+  void _focusEvent(TrailEvent e) {
+    if (e.points.isEmpty) return;
+    try {
+      final bool routeLike = e.type == TrailEventType.move || e.type == TrailEventType.gap;
+      if (routeLike && _hasDistinctPoints(e.points)) {
+        _mapController.fitCamera(
+          CameraFit.bounds(
+            bounds: LatLngBounds.fromPoints(e.points),
+            padding: _fitPadding,
+            maxZoom: 17,
+          ),
+        );
+      } else {
+        _mapController.move(e.points.first, 17);
+      }
+    } catch (_) {
+      // 地圖尚未 attach，忽略。
+    }
   }
 
   Widget _buildMessage({required IconData icon, required String title, required String message}) {
