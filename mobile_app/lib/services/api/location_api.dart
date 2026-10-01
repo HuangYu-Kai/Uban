@@ -87,6 +87,31 @@ class LocationApi {
     return null;
   }
 
+  /// 家屬（或長輩本人）讀取最近 [days] 天（7 或 30）的每日外出摘要，供「外出趨勢」畫面使用。
+  /// 回傳 `{sharing_enabled}`（關閉分享時只有這一欄），或
+  /// `{sharing_enabled: true, has_home, days: [{date, distance_m, outing_count, outside_minutes, point_count}]}`；
+  /// `days` 由舊到新、剛好 [days] 筆、最後一筆是今天（統計中，非完整一天）。
+  /// 沒設定「家」時 `outing_count`／`outside_minutes` 為 `null`。查無權限或請求失敗回傳 `null`。
+  static Future<Map<String, dynamic>?> getDaily({
+    required String elderId,
+    required int userId,
+    int days = 7,
+  }) async {
+    try {
+      // 「每一天」是裝置本地的一天，帶上時區偏移讓後端換算成 UTC 區間。
+      final tzOffset = DateTime.now().timeZoneOffset.inMinutes;
+      final result = await ApiClient.get(
+        '/location/daily/$elderId?user_id=$userId&days=$days&tz_offset=$tzOffset',
+      );
+      if (result != null && result['status'] == 'success') {
+        return result['data'] as Map<String, dynamic>;
+      }
+    } catch (e) {
+      debugPrint('⚠️ LocationApi.getDaily error: $e');
+    }
+    return null;
+  }
+
   /// 長輩本人讀取自己目前的分享開關狀態。
   static Future<bool?> getSharingEnabled({
     required String elderId,

@@ -22,11 +22,16 @@ class ElderLocationMapScreen extends StatefulWidget {
   final int userId;
   final String elderName;
 
+  /// 開啟時要顯示哪一天的軌跡（只取年月日）；省略則為今天。
+  /// 「外出趨勢」點某一天的長條時使用。
+  final DateTime? initialDate;
+
   const ElderLocationMapScreen({
     super.key,
     required this.elderId,
     required this.userId,
     this.elderName = '長輩',
+    this.initialDate,
   });
 
   @override
@@ -38,7 +43,7 @@ enum _LoadState { loading, ready, sharingDisabled, unavailable }
 class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
   static const Duration _pollInterval = Duration(seconds: 45);
 
-  DateTime _selectedDate = DateTime.now();
+  late DateTime _selectedDate;
   _LoadState _state = _LoadState.loading;
   Map<String, dynamic>? _currentPoint;
   DateTime? _currentRecordedAt;
@@ -76,6 +81,10 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
   @override
   void initState() {
     super.initState();
+    final initial = widget.initialDate;
+    _selectedDate = initial != null
+        ? DateTime(initial.year, initial.month, initial.day)
+        : DateTime.now();
     MapTiles.warnIfFallback();
     _load();
   }
