@@ -143,7 +143,7 @@ SQLite 備援版本寫在 `database.py::init_sqlite_db()`，**兩邊 schema 必�
 | 方法 | 路徑 | 誰可呼叫 | 分享門檻 | 主要參數／回應 |
 |---|---|---|---|---|
 | POST | `/ping/{elder_id}` | linked（實務上為長輩裝置） | 否（寫入端不擋） | body `{user_id, latitude, longitude, accuracy_m?, recorded_at?}` → `{elder_id, stored:true}` |
-| GET | `/current/{elder_id}?user_id=` | linked | 是 | `{elder_id, sharing_enabled, point:{latitude, longitude, accuracy_m, recorded_at(Z)}\|null, stale_after_ms}`；`stale_after_ms` 固定 `180000`，關閉分享時為 `null` |
+| GET | `/current/{elder_id}?user_id=` | linked | 是 | `{elder_id, sharing_enabled, point:{latitude, longitude, accuracy_m, recorded_at(Z)}\|null, stale_after_ms}`；`stale_after_ms` 固定 `1200000`（20 分鐘），關閉分享時為 `null` |
 | GET | `/trail/{elder_id}?user_id=&date=&tz_offset=480&since_id=` | linked | 是 | `{elder_id, sharing_enabled, date, points:[{latitude, longitude, accuracy_m, recorded_at}], cursor}`；`points` 依 `recorded_at` 遞增；`cursor`＝本次回傳列的最大 `id`，沒有新點則原樣回 `since_id`（未帶為 0）；關閉分享時 `points=[]` 且仍回 `cursor` |
 | GET | `/summary/{elder_id}?user_id=&date=&tz_offset=480` | linked | 是 | `{sharing_enabled, date, distance_m, outing_count, outside_minutes, at_home, last_update(Z), has_home, point_count}`；無家時 `outing_count／outside_minutes／at_home` 為 `null`；關閉分享只回 `{sharing_enabled:false, date}` |
 | GET | `/daily/{elder_id}?user_id=&days=7&tz_offset=480` | linked | 是 | `days` 只接受 **7 或 30**（否則 400）→ `{sharing_enabled, has_home, days:[{date, distance_m, outing_count, outside_minutes, point_count}]}`，**遞增、恰好 `days` 筆、最後一筆是今天（統計中）**；關閉分享只回 `{sharing_enabled:false}` |
@@ -230,7 +230,7 @@ FCM（離線家屬，**純 `data` payload、無 `notification` block**、android
 
 ### 7.3 時間顯示
 
-所有時間經 `LocationApi.parseRecordedAt` 轉本地。「最後更新」分級：剛剛／N 分鐘前／N 小時前／N 天前。`stale_after_ms=180000`（3 分鐘）超過時，地圖定位針變灰並顯示「已過期，可能不是即時位置」（靜止長輩見 §12）。
+所有時間經 `LocationApi.parseRecordedAt` 轉本地。「最後更新」分級：剛剛／N 分鐘前／N 小時前／N 天前。`stale_after_ms=1200000`（20 分鐘）超過時，地圖定位針變灰並顯示「已過期，可能不是即時位置」；門檻大於靜止時心跳的最壞間隔（約 19 分鐘），所以靜止長輩不會被誤標過期（見 §12）。
 
 ### 7.4 後端摘要演算法（`services/location_summary.py`，純函式）
 
@@ -358,12 +358,12 @@ Socket 通路另在 `Signaling` 以連線當下 `_role == 'family'` 再守一次
 3. **iOS 背景心跳受限**：心跳用 `Timer.periodic`，App 被系統凍結／終止時不會觸發；iOS 背景定位僅靠位置串流本身喚醒，靜止時可能整段沒有點，進而可能誤觸發「失聯」提醒。Android 以前景服務通知維持執行。
 4. **失聯規則不支援跨午夜時間窗**（`start >= end` 整條跳過，API 不阻擋）。
 5. **改家不回頭重算**：`elder_location_daily` 是快照，家改位置後過去日子的外出次數／在外時間維持舊值。
-6. **靜止長輩的「已過期」顯示**：`stale_after_ms` 固定 180 秒，但靜止時只靠 10 分鐘心跳，所以靜止期間地圖定位針常變灰並顯示「已過期」，並非當機（有進行中停留時底部列改顯示停留時間）。
+6. **「已過期」門檻為 20 分鐘**：移動中約每分鐘回報；靜止時只靠 10 分鐘心跳（最壞間隔約 19 分鐘），故 `stale_after_ms` 定為 1200000 以涵蓋心跳，靜止長輩不會被誤標「已過期」。超過 20 分鐘仍無新點才代表手機真的停止回報（沒電／關機／沒網路），長時間無回報另由失聯提醒（以小時計）處理。
 7. **開關與權限脫鉤**：長輩開啟分享但拒絕定位權限時，`PUT /sharing` 成功、開關顯示開啟，但服務靜默不啟動（`_start` 在未授權時直接返回），家屬端會看到沒有資料。
 8. **FCM token 來源為記憶體**（`room_fcm_tokens`）：後端重啟後，離線家屬要等其 App 重新 `join` 才收得到 FCM 型的安心提醒。
 9. **前後端距離算法不同**（§7.4 注意事項）：地圖底部公里數與首頁卡／後端 `distance_m` 可能有些微落差。
 10. **graphify 尚未同步此功能**：依 `CLAUDE.md` 規則，連接／跳轉邏輯（新端點、`location-alert` 事件與 FCM type、新畫面路由）應增量更新雙端 `graphify-out/`；本功能尚未執行，須待 `/graphify . --update` 後覆蓋兩端。
-11. 隱私政策第 9 節寫「約每分鐘或移動一段距離時記錄一次」，未提及靜止時的 10 分鐘心跳；日後調整採樣策略（第二階段）時應一併檢視條文並視需要升版。
+11. 隱私政策第 9 節已寫明「移動中約每分鐘或移動一段距離記錄一次、靜止時約每 10 分鐘記錄一次」（2026-10-01 補充心跳說明，`prefsKey` 未升版）；日後調整採樣策略（第二階段）時應一併檢視條文並視需要升版。
 
 ---
 
