@@ -241,6 +241,48 @@ class LocationApi {
     return null;
   }
 
+  /// 家屬讀取「安心提醒」設定。
+  /// 回傳 `{settings: {late_return_enabled, late_return_time 'HH:MM', no_update_enabled,
+  /// no_update_hours, no_update_start, no_update_end, far_enabled, far_km}, has_home}`；
+  /// 查無權限或失敗時回傳 `null`。`has_home` 為 false 時，晚歸與遠離家提醒不會生效。
+  static Future<Map<String, dynamic>?> getAlertSettings({
+    required String elderId,
+    required int userId,
+  }) async {
+    try {
+      final result = await ApiClient.get('/location/alert-settings/$elderId?user_id=$userId');
+      if (result != null && result['status'] == 'success') {
+        final data = result['data'];
+        if (data is Map) return Map<String, dynamic>.from(data);
+      }
+    } catch (e) {
+      debugPrint('⚠️ LocationApi.getAlertSettings error: $e');
+    }
+    return null;
+  }
+
+  /// 家屬修改「安心提醒」設定（只送有改動的欄位，[changes] 的鍵同 [getAlertSettings]
+  /// 的 `settings`）。成功回傳更新後的 `{settings}`，失敗回傳 `null`。
+  static Future<Map<String, dynamic>?> updateAlertSettings({
+    required String elderId,
+    required int userId,
+    required Map<String, dynamic> changes,
+  }) async {
+    try {
+      final result = await ApiClient.put('/location/alert-settings/$elderId', {
+        'user_id': userId,
+        ...changes,
+      });
+      if (result != null && result['status'] == 'success') {
+        final data = result['data'];
+        if (data is Map) return Map<String, dynamic>.from(data);
+      }
+    } catch (e) {
+      debugPrint('⚠️ LocationApi.updateAlertSettings error: $e');
+    }
+    return null;
+  }
+
   /// 從 `{status, data: {place}}` 取出 [ElderPlace]；格式不符回傳 `null`。
   static ElderPlace? _parsePlace(Map<String, dynamic>? result) {
     if (result == null || result['status'] != 'success') return null;

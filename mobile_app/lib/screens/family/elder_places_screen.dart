@@ -1,4 +1,5 @@
 // lib/screens/family/elder_places_screen.dart
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:latlong2/latlong.dart';
@@ -8,6 +9,20 @@ import '../../services/api/location_api.dart';
 /// 半徑可選值（公尺）；既有地點的半徑若不在其中，編輯時會補進選項。
 const List<int> _kRadiusChoices = [100, 150, 300, 500];
 const int _kDefaultRadiusM = 150;
+
+/// 「遠離家提醒」可選距離（公里）；後端目前的值若不在其中，選單會補進該值。
+const List<int> _kFarKmChoices = [1, 3, 5, 10];
+
+/// 「失聯提醒」可選小時數。
+const int _kMinNoUpdateHours = 1;
+const int _kMaxNoUpdateHours = 12;
+
+/// 安心提醒設定的預設值（後端尚未回傳該欄位時的顯示用）。
+const String _kDefaultLateReturnTime = '21:00';
+const String _kDefaultNoUpdateStart = '08:00';
+const String _kDefaultNoUpdateEnd = '20:00';
+const int _kDefaultNoUpdateHours = 3;
+const int _kDefaultFarKm = 5;
 
 /// 新增／編輯常去地點的共用對話框（家屬端專用；後端只允許家屬寫入）。
 ///
@@ -260,6 +275,10 @@ class _ElderPlacesScreenState extends State<ElderPlacesScreen> {
   List<ElderPlace> _places = const [];
   bool _changed = false;
 
+  // 安心提醒設定（`settings` 為後端欄位原樣；null 表示尚未載入或讀取失敗）。
+  Map<String, dynamic>? _alertSettings;
+  bool _hasHome = false;
+
   @override
   void initState() {
     super.initState();
@@ -282,6 +301,92 @@ class _ElderPlacesScreenState extends State<ElderPlacesScreen> {
         _state = _PlacesState.ready;
       }
     });
+    // 地點變動後「家」可能剛被設定或移除，連同提醒設定一起重新讀取。
+    if (result != null) unawaited(_loadAlertSettings());
+  }
+
+  Future<void> _loadAlertSettings() async {
+    final data = await LocationApi.getAlertSettings(
+      elderId: widget.elderId,
+      userId: widget.userId,
+    );
+    if (!mounted || data == null) return;
+    final raw = data['settings'];
+    setState(() {
+      if (raw is Map) _alertSettings = Map<String, dynamic>.from(raw);
+      _hasHome = data['has_home'] == true;
+    });
+  }
+
+  bool _alertBool(String key) => _alertSettings?[key] == true;
+
+  int _alertInt(String key, int fallback) {
+    final v = _alertSettings?[key];
+    return v is num ? v.toInt() : fallback;
+  }
+
+  String _alertTime(String key, String fallback) {
+    final v = _alertSettings?[key];
+    if (v is! String) return fallback;
+    final parts = v.split(':');
+    if (parts.length < 2) return fallback;
+    final h = int.tryParse(parts[0]);
+    final m = int.tryParse(parts[1]);
+    if (h == null || m == null) return fallback;
+    return _formatTime(TimeOfDay(hour: h, minute: m));
+  }
+
+  static String _formatTime(TimeOfDay t) =>
+      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+
+  static TimeOfDay _parseTime(String hhmm) {
+    final parts = hhmm.split(':');
+    return TimeOfDay(
+      hour: int.tryParse(parts[0]) ?? 0,
+      minute: parts.length > 1 ? (int.tryParse(parts[1]) ?? 0) : 0,
+    );
+  }
+
+  /// 立即送出單一設定變更；失敗時只還原這次改動的欄位並提示。
+  Future<void> _changeAlert(Map<String, dynamic> changes) async {
+    final current = _alertSettings;
+    if (current == null) return;
+    final previous = {for (final k in changes.keys) k: current[k]};
+    setState(() => _alertSettings = {...current, ...changes});
+
+    final result = await LocationApi.updateAlertSettings(
+      elderId: widget.elderId,
+      userId: widget.userId,
+      changes: changes,
+    );
+    if (!mounted) return;
+    if (result == null) {
+      setState(() => _alertSettings = {...?_alertSettings, ...previous});
+      _snack('設定失敗，請稍後再試');
+      return;
+    }
+    final saved = result['settings'];
+    if (saved is Map) {
+      setState(() => _alertSettings = {
+            ...?_alertSettings,
+            ...Map<String, dynamic>.from(saved),
+          });
+    }
+  }
+
+  Future<void> _pickTime(String key, String fallback) async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: _parseTime(_alertTime(key, fallback)),
+      builder: (ctx, child) => MediaQuery(
+        data: MediaQuery.of(ctx).copyWith(alwaysUse24HourFormat: true),
+        child: child ?? const SizedBox.shrink(),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    final value = _formatTime(picked);
+    if (value == _alertTime(key, fallback)) return;
+    await _changeAlert({key: value});
   }
 
   /// 家排最前面，其餘維持後端順序。
@@ -406,20 +511,28 @@ class _ElderPlacesScreenState extends State<ElderPlacesScreen> {
           message: '請確認網路連線，下拉即可重新整理',
         );
       case _PlacesState.ready:
-        if (_places.isEmpty) {
-          return _buildMessage(
-            icon: Icons.bookmark_border_rounded,
-            title: '還沒有常去地點',
-            message: '在地圖上點停留點或長按地圖，就能命名常去的地點；'
-                '設定「家」之後可以看到外出次數，長輩端也會出現「帶我回家」按鈕。',
-          );
-        }
-        return ListView.separated(
+        // 地點清單（或空狀態說明）下方接「安心提醒」設定，整頁同一條 ListView。
+        return ListView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.symmetric(vertical: 8),
-          itemCount: _places.length,
-          separatorBuilder: (_, __) => const Divider(height: 1),
-          itemBuilder: (context, i) => _buildTile(_places[i]),
+          children: [
+            if (_places.isEmpty)
+              _buildMessageBlock(
+                icon: Icons.bookmark_border_rounded,
+                title: '還沒有常去地點',
+                message: '在地圖上點停留點或長按地圖，就能命名常去的地點；'
+                    '設定「家」之後可以看到外出次數，長輩端也會出現「帶我回家」按鈕。',
+                topPadding: 40,
+              )
+            else
+              for (var i = 0; i < _places.length; i++) ...[
+                if (i > 0) const Divider(height: 1),
+                _buildTile(_places[i]),
+              ],
+            const SizedBox(height: 16),
+            const Divider(height: 1),
+            ..._buildAlertSection(),
+          ],
         );
     }
   }
@@ -483,28 +596,205 @@ class _ElderPlacesScreenState extends State<ElderPlacesScreen> {
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(32, 120, 32, 32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 56, color: Colors.grey),
-              const SizedBox(height: 16),
-              Text(
-                title,
-                style: GoogleFonts.notoSansTc(fontSize: 18, fontWeight: FontWeight.bold),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                message,
-                style: GoogleFonts.notoSansTc(fontSize: 14, color: Colors.grey[700]),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        ),
+        _buildMessageBlock(icon: icon, title: title, message: message),
       ],
     );
   }
+
+  Widget _buildMessageBlock({
+    required IconData icon,
+    required String title,
+    required String message,
+    double topPadding = 120,
+  }) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(32, topPadding, 32, 32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 56, color: Colors.grey),
+          const SizedBox(height: 16),
+          Text(
+            title,
+            style: GoogleFonts.notoSansTc(fontSize: 18, fontWeight: FontWeight.bold),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            message,
+            style: GoogleFonts.notoSansTc(fontSize: 14, color: Colors.grey[700]),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ───────────────────────── 安心提醒設定 ─────────────────────────
+
+  List<Widget> _buildAlertSection() {
+    final header = Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+      child: Row(
+        children: [
+          const Icon(Icons.notifications_active_outlined, size: 20, color: Color(0xFF6366F1)),
+          const SizedBox(width: 8),
+          // Row 內的標題包 Expanded，窄螢幕或大字級時才不會 RenderFlex 溢位。
+          Expanded(
+            child: Text(
+              '安心提醒',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.notoSansTc(fontSize: 17, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (_alertSettings == null) {
+      return [
+        header,
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+          child: Text(
+            '暫時無法讀取提醒設定，下拉即可重新整理',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.notoSansTc(fontSize: 13, color: Colors.grey[600]),
+          ),
+        ),
+      ];
+    }
+
+    final caption = Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: Text(
+        '符合條件時會通知您；長輩關閉位置分享時一律不提醒。',
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: GoogleFonts.notoSansTc(fontSize: 12, color: Colors.grey[600]),
+      ),
+    );
+
+    final lateTime = _alertTime('late_return_time', _kDefaultLateReturnTime);
+    final noUpdateStart = _alertTime('no_update_start', _kDefaultNoUpdateStart);
+    final noUpdateEnd = _alertTime('no_update_end', _kDefaultNoUpdateEnd);
+    final noUpdateHours = _alertInt('no_update_hours', _kDefaultNoUpdateHours)
+        .clamp(_kMinNoUpdateHours, _kMaxNoUpdateHours);
+    final farKm = _alertInt('far_km', _kDefaultFarKm);
+    final farOptions = {..._kFarKmChoices, farKm}.toList()..sort();
+
+    return [
+      header,
+      caption,
+      SwitchListTile(
+        title: _alertTitle('晚歸提醒'),
+        subtitle: _hasHome
+            ? _alertSubtitle([
+                _tapText(lateTime, () => _pickTime('late_return_time', _kDefaultLateReturnTime)),
+                _plainText('後還不在家時通知我'),
+              ])
+            : _plainText('先設定「家」才能使用'),
+        value: _alertBool('late_return_enabled'),
+        onChanged: _hasHome ? (v) => _changeAlert({'late_return_enabled': v}) : null,
+      ),
+      SwitchListTile(
+        title: _alertTitle('失聯提醒'),
+        subtitle: _alertSubtitle([
+          _tapText(noUpdateStart, () => _pickTime('no_update_start', _kDefaultNoUpdateStart)),
+          _plainText('–'),
+          _tapText(noUpdateEnd, () => _pickTime('no_update_end', _kDefaultNoUpdateEnd)),
+          _plainText('之間超過'),
+          _menuText<int>(
+            label: '$noUpdateHours',
+            options: [for (var h = _kMinNoUpdateHours; h <= _kMaxNoUpdateHours; h++) h],
+            optionLabel: (h) => '$h 小時',
+            onSelected: (h) {
+              if (h != noUpdateHours) _changeAlert({'no_update_hours': h});
+            },
+          ),
+          _plainText('小時沒有位置時通知我'),
+        ]),
+        value: _alertBool('no_update_enabled'),
+        onChanged: (v) => _changeAlert({'no_update_enabled': v}),
+      ),
+      SwitchListTile(
+        title: _alertTitle('遠離家提醒'),
+        subtitle: _hasHome
+            ? _alertSubtitle([
+                _plainText('距離家超過'),
+                _menuText<int>(
+                  label: '$farKm',
+                  options: farOptions,
+                  optionLabel: (k) => '$k 公里',
+                  onSelected: (k) {
+                    if (k != farKm) _changeAlert({'far_km': k});
+                  },
+                ),
+                _plainText('公里時通知我'),
+              ])
+            : _plainText('先設定「家」才能使用'),
+        value: _alertBool('far_enabled'),
+        onChanged: _hasHome ? (v) => _changeAlert({'far_enabled': v}) : null,
+      ),
+      const SizedBox(height: 24),
+    ];
+  }
+
+  Widget _alertTitle(String text) => Text(
+        text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: GoogleFonts.notoSansTc(fontSize: 15),
+      );
+
+  TextStyle get _alertSubtitleStyle =>
+      GoogleFonts.notoSansTc(fontSize: 13, color: Colors.grey[700]);
+
+  Widget _plainText(String text) => Text(text, style: _alertSubtitleStyle);
+
+  /// 副標題由多段文字／可點選時間組成，用 Wrap 讓窄螢幕自動換行而不溢位。
+  Widget _alertSubtitle(List<Widget> children) => Wrap(
+        spacing: 4,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: children,
+      );
+
+  TextStyle get _alertLinkStyle => GoogleFonts.notoSansTc(
+        fontSize: 13,
+        fontWeight: FontWeight.bold,
+        color: const Color(0xFF6366F1),
+        decoration: TextDecoration.underline,
+      );
+
+  Widget _tapText(String label, VoidCallback onTap) => InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Text(label, style: _alertLinkStyle),
+        ),
+      );
+
+  Widget _menuText<T>({
+    required String label,
+    required List<T> options,
+    required String Function(T) optionLabel,
+    required ValueChanged<T> onSelected,
+  }) =>
+      PopupMenuButton<T>(
+        tooltip: '選擇',
+        onSelected: onSelected,
+        itemBuilder: (context) => [
+          for (final o in options)
+            PopupMenuItem<T>(
+              value: o,
+              child: Text(optionLabel(o), style: GoogleFonts.notoSansTc()),
+            ),
+        ],
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Text(label, style: _alertLinkStyle),
+        ),
+      );
 }

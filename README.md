@@ -442,6 +442,17 @@ void initPedometer() {
 > 但只寫進 `CLAUDE_call-monitor.md` 沒進本日誌的通話／監控工作）。
 > 內容依 commit diff 與該文件重建，細節可能不如當事人寫得完整。
 
+### 2026-10-01 🔔 移動軌跡延伸（第二階段）：安心提醒
+
+- **長輩端心跳**：`elder_location_service.dart` 的 GPS 串流有 30 公尺 distanceFilter，長輩靜止時不會送任何點，會讓後端的「長時間沒有位置」提醒誤報。新增心跳——服務執行期間每 10 分鐘檢查一次，若已超過 9 分鐘沒送過點（`_lastSentAt`），就用 `Geolocator.getCurrentPosition`（高精度、30 秒逾時）補取一次當下位置，並走與串流相同的 `_sendOrQueue`（離線時照樣進佇列）；精確度超過 50 公尺、逾時或任何錯誤皆靜默略過。`stop()` 會取消計時器；原有的過濾條件與門檻不變。
+- **安心提醒設定畫面**：`LocationApi` 新增 `getAlertSettings`／`updateAlertSettings`（`GET`／`PUT /location/alert-settings/{elderId}`）；常去地點畫面（`elder_places_screen.dart`）在地點清單下方新增「安心提醒」區塊，含三個開關：**晚歸提醒**（指定時間後還不在家時通知，可點時間改）、**失聯提醒**（時段內超過 N 小時沒有位置時通知；起訖時間用時間選擇器、N 為 1–12 小時選單）、**遠離家提醒**（距離家超過 1／3／5／10 公里時通知）。晚歸與遠離家需要先設定「家」，未設定時開關停用並提示「先設定「家」才能使用」。每次變更只送出被改動的欄位並立即儲存，失敗時還原畫面並顯示「設定失敗，請稍後再試」；地點變動（家可能剛設定或移除）時會重新讀取設定。副標題用 `Wrap` 組成、其餘文字皆有 `maxLines`／省略號，避免 RenderFlex 溢位。
+- **隱私權政策**：第 9 節「位置資訊與移動軌跡」補充：家屬可為長輩命名常去地點（含「家」）、系統依位置產生每日外出摘要（外出次數、距離）、並在晚歸、長時間沒有位置、遠離家時通知已配對家屬；提醒規則由家屬設定，分享關閉時一律不提醒（同意版本 `_v3` 尚未發布，故未升版）。
+- **安心提醒通知管線**：後端以 `location-alert` 事件推送——家屬 App 開著時走 Socket.IO（`Signaling.onLocationAlert`，僅家屬角色），關著時走純 data 的 FCM。背景 FCM（`firebase_bg_handler.dart`）、前景 FCM（`main.dart`，排在所有來電處理之前並 return，不碰來電去重）與 `FamilyMainScreen` 的 Socket 回呼，三條路徑都收斂到 `LocationAlertNotification.show()`；通知 id 由 `alertId` 決定，同一則提醒不會疊出多條。
+- **角色守門（fail-closed）**：`isFamilyDevice()` 要求 `user_role`／`saved_role` 所有有值的鍵都是 `family`、`saved_is_cctv` 不得為 true，讀取失敗一律視為非家屬端，長輩機絕不會顯示含長輩行蹤的通知。
+- **通知強度刻意一般**：channel `uban_location_alert`、`Importance.defaultImportance`，不 `fullScreenIntent`、不繞過勿擾、不改音量、不 `AndroidIntent`／`bringToFront`（硬規則：強制開啟只准長輩端），避免子女因被半夜吵醒而關掉整個 App 的通知。
+- **點擊導航**：payload 為 `{type, elderId, elderName}`。App 活著時由 `main.dart::_setupLocationAlertTap` 透過全域 `navigatorKey` 開啟 `ElderLocationMapScreen`（Splash 進行中、有待接聽來電或讀不到 `caregiver_id` 時不導航）；App 被殺死時由 `FamilyMainScreen` 在 Splash 結束後以 `consumeLaunchTap()` 讀 launch details 導航，有待接聽來電則放棄，不改動既有冷啟動流程。
+- **不破壞來電備援**：`FlutterLocalNotificationsPlugin` 為全域單例，重新 `initialize` 會整組覆寫回呼，因此 `_registerPlugin` 沿用與 `LocalCallNotification` 相同的初始化設定，並一併傳入頂層 `@pragma('vm:entry-point')` 的 `notificationBackgroundTapHandler`，保留 App 被殺死時備援來電通知「拒接」按鈕的處理；非安心提醒的點擊原樣交還給該 handler。
+
 ### 2026-09-30 📍 移動軌跡延伸（第一階段）：地點、今日外出摘要、帶我回家
 
 - **常去地點（前端資料層）**：新增 `mobile_app/lib/models/elder_place.dart`（不可變 `ElderPlace`：`id／name／latitude／longitude／radiusM／isHome`，含 `position`、`fromJson`、`toJson`）；`LocationApi` 新增 `getPlaces`、`createPlace`、`updatePlace`、`deletePlace`（對應後端 `/location/places/{elderId}`，建立／修改／刪除僅家屬），失敗回傳 `null`／`false`。

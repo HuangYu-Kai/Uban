@@ -11,6 +11,7 @@ import 'family/family_interaction_tab.dart';
 import 'family/family_data_tab.dart';
 import '../theme/family_theme.dart';
 import 'family/alert_center_screen.dart';
+import 'family/elder_location_map_screen.dart';
 import 'family/subscription_test_screen.dart';
 // ⚠️ 這行 import 在分支整合時遺失（:798 有 const FamilySubscriptionScreen() 卻無 import），
 //    2026-08-10 第十九輪補回。
@@ -31,6 +32,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import '../services/cctv_alert_notification.dart';
+import '../services/location_alert_notification.dart';
 
 class FamilyMainScreen extends StatefulWidget {
   final int userId;
@@ -107,6 +109,8 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   //   誤清，裝置在線清單自此不再更新直到重啟 App。
   Function(List<dynamic>)? _ownElderDevicesUpdate;
   Function(Map<String, dynamic>)? _ownElderZoneUpdate;
+  // 📍 安心提醒（location-alert）回呼的「自己那一份」，dispose 時以 identical() 歸還（G102）。
+  Function(Map<String, dynamic>)? _ownLocationAlert;
 
   // ★ 移植自 family_dashboard_view.dart：監控裝置清單、CCTV 警報、訂閱層級
   //   （型別對齊該檔實際宣告：_monitorDevices 為 List<dynamic>、_tierLevel 為 String）
@@ -414,6 +418,46 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _maybeShowMainTutorial();
     });
+
+    // 📍 冷啟動：App 被殺死時點了「安心提醒」通知，payload 只在 launch details。
+    //   刻意放在家屬主畫面而不是 main.dart：能走到這裡就代表 Splash 已把家屬導進
+    //   主畫面，不必改動 main.dart 既有的冷啟動導航邏輯（護欄 G13）。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _maybeOpenLocationAlertFromLaunch();
+    });
+  }
+
+  /// 📍 冷啟動消費「安心提醒」通知的點擊 → 開啟該長輩的 GPS 地圖。
+  ///
+  /// 來電永遠優先：Splash 尚未結束（`splashActive`）時先等（比照 main.dart 的
+  /// 200ms 輪詢、上限 20s）；等完或消費前後只要有待接聽的 `pendingAcceptedCall`
+  /// 就放棄導航——不疊在來電畫面前，也不重試。`consumeLaunchTap()` 本身一次啟動
+  /// 只回傳一次，且內含家屬端角色守門（fail-closed）。
+  Future<void> _maybeOpenLocationAlertFromLaunch() async {
+    try {
+      final tap = await LocationAlertNotification.consumeLaunchTap();
+      if (tap == null) return;
+      int tick = 0;
+      while (splashActive && tick < 100 && mounted) {
+        await Future.delayed(const Duration(milliseconds: 200));
+        tick++;
+      }
+      if (!mounted) return;
+      if (pendingAcceptedCall.value != null) {
+        debugPrint('📍 [FamilyMainScreen] 有待接聽來電，放棄安心提醒冷啟動導航');
+        return;
+      }
+      if (widget.userId <= 0) return;
+      Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => ElderLocationMapScreen(
+          elderId: tap.$1,
+          userId: widget.userId,
+          elderName: tap.$2,
+        ),
+      ));
+    } catch (e) {
+      debugPrint('⚠️ [FamilyMainScreen] 安心提醒冷啟動導航失敗: $e');
+    }
   }
 
   /// 載入使用者在外觀設定中所選的深淺色偏好（預設為 Light）
@@ -594,6 +638,23 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
       if (!mounted) return;
       setState(() => _questionRefreshToken++);
     };
+
+    // 📍 長輩定位異常的「安心提醒」：家屬 App 開著時走 Socket，沒有收件匣 UI，
+    //    所以這裡直接補一則一般優先級的本機通知（點擊開 GPS 地圖，見 main.dart）。
+    //    刻意**不**檢查 `mounted`：通知不需要 context，畫面即使剛被換掉也不該漏掉
+    //    一則安心提醒；欄位歸還由 dispose 的 identical() 守衛負責。
+    //    欄位對應：Socket 是 snake_case（elder_id…），通知 API 是 camelCase。
+    _ownLocationAlert = (data) {
+      LocationAlertNotification.show(
+        elderId: (data['elder_id'] ?? '').toString(),
+        elderName: (data['elder_name'] ?? '').toString(),
+        rule: (data['rule'] ?? '').toString(),
+        title: '安心提醒',
+        body: (data['message'] ?? '').toString(),
+        alertId: (data['alert_id'] ?? '').toString(),
+      );
+    };
+    _signaling.onLocationAlert = _ownLocationAlert;
 
     _ownElderDevicesUpdate = (devices) {
       if (!mounted) return;
@@ -2199,6 +2260,9 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     }
     if (identical(_signaling.onElderZoneUpdate, _ownElderZoneUpdate)) {
       _signaling.onElderZoneUpdate = null;
+    }
+    if (identical(_signaling.onLocationAlert, _ownLocationAlert)) {
+      _signaling.onLocationAlert = null;
     }
     if (identical(_signaling.onCallRequest, _ownCallRequest)) {
       _signaling.onCallRequest = null;

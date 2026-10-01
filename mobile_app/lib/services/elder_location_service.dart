@@ -34,12 +34,22 @@ class ElderLocationService {
   static const Duration _reportInterval = Duration(seconds: 60);
   static const int _maxQueueFlushBatch = 50;
 
+  /// 心跳：distanceFilter 讓靜止的長輩完全不送點，後端的「長時間沒有位置」
+  /// 提醒會因此誤報；所以每 10 分鐘檢查一次，若已超過 9 分鐘沒送過任何點，
+  /// 就主動取一次當下位置補送。
+  static const Duration _heartbeatInterval = Duration(minutes: 10);
+  static const Duration _heartbeatStaleAfter = Duration(minutes: 9);
+  static const Duration _heartbeatFixTimeout = Duration(seconds: 30);
+
   int? _userId;
   String? _elderId;
   StreamSubscription<Position>? _positionStream;
   Position? _lastAccepted;
   bool _isRunning = false;
   bool _isFlushingQueue = false;
+  Timer? _heartbeatTimer;
+  bool _isHeartbeating = false;
+  DateTime? _lastSentAt;
 
   bool get isRunning => _isRunning;
 
@@ -91,14 +101,48 @@ class ElderLocationService {
     _positionStream = Geolocator.getPositionStream(
       locationSettings: _buildLocationSettings(),
     ).listen(_onPosition, onError: (Object _) {});
+    _lastSentAt = DateTime.now();
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = Timer.periodic(_heartbeatInterval, (_) => _heartbeat());
+  }
+
+  /// 心跳補點：靜止時串流不會有新點，超過 [_heartbeatStaleAfter] 沒送過就
+  /// 主動取一次定位，走與串流相同的 [_sendOrQueue]。逾時或任何錯誤一律
+  /// 靜默略過，等下一輪再試；精確度不合格（[_maxAccuracyMeters]）也不送。
+  Future<void> _heartbeat() async {
+    if (!_isRunning || _isHeartbeating) return;
+    final last = _lastSentAt;
+    if (last != null && DateTime.now().difference(last) < _heartbeatStaleAfter) {
+      return;
+    }
+    _isHeartbeating = true;
+    try {
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: _heartbeatFixTimeout,
+        ),
+      );
+      // 等待定位期間可能已被 stop()，此時不應再送出。
+      if (!_isRunning) return;
+      if (pos.accuracy <= 0 || pos.accuracy > _maxAccuracyMeters) return;
+      await _sendOrQueue(pos);
+    } catch (_) {
+      // 逾時（TimeoutException）、權限或定位服務關閉：靜默略過。
+    } finally {
+      _isHeartbeating = false;
+    }
   }
 
   /// 供 `ElderHomeScreen.dispose` 呼叫，以及切換開關關閉時使用。
   Future<void> stop() async {
     _isRunning = false;
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
     await _positionStream?.cancel();
     _positionStream = null;
     _lastAccepted = null;
+    _lastSentAt = null;
   }
 
   Future<bool> _requestPermission() async {
@@ -169,6 +213,8 @@ class ElderLocationService {
     final elderId = _elderId;
     final userId = _userId;
     if (elderId == null || userId == null) return;
+    // 記錄最近一次「送出（或排入離線佇列）」的時間，供心跳判斷是否太久沒送。
+    _lastSentAt = DateTime.now();
 
     // 每次有新點位時，先嘗試把離線期間積壓的舊點依序補送，避免斷線期間
     // 的軌跡整段消失（新點仍照常送出，不因補送而延遲）。
