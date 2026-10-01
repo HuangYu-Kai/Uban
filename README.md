@@ -231,6 +231,24 @@ flowchart TD
 - **攝像頭預設關閉**：隱私優先，用戶主動開啟才傳輸影像
 - **通話計時**：MM:SS 格式顯示，遠端連接時啟動
 
+### 六、戶外定位與移動軌跡
+
+> 📖 這裡只列使用者看得到的功能。架構、時區約定、門檻、API 與已知限制見
+> [`docs/technical/GPS_LOCATION.md`](docs/technical/GPS_LOCATION.md)。
+> 這是**戶外（手機 GPS）**定位，與監控機的室內房間定位（IPS）是兩個不同系統。
+
+**長輩端**
+- **與家人分享我的位置**：長輩端「我的」分頁的開關，**系統預設開啟，且只有長輩本人能關閉**（家屬無法代為切換）。開啟時手機在背景回報位置（Android 會顯示常駐通知「Uban 位置分享中」），斷網時先存本機、恢復後補送；靜止時每 10 分鐘補一次位置，避免被誤判失聯。
+- **帶我回家**：家屬設定了「家」之後，長輩首頁最上方出現大按鈕，一鍵開啟 Google 地圖步行導航；「家」有本機快取，訊號差時仍能顯示。
+
+**家屬端**
+- **移動軌跡地圖**：看長輩今天（或最近 90 天內任一天）的路線，離群跳點與漂移自動過濾；長時間待著會合併成「停留」膠囊（顯示停留多久、去過幾次），訊號中斷的空白時段以虛線標示；「今日行程」時間軸依序列出出發／移動／停留／訊號中斷，點一列聚焦地圖；今天每 45 秒自動更新。
+- **常去地點與「家」**：家屬為長輩命名地點（長按地圖、點停留膠囊，或到「常去地點」畫面新增），地圖畫出範圍圓；時間軸與資訊列會顯示「在公園・停留 35 分鐘」「目前在家」。
+- **今日摘要卡**：家屬首頁「GPS 移動軌跡」卡顯示「今天外出 N 次・X.X 公里」與「目前在家／外出中・最後更新 N 分鐘前」。
+- **安心提醒**（常去地點畫面內設定）：**晚歸**（預設 21:00 後還不在家）、**失聯**（預設 07:00–22:00 內超過 3 小時沒有位置）、**遠離家**（預設關閉，超過 1／3／5／10 公里）。通知強度刻意一般、不蓋屏不吵醒，點擊直接開啟該長輩的地圖。
+- **外出趨勢**：「資料」分頁的入口，7／30 天的每日移動距離、外出次數、在外時間長條圖；點某一天可看當天軌跡。
+- **隱私**：長輩關閉分享後，家屬看不到任何位置資料（含過去軌跡），也不會再有任何提醒；位置資料保存 90 天後自動清除（隱私權政策第 9 節）。
+
 ---
 
 ## 快速開始
@@ -272,6 +290,13 @@ chmod +x run.sh
 ./run.sh -r              # 熱重啟
 ./run.sh -h              # 顯示幫助
 ```
+
+### 地圖底圖網址 `MAP_TILE_URL`（選用 `--dart-define`）
+
+家屬端軌跡地圖的底圖圖磚網址由 `--dart-define=MAP_TILE_URL=` 注入。**未設定時 App 退回 OpenStreetMap 公用圖磚，僅限開發使用；正式版必須設定**（例如 MapTiler 的 `.../{z}/{x}/{y}.png?key=<KEY>`，設定後地圖左下角會自動加上對應的版權標示）。
+
+- **`run.sh`（macOS／Linux）**：只要 shell 環境變數 `MAP_TILE_URL` 有設定，就會自動帶入所有 `flutter run`，例如 `MAP_TILE_URL='https://…/{z}/{x}/{y}.png?key=…' ./run.sh -s`。
+- **`run.ps1`（Windows）**：**目前不會**傳遞 `MAP_TILE_URL`（只帶 `SERVER_IP` 與開發用的 `DEV_BYPASS_*`），用它啟動時地圖會是 OSM 備援；需要自訂底圖請在 `mobile_app/` 手動執行 `flutter run --dart-define=SERVER_IP=… --dart-define=MAP_TILE_URL=…`。
 
 ---
 
@@ -315,6 +340,11 @@ uban-api/                    # FastAPI 後端 (獨立 Repo)
 | `lib/screens/elder_screen.dart` | 長輩端通話 (含 CCTV/緊急/語音模式) |
 | `lib/screens/video_call_screen.dart` | 家屬端通話 (含控制列) |
 | `uban-api/services/socket_app.py` | 後端信令轉發伺服器 |
+| `lib/services/elder_location_service.dart` | 長輩端 GPS 回報（串流＋心跳＋離線佇列） |
+| `lib/services/location_trail_processor.dart` | 家屬端軌跡清理、停留與斷訊偵測（純函式） |
+| `lib/screens/family/elder_location_map_screen.dart` | 家屬端軌跡地圖與行程時間軸 |
+| `uban-api/routers/location.py` | `/api/location/*` 端點（定位、軌跡、地點、摘要、安心提醒設定） |
+| `uban-api/services/location_alert_watch.py` | 安心提醒每 5 分鐘巡檢（規則見 `location_alert_rules.py`） |
 
 ### 視訊通話測試
 

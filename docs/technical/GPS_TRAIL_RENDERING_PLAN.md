@@ -1,9 +1,12 @@
 # GPS 移動軌跡呈現改善計畫
 
-> 建立：2026-09-30 ・ 分支：`feat/gps-location` ・ 狀態：**第一階段已實作（2026-09-30），第二階段待做**
+> 建立：2026-09-30 ・ 分支：`feat/gps-location` ・ 狀態：**第一階段已實作（2026-09-30）；之後的延伸工作（地點、今日摘要、安心提醒、外出趨勢、地圖底圖等）已不在本計畫範圍，統一記載於 [`GPS_LOCATION.md`](GPS_LOCATION.md)；本計畫的「第二階段（長輩端採集品質）」截至 2026-10-01 仍未實作**
+> （第二階段只有「靜止心跳」以不同形式提前落地：每 10 分鐘心跳，並非本計畫寫的 5 分鐘；`_maxAccuracyMeters` 仍為 50、跳點過濾與取樣密度皆未改。）
 > 相關檔案：`mobile_app/lib/services/elder_location_service.dart`（長輩端採集）、
 > `mobile_app/lib/screens/family/elder_location_map_screen.dart`（家屬端呈現）、
 > `uban-api/routers/location.py`（儲存與查詢）
+
+> 📌 **現行行為請讀 [`GPS_LOCATION.md`](GPS_LOCATION.md)**（戶外 GPS 子系統的權威文件）。本文件是 2026-09-30 的規劃紀錄，內文的門檻數字以當時決議為準，與現行程式碼不盡相同（例如斷訊距離門檻現為 200 m，非下文的 500 m），實際常數見 `GPS_LOCATION.md` §7.1 與 `location_trail_processor.dart`。
 
 ## 1. 現況問題（2026-09-30 實機截圖，王小蛙，杭州南路／忠孝東路一帶）
 

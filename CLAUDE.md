@@ -226,6 +226,37 @@ Scheduled jobs (defined in `main.py`):
 > 只掛在 `elder_screen`（長輩最少待的通話畫面）。重聽長輩、手機靜音或人不在
 > 旁邊時，關懷訊息完全遺失且無法回溯。
 
+### 2.11 戶外 GPS 定位與移動軌跡（2026-09-30～10-01）
+
+長輩手機（位置串流＋10 分鐘心跳＋離線佇列）回報座標 → 後端 `elder_location_ping` →
+家屬端讀取軌跡／今日摘要／7·30 天趨勢，並有晚歸／失聯／遠離家的「安心提醒」；長輩端有
+「帶我回家」。**與室內 IPS（`elder_zone_*`）是兩個不同子系統。** 完整規格、門檻表與限制
+見 [`docs/technical/GPS_LOCATION.md`](docs/technical/GPS_LOCATION.md)。
+
+| 檔案 | 職責 |
+|------|------|
+| `lib/services/elder_location_service.dart` | 長輩端採集、心跳、離線佇列 |
+| `lib/services/api/location_api.dart` | 端點封裝、`parseRecordedAt`（時區唯一入口） |
+| `lib/services/location_trail_processor.dart` | 軌跡清理／停留／斷訊（純函式）、`matchPlace` |
+| `lib/screens/family/elder_location_map_screen.dart` | 地圖、行程時間軸、`since_id` 輪詢 |
+| `lib/services/location_alert_notification.dart` | 安心提醒通知、角色守門、點擊導航 |
+| `lib/screens/family/elder_places_screen.dart` | 常去地點與安心提醒設定 |
+
+**設計約束**：
+
+- **時間一律 UTC、回傳帶 `Z`**：`recorded_at` 存 naive UTC，前端只能經 `LocationApi.parseRecordedAt`
+  解析；「某一天」用 `date` + `tz_offset` 換算 UTC 區間，每日快照固定 Asia/Taipei。
+  別直接 `DateTime.parse`——這就是曾經「最後更新」固定差 8 小時的原因。
+- **分享開關是長輩本人的，且所有家屬讀取都要在讀取端檢查**（`/current`、`/trail`、`/summary`、
+  `/daily`）；關閉後也不得產生提醒。新增任何位置讀取端點都要照做。
+- **安心提醒是一般優先級、僅限家屬**：FCM 純 `data`＋`normal`、`Importance.defaultImportance`，
+  不 `fullScreenIntent`、不繞勿擾；角色守門 `isFamilyDevice()` 為 **fail-closed**。
+  **不要「順手」對齊 `CctvAlertNotification`。**
+- **不可破壞來電備援**：`FlutterLocalNotificationsPlugin` 是全域單例，`LocationAlertNotification`
+  重新 `initialize` 時必須沿用 `LocalCallNotification` 的初始化設定並帶
+  `notificationBackgroundTapHandler`，否則被殺死時備援來電的「拒接」會失效。
+- **戶外命名地點叫 `place`，絕不叫 `zone`**（`zone` 是室內 IPS 的房間區域）。
+
 ## 3. Hard Rules
 
 ### 3.1 通用
