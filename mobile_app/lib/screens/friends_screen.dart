@@ -285,6 +285,7 @@ class _FriendsScreenState extends State<FriendsScreen>
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         title: Text(
           '我的朋友',
           style: GoogleFonts.notoSansTc(

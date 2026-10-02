@@ -7,12 +7,16 @@ import 'package:http/http.dart' as http;
 import 'package:record/record.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
+import '../services/friend_service.dart';
+import '../services/memoir_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/youtube_bubble_player.dart';
 import 'news_listen_player/news_listen_player_screen.dart';
 import 'elder_screen.dart';
+import '../services/care_message_store.dart';
 
 /// 長輩端「和小嘎聊天」—— AI 聊天頁（串流 + Markdown 渲染）。
 ///
@@ -123,6 +127,13 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
     _loadUserAppellation();
     _initSpeech();
     _loadChatHistory();
+
+    // ★ 2026-09-15：小嘎主動關懷的訊息接進聊天室。
+    //   關懷訊息本來就是「小嘎說的話」，放在與小嘎的聊天裡最合理，長輩
+    //   不必再學一個新的地方去找。用 ValueNotifier 而非回呼欄位，才不會
+    //   被其他畫面覆寫；而且本頁在 IndexedStack 中會被保活、initState 只跑
+    //   一次，靠監聽才能即時接到新訊息。
+    CareMessageStore.instance.latest.addListener(_onCareMessage);
   }
 
   /// 載入由長輩或子女設定的專屬稱呼（優先從本機快取讀取，並向後端 API 同步）
@@ -230,6 +241,85 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
           ttsLanguage: 'mandarin',
         ));
       });
+    }
+
+    // ★ 任務 D：聊天歷史載入完成後，讓小嘎在對話中自然提出回憶選題，
+    // 取代原本個人分頁獨立的「小豬想聽你說」橫幅。
+    await _maybeAskMemoirPrompt();
+  }
+
+  /// ★ 任務 D：把回憶選題自然接進 AI 聊天。優先取子女委託的提問
+  /// （MemoirService.getPendingPrompts），沒有才用每日選題
+  /// （getNextPromptQuestion），以小嘎的身分附加一則訊息到 _messages，
+  /// 沿用既有的 _ChatMessage 結構與氣泡樣式，不新增訊息型別或 widget。
+  ///
+  /// 每天只問一次（SharedPreferences 旗標 `memoir_prompt_asked_yyyy-MM-dd`）：
+  /// 長輩端先前吃過「連環彈窗」的苦頭，每次切分頁都重問會是回歸。
+  ///
+  /// 這則訊息刻意不寫進 chat_history_${widget.userId} 快取，只存在於當次
+  /// session 的畫面上，避免每日選題累積污染聊天歷史。
+  /// 小嘎主動關懷訊息抵達 → 以小嘎的身分附加一則聊天訊息，
+  /// 讓長輩事後在聊天室裡找得到「今天小嘎跟我說過什麼」。
+  void _onCareMessage() {
+    final msg = CareMessageStore.instance.latest.value;
+    if (msg == null || !mounted) return;
+    // 同一則不重複加入（ValueNotifier 在相同物件時不會通知，這裡多一層防護）
+    if (_messages.isNotEmpty && _messages.last.text == msg.text) return;
+    setState(() {
+      _messages.add(_ChatMessage(
+        msg.text,
+        false,
+        ttsText: msg.text,
+        ttsLanguage: 'mandarin',
+      ));
+    });
+    _scrollToBottom();
+    // 主動關懷屬於真的對話內容，與每日回憶選題不同，要寫進歷史保留下來。
+    _saveLocalChatHistory();
+  }
+
+  Future<void> _maybeAskMemoirPrompt() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final todayKey =
+          'memoir_prompt_asked_${DateFormat('yyyy-MM-dd').format(DateTime.now())}';
+      if (prefs.getBool(todayKey) == true) return;
+
+      // elderKey 規則沿用個人分頁既有寫法：優先用 FriendService 解析出的
+      // 4 位數 elder_id，拿不到才退回 'elder_${widget.userId}'。
+      final resolvedElderId = await FriendService.resolveMyElderId(widget.userId);
+      final elderKey = resolvedElderId ?? 'elder_${widget.userId}';
+
+      final pending = await MemoirService.instance.getPendingPrompts(elderKey);
+      String question;
+      bool isFromChild;
+      if (pending.isNotEmpty) {
+        question = pending.first.question;
+        isFromChild = true;
+      } else {
+        question = await MemoirService.instance.getNextPromptQuestion(elderKey);
+        isFromChild = false;
+      }
+
+      if (!mounted || question.trim().isEmpty) return;
+
+      final greeting = isFromChild
+          ? '跟您聊個天～您的家人想聽您說說：$question'
+          : '跟您聊個天～$question';
+
+      setState(() {
+        _messages.add(_ChatMessage(
+          greeting,
+          false,
+          ttsText: greeting,
+          ttsLanguage: 'mandarin',
+        ));
+      });
+      _scrollToBottom();
+
+      await prefs.setBool(todayKey, true);
+    } catch (e) {
+      debugPrint('⚠️ [MemoirPrompt] error: $e');
     }
   }
 
@@ -410,6 +500,7 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
 
   @override
   void dispose() {
+    CareMessageStore.instance.latest.removeListener(_onCareMessage);
     _recorder.dispose();
     _audioPlayer.dispose();
     _controller.dispose();
@@ -561,13 +652,13 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
         return;
       }
 
-      // 2. 構建多伺服器候選位址（優先存取配置了 Yating API 金鑰的高效能 AI Hub: boyo-desktop）
+      // 2. 構建伺服器位址（第五十一輪：移除 boyo-desktop 候選——那是 Tailscale
+      // MagicDNS 名稱，未加入該 tailnet 的手機在公開 DNS 上解析不到，只會白白
+      // 卡到逾時才輪到下一候選；主後端已同時提供 /api/voice/tts/stream）。
       final encodedText = Uri.encodeComponent(cleanText);
       final candidateUrls = [
-        'https://boyo-desktop.tail531c8a.ts.net/api/voice/tts/stream?text=$encodedText&engine=$engine',
-        '${ApiService.localAiBaseUrl}/voice/tts/stream?text=$encodedText&engine=$engine',
         '${ApiService.baseUrl.replaceFirst('/api', '')}/api/voice/tts/stream?text=$encodedText&engine=$engine',
-      ].toSet().toList();
+      ];
 
       final dir = await getApplicationDocumentsDirectory();
       final cacheDir = Directory('${dir.path}/tts_cache');
@@ -781,23 +872,35 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
-            children: [
-              CircleAvatar(
-                backgroundColor: AppColors.primary,
-                radius: 20,
-                child: const Text('嘎', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                '和小嘎聊天',
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.textPrimary,
+          // ★ 鐵律 #14 例行檢查（第四十九輪）：這一列的固定內容（頭像＋標題）
+          // 與右側固定寬度的語言切換鈕（130px）＋兩顆 IconButton 同列競爭
+          // 空間，外層 Row 用 spaceBetween、兩側皆未提供可收縮空間；長輩端
+          // 常見放大系統字級，22pt 標題疊加窄螢幕時可能超出可用寬度。包
+          // Flexible（非 Expanded，避免搶走右側固定按鈕的空間）並讓標題可
+          // ellipsis 收縮，右側按鈕群維持原樣不動。
+          Flexible(
+            child: Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: AppColors.primary,
+                  radius: 20,
+                  child: const Text('嘎', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
                 ),
-              ),
-            ],
+                const SizedBox(width: 10),
+                Flexible(
+                  child: Text(
+                    '和小嘎聊天',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
           Row(
             children: [

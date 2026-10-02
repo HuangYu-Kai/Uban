@@ -1,14 +1,20 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lunar/lunar.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../almanac/farmer_almanac_screen.dart';
 import '../news_listen_player/news_listen_player_screen.dart';
 import '../../models/almanac_data_helper.dart';
+import '../../models/chinese_converter.dart';
 import '../../services/api_service.dart';
 import '../../services/subscription_service.dart';
+import '../../services/weather_service.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/reminder_schedule.dart';
 import '../../widgets/glass_card.dart';
 
 class ElderHomeTab extends StatefulWidget {
@@ -28,6 +34,18 @@ class ElderHomeTab extends StatefulWidget {
   final GlobalKey? newsCardKey;
   final GlobalKey? moreNewsKey;
 
+  /// ⚠️ 僅供 widget test 注入假新聞資料使用（見
+  /// `elder_home_tab_news_visibility_test.dart`）。正式呼叫端
+  /// （`elder_home_screen.dart`）恆不傳這個欄位，不影響任何現有行為。
+  ///
+  /// 背景：`flutter test` 的 `TestWidgetsFlutterBinding` 會攔截整個測試
+  /// 套件的 HTTP 請求並一律回傳 400（見上述測試檔頭說明），導致
+  /// `_fetchNews()` 永遠落在失敗分支、`_newsItems` 恆為空陣列——沒有這個
+  /// 欄位就無法用 widget test 驗證「已經有真實新聞資料」那個分支的版面
+  /// 配置（第五十三輪 item 7 新增的「主卡片之外再補幾則精簡新聞列」）。
+  @visibleForTesting
+  final List<Map<String, dynamic>>? debugInitialNewsItemsForTest;
+
   const ElderHomeTab({
     super.key,
     required this.userId,
@@ -37,6 +55,7 @@ class ElderHomeTab extends StatefulWidget {
     this.dateCardKey,
     this.newsCardKey,
     this.moreNewsKey,
+    this.debugInitialNewsItemsForTest,
   });
 
   @override
@@ -52,17 +71,179 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
 
   List<Map<String, dynamic>> _newsItems = [];
   bool _isLoadingNews = true;
+
   int _topNewsIndex = 0;
 
   /// 家屬是否已為這位長輩開通 PRO（真相在後端，見 SubscriptionService）。
   bool _isPro = false;
 
+  // ★ B1c：天氣卡片狀態。
+  WeatherInfo? _weatherInfo;
+  bool _isLoadingWeather = true;
+
+  // ★ B1c：下一筆提醒卡片狀態。
+  List<Map<String, dynamic>> _reminders = [];
+  Set<int> _completedReminderIds = {};
+  bool _isLoadingNextDose = true;
+  // ★ 第四十九輪：讀取失敗與「真的沒有提醒／都完成了」原本是同一種畫面
+  // （`_reminders` 維持空陣列，`_buildNextDoseCard` 看到 `next == null` 就顯示
+  // 「今天的提醒都完成了 🌟」）。長輩開 App 那一刻網路不穩，會被誤導成「今天
+  // 沒有藥要吃」。這個旗標讓兩者在畫面上分開顯示，見 [_buildNextDoseCard]。
+  bool _hasNextDoseLoadError = false;
+  // 本頁在 IndexedStack 底下保活、initState 只會跑一次（見上方
+  // `dateCardKey` 的說明）——代表若冷啟動當下第一次讀取就失敗，沒有任何
+  // 其他觸發點會再試一次，長輩會在整個 session 都看到錯誤卡片。因此失敗時
+  // 額外安排最多一次自動重試（見 [_loadNextDoseData] 尾端），而不是只改文案。
+  int _nextDoseLoadAttempt = 0;
+
   @override
   void initState() {
     super.initState();
     _updateTime();
-    _fetchNews();
+    // ⚠️ 見 `widget.debugInitialNewsItemsForTest` 欄位說明：僅供 widget
+    // test 注入假資料，production 呼叫端恆為 null，行為與原本完全相同。
+    final debugNews = widget.debugInitialNewsItemsForTest;
+    if (debugNews != null) {
+      _newsItems = debugNews;
+      _isLoadingNews = false;
+    } else {
+      _fetchNews();
+    }
     _loadSubscription();
+    _fetchWeather();
+    _loadNextDoseData();
+  }
+
+  /// 抓取天氣（見 [WeatherService]）。內含快取與失敗兜底，這裡只負責
+  /// 顯示讀取狀態並在拿到結果後更新畫面。
+  Future<void> _fetchWeather() async {
+    final info = await WeatherService.getWeather(widget.userId);
+    if (!mounted) return;
+    setState(() {
+      _weatherInfo = info;
+      _isLoadingWeather = false;
+    });
+  }
+
+  /// 載入「下一筆待辦提醒」卡片所需資料：長輩的排程提醒清單 + 今天已完成
+  /// 的打卡紀錄。
+  ///
+  /// ⚠️ 提醒清單一律用 `widget.roomId`（長輩端的 roomId 即
+  /// elder_profile.elder_id，見上方類別註解與 main.dart 的 elderIdUuid），
+  /// 不可用 `widget.userId`（DB 整數 PK）——兩者是不同的鍵，`elder_profile_tab.dart`
+  /// 的 `_loadElderReminders` 對此有詳細說明（第四十三輪修復的鍵不匹配 bug）。
+  Future<void> _loadNextDoseData() async {
+    _nextDoseLoadAttempt++;
+    final elderId = widget.roomId;
+    if (elderId == null || elderId.isEmpty) {
+      // 拿不到 elderId 不是「今天沒有提醒」，是「還不知道長輩是誰」——同樣
+      // 不該顯示慶祝文案，比照下面 catch 分支處理（含自動重試，見尾端說明）。
+      if (mounted) {
+        setState(() {
+          _isLoadingNextDose = false;
+          _hasNextDoseLoadError = true;
+        });
+      }
+      _scheduleNextDoseRetry();
+      return;
+    }
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final today = DateTime.now().toIso8601String().substring(0, 10);
+      final completedList = prefs.getStringList('completed_tasks_$today') ?? [];
+      final completedIds =
+          completedList.map((e) => int.tryParse(e) ?? -1).toSet();
+
+      final list = await ApiService.getElderReminders(elderId);
+      if (!mounted) return;
+      setState(() {
+        _reminders = List<Map<String, dynamic>>.from(list);
+        _completedReminderIds = completedIds;
+        _isLoadingNextDose = false;
+        _hasNextDoseLoadError = false;
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingNextDose = false;
+          _hasNextDoseLoadError = true;
+        });
+      }
+      _scheduleNextDoseRetry();
+    }
+  }
+
+  /// 讀取失敗時安排最多一次自動重試。本頁在 `IndexedStack` 下 initState
+  /// 只跑一次，若不主動再試，冷啟動當下的一次網路不穩就會讓卡片錯誤畫面
+  /// 卡住一整個 session（見 [_hasNextDoseLoadError] 的說明）。只重試一次
+  /// （`_nextDoseLoadAttempt < 2`），避免對持續離線的裝置無限重試。
+  void _scheduleNextDoseRetry() {
+    if (_nextDoseLoadAttempt >= 2) return;
+    Future.delayed(const Duration(seconds: 8), () {
+      if (mounted) _loadNextDoseData();
+    });
+  }
+
+  /// 打卡：同時做「本機立即生效」＋「背景同步後端」兩件事——
+  /// App 目前有兩條各自獨立的打卡路徑（「我的」分頁的清單只寫本機
+  /// SharedPreferences；提醒彈窗只打 API），本卡片兩邊都寫，才能讓首頁卡片
+  /// 與「我的」分頁看到一致的完成狀態。
+  Future<void> _completeNextDose(Map<String, dynamic> reminder) async {
+    final id = int.tryParse(reminder['id']?.toString() ?? '');
+    if (id == null) return;
+
+    HapticFeedback.mediumImpact();
+    setState(() => _completedReminderIds.add(id));
+
+    final prefs = await SharedPreferences.getInstance();
+    final today = DateTime.now().toIso8601String().substring(0, 10);
+    await prefs.setStringList(
+      'completed_tasks_$today',
+      _completedReminderIds.map((e) => e.toString()).toList(),
+    );
+
+    // ★ 第四十九輪修復：這裡是「先更新本機再同步後端」的樂觀更新（點下去
+    // 畫面立刻打勾），過去用 unawaited 完全不管成不成功——網路失敗時畫面
+    // 照樣顯示打卡完成，家屬端資料庫其實沒有這筆用藥紀錄，是用藥安全
+    // 問題。改成 await 讀 bool，失敗時把上面剛寫入的兩份樂觀更新狀態都
+    // 回退（記憶體中的 _completedReminderIds、SharedPreferences 的
+    // completed_tasks_<today>），並提示使用者可以再按一次。
+    // ApiService.completeElderReminder 內部已經把逾時／連線失敗／後端
+    // 錯誤全部吞成 false、不會對外拋例外（見 reminder_api.dart），這裡的
+    // try/catch 只是防禦未來改版又開始拋例外，不能取代讀 bool。
+    bool success;
+    try {
+      success = await ApiService.completeElderReminder(id);
+    } catch (e) {
+      debugPrint('⚠️ [ElderHomeTab] completeElderReminder 例外: $e');
+      success = false;
+    }
+    if (!mounted) return;
+    if (!success) {
+      setState(() => _completedReminderIds.remove(id));
+      await prefs.setStringList(
+        'completed_tasks_$today',
+        _completedReminderIds.map((e) => e.toString()).toList(),
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '打卡沒有送出成功，請確認網路後再按一次「打卡」',
+            style: GoogleFonts.notoSansTc(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+          backgroundColor: const Color(0xFFB91C1C),
+          behavior: SnackBarBehavior.floating,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          margin: const EdgeInsets.all(20),
+        ),
+      );
+    }
   }
 
   /// 長輩端的 roomId 即 elder_profile.elder_id（見 main.dart 的 elderIdUuid）。
@@ -76,7 +257,8 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
   Future<void> _fetchNews({String? category}) async {
     final targetCategory = category ?? 'all';
     try {
-      debugPrint('📡 正在抓取新聞... 類別: $targetCategory, 網址: ${ApiService.baseUrl}/news');
+      debugPrint(
+          '📡 正在抓取新聞... 類別: $targetCategory, 網址: ${ApiService.baseUrl}/news');
       var parsed = <Map<String, dynamic>>[];
 
       // 動態抓取指定類別 (limit 為 30 符合目前前端設計)
@@ -168,10 +350,28 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
 
     setState(() {
       _lunarDate = "${lunar.getMonthInChinese()}月${lunar.getDayInChinese()}";
+      // ★ getJieQi() 只在「今天剛好是節氣當天」才回傳名稱，其餘約 360 天
+      //   都回空字串。原本的 fallback 寫死「立春」，等於一年到頭首頁都在
+      //   跟長輩說現在是立春——九月中顯示立春是明確的錯誤資訊。
+      //   改用 getPrevJieQi(true) 取「當前所處的節氣區間」，才是長輩要看的。
       _solarTerm = lunar.getJieQi();
       if (_solarTerm.isEmpty) {
-        _solarTerm = "立春";
+        try {
+          _solarTerm = lunar.getPrevJieQi(true).getName();
+        } catch (e) {
+          // 取不到就留空，由 ElderDateSummaryRow 自行省略，
+          // 絕不再用寫死的節氣冒充。
+          debugPrint('⚠️ [ElderHomeTab] 取得當前節氣失敗: $e');
+          _solarTerm = '';
+        }
       }
+      // ★ 第四十九輪：`lunar` 套件的 24 節氣表本身是簡體字，其中「驚蟄／
+      // 處暑／芒種／穀雨／小滿」這 5 個（每個約 15 天、一年約 75 天）沒有
+      // 特別轉繁體。兩條路徑（上面直接命中的 getJieQi()、下面 fallback 的
+      // getPrevJieQi）都可能回傳簡體，因此在兩者匯流之後、只包一次，涵蓋
+      // 全部情況——同一套修法已用在 models/almanac_data_helper.dart（農民曆
+      // 頁面），這裡是本頁首頁卡片獨立的第二處，兩者是不同檔案、必須分開改。
+      _solarTerm = ChineseConverter.toTraditional(_solarTerm);
 
       try {
         _dayName = DateFormat('EEEE', 'zh_TW').format(now);
@@ -250,8 +450,28 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                _buildElderDateCard(),
-                                const SizedBox(height: AppSpacing.lg),
+                                // ★ 一屏到底修復：首頁只留三塊（今天卡／下一包藥／新聞），
+                                // 天氣併入今天卡、日期卡與天氣卡合一，
+                                // 移除跟底部導覽列「電話」分頁重複的「打電話給家人」大按鈕。
+                                //
+                                // ★ 第五十輪（任務 A）／第五十二輪（任務 A，見
+                                // `_buildFeaturedNewsCard` 開頭完整說明）：新聞卡歷經
+                                // 「精簡列→大圖直式→精簡列」的來回調整，第五十二輪定案
+                                // 為固定尺寸縮圖的精簡列——大圖直式在真實長輩手機上會把
+                                // 整張卡片擠出第一屏，這正是「今日頭條看不到」的根因。
+                                // 刻意**不**把新聞卡的順序搬到「今天」／「下一包藥」前面
+                                // ——這兩塊是健康相關資訊，優先度更高，不應該被排到新聞
+                                // 後面。三塊都完整保留原尺寸／可讀性，若系統字體被調大等
+                                // 邊界情況仍裝不下，交給外層既有的 `SingleChildScrollView`
+                                // 捲動（本頁本來就可捲動，並非新增行為）。
+                                _buildTodayCard(),
+                                // ★ 第五十一輪（任務 3）：24→16。省下的每一點
+                                // 垂直空間都直接換成新聞卡在第一屏內能多露出
+                                // 多少——見 `_buildFeaturedNewsCard` 開頭的
+                                // 完整測量與理由，這裡只改間距，不動字級。
+                                const SizedBox(height: AppSpacing.md),
+                                _buildNextDoseCard(),
+                                const SizedBox(height: AppSpacing.md),
                                 _buildFeaturedNewsCard(),
                               ],
                             ),
@@ -274,7 +494,6 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
       ),
     );
   }
-
 
   Widget _buildHeader() {
     return Row(
@@ -306,8 +525,8 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
             child: Image.asset(
               'assets/images/user_avatar.png',
               fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => const Icon(
-                  Icons.person_rounded, color: AppColors.primary, size: 36),
+              errorBuilder: (_, __, ___) => const Icon(Icons.person_rounded,
+                  color: AppColors.primary, size: 36),
             ),
           ),
         ),
@@ -329,7 +548,8 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
       decoration: BoxDecoration(
         color: pillColor.withValues(alpha: 0.92),
         borderRadius: BorderRadius.circular(AppRadius.pill),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.6), width: 1.5),
+        border:
+            Border.all(color: Colors.white.withValues(alpha: 0.6), width: 1.5),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -340,8 +560,8 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
             child: Image.asset(
               badgeAsset,
               fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) =>
-                  const Center(child: Text('🐷', style: TextStyle(fontSize: 24))),
+              errorBuilder: (_, __, ___) => const Center(
+                  child: Text('🐷', style: TextStyle(fontSize: 24))),
             ),
           ),
           const SizedBox(width: 8),
@@ -358,8 +578,266 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     );
   }
 
-  /// 大日期卡片（毛玻璃，點擊跳轉至農民曆與神明誕辰）。
-  Widget _buildElderDateCard() {
+  /// 「今天」卡右半天氣直欄（回應林阿公「看不到天氣」的抱怨）。
+  ///
+  /// ★ 一屏到底修復：原本獨立一張天氣 [GlassCard] 併入日期／農民曆卡，
+  /// 此方法只回傳右半內容，容器由 [_buildTodayCard] 統一提供。
+  /// 讀取中顯示精簡佔位；失敗（[WeatherService] 回傳 null）只讓「這半邊」
+  /// 顯示平靜的「稍後再試」文案並塌陷，左半日期／農民曆長條不受影響——
+  /// 刻意不做任何看起來像錯誤/警示的紅色狀態，這位長輩容易被警告字樣嚇到。
+  /// ★ 天氣圖示必須跟著實際天氣走。原本寫死 Icons.wb_sunny_rounded，
+  /// 下雨天會在「陰雨綿綿」旁邊畫一顆太陽——對看不清小字的長輩來說，
+  /// 圖示才是主要訊號，畫錯等於給錯出門建議。
+  /// 分級與 WeatherService 的三段文案同源（降雨 <20 / <50 / 其餘）。
+  IconData _weatherIcon(WeatherInfo w) {
+    if (w.rainProbability >= 50) return Icons.umbrella_rounded;
+    if (w.rainProbability >= 20) return Icons.grain_rounded;
+    return Icons.wb_sunny_rounded;
+  }
+
+  Color _weatherIconColor(WeatherInfo w) {
+    if (w.rainProbability >= 50) return const Color(0xFF4A6FA5);
+    if (w.rainProbability >= 20) return const Color(0xFF6B8CBE);
+    return AppColors.accent;
+  }
+
+  Widget _buildWeatherHalf() {
+    if (_isLoadingWeather) {
+      return const Align(
+        alignment: Alignment.centerRight,
+        child: SizedBox(
+          width: 24,
+          height: 24,
+          child: CircularProgressIndicator(strokeWidth: 3),
+        ),
+      );
+    }
+
+    final weather = _weatherInfo;
+    if (weather == null) {
+      return Text(
+        '天氣資訊暫時看不到，稍後再試',
+        style: ElderScale.caption,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        textAlign: TextAlign.end,
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        // ⚠️ 溫度區間是動態字串、跟圖示同列，包 Flexible／ellipsis 避免窄
+        // 螢幕溢位。
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(_weatherIcon(weather),
+                size: 22, color: _weatherIconColor(weather)),
+            const SizedBox(width: 4),
+            Flexible(
+              child: Text(
+                '${weather.minTemp.round()}°–${weather.maxTemp.round()}°',
+                style: GoogleFonts.notoSansTc(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.primaryDark,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '${weather.condition}・降雨${weather.rainProbability}%',
+          style: ElderScale.caption,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.end,
+        ),
+        // ★ 第四十九輪：WeatherInfo.isFromCache 之前定義了卻從沒被畫面讀過
+        // （全 repo 搜尋只有 weather_service.dart 自己的定義處）——連線失敗
+        // 時頂替的舊資料，長輩看起來跟剛查到的一模一樣。現在補上這行小字，
+        // 只在 isFromCache 為 true 時顯示，不影響平常（新資料）的畫面。
+        if (weather.isFromCache) ...[
+          const SizedBox(height: 2),
+          Text(
+            '（上次查到的資料）',
+            style: ElderScale.caption.copyWith(color: AppColors.textSecondary),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.end,
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// 下一筆待辦提醒卡片，回應林陳阿嬤「只想看下一筆藥」的需求。
+  ///
+  /// 視覺選擇：沿用首頁既有的 teal/slate 語言（[GlassCard] + [AppColors]），
+  /// 而不是「我的」分頁提醒清單用的暖色系（bg 0xFFFFFDF9／border
+  /// 0xFFEADBCE）——理由是本卡片與同一版面上的天氣卡、日期卡、新聞卡並排，
+  /// 沿用暖色會讓整頁風格分裂成兩套系統；暖色系留給「我的」分頁自己的
+  /// 清單語境即可。
+  Widget _buildNextDoseCard() {
+    // ★ 第五十一輪（任務 3）：以下四個 GlassCard 的 vertical padding
+    // 22/20→16/14，理由與幅度說明見 `_buildFeaturedNewsCard` 開頭；
+    // 只縮容器留白，文字字級（body/sectionTitle/34pt emoji/20pt 打卡按鈕）
+    // 完全不動。
+    if (_isLoadingNextDose) {
+      return GlassCard(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        child: Row(
+          children: [
+            const SizedBox(
+              width: 28,
+              height: 28,
+              child: CircularProgressIndicator(strokeWidth: 3),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Text(
+                '提醒讀取中…',
+                style: ElderScale.body,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final next = nextDue(_reminders, _completedReminderIds, DateTime.now());
+    if (next == null) {
+      // ★ 第四十九輪：「讀取失敗」與「真的沒有提醒／都已完成」以前是同一張卡片
+      // （`_reminders` 空陣列時兩者都會走到這裡），長輩開 App 那一刻網路不穩
+      // 會被誤導成「今天沒有藥要吃」。改用 [_hasNextDoseLoadError] 分流成兩種
+      // 語氣不同的文案：讀取失敗用中性圖示與措辭，不使用 🌟 慶祝語氣。
+      if (_hasNextDoseLoadError) {
+        return GlassCard(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          child: Row(
+            children: [
+              const Icon(Icons.wifi_off_rounded,
+                  size: 28, color: Color(0xFF9CA3AF)),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Text(
+                  '提醒暫時讀不到，請確認網路連線',
+                  style: ElderScale.body,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+      return GlassCard(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        child: Row(
+          children: [
+            const Text('🌟', style: TextStyle(fontSize: 28)),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(
+                '今天的提醒都完成了 🌟',
+                style: ElderScale.body,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final category = (next['category'] ?? '').toString();
+    final emoji = _reminderEmoji(category);
+    final timeStr = (next['time_str'] ?? '').toString();
+    final title = (next['title'] ?? '提醒').toString();
+
+    return GlassCard(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+      child: Row(
+        children: [
+          Text(emoji, style: const TextStyle(fontSize: 34)),
+          const SizedBox(width: 14),
+          // ⚠️ 時間＋標題同列且皆為動態長度（後端自訂文字），包 Expanded／
+          // ellipsis 避免窄螢幕溢位。
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  timeStr,
+                  style: ElderScale.sectionTitle
+                      .copyWith(color: AppColors.primaryDark),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  title,
+                  style: ElderScale.body,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          ElevatedButton(
+            onPressed: () => _completeNextDose(next),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppRadius.pill),
+              ),
+            ),
+            child: Text(
+              '打卡',
+              style: GoogleFonts.notoSansTc(
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 提醒分類對應的 emoji 圖示。無法辨識的分類一律回傳鬧鐘，跟「我的」
+  /// 分頁其他提醒相關畫面的預設圖示保持一致的保守作法。
+  String _reminderEmoji(String category) {
+    switch (category) {
+      case 'medication':
+        return '💊';
+      case 'water':
+        return '🚰';
+      case 'exercise':
+        return '🚶';
+      default:
+        return '⏰';
+    }
+  }
+
+  /// 「今天」卡（毛玻璃，日期／農曆＋天氣合一，點擊跳轉至農民曆與神明誕辰）。
+  ///
+  /// ★ 一屏到底修復：原本天氣卡與日期／農曆卡是首頁兩張獨立的卡片（合計
+  /// 約 359px），現在合成一張約 168px 的卡片——左半沿用既有
+  /// [ElderDateSummaryRow]（完全不改它的原始碼，只用外層 [Expanded] 縮減
+  /// 可用寬度，讓它自己既有的 [FittedBox] 等比縮小保護視需要接手）、右半
+  /// 是新的 [_buildWeatherHalf]。[FarmerAlmanacScreen] 的唯一入口——底部的
+  /// 農民曆長條——原封不動保留在卡片下半部。
+  Widget _buildTodayCard() {
     final now = DateTime.now();
     final almanac = AlmanacDataHelper.calculateForDate(now);
 
@@ -369,7 +847,8 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
       final deityName = almanac.deities.first.name;
       summaryText = '🌟 今日【$deityName】・宜 ${almanac.yiList.take(2).join('、')}';
     } else if (almanac.yiList.isNotEmpty && almanac.jiList.isNotEmpty) {
-      summaryText = '📜 今日農民曆：宜 ${almanac.yiList.take(2).join('、')} ｜ 忌 ${almanac.jiList.take(2).join('、')}';
+      summaryText =
+          '📜 今日農民曆：宜 ${almanac.yiList.take(2).join('、')} ｜ 忌 ${almanac.jiList.take(2).join('、')}';
     } else {
       summaryText = '📜 點此查看今日農民曆・神明誕辰與吉凶';
     }
@@ -387,20 +866,34 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
           ),
         );
       },
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+      // ★ 第五十一輪（任務 3）：vertical 14→10。只縮容器的留白，卡片內文字
+      // 大小（44/26/24/22pt）完全不動——見 `_buildFeaturedNewsCard` 開頭
+      // 的完整說明：這是「一屏到底」與「新聞被擠到摺線外」之間的垂直空間
+      // 重新分配，不是縮小可讀性。
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       child: Column(
         children: [
-          ElderDateSummaryRow(
-            monthStr: _monthStr,
-            dateStr: _dateStr,
-            dayName: _dayName,
-            lunarDate: _lunarDate,
-            solarTerm: _solarTerm,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                flex: 3,
+                child: ElderDateSummaryRow(
+                  monthStr: _monthStr,
+                  dateStr: _dateStr,
+                  dayName: _dayName,
+                  lunarDate: _lunarDate,
+                  solarTerm: _solarTerm,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(flex: 2, child: _buildWeatherHalf()),
+            ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 8),
           // 🌿 農民曆與神明吉凶資訊導引列（薄荷綠毛玻璃質感，融於首頁主視覺）
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
             decoration: BoxDecoration(
               color: AppColors.primary.withValues(alpha: 0.09),
               borderRadius: BorderRadius.circular(14),
@@ -437,20 +930,47 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     );
   }
 
-  /// 單一大頭條新聞卡（大圖 + 大標 + 全寬「唸給我聽」+ 看更多）。
-  /// 只重做呈現，新聞抓取與 TTS 聆聽功能沿用既有邏輯。
+  /// 今日頭條精簡列（小縮圖 + 最多兩行標題 + 「點我聆聽」＋「更多」）。
+  ///
+  /// ★ 第五十二輪（任務 A，回應「今日頭條經三輪處理仍看不到」的第三次
+  /// 回報）：徹底移除「依剩餘空間決定大圖或精簡列」的動態邏輯（原
+  /// `_availableNewsImageHeight`）。那套邏輯正是三輪修復都沒解決問題的
+  /// 根因——第五十輪把第四十七輪版本（`git show
+  /// fbed914:mobile_app/lib/screens/elder_tabs/elder_home_tab.dart`）裡
+  /// 「空間不足就退回精簡列」的下限判斷（`if (leftover < 190) return 0;`）
+  /// 拿掉，改成一律 `leftover.clamp(170.0, 260.0)`——無論剩餘空間算出來是
+  /// 多少，一律強制擠出至少 170px 的大圖。真實長輩手機可用高度約
+  /// 510～570px，扣掉「今天」與「下一包藥」兩張卡片後往往只剩不到
+  /// 100px，這 170px 下限加上圖片外的卡片留白／標題／按鈕，會把整張
+  /// 「今日頭條」卡片擠出第一屏、甚至讓標題本身也貼齊或超出摺線——這正是
+  /// 使用者回報「憑空消失」的實際成因，不是資料抓不到（後端 `/api/news`
+  /// 一直是活的，見任務交接筆記）。
+  ///
+  /// 改法：不再計算「剩餘空間夠不夠長成大圖」，縮圖固定為一個很小的尺寸
+  /// （見下方 `thumbSize`），讀取中／無資料／有資料三種狀態共用同一套
+  /// 「縮圖在左、文字在右」的橫向精簡列版面，總高度可預期、不隨其餘卡片
+  /// 高度變動而暴衝，「今天」「下一包藥」「今日頭條」三張卡片才能穩定地在
+  /// 360x640 這種真實長輩手機尺寸的第一屏內顯示完整（含標題文字）。標題／
+  /// 按鈕字級沿用第五十輪已放大的版本（22pt／14pt）不變，只縮小「圖片」
+  /// 本身與卡片留白——鐵律 #14 要求長輩端字級不得為了塞版面縮小。
+  ///
+  /// 新聞抓取與 TTS 聆聽功能完全沿用既有邏輯（[_openNewsListenPlayer]／
+  /// [_openNewsListFromTopEntry] 皆未改動），只重做呈現。
   Widget _buildFeaturedNewsCard() {
+    // ★ 第五十輪（任務 A）：標題字級 20→26，紅點提示也跟著放大，讓「今日
+    // 頭條」這個區塊標籤本身就更醒目，不再像是順手加的小標籤。第五十二輪
+    // 沿用不動。
     Widget header = Row(
       children: [
         Container(
-          width: 12,
-          height: 12,
+          width: 14,
+          height: 14,
           decoration: const BoxDecoration(
             color: Colors.redAccent,
             shape: BoxShape.circle,
           ),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: 10),
         Text(
           '今日頭條',
           style: GoogleFonts.notoSansTc(
@@ -462,43 +982,102 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
       ],
     );
 
+    // 縮圖固定尺寸：不再依 MediaQuery 動態計算（理由見上方方法說明）。
+    // 76px 比第四十七輪精簡列的縮圖（64px）略大，搭配第五十輪放大過的
+    // 22pt 標題字級，視覺比例不會顯得縮圖過小。
+    const double thumbSize = 76;
+
     if (_isLoadingNews) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           header,
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           Container(
-            height: 200,
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(ElderScale.cardRadius),
+              borderRadius: BorderRadius.circular(20),
             ),
-            child: const Center(child: CircularProgressIndicator()),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: thumbSize,
+                  height: thumbSize,
+                  child: const Center(
+                    child: SizedBox(
+                      width: 26,
+                      height: 26,
+                      child: CircularProgressIndicator(strokeWidth: 3),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    '新聞讀取中…',
+                    style: ElderScale.body,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       );
     }
 
     if (_newsItems.isEmpty) {
+      // ★ 第五十輪（任務 A）：舊文案「目前沒有新聞，稍後再看看」太不起眼，
+      // 長輩會誤以為「頭條」這個功能被拿掉了。改成明確的「還在整理中」。
+      // ★ 第五十二輪：卡片外觀改回精簡列（縮圖＋文字同列），不再用大圖
+      // 佔位框——大佔位框正是把整張卡片擠出第一屏的元凶之一，見上方方法
+      // 說明。
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           header,
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           Container(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(ElderScale.cardRadius),
+              borderRadius: BorderRadius.circular(20),
             ),
-            child: Text('目前沒有新聞，稍後再看看', style: ElderScale.body),
+            child: Row(
+              children: [
+                Container(
+                  width: thumbSize,
+                  height: thumbSize,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(
+                    Icons.newspaper_rounded,
+                    size: 30,
+                    color: AppColors.primary.withValues(alpha: 0.6),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    '今天的新聞還在整理中，請稍候',
+                    style: ElderScale.body,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       );
     }
 
-    // 頭條優先挑「有圖片」的新聞當背景；都沒有才退回第一則
+    // 頭條優先挑「有圖片」的新聞當縮圖；都沒有才退回第一則
     bool itemHasImage(Map<String, dynamic> it) {
       final u = ((it['image_url'] ?? it['image']) ?? '').toString().trim();
       return u.startsWith('http://') || u.startsWith('https://');
@@ -513,14 +1092,23 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     final hasImage = itemHasImage(item);
     final title = (item['title'] ?? '無標題').toString();
 
-    // 無圖時的實心底
-    Widget fallbackBg = Container(
+    // ★ 第五十三輪 item 7（回應「新聞頭條版面被縮小，可以插入更多新聞頭條」）：
+    // 主卡片之後視螢幕高度補上最多 [_extraHeadlineCount] 則精簡新聞列，見該
+    // 方法的完整量測基準說明。用 `!=`（參照相等）排除掉已經是主卡片的那一則
+    // ——`item` 本身就是 `_newsItems`裡的某個元素參照，不是複製品。
+    final int extraCount = _extraHeadlineCount(context);
+    final List<Map<String, dynamic>> extraItems = extraCount <= 0
+        ? const []
+        : _newsItems.where((it) => it != item).take(extraCount).toList();
+
+    // 無圖時的縮圖底
+    Widget fallbackThumb = Container(
       color: AppColors.primary,
       alignment: Alignment.center,
       child: Icon(
         Icons.newspaper_rounded,
-        size: 90,
-        color: Colors.white.withValues(alpha: 0.25),
+        size: 26,
+        color: Colors.white.withValues(alpha: 0.7),
       ),
     );
 
@@ -528,18 +1116,19 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         header,
-        const SizedBox(height: 12),
-        // 整塊卡片可點 → 聆聽新聞畫面
+        const SizedBox(height: 8),
+        // 整塊卡片可點 → 聆聽新聞畫面（沿用既有 _openNewsListenPlayer）
         Material(
           key: widget.newsCardKey,
           color: Colors.transparent,
           child: InkWell(
             onTap: () => _openNewsListenPlayer(item),
-            borderRadius: BorderRadius.circular(ElderScale.cardRadius),
+            borderRadius: BorderRadius.circular(20),
             child: Container(
-              height: 300,
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(ElderScale.cardRadius),
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: 0.14),
@@ -548,87 +1137,101 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                   ),
                 ],
               ),
-              clipBehavior: Clip.antiAlias,
-              child: Stack(
-                fit: StackFit.expand,
+              // ★ 第五十二輪：固定橫排（縮圖在左、文字在右），不再依剩餘
+              // 空間切換直排／橫排——理由見上方方法說明。橫排時 Row 寬度
+              // 恆為有界，文字欄可以放心用 Expanded，不必再用
+              // Flexible(fit: loose) 防禦「父層高度不受限」的直排情境。
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 背景大圖（或漸層底）
-                  if (hasImage)
-                    Image.network(
-                      imageUrl,
-                      fit: BoxFit.cover,
-                      loadingBuilder: (context, child, progress) =>
-                          progress == null ? child : fallbackBg,
-                      errorBuilder: (_, __, ___) => fallbackBg,
-                    )
-                  else
-                    fallbackBg,
-                  // 底部深色漸層，讓標題看得清楚
-                  const DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.transparent,
-                          Color(0x33000000),
-                          Color(0xCC000000),
-                        ],
-                        stops: [0.3, 0.6, 1.0],
-                      ),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(14),
+                    child: SizedBox(
+                      width: thumbSize,
+                      height: thumbSize,
+                      child: hasImage
+                          ? Image.network(
+                              imageUrl,
+                              fit: BoxFit.cover,
+                              loadingBuilder: (context, child, progress) =>
+                                  progress == null ? child : fallbackThumb,
+                              errorBuilder: (_, __, ___) => fallbackThumb,
+                            )
+                          : fallbackThumb,
                     ),
                   ),
-                  // 「點我聆聽」提示
-                  Positioned(
-                    top: 16,
-                    left: 16,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: AppColors.primary,
-                        borderRadius: BorderRadius.circular(AppRadius.pill),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.2),
-                            blurRadius: 8,
-                            offset: const Offset(0, 3),
+                  const SizedBox(width: 12),
+                  // ⚠️ 標題是後端動態文字、長度不可控，包 Expanded／ellipsis
+                  // 避免窄螢幕溢位。
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // ★ 第五十輪（任務 A）：標題 17→22，符合「大標題」的
+                        // 長輩閱讀需求；第五十二輪沿用不動，仍保留
+                        // maxLines/ellipsis 防止溢位。
+                        Text(
+                          title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.notoSansTc(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                            height: 1.3,
+                            color: AppColors.textPrimary,
                           ),
-                        ],
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.headphones_rounded,
-                              color: Colors.white, size: 22),
-                          const SizedBox(width: 6),
-                          Text(
-                            '點我聆聽',
-                            style: GoogleFonts.notoSansTc(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w800,
-                              color: Colors.white,
+                        ),
+                        const SizedBox(height: 6),
+                        // ⚠️「點我聆聽」為固定字串，但跟按鈕同列，仍防禦性
+                        // 包 Flexible／ellipsis，避免系統字體放大時溢位。
+                        Row(
+                          children: [
+                            const Icon(Icons.play_circle_fill_rounded,
+                                size: 18, color: AppColors.primary),
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: Text(
+                                '點我聆聽',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: GoogleFonts.notoSansTc(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.primary,
+                                ),
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  // 標題壓在圖片底部
-                  Positioned(
-                    left: 20,
-                    right: 20,
-                    bottom: 20,
-                    child: Text(
-                      title,
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 26,
-                        fontWeight: FontWeight.w800,
-                        height: 1.3,
-                        color: Colors.white,
-                      ),
+                            const Spacer(),
+                            // 看更多新聞 → 新聞列表（沿用既有
+                            // _openNewsListFromTopEntry）
+                            TextButton(
+                              key: widget.moreNewsKey,
+                              onPressed: _openNewsListFromTopEntry,
+                              style: TextButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 6, vertical: 2),
+                                minimumSize: Size.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    '更多',
+                                    style: GoogleFonts.notoSansTc(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.primaryDark,
+                                    ),
+                                  ),
+                                  const Icon(Icons.chevron_right_rounded,
+                                      size: 16, color: AppColors.primaryDark),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -636,31 +1239,102 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
             ),
           ),
         ),
-        const SizedBox(height: 8),
-        // 看更多新聞 → 新聞列表
-        Align(
-          alignment: Alignment.centerRight,
-          child: TextButton(
-            key: widget.moreNewsKey,
-            onPressed: _openNewsListFromTopEntry,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  '看更多新聞',
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.primaryDark,
-                  ),
+        // ★ 第五十三輪 item 7：主卡片之後，視螢幕高度補上更多精簡新聞列，
+        // 填滿第一屏剩餘空間，不再讓長輩覺得「新聞版面被縮小到只剩一則」。
+        // 空清單時 `extraItems.isEmpty` 直接不渲染，維持原本外觀不變。
+        if (extraItems.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.08),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
                 ),
-                const Icon(Icons.chevron_right_rounded,
-                    color: AppColors.primaryDark, size: 26),
+              ],
+            ),
+            child: Column(
+              children: [
+                for (int i = 0; i < extraItems.length; i++) ...[
+                  if (i > 0)
+                    const Divider(
+                        height: 1, thickness: 1, color: Color(0xFFEFEFEF)),
+                  _buildCompactHeadlineRow(extraItems[i]),
+                ],
               ],
             ),
           ),
-        ),
+        ],
       ],
+    );
+  }
+
+  /// 主卡片之外，還要視「螢幕總高度」補幾則精簡新聞列（見呼叫端
+  /// [_buildFeaturedNewsCard] 的說明）。
+  ///
+  /// 刻意只讀 `MediaQuery.size.height` 這一個穩定數字做粗粒度分級，**不**
+  /// 反推「扣掉今天卡／下一包藥卡之後還剩多少空間」——後者依賴其他卡片
+  /// 當下的動態高度（天氣文字長度、用藥資料筆數都會變動），正是第五十輪
+  /// `_availableNewsImageHeight` 讓卡片暴衝、把整張「今日頭條」擠出第一屏
+  /// 的根因（見 `_buildFeaturedNewsCard` 開頭的完整說明）。單純的螢幕高度
+  /// 分級沒有這個問題：數字固定、每列高度也固定（單行 ellipsis，不像主
+  /// 卡片標題可能跳 1～2 行），上限有界，不會重蹈覆轍。
+  ///
+  /// 門檻依 `elder_home_tab_news_visibility_test.dart` 兩組實測基準訂定：
+  ///   - 360x640（窄機）：header 到第一屏可視底線僅 ~120px 預算，扣掉主
+  ///     卡片本身（含 padding，約 100～111px）後剩不到 20px——連一則精簡列
+  ///     （約 34px）都放不下，故回傳 0，不勉強塞。
+  ///   - 412x915（大機）：預算約 387px，主卡片＋2 則精簡列（約 85px）後仍
+  ///     有 100px 以上餘裕，故回傳上限 2（「不用太多，僅填滿就好」，見
+  ///     使用者原話，不是能塞多少就塞多少）。
+  ///   700 是兩組實測值（640／915）中間、留有餘裕的分界點，尚未涵蓋的機型
+  ///   尺寸屬合理外插，非任意數字。
+  int _extraHeadlineCount(BuildContext context) {
+    final double screenHeight = MediaQuery.of(context).size.height;
+    if (screenHeight >= 700) return 2;
+    return 0;
+  }
+
+  /// 精簡新聞列：比主卡片更輕量的單行標題，用於 [_extraHeadlineCount] > 0
+  /// 時補在主卡片下方。刻意不含縮圖／「點我聆聽」子列，只保留「可點擊＋
+  /// 一行省略號標題」，讓每列高度固定可預期（見 [_extraHeadlineCount] 的
+  /// 計算基準）。點擊行為與主卡片一致，沿用既有 [_openNewsListenPlayer]。
+  Widget _buildCompactHeadlineRow(Map<String, dynamic> item) {
+    final title = (item['title'] ?? '無標題').toString();
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => _openNewsListenPlayer(item),
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 4),
+          child: Row(
+            children: [
+              const Icon(Icons.chevron_right_rounded,
+                  size: 18, color: AppColors.primary),
+              const SizedBox(width: 6),
+              // ⚠️ 標題是後端動態文字、長度不可控，包 Expanded／ellipsis
+              // 避免窄螢幕溢位（鐵律 #14）。
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -748,12 +1422,11 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
       ),
     );
   }
-
 }
 
 /// 首頁日期卡片「國曆（左）／農曆（右）」兩欄排版。
 ///
-/// 從 [_ElderHomeTabState._buildElderDateCard] 抽出成獨立、不連網、不讀
+/// 從 [_ElderHomeTabState._buildTodayCard]（原 `_buildElderDateCard`）抽出成獨立、不連網、不讀
 /// SharedPreferences 的 [StatelessWidget]，讓 widget test 能直接 pump 這個
 /// 元件驗證大字級下的溢位情形，不需要連帶啟動 [ElderHomeTab] 的新聞抓取／
 /// 訂閱查詢等重量級 initState 副作用。
@@ -859,8 +1532,7 @@ class ElderDateSummaryRow extends StatelessWidget {
         final scaler = MediaQuery.textScalerOf(context);
         final leftDateWidth =
             _measureWidth(context, dateText, dateStyle, scaler);
-        final leftDayWidth =
-            _measureWidth(context, dayName, dayStyle, scaler);
+        final leftDayWidth = _measureWidth(context, dayName, dayStyle, scaler);
         final rightLunarWidth =
             _measureWidth(context, lunarDate, lunarStyle, scaler);
         final rightTermWidth =

@@ -29,23 +29,44 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
   );
   String _gender = 'M';
   bool _isLoading = false;
+  // ★ 持久化錯誤訊息：取代原本的 SnackBar，避免 409/410/404 都顯示同一句看不出差異的訊息
+  String? _errorMessage;
+
+  /// ★ 將後端錯誤負載轉為可顯示的繁體中文字串（與 registration_screen.dart 同樣的處理邏輯，
+  /// 因改動範圍要求維持獨立，故各自保留一份，不抽共用 util）。
+  String _readableError(dynamic raw) {
+    if (raw is String && raw.trim().isNotEmpty) {
+      return raw.trim();
+    }
+    if (raw is List && raw.isNotEmpty) {
+      final first = raw.first;
+      if (first is Map && first['msg'] != null) {
+        return first['msg'].toString();
+      }
+      return first.toString();
+    }
+    if (raw is Map) {
+      final msg = raw['msg'] ?? raw['detail'] ?? raw['message'];
+      if (msg != null) return msg.toString();
+      return raw.toString();
+    }
+    return '配對失敗，請檢查配對碼';
+  }
 
   Future<void> _handleConfirmPairing() async {
+    setState(() => _errorMessage = null);
+
     final code = _codeController.text.trim();
     final name = _nameController.text.trim();
     final age = int.tryParse(_ageController.text.trim()) ?? 70;
 
     if (code.length != 4) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('請輸入 4 位配對碼')));
+      setState(() => _errorMessage = '請輸入 4 位配對碼');
       return;
     }
 
     if (name.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('請輸入長輩姓名')));
+      setState(() => _errorMessage = '請輸入長輩姓名');
       return;
     }
 
@@ -66,6 +87,7 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
       final data = result['data'] as Map<String, dynamic>?;
       if (result['status'] == 'success' && data != null && data.containsKey('elder_id')) {
         // 配對成功！
+        setState(() => _errorMessage = null);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: const Text('配對成功！已建立守護關係 ✨'),
@@ -89,16 +111,18 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
           (route) => false, // 清除所有舊頁面，防止回到配對或引導頁
         );
       } else {
-        final errorMsg = result['error'] ?? data?['message'] ?? '配對失敗，請檢查配對碼';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('配對失敗：$errorMsg')),
-        );
+        // ★ 補讀 result['detail']：後端 /api/pairing/confirm 一律以 HTTPException 回傳，
+        //   回應本體是 { "detail": "..." }，原本漏讀 detail 導致 409/410/404 都顯示同一句
+        //   「配對失敗，請檢查配對碼」，使用者無從分辨代碼已被使用／已過期／不存在。
+        setState(() {
+          _errorMessage = _readableError(
+            result['error'] ?? result['detail'] ?? data?['message'],
+          );
+        });
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('連線錯誤：$e')),
-      );
+      setState(() => _errorMessage = '連線失敗，請檢查網路後再試一次');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -196,6 +220,7 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
                       letterSpacing: 4,
                       fontWeight: FontWeight.bold,
                     ),
+                    onChanged: (_) => setState(() => _errorMessage = null),
                     decoration: _inputDecoration(
                       Icons.vpn_key_rounded,
                       '4 位數字',
@@ -215,7 +240,10 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
                         ),
                       );
                       if (result != null && mounted) {
-                        setState(() => _codeController.text = result);
+                        setState(() {
+                          _codeController.text = result;
+                          _errorMessage = null;
+                        });
                       }
                     },
                     icon: const Icon(Icons.qr_code_scanner_rounded),
@@ -233,6 +261,7 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
             _buildSectionLabel('2. 長輩基本資訊'),
             TextField(
               controller: _nameController,
+              onChanged: (_) => setState(() => _errorMessage = null),
               decoration: _inputDecoration(
                 Icons.person_add_rounded,
                 '長輩名稱 (例如：王大明)',
@@ -246,6 +275,7 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
                   child: TextField(
                     controller: _ageController,
                     keyboardType: TextInputType.number,
+                    onChanged: (_) => setState(() => _errorMessage = null),
                     decoration: _inputDecoration(Icons.cake_rounded, '年齡'),
                   ),
                 ),
@@ -278,6 +308,41 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
               ],
             ),
             const SizedBox(height: 48),
+
+            // ★ 持久化錯誤橫幅：取代原本容易被忽略的 SnackBar，並補讀後端 detail 欄位，
+            //   讓 409（代碼已被使用）/410（已過期）/404（代碼不存在）顯示各自的真實原因。
+            if (_errorMessage != null) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFEE2E2),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFDC2626)),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(
+                      Icons.error_outline_rounded,
+                      color: Color(0xFFDC2626),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        _errorMessage!,
+                        style: GoogleFonts.notoSansTc(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF991B1B),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+
             SizedBox(
               width: double.infinity,
               height: 56,

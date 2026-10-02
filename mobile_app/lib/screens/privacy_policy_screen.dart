@@ -49,7 +49,6 @@ class _PrivacyPolicyScreenState extends State<PrivacyPolicyScreen> {
   static const Color _background = Color(0xFFFDFDFB);
 
   bool _isSaving = false;
-  bool _agreed = false;
 
   void _openPolicyDetail() {
     PolicyDetailDialog.show(
@@ -65,7 +64,7 @@ class _PrivacyPolicyScreenState extends State<PrivacyPolicyScreen> {
   }
 
   Future<void> _accept() async {
-    if (_isSaving || !_agreed) return;
+    if (_isSaving) return;
     setState(() => _isSaving = true);
 
     try {
@@ -100,41 +99,73 @@ class _PrivacyPolicyScreenState extends State<PrivacyPolicyScreen> {
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Icon(
-                  Icons.privacy_tip_outlined,
-                  size: 56,
-                  color: _primaryGreen,
+                // 1. 溫暖圖標與標題
+                Center(
+                  child: Container(
+                    width: 68,
+                    height: 68,
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [_primaryGreen, _darkGreen],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: _primaryGreen.withValues(alpha: 0.35),
+                          blurRadius: 14,
+                          offset: const Offset(0, 5),
+                        ),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.volunteer_activism_rounded,
+                      size: 36,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  '👵 歡迎使用 UBan 陪伴生活',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 23,
+                    fontWeight: FontWeight.w800,
+                    color: _textDark,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '專為長輩與家人量身打造的暖心守護服務',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: _textBody.withValues(alpha: 0.85),
+                  ),
                 ),
                 const SizedBox(height: 20),
-                Text(
-                  '開始使用 UBan 之前',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: _textDark,
-                    letterSpacing: 1,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  '為了保障您與長輩的權益，請詳閱本服務的隱私權政策後再繼續使用。',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 15,
-                    height: 1.6,
-                    color: _textBody,
-                  ),
-                ),
-                const SizedBox(height: 28),
-                _buildConsentRow(),
-                const SizedBox(height: 24),
+
+                // 2. 「👵 3 秒安心導讀卡（完全免費、保護隱私、關懷長輩）」
+                _buildQuickAssuranceCard(),
+
+                const SizedBox(height: 22),
+
+                // 3. 特大「同意並開始使用」按鈕
                 _buildAcceptButton(),
+
+                const SizedBox(height: 12),
+
+                // 4. 輔助詳細法律條款超連結
+                _buildDetailedPolicyLink(),
               ],
             ),
           ),
@@ -143,100 +174,188 @@ class _PrivacyPolicyScreenState extends State<PrivacyPolicyScreen> {
     );
   }
 
-  Widget _buildConsentRow() {
+  /// 3 秒安心導讀卡
+  Widget _buildQuickAssuranceCard() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: _primaryGreen.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Checkbox(
-            value: _agreed,
-            activeColor: _primaryGreen,
-            onChanged: (val) => setState(() => _agreed = val ?? false),
+        color: const Color(0xFFF6FAF7),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: _primaryGreen.withValues(alpha: 0.35),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
           ),
-          // ★ 溢位規則（CLAUDE.md 3.1 #14）：勾選同意列是 Checkbox + 長文字
-          //   + 超連結同一個 Row 最容易溢位的組合。這裡用 Expanded 包住
-          //   Text.rich，讓整句話（含超連結）在窄螢幕上自動換行，
-          //   而不是把合約文字截斷成刪節號——同意文字不適合被省略顯示。
-          Expanded(
-            child: Text.rich(
-              TextSpan(
-                text: '同意',
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.verified_user_rounded,
+                color: _darkGreen,
+                size: 22,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '安心使用承諾（完全免費・保護隱私）',
                 style: GoogleFonts.notoSansTc(
                   fontSize: 15,
-                  color: _textDark,
-                  height: 1.4,
+                  fontWeight: FontWeight.w700,
+                  color: _darkGreen,
                 ),
-                children: [
-                  WidgetSpan(
-                    alignment: PlaceholderAlignment.middle,
-                    child: GestureDetector(
-                      onTap: _openPolicyDetail,
-                      child: Text(
-                        '《隱私權政策》',
-                        style: GoogleFonts.notoSansTc(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          color: _darkGreen,
-                          decoration: TextDecoration.underline,
-                          decorationColor: _darkGreen,
-                        ),
-                      ),
-                    ),
-                  ),
-                  TextSpan(
-                    text: '並使用 APP',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 15,
-                      color: _textDark,
-                      height: 1.4,
-                    ),
-                  ),
-                ],
               ),
-            ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          _buildPillarItem(
+            icon: Icons.money_off_csred_rounded,
+            iconBg: const Color(0xFFE8F5E9),
+            iconColor: const Color(0xFF2E7D32),
+            title: '完全免費安心用',
+            desc: '本服務完全免費、絕無廣告干擾，絕不向長輩收取任何電話費或月租費，請放心安心使用。',
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Divider(height: 1, color: Color(0xFFE2ECE5)),
+          ),
+          _buildPillarItem(
+            icon: Icons.lock_outline_rounded,
+            iconBg: const Color(0xFFE3F2FD),
+            iconColor: const Color(0xFF1976D2),
+            title: '嚴密保護您的隱私',
+            desc: '您的聊天、用藥與位置資料皆經高規格安全加密，僅供您與家人關心，絕不外流外洩。',
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Divider(height: 1, color: Color(0xFFE2ECE5)),
+          ),
+          _buildPillarItem(
+            icon: Icons.favorite_rounded,
+            iconBg: const Color(0xFFFCE4EC),
+            iconColor: const Color(0xFFD81B60),
+            title: '關懷長輩日常生活',
+            desc: '定時提醒吃藥、一鍵視訊通話聯絡家人、外出平平安安定位，長輩與全家生活好幫手。',
           ),
         ],
       ),
     );
   }
 
+  Widget _buildPillarItem({
+    required IconData icon,
+    required Color iconBg,
+    required Color iconColor,
+    required String title,
+    required String desc,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: iconBg,
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, size: 20, color: iconColor),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: GoogleFonts.notoSansTc(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: _textDark,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                desc,
+                style: GoogleFonts.notoSansTc(
+                  fontSize: 13,
+                  height: 1.45,
+                  color: _textBody,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 特大「同意並開始使用」按鈕
   Widget _buildAcceptButton() {
-    final bool canProceed = _agreed && !_isSaving;
     return SizedBox(
       width: double.infinity,
-      height: 52,
+      height: 60,
       child: ElevatedButton(
-        onPressed: canProceed ? _accept : null,
+        onPressed: _isSaving ? null : _accept,
         style: ElevatedButton.styleFrom(
           backgroundColor: _primaryGreen,
-          disabledBackgroundColor: _primaryGreen.withValues(alpha: 0.35),
           foregroundColor: Colors.white,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(16),
           ),
-          elevation: 0,
+          elevation: 3,
+          shadowColor: _primaryGreen.withValues(alpha: 0.4),
         ),
         child: _isSaving
             ? const SizedBox(
-                width: 24,
-                height: 24,
+                width: 26,
+                height: 26,
                 child: CircularProgressIndicator(
-                  strokeWidth: 2.5,
+                  strokeWidth: 2.8,
                   valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                 ),
               )
-            : Text(
-                '使用 APP',
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                ),
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.check_circle_rounded, size: 26, color: Colors.white),
+                  const SizedBox(width: 10),
+                  Text(
+                    '同意並開始使用',
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ],
               ),
+      ),
+    );
+  }
+
+  /// 查閱完整詳細條款
+  Widget _buildDetailedPolicyLink() {
+    return Center(
+      child: TextButton.icon(
+        onPressed: _openPolicyDetail,
+        icon: const Icon(Icons.description_outlined, size: 16, color: Color(0xFF718096)),
+        label: Text(
+          '查閱完整法律條款與隱私權細則',
+          style: GoogleFonts.notoSansTc(
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+            color: const Color(0xFF718096),
+            decoration: TextDecoration.underline,
+          ),
+        ),
       ),
     );
   }

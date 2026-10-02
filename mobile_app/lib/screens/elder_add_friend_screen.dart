@@ -126,11 +126,15 @@ class _ElderAddFriendScreenState extends State<ElderAddFriendScreen> {
 
   Future<void> _performSearch(String targetId) async {
     if (_myElderId == null) return;
-    if (targetId.length != 4 || int.tryParse(targetId) == null) {
-      setState(() => _searchError = '請輸入 4 位數的好友 ID');
+    // ★ 第五十一輪：好友代碼改為 4 碼大寫英數字（排除易混淆的 0/O/1/I），
+    // 不再只能是數字——`elder_id` 本身也可能含英文字母（如 `tools_service.py`
+    // 產生的 `E075`），原本的 int.tryParse 檢查會讓這類長輩一律搜尋不到。
+    final normalized = targetId.toUpperCase();
+    if (!RegExp(r'^[0-9A-Z]{4}$').hasMatch(normalized)) {
+      setState(() => _searchError = '請輸入 4 碼的好友 ID');
       return;
     }
-    if (targetId == _myElderId) {
+    if (normalized == (_myElderId ?? '').toUpperCase()) {
       setState(() {
         _searchError = '這是您自己的 ID，換一組朋友的 ID 試試看';
         _searchResult = null;
@@ -144,7 +148,7 @@ class _ElderAddFriendScreenState extends State<ElderAddFriendScreen> {
       _sendResultMessage = null;
     });
     final result = await FriendService.searchElder(
-      elderId: targetId,
+      elderId: normalized,
       requesterElderId: _myElderId!,
     );
     if (!mounted) return;
@@ -442,16 +446,22 @@ class _ElderAddFriendScreenState extends State<ElderAddFriendScreen> {
     }
     return Column(
       children: [
-        Text('輸入朋友的 4 位數 ID', style: ElderScale.body),
+        Text('輸入朋友的 4 碼 ID', style: ElderScale.body),
         const SizedBox(height: 16),
         TextField(
           controller: _searchController,
-          keyboardType: TextInputType.number,
+          keyboardType: TextInputType.text,
           textAlign: TextAlign.center,
+          textCapitalization: TextCapitalization.characters,
           maxLength: 4,
           inputFormatters: [
-            FilteringTextInputFormatter.digitsOnly,
+            // ★ 第五十一輪：好友代碼改為 4 碼大寫英數字（後端同步排除易混淆的
+            // 0/O/1/I），允許輸入英數字並即時轉大寫，不再限制只能輸入數字。
+            FilteringTextInputFormatter.allow(RegExp(r'[0-9A-Za-z]')),
             LengthLimitingTextInputFormatter(4),
+            TextInputFormatter.withFunction(
+              (oldValue, newValue) => newValue.copyWith(text: newValue.text.toUpperCase()),
+            ),
           ],
           style: GoogleFonts.inter(
             fontSize: 40,
@@ -461,7 +471,7 @@ class _ElderAddFriendScreenState extends State<ElderAddFriendScreen> {
           ),
           decoration: InputDecoration(
             counterText: '',
-            hintText: '0000',
+            hintText: 'ABCD',
             filled: true,
             fillColor: Colors.white,
             border: OutlineInputBorder(

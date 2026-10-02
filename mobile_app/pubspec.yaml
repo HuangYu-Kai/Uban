@@ -171,5 +171,12 @@ flutter:
     - family: StarPanda
       fonts:
         - asset: assets/fonts/StarPandaKids.otf
+    - family: NotoSansTC
+      fonts:
+        - asset: assets/fonts/NotoSansTC-Regular.ttf
+        - asset: assets/fonts/NotoSansTC-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/NotoSansTC-Medium.ttf
+          weight: 500
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package

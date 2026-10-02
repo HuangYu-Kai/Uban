@@ -19,6 +19,44 @@ class CctvPushResult {
       const CctvPushResult(detected: false, reason: transportError);
 }
 
+/// `resolveAlert` / `markFalseAlarm` 的結果：不再只回傳 `null` 淹沒失敗原因，
+/// 而是把 HTTP 狀態碼與後端 `detail` 字串一起帶回，讓呼叫端能顯示「找不到這筆
+/// 警報」／「尚未與這位長輩綁定」／「伺服器錯誤」等不同訊息，而不是塌成同一句
+/// 「回報失敗，請稍後再試」。
+/// ★ 第五十一輪：見 `routers/alert.py::mark_false_alarm` / `resolve_alert_endpoint`
+/// ——兩者找不到警報或無綁定關係皆回 404、detail 固定為 "Alert not found"。
+class AlertActionResult {
+  final bool success;
+  final int? statusCode;
+  final String? detail;
+  final Map<String, dynamic>? data;
+
+  const AlertActionResult({
+    required this.success,
+    this.statusCode,
+    this.detail,
+    this.data,
+  });
+
+  /// 給使用者看的繁體中文原因；後端只在英文 debug 情境下才回英文 detail
+  /// （見上方），所以依狀態碼映射成 elder-family 友善的說法，detail 僅作為
+  /// 除錯備援（後端回傳非預期文字時仍有東西可顯示）。
+  String get friendlyReason {
+    switch (statusCode) {
+      case 404:
+        return '找不到這筆警報';
+      case 403:
+        return '尚未與這位長輩綁定';
+      case 400:
+        return detail ?? '請求資料不完整';
+      case null:
+        return detail ?? '無法連線到伺服器';
+      default:
+        return '伺服器錯誤${detail != null ? '（$detail）' : ''}';
+    }
+  }
+}
+
 /// CCTV 監視機串流推幀、設備管理、緊急警報歷史與室內定位 (IPS) API
 class CctvAlertApi {
   /// CCTV 監視機推送單一影格給後端做 YOLO 跌倒偵測
@@ -199,7 +237,12 @@ class CctvAlertApi {
 
   /// 家屬把一筆警報標記為誤報（供統計儀表板排除誤報用）。
   /// 授權與冪等行為見後端 `routers/alert.py::mark_false_alarm`。
-  static Future<Map<String, dynamic>?> markFalseAlarm({
+  ///
+  /// ★ 第五十一輪：回傳型別由 `Map<String, dynamic>?` 改為
+  /// [AlertActionResult]，把 HTTP 狀態碼與後端 `detail` 一併帶出，讓呼叫端
+  /// （`alert_center_screen.dart`）能區分「找不到這筆警報」／「尚未與這位
+  /// 長輩綁定」／「伺服器錯誤」，不再全部塌成一句「標記誤報失敗」。
+  static Future<AlertActionResult> markFalseAlarm({
     required int alertId,
     required int userId,
   }) async {
@@ -211,24 +254,116 @@ class CctvAlertApi {
             body: jsonEncode({'user_id': userId}),
           )
           .timeout(ApiClient.timeout);
-      final data = ApiClient.safeDecode(response);
-      if (data['status'] == 'success') {
-        final payload = data['data'];
-        return payload is Map ? Map<String, dynamic>.from(payload) : <String, dynamic>{};
+      final decoded = ApiClient.safeDecode(response);
+      if (response.statusCode == 200 && decoded['status'] == 'success') {
+        final payload = decoded['data'];
+        return AlertActionResult(
+          success: true,
+          statusCode: response.statusCode,
+          data: payload is Map ? Map<String, dynamic>.from(payload) : <String, dynamic>{},
+        );
       }
-      return null;
+      return AlertActionResult(
+        success: false,
+        statusCode: response.statusCode,
+        detail: decoded['detail']?.toString() ?? decoded['message']?.toString(),
+      );
     } catch (e) {
       debugPrint('⚠️ markFalseAlarm error: $e');
-      return null;
+      return AlertActionResult(success: false, detail: e.toString());
+    }
+  }
+
+  /// ★ 第四十九輪 item 12：把某長輩／某監視機目前未結案的警報轉為「處理
+  /// 中」。供 `family_main_screen.dart::_openMonitorViewForDevice()` 在
+  /// 開啟監控畫面時 fire-and-forget 呼叫——呼叫端不關心細節，只在意「有
+  /// 沒有噴例外」，故回傳值只用布林表示是否成功送達後端；找不到任何未
+  /// 結案警報也算成功（後端本來就把這當合法情況，見端點 docstring）。
+  static Future<bool> markAlertProcessing({
+    required String elderId,
+    required String deviceId,
+    required int userId,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('${ApiClient.baseUrl}/alerts/mark-processing'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'elder_id': elderId,
+              'device_id': deviceId,
+              'user_id': userId,
+            }),
+          )
+          .timeout(ApiClient.timeout);
+      final data = ApiClient.safeDecode(response);
+      return data['status'] == 'success';
+    } catch (e) {
+      debugPrint('⚠️ markAlertProcessing error: $e');
+      return false;
+    }
+  }
+
+  /// ★ 第四十九輪 item 12：家屬主動回報一筆警報「已處理完畢」（狀態機第三
+  /// 態）。授權與冪等行為見後端 `routers/alert.py::resolve_alert_endpoint`。
+  ///
+  /// ★ 第五十一輪：同 [markFalseAlarm]，回傳型別改為 [AlertActionResult]
+  /// 以攜帶狀態碼與 `detail`。
+  static Future<AlertActionResult> resolveAlert({
+    required int alertId,
+    required int userId,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('${ApiClient.baseUrl}/alerts/$alertId/resolve'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'user_id': userId}),
+          )
+          .timeout(ApiClient.timeout);
+      final decoded = ApiClient.safeDecode(response);
+      if (response.statusCode == 200 && decoded['status'] == 'success') {
+        final payload = decoded['data'];
+        return AlertActionResult(
+          success: true,
+          statusCode: response.statusCode,
+          data: payload is Map ? Map<String, dynamic>.from(payload) : <String, dynamic>{},
+        );
+      }
+      return AlertActionResult(
+        success: false,
+        statusCode: response.statusCode,
+        detail: decoded['detail']?.toString() ?? decoded['message']?.toString(),
+      );
+    } catch (e) {
+      debugPrint('⚠️ resolveAlert error: $e');
+      return AlertActionResult(success: false, detail: e.toString());
     }
   }
 
   /// 長輩跌倒／緊急警報的持久歷史記錄
+  ///
+  /// ★ 第五十二輪 F2：新增選填 `days`——只回傳 `detected_at` 在最近 N 天內
+  /// 的紀錄，供家屬端警示中心「本週／本月／全部」時間篩選使用。對應後端
+  /// `routers/alert.py::get_alerts` 的同名選填參數；`null`（預設）時完全
+  /// 不帶這個查詢參數，後端維持既有的「不套時間篩選」行為，其餘既有呼叫
+  /// 端不受影響。
+  ///
+  /// ★ 第五十三輪 familyfix53：新增選填 `startDate`／`endDate`（格式
+  /// 'YYYY-MM-DD'，代表台灣日曆日）——供家屬端警示中心「自訂日期範圍」
+  /// 查詢使用。對應後端同名新增參數；兩者必須成對提供，且**優先於**
+  /// `days`（同時提供時 `days` 會被後端忽略，見該端點 docstring）。呼叫端
+  /// （`alert_center_screen.dart`）已確保這三者不會同時帶入衝突的值——
+  /// `_timeRange == custom` 時只送 `startDate`/`endDate`，其餘既有時間
+  /// 篩選（本週／本月／全部）只送 `days`。
   static Future<List<dynamic>> getEmergencyAlerts(
     String elderId, {
     required int userId,
     String? status,
     int limit = 20,
+    int? days,
+    String? startDate,
+    String? endDate,
   }) async {
     try {
       final queryParameters = <String, String>{
@@ -237,6 +372,12 @@ class CctvAlertApi {
       };
       if (status != null && status.isNotEmpty) {
         queryParameters['status'] = status;
+      }
+      if (startDate != null && endDate != null) {
+        queryParameters['start_date'] = startDate;
+        queryParameters['end_date'] = endDate;
+      } else if (days != null) {
+        queryParameters['days'] = days.toString();
       }
       final uri = Uri.parse('${ApiClient.baseUrl}/alerts/$elderId')
           .replace(queryParameters: queryParameters);

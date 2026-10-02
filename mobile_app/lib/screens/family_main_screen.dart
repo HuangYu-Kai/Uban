@@ -3,6 +3,7 @@ import 'package:flutter/services.dart'; // 添加觸覺反饋
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
+import 'dart:convert';
 import 'dart:ui';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'family/family_home_tab.dart';
@@ -49,6 +50,9 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   int _selectedIndex = 0;
   bool _isDarkMode = false; // 子女端 M3 薄荷綠主題：預設為淺色模式 (Light)
   final Signaling _signaling = Signaling();
+  /// 💬 長輩提問收件匣的刷新訊號；收到 Socket `elder-question` 時遞增。
+  int _questionRefreshToken = 0;
+
   bool _isIncomingCallDialogOpen = false;
 
   /// ★ 2026-08-23：供 `_presentCctvAlert` 判斷「App 目前是否在前景」，只在前景
@@ -95,6 +99,15 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   CallRequestCallback? _ownEmergencyCall;
   CallRequestCallback? _ownCancelCall;
 
+  // ★ 第四十九輪：`onElderDevicesUpdate`／`onElderZoneUpdate` 補上同一套
+  //   identical() 守衛（原本這兩個是無條件 `= null`，與上面三個不一致）。
+  //   `onElderDevicesUpdate` 另有 `device_selection_screen.dart`／
+  //   `camera_screen.dart` 也會指派——家屬在本畫面之後短暫開「選擇裝置」
+  //   畫面又返回，若對方 dispose() 無條件清空，本畫面剛註冊好的回呼會被
+  //   誤清，裝置在線清單自此不再更新直到重啟 App。
+  Function(List<dynamic>)? _ownElderDevicesUpdate;
+  Function(Map<String, dynamic>)? _ownElderZoneUpdate;
+
   // ★ 移植自 family_dashboard_view.dart：監控裝置清單、CCTV 警報、訂閱層級
   //   （型別對齊該檔實際宣告：_monitorDevices 為 List<dynamic>、_tierLevel 為 String）
   List<dynamic> _monitorDevices = [];
@@ -128,15 +141,99 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   /// 在實務上不可能發生，清空反而會違反上一段引用的既有契約
   /// （子分頁明確要求這個集合要撐過 `didUpdateWidget`，也就是切換長輩那次）。
   ///
-  /// **刻意不設上限、不做 LRU 淘汰、不寫入 SharedPreferences**：
-  /// 這是單次 App 執行期間的記憶體內狀態（未持久化，冷啟動即歸零），
-  /// 首頁清單本身也只顯示最近 30 筆（`family_home_tab.dart:3013`），
-  /// 使用者一個 session 內能滑掉的筆數遠遠不到需要淘汰的量級；
-  /// 若改用「淘汰最舊一筆」的上限機制，一旦被淘汰的那筆剛好還在目前
-  /// 30 筆的顯示範圍內，等於讓一個已經被使用者明確關閉的警示自己復活
-  /// ——這正是本輪任務要修的問題（滑掉又跳回來），不能為了設上限
-  /// 而重新引入它。
+  /// **第五十輪的「刻意不設上限、不做 LRU 淘汰、不寫入 SharedPreferences」
+  /// 已於第五十一輪過期**：上面幾段理由成立的前提是「這是單次 App 執行期間
+  /// 的記憶體內狀態，冷啟動即歸零」——量體因此不可能累積。第五十一輪把它
+  /// 接上持久化之後，這個前提不再成立：使用者用半年、一年，每一則被滑掉的
+  /// 警示都會一直留在 SharedPreferences 裡，後端只會持續新增警報／活動
+  /// 記錄，不會反向清空，若不設上限就會變成無止盡成長、拖慢每次冷啟動的
+  /// 讀取。因此第五十一輪為**持久化的那一份**（`_persistedDismissedTimestamps`）
+  /// 補上 30 天過期＋500 筆上限（見下方欄位），但**這個記憶體內 Set 本身
+  /// 仍然不設上限**——本頁存活期間同一個 session 滑掉的筆數遠遠不到需要
+  /// 淘汰的量級，這段既有理由不變；真正會無限成長的是持久化那一份，因為
+  /// 它會跨越 App 的一生持續累積，不會隨冷啟動歸零。
   final Set<String> _dismissedAlertKeys = {};
+
+  /// ★ 第五十一輪（任務 1）：`_dismissedAlertKeys` 的持久化備份，key＝已滑掉
+  /// 的複合鍵、value＝滑掉當下的時間戳（epoch ms）。只寫入 `alert:`／`log:`
+  /// 開頭的鍵——這兩種格式來自後端資料表的 `INTEGER PRIMARY KEY
+  /// AUTOINCREMENT`（`emergency_alerts.alert_id`／`activity_log.log_id`，見
+  /// 上方 `_dismissedAlertKeys` 欄位宣告引用的兩處），同一筆記錄重新拉取時
+  /// id 不會變，適合跨 App 重啟比對。
+  ///
+  /// **`live:$type:$deviceId:$liveTs` 與 `log-fallback:$logTs:$descHash`
+  /// 這兩種複合鍵刻意不持久化**（組法見
+  /// `family/home/widgets/home_alert_preview_card.dart:63-65` 與
+  /// `:92-96`）：兩者都內嵌了 timestamp 或雜湊，是後端沒給穩定 PK 時的
+  /// 退路，同一筆警示在下一輪輪詢重新拼出來的鍵極可能已經不同（尤其
+  /// `alert_id`/`log_id` 缺漏時，兩次輪詢抓到的 timestamp 精度或雜湊輸入
+  /// 稍有差異就會漂移）。持久化這種會漂移的鍵不會讓「滑掉又跳回來」的
+  /// 問題變好——下次重開 App 後新產生的複合鍵大概率對不上舊的持久化值，
+  /// 只會白佔一筆 SharedPreferences 空間；因此這兩種格式繼續維持原本純
+  /// 記憶體內的行為（只進 `_dismissedAlertKeys`，不進這個 Map），冷啟動後
+  /// 一樣會歸零、可能重新出現——這是已知取捨，不是遺漏。
+  ///
+  /// **第五十二輪複查（結論：這個「已知取捨」目前不會被觸發）**：逐行追查
+  /// `home_alert_preview_card.dart` 的複合鍵組法與後端
+  /// `yolo_alert_dispatcher.py`（`_insert_alert`／`_broadcast_alert`／
+  /// `_build_push_payload`）後確認，所有共用 `dispatch_yolo_alert` 派送鏈
+  /// 的警報型別（`fall`／`crawl`／`lying_down`／`prolonged_inactivity`／
+  /// `sos_voice`，含長輩語音求救 `notify_family_SOS`）都保證帶
+  /// `alert_id`，下方 `_handleCctvAlert` 甚至在解析失敗時直接 `return`、
+  /// 根本不會把該筆塞進 `_activeAlerts`。因此「即時推播的鍵是
+  /// `live:...`、不會被持久化」這件事在目前程式碼下**不會發生**——即時
+  /// 警示的鍵已經優先解析成 `alert:$alert_id`，本輪未對本檔或
+  /// `home_alert_preview_card.dart` 的複合鍵邏輯做任何行為變更。若日後
+  /// 使用者仍回報「滑掉的最新警示重新出現」，根因不在這裡，應改查
+  /// `emergencyAlerts` 的合併窗口（G191：同一事件逾 30 分鐘會另建新列、
+  /// 產生新的 `alert_id`）或 App 重新安裝／清除資料等環境因素。見
+  /// `test/screens/family/home_alert_preview_card_dismiss_key_test.dart`
+  /// 釘住的回歸測試（含 canary：同時驗證「有 id 才會是 alert: 前綴」與
+  /// 「沒有 id 才會退回 live: 前綴」）。
+  ///
+  /// **第五十二輪追加（同一輪的另一項任務找到真正成因）**：上面的複查結論
+  /// 沒有錯——鍵格式本身沒有問題——但使用者回報的「重新執行 flutter run
+  /// 開啟新版本 App 後，已滑掉的最新警示仍會重新出現」是另一個獨立的 bug，
+  /// 根因在 `initState()` 對 `_loadDismissedAlertKeys()` 的呼叫**沒有
+  /// await**：App 冷啟動時，`FamilyHomeTab` 的「最新警示」卡片會在這個
+  /// 非同步讀取完成**之前**先畫一次，此時 `_dismissedAlertKeys` 與
+  /// `_persistedDismissedTimestamps` 都還是空的，於是已經滑掉的警示會先
+  /// 閃現，幾百毫秒後讀取完成、`setState` 補上過濾集合，才被濾掉——鍵格式
+  /// 從頭到尾都是對的，只是「濾掉的時機晚於第一次畫面」。修法見下方
+  /// `_dismissedKeysLoaded` 欄位與 `_loadDismissedAlertKeys()` 的
+  /// try/finally：讀取完成前 `HomeAlertPreviewCard` 完全不渲染任何警示
+  /// 項目（也不顯示「目前沒有警示」，因為當下還不知道是真是假），成功或
+  /// 失敗都會在讀取結尾把旗標翻正。
+  Map<String, int> _persistedDismissedTimestamps = {};
+
+  /// ★ 第五十二輪（任務一）：`_loadDismissedAlertKeys()`（下方）是否已經跑完
+  /// （不論成功或失敗）。`initState()` 呼叫該函式時刻意不 await，讀取完成
+  /// 前這個旗標維持 `false`，傳給 `FamilyHomeTab` → `HomeAlertPreviewCard`
+  /// 後讓卡片停在中性的「讀取中」骨架、不渲染任何警示項目——避免上一個
+  /// session 已滑掉的警示在冷啟動的第一影格閃現。完整根因見上方
+  /// `_persistedDismissedTimestamps` 欄位宣告的「第五十二輪追加」。
+  bool _dismissedKeysLoaded = false;
+
+  /// [_persistedDismissedTimestamps] 的 SharedPreferences 鍵。
+  static const String _dismissedAlertsPrefsKey = 'family_dismissed_alert_keys';
+
+  /// 持久化紀錄的過期視窗——30 天沒人再看過就視為過期，見
+  /// [_persistedDismissedTimestamps] 欄位宣告的完整理由。
+  static const Duration _dismissedKeyMaxAge = Duration(days: 30);
+
+  /// 持久化紀錄的筆數上限，超過時只保留最新的 500 筆（依滑掉時間排序）。
+  static const int _dismissedKeyCap = 500;
+
+  /// ★ 第五十一輪（任務 2）：「資料」分頁（IndexedStack index 2）的重新整理
+  /// 訊號。比照本檔既有的 `_questionRefreshToken`（見該欄位宣告與
+  /// `_setupSignalingCallbacks` 內的用法）同一套「遞增 token 往下傳」作法
+  /// ——`FamilyDataTab` 活在 `IndexedStack` 底下被保活，`initState` 只跑
+  /// 一次、`didUpdateWidget` 只在切換長輩時才會觸發，使用者切到別的分頁
+  /// 再切回來**不會**重新載入，這正是「資料分頁整片空白、切分頁再回來仍
+  /// 空白」問題的成因之一（另一半是本輪同時修的 `ErrorBoundary`）。
+  /// 只在 `_onItemTapped` 判定「這一次是從別的分頁切進 index 2」時遞增
+  /// （見該方法），不會因為 2.5 秒輪詢的其他 `setState` 而誤觸發。
+  int _dataTabRefreshToken = 0;
 
   /// ★ 2026-08-18 IPS prototype：目前長輩的室內定位（presence）狀態，正規化自
   /// REST `ApiService.getCurrentZone`（快照）與 Socket `elder-zone-update`
@@ -290,6 +387,17 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     _initializeElderManagerAndConnect();
     _loadSubscriptionTier();
     _loadThemePreference();
+    // ★ 第五十一輪（任務 1）：把上次持久化的「已滑掉警示」紀錄讀回來，
+    //   解決「首頁滑掉的警示，重開 App 又跑出來」的問題。不 await——
+    //   跟其餘初始化一樣不能拖慢 initState。
+    //   ⚠️ 第五十二輪更正：原本這裡寫著「最壞情況只是短暫看到已滑掉的警示
+    //   又出現一下」，但這個「短暫閃現」正是使用者實際回報的 bug（見
+    //   `_dismissedKeysLoaded` 與 `_persistedDismissedTimestamps` 欄位宣告
+    //   的完整根因）。現在讀取完成前 `_dismissedKeysLoaded` 維持 false，
+    //   `FamilyHomeTab` 會停在中性的讀取中骨架、不渲染任何警示項目；讀取
+    //   完成（不論成功或失敗）後才會 setState 翻正旗標並顯示正確過濾後的
+    //   結果。
+    _loadDismissedAlertKeys();
 
     // ★ 2026-08-20 新增：MIUI 家族裝置的「鎖定螢幕顯示／後台彈出介面」權限
     //   引導。等第一影格畫出後才檢查與導航，且完全不 await、不擋任何既有的
@@ -479,18 +587,28 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     _registerCctvAlertListener();
 
     // 監聽長輩設備狀態更新
-    _signaling.onElderDevicesUpdate = (devices) {
+    // 💬 長輩把問題轉交過來時，讓首頁的收件匣即時刷新。
+    //    本畫面持有 IndexedStack，分頁會被保活、initState 只跑一次，
+    //    因此改用遞增 token 推給子元件，而不是依賴它自己重新載入。
+    _signaling.onElderQuestion = (data) {
+      if (!mounted) return;
+      setState(() => _questionRefreshToken++);
+    };
+
+    _ownElderDevicesUpdate = (devices) {
       if (!mounted) return;
       debugPrint('📡 [FamilyMainScreen] 收到長輩設備狀態更新: $devices');
       _applyDeviceList(devices);
     };
+    _signaling.onElderDevicesUpdate = _ownElderDevicesUpdate;
 
     // ★ 2026-08-18 IPS prototype：監聽長輩室內定位區域切換推播。
-    _signaling.onElderZoneUpdate = (payload) {
+    _ownElderZoneUpdate = (payload) {
       if (!mounted) return;
       debugPrint('📍 [FamilyMainScreen] 收到 elder-zone-update: $payload');
       _applyZoneUpdate(payload);
     };
+    _signaling.onElderZoneUpdate = _ownElderZoneUpdate;
   }
 
   /// ★ 2026-08-10 第十九輪（需求 5 / A4）：設備清單的**唯一**套用點。
@@ -838,6 +956,28 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
         return;
       }
       debugPrint('🔁 [Device HTTP] 交叉驗證取得 ${devices.length} 台設備 (elder_id=$elderIdStr)');
+      // ★ 第四十八輪（item 6）：空陣列不套用——這是本函式頂端註解早就寫明、
+      //   但實作從未真的做到的一步。根因：`ApiService.fetchMonitorDevices()` 是
+      //   `fetchMonitorDevicesOrNull() ?? const []`（見 G78），任何請求失敗／逾時／
+      //   後端短暫異常都會被這層包裝吞成「成功、但清單是空的」，跟「這位長輩真的
+      //   一台監視機都沒有」在型別上完全無法分辨；而 `_applyDeviceList()` 對兩者
+      //   一視同仁、一律 `setState(() => _monitorDevices = monitors)` 覆蓋，於是
+      //   每一次 HTTP 交叉驗證只要短暫逾時一次，畫面就會把整份清單洗成空的，直到
+      //   下一輪（最快 2.5 秒的 Socket 輪詢、或 10 秒後的下一次 HTTP）才會補回來
+      //   ——這正是使用者回報「監控清單偶爾整個消失、切換分頁再切回來才恢復」的
+      //   根因：清單其實一直都在自我修復，只是使用者切走再切回來的這段時間裡，
+      //   剛好等到了下一輪成功的刷新。
+      //   真正的「裝置被刪除／全部離線」不依賴這條 HTTP 路徑：刪除會觸發後端
+      //   `_broadcast_elder_devices_update` 即時推播給房內所有家屬 socket（見
+      //   CLAUDE_call-monitor.md §6.6），本檔的刪除按鈕也已經在成功後直接
+      //   `setState(() => _monitorDevices.removeWhere(...))` 做即時本地移除
+      //   （見上方「即時反映」註解），兩者都不經過這裡；「上線→離線」也是
+      //   `_applyDeviceList` 自己的 2.5 秒 debounce 在負責，不受本條件影響。
+      //   因此這裡略過空陣列，並不會讓真正的裝置消失/離線偵測變遲鈍。
+      if (devices.isEmpty) {
+        debugPrint('⚠️ [Device HTTP] 交叉驗證回傳空清單，視為暫時性異常（逾時／後端抖動），不套用，等待下一輪 Socket 或 HTTP 更新');
+        return;
+      }
       _applyDeviceList(devices);
     } catch (e) {
       debugPrint('⚠️ [Device HTTP] 交叉驗證失敗（略過）: $e');
@@ -993,6 +1133,10 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
         return '長時間躺臥';
       case 'prolonged_inactivity':
         return '長時間無活動';
+      // ★ 2026-09-15：長輩對小嘎開口求救（notify_family_SOS）走同一條警報
+      //   派送鏈路，device_id 為哨兵值 0 表示不是來自監視機。
+      case 'sos_voice':
+        return '長輩開口求救';
       default:
         return '異常狀況';
     }
@@ -1033,8 +1177,30 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
             : (_currentElder?.elderId ?? _currentElder?.id.toString() ?? '');
     if (rawElderId.isEmpty) return;
 
-    // ★ 第四十輪（item 2）：記錄目前正在看哪一台，供 _presentCctvAlert() 判斷是否
-    //   要隱藏「查看監視畫面」鍵——已經在看同一台的即時畫面，再給一顆鍵是多餘的干擾。
+    // ★ 第四十九輪 item 12：開啟監控畫面＝家屬正在查看，該裝置目前未結案的
+    //   警報轉為「處理中」。Fire-and-forget：失敗必須吞掉、不可擋住監控
+    //   畫面開啟，也完全不碰下面的 `_viewingMonitorDeviceId`／
+    //   `Navigator.push`／`.then()` 清除邏輯（G186 不受影響）。
+    unawaited(
+      ApiService.markAlertProcessing(
+        elderId: rawElderId,
+        deviceId: deviceIdStr,
+        userId: widget.userId,
+      ).catchError((e) {
+        debugPrint('⚠️ [FamilyMainScreen] markAlertProcessing 失敗（不影響監控畫面）: $e');
+        return false;
+      }),
+    );
+
+    // ★ 第四十輪（item 2）起源：記錄目前正在看哪一台，當初只用來供
+    //   _presentCctvAlert() 判斷是否要隱藏「查看監視畫面」鍵。
+    // ★ 第四十八輪：用途已擴大——_presentCctvAlert() 現在用它決定的是整個警
+    //   報彈窗要不要跳出來（同一台正在被觀看時提前 return，見該處
+    //   alreadyViewingThisDevice），不再只是隱藏一顆按鈕。這代表本旗標若卡
+    //   住沒被清除，家屬會「靜默」收不到這台監視機的警報彈窗——不是少一顆
+    //   按鈕那麼輕微。任何新增的「離開監控檢視」路徑，都必須確保下面
+    //   Navigator.push(...).then() 對本旗標的清除會被觸發，或自行清除本旗
+    //   標（見 G186）。
     _viewingMonitorDeviceId = deviceIdStr;
 
     Navigator.push(
@@ -1076,6 +1242,12 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     final String alertType =
         (alert['alert_type'] ?? alert['alertType'] ?? 'fall').toString();
     final String typeLabel = _alertTypeLabel(alertType);
+    // ★ 第四十九輪 item 12：這是「逾時未處理」的重複提醒，還是第一次偵測
+    //   到？後端 Socket payload 用 snake_case 'is_reminder'（見
+    //   yolo_alert_dispatcher.py::_build_push_payload）。文案分流，避免
+    //   家屬把第 N 次提醒誤會成又一次新事件。
+    final bool isReminder =
+        (alert['is_reminder'] ?? alert['isReminder'])?.toString() == 'true';
 
     // 1) 保持螢幕亮著——僅限 App 本來就在前景時（見 _lifecycleState 欄位說明）。
     //   背景時開啟對「目前看不見的視窗」沒有實際點亮效果，只會讓 wakelock
@@ -1105,17 +1277,33 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
         'elderName': (alert['elder_name'] ?? alert['elderName'])?.toString(),
         'alertId': (alert['alert_id'] ?? alert['alertId'] ?? '').toString(),
         'alertType': alertType,
+        // ★ 第四十九輪 item 12：告訴 CctvAlertNotification.show() 這是
+        //   逾時未處理的重複提醒還是第一次偵測，切換通知標題／內文文案。
+        'isReminder': isReminder.toString(),
       });
     } catch (e) {
       debugPrint('⚠️ [FamilyMainScreen] 跌倒警報通知發送失敗: $e');
     }
 
     // 3) 朗讀
+    // ★ 2026-09-16：'sos_voice'（長輩對小嘎開口求救）走的是同一條 dispatch_yolo_alert
+    //   派送鏈，但 device_id 是哨兵值 0、沒有任何真實監視機——原本這裡不分類型一律念
+    //   「請立即查看監視畫面」，對語音 SOS 是一句不存在的指示（螢幕上也真的沒有可看的
+    //   監視畫面）。下面彈窗內容比照處理。
     try {
       _alertTts ??= FlutterTts();
       await _alertTts!.setLanguage('zh-TW');
       await _alertTts!.setSpeechRate(0.45);
-      await _alertTts!.speak('注意，偵測到長輩可能$typeLabel，請立即查看監視畫面');
+      // ★ 第四十九輪 item 12：提醒（isReminder）與首次偵測分流文案，避免
+      //   家屬把第 N 次提醒誤會成又一次新事件。
+      final String ttsMessage = isReminder
+          ? (alertType == 'sos_voice'
+              ? '提醒您，長輩先前開口求救的狀況仍未處理，請盡快聯繫確認'
+              : '提醒您，長輩$typeLabel的狀況仍未處理，請盡快查看監視畫面')
+          : (alertType == 'sos_voice'
+              ? '注意，長輩剛透過語音助理開口求救，請立即聯繫或致電確認狀況'
+              : '注意，偵測到長輩可能$typeLabel，請立即查看監視畫面');
+      await _alertTts!.speak(ttsMessage);
     } catch (e) {
       debugPrint('⚠️ [FamilyMainScreen] 跌倒警報朗讀失敗: $e');
     }
@@ -1128,6 +1316,23 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     //    很可能是通訊機而不是這台監視機，送過去會連到錯的裝置）。
     final String deviceIdStr =
         (alert['device_id'] ?? alert['deviceId'] ?? '').toString();
+
+    // ★ 第四十輪（item 2）：若已經在觀看「同一台」監視機的 CCTV 即時畫面，原本只
+    //   拿掉「查看監視畫面」鍵，彈窗本身照樣彈出——當時只做了一半。
+    // ★ 第四十八輪：改成連彈窗都不彈出——使用者已經看得到這台監視機的即時畫面，
+    //   再跳出一個 AlertDialog 只是擋住視線的干擾。這裡的 return 放在「3) 朗讀」
+    //   之後，語音提醒（上面 _alertTts!.speak(...)）已經執行過，不會被跳過，符合
+    //   「只需語音提醒即可」的需求；步驟 1／2（wakelock／系統通知）發生在更早，
+    //   同樣不受影響。_activeAlerts 的寫入與卡片高亮是呼叫端 _handleCctvAlert 在
+    //   呼叫本方法「之前」就完成的（見該處 _activeAlerts.insert），跟這裡的 return
+    //   無關，一樣不會被跳過。
+    //   只比對「同一台」：家屬可能正在看 B 房間的即時畫面，這時若 A 房間的長輩
+    //   跌倒，家屬看不到 A 的畫面，仍必須彈窗提醒——因此不能用「是否正在看任何
+    //   一台」，只能用 deviceIdStr 逐台比對，別台監視機的警報不受影響。
+    final bool alreadyViewingThisDevice =
+        deviceIdStr.isNotEmpty && _viewingMonitorDeviceId == deviceIdStr;
+    if (alreadyViewingThisDevice) return;
+
     final dynamic device = _monitorDevices.firstWhere(
       (d) =>
           d is Map && (d['deviceId'] ?? d['id'])?.toString() == deviceIdStr,
@@ -1139,14 +1344,9 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
         (device is Map ? (device['id'] as String? ?? '') : '');
     // 解析不出線上的來源設備就不給「查看監視畫面」鍵——寧可少一個功能鍵，
     // 也不要帶著空的 targetSocketId 進房而卡在連線中。
-    // ★ 第四十輪（item 2）：若已經在觀看「同一台」監視機的 CCTV 即時畫面，也不給這顆
-    //   鍵——使用者已經看到即時狀況了，再彈一顆「查看監視畫面」只是多餘的干擾。只比對
-    //   同一台，別台監視機的警報仍要給鍵（不影響通知／朗讀／卡片高亮，只動這顆按鈕）。
-    final bool alreadyViewingThisDevice =
-        deviceIdStr.isNotEmpty && _viewingMonitorDeviceId == deviceIdStr;
-    final bool canView = viewSocketId.isNotEmpty &&
-        _isDeviceOnline(device) &&
-        !alreadyViewingThisDevice;
+    // （原本這裡還有 `!alreadyViewingThisDevice` 一項；上面已經在同一台的情況下
+    //  提前 return，走到這行時該值恆為 false，故拿掉這個恆真的多餘判斷。）
+    final bool canView = viewSocketId.isNotEmpty && _isDeviceOnline(device);
     final String rawElderId =
         (alert['elder_id'] ?? alert['elderId'] ?? '').toString();
 
@@ -1168,7 +1368,8 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  '偵測到$typeLabel',
+                  isReminder ? '提醒：$typeLabel尚未處理' : '偵測到$typeLabel',
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     color: Color(0xFFB91C1C),
@@ -1181,15 +1382,24 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('監視機：$deviceName'),
+              // ★ 2026-09-16：'sos_voice' 的 device_id 是哨兵值 0，_monitorDevices
+              //   查不到對應設備，deviceName 會退回寫死的「監視機」字面值——顯示
+              //   「監視機：監視機」對語音 SOS 沒有意義，故此列只在有真實監視機時顯示。
+              if (alertType != 'sos_voice') Text('監視機：$deviceName'),
               if (confText.isNotEmpty) ...[
                 const SizedBox(height: 4),
                 Text(confText, style: const TextStyle(color: Colors.black54)),
               ],
               const SizedBox(height: 8),
-              const Text(
-                '請立即查看監視畫面確認長輩狀況。',
-                style: TextStyle(color: Colors.black87),
+              Text(
+                isReminder
+                    ? (alertType == 'sos_voice'
+                        ? '長輩先前開口求救的狀況目前仍未處理，請盡快主動聯繫或致電長輩確認狀況；如情況危急請直接撥打 119。'
+                        : '這是提醒通知：長輩的狀況目前仍未處理，請盡快查看監視畫面確認狀況。')
+                    : (alertType == 'sos_voice'
+                        ? '長輩剛透過語音助理開口求救，這次沒有監視畫面可查看，請盡快主動聯繫或致電長輩確認狀況；如情況危急請直接撥打 119。'
+                        : '請立即查看監視畫面確認長輩狀況。'),
+                style: const TextStyle(color: Colors.black87),
               ),
             ],
           ),
@@ -1512,17 +1722,107 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     );
   }
 
+  /// ★ 第五十一輪（任務 1）：App 冷啟動時把上次持久化的「已滑掉警示」紀錄
+  /// 讀回來。讀取的同時順手做一次過期／上限清理（見
+  /// `_persistedDismissedTimestamps` 欄位宣告的完整理由）；若清理後筆數
+  /// 有變（有東西被淘汰），立刻寫回，不必等到使用者下一次滑動才校正。
+  /// 任何一步失敗（SharedPreferences 不可用、格式壞掉）都靜默略過並維持
+  /// 空集合——這是輔助性的持久化，失敗頂多退回「本輪任務前」的行為
+  /// （滑掉的警示在冷啟動後可能又出現），不影響 App 其餘功能。
+  Future<void> _loadDismissedAlertKeys() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_dismissedAlertsPrefsKey);
+      if (raw == null || raw.isEmpty) return;
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return;
+      final Map<String, int> parsed = {};
+      for (final entry in decoded.entries) {
+        final ts = entry.value;
+        if (ts is int) {
+          parsed[entry.key.toString()] = ts;
+        } else if (ts is num) {
+          parsed[entry.key.toString()] = ts.toInt();
+        }
+      }
+      final pruned = _pruneDismissedTimestamps(parsed);
+      if (!mounted) return;
+      setState(() {
+        _persistedDismissedTimestamps = pruned;
+        _dismissedAlertKeys.addAll(pruned.keys);
+        _dismissedKeysLoaded = true;
+      });
+      if (pruned.length != parsed.length) {
+        // 清理過程中真的淘汰了東西，立刻寫回，避免下次冷啟動又重算一次。
+        unawaited(_saveDismissedAlertKeys());
+      }
+    } catch (e) {
+      debugPrint('⚠️ [FamilyMainScreen] 讀取已滑掉警示紀錄失敗（略過，不影響其餘功能）: $e');
+    } finally {
+      // ★ 第五十二輪（任務一）：above 的 setState 只覆蓋「成功」這一條路徑；
+      //   `raw` 為空、解析失敗、或 `!mounted` 提早 return 時都不會走到那裡，
+      //   若不在這裡補上，旗標會永遠卡在 false、警示卡片永遠停在讀取中骨架。
+      //   `!_dismissedKeysLoaded` 只是避免成功路徑多一次不必要的 setState。
+      if (mounted && !_dismissedKeysLoaded) {
+        setState(() {
+          _dismissedKeysLoaded = true;
+        });
+      }
+    }
+  }
+
+  /// 過期（30 天）＋上限（500 筆，新的優先保留）清理，回傳新的 Map，
+  /// 不改動傳入的參數。
+  Map<String, int> _pruneDismissedTimestamps(Map<String, int> input) {
+    final int cutoff =
+        DateTime.now().subtract(_dismissedKeyMaxAge).millisecondsSinceEpoch;
+    final entries = input.entries.where((e) => e.value >= cutoff).toList()
+      ..sort((a, b) => b.value.compareTo(a.value)); // 新到舊
+    return {
+      for (final e in entries.take(_dismissedKeyCap)) e.key: e.value,
+    };
+  }
+
+  /// 把目前的 [_persistedDismissedTimestamps] 寫入 SharedPreferences。
+  /// 失敗一律靜默略過（見 [_loadDismissedAlertKeys] 同樣的理由），不拋例外
+  /// 影響呼叫端（`_handleAlertItemDismissed` 是 fire-and-forget 呼叫這個）。
+  Future<void> _saveDismissedAlertKeys() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        _dismissedAlertsPrefsKey,
+        jsonEncode(_persistedDismissedTimestamps),
+      );
+    } catch (e) {
+      debugPrint('⚠️ [FamilyMainScreen] 寫入已滑掉警示紀錄失敗（略過，不影響其餘功能）: $e');
+    }
+  }
+
   /// ★ 2026-08-24（首頁「最新警示」滑動關閉，父層一半）：
   /// `FamilyHomeTab.onAlertItemDismissed` 的實作——把該複合鍵加入
   /// `_dismissedAlertKeys`（欄位宣告與完整理由見上方 `_activeAlerts` 附近）
   /// 並 `setState`，讓 `family_home_tab.dart:3009` 的 `.where(...)` 在下一次
   /// build 立即排除該筆；之後每 2.5 秒的裝置／警報輪詢觸發的重建也會沿用
   /// 同一份已更新的集合，不會讓滑掉的警示在下一輪輪詢又跳回來。
+  ///
+  /// ★ 第五十一輪（任務 1）：滑掉的當下若 `itemId` 是穩定的 `alert:`／
+  /// `log:` 開頭複合鍵，額外寫進 [_persistedDismissedTimestamps] 並非同步
+  /// 寫回 SharedPreferences（fire-and-forget，不 await——使用者滑動手勢
+  /// 的回饋不該被一次磁碟寫入卡住），讓「重開 App 又跑出來」的問題真正
+  /// 解決。`live:`／`log-fallback:` 開頭的鍵維持原樣只進記憶體 Set，理由見
+  /// [_persistedDismissedTimestamps] 欄位宣告。
   void _handleAlertItemDismissed(String itemId) {
     if (!mounted) return;
     setState(() {
       _dismissedAlertKeys.add(itemId);
     });
+    if (itemId.startsWith('alert:') || itemId.startsWith('log:')) {
+      _persistedDismissedTimestamps[itemId] =
+          DateTime.now().millisecondsSinceEpoch;
+      _persistedDismissedTimestamps =
+          _pruneDismissedTimestamps(_persistedDismissedTimestamps);
+      unawaited(_saveDismissedAlertKeys());
+    }
   }
 
   Future<void> _switchElder(Elder elder) async {
@@ -1891,8 +2191,15 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     //   singleton 上（Signaling 是全域單例，不會隨本畫面銷毀），closure 持續
     //   持有已 dispose 的 State。
     //   ⚠️ 只清「還是自己那一份」的，理由見欄位宣告處的 pushAndRemoveUntil 說明。
-    _signaling.onElderDevicesUpdate = null;
-    _signaling.onElderZoneUpdate = null;
+    // ★ 第四十九輪：onElderDevicesUpdate／onElderZoneUpdate 補上同一套
+    //   identical() 守衛（原本這兩個是無條件 = null，與下面三個不一致，見
+    //   _ownElderDevicesUpdate／_ownElderZoneUpdate 欄位宣告處的說明）。
+    if (identical(_signaling.onElderDevicesUpdate, _ownElderDevicesUpdate)) {
+      _signaling.onElderDevicesUpdate = null;
+    }
+    if (identical(_signaling.onElderZoneUpdate, _ownElderZoneUpdate)) {
+      _signaling.onElderZoneUpdate = null;
+    }
     if (identical(_signaling.onCallRequest, _ownCallRequest)) {
       _signaling.onCallRequest = null;
     }
@@ -1907,8 +2214,18 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
 
   void _onItemTapped(int index) {
     HapticFeedback.lightImpact(); // 添加觸覺反饋
+    // ★ 第五十一輪（任務 2）：只在「這一次是從別的分頁切進資料分頁
+    //   （index 2）」才遞增 `_dataTabRefreshToken`，必須在 `_selectedIndex`
+    //   被覆寫之前先判斷——判斷式若寫在 setState 之後，`_selectedIndex`
+    //   早已等於 `index`，永遠判斷不出「切換前是別的分頁」。同一分頁內
+    //   其餘每 2.5 秒輪詢觸發的 `setState` 不會經過 `_onItemTapped`，
+    //   不會誤觸發重複刷新。
+    final bool enteringDataTab = index == 2 && _selectedIndex != 2;
     setState(() {
       _selectedIndex = index;
+      if (enteringDataTab) {
+        _dataTabRefreshToken++;
+      }
     });
     // ★ 第四十一輪 item 2（第二階段）：偵測「使用者第一次切到某個分頁」並
     //   排程該分頁的新手指引。比照 elder_home_screen.dart::_onNavTap 同一輪
@@ -2248,6 +2565,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
               index: _selectedIndex,
               children: [
                 FamilyHomeTab(
+                  questionRefreshToken: _questionRefreshToken,
                   currentElder: _currentElder,
                   isElderOnline: _isElderOnline,
                   activeAlerts: _activeAlerts,
@@ -2288,6 +2606,9 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                   //   2.5 秒輪詢又跳回來）。_dismissedAlertKeys／
                   //   _handleAlertItemDismissed 宣告與完整理由見本檔上方欄位註解。
                   dismissedAlertKeys: _dismissedAlertKeys,
+                  // ★ 第五十二輪（任務一）：`_dismissedAlertKeys` 讀取完成前不得渲染
+                  //   任何警示項目，見 `_dismissedKeysLoaded` 欄位宣告的完整根因。
+                  dismissedKeysLoaded: _dismissedKeysLoaded,
                   onAlertItemDismissed: _handleAlertItemDismissed,
                   // ★ 2026-08-31 第三十八輪：首頁「最新警示」的 CCTV／跌倒項目點擊入口。
                   //   在此之前本參數從未被傳入，導致該類警示永遠不可點擊（見
@@ -2344,6 +2665,9 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                   userName: widget.userName,
                   isDarkMode: _isDarkMode,
                   onToggleDarkMode: _setDarkMode,
+                  // ★ 第五十一輪（任務 2）：切到「資料」分頁時觸發重新整理，
+                  //   見欄位宣告處與 `_onItemTapped` 的說明。
+                  refreshToken: _dataTabRefreshToken,
                   onElderUpdated: () {
                     _refreshElders();
                   },

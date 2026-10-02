@@ -5,10 +5,12 @@ import '../../models/elder.dart';
 import '../../services/api_service.dart';
 import 'home/widgets/home_elder_header_card.dart';
 import 'home/widgets/home_zone_card.dart';
+import 'home/widgets/home_gps_trail_card.dart';
 import 'home/widgets/home_monitor_device_card.dart';
 import 'home/widgets/home_ai_mood_radar_card.dart';
 import 'home/widgets/home_alert_preview_card.dart';
 import 'home/widgets/home_elder_life_feed.dart';
+import 'widgets/elder_question_inbox.dart';
 
 /// 🏠 子女端首頁 Tab (模組化架構：極光玻璃、AI 情緒氣象台、IPS 室內位置、生活時光牆與最新警示)
 class FamilyHomeTab extends StatefulWidget {
@@ -19,6 +21,11 @@ class FamilyHomeTab extends StatefulWidget {
   /// ★ 2026-08-10 第十九輪（需求 4）：「撥打電話聊聊 → 開始撥號」的實際動作。
   /// 由父層 `FamilyMainScreen` 注入 `VideoCallScreen` 路徑。
   final List<Map<String, dynamic>> activeAlerts;
+
+  /// 💬 長輩提問收件匣的重新整理訊號：父層收到 Socket `elder-question` 時遞增。
+  /// 本分頁在 IndexedStack 底下會被保活、initState 只跑一次，因此必須靠這個
+  /// 訊號才能即時反映新問題。
+  final int questionRefreshToken;
   final VoidCallback? onStartVideoCall;
 
   /// ★ 2026-08-18 IPS prototype：長輩目前所在區域卡片所需資料，由父層提供。
@@ -28,6 +35,13 @@ class FamilyHomeTab extends StatefulWidget {
 
   /// ★ 2026-08-24（首頁「最新警示」互動化）：已被使用者滑掉／按下已讀鍵的警示複合鍵集合。
   final Set<String> dismissedAlertKeys;
+
+  /// ★ 第五十二輪（任務一）：[dismissedAlertKeys] 是否已經從 SharedPreferences
+  /// 讀取完成（見 `family_main_screen.dart::_dismissedKeysLoaded` 欄位宣告）。
+  /// 預設 `true`：其他尚未接上這個旗標的呼叫端（例如未來新增的測試或畫面）
+  /// 維持原本「一律照常渲染」的行為，只有目前唯一的正式呼叫端
+  /// （`family_main_screen.dart`）會在冷啟動讀取完成前傳入 `false`。
+  final bool dismissedKeysLoaded;
 
   /// 使用者滑掉或按下關閉鍵時回呼，通知父層把該複合鍵加入集合。
   final ValueChanged<String>? onAlertItemDismissed;
@@ -43,6 +57,7 @@ class FamilyHomeTab extends StatefulWidget {
 
   const FamilyHomeTab({
     super.key,
+    this.questionRefreshToken = 0,
     this.currentElder,
     this.isElderOnline = false,
     this.activeAlerts = const [],
@@ -52,6 +67,7 @@ class FamilyHomeTab extends StatefulWidget {
     this.onNavigateToAlerts,
     this.onStartVideoCall,
     this.dismissedAlertKeys = const {},
+    this.dismissedKeysLoaded = true,
     this.onAlertItemDismissed,
     this.onOpenMonitorView,
     this.elderHeaderKey,
@@ -142,6 +158,12 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // 💬 長輩提問收件匣：沒有待回覆問題時自動隱藏不佔位
+                        if (widget.userId != null)
+                          ElderQuestionInbox(
+                            familyId: widget.userId!,
+                            refreshToken: widget.questionRefreshToken,
+                          ),
                         HomeElderHeaderCard(
                           headerKey: widget.elderHeaderKey,
                           currentElder: widget.currentElder,
@@ -152,6 +174,11 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                         HomeZoneCard(
                           monitorDevices: widget.monitorDevices,
                           elderZone: widget.elderZone,
+                        ),
+                        const SizedBox(height: 16),
+                        HomeGpsTrailCard(
+                          currentElder: widget.currentElder,
+                          userId: widget.userId,
                         ),
                         const SizedBox(height: 16),
                         HomeMonitorDeviceCard(
@@ -178,6 +205,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                           realLogs: _realLogs,
                           emergencyAlerts: _emergencyAlerts,
                           dismissedAlertKeys: widget.dismissedAlertKeys,
+                          dismissedKeysLoaded: widget.dismissedKeysLoaded,
                           onNavigateToAlerts: widget.onNavigateToAlerts,
                           onAlertItemDismissed: widget.onAlertItemDismissed,
                           onOpenMonitorView: widget.onOpenMonitorView,
@@ -236,6 +264,13 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                     ),
                     const SizedBox(height: 16),
 
+                    // 1.55 🛰️ 戶外 GPS 定位／每日移動軌跡（與上面的 IPS 是不同子系統）
+                    HomeGpsTrailCard(
+                      currentElder: widget.currentElder,
+                      userId: widget.userId,
+                    ),
+                    const SizedBox(height: 16),
+
                     // 1.6 📷 監控設備狀態（含跌倒警報高亮）
                     HomeMonitorDeviceCard(
                       monitorStatusKey: widget.monitorStatusKey,
@@ -273,6 +308,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                       realLogs: _realLogs,
                       emergencyAlerts: _emergencyAlerts,
                       dismissedAlertKeys: widget.dismissedAlertKeys,
+                      dismissedKeysLoaded: widget.dismissedKeysLoaded,
                       onNavigateToAlerts: widget.onNavigateToAlerts,
                       onAlertItemDismissed: widget.onAlertItemDismissed,
                       onOpenMonitorView: widget.onOpenMonitorView,

@@ -10,7 +10,7 @@
 > **為什麼拆出來**：主文件曾成長到超過工具單次讀取上限（256 KB），使「動手前必須完整讀過本
 > 文件」這條鐵律在技術上無法遵守；把最舊的輪次移出，讓主文件回落到讀取上限之內。
 >
-> **收錄範圍**：2026-06-05 起至**第四十輪**（2026-09-02）。第四十一輪以後仍在
+> **收錄範圍**：2026-06-05 起至**第四十二輪**（2026-09-04）。第四十三輪以後仍在
 > `CLAUDE_call-monitor.md` §8。
 >
 > **這份是查證用的歷史檔，不是動手前的必讀文件**；必讀的是主文件的 §1–§7、§9、§10。
@@ -20,7 +20,7 @@
 
 ---
 
-## 早期修復年表（第一輪 – 第四十輪）
+## 早期修復年表（第一輪 – 第四十二輪）
 
 ### 2026-06-05 / 06 — 第一輪：早期通話信令
 雙重 room ID prefix（`comm_elder_comm_elder_X` → `join-failed: 您無權加入此通訊房間`）、
@@ -2739,4 +2739,375 @@ try/catch，其中兩處在 `_checkInitialCall()` 的**冷啟動路徑**上。�
 內。
 
 ---
+
+### 2026-09-04 — 第四十一輪：使用者八項需求 —— 會員層級真相、雙端新手指引、長輩朋友圈
+
+**背景**
+
+這一輪**不是 bug 修復**，是使用者直接在 main 本地分支提出的八項功能需求（不再開新分
+支開發）。以下依 item 1–5、7、8 記錄（item 6 是鐵律 14 的規則修改本身，已直接回寫至
+三份 `CLAUDE.md`，不在此重複）。
+
+**item 1（前端）最新警示展開後看不到展開前的訊息**
+
+根因：首頁預覽合併**三個**來源（`activeAlerts` 即時警報、`emergency_alerts` 持久化
+表、`activity_log`），而 `AlertCenterScreen` 只收 `elderName`／`elderId`，自己去載
+**預測型健康警示**——展開前後根本是兩批資料。
+修法：`activeAlerts`（Socket 即時狀態）改由參數傳入；另外兩個**由 `AlertCenterScreen`
+自己抓**（它本來就在 `initState` 載資料）。**刻意選「畫面自己抓」而非全部用參數
+傳**——`ai_hub_screen` 沒有自己的即時警報來源，若改成全部用參數傳，那條入口會永遠只
+能拿到空陣列，等於保留同一個 bug 的另一半。三個建構點全部更新。
+🚧 **踩到的陷阱**：`family_home_tab` 用的 `elderIdStr` 是 4 位數房間 ID
+（`Elder.elderId`），而 `AlertCenterScreen.elderId` 是 DB int（`Elder.id`）——兩者不
+同，弄錯會抓到空清單。實作時另開 `elderRoomId` 參數解決。
+
+**item 2（前端）雙端步驟式高光新手指引**
+
+**自建元件、零新套件**：`lib/widgets/spotlight_tutorial.dart`。遮罩用 `CustomPaint` +
+`Path.combine(PathOperation.difference)` **真的挖洞**（非貼圖近似）；SharedPreferences
+讀寫全包 try/catch，**讀失敗視為已完成直接跳過**（寧可讓使用者少看一次教學，也不能
+擋住長輩使用 App）。長輩端 6 個教學點、家屬端 4 個，字級可由參數覆蓋。
+🚨 **來電／警報守門**：家屬端比長輩端多查 `!_cctvAlertDialogOpen` 等 3 條——CCTV 警報
+卡片**不是阻擋式彈窗**，`_activeAlerts` 非空時使用者仍可切分頁，所以每一個教學入口都
+要重新檢查一次，不能只在最外層查一次就當全程有效；完整條件見 G146。被守門擋下時**不
+會**誤標成「已看過」。
+🧩 **`IndexedStack` 陷阱**：分頁在第一次 build 時就全部 layout 完畢，各分頁的
+`initState` 跑在「使用者其實還沒點過這個分頁」的時間點，**不能拿來偵測「第一次切
+入」**。偵測邏輯因此拉到父層。
+🔴 **首頁教學曾經永遠不會顯示**（雙端皆有此坑）：首頁是開機預設選中的分頁，使用者**
+不需要點它**，原本掛在 `_onNavTap(0)` 上的觸發永遠不會被呼叫。修法：主介面教學跑完
+後接續串接「目前選中分頁」對應的教學，並重新檢查一次守門條件，用當下的
+`_selectedIndex` 判斷，而非寫死索引 0。
+→ 新護欄 **G146**
+
+**item 3（前後端）長輩朋友圈社群**
+
+家庭圈與朋友圈**完全分離**。好友 ID **就是現有的 4 位數 `elder_id`**（使用者裁示，
+已知悉並接受可被列舉的風險）。後端新表 `elder_friendship`（正規化排序，一段關係只存
+一列）＋ `friend_post`／`friend_post_comment`／`friend_post_like`，新 router
+`routers/friend.py`。
+**刻意另建表，而非在 `community_posts` 加一個 `scope` 欄位**：使用者要求「家庭圈保持
+現在原樣」，而 `community_posts.family_id` 是 `NOT NULL`，若要共用就得把它改成可空、
+加 `scope`、再改動所有既有查詢——**任何一處漏加 `scope='family'` 過濾，都會讓朋友貼
+文漏進家庭圈**。獨立建表的代價是按讚／留言各自多寫一份，換來的是家庭圈風險為零。
+🚨 **搜尋端點限流**：`elder_id` 只有 4 位數（0000–9999），可被完整列舉。以呼叫端
+`elder_id` 為鍵做滑動窗口限流，超過回 **429**；搜尋結果**只回最小欄位**（elder_id、
+名稱、頭像），**不回電話／地址／生日**。
+**前端**：`friend_service.dart`、朋友分頁的真實內容、`elder_add_friend_screen.dart`
+（我的 QR／掃描／ID 搜尋三合一，不做多層跳轉）、`elder_friend_feed_screen.dart`（單欄
+時間軸、大按鈕、載入更多分頁）、「我的」頁面顯示自己的 ID。
+QR 格式固定為 `uban-friend:<4位數>`——掃到非此前綴的內容時停止相機並顯示白話提示，
+不會拿裸數字誤查。
+好友之間的「打電話」**刻意未做**：撥打功能只認 `comm_elder_<elder_id>` 房間，轉發對
+象由後端依**配對關係**解析，整條路徑目前只支援長輩↔家屬，沒有長輩↔長輩。要做的話得
+動 `socket_app.py`／`signaling.dart`（本輪禁改）。**寧可沒有那顆鍵，也不要放一顆按不
+通的電話鍵。**
+🔴 **實作時發現的既有 bug（本輪未修，先記錄）**：`elder_profile_tab.dart:1921` 用
+`widget.userId.toString().padLeft(4, '0')` 猜測 elder_id，但 `elder_profile.elder_id`
+（varchar(4) PK）與 `user_id`（int）其實是**兩個獨立欄位**，`padLeft` 只是巧合式假
+設。該值目前用在「補綁定家人」對話框（:1977 顯示、:1987 編進
+`UBAN_PAIR:userId:elderCode` 的 QR）。朋友系統**全面改用權威來源**
+`GET /api/user/profile/{userId}` 回傳的 `elder_id` 欄位（見
+`FriendService.resolveMyElderId`）。⚠️ 這代表現在「我的」頁面會同時出現**兩個 4 位
+數**（可能有誤的配對碼、正確的好友 ID），對長輩使用者是混淆源，下一輪應該處理。
+→ 新護欄 **G147**
+
+**item 4（前端）長輩端電話頁加「家人／朋友」分頁**
+
+專案原本**沒有任何 TabBar／分段控制的既有慣例**（grep 過 `TabBar`／`TabController`／
+`ToggleButtons`／`ChoiceChip` 全部落空），沿用 `elder_home_screen.dart::
+_buildNavItem` 的視覺語彙（大字級、大圖示），改用 Flutter 內建的 `TabBar` 元件，不引
+入新套件。「家人」分頁的內容**逐位元組不變**。
+
+**items 5／7／8（後端）會員層級與各種上限**
+
+🔴 **item 7 是本輪最重要的發現**：`_get_monitor_device_limit` **早就在做「長輩繼承家
+屬層級」，但演算法本身是錯的**——`ORDER BY r.start_date DESC LIMIT 1` 取的是「**最近
+一筆訂閱記錄所屬的家屬**」，而不是「**層級最高的家屬**」。一位長輩若同時被免費與鑽
+石兩位家屬綁定、且免費那筆記錄比較新，**這位長輩就會被誤判成免費會員**（監控機上限
+5→2 台、在場更新間隔 3→15 秒）。**方向完全相反——付費家屬被降級了。**
+而且 `indoor_position.py::_resolve_presence_interval_s` 裡藏著**同一個 bug 的第二份
+獨立實作**（`_find_user_for_elder` 只 `LIMIT 1` 取任一位家屬）。
+修法：新增**單一權威函式** `routers/subscription.py::resolve_tier_for_elder(elder_id)`
+——查出所有綁定的家屬、逐一取層級、**取其中最高者**（diamond > gold > free），結果快
+取 60 秒，查無資料或發生例外一律 fail-safe 到 `'free'`。原本的兩處重複實作全部收斂過
+去，並補上「多位家屬取最高層級」的測試，把這條行為釘死。另外抽出
+`tier_device_limit(tier)`，取代 `socket_app.py` 自己複製的一份對照表。
+**item 5**：`_enforce_family_elder_bind_limit(family_id)`，上限 free 2／gold 3／
+diamond 5。`boyo@uban.com` 用 **email 比對**（而非寫死 `user_id`，因為 id 會隨環境不
+同而不同）跳過此限制。
+  ⚠️ **實際落點與原始判斷不同**：原本以為要擋的兩處 INSERT 是
+`/dev/ensure-yuxuan-demo`／`/dev/ensure-gawa-demo` 這兩個**開發測試端點**
+（`family_id` 是寫死常數），但真正的配對流程其實是 `confirm_pairing()`。dev 端點
+當時**刻意不擋**——擋了會讓「登入宇璿」這條測試路徑無預警壞掉；但這兩支端點本身
+**不需登入就能建立／改寫帳號**，已於第四十九輪移除（見該輪年表「item 2／3」），
+程式庫中已無此路徑，「刻意不擋」的豁免自此不再適用。
+  另外補上一個缺口：`routers/relationship.py::create_relationship`
+（`POST /api/relationship/`）是**完全沒有配對碼驗證、也沒有授權檢查的裸 INSERT**，
+能繞過上限。已補上限檢查，以及「關係已存在就不重複 INSERT」的冪等判斷（上限檢查排在
+冪等判斷**之後**——重新綁定既有關係不應該被誤擋）。**這個授權缺口屬於既有設計、不是
+本輪引入的，本輪未處理，先記錄。**
+**item 8**：`_resolve_ip_monitor_device_limit()` 取代原本寫死的 `>= 5`。上限＝該 IP
+底下**層級最高**的那位長輩對應的「每長輩監控機上限」平方（free 2²=4／gold 3²=9／
+diamond 5²=25）。候選集合**必須包含呼叫當下這台裝置所屬的 elder**——它此刻還沒寫進
+`monitor_device_ip`，若不加入，同一 IP 底下第一台鑽石裝置會被誤判成 free。查不到層級
+一律 fail-safe 到 **free 的 4 台**（最嚴格的一檔），不得退到最寬鬆的一檔。
+⚠️ **兩份上限常數刻意不共用**（`_FAMILY_ELDER_BIND_LIMITS` 與 `devices_max`）：兩個不
+同業務規則只是數值剛好相同，硬共用會讓日後改一邊時誤傷另一邊。
+→ 新護欄 **G148**、**G149**
+
+**踩到的環境陷阱（兩件，值得記錄）**
+
+1. **共享 shell 的 cwd 會被併發代理帶走**——某個代理的 bash session 曾被另一個代理的
+   `cd` 帶到別的目錄，導致驗收指令跑錯地方。之後所有派工都改成要求每條指令自帶絕對
+   路徑前綴。
+2. **正式 MySQL 有 `elder_profile.user_id` 的外鍵，本機 SQLite schema 沒有鏡射這個約
+   束**——只在正式環境才會出現的限制，本機測試看不出來。
+
+**仍然開著**
+
+1. `elder_profile_tab.dart:1921` 的 `padLeft` 猜測法（見 item 3）——「我的」頁面現在
+   同時有兩個 4 位數並存，需要下一輪處理。
+2. 好友之間無法互相撥打電話（需要動 `socket_app.py`／`signaling.dart`，本輪禁改）。
+3. `elder_chat_screen.dart::_handleCallLinkClick` 建構 `ElderScreen` 時直接用
+   `userId.toString()` 當房號，沒做 `comm_elder_` 前綴正規化、也沒讀 `elder_room_id`
+   兜底；目前找不到呼叫點，可能是死碼，待確認。
+4. 第四十輪 item 3（長輩在 App 外拒接無反應）**仍待實機驗證**——已加獨立通知 ID
+   8802 的回饋，三種可能結果都能藉此定位。
+5. `routers/relationship.py::create_relationship` 缺乏配對碼驗證與授權檢查（見
+   item 5）——本輪只補了上限，授權缺口留待後續處理。
+
+**新增護欄**
+
+本輪新增 **G146–G149**（前端 G146；後端 G148–G149；跨端 G147；條文見 §7.1／§7.2）。
+§7 開頭護欄總數同步更新為 **149**。
+
+**驗證**
+
+- `flutter analyze lib` — **0 error**。
+- `flutter build apk --debug` — 成功。
+- 後端 `pytest`（items 5/7/8 針對性測試 + 朋友系統新測試）— **96 passed**。
+
+連接／跳轉語意變更（新增 `routers/friend.py` 10 個端點、朋友分頁跳轉）的 graphify 同
+步狀態由對應的實作子代理負責，不在本次文件任務範圍內。
+
+### 2026-09-04 — 第四十二輪：假配對碼、護欄獨立成檔、長輩↔長輩好友通話
+
+**背景**
+
+延續第四十一輪「仍然開著」清單的兩項：item 1 的 `padLeft` 猜測配對碼、item 2 的
+「好友之間無法互相撥打電話」。另外處理主檔逼近讀取上限的問題（§7 護欄獨立成檔）。
+
+**項目 A（前端）假配對碼**
+
+`elder_profile_tab.dart::_showFamilyPairingDialog` 原本用
+`widget.userId.toString().padLeft(4, '0')` 當配對碼、塞進自製的
+`UBAN_PAIR:<userId>:<code>` QR 格式——第四十一輪已記錄過這是猜測值，但本輪查證後發現
+問題比原先以為的更嚴重：
+- `elder_profile.elder_id`（varchar(4) PK，配對用）與 `user_id`（int）是**兩個獨立欄
+  位**，`padLeft` 出來的數字跟真正的配對碼毫無關聯；
+- `UBAN_PAIR:` 這個 QR 格式**全專案沒有任何地方消費**；家屬端 `QrScannerScreen` 掃到
+  的是裸字串，直接當配對碼送出；
+- 因此不只是「輸入會失敗」——那個猜測值**還可能誤撞到別人正在使用中的真配對碼**。
+
+修法：改走 `ApiService.requestPairingCode()`（照抄
+`elder_pairing_display_screen.dart::_requestNewCode()`），QR 改成裸碼（無前綴），顯示
+`expires_in_seconds` 倒數。失敗五種情況（`snapshot.hasError`／`result == null`／
+`result['status'] == 'error'`／`code == null`／`code.isEmpty`）一律顯示白話錯誤＋
+「重新取得配對碼」鍵，**絕不用猜測值兜底**。對話框加了一句說明區分「給家人綁定用的
+臨時配對碼」與「好友 ID」——兩者被混為一談正是本 bug 的根源。
+→ 新護欄 **G158**
+
+**項目 B — §7 護欄獨立成檔**
+
+新增 `CLAUDE_call-monitor-guardrails.md`（兩份鏡像，G1–G149，含 §7.1/§7.2/§7.3/§7.4）；
+主檔 261,793 → 116,954 bytes，§7 改為指向該檔的指標區塊。
+
+遷出原因：主檔逼近 262,144 bytes 的單次讀取上限，一旦超過，子代理就無法一次讀完，而
+「動手前必須完整讀過本文件」是本子系統第一鐵律——文件過大會讓這條鐵律**在技術上無法
+遵守**。§7 當時佔主檔 55%。
+
+🔴 **搬移過程中 G2 的禁令句一度被漏掉**：「不可改回直接強推單一路徑：會重現『接聽後回
+主頁、不進通話房』」這句在驗收比對時發現漏搬、已補回。記這一筆是因為少了那句，G2 就
+只剩「描述程式碼做什麼」，失去「不可改回什麼」的禁令——那句才是它之所以是護欄的理由；
+下一次任何文件搬移都要對這種「說明句」與「禁令句」分開核對，不能只比對標題還在不在。
+
+§8 開頭的「搬移門檻提示」原本寫「這兩處（本節與 §8 開頭）」，§7 那份隨遷出消失後已改
+為單數說法。三份 `CLAUDE.md` 的指標同步更新（根目錄、`Uban/CLAUDE.md`、
+`uban-api/CLAUDE.md`）。
+
+**項目 C／D — 長輩↔長輩好友通話**
+
+**後端**（`services/socket_app.py`）：新增 `friend` 角色。A 以 `role='friend'` 加入 B 的
+`comm_elder_<B>` 房（`sio.enter_room` 不會離開原本的房，A 因此同時在兩個房裡），完全
+重用既有 `call-request`／`offer`／`answer`／`candidate`／`end-call` 事件，**沒有新增
+任何 Socket 事件**。
+
+- `_verify_room_access` 新增 case 3（`role == 'friend'`），排在既有 case 1（本人
+  elder）／case 2（family 關係）之後，不影響那兩條。
+- **comm-only 防線**：`_parse_room_id(room)` 得到 `room_mode != 'comm'` 即拒絕，且在
+  查好友關係**之前**就短路——好友關係沒有理由延伸出監控房的存取權。
+- 解析呼叫端自己的 elder_id：`SELECT user_id, elder_id FROM elder_profile WHERE
+  user_id = %s OR elder_id = %s`（沿用既有函式對 `user_id` 雙格式容忍的寫法）；
+  `caller_elder_id != elder_id_from_room` 才查關係（擋自我配對）。
+- 正規化排序用 `routers.friend._normalize_pair` 的**區域 import**（比照
+  `_get_monitor_device_limit` 匯入 `routers.subscription` 的既有模式），避免模組頂層
+  雙向匯入，也避免兩處各寫一套排序而靜默查到不同的 `(low, high)`。
+- 只有 `status == 'accepted'` 放行；pending／查無關係／解析失敗／任何 DB 例外，一律
+  `(False, None, None)`——**fail-closed**。
+- 🚨 **`target_role` 公式是本輪根因**：`on_call_request`（:2005）與 `on_cancel_call`
+  （:2288）改成 `'elder' if sender_role in ('family', 'friend') else 'family'`。原公式
+  `'elder' if sender_role == 'family' else 'family'` 會讓 `sender_role == 'friend'`
+  落進 `else`，算出 `target_role='family'`——A 打給好友 B，後端會去找 **B 的家屬**當
+  接收方。兩處必須一起改：只改 call-request 會變成「打得出去但取消時查錯對象」，收話
+  端的來電通知關不掉（第四十輪修過的同款症狀）。`on_cancel_call` 原有的多餘三元式一併
+  化簡（語意不變）。
+- `on_emergency_call`（:2363）的公式**刻意不改**，只加註解——好友之間沒有緊急通話
+  入口。
+- `_get_caller_name` 新增 `elif sender_role == 'friend'` 分支。⚠️ **陷阱**：不能沿用
+  elder 分支的 `_parse_room_id(room)`——elder 分支能反解是因為 elder 在**自己的房間**
+  發話，但好友通話的 room 是**被叫端 B** 的房間，照抄會把**被叫端自己的名字當成來電
+  者顯示給被叫端本人看**。改用 `caller_user_id` 反查 `elder_profile WHERE user_id = %s`
+  才是真正的呼叫端。
+- 顯示名稱 fallback 改為 `"長輩" if sender_role in ('elder', 'friend') else "家人"`
+  （原本 friend 會顯示「家人」，B 會誤以為是家人打來的）；`on_emergency_call` 那處刻意
+  沒改。
+
+已查證 `friend` **不會**被誤算成裝置（全部是白名單式角色判斷，不需要改動）：
+`_get_elder_devices_list`（三個階段）、`_broadcast_elder_devices_update`、
+`_broadcast_elder_zone_update`、`on_client_state`、`has_comm_elder_device` 都是
+`role == 'elder'` 或 `role in ('family','listener','family-monitor')`；
+`_count_active_monitor_devices_for_elder`、`_count_monitor_devices_for_ip`、
+`_cleanup_monitor_ip_on_disconnect` 只看 `deviceMode` 完全不看 role；`on_join` 的監控
+／IP 上限那段是 `device_mode=='monitor' and role=='elder'` 雙條件。
+
+**前端**（`elder_screen.dart` 6 處、`friends_screen.dart` 3 處）：
+- `ElderScreen` 新增 `final String? friendCallTargetElderId;`（預設 `null`；**`null`
+  時行為零回歸**）；`_formattedRoomId` 條件式非 null 時組**對方的**
+  `comm_elder_<對方>`；`connect()` 的 role 條件式 `'friend'`／`'elder'`，`deviceMode`
+  維持 `'comm'`。
+- 🚨 **`sendCallRequest`（:1587）與 `sendCancelCall`（:1657）送出的 `role` 欄位也必須
+  條件式**——原本硬寫 `'elder'`，後端公式就會算出 `target_role='family'`，來電被送去
+  對方的家屬。這是與後端 target_role 公式**同一個根因的前端半邊**，漏改任何一邊都等於
+  沒修。
+- `dispose()` 加回房邏輯：`leaveRoom(對方房)` → `connect(自己的房, 'elder',
+  deviceMode: 'comm')`。選 `dispose()` 是因為它是所有離場路徑（掛斷／對方掛斷／忙線
+  ／斷線／逾時選離開）的唯一共同匯合點；「重新撥打」不會觸發它（同一個 State 原地重
+  試，房間不變，本來就該如此）。
+- `friends_screen.dart` 新增 `_startFriendCall(friendElderId, friendName, {required
+  isVideo})`，房間解析走 `widget.roomId` → prefs `elder_room_id`，**絕不退回
+  `widget.userId`**（那是 caregiver_id，本專案踩過的坑）；好友卡片加
+  `Icons.videocam_rounded` 的 IconButton，排在「解除好友」之前（正面動作優先於破壞性
+  動作）。
+- `:329-335` 那句「撥打電話：刻意不放，既有通話只支援長輩↔家屬」的過時註解已改寫成
+  現況說明。
+→ 新護欄 **G150–G157**
+
+**項目 E — 長輩端首頁日期卡片在大字級下溢位（鐵律 #14 例行檢查發現）**
+
+⚠️ **這個檔案不是通話／監控檔**（`elder_home_tab.dart` 不在 §2 檔案地圖內）——之所以記在
+這裡，是因為溢位判準護欄 **G142** 就在護欄檔中，本輪的發現直接延伸自它，新護欄 **G159**
+也因此收在同一份文件。
+
+**檔案**：`Uban/mobile_app/lib/screens/elder_tabs/elder_home_tab.dart`
+
+**怎麼發現的**：鐵律 #14 規定每輪必須靜態核對雙端 8 個標籤主介面的溢位。本輪掃描 8 個畫
+面得到 19 處靜態可疑，逐一評估後判定只有這一處是真風險——其餘多是字面常數短標籤且同列
+有 `Spacer()` 吸收。
+
+**症狀**：長輩把系統字體調大時，首頁最顯眼的日期卡片會出現黃黑斜紋溢位條。
+
+**根因**：
+- 該 `Row` 左欄（國曆 44pt + 星期 26pt）與右欄（農曆 24pt + 節氣 22pt）**都沒有**
+  `Flexible`／`Expanded`。
+- 中間的 `Spacer()` **只吸收多餘空間，內容塞滿時提供零緩衝**——這是誤以為「有 Spacer
+  就安全」的典型陷阱。
+- **全專案沒有任何 `textScaler`／`textScaleFactor` 覆寫**（`lib/` 全目錄 grep 零命中），
+  App 完全跟隨系統字體大小。而會把字體調大的正是這個 App 的長輩使用者。
+- 可用寬度比初估更窄：除了卡片自身的 `EdgeInsets.symmetric(horizontal: 24)`，外層
+  `_buildElderDateCard()` 還包了一層 `Padding(20, 0, 20, 130)`——320dp 螢幕實際只有
+  **232px**。
+- 農曆字串最長是 **5 碼**不是 4 碼：`lunar-1.7.8` 的 `getMonthInChinese()` 遇**閏月**會回
+  「闰」+ 月名（2 碼），加上 `getDayInChinese()` 固定 2 碼與「月」字，閏年會出現
+  「闰腊月廿九」。
+
+**修復**：把該 `Row` 從 `_buildElderDateCard()` 抽成獨立的 `ElderDateSummaryRow`
+（`StatelessWidget`，同檔案末尾），內部用 `LayoutBuilder` 取得可用寬度、`TextPainter`
+依當下 `TextScaler` **精確量測**左右兩欄各自需要的寬度：
+- **塞得下** → 回傳與抽出前**完全相同**的 `Row + Spacer + Column`（同一段程式碼路徑，
+  1.0 倍外觀零改變是結構保證，不是目測）。
+- **塞不下** → `FittedBox(fit: BoxFit.scaleDown)` 包住同樣兩欄整體等比縮小，**不裁切、
+  不用 ellipsis**（日期被截成「12月3…」比溢位更糟）。
+- 寬度無界時（`!available.isFinite`）走「塞得下」分支——`FittedBox` 在無界寬度下沒有
+  意義。
+
+**為什麼不用 `Flexible` 配固定 flex 比例**：flex 是**先分配空間、再看內容**，與各欄實際
+需要多寬無關。比例沒抓準會出現「其實兩欄相加塞得下，卻因分配錯誤把寬的那欄壓縮」，違反
+「1.0 倍外觀不得改變」。而且 `Spacer()` 本身是 `Expanded(flex: 1)`，若把兩欄也包成
+`Flexible(flex: 1)`，三者會**各分到 1/3 寬度**，左欄立刻變形。量測式判斷沒有這個問題，
+因為「塞不塞得下」與「要不要縮小」用的是同一份即時量測結果。
+
+**踩到的編譯陷阱**：這個檔案已 `import 'package:intl/intl.dart'`，intl 自己有一個同名但
+沒有 `.ltr` 的 `TextDirection` class，裸寫 `TextDirection.ltr` 會撞名編譯失敗。改用
+`Directionality.of(context)`，順帶更精確地跟隨 ambient 方向。
+
+**測試**：新增 `Uban/mobile_app/test/screens/elder_tabs/elder_home_tab_date_card_test.dart`
+（8 個測試）——320dp × {1.0, 1.3, 2.0} 倍字級 × {5 碼閏月農曆, 4 碼平年農曆} 共 6 個溢位
+案例，加上兩個結構性證明：650dp 寬度充足時用 `find.byType` 確認**完全沒進** `FittedBox`
+分支（比比對像素更直接地證明外觀零改變）、2.0 倍確實改走 `FittedBox` 且沒有任何 `Text`
+用 ellipsis。
+
+**紅綠驗證**（本輪特別要求，因為靜態目視不是有效驗證）：把 `ElderDateSummaryRow.build()`
+內容暫時換回舊版後跑測試，**8 個裡 7 個紅**，全是 `RenderFlex overflowed by N pixels`——
+320dp/1.0x 溢位 131~155px、1.3x 溢位 239~270px、2.0x 溢位 491~539px。復原後 8 個全綠，
+全專案 44 個測試亦全過。
+
+⚠️ **測量環境的但書**：測試沙箱無網路，`google_fonts` 抓不到 Noto Sans TC 而退回系統
+fallback 字型，每個 CJK 字元量出來是 1 em（「豆腐塊」寬度），比正式環境的 Noto Sans TC
+**更寬**。所以「1.0 倍就溢位」這個門檻**不能直接套用到正式環境**。但這不影響修法的正確
+性——修法是**執行期量測**，會自動適應實際使用的字型；而測試證明的是「不論字型多寬都不會
+溢位」，比固定門檻更強。
+
+→ 新護欄 **G159**
+
+**查證但未改動的結論（供下一輪參考，不要誤「清理」）**
+
+1. **friend 的 FCM token 會出現在對方房裡，但無害**：`on_join` 的 token 登記
+   `if fcm_token:` 沒有角色守衛，A 以 friend 身分加入 B 的房時，A 的 token 會被寫進
+   `room_fcm_tokens[comm_elder_B]` 及 DB（`role='friend'`）。看起來像隱患，但三層取用
+   全部濾角色：記憶體房名位置鍵 `if info.get('role') == 'elder':`、記憶體 user_id 內
+   容鍵補掃 `if info.get('role') != 'elder': continue`、DB Layer C 的 SQL
+   `WHERE role = 'elder' AND (...)`。`_purge_stale_reverse_mode_token` 也有
+   `if role == 'elder':` 守門，friend 不會誤刪自己房間的登記。**看到 friend 的 token
+   躺在別人房裡不要清理它**，清了不會讓任何事變好，可能弄壞上面這幾條路徑。
+2. **回房 `connect()` 不帶 `fcmToken` 是安全的**：`elder_screen.dart` dispose() 回房呼
+   叫 `connect(ownRoomId, 'elder', ...)` 沒有帶 `fcmToken`（它是 `_initElderMode()` 的
+   區域變數，dispose() 取不到），但 `signaling.dart::_asyncJoin` 有自動補抓
+   （`effectiveToken ??= await FirebaseMessaging.instance.getToken()`），送到後端的
+   join 仍帶著真 token。**不需要為此把 fcmToken 存成 state 欄位**。
+3. **斷線重連在通話中與通話後都正確**：`reconnect()`（signaling.dart :315-324）與
+   `onConnect` handler（:370-393）的 rejoin 都讀 `_currentRoomId`／`_role` 的**當下
+   instance 欄位**（G103 既有模式），好友通話進行中斷線會正確回到對方的房，結束後會
+   正確回到自己的房。殘留窗口：導航觸發到 `dispose()` 執行之間那一瞬間斷線，會短暫加
+   回對方的房——判斷為可接受（比 G102 既有窗口更短），未處理。
+
+**新增護欄**
+
+本輪新增 **G150–G159**（後端 G150–G153、G155；跨端 G154；前端 G156–G159；條文見
+§7.1／§7.2）。護欄檔（`CLAUDE_call-monitor-guardrails.md`）開頭護欄總數同步更新為
+**159**。
+
+**驗證**
+
+- 後端：`pytest tests/test_call_signaling.py tests/test_friend.py -q` — **54 passed**
+  （基準 38，新增 16 條）。
+- 前端：`flutter analyze lib` — **0 error / 34 warning / 120 info**（與基準一致，兩個
+  改動檔零新增問題）；`flutter build apk --debug` — 成功。
+
+⚠️ **graphify 尚未同步**：本輪動到 Socket 授權邏輯（`_verify_room_access` 新增 friend
+case）、`target_role` 路由公式、配對碼取得流程、`friends_screen.dart` 新增撥打入口，
+依鐵律 #10 屬於「連接／跳轉」語意變更，理應同步 `Uban/graphify-out/` 與
+`uban-api/graphify-out/`；查證 `graphify-out/` 的 `GRAPH_REPORT.md` 最後修改時間仍停
+在 2026-08-30／31，晚於本輪改動的 `socket_app.py`／`elder_screen.dart`
+（2026-09-04），**尚未執行 `/graphify . --update`**。下一輪處理時請一併帶上。
 

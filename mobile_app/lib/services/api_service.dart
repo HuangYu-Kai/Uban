@@ -11,8 +11,9 @@ import 'api/elder_data_api.dart';
 import 'api/cctv_alert_api.dart';
 import 'api/reminder_api.dart';
 import 'api/community_api.dart';
+import 'api/family_insight_api.dart';
 
-export 'api/cctv_alert_api.dart' show CctvPushResult;
+export 'api/cctv_alert_api.dart' show CctvPushResult, AlertActionResult;
 export 'api/api_client.dart';
 export 'api/auth_api.dart';
 export 'api/pairing_api.dart';
@@ -22,6 +23,7 @@ export 'api/elder_data_api.dart';
 export 'api/cctv_alert_api.dart';
 export 'api/reminder_api.dart';
 export 'api/community_api.dart';
+export 'api/family_insight_api.dart';
 
 /// 專案 API 門面 (Facade Pattern)
 ///
@@ -34,11 +36,13 @@ export 'api/community_api.dart';
 /// - [CctvAlertApi]: CCTV 串流、設備管理、緊急警報歷史、室內定位 (IPS)
 /// - [ReminderApi]: 排程提醒 CRUD 與打卡
 /// - [CommunityApi]: 社群貼文、互動點讚、留言與圖片上傳
+/// - [FamilyInsightApi]: 家屬端情緒／健康趨勢真實資料（步數、負面情緒事件、體重身高）
 class ApiService {
   // --- 基礎 URL 與通用請求 ---
   static String get baseUrl => ApiClient.baseUrl;
   static String get serverRootUrl => ApiClient.serverRootUrl;
-  static String get localAiBaseUrl => ApiClient.localAiBaseUrl;
+  // ★ 第五十一輪：`localAiBaseUrl` passthrough 已隨 ApiClient 移除，見
+  // api_client.dart 的說明——AI 呼叫已全部改走 baseUrl。
 
   static Future<Map<String, dynamic>?> get(String path) => ApiClient.get(path);
   static Future<Map<String, dynamic>?> post(String path, Map<String, dynamic> body) => ApiClient.post(path, body);
@@ -51,7 +55,18 @@ class ApiService {
     required String email,
     required String password,
     required String role,
-  }) => AuthApi.register(username: username, email: email, password: password, role: role);
+    int? age,
+    String? residenceCity,
+    String? residenceDistrict,
+  }) => AuthApi.register(
+        username: username,
+        email: email,
+        password: password,
+        role: role,
+        age: age,
+        residenceCity: residenceCity,
+        residenceDistrict: residenceDistrict,
+      );
 
   static Future<Map<String, dynamic>> login(String email, String password) => AuthApi.login(email, password);
 
@@ -84,7 +99,16 @@ class ApiService {
   static String? get lastResolveError => PairingApi.lastResolveError;
   static set lastResolveError(String? value) => PairingApi.lastResolveError = value;
 
-  static Future<Map<String, dynamic>> requestPairingCode() => PairingApi.requestPairingCode();
+  // ⚠️ 第四十九輪 item 2：elderName 改為必填，理由見 pairing_api.dart 同名函式註解。
+  static Future<Map<String, dynamic>> createAutonomousElder({
+    required String elderName,
+    String gender = 'M',
+    int age = 75,
+  }) => PairingApi.createAutonomousElder(elderName: elderName, gender: gender, age: age);
+
+  static Future<Map<String, dynamic>> requestPairingCode(int? elderId,
+          {bool newElder = false}) =>
+      PairingApi.requestPairingCode(elderId, newElder: newElder);
   static Future<Map<String, dynamic>> checkPairingStatus(String code) => PairingApi.checkPairingStatus(code);
   static Future<Map<String, dynamic>> confirmPairing({
     required int familyId,
@@ -100,8 +124,6 @@ class ApiService {
         age: age,
       );
 
-  static Future<Map<String, dynamic>> ensureYuxuanDemoElder() => PairingApi.ensureYuxuanDemoElder();
-  static Future<Map<String, dynamic>> ensureGawaDemoElder() => PairingApi.ensureGawaDemoElder();
   static Future<Map<String, dynamic>> unbindElder(int familyId, Object elderId) => PairingApi.unbindElder(familyId, elderId);
 
   static Future<Map<String, dynamic>?> createMonitorSetup(int familyId, String elderId, String deviceName) =>
@@ -149,7 +171,6 @@ class ApiService {
     String engine = 'edge',
   }) => AiChatApi.synthesizeTts(text: text, emotion: emotion, engine: engine);
 
-  static Future<Map<String, dynamic>> generatePondLeaf(int userId) => AiChatApi.generatePondLeaf(userId);
   static Future<Map<String, dynamic>?> getElderMoodInsight(String elderId) => AiChatApi.getElderMoodInsight(elderId);
 
   // --- Elder Data & Profile ---
@@ -232,6 +253,40 @@ class ApiService {
   static Future<List<dynamic>> getElderActivityLogs(String elderId, {int limit = 10}) =>
       ElderDataApi.getElderActivityLogs(elderId, limit: limit);
 
+  // --- Family Insight（情緒／健康趨勢真實資料，第四十九輪）---
+  static Future<Map<String, dynamic>> getStepsTrend(
+    String elderId, {
+    int? familyId,
+    int days = 30,
+  }) => FamilyInsightApi.getStepsTrend(elderId, familyId: familyId, days: days);
+
+  static Future<Map<String, dynamic>> getEmotionEvents(
+    String elderId, {
+    int? familyId,
+    int days = 30,
+    int limit = 50,
+  }) => FamilyInsightApi.getEmotionEvents(elderId, familyId: familyId, days: days, limit: limit);
+
+  static Future<Map<String, dynamic>> getBodyMetricsTrend(
+    String elderId, {
+    int? familyId,
+    int days = 365,
+  }) => FamilyInsightApi.getBodyMetricsTrend(elderId, familyId: familyId, days: days);
+
+  static Future<Map<String, dynamic>> submitBodyMetrics({
+    required String elderId,
+    required int familyId,
+    required String metricDate,
+    double? weightKg,
+    double? heightCm,
+  }) => FamilyInsightApi.submitBodyMetrics(
+        elderId: elderId,
+        familyId: familyId,
+        metricDate: metricDate,
+        weightKg: weightKg,
+        heightCm: heightCm,
+      );
+
   // --- CCTV, Alerts, Audio Bridge & IPS ---
   static Future<CctvPushResult> pushCctvFrame({
     required String elderId,
@@ -288,10 +343,26 @@ class ApiService {
   static Future<Map<String, dynamic>?> checkAudioBridge(int alertId, {int? userId}) =>
       CctvAlertApi.checkAudioBridge(alertId, userId: userId);
 
-  static Future<Map<String, dynamic>?> markFalseAlarm({
+  static Future<AlertActionResult> markFalseAlarm({
     required int alertId,
     required int userId,
   }) => CctvAlertApi.markFalseAlarm(alertId: alertId, userId: userId);
+
+  /// 第四十九輪 item 12：警報狀態機——處理中／已完成。
+  static Future<bool> markAlertProcessing({
+    required String elderId,
+    required String deviceId,
+    required int userId,
+  }) => CctvAlertApi.markAlertProcessing(
+        elderId: elderId,
+        deviceId: deviceId,
+        userId: userId,
+      );
+
+  static Future<AlertActionResult> resolveAlert({
+    required int alertId,
+    required int userId,
+  }) => CctvAlertApi.resolveAlert(alertId: alertId, userId: userId);
 
   static Future<List<dynamic>> getEmergencyAlerts(
     String elderId, {
@@ -345,7 +416,8 @@ class ApiService {
   static Future<bool> completeElderReminder(int reminderId) => ReminderApi.completeElderReminder(reminderId);
 
   // --- Community ---
-  static Future<List<dynamic>> getCommunityPosts({
+  /// null＝呼叫失敗（離線／伺服器錯誤），空清單＝真的沒有貼文。
+  static Future<List<dynamic>?> getCommunityPosts({
     int? familyId,
     int? userId,
     int limit = 50,

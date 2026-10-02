@@ -79,8 +79,11 @@ cd uban-api
 
 pip install -r requirements.txt          # Python 3.12 only, NOT 3.13+
 uvicorn main:app --host 0.0.0.0 --port 8000
-pytest tests/
-pytest tests/test_call_signaling.py -q   # 通話迴歸套件，目前 17 passed（會隨測試增加而成長，以套件當下實際輸出為準）
+# ⚠️ .env 的 DB_HOST 指向正式 MySQL，conftest.py 的 autouse cleanup_db 每個
+#    測試前後都會 DELETE，直接跑 pytest 可能寫到正式資料庫。conftest.py
+#    已預設 DISABLE_DB=true，仍建議明確帶上；要刻意連正式庫才帶 DISABLE_DB=false。
+DISABLE_DB=true pytest tests/
+DISABLE_DB=true pytest tests/test_call_signaling.py -q   # 通話迴歸套件，本輪實測 41 passed（會隨測試增加而成長，以套件當下實際輸出為準）
 python -m py_compile services/socket_app.py
 ```
 
@@ -127,8 +130,8 @@ Key service addresses:
 | 撥打 → 接聽 → 掛斷 完整流程（含冷啟動五層兜底） | §4 通話生命週期 |
 | **按鈕在哪、按了跳去哪、可以安全改什麼** | `CLAUDE_call-monitor-ui-map.md`（原 §5，2026-08-25 起獨立成檔） |
 | 監控機／CCTV／裝置角色指派 | §6 監控子系統 |
-| **185 條護欄（絕對不可單點修改）** | `CLAUDE_call-monitor-guardrails.md`（原 §7，2026-09-04 起獨立成檔） |
-| 這段程式碼為什麼長這樣（47 輪修復年表；近期輪次在 §8，第一至三十五輪在 `CLAUDE_call-monitor-history.md`） | §8 |
+| **215 條護欄（絕對不可單點修改）** | `CLAUDE_call-monitor-guardrails.md`（索引，2026-09-04 起獨立成檔；2026-09-24 起正文分存 `-frontend.md`／`-backend.md` 兩卷） |
+| 這段程式碼為什麼長這樣（53 輪修復年表；近期輪次在 §8，第一至四十二輪在 `CLAUDE_call-monitor-history.md`） | §8 |
 | 出問題了怎麼查（三層 A/B/C 定位法、MIUI 檢查表） | §9 |
 | 改完要做什麼 | §10 修改 SOP |
 
@@ -183,6 +186,44 @@ Scheduled jobs (defined in `main.py`):
 
 ---
 
+### 2.9 數位助理：小嘎沒把握時轉交子女（2026-09-15 第四十八輪）
+
+長輩問小嘎、小嘎沒把握 → 問題連同「長輩當下在哪一頁」送到子女手機 →
+子女回一次 → 小嘎主動轉達給長輩。
+
+| 檔案 | 職責 |
+|------|------|
+| `lib/services/api/elder_question_api.dart` | 三個端點的 API 層 |
+| `lib/screens/family/widgets/elder_question_inbox.dart` | 家屬端收件匣（無待回覆時自動隱藏） |
+| `lib/services/elder_question_notification.dart` | 家屬 App 關著時的 FCM 通知 |
+| `Signaling.onElderQuestion` / `onElderQuestionAnswered` | 兩端的 Socket 回呼 |
+
+**設計約束**：
+
+- **通知強度必須低於跌倒警報**：`Importance.defaultImportance`、不 `fullScreenIntent`、
+  不繞過勿擾。日常問題用警報等級半夜吵醒子女，只會讓他們把整個 App 的通知關掉——
+  連真正的跌倒警報都一起收不到。**不要「順手」對齊 `CctvAlertNotification`。**
+- **Socket 推播只是「去刷新」的訊號**，實際資料一律從 `GET /api/elder_question/...`
+  撈。單一真相在資料庫，推播漏收也不會永久遺失。
+- 家屬首頁在 `IndexedStack` 下會被保活、`initState` 只跑一次，因此靠
+  `questionRefreshToken` 遞增推給子元件觸發重載，不能依賴它自己重新初始化。
+- **前景不需要補 FCM**：後端 `_get_family_fcm_tokens` 只收集 socket 不在線的家屬
+  token，在線家屬走 Socket，不會重複。
+
+### 2.10 主動關懷的留存（2026-09-15 第四十七輪）
+
+`lib/services/care_message_store.dart` 留存最近 30 則主動關懷訊息並以
+`ValueNotifier` 即時通知。首頁顯示 `HeartbeatOverlay`、聊天分頁接成小嘎的一則
+訊息，子女回覆長輩提問時也走同一條路。
+
+⚠️ **刻意不放進 `Signaling` singleton**——該類別已有多個回呼互相覆寫的歷史，
+護欄明文禁止在其中新增顯示狀態旗標；`ValueNotifier` 也允許多個畫面同時監聽，
+不會被後掛載者蓋掉。
+
+> 修正前的狀況：首頁只做 TTS 朗讀、畫面什麼都不留，而精美的 `HeartbeatOverlay`
+> 只掛在 `elder_screen`（長輩最少待的通話畫面）。重聽長輩、手機靜音或人不在
+> 旁邊時，關懷訊息完全遺失且無法回溯。
+
 ## 3. Hard Rules
 
 ### 3.1 通用
@@ -207,7 +248,7 @@ Scheduled jobs (defined in `main.py`):
 
 ### 3.2 通話與監控
 
-**完整規則見 [`CLAUDE_call-monitor-guardrails.md`](CLAUDE_call-monitor-guardrails.md)（185 條護欄）。**
+**完整規則見 [`CLAUDE_call-monitor-guardrails.md`](CLAUDE_call-monitor-guardrails.md)（索引，215 條護欄分存兩卷：前端 115 條、後端 100 條，見該檔開頭的定向閱讀指引）。**
 以下僅列最高頻的幾條，動手前仍必須讀完整版：
 
 - **Never merge signaling and media tracks** — they are on separate hosts by design
@@ -239,9 +280,9 @@ Flutter 前端在 `Uban/mobile_app/` 下沒有更細的 CLAUDE.md，本檔即為
 
 ## 5. 變更歷史
 
-通話與監控子系統的完整修復年表（2026-06-05 起，已累積 47 輪）已逐條核對，內容全數存在於
+通話與監控子系統的完整修復年表（2026-06-05 起，已累積 53 輪）已逐條核對，內容全數存在於
 [`CLAUDE_call-monitor.md`](CLAUDE_call-monitor.md) §8（近期輪次）與
-[`CLAUDE_call-monitor-history.md`](CLAUDE_call-monitor-history.md)（第一至三十五輪，含本節原本
+[`CLAUDE_call-monitor-history.md`](CLAUDE_call-monitor-history.md)（第一至四十二輪，含本節原本
 記載的全部早期輪次），故不再於本檔重複列出。部分項目在遷移後已修正過期或錯誤的敘述（例如不
 存在的 `MonitorViewScreen`、已作廢的有效期數字），一律以上述兩份文件的現行版本為準。
 

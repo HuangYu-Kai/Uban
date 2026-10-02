@@ -15,6 +15,15 @@ import '../../models/memoir_story.dart';
 import '../../services/memoir_service.dart';
 import '../../widgets/memoir_detail_sheet.dart';
 import 'memoirs_gallery_screen.dart';
+// ★ 第五十輪：健康趨勢與情緒關注卡片做好了卻沒有入口（`AiHubScreen` 從未被
+// 建構或導覽到，見該檔），本輪把這兩個「真的有資料」的畫面接回本分頁。
+// `VitalSignsWidget`（心率/步數/卡路里/睡眠）刻意不接——它的資料 100% 是
+// initState 硬編的假數字，`_loadVitalSigns()` 只是 delay 後填回同樣的常數，
+// 接進來等於在誠實的分頁裡塞一張假資料卡片，違反本輪誠實性要求，故留待
+// 之後真的接上裝置資料再處理。
+import 'health_trends_screen.dart';
+import 'widgets/emotion_preview_card.dart';
+import '../../widgets/error_boundary.dart';
 
 /// ⚙️ 子女端「資料與設定」Tab (FamilyDataTab)
 /// 包含：照顧者資訊、關照長輩完整檔案、AI 陪伴偏好、人生故事膠囊、安全通知設定、裝置與訂閱管理
@@ -35,6 +44,16 @@ class FamilyDataTab extends StatefulWidget {
   final GlobalKey? memoirsKey;
   final GlobalKey? aiHelperKey;
 
+  /// ★ 第五十一輪（任務 2）：由父層 `FamilyMainScreen` 在使用者切換到「資料」
+  /// 分頁（`IndexedStack` index 2）時遞增，觸發本分頁重新整理。比照本專案
+  /// 既有的 `ElderQuestionInbox.refreshToken` 作法（見該檔
+  /// `didUpdateWidget`）——本分頁活在 `IndexedStack` 底下被保活，`initState`
+  /// 只跑一次、原本的 `didUpdateWidget` 只在切換長輩時才會重載，使用者切到
+  /// 別的分頁再切回來完全不會重新載入資料，這正是「資料分頁有時整片空白，
+  /// 切分頁再回來仍然一樣」的成因之一（另一半是本輪同時補上的
+  /// `ErrorBoundary`，見 `build()` 內的說明）。
+  final int refreshToken;
+
   const FamilyDataTab({
     super.key,
     required this.currentElder,
@@ -47,6 +66,7 @@ class FamilyDataTab extends StatefulWidget {
     this.elderSummaryKey,
     this.memoirsKey,
     this.aiHelperKey,
+    this.refreshToken = 0,
   });
 
   @override
@@ -94,6 +114,19 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
     super.didUpdateWidget(oldWidget);
     if (widget.currentElder?.id != oldWidget.currentElder?.id ||
         widget.currentElder?.elderId != oldWidget.currentElder?.elderId) {
+      _loadAiProfile();
+      _loadMemoirs();
+    }
+    // ★ 第五十一輪（任務 2）：使用者從別的分頁切回「資料」分頁時，父層會
+    //   遞增 `refreshToken`（見欄位宣告的完整理由），這裡跟著重新載入全部
+    //   會過期的資料來源——不只是長輩相關的兩項，`_loadCaregiverName` 讀的
+    //   SharedPreferences 與 `_loadSubscriptionInfo` 打的訂閱查詢 API 一樣
+    //   可能在使用者切走的這段時間內變了（例如在別的畫面改了訂閱方案）。
+    //   用 `!=` 比對而不是每次 build 都重載——只有父層真的判定「這是一次
+    //   分頁切換」才會遞增該 token，2.5 秒輪詢造成的其餘重建不會誤觸發。
+    if (widget.refreshToken != oldWidget.refreshToken) {
+      _loadCaregiverName();
+      _loadSubscriptionInfo();
       _loadAiProfile();
       _loadMemoirs();
     }
@@ -590,153 +623,189 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
           sliver: SliverList(
             delegate: SliverChildListDelegate([
+              // ★ 第五十一輪（任務 2）：以下每一張動態卡片都包了一層
+              //   `ErrorBoundary`——原本這裡是直接呼叫 `_buildXxxCard()`，
+              //   任一個 builder 內部丟例外都會炸穿本方法（`build()` 這一次
+              //   Dart 函式呼叫），Flutter 沒有機會在單一卡片的層級攔截，
+              //   結果是整個分頁被換成 `ErrorWidget`；本頁又活在
+              //   `IndexedStack` 底下被保活、父層每 2.5 秒的輪詢會不斷觸發
+              //   重建，同一個例外會一路重現到使用者重開 App 為止（完整
+              //   機制說明見 `../../widgets/error_boundary.dart` 檔頭）。
+              //   目前沒有指認出單一會拋出的行，因此這裡不臆測成因去改動
+              //   任何卡片本身的邏輯，只讓失敗可以被侵限在一張卡片內、
+              //   並透過 `debugPrint` 留下診斷線索。
+
               // 1. 家屬個人卡片 (Caregiver Identity)
-              _buildCaregiverCard(),
+              ErrorBoundary(name: '家屬個人卡片', builder: () => _buildCaregiverCard()),
               const SizedBox(height: 18),
 
               // 🎨 介面主題風格設定（資料 Tab 切換淺色/深色模式，預設為淺色）
-              _buildSettingsGroup('🎨 外觀風格與色彩主題', [
-                _buildSwitchItem(
-                  widget.isDarkMode ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
-                  '深色主題模式 (Dark Theme)',
-                  widget.isDarkMode ? '目前使用深色模式（墨藍底色搭配薄荷綠線條）' : '目前使用淺色模式（象牙白底色搭配墨藍線條，預設）',
-                  widget.isDarkMode,
-                  (val) => widget.onToggleDarkMode?.call(val),
-                  Theme.of(context).colorScheme.primary,
-                ),
-              ]),
+              ErrorBoundary(
+                name: '外觀風格與色彩主題',
+                builder: () => _buildSettingsGroup('🎨 外觀風格與色彩主題', [
+                  _buildSwitchItem(
+                    widget.isDarkMode ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
+                    '深色主題模式 (Dark Theme)',
+                    widget.isDarkMode ? '目前使用深色模式（墨藍底色搭配薄荷綠線條）' : '目前使用淺色模式（象牙白底色搭配墨藍線條，預設）',
+                    widget.isDarkMode,
+                    (val) => widget.onToggleDarkMode?.call(val),
+                    Theme.of(context).colorScheme.primary,
+                  ),
+                ]),
+              ),
               const SizedBox(height: 18),
 
               // 2. 當前受關照長輩詳細健康資料 (Elder Profile Summary)
               if (widget.currentElder != null) ...[
-                _buildElderSummaryCard(),
+                ErrorBoundary(name: '長輩檔案摘要卡片', builder: () => _buildElderSummaryCard()),
+                const SizedBox(height: 18),
+
+                // 2.5 健康趨勢入口 + 情緒關注預覽卡（第五十輪：接回導覽，見檔頭註解）
+                ErrorBoundary(name: '健康趨勢入口卡片', builder: () => _buildHealthTrendsEntryCard()),
+                const SizedBox(height: 18),
+                ErrorBoundary(
+                  name: '情緒關注預覽卡片',
+                  builder: () => EmotionPreviewCard(
+                    elderName: widget.currentElder!.displayName,
+                    elderId: widget.currentElder!.id,
+                  ),
+                ),
                 const SizedBox(height: 18),
 
                 // 3. 長輩人生故事膠囊 (Memoirs & Family Legacy)
-                _buildMemoirsCard(),
+                ErrorBoundary(name: '人生故事膠囊卡片', builder: () => _buildMemoirsCard()),
                 const SizedBox(height: 18),
 
                 // 4. 長輩互動與對話偏好 (Companion Preferences)
-                _buildAiHelperCard(),
+                ErrorBoundary(name: 'AI 互動偏好卡片', builder: () => _buildAiHelperCard()),
                 const SizedBox(height: 18),
               ] else ...[
                 // 未選擇長輩引導卡片
-                _buildNoElderSelectedCard(),
+                ErrorBoundary(name: '未選擇長輩引導卡片', builder: () => _buildNoElderSelectedCard()),
                 const SizedBox(height: 18),
               ],
 
               // 5. 智慧照護與即時通知設定 (Care & Notification)
-              _buildSettingsGroup('🔔 安全防護與日常通知設定', [
-                _buildSwitchItem(
-                  Icons.emergency_rounded,
-                  '緊急廣播與跌倒求救通知',
-                  '長輩端觸發緊急警報時，第一時間彈窗並強制響鈴提醒',
-                  _isEmergencyOn,
-                  (val) => setState(() => _isEmergencyOn = val),
-                  Theme.of(context).colorScheme.secondary,
-                ),
-                _buildSwitchItem(
-                  Icons.medication_rounded,
-                  '服藥打卡與關懷排程提醒',
-                  '長輩完成吃藥打卡或未按時服藥時，即時推播回報',
-                  _isMedicationPushOn,
-                  (val) => setState(() => _isMedicationPushOn = val),
-                  Theme.of(context).colorScheme.primary,
-                ),
-                _buildSwitchItem(
-                  Icons.summarize_rounded,
-                  '每日傍晚健康日誌摘要',
-                  '每日 18:00 推播長輩今日活動紀錄與心情簡報',
-                  _isDailySummaryOn,
-                  (val) => setState(() => _isDailySummaryOn = val),
-                  Theme.of(context).colorScheme.tertiary,
-                ),
-                _buildSwitchItem(
-                  Icons.psychology_rounded,
-                  '長輩作息與情緒預警',
-                  '長輩生活作息不規律或情緒低落時的主動關懷建議',
-                  _isAiInsightOn,
-                  (val) => setState(() => _isAiInsightOn = val),
-                  Theme.of(context).colorScheme.secondary,
-                ),
-              ]),
+              ErrorBoundary(
+                name: '安全防護與日常通知設定',
+                builder: () => _buildSettingsGroup('🔔 安全防護與日常通知設定', [
+                  _buildSwitchItem(
+                    Icons.emergency_rounded,
+                    '緊急廣播與跌倒求救通知',
+                    '長輩端觸發緊急警報時，第一時間彈窗並強制響鈴提醒',
+                    _isEmergencyOn,
+                    (val) => setState(() => _isEmergencyOn = val),
+                    Theme.of(context).colorScheme.secondary,
+                  ),
+                  _buildSwitchItem(
+                    Icons.medication_rounded,
+                    '服藥打卡與關懷排程提醒',
+                    '長輩完成吃藥打卡或未按時服藥時，即時推播回報',
+                    _isMedicationPushOn,
+                    (val) => setState(() => _isMedicationPushOn = val),
+                    Theme.of(context).colorScheme.primary,
+                  ),
+                  _buildSwitchItem(
+                    Icons.summarize_rounded,
+                    '每日傍晚健康日誌摘要',
+                    '每日 18:00 推播長輩今日活動紀錄與心情簡報',
+                    _isDailySummaryOn,
+                    (val) => setState(() => _isDailySummaryOn = val),
+                    Theme.of(context).colorScheme.tertiary,
+                  ),
+                  _buildSwitchItem(
+                    Icons.psychology_rounded,
+                    '長輩作息與情緒預警',
+                    '長輩生活作息不規律或情緒低落時的主動關懷建議',
+                    _isAiInsightOn,
+                    (val) => setState(() => _isAiInsightOn = val),
+                    Theme.of(context).colorScheme.secondary,
+                  ),
+                ]),
+              ),
               const SizedBox(height: 18),
 
               // 6. 裝置配對、移機與訂閱管理 (Devices & Subscriptions)
-              _buildSettingsGroup('📱 裝置配對與加值服務', [
-                _buildActionItem(
-                  Icons.diamond_rounded,
-                  '訂閱方案與設備上限管理',
-                  '當前方案：$_subscriptionDisplay，管理監視設備數量與雲端功能',
-                  () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const FamilySubscriptionScreen(),
-                      ),
-                    ).then((_) => _loadSubscriptionInfo());
-                  },
-                  Theme.of(context).colorScheme.primary,
-                  trailingBadge: _subscriptionDisplay,
-                ),
-                Divider(height: 16, color: Theme.of(context).colorScheme.outlineVariant),
-                _buildActionItem(
-                  Icons.add_circle_outline_rounded,
-                  '配對新長輩裝置',
-                  '掃描 QR Code 或輸入配對碼，連結其他長輩平板或手機',
-                  () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => CaregiverPairingScreen(
-                          familyId: widget.userId,
-                          familyName: _caregiverName,
+              ErrorBoundary(
+                name: '裝置配對與加值服務',
+                builder: () => _buildSettingsGroup('📱 裝置配對與加值服務', [
+                  _buildActionItem(
+                    Icons.diamond_rounded,
+                    '訂閱方案與設備上限管理',
+                    '當前方案：$_subscriptionDisplay，管理監視設備數量與雲端功能',
+                    () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const FamilySubscriptionScreen(),
                         ),
-                      ),
-                    ).then((_) {
-                      if (widget.onElderUpdated != null) {
-                        widget.onElderUpdated!();
-                      }
-                    });
-                  },
-                  Theme.of(context).colorScheme.primary,
-                ),
-                if (widget.currentElder != null) ...[
+                      ).then((_) => _loadSubscriptionInfo());
+                    },
+                    Theme.of(context).colorScheme.primary,
+                    trailingBadge: _subscriptionDisplay,
+                  ),
                   Divider(height: 16, color: Theme.of(context).colorScheme.outlineVariant),
                   _buildActionItem(
-                    Icons.phonelink_setup_rounded,
-                    '長輩移機與免密重裝助手',
-                    '產生 15 分鐘專屬登入連結，長輩換手機或重裝時一鍵復原',
-                    _showRecoveryAssistantDialog,
-                    Theme.of(context).colorScheme.secondary,
+                    Icons.add_circle_outline_rounded,
+                    '配對新長輩裝置',
+                    '掃描 QR Code 或輸入配對碼，連結其他長輩平板或手機',
+                    () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => CaregiverPairingScreen(
+                            familyId: widget.userId,
+                            familyName: _caregiverName,
+                          ),
+                        ),
+                      ).then((_) {
+                        if (widget.onElderUpdated != null) {
+                          widget.onElderUpdated!();
+                        }
+                      });
+                    },
+                    Theme.of(context).colorScheme.primary,
                   ),
-                ],
-              ]),
+                  if (widget.currentElder != null) ...[
+                    Divider(height: 16, color: Theme.of(context).colorScheme.outlineVariant),
+                    _buildActionItem(
+                      Icons.phonelink_setup_rounded,
+                      '長輩移機與免密重裝助手',
+                      '產生 15 分鐘專屬登入連結，長輩換手機或重裝時一鍵復原',
+                      _showRecoveryAssistantDialog,
+                      Theme.of(context).colorScheme.secondary,
+                    ),
+                  ],
+                ]),
+              ),
               const SizedBox(height: 18),
 
               // 6.5 支援與意見回饋 (Support & Feedback)
               // ★ BUG 回報功能：低頻但重要，刻意不放頂層分頁、不放首頁／互動
               //   這種高頻畫面，比照裝置配對／訂閱等次級設定放在「資料」分頁。
-              _buildSettingsGroup('🛟 支援與意見回饋', [
-                _buildActionItem(
-                  Icons.bug_report_rounded,
-                  '回報問題 / 意見反饋',
-                  '遇到問題或有建議？點此回報，我們會盡快處理',
-                  () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => FamilyBugReportScreen(familyId: widget.userId),
-                      ),
-                    );
-                  },
-                  Theme.of(context).colorScheme.tertiary,
-                ),
-              ]),
+              ErrorBoundary(
+                name: '支援與意見回饋',
+                builder: () => _buildSettingsGroup('🛟 支援與意見回饋', [
+                  _buildActionItem(
+                    Icons.bug_report_rounded,
+                    '回報問題 / 意見反饋',
+                    '遇到問題或有建議？點此回報，我們會盡快處理',
+                    () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => FamilyBugReportScreen(familyId: widget.userId),
+                        ),
+                      );
+                    },
+                    Theme.of(context).colorScheme.tertiary,
+                  ),
+                ]),
+              ),
               const SizedBox(height: 18),
 
               // 7. 系統資訊 (System Info)
-              _buildSystemInfoCard(),
+              ErrorBoundary(name: '系統資訊卡片', builder: () => _buildSystemInfoCard()),
               const SizedBox(height: 24),
 
               // 8. 登出按鈕
@@ -967,12 +1036,20 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
                 child: Icon(Icons.elderly_rounded, color: cs.onPrimary, size: 22),
               ),
               const SizedBox(width: 10),
-              Text(
-                '受關照長輩檔案',
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
-                  color: cs.onSurface,
+              // ★ 鐵律 #14 例行檢查（第四十九輪）：標題與後方 Spacer／
+              // 「編輯資料」按鈕同列，字級 18pt，未提供可收縮空間時窄螢幕
+              // 或放大系統字級可能超出可用寬度；包 Flexible 並加 ellipsis
+              // 可收縮，比照本檔 :1021-1032（elder.displayName）既有寫法。
+              Flexible(
+                child: Text(
+                  '受關照長輩檔案',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    color: cs.onSurface,
+                  ),
                 ),
               ),
               const Spacer(),
@@ -1118,6 +1195,106 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
         ],
       ),
     ).animate().fadeIn(delay: 50.ms, duration: 350.ms);
+  }
+
+  // ─── 2.5 健康趨勢入口卡 (Health Trends Entry) ───
+  // 第五十輪新增：`HealthTrendsScreen` 早就做好真實資料串接（步數/體重/身高），
+  // 但全專案沒有任何入口導覽過去，屬於死碼。這裡補一張入口卡，點下去進
+  // `HealthTrendsScreen`；心率/血壓/血糖仍會顯示 `--`，那是該畫面自己誠實
+  // 標示「需穿戴裝置，目前無法偵測」，不在本卡片重複描述細節。
+
+  Widget _buildHealthTrendsEntryCard() {
+    if (widget.currentElder == null) return const SizedBox.shrink();
+    final elder = widget.currentElder!;
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(24),
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => HealthTrendsScreen(
+              elderName: elder.displayName,
+              elderId: elder.id,
+            ),
+          ),
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: cs.surface,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: cs.outline, width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: (isDark ? Colors.black : cs.outline).withValues(alpha: isDark ? 0.35 : 0.08),
+              blurRadius: 6,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: cs.secondary,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: cs.outline, width: 1.2),
+              ),
+              child: Icon(Icons.show_chart_rounded, color: cs.onSecondary, size: 24),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // ★ 第五十二輪修正：這裡原本用 `Flexible` 包標題（鐵律 #14 的
+                  // 「同列有固定寬度 icon，標題要可收縮」模式），但套錯了層級
+                  // ——這個 `Text`是 `Column` 的直接子節點，`Column`（垂直
+                  // `RenderFlex`）本身又活在 `SliverList` 的清單項目裡、拿到
+                  // 的是無界（0~Infinity）高度。`Flexible`/`Expanded` 一旦是
+                  // 「主軸方向無界的 Flex」的直接子節點，Flutter 會直接丟出
+                  // 「RenderFlex children have non-zero flex but incoming
+                  // height constraints are unbounded」，且這個例外發生在
+                  // *layout* 階段而非 build 階段，`ErrorBoundary`（只包住
+                  // build 期間同步呼叫）完全攔不到；例外沿著 RenderObject
+                  // 樹一路往上炸穿 SliverList／SliverPadding／Viewport，導致
+                  // 整條 CustomScrollView 這一影格的版面計算全部失敗——這正
+                  // 是使用者回報「資料分頁一片空白、所有按鍵都按不動」的根因
+                  // （命中測試：test/screens/family/family_data_tab_test.dart）。
+                  // 「同列有固定寬度 icon 需要可收縮」的正確位置是 Flexible
+                  // 包在 *Row* 的直接子節點上（見 `_buildElderSummaryCard`／
+                  // `_buildCaregiverCard` 的寫法），不是 Row 底下再包一層
+                  // Column 之後的 Column 子節點。這裡改回一般 `Text`：寬度早
+                  // 已被外層 `Expanded`（在 Row 裡）夾住，`maxLines`／
+                  // `overflow` 一樣能在寬度不足時正常省略，不需要 Flexible。
+                  Text(
+                    '健康趨勢',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      color: cs.onSurface,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '步數、體重與身高的時間序紀錄',
+                    style: GoogleFonts.notoSansTc(fontSize: 13, color: cs.onSurfaceVariant, fontWeight: FontWeight.w500),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.arrow_forward_ios_rounded, color: cs.outline, size: 16),
+          ],
+        ),
+      ),
+    ).animate().fadeIn(delay: 75.ms, duration: 350.ms);
   }
 
   // ─── 3. 人生故事膠囊 (Memoirs & Family Legacy) ───

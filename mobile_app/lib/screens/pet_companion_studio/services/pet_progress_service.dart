@@ -102,10 +102,40 @@ class PetFoodUnlockSource {
   }
 }
 
-/// 寵物「階段門檻」「賽季」「今日食物解鎖來源」三個唯讀端點的前端存取層，
-/// 對應後端 `uban-api/routers/pet.py` 新增的
+/// 今日食物消耗量——「食物帳本」（`GET /api/pet/food-ledger/{elder_id}`）。
+/// 讓賺取制食物（見 `PetFoodItem.isEarnedQuantity`，目前只有 carrot）的
+/// 「已賺得份數」在裝置重新啟動後依然知道今天已經吃掉幾份，不會因為
+/// App 重開就把已消耗的份數清零、變相又能超額投餵。
+class PetFoodLedger {
+  /// key 是 food_id（例如 'carrot'），value 是今天已消耗的份數。
+  final Map<String, int> consumed;
+
+  const PetFoodLedger({required this.consumed});
+
+  factory PetFoodLedger.fromJson(Map<String, dynamic> json) {
+    final Map<String, int> parsed = {};
+    final raw = json['consumed'];
+    if (raw is Map) {
+      raw.forEach((key, value) {
+        final n = (value as num?)?.toInt();
+        if (n != null) parsed[key.toString()] = n;
+      });
+    }
+    return PetFoodLedger(consumed: parsed);
+  }
+
+  /// 指定食物今天已消耗的份數；查無紀錄視為 0（「今天還沒吃過」與「查詢
+  /// 失敗」是不同語意——後者呼叫端應該整個 [PetFoodLedger] 當作 null 處理，
+  /// 不要走到這裡）。
+  int consumedOf(String foodId) => consumed[foodId] ?? 0;
+}
+
+/// 寵物「階段門檻」「賽季」「今日食物解鎖來源」「今日食物帳本」四組端點
+/// 的前端存取層，對應後端 `uban-api/routers/pet.py` 的
 /// `GET /api/pet/thresholds` / `GET /api/pet/season` /
-/// `GET /api/pet/food-unlocks/{elder_id}`。
+/// `GET /api/pet/food-unlocks/{elder_id}` /
+/// `GET/POST /api/pet/food-ledger`（第五十一輪新增，見 [PetFoodLedger]／
+/// [loadFoodLedger]／[recordFoodConsumption] 的說明）。
 ///
 /// 與 `pet_leaderboard_service.dart`（體重上傳／排行榜）是同一個路由檔的
 /// 不同端點，刻意拆成獨立檔案而不是塞進同一個 service class——那邊已經有
@@ -312,5 +342,80 @@ class PetProgressService {
       debugPrint('⚠️ [PetProgressService] loadFoodUnlocks error: $e');
     }
     return null;
+  }
+
+  /// 取得「今日食物消耗量」（`GET /api/pet/food-ledger/{elder_id}
+  /// ?ledger_date=YYYY-MM-DD`）。
+  ///
+  /// ⚠️ [ledgerDate] 必須是**裝置本機日期**（`yyyy-MM-dd`），不可用伺服器
+  /// 時區推算——長輩若剛好在跨日前後操作，裝置與伺服器時區不一致會誤判
+  /// 成前一天或後一天，讓「今天已賺得」與「今天已消耗」對不上日期，算出
+  /// 錯誤的可餵份數。呼叫端一律用 `DateTime.now()` 組出這個字串。
+  ///
+  /// 失敗（逾時、連不上、elder_id 404、格式錯誤）回傳 null——呼叫端不可
+  /// 把 null 當成「今天消耗 0 份」處理，那等於允許超額投餵；正確做法是
+  /// 把對應的賺取制食物暫時顯示成不可餵（見 [PetFoodLedger] 類別說明與
+  /// `ElderProfileTab`／`PetStudioScreen` 的庫存計算邏輯）。
+  static Future<PetFoodLedger?> loadFoodLedger(
+    String elderId,
+    String ledgerDate,
+  ) async {
+    try {
+      final response = await http
+          .get(Uri.parse(
+              '${ApiService.baseUrl}/pet/food-ledger/$elderId?ledger_date=$ledgerDate'))
+          .timeout(_timeout);
+      final data = _decode(response);
+      if (response.statusCode == 200 && data['status'] == 'success') {
+        final ledgerJson = data['data'] as Map<String, dynamic>?;
+        // ★ 後端在「查得到、今天是 0 份」與「這次查不到（例如 elder_food_ledger
+        //   表還沒建好）」之間刻意分成 `consumed: {}` 與 `consumed: null` 兩種
+        //   回應（見 uban-api/routers/pet.py 的 get_food_ledger 說明）。
+        //   `PetFoodLedger.fromJson` 會把非 Map 的 consumed 一律讀成空 Map，
+        //   等於把「查不到」講成「今天一份都還沒吃」——那會讓賺取制食物的
+        //   可餵份數直接回到滿額，正是本輪要修掉的超額投餵。這裡在轉成
+        //   model 之前先攔下來，回 null 走既有的「暫時不可餵」路徑。
+        if (ledgerJson != null && ledgerJson['consumed'] != null) {
+          return PetFoodLedger.fromJson(ledgerJson);
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ [PetProgressService] loadFoodLedger error: $e');
+    }
+    return null;
+  }
+
+  /// 記一筆食物消耗（`POST /api/pet/food-ledger`，body
+  /// `{elder_id, ledger_date, food_id}`）。成功回傳 true。
+  ///
+  /// [ledgerDate] 同樣必須是裝置本機日期，理由同 [loadFoodLedger]。
+  ///
+  /// 呼叫端（[PetFoodItem.isEarnedQuantity] 的賺取制食物餵食流程）在收到
+  /// false 時不可先扣本機庫存後又假裝成功——本機計數與後端帳本一旦不同
+  /// 步，重開 App 後又會出現「本機以為還有份數、後端其實已經扣完」或反過
+  /// 來「明明吃過還能再吃」的落差，這正是本次要修的那個問題本身。
+  static Future<bool> recordFoodConsumption({
+    required String elderId,
+    required String ledgerDate,
+    required String foodId,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('${ApiService.baseUrl}/pet/food-ledger'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'elder_id': elderId,
+              'ledger_date': ledgerDate,
+              'food_id': foodId,
+            }),
+          )
+          .timeout(_timeout);
+      final data = _decode(response);
+      return response.statusCode == 200 && data['status'] == 'success';
+    } catch (e) {
+      debugPrint('⚠️ [PetProgressService] recordFoodConsumption error: $e');
+      return false;
+    }
   }
 }

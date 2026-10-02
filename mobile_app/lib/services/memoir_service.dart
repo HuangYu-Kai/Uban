@@ -24,39 +24,40 @@ class MemoirService extends ChangeNotifier {
   /// 內建推薦話題庫（供子女端挑選委託小豬發問）
   List<Map<String, String>> getRecommendedPrompts() {
     return const [
+      // ★ 提問一律改為中性第二人稱「您」，不預設長輩性別（避免長輩持有的稱謂與畫面不符）
       {
         'category': '感官與美食記憶',
-        'question': '阿公，您小時候最喜歡吃的一道菜或點心是什麼？現在還吃得到嗎？',
+        'question': '您小時候最喜歡吃的一道菜或點心是什麼？現在還吃得到嗎？',
         'tag': '美食記憶',
       },
       {
         'category': '感官與美食記憶',
-        'question': '小時候放學回家，阿公都跟隔壁同伴在田裡或廟口玩什麼遊戲呀？',
+        'question': '小時候放學回家，您都跟隔壁同伴在田裡或廟口玩什麼遊戲呀？',
         'tag': '經典回憶',
       },
       {
         'category': '青春與奮鬥打拼',
-        'question': '阿公人生拿到的第一份薪水是多少錢？那時候買了什麼犒賞自己或孝敬父母？',
+        'question': '您人生拿到的第一份薪水是多少錢？那時候買了什麼犒賞自己或孝敬父母？',
         'tag': '奮鬥歲月',
       },
       {
         'category': '青春與奮鬥打拼',
-        'question': '阿公年輕當兵或出社會時，有沒有哪一位老朋友讓您印象最深刻？',
+        'question': '您年輕剛出社會的時候，有沒有哪一位老朋友讓您印象最深刻？',
         'tag': '奮鬥歲月',
       },
       {
         'category': '浪漫與家庭牽絆',
-        'question': '阿公，您跟阿嬤第一次約會是在哪裡？那時候心情會不會很緊張？',
+        'question': '您跟另一半第一次約會是在哪裡？那時候心情會不會很緊張？',
         'tag': '經典回憶',
       },
       {
         'category': '浪漫與家庭牽絆',
-        'question': '第一個孩子出生抱在懷裡的那一刻，阿公心裡在想什麼呢？',
+        'question': '第一個孩子出生抱在懷裡的那一刻，您心裡在想什麼呢？',
         'tag': '溫馨寄語',
       },
       {
         'category': '人生錦囊與傳承',
-        'question': '阿公走過這麼多年的人生風雨，最想傳授給年輕一代的一句智慧話是什麼？',
+        'question': '您走過這麼多年的人生風雨，最想傳授給年輕一代的一句智慧話是什麼？',
         'tag': '溫馨寄語',
       },
     ];
@@ -194,7 +195,7 @@ class MemoirService extends ChangeNotifier {
     }
     final recommended = getRecommendedPrompts();
     final dayIndex = DateTime.now().day % recommended.length;
-    return recommended[dayIndex]['question'] ?? '阿公，今天跟小豬說說你小時候的故事好不好？';
+    return recommended[dayIndex]['question'] ?? '今天跟小豬說說你小時候的故事好不好？';
   }
 
   /// 標記委託話題為已回答

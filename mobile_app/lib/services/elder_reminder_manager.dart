@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../main.dart' show navigatorKey;
+import '../utils/reminder_schedule.dart' show appliesToday;
 import 'api_service.dart';
 import 'local_reminder_notification.dart';
 import '../widgets/elder_reminder_dialog.dart';
@@ -133,8 +134,6 @@ class ElderReminderManager {
     final now = DateTime.now();
     final currentTimeStr = DateFormat('HH:mm').format(now);
     final todayStr = DateFormat('yyyy-MM-dd').format(now);
-    final weekdayMap = {1: '週一', 2: '週二', 3: '週三', 4: '週四', 5: '週五', 6: '週六', 7: '週日'};
-    final currentWeekday = weekdayMap[now.weekday] ?? '';
 
     for (final r in _reminders) {
       final isActive = r['is_active'] == true || r['is_active'] == 1;
@@ -147,24 +146,13 @@ class ElderReminderManager {
       final dedupKey = '${id}_${todayStr}_$currentTimeStr';
       if (_triggeredKeys.contains(dedupKey)) continue;
 
-      // 檢查重複模式
-      final repeatDays = r['repeat_days']?.toString() ?? '每天';
-      final startDate = r['start_date']?.toString();
-      bool shouldTrigger = false;
-
-      if (repeatDays == '每天' || repeatDays == '常規') {
-        shouldTrigger = true;
-      } else if (repeatDays == '單次' || repeatDays == '單次提醒') {
-        if (startDate == null || startDate.isEmpty || startDate == todayStr) {
-          shouldTrigger = true;
-        }
-      } else if (repeatDays == '週一至週五') {
-        if (now.weekday <= 5) shouldTrigger = true;
-      } else if (repeatDays.contains(currentWeekday)) {
-        shouldTrigger = true;
-      } else {
-        shouldTrigger = true;
-      }
+      // ★ 檢查重複模式：改呼叫共用工具 appliesToday()，與「我的」分頁今日排程共用同一份
+      // 判斷邏輯，避免看門狗與 UI 對「今天算不算數」各自表述、互相矛盾。
+      // is_active 的判斷維持在上方（迴圈開頭的 isActive 檢查）不動，因為看門狗原本採「白名單」
+      // （is_active == true || 1 才觸發），與 appliesToday() 內部的寬鬆黑名單標準不同；
+      // 若改由 appliesToday() 一併判斷 is_active，會讓 is_active 為 null／其他型別的提醒
+      // 從「不觸發」變成「觸發」，行為不再等價，因此刻意保留原本的早退判斷。
+      final shouldTrigger = appliesToday(r, now);
 
       if (shouldTrigger) {
         _triggeredKeys.add(dedupKey);
@@ -173,27 +161,39 @@ class ElderReminderManager {
         final note = r['note']?.toString() ?? '';
 
         debugPrint('⏰ [ElderReminderManager] 本地看門狗命中排程: $title ($reminderTime)');
+        // speak: false — 下面的 LocalReminderNotification 會負責朗讀，見該處
+        // 第四十九輪說明；兩邊都朗讀會疊出兩段語音互相蓋過。
         _showDialog(
           reminderId: id,
           title: title,
           category: category,
           timeStr: reminderTime,
           note: note,
+          speak: false,
         );
 
-        // 同步發送本機系統通知備援
+        // 同步發送本機系統通知備援（★ 第四十九輪起本身會朗讀，涵蓋彈窗
+        // 拿不到 context 的情境，見 local_reminder_notification.dart 檔頭說明）
         LocalReminderNotification.showReminderNotification(
           id: id,
           title: title,
           timeStr: reminderTime,
           note: note,
           category: category,
+          elderName: _elderName,
         );
       }
     }
   }
 
   /// 彈出長輩專屬醒目對話框
+  ///
+  /// [speak]：本彈窗是否自己朗讀提醒內容。預設 `true`；本地看門狗
+  /// （[_checkSchedule]）會另外同步發送 [LocalReminderNotification]，該通知
+  /// 現在自己也會朗讀一次（見該檔第四十九輪的說明），因此看門狗呼叫本方法時
+  /// 會傳 `speak: false`，避免同一次提醒疊出兩段語音。其餘呼叫端
+  /// （[handleIncomingReminder]，涵蓋 Socket／FCM 前景推播與點擊通知冷啟動）
+  /// 沒有搭配系統通知，維持預設值，本彈窗仍是唯一的朗讀來源。
   void _showDialog({
     required int reminderId,
     required String title,
@@ -201,6 +201,7 @@ class ElderReminderManager {
     required String timeStr,
     required String note,
     int retryCount = 0,
+    bool speak = true,
   }) {
     if (_isDialogOpen) {
       debugPrint('⏰ [ElderReminderManager] 目前已有彈窗開啟中，延遲顯示');
@@ -223,6 +224,7 @@ class ElderReminderManager {
             timeStr: timeStr,
             note: note,
             retryCount: retryCount + 1,
+            speak: speak,
           );
         });
       }
@@ -241,6 +243,7 @@ class ElderReminderManager {
       onCompleted: () {
         syncReminders();
       },
+      speak: speak,
     ).then((_) {
       _isDialogOpen = false;
     });

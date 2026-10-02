@@ -22,7 +22,7 @@ class CctvAlertNotification {
       FlutterLocalNotificationsPlugin();
   static bool _initialized = false;
 
-  /// 固定通知 ID：同一時間只會有一則跌倒警報通知，用固定 ID 便於 cancel；
+  /// 固定通知 ID：同一時間只會有一則警報通知（跌倒／爬行／語音求救等），用固定 ID 便於 cancel；
   /// 與來電備援的 8801 錯開，避免互相覆蓋。
   static const int alertNotificationId = 8811;
 
@@ -72,8 +72,18 @@ class CctvAlertNotification {
   /// 完成前就有安全預設。
   static String _channelId = _fallbackChannelId;
 
-  static const String _channelName = '跌倒警報';
-  static const String _channelDesc = 'YOLO 監視機偵測到疑似跌倒時的高優先級提醒';
+  // ★ 第四十九輪：channel 顯示文字擴充，涵蓋本檔現已分流的多種警報情境（跌倒／
+  //   疑似爬行／長時間躺臥或無活動／長輩開口求救），不再只提「跌倒」。
+  //   ⚠️ name／description 是 Android channel 少數建立後仍可安全更新的欄位，
+  //   之後要再調整文字可以直接改這兩個常數；但 [_channelId] 本身、以及
+  //   sound／importance／bypassDnd（見上方大段註解與 `MainActivity.kt::
+  //   ensureAlertChannel()`）一旦要改，一律要換新 channel id 並清掉舊的
+  //   （G108），就地改只會被系統靜默忽略。
+  //   真正建立系統 channel 的是原生 `ensureAlertChannel()`，那裡也有一份
+  //   同文字的 `ALERT_CHANNEL_NAME`／`ALERT_CHANNEL_DESC`，須同步更新，
+  //   否則冷啟動當下建立的 channel 仍會是舊文字。
+  static const String _channelName = '長輩緊急警報';
+  static const String _channelDesc = '偵測到跌倒、疑似爬行、長時間躺臥或無活動，以及長輩開口求救時的高優先級提醒';
 
   /// 跌倒警報音效：救護車雙音（來源檔 `assets/sounds/emergency_siren.wav`）。
   /// `flutter_local_notifications` 的 `RawResourceAndroidNotificationSound` 讀的是
@@ -173,7 +183,83 @@ class CctvAlertNotification {
     _initialized = true;
   }
 
-  /// 顯示跌倒警報通知。**會直接從 FCM 背景 isolate 呼叫**（見 C-6：
+  /// 六種警報類型的中文顯示名稱。
+  ///
+  /// ⚠️ 對照來源是 `family_main_screen.dart::_alertTypeLabel()`（約第 1019
+  /// 行）——那裡是家屬端警示中心／即時警報彈窗顯示警報類型的權威對照表，
+  /// **兩邊要一起改**，不要各自維護一份、也不要合併成共用函式（兩個檔案
+  /// 分屬完全不同的執行環境：這裡的 [show] 會直接被 FCM 背景 isolate 呼叫，
+  /// `family_main_screen.dart` 是一般的 StatefulWidget，讓一個純文字對照
+  /// 表跨這兩種環境互相 import 沒有必要，純字串常數直接各自維護一份反而
+  /// 更不容易在改動時牽連到不相關的畫面邏輯）。
+  static String _typeLabel(String alertType) {
+    switch (alertType) {
+      case 'fall':
+        return '跌倒';
+      case 'crawl':
+        return '疑似爬行';
+      case 'lying_down':
+        return '長時間躺臥';
+      case 'prolonged_inactivity':
+        return '長時間無活動';
+      case 'sos_voice':
+        return '長輩開口求救';
+      default:
+        return '異常狀況';
+    }
+  }
+
+  /// 通知標題——依類型（首次偵測）或固定樣式（提醒）決定。
+  ///
+  /// `sos_voice`（長輩對語音助理開口求救）刻意獨立分支：這種警報**沒有**
+  /// 監視畫面可看，文案不能沿用其餘類型「請查看監視畫面」的措辭。
+  static String _resolveTitle(String alertType, bool isReminder) {
+    if (isReminder) {
+      if (alertType == 'sos_voice') return '⏰ 提醒：求救尚未處理';
+      return '⏰ 提醒：${_typeLabel(alertType)}尚未處理';
+    }
+    switch (alertType) {
+      case 'sos_voice':
+        return '🆘 長輩開口求救';
+      case 'fall':
+        return '🚨 偵測到跌倒';
+      case 'crawl':
+        return '🚨 偵測到疑似爬行';
+      case 'lying_down':
+        return '🚨 偵測到長時間躺臥';
+      case 'prolonged_inactivity':
+        return '🚨 偵測到長時間無活動';
+      default:
+        return '🚨 偵測到異常狀況';
+    }
+  }
+
+  /// 通知內文——理由同 [_resolveTitle]。提醒內文除了 `sos_voice` 外一律是
+  /// 同一句通用文字（不重複「偵測到 XX」的措辭，只提醒「仍未處理」）。
+  static String _resolveBody(String alertType, String displayName, bool isReminder) {
+    if (isReminder) {
+      if (alertType == 'sos_voice') {
+        return '$displayName 先前開口求救的狀況仍未處理，請盡快聯繫確認';
+      }
+      return '$displayName 的狀況仍未處理，請盡快查看監視畫面';
+    }
+    switch (alertType) {
+      case 'sos_voice':
+        return '$displayName 剛透過語音助理開口求救，請立即聯繫確認狀況';
+      case 'fall':
+        return '$displayName 可能跌倒，請立即查看監視畫面';
+      case 'crawl':
+        return '$displayName 疑似在地上爬行，請立即查看監視畫面';
+      case 'lying_down':
+        return '$displayName 長時間躺臥未起身，請盡快查看監視畫面';
+      case 'prolonged_inactivity':
+        return '$displayName 長時間沒有活動，請盡快查看監視畫面';
+      default:
+        return '$displayName 出現異常狀況，請立即查看監視畫面';
+    }
+  }
+
+  /// 顯示警報通知（跌倒／爬行／語音求救等）。**會直接從 FCM 背景 isolate 呼叫**（見 C-6：
   /// `CctvAlertNotification.show(message.data)`），故比照
   /// `local_call_notification.dart::notificationBackgroundTapHandler` 的做法，
   /// 呼叫外部套件前先確保 binding 初始化，避免 MissingPluginException。
@@ -196,8 +282,22 @@ class CctvAlertNotification {
       await _ensureInit();
       final String elderName =
           (data['elderName'] ?? data['elderId'] ?? '長輩').toString();
-      final String body =
-          '${elderName.isEmpty ? '長輩' : elderName} 可能跌倒，請立即查看監視畫面';
+      // ★ 第四十九輪 item 12：逾時未處理的重複提醒與第一次偵測分流文案。
+      //   後端兩條路徑鍵名不同——Socket（family_main_screen.dart 前景時走
+      //   這裡）帶 snake_case 'is_reminder'，FCM data payload（本函式的主要
+      //   呼叫情境：背景／被殺死）帶 camelCase 'isReminder'（FCM data 全部
+      //   欄位皆為字串），兩者都容忍。
+      final bool isReminder =
+          data['isReminder']?.toString() == 'true' || data['is_reminder'] == true;
+      final String displayName = elderName.isEmpty ? '長輩' : elderName;
+      // ★ 第四十九輪 item 12（收尾）：文案必須依 `alertType` 分流——修正前
+      //   不論類型一律寫死「偵測到跌倒／請立即查看監視畫面」，長輩對語音
+      //   助理開口求救（'sos_voice'，**沒有**監視畫面）時，家屬手機在背景
+      //   收到的卻是跌倒通知、還被叫去看不存在的監視畫面。
+      final String alertType =
+          (data['alertType'] ?? data['alert_type'] ?? '').toString();
+      final String title = _resolveTitle(alertType, isReminder);
+      final String body = _resolveBody(alertType, displayName, isReminder);
       // ★ 2026-08-23（新鐵律：家屬端不得強制開啟 App）：`fullScreenIntent: true`
       //   會讓 Android 直接把本 Activity 拉到鎖定畫面之上——等同**未經同意強行
       //   開啟 App**，對熟悉資安的使用者而言，這與流氓軟體的行為難以區分，
@@ -209,7 +309,7 @@ class CctvAlertNotification {
       //   響起，使用者一眼看到、想看就自己點開。
       //   🚨 **強制開啟只允許用於長輩端**（例如 `main.dart` 中 `role == 'elder'`
       //   分支下、緊急通話用的 `AndroidIntent` 喚醒）——家屬端從今以後一律不得
-      //   比照辦理，本檔（家屬端跌倒警報通知）之後也不可再加回 `fullScreenIntent`。
+      //   比照辦理，本檔（家屬端警報通知（跌倒／爬行／語音求救等））之後也不可再加回 `fullScreenIntent`。
       final androidDetails = AndroidNotificationDetails(
         _channelId,
         _channelName,
@@ -232,24 +332,24 @@ class CctvAlertNotification {
       );
       await _plugin.show(
         alertNotificationId,
-        '🚨 偵測到跌倒',
+        title,
         body,
         NotificationDetails(android: androidDetails),
       );
-      debugPrint('🔔 [CctvAlertNotif] 已發送跌倒警報通知 (alertId=${data['alertId']})');
+      debugPrint('🔔 [CctvAlertNotif] 已發送警報通知（跌倒／爬行／語音求救等） (alertId=${data['alertId']}, alertType=$alertType, isReminder=$isReminder)');
     } catch (e) {
-      debugPrint('⚠️ [CctvAlertNotif] 發送跌倒警報通知失敗: $e');
+      debugPrint('⚠️ [CctvAlertNotif] 發送警報通知（跌倒／爬行／語音求救等）失敗: $e');
     }
   }
 
-  /// 取消跌倒警報通知。
+  /// 取消警報通知（跌倒／爬行／語音求救等）。
   static Future<void> cancel() async {
     if (kIsWeb) return;
     try {
       await _ensureInit();
       await _plugin.cancel(alertNotificationId);
     } catch (e) {
-      debugPrint('⚠️ [CctvAlertNotif] 取消跌倒警報通知失敗: $e');
+      debugPrint('⚠️ [CctvAlertNotif] 取消警報通知（跌倒／爬行／語音求救等）失敗: $e');
     }
   }
 }
