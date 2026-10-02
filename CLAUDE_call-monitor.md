@@ -374,7 +374,25 @@ AI 對話、Pinecone 長期記憶、新聞爬蟲、遊戲、寵物、TTS/STT、`
 | `alertId` | `str(alert_id)` | ⚠️ **會被重複沿用**，見下 |
 | `confidence` | `str(round(confidence, 3))` | |
 | **`timestamp`** | `str(int(utcnow().timestamp()))` | ⚠️ **去重的關鍵欄位** |
+| **`latitude`** / **`longitude`**（**選填**） | `str(float)`，WGS84 度 | **2026-10-02 新增**。**只有 `alertType='sos_voice'`、長輩開啟位置分享、且 `elder_location_ping` 有夠新的定位時才帶**（分享開關與新鮮度由呼叫端 `tools_service.notify_family_SOS` 判斷，`yolo_alert_dispatcher` 只負責落地與帶出）；其餘情況這兩個鍵**根本不存在**（不是空字串、不是 `"null"`）——消費端必須處理缺漏 |
+| **`locationAt`**（**選填**，與上兩欄同進同退） | ISO8601 UTC、結尾 `Z`（例 `2026-10-02T03:04:05Z`） | 該座標**被回報的時間**（`elder_location_ping.recorded_at`，naive UTC 加 `Z`），**不是**警報偵測時間；家屬端用它算「N 分鐘前的位置」 |
 | priority | `android=AndroidConfig(priority='high')`、APNS `content_available` | 無 `notification` 區塊（同 G33） |
+
+> 📍 **位置欄位的跨通路契約（2026-10-02）**：
+> - **Socket `cctv-alert`**（`_build_push_payload()`）同樣只在有位置時多帶 `latitude`／`longitude`（**float**）與
+>   `location_at`（ISO UTC 結尾 `Z`，snake_case，與同 payload 其餘欄位風格一致）；FCM 版是 camelCase
+>   `locationAt` 且全部為字串（FCM data 的硬性限制）。兩邊的缺漏語意相同：鍵不存在。
+> - **落地**：`emergency_alerts` 新增 `latitude DOUBLE NULL`／`longitude DOUBLE NULL`／`location_at TIMESTAMP NULL`
+>   （`scripts/migrations/020_alert_location.sql`；SQLite 備援已鏡像於 `database.py`）。`location_at` 存 **naive UTC**
+>   （全站「統一存 UTC」決策），不是警報的 `detected_at`。
+> - **30 分鐘合併（UPSERT）**：`_insert_alert()` 合併分支以 `COALESCE(新值, 舊值)` 寫入——有新位置才覆蓋、
+>   **絕不用 NULL 洗掉已知位置**（G191 的合併窗口語意不變）。
+> - **重推也帶位置**：`alert_watchdog` 每 10 分鐘提醒與開發者主控台「聯絡家屬」（`record_alert_decision`）都在
+>   各自的 DB 執行緒（G192）把警報列的三欄 SELECT 出來，經 `location_from_row()` 傳進
+>   `resend_alert_notification(..., location=)`；後者跑在主事件迴圈，**不做任何 DB 讀取**。
+> - **查詢**：`GET /api/alerts/{elder_id}` 每一筆多回 `latitude`／`longitude`／`location_at`（無位置為 `null`，鍵一律存在）；
+>   ⚠️ 只有 `location_at` 被格式化成結尾 `Z`，同列的 `detected_at` 等欄位維持既有的 naive isoformat（無 `Z`）。
+> - 不合法座標（非數值、`NaN`、緯度超出 ±90、經度超出 ±180）一律視同沒有位置，**不會讓整次派送失敗**。
 
 > 🚫 **`alertId` 單獨不可作為去重鍵**：`_insert_alert()` 對「同 elder + 同 device + 同 alert_type
 > 且 `status='active'`」的既有列是 **UPDATE `detected_at` 並沿用原本的 `alert_id`**。
@@ -1280,6 +1298,22 @@ IMU 航位推算漂移嚴重，且長輩常不隨身攜帶手機。相機方案�
 > 📌 **搬移門檻提示**：本文件中出現的「第 N 輪」，**N ≤ 42** 者其年表條目已遷至
 > `CLAUDE_call-monitor-history.md`；**N ≥ 43** 仍在本檔 §8。此門檻會隨每輪搬移而持續調高，
 > 調整時只需要更新本處（§8 開頭）的數字。
+
+### 2026-10-02 — 語音求救附帶長輩最後位置（後端部分；未編號，併入下一輪彙整）
+
+**需求**：長輩對小嘎開口求救（`sos_voice`）時，家屬最急著知道「他在哪」，但警報 payload 完全沒有位置。
+
+**修復（後端）**：`dispatch_yolo_alert(..., location=None)` 新增選填位置
+`{latitude, longitude, location_at(naive UTC)}`；`emergency_alerts` 新增三欄（migration `020_alert_location.sql`，
+`database.py` SQLite 與 `socket_app.py` 新建庫 CREATE 同步）；Socket／FCM payload 只在有位置時多帶
+`latitude`／`longitude`／`location_at`｜`locationAt`（欄位語意見 §3.2）；`_insert_alert` 合併分支用 COALESCE，
+絕不用 NULL 覆蓋已知位置；看門狗與開發者「聯絡家屬」重推由各自的 DB 執行緒 SELECT 位置後傳入
+`resend_alert_notification(location=)`（G192：該函式在主事件迴圈、不查 DB）；`GET /api/alerts/{elder_id}` 回傳三欄。
+既有鍵、priority、ttl、data-only 規則一律不變，`first_detected_at` 行為不變（`tests/test_alert_insert_paths.py` 通過）。
+**未新增護欄**（避免連動三份 `CLAUDE.md` 與護欄索引的條數同步）：「位置欄位選填、消費端須處理缺漏、
+絕不以 NULL 覆蓋已知位置」記錄於 §3.2。**驗證**：`tests/test_alert_location.py`（17 項，純單元）＋
+`tests/test_alert_insert_paths.py` 通過；SQLite 端對端腳本確認新建／合併（NULL 不覆蓋、新值覆蓋）／無位置三種情境。
+**本輪（後端部分）未同步 graphify**，由彙整者決定是否補做。
 
 ### 2026-09-24 — 第五十三輪：長輩端鎖屏與語音助理四項真機回報、雙端必填欄位、開發者主控台四項擴充、護欄檔分卷
 

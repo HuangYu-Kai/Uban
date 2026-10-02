@@ -357,5 +357,36 @@ Navigator.push(context, MaterialPageRoute(
 - 🚫 `GET /api/alerts/{elder_id}` 的 `user_id` 為必填 query 參數；呼叫者與該 `elder_id` 無關係時回
   **404**，不是 403（與 §3.8／**G45** 的授權慣例一致）。
 
+#### 5.6.1 語音求救（`sos_voice`）與未知型別的卡片／導航（2026-10-02 新增）
+
+> 涵蓋首頁「最新警示」（`home/widgets/home_alert_preview_card.dart`）、警示中心
+> （`alert_center_screen.dart`：即時卡片 `_buildRealtimeAlertCard`、歷史卡片）、前景警報彈窗
+> （`family_main_screen.dart::_presentCctvAlert`）。
+
+- **文案集中**：`lib/utils/alert_display.dart`（`AlertDisplay`）是這兩個卡片畫面共用的標題／內文／圖示／
+  位置欄位解析來源（G196）。`sos_voice` 顯示「🆘 長輩開口求救」＋ SOS 圖示，**不寫成跌倒、不顯示信心度、
+  不提監視畫面**；**未知警報型別**顯示中性的「⚠️ 異常狀況警報」，不再退回跌倒文案。
+  系統通知（`cctv_alert_notification.dart`）與前景彈窗（`_alertTypeLabel`）是**另外兩份刻意分開**的對照表，
+  新增警報型別時三處一起檢查。
+- **SOS 不導向監視畫面**：首頁預覽的 SOS 項目不再是 `routeType: 'monitor'`（SOS 的 `deviceId` 是哨兵值 0，
+  過去點了沒反應）。有位置 → `routeType: 'location'`；沒位置 → 不可點。
+- **位置只在有位置時出現**：後端只在 `sos_voice` 且長輩有開位置分享、有最近定位時帶 `latitude`／`longitude`／
+  `location_at`（Socket 與 `GET /api/alerts/{elder_id}`；FCM 為 `locationAt`）。`AlertDisplay.parseLocation`
+  兩個座標都要有效才算有位置；沒有位置時**什麼都不加**（不補假提示、不顯示按鈕）。
+- **「查看位置」→ `ElderLocationMapScreen`**（僅 SOS 且有位置）：
+
+  | 位置 | 入口 | `elderId` | `userId` | `initialDate` |
+  |------|------|-----------|----------|---------------|
+  | 首頁「最新警示」項目 | 點擊整個項目 | `elder.elderId ?? elder.id.toString()` | `HomeAlertPreviewCard.userId`（`FamilyHomeTab` 傳入）；為 null／≤0 則不可點 | 持久化項目 = 警報日；即時 = 今天 |
+  | 警示中心 即時／歷史卡片 | 「查看位置」鈕＋「最後位置：N 分鐘前」 | `elderRoomId ?? elderId.toString()` | `AlertCenterScreen.userId`；省略時點擊當下讀 prefs `caregiver_id` | 歷史 = 定位時間（退回警報時間）；即時 = 今天 |
+  | 前景彈窗 `_presentCctvAlert` | 「查看位置」鈕（與「我知道了」並列；「查看監視畫面」本來就不給 SOS） | 警報自己的 `elder_id` | `widget.userId`（>0 才顯示） | 今天 |
+
+  彈窗的「查看位置」**不會**清掉 `_activeAlerts`（家屬尚未確認）；時間文字只在後端給了 `location_at` 時顯示。
+- **新增選用參數**：`HomeAlertPreviewCard.userId`（int?）、`AlertCenterScreen.userId`（int?），皆預設 null，
+  既有呼叫端與測試不受影響。
+- **系統通知**：SOS 附位置時內文加註「（已附上最後位置）」，只改文字，channel／音效／id 不變（G107／G108）。
+- **版面（鐵律 #14）**：位置列的文字 `Expanded` ＋ ellipsis，按鈕固定尺寸。
+- 回歸測試：`test/screens/family/sos_alert_display_test.dart`。
+
 ---
 

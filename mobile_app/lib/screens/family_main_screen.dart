@@ -33,6 +33,7 @@ import 'package:flutter_tts/flutter_tts.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import '../services/cctv_alert_notification.dart';
 import '../services/location_alert_notification.dart';
+import '../utils/alert_display.dart';
 
 class FamilyMainScreen extends StatefulWidget {
   final int userId;
@@ -1166,6 +1167,10 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
       if (_knownAlertKeys.length > 100) {
         _knownAlertKeys.remove(_knownAlertKeys.first);
       }
+      // ★ 2026-10-02：語音求救（sos_voice）可能附帶長輩最後位置（latitude／longitude／
+      //   location_at，只在後端有位置時才有）。這裡整包 Map 原樣複製，欄位就直接留在
+      //   _activeAlerts 的項目裡，由各畫面用 AlertDisplay.parseLocation／parseLocationAt
+      //   容錯解析，不另外建模型、也不在這裡補預設值（沒有位置就是沒有鍵）。
       final newAlert = Map<String, dynamic>.from(data is Map ? data : {});
       setState(() {
         _activeAlerts.insert(0, newAlert);
@@ -1309,6 +1314,11 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     //   家屬把第 N 次提醒誤會成又一次新事件。
     final bool isReminder =
         (alert['is_reminder'] ?? alert['isReminder'])?.toString() == 'true';
+    // ★ 2026-10-02：語音求救附帶的長輩最後位置（沒有位置就是 null，彈窗不顯示任何位置 UI）。
+    final ({double lat, double lng})? sosLocation = alertType == 'sos_voice'
+        ? AlertDisplay.parseLocation(alert)
+        : null;
+    final bool hasSosLocation = sosLocation != null;
 
     // 1) 保持螢幕亮著——僅限 App 本來就在前景時（見 _lifecycleState 欄位說明）。
     //   背景時開啟對「目前看不見的視窗」沒有實際點亮效果，只會讓 wakelock
@@ -1341,6 +1351,10 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
         // ★ 第四十九輪 item 12：告訴 CctvAlertNotification.show() 這是
         //   逾時未處理的重複提醒還是第一次偵測，切換通知標題／內文文案。
         'isReminder': isReminder.toString(),
+        // ★ 2026-10-02：語音求救附帶位置時，通知內文會加註「（已附上最後位置）」
+        //   （見 CctvAlertNotification._resolveBody）；沒有位置就不放這個鍵。
+        if (sosLocation != null) 'latitude': sosLocation.lat.toString(),
+        if (sosLocation != null) 'longitude': sosLocation.lng.toString(),
       });
     } catch (e) {
       debugPrint('⚠️ [FamilyMainScreen] 跌倒警報通知發送失敗: $e');
@@ -1411,6 +1425,23 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     final String rawElderId =
         (alert['elder_id'] ?? alert['elderId'] ?? '').toString();
 
+    // ★ 2026-10-02：「查看位置」需要家屬 userId；沒有位置、或 userId 無效就不顯示這個鍵。
+    final bool canShowLocation =
+        hasSosLocation && widget.userId > 0 && rawElderId.isNotEmpty;
+    final String? lastLocationText = hasSosLocation
+        ? AlertDisplay.lastLocationText(AlertDisplay.parseLocationAt(alert))
+        : null;
+    // 地圖標題用的長輩名：警報自帶 elder_name 優先，其次從已配對長輩比對 elder_id。
+    final String sosElderName = () {
+      final String fromAlert =
+          (alert['elder_name'] ?? alert['elderName'] ?? '').toString();
+      if (fromAlert.isNotEmpty) return fromAlert;
+      for (final e in _elders) {
+        if ((e.elderId ?? e.id.toString()) == rawElderId) return e.displayName;
+      }
+      return _currentElder?.displayName ?? '長輩';
+    }();
+
     final double? conf = double.tryParse(
         (alert['confidence'] ?? '').toString());
     final String confText =
@@ -1451,6 +1482,12 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                 const SizedBox(height: 4),
                 Text(confText, style: const TextStyle(color: Colors.black54)),
               ],
+              // ★ 2026-10-02：語音求救附位置且後端給了定位時間才顯示相對時間。
+              if (lastLocationText != null) ...[
+                const SizedBox(height: 4),
+                Text(lastLocationText,
+                    style: const TextStyle(color: Colors.black54)),
+              ],
               const SizedBox(height: 8),
               Text(
                 isReminder
@@ -1480,6 +1517,29 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
               },
               child: const Text('我知道了'),
             ),
+            // ★ 2026-10-02：語音求救附有最後位置 → 「查看位置」開長輩 GPS 地圖。
+            //   刻意不移除 _activeAlerts（家屬還沒按「我知道了」，警報仍待處理）；
+            //   彈窗關閉的 .then() 會照常停 TTS／取消通知。
+            if (canShowLocation)
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.of(dialogContext).pop();
+                  if (!mounted) return;
+                  Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => ElderLocationMapScreen(
+                      elderId: rawElderId,
+                      userId: widget.userId,
+                      elderName: sosElderName,
+                    ),
+                  ));
+                },
+                icon: const Icon(Icons.place_rounded),
+                label: const Text('查看位置'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFB91C1C),
+                  foregroundColor: Colors.white,
+                ),
+              ),
             if (canView)
               ElevatedButton.icon(
                 onPressed: () {
@@ -2658,6 +2718,8 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                             // ★ 第四十一輪（item 1）：與傳給 FamilyHomeTab 的是同一份
                             // _activeAlerts，避免「查看全部」展開後即時警報消失。
                             activeAlerts: _activeAlerts,
+                            // ★ 2026-10-02：語音求救附位置的「查看位置」需要 userId。
+                            userId: widget.userId,
                           ),
                         ),
                       );

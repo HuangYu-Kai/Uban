@@ -472,6 +472,17 @@ void initPedometer() {
 > 但只寫進 `CLAUDE_call-monitor.md` 沒進本日誌的通話／監控工作）。
 > 內容依 commit diff 與該文件重建，細節可能不如當事人寫得完整。
 
+### 2026-10-02 🆘 語音求救附帶位置、小嘎說得出長輩在哪
+
+- **修掉 G196 違規（家屬端卡片把語音求救寫成跌倒）**：首頁「最新警示」（`home_alert_preview_card.dart`，即時與持久化兩處）與警示中心（`alert_center_screen.dart`，持久化歷史與 `_buildRealtimeAlertCard`）的預設分支原本一律是「🚨 跌倒緊急警報／監視機偵測到長輩疑似跌倒」，`sos_voice` 因此被顯示成跌倒。新增 `lib/utils/alert_display.dart`（`AlertDisplay`）集中卡片標題、即時／歷史內文與圖示，兩個畫面共用；`sos_voice` 顯示「🆘 長輩開口求救」＋SOS 圖示，不顯示信心度、不提監視畫面；未知警報型別改為中性的「⚠️ 異常狀況警報」，不再宣稱跌倒。系統通知（`cctv_alert_notification.dart`）與前景彈窗（`family_main_screen.dart`）本來就依 G196 分流，維持各自一份對照表。
+- **求救項目不再導向監視畫面**：首頁預覽的求救項目原本是 `routeType: 'monitor'`＋`deviceId` 0（哨兵值），點了沒有反應；現在求救項目永遠不會走監視路徑，沒有位置時不可點。
+- **求救附帶長輩最後位置**：後端在 `sos_voice` 警報上選擇性帶 `latitude`／`longitude`／`location_at`（Socket、`GET /api/alerts/{elder_id}`）或 `latitude`／`longitude`／`locationAt`（FCM）。`AlertDisplay.parseLocation`／`parseLocationAt` 容錯解析（數字或字串、範圍檢查），沒有位置就完全不顯示任何位置相關 UI，不補假提示。
+- **首頁「最新警示」**：求救項目有位置時，點擊開 `ElderLocationMapScreen`（`elderId` 取 `elderId ?? id.toString()`，與 `HomeGpsTrailCard` 同一套）；`HomeAlertPreviewCard` 新增選用參數 `userId`，由 `FamilyHomeTab` 傳入（兩個版面皆已接上）；歷史項目會帶 `initialDate` 直接開警報當天的軌跡。
+- **警示中心**：即時與歷史求救卡片有位置時顯示「最後位置：N 分鐘前」與「查看位置」鈕（後端沒給定位時間就只顯示按鈕）；`AlertCenterScreen` 新增選用參數 `userId`，省略時點擊當下改讀 `caregiver_id`。位置列的文字 `Expanded`＋ellipsis（鐵律 #14）。
+- **前景警報彈窗**：`family_main_screen.dart::_presentCctvAlert` 在求救有位置且 `userId` 有效時，新增「查看位置」鈕（保留「我知道了」；不會清掉待處理警報），內容多一行「最後位置：N 分鐘前」。
+- **系統通知**：求救附位置時，通知內文加註「（已附上最後位置）」；只改文字，`_channelId`、音效、`bypassDnd` 與通知 id 均未更動（G107／G108）。
+- **隱私權政策 §9（`privacy_policy_content.dart`，prefsKey 維持 `_v3`）**：補充長輩語音求救且位置分享開啟時，最後位置會附在警報中傳給已配對家屬；並說明為了用文字描述位置（小嘎回答「我在哪裡」、家屬詢問今日行程），座標可能傳送至 Google Geocoding（Google Maps Platform）換算成地址，不含身分資料；§12 第三方清單同步新增一條。
+
 ### 2026-10-01 🩹 位置「已過期」門檻放寬、隱私權政策補充心跳說明
 
 - **後端門檻 3 → 20 分鐘**：`uban-api` 的 `stale_after_ms` 由 180000 改為 1200000。長輩端有 10 分鐘心跳後，靜止時每 10–19 分鐘才回報一次，舊的 3 分鐘門檻讓家屬地圖上靜止長輩的定位針幾乎一直顯示「已過期」；新門檻涵蓋心跳最壞間隔，超過才代表手機真的停止回報（由失聯提醒另外處理）。前端沿用後端回傳值，無需改動。
