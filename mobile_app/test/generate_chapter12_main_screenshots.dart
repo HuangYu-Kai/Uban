@@ -502,48 +502,249 @@ class MockElderLocationMapScreen extends StatelessWidget {
   }
 }
 
-class CctvFeedPainter extends CustomPainter {
+class RealisticLivingRoomCctvPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final bgPaint = Paint()
-      ..shader = const LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [Color(0xFF1E293B), Color(0xFF0F172A), Color(0xFF020617)],
-      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
-    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), bgPaint);
+    final w = size.width;
+    final h = size.height;
 
-    final sofaPaint = Paint()
-      ..color = const Color(0xFF334155).withOpacity(0.5)
-      ..style = PaintingStyle.fill;
+    // 1. Room Background
+    final wallPaint = Paint()..color = const Color(0xFF1E2430);
+    canvas.drawRect(Rect.fromLTWH(0, 0, w, h * 0.75), wallPaint);
+
+    final floorPaint = Paint()..color = const Color(0xFF161B22);
+    canvas.drawRect(Rect.fromLTWH(0, h * 0.55, w, h * 0.45), floorPaint);
+
+    // Floor perspective planks
+    final floorLinePaint = Paint()
+      ..color = Colors.black.withOpacity(0.25)
+      ..strokeWidth = 1.5;
+    for (int i = 0; i < 7; i++) {
+      canvas.drawLine(
+        Offset(w * (0.05 + i * 0.15), h * 0.55),
+        Offset(w * (-0.1 + i * 0.2), h),
+        floorLinePaint,
+      );
+    }
+
+    // Modern Large Area Rug
+    final rugRect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(w * 0.08, h * 0.52, w * 0.84, h * 0.35),
+      const Radius.circular(16),
+    );
+    final rugPaint = Paint()..color = const Color(0xFF2D3748);
+    canvas.drawRRect(rugRect, rugPaint);
+
+    // 2. Window on right with subtle sunlight
+    final windowRect = Rect.fromLTWH(w * 0.68, h * 0.18, w * 0.26, h * 0.42);
+    final winBorder = Paint()
+      ..color = const Color(0xFF4A5568)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 5;
+    canvas.drawRect(windowRect, winBorder);
+
+    final sunGradient = ui.Gradient.linear(
+      Offset(windowRect.left, windowRect.top),
+      Offset(windowRect.right, windowRect.bottom),
+      [const Color(0xFFEDF2F7), const Color(0xFFCBD5E0)],
+    );
+    canvas.drawRect(windowRect, Paint()..shader = sunGradient);
+    canvas.drawLine(Offset(windowRect.center.dx, windowRect.top), Offset(windowRect.center.dx, windowRect.bottom), winBorder);
+    canvas.drawLine(Offset(windowRect.left, windowRect.center.dy), Offset(windowRect.right, windowRect.center.dy), winBorder);
+
+    // 3. Wall Art on left
+    final artRect = Rect.fromLTWH(w * 0.10, h * 0.20, w * 0.22, h * 0.20);
+    final artBorder = Paint()
+      ..color = const Color(0xFF4A5568)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3;
+    canvas.drawRect(artRect, artBorder);
+    final artGrad = ui.Gradient.linear(
+      Offset(artRect.left, artRect.top),
+      Offset(artRect.right, artRect.bottom),
+      [const Color(0xFF319795), const Color(0xFFD69E2E)],
+    );
+    canvas.drawRect(artRect, Paint()..shader = artGrad);
+
+    // 4. Large Sectional Sofa
+    final sofaBack = RRect.fromRectAndRadius(
+      Rect.fromLTWH(w * 0.18, h * 0.40, w * 0.58, h * 0.24),
+      const Radius.circular(24),
+    );
+    canvas.drawRRect(sofaBack, Paint()..color = const Color(0xFF3B4A5A));
+
+    final sofaCushion = RRect.fromRectAndRadius(
+      Rect.fromLTWH(w * 0.20, h * 0.48, w * 0.54, h * 0.16),
+      const Radius.circular(18),
+    );
+    canvas.drawRRect(sofaCushion, Paint()..color = const Color(0xFF2A3644));
+
+    // Throw pillow
+    final pillowRect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(w * 0.22, h * 0.43, w * 0.12, h * 0.08),
+      const Radius.circular(8),
+    );
+    canvas.drawRRect(pillowRect, Paint()..color = const Color(0xFFD97706));
+
+    // Monstera houseplant on left
+    final plantPot = RRect.fromRectAndRadius(
+      Rect.fromLTWH(w * 0.08, h * 0.47, w * 0.10, h * 0.09),
+      const Radius.circular(6),
+    );
+    canvas.drawRRect(plantPot, Paint()..color = const Color(0xFFC05621));
+    final leafPaint = Paint()..color = const Color(0xFF10B981);
+    canvas.drawCircle(Offset(w * 0.12, h * 0.44), 16, leafPaint);
+    canvas.drawCircle(Offset(w * 0.08, h * 0.42), 14, leafPaint);
+    canvas.drawCircle(Offset(w * 0.15, h * 0.41), 15, leafPaint);
+
+    // 5. Elder Figure sitting on Sofa
+    final elderX = w * 0.46;
+    final elderY = h * 0.46;
+
+    // Body / Cardigan (Warm Amber / Ochre)
+    final bodyPaint = Paint()..color = const Color(0xFFD97706);
+    final bodyPath = Path()
+      ..moveTo(elderX - 30, elderY - 30)
+      ..lineTo(elderX + 30, elderY - 30)
+      ..lineTo(elderX + 36, elderY + 45)
+      ..lineTo(elderX - 36, elderY + 45)
+      ..close();
+    canvas.drawPath(bodyPath, bodyPaint);
+
+    // Legs / Pants (Deep Navy)
+    final pantsPaint = Paint()..color = const Color(0xFF1E293B);
+    canvas.drawRect(Rect.fromLTWH(elderX - 28, elderY + 45, 24, 60), pantsPaint);
+    canvas.drawRect(Rect.fromLTWH(elderX + 4, elderY + 45, 24, 60), pantsPaint);
+
+    // Head / Face
+    final facePaint = Paint()..color = const Color(0xFFFDE68A);
+    canvas.drawCircle(Offset(elderX, elderY - 55), 20, facePaint);
+
+    // Silver Hair
+    final hairPaint = Paint()..color = const Color(0xFFE2E8F0);
+    final hairPath = Path()
+      ..addArc(Rect.fromCircle(center: Offset(elderX, elderY - 58), radius: 21), 3.14, 3.14);
+    canvas.drawPath(hairPath, hairPaint);
+
+    // Glasses
+    final glassesPaint = Paint()
+      ..color = const Color(0xFF334155)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2;
+    canvas.drawCircle(Offset(elderX - 7, elderY - 55), 5, glassesPaint);
+    canvas.drawCircle(Offset(elderX + 7, elderY - 55), 5, glassesPaint);
+    canvas.drawLine(Offset(elderX - 2, elderY - 55), Offset(elderX + 2, elderY - 55), glassesPaint);
+
+    // Book/Tablet in hands
+    final tabletRect = RRect.fromRectAndRadius(
+      Rect.fromCenter(center: Offset(elderX, elderY + 12), width: 34, height: 22),
+      const Radius.circular(4),
+    );
+    canvas.drawRRect(tabletRect, Paint()..color = Colors.white);
+
+    // 6. Wooden Coffee Table in foreground
+    final tableRect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(w * 0.28, h * 0.60, w * 0.36, h * 0.08),
+      const Radius.circular(8),
+    );
+    canvas.drawRRect(tableRect, Paint()..color = const Color(0xFF78350F));
+    final legPaint = Paint()
+      ..color = const Color(0xFF451A03)
+      ..strokeWidth = 5;
+    canvas.drawLine(Offset(w * 0.32, h * 0.68), Offset(w * 0.31, h * 0.74), legPaint);
+    canvas.drawLine(Offset(w * 0.60, h * 0.68), Offset(w * 0.61, h * 0.74), legPaint);
+
+    // Teacup on table
+    final cupPaint = Paint()..color = Colors.white.withOpacity(0.9);
     canvas.drawRRect(
-      RRect.fromRectAndRadius(Rect.fromLTWH(40, size.height * 0.45, size.width - 80, 140), const Radius.circular(20)),
-      sofaPaint,
+      RRect.fromRectAndRadius(Rect.fromLTWH(w * 0.34, h * 0.58, 14, 12), const Radius.circular(2)),
+      cupPaint,
     );
 
+    // 7. Edge AI Bounding Box & Pose Skeleton
+    final boxRect = Rect.fromLTWH(elderX - 60, elderY - 85, 120, 205);
+
+    // Cyan Bounding Box
     final boxPaint = Paint()
-      ..color = const Color(0xFF10B981)
-      ..strokeWidth = 2
-      ..style = PaintingStyle.stroke;
-    final rrect = RRect.fromRectAndRadius(
-      Rect.fromLTWH(size.width * 0.3, size.height * 0.3, size.width * 0.4, size.height * 0.32),
-      const Radius.circular(12),
-    );
-    canvas.drawRRect(rrect, boxPaint);
+      ..color = const Color(0xFF00E5FF)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.5;
 
-    final cornerPaint = Paint()
-      ..color = const Color(0xFF00EBC7)
-      ..strokeWidth = 3
-      ..style = PaintingStyle.stroke;
-    final rect = rrect.outerRect;
-    canvas.drawLine(rect.topLeft, rect.topLeft + const Offset(16, 0), cornerPaint);
-    canvas.drawLine(rect.topLeft, rect.topLeft + const Offset(0, 16), cornerPaint);
-    canvas.drawLine(rect.topRight, rect.topRight + const Offset(-16, 0), cornerPaint);
-    canvas.drawLine(rect.topRight, rect.topRight + const Offset(0, 16), cornerPaint);
-    canvas.drawLine(rect.bottomLeft, rect.bottomLeft + const Offset(16, 0), cornerPaint);
-    canvas.drawLine(rect.bottomLeft, rect.bottomLeft + const Offset(0, -16), cornerPaint);
-    canvas.drawLine(rect.bottomRight, rect.bottomRight + const Offset(-16, 0), cornerPaint);
-    canvas.drawLine(rect.bottomRight, rect.bottomRight + const Offset(0, -16), cornerPaint);
+    final cornerLen = 16.0;
+    final bp = Path()
+      ..moveTo(boxRect.left, boxRect.top + cornerLen)
+      ..lineTo(boxRect.left, boxRect.top)
+      ..lineTo(boxRect.left + cornerLen, boxRect.top)
+      ..moveTo(boxRect.right - cornerLen, boxRect.top)
+      ..lineTo(boxRect.right, boxRect.top)
+      ..lineTo(boxRect.right, boxRect.top + cornerLen)
+      ..moveTo(boxRect.left, boxRect.bottom - cornerLen)
+      ..lineTo(boxRect.left, boxRect.bottom)
+      ..lineTo(boxRect.left + cornerLen, boxRect.bottom)
+      ..moveTo(boxRect.right - cornerLen, boxRect.bottom)
+      ..lineTo(boxRect.right, boxRect.bottom)
+      ..lineTo(boxRect.right, boxRect.bottom - cornerLen);
+    canvas.drawPath(bp, boxPaint);
+
+    // AI Confidence Tag
+    final tagBg = RRect.fromRectAndRadius(
+      Rect.fromLTWH(boxRect.left + 5, boxRect.top - 24, 145, 20),
+      const Radius.circular(6),
+    );
+    canvas.drawRRect(tagBg, Paint()..color = const Color(0xFF00C853));
+
+    final tagTp = TextPainter(
+      text: const TextSpan(
+        text: '長輩 (98%) • 姿態正常',
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+          fontFamily: 'NotoSansTC',
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    tagTp.paint(canvas, Offset(boxRect.left + 12, boxRect.top - 21));
+
+    // 17-Point Pose Skeleton
+    final jointPaint = Paint()..color = const Color(0xFFE0F7FA);
+    final bonePaint = Paint()
+      ..color = const Color(0xFF00E5FF).withOpacity(0.85)
+      ..strokeWidth = 2.0;
+
+    final nose = Offset(elderX, elderY - 55);
+    final lShoulder = Offset(elderX - 22, elderY - 26);
+    final rShoulder = Offset(elderX + 22, elderY - 26);
+    final lElbow = Offset(elderX - 32, elderY + 2);
+    final rElbow = Offset(elderX + 32, elderY + 2);
+    final lWrist = Offset(elderX - 16, elderY + 14);
+    final rWrist = Offset(elderX + 16, elderY + 14);
+    final lHip = Offset(elderX - 16, elderY + 45);
+    final rHip = Offset(elderX + 16, elderY + 45);
+    final lKnee = Offset(elderX - 18, elderY + 80);
+    final rKnee = Offset(elderX + 18, elderY + 80);
+    final lAnkle = Offset(elderX - 20, elderY + 102);
+    final rAnkle = Offset(elderX + 20, elderY + 102);
+
+    void drawBone(Offset p1, Offset p2) => canvas.drawLine(p1, p2, bonePaint);
+    drawBone(nose, Offset(elderX, elderY - 26));
+    drawBone(lShoulder, rShoulder);
+    drawBone(lShoulder, lElbow);
+    drawBone(lElbow, lWrist);
+    drawBone(rShoulder, rElbow);
+    drawBone(rElbow, rWrist);
+    drawBone(lShoulder, lHip);
+    drawBone(rShoulder, rHip);
+    drawBone(lHip, rHip);
+    drawBone(lHip, lKnee);
+    drawBone(lKnee, lAnkle);
+    drawBone(rHip, rKnee);
+    drawBone(rKnee, rAnkle);
+
+    for (final pt in [nose, lShoulder, rShoulder, lElbow, rElbow, lWrist, rWrist, lHip, rHip, lKnee, rKnee, lAnkle, rAnkle]) {
+      canvas.drawCircle(pt, 3.5, jointPaint);
+    }
   }
 
   @override
@@ -559,148 +760,95 @@ class MockCctvMonitorScreen extends StatelessWidget {
       backgroundColor: Colors.black,
       body: Stack(
         children: [
+          // 1. 沉浸式視訊畫面 (含邊緣 AI 姿態辨識與綠色標籤)
           Positioned.fill(
-            child: CustomPaint(painter: CctvFeedPainter()),
+            child: CustomPaint(painter: RealisticLivingRoomCctvPainter()),
           ),
+
+          // 2. 頂部返回膠囊 (比照 video_call_screen.dart:1115 widget.returnByPop == true)
           Positioned(
-            top: 48,
+            top: 56,
             left: 16,
-            right: 16,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.5),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 20),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.6),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Colors.white30, width: 1),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 16),
+                  const SizedBox(width: 6),
+                  Text(
+                    '返回',
+                    style: GoogleFonts.notoSansTc(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
                     ),
-                    const SizedBox(width: 12),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '客廳 AI 守護鏡頭',
-                          style: GoogleFonts.notoSansTc(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
-                        ),
-                        Text(
-                          '室內監視機 • 1080P 高畫質串流',
-                          style: GoogleFonts.notoSansTc(fontSize: 11, color: Colors.white70),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // 3. 底部懸浮毛玻璃控制列 (比照 video_call_screen.dart:1224 monitorViewOnly == true 僅有擴音與麥克風)
+          Positioned(
+            bottom: 40,
+            left: 20,
+            right: 20,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(30),
+              child: BackdropFilter(
+                filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                child: Container(
+                  height: 80,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFEF4444).withOpacity(0.9),
-                    borderRadius: BorderRadius.circular(14),
+                    color: Colors.white.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(30),
+                    border: Border.all(color: Colors.white10),
                   ),
                   child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
-                      Container(width: 6, height: 6, decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white)),
-                      const SizedBox(width: 6),
-                      Text('LIVE', style: GoogleFonts.notoSansTc(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white)),
+                      // 擴音監聽
+                      Container(
+                        width: 50,
+                        height: 50,
+                        decoration: const BoxDecoration(
+                          color: Colors.white12,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.volume_up,
+                          color: Colors.white,
+                          size: 24,
+                        ),
+                      ),
+                      // 麥克風對講
+                      Container(
+                        width: 50,
+                        height: 50,
+                        decoration: const BoxDecoration(
+                          color: Colors.white12,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.mic,
+                          color: Colors.white,
+                          size: 24,
+                        ),
+                      ),
                     ],
                   ),
                 ),
-              ],
-            ),
-          ),
-          Positioned(
-            top: 105,
-            right: 20,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.55),
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: Colors.white24, width: 0.8),
-              ),
-              child: Text(
-                'REC  2026-10-03  10:15:24',
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white.withOpacity(0.9),
-                  letterSpacing: 1.1,
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            top: 240,
-            left: 90,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: const Color(0xFF10B981).withOpacity(0.85),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.check_circle_rounded, color: Colors.white, size: 14),
-                  const SizedBox(width: 6),
-                  Text(
-                    '長輩 (信心度 98%) • 姿態正常',
-                    style: GoogleFonts.notoSansTc(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          Positioned(
-            left: 20,
-            right: 20,
-            bottom: 40,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1E293B).withOpacity(0.92),
-                borderRadius: BorderRadius.circular(28),
-                boxShadow: [
-                  BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 16, offset: const Offset(0, 6)),
-                ],
-                border: Border.all(color: Colors.white.withOpacity(0.1)),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  _controlBtn(Icons.volume_up_rounded, '擴音收聽', const Color(0xFF00EBC7), true),
-                  _controlBtn(Icons.mic_rounded, '語音對講', Colors.white, false),
-                  _controlBtn(Icons.camera_alt_rounded, '即時截圖', Colors.white, false),
-                  _controlBtn(Icons.warning_amber_rounded, '緊急呼叫', const Color(0xFFFF5470), false),
-                ],
               ),
             ),
           ),
         ],
       ),
-    );
-  }
-
-  Widget _controlBtn(IconData icon, String label, Color color, bool isActive) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 52,
-          height: 52,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: isActive ? color.withOpacity(0.2) : Colors.white.withOpacity(0.08),
-            border: Border.all(color: color.withOpacity(isActive ? 0.8 : 0.2), width: 1.5),
-          ),
-          child: Icon(icon, color: color, size: 24),
-        ),
-        const SizedBox(height: 6),
-        Text(label, style: GoogleFonts.notoSansTc(fontSize: 11, color: Colors.white70, fontWeight: FontWeight.w500)),
-      ],
     );
   }
 }
