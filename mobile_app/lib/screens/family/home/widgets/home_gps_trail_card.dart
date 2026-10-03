@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../../../models/elder.dart';
 import '../../../../services/api/location_api.dart';
+import '../../../../services/location_device_status.dart';
 import '../../elder_location_map_screen.dart';
 
 /// 長輩戶外 GPS 定位 / 每日移動軌跡卡片。
@@ -144,6 +145,8 @@ class _HomeGpsTrailCardState extends State<HomeGpsTrailCard> {
     // 第一行（主要資訊）與第二行（狀態＋最後更新）。
     String subtitle;
     String? detail;
+    // 長輩手機定位有問題時，警示優先於「目前在家／外出中」（那個狀態此時不可信）。
+    String? deviceWarning;
     switch (_state) {
       case _CardState.loading:
         subtitle = '讀取中…';
@@ -168,8 +171,11 @@ class _HomeGpsTrailCardState extends State<HomeGpsTrailCard> {
           // 沒設定「家」就無法計算外出次數，只顯示移動距離。
           subtitle = '今天移動 $distance';
         }
+        deviceWarning = LocationDeviceStatus.shortLabel(sm['device_status']);
         final String status;
-        if (sm['has_home'] != true) {
+        if (deviceWarning != null) {
+          status = deviceWarning;
+        } else if (sm['has_home'] != true) {
           status = '到地圖設定家的位置，就能看到外出次數';
         } else if (sm['at_home'] == true) {
           status = '目前在家';
@@ -223,7 +229,11 @@ class _HomeGpsTrailCardState extends State<HomeGpsTrailCard> {
               const SizedBox(height: 4),
               Text(
                 detail,
-                style: GoogleFonts.notoSansTc(fontSize: 13, color: cs.onSurfaceVariant),
+                style: GoogleFonts.notoSansTc(
+                  fontSize: 13,
+                  fontWeight: deviceWarning != null ? FontWeight.w800 : FontWeight.normal,
+                  color: deviceWarning != null ? const Color(0xFFB45309) : cs.onSurfaceVariant,
+                ),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),

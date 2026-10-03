@@ -47,8 +47,34 @@ class LocationApi {
     }
   }
 
+  /// 長輩裝置回報「手機定位權限／定位服務」目前的狀態，讓家屬端看得到
+  /// 「為什麼沒有位置」（而不是只看到一片空白）。
+  ///
+  /// [status] 必須是 `ok | permission_denied | permission_denied_forever |
+  /// service_disabled | foreground_only`（見 `LocationDeviceStatus`）。
+  /// 只有長輩本人可以呼叫；任何失敗一律回傳 `false`、不拋例外——這是
+  /// 輔助資訊，絕不能影響定位本身。
+  static Future<bool> reportDeviceStatus({
+    required String elderId,
+    required int userId,
+    required String status,
+  }) async {
+    try {
+      final result = await ApiClient.post('/location/device-status/$elderId', {
+        'user_id': userId,
+        'status': status,
+      });
+      return result != null && result['status'] == 'success';
+    } catch (e) {
+      debugPrint('⚠️ LocationApi.reportDeviceStatus error: $e');
+      return false;
+    }
+  }
+
   /// 家屬（或長輩本人）讀取最新一筆位置。
-  /// 回傳 `{sharing_enabled, point: {latitude, longitude, accuracy_m, recorded_at}?, stale_after_ms}`，
+  /// 回傳 `{sharing_enabled, point: {latitude, longitude, accuracy_m, recorded_at}?, stale_after_ms,
+  /// device_status?, device_status_at?}`（後兩者僅在分享開啟時出現，`device_status_at` 帶 `Z`，
+  /// 須經 [parseRecordedAt] 解析），
   /// 查無權限（未配對）時回傳 `null`。
   static Future<Map<String, dynamic>?> getCurrentLocation({
     required String elderId,
@@ -242,7 +268,8 @@ class LocationApi {
 
   /// 讀取指定日期（省略則今天）的移動摘要。
   /// 回傳 `{sharing_enabled, date, has_home, distance_m, outing_count, outside_minutes,
-  /// at_home, last_update, point_count}`；分享關閉時只有 `{sharing_enabled: false, date}`。
+  /// at_home, last_update, point_count, device_status?, device_status_at?}`；分享關閉時只有
+  /// `{sharing_enabled: false, date}`。
   /// `outing_count`／`outside_minutes`／`at_home` 在沒設定「家」時為 `null`。
   /// 查無權限或失敗時回傳 `null`。時區處理與 [getTrail] 相同。
   static Future<Map<String, dynamic>?> getSummary({

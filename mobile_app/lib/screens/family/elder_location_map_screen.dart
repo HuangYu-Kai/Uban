@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../config/map_tiles.dart';
 import '../../models/elder_place.dart';
 import '../../services/api/location_api.dart';
+import '../../services/location_device_status.dart';
 import '../../services/location_trail_processor.dart';
 import 'elder_places_screen.dart';
 
@@ -48,6 +49,10 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
   Map<String, dynamic>? _currentPoint;
   DateTime? _currentRecordedAt;
   int? _staleAfterMs;
+  // 長輩手機的定位權限／服務狀態（`/current` 的 device_status／device_status_at，
+  // 值見 LocationDeviceStatus）；分享關閉或後端未提供時為 null。
+  String? _deviceStatus;
+  DateTime? _deviceStatusAt;
   // 已清理／分段／簡化的當日軌跡（原始點由 LocationTrailProcessor 處理）
   ProcessedTrail _trail = const ProcessedTrail();
   // 除錯用：未經處理的原始點（依時間排序），僅供 debug 版疊圖比對
@@ -148,6 +153,8 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
       setState(() {
         _state = _LoadState.sharingDisabled;
         _currentPoint = null;
+        _deviceStatus = null;
+        _deviceStatusAt = null;
         _trail = const ProcessedTrail();
         _rawPoints = const [];
         _cursor = null;
@@ -179,6 +186,9 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
       _currentRecordedAt =
           point != null ? LocationApi.parseRecordedAt(point['recorded_at']) : null;
       _staleAfterMs = currentResult['stale_after_ms'] as int?;
+      final rawStatus = currentResult['device_status'];
+      _deviceStatus = rawStatus is String ? rawStatus : null;
+      _deviceStatusAt = LocationApi.parseRecordedAt(currentResult['device_status_at']);
       _trail = trail;
       _rawPoints = raw;
       _cursor = newCursor ?? (incremental ? _cursor : null);
@@ -712,11 +722,18 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
   Widget _buildMap() {
     final currentLatLng = _currentLatLng;
 
+    final String? deviceWarning = _deviceWarningText();
+
     if (_trail.isEmpty && currentLatLng == null) {
+      // 長輩手機沒開定位時，「尚未回報位置，請稍候再試」會誤導家屬一直等；
+      // 改直接說明真正原因與該怎麼做。
+      final bool warnNow = deviceWarning != null && _isToday;
       return _buildMessage(
-        icon: Icons.route_rounded,
+        icon: warnNow ? Icons.location_disabled_rounded : Icons.route_rounded,
         title: '尚無定位資料',
-        message: _isToday ? '長輩裝置尚未回報位置，請稍候再試' : '這一天沒有移動軌跡紀錄',
+        message: warnNow
+            ? deviceWarning
+            : (_isToday ? '長輩裝置尚未回報位置，請稍候再試' : '這一天沒有移動軌跡紀錄'),
       );
     }
 
@@ -875,6 +892,14 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
             ),
           ],
         ),
+        // 長輩手機定位沒開：醒目警示卡放在最上方，家屬一進來就看到原因。
+        if (deviceWarning != null)
+          Positioned(
+            left: 16,
+            right: 16,
+            top: 12,
+            child: _buildDeviceWarningCard(deviceWarning),
+          ),
         Positioned(
           right: 16,
           bottom: 110,
@@ -918,6 +943,57 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
             child: _buildStatusBanner(),
           ),
       ],
+    );
+  }
+
+  /// 長輩手機定位有問題時的完整警示文字（含「N 分鐘前回報」）；沒問題回傳 null。
+  String? _deviceWarningText() {
+    final base = LocationDeviceStatus.familyMessage(_deviceStatus);
+    if (base == null) return null;
+    final ago = LocationDeviceStatus.reportedAgoText(_deviceStatusAt);
+    return ago.isEmpty ? base : '$base$ago';
+  }
+
+  /// 警示卡：圖示 + 可收縮的多行文字（內容為動態字串，鐵律 #14）。
+  Widget _buildDeviceWarningCard(String text) {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 8),
+        ],
+      ),
+      child: Material(
+        color: const Color(0xFFFEF3C7),
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFF59E0B), width: 1.5),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.warning_amber_rounded,
+                  color: Color(0xFFB45309), size: 24),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  text,
+                  maxLines: 5,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF7C2D12),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

@@ -472,6 +472,15 @@ void initPedometer() {
 > 但只寫進 `CLAUDE_call-monitor.md` 沒進本日誌的通話／監控工作）。
 > 內容依 commit diff 與該文件重建，細節可能不如當事人寫得完整。
 
+### 2026-10-03 📵 定位權限沒開時，長輩與家屬都看得到原因
+
+- **問題**：長輩手機把定位功能關掉、或沒給 Uban 位置權限時，`ElderLocationService` 只是靜默不啟動串流，家屬地圖只看到「尚無定位資料／長輩裝置尚未回報位置，請稍候再試」，會一直等；長輩自己也不知道開關雖然是「開」、位置卻傳不出去。
+- **長輩端回報狀態**：`ElderLocationService` 新增 `checkDeviceStatus()`（只用 `isLocationServiceEnabled`／`checkPermission`，不跳權限對話框）與 `ValueNotifier<String?> deviceStatus`；在 `startIfEnabled`、開啟分享（`setSharingEnabled(true)`）走完既有權限流程後，背景呼叫新的 `LocationApi.reportDeviceStatus`（`POST /location/device-status/{elderId}`，fire-and-forget、失敗不拋例外、不阻擋定位啟動；同狀態 30 分鐘內不重送）。對照：定位服務關閉 → `service_disabled`；`deniedForever` → `permission_denied_forever`；`denied` → `permission_denied`；`whileInUse` → `foreground_only`（Android／iOS 皆代表背景無法回報）；`always` → `ok`；Web 無法判斷 → `ok` 且不回報。換算與提示文案集中在 `lib/services/location_device_status.dart`。**未更動任何取樣頻率、精度或 `distanceFilter`**。
+- **長輩「我的」分頁**：分享卡片在開關為「開」且狀態不是 `ok` 時，開關下方出現醒目提示與大按鈕（ElderScale 字級）：定位功能關閉 →「手機的定位功能關閉了」＋「打開定位」（`Geolocator.openLocationSettings`）；未允許 →「還沒允許 Uban 使用位置」＋「前往設定」（`openAppSettings`）；只開「使用 App 時」→ 請改成「一律允許」＋「前往設定」。分頁新增 `WidgetsBindingObserver`，從手機設定回到 App（`resumed`）時呼叫 `recheckDeviceStatus()` 重查，修好後提示自動消失、並在補好權限時自動啟動位置串流（只用 `checkPermission`，不會再次詢問）。
+- **家屬地圖**：`/location/current` 新增 `device_status`／`device_status_at`（`Z` 結尾，經 `parseRecordedAt` 解析）；分享開啟且狀態有問題時，地圖最上方顯示警示卡（定位關閉／未允許 Uban 使用位置／只允許「使用 App 時」，附「（N 分鐘前回報）」）；沒有任何定位資料時，空狀態說明直接換成這段原因，不再說「請稍候再試」。文字 `Expanded`＋`maxLines`＋ellipsis（鐵律 #14）。
+- **家屬首頁 GPS 卡片**：`/location/summary` 帶回同樣欄位；有問題時第二行改顯示「⚠️ 長輩手機未允許定位」等簡短警示（琥珀色），優先於「目前在家／外出中」。
+- **後端契約**：`POST /location/device-status/{elderId}` body `{user_id, status}`，`status ∈ ok | permission_denied | permission_denied_forever | service_disabled | foreground_only`，僅長輩本人可呼叫，回傳 `{status, updated_at}`。
+
 ### 2026-10-02 🆘 語音求救附帶位置、小嘎說得出長輩在哪
 
 - **修掉 G196 違規（家屬端卡片把語音求救寫成跌倒）**：首頁「最新警示」（`home_alert_preview_card.dart`，即時與持久化兩處）與警示中心（`alert_center_screen.dart`，持久化歷史與 `_buildRealtimeAlertCard`）的預設分支原本一律是「🚨 跌倒緊急警報／監視機偵測到長輩疑似跌倒」，`sos_voice` 因此被顯示成跌倒。新增 `lib/utils/alert_display.dart`（`AlertDisplay`）集中卡片標題、即時／歷史內文與圖示，兩個畫面共用；`sos_voice` 顯示「🆘 長輩開口求救」＋SOS 圖示，不顯示信心度、不提監視畫面；未知警報型別改為中性的「⚠️ 異常狀況警報」，不再宣稱跌倒。系統通知（`cctv_alert_notification.dart`）與前景彈窗（`family_main_screen.dart`）本來就依 G196 分流，維持各自一份對照表。

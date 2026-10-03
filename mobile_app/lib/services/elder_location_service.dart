@@ -5,6 +5,7 @@ import 'package:geolocator/geolocator.dart';
 import 'friend_service.dart';
 import 'database_helper.dart';
 import 'api/location_api.dart';
+import 'location_device_status.dart';
 
 /// 長輩端「App 常駐前景服務」GPS 回報。
 ///
@@ -51,6 +52,20 @@ class ElderLocationService {
   bool _isHeartbeating = false;
   DateTime? _lastSentAt;
 
+  /// 裝置狀態重複回報的最短間隔：狀態沒變且上次回報成功時，這段時間內不再
+  /// 重送，避免每次回到 App 都打一次後端；狀態一變就立刻回報。
+  static const Duration _statusReportRefresh = Duration(minutes: 30);
+
+  bool _sharingEnabled = false;
+  bool _isStarting = false;
+  String? _lastReportedStatus;
+  DateTime? _lastReportedAt;
+
+  /// 目前手機定位權限／定位服務的狀態（值見 [LocationDeviceStatus]），供長輩端
+  /// 「我的」分頁在權限不足時顯示提示與前往設定的按鈕。`null` 代表尚未檢查
+  /// 或分享已關閉；Web 一律為 `ok`（無法判斷，不誤報）。
+  final ValueNotifier<String?> deviceStatus = ValueNotifier<String?>(null);
+
   bool get isRunning => _isRunning;
 
   /// 供 `ElderHomeScreen.initState` 呼叫：讀取後端分享開關狀態，開啟時才
@@ -63,8 +78,73 @@ class ElderLocationService {
     _elderId = elderId;
 
     final enabled = await LocationApi.getSharingEnabled(elderId: elderId, userId: userId);
+    _sharingEnabled = enabled == true;
     if (enabled == true) {
       await _start();
+    }
+  }
+
+  /// 讀取手機目前的定位服務／權限並換算成回報用狀態（對應表見
+  /// [LocationDeviceStatus.fromDevice]）。**不會跳出任何權限對話框**，任何
+  /// 例外都回傳 `ok`（寧可不警示也不誤報）；Web 一律 `ok`。
+  Future<String> checkDeviceStatus() async {
+    if (kIsWeb) return LocationDeviceStatus.ok;
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      final permission = await Geolocator.checkPermission();
+      return LocationDeviceStatus.fromDevice(
+        serviceEnabled: serviceEnabled,
+        permission: permission,
+      );
+    } catch (e) {
+      debugPrint('⚠️ ElderLocationService.checkDeviceStatus error: $e');
+      return LocationDeviceStatus.ok;
+    }
+  }
+
+  /// 檢查並更新 [deviceStatus]，再「背景」回報後端（fire-and-forget，不等網路、
+  /// 絕不拋例外、不阻擋定位啟動）。Web 不回報。回傳檢查到的狀態。
+  Future<String> _refreshAndReportStatus() async {
+    final status = await checkDeviceStatus();
+    deviceStatus.value = status;
+    if (kIsWeb) return status;
+
+    final elderId = _elderId;
+    final userId = _userId;
+    if (elderId == null || userId == null) return status;
+
+    final lastAt = _lastReportedAt;
+    final unchanged = _lastReportedStatus == status &&
+        lastAt != null &&
+        DateTime.now().difference(lastAt) < _statusReportRefresh;
+    if (unchanged) return status;
+
+    unawaited(() async {
+      final ok = await LocationApi.reportDeviceStatus(
+        elderId: elderId,
+        userId: userId,
+        status: status,
+      );
+      if (ok) {
+        _lastReportedStatus = status;
+        _lastReportedAt = DateTime.now();
+      }
+    }());
+    return status;
+  }
+
+  /// 供長輩端畫面「回到 App」時呼叫（例如從手機設定頁回來）：分享開啟時重新
+  /// 檢查權限、更新提示並回報；若已經補好權限而串流還沒跑，順便啟動串流。
+  /// **不會再次跳出權限對話框**（只用 `checkPermission`），避免長輩一回來
+  /// 又被詢問。分享關閉、尚未初始化或正在啟動中時什麼都不做。
+  Future<void> recheckDeviceStatus() async {
+    if (!_sharingEnabled || _isStarting || _elderId == null || _userId == null) return;
+    final status = await _refreshAndReportStatus();
+    if (!_isRunning &&
+        _sharingEnabled &&
+        (status == LocationDeviceStatus.ok ||
+            status == LocationDeviceStatus.foregroundOnly)) {
+      _beginStream();
     }
   }
 
@@ -84,19 +164,37 @@ class ElderLocationService {
     );
     if (!ok) return false;
 
+    _sharingEnabled = enabled;
     if (enabled) {
+      // 重新開啟分享：不論之前回報過什麼，都重新回報一次最新狀態。
+      _lastReportedStatus = null;
+      _lastReportedAt = null;
       await _start();
     } else {
       await stop();
+      deviceStatus.value = null;
     }
     return true;
   }
 
   Future<void> _start() async {
-    if (_isRunning || _elderId == null) return;
-    final granted = await _requestPermission();
-    if (!granted) return;
+    if (_isRunning || _isStarting || _elderId == null) return;
+    _isStarting = true;
+    try {
+      final granted = await _requestPermission();
+      // 走完權限流程後，不論成功與否都回報最新狀態（背景送出，不阻擋啟動）。
+      // 沒拿到權限時串流不會啟動，家屬端靠這筆回報才知道原因。
+      unawaited(_refreshAndReportStatus());
+      if (!granted) return;
+      _beginStream();
+    } finally {
+      _isStarting = false;
+    }
+  }
 
+  /// 實際建立位置串流與心跳（已取得權限後呼叫）；重複呼叫無害。
+  void _beginStream() {
+    if (_isRunning || _elderId == null) return;
     _isRunning = true;
     _positionStream = Geolocator.getPositionStream(
       locationSettings: _buildLocationSettings(),

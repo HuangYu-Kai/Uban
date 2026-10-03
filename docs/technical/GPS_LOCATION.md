@@ -1,7 +1,7 @@
 # 戶外 GPS 定位與移動軌跡 技術設計與實作紀錄
 * 建立日期：2026-10-01
-* 最近更新：2026-10-01
-* 適用版本：App `1.0.0+1`（`pubspec.yaml`）／後端 `uban-api` main（migrations 015–019）
+* 最近更新：2026-10-03
+* 適用版本：App `1.0.0+1`（`pubspec.yaml`）／後端 `uban-api` main（migrations 015–019、021）
 * 負責組件：[前端（長輩端採集＋家屬端呈現）/後端/信令（Socket.IO＋FCM）]
 
 > 本文件是**戶外 GPS 子系統的唯一權威參考**，內容逐項對照程式碼撰寫。
@@ -114,7 +114,7 @@ flowchart LR
 
 ---
 
-## 4. 資料表（migrations 015–019）
+## 4. 資料表（migrations 015–019、021）
 
 所有 migration 由 `main.py::run_sql_migrations()` **每次開機重跑一次**（沒有已執行追蹤表），因此全部是 `CREATE TABLE IF NOT EXISTS` 或「重複執行無害」的語句；
 MySQL 8.0 不支援 `ADD COLUMN IF NOT EXISTS`，015 的 `ALTER TABLE ... ADD COLUMN` 第二次起會失敗但只記 log、不中斷（專案既有慣例）。
@@ -124,6 +124,7 @@ SQLite 備援版本寫在 `database.py::init_sqlite_db()`，**兩邊 schema 必�
 |---|---|---|
 | `elder_location_ping`（015） | `id` AUTO_INCREMENT PK、`elder_id VARCHAR(16)`、`latitude DOUBLE`、`longitude DOUBLE`、`accuracy_m FLOAT NULL`、`recorded_at TIMESTAMP`（naive UTC）、`created_at`；索引 `idx_location_ping_elder_time (elder_id, recorded_at)` | 每次回報一列的**原始點**。`id` 單調遞增，是 `/trail` 增量查詢的游標 |
 | `elder_profile.location_sharing_enabled`（015 新增、016 改預設） | `TINYINT(1) NOT NULL`，015 預設 0、**016 起預設 1** | 長輩本人的分享開關。016 **刻意只 `SET DEFAULT`、不 UPDATE 既有列**（否則每次後端重啟都會把長輩自己關掉的開關重新打開）；既有長輩若要開啟需手動跑一次性 SQL |
+| `elder_profile.location_device_status`／`location_device_status_at`（021 新增） | `VARCHAR(32) NULL`／`TIMESTAMP NULL`（naive UTC） | 長輩手機回報的定位權限／服務狀態（`ok`／`permission_denied`／`permission_denied_forever`／`service_disabled`／`foreground_only`，API 驗證白名單、DB 無 CHECK）與回報時間。NULL＝從未回報（舊版 App）。只存「目前值」，非歷史。欄寬 32：`permission_denied_forever` 為 25 字元。與 015 同樣是裸 `ALTER TABLE ... ADD COLUMN`，重啟時「欄位已存在」的失敗 log 屬預期；SQLite 備援同步於 `init_sqlite_db()` |
 | `elder_place`（017） | `id` PK、`elder_id VARCHAR(16)`、`name VARCHAR(32)`、`latitude`、`longitude`、`radius_m INT DEFAULT 150`、`is_home TINYINT(1)`、`created_by INT NULL`、`created_at`、`updated_at`；索引 `idx_elder_place_elder` | 家與常去地點。「每位最多一個 `is_home=1`」由 API 在同一個 `db_cursor` 內先清其餘再設定（DB 不加唯一索引）；每位最多 50 個、半徑 50–1000 m、名稱 1–32 字，由 API 驗證 |
 | `elder_location_alert_setting`（018） | `elder_id` PK、`late_return_enabled`(1)、`late_return_time CHAR(5)`('21:00')、`no_update_enabled`(1)、`no_update_hours INT`(3)、`no_update_start`('07:00')、`no_update_end`('22:00')、`far_enabled`(0)、`far_km DECIMAL(5,1)`(3.0)、`updated_by`、`updated_at` | 每位長輩一列規則設定。**缺列＝預設值**（GET 與排程都退回預設，GET 不會建列），不需為既有長輩 backfill |
 | `elder_location_alert_log`（018） | `id` PK、`elder_id`、`rule VARCHAR(24)`、`dedupe_key VARCHAR(64)`、`message VARCHAR(255)`、`created_at`；`UNIQUE (elder_id, rule, dedupe_key)` | 已送提醒紀錄，**兼去重依據**（見 §8.2） |
@@ -143,10 +144,11 @@ SQLite 備援版本寫在 `database.py::init_sqlite_db()`，**兩邊 schema 必�
 | 方法 | 路徑 | 誰可呼叫 | 分享門檻 | 主要參數／回應 |
 |---|---|---|---|---|
 | POST | `/ping/{elder_id}` | linked（實務上為長輩裝置） | 否（寫入端不擋） | body `{user_id, latitude, longitude, accuracy_m?, recorded_at?}` → `{elder_id, stored:true}` |
-| GET | `/current/{elder_id}?user_id=` | linked | 是 | `{elder_id, sharing_enabled, point:{latitude, longitude, accuracy_m, recorded_at(Z)}\|null, stale_after_ms}`；`stale_after_ms` 固定 `1200000`（20 分鐘），關閉分享時為 `null` |
+| GET | `/current/{elder_id}?user_id=` | linked | 是 | `{elder_id, sharing_enabled, point:{latitude, longitude, accuracy_m, recorded_at(Z)}\|null, stale_after_ms, device_status\|null, device_status_at(Z)\|null}`；`stale_after_ms` 固定 `1200000`（20 分鐘），關閉分享時為 `null`；`device_status*` 只在分享開啟時帶出（見 `/device-status`） |
 | GET | `/trail/{elder_id}?user_id=&date=&tz_offset=480&since_id=` | linked | 是 | `{elder_id, sharing_enabled, date, points:[{latitude, longitude, accuracy_m, recorded_at}], cursor}`；`points` 依 `recorded_at` 遞增；`cursor`＝本次回傳列的最大 `id`，沒有新點則原樣回 `since_id`（未帶為 0）；關閉分享時 `points=[]` 且仍回 `cursor` |
-| GET | `/summary/{elder_id}?user_id=&date=&tz_offset=480` | linked | 是 | `{sharing_enabled, date, distance_m, outing_count, outside_minutes, at_home, last_update(Z), has_home, point_count}`；無家時 `outing_count／outside_minutes／at_home` 為 `null`；關閉分享只回 `{sharing_enabled:false, date}` |
+| GET | `/summary/{elder_id}?user_id=&date=&tz_offset=480` | linked | 是 | `{sharing_enabled, date, distance_m, outing_count, outside_minutes, at_home, last_update(Z), has_home, point_count, device_status\|null, device_status_at(Z)\|null}`；`device_status*` 只在分享開啟時帶出；無家時 `outing_count／outside_minutes／at_home` 為 `null`；關閉分享只回 `{sharing_enabled:false, date}` |
 | GET | `/daily/{elder_id}?user_id=&days=7&tz_offset=480` | linked | 是 | `days` 只接受 **7 或 30**（否則 400）→ `{sharing_enabled, has_home, days:[{date, distance_m, outing_count, outside_minutes, point_count}]}`，**遞增、恰好 `days` 筆、最後一筆是今天（統計中）**；關閉分享只回 `{sharing_enabled:false}` |
+| POST | `/device-status/{elder_id}` | **長輩限定**（家屬／他人 404） | **否**（寫入不看開關） | body `{user_id, status}`，`status` ∈ `ok`／`permission_denied`／`permission_denied_forever`／`service_disabled`／`foreground_only`，其餘 400（純函式 `validate_device_status`）→ `{status, updated_at(Z)}`；單一 UPDATE 寫入 `elder_profile.location_device_status`／`_at`（UTC now）。長輩端 App 啟動與切換開關時呼叫，很輕量 |
 | GET | `/sharing/{elder_id}?user_id=` | **長輩限定** | — | `{elder_id, location_sharing_enabled}` |
 | PUT | `/sharing/{elder_id}` | **長輩限定** | — | body `{user_id, enabled}` → `{elder_id, location_sharing_enabled}` |
 | GET | `/places/{elder_id}?user_id=` | linked | **否** | `{places:[{id, name, latitude, longitude, radius_m, is_home}]}`，「家」排最前、其餘依名稱 |
@@ -359,7 +361,7 @@ Socket 通路另在 `Signaling` 以連線當下 `_role == 'family'` 再守一次
 4. **失聯規則不支援跨午夜時間窗**（`start >= end` 整條跳過，API 不阻擋）。
 5. **改家不回頭重算**：`elder_location_daily` 是快照，家改位置後過去日子的外出次數／在外時間維持舊值。
 6. **「已過期」門檻為 20 分鐘**：移動中約每分鐘回報；靜止時只靠 10 分鐘心跳（最壞間隔約 19 分鐘），故 `stale_after_ms` 定為 1200000 以涵蓋心跳，靜止長輩不會被誤標「已過期」。超過 20 分鐘仍無新點才代表手機真的停止回報（沒電／關機／沒網路），長時間無回報另由失聯提醒（以小時計）處理。
-7. **開關與權限脫鉤**：長輩開啟分享但拒絕定位權限時，`PUT /sharing` 成功、開關顯示開啟，但服務靜默不啟動（`_start` 在未授權時直接返回），家屬端會看到沒有資料。
+7. **開關與權限脫鉤（已有回報機制，2026-10-03）**：長輩開啟分享但拒絕定位權限（或系統定位服務關閉、只授權「使用 App 期間」）時，`PUT /sharing` 仍會成功、開關仍顯示開啟，服務仍不會啟動；差別是長輩端會用 `POST /device-status` 回報手機狀態（`permission_denied`／`permission_denied_forever`／`service_disabled`／`foreground_only`），家屬讀 `/current`、`/summary`（分享開啟時）會拿到 `device_status`／`device_status_at`，可據此顯示「為什麼沒有資料」。仍屬限制：舊版 App 從不回報（欄位為 null，家屬端無法區分）；狀態只在 App 啟動／切換開關時更新，之後使用者在系統設定改權限，要等 App 下次回報才會反映；狀態與「沒有點」並無自動連動（例如 `ok` 但手機沒電、沒網路，仍由「已過期」與失聯提醒處理）。
 8. **FCM token 來源為記憶體**（`room_fcm_tokens`）：後端重啟後，離線家屬要等其 App 重新 `join` 才收得到 FCM 型的安心提醒。
 9. **前後端距離算法不同**（§7.4 注意事項）：地圖底部公里數與首頁卡／後端 `distance_m` 可能有些微落差。
 10. **graphify 尚未同步此功能**：依 `CLAUDE.md` 規則，連接／跳轉邏輯（新端點、`location-alert` 事件與 FCM type、新畫面路由）應增量更新雙端 `graphify-out/`；本功能尚未執行，須待 `/graphify . --update` 後覆蓋兩端。
@@ -405,9 +407,9 @@ Socket 通路另在 `Signaling` 以連線當下 `_role == 'family'` 再守一次
 | [NEW] | [location_alert_rules.py](file:///c:/Users/tung0/Desktop/Uban/uban-api/services/location_alert_rules.py) | 三條規則純函式、預設值、設定正規化 |
 | [NEW] | [location_alert_watch.py](file:///c:/Users/tung0/Desktop/Uban/uban-api/services/location_alert_watch.py) | 每 5 分鐘巡檢（排程執行緒＋事件迴圈橋接） |
 | [NEW] | [location_alert_dispatcher.py](file:///c:/Users/tung0/Desktop/Uban/uban-api/services/location_alert_dispatcher.py) | 去重寫 log、Socket／FCM 派送 |
-| [NEW] | [015_elder_gps_location.sql](file:///c:/Users/tung0/Desktop/Uban/uban-api/scripts/migrations/015_elder_gps_location.sql) 至 [019_location_daily.sql](file:///c:/Users/tung0/Desktop/Uban/uban-api/scripts/migrations/019_location_daily.sql) | 五支 migration（見 §4） |
+| [NEW] | [015_elder_gps_location.sql](file:///c:/Users/tung0/Desktop/Uban/uban-api/scripts/migrations/015_elder_gps_location.sql) 至 [019_location_daily.sql](file:///c:/Users/tung0/Desktop/Uban/uban-api/scripts/migrations/019_location_daily.sql)、[021_location_device_status.sql](file:///c:/Users/tung0/Desktop/Uban/uban-api/scripts/migrations/021_location_device_status.sql) | 六支 migration（見 §4；020 屬警報位置，非本子系統） |
 | [MODIFY] | [main.py](file:///c:/Users/tung0/Desktop/Uban/uban-api/main.py) | 掛載 router；三個排程 `cleanup_old_location_pings_job`（03:30）、`location_daily_job`（03:45）、`location_alert_job`（每 5 分鐘） |
-| [MODIFY] | [database.py](file:///c:/Users/tung0/Desktop/Uban/uban-api/database.py) | SQLite 備援 schema 與 `location_sharing_enabled` 欄位 |
+| [MODIFY] | [database.py](file:///c:/Users/tung0/Desktop/Uban/uban-api/database.py) | SQLite 備援 schema 與 `location_sharing_enabled`、`location_device_status(_at)` 欄位 |
 
 ---
 
@@ -416,7 +418,7 @@ Socket 通路另在 `Signaling` 以連線當下 `_role == 'family'` 再守一次
 * **靜態分析**：`cd Uban/mobile_app && flutter analyze lib`（須 0 error）。
 * **單元測試**：
   * 前端：`test/services/location_trail_processor_test.dart`（室內漂移合併為單一停留、尖刺與速度離群點剔除、斷訊分段、同地長時間靜默視為停留、正常步行簡化、空／單點輸入、事件順序與距離加總、停留群集、`matchPlace` 半徑內外／重疊取最近／空清單）、`test/screens/family/outing_trends_screen_test.dart`。
-  * 後端：`tests/test_location_summary.py`、`tests/test_location_alert_rules.py`、`tests/test_location_daily.py`；執行 `DISABLE_DB=true python -m pytest tests/test_location_*.py -q`（⚠️ `.env` 的 `DB_HOST` 指向正式庫，務必帶 `DISABLE_DB=true`）。
+  * 後端：`tests/test_location_summary.py`、`tests/test_location_alert_rules.py`、`tests/test_location_daily.py`、`tests/test_location_device_status.py`；執行 `DISABLE_DB=true python -m pytest tests/test_location_*.py -q`（⚠️ `.env` 的 `DB_HOST` 指向正式庫，務必帶 `DISABLE_DB=true`）。
 * **功能測試 Checklist**：
   1. 長輩端分享開啟 → 家屬地圖出現目前位置與當日軌跡；長輩關閉開關 → 家屬地圖顯示「長輩已關閉位置分享」、首頁卡顯示「長輩尚未開啟位置分享」、提醒停止。
   2. 長輩斷網步行 → 恢復網路後下一個新點到達時，離線佇列補送、軌跡補齊。
