@@ -11,8 +11,11 @@ class ApiClient {
     defaultValue: 'localhost-0.tail5abf5e.ts.net',
   );
 
+  static String? overrideBaseUrl;
+
   // 依據環境動態切換 API 基礎網址
   static String get baseUrl {
+    if (overrideBaseUrl != null) return overrideBaseUrl!;
     if (serverIp.startsWith('http://') || serverIp.startsWith('https://')) {
       return serverIp.endsWith('/api') ? serverIp : '$serverIp/api';
     }

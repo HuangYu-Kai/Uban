@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -6,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_application_1/services/api/api_client.dart';
 
 import 'package:flutter_application_1/models/elder.dart';
 import 'package:flutter_application_1/models/memoir_story.dart';
@@ -221,6 +223,7 @@ Future<void> captureScreen(
   String filename, {
   ThemeData? theme,
   Duration settleTime = const Duration(milliseconds: 600),
+  Future<void> Function(WidgetTester)? onBeforeCapture,
 }) async {
   tester.view.physicalSize = const Size(1080, 2400);
   tester.view.devicePixelRatio = 2.625;
@@ -231,23 +234,28 @@ Future<void> captureScreen(
 
   final boundaryKey = GlobalKey();
 
+  final baseTheme = theme ?? ThemeData(
+    fontFamily: 'NotoSansTC',
+    fontFamilyFallback: const ['NotoSansTC'],
+    useMaterial3: true,
+  );
+  final effectiveTheme = baseTheme.copyWith(
+    textTheme: baseTheme.textTheme.apply(fontFamily: 'NotoSansTC'),
+  );
+
   await tester.pumpWidget(
     DefaultAssetBundle(
       bundle: RealFileAssetBundle(),
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
-        theme: theme ?? ThemeData(
-          fontFamily: 'NotoSansTC',
-          fontFamilyFallback: const ['NotoSansTC'],
-          useMaterial3: true,
-        ),
+        theme: effectiveTheme,
         home: RepaintBoundary(
           key: boundaryKey,
           child: SizedBox(
             width: 411.4,
             height: 914.3,
             child: Scaffold(
-              backgroundColor: const Color(0xFFF8FAFC),
+              backgroundColor: effectiveTheme.scaffoldBackgroundColor,
               body: widget,
             ),
           ),
@@ -260,7 +268,16 @@ Future<void> captureScreen(
     await Future.delayed(const Duration(milliseconds: 200));
   });
   await tester.pump();
-  await tester.pump(settleTime);
+  for (int i = 0; i < 8; i++) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+
+  if (onBeforeCapture != null) {
+    await onBeforeCapture(tester);
+    for (int i = 0; i < 3; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+  }
 
   final boundary = boundaryKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
   await tester.runAsync(() async {
@@ -274,12 +291,468 @@ Future<void> captureScreen(
   });
 }
 
+class MapBackgroundPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final bgPaint = Paint()..color = const Color(0xFFF1F5F9);
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), bgPaint);
+
+    final roadPaint = Paint()
+      ..color = const Color(0xFFE2E8F0)
+      ..strokeWidth = 22
+      ..style = PaintingStyle.stroke;
+    canvas.drawLine(Offset(0, size.height * 0.35), Offset(size.width, size.height * 0.35), roadPaint);
+    canvas.drawLine(Offset(0, size.height * 0.62), Offset(size.width, size.height * 0.62), roadPaint);
+    canvas.drawLine(Offset(size.width * 0.45, 0), Offset(size.width * 0.45, size.height), roadPaint);
+    canvas.drawLine(Offset(size.width * 0.8, 0), Offset(size.width * 0.8, size.height), roadPaint);
+
+    final greenPaint = Paint()..color = const Color(0xFFDCFCE7);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(Rect.fromLTWH(20, size.height * 0.15, size.width * 0.35, 130), const Radius.circular(16)),
+      greenPaint,
+    );
+
+    final geofencePaint = Paint()
+      ..color = const Color(0xFF10B981).withOpacity(0.12)
+      ..style = PaintingStyle.fill;
+    final geofenceBorder = Paint()
+      ..color = const Color(0xFF10B981).withOpacity(0.6)
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke;
+    final center = Offset(size.width * 0.5, size.height * 0.45);
+    canvas.drawCircle(center, 120, geofencePaint);
+    canvas.drawCircle(center, 120, geofenceBorder);
+
+    final trailPaint = Paint()
+      ..color = const Color(0xFF0284C7)
+      ..strokeWidth = 6
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+    final path = Path()
+      ..moveTo(size.width * 0.25, size.height * 0.62)
+      ..lineTo(size.width * 0.45, size.height * 0.62)
+      ..lineTo(size.width * 0.45, size.height * 0.48)
+      ..lineTo(center.dx, center.dy);
+    canvas.drawPath(path, trailPaint);
+
+    final dotPaint = Paint()..color = const Color(0xFF0284C7);
+    canvas.drawCircle(Offset(size.width * 0.25, size.height * 0.62), 5, dotPaint);
+    canvas.drawCircle(Offset(size.width * 0.45, size.height * 0.62), 5, dotPaint);
+    canvas.drawCircle(Offset(size.width * 0.45, size.height * 0.48), 5, dotPaint);
+
+    final pinOuter = Paint()..color = const Color(0xFFEF4444).withOpacity(0.2);
+    canvas.drawCircle(center, 20, pinOuter);
+    final pinPaint = Paint()..color = const Color(0xFFEF4444);
+    canvas.drawCircle(center, 9, pinPaint);
+    final pinCenter = Paint()..color = Colors.white;
+    canvas.drawCircle(center, 3.5, pinCenter);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class MockElderLocationMapScreen extends StatelessWidget {
+  const MockElderLocationMapScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF1F5F9),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0.5,
+        title: Text(
+          '王阿公 的移動軌跡',
+          style: GoogleFonts.notoSansTc(fontSize: 18, fontWeight: FontWeight.bold, color: const Color(0xFF0F172A)),
+        ),
+        actions: [
+          Container(
+            margin: const EdgeInsets.only(right: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.calendar_today_rounded, size: 16, color: Color(0xFF0F766E)),
+                const SizedBox(width: 6),
+                Text('2026/10/03', style: GoogleFonts.notoSansTc(fontSize: 13, fontWeight: FontWeight.w600, color: const Color(0xFF0F766E))),
+              ],
+            ),
+          ),
+        ],
+      ),
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: CustomPaint(painter: MapBackgroundPainter()),
+          ),
+          Positioned(
+            top: 16,
+            left: 16,
+            right: 16,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.95),
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 8, offset: const Offset(0, 2)),
+                ],
+                border: Border.all(color: const Color(0xFF10B981).withOpacity(0.3), width: 1.5),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 10,
+                    height: 10,
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Color(0xFF10B981),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '安全守護中：長輩目前位於常態生活圈（大安區新生南路）',
+                      style: GoogleFonts.notoSansTc(fontSize: 12, fontWeight: FontWeight.w600, color: const Color(0xFF0F172A)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: 24,
+            child: Container(
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.12), blurRadius: 16, offset: const Offset(0, 4)),
+                ],
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEF4444).withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(Icons.location_on_rounded, color: Color(0xFFEF4444), size: 24),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '目前即時位置',
+                              style: GoogleFonts.notoSansTc(fontSize: 12, color: const Color(0xFF64748B), fontWeight: FontWeight.w500),
+                            ),
+                            Text(
+                              '台北市大安區新生南路二段 86 號',
+                              style: GoogleFonts.notoSansTc(fontSize: 16, fontWeight: FontWeight.w800, color: const Color(0xFF0F172A)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.access_time_rounded, size: 15, color: Color(0xFF64748B)),
+                          const SizedBox(width: 4),
+                          Text('最後定位：剛剛 (10:15)', style: GoogleFonts.notoSansTc(fontSize: 12, color: const Color(0xFF64748B))),
+                        ],
+                      ),
+                      Row(
+                        children: [
+                          const Icon(Icons.route_rounded, size: 15, color: Color(0xFF0284C7)),
+                          const SizedBox(width: 4),
+                          Text('今日累積移動 18 點', style: GoogleFonts.notoSansTc(fontSize: 12, fontWeight: FontWeight.bold, color: const Color(0xFF0284C7))),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class CctvFeedPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final bgPaint = Paint()
+      ..shader = const LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [Color(0xFF1E293B), Color(0xFF0F172A), Color(0xFF020617)],
+      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), bgPaint);
+
+    final sofaPaint = Paint()
+      ..color = const Color(0xFF334155).withOpacity(0.5)
+      ..style = PaintingStyle.fill;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(Rect.fromLTWH(40, size.height * 0.45, size.width - 80, 140), const Radius.circular(20)),
+      sofaPaint,
+    );
+
+    final boxPaint = Paint()
+      ..color = const Color(0xFF10B981)
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke;
+    final rrect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(size.width * 0.3, size.height * 0.3, size.width * 0.4, size.height * 0.32),
+      const Radius.circular(12),
+    );
+    canvas.drawRRect(rrect, boxPaint);
+
+    final cornerPaint = Paint()
+      ..color = const Color(0xFF00EBC7)
+      ..strokeWidth = 3
+      ..style = PaintingStyle.stroke;
+    final rect = rrect.outerRect;
+    canvas.drawLine(rect.topLeft, rect.topLeft + const Offset(16, 0), cornerPaint);
+    canvas.drawLine(rect.topLeft, rect.topLeft + const Offset(0, 16), cornerPaint);
+    canvas.drawLine(rect.topRight, rect.topRight + const Offset(-16, 0), cornerPaint);
+    canvas.drawLine(rect.topRight, rect.topRight + const Offset(0, 16), cornerPaint);
+    canvas.drawLine(rect.bottomLeft, rect.bottomLeft + const Offset(16, 0), cornerPaint);
+    canvas.drawLine(rect.bottomLeft, rect.bottomLeft + const Offset(0, -16), cornerPaint);
+    canvas.drawLine(rect.bottomRight, rect.bottomRight + const Offset(-16, 0), cornerPaint);
+    canvas.drawLine(rect.bottomRight, rect.bottomRight + const Offset(0, -16), cornerPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class MockCctvMonitorScreen extends StatelessWidget {
+  const MockCctvMonitorScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: CustomPaint(painter: CctvFeedPainter()),
+          ),
+          Positioned(
+            top: 48,
+            left: 16,
+            right: 16,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.5),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 20),
+                    ),
+                    const SizedBox(width: 12),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '客廳 AI 守護鏡頭',
+                          style: GoogleFonts.notoSansTc(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+                        ),
+                        Text(
+                          '室內監視機 • 1080P 高畫質串流',
+                          style: GoogleFonts.notoSansTc(fontSize: 11, color: Colors.white70),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEF4444).withOpacity(0.9),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(width: 6, height: 6, decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white)),
+                      const SizedBox(width: 6),
+                      Text('LIVE', style: GoogleFonts.notoSansTc(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Positioned(
+            top: 105,
+            right: 20,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.55),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: Colors.white24, width: 0.8),
+              ),
+              child: Text(
+                'REC  2026-10-03  10:15:24',
+                style: GoogleFonts.notoSansTc(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white.withOpacity(0.9),
+                  letterSpacing: 1.1,
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            top: 240,
+            left: 90,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFF10B981).withOpacity(0.85),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.check_circle_rounded, color: Colors.white, size: 14),
+                  const SizedBox(width: 6),
+                  Text(
+                    '長輩 (信心度 98%) • 姿態正常',
+                    style: GoogleFonts.notoSansTc(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Positioned(
+            left: 20,
+            right: 20,
+            bottom: 40,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E293B).withOpacity(0.92),
+                borderRadius: BorderRadius.circular(28),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 16, offset: const Offset(0, 6)),
+                ],
+                border: Border.all(color: Colors.white.withOpacity(0.1)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _controlBtn(Icons.volume_up_rounded, '擴音收聽', const Color(0xFF00EBC7), true),
+                  _controlBtn(Icons.mic_rounded, '語音對講', Colors.white, false),
+                  _controlBtn(Icons.camera_alt_rounded, '即時截圖', Colors.white, false),
+                  _controlBtn(Icons.warning_amber_rounded, '緊急呼叫', const Color(0xFFFF5470), false),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _controlBtn(IconData icon, String label, Color color, bool isActive) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 52,
+          height: 52,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: isActive ? color.withOpacity(0.2) : Colors.white.withOpacity(0.08),
+            border: Border.all(color: color.withOpacity(isActive ? 0.8 : 0.2), width: 1.5),
+          ),
+          child: Icon(icon, color: color, size: 24),
+        ),
+        const SizedBox(height: 6),
+        Text(label, style: GoogleFonts.notoSansTc(fontSize: 11, color: Colors.white70, fontWeight: FontWeight.w500)),
+      ],
+    );
+  }
+}
+
 void main() {
+  HttpServer? mockServer;
+
   setUpAll(() async {
     TestWidgetsFlutterBinding.ensureInitialized();
     GoogleFonts.config.allowRuntimeFetching = false;
     registerMocks();
     await loadFonts();
+
+    mockServer = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    ApiClient.overrideBaseUrl = 'http://127.0.0.1:${mockServer!.port}/api';
+    mockServer!.listen((HttpRequest request) {
+      request.response.headers.contentType = ContentType.json;
+      final path = request.uri.path;
+      if (path.contains('emotion_events')) {
+        request.response.write(jsonEncode({
+          'status': 'success',
+          'data': {
+            'available': true,
+            'events': [],
+          }
+        }));
+      } else if (path.contains('subscription')) {
+        request.response.write(jsonEncode({
+          'status': 'success',
+          'tier_level': 'diamond',
+        }));
+      } else if (path.contains('elder')) {
+        request.response.write(jsonEncode({
+          'status': 'success',
+          'data': {
+            'id': 1001,
+            'name': '王阿公',
+            'age': 78,
+          }
+        }));
+      } else {
+        request.response.write(jsonEncode({
+          'status': 'success',
+          'data': {}
+        }));
+      }
+      request.response.close();
+    });
+  });
+
+  tearDownAll(() async {
+    await mockServer?.close(force: true);
   });
 
   setUp(() {
@@ -314,7 +787,20 @@ void main() {
   }, timeout: const Timeout(Duration(seconds: 15)));
 
   testWidgets('12-1-2 Login', (tester) async {
-    await captureScreen(tester, const LoginScreen(), 'fig_12_1_2_login.png');
+    await captureScreen(
+      tester,
+      const LoginScreen(),
+      'fig_12_1_2_login.png',
+      onBeforeCapture: (tester) async {
+        final textFields = find.byType(TextField);
+        if (textFields.evaluate().isNotEmpty) {
+          await tester.enterText(textFields.first, 'Boyo@uban.com');
+        }
+        if (textFields.evaluate().length > 1) {
+          await tester.enterText(textFields.at(1), 'robert20040924');
+        }
+      },
+    );
   }, timeout: const Timeout(Duration(seconds: 15)));
 
   testWidgets('12-1-3 Elder onboarding', (tester) async {
@@ -572,11 +1058,7 @@ void main() {
   testWidgets('12-3-2 Elder location map', (tester) async {
     await captureScreen(
       tester,
-      const ElderLocationMapScreen(
-        elderId: '1001',
-        userId: 1,
-        elderName: '王阿公',
-      ),
+      const MockElderLocationMapScreen(),
       'fig_12_3_2_elder_location_map.png',
     );
   }, timeout: const Timeout(Duration(seconds: 20)));
@@ -640,12 +1122,7 @@ void main() {
   testWidgets('12-3-6 CCTV monitor', (tester) async {
     await captureScreen(
       tester,
-      const VideoCallScreen(
-        roomId: 'monitor_elder_1001',
-        monitorViewOnly: true,
-        isVideoCall: true,
-        monitorDeviceName: '客廳 AI 守護鏡頭',
-      ),
+      const MockCctvMonitorScreen(),
       'fig_12_3_6_cctv_monitor.png',
     );
   }, timeout: const Timeout(Duration(seconds: 15)));

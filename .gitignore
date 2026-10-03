@@ -4,6 +4,7 @@
 *.pyc
 *.swp
 .DS_Store
+test_*.png
 .atom/
 .build/
 .buildlog/
