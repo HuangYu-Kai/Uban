@@ -11,18 +11,25 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import '../../services/friend_service.dart';
 import '../../services/game_service.dart';
+import '../../services/weather_service.dart';
 import '../../utils/error_handler.dart';
+import '../../widgets/ui/ui.dart';
 import '../pet_companion_studio/models/pet_growth_state.dart';
 import '../pet_companion_studio/models/pet_food_item.dart';
 import '../pet_companion_studio/services/pet_leaderboard_service.dart';
 import '../pet_companion_studio/services/pet_progress_service.dart';
-import '../pet_companion_studio/widgets/garden_feeding_sheet.dart';
+import '../pet_companion_studio/widgets/pet_evolution_dialog.dart';
+import '../pet_companion_studio/widgets/pet_leaderboard_card.dart';
 
 import 'elder_greeting_tab.dart';
 import 'elder_layout.dart';
+import 'pet/pet_breed_store.dart';
+import 'pet/pet_buddy_stage.dart';
+import 'pet/pet_ear_anchors.dart';
+import 'pet/pet_scene.dart';
+import 'pet/pet_season_chip.dart';
+import 'pet/pet_stat_card.dart';
 import 'profile/utils/coordinate_kalman_filter.dart';
-import 'profile/widgets/pet_hero_stage.dart';
-import 'profile/widgets/pet_stats_sheet.dart';
 import 'profile/widgets/pet_corner_actions.dart';
 
 /// 長輩端「小豬」分頁（v3 分頁重排新增）：上半是元氣小豬之家（原本在「我的」
@@ -57,13 +64,6 @@ class _ElderPetTabState extends State<ElderPetTab> {
   static const double _vehicleSpeedMps = 7.0;
   static const Duration _minSampleInterval = Duration(seconds: 1);
 
-  // 小豬預設對話語錄（用於任務打卡的短暫慶祝語結束後回到的預設狀態）
-  // ★ 2026-09-15 溢位巡檢時發現：這句沿用自舊的 _pigQuotes，寫死了「阿公」。
-  //   自主模式的長輩過去會預設叫「長輩朋友」、性別未知（第四十九輪已改為必須
-  //   輸入真實稱呼，不再有這個預設值），但阿嬤看到小豬喊她阿公一樣會困惑
-  //   ——與 memoir_service 先前修掉的是同一類問題，故仍保留中性稱呼。
-  static const String _defaultSpeechText = '今天天氣真好，一起散步活動身體吧！🌿';
-
   // ── 數據 ───────────────────────────────────────────────
   final int dailyStepGoal = 8000;
   int currentSteps = 0; // Will be calculated from distance or fetched
@@ -97,10 +97,8 @@ class _ElderPetTabState extends State<ElderPetTab> {
   PetGrowthState? _petGrowthState;
 
 
-  // 🧺 食匣抽屜開關與庫存（比照 pet_studio_screen.dart 的 _isFeedingSheetOpen
-  // + Positioned.fill 做法——個人分頁本身就是小豬之家，不再跳轉到
-  // PetStudioScreen，餵食流程要在這裡原地重現）。
-  bool _isFeedingSheetOpen = false;
+  // 🧺 其他食物的庫存（資料／解鎖邏輯保留；本分頁改版後只剩胡蘿蔔入口，
+  // 食匣抽屜 GardenFeedingSheet 不再開啟）。
   // ⚠️ 第五十一輪修復：carrot 不再是常駐無限——使用者實機發現可以無限次
   // 投餵同一顆胡蘿蔔。這裡的 0 只是首幀渲染前的安全預設值，實際可餵份數
   // 由 build() 每次用 [_carrotAvailable]（賺得－已消耗，見該 getter 說明）
@@ -143,13 +141,34 @@ class _ElderPetTabState extends State<ElderPetTab> {
   // 舊行為，見下方 _effectiveStepsForUnlock／_medicationCheckinsToday）。
   PetFoodUnlockSource? _unlockSource;
 
-  // ── 🎨 小豬對話氣泡文字（沿用「我的」分頁的預設語錄；本分頁沒有任務打卡，
-  //   不會被改寫）──
-  final String _speechText = _defaultSpeechText;
+  // ── 🎨 舞台（寶可夢 GO 夥伴舞台）狀態 ─────────────────────
+  // 新功能：品種（粉紅豬／黑豬）本機持久化，見 PetBreedStore。
+  PetBreed _breed = PetBreed.pink;
+  // 天氣三級，只用既有 WeatherService.getWeather（含快取），不新增 API。
+  PetWeather _weather = PetWeather.sunny;
+  // 餵食／同步後遞增，觸發排行榜重新讀取（PetLeaderboardCard.refreshTick）。
+  int _leaderboardTick = 0;
+  // 餵食前的階段：餵食動畫播完後與新階段比較，升階才呼叫 PetEvolutionDialog。
+  PetGrowthStage? _stageBeforeFeed;
+  bool _wasVisible = false;
+  DateTime? _lastVisibleRefresh;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    // 小豬分頁由不可見變可見（IndexedStack 以 TickerMode 開關）時，重新讀一次
+    // 解鎖來源與胡蘿蔔帳本，否則在別的分頁打卡後這裡仍是舊的 0。5 秒內不重複。
+    final visible = TickerMode.of(context);
+    if (visible && !_wasVisible) {
+      final now = DateTime.now();
+      if (_lastVisibleRefresh == null ||
+          now.difference(_lastVisibleRefresh!) > const Duration(seconds: 5)) {
+        _lastVisibleRefresh = now;
+        unawaited(_refreshFoodUnlocks());
+        unawaited(_refreshCarrotLedger());
+      }
+    }
+    _wasVisible = visible;
     precacheImage(
         const AssetImage('assets/images/pet_stages/pig_stage_1.png'), context);
     precacheImage(
@@ -350,6 +369,21 @@ class _ElderPetTabState extends State<ElderPetTab> {
     _loadPetGrowthState();
     _loadFeedingInventory();
     _loadMyFriendElderId();
+    _loadBreed();
+    _loadWeather();
+  }
+
+  Future<void> _loadBreed() async {
+    final b = await PetBreedStore.load();
+    if (mounted && b != _breed) setState(() => _breed = b);
+  }
+
+  Future<void> _loadWeather() async {
+    final info = await WeatherService.getWeather(widget.userId);
+    if (!mounted || info == null) return;
+    setState(() {
+      _weather = PetWeather.fromRainProbability(info.rainProbability);
+    });
   }
 
   @override
@@ -657,33 +691,6 @@ class _ElderPetTabState extends State<ElderPetTab> {
         isCrownUnlocked: false,
       );
 
-  // 🥕 開啟食匣抽屜——個人分頁本身就是小豬之家，不再跳轉到 PetStudioScreen。
-  void _openFeedingSheet() {
-    HapticFeedback.selectionClick();
-    // ★ 第五十輪：開抽屜前順便刷新一次今日食物解鎖來源，避免長輩剛完成
-    // 用藥打卡／散步達標，食匣卻還顯示舊資料的「鎖定」狀態。失敗不影響開
-    // 抽屜本身（見 _refreshFoodUnlocks 的說明）。
-    unawaited(_refreshFoodUnlocks());
-    // ★ 第五十一輪：同理，開抽屜前順便重讀一次胡蘿蔔的今日食物帳本。
-    unawaited(_refreshCarrotLedger());
-    setState(() => _isFeedingSheetOpen = true);
-  }
-
-  // ── 核心餵食邏輯（逐一比照 pet_studio_screen.dart 的 _handleFeedFood）──
-  //
-  // ★ 第五十輪修復：過去本函式只更新本機 state＋PetStorageService.saveState，
-  // 全檔沒有任何 PetLeaderboardService 呼叫——長輩因此從不存在於後端
-  // elder_pet_state 表，好友排行榜的 my_rank 永遠是 null（見
-  // pet_leaderboard_card.dart:223 的空狀態文案）。現在餵食後會額外：
-  // ① 把新體重同步到後端排行榜；② 把新庫存持久化（見 PetStorageService.
-  // saveFoodInventory，任務 C），讓「食物有限」在重開 App 後依然有限。
-  //
-  // ⚠️ 誠實性鐵律：本機餵食（體重／活力／已餵食物集合）一律照常成功並
-  // 立即套用——小豬「已經把食物吃下去」是真實發生、不需要網路確認的本機
-  // 事實，不能因為後端同步失敗就整個回滾（那樣反而是另一種造假：長輩明明
-  // 看到小豬吃了東西，畫面卻假裝沒發生過）。但**顯示的訊息**必須誠實反映
-  // 後端同步的實際結果：同步成功才顯示「餵食成功」，同步失敗要換成可重試
-  // 的提示文案，不可以讓長輩以為排行榜已經更新。
   Future<void> _handleFeedFood(PetFoodItem food) async {
     final growthState = _effectiveGrowthState;
     final bool isCarrot = food.id == 'carrot';
@@ -745,10 +752,14 @@ class _ElderPetTabState extends State<ElderPetTab> {
     final bool synced = await _syncWeightToLeaderboard(newState.weightGrams);
     if (!mounted) return;
 
+    // 排行榜卡依 refreshTick 重新讀取（上傳是非同步的，所以放在同步完成之後）。
+    setState(() => _leaderboardTick++);
+
     if (synced) {
+      // 設計稿規定畫面上不顯示任何「+N」數值，只說小豬吃得開心。
       ErrorHandler.showSuccess(
         context,
-        '小豬大口吃下了【${food.name}】！活力 +${food.vitalityGain} ✨',
+        '小豬吃得好開心！🥕',
       );
     } else {
       // 誠實性鐵律：本機餵食已經生效（上面 setState／saveState 都已完成），
@@ -762,148 +773,123 @@ class _ElderPetTabState extends State<ElderPetTab> {
     }
   }
 
+  /// 胡蘿蔔數為 0 時點按鈕：先重讀解鎖來源與帳本，回傳最新可餵份數。
+  /// 把 `_feedingInventory['carrot']` 同步更新，`_handleFeedFood` 才讀得到新值。
+  Future<int> _refreshCarrotForTap() async {
+    await Future.wait([_refreshFoodUnlocks(), _refreshCarrotLedger()]);
+    final n = _carrotAvailable;
+    _feedingInventory['carrot'] = n;
+    return n;
+  }
+
+  /// 舞台上的胡蘿蔔要餵了：資料一律走既有 [_handleFeedFood]（胡蘿蔔帳本、
+  /// 體重、排行榜同步全在裡面）。[_handleFeedFood] 在第一個 await 之前就會
+  /// 同步更新 [_petGrowthState]，所以呼叫後比較新舊體重即可知道有沒有成功
+  /// （庫存 0 時它直接警告返回、體重不變 → 回傳 false，舞台不播動畫）。
+  bool _requestCarrotFeed() {
+    final before = _effectiveGrowthState;
+    unawaited(_handleFeedFood(_carrotFoodItem));
+    final grew = _effectiveGrowthState.weightGrams > before.weightGrams;
+    if (grew) _stageBeforeFeed = before.stage;
+    return grew;
+  }
+
+  /// 餵食動畫（含愛心、跳躍）播完：階段升高才顯示進化畫面（只顯示、不寫入）。
+  void _onFeedAnimationDone() {
+    final before = _stageBeforeFeed;
+    _stageBeforeFeed = null;
+    if (!mounted || before == null) return;
+    final now = _effectiveGrowthState.stage;
+    if (now.index > before.index) {
+      PetEvolutionDialog.show(
+        context,
+        now,
+        oldStage: before,
+        breedId: _breed.id,
+        userName: widget.userName,
+      );
+    }
+  }
+
+  void _setBreed(PetBreed b) {
+    if (b == _breed) return;
+    setState(() => _breed = b);
+    unawaited(PetBreedStore.save(b));
+  }
+
   @override
   Widget build(BuildContext context) {
     currentSteps = _computeFusedSteps();
-    // ★ 第五十一輪：胡蘿蔔可餵份數每次 build() 都用「今天已賺得－今天已
-    // 消耗」重新覆蓋（見 _carrotAvailable 說明），不再是一個寫死或只在餵食
-    // 時才更新的數字——這樣步數／打卡剛好在畫面開著時達標，食匣也會立刻
-    // 反映最新可餵份數，不需要額外監聽。
     _feedingInventory['carrot'] = _carrotAvailable;
-    final hour = DateTime.now().hour;
-    String greetingTitle = '早安';
-    if (hour >= 12 && hour < 18) greetingTitle = '午安';
-    if (hour >= 18 || hour < 5) greetingTitle = '晚安';
     final orientation = MediaQuery.of(context).orientation;
     final bool isLandscape = orientation == Orientation.landscape &&
         MediaQuery.of(context).size.width >= 720;
     final PetGrowthState growthState = _effectiveGrowthState;
-    final String greetingLine = '$greetingTitle，${widget.userName}';
 
-    final Widget petBody = isLandscape
-        ? _buildLandscapePet(growthState, greetingLine)
-        : _buildPortraitPet(growthState, greetingLine);
-
-    return Stack(
-      children: [
-        Container(
-          color: const Color(0xFFFAF7F2), // 溫暖手作燕麥宣紙底色
-          width: double.infinity,
-          height: double.infinity,
-          child: SafeArea(
-            bottom: false,
-            child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              padding: EdgeInsets.only(
-                top: isLandscape ? 6 : 0,
-                bottom: elderNavClearance(context),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  petBody,
-                  // 下半：每日祝福圖（原封不動的 ElderGreetingTab，嵌入模式）
-                  ElderGreetingTab(
-                    userId: widget.userId,
-                    userName: widget.userName,
-                    embedded: true,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-
-        // 🧺 半透明食匣抽屜（比照 pet_studio_screen.dart 的 _isFeedingSheetOpen
-        // + Positioned.fill 做法）
-        if (_isFeedingSheetOpen)
-          Positioned.fill(
-            child: GardenFeedingSheet(
-              isLandscape: isLandscape,
-              foodInventory: _feedingInventory,
-              // ★ 第五十輪修復：過去這裡永遠傳裝置端 currentSteps，
-              // medicationCheckinsToday 恆為預設值 0——用藥打卡換食物解鎖
-              // 在正式畫面從未生效。改用 _effectiveStepsForUnlock／
-              // _medicationCheckinsToday，優先採後端 GET /api/pet/
-              // food-unlocks/{elder_id} 的答案，答不出來才退回裝置端步數
-              // 與 0 次打卡（見兩個 getter 的說明）。
-              currentSteps: _effectiveStepsForUnlock,
-              medicationCheckinsToday: _medicationCheckinsToday,
-              onFeedFood: _handleFeedFood,
-              onClose: () => setState(() => _isFeedingSheetOpen = false),
-            ),
-          ),
-      ],
-    );
-  }
-
-  // ── 直屏：小豬之家主視覺 + 資訊卡 ──
-  Widget _buildPortraitPet(PetGrowthState growthState, String greetingLine) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // 1. 小豬之家主視覺舞台
-        PetHeroStage(
-          key: widget.petKey,
-          growthState: growthState,
-          speechText: _speechText,
-          greetingLine: greetingLine,
-          // 直向手機寬度有限，膠囊改精簡圖示橫排，把空間讓給問候語與對話氣泡
-          topRightActions:
-              PetCornerActions(userId: widget.userId, compact: true),
-          // ★ 第五十輪修復：拖曳餵食與食匣按鈕餵食走同一條路徑，見
-          // PetHeroStage.onFoodAccepted 欄位說明。
-          onFoodAccepted: _handleFeedFood,
-        ),
-
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+    final Widget petBody = Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: isLandscape ? 560 : 640),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // 2. 資訊卡：負偏移壓在主視覺下緣，比照 Pokémon GO 詳情頁
-              Transform.translate(
-                offset: const Offset(0, -24),
-                child: PetStatsSheet(
-                  growthState: growthState,
-                  onFeedTap: _openFeedingSheet,
+              PetBuddyStage(
+                key: widget.petKey,
+                stage: growthState.stage.index + 1,
+                breed: _breed,
+                weather: _weather,
+                carrotCount: _carrotAvailable,
+                onFeedRequest: _requestCarrotFeed,
+                onFeedDone: _onFeedAnimationDone,
+                onRefreshCarrot: _refreshCarrotForTap,
+                onEmptyCarrot: () =>
+                    ErrorHandler.showWarning(context, '打卡就能賺胡蘿蔔 🥕'),
+                onHint: (m) => ErrorHandler.showWarning(context, m),
+                cornerAction:
+                    PetCornerActions(userId: widget.userId, musicOnly: true),
+              ),
+              const SizedBox(height: 14),
+              PetStatCard(
+                growth: growthState,
+                breed: _breed,
+                onBreedChanged: _setBreed,
+              ),
+              const SizedBox(height: 14),
+              UbanCard(
+                child: PetLeaderboardCard(
+                  boardStyle: true,
+                  myElderId: _myFriendElderId,
+                  refreshTick: _leaderboardTick,
+                  myBreedId: _breed.id,
+                  headerTrailing: const PetSeasonChip(),
                 ),
               ),
+              const SizedBox(height: 14),
             ],
           ),
         ),
-      ],
+      ),
     );
-  }
 
-  // ── 橫屏（平板座充）：小豬之家置中、限寬 ──
-  Widget _buildLandscapePet(PetGrowthState growthState, String greetingLine) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 560),
+    return Container(
+      color: UbanColors.of(context).bg,
+      width: double.infinity,
+      height: double.infinity,
+      child: SafeArea(
+        bottom: false,
+        child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          padding: EdgeInsets.only(bottom: elderNavClearance(context)),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-                    PetHeroStage(
-                      key: widget.petKey,
-                      growthState: growthState,
-                      speechText: _speechText,
-                      greetingLine: greetingLine,
-                      topRightActions: PetCornerActions(userId: widget.userId),
-                      // ★ 第五十輪修復：理由同直屏版本，見上方
-                      // _buildPortraitBody 對應的 PetHeroStage 註解。
-                      onFoodAccepted: _handleFeedFood,
-                    ),
-                    Transform.translate(
-                      offset: const Offset(0, -24),
-                      child: PetStatsSheet(
-                        growthState: growthState,
-                        onFeedTap: _openFeedingSheet,
-                        isLandscape: true,
-                      ),
-                    ),
+              petBody,
+              ElderGreetingTab(
+                userId: widget.userId,
+                userName: widget.userName,
+                embedded: true,
+              ),
             ],
           ),
         ),

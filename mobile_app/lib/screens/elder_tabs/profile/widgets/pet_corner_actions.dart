@@ -47,12 +47,57 @@ class PetCornerActions extends StatefulWidget {
   @visibleForTesting
   final PetSeasonInfo? debugInitialSeasonForTest;
 
+  /// 小豬舞台右上角專用：只畫一顆 44px 白色圓鈕（背景音樂），不載入賽季、
+  /// 排行榜入口。音樂邏輯與 [GardenAmbientAudioService] 生命週期完全沿用
+  /// 本元件（initState 開始播放、dispose 釋放、App 生命週期由服務自己處理）。
+  /// 賽季資訊改由排行榜卡標題旁的「第 N 季・還有 N 天」進入，
+  /// 走同一個 [showSeasonInfoDialog]。
+  final bool musicOnly;
+
   const PetCornerActions({
     super.key,
     required this.userId,
     this.compact = false,
+    this.musicOnly = false,
     this.debugInitialSeasonForTest,
   });
+
+  /// 賽季說明彈窗（[PetSeasonCard]＋「知道了」）。抽成 static 讓排行榜卡標題旁
+  /// 的賽季入口與精簡模式的 🗓️ 共用同一份內容。
+  static Future<void> showSeasonInfoDialog(
+      BuildContext context, PetSeasonInfo season) {
+    return showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            PetSeasonCard(season: season, maxWidth: 320),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF059669),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 36, vertical: 14),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20)),
+              ),
+              child: Text(
+                '知道了',
+                style: ElderScale.body.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   State<PetCornerActions> createState() => _PetCornerActionsState();
@@ -68,13 +113,13 @@ class _PetCornerActionsState extends State<PetCornerActions> {
   @override
   void initState() {
     super.initState();
-    _resolveElderId();
+    if (!widget.musicOnly) _resolveElderId();
     // ⚠️ 見 `widget.debugInitialSeasonForTest` 欄位說明：僅供 widget test
     // 注入假資料，production 呼叫端恆為 null，行為與原本完全相同。
     final debugSeason = widget.debugInitialSeasonForTest;
     if (debugSeason != null) {
       _season = debugSeason;
-    } else {
+    } else if (!widget.musicOnly) {
       _loadSeason();
     }
     _audioService.initAndStartAmbience();
@@ -115,37 +160,7 @@ class _PetCornerActionsState extends State<PetCornerActions> {
   /// 才會關閉的彈出對話框，不再受 2 秒自動消失的時間壓力限制。
   void _showSeasonInfoDialog() {
     if (_season == null) return;
-    showDialog(
-      context: context,
-      builder: (ctx) => Dialog(
-        backgroundColor: Colors.transparent,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 28),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            PetSeasonCard(season: _season!, maxWidth: 320),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF059669),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 36, vertical: 14),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20)),
-              ),
-              child: Text(
-                '知道了',
-                style: ElderScale.body.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    PetCornerActions.showSeasonInfoDialog(context, _season!);
   }
 
   void _showSnackToast(String msg) {
@@ -162,6 +177,7 @@ class _PetCornerActionsState extends State<PetCornerActions> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.musicOnly) return _buildStageMusicButton();
     if (widget.compact) return _buildCompactRow();
 
     return Column(
@@ -180,6 +196,47 @@ class _PetCornerActionsState extends State<PetCornerActions> {
 
   /// 精簡橫排：三顆 40px 圓形圖示鈕，總寬約 136px，
   /// 讓問候語在 360px 寬度下仍有足夠空間完整顯示。
+  /// 舞台右上角的音樂鈕（設計稿 `.buddy .corner button`）：44px 白底圓鈕，
+  /// 點一下開／靜音，長按開音樂設定。
+  Widget _buildStageMusicButton() {
+    final muted = _audioService.isMuted;
+    return Semantics(
+      button: true,
+      label: muted ? '背景音樂：關' : '背景音樂：開',
+      child: Material(
+        color: Colors.white.withValues(alpha: .88),
+        shape: const CircleBorder(),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () async {
+            HapticFeedback.lightImpact();
+            await _audioService.toggleMute();
+            if (!mounted) return;
+            setState(() {});
+            _showSnackToast(
+              _audioService.isMuted
+                  ? '🔇 背景音樂已靜音'
+                  : '🎵 背景音樂已開啟（${_audioService.currentTrack.title}）',
+            );
+          },
+          onLongPress: () {
+            HapticFeedback.mediumImpact();
+            _showMusicSettingsSheet();
+          },
+          child: SizedBox(
+            width: 44,
+            height: 44,
+            child: Icon(
+              muted ? Icons.music_off_rounded : Icons.music_note_rounded,
+              size: 22,
+              color: const Color(0xFF24352E),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildCompactRow() {
     return Row(
       mainAxisSize: MainAxisSize.min,

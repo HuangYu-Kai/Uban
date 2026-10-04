@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../theme/app_theme.dart';
+import '../../../widgets/ui/uban_text.dart';
 import '../../widgets/friend_avatar.dart';
+import '../models/pet_growth_state.dart';
 import '../services/pet_leaderboard_service.dart';
 
 /// 🏆 寵物介面「好友排行榜」卡片。
@@ -25,10 +28,25 @@ class PetLeaderboardCard extends StatefulWidget {
   /// 後端是非同步的，若直接綁體重會在上傳完成「之前」就搶先刷新，看到舊名次。
   final int refreshTick;
 
+  /// 設計稿 `.board` 外觀（小豬分頁用）：不畫外框卡片（由外層 UbanCard 提供）、
+  /// 標題「好友排行榜」＋[headerTrailing]、一列＝名次圓章＋小豬圖＋名字＋體重，
+  /// 自己那列反白。資料、載入／錯誤／空狀態、展開全部的邏輯與預設外觀完全相同。
+  final bool boardStyle;
+
+  /// [boardStyle] 標題列右側（例如「第 3 季・還有 12 天」）。
+  final Widget? headerTrailing;
+
+  /// [boardStyle] 自己那列顯示的小豬品種（`pink`／`black`）。後端沒有存別人
+  /// 的品種，其他人一律畫粉紅豬，只有「階段」是依體重算出來的。
+  final String myBreedId;
+
   const PetLeaderboardCard({
     super.key,
     required this.myElderId,
     this.refreshTick = 0,
+    this.boardStyle = false,
+    this.headerTrailing,
+    this.myBreedId = 'pink',
   });
 
   @override
@@ -93,6 +111,16 @@ class _PetLeaderboardCardState extends State<PetLeaderboardCard> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.boardStyle) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildBoardHeader(context),
+          const SizedBox(height: 10),
+          _buildBody(),
+        ],
+      );
+    }
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(18),
@@ -144,6 +172,21 @@ class _PetLeaderboardCardState extends State<PetLeaderboardCard> {
               child: Icon(Icons.refresh_rounded, size: 22, color: Color(0xFF92400E)),
             ),
           ),
+      ],
+    );
+  }
+
+  Widget _buildBoardHeader(BuildContext context) {
+    final c = UbanColors.of(context);
+    // 標題與賽季膠囊同列放不下時（窄螢幕＋大字）自動換行，不會溢位。
+    return Wrap(
+      alignment: WrapAlignment.spaceBetween,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 8,
+      runSpacing: 6,
+      children: [
+        Text('好友排行榜', style: ubanText(22, FontWeight.w900, c.text)),
+        if (widget.headerTrailing != null) widget.headerTrailing!,
       ],
     );
   }
@@ -223,7 +266,8 @@ class _PetLeaderboardCardState extends State<PetLeaderboardCard> {
           _buildInfoLine('你的寵物體重還沒同步上榜，先去餵食一次，就會出現在排行榜裡囉！🐷'),
           const SizedBox(height: 10),
         ],
-        for (final e in visibleEntries) _buildRow(e),
+        for (final e in visibleEntries)
+          widget.boardStyle ? _buildBoardRow(e) : _buildRow(e),
         if (entries.length > _defaultVisibleCount)
           Center(
             child: TextButton.icon(
@@ -262,9 +306,102 @@ class _PetLeaderboardCardState extends State<PetLeaderboardCard> {
             ],
           ),
           const SizedBox(height: 8),
-          _buildRow(selfEntry),
+          widget.boardStyle ? _buildBoardRow(selfEntry) : _buildRow(selfEntry),
         ],
       ],
+    );
+  }
+
+  /// 設計稿 `.brow`：名次圓章 30、小豬圖框 44（圓角 14）、名字、體重（公斤）。
+  Widget _buildBoardRow(Map<String, dynamic> entry) {
+    final c = UbanColors.of(context);
+    final bool isMe = entry['is_me'] == true;
+    final int rank = _asInt(entry['rank']) ?? 0;
+    final int weight = _asInt(entry['weight_grams']) ?? 0;
+    final String? rawName = entry['elder_name'] as String?;
+    final String name = (rawName != null && rawName.trim().isNotEmpty)
+        ? rawName
+        : '長輩 ${entry['elder_id'] ?? ''}';
+    final int stage = PetGrowthStage.fromWeight(weight).index + 1;
+    final String breed = isMe ? widget.myBreedId : 'pink';
+
+    final (Color rankBg, Color rankFg) = switch (rank) {
+      1 => (const Color(0xFFF5C542), const Color(0xFF5A4300)),
+      2 => (const Color(0xFFD5DCE0), const Color(0xFF3C474D)),
+      3 => (const Color(0xFFE3A877), const Color(0xFF5B3214)),
+      _ => (c.surface2, c.text2),
+    };
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: isMe ? c.brandSoft : Colors.transparent,
+        borderRadius: BorderRadius.circular(18),
+        border: isMe ? Border.all(color: c.brandContainer, width: 2) : null,
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 30,
+            height: 30,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(color: rankBg, shape: BoxShape.circle),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text('$rank', style: ubanBrandText(16, FontWeight.w600, rankFg)),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Container(
+            width: 44,
+            height: 44,
+            alignment: Alignment.center,
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              color: c.surface2,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Image.asset(
+              'assets/images/pet_breeds/${breed}_front_$stage.png',
+              height: 38,
+              fit: BoxFit.contain,
+              excludeFromSemantics: true,
+              errorBuilder: (_, __, ___) => const Text('🐷'),
+            ),
+          ),
+          const SizedBox(width: 12),
+          // 名字長度不可控：Expanded＋ellipsis（第 14 條）。
+          Expanded(
+            child: Text(
+              name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: ubanText(19, isMe ? FontWeight.w900 : FontWeight.w700,
+                  isMe ? c.brandStrong : c.text),
+            ),
+          ),
+          const SizedBox(width: 12),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 110),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text.rich(
+                TextSpan(
+                  text: (weight / 1000.0).toStringAsFixed(1),
+                  style: ubanBrandText(19, FontWeight.w600, c.text),
+                  children: [
+                    TextSpan(
+                      text: ' 公斤',
+                      style: ubanText(13, FontWeight.w700, c.text2),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

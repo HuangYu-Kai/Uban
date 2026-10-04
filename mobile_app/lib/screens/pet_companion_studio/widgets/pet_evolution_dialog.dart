@@ -1,177 +1,303 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
+
+import '../../../theme/uban_motion.dart';
+import '../../../widgets/ui/uban_text.dart';
 import '../models/pet_growth_state.dart';
 
-class PetEvolutionDialog extends StatelessWidget {
+/// 進化畫面（設計稿 `#evo`）：深色幕＋旋轉光芒，舊階段小豬亮到發白、淡出，
+/// 新階段小豬縮放彈出，再依序浮出「長大到第 N 階了！」「福氣小豬變得更有精神了」
+/// 與「太棒了」按鈕。**只顯示、不寫入任何資料。**
+///
+/// 傳 [oldStage] 與 [breedId] 時用 `assets/images/pet_breeds/` 的正面圖做
+/// 新舊對照；沒傳（例如 `PetStudioScreen` 的預覽）則退回舊的階段油畫圖。
+/// 減少動態時直接顯示最終畫面、光芒不旋轉。
+class PetEvolutionDialog extends StatefulWidget {
   final PetGrowthStage newStage;
+  final PetGrowthStage? oldStage;
+
+  /// `pink`／`black`；null 表示使用舊的 `pet_stages` 圖。
+  final String? breedId;
   final String userName;
 
   const PetEvolutionDialog({
     super.key,
     required this.newStage,
+    this.oldStage,
+    this.breedId,
     this.userName = '宇璿',
   });
 
-  static Future<void> show(BuildContext context, PetGrowthStage newStage, {String userName = '宇璿'}) {
+  static Future<void> show(
+    BuildContext context,
+    PetGrowthStage newStage, {
+    String userName = '宇璿',
+    PetGrowthStage? oldStage,
+    String? breedId,
+  }) {
     HapticFeedback.heavyImpact();
-    return showDialog(
+    return showGeneralDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => PetEvolutionDialog(newStage: newStage, userName: userName),
+      barrierLabel: '小豬長大了',
+      barrierColor: const Color.fromRGBO(10, 20, 16, .82),
+      transitionDuration: const Duration(milliseconds: 300),
+      transitionBuilder: (context, anim, _, child) =>
+          FadeTransition(opacity: anim, child: child),
+      pageBuilder: (context, _, __) => PetEvolutionDialog(
+        newStage: newStage,
+        oldStage: oldStage,
+        breedId: breedId,
+        userName: userName,
+      ),
     );
   }
 
   @override
+  State<PetEvolutionDialog> createState() => _PetEvolutionDialogState();
+}
+
+class _PetEvolutionDialogState extends State<PetEvolutionDialog>
+    with TickerProviderStateMixin {
+  late final AnimationController _rays;
+  late final AnimationController _seq;
+  bool _inited = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _rays = AnimationController(vsync: this, duration: const Duration(seconds: 12));
+    _seq = AnimationController(vsync: this, duration: const Duration(milliseconds: 2500));
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_inited) return;
+    _inited = true;
+    if (reduceMotion(context)) {
+      _seq.value = 1;
+    } else {
+      _rays.repeat();
+      _seq.forward();
+    }
+  }
+
+  @override
+  void dispose() {
+    _rays.dispose();
+    _seq.dispose();
+    super.dispose();
+  }
+
+  int get _newNo => widget.newStage.index + 1;
+  int get _oldNo => (widget.oldStage?.index ?? math.max(0, widget.newStage.index - 1)) + 1;
+
+  String _path(PetGrowthStage st, int no) => widget.breedId == null
+      ? st.imageAssetPath
+      : 'assets/images/pet_breeds/${widget.breedId}_front_$no.png';
+
+  /// 時間窗 [from]~[to]（毫秒）換成 0~1。
+  double _win(double ms, double from, double to) =>
+      ((ms - from) / (to - from)).clamp(0.0, 1.0);
+
+  static ColorFilter _bright(double b) => ColorFilter.matrix(<double>[
+        b, 0, 0, 0, 0, //
+        0, b, 0, 0, 0,
+        0, 0, b, 0, 0,
+        0, 0, 0, 1, 0,
+      ]);
+
+  @override
   Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 440),
-        padding: const EdgeInsets.all(28),
-        decoration: BoxDecoration(
-          color: const Color(0xFFFFFDF8),
-          borderRadius: BorderRadius.circular(32),
-          border: Border.all(color: const Color(0xFFEADBCE), width: 2.2),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF78350F).withValues(alpha: 0.15),
-              blurRadius: 30,
-              offset: const Offset(0, 10),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // 新階段外觀圖 (組員油畫正面大圖)
-            Container(
-              width: 140,
-              height: 140,
-              decoration: BoxDecoration(
-                color: const Color(0xFFFAF7F0),
-                shape: BoxShape.circle,
-                border: Border.all(color: const Color(0xFFEADBCE), width: 2),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF78350F).withValues(alpha: 0.08),
-                    blurRadius: 14,
-                    offset: const Offset(0, 6),
-                  ),
-                ],
-              ),
-              child: Center(
-                child: Image.asset(
-                  newStage.imageAssetPath,
-                  width: 115,
-                  height: 115,
-                  fit: BoxFit.contain,
-                ),
-              ),
-            ),
-            const SizedBox(height: 18),
-
-            // 標題
-            Text(
-              '🎉 叮咚！小豬長大長肉囉！',
-              style: GoogleFonts.notoSansTc(
-                fontSize: 22,
-                fontWeight: FontWeight.w900,
-                color: const Color(0xFF451A03),
-              ),
-            ),
-            const SizedBox(height: 10),
-
-            // 稱號
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFEF3C7),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: const Color(0xFFFDE68A), width: 1.5),
-              ),
-              child: Text(
-                '變身為【${newStage.title}】',
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
-                  color: const Color(0xFF78350F),
-                ),
-              ),
-            ),
-            const SizedBox(height: 14),
-
-            // 描述
-            Text(
-              '在 $userName 的悉心散步與營養餵養下，小豬吃得白白胖胖、健康有福相！',
-              textAlign: TextAlign.center,
-              style: GoogleFonts.notoSansTc(
-                fontSize: 15.5,
-                fontWeight: FontWeight.w700,
-                color: const Color(0xFF57534E),
-                height: 1.5,
-              ),
-            ),
-            const SizedBox(height: 14),
-
-            // 解鎖新飾品
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF0FDF4),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: const Color(0xFFBBF7D0), width: 1.5),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text('🎁', style: TextStyle(fontSize: 20)),
-                  const SizedBox(width: 8),
-                  Flexible(
-                    child: Text(
-                      '解鎖外觀：${newStage.accessory}',
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 14.5,
-                        fontWeight: FontWeight.w800,
-                        color: const Color(0xFF166534),
-                      ),
+    final oldStage = widget.oldStage ??
+        PetGrowthStage.values[math.max(0, widget.newStage.index - 1)];
+    return Material(
+      type: MaterialType.transparency,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // 旋轉光芒
+          Positioned.fill(
+            child: IgnorePointer(
+              child: Align(
+                alignment: const Alignment(0, -.16),
+                child: AnimatedBuilder(
+                  animation: _rays,
+                  builder: (context, _) => Transform.rotate(
+                    angle: _rays.value * 2 * math.pi,
+                    child: const SizedBox(
+                      width: 560,
+                      height: 560,
+                      child: CustomPaint(painter: _RaysPainter()),
                     ),
                   ),
-                ],
+                ),
               ),
             ),
-            const SizedBox(height: 22),
+          ),
+          SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                child: AnimatedBuilder(
+                  animation: _seq,
+                  builder: (context, _) => _content(oldStage),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-            // 確認按鈕
+  Widget _content(PetGrowthStage oldStage) {
+    final ms = _seq.value * 2500;
+    // 舊小豬 0~1600ms：亮度 1→4(50%)→6(70%)，縮放 1.05(50%)→.6，70% 起淡出
+    final oldT = _win(ms, 0, 1600);
+    final oldBright = oldT < .5
+        ? 1 + 3 * (oldT / .5)
+        : oldT < .7
+            ? 4 + 2 * ((oldT - .5) / .2)
+            : 6.0;
+    final oldScale = oldT < .5 ? 1 + .05 * (oldT / .5) : 1.05 - .45 * ((oldT - .5) / .5);
+    final oldOpacity = oldT < .7 ? 1.0 : 1 - (oldT - .7) / .3;
+    // 新小豬 900~1900ms：縮放 .5→1（彈性）、亮度 5→1、透明度 0→1
+    final newT = _win(ms, 900, 1900);
+    final newK = UbanMotion.springBack.transform(newT);
+    final newScale = .5 + .5 * newK;
+    final newBright = 5 - 4 * newT;
+    final newOpacity = newT;
+
+    double enter(double from) => Curves.easeOut.transform(_win(ms, from, from + 500));
+    Widget rise(double from, Widget child) {
+      final k = enter(from);
+      return Opacity(
+        opacity: k,
+        child: Transform.translate(offset: Offset(0, 14 * (1 - k)), child: child),
+      );
+    }
+
+    final imgBox = SizedBox(
+      width: 200,
+      height: 240,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (oldOpacity > 0)
+            Opacity(
+              opacity: oldOpacity,
+              child: Transform.scale(
+                scale: oldScale,
+                child: ColorFiltered(
+                  colorFilter: _bright(oldBright),
+                  child: Image.asset(_path(oldStage, _oldNo), fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+                ),
+              ),
+            ),
+          if (newOpacity > 0)
+            Opacity(
+              opacity: newOpacity,
+              child: Transform.scale(
+                scale: newScale,
+                child: ColorFiltered(
+                  colorFilter: _bright(newBright),
+                  child: Semantics(
+                    label: '第 $_newNo 階小豬',
+                    child: Image.asset(_path(widget.newStage, _newNo),
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 340),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          imgBox,
+          const SizedBox(height: 14),
+          rise(
+            1600,
+            Text(
+              '長大到第 $_newNo 階了！',
+              textAlign: TextAlign.center,
+              style: ubanText(34, FontWeight.w900, Colors.white),
+            ),
+          ),
+          const SizedBox(height: 14),
+          rise(
+            1800,
+            Text(
+              '福氣小豬變得更有精神了',
+              textAlign: TextAlign.center,
+              style: ubanText(18, FontWeight.w500, Colors.white),
+            ),
+          ),
+          const SizedBox(height: 14),
+          rise(
+            2000,
             SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: ElevatedButton(
+              width: 260,
+              height: 64,
+              child: FilledButton(
+                key: const ValueKey('pet-evo-close'),
                 onPressed: () {
                   HapticFeedback.mediumImpact();
                   Navigator.of(context).pop();
                 },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFD97706),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF3D9C7C),
                   foregroundColor: Colors.white,
-                  elevation: 3,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18),
-                  ),
+                  shape: const StadiumBorder(),
                 ),
-                child: Text(
-                  '開開心心收下 ✨',
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 17.5,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
+                child: Text('太棒了', style: ubanText(22, FontWeight.w900, Colors.white)),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
+}
+
+/// `repeating-conic-gradient(rgba(255,240,190,.22) 0 10deg, transparent 10deg 20deg)`
+/// 外罩 `radial-gradient(circle, #000 20%, transparent 68%)` 遮罩。
+class _RaysPainter extends CustomPainter {
+  const _RaysPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = size.center(Offset.zero);
+    final r = size.width / 2;
+    canvas.saveLayer(Offset.zero & size, Paint());
+    final p = Paint()..color = const Color.fromRGBO(255, 240, 190, .22);
+    for (var i = 0; i < 18; i++) {
+      canvas.drawArc(Rect.fromCircle(center: c, radius: r), i * math.pi / 9,
+          math.pi / 18, true, p);
+    }
+    canvas.drawCircle(
+      c,
+      r,
+      Paint()
+        ..blendMode = BlendMode.dstIn
+        ..shader = const RadialGradient(
+          colors: [Colors.black, Colors.black, Colors.transparent],
+          stops: [0, .283, .962],
+        ).createShader(Rect.fromCircle(center: c, radius: r)),
+    );
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_RaysPainter old) => false;
 }

@@ -1,0 +1,131 @@
+{
+  "_comment": "耳標錨點，轉自 design_prototype/ui.js 的 EAR。x/y＝耳朵穿孔位置（占小豬圖片寬／高的比例）；scale＝耳標寬度÷小豬圖片高度；behindHeadWhenFlipped＝身體水平翻轉（朝右走）時耳標畫在頭部圖層後面。耳標永遠戴在豬的左耳：正面＝畫面右側耳、側面（鼻子朝左）＝看得到的耳。",
+  "flipped": {
+    "dx": 0.05,
+    "dy": -0.03,
+    "dim": 0.8,
+    "_note": "翻轉前座標系：dx 占圖寬往後、dy 占圖寬往上（CSS margin 百分比皆以寬為基準）；dim＝亮度"
+  },
+  "entries": {
+    "pink_front_1": {
+      "x": 0.82,
+      "y": 0.17,
+      "scale": 0.15,
+      "behindHeadWhenFlipped": false
+    },
+    "pink_front_2": {
+      "x": 0.84,
+      "y": 0.2,
+      "scale": 0.15,
+      "behindHeadWhenFlipped": false
+    },
+    "pink_front_3": {
+      "x": 0.85,
+      "y": 0.19,
+      "scale": 0.15,
+      "behindHeadWhenFlipped": false
+    },
+    "pink_front_4": {
+      "x": 0.87,
+      "y": 0.19,
+      "scale": 0.15,
+      "behindHeadWhenFlipped": false
+    },
+    "pink_front_5": {
+      "x": 0.85,
+      "y": 0.18,
+      "scale": 0.15,
+      "behindHeadWhenFlipped": false
+    },
+    "pink_side_1": {
+      "x": 0.27,
+      "y": 0.22,
+      "scale": 0.2,
+      "behindHeadWhenFlipped": true
+    },
+    "pink_side_2": {
+      "x": 0.23,
+      "y": 0.24,
+      "scale": 0.2,
+      "behindHeadWhenFlipped": true
+    },
+    "pink_side_3": {
+      "x": 0.22,
+      "y": 0.24,
+      "scale": 0.2,
+      "behindHeadWhenFlipped": true
+    },
+    "pink_side_4": {
+      "x": 0.2,
+      "y": 0.22,
+      "scale": 0.2,
+      "behindHeadWhenFlipped": true
+    },
+    "pink_side_5": {
+      "x": 0.21,
+      "y": 0.2,
+      "scale": 0.2,
+      "behindHeadWhenFlipped": true
+    },
+    "black_front_1": {
+      "x": 0.82,
+      "y": 0.4,
+      "scale": 0.15,
+      "behindHeadWhenFlipped": false
+    },
+    "black_front_2": {
+      "x": 0.83,
+      "y": 0.42,
+      "scale": 0.15,
+      "behindHeadWhenFlipped": false
+    },
+    "black_front_3": {
+      "x": 0.8,
+      "y": 0.4,
+      "scale": 0.15,
+      "behindHeadWhenFlipped": false
+    },
+    "black_front_4": {
+      "x": 0.8,
+      "y": 0.41,
+      "scale": 0.15,
+      "behindHeadWhenFlipped": false
+    },
+    "black_front_5": {
+      "x": 0.77,
+      "y": 0.42,
+      "scale": 0.15,
+      "behindHeadWhenFlipped": false
+    },
+    "black_side_1": {
+      "x": 0.19,
+      "y": 0.38,
+      "scale": 0.2,
+      "behindHeadWhenFlipped": true
+    },
+    "black_side_2": {
+      "x": 0.17,
+      "y": 0.34,
+      "scale": 0.2,
+      "behindHeadWhenFlipped": true
+    },
+    "black_side_3": {
+      "x": 0.17,
+      "y": 0.36,
+      "scale": 0.2,
+      "behindHeadWhenFlipped": true
+    },
+    "black_side_4": {
+      "x": 0.17,
+      "y": 0.46,
+      "scale": 0.2,
+      "behindHeadWhenFlipped": true
+    },
+    "black_side_5": {
+      "x": 0.15,
+      "y": 0.47,
+      "scale": 0.2,
+      "behindHeadWhenFlipped": true
+    }
+  }
+}
