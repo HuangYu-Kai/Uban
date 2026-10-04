@@ -1,0 +1,133 @@
+%%{init:{"layout":"elk","themeVariables":{"lineColor":"#000000","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","fontSize":"22px"}}}%%
+classDiagram
+  direction TB
+
+  class 使用者帳戶_user_account_data {
+    +int user_id (PK)
+    +String user_name
+    +String user_email
+    +String password
+    +Date account_create_time
+    +String user_authority
+    +String payment_channel
+    +String register_platform
+    +int age
+    +String residence_city
+    +String residence_district
+  }
+
+  class 長者個人檔案_elder_profile {
+    +String elder_id (PK)
+    +int user_id (FK)
+    +String elder_name
+    +String elder_appellation
+    +String gender
+    +int age
+    +String residence_city
+    +String residence_district
+    +int step_total
+    +DateTime last_interaction_at
+    +int heartbeat_frequency
+  }
+
+  class 家屬長輩關聯_family_elder_relationship {
+    +int relation_id (PK)
+    +String elder_id (FK)
+    +int family_id (FK)
+    +DateTime create_ts
+  }
+
+  class 帳號停權管理_account_ban {
+    +int user_id (PK/FK)
+    +int is_banned
+    +String reason
+    +int banned_by_staff_id
+    +DateTime banned_at
+  }
+
+  class 通話紀錄日誌_call_record {
+    +int id (PK)
+    +String call_id
+    +String room_id
+    +String caller_id
+    +String callee_id
+    +DateTime start_time
+    +DateTime end_time
+    +String status
+    +int is_emergency
+  }
+
+  class 配對碼紀錄_pairing_code {
+    +int code_id (PK)
+    +int code
+    +int creator_id (FK)
+    +int is_used
+    +DateTime expires_at
+  }
+
+  class 家庭留言板_family_message {
+    +int id (PK)
+    +int family_id (FK)
+    +String elder_id (FK)
+    +Text content
+    +int is_read
+    +DateTime created_at
+  }
+
+  class 長輩提問單_elder_question {
+    +int question_id (PK)
+    +String elder_id (FK)
+    +Text question
+    +String screen_context
+    +String reason
+    +String status
+    +int answered_by (FK)
+    +Text answer
+  }
+
+  class 遠端提醒設定_remote_reminders {
+    +int id (PK)
+    +int family_id (FK)
+    +String elder_id (FK)
+    +String title
+    +String category
+    +String time_str
+    +String repeat_days
+    +int is_active
+  }
+
+  class 裝置推播權杖_user_fcm_token {
+    +int user_id (PK/FK)
+    +String room_id (PK)
+    +String fcm_token (PK)
+    +String role
+    +String device_name
+    +String device_mode
+    +String app_state
+  }
+
+  使用者帳戶_user_account_data "1" -- "0..1" 長者個人檔案_elder_profile : 登入主體
+  使用者帳戶_user_account_data "1" -- "0..*" 家屬長輩關聯_family_elder_relationship : 家屬ID
+  長者個人檔案_elder_profile "1" -- "0..*" 家屬長輩關聯_family_elder_relationship : 長輩ID
+  使用者帳戶_user_account_data "1" -- "0..1" 帳號停權管理_account_ban : 違規限制
+  使用者帳戶_user_account_data "1" -- "0..*" 配對碼紀錄_pairing_code : 產生配對碼
+  使用者帳戶_user_account_data "1" -- "0..*" 家庭留言板_family_message : 家屬留言
+  長者個人檔案_elder_profile "1" -- "0..*" 家庭留言板_family_message : 接收留言
+  長者個人檔案_elder_profile "1" -- "0..*" 長輩提問單_elder_question : 發起提問
+  使用者帳戶_user_account_data "0..1" -- "0..*" 長輩提問單_elder_question : 解答回覆
+  使用者帳戶_user_account_data "1" -- "0..*" 遠端提醒設定_remote_reminders : 設定日常提醒
+  長者個人檔案_elder_profile "1" -- "0..*" 遠端提醒設定_remote_reminders : 提醒對象
+  使用者帳戶_user_account_data "1" -- "0..*" 裝置推播權杖_user_fcm_token : 推播登記
+  使用者帳戶_user_account_data "1" -- "0..*" 通話紀錄日誌_call_record : 通話歷程
+
+  classDef ent fill:#DAE8FC,stroke:#6C8EBF,stroke-width:1.5px,color:#102A43
+  class 使用者帳戶_user_account_data:::ent
+  class 長者個人檔案_elder_profile:::ent
+  class 家屬長輩關聯_family_elder_relationship:::ent
+  class 帳號停權管理_account_ban:::ent
+  class 通話紀錄日誌_call_record:::ent
+  class 配對碼紀錄_pairing_code:::ent
+  class 家庭留言板_family_message:::ent
+  class 長輩提問單_elder_question:::ent
+  class 遠端提醒設定_remote_reminders:::ent
+  class 裝置推播權杖_user_fcm_token:::ent

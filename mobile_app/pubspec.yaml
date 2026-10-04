@@ -143,6 +143,7 @@ flutter:
     #   （960Hz／770Hz 每 0.5 秒交替，7 秒）；舊的 emergency_alert.wav 已刪除。
     #   由 lib/services/emergency_tone.dart 單例播放。
     - assets/sounds/
+    - assets/fonts/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
@@ -170,5 +171,12 @@ flutter:
     - family: StarPanda
       fonts:
         - asset: assets/fonts/StarPandaKids.otf
+    - family: NotoSansTC
+      fonts:
+        - asset: assets/fonts/NotoSansTC-Regular.ttf
+        - asset: assets/fonts/NotoSansTC-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/NotoSansTC-Medium.ttf
+          weight: 500
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package

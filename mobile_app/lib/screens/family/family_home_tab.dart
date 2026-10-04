@@ -209,6 +209,8 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                           onNavigateToAlerts: widget.onNavigateToAlerts,
                           onAlertItemDismissed: widget.onAlertItemDismissed,
                           onOpenMonitorView: widget.onOpenMonitorView,
+                          // ★ 2026-10-02：語音求救附位置時，點擊項目開 GPS 地圖需要 userId。
+                          userId: widget.userId,
                         ),
                       ],
                     ),
@@ -312,6 +314,8 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                       onNavigateToAlerts: widget.onNavigateToAlerts,
                       onAlertItemDismissed: widget.onAlertItemDismissed,
                       onOpenMonitorView: widget.onOpenMonitorView,
+                      // ★ 2026-10-02：同上（語音求救附位置 → 開 GPS 地圖）。
+                      userId: widget.userId,
                     ),
                   ]),
                 ),

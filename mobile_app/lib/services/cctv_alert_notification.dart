@@ -236,16 +236,23 @@ class CctvAlertNotification {
 
   /// 通知內文——理由同 [_resolveTitle]。提醒內文除了 `sos_voice` 外一律是
   /// 同一句通用文字（不重複「偵測到 XX」的措辭，只提醒「仍未處理」）。
-  static String _resolveBody(String alertType, String displayName, bool isReminder) {
+  ///
+  /// ★ 2026-10-02：[hasLocation] 只對 `sos_voice` 有意義——後端（語音求救）有長輩最後位置
+  /// 時會在 FCM data 帶 `latitude`／`longitude`／`locationAt`，這時內文加註
+  /// 「（已附上最後位置）」，家屬點進 App 就能看地圖。只動文字，不碰 channel／音效／id。
+  static String _resolveBody(String alertType, String displayName, bool isReminder,
+      {bool hasLocation = false}) {
+    final String locSuffix =
+        (alertType == 'sos_voice' && hasLocation) ? '（已附上最後位置）' : '';
     if (isReminder) {
       if (alertType == 'sos_voice') {
-        return '$displayName 先前開口求救的狀況仍未處理，請盡快聯繫確認';
+        return '$displayName 先前開口求救的狀況仍未處理，請盡快聯繫確認$locSuffix';
       }
       return '$displayName 的狀況仍未處理，請盡快查看監視畫面';
     }
     switch (alertType) {
       case 'sos_voice':
-        return '$displayName 剛透過語音助理開口求救，請立即聯繫確認狀況';
+        return '$displayName 剛透過語音助理開口求救，請立即聯繫確認狀況$locSuffix';
       case 'fall':
         return '$displayName 可能跌倒，請立即查看監視畫面';
       case 'crawl':
@@ -297,7 +304,13 @@ class CctvAlertNotification {
       final String alertType =
           (data['alertType'] ?? data['alert_type'] ?? '').toString();
       final String title = _resolveTitle(alertType, isReminder);
-      final String body = _resolveBody(alertType, displayName, isReminder);
+      // ★ 2026-10-02：FCM data 全是字串、Socket 路徑由 family_main_screen 轉成字串；
+      //   latitude／longitude 任一缺漏或不是數字就視為沒有位置（不寫「已附上」）。
+      final bool hasLocation =
+          double.tryParse('${data['latitude'] ?? ''}') != null &&
+              double.tryParse('${data['longitude'] ?? ''}') != null;
+      final String body = _resolveBody(alertType, displayName, isReminder,
+          hasLocation: hasLocation);
       // ★ 2026-08-23（新鐵律：家屬端不得強制開啟 App）：`fullScreenIntent: true`
       //   會讓 Android 直接把本 Activity 拉到鎖定畫面之上——等同**未經同意強行
       //   開啟 App**，對熟悉資安的使用者而言，這與流氓軟體的行為難以區分，

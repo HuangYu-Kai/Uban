@@ -1,0 +1,71 @@
+%%{init:{"layout":"elk","elk":{"mergeEdges":false,"nodePlacementStrategy":"NETWORK_SIMPLEX"},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
+flowchart TD
+  subgraph ROLE["開發者"]
+    PAD_ROLE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
+    ST_S1(("&nbsp;")):::term
+    S1([進入使用者列表]):::act
+    S2["搜尋並點選個案"]:::act
+    S3(["對照時序排除問題"]):::act
+    EN_S3(("●")):::endterm
+  end
+  subgraph FE["開發者管理端"]
+    PAD_FE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
+    A1["使用者列表頁"]:::act
+    A2["使用者詳情頁"]:::act
+    A3["警報列表頁<br/>（定時更新未讀數）"]:::act
+    EN_A3(("●")):::endterm
+    A4["顯示『查無資料』"]:::act
+    EN_A4(("●")):::endterm
+    A5["時間軸為空"]:::act
+    EN_A5(("●")):::endterm
+  end
+  subgraph BE["uban-api 後端"]
+    B1["查詢全平台使用者列表"]:::act
+    B2{"使用者<br/>是否存在？"}:::dec
+    B3["查詢使用者詳細資料"]:::act
+    B4["查詢使用者使用指標"]:::act
+    EN_B4(("●")):::endterm
+    B5["查詢活動時間軸"]:::act
+    B6["查詢所有使用者的警報"]:::act
+    B7["彙整活動紀錄、通話、警報"]:::act
+    D1[("長輩資料表")]:::act
+    D2[("活動紀錄表<br/>★ 需經長輩資料表對應使用者")]:::gap
+    D3[("通話紀錄表")]:::act
+    D4[("緊急警報紀錄表")]:::act
+  end
+
+  ST_S1 --> S1
+  S1 --> B1
+  B1 --> A1
+  A1 --> S2
+  S2 --> B2
+  B2 -->|"[否]"| A4
+  B2 -->|"[是]"| A2
+  A2 --> B3
+  B3 --- D1
+  A2 --> B4
+  A2 --> B5
+  B5 --> B7
+  D1 --> D2
+  B7 --- D2
+  B7 --- D3
+  B7 --- D4
+  B7 --> A2
+  A2 --> S3
+  B7 -->|"[無事件]"| A5
+  S1 --> B6
+  B6 --> A3
+  S3 --> EN_S3
+  A3 --> EN_A3
+  A4 --> EN_A4
+  A5 --> EN_A5
+  B4 --> EN_B4
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  ROLE ~~~ FE ~~~ BE
+
+  classDef pad  fill:none,stroke:none,color:#FFFFFF
+  classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef endterm fill:#FFFFFF,stroke:#000000,stroke-width:3px,color:#000000
+  classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3

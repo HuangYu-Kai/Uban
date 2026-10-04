@@ -1,0 +1,72 @@
+%%{init:{"layout":"elk","elk":{"mergeEdges":false,"nodePlacementStrategy":"NETWORK_SIMPLEX"},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
+flowchart TD
+  subgraph ROLE["家屬"]
+    ST_S1(("&nbsp;")):::term
+    S1([於『互動』分頁開啟 AI 共創助理]):::act
+    S2["以自然語言提問或下指令"]:::act
+    S3{"草稿是否<br/>逐筆確認？"}:::dec
+    S4(["取得回覆與關懷建議"]):::act
+    EN_S4(("●")):::endterm
+    S5(["排程批次建立"]):::act
+    EN_S5(("●")):::endterm
+  end
+  subgraph FE["家屬端"]
+    PAD_FE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
+    A1["AI 照護共創助理畫面"]:::act
+    A2["顯示排程草稿清單"]:::act
+    A3(["不建立任何排程"]):::act
+    EN_A3(("●")):::endterm
+  end
+  subgraph BE["uban-api 後端"]
+    PAD_BE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
+    G0{"家屬與長輩<br/>關係驗證通過？"}:::dec
+    B1["意圖辨識：回覆近況摘要<br/>或產生排程草稿"]:::act
+    B2["組裝長輩脈絡：<br/>活動紀錄、情緒分析、<br/>Pinecone 長期記憶檢索"]:::act
+    B3{"Ollama<br/>可用？"}:::dec
+    B4["Ollama 本地主要 AI 引擎"]:::act
+    B5["Gemini 備援引擎"]:::act
+    B6{"是否為<br/>『安排提醒』？"}:::dec
+    B7["產出排程草稿"]:::act
+    B8["批次建立提醒"]:::act
+    B9["今日智能建議<br/>與動態關懷短句"]:::act
+    DB[("遠端提醒資料表")]:::act
+    PC[("Pinecone 長期記憶<br/>（向量資料庫）")]:::act
+    X(["回傳無權限"]):::act
+    EN_X(("●")):::endterm
+  end
+
+  ST_S1 --> S1
+  S1 --> G0
+  G0 -->|"[否]"| X
+  G0 -->|"[是]"| A1
+  A1 --> S2
+  S2 --> B1
+  B1 --> B2
+  B2 --- PC
+  B2 --> B3
+  B3 -->|"[是]"| B4
+  B3 -->|"[否]"| B5
+  B4 --> B6
+  B5 --> B6
+  B6 -->|"[否]"| B9
+  B9 --> S4
+  B6 -->|"[是]"| B7
+  B7 --> A2
+  A2 --> S3
+  S3 -->|"[否]"| A3
+  S3 -->|"[是]"| B8
+  B8 --> DB
+  DB --> S5
+  S4 --> EN_S4
+  S5 --> EN_S5
+  A3 --> EN_A3
+  X --> EN_X
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  ROLE ~~~ FE ~~~ BE
+
+  classDef pad  fill:none,stroke:none,color:#FFFFFF
+  classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
+  classDef term fill:#000000,stroke:#000000,stroke-width:3px,color:#000000
+  classDef endterm fill:#FFFFFF,stroke:#000000,stroke-width:3px,color:#000000
+  classDef gap  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000,stroke-dasharray:4 3

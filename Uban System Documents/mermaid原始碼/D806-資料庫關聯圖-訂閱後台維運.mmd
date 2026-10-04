@@ -1,0 +1,97 @@
+%%{init:{"layout":"elk","themeVariables":{"lineColor":"#000000","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","fontSize":"22px"}}}%%
+classDiagram
+  direction TB
+
+  class 使用者帳戶_參照 {
+    <<外部實體・T01>>
+    +int user_id (PK)
+    +String user_name
+    +String user_authority
+  }
+
+  class 長者檔案_參照 {
+    <<外部實體・T02>>
+    +String elder_id (PK)
+    +String elder_name
+  }
+
+  class 訂閱權益快取_subscription_status {
+    +int id (PK)
+    +String elder_id (FK)
+    +String entitlement
+    +int is_active
+    +String product_id
+    +String store
+    +int purchased_by (FK)
+    +DateTime expires_at
+  }
+
+  class 訂閱流水明細_subscription_records {
+    +int id (PK)
+    +int user_id (FK)
+    +String tier_level
+    +String payment_method
+    +Decimal amount
+    +Date start_date
+    +Date end_date
+    +boolean auto_renew
+  }
+
+  class 使用者操作日誌_activity_log {
+    +int log_id (PK)
+    +int user_id (FK)
+    +String event_type
+    +Text content
+    +DateTime timestamp
+    +Text extra_data
+  }
+
+  class 異常問題回報_bug_report {
+    +int id (PK)
+    +String reporter_type
+    +String reporter_id
+    +String title
+    +Text content
+    +String app_version
+    +String status
+    +int handled_by_staff_id
+    +DateTime created_at
+  }
+
+  class 管理員操作稽核_admin_action_log {
+    +int id (PK)
+    +int staff_id
+    +String action_type
+    +String target_type
+    +String target_id
+    +Text detail
+    +DateTime created_at
+  }
+
+  class 開發者管理帳號_developer_account {
+    +int dev_id (PK)
+    +String username
+    +String password_hash
+    +Blob password_cipher
+    +String display_name
+    +int is_active
+    +DateTime created_at
+  }
+
+  長者檔案_參照 "1" -- "0..*" 訂閱權益快取_subscription_status : 長輩受益
+  使用者帳戶_參照 "0..1" -- "0..*" 訂閱權益快取_subscription_status : 家屬購買
+  使用者帳戶_參照 "1" -- "0..*" 訂閱流水明細_subscription_records : 付款紀錄
+  使用者帳戶_參照 "1" -- "0..*" 使用者操作日誌_activity_log : 操作行為
+  開發者管理帳號_developer_account "1" -- "0..*" 管理員操作稽核_admin_action_log : 執行稽核記錄
+  開發者管理帳號_developer_account "0..1" -- "0..*" 異常問題回報_bug_report : 指派處理
+
+  classDef ent fill:#DAE8FC,stroke:#6C8EBF,stroke-width:1.5px,color:#102A43
+  classDef ref fill:#F5F5F5,stroke:#999999,stroke-width:1px,color:#444444
+  class 使用者帳戶_參照:::ref
+  class 長者檔案_參照:::ref
+  class 訂閱權益快取_subscription_status:::ent
+  class 訂閱流水明細_subscription_records:::ent
+  class 使用者操作日誌_activity_log:::ent
+  class 異常問題回報_bug_report:::ent
+  class 管理員操作稽核_admin_action_log:::ent
+  class 開發者管理帳號_developer_account:::ent

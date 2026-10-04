@@ -16,6 +16,8 @@ import '../../services/api_service.dart';
 import '../../services/friend_service.dart';
 import '../../services/elder_location_service.dart';
 import '../../services/api/location_api.dart';
+import '../../services/location_device_status.dart';
+import '../../theme/app_theme.dart' show ElderScale;
 import '../../services/game_service.dart';
 import '../../utils/error_handler.dart';
 import '../pet_companion_studio/models/pet_growth_state.dart';
@@ -63,7 +65,7 @@ class ElderProfileTab extends StatefulWidget {
 }
 
 class _ElderProfileTabState extends State<ElderProfileTab>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   static const double _maxAccuracyMeters = 35.0;
   static const double _minPointDistanceMeters = 2.0;
   static const double _maxReasonableJumpMeters = 120.0;
@@ -150,7 +152,9 @@ class _ElderProfileTabState extends State<ElderProfileTab>
 
   // ── 🛰️ 與家人分享 GPS 位置（戶外定位軌跡，與上方本機步數用途的 GPS 追蹤
   //   是不同的東西——見 ElderLocationService 檔頭說明）───────────────
-  bool _locationSharingEnabled = false;
+  // 系統預設開啟（與後端 elder_profile.location_sharing_enabled DEFAULT 1 一致），
+  // 實際值以 _loadLocationSharingState() 讀回的後端狀態為準。
+  bool _locationSharingEnabled = true;
   bool _locationSharingBusy = false;
 
   // ★ 第五十輪：好友寵物排行榜「初次同步」只做一次，避免每次 setState／
@@ -397,10 +401,24 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     _loadFeedingInventory();
     _loadMyFriendElderId();
     _loadLocationSharingState();
+    // 長輩從手機「設定」頁（開定位／改權限）回到 App 時，重新檢查定位權限，
+    // 讓「我的」分頁的提示自動消失、位置回報自動恢復。這個觀察者只做這一件
+    // 事（見 didChangeAppLifecycleState），與 ElderHomeScreen 自己的觀察者
+    // 互不影響。
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 只在回到前景時重查；recheckDeviceStatus 內部自帶守門（分享關閉、正在啟動
+    // 時直接返回），而且只用 checkPermission，不會再次跳出權限對話框。
+    if (state == AppLifecycleState.resumed && _locationSharingEnabled) {
+      unawaited(ElderLocationService.instance.recheckDeviceStatus());
+    }
   }
 
   /// 讀取目前「與家人分享我的位置」開關狀態，供 [_buildLocationSharingCard] 顯示。
-  /// 失敗（離線／尚未配對）時維持預設關閉，不影響畫面其餘功能。
+  /// 失敗（離線／尚未配對）時維持預設開啟的顯示，不影響畫面其餘功能。
   Future<void> _loadLocationSharingState() async {
     final elderId = await FriendService.resolveMyElderId(widget.userId);
     if (elderId == null || !mounted) return;
@@ -437,6 +455,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     ElderReminderManager.instance.removeListener(_onReminderManagerUpdate);
     _particleController.dispose();
     _petBounceController.dispose();
@@ -1134,7 +1153,8 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     );
   }
 
-  // 🛰️ 與家人分享我的位置：長輩本人的隱私開關，預設關閉。關閉時家屬即使
+  // 🛰️ 與家人分享我的位置：長輩本人的隱私開關，系統預設開啟，長輩可隨時
+  // 自行關閉（完全由長輩本人決定，家屬無法代為切換）。關閉時家屬即使
   // 已配對也看不到位置資料（伺服器端讀取端會再檢查一次，這裡的開關只
   // 決定裝置要不要持續耗電回報）。標題／副標題為固定文案，仍加
   // maxLines/ellipsis 防禦（Row 內含開關元件，同列有其他元素）。
@@ -1152,37 +1172,132 @@ class _ElderProfileTabState extends State<ElderProfileTab>
           ),
         ],
       ),
-      child: SwitchListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-        secondary: Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: const Color(0xFFFEF3C7),
-            borderRadius: BorderRadius.circular(14),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SwitchListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+            secondary: Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEF3C7),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: const Icon(Icons.route_rounded,
+                  color: Color(0xFFB45309), size: 28),
+            ),
+            title: Text(
+              '與家人分享我的位置',
+              style: GoogleFonts.notoSansTc(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: const Color(0xFF451A03),
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            subtitle: Text(
+              _locationSharingEnabled ? '子女可以看到您的位置與移動路線' : '目前未分享，子女無法看到您的位置',
+              style: GoogleFonts.notoSansTc(
+                  fontSize: 14, color: const Color(0xFF8C6D58)),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            value: _locationSharingEnabled,
+            onChanged: _locationSharingBusy ? null : _handleLocationSharingToggle,
+            activeThumbColor: const Color(0xFFB45309),
           ),
-          child: const Icon(Icons.route_rounded,
-              color: Color(0xFFB45309), size: 28),
-        ),
-        title: Text(
-          '與家人分享我的位置',
-          style: GoogleFonts.notoSansTc(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: const Color(0xFF451A03),
+          // 手機的定位功能／權限沒開時，開關雖然是「開」，位置其實傳不出去：
+          // 在開關下方直接告訴長輩原因與怎麼修。
+          ValueListenableBuilder<String?>(
+            valueListenable: ElderLocationService.instance.deviceStatus,
+            builder: (context, status, _) {
+              if (!_locationSharingEnabled ||
+                  !LocationDeviceStatus.isProblem(status)) {
+                return const SizedBox.shrink();
+              }
+              return _buildLocationStatusHint(status!);
+            },
           ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        subtitle: Text(
-          _locationSharingEnabled ? '子女可以看到您的位置與移動路線' : '目前未分享，子女無法看到您的位置',
-          style: GoogleFonts.notoSansTc(
-              fontSize: 14, color: const Color(0xFF8C6D58)),
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-        ),
-        value: _locationSharingEnabled,
-        onChanged: _locationSharingBusy ? null : _handleLocationSharingToggle,
-        activeThumbColor: const Color(0xFFB45309),
+        ],
+      ),
+    );
+  }
+
+  /// 位置分享卡片下方的「手機沒開定位」提示：白話說明原因 + 一顆大按鈕直接
+  /// 帶長輩去修。沒有 Row——文字與按鈕都是整列寬度、可自動換行，不會溢位
+  /// （鐵律 #14）。長輩從設定頁回來後由 [didChangeAppLifecycleState] 重查，
+  /// 修好了提示就會自己消失。
+  Widget _buildLocationStatusHint(String status) {
+    final String message;
+    final String buttonLabel;
+    final Future<bool> Function() onPressed;
+    switch (status) {
+      case LocationDeviceStatus.serviceDisabled:
+        message = '手機的定位功能關閉了';
+        buttonLabel = '打開定位';
+        onPressed = Geolocator.openLocationSettings;
+        break;
+      case LocationDeviceStatus.foregroundOnly:
+        message = '位置權限只開了「使用 App 時」，請改成「一律允許」，家人才看得到';
+        buttonLabel = '前往設定';
+        onPressed = Geolocator.openAppSettings;
+        break;
+      default: // permission_denied／permission_denied_forever
+        message = '還沒允許 Uban 使用位置';
+        buttonLabel = '前往設定';
+        onPressed = Geolocator.openAppSettings;
+    }
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFEF3C7),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFF59E0B), width: 1.5),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            '⚠️ $message',
+            style: ElderScale.body.copyWith(
+              color: const Color(0xFF7C2D12),
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 64,
+            child: FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFB45309),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+              onPressed: () async {
+                try {
+                  await onPressed();
+                } catch (e) {
+                  debugPrint('⚠️ [ElderProfileTab] 開啟手機設定失敗: $e');
+                }
+              },
+              child: Text(
+                buttonLabel,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: ElderScale.body.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

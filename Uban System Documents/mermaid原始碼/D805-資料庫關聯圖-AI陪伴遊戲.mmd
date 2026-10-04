@@ -1,0 +1,135 @@
+%%{init:{"layout":"elk","themeVariables":{"lineColor":"#000000","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","fontSize":"22px"}}}%%
+classDiagram
+  direction TB
+
+  class 長者檔案_參照 {
+    <<外部實體・T02>>
+    +String elder_id (PK)
+    +String elder_name
+    +int step_total
+    +int gawa_id (FK)
+  }
+
+  class 對話話題_elder_talk_topics {
+    +int topic_id (PK)
+    +String elder_id (FK)
+    +String keyword
+    +String topic_type
+  }
+
+  class 每日新聞_daily_news_items {
+    +int id (PK)
+    +Date data_date
+    +String category_key
+    +String category_label
+    +String title
+    +Text content
+    +String audio_url
+    +Text subtitles
+  }
+
+  class 逐日步數_elder_daily_step {
+    +int id (PK)
+    +String elder_id (FK)
+    +Date metric_date
+    +int steps
+    +DateTime updated_at
+  }
+
+  class 寵物外觀舊版_gawa_appearance {
+    +int gawa_id (PK)
+    +String gawa_name
+    +String gawa_rarity
+    +float bonus
+  }
+
+  class 餵養歷程舊版_get_appearance_list {
+    +String elder_id (PK/FK)
+    +int gawa_id (PK/FK)
+    +DateTime feed_starttime (PK)
+    +DateTime feed_endtime
+    +int gawa_size
+  }
+
+  class 寵物即時體重_elder_pet_state {
+    +String elder_id (PK/FK)
+    +int weight_grams
+    +DateTime updated_at
+  }
+
+  class 成長階段門檻_pet_stage_threshold {
+    +int stage_no (PK)
+    +String title
+    +int min_weight_grams
+    +int max_weight_grams
+    +String image_asset_path
+  }
+
+  class 賽季週期設定_pet_season {
+    +int season_no (PK)
+    +Date start_date
+    +Date end_date
+    +String status
+  }
+
+  class 賽季結算成績_pet_season_settlement {
+    +int id (PK)
+    +int season_no (FK)
+    +String elder_id (FK)
+    +int final_weight_grams
+    +int final_rank
+  }
+
+  class 造型商品定義_pet_skin {
+    +int id (PK)
+    +String display_name
+    +String asset_path
+    +int is_paid
+    +int price_cents
+    +String required_tier
+    +int is_listed
+  }
+
+  class 造型持有憑證_elder_pet_skin_ownership {
+    +int id (PK)
+    +String elder_id (FK)
+    +int skin_id (FK)
+    +String source
+    +DateTime acquired_at
+  }
+
+  class 當前裝備造型_elder_pet_skin_selection {
+    +String elder_id (PK/FK)
+    +int skin_id (FK)
+    +DateTime updated_at
+  }
+
+  長者檔案_參照 "1" -- "0..*" 對話話題_elder_talk_topics : 話題偏好
+  長者檔案_參照 "1" -- "0..*" 逐日步數_elder_daily_step : 步數累計
+  長者檔案_參照 "0..*" -- "0..1" 寵物外觀舊版_gawa_appearance : 穿戴外觀
+  長者檔案_參照 "1" -- "0..*" 餵養歷程舊版_get_appearance_list : 餵養歷程
+  寵物外觀舊版_gawa_appearance "1" -- "0..*" 餵養歷程舊版_get_appearance_list : 外觀對照
+  長者檔案_參照 "1" -- "1" 寵物即時體重_elder_pet_state : 養成福豬
+  寵物即時體重_elder_pet_state "0..*" -- "1" 成長階段門檻_pet_stage_threshold : 體重對應等級
+  賽季週期設定_pet_season "1" -- "0..*" 賽季結算成績_pet_season_settlement : 賽季歸檔
+  長者檔案_參照 "1" -- "0..*" 賽季結算成績_pet_season_settlement : 結算名次
+  造型商品定義_pet_skin "1" -- "0..*" 造型持有憑證_elder_pet_skin_ownership : 售出外觀
+  長者檔案_參照 "1" -- "0..*" 造型持有憑證_elder_pet_skin_ownership : 長輩購入
+  造型商品定義_pet_skin "1" -- "0..*" 當前裝備造型_elder_pet_skin_selection : 套用外觀
+  長者檔案_參照 "1" -- "1" 當前裝備造型_elder_pet_skin_selection : 當前裝備
+
+  classDef ent fill:#DAE8FC,stroke:#6C8EBF,stroke-width:1.5px,color:#102A43
+  classDef ref fill:#F5F5F5,stroke:#999999,stroke-width:1px,color:#444444
+  class 長者檔案_參照:::ref
+  class 對話話題_elder_talk_topics:::ent
+  class 每日新聞_daily_news_items:::ent
+  class 逐日步數_elder_daily_step:::ent
+  class 寵物外觀舊版_gawa_appearance:::ent
+  class 餵養歷程舊版_get_appearance_list:::ent
+  class 寵物即時體重_elder_pet_state:::ent
+  class 成長階段門檻_pet_stage_threshold:::ent
+  class 賽季週期設定_pet_season:::ent
+  class 賽季結算成績_pet_season_settlement:::ent
+  class 造型商品定義_pet_skin:::ent
+  class 造型持有憑證_elder_pet_skin_ownership:::ent
+  class 當前裝備造型_elder_pet_skin_selection:::ent

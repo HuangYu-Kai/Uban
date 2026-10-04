@@ -38,6 +38,9 @@ import 'services/video_call_permission_service.dart';
 import 'services/local_call_notification.dart';
 // ★ 2026-08-05 第十七輪：YOLO／測試跌倒警報的高優先級通知（與來電備援 channel 分開）
 import 'services/cctv_alert_notification.dart';
+// 📍 GPS 定位「安心提醒」本機通知與點擊導航（只加獨立分支，不碰來電流程）
+import 'services/location_alert_notification.dart';
+import 'screens/family/elder_location_map_screen.dart';
 // ★ 2026-08-12 第二十三輪：緊急通話提示音的全域單一擁有者（救護車雙音）
 import 'services/emergency_tone.dart';
 // ⏰ 排程提醒本機通知與全域管理器
@@ -292,6 +295,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     //   _scheduleLocalRingCallFallback 的函式註解。
     if (!kIsWeb) {
       _scheduleLocalRingCallFallback();
+      // 📍 安心提醒通知的點擊導航（獨立分支，非家屬端為 no-op）。
+      _setupLocationAlertTap();
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // ★ 2026-08-31 第三十七輪：原本在此無條件請求權限，但 splash 的
@@ -1006,6 +1011,46 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     }
   }
 
+  /// 📍 「安心提醒」通知的點擊導航（暖啟動：App 活著時點通知）。
+  ///
+  /// 純新增、與來電流程完全隔離：只指派 [LocationAlertNotification.onTapOpenMap]
+  /// 並呼叫一次 `ensureTapHandler()`（內部先做家屬端 fail-closed 角色守門，
+  /// 非家屬端什麼都不做，不會覆蓋長輩端既有的通知回呼）。
+  ///
+  /// 導航規則（來電永遠優先、讀不到就不動作）：
+  /// - `splashActive` 期間不導航：冷啟動由 `FamilyMainScreen` 在 Splash 結束後
+  ///   用 `consumeLaunchTap()` 處理（護欄 G13：不可在 Splash 換頁前 push 到 root Navigator）。
+  /// - 有待接聽的 `pendingAcceptedCall` 時不導航，避免蓋在來電畫面前。
+  /// - 家屬 user id 取 `caregiver_id`（與前景 FCM 過濾自己來電同一把鍵）；缺漏／無效就略過。
+  void _setupLocationAlertTap() {
+    LocationAlertNotification.onTapOpenMap = (elderId, elderName) async {
+      try {
+        if (splashActive || pendingAcceptedCall.value != null) {
+          debugPrint('📍 [Main] Splash 進行中或有待接聽來電，略過安心提醒點擊導航');
+          return;
+        }
+        final prefs = await SharedPreferences.getInstance();
+        final int? userId = prefs.getInt('caregiver_id');
+        if (userId == null || userId <= 0) {
+          debugPrint('📍 [Main] caregiver_id 缺漏，略過安心提醒點擊導航');
+          return;
+        }
+        final nav = navigatorKey.currentState;
+        if (nav == null || !isAppReady) return;
+        nav.push(MaterialPageRoute(
+          builder: (_) => ElderLocationMapScreen(
+            elderId: elderId,
+            userId: userId,
+            elderName: elderName,
+          ),
+        ));
+      } catch (e) {
+        debugPrint('⚠️ [Main] 安心提醒點擊導航失敗: $e');
+      }
+    };
+    unawaited(LocationAlertNotification.ensureTapHandler());
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
@@ -1254,6 +1299,27 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           await CctvAlertNotification.show(message.data);
         } catch (e) {
           debugPrint("⚠️ [FCM-Fg] 跌倒警報通知失敗: $e");
+        }
+        return;
+      }
+
+      // 📍 長輩定位異常的「安心提醒」（前景 FCM）。獨立分支、排在所有來電處理之前並
+      //   return：不碰來電去重 token（_claimCallDedupToken）也不碰 pending 狀態。
+      //   角色守門在 LocationAlertNotification.show 內（fail-closed，非家屬端不顯示）；
+      //   通知 id 由 alertId 決定，與 Socket 通路同一則提醒不會疊出兩條。
+      if (message.data['type'] == 'location-alert') {
+        debugPrint("📍 [FCM-Fg] 收到安心提醒，交由家屬端守門後顯示通知");
+        try {
+          await LocationAlertNotification.show(
+            elderId: (message.data['elderId'] ?? '').toString(),
+            elderName: (message.data['elderName'] ?? '').toString(),
+            rule: (message.data['rule'] ?? '').toString(),
+            title: (message.data['title'] ?? '').toString(),
+            body: (message.data['body'] ?? '').toString(),
+            alertId: (message.data['alertId'] ?? '').toString(),
+          );
+        } catch (e) {
+          debugPrint("⚠️ [FCM-Fg] 安心提醒通知失敗: $e");
         }
         return;
       }

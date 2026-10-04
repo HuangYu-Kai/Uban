@@ -1,0 +1,94 @@
+%%{init:{"layout":"elk","themeVariables":{"lineColor":"#000000","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","fontSize":"22px"}}}%%
+classDiagram
+  direction TB
+
+  class 使用者帳戶_user_account_data {
+    +int user_id (PK)
+    +String user_name
+    +String user_email
+    +String user_authority
+    +String register_platform
+    +int age
+    +String residence_city
+  }
+
+  class 長者檔案_elder_profile {
+    +String elder_id (PK)
+    +int user_id (FK)
+    +String elder_name
+    +String gender
+    +int age
+    +String residence_city
+    +int step_total
+    +int gawa_id (FK)
+  }
+
+  class 家屬長輩關係_family_elder_relationship {
+    +int relation_id (PK)
+    +int family_id (FK)
+    +String elder_id (FK)
+    +DateTime create_ts
+  }
+
+  class 緊急警報_emergency_alerts {
+    +int alert_id (PK)
+    +String elder_id (FK)
+    +String alert_type
+    +float confidence
+    +String status
+    +int acknowledged_by (FK)
+    +int is_false_alarm
+  }
+
+  class 影像串流狀態_cctv_feed_status {
+    +int feed_id (PK)
+    +int device_id
+    +String elder_id (FK)
+    +boolean yolo_detection_enabled
+    +String status
+    +DateTime last_frame_at
+  }
+
+  class 家庭動態貼文_community_posts {
+    +int id (PK)
+    +int family_id
+    +int author_id (FK)
+    +String author_name
+    +Text content
+    +int like_count
+  }
+
+  class 寵物狀態_elder_pet_state {
+    +String elder_id (PK/FK)
+    +int weight_grams
+    +DateTime updated_at
+  }
+
+  class 訂閱交易紀錄_subscription_records {
+    +int id (PK)
+    +int user_id (FK)
+    +String tier_level
+    +Decimal amount
+    +Date start_date
+    +boolean auto_renew
+  }
+
+  使用者帳戶_user_account_data "1" -- "0..1" 長者檔案_elder_profile : 帳號歸屬
+  使用者帳戶_user_account_data "1" -- "0..*" 家屬長輩關係_family_elder_relationship : 照護身分
+  長者檔案_elder_profile "1" -- "0..*" 家屬長輩關係_family_elder_relationship : 被照護者
+  長者檔案_elder_profile "1" -- "0..*" 緊急警報_emergency_alerts : 異常觸發
+  使用者帳戶_user_account_data "0..1" -- "0..*" 緊急警報_emergency_alerts : 查核確認
+  長者檔案_elder_profile "1" -- "0..*" 影像串流狀態_cctv_feed_status : 居家影像
+  使用者帳戶_user_account_data "1" -- "0..*" 家庭動態貼文_community_posts : 發布貼文
+  長者檔案_elder_profile "1" -- "1" 寵物狀態_elder_pet_state : 飼養福豬
+  使用者帳戶_user_account_data "1" -- "0..*" 訂閱交易紀錄_subscription_records : 付費訂閱
+
+  classDef ent fill:#DAE8FC,stroke:#6C8EBF,stroke-width:1.5px,color:#102A43
+  class 使用者帳戶_user_account_data:::ent
+  class 長者檔案_elder_profile:::ent
+  class 家屬長輩關係_family_elder_relationship:::ent
+  class 緊急警報_emergency_alerts:::ent
+  class 影像串流狀態_cctv_feed_status:::ent
+  class 家庭動態貼文_community_posts:::ent
+  class 寵物狀態_elder_pet_state:::ent
+  class 訂閱交易紀錄_subscription_records:::ent

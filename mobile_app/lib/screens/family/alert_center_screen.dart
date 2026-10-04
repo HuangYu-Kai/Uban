@@ -5,7 +5,9 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/predictive_alert_service.dart';
 import '../../services/api_service.dart';
+import '../../utils/alert_display.dart';
 import '../../utils/error_handler.dart';
+import 'elder_location_map_screen.dart';
 
 /// ★ 第五十二輪 F2：警示紀錄清單的時間範圍篩選。放在檔案頂層（非
 /// State 內部類別）純粹是 Dart enum 慣例，值本身只有這個畫面在用。
@@ -94,6 +96,12 @@ class AlertCenterScreen extends StatefulWidget {
   /// 不同步的風險），而不是命中真正的實作。
   final List<Map<String, dynamic>>? historyAlertItemsOverride;
 
+  /// ★ 2026-10-02：目前登入的家屬 user id，語音求救附有長輩最後位置時，「查看位置」
+  /// 開 [ElderLocationMapScreen] 需要它做關係驗證。省略時（例如 `ai_hub_screen.dart`
+  /// 入口）點擊當下改讀 SharedPreferences 的 `caregiver_id`，與 `_loadHistoryAlerts`
+  /// 抓持久化警報用的是同一個來源。
+  final int? userId;
+
   const AlertCenterScreen({
     super.key,
     required this.elderName,
@@ -101,6 +109,7 @@ class AlertCenterScreen extends StatefulWidget {
     this.elderRoomId,
     this.activeAlerts = const [],
     this.historyAlertItemsOverride,
+    this.userId,
   });
 
   @override
@@ -346,21 +355,16 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
       if (detectedAt.length >= 16) {
         whenStr = '${detectedAt.substring(5, 7)}/${detectedAt.substring(8, 10)} ${detectedAt.substring(11, 16)}';
       }
-      String title = '🚨 跌倒緊急警報';
-      String desc = '監視機曾偵測到長輩疑似跌倒。';
-      if (type == 'crawl') {
-        title = '⚠️ 疑似爬行警報';
-        desc = '監視機曾偵測到長輩異常爬行動作。';
-      } else if (type == 'lying_down') {
-        title = '⚠️ 久躺未起警報';
-        desc = '長輩曾在監視區域久躺不起。';
-      } else if (type == 'prolonged_inactivity') {
-        title = '⚠️ 長時間無活動警報';
-        desc = '長輩曾出現活動量異常偏低。';
-      }
+      // ★ 2026-10-02（G196）：文案集中到 AlertDisplay；`sos_voice` 不再被寫成跌倒，
+      //   未知型別退回中性的「異常狀況」。
+      final String title = AlertDisplay.title(type);
+      String desc = AlertDisplay.pastDesc(type);
       if (whenStr.isNotEmpty) {
         desc = '$desc（發生於 $whenStr）';
       }
+      // 語音求救附帶的最後位置（後端只在有位置時才帶；沒有就什麼都不顯示）。
+      final loc = AlertDisplay.isSos(type) ? AlertDisplay.parseLocation(row) : null;
+      final DateTime? locationAt = loc != null ? AlertDisplay.parseLocationAt(row) : null;
       final String? persistedAlertIdRaw = (row['alert_id'] ?? row['alertId'])?.toString();
       final persistedItemId = (persistedAlertIdRaw != null && persistedAlertIdRaw.isNotEmpty)
           ? 'alert:$persistedAlertIdRaw'
@@ -375,8 +379,15 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
         'title': title,
         'desc': desc,
         'level': 'high',
-        'icon': Icons.warning_amber_rounded,
+        'icon': AlertDisplay.icon(type),
         'sortTs': DateTime.tryParse(detectedAt),
+        // ★ 2026-10-02：求救位置——hasLocation 為 true 才顯示「查看位置」與相對時間；
+        //   locationDate 是地圖要開的那一天（優先用定位時間，退回警報時間）。
+        'hasLocation': loc != null,
+        'locationAt': locationAt,
+        'locationDate': loc != null
+            ? (locationAt ?? DateTime.tryParse(detectedAt))
+            : null,
         'alertId': persistedAlertIdRaw != null ? int.tryParse(persistedAlertIdRaw) : null,
         'isFalseAlarm': rawIsFalseAlarm == true || rawIsFalseAlarm == 1,
         // ★ 第四十九輪 item 12：警報狀態機第三態（已完成）——
@@ -1111,6 +1122,15 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
               ),
             ],
           ),
+          // ★ 2026-10-02：語音求救附有最後位置時，顯示「最後位置：N 分鐘前」＋「查看位置」。
+          if (item['hasLocation'] == true) ...[
+            const SizedBox(height: 10),
+            _buildLocationRow(
+              locationAt: item['locationAt'] as DateTime?,
+              initialDate: item['locationDate'] as DateTime?,
+              onDark: false,
+            ),
+          ],
           // ★ 第四十五輪：只有查得到真實 alert_id 的持久化警報才提供動作
           //   控制項——logItems（活動流水）沒有對應的 emergency_alerts
           //   列，alertId 恆為 null，不會顯示這個區塊。
@@ -1367,18 +1387,12 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
     final type = (a['alert_type'] ?? a['alertType'] ?? 'fall').toString();
     final conf = a['confidence'];
     final confText = conf != null ? ' (信心度 ${(conf * 100).toStringAsFixed(0)}%)' : '';
-    String title = '🚨 跌倒緊急警報';
-    String desc = '監視機偵測到長輩疑似跌倒$confText，請立即確認！';
-    if (type == 'crawl') {
-      title = '⚠️ 疑似爬行警報';
-      desc = '監視機偵測到長輩異常爬行動作$confText，請多加留意。';
-    } else if (type == 'lying_down') {
-      title = '⚠️ 久躺未起警報';
-      desc = '長輩在監視區域久躺不起$confText，建議關懷確認。';
-    } else if (type == 'prolonged_inactivity') {
-      title = '⚠️ 長時間無活動警報';
-      desc = '長輩活動量異常偏低$confText，請留意長輩身體狀況。';
-    }
+    // ★ 2026-10-02（G196）：文案集中到 AlertDisplay；`sos_voice` 不再被寫成跌倒、
+    //   也不顯示信心度（不是影像偵測），未知型別退回中性的「異常狀況」。
+    final bool isSos = AlertDisplay.isSos(type);
+    final String title = AlertDisplay.title(type);
+    final String desc = AlertDisplay.liveDesc(type, confText: isSos ? '' : confText);
+    final bool hasLocation = isSos && AlertDisplay.parseLocation(a) != null;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -1396,39 +1410,124 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
           ),
         ],
       ),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.warning_amber_rounded, color: Colors.white, size: 26),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
-                    color: Colors.white,
-                  ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(AlertDisplay.icon(type), color: Colors.white, size: 26),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      desc,
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.white.withValues(alpha: 0.92),
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  desc,
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.white.withValues(alpha: 0.92),
-                    height: 1.4,
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
+          // ★ 2026-10-02：語音求救附有最後位置時才顯示（沒有位置就什麼都不加）。
+          if (hasLocation) ...[
+            const SizedBox(height: 10),
+            _buildLocationRow(
+              locationAt: AlertDisplay.parseLocationAt(a),
+              initialDate: null, // 即時警報：開今天的地圖
+              onDark: true,
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  /// ★ 2026-10-02：語音求救的「最後位置：N 分鐘前」＋「查看位置」列（即時／歷史卡片共用）。
+  /// [locationAt] 為 `null`（後端沒給定位時間）時只顯示按鈕，不捏造時間。
+  /// [onDark]：即時警報卡片是紅底，文字與按鈕要用白色系。
+  /// 鐵律 #14：文字用 `Expanded` + ellipsis，按鈕固定尺寸，窄螢幕不會溢位。
+  Widget _buildLocationRow({
+    required DateTime? locationAt,
+    required DateTime? initialDate,
+    required bool onDark,
+  }) {
+    final String? text = AlertDisplay.lastLocationText(locationAt);
+    final Color fg = onDark ? Colors.white : const Color(0xFFB91C1C);
+    return Row(
+      children: [
+        Icon(Icons.place_rounded,
+            size: 16, color: onDark ? Colors.white70 : const Color(0xFF64748B)),
+        const SizedBox(width: 6),
+        Expanded(
+          child: text == null
+              ? const SizedBox.shrink()
+              : Text(
+                  text,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: onDark ? Colors.white70 : const Color(0xFF64748B),
+                  ),
+                ),
+        ),
+        const SizedBox(width: 8),
+        OutlinedButton.icon(
+          onPressed: () => _openLocationMap(initialDate),
+          icon: const Icon(Icons.map_rounded, size: 16),
+          label: const Text('查看位置'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: fg,
+            side: BorderSide(color: fg.withValues(alpha: 0.7)),
+            visualDensity: VisualDensity.compact,
+            textStyle: GoogleFonts.notoSansTc(
+                fontSize: 13, fontWeight: FontWeight.w700),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// ★ 2026-10-02：開啟長輩 GPS 地圖。elderId 與抓警報用的 `elderIdForApi` 同一套
+  /// （`elderRoomId` 優先、退回 `elderId`）；userId 優先用建構參數，沒有就讀
+  /// SharedPreferences 的 `caregiver_id`，兩者都沒有就不動作（寧可沒反應，不帶無效參數）。
+  Future<void> _openLocationMap(DateTime? initialDate) async {
+    final String? elderIdForMap = widget.elderRoomId ?? widget.elderId?.toString();
+    if (elderIdForMap == null || elderIdForMap.isEmpty) return;
+    int? uid = widget.userId;
+    if (uid == null || uid <= 0) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        uid = prefs.getInt('caregiver_id');
+      } catch (_) {}
+    }
+    if (!mounted || uid == null || uid <= 0) return;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ElderLocationMapScreen(
+        elderId: elderIdForMap,
+        userId: uid!,
+        elderName: widget.elderName,
+        initialDate: initialDate,
+      ),
+    ));
   }
 
   Widget _buildEmptyState() {

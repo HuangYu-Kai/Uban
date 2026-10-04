@@ -35,7 +35,10 @@ class PrivacyPolicyScreen extends StatefulWidget {
   ///
   /// 未來政策內容若再有重大變更，只需改用新的 key（例如 `_v3`），即可讓所有
   /// 裝置在下次啟動時重新看到最新版本，不需要額外的「政策版本比對」邏輯。
-  static const String prefsKey = 'privacy_policy_accepted_v2';
+  ///
+  /// 2026-09-30 由 `_v2` 升版為 `_v3`：第 9 節新增長輩端**背景持續** GPS 定位
+  /// 與移動軌跡（且位置分享系統預設開啟），屬於新增資料蒐集項目的重大變更。
+  static const String prefsKey = 'privacy_policy_accepted_v3';
 
   @override
   State<PrivacyPolicyScreen> createState() => _PrivacyPolicyScreenState();

@@ -16,6 +16,7 @@ import 'local_call_notification.dart';
 import 'cctv_alert_notification.dart';
 import 'local_reminder_notification.dart';
 import 'elder_question_notification.dart';
+import 'location_alert_notification.dart';
 
 /// 檢查當前平台是否支援 CallKit
 bool supportsCallKit() {
@@ -361,6 +362,29 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         );
       } catch (e) {
         debugPrint('⚠️ [BG] 長輩提問通知失敗: $e');
+      }
+      return;
+    }
+
+    // 📍 長輩定位異常的「安心提醒」（晚歸／久未更新／離家太遠）。
+    //    同 elder-question：純 data、一般優先級、不蓋屏不繞勿擾（硬規則 14 與
+    //    §3.1 第 13 條）。與它不同之處：這裡**多一道角色守門**——
+    //    `LocationAlertNotification.show` 內部會讀 prefs 確認是家屬端，
+    //    判斷不出來就不顯示（fail-closed）；背景 isolate 沒有 Signaling._role，
+    //    只能這樣判斷。排在 call-request 分支之前並 return，不碰任何來電狀態。
+    if (type == 'location-alert') {
+      debugPrint('📍 [BG] 收到安心提醒，交由家屬端守門後顯示一般優先級通知');
+      try {
+        await LocationAlertNotification.show(
+          elderId: (message.data['elderId'] ?? '').toString(),
+          elderName: (message.data['elderName'] ?? '').toString(),
+          rule: (message.data['rule'] ?? '').toString(),
+          title: (message.data['title'] ?? '').toString(),
+          body: (message.data['body'] ?? '').toString(),
+          alertId: (message.data['alertId'] ?? '').toString(),
+        );
+      } catch (e) {
+        debugPrint('⚠️ [BG] 安心提醒通知失敗: $e');
       }
       return;
     }

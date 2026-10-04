@@ -231,6 +231,24 @@ flowchart TD
 - **攝像頭預設關閉**：隱私優先，用戶主動開啟才傳輸影像
 - **通話計時**：MM:SS 格式顯示，遠端連接時啟動
 
+### 六、戶外定位與移動軌跡
+
+> 📖 這裡只列使用者看得到的功能。架構、時區約定、門檻、API 與已知限制見
+> [`docs/technical/GPS_LOCATION.md`](docs/technical/GPS_LOCATION.md)。
+> 這是**戶外（手機 GPS）**定位，與監控機的室內房間定位（IPS）是兩個不同系統。
+
+**長輩端**
+- **與家人分享我的位置**：長輩端「我的」分頁的開關，**系統預設開啟，且只有長輩本人能關閉**（家屬無法代為切換）。開啟時手機在背景回報位置（Android 會顯示常駐通知「Uban 位置分享中」），斷網時先存本機、恢復後補送；靜止時每 10 分鐘補一次位置，避免被誤判失聯。
+- **帶我回家**：家屬設定了「家」之後，長輩首頁最上方出現大按鈕，一鍵開啟 Google 地圖步行導航；「家」有本機快取，訊號差時仍能顯示。
+
+**家屬端**
+- **移動軌跡地圖**：看長輩今天（或最近 90 天內任一天）的路線，離群跳點與漂移自動過濾；長時間待著會合併成「停留」膠囊（顯示停留多久、去過幾次），訊號中斷的空白時段以虛線標示；「今日行程」時間軸依序列出出發／移動／停留／訊號中斷，點一列聚焦地圖；今天每 45 秒自動更新。
+- **常去地點與「家」**：家屬為長輩命名地點（長按地圖、點停留膠囊，或到「常去地點」畫面新增），地圖畫出範圍圓；時間軸與資訊列會顯示「在公園・停留 35 分鐘」「目前在家」。
+- **今日摘要卡**：家屬首頁「GPS 移動軌跡」卡顯示「今天外出 N 次・X.X 公里」與「目前在家／外出中・最後更新 N 分鐘前」。
+- **安心提醒**（常去地點畫面內設定）：**晚歸**（預設 21:00 後還不在家）、**失聯**（預設 07:00–22:00 內超過 3 小時沒有位置）、**遠離家**（預設關閉，超過 1／3／5／10 公里）。通知強度刻意一般、不蓋屏不吵醒，點擊直接開啟該長輩的地圖。
+- **外出趨勢**：「資料」分頁的入口，7／30 天的每日移動距離、外出次數、在外時間長條圖；點某一天可看當天軌跡。
+- **隱私**：長輩關閉分享後，家屬看不到任何位置資料（含過去軌跡），也不會再有任何提醒；位置資料保存 90 天後自動清除（隱私權政策第 9 節）。
+
 ---
 
 ## 快速開始
@@ -272,6 +290,13 @@ chmod +x run.sh
 ./run.sh -r              # 熱重啟
 ./run.sh -h              # 顯示幫助
 ```
+
+### 地圖底圖網址 `MAP_TILE_URL`（選用 `--dart-define`）
+
+家屬端軌跡地圖的底圖圖磚網址由 `--dart-define=MAP_TILE_URL=` 注入。**未設定時 App 退回 OpenStreetMap 公用圖磚，僅限開發使用；正式版必須設定**（例如 MapTiler 的 `.../{z}/{x}/{y}.png?key=<KEY>`，設定後地圖左下角會自動加上對應的版權標示）。
+
+- **`run.sh`（macOS／Linux）**：只要 shell 環境變數 `MAP_TILE_URL` 有設定，就會自動帶入所有 `flutter run`，例如 `MAP_TILE_URL='https://…/{z}/{x}/{y}.png?key=…' ./run.sh -s`。
+- **`run.ps1`（Windows）**：**目前不會**傳遞 `MAP_TILE_URL`（只帶 `SERVER_IP` 與開發用的 `DEV_BYPASS_*`），用它啟動時地圖會是 OSM 備援；需要自訂底圖請在 `mobile_app/` 手動執行 `flutter run --dart-define=SERVER_IP=… --dart-define=MAP_TILE_URL=…`。
 
 ---
 
@@ -315,6 +340,11 @@ uban-api/                    # FastAPI 後端 (獨立 Repo)
 | `lib/screens/elder_screen.dart` | 長輩端通話 (含 CCTV/緊急/語音模式) |
 | `lib/screens/video_call_screen.dart` | 家屬端通話 (含控制列) |
 | `uban-api/services/socket_app.py` | 後端信令轉發伺服器 |
+| `lib/services/elder_location_service.dart` | 長輩端 GPS 回報（串流＋心跳＋離線佇列） |
+| `lib/services/location_trail_processor.dart` | 家屬端軌跡清理、停留與斷訊偵測（純函式） |
+| `lib/screens/family/elder_location_map_screen.dart` | 家屬端軌跡地圖與行程時間軸 |
+| `uban-api/routers/location.py` | `/api/location/*` 端點（定位、軌跡、地點、摘要、安心提醒設定） |
+| `uban-api/services/location_alert_watch.py` | 安心提醒每 5 分鐘巡檢（規則見 `location_alert_rules.py`） |
 
 ### 視訊通話測試
 
@@ -441,6 +471,104 @@ void initPedometer() {
 > 第一批補於 2026-08-06，第二批補於 2026-08-13（08-06～08-12 落在 `main` 上、
 > 但只寫進 `CLAUDE_call-monitor.md` 沒進本日誌的通話／監控工作）。
 > 內容依 commit diff 與該文件重建，細節可能不如當事人寫得完整。
+
+### 2026-10-03 📵 定位權限沒開時，長輩與家屬都看得到原因
+
+- **問題**：長輩手機把定位功能關掉、或沒給 Uban 位置權限時，`ElderLocationService` 只是靜默不啟動串流，家屬地圖只看到「尚無定位資料／長輩裝置尚未回報位置，請稍候再試」，會一直等；長輩自己也不知道開關雖然是「開」、位置卻傳不出去。
+- **長輩端回報狀態**：`ElderLocationService` 新增 `checkDeviceStatus()`（只用 `isLocationServiceEnabled`／`checkPermission`，不跳權限對話框）與 `ValueNotifier<String?> deviceStatus`；在 `startIfEnabled`、開啟分享（`setSharingEnabled(true)`）走完既有權限流程後，背景呼叫新的 `LocationApi.reportDeviceStatus`（`POST /location/device-status/{elderId}`，fire-and-forget、失敗不拋例外、不阻擋定位啟動；同狀態 30 分鐘內不重送）。對照：定位服務關閉 → `service_disabled`；`deniedForever` → `permission_denied_forever`；`denied` → `permission_denied`；`whileInUse` → `foreground_only`（Android／iOS 皆代表背景無法回報）；`always` → `ok`；Web 無法判斷 → `ok` 且不回報。換算與提示文案集中在 `lib/services/location_device_status.dart`。**未更動任何取樣頻率、精度或 `distanceFilter`**。
+- **長輩「我的」分頁**：分享卡片在開關為「開」且狀態不是 `ok` 時，開關下方出現醒目提示與大按鈕（ElderScale 字級）：定位功能關閉 →「手機的定位功能關閉了」＋「打開定位」（`Geolocator.openLocationSettings`）；未允許 →「還沒允許 Uban 使用位置」＋「前往設定」（`openAppSettings`）；只開「使用 App 時」→ 請改成「一律允許」＋「前往設定」。分頁新增 `WidgetsBindingObserver`，從手機設定回到 App（`resumed`）時呼叫 `recheckDeviceStatus()` 重查，修好後提示自動消失、並在補好權限時自動啟動位置串流（只用 `checkPermission`，不會再次詢問）。
+- **家屬地圖**：`/location/current` 新增 `device_status`／`device_status_at`（`Z` 結尾，經 `parseRecordedAt` 解析）；分享開啟且狀態有問題時，地圖最上方顯示警示卡（定位關閉／未允許 Uban 使用位置／只允許「使用 App 時」，附「（N 分鐘前回報）」）；沒有任何定位資料時，空狀態說明直接換成這段原因，不再說「請稍候再試」。文字 `Expanded`＋`maxLines`＋ellipsis（鐵律 #14）。
+- **家屬首頁 GPS 卡片**：`/location/summary` 帶回同樣欄位；有問題時第二行改顯示「⚠️ 長輩手機未允許定位」等簡短警示（琥珀色），優先於「目前在家／外出中」。
+- **後端契約**：`POST /location/device-status/{elderId}` body `{user_id, status}`，`status ∈ ok | permission_denied | permission_denied_forever | service_disabled | foreground_only`，僅長輩本人可呼叫，回傳 `{status, updated_at}`。
+
+### 2026-10-02 🆘 語音求救附帶位置、小嘎說得出長輩在哪
+
+- **修掉 G196 違規（家屬端卡片把語音求救寫成跌倒）**：首頁「最新警示」（`home_alert_preview_card.dart`，即時與持久化兩處）與警示中心（`alert_center_screen.dart`，持久化歷史與 `_buildRealtimeAlertCard`）的預設分支原本一律是「🚨 跌倒緊急警報／監視機偵測到長輩疑似跌倒」，`sos_voice` 因此被顯示成跌倒。新增 `lib/utils/alert_display.dart`（`AlertDisplay`）集中卡片標題、即時／歷史內文與圖示，兩個畫面共用；`sos_voice` 顯示「🆘 長輩開口求救」＋SOS 圖示，不顯示信心度、不提監視畫面；未知警報型別改為中性的「⚠️ 異常狀況警報」，不再宣稱跌倒。系統通知（`cctv_alert_notification.dart`）與前景彈窗（`family_main_screen.dart`）本來就依 G196 分流，維持各自一份對照表。
+- **求救項目不再導向監視畫面**：首頁預覽的求救項目原本是 `routeType: 'monitor'`＋`deviceId` 0（哨兵值），點了沒有反應；現在求救項目永遠不會走監視路徑，沒有位置時不可點。
+- **求救附帶長輩最後位置**：後端在 `sos_voice` 警報上選擇性帶 `latitude`／`longitude`／`location_at`（Socket、`GET /api/alerts/{elder_id}`）或 `latitude`／`longitude`／`locationAt`（FCM）。`AlertDisplay.parseLocation`／`parseLocationAt` 容錯解析（數字或字串、範圍檢查），沒有位置就完全不顯示任何位置相關 UI，不補假提示。
+- **首頁「最新警示」**：求救項目有位置時，點擊開 `ElderLocationMapScreen`（`elderId` 取 `elderId ?? id.toString()`，與 `HomeGpsTrailCard` 同一套）；`HomeAlertPreviewCard` 新增選用參數 `userId`，由 `FamilyHomeTab` 傳入（兩個版面皆已接上）；歷史項目會帶 `initialDate` 直接開警報當天的軌跡。
+- **警示中心**：即時與歷史求救卡片有位置時顯示「最後位置：N 分鐘前」與「查看位置」鈕（後端沒給定位時間就只顯示按鈕）；`AlertCenterScreen` 新增選用參數 `userId`，省略時點擊當下改讀 `caregiver_id`。位置列的文字 `Expanded`＋ellipsis（鐵律 #14）。
+- **前景警報彈窗**：`family_main_screen.dart::_presentCctvAlert` 在求救有位置且 `userId` 有效時，新增「查看位置」鈕（保留「我知道了」；不會清掉待處理警報），內容多一行「最後位置：N 分鐘前」。
+- **系統通知**：求救附位置時，通知內文加註「（已附上最後位置）」；只改文字，`_channelId`、音效、`bypassDnd` 與通知 id 均未更動（G107／G108）。
+- **隱私權政策 §9（`privacy_policy_content.dart`，prefsKey 維持 `_v3`）**：補充長輩語音求救且位置分享開啟時，最後位置會附在警報中傳給已配對家屬；並說明為了用文字描述位置（小嘎回答「我在哪裡」、家屬詢問今日行程），座標可能傳送至 Google Geocoding（Google Maps Platform）換算成地址，不含身分資料；§12 第三方清單同步新增一條。
+
+### 2026-10-01 🩹 位置「已過期」門檻放寬、隱私權政策補充心跳說明
+
+- **後端門檻 3 → 20 分鐘**：`uban-api` 的 `stale_after_ms` 由 180000 改為 1200000。長輩端有 10 分鐘心跳後，靜止時每 10–19 分鐘才回報一次，舊的 3 分鐘門檻讓家屬地圖上靜止長輩的定位針幾乎一直顯示「已過期」；新門檻涵蓋心跳最壞間隔，超過才代表手機真的停止回報（由失聯提醒另外處理）。前端沿用後端回傳值，無需改動。
+- **隱私權政策 §9 文字更精確**：`lib/data/privacy_policy_content.dart`「位置資訊與移動軌跡」的「收集什麼」改為「移動中約每分鐘或移動一段距離時記錄一次、靜止時約每 10 分鐘記錄一次（用於確認手機仍在回報）」；`prefsKey` 未更動（v3 尚未發行）。
+
+### 2026-10-01 📊 移動軌跡延伸（第三階段）：外出趨勢
+
+- **外出趨勢畫面**：新增 `mobile_app/lib/screens/family/outing_trends_screen.dart`（`OutingTrendsScreen`），AppBar `外出趨勢`，可切換 7 天／30 天；用 `fl_chart` 長條圖（沿用健康趨勢的卡片樣式）畫三張圖：每日移動距離（公里）、每日外出次數、每日在外時間（小時，提示泡泡顯示 `1.5 小時`）。
+- **今天是「統計中」**：後端回傳的最後一筆是今天（還沒過完），長條改用較淡的顏色並在圖下標註 `今天（統計中）`；最上方摘要列 `本週平均每天外出 X 次・移動 Y 公里`（30 天為 `近 30 天平均…`）**排除今天**，避免一早打開就被當天尚未累積的資料拉低。
+- **沒設定「家」的處理**：後端此時 `outing_count`／`outside_minutes` 為 `null`，前端不編造 0 次——外出次數改顯示 `設定「家」之後就能看到外出次數與在外時間` 引導卡，按鈕開啟常去地點畫面（`ElderPlacesScreen`），返回後自動重新載入；在外時間同樣提示；摘要只講移動距離。
+- **各種狀態**：載入中、`長輩已關閉位置分享`、請求失敗（紅色＋重試，與空狀態長得不同）、`這段期間沒有定位資料`（整段期間皆無定位點）；支援下拉重新整理，快速切換 7／30 天時以序號丟棄過期回應。
+- **點長條看當天軌跡**：點某一天的長條開啟 `ElderLocationMapScreen`；該畫面新增選用參數 `initialDate`（只取年月日，省略則為今天），`_selectedDate` 由它初始化。
+- **資料層**：`LocationApi.getDaily`（`GET /location/daily/{elderId}?user_id=&days=&tz_offset=`，`days` 為 7 或 30，每一天以裝置本地日期換算），失敗回傳 `null`。
+- **家屬「資料」分頁入口卡**：健康趨勢卡片後新增 `外出趨勢` 入口（`每天外出次數、移動距離與在外時間`），照健康趨勢入口卡的版面並包 `ErrorBoundary`；刻意用靜態文字，不在分頁預先打 API。
+- **版面守則（鐵律 #14）**：標題與單位同列時標題以 `Flexible` 收縮，摘要列文字 `Expanded`，圖例與按鈕用 `Wrap`；入口卡標題沿用第五十二輪修正後的寫法（`Row` 內 `Expanded` → `Column` 內一般 `Text`）。
+
+### 2026-10-01 🔔 移動軌跡延伸（第二階段）：安心提醒
+
+- **長輩端心跳**：`elder_location_service.dart` 的 GPS 串流有 30 公尺 distanceFilter，長輩靜止時不會送任何點，會讓後端的「長時間沒有位置」提醒誤報。新增心跳——服務執行期間每 10 分鐘檢查一次，若已超過 9 分鐘沒送過點（`_lastSentAt`），就用 `Geolocator.getCurrentPosition`（高精度、30 秒逾時）補取一次當下位置，並走與串流相同的 `_sendOrQueue`（離線時照樣進佇列）；精確度超過 50 公尺、逾時或任何錯誤皆靜默略過。`stop()` 會取消計時器；原有的過濾條件與門檻不變。
+- **安心提醒設定畫面**：`LocationApi` 新增 `getAlertSettings`／`updateAlertSettings`（`GET`／`PUT /location/alert-settings/{elderId}`）；常去地點畫面（`elder_places_screen.dart`）在地點清單下方新增「安心提醒」區塊，含三個開關：**晚歸提醒**（指定時間後還不在家時通知，可點時間改）、**失聯提醒**（時段內超過 N 小時沒有位置時通知；起訖時間用時間選擇器、N 為 1–12 小時選單）、**遠離家提醒**（距離家超過 1／3／5／10 公里時通知）。晚歸與遠離家需要先設定「家」，未設定時開關停用並提示「先設定「家」才能使用」。每次變更只送出被改動的欄位並立即儲存，失敗時還原畫面並顯示「設定失敗，請稍後再試」；地點變動（家可能剛設定或移除）時會重新讀取設定。副標題用 `Wrap` 組成、其餘文字皆有 `maxLines`／省略號，避免 RenderFlex 溢位。
+- **隱私權政策**：第 9 節「位置資訊與移動軌跡」補充：家屬可為長輩命名常去地點（含「家」）、系統依位置產生每日外出摘要（外出次數、距離）、並在晚歸、長時間沒有位置、遠離家時通知已配對家屬；提醒規則由家屬設定，分享關閉時一律不提醒（同意版本 `_v3` 尚未發布，故未升版）。
+- **安心提醒通知管線**：後端以 `location-alert` 事件推送——家屬 App 開著時走 Socket.IO（`Signaling.onLocationAlert`，僅家屬角色），關著時走純 data 的 FCM。背景 FCM（`firebase_bg_handler.dart`）、前景 FCM（`main.dart`，排在所有來電處理之前並 return，不碰來電去重）與 `FamilyMainScreen` 的 Socket 回呼，三條路徑都收斂到 `LocationAlertNotification.show()`；通知 id 由 `alertId` 決定，同一則提醒不會疊出多條。
+- **角色守門（fail-closed）**：`isFamilyDevice()` 要求 `user_role`／`saved_role` 所有有值的鍵都是 `family`、`saved_is_cctv` 不得為 true，讀取失敗一律視為非家屬端，長輩機絕不會顯示含長輩行蹤的通知。
+- **通知強度刻意一般**：channel `uban_location_alert`、`Importance.defaultImportance`，不 `fullScreenIntent`、不繞過勿擾、不改音量、不 `AndroidIntent`／`bringToFront`（硬規則：強制開啟只准長輩端），避免子女因被半夜吵醒而關掉整個 App 的通知。
+- **點擊導航**：payload 為 `{type, elderId, elderName}`。App 活著時由 `main.dart::_setupLocationAlertTap` 透過全域 `navigatorKey` 開啟 `ElderLocationMapScreen`（Splash 進行中、有待接聽來電或讀不到 `caregiver_id` 時不導航）；App 被殺死時由 `FamilyMainScreen` 在 Splash 結束後以 `consumeLaunchTap()` 讀 launch details 導航，有待接聽來電則放棄，不改動既有冷啟動流程。
+- **不破壞來電備援**：`FlutterLocalNotificationsPlugin` 為全域單例，重新 `initialize` 會整組覆寫回呼，因此 `_registerPlugin` 沿用與 `LocalCallNotification` 相同的初始化設定，並一併傳入頂層 `@pragma('vm:entry-point')` 的 `notificationBackgroundTapHandler`，保留 App 被殺死時備援來電通知「拒接」按鈕的處理；非安心提醒的點擊原樣交還給該 handler。
+
+### 2026-09-30 📍 移動軌跡延伸（第一階段）：地點、今日外出摘要、帶我回家
+
+- **常去地點（前端資料層）**：新增 `mobile_app/lib/models/elder_place.dart`（不可變 `ElderPlace`：`id／name／latitude／longitude／radiusM／isHome`，含 `position`、`fromJson`、`toJson`）；`LocationApi` 新增 `getPlaces`、`createPlace`、`updatePlace`、`deletePlace`（對應後端 `/location/places/{elderId}`，建立／修改／刪除僅家屬），失敗回傳 `null`／`false`。
+- **今日外出摘要**：`LocationApi.getSummary`（`GET /location/summary/{elderId}`，帶 `tz_offset` 與本地日期，與 `getTrail` 共用日期格式化）回傳外出次數、移動距離、目前是否在家、最後更新時間；分享關閉時只回 `{sharing_enabled:false}`。
+- **地點比對**：`location_trail_processor.dart` 新增 `matchPlace(point, places)`——回傳「半徑內且圓心最近」的地點（範圍重疊時不偏袒家），並補上單元測試（半徑內外、重疊取最近、空清單）。
+- **家屬首頁「GPS 移動軌跡」卡片**：改用今日摘要，顯示「今天外出 N 次・X.X 公里」（未滿 1 公里顯示公尺）與「目前在家／目前外出中・最後更新 N 分鐘前」；尚未設定家時改提示「到地圖設定家的位置，就能看到外出次數」。保留未開啟分享、無法讀取的狀態與點擊進地圖的行為；第二行允許換行並加省略號，避免 RenderFlex 溢位。
+- **長輩首頁「帶我回家」**：新增 `lib/services/elder_home_place_service.dart`——啟動時先讀 SharedPreferences 快取（`elder_home_place_v1`）立即顯示，再向後端同步並更新／清除快取；長輩首頁（`elder_home_tab.dart`）在已設定家時最上方顯示大按鈕，點擊以 Google 地圖步行導航回家，開不了時提示「無法開啟地圖，請確認已安裝 Google 地圖」。
+- **地圖上的常去地點**：`elder_location_map_screen.dart` 在載入軌跡時一併載入地點（不受位置分享開關限制，載入失敗保留舊清單），以 `CircleLayer`（`useRadiusInMeter`）畫出每個地點的範圍圓——家為綠色、其他為靛色，畫在軌跡之下；圓心上方有白底圓角名稱標籤（家／一般地點圖示 + 名稱，點標籤可編輯），位於軌跡之上、停留膠囊之下。
+- **時間軸與資訊列顯示地點名稱**：停留點落在某個地點範圍內（`matchPlace`）時，行程時間軸改顯示「在公園・停留 35 分鐘」「在家・停留中・已 2 小時 15 分鐘」，底部資訊列改顯示「目前在家・已停留 2 小時 15 分鐘」，停留膠囊前面加上名稱（最多 4 字，例如「公園 35 分」）。
+- **從停留點或長按建立地點**：點停留膠囊（單次、多次皆同）改開底部面板（取代原本單次停留的 SnackBar），列出停留時段；尚未命名時提供「命名這個地點」「設為家」，已命名時提供「編輯「名稱」」。長按地圖任一點也會開啟同一個新增對話框。共用對話框 `showPlaceEditorDialog`（`elder_places_screen.dart`）：名稱（必填、最多 32 字）、半徑（100／150／300／500 公尺，預設 150）、「設為家」開關（以「設為家」進入時名稱預填「家」）；儲存失敗顯示「儲存失敗，請稍後再試」。
+- **常去地點管理畫面**：新增 `mobile_app/lib/screens/family/elder_places_screen.dart`（`ElderPlacesScreen`），地圖 AppBar 新增書籤圖示（`常去地點`）進入；列表家排最前，每列顯示名稱與「半徑 N 公尺」，右側選單提供編輯／設為家（已是家則隱藏）／刪除（確認對話框）；無地點時顯示說明文字。返回時帶回是否有變更，地圖據此重新載入地點。
+
+### 2026-09-30 🗺️ 移動軌跡第二輪優化
+
+- **軌跡增量查詢**：後端 `GET /api/location/trail/{elder_id}` 新增選用參數 `since_id`（`elder_location_ping.id`）並回傳 `cursor`；前端 `LocationApi.getTrail` 新增 `sinceId` 參數。游標刻意用資料列 id 而非時間——避開時區換算問題，也能撈到長輩端離線佇列補傳、`recorded_at` 很舊的點。詳見 uban-api `readme.md`。
+- **API 日誌截斷**：`ApiClient` 的 debug 日誌只印回應 body 前 300 字，超過附註 `…（共 N 字）`，避免軌跡等大型回應洗版 console（僅影響日誌）。
+- **地圖底圖設定與版權標示**：新增 `mobile_app/lib/config/map_tiles.dart`，圖磚網址改由 `--dart-define=MAP_TILE_URL=` 注入（未設定時退回 OSM 公用圖磚，僅限開發；`run.sh` 會在環境變數 `MAP_TILE_URL` 有設定時自動帶入）；集中管理 `userAgentPackageName`（`tw.uban.family`）與版權標示來源（OpenStreetMap contributors，使用 MapTiler 時另加 MapTiler）。
+- **隱私權政策**：第 9 節「怎麼保護」補充說明地圖底圖由第三方圖磚服務提供、該服務僅收到畫面範圍的圖磚請求，不會收到長輩身分或軌跡資料（同意版本 `_v3` 尚未發布，故未再升版）。
+- **停留群集膠囊**：`elder_location_map_screen.dart` 的停留標記改為「每個地點一顆」琥珀色膠囊（時鐘圖示 + 該處總停留時間，例如 `35 分`、`1 時 20 分`，多次停留加 `×N`）；單次停留點擊顯示 SnackBar，多次停留點擊開啟清單「此處停留 N 次，共 X」。群集由 `LocationTrailProcessor` 依 100m 半徑彙整。
+- **目前停留狀態**：查看今天且長輩目前位置仍在最後一次停留半徑（50m）內時，底部資訊列第一行改為「目前已在此停留 2 小時 15 分鐘」；單次停留的膠囊在此情況下不重複繪製（紅色定位針即在該處）。
+- **行程時間軸**：底部資訊列可點擊（右側 `expand_less` 提示），開啟可拖曳的「今日行程／M/D 行程」底部面板，依時間列出 出發／移動／停留／訊號中斷；點選任一列會收起面板並聚焦地圖（移動與斷訊框住整段路線，出發與停留拉近到該點），進行中的停留標示為「停留中・已 N 分鐘」。
+- **前後一天按鈕**：AppBar 新增「前一天／後一天」箭頭（日期按鈕改顯示 `M/D`，仍可開啟選擇器）；前一天於 90 天上限停用、後一天於今天停用。
+- **靜默輪詢改用 `since_id` 游標**：每 45 秒只向後端取 `id > cursor` 的新點並併入既有原始點再重算，不再整日重抓；切換日期、下拉重新整理或尚無游標時做完整查詢並重設游標。
+- **底圖設定接線與版權標示**：地圖 `TileLayer` 改用 `MapTiles.urlTemplate` 與 `userAgentPackageName`（`tw.uban.family`），啟動時於 debug console 提醒是否退回 OSM 公用圖磚；左下角新增 `RichAttributionWidget` 顯示圖磚版權（可點擊開啟授權頁），位置避開底部資訊列與右側按鈕。
+
+### 2026-09-30 🗺️ 家屬端移動軌跡呈現改善（第一階段）
+
+- 新增 `mobile_app/lib/services/location_trail_processor.dart`（純 Dart、可單元測試）：在**讀取端**清理 `/trail` 原始點——速度離群點（> 40 m/s）與尖刺剔除、精確度 > 35m 的點不畫線、半徑 50m 內停留 ≥ 5 分鐘合併為停留點、Douglas-Peucker（8m）簡化。後端仍照存原始資料。
+- 斷訊（間隔 > 10 分鐘且距離 > 200m）拆成多段 `Polyline`，段與段之間改畫**淡色虛線**；同地點長時間沒回報（裝置只在移動時回報）視為停留而非斷訊。
+- `elder_location_map_screen.dart`：軌跡加白色外框並由淺到深漸層（淺 = 較早）；新增綠色起點標記與琥珀色停留標記（點擊顯示 `14:05–14:40 停留 35 分鐘`）。
+- 鏡頭改為初始即框住整段軌跡；靜默輪詢（45 秒）不再移動鏡頭，只有切換日期／下拉重新整理才重新框選；右側新增「回到目前位置」與「顯示整段軌跡」按鈕。
+- 底部資訊列新增當日摘要（`移動 2.3 公里 ・ 停留 3 處 ・ 08:12–17:40`，有斷訊時附註「虛線為訊號中斷」）。
+- 新增測試 `mobile_app/test/services/location_trail_processor_test.dart`。規劃與決策見 [`docs/technical/GPS_TRAIL_RENDERING_PLAN.md`](docs/technical/GPS_TRAIL_RENDERING_PLAN.md)；第二階段（長輩端採集品質）尚未實作。
+- **除錯用原始點疊圖（僅 debug 版）**：地圖右側按鈕列最上方多一顆「顯示原始點（除錯）」，開啟後在處理後軌跡之上疊畫未經清理的原始點（灰點；誤差 > 35m 為橘點）與細灰連線，底部資訊列多一行「原始 N 點 ・ 誤差>35m K 點 ・ 最大間隔 X 秒 / Y 公尺 @ HH:mm」，並於 console `debugPrint` 最大的 5 個相鄰跳躍，用來判斷長直線是原始資料缺漏或被處理器丟掉。release 版不顯示。
+
+### 2026-09-30 🛰️ 長輩「與家人分享我的位置」系統預設改為開啟
+
+- 分享開關仍**完全由長輩本人決定**（家屬無法代為切換），只是新帳號的預設值由關閉改為開啟。
+- 前端：`elder_profile_tab.dart` 開關初始顯示改為開啟，實際狀態仍以後端 `GET /api/location/sharing` 為準。
+- 後端：uban-api `016` migration 將 DB 預設值改為 `1`，**只影響新帳號**，既有長輩維持原設定。
+- 隱私權政策第 9 節改寫為實際的持續定位行為（背景回報、家屬可見、90 天自動清除），並將同意版本升為 `_v3`，所有使用者下次啟動需重新同意。
+
+### 2026-09-30 🕗 家屬端 GPS「最後更新」固定差 8 小時
+
+- **症狀**：長輩手機正在移動回報，家屬端「移動軌跡」卻一直顯示「最後更新：8 小時前（已過期）」。
+- **根因**：後端 `recorded_at` 存 naive UTC、回傳時沒帶 `Z`，`DateTime.parse` 把它當本地時間（UTC+8）解析。
+- **修正**：後端回傳改帶 `Z`；前端新增 `LocationApi.parseRecordedAt()`（缺時區一律視為 UTC 再 `toLocal()`），
+  `elder_location_map_screen.dart` 與 `home_gps_trail_card.dart` 改用它。
+- **連帶修正**：`GET /api/location/trail` 新增 `tz_offset`（分鐘，預設 480），依本地日換算 UTC 區間查詢，
+  台灣 00:00–08:00 的軌跡不再被歸到前一天。
 
 ### 2026-09-21 🛠️ 第五十一輪：來電同意權、連線真相、賺取制寵物食物
 

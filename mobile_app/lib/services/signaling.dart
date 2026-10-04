@@ -145,6 +145,11 @@ class Signaling {
   /// 💬 長輩端：子女已回覆某則提問，小嘎可據此主動轉達。
   Function(dynamic data)? onElderQuestionAnswered;
 
+  /// 📍 家屬端：收到長輩定位異常的「安心提醒」（`location-alert`：晚歸／久未更新／
+  /// 離家太遠）。純回呼欄位、無任何顯示狀態；註冊點只有 `family_main_screen.dart`，
+  /// dispose 時以 `identical()` 歸還（G102）。
+  Function(Map<String, dynamic> data)? onLocationAlert;
+
   String? _currentRoomId;
   String? _peerSocketId;
   String? _currentCallId; // 追蹤當前通話 ID，確保 hangUp 時能傳給後端
@@ -837,6 +842,28 @@ class Signaling {
       if (onElderQuestionAnswered != null) onElderQuestionAnswered!(data);
     });
 
+    // 📍 長輩定位異常的安心提醒（只會由後端推給家屬）。
+    //   防呆比照 elder-zone-update／monitor-removed：payload 不是 Map 就略過，
+    //   不可讓格式異常的推播在 socket handler 內拋出例外；回呼內的例外也要攔下，
+    //   以免影響同一個 socket 上的其他監聽。
+    //   角色守門 fail-closed：用連線當下的 `_role`（§3.1 第 13 條），不是 prefs；
+    //   `_role` 為 null 或不是 'family' 一律不轉交（後端本來就只推家屬，這是第二道防線）。
+    socket!.on('location-alert', (data) {
+      debugPrint("📍 [Signaling] 收到安心提醒: $data");
+      if (_role != 'family') {
+        debugPrint("🔒 [Signaling] 非家屬端連線（role=$_role），忽略 location-alert");
+        return;
+      }
+      if (data is! Map) return;
+      try {
+        if (onLocationAlert != null) {
+          onLocationAlert!(Map<String, dynamic>.from(data));
+        }
+      } catch (e) {
+        debugPrint("⚠️ [Signaling] onLocationAlert 回呼例外: $e");
+      }
+    });
+
   }
 
   Future<bool> _showCallkitIncoming(String callerName) async {
@@ -1344,7 +1371,10 @@ class Signaling {
     };
   }
 
-  Future<void> _createPeerConnection({required bool useLocalStream, bool preferRelay = false}) async {
+  Future<void> _createPeerConnection({ // 非同步建立 WebRTC 對等連線之內部方法
+    required bool useLocalStream, // 方法參數：指定通話是否啟用本機視訊鏡頭與麥克風
+    bool preferRelay = false, // 方法參數：指定是否優先使用 TURN 伺服器進行中繼轉發
+  }) async { // 非同步方法實作區塊起始
     // ★ 2026-08-26（回退 relay-only 優化）：iceTransportPolicy 現在無條件 'all'，
     //   完整原因見 [_generateDynamicTURNConfig] 內的註解。[preferRelay] 參數仍保留
     //   在簽章上（呼叫端：[createOffer]／[_acceptCall]），但目前不會被讀取、不影響
