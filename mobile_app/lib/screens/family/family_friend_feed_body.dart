@@ -1,14 +1,16 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../../services/api_service.dart';
 import '../../services/family_friend_service.dart';
-import '../../theme/app_theme.dart';
+import '../../theme/family_theme.dart';
+import '../../widgets/ui/ui.dart';
 import '../widgets/friend_avatar.dart';
 import 'family_add_friend_screen.dart';
 import 'package:image_picker/image_picker.dart';
+import 'widgets/fam_interaction_ui.dart';
+import 'widgets/fam_ui.dart';
 
 /// 家屬「朋友圈」動態牆內容（第五項需求：家屬好友系統，家屬端一半）。
 ///
@@ -19,10 +21,9 @@ import 'package:image_picker/image_picker.dart';
 /// 1. 呼叫的是 [FamilyFriendService]／後端 `routers/family_friend.py`，
 ///    資料完全獨立於長輩朋友圈（`friend_*` 表）與家庭圈
 ///    （`community_posts`），不會互相污染。
-/// 2. 字級改用 [AppTextStyles]／[AppColors]（一般使用者字級），不用
-///    `ElderScale`（長輩端專用的放大字級）——家屬是一般使用者，這是與長輩版
-///    刻意的唯一差異；卡片風格（白卡＋淺灰底＋teal 主色）仍沿用
-///    `ElderCommunityScreen` 既有的視覺語言，符合「不動整體設計」的要求。
+/// 2. 2026-10 起外觀改家屬新設計（海灣藍：[UbanColors]／fam_ui 元件，不用
+///    `ElderScale` 的長輩放大字級）；原本沿用 `ElderCommunityScreen` 的 teal
+///    白卡風格，現在與家屬其他頁面一致。行為與資料流完全不變。
 ///
 /// 不含 Scaffold／AppBar，供 `ElderCommunityScreen(friendTabContent: ...)`
 /// 當「朋友」標籤內容嵌入。不需要另外解析 ID——家屬的 `familyId` 呼叫端
@@ -61,6 +62,11 @@ class _FamilyFriendFeedBodyState extends State<FamilyFriendFeedBody> {
 
   final TextEditingController _postController = TextEditingController();
   final TextEditingController _commentController = TextEditingController();
+
+  // 開 sheet 要用位於家屬主題之內的 context（build 內 Builder 更新）。
+  BuildContext? _themed;
+  BuildContext get _themeCtx => _themed ?? context;
+  UbanColors get _c => UbanColors.of(_themeCtx);
 
   @override
   void initState() {
@@ -121,7 +127,7 @@ class _FamilyFriendFeedBodyState extends State<FamilyFriendFeedBody> {
     });
     if (!reset && failed && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(FamilyFriendService.lastFeedError ?? '載入更多失敗，請稍後再試')),
+        famSnackBar(_themeCtx, FamilyFriendService.lastFeedError ?? '載入更多失敗，請稍後再試', error: true),
       );
     }
   }
@@ -159,7 +165,7 @@ class _FamilyFriendFeedBodyState extends State<FamilyFriendFeedBody> {
       });
     } else {
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('按讚失敗，請稍後再試')));
+          .showSnackBar(famSnackBar(_themeCtx, '按讚失敗，請稍後再試', error: true));
     }
   }
 
@@ -174,7 +180,7 @@ class _FamilyFriendFeedBodyState extends State<FamilyFriendFeedBody> {
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('無法讀取圖片，請稍後再試')));
+            .showSnackBar(famSnackBar(_themeCtx, '無法讀取圖片，請稍後再試', error: true));
       }
       return null;
     }
@@ -185,163 +191,110 @@ class _FamilyFriendFeedBodyState extends State<FamilyFriendFeedBody> {
     String? selectedLocalImagePath;
     bool isUploading = false;
 
-    final shouldPublish = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      useRootNavigator: true,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) {
+    // 2026-10：改用 UbanSheet（面板外觀）；發佈流程與改版前相同。
+    final shouldPublish = await showUbanSheet<bool>(
+      _themeCtx,
+      (sheetContext) {
         return StatefulBuilder(
           builder: (context, setSheetState) {
-            return Container(
-              padding: EdgeInsets.fromLTRB(
-                20,
-                20,
-                20,
-                MediaQuery.viewInsetsOf(context).bottom + 24,
-              ),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text('分享到朋友圈', style: AppTextStyles.title),
-                    const SizedBox(height: 4),
-                    Text('好友都看得到這則貼文', style: AppTextStyles.secondary),
-                    const SizedBox(height: 14),
-                    TextField(
-                      controller: controller,
-                      minLines: 3,
-                      maxLines: 6,
-                      maxLength: 200,
-                      style: AppTextStyles.body,
-                      decoration: InputDecoration(
-                        hintText: '想說些什麼呢？',
-                        hintStyle: AppTextStyles.secondary,
-                        filled: true,
-                        fillColor: AppColors.background,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    if (selectedLocalImagePath != null) ...[
-                      Stack(
-                        children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(14),
-                            child: Image.file(
-                              File(selectedLocalImagePath!),
-                              width: double.infinity,
-                              height: 150,
-                              fit: BoxFit.cover,
-                            ),
-                          ),
-                          Positioned(
-                            top: 8,
-                            right: 8,
-                            child: Material(
-                              color: Colors.black.withValues(alpha: 0.65),
-                              shape: const CircleBorder(),
-                              child: IconButton(
-                                tooltip: '移除圖片',
-                                onPressed: () =>
-                                    setSheetState(() => selectedLocalImagePath = null),
-                                icon: const Icon(Icons.close_rounded, color: Colors.white),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                    ],
-                    SizedBox(
-                      height: _buttonHeight,
-                      child: OutlinedButton.icon(
-                        onPressed: isUploading
-                            ? null
-                            : () async {
-                                final picked = await _pickLocalImage();
-                                if (picked != null) {
-                                  setSheetState(() => selectedLocalImagePath = picked);
-                                }
-                              },
-                        icon: const Icon(Icons.add_photo_alternate_rounded, size: 22),
-                        label: Text(
-                          selectedLocalImagePath == null ? '加張照片（選填）' : '已選照片',
-                          style: AppTextStyles.secondary,
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      height: _buttonHeight,
-                      child: ElevatedButton.icon(
-                        onPressed: isUploading
-                            ? null
-                            : () async {
-                                if (controller.text.trim().isEmpty &&
-                                    selectedLocalImagePath == null) {
-                                  ScaffoldMessenger.of(sheetContext).showSnackBar(
-                                    const SnackBar(content: Text('請先輸入內容或附上照片')),
-                                  );
-                                  return;
-                                }
-                                setSheetState(() => isUploading = true);
-                                String? uploadedUrl;
-                                if (selectedLocalImagePath != null) {
-                                  uploadedUrl = await ApiService.uploadCommunityImage(
-                                    File(selectedLocalImagePath!),
-                                  );
-                                }
-                                final created = await FamilyFriendService.createPost(
-                                  authorFamilyId: widget.familyId,
-                                  content: controller.text.trim().isEmpty
-                                      ? '分享了一張照片'
-                                      : controller.text.trim(),
-                                  imageUrl: uploadedUrl,
-                                );
-                                setSheetState(() => isUploading = false);
-                                if (!sheetContext.mounted) return;
-                                if (created != null) {
-                                  Navigator.pop(sheetContext, true);
-                                } else {
-                                  ScaffoldMessenger.of(sheetContext).showSnackBar(
-                                    const SnackBar(content: Text('發佈失敗，請稍後再試')),
-                                  );
-                                }
-                              },
-                        icon: isUploading
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                    color: Colors.white, strokeWidth: 2.5),
-                              )
-                            : const Icon(Icons.send_rounded, size: 22),
-                        label: Text(
-                          isUploading ? '發佈中...' : '發佈',
-                          style: AppTextStyles.body
-                              .copyWith(color: Colors.white, fontWeight: FontWeight.w700),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                        ),
-                      ),
-                    ),
-                  ],
+            final c = UbanColors.of(context);
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                famDialogTitle(c, '分享到朋友圈'),
+                const SizedBox(height: 4),
+                Text('好友都看得到這則貼文', style: famText(c.text2, 14)),
+                const SizedBox(height: 14),
+                FamInput(
+                  controller: controller,
+                  minLines: 3,
+                  maxLines: 6,
+                  maxLength: 200,
+                  hintText: '想說些什麼呢？',
+                  radius: 18,
+                  fillColor: c.surface2,
                 ),
-              ),
+                const SizedBox(height: 10),
+                if (selectedLocalImagePath != null) ...[
+                  Stack(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: Image.file(
+                          File(selectedLocalImagePath!),
+                          width: double.infinity,
+                          height: 150,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: FamIconButton(
+                          icon: Icons.close_rounded,
+                          tooltip: '移除圖片',
+                          onTap: () => setSheetState(() => selectedLocalImagePath = null),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                ],
+                FamButton(
+                  label: selectedLocalImagePath == null ? '加張照片（選填）' : '已選照片',
+                  kind: FamButtonKind.tonal,
+                  height: _buttonHeight,
+                  onPressed: isUploading
+                      ? null
+                      : () async {
+                          final picked = await _pickLocalImage();
+                          if (picked != null) {
+                            setSheetState(() => selectedLocalImagePath = picked);
+                          }
+                        },
+                ),
+                const SizedBox(height: 10),
+                FamButton(
+                  label: isUploading ? '發佈中...' : '發佈',
+                  height: _buttonHeight,
+                  loading: isUploading,
+                  onPressed: isUploading
+                      ? null
+                      : () async {
+                          if (controller.text.trim().isEmpty &&
+                              selectedLocalImagePath == null) {
+                            ScaffoldMessenger.of(sheetContext).showSnackBar(
+                              famSnackBar(sheetContext, '請先輸入內容或附上照片'),
+                            );
+                            return;
+                          }
+                          setSheetState(() => isUploading = true);
+                          String? uploadedUrl;
+                          if (selectedLocalImagePath != null) {
+                            uploadedUrl = await ApiService.uploadCommunityImage(
+                              File(selectedLocalImagePath!),
+                            );
+                          }
+                          final created = await FamilyFriendService.createPost(
+                            authorFamilyId: widget.familyId,
+                            content: controller.text.trim().isEmpty
+                                ? '分享了一張照片'
+                                : controller.text.trim(),
+                            imageUrl: uploadedUrl,
+                          );
+                          setSheetState(() => isUploading = false);
+                          if (!sheetContext.mounted) return;
+                          if (created != null) {
+                            Navigator.pop(sheetContext, true);
+                          } else {
+                            ScaffoldMessenger.of(sheetContext).showSnackBar(
+                              famSnackBar(sheetContext, '發佈失敗，請稍後再試', error: true),
+                            );
+                          }
+                        },
+                ),
+              ],
             );
           },
         );
@@ -357,161 +310,115 @@ class _FamilyFriendFeedBodyState extends State<FamilyFriendFeedBody> {
     final controller = _commentController..clear();
     bool isSubmitting = false;
 
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useRootNavigator: true,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) {
+    await showUbanSheet<void>(
+      _themeCtx,
+      (sheetContext) {
         return StatefulBuilder(
           builder: (context, setSheetState) {
+            final c = UbanColors.of(context);
             final comments =
                 (post['comments'] as List?)?.whereType<Map>().toList() ?? [];
-            return Container(
-              constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.85),
-              padding: EdgeInsets.fromLTRB(
-                20,
-                20,
-                20,
-                MediaQuery.viewInsetsOf(context).bottom + 20,
-              ),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    children: [
-                      Text('留言', style: AppTextStyles.title),
-                      const SizedBox(width: 8),
-                      Text('(${comments.length})', style: AppTextStyles.secondary),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  if (comments.isEmpty)
+            // UbanSheet 內容本身會捲動，所以留言清單用一般 Column，不放內層 ListView。
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    famDialogTitle(c, '留言'),
+                    const SizedBox(width: 8),
+                    Text('(${comments.length})', style: famText(c.text2, 15)),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                if (comments.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 20),
+                    child: Center(
+                      child: Text('還沒有留言，來跟朋友打聲招呼吧！',
+                          textAlign: TextAlign.center,
+                          style: famText(c.text2, 14.5, height: 1.5)),
+                    ),
+                  )
+                else
+                  for (var index = 0; index < comments.length; index++)
                     Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 20),
-                      child: Center(
-                        child: Text('還沒有留言，來跟朋友打聲招呼吧！', style: AppTextStyles.secondary),
-                      ),
-                    )
-                  else
-                    Flexible(
-                      child: ListView.separated(
-                        shrinkWrap: true,
-                        itemCount: comments.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 8),
-                        itemBuilder: (context, index) {
-                          final c = comments[index];
-                          final cName = (c['author_name'] ?? '家人').toString();
-                          final cContent = (c['content'] ?? '').toString();
-                          return Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: AppColors.primaryLight,
-                              borderRadius: BorderRadius.circular(14),
+                      padding: EdgeInsets.only(top: index == 0 ? 0 : 8),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: c.surface2,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              (comments[index]['author_name'] ?? '家人').toString(),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: famText(c.brandStrong, 13.5, weight: FontWeight.w800),
                             ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  cName,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: AppTextStyles.secondary.copyWith(
-                                    color: AppColors.primaryDark,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(cContent, style: AppTextStyles.body),
-                              ],
+                            const SizedBox(height: 3),
+                            Text(
+                              (comments[index]['content'] ?? '').toString(),
+                              style: famText(c.text, 14.5, height: 1.5),
                             ),
-                          );
-                        },
+                          ],
+                        ),
                       ),
                     ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: controller,
-                    style: AppTextStyles.body,
-                    minLines: 2,
-                    maxLines: 4,
-                    maxLength: 120,
-                    onChanged: (_) => setSheetState(() {}),
-                    decoration: InputDecoration(
-                      hintText: '寫下想說的話⋯⋯',
-                      counterText: '',
-                      filled: true,
-                      fillColor: AppColors.background,
-                      contentPadding: const EdgeInsets.all(14),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    height: _buttonHeight,
-                    child: ElevatedButton.icon(
-                      onPressed: isSubmitting || controller.text.trim().isEmpty
-                          ? null
-                          : () async {
-                              setSheetState(() => isSubmitting = true);
-                              final rawId = post['id'];
-                              final postId = rawId is int ? rawId : int.tryParse('$rawId');
-                              final result = postId == null
-                                  ? null
-                                  : await FamilyFriendService.commentOnPost(
-                                      postId: postId,
-                                      authorFamilyId: widget.familyId,
-                                      content: controller.text.trim(),
-                                    );
-                              if (result != null) {
-                                setState(() {
-                                  final existing = (post['comments'] as List?) ?? [];
-                                  post['comments'] = [
-                                    ...existing,
-                                    {
-                                      ...result,
-                                      'author_name': result['author_name'] ?? widget.familyName,
-                                    },
-                                  ];
-                                });
-                                controller.clear();
-                              }
-                              setSheetState(() => isSubmitting = false);
-                              if (result == null && sheetContext.mounted) {
-                                ScaffoldMessenger.of(sheetContext).showSnackBar(
-                                  const SnackBar(content: Text('留言失敗，請稍後再試')),
+                const SizedBox(height: 12),
+                FamInput(
+                  controller: controller,
+                  minLines: 2,
+                  maxLines: 4,
+                  maxLength: 120,
+                  radius: 18,
+                  hintText: '寫下想說的話⋯⋯',
+                  fillColor: c.surface2,
+                  onChanged: (_) => setSheetState(() {}),
+                ),
+                const SizedBox(height: 10),
+                FamButton(
+                  label: isSubmitting ? '傳送中' : '送出',
+                  height: _buttonHeight,
+                  loading: isSubmitting,
+                  onPressed: isSubmitting || controller.text.trim().isEmpty
+                      ? null
+                      : () async {
+                          setSheetState(() => isSubmitting = true);
+                          final rawId = post['id'];
+                          final postId = rawId is int ? rawId : int.tryParse('$rawId');
+                          final result = postId == null
+                              ? null
+                              : await FamilyFriendService.commentOnPost(
+                                  postId: postId,
+                                  authorFamilyId: widget.familyId,
+                                  content: controller.text.trim(),
                                 );
-                              }
-                            },
-                      icon: isSubmitting
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                  color: Colors.white, strokeWidth: 2),
-                            )
-                          : const Icon(Icons.send_rounded, size: 20),
-                      label: Text(
-                        isSubmitting ? '傳送中' : '送出',
-                        style: AppTextStyles.body
-                            .copyWith(color: Colors.white, fontWeight: FontWeight.w700),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+                          if (result != null) {
+                            setState(() {
+                              final existing = (post['comments'] as List?) ?? [];
+                              post['comments'] = [
+                                ...existing,
+                                {
+                                  ...result,
+                                  'author_name': result['author_name'] ?? widget.familyName,
+                                },
+                              ];
+                            });
+                            controller.clear();
+                          }
+                          setSheetState(() => isSubmitting = false);
+                          if (result == null && sheetContext.mounted) {
+                            ScaffoldMessenger.of(sheetContext).showSnackBar(
+                              famSnackBar(sheetContext, '留言失敗，請稍後再試', error: true),
+                            );
+                          }
+                        },
+                ),
+              ],
             );
           },
         );
@@ -537,7 +444,14 @@ class _FamilyFriendFeedBodyState extends State<FamilyFriendFeedBody> {
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(bottom: false, child: _buildBody());
+    // 2026-10：家屬新設計——本元件也會被單獨嵌進共用的 ElderCommunityScreen，
+    // 自己掛家屬主題（Builder 讓下方 context 位於主題之內；sheet 用 [_themeCtx] 開）。
+    return FamilyThemeScope(
+      child: Builder(builder: (ctx) {
+        _themed = ctx;
+        return SafeArea(bottom: false, child: _buildBody());
+      }),
+    );
   }
 
   // ★ 第五十二輪任務 B 收尾（social52 中斷後接續）：原本 _isLoadingFeed／
@@ -571,10 +485,12 @@ class _FamilyFriendFeedBodyState extends State<FamilyFriendFeedBody> {
   /// 無關（見 [_buildBody] 的說明）。
   List<Widget> _buildFeedSection() {
     if (_isLoadingFeed && _posts.isEmpty) {
-      return const [
+      return [
         Padding(
-          padding: EdgeInsets.symmetric(vertical: 40),
-          child: Center(child: CircularProgressIndicator()),
+          padding: const EdgeInsets.symmetric(vertical: 40),
+          child: Center(
+            child: CircularProgressIndicator(color: _c.brand),
+          ),
         ),
       ];
     }
@@ -590,185 +506,67 @@ class _FamilyFriendFeedBodyState extends State<FamilyFriendFeedBody> {
 
   /// 加好友的入口卡片——第 4 項需求刻意放在朋友標籤內，而不是
   /// `ElderCommunityScreen` 的 AppBar，這樣完全不需要改動長輩端既有的
-  /// AppBar 結構。角標數字＝待回應邀請數（[_loadPendingCount]），
-  /// 讓家屬不用點進去就知道有沒有新邀請。
+  /// AppBar 結構。有待回應邀請時，「＋加好友」標籤轉暖色（待處理）、副標顯示
+  /// 邀請數（[_loadPendingCount]），讓家屬不用點進去就知道有沒有新邀請。
   Widget _buildFriendEntryCard() {
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(18),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap: _openAddFriend,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: AppColors.border),
+    return FamAction(
+      title: '我的好友',
+      subtitle: _pendingRequestCount > 0 ? '有 $_pendingRequestCount 則新邀請' : '加好友、看邀請、管理好友清單',
+      // ★ 鐵律 #14 / 護欄 G159：同列有「＋加好友」標籤與箭頭，標題／副標在
+      // FamAction 內是 Expanded 並可換行，不會把箭頭擠出畫面。
+      // ★ 第五十二輪任務 B：標籤文字「＋加好友」維持不變（使用者回報找不到入口）。
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FamChip(
+            label: '＋加好友',
+            tone: _pendingRequestCount > 0 ? FamTone.warm : FamTone.brand,
           ),
-          child: Row(
-            children: [
-              Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: const BoxDecoration(
-                      color: AppColors.primaryLight,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.person_add_alt_1_rounded,
-                        color: AppColors.primaryDark, size: 22),
-                  ),
-                  if (_pendingRequestCount > 0)
-                    Positioned(
-                      right: -2,
-                      top: -2,
-                      child: Container(
-                        padding: const EdgeInsets.all(3),
-                        constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
-                        decoration: const BoxDecoration(
-                          color: AppColors.danger,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Text(
-                          '$_pendingRequestCount',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(width: 12),
-              // ★ 鐵律 #14 / 護欄 G159：同列還有頭像圖示與箭頭，姓名／說明文字
-              // 必須包在 Expanded 內並可省略，避免長邀請數字串把箭頭擠出畫面。
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // ★ 第五十二輪任務 B：使用者回報找不到家屬端的加好友
-                    // 入口——這張卡片其實一直都在（第五項需求就有），但主標
-                    // 「我的好友」讀起來像「管理現有好友」而不是「新增」，
-                    // 容易被略過。加一個「加好友」小標籤讓動作更明確；卡片
-                    // 本身的 onTap／導頁目標（_openAddFriend）完全不變，
-                    // 純屬視覺補強，零邏輯回歸風險。同列多一個元素，比照
-                    // 上面同一條鐵律用 Flexible 包住標題文字。
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text('我的好友',
-                              style: AppTextStyles.heading, overflow: TextOverflow.ellipsis),
-                        ),
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: AppColors.primaryLight,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            '＋加好友',
-                            style: GoogleFonts.notoSansTc(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.primaryDark,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    Text(
-                      _pendingRequestCount > 0 ? '有 $_pendingRequestCount 則新邀請' : '加好友、看邀請、管理好友清單',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTextStyles.secondary,
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(Icons.chevron_right_rounded, color: AppColors.textHint),
-            ],
-          ),
-        ),
+          const SizedBox(width: 4),
+          FamAction.chevron(context),
+        ],
       ),
+      onTap: _openAddFriend,
     );
   }
 
   Widget _buildCreatePostButton() {
-    return SizedBox(
+    return FamButton(
+      label: '分享到朋友圈',
       height: _buttonHeight,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: _showCreatePostSheet,
-        child: Container(
-          decoration: BoxDecoration(
-            color: AppColors.primary,
-            borderRadius: BorderRadius.circular(AppRadius.card),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.primary.withValues(alpha: 0.3),
-                blurRadius: 8,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          alignment: Alignment.center,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.add_circle_rounded, size: 24, color: Colors.white),
-              const SizedBox(width: 8),
-              Text(
-                '分享到朋友圈',
-                style: AppTextStyles.body.copyWith(color: Colors.white, fontWeight: FontWeight.w700),
-              ),
-            ],
-          ),
-        ),
-      ),
+      onPressed: _showCreatePostSheet,
     );
   }
 
   Widget _buildEmptyState() {
-    return Container(
+    return FamCard(
       padding: const EdgeInsets.all(28),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(AppRadius.card),
-      ),
-      child: Column(
-        children: [
-          const Icon(Icons.groups_rounded, size: 64, color: AppColors.textHint),
-          const SizedBox(height: 10),
-          Text(
-            '還沒有朋友圈動態，加朋友後就能看到彼此的近況！',
-            textAlign: TextAlign.center,
-            style: AppTextStyles.body,
-          ),
-        ],
+      child: Text(
+        '還沒有朋友圈動態，加朋友後就能看到彼此的近況！',
+        textAlign: TextAlign.center,
+        style: famText(_c.text2, 15, height: 1.6),
       ),
     );
   }
 
   Widget _buildLoadMoreControl() {
+    final c = _c;
     if (!_hasMore) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 14),
-        child: Center(child: Text('已經到底囉', style: AppTextStyles.secondary)),
+        child: Center(child: Text('已經到底囉', style: famText(c.text3, 14))),
       );
     }
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 14),
       child: Center(
         child: _isLoadingMore
-            ? const CircularProgressIndicator()
-            : OutlinedButton(
+            ? CircularProgressIndicator(color: c.brand)
+            : FamButton(
+                label: '載入更多',
+                kind: FamButtonKind.tonal,
+                expand: false,
                 onPressed: () => _loadFeed(reset: false),
-                child: Text('載入更多', style: AppTextStyles.body),
               ),
       ),
     );
@@ -781,13 +579,15 @@ class _FamilyFriendFeedBodyState extends State<FamilyFriendFeedBody> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.wifi_off_rounded, size: 64, color: AppColors.textHint),
-            const SizedBox(height: 10),
-            Text(message, textAlign: TextAlign.center, style: AppTextStyles.body),
+            Text(message,
+                textAlign: TextAlign.center,
+                style: famText(_c.text2, 15, height: 1.6)),
             const SizedBox(height: 14),
-            ElevatedButton(
+            FamButton(
+              label: '重試',
+              kind: FamButtonKind.tonal,
+              expand: false,
               onPressed: onRetry,
-              child: Text('重試', style: AppTextStyles.body.copyWith(color: Colors.white)),
             ),
           ],
         ),
@@ -796,6 +596,7 @@ class _FamilyFriendFeedBodyState extends State<FamilyFriendFeedBody> {
   }
 
   Widget _buildPostCard(Map<String, dynamic> post) {
+    final c = _c;
     final authorName = (post['author_name'] ?? '家人').toString();
     final avatarUrl = post['avatar_url'] as String?;
     final content = (post['content'] ?? '').toString();
@@ -805,129 +606,86 @@ class _FamilyFriendFeedBodyState extends State<FamilyFriendFeedBody> {
     final createdAtStr = post['created_at']?.toString();
     final comments = (post['comments'] as List?)?.whereType<Map>().toList() ?? [];
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              FriendAvatar(avatarUrl: avatarUrl, name: authorName, radius: 22),
-              const SizedBox(width: 10),
-              // ★ 鐵律 #14 / 護欄 G159：同列還有頭像，姓名一律 Expanded + ellipsis。
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      authorName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w800),
-                    ),
-                    Text(_formatTime(createdAtStr), style: AppTextStyles.secondary),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          if (content.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Text(content, style: AppTextStyles.body),
-          ],
-          if (imageUrl != null && imageUrl.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(14),
-              child: Image.network(
-                FriendAvatar.resolveUrl(imageUrl),
-                width: double.infinity,
-                height: 200,
-                fit: BoxFit.cover,
-                loadingBuilder: (context, child, progress) {
-                  if (progress == null) return child;
-                  return Container(
-                    height: 200,
-                    color: AppColors.background,
-                    alignment: Alignment.center,
-                    child: const CircularProgressIndicator(strokeWidth: 2),
-                  );
-                },
-                errorBuilder: (_, __, ___) => Container(
-                  height: 140,
-                  color: AppColors.background,
-                  alignment: Alignment.center,
-                  child: Text('圖片載入失敗', style: AppTextStyles.secondary),
-                ),
-              ),
-            ),
-          ],
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _bigActionButton(
-                  icon: isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                  label: '讚 ($likeCount)',
-                  color: isLiked ? AppColors.danger : AppColors.textSecondary,
-                  onTap: () => _handleLike(post),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _bigActionButton(
-                  icon: Icons.mode_comment_outlined,
-                  label: '留言 (${comments.length})',
-                  color: AppColors.primaryDark,
-                  onTap: () => _showComments(post),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _bigActionButton({
-    required IconData icon,
-    required String label,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
-      child: Container(
-        height: 44,
-        decoration: BoxDecoration(
-          color: AppColors.background,
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: FamCard(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(icon, color: color, size: 20),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppTextStyles.secondary.copyWith(color: color, fontWeight: FontWeight.w700),
+            Row(
+              children: [
+                FamFriendAvatar(avatarUrl: avatarUrl, name: authorName, size: 44),
+                const SizedBox(width: 10),
+                // ★ 鐵律 #14 / 護欄 G159：同列還有頭像，姓名一律 Expanded + ellipsis。
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        authorName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: famText(c.text, 16, weight: FontWeight.w800),
+                      ),
+                      Text(_formatTime(createdAtStr), style: famText(c.text3, 12.5)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            if (content.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Text(content, style: famText(c.text, 15, height: 1.6)),
+            ],
+            if (imageUrl != null && imageUrl.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: Image.network(
+                  FriendAvatar.resolveUrl(imageUrl),
+                  width: double.infinity,
+                  height: 200,
+                  fit: BoxFit.cover,
+                  loadingBuilder: (context, child, progress) {
+                    if (progress == null) return child;
+                    return Container(
+                      height: 200,
+                      color: c.surface2,
+                      alignment: Alignment.center,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: c.brand),
+                    );
+                  },
+                  errorBuilder: (_, __, ___) => Container(
+                    height: 140,
+                    color: c.surface2,
+                    alignment: Alignment.center,
+                    child: Text('圖片載入失敗', style: famText(c.text3, 14)),
+                  ),
+                ),
               ),
+            ],
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: FamButton(
+                    label: '讚 ($likeCount)',
+                    kind: isLiked ? FamButtonKind.filled : FamButtonKind.tonal,
+                    height: 44,
+                    onPressed: () => _handleLike(post),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FamButton(
+                    label: '留言 (${comments.length})',
+                    kind: FamButtonKind.tonal,
+                    height: 44,
+                    onPressed: () => _showComments(post),
+                  ),
+                ),
+              ],
             ),
           ],
         ),

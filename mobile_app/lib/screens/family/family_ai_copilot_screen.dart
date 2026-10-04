@@ -1,14 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import '../../models/elder.dart';
 import '../../services/api_service.dart';
+import '../../theme/app_theme.dart';
+import '../../theme/family_theme.dart';
 import '../../utils/error_handler.dart';
+import 'widgets/fam_interaction_ui.dart';
+import 'widgets/fam_ui.dart';
 
-/// 🤖 AI 照護共創助理對話視窗 (Family AI Care Co-pilot Screen) - 全新極光黑金極致 UI
+/// 🤖 AI 照護秘書對話視窗 (Family AI Care Co-pilot Screen)。
+///
+/// 2026-10 起改家屬新設計（海灣藍、design_prototype/family.html #copilot）：
+/// `famSubBar`、快捷分段 `.qrow`、對話泡泡 `.cbub`、排程確認卡 `.sched`、底部輸入列 `.cbar`；
+/// 語音輸入與送出邏輯完全不變。
 class FamilyAiCopilotScreen extends StatefulWidget {
   final Elder? currentElder;
 
@@ -398,71 +405,58 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // 2026-10：家屬新設計——push 出來的家屬頁要自己掛家屬主題（設計稿 #copilot）。
+    return FamilyThemeScope(
+      child: Builder(builder: _buildScreen),
+    );
+  }
+
+  Widget _buildScreen(BuildContext context) {
+    final c = UbanColors.of(context);
     final elderName = widget.currentElder?.displayName ?? '長輩';
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0B132B),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF1C2541),
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 20),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Row(
+      backgroundColor: c.bg,
+      appBar: famSubBar(
+        context,
+        title: 'AI 照護秘書',
+        trailing: const [FamChip(label: '就緒', tone: FamTone.brand, dot: true)],
+      ),
+      body: SafeArea(
+        top: false,
+        child: Column(
           children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF0284C7), Color(0xFF6366F1)],
-                ),
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF38BDF8).withValues(alpha: 0.35),
-                    blurRadius: 10,
+            // 快捷推薦話題（`.qrow`）：點下去等同把該句話送出，行為與改版前的 Pills 相同。
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
+              child: FamFilterRow(
+                children: [
+                  FamFilterChip(
+                    label: '近況速報',
+                    selected: false,
+                    onTap: () => _sendMessage('$elderName 今天過得怎麼樣？'),
+                  ),
+                  FamFilterChip(
+                    label: '吃藥提醒',
+                    selected: false,
+                    onTap: () => _sendMessage('每天 08:00 與 20:00 提醒吃降血壓藥'),
+                  ),
+                  FamFilterChip(
+                    label: '散步提醒',
+                    selected: false,
+                    onTap: () => _sendMessage('每週六日下午 4 點提醒出門散步 30 分鐘'),
                   ),
                 ],
               ),
-              child: const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 18),
             ),
-            const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'AI 照護共創助理',
-                  style: GoogleFonts.notoSansTc(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
-                ),
-                Row(
-                  children: [
-                    Container(
-                      width: 6,
-                      height: 6,
-                      decoration: const BoxDecoration(color: Color(0xFF10B981), shape: BoxShape.circle),
-                    ),
-                    const SizedBox(width: 5),
-                    Text(
-                      '線上陪伴 $elderName',
-                      style: GoogleFonts.notoSansTc(fontSize: 11, color: const Color(0xFF94A3B8)),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-      body: SafeArea(
-        child: Column(
-          children: [
+
             // 對話訊息列表
             Expanded(
-              child: ListView.builder(
+              child: ListView.separated(
                 controller: _scrollController,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
                 itemCount: _chatMessages.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 10),
                 itemBuilder: (context, index) {
                   final msg = _chatMessages[index];
                   final isUser = msg['isUser'] == true;
@@ -470,85 +464,21 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
                   final scheduleDrafts = msg['scheduleDrafts'];
                   final isApplied = msg['isApplied'] == true;
 
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 20),
+                  return FamChatBubble(
+                    mine: isUser,
                     child: Column(
-                      crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (!isUser) ...[
-                              Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  gradient: const LinearGradient(colors: [Color(0xFF0284C7), Color(0xFF6366F1)]),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(Icons.smart_toy_rounded, color: Colors.white, size: 16),
-                              ),
-                              const SizedBox(width: 10),
-                            ],
-
-                            // 對話主氣泡
-                            Flexible(
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-                                decoration: BoxDecoration(
-                                  gradient: isUser
-                                      ? const LinearGradient(
-                                          colors: [Color(0xFF0284C7), Color(0xFF0369A1)],
-                                          begin: Alignment.topLeft,
-                                          end: Alignment.bottomRight,
-                                        )
-                                      : null,
-                                  color: isUser ? null : const Color(0xFF1C2541),
-                                  borderRadius: BorderRadius.only(
-                                    topLeft: const Radius.circular(20),
-                                    topRight: const Radius.circular(20),
-                                    bottomLeft: Radius.circular(isUser ? 20 : 4),
-                                    bottomRight: Radius.circular(isUser ? 4 : 20),
-                                  ),
-                                  border: Border.all(
-                                    color: isUser
-                                        ? const Color(0xFF38BDF8).withValues(alpha: 0.3)
-                                        : const Color(0xFF334155).withValues(alpha: 0.6),
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: isUser
-                                          ? const Color(0xFF0284C7).withValues(alpha: 0.25)
-                                          : Colors.black.withValues(alpha: 0.2),
-                                      blurRadius: 10,
-                                      offset: const Offset(0, 4),
-                                    ),
-                                  ],
-                                ),
-                                child: Text(
-                                  msg['text'],
-                                  style: GoogleFonts.notoSansTc(
-                                    fontSize: 14,
-                                    color: Colors.white,
-                                    height: 1.5,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
+                        Text(
+                          msg['text'],
+                          style: FamChatBubble.textStyle(context, mine: isUser),
                         ),
-
-                        // 近況摘要卡片
-                        if (!isUser && statusSummary != null) ...[
-                          const SizedBox(height: 12),
-                          _buildStatusSummaryCard(statusSummary),
-                        ],
-
-                        // 排程草稿卡片
-                        if (!isUser && scheduleDrafts != null && scheduleDrafts.isNotEmpty) ...[
-                          const SizedBox(height: 12),
-                          _buildScheduleDraftCard(scheduleDrafts, index, isApplied),
-                        ],
+                        // 近況摘要
+                        if (!isUser && statusSummary != null)
+                          _buildStatusSummary(statusSummary),
+                        // 排程草稿確認卡（`.sched`）
+                        if (!isUser && scheduleDrafts != null && scheduleDrafts.isNotEmpty)
+                          _buildScheduleDraft(scheduleDrafts, index, isApplied),
                       ],
                     ),
                   );
@@ -557,112 +487,49 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
             ),
 
             if (_isSending)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 8),
-                child: Center(child: CircularProgressIndicator(color: Color(0xFF38BDF8), strokeWidth: 2)),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Center(
+                  child: SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(color: c.brand, strokeWidth: 2.2),
+                  ),
+                ),
               ),
 
-            // 快捷推薦話題 Pills
-            Container(
-              height: 42,
-              margin: const EdgeInsets.only(bottom: 8),
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                children: [
-                  _buildPresetPill(Icons.wb_sunny_rounded, '$elderName 今天過得怎麼樣？', const Color(0xFF38BDF8)),
-                  _buildPresetPill(Icons.medication_rounded, '每天 08:00 與 20:00 提醒吃降血壓藥', const Color(0xFF10B981)),
-                  _buildPresetPill(Icons.directions_run_rounded, '每週六日下午 4 點提醒出門散步 30 分鐘', const Color(0xFFF59E0B)),
-                ],
-              ),
-            ),
-
-            // 輸入框
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: const BoxDecoration(
-                color: Color(0xFF1C2541),
-                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-              ),
+            // 底部輸入列（`.cbar`）：輸入框＋語音＋送出。固定寬度圓鈕、輸入框 Expanded，
+            // 窄螢幕下不會造成 RenderFlex 溢位（鐵律 #14）。
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
               child: Row(
                 children: [
                   Expanded(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF0B132B),
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(color: const Color(0xFF334155)),
-                      ),
-                      child: TextField(
-                        controller: _messageController,
-                        style: GoogleFonts.notoSansTc(color: Colors.white, fontSize: 14),
-                        decoration: InputDecoration(
-                          hintText: _isListening ? '🎤 聆聽中，請說話…' : '詢問長輩近況，或對話建立排程...',
-                          hintStyle: GoogleFonts.notoSansTc(color: const Color(0xFF64748B), fontSize: 13),
-                          border: InputBorder.none,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        ),
-                        onSubmitted: (_) => _sendMessage(),
-                      ),
+                    child: FamInput(
+                      controller: _messageController,
+                      hintText: _isListening ? '聆聽中，請說話…' : '詢問長輩近況，或對話建立排程...',
+                      height: 50,
+                      radius: 999,
+                      textInputAction: TextInputAction.send,
+                      onSubmitted: (_) => _sendMessage(),
                     ),
                   ),
                   const SizedBox(width: 8),
-                  // 🎙️ 語音輸入按鈕（第四十九輪新增）。固定寬度圖示鈕，左側輸入框
-                  // 已用 Expanded 吸收剩餘空間，窄螢幕下不會造成 RenderFlex 溢位
-                  // （鐵律 #14）。收聽中改紅色漸層＋麥克風實心圖示，明顯區分狀態。
-                  Container(
-                    width: 46,
-                    height: 46,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: _isListening
-                            ? [const Color(0xFFEF4444), const Color(0xFFF87171)]
-                            : [const Color(0xFF334155), const Color(0xFF1C2541)],
-                      ),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: _isListening
-                            ? const Color(0xFFEF4444).withValues(alpha: 0.6)
-                            : const Color(0xFF475569),
-                      ),
-                      boxShadow: _isListening
-                          ? [
-                              BoxShadow(
-                                color: const Color(0xFFEF4444).withValues(alpha: 0.4),
-                                blurRadius: 10,
-                              ),
-                            ]
-                          : null,
-                    ),
-                    child: IconButton(
-                      icon: Icon(
-                        _isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
-                        color: Colors.white,
-                        size: 20,
-                      ),
-                      onPressed: _isSending ? null : _toggleVoiceInput,
-                    ),
+                  // 🎙️ 語音輸入按鈕（第四十九輪新增）。收聽中改 danger 底，明顯區分狀態。
+                  FamRoundBtn(
+                    icon: _isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
+                    tooltip: _isListening ? '停止語音輸入' : '語音輸入',
+                    size: 50,
+                    background: _isListening ? c.danger : c.brandFill,
+                    foreground: _isListening ? Colors.white : c.onBrand,
+                    onTap: _isSending ? null : _toggleVoiceInput,
                   ),
                   const SizedBox(width: 8),
-                  Container(
-                    width: 46,
-                    height: 46,
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFF0284C7), Color(0xFF6366F1)],
-                      ),
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color(0xFF0284C7).withValues(alpha: 0.35),
-                          blurRadius: 10,
-                        ),
-                      ],
-                    ),
-                    child: IconButton(
-                      icon: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
-                      onPressed: () => _sendMessage(),
-                    ),
+                  FamRoundBtn(
+                    icon: Icons.send_rounded,
+                    tooltip: '送出',
+                    size: 50,
+                    onTap: () => _sendMessage(),
                   ),
                 ],
               ),
@@ -673,139 +540,58 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
     );
   }
 
-  Widget _buildPresetPill(IconData icon, String text, Color color) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: GestureDetector(
-        onTap: () => _sendMessage(text),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: color.withValues(alpha: 0.35)),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 14, color: color),
-              const SizedBox(width: 6),
-              Text(text, style: GoogleFonts.notoSansTc(fontSize: 12, fontWeight: FontWeight.bold, color: color)),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  /// 近況摘要：放在 AI 泡泡內，純文字列（不放小圖示）。
+  Widget _buildStatusSummary(Map<String, dynamic> summary) {
+    final c = UbanColors.of(context);
 
-  Widget _buildStatusSummaryCard(Map<String, dynamic> summary) {
-    return Container(
-      width: MediaQuery.of(context).size.width * 0.85,
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1C2541),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFF0284C7).withValues(alpha: 0.4), width: 1.2),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF0284C7).withValues(alpha: 0.2),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
+    Widget line(String label, String value) => Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text.rich(
+            TextSpan(children: [
+              TextSpan(
+                text: '$label  ',
+                style: famText(c.text3, 13, weight: FontWeight.w700),
+              ),
+              TextSpan(text: value, style: famText(c.text2, 14, height: 1.5)),
+            ]),
           ),
-        ],
-      ),
+        );
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              // ★ 第四十九輪誠實性修復：mood_title 改名 mood_status，內容從
-              //   模型自由發揮的「心情愉悅 ☀️」短標籤改成 Python 依真實資料
-              //   組出的完整句子（例如「今天偵測到 1 次負面情緒…」），長度不
-              //   再可控，因此改用 Expanded + ellipsis，避免窄螢幕溢位（鐵律
-              //   #14）。
-              Expanded(
-                child: Text(
-                  summary['mood_status'] ?? '目前沒有情緒紀錄',
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 2,
-                  style: GoogleFonts.notoSansTc(fontSize: 16, fontWeight: FontWeight.bold, color: const Color(0xFF38BDF8)),
-                ),
-              ),
-              // mood_score 沒有真實依據時一律為 null——不顯示分數徽章，
-              // 不要顯示 0、也不要自己補一個數字（第四十九輪明訂）。
-              if (summary['mood_score'] != null) ...[
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF10B981).withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.4)),
-                  ),
-                  child: Text(
-                    '情緒: ${summary['mood_score']} 分',
-                    style: GoogleFonts.notoSansTc(fontSize: 12, fontWeight: FontWeight.bold, color: const Color(0xFF10B981)),
-                  ),
-                ),
-              ],
-            ],
+          // ★ 第四十九輪誠實性修復：mood_title 改名 mood_status，內容從
+          //   模型自由發揮的短標籤改成 Python 依真實資料組出的完整句子，
+          //   長度不再可控，所以在泡泡內自然換行（鐵律 #14）。
+          Text(
+            summary['mood_status'] ?? '目前沒有情緒紀錄',
+            style: famText(c.text, 15, weight: FontWeight.w700, height: 1.5),
           ),
-          const SizedBox(height: 12),
-          Divider(color: Colors.white.withValues(alpha: 0.1), height: 1),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              const Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 16),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(summary['medication_status'] ?? '', style: GoogleFonts.notoSansTc(fontSize: 13, color: const Color(0xFFCBD5E1))),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              const Icon(Icons.directions_run_rounded, color: Color(0xFF38BDF8), size: 16),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(summary['activity_status'] ?? '', style: GoogleFonts.notoSansTc(fontSize: 13, color: const Color(0xFFCBD5E1))),
-              ),
-            ],
-          ),
-          // 📅 近期排程（第四十九輪新增顯示欄位）：這個欄位過去雖然由後端
-          // 回傳，但前端從未渲染過，等於白算——現在後端已經是查
-          // remote_reminders 得到的真實下一筆提醒，補上對應的顯示列。
-          if ((summary['next_appointment'] as String?)?.isNotEmpty == true) ...[
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                const Icon(Icons.event_rounded, color: Color(0xFFF59E0B), size: 16),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(summary['next_appointment'], style: GoogleFonts.notoSansTc(fontSize: 13, color: const Color(0xFFCBD5E1))),
-                ),
-              ],
-            ),
+          // mood_score 沒有真實依據時一律為 null——不顯示分數徽章，
+          // 不要顯示 0、也不要自己補一個數字（第四十九輪明訂）。
+          if (summary['mood_score'] != null) ...[
+            const SizedBox(height: 6),
+            FamChip(label: '情緒: ${summary['mood_score']} 分', tone: FamTone.brand),
           ],
+          line('用藥', (summary['medication_status'] ?? '').toString()),
+          line('活動', (summary['activity_status'] ?? '').toString()),
+          // 📅 近期排程（第四十九輪新增顯示欄位）：後端已經是查
+          // remote_reminders 得到的真實下一筆提醒，補上對應的顯示列。
+          if ((summary['next_appointment'] as String?)?.isNotEmpty == true)
+            line('排程', summary['next_appointment'].toString()),
           // recent_topics 沒有真實話題來源時，後端回空陣列——不顯示整個
           // 話題標籤區塊，不用空的 Wrap 留下多餘留白（第四十九輪明訂）。
           if ((summary['recent_topics'] as List<dynamic>?)?.isNotEmpty == true) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             Wrap(
               spacing: 6,
               runSpacing: 6,
-              children: (summary['recent_topics'] as List<dynamic>).map((t) {
-                return Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0284C7).withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: const Color(0xFF0284C7).withValues(alpha: 0.3)),
-                  ),
-                  child: Text('# $t', style: GoogleFonts.notoSansTc(fontSize: 11, color: const Color(0xFF38BDF8), fontWeight: FontWeight.bold)),
-                );
-              }).toList(),
+              children: [
+                for (final t in (summary['recent_topics'] as List<dynamic>))
+                  FamChip(label: '# $t'),
+              ],
             ),
           ],
         ],
@@ -813,121 +599,36 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
     );
   }
 
-  Widget _buildScheduleDraftCard(List<dynamic> drafts, int messageIndex, bool isApplied) {
-    return Container(
-      width: MediaQuery.of(context).size.width * 0.85,
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1C2541),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.4), width: 1.2),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF10B981).withValues(alpha: 0.2),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
+  /// 排程草稿：`.sched` 列＋確認鈕，放在 AI 泡泡內。確認鈕的行為與改版前相同
+  /// （`_confirmBatchSchedule`，已套用後鈕停用）。
+  Widget _buildScheduleDraft(List<dynamic> drafts, int messageIndex, bool isApplied) {
+    final c = UbanColors.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF10B981).withValues(alpha: 0.2),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.playlist_add_check_rounded, color: Color(0xFF10B981), size: 18),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'AI 解析出 ${drafts.length} 筆關懷排程草稿',
-                style: GoogleFonts.notoSansTc(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white),
-              ),
-            ],
+          Text(
+            'AI 解析出 ${drafts.length} 筆關懷排程草稿',
+            style: famText(c.text2, 13.5, weight: FontWeight.w700),
           ),
-          const SizedBox(height: 14),
-          ...drafts.map((d) {
-            final cat = d['category'] ?? 'custom';
-            IconData iconData = Icons.alarm_rounded;
-            Color iconColor = const Color(0xFF38BDF8);
-
-            if (cat == 'medication') {
-              iconData = Icons.medication_rounded;
-              iconColor = const Color(0xFF10B981);
-            } else if (cat == 'exercise') {
-              iconData = Icons.directions_run_rounded;
-              iconColor = const Color(0xFFF59E0B);
-            } else if (cat == 'hospital') {
-              iconData = Icons.local_hospital_rounded;
-              iconColor = const Color(0xFFEF4444);
-            }
-
-            return Container(
-              margin: const EdgeInsets.only(bottom: 10),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFF0B132B),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: const Color(0xFF334155)),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: iconColor.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(iconData, color: iconColor, size: 20),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          d['title'] ?? '排程',
-                          style: GoogleFonts.notoSansTc(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          '⏰ ${d['time_str']} (${d['repeat_days'] ?? "每天"})',
-                          style: GoogleFonts.notoSansTc(fontSize: 12, color: const Color(0xFF94A3B8)),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }),
-          const SizedBox(height: 14),
-          SizedBox(
-            width: double.infinity,
-            height: 48,
-            child: ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: isApplied ? const Color(0xFF475569) : const Color(0xFF10B981),
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                elevation: isApplied ? 0 : 3,
-              ),
-              onPressed: isApplied
-                  ? null
-                  : () {
-                      HapticFeedback.mediumImpact();
-                      _confirmBatchSchedule(drafts, messageIndex);
-                    },
-              icon: Icon(isApplied ? Icons.check_circle_rounded : Icons.sync_rounded, color: Colors.white, size: 20),
-              label: Text(
-                isApplied ? '✅ 已成功同步至長輩端' : '🚀 一鍵確認同步至長輩端',
-                style: GoogleFonts.notoSansTc(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white),
-              ),
+          for (var i = 0; i < drafts.length; i++)
+            FamSched(
+              first: i == 0,
+              time: (drafts[i]['time_str'] ?? '').toString(),
+              meta: (drafts[i]['repeat_days'] ?? '每天').toString(),
+              title: (drafts[i]['title'] ?? '排程').toString(),
             ),
+          const SizedBox(height: 12),
+          FamButton(
+            label: isApplied ? '已成功同步至長輩端' : '一鍵確認同步至長輩端',
+            height: 44,
+            onPressed: isApplied
+                ? null
+                : () {
+                    HapticFeedback.mediumImpact();
+                    _confirmBatchSchedule(drafts, messageIndex);
+                  },
           ),
         ],
       ),

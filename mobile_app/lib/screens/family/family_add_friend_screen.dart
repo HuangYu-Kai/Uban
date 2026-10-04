@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../services/family_friend_service.dart';
 import '../../theme/app_theme.dart';
+import '../../theme/family_theme.dart';
+import '../../widgets/ui/ui.dart';
 import '../widgets/friend_avatar.dart';
+import 'widgets/fam_interaction_ui.dart';
+import 'widgets/fam_ui.dart';
 
 /// 家屬「加好友」畫面（第五項需求：家屬好友系統，家屬端一半，item 4；
 /// 第五十二輪任務 C 補上 QR 顯示／分享／掃描）。
@@ -292,7 +295,7 @@ class _FamilyAddFriendScreenState extends State<FamilyAddFriendScreen> {
     if (ok) {
       setState(() => _requests.removeWhere((r) => r['request_id'] == rawId));
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(accept ? '已成為好友' : '已拒絕邀請')),
+        famSnackBar(context, accept ? '已成為好友' : '已拒絕邀請', success: accept),
       );
       if (accept) {
         // 剛成為好友，重新整理好友清單（也順便校正邀請清單）。
@@ -300,7 +303,8 @@ class _FamilyAddFriendScreenState extends State<FamilyAddFriendScreen> {
       }
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(FamilyFriendService.lastRespondError ?? '操作失敗，請稍後再試')),
+        famSnackBar(context, FamilyFriendService.lastRespondError ?? '操作失敗，請稍後再試',
+            error: true),
       );
     }
   }
@@ -310,19 +314,41 @@ class _FamilyAddFriendScreenState extends State<FamilyAddFriendScreen> {
     final friendId = rawId is int ? rawId : int.tryParse('$rawId');
     if (friendId == null) return;
     final name = (friend['family_name'] ?? '這位好友').toString();
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('解除好友'),
-        content: Text('確定要解除與「$name」的好友關係嗎？'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('解除', style: TextStyle(color: AppColors.danger)),
-          ),
-        ],
-      ),
+    final confirmed = await showUbanDialog<bool>(
+      context,
+      (ctx) {
+        final c = UbanColors.of(ctx);
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            famDialogTitle(c, '解除好友'),
+            const SizedBox(height: 10),
+            Text('確定要解除與「$name」的好友關係嗎？',
+                style: famText(c.text2, 15, height: 1.5)),
+            const SizedBox(height: 22),
+            Row(
+              children: [
+                Expanded(
+                  child: FamButton(
+                    label: '取消',
+                    kind: FamButtonKind.ghost,
+                    onPressed: () => Navigator.pop(ctx, false),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FamButton(
+                    label: '解除',
+                    kind: FamButtonKind.danger,
+                    onPressed: () => Navigator.pop(ctx, true),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        );
+      },
     );
     if (confirmed != true || !mounted) return;
     setState(() => _removingIds.add(friendId));
@@ -334,31 +360,37 @@ class _FamilyAddFriendScreenState extends State<FamilyAddFriendScreen> {
     setState(() => _removingIds.remove(friendId));
     if (ok) {
       setState(() => _friends.removeWhere((f) => f['family_id'] == rawId));
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已解除好友關係')));
+      ScaffoldMessenger.of(context).showSnackBar(famSnackBar(context, '已解除好友關係'));
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(FamilyFriendService.lastRemoveFriendError ?? '操作失敗，請稍後再試')),
+        famSnackBar(context, FamilyFriendService.lastRemoveFriendError ?? '操作失敗，請稍後再試',
+            error: true),
       );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // 2026-10：從好友動態頁 push 出來的新路由吃不到上層的家屬主題，這裡自己掛。
+    return FamilyThemeScope(
+      child: Builder(builder: _buildScreen),
+    );
+  }
+
+  Widget _buildScreen(BuildContext context) {
+    final c = UbanColors.of(context);
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: Text('好友', style: AppTextStyles.title),
-      ),
+      backgroundColor: c.bg,
+      appBar: famSubBar(context, title: '好友'),
       body: SafeArea(
+        top: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _buildModeSwitcher(),
-              const SizedBox(height: 18),
+              const SizedBox(height: 16),
               Expanded(
                 child: SingleChildScrollView(
                   child: _buildModeBody(),
@@ -371,83 +403,80 @@ class _FamilyAddFriendScreenState extends State<FamilyAddFriendScreen> {
     );
   }
 
+  /// 四分頁切換列（純文字分段控制；surface2 底、選取者 surface 底＋卡片陰影）。
   Widget _buildModeSwitcher() {
+    final c = UbanColors.of(context);
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: const Color(0xFFE2E8F0),
-        borderRadius: BorderRadius.circular(14),
+        color: c.surface2,
+        borderRadius: BorderRadius.circular(16),
       ),
-      child: Row(
-        children: [
-          _modeTab(_FamilyFriendMode.myCode, Icons.qr_code_2_rounded, '我的代碼'),
-          _modeTab(_FamilyFriendMode.scan, Icons.qr_code_scanner_rounded, '掃描'),
-          _modeTab(_FamilyFriendMode.search, Icons.person_search_rounded, '搜尋加好友'),
-          _modeTab(_FamilyFriendMode.manage, Icons.group_rounded, '好友管理',
-              badge: _requests.length),
-        ],
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _modeTab(_FamilyFriendMode.myCode, '我的代碼'),
+            _modeTab(_FamilyFriendMode.scan, '掃描'),
+            _modeTab(_FamilyFriendMode.search, '搜尋加好友'),
+            _modeTab(_FamilyFriendMode.manage, '好友管理', badge: _requests.length),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _modeTab(_FamilyFriendMode mode, IconData icon, String label, {int badge = 0}) {
+  Widget _modeTab(_FamilyFriendMode mode, String label, {int badge = 0}) {
+    final c = UbanColors.of(context);
     final bool selected = _mode == mode;
     return Expanded(
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => _switchMode(mode),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          decoration: BoxDecoration(
-            color: selected ? Colors.white : Colors.transparent,
-            borderRadius: BorderRadius.circular(11),
-            boxShadow: selected
-                ? [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.08),
-                      blurRadius: 6,
-                      offset: const Offset(0, 2),
-                    ),
-                  ]
-                : null,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Icon(icon, size: 22, color: selected ? AppColors.primaryDark : AppColors.textHint),
-                  if (badge > 0)
-                    Positioned(
-                      right: -6,
-                      top: -4,
-                      child: Container(
-                        padding: const EdgeInsets.all(2),
-                        constraints: const BoxConstraints(minWidth: 14, minHeight: 14),
-                        decoration: const BoxDecoration(color: AppColors.danger, shape: BoxShape.circle),
-                        child: Text(
-                          '$badge',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: selected ? AppColors.primaryDark : AppColors.textHint,
+      child: Semantics(
+        button: true,
+        selected: selected,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => _switchMode(mode),
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 44),
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: selected ? c.surface : Colors.transparent,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: selected ? c.shadows.card : null,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: famText(
+                    selected ? c.brandStrong : c.text2,
+                    13.5,
+                    weight: selected ? FontWeight.w800 : FontWeight.w600,
+                    height: 1.25,
+                  ),
                 ),
-              ),
-            ],
+                // 待回應邀請＝待處理 → 暖色數字膠囊。
+                if (badge > 0) ...[
+                  const SizedBox(height: 3),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: c.warmContainer,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text('$badge 待回應',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: famText(c.warm, 11, weight: FontWeight.w800)),
+                  ),
+                ],
+              ],
+            ),
           ),
         ),
       ),
@@ -467,58 +496,58 @@ class _FamilyAddFriendScreenState extends State<FamilyAddFriendScreen> {
     }
   }
 
+  Widget _buildLoading([String? label]) {
+    final c = UbanColors.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 60),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(color: c.brand, strokeWidth: 2.5),
+            if (label != null) ...[
+              const SizedBox(height: 12),
+              Text(label, style: famText(c.text2, 14)),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   // ── 我的代碼 ──────────────────────────────────────────
   Widget _buildMyCodeBody() {
-    if (_isLoadingMyCode) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 60),
-        child: Center(child: CircularProgressIndicator()),
-      );
-    }
+    final c = UbanColors.of(context);
+    if (_isLoadingMyCode) return _buildLoading();
     if (_myCode == null) {
       return _buildInlineErrorBlock('目前無法取得您的好友代碼，請檢查網路後重試', _loadMyCode);
     }
     return Column(
       children: [
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 20),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.06),
-                blurRadius: 16,
-                offset: const Offset(0, 6),
-              ),
-            ],
-          ),
+        FamCard(
           child: Column(
             children: [
-              Text('我的好友代碼', style: AppTextStyles.secondary),
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
+              Text('我的好友代碼', style: famText(c.text2, 14, weight: FontWeight.w700)),
+              const SizedBox(height: 10),
               // 4 碼定長字串搭配大字級展示，用 FittedBox 而非 ellipsis——
               // 代碼被截斷會誤導使用者（鐵律 #14 / 護欄 G159）。
               FittedBox(
                 fit: BoxFit.scaleDown,
                 child: Text(
                   _myCode!,
-                  style: GoogleFonts.inter(
-                    fontSize: 48,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 10,
-                    color: AppColors.primaryDark,
-                  ),
+                  style: famText(c.brandStrong, 48,
+                      weight: FontWeight.w900, letterSpacing: 10, tabular: true),
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 18),
               // ★ 第五十二輪任務 C：QR 碼顯示，格式見 [encodeFamilyFriendQr]。
+              // QR 一律白底（深色模式也要維持對比，掃描器才讀得到）。
               Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  border: Border.all(color: AppColors.border),
+                  border: Border.all(color: c.line),
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: QrImageView(
@@ -528,41 +557,28 @@ class _FamilyAddFriendScreenState extends State<FamilyAddFriendScreen> {
                   backgroundColor: Colors.white,
                 ),
               ),
+              const SizedBox(height: 8),
             ],
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 14),
         Row(
           children: [
             Expanded(
-              child: SizedBox(
-                height: 48,
-                child: OutlinedButton.icon(
-                  onPressed: () {
-                    Clipboard.setData(ClipboardData(text: _myCode!));
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已複製代碼')));
-                  },
-                  icon: const Icon(Icons.copy_rounded, size: 18),
-                  label: const Text('複製代碼', maxLines: 1, overflow: TextOverflow.ellipsis),
-                ),
+              child: FamButton(
+                label: '複製代碼',
+                kind: FamButtonKind.outline,
+                onPressed: () {
+                  Clipboard.setData(ClipboardData(text: _myCode!));
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(famSnackBar(context, '已複製代碼'));
+                },
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: SizedBox(
-                height: 48,
-                // ★ 第五十二輪任務 C：分享（share_plus），文案見 [_shareMyCode]。
-                child: ElevatedButton.icon(
-                  onPressed: _shareMyCode,
-                  icon: const Icon(Icons.share_rounded, size: 18),
-                  label: const Text('分享代碼', maxLines: 1, overflow: TextOverflow.ellipsis),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  ),
-                ),
-              ),
+              // ★ 第五十二輪任務 C：分享（share_plus），文案見 [_shareMyCode]。
+              child: FamButton(label: '分享代碼', onPressed: _shareMyCode),
             ),
           ],
         ),
@@ -570,7 +586,7 @@ class _FamilyAddFriendScreenState extends State<FamilyAddFriendScreen> {
         Text(
           '把這組代碼或 QR 碼分享給朋友。請對方在「搜尋加好友」輸入代碼，或用「掃描」對準您的 QR 碼，即可送出邀請',
           textAlign: TextAlign.center,
-          style: AppTextStyles.secondary,
+          style: famText(c.text2, 13.5, height: 1.5),
         ),
       ],
     );
@@ -578,29 +594,17 @@ class _FamilyAddFriendScreenState extends State<FamilyAddFriendScreen> {
 
   // ── 掃描朋友 ────────────────────────────────────────────
   Widget _buildScanBody() {
-    if (_isSearching) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 60),
-        child: Center(
-          child: Column(
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 12),
-              Text('查詢中…'),
-            ],
-          ),
-        ),
-      );
-    }
+    final c = UbanColors.of(context);
+    if (_isSearching) return _buildLoading('查詢中…');
     if (_searchResult != null) {
       return Column(
         children: [
           _buildResultCard(),
           const SizedBox(height: 14),
-          TextButton.icon(
+          FamButton(
+            label: '重新掃描',
+            kind: FamButtonKind.ghost,
             onPressed: _restartScan,
-            icon: const Icon(Icons.refresh_rounded, size: 18),
-            label: Text('重新掃描', style: AppTextStyles.secondary),
           ),
         ],
       );
@@ -610,28 +614,19 @@ class _FamilyAddFriendScreenState extends State<FamilyAddFriendScreen> {
         children: [
           _buildErrorBanner(_searchError!),
           const SizedBox(height: 16),
-          SizedBox(
-            height: 48,
-            child: ElevatedButton.icon(
-              onPressed: _restartScan,
-              icon: const Icon(Icons.refresh_rounded, size: 20),
-              label: const Text('重新掃描', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-              ),
-            ),
-          ),
+          FamButton(label: '重新掃描', onPressed: _restartScan),
         ],
       );
     }
     return Column(
       children: [
-        Text('把朋友的 Uban QR 碼對準框框', textAlign: TextAlign.center, style: AppTextStyles.body),
+        Text('把朋友的 Uban QR 碼對準框框',
+            textAlign: TextAlign.center,
+            style: famText(c.text, 15.5, weight: FontWeight.w700)),
         const SizedBox(height: 12),
         if (_scannerController != null)
           ClipRRect(
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(20),
             child: SizedBox(
               height: 300,
               child: MobileScanner(
@@ -646,16 +641,20 @@ class _FamilyAddFriendScreenState extends State<FamilyAddFriendScreen> {
 
   // ── 搜尋加好友 ────────────────────────────────────────
   Widget _buildSearchBody() {
+    final c = UbanColors.of(context);
     return Column(
       children: [
-        Text('輸入朋友的 4 碼好友代碼', style: AppTextStyles.body),
+        Text('輸入朋友的 4 碼好友代碼',
+            style: famText(c.text, 15.5, weight: FontWeight.w700)),
         const SizedBox(height: 14),
-        TextField(
+        FamInput(
           controller: _searchController,
           keyboardType: TextInputType.text,
           textAlign: TextAlign.center,
           textCapitalization: TextCapitalization.characters,
           maxLength: 4,
+          height: 68,
+          hintText: 'ABCD',
           inputFormatters: [
             // ★ 第五十一輪：好友代碼改為 4 碼大寫英數字（後端同步排除易混淆
             // 的 0/O/1/I），允許輸入英數字並即時轉大寫，不再限制只能輸入數字。
@@ -665,39 +664,13 @@ class _FamilyAddFriendScreenState extends State<FamilyAddFriendScreen> {
               (oldValue, newValue) => newValue.copyWith(text: newValue.text.toUpperCase()),
             ),
           ],
-          style: GoogleFonts.inter(fontSize: 32, fontWeight: FontWeight.w900, letterSpacing: 8),
-          decoration: InputDecoration(
-            counterText: '',
-            hintText: 'ABCD',
-            filled: true,
-            fillColor: Colors.white,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: BorderSide(color: AppColors.border),
-            ),
-          ),
+          style: famText(c.text, 32, weight: FontWeight.w900, letterSpacing: 8, tabular: true),
         ),
         const SizedBox(height: 14),
-        SizedBox(
-          height: 48,
-          child: ElevatedButton.icon(
-            onPressed: _isSearching ? null : () => _performSearch(_searchController.text),
-            icon: _isSearching
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
-                  )
-                : const Icon(Icons.search_rounded, size: 20),
-            label: Text(
-              _isSearching ? '查詢中...' : '搜尋',
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
-            ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-            ),
-          ),
+        FamButton(
+          label: _isSearching ? '查詢中...' : '搜尋',
+          loading: _isSearching,
+          onPressed: _isSearching ? null : () => _performSearch(_searchController.text),
         ),
         if (_searchError != null) ...[
           const SizedBox(height: 14),
@@ -712,18 +685,12 @@ class _FamilyAddFriendScreenState extends State<FamilyAddFriendScreen> {
   }
 
   Widget _buildResultCard() {
+    final c = UbanColors.of(context);
     final data = _searchResult!;
     final name = (data['family_name'] ?? '家人').toString();
     final codeStr = (data['family_code'] ?? '').toString();
     final avatarUrl = data['avatar_url'] as String?;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.border),
-      ),
+    return FamCard(
       child: Column(
         children: [
           FriendAvatar(avatarUrl: avatarUrl, name: name, radius: 36),
@@ -733,50 +700,30 @@ class _FamilyAddFriendScreenState extends State<FamilyAddFriendScreen> {
             textAlign: TextAlign.center,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w800),
+            style: famText(c.text, 17, weight: FontWeight.w800),
           ),
           const SizedBox(height: 4),
-          Text('代碼：$codeStr', style: AppTextStyles.secondary),
+          Text('代碼：$codeStr', style: famText(c.text2, 14, tabular: true)),
           const SizedBox(height: 16),
           if (_sendResultMessage != null)
             Container(
               padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
               decoration: BoxDecoration(
-                color: AppColors.primaryLight,
-                borderRadius: BorderRadius.circular(14),
+                color: c.brandContainer,
+                borderRadius: BorderRadius.circular(16),
               ),
               width: double.infinity,
               child: Text(
                 _sendResultMessage!,
                 textAlign: TextAlign.center,
-                style: AppTextStyles.secondary.copyWith(
-                  color: AppColors.primaryDark,
-                  fontWeight: FontWeight.w700,
-                ),
+                style: famText(c.brandStrong, 14, weight: FontWeight.w700, height: 1.4),
               ),
             )
           else
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: ElevatedButton.icon(
-                onPressed: _isSendingRequest ? null : _sendRequest,
-                icon: _isSendingRequest
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
-                      )
-                    : const Icon(Icons.person_add_alt_1_rounded, size: 20),
-                label: Text(
-                  _isSendingRequest ? '送出中' : '加好友',
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                ),
-              ),
+            FamButton(
+              label: _isSendingRequest ? '送出中' : '加好友',
+              loading: _isSendingRequest,
+              onPressed: _isSendingRequest ? null : _sendRequest,
             ),
         ],
       ),
@@ -785,40 +732,31 @@ class _FamilyAddFriendScreenState extends State<FamilyAddFriendScreen> {
 
   // ── 好友管理（邀請＋清單） ──────────────────────────────
   Widget _buildManageBody() {
-    if (_isLoadingManage) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 60),
-        child: Center(child: CircularProgressIndicator()),
-      );
-    }
+    final c = UbanColors.of(context);
+    if (_isLoadingManage) return _buildLoading();
     if (_manageError != null && _requests.isEmpty && _friends.isEmpty) {
       return _buildInlineErrorBlock(_manageError!, _loadManageData);
     }
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (_requests.isNotEmpty) ...[
-          Text('待回應邀請', style: AppTextStyles.heading),
+          const FamSecHead(title: '待回應邀請'),
           const SizedBox(height: 10),
           ..._requests.map(_buildRequestCard),
           const SizedBox(height: 20),
         ],
-        Text('我的好友（${_friends.length}）', style: AppTextStyles.heading),
+        FamSecHead(title: '我的好友（${_friends.length}）'),
         const SizedBox(height: 10),
         if (_friends.isEmpty)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: Column(
-              children: [
-                const Icon(Icons.people_outline_rounded, size: 48, color: AppColors.textHint),
-                const SizedBox(height: 8),
-                Text('還沒有好友，去搜尋加好友試試看吧！', style: AppTextStyles.secondary),
-              ],
+          FamCard(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Text(
+                '還沒有好友，去搜尋加好友試試看吧！',
+                textAlign: TextAlign.center,
+                style: famText(c.text2, 14.5, height: 1.5),
+              ),
             ),
           )
         else
@@ -828,126 +766,127 @@ class _FamilyAddFriendScreenState extends State<FamilyAddFriendScreen> {
   }
 
   Widget _buildRequestCard(Map<String, dynamic> request) {
+    final c = UbanColors.of(context);
     final rawId = request['request_id'];
     final requestId = rawId is int ? rawId : int.tryParse('$rawId');
     final isResponding = requestId != null && _respondingIds.contains(requestId);
     final name = (request['from_family_name'] ?? '家人').toString();
     final avatarUrl = request['avatar_url'] as String?;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(
-        children: [
-          FriendAvatar(avatarUrl: avatarUrl, name: name, radius: 22),
-          const SizedBox(width: 10),
-          // ★ 鐵律 #14 / 護欄 G159：同列有頭像＋兩顆按鈕，姓名必須可收縮。
-          Expanded(
-            child: Text(
-              name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w700),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: FamCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                FriendAvatar(avatarUrl: avatarUrl, name: name, radius: 22),
+                const SizedBox(width: 10),
+                // ★ 鐵律 #14 / 護欄 G159：姓名必須可收縮。
+                Expanded(
+                  child: Text(
+                    name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: famText(c.text, 15.5, weight: FontWeight.w700),
+                  ),
+                ),
+              ],
             ),
-          ),
-          const SizedBox(width: 8),
-          if (isResponding)
-            const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-          else ...[
-            IconButton(
-              tooltip: '拒絕',
-              onPressed: () => _respond(request, false),
-              icon: const Icon(Icons.close_rounded, color: AppColors.danger),
-            ),
-            IconButton(
-              tooltip: '接受',
-              onPressed: () => _respond(request, true),
-              icon: const Icon(Icons.check_circle_rounded, color: AppColors.primary),
-            ),
+            const SizedBox(height: 10),
+            if (isResponding)
+              Align(
+                alignment: Alignment.centerRight,
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: c.brand),
+                ),
+              )
+            else
+              Wrap(
+                alignment: WrapAlignment.end,
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  FamSmallBtn(label: '拒絕', onTap: () => _respond(request, false)),
+                  FamSmallBtn(label: '接受', filled: true, onTap: () => _respond(request, true)),
+                ],
+              ),
           ],
-        ],
+        ),
       ),
     );
   }
 
   Widget _buildFriendCard(Map<String, dynamic> friend) {
+    final c = UbanColors.of(context);
     final rawId = friend['family_id'];
     final friendId = rawId is int ? rawId : int.tryParse('$rawId');
     final isRemoving = friendId != null && _removingIds.contains(friendId);
     final name = (friend['family_name'] ?? '家人').toString();
     final avatarUrl = friend['avatar_url'] as String?;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(
-        children: [
-          FriendAvatar(avatarUrl: avatarUrl, name: name, radius: 22),
-          const SizedBox(width: 10),
-          // ★ 鐵律 #14 / 護欄 G159：同列有頭像＋解除按鈕，姓名必須可收縮。
-          Expanded(
-            child: Text(
-              name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w700),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: FamCard(
+        child: Row(
+          children: [
+            FriendAvatar(avatarUrl: avatarUrl, name: name, radius: 22),
+            const SizedBox(width: 10),
+            // ★ 鐵律 #14 / 護欄 G159：同列有頭像＋解除按鈕，姓名必須可收縮。
+            Expanded(
+              child: Text(
+                name,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: famText(c.text, 15.5, weight: FontWeight.w700),
+              ),
             ),
-          ),
-          const SizedBox(width: 8),
-          isRemoving
-              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-              : IconButton(
-                  tooltip: '解除好友',
-                  onPressed: () => _confirmRemoveFriend(friend),
-                  icon: const Icon(Icons.person_remove_rounded, color: AppColors.textHint),
-                ),
-        ],
+            const SizedBox(width: 8),
+            isRemoving
+                ? SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: c.brand),
+                  )
+                : FamSmallBtn(
+                    label: '解除好友',
+                    danger: true,
+                    onTap: () => _confirmRemoveFriend(friend),
+                  ),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildErrorBanner(String message) {
+    final c = UbanColors.of(context);
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFFFEF2F2),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFFCA5A5)),
+        color: c.dangerContainer,
+        borderRadius: BorderRadius.circular(16),
       ),
-      child: Row(
-        children: [
-          const Icon(Icons.info_outline_rounded, color: Color(0xFFDC2626), size: 20),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              message,
-              style: AppTextStyles.secondary.copyWith(color: const Color(0xFFB91C1C)),
-            ),
-          ),
-        ],
+      child: Text(
+        message,
+        style: famText(c.danger, 14, weight: FontWeight.w700, height: 1.45),
       ),
     );
   }
 
   Widget _buildInlineErrorBlock(String message, VoidCallback onRetry) {
+    final c = UbanColors.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 40),
       child: Column(
         children: [
-          const Icon(Icons.wifi_off_rounded, size: 56, color: AppColors.textHint),
-          const SizedBox(height: 10),
-          Text(message, textAlign: TextAlign.center, style: AppTextStyles.body),
+          Text(message,
+              textAlign: TextAlign.center,
+              style: famText(c.text, 15, weight: FontWeight.w600, height: 1.5)),
           const SizedBox(height: 14),
-          ElevatedButton(onPressed: onRetry, child: const Text('重試')),
+          FamButton(label: '重試', expand: false, onPressed: onRetry),
         ],
       ),
     );
