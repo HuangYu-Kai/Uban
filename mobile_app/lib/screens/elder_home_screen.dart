@@ -10,7 +10,6 @@ import 'elder_tabs/elder_layout.dart';
 import 'elder_chat_screen.dart';
 import 'elder_tabs/elder_profile_tab.dart';
 import '../globals.dart';
-import '../theme/app_theme.dart'; // ElderScale：長輩端字級慣例（第五十輪來電通知放大用）
 import 'elder_screen.dart';
 import 'emergency_permission_guide_screen.dart';
 import 'package:flutter_tts/flutter_tts.dart';
@@ -23,6 +22,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import '../widgets/google_assistant_overlay.dart';
 import '../widgets/global_assistant_button.dart';
+import '../widgets/incoming_call_view.dart';
 // ★ 第四十輪（item 4）：onCancelCall 現在也要關備援本機通知，見下方說明。
 import '../services/local_call_notification.dart';
 // ★ 第四十一輪（item 2）：步驟式高光新手指引元件。
@@ -807,76 +807,19 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
         // ★ 第五十一輪（長5）：來電響鈴畫面上，全域語音助理浮動鈕必須讓位，
         //   不可以擋到接聽／拒接鍵。
         return AssistantHiddenZone(
-          child: AlertDialog(
-          // ★ 第五十輪：長輩端「app 內來電通知」按鈕與文字放大 100%（需求 B）。
-          //   只改字級／尺寸／間距等純視覺屬性，未動任何接聽/拒接邏輯或導航方式。
-          title: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16), // 8→16，跟著圖示等比放大
-                decoration: BoxDecoration(
-                  color: Colors.green.shade100,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(Icons.phone_in_talk,
-                    color: Colors.green, size: 56), // 28→56（100%）
-              ),
-              const SizedBox(width: 24), // 12→24
-              // 標題原本沒有 style（吃 AlertDialog 預設，約 22sp），這裡明確給一個
-              // 放大後的樣式；沿用專案既有的 ElderScale.displayTitle（40sp）。
-              // 包 Flexible + ellipsis：硬規則 14——同列還有圖示，長輩若把系統字級
-              // 調更大，標題必須可收縮，否則會撐出 RenderFlex 溢位。
-              Flexible(
-                child: Text(
-                  '家屬來電',
-                  style: ElderScale.displayTitle,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-          // 內容文字 18→36（100%），沿用 ElderScale.body 當基底再覆寫字級；
-          // 外面包 SingleChildScrollView：字放大後窄螢幕/小螢幕高度可能不夠，
-          // 讓內容可捲動，避免溢位（硬規則 14）。
-          content: SingleChildScrollView(
-            child: Text(
-              '您的家人正在呼叫您！',
-              style: ElderScale.body.copyWith(fontSize: 36),
-            ),
-          ),
-          backgroundColor: Colors.green.shade50,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          actions: [
-            ElevatedButton.icon(
-              onPressed: () {
+          // ★ 2026-10-04 UI 改版：外觀統一為設計稿的全螢幕來電畫面（純展示 widget）。
+          //   兩顆按鈕的 onDecline／onAccept 就是原本 onPressed 內的閉包，逐字未動；
+          //   showDialog 參數、AssistantHiddenZone、.then 收尾皆未動。
+          child: IncomingCallView(
+            callerName: '家屬',
+            subtitle: '您的家人正在呼叫您！',
+              onDecline: () {
                 Signaling()
                     .sendCallBusy(senderId, callId: callId, room: roomId);
                 Navigator.of(dialogContext).pop();
                 _isIncomingCallDialogOpen = false;
               },
-              icon: const Icon(Icons.call_end, size: ElderScale.buttonIcon), // 圖示跟著放大
-              // 按鈕文字 16→32（100%），沿用 ElderScale.button 當基底再覆寫字級；
-              // 包 Flexible + ellipsis：兩顆按鈕同列，字放大後必須可收縮，
-              // 否則窄螢幕（如 320dp）會把 Row 撐爆、出現黃黑溢位條（硬規則 14）。
-              label: Flexible(
-                child: Text(
-                  '拒接',
-                  style: ElderScale.button.copyWith(fontSize: 32, color: Colors.white),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
-                // 20/12→40/24（100%），並保證最小點擊高度跟著放大，避免文字撐爆按鈕。
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
-                minimumSize: const Size(64, ElderScale.buttonHeight),
-              ),
-            ),
-            ElevatedButton.icon(
-              onPressed: () {
+              onAccept: () {
                 Navigator.of(dialogContext).pop();
                 _isIncomingCallDialogOpen = false;
 
@@ -924,24 +867,6 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
                   }
                 });
               },
-              icon: const Icon(Icons.videocam, size: ElderScale.buttonIcon), // 圖示跟著放大
-              // 同上「拒接」按鈕的放大＋可收縮處理。
-              label: Flexible(
-                child: Text(
-                  '接聽',
-                  style: ElderScale.button.copyWith(fontSize: 32, color: Colors.white),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
-                foregroundColor: Colors.white,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
-                minimumSize: const Size(64, ElderScale.buttonHeight),
-              ),
-            ),
-          ],
           ),
         );
       },

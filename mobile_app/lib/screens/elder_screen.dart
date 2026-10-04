@@ -21,6 +21,7 @@ import 'elder_home_screen.dart';
 import '../globals.dart';
 import '../services/care_message_store.dart';
 import '../widgets/global_assistant_button.dart';
+import '../widgets/incoming_call_view.dart';
 
 class ElderScreen extends StatefulWidget {
   final String roomId;
@@ -803,52 +804,20 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) {
-        return AlertDialog(
-          title: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.green.shade100,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(Icons.phone_in_talk, color: Colors.green, size: 28),
-              ),
-              const SizedBox(width: 12),
-              const Text('家屬來電'),
-            ],
-          ),
-          content: const Text('您的家人正在呼叫您！', style: TextStyle(fontSize: 18)),
-          backgroundColor: Colors.green.shade50,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          actions: [
-            ElevatedButton.icon(
-              onPressed: () {
+        // ★ 2026-10-04 UI 改版：外觀統一為設計稿的全螢幕來電畫面（純展示 widget）。
+        //   onDecline／onAccept 就是原本兩顆按鈕 onPressed 內的閉包，逐字未動；
+        //   本畫面根層已由 AssistantHiddenZone 包住整個 Scaffold（G199），此處不重複。
+        return IncomingCallView(
+          callerName: '家屬',
+          subtitle: '您的家人正在呼叫您！',
+              onDecline: () {
                 accepted = false;
                 Navigator.of(dialogContext).pop();
               },
-              icon: const Icon(Icons.call_end),
-              label: const Text('拒接', style: TextStyle(fontSize: 16)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              ),
-            ),
-            ElevatedButton.icon(
-              onPressed: () {
+              onAccept: () {
                 accepted = true;
                 Navigator.of(dialogContext).pop();
               },
-              icon: const Icon(Icons.videocam),
-              label: const Text('接聽', style: TextStyle(fontSize: 16)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              ),
-            ),
-          ],
         );
       },
     );

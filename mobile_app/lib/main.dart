@@ -49,6 +49,7 @@ import 'services/elder_reminder_manager.dart';
 import 'services/firebase_bg_handler.dart';
 import 'widgets/main_painters.dart';
 import 'widgets/global_assistant_button.dart';
+import 'widgets/incoming_call_view.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 final StreamController<String> callKitDeclineStream =
@@ -1886,91 +1887,23 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         // ★ 第五十一輪（長5）：來電響鈴畫面上，全域語音助理浮動鈕必須讓位，
         //   不可以擋到接聽／拒接鍵。純外層包裝，不動任何來電邏輯。
         return AssistantHiddenZone(
-          child: AlertDialog(
-          title: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16), // 8→16，跟著圖示等比放大
-                decoration: BoxDecoration(
-                  color: isEmergency ? Colors.red.shade100 : Colors.green.shade100,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  isEmergency ? Icons.warning : Icons.phone_callback,
-                  color: isEmergency ? Colors.red : Colors.green,
-                  size: 56, // 28→56（100%）
-                ),
-              ),
-              const SizedBox(width: 24), // 12→24
-              // 標題原本沒有 style（吃 AlertDialog 預設），這裡明確給放大後的樣式；
-              // 包 Flexible + ellipsis：同列還有圖示，避免窄螢幕溢位（硬規則 14）。
-              Flexible(
-                child: Text(
-                  isEmergency ? '🚨 緊急來電' : '📞 來電通知',
-                  style: const TextStyle(fontSize: 40, fontWeight: FontWeight.bold),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-          // 內容 18→36（100%）；外包 SingleChildScrollView 讓過長內容可捲動，
-          // 避免小螢幕高度不夠時溢位（硬規則 14）。
-          content: SingleChildScrollView(
-            child: Text(
-              '$callerLabel 正在呼叫您！',
-              style: const TextStyle(fontSize: 36),
-            ),
-          ),
-          backgroundColor: isEmergency ? Colors.red.shade50 : Colors.green.shade50,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          actions: [
-            ElevatedButton.icon(
-              onPressed: () {
+          // ★ 2026-10-04 UI 改版：外觀統一為設計稿的全螢幕來電畫面（純展示 widget）。
+          //   onDecline／onAccept 就是原本兩顆按鈕 onPressed 內的閉包，逐字未動；
+          //   不新增任何條件分支（isEmergency 只是傳進去的外觀旗標）。
+          child: IncomingCallView(
+            callerName: callerLabel,
+            subtitle: '$callerLabel 正在呼叫您！',
+            isEmergency: isEmergency,
+              onDecline: () {
                 _activeCallDialogContext = null;
                 Navigator.pop(c);
                 sig.Signaling().sendCallBusy(senderId, callId: callId, room: roomId);
               },
-              icon: const Icon(Icons.call_end, size: 40), // 圖示跟著放大
-              // 按鈕文字 16→32（100%）；包 Flexible + ellipsis：兩顆按鈕同列，
-              // 字放大後必須可收縮，否則窄螢幕（如 320dp）會撐爆 Row（硬規則 14）。
-              label: const Flexible(
-                child: Text(
-                  '拒接',
-                  style: TextStyle(fontSize: 32),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
-                // 20/12→40/24（100%），並保證最小點擊高度跟著放大。
-                padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
-                minimumSize: const Size(64, 84),
-              ),
-            ),
-            ElevatedButton.icon(
-              onPressed: () {
+              onAccept: () {
                 _activeCallDialogContext = null;
                 Navigator.pop(c);
                 _navigateToVideoCall(roomId, senderId, callId: callId);
               },
-              icon: const Icon(Icons.videocam, size: 40), // 圖示跟著放大
-              // 同上「拒接」按鈕的放大＋可收縮處理。
-              label: const Flexible(
-                child: Text(
-                  '接聽',
-                  style: TextStyle(fontSize: 32),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
-                minimumSize: const Size(64, 84),
-              ),
-            ),
-          ],
           ),
         );
       },
