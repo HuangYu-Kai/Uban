@@ -647,3 +647,186 @@ PreferredSizeWidget famSubBar(
     ),
   );
 }
+
+// ───────────────────────── 警示中心／清單共用（第 3 批新增） ─────────────────────────
+
+/// `.filters`：橫向捲動的篩選膠囊列。不裁切（Clip.none），讓捲動中的膠囊能滑出
+/// 外層 16px 內距直達螢幕邊緣（對應 `.filters{margin:0 -14px}`）。
+class FamFilterRow extends StatelessWidget {
+  final List<Widget> children;
+  const FamFilterRow({super.key, required this.children});
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      clipBehavior: Clip.none,
+      child: Row(
+        children: [
+          for (var i = 0; i < children.length; i++) ...[
+            if (i > 0) const SizedBox(width: 6),
+            children[i],
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// `.fchip`：篩選膠囊（高 36、選取時 brandContainer＋brandStrong）。
+/// [onTap] 為 null 時視為停用（變淡、不可點）。
+class FamFilterChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback? onTap;
+  const FamFilterChip({
+    super.key,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final c = UbanColors.of(context);
+    return Opacity(
+      opacity: onTap == null ? .55 : 1,
+      child: Semantics(
+        button: true,
+        selected: selected,
+        enabled: onTap != null,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 36),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: selected ? c.brandContainer : c.surface,
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(
+                color: selected ? Colors.transparent : c.line,
+              ),
+            ),
+            child: Text(
+              label,
+              maxLines: 1,
+              style: famText(
+                selected ? c.brandStrong : c.text2,
+                14,
+                weight: selected ? FontWeight.w700 : FontWeight.w500,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// `.st`／`.st.ok`：清單列右側的狀態膠囊。[tone] 為 neutral（預設）或 brand（已處理）；
+/// 傳 warm 則為「待處理」。文字最多三行、超出省略（鐵律 #14）。
+class FamStatusPill extends StatelessWidget {
+  final String label;
+  final FamTone tone;
+  final Widget? trailing;
+  const FamStatusPill({
+    super.key,
+    required this.label,
+    this.tone = FamTone.neutral,
+    this.trailing,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final c = UbanColors.of(context);
+    final fg = famToneFg(c, tone);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+      decoration: BoxDecoration(
+        color: famToneBg(c, tone),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: famText(fg, 12, weight: FontWeight.w700),
+            ),
+          ),
+          if (trailing != null) trailing!,
+        ],
+      ),
+    );
+  }
+}
+
+/// `.daysep`：清單內的日期分隔小標。
+class FamDaySep extends StatelessWidget {
+  final String text;
+  const FamDaySep(this.text, {super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = UbanColors.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: 12, bottom: 2),
+      child: Text(
+        text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: famText(c.text3, 12, weight: FontWeight.w700, letterSpacing: 1),
+      ),
+    );
+  }
+}
+
+/// `.locbtn`：警示卡內的「查看位置」膠囊（surface 底、brandStrong 字）。
+class FamLocButton extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+  final Color? background;
+  const FamLocButton({
+    super.key,
+    required this.label,
+    required this.onTap,
+    this.background,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final c = UbanColors.of(context);
+    return PressableScale(
+      onTap: onTap,
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 36),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: background ?? c.surface,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.place_outlined, size: 16, color: c.brandStrong),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: famText(c.brandStrong, 13.5, weight: FontWeight.w700),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

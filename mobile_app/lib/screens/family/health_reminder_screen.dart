@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import '../../services/api_service.dart';
+import '../../theme/family_theme.dart';
+import '../../widgets/ui/ui.dart';
+import 'widgets/fam_ui.dart';
 
 class HealthReminderScreen extends StatefulWidget {
   final String elderId;
@@ -23,6 +24,24 @@ class HealthReminderScreen extends StatefulWidget {
 class _HealthReminderScreenState extends State<HealthReminderScreen> {
   bool _isLoading = true;
   List<dynamic> _reminders = [];
+
+  // 家屬主題之下的 context（State 自己的 context 在 FamilyThemeScope 之上）：
+  // 用它開 sheet／dialog／時間選擇器，才會吃到家屬色票；每次 build 更新。
+  BuildContext? _themed;
+  BuildContext get _themeCtx => _themed ?? context;
+  UbanColors get _c => UbanColors.of(_themeCtx);
+
+  /// 提醒類型（key 為後端欄位值，label 只是顯示文字）。
+  static const List<(String, String)> _categories = [
+    ('medication', '用藥提醒'),
+    ('hospital', '看診回診'),
+    ('water', '飲水補水'),
+    ('exercise', '運動散步'),
+    ('custom', '日常叮嚀'),
+  ];
+
+  /// 重複頻率（值直接送後端，維持原字串）。
+  static const List<String> _repeatOptions = ['每天', '每週一三五', '每週二四', '每週六日', '單次提醒'];
 
   @override
   void initState() {
@@ -50,31 +69,32 @@ class _HealthReminderScreenState extends State<HealthReminderScreen> {
   }
 
   Future<void> _handleDelete(int reminderId, String title) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (c) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: Row(
+    final confirm = await showUbanDialog<bool>(
+      _themeCtx,
+      (c) {
+        final col = UbanColors.of(c);
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Icon(Icons.delete_outline_rounded, color: Color(0xFFEF4444)),
-            const SizedBox(width: 8),
-            Text('刪除排程提醒', style: GoogleFonts.notoSansTc(color: Colors.white, fontWeight: FontWeight.bold)),
+            Text('刪除排程提醒', style: famText(col.text, 19, weight: FontWeight.w900)),
+            const SizedBox(height: 10),
+            Text('確定要刪除「$title」排程提醒嗎？', style: famText(col.text2, 15, height: 1.5)),
+            const SizedBox(height: 20),
+            FamButton(
+              label: '確定刪除',
+              kind: FamButtonKind.danger,
+              onPressed: () => Navigator.pop(c, true),
+            ),
+            const SizedBox(height: 8),
+            FamButton(
+              label: '取消',
+              kind: FamButtonKind.ghost,
+              onPressed: () => Navigator.pop(c, false),
+            ),
           ],
-        ),
-        content: Text('確定要刪除「$title」排程提醒嗎？', style: GoogleFonts.notoSansTc(color: Colors.white70)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(c, false),
-            child: Text('取消', style: GoogleFonts.notoSansTc(color: Colors.white54)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFEF4444)),
-            onPressed: () => Navigator.pop(c, true),
-            child: Text('確定刪除', style: GoogleFonts.notoSansTc(color: Colors.white, fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
+        );
+      },
     );
 
     if (confirm == true) {
@@ -91,7 +111,7 @@ class _HealthReminderScreenState extends State<HealthReminderScreen> {
     final noteCtrl = TextEditingController(text: existingReminder?['note'] ?? '');
     String selectedCategory = existingReminder?['category'] ?? 'medication';
     TimeOfDay selectedTime = const TimeOfDay(hour: 8, minute: 0);
-    if (isEditing && existingReminder!['time_str'] != null) {
+    if (isEditing && existingReminder['time_str'] != null) {
       try {
         final parts = existingReminder['time_str'].toString().split(':');
         if (parts.length >= 2) {
@@ -101,259 +121,169 @@ class _HealthReminderScreenState extends State<HealthReminderScreen> {
     }
     String selectedRepeat = existingReminder?['repeat_days'] ?? '每天';
     DateTime selectedStartDate = DateTime.now();
-    if (isEditing && existingReminder!['start_date'] != null && existingReminder['start_date'].toString().isNotEmpty) {
+    if (isEditing && existingReminder['start_date'] != null && existingReminder['start_date'].toString().isNotEmpty) {
       try {
         selectedStartDate = DateTime.parse(existingReminder['start_date']);
       } catch (_) {}
     }
 
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: const Color(0xFF0F172A),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      builder: (ctx) {
+    showUbanSheet<void>(
+      _themeCtx,
+      (ctx) {
         return StatefulBuilder(
           builder: (context, setModalState) {
-            return Padding(
-              padding: EdgeInsets.only(
-                left: 20,
-                right: 20,
-                top: 24,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            final c = UbanColors.of(context);
+            // SnackBar 沿用主題預設底色（inverseSurface），字色取對應的 onInverseSurface。
+            final snackFg = Theme.of(context).colorScheme.onInverseSurface;
+
+            Widget fieldLabel(String text) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(text, style: famText(c.text2, 15, weight: FontWeight.w700)),
+                );
+
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isEditing ? '編輯遠端排程提醒' : '新增遠端排程提醒',
+                  style: famText(c.text, 19, weight: FontWeight.w900),
+                ),
+                const SizedBox(height: 18),
+
+                // 1. 提醒標題
+                UbanTextField(
+                  label: '提醒標題 / 事項',
+                  controller: titleCtrl,
+                  hintText: '例如：服用降壓藥乙顆、台大回診',
+                ),
+                const SizedBox(height: 18),
+
+                // 2. 提醒分類
+                fieldLabel('提醒類型'),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF38BDF8).withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                              child: Icon(isEditing ? Icons.edit_calendar_rounded : Icons.alarm_add_rounded, color: const Color(0xFF38BDF8), size: 24),
-                            ),
-                            const SizedBox(width: 12),
-                            Text(
-                              isEditing ? '編輯遠端排程提醒' : '新增遠端排程提醒',
-                              style: GoogleFonts.notoSansTc(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w900,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ],
-                        ),
-                        IconButton(
-                          onPressed: () => Navigator.pop(context),
-                          icon: const Icon(Icons.close, color: Colors.white54),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-
-                    // 1. 提醒標題
-                    Text('提醒標題 / 事項', style: GoogleFonts.notoSansTc(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 6),
-                    TextField(
-                      controller: titleCtrl,
-                      style: GoogleFonts.notoSansTc(color: Colors.white),
-                      decoration: InputDecoration(
-                        hintText: '例如：服用降壓藥乙顆、台大回診',
-                        hintStyle: GoogleFonts.notoSansTc(color: Colors.white30),
-                        filled: true,
-                        fillColor: const Color(0xFF1E293B),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                    for (final cat in _categories)
+                      FamFilterChip(
+                        label: cat.$2,
+                        selected: selectedCategory == cat.$1,
+                        onTap: () => setModalState(() => selectedCategory = cat.$1),
                       ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // 2. 提醒分類
-                    Text('提醒類型', style: GoogleFonts.notoSansTc(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        _buildCategoryChip('用藥提醒 💊', 'medication', selectedCategory, (val) => setModalState(() => selectedCategory = val)),
-                        _buildCategoryChip('看診回診 🏥', 'hospital', selectedCategory, (val) => setModalState(() => selectedCategory = val)),
-                        _buildCategoryChip('飲水補水 🥤', 'water', selectedCategory, (val) => setModalState(() => selectedCategory = val)),
-                        _buildCategoryChip('運動散步 🏃‍♂️', 'exercise', selectedCategory, (val) => setModalState(() => selectedCategory = val)),
-                        _buildCategoryChip('日常叮嚀 💌', 'custom', selectedCategory, (val) => setModalState(() => selectedCategory = val)),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-
-                    // 3. 時間選擇
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('時間', style: GoogleFonts.notoSansTc(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.bold)),
-                              const SizedBox(height: 6),
-                              GestureDetector(
-                                onTap: () async {
-                                  final t = await showTimePicker(
-                                    context: context,
-                                    initialTime: selectedTime,
-                                  );
-                                  if (t != null) {
-                                    setModalState(() => selectedTime = t);
-                                  }
-                                },
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF1E293B),
-                                    borderRadius: BorderRadius.circular(14),
-                                  ),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text(
-                                        '${selectedTime.hour.toString().padLeft(2, '0')}:${selectedTime.minute.toString().padLeft(2, '0')}',
-                                        style: GoogleFonts.notoSansTc(color: const Color(0xFF38BDF8), fontSize: 16, fontWeight: FontWeight.bold),
-                                      ),
-                                      const Icon(Icons.access_time_rounded, color: Color(0xFF38BDF8), size: 20),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('重複頻率', style: GoogleFonts.notoSansTc(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.bold)),
-                              const SizedBox(height: 6),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF1E293B),
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                                child: DropdownButtonHideUnderline(
-                                  child: DropdownButton<String>(
-                                    value: selectedRepeat,
-                                    dropdownColor: const Color(0xFF1E293B),
-                                    style: GoogleFonts.notoSansTc(color: Colors.white, fontSize: 14),
-                                    items: ['每天', '每週一三五', '每週二四', '每週六日', '單次提醒']
-                                        .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                                        .toList(),
-                                    onChanged: (val) {
-                                      if (val != null) setModalState(() => selectedRepeat = val);
-                                    },
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-
-                    // 4. 備註叮嚀
-                    Text('備註叮嚀（選填）', style: GoogleFonts.notoSansTc(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 6),
-                    TextField(
-                      controller: noteCtrl,
-                      style: GoogleFonts.notoSansTc(color: Colors.white),
-                      decoration: InputDecoration(
-                        hintText: '例如：記得飯後服用、帶隨身健保卡',
-                        hintStyle: GoogleFonts.notoSansTc(color: Colors.white30),
-                        filled: true,
-                        fillColor: const Color(0xFF1E293B),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-
-                    // 5. 確定新增按鈕
-                    SizedBox(
-                      width: double.infinity,
-                      height: 52,
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF38BDF8),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                        ),
-                        onPressed: () async {
-                          final title = titleCtrl.text.trim();
-                          if (title.isEmpty) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('請輸入提醒標題', style: GoogleFonts.notoSansTc())),
-                            );
-                            return;
-                          }
-
-                          final timeStr = '${selectedTime.hour.toString().padLeft(2, '0')}:${selectedTime.minute.toString().padLeft(2, '0')}';
-                          final startDateStr = '${selectedStartDate.year}-${selectedStartDate.month.toString().padLeft(2, '0')}-${selectedStartDate.day.toString().padLeft(2, '0')}';
-
-                          bool success = false;
-                          if (isEditing) {
-                            success = await ApiService.updateElderReminder(existingReminder['id'], {
-                              'title': title,
-                              'category': selectedCategory,
-                              'time_str': timeStr,
-                              'repeat_days': selectedRepeat,
-                              'start_date': startDateStr,
-                              'note': noteCtrl.text.trim(),
-                            });
-                          } else {
-                            final body = {
-                              'family_id': widget.familyId,
-                              'elder_id': widget.elderId,
-                              'title': title,
-                              'category': selectedCategory,
-                              'time_str': timeStr,
-                              'repeat_days': selectedRepeat,
-                              'start_date': startDateStr,
-                              'note': noteCtrl.text.trim(),
-                            };
-                            success = await ApiService.createElderReminder(body);
-                          }
-
-                          if (context.mounted) {
-                            Navigator.pop(context);
-                            if (success) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(isEditing ? '已儲存提醒修訂 ✨' : '已成功建立「$title」排程提醒！✨', style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold)),
-                                  backgroundColor: const Color(0xFF10B981),
-                                ),
-                              );
-                              _loadReminders();
-                            }
-                          }
-                        },
-                        child: Text(
-                          isEditing ? '儲存變更' : '確認新增提醒',
-                          style: GoogleFonts.notoSansTc(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ),
                   ],
                 ),
-              ),
+                const SizedBox(height: 18),
+
+                // 3. 時間選擇
+                fieldLabel('時間'),
+                PressableScale(
+                  onTap: () async {
+                    final t = await showTimePicker(
+                      context: context,
+                      initialTime: selectedTime,
+                    );
+                    if (t != null) {
+                      setModalState(() => selectedTime = t);
+                    }
+                  },
+                  child: Container(
+                    constraints: const BoxConstraints(minHeight: 58),
+                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                    alignment: Alignment.centerLeft,
+                    decoration: BoxDecoration(
+                      color: c.surface,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: c.line, width: 1.5),
+                    ),
+                    child: Text(
+                      '${selectedTime.hour.toString().padLeft(2, '0')}:${selectedTime.minute.toString().padLeft(2, '0')}',
+                      style: famText(c.text, 18, weight: FontWeight.w700, tabular: true),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+
+                // 4. 重複頻率
+                fieldLabel('重複頻率'),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final opt in _repeatOptions)
+                      FamFilterChip(
+                        label: opt,
+                        selected: selectedRepeat == opt,
+                        onTap: () => setModalState(() => selectedRepeat = opt),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+
+                // 5. 備註叮嚀
+                UbanTextField(
+                  label: '備註叮嚀（選填）',
+                  controller: noteCtrl,
+                  hintText: '例如：記得飯後服用、帶隨身健保卡',
+                ),
+                const SizedBox(height: 22),
+
+                // 6. 確定新增按鈕
+                FamButton(
+                  label: isEditing ? '儲存變更' : '確認新增提醒',
+                  onPressed: () async {
+                    final title = titleCtrl.text.trim();
+                    if (title.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('請輸入提醒標題', style: famText(snackFg, 15))),
+                      );
+                      return;
+                    }
+
+                    final timeStr = '${selectedTime.hour.toString().padLeft(2, '0')}:${selectedTime.minute.toString().padLeft(2, '0')}';
+                    final startDateStr = '${selectedStartDate.year}-${selectedStartDate.month.toString().padLeft(2, '0')}-${selectedStartDate.day.toString().padLeft(2, '0')}';
+
+                    bool success = false;
+                    if (isEditing) {
+                      success = await ApiService.updateElderReminder(existingReminder['id'], {
+                        'title': title,
+                        'category': selectedCategory,
+                        'time_str': timeStr,
+                        'repeat_days': selectedRepeat,
+                        'start_date': startDateStr,
+                        'note': noteCtrl.text.trim(),
+                      });
+                    } else {
+                      final body = {
+                        'family_id': widget.familyId,
+                        'elder_id': widget.elderId,
+                        'title': title,
+                        'category': selectedCategory,
+                        'time_str': timeStr,
+                        'repeat_days': selectedRepeat,
+                        'start_date': startDateStr,
+                        'note': noteCtrl.text.trim(),
+                      };
+                      success = await ApiService.createElderReminder(body);
+                    }
+
+                    if (context.mounted) {
+                      Navigator.pop(context);
+                      if (success) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              isEditing ? '已儲存提醒修訂' : '已成功建立「$title」排程提醒！',
+                              style: famText(snackFg, 15, weight: FontWeight.w700),
+                            ),
+                          ),
+                        );
+                        _loadReminders();
+                      }
+                    }
+                  },
+                ),
+              ],
             );
           },
         );
@@ -361,293 +291,217 @@ class _HealthReminderScreenState extends State<HealthReminderScreen> {
     );
   }
 
-  Widget _buildCategoryChip(String label, String catKey, String currentCat, ValueChanged<String> onSelect) {
-    final isSel = currentCat == catKey;
-    return GestureDetector(
-      onTap: () => onSelect(catKey),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSel ? const Color(0xFF38BDF8).withValues(alpha: 0.25) : const Color(0xFF1E293B),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isSel ? const Color(0xFF38BDF8) : Colors.white12,
-            width: isSel ? 1.5 : 1,
+  @override
+  Widget build(BuildContext context) {
+    // 2026-10：push 出來的家屬頁要自己掛家屬主題。
+    return FamilyThemeScope(
+      child: Builder(builder: _buildScreen),
+    );
+  }
+
+  Widget _buildScreen(BuildContext context) {
+    _themed = context;
+    final c = _c;
+    final activeCount = _reminders.where((r) => r['is_active'] == true || r['is_active'] == 1).length;
+
+    return Scaffold(
+      backgroundColor: c.bg,
+      appBar: famSubBar(
+        context,
+        title: '${widget.elderName} 遠端排程提醒',
+        trailing: [
+          FamIconButton(
+            icon: Icons.refresh_rounded,
+            tooltip: '重新整理',
+            onTap: _loadReminders,
           ),
-        ),
-        child: Text(
-          label,
-          style: GoogleFonts.notoSansTc(
-            fontSize: 12.5,
-            fontWeight: isSel ? FontWeight.w800 : FontWeight.w500,
-            color: isSel ? const Color(0xFF38BDF8) : Colors.white70,
+        ],
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: _loadReminders,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                children: [
+                  // 1. 頂部狀態摘要
+                  FamCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '目前共有 $activeCount 項目在線啟用中',
+                          style: famText(c.text, 16, weight: FontWeight.w900, height: 1.35),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '排程時間到達時，將自動於長輩終端觸發語音與卡片提醒',
+                          style: famText(c.text2, 13.5, height: 1.45),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  const FamSecHead(title: '預設行程與排程列表'),
+                  const SizedBox(height: 2),
+                  Text('共 ${_reminders.length} 筆設定', style: famText(c.text3, 12.5)),
+
+                  const SizedBox(height: 12),
+
+                  if (_isLoading)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 40),
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  else if (_reminders.isEmpty)
+                    FamCard(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 32),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: Column(
+                          children: [
+                            Text(
+                              '目前尚未建立任何排程提醒',
+                              textAlign: TextAlign.center,
+                              style: famText(c.text, 16, weight: FontWeight.w700),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              '點擊下方「新增提醒」開始設定',
+                              textAlign: TextAlign.center,
+                              style: famText(c.text2, 13.5),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  else
+                    for (final r in _reminders) _buildReminderCard(r),
+                ],
+              ),
+            ),
           ),
-        ),
+          // 底部固定的新增鈕（取代原本右下角的浮動按鈕，不再遮住清單最後一筆）。
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+              child: FamButton(label: '新增提醒', onPressed: _showAddReminderDialog),
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final activeCount = _reminders.where((r) => r['is_active'] == true || r['is_active'] == 1).length;
+  Widget _buildReminderCard(dynamic r) {
+    final c = _c;
+    final reminderId = r['id'] as int;
+    final title = r['title']?.toString() ?? '未命名提醒';
+    final category = r['category']?.toString() ?? 'custom';
+    final timeStr = r['time_str']?.toString() ?? '00:00';
+    final repeatDays = r['repeat_days']?.toString() ?? '每天';
+    final note = r['note']?.toString() ?? '';
+    final isActive = r['is_active'] == true || r['is_active'] == 1;
 
-    return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF1E293B),
-        elevation: 0,
-        title: Text(
-          '⏰ ${widget.elderName} 遠端排程提醒',
-          style: GoogleFonts.notoSansTc(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white),
-        ),
-        iconTheme: const IconThemeData(color: Colors.white),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded, color: Color(0xFF38BDF8)),
-            onPressed: _loadReminders,
-          ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: const Color(0xFF38BDF8),
-        onPressed: _showAddReminderDialog,
-        icon: const Icon(Icons.add_alarm_rounded, color: Colors.white),
-        label: Text('新增提醒', style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold, color: Colors.white)),
-      ),
-      body: RefreshIndicator(
-        color: const Color(0xFF38BDF8),
-        backgroundColor: const Color(0xFF1E293B),
-        onRefresh: _loadReminders,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // 1. 頂部狀態摘要卡片
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF1E293B), Color(0xFF0F172A)],
-                  ),
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.3)),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF38BDF8).withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: const Icon(Icons.schedule_rounded, color: Color(0xFF38BDF8), size: 32),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+    String catName = '叮嚀';
+    if (category == 'medication') {
+      catName = '用藥';
+    } else if (category == 'hospital') {
+      catName = '看診';
+    } else if (category == 'water') {
+      catName = '飲水';
+    } else if (category == 'exercise') {
+      catName = '運動';
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: FamCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 內容與頻率
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
                           Text(
-                            '目前共有 $activeCount 項目在線啟用中',
-                            style: GoogleFonts.notoSansTc(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                            timeStr,
+                            style: famText(
+                              isActive ? c.text : c.text3,
+                              20,
+                              weight: FontWeight.w900,
+                              tabular: true,
+                            ),
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '排程時間到達時，將自動於長輩終端觸發語音與卡片提醒',
-                            style: GoogleFonts.notoSansTc(fontSize: 12, color: Colors.white54),
+                          FamChip(
+                            label: '$catName・$repeatDays',
+                            tone: isActive ? FamTone.brand : FamTone.neutral,
                           ),
                         ],
                       ),
-                    ),
-                  ],
-                ),
-              ).animate().fadeIn(duration: 300.ms),
-
-              const SizedBox(height: 20),
-
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    '預設行程與排程列表',
-                    style: GoogleFonts.notoSansTc(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.white),
+                      const SizedBox(height: 6),
+                      Text(
+                        title,
+                        style: famText(
+                          isActive ? c.text : c.text3,
+                          15.5,
+                          weight: FontWeight.w700,
+                          height: 1.35,
+                        ),
+                      ),
+                      if (note.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(note, style: famText(c.text3, 13, height: 1.4)),
+                      ],
+                    ],
                   ),
-                  Text(
-                    '共 ${_reminders.length} 筆設定',
-                    style: GoogleFonts.notoSansTc(fontSize: 12, color: Colors.white38),
+                ),
+                const SizedBox(width: 12),
+                // 開關
+                UbanSwitch(
+                  value: isActive,
+                  onChanged: (val) => _handleToggle(reminderId),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Wrap(
+                spacing: 4,
+                children: [
+                  FamButton(
+                    label: '編輯',
+                    kind: FamButtonKind.ghost,
+                    height: 40,
+                    expand: false,
+                    onPressed: () => _showAddReminderDialog(existingReminder: r as Map<String, dynamic>),
+                  ),
+                  FamButton(
+                    label: '刪除',
+                    kind: FamButtonKind.ghost,
+                    height: 40,
+                    expand: false,
+                    onPressed: () => _handleDelete(reminderId, title),
                   ),
                 ],
               ),
-
-              const SizedBox(height: 12),
-
-              if (_isLoading)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 40),
-                  child: Center(child: CircularProgressIndicator(color: Color(0xFF38BDF8))),
-                )
-              else if (_reminders.isEmpty)
-                Container(
-                  padding: const EdgeInsets.symmetric(vertical: 40),
-                  alignment: Alignment.center,
-                  child: Column(
-                    children: [
-                      const Icon(Icons.alarm_off_rounded, size: 56, color: Colors.white24),
-                      const SizedBox(height: 12),
-                      Text('目前尚未建立任何排程提醒 ⏰', style: GoogleFonts.notoSansTc(color: Colors.white54, fontSize: 14)),
-                      const SizedBox(height: 6),
-                      Text('點擊右下角「新增提醒」開始設定', style: GoogleFonts.notoSansTc(fontSize: 12, color: Colors.white38)),
-                    ],
-                  ),
-                )
-              else
-                ListView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: _reminders.length,
-                  itemBuilder: (context, index) {
-                    final r = _reminders[index];
-                    final reminderId = r['id'] as int;
-                    final title = r['title']?.toString() ?? '未命名提醒';
-                    final category = r['category']?.toString() ?? 'custom';
-                    final timeStr = r['time_str']?.toString() ?? '00:00';
-                    final repeatDays = r['repeat_days']?.toString() ?? '每天';
-                    final note = r['note']?.toString() ?? '';
-                    final isActive = r['is_active'] == true || r['is_active'] == 1;
-
-                    Color catColor = const Color(0xFF38BDF8);
-                    IconData catIcon = Icons.notifications_active_rounded;
-                    String catName = '叮嚀';
-
-                    if (category == 'medication') {
-                      catColor = const Color(0xFFA78BFA);
-                      catIcon = Icons.medication_rounded;
-                      catName = '用藥';
-                    } else if (category == 'hospital') {
-                      catColor = const Color(0xFFEF4444);
-                      catIcon = Icons.local_hospital_rounded;
-                      catName = '看診';
-                    } else if (category == 'water') {
-                      catColor = const Color(0xFF38BDF8);
-                      catIcon = Icons.water_drop_rounded;
-                      catName = '飲水';
-                    } else if (category == 'exercise') {
-                      catColor = const Color(0xFF34D399);
-                      catIcon = Icons.directions_run_rounded;
-                      catName = '運動';
-                    }
-
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF1E293B),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: isActive ? catColor.withValues(alpha: 0.4) : Colors.white12,
-                          width: isActive ? 1.5 : 1,
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          // 時間與圖示
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: catColor.withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: Icon(catIcon, color: catColor, size: 26),
-                          ),
-                          const SizedBox(width: 14),
-
-                          // 內容與頻率
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Text(
-                                      timeStr,
-                                      style: GoogleFonts.notoSansTc(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.w900,
-                                        color: isActive ? Colors.white : Colors.white38,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: catColor.withValues(alpha: 0.2),
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: Text(
-                                        '$catName • $repeatDays',
-                                        style: GoogleFonts.notoSansTc(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.bold,
-                                          color: catColor,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  title,
-                                  style: GoogleFonts.notoSansTc(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w700,
-                                    color: isActive ? Colors.white.withValues(alpha: 0.9) : Colors.white38,
-                                  ),
-                                ),
-                                if (note.isNotEmpty) ...[
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    note,
-                                    style: GoogleFonts.notoSansTc(
-                                      fontSize: 12,
-                                      color: Colors.white38,
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-
-                          // 開關與刪除按鈕
-                          Row(
-                            children: [
-                              Switch(
-                                value: isActive,
-                                activeThumbColor: catColor,
-                                onChanged: (val) => _handleToggle(reminderId),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.edit_outlined, color: Color(0xFF38BDF8), size: 20),
-                                onPressed: () => _showAddReminderDialog(existingReminder: r as Map<String, dynamic>),
-                                tooltip: '編輯提醒',
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.delete_outline_rounded, color: Colors.white38, size: 20),
-                                onPressed: () => _handleDelete(reminderId, title),
-                                tooltip: '刪除提醒',
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-
-              const SizedBox(height: 80),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

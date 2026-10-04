@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/predictive_alert_service.dart';
 import '../../services/api_service.dart';
 import '../../utils/alert_display.dart';
 import '../../utils/error_handler.dart';
+import '../../theme/app_theme.dart';
 import '../../theme/family_theme.dart';
+import '../../widgets/ui/uban_dialog.dart';
+import 'widgets/fam_ui.dart';
 import 'elder_location_map_screen.dart';
 
 /// ★ 第五十二輪 F2：警示紀錄清單的時間範圍篩選。放在檔案頂層（非
@@ -119,6 +120,13 @@ class AlertCenterScreen extends StatefulWidget {
 
 class _AlertCenterScreenState extends State<AlertCenterScreen> {
   final _alertService = PredictiveAlertService();
+
+  // 家屬主題之下的 context（State 自己的 context 在 FamilyThemeScope 之上）：
+  // 用它開 dialog／日期選擇器，才會吃到家屬色票；每次 build 更新。
+  BuildContext? _themed;
+  BuildContext get _themeCtx => _themed ?? context;
+  UbanColors get _c => UbanColors.of(_themeCtx);
+
   List<Alert> _alerts = [];
   // ★ 第四十一輪（item 1 追加）：family_home_tab.dart 預覽區另外兩個真實
   // 來源（_realLogs 活動流水、_emergencyAlerts 持久化跌倒警報）合併、排序
@@ -188,7 +196,7 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
         : DateTimeRange(start: now.subtract(const Duration(days: 6)), end: now);
 
     final picked = await showDateRangePicker(
-      context: context,
+      context: _themeCtx,
       // 長輩帳號建立時間不可考，抓一個足夠寬鬆的下限；不開放選到未來。
       firstDate: DateTime(now.year - 3),
       lastDate: now,
@@ -498,44 +506,43 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // 2026-10：家屬新設計——push 出來的家屬頁要自己掛家屬主題（外觀分批改版中，此處先只包一層）。
+    // 2026-10：家屬新設計——push 出來的家屬頁要自己掛家屬主題；
+    // Builder 讓下方 context 位於主題之內（sheet／dialog／picker 用 [_themeCtx] 開）。
     return FamilyThemeScope(
-      child: Scaffold(
-        backgroundColor: const Color(0xFFF8FAFC),
-        appBar: _buildAppBar(),
-        body: _isLoading ? _buildLoading() : _buildContent(),
-      ),
+      child: Builder(builder: _buildScreen),
     );
   }
 
-  PreferredSizeWidget _buildAppBar() {
-    return AppBar(
-      elevation: 0,
-      backgroundColor: Colors.white,
-      leading: IconButton(
-        icon: const Icon(Icons.arrow_back_ios_rounded, color: Color(0xFF1E293B)),
-        onPressed: () {
+  Widget _buildScreen(BuildContext context) {
+    _themed = context;
+    final c = _c;
+    return Scaffold(
+      backgroundColor: c.bg,
+      appBar: famSubBar(
+        context,
+        title: '警示中心',
+        onBack: () {
           HapticFeedback.lightImpact();
           Navigator.pop(context);
         },
+        trailing: [
+          FamIconButton(
+            icon: Icons.refresh_rounded,
+            tooltip: '重新整理',
+            onTap: () {
+              HapticFeedback.lightImpact();
+              _loadAlerts();
+            },
+          ),
+          FamIconButton(
+            icon: Icons.date_range_rounded,
+            tooltip: '選擇日期範圍',
+            // 與「自訂」篩選鈕同一個入口；載入中比照篩選鈕不接受切換。
+            onTap: _historyLoading ? null : _selectCustomRange,
+          ),
+        ],
       ),
-      title: Text(
-        '警示中心',
-        style: GoogleFonts.notoSansTc(
-          fontSize: 20,
-          fontWeight: FontWeight.w900,
-          color: const Color(0xFF1E293B),
-        ),
-      ),
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.refresh_rounded, color: Color(0xFF1E293B)),
-          onPressed: () {
-            HapticFeedback.lightImpact();
-            _loadAlerts();
-          },
-        ),
-      ],
+      body: _isLoading ? _buildLoading() : _buildContent(),
     );
   }
 
@@ -568,36 +575,29 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
     // ListView 裡，不再用「完全沒有警示」的整頁空狀態去頂替、隱藏它——
     // 否則使用者切到「本週」剛好沒有紀錄，若即時警報／健康建議恰好也
     // 都是空的，會被整頁空狀態蓋掉、連篩選器都看不到，等於走不出目前
-    // 選到的空篩選範圍（正是這次「要找某筆記錄」問題的翻版）。
-    // 改成：即時警報／健康建議兩個來源都空時，把原本的「🎉 目前沒有
-    // 警示」卡片當成 ListView 的第一個項目（而不是整頁替換 body）——
-    // `_buildEmptyState()` 內部只有 Container/SizedBox/Text，沒有
-    // Expanded/Flexible，包進無界高度的 ListView item 不會有鐵律 #14
-    // 那種 RenderFlex 例外，只是不再垂直置中，改成貼齊頂端顯示。
-    // 警示紀錄區塊照樣接在後面，讓使用者能繼續切換到本月／全部查找
-    // 較舊的紀錄。
+    // 選到的空篩選範圍。即時警報／健康建議兩個來源都空時，把「目前沒有
+    // 警示」卡片當成 ListView 的第一個項目，警示紀錄區塊照樣接在後面。
     final bool otherSourcesEmpty = _alerts.isEmpty && realtimeAlerts.isEmpty;
 
     return RefreshIndicator(
       onRefresh: _loadAlerts,
       child: ListView(
-        padding: const EdgeInsets.all(16),
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
         children: [
           if (otherSourcesEmpty) ...[
             _buildEmptyState(),
             const SizedBox(height: 20),
           ],
           // ★ 即時跌倒／CCTV 警報排最前面、視覺上更醒目：緊急事件不能被
-          // 下方的健康建議淹沒。樣式與文案沿用 family_home_tab.dart 預覽區
-          // 既有寫法（紅色系、🚨 標題、信心度百分比）。
+          // 下方的健康建議淹沒。
           if (realtimeAlerts.isNotEmpty) ...[
             _buildRealtimeAlertsHeader(realtimeAlerts.length),
             const SizedBox(height: 12),
             ...realtimeAlerts.map(_buildRealtimeAlertCard),
-            const SizedBox(height: 20),
+            const SizedBox(height: 12),
           ],
           // ★ 第四十一輪（item 1 追加）：跌倒歷史 + 活動警示，依時間新到舊。
-          // ★ 第五十二輪 F2：一律渲染（見上方註解），不再用 isNotEmpty 守門。
           _buildHistoryAlertsSection(_historyAlertItems),
           const SizedBox(height: 20),
           if (_alerts.isNotEmpty) ...[
@@ -614,24 +614,13 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          '📋 警示紀錄',
-          style: GoogleFonts.notoSansTc(
-            fontSize: 18,
-            fontWeight: FontWeight.w900,
-            color: const Color(0xFF1E293B),
-          ),
-        ),
+        const FamSecHead(title: '警示紀錄'),
         const SizedBox(height: 12),
-        // ★ 第五十二輪 F2：本週／本月／全部時間篩選器，取代原本「持續往下
-        // 滑動」找舊紀錄的唯一方式。
-        // ★ 第五十三輪 familyfix53：新增「自訂」日期範圍（見
-        // _buildTimeRangeSelector／_selectCustomRange）。
+        // ★ 第五十二輪 F2：本週／本月／全部時間篩選器；
+        // ★ 第五十三輪：新增「自訂」日期範圍與狀態篩選器。
         _buildTimeRangeSelector(),
         if (_timeRange == _AlertTimeRange.custom) _buildCustomRangeHint(),
-        const SizedBox(height: 12),
-        // ★ 第五十三輪 familyfix53：狀態篩選器（全部狀態／未處理／處理中／
-        // 已結案），與時間範圍篩選器並列，讓家屬能同時縮小兩個維度查找。
+        const SizedBox(height: 8),
         _buildStatusFilterSelector(),
         const SizedBox(height: 12),
         if (_historyLoading)
@@ -641,7 +630,7 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
         else if (items.isEmpty)
           _buildHistoryEmpty()
         else ...[
-          ...items.map(_buildHistoryAlertCard),
+          _buildHistoryList(items),
           if (_timeRange == _AlertTimeRange.all || _timeRange == _AlertTimeRange.custom)
             _buildAllRangeHint(),
         ],
@@ -649,34 +638,17 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
     );
   }
 
-  /// ★ 第五十二輪 F2：警示紀錄的時間範圍篩選器（本週／本月／全部）。用
-  /// `ChoiceChip`——與 `family_interaction_tab.dart::_buildCatChip` 既有的
-  /// 分類篩選同一套元件，維持家屬端一致的篩選 UI 語言。三顆固定中文短
-  /// 標籤（非後端動態內容），外層仍包一層 `Wrap` 防窄螢幕換行時溢位
-  /// （鐵律 #14）。
+  /// 時間範圍篩選列（`.fchip` 橫向捲動）。選取邏輯與原 ChoiceChip 版完全相同。
   Widget _buildTimeRangeSelector() {
     Widget chip(_AlertTimeRange value, String label) {
-      final bool isSel = _timeRange == value;
-      return ChoiceChip(
-        label: Text(
-          label,
-          style: GoogleFonts.notoSansTc(
-            fontSize: 13,
-            fontWeight: isSel ? FontWeight.w800 : FontWeight.w600,
-            color: isSel ? Colors.white : const Color(0xFF475569),
-          ),
-        ),
-        selected: isSel,
-        selectedColor: const Color(0xFF59B294),
-        backgroundColor: const Color(0xFFF1F5F9),
-        side: BorderSide(
-          color: isSel ? const Color(0xFF59B294) : const Color(0xFFCBD5E1),
-        ),
+      return FamFilterChip(
+        label: label,
+        selected: _timeRange == value,
         // 載入中不接受切換——避免快速連續點擊造成競態載入（見
         // _loadHistoryAlerts 開頭的 _historyLoading 重入防護）。
-        onSelected: _historyLoading
+        onTap: _historyLoading
             ? null
-            : (_) {
+            : () {
                 if (_timeRange == value) return;
                 HapticFeedback.selectionClick();
                 setState(() => _timeRange = value);
@@ -685,53 +657,24 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
       );
     }
 
-    // ★ 第五十三輪 familyfix53：「自訂」與其餘三顆固定範圍不同——本身不是
-    // 可以直接切換的固定值，而是開啟 [_selectCustomRange] 日期選擇器的
-    // 入口，選完才會把 [_timeRange] 切到 custom。標籤刻意維持固定文字
-    // 「自訂」、不隨已選日期變動（實際選了哪個範圍見 [_buildCustomRangeHint]），
-    // 避免在 Wrap 裡的 ChoiceChip 標籤塞進長度不固定的日期字串。
-    // ⚠️ 不像上面 chip() 會在「點擊目前已選中的那顆」時提早 return——已經
-    // 是 custom 時再點一次仍要重新開啟選擇器，讓使用者能調整已選範圍。
-    final bool isCustomSel = _timeRange == _AlertTimeRange.custom;
-    final Widget customChip = ChoiceChip(
-      avatar: Icon(
-        Icons.date_range_rounded,
-        size: 16,
-        color: isCustomSel ? Colors.white : const Color(0xFF475569),
-      ),
-      label: Text(
-        '自訂',
-        style: GoogleFonts.notoSansTc(
-          fontSize: 13,
-          fontWeight: isCustomSel ? FontWeight.w800 : FontWeight.w600,
-          color: isCustomSel ? Colors.white : const Color(0xFF475569),
-        ),
-      ),
-      selected: isCustomSel,
-      selectedColor: const Color(0xFF59B294),
-      backgroundColor: const Color(0xFFF1F5F9),
-      side: BorderSide(
-        color: isCustomSel ? const Color(0xFF59B294) : const Color(0xFFCBD5E1),
-      ),
-      onSelected: _historyLoading ? null : (_) => _selectCustomRange(),
-    );
-
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
+    // ★ 第五十三輪：「自訂」不是可直接切換的固定值，而是開啟 [_selectCustomRange]
+    // 日期選擇器的入口，選完才會把 [_timeRange] 切到 custom。⚠️ 已是 custom 時
+    // 再點一次仍要重新開啟選擇器，讓使用者能調整已選範圍（不提早 return）。
+    return FamFilterRow(
       children: [
         chip(_AlertTimeRange.week, '本週'),
         chip(_AlertTimeRange.month, '本月'),
         chip(_AlertTimeRange.all, '全部'),
-        customChip,
+        FamFilterChip(
+          label: '自訂',
+          selected: _timeRange == _AlertTimeRange.custom,
+          onTap: _historyLoading ? null : _selectCustomRange,
+        ),
       ],
     );
   }
 
-  /// ★ 第五十三輪 familyfix53：目前自訂範圍實際選取的起訖日期——「自訂」
-  /// chip 本身文字固定不變（見上方註解），改用這個獨立的 [Text] 顯示目前
-  /// 生效的範圍，並提示可以再點一次「自訂」調整。純 [Text]（非 [Row]），
-  /// 寬度不足時交由文字自動換行，不會有鐵律 #14 的 RenderFlex 溢位風險。
+  /// ★ 第五十三輪：目前自訂範圍實際選取的起訖日期。純 [Text]，寬度不足時自動換行。
   Widget _buildCustomRangeHint() {
     if (_customStartDate == null || _customEndDate == null) {
       return const SizedBox.shrink();
@@ -741,44 +684,22 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
       padding: const EdgeInsets.only(top: 8),
       child: Text(
         '已選取 ${fmt(_customStartDate!)} – ${fmt(_customEndDate!)}，可再次點擊「自訂」調整',
-        style: GoogleFonts.notoSansTc(
-          fontSize: 11,
-          fontWeight: FontWeight.w500,
-          color: const Color(0xFF94A3B8),
-        ),
+        style: famText(_c.text3, 12),
       ),
     );
   }
 
-  /// ★ 第五十三輪 familyfix53：警示紀錄狀態篩選器（全部狀態／未處理／處理
-  /// 中／已結案），與時間範圍篩選器並列。只有真正查得到 `alertId` 的持久化
-  /// 警報才有狀態機概念（見 [_AlertStatusFilter] enum 定義處的說明）；選了
-  /// 非「全部狀態」時 [_loadHistoryAlerts] 會把沒有狀態概念的活動流水
-  /// （logItems）整段排除，不會混進一批看不出狀態的「未分類」項目。用另一
-  /// 個 selectedColor（藍）與時間範圍篩選器（綠）區分，避免兩排 chip 混淆
-  /// 成同一組篩選。
+  /// ★ 第五十三輪：警示紀錄狀態篩選列（全部狀態／未處理／處理中／已結案）。
+  /// 只有真正查得到 `alertId` 的持久化警報才有狀態機概念（見 [_AlertStatusFilter]）。
   Widget _buildStatusFilterSelector() {
     Widget chip(_AlertStatusFilter value) {
-      final bool isSel = _statusFilter == value;
-      return ChoiceChip(
-        label: Text(
-          value.label,
-          style: GoogleFonts.notoSansTc(
-            fontSize: 13,
-            fontWeight: isSel ? FontWeight.w800 : FontWeight.w600,
-            color: isSel ? Colors.white : const Color(0xFF475569),
-          ),
-        ),
-        selected: isSel,
-        selectedColor: const Color(0xFF3B82F6),
-        backgroundColor: const Color(0xFFF1F5F9),
-        side: BorderSide(
-          color: isSel ? const Color(0xFF3B82F6) : const Color(0xFFCBD5E1),
-        ),
+      return FamFilterChip(
+        label: value.label,
+        selected: _statusFilter == value,
         // 載入中不接受切換，理由同時間範圍篩選器（防競態載入）。
-        onSelected: _historyLoading
+        onTap: _historyLoading
             ? null
-            : (_) {
+            : () {
                 if (_statusFilter == value) return;
                 HapticFeedback.selectionClick();
                 setState(() => _statusFilter = value);
@@ -787,15 +708,10 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
       );
     }
 
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: _AlertStatusFilter.values.map(chip).toList(),
-    );
+    return FamFilterRow(children: _AlertStatusFilter.values.map(chip).toList());
   }
 
-  /// 警示紀錄局部載入中——只影響這個區塊，不是整頁滿版 loading（那會讓
-  /// 使用者失去目前的捲動位置）。
+  /// 警示紀錄局部載入中——只影響這個區塊，不是整頁滿版 loading。
   Widget _buildHistoryLoading() {
     return const Padding(
       padding: EdgeInsets.symmetric(vertical: 24),
@@ -804,37 +720,32 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
   }
 
   /// ★ 第五十二輪 F2：警示紀錄載入失敗——刻意與「這個時間範圍內沒有紀錄」
-  /// 的空狀態（見 [_buildHistoryEmpty]）做視覺區分（紅色系＋錯誤圖示＋
-  /// 重試按鈕，而非中性灰階），使用者才能分辨「這個篩選範圍真的沒事」
-  /// 與「其實可能有資料，只是這次沒抓到」。
+  /// 的空狀態（見 [_buildHistoryEmpty]）做視覺區分（danger 底色＋重試按鈕，
+  /// 而非中性卡片），使用者才能分辨「這個篩選範圍真的沒事」與「其實可能
+  /// 有資料，只是這次沒抓到」。
   Widget _buildHistoryError() {
+    final c = _c;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFFFEF2F2),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFFECACA)),
+        color: c.dangerContainer,
+        borderRadius: BorderRadius.circular(24),
       ),
       child: Column(
         children: [
-          const Icon(Icons.cloud_off_rounded, color: Color(0xFFDC2626), size: 32),
-          const SizedBox(height: 8),
           Text(
             '警示紀錄載入失敗，請檢查網路後重試',
             textAlign: TextAlign.center,
-            style: GoogleFonts.notoSansTc(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: const Color(0xFFB91C1C),
-            ),
+            style: famText(c.danger, 14, weight: FontWeight.w700, height: 1.4),
           ),
           const SizedBox(height: 12),
-          TextButton.icon(
+          FamButton(
+            label: '重新載入',
+            kind: FamButtonKind.tonal,
+            height: 40,
+            expand: false,
             onPressed: () => _loadHistoryAlerts(),
-            icon: const Icon(Icons.refresh_rounded, size: 18),
-            label: Text('重新載入', style: GoogleFonts.notoSansTc(fontWeight: FontWeight.w700)),
-            style: TextButton.styleFrom(foregroundColor: const Color(0xFFB91C1C)),
           ),
         ],
       ),
@@ -844,8 +755,7 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
   /// 目前所選時間範圍內沒有警示紀錄——中性提示，刻意與 [_buildHistoryError]
   /// 做視覺區分（見該函式註解）。
   Widget _buildHistoryEmpty() {
-    // ★ 第五十三輪 familyfix53：新增 `custom` 分支——少了它會是編譯期的
-    // non_exhaustive_switch_expression 錯誤（switch expression 必須窮舉）。
+    // ★ 第五十三輪：`custom` 分支——switch expression 必須窮舉。
     final String rangeLabel = switch (_timeRange) {
       _AlertTimeRange.week => '本週',
       _AlertTimeRange.month => '本月',
@@ -856,89 +766,83 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
                 '${_customEndDate!.month}/${_customEndDate!.day}'
             : '所選範圍',
     };
-    // ★ 第五十三輪 familyfix53：狀態篩選啟用時一併說明「是在這個狀態下」
-    // 沒有紀錄，避免使用者誤以為這個時間範圍完全沒有任何警示。
+    // ★ 第五十三輪：狀態篩選啟用時一併說明「是在這個狀態下」沒有紀錄。
     final String statusSuffix =
         _statusFilter == _AlertStatusFilter.all ? '' : '（${_statusFilter.label}）';
-    return Container(
-      width: double.infinity,
+    return FamCard(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
-      child: Column(
-        children: [
-          const Icon(Icons.inbox_rounded, color: Color(0xFF94A3B8), size: 28),
-          const SizedBox(height: 8),
-          Text(
-            '$rangeLabel沒有警示紀錄$statusSuffix',
-            style: GoogleFonts.notoSansTc(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: const Color(0xFF64748B),
-            ),
-          ),
-        ],
+      child: SizedBox(
+        width: double.infinity,
+        child: Text(
+          '$rangeLabel沒有警示紀錄$statusSuffix',
+          textAlign: TextAlign.center,
+          style: famText(_c.text2, 14, weight: FontWeight.w600, height: 1.4),
+        ),
       ),
     );
   }
 
-  /// ★ 第五十二輪 F2：「全部」不套用時間篩選，但 limit 提高到
-  /// [_kAllRangeLimit]——如實告知使用者這不是真的「無限」，避免以為漏了
-  /// 更早的紀錄卻找不到原因。
+  /// ★ 第五十二輪 F2：「全部」不套用時間篩選，但 limit 提高到 [_kAllRangeLimit]
+  /// ——如實告知使用者這不是真的「無限」。
   Widget _buildAllRangeHint() {
     return Padding(
       padding: const EdgeInsets.only(top: 8),
       child: Text(
         '僅顯示最近 $_kAllRangeLimit 筆紀錄',
-        style: GoogleFonts.notoSansTc(
-          fontSize: 11,
-          fontWeight: FontWeight.w500,
-          color: const Color(0xFF94A3B8),
-        ),
+        style: famText(_c.text3, 12),
+      ),
+    );
+  }
+
+  /// 紀錄所屬的日分組標籤（今天／昨天／M/D；沒有時間戳的排最後、標「時間不明」）。
+  /// 純顯示用：清單順序與內容完全沿用 [_historyAlertItems]。
+  String _dayLabel(DateTime? ts) {
+    if (ts == null) return '時間不明';
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime(ts.year, ts.month, ts.day);
+    final diff = today.difference(day).inDays;
+    if (diff == 0) return '今天';
+    if (diff == 1) return '昨天';
+    return '${ts.month}/${ts.day}';
+  }
+
+  /// `.hist` 清單：同一張卡片內依日期插入 `.daysep`，列與列之間以細線分隔。
+  Widget _buildHistoryList(List<Map<String, dynamic>> items) {
+    final c = _c;
+    final rows = <Widget>[];
+    String? lastDay;
+    for (final item in items) {
+      final day = _dayLabel(item['sortTs'] as DateTime?);
+      if (day != lastDay) {
+        rows.add(FamDaySep(day));
+        lastDay = day;
+      } else {
+        rows.add(Divider(height: 1, thickness: 1, color: c.line));
+      }
+      rows.add(_buildHistoryAlertCard(item));
+    }
+    return FamCard(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: rows,
       ),
     );
   }
 
   /// ★ 第四十五輪：把一筆已持久化的警報（有真實 `alert_id`）標記為誤報，
-  /// 供管理端統計儀表板排除誤報。授權（`user_id` 需與該警報的長輩有關係）
-  /// 與冪等行為完全交給後端 `POST /alerts/{alert_id}/false-alarm` 判斷，
-  /// 前端只負責防重複點擊與樂觀更新畫面上的 `isFalseAlarm` 狀態。
-  /// 這是與「確認」（acknowledge）完全獨立的動作——本畫面目前沒有任何地方
-  /// 呼叫 acknowledge 端點，故不涉及互相覆蓋的問題。
+  /// 供管理端統計儀表板排除誤報。授權與冪等行為完全交給後端
+  /// `POST /alerts/{alert_id}/false-alarm` 判斷，前端只負責防重複點擊與
+  /// 樂觀更新畫面上的 `isFalseAlarm` 狀態。
   Future<void> _markFalseAlarm(String itemId, int alertId) async {
     if (_falseAlarmPending.contains(itemId)) return;
 
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(
-          '標記為誤報？',
-          style: GoogleFonts.notoSansTc(fontWeight: FontWeight.w800),
-        ),
-        content: Text(
-          '確定要把這則警報標記為誤報嗎？標記後將從統計中排除。',
-          style: GoogleFonts.notoSansTc(),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text('取消', style: GoogleFonts.notoSansTc()),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(
-              '確定標記',
-              style: GoogleFonts.notoSansTc(
-                color: const Color(0xFFDC2626),
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ],
-      ),
+    final confirmed = await _confirmDialog(
+      title: '標記為誤報？',
+      message: '確定要把這則警報標記為誤報嗎？標記後將從統計中排除。',
+      confirmLabel: '確定標記',
+      danger: true,
     );
     if (confirmed != true || !mounted) return;
 
@@ -948,8 +852,7 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
     final familyUserId = prefs.getInt('caregiver_id');
     if (familyUserId == null) {
       if (!mounted) return;
-      // ★ 第五十輪（適老化）：讀不到家屬身分是可重試的狀況（重新登入即可
-      // 解決），語意上是「警告」而非硬錯誤，改走 ErrorHandler.showWarning。
+      // ★ 第五十輪（適老化）：讀不到家屬身分是可重試的狀況，走 showWarning。
       ErrorHandler.showWarning(context, '無法確認家屬身分，請重新登入後再試');
       return;
     }
@@ -968,11 +871,9 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
             };
           }
         });
-        // ★ 第五十輪（適老化）：改用統一的大字級／高對比 SnackBar。
         ErrorHandler.showSuccess(context, '已標記為誤報');
       } else {
-        // ★ 第五十一輪：改顯示後端實際原因（找不到這筆警報／尚未與這位長輩
-        // 綁定／伺服器錯誤），不再全部塌成同一句「標記誤報失敗」。
+        // ★ 第五十一輪：顯示後端實際原因，不再全部塌成同一句。
         ErrorHandler.showWarning(context, '標記誤報失敗：${result.friendlyReason}');
       }
     } finally {
@@ -981,51 +882,24 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
   }
 
   /// ★ 第四十九輪 item 12：家屬主動回報一筆警報「已處理完畢」——警報狀態機
-  /// 第三態。與 `_markFalseAlarm` 是完全獨立的動作（本畫面同時提供兩個
-  /// 按鈕），冪等行為交給後端 `POST /alerts/{alert_id}/resolve` 判斷，
-  /// 前端只負責防重複點擊與樂觀更新畫面上的 `status`。
+  /// 第三態。與 `_markFalseAlarm` 是完全獨立的動作，冪等行為交給後端
+  /// `POST /alerts/{alert_id}/resolve` 判斷，前端只負責防重複點擊與樂觀更新
+  /// 畫面上的 `status`。
   Future<void> _resolveAlertAction(String itemId, int alertId) async {
     if (_resolvePending.contains(itemId)) return;
 
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(
-          '回報已處理？',
-          style: GoogleFonts.notoSansTc(fontWeight: FontWeight.w800),
-        ),
-        content: Text(
-          '確定這則警報已經處理完畢了嗎？標記後將不再收到相關的重複提醒。',
-          style: GoogleFonts.notoSansTc(),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text('取消', style: GoogleFonts.notoSansTc()),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(
-              '確定回報',
-              style: GoogleFonts.notoSansTc(
-                color: const Color(0xFF59B294),
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ],
-      ),
+    final confirmed = await _confirmDialog(
+      title: '回報已處理？',
+      message: '確定這則警報已經處理完畢了嗎？標記後將不再收到相關的重複提醒。',
+      confirmLabel: '確定回報',
+      danger: false,
     );
     if (confirmed != true || !mounted) return;
 
-    // 沿用 _loadHistoryAlerts／_markFalseAlarm 既有慣例：家屬 user_id 讀
-    // SharedPreferences 的 'caregiver_id'，不額外要求呼叫端多傳一個
-    // widget 參數。
     final prefs = await SharedPreferences.getInstance();
     final familyUserId = prefs.getInt('caregiver_id');
     if (familyUserId == null) {
       if (!mounted) return;
-      // ★ 第五十輪（適老化）：同 _markFalseAlarm，可重試的狀況用 showWarning。
       ErrorHandler.showWarning(context, '無法確認家屬身分，請重新登入後再試');
       return;
     }
@@ -1050,7 +924,6 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
         });
         ErrorHandler.showSuccess(context, '已回報處理完畢');
       } else {
-        // ★ 第五十一輪：同 _markFalseAlarm，顯示後端實際原因。
         ErrorHandler.showWarning(context, '回報失敗：${result.friendlyReason}');
       }
     } finally {
@@ -1058,96 +931,109 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
     }
   }
 
-  /// 跌倒歷史（`_emergencyAlerts`）與活動警示（`_realLogs`）合併後的單筆卡片。
-  /// 視覺語言沿用本畫面既有的 `_buildAlertCard`（白底卡＋色框＋圖示徽章），
-  /// 刻意比上方即時警報卡片內斂——那些是「正在發生」，這裡是「曾經發生」。
+  /// 兩個確認對話框（誤報／已處理）共用的外觀：[UbanDialog]＋確認／取消兩顆
+  /// [FamButton]。回傳 `true`＝確認、`false`＝取消、`null`＝點背景關閉
+  /// （與原 `AlertDialog` 的 `Navigator.pop(ctx, bool)` 語意一致）。
+  Future<bool?> _confirmDialog({
+    required String title,
+    required String message,
+    required String confirmLabel,
+    required bool danger,
+  }) {
+    return showUbanDialog<bool>(
+      _themeCtx,
+      (ctx) {
+        final c = UbanColors.of(ctx);
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: famText(c.text, 19, weight: FontWeight.w900)),
+            const SizedBox(height: 10),
+            Text(message, style: famText(c.text2, 15, height: 1.5)),
+            const SizedBox(height: 20),
+            FamButton(
+              label: confirmLabel,
+              kind: danger ? FamButtonKind.danger : FamButtonKind.filled,
+              onPressed: () => Navigator.pop(ctx, true),
+            ),
+            const SizedBox(height: 8),
+            FamButton(
+              label: '取消',
+              kind: FamButtonKind.ghost,
+              onPressed: () => Navigator.pop(ctx, false),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// 跌倒歷史（`_emergencyAlerts`）與活動警示（`_realLogs`）合併後的單筆 `.hist` 列：
+  /// 左色點（依嚴重度）、中間標題／說明、右側狀態膠囊。
+  /// 刻意比上方即時警報內斂——那些是「正在發生」，這裡是「曾經發生」。
   Widget _buildHistoryAlertCard(Map<String, dynamic> item) {
+    final c = _c;
     final level = item['level'] as String? ?? 'medium';
-    final color = level == 'high' ? const Color(0xFFEF4444) : const Color(0xFFF59E0B);
-    final icon = item['icon'] as IconData? ?? Icons.warning_amber_rounded;
+    final dotColor = level == 'high' ? c.danger : c.warm;
     final String itemId = item['id'] as String? ?? '';
     final int? alertId = item['alertId'] as int?;
     final bool isFalseAlarm = item['isFalseAlarm'] == true;
+    final String? status = item['status'] as String?;
+    final String? resolutionSource = item['resolution_source'] as String?;
+    final bool resolved = alertId != null && (status == 'resolved' || isFalseAlarm);
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withValues(alpha: 0.25), width: 2),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(icon, color: color, size: 20),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      item['title'] as String? ?? '警示',
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                        color: const Color(0xFF1E293B),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      item['desc'] as String? ?? '',
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: const Color(0xFF64748B),
-                        height: 1.4,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: FamDot(color: dotColor),
           ),
-          // ★ 2026-10-02：語音求救附有最後位置時，顯示「最後位置：N 分鐘前」＋「查看位置」。
-          if (item['hasLocation'] == true) ...[
-            const SizedBox(height: 10),
-            _buildLocationRow(
-              locationAt: item['locationAt'] as DateTime?,
-              initialDate: item['locationDate'] as DateTime?,
-              onDark: false,
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item['title'] as String? ?? '警示',
+                  style: famText(c.text, 15, weight: FontWeight.w700, height: 1.35),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  item['desc'] as String? ?? '',
+                  style: famText(c.text2, 12.5, height: 1.4),
+                ),
+                // ★ 2026-10-02：語音求救附有最後位置時，顯示「最後位置：N 分鐘前」＋「查看位置」。
+                //   沒有位置（hasLocation != true）就什麼位置 UI 都不加（G196）。
+                if (item['hasLocation'] == true)
+                  _buildLocationRow(
+                    locationAt: item['locationAt'] as DateTime?,
+                    initialDate: item['locationDate'] as DateTime?,
+                  ),
+                // 已結案的紀錄唯讀：只留說明文字，不提供任何動作。
+                if (resolved) ...[
+                  const SizedBox(height: 4),
+                  Text('已結案的紀錄不能再更改', style: famText(c.text3, 12)),
+                ],
+              ],
             ),
-          ],
-          // ★ 第四十五輪：只有查得到真實 alert_id 的持久化警報才提供動作
-          //   控制項——logItems（活動流水）沒有對應的 emergency_alerts
-          //   列，alertId 恆為 null，不會顯示這個區塊。
-          // ★ 第五十二輪 F2：原本「回報已處理」／「這是誤報」兩個並排
-          //   按鈕收斂成單一控制項，見 [_buildAlertActionArea]。
+          ),
+          // ★ 第四十五輪：只有查得到真實 alert_id 的持久化警報才有狀態／動作——
+          //   logItems（活動流水）沒有對應的 emergency_alerts 列，alertId 恆為 null。
           if (alertId != null) ...[
-            const SizedBox(height: 10),
-            _buildAlertActionArea(
-              itemId,
-              alertId,
-              item['status'] as String?,
-              item['resolution_source'] as String?,
-              isFalseAlarm,
+            const SizedBox(width: 10),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 112),
+              child: _buildAlertActionArea(
+                itemId,
+                alertId,
+                status,
+                resolutionSource,
+                isFalseAlarm,
+              ),
             ),
           ],
         ],
@@ -1155,21 +1041,15 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
     );
   }
 
-  /// ★ 第五十二輪 F2：警示紀錄卡片的動作區——取代原本各自獨立的
-  /// `_buildResolveAction`／`_buildFalseAlarmAction` 兩個並排按鈕。
+  /// ★ 第五十二輪 F2：警示紀錄列右側的狀態／動作區。
   ///
-  /// 已結案（`status == 'resolved'`，`isFalseAlarm` 併入判斷以相容
-  /// `alert_state.mark_false_alarm()` 尚未連動 status 之前寫入的極舊資料
-  /// ——正常情況下兩者必然同步，見 `database.py` 開機時對這批舊資料的
-  /// backfill）一律只顯示唯讀徽章＋一行「已結案的紀錄不能再更改」說明，
-  /// 不提供任何可按動作（任務 A：已結案不得再有動作鍵）。
+  /// 已結案（`status == 'resolved'`，`isFalseAlarm` 併入判斷以相容舊資料）一律只顯示
+  /// 唯讀 `.st.ok` 膠囊，不提供任何可按動作（已結案不得再有動作鍵）。
   ///
-  /// 未結案（active／acknowledged）顯示單一 `PopupMenuButton`：本體按鈕
-  /// 顯示目前狀態（待處理／處理中），展開後提供「回報已處理」／「標記為
-  /// 誤報」兩個選項（任務 B）。**刻意不提供「退回待處理」**——`resolved`
-  /// 是後端刻意鎖死的終態（見 `services/alert_state.py` 檔頭），提供一個
-  /// 後端會拒絕的選項只會讓家屬以為壞掉；若日後要支援「誤按反悔」，應該
-  /// 是撤銷視窗（例如 5 秒內可撤銷）而不是重新開放已結案紀錄。
+  /// 未結案（active／acknowledged）顯示單一 `PopupMenuButton`：本體是狀態膠囊
+  /// （待處理＝暖色、處理中＝中性），展開後提供「回報已處理」／「標記為誤報」。
+  /// **刻意不提供「退回待處理」**——`resolved` 是後端刻意鎖死的終態
+  /// （見 `services/alert_state.py` 檔頭）。
   Widget _buildAlertActionArea(
     String itemId,
     int alertId,
@@ -1177,39 +1057,34 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
     String? resolutionSource,
     bool isFalseAlarm,
   ) {
+    final c = _c;
     final bool resolved = status == 'resolved' || isFalseAlarm;
     if (resolved) {
-      // 舊資料相容：is_false_alarm=1 但 resolution_source 尚未連動寫入時
-      // （理論上不會發生，見上方函式註解），仍讓徽章顯示成誤報而非落入
-      // 語意較模糊的「已結案」預設分支。
+      // 舊資料相容：is_false_alarm=1 但 resolution_source 尚未連動寫入時，
+      // 仍讓膠囊顯示成誤報而非落入語意較模糊的「已結案」預設分支。
       final String? effectiveSource =
           (isFalseAlarm && (resolutionSource == null || resolutionSource.isEmpty))
               ? 'false_alarm'
               : resolutionSource;
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          _buildResolvedBadgeForSource(effectiveSource),
-          const SizedBox(height: 4),
-          Text(
-            '已結案的紀錄不能再更改',
-            style: GoogleFonts.notoSansTc(
-              fontSize: 11,
-              fontWeight: FontWeight.w500,
-              color: const Color(0xFF94A3B8),
-            ),
-          ),
-        ],
+      return Align(
+        alignment: Alignment.topRight,
+        child: _buildResolvedBadgeForSource(effectiveSource),
       );
     }
 
     final bool isPending = _resolvePending.contains(itemId) || _falseAlarmPending.contains(itemId);
-    final String currentLabel = status == 'acknowledged' ? '處理中' : '待處理';
+    final bool acknowledged = status == 'acknowledged';
+    final String currentLabel = acknowledged ? '處理中' : '待處理';
+    final bool warmTone = !(isPending || acknowledged);
     return Align(
-      alignment: Alignment.centerRight,
+      alignment: Alignment.topRight,
       child: PopupMenuButton<_AlertMenuAction>(
         enabled: !isPending,
         tooltip: '警報動作選單',
+        padding: EdgeInsets.zero,
+        color: c.surface,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         onSelected: (action) {
           switch (action) {
             case _AlertMenuAction.resolve:
@@ -1223,176 +1098,68 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
         itemBuilder: (ctx) => [
           PopupMenuItem(
             value: _AlertMenuAction.resolve,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.check_circle_outline_rounded, size: 18, color: Color(0xFF59B294)),
-                const SizedBox(width: 8),
-                Text('回報已處理', style: GoogleFonts.notoSansTc(fontSize: 14)),
-              ],
-            ),
+            child: Text('回報已處理', style: famText(c.text, 15, weight: FontWeight.w600)),
           ),
           PopupMenuItem(
             value: _AlertMenuAction.falseAlarm,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.flag_outlined, size: 18, color: Color(0xFF64748B)),
-                const SizedBox(width: 8),
-                Text('標記為誤報', style: GoogleFonts.notoSansTc(fontSize: 14)),
-              ],
-            ),
+            child: Text('標記為誤報', style: famText(c.text, 15, weight: FontWeight.w600)),
           ),
         ],
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF1F5F9),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: const Color(0xFFCBD5E1)),
-          ),
-          // ★ 鐵律 #14：本體標籤雖是固定短字串（待處理／處理中／回報中…），
-          // 仍包 Flexible+ellipsis 以防裝置字級被使用者調大時擠壓版面。
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                isPending ? Icons.hourglass_top_rounded : Icons.pending_actions_rounded,
-                size: 15,
-                color: const Color(0xFF475569),
-              ),
-              const SizedBox(width: 6),
-              Flexible(
-                child: Text(
-                  isPending ? '處理中…' : currentLabel,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: const Color(0xFF475569),
-                  ),
-                ),
-              ),
-              const Icon(Icons.arrow_drop_down_rounded, size: 18, color: Color(0xFF475569)),
-            ],
+        // 膠囊上下留白撐出 ≥40px 的點擊範圍。
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: FamStatusPill(
+            label: isPending ? '處理中…' : currentLabel,
+            // 暖色只給「待處理」。
+            tone: warmTone ? FamTone.warm : FamTone.neutral,
+            trailing: Icon(
+              Icons.arrow_drop_down_rounded,
+              size: 18,
+              color: warmTone ? c.warm : c.text2,
+            ),
           ),
         ),
       ),
     );
   }
 
-  /// 已結案徽章依 [resolutionSource] 分流文案／顏色，供 [_buildAlertActionArea]
+  /// 已結案膠囊依 [resolutionSource] 分流文案，供 [_buildAlertActionArea]
   /// 呼叫。四種來源沿用第四十九／五十輪既有分類：`family`（家屬自己回報）、
   /// `developer`（開發者主控台代為結案）、`false_alarm`（標記誤報連動結案，
-  /// 圖示／顏色沿用原本 `_buildFalseAlarmAction` 的「已標記為誤報」外觀）、
-  /// `legacy_auto`（舊警報上線時系統自動結案，中性灰色＋歷史圖示，刻意與
-  /// 其餘「有人確認過」的綠色系徽章區分）；其餘（含 null／空字串，理論上
-  /// 不會出現在已結案分支）落入「已結案」預設文案。
+  /// 中性灰）、`legacy_auto`（舊警報上線時系統自動結案，中性灰，刻意與其餘
+  /// 「有人確認過」的 brand 色區分）；其餘落入「已結案」預設文案。
   Widget _buildResolvedBadgeForSource(String? resolutionSource) {
     switch (resolutionSource) {
       case 'family':
-        return _buildResolvedBadge(
-          icon: Icons.check_circle_rounded,
-          color: const Color(0xFF59B294),
-          label: '已回報處理完畢',
-        );
+        return const FamStatusPill(label: '已回報處理完畢', tone: FamTone.brand);
       case 'developer':
-        return _buildResolvedBadge(
-          icon: Icons.verified_user_rounded,
-          color: const Color(0xFF59B294),
-          label: '已由 Uban 團隊結案',
-        );
+        return const FamStatusPill(label: '已由 Uban 團隊結案', tone: FamTone.brand);
       case 'false_alarm':
-        return _buildResolvedBadge(
-          icon: Icons.flag_rounded,
-          color: const Color(0xFF94A3B8),
-          label: '已標記為誤報',
-        );
+        return const FamStatusPill(label: '已標記為誤報');
       case 'legacy_auto':
-        return _buildResolvedBadge(
-          icon: Icons.history_rounded,
-          color: const Color(0xFF94A3B8),
-          label: '舊警報，系統已自動結案',
-        );
+        return const FamStatusPill(label: '舊警報，系統已自動結案');
       default:
-        return _buildResolvedBadge(
-          icon: Icons.check_circle_rounded,
-          color: const Color(0xFF59B294),
-          label: '已結案',
-        );
+        return const FamStatusPill(label: '已結案', tone: FamTone.brand);
     }
   }
 
-  /// 「已結案」唯讀徽章的共用外觀，供 [_buildResolvedBadgeForSource] 呼叫。
-  /// 維持既有的 `Row` + `Flexible` + `TextOverflow.ellipsis` 結構（鐵律
-  /// #14：同列有圖示＋文字時，文字必須可收縮，避免 RenderFlex 溢位）。
-  Widget _buildResolvedBadge({
-    required IconData icon,
-    required Color color,
-    required String label,
-  }) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 14, color: color),
-        const SizedBox(width: 4),
-        Flexible(
-          child: Text(
-            label,
-            overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.notoSansTc(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: color,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _buildRealtimeAlertsHeader(int count) {
-    return Row(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: const Color(0xFFEF4444).withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: const Icon(
-            Icons.notifications_active_rounded,
-            color: Color(0xFFDC2626),
-            size: 20,
-          ),
-        ),
-        const SizedBox(width: 10),
-        Flexible(
-          child: Text(
-            '🚨 即時警報（$count）',
-            overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.notoSansTc(
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-              color: const Color(0xFFDC2626),
-            ),
-          ),
-        ),
-      ],
+    return FamSecHead(
+      title: '正在發生',
+      trailing: FamChip(label: '$count 則', tone: FamTone.danger, dot: true),
     );
   }
 
-  /// 單筆即時警報卡片。標題／描述文案與信心度格式沿用
-  /// `family_home_tab.dart::_buildAlertPreview` 的 activeItems 迴圈
-  /// （約 :3176-3190），刻意鏡射而非抽共用元件——同檔已有先例（見該檔
-  /// `_buildMonitorDeviceStatus` 開頭註解的理由：兩邊互不 import，各自只從
-  /// 父層拿處理好的資料）。
+  /// 單筆即時警報卡片（`.alert.danger`：danger 底塊＋左色點）。標題／描述文案與
+  /// 信心度格式沿用 `family_home_tab.dart::_buildAlertPreview` 的 activeItems 迴圈，
+  /// 文案一律來自 [AlertDisplay]（G196，不在此處改字）。
   Widget _buildRealtimeAlertCard(Map<String, dynamic> a) {
+    final c = _c;
     final type = (a['alert_type'] ?? a['alertType'] ?? 'fall').toString();
     final conf = a['confidence'];
     final confText = conf != null ? ' (信心度 ${(conf * 100).toStringAsFixed(0)}%)' : '';
-    // ★ 2026-10-02（G196）：文案集中到 AlertDisplay；`sos_voice` 不再被寫成跌倒、
-    //   也不顯示信心度（不是影像偵測），未知型別退回中性的「異常狀況」。
+    // ★ 2026-10-02（G196）：`sos_voice` 不再被寫成跌倒、也不顯示信心度
+    //   （不是影像偵測），未知型別退回中性的「異常狀況」。
     final bool isSos = AlertDisplay.isSos(type);
     final String title = AlertDisplay.title(type);
     final String desc = AlertDisplay.liveDesc(type, confText: isSos ? '' : confText);
@@ -1400,113 +1167,67 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFFEF4444), Color(0xFFDC2626)],
-        ),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFFEF4444).withValues(alpha: 0.35),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
+        color: c.dangerContainer,
+        borderRadius: BorderRadius.circular(18),
       ),
-      child: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(AlertDisplay.icon(type), color: Colors.white, size: 26),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w900,
-                        color: Colors.white,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      desc,
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.white.withValues(alpha: 0.92),
-                        height: 1.4,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: FamDot(color: c.danger),
           ),
-          // ★ 2026-10-02：語音求救附有最後位置時才顯示（沒有位置就什麼都不加）。
-          if (hasLocation) ...[
-            const SizedBox(height: 10),
-            _buildLocationRow(
-              locationAt: AlertDisplay.parseLocationAt(a),
-              initialDate: null, // 即時警報：開今天的地圖
-              onDark: true,
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: famText(c.text, 15.5, weight: FontWeight.w900, height: 1.35),
+                ),
+                const SizedBox(height: 2),
+                Text(desc, style: famText(c.text2, 13.5, height: 1.45)),
+                // ★ 2026-10-02：語音求救附有最後位置時才顯示（沒有位置就什麼都不加）。
+                if (hasLocation)
+                  _buildLocationRow(
+                    locationAt: AlertDisplay.parseLocationAt(a),
+                    initialDate: null, // 即時警報：開今天的地圖
+                  ),
+              ],
             ),
-          ],
+          ),
         ],
       ),
     );
   }
 
-  /// ★ 2026-10-02：語音求救的「最後位置：N 分鐘前」＋「查看位置」列（即時／歷史卡片共用）。
+  /// ★ 2026-10-02：語音求救的「最後位置：N 分鐘前」＋「查看位置」（即時／歷史共用）。
   /// [locationAt] 為 `null`（後端沒給定位時間）時只顯示按鈕，不捏造時間。
-  /// [onDark]：即時警報卡片是紅底，文字與按鈕要用白色系。
-  /// 鐵律 #14：文字用 `Expanded` + ellipsis，按鈕固定尺寸，窄螢幕不會溢位。
+  /// 鐵律 #14：文字可換行、按鈕內文字 Flexible，窄螢幕不會溢位。
   Widget _buildLocationRow({
     required DateTime? locationAt,
     required DateTime? initialDate,
-    required bool onDark,
   }) {
+    final c = _c;
     final String? text = AlertDisplay.lastLocationText(locationAt);
-    final Color fg = onDark ? Colors.white : const Color(0xFFB91C1C);
-    return Row(
-      children: [
-        Icon(Icons.place_rounded,
-            size: 16, color: onDark ? Colors.white70 : const Color(0xFF64748B)),
-        const SizedBox(width: 6),
-        Expanded(
-          child: text == null
-              ? const SizedBox.shrink()
-              : Text(
-                  text,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: onDark ? Colors.white70 : const Color(0xFF64748B),
-                  ),
-                ),
-        ),
-        const SizedBox(width: 8),
-        OutlinedButton.icon(
-          onPressed: () => _openLocationMap(initialDate),
-          icon: const Icon(Icons.map_rounded, size: 16),
-          label: const Text('查看位置'),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: fg,
-            side: BorderSide(color: fg.withValues(alpha: 0.7)),
-            visualDensity: VisualDensity.compact,
-            textStyle: GoogleFonts.notoSansTc(
-                fontSize: 13, fontWeight: FontWeight.w700),
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (text != null) ...[
+            Text(text, style: famText(c.text2, 13, weight: FontWeight.w600)),
+            const SizedBox(height: 6),
+          ],
+          FamLocButton(
+            label: '查看位置',
+            onTap: () => _openLocationMap(initialDate),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -1535,166 +1256,55 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
   }
 
   Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(32),
-            decoration: BoxDecoration(
-              color: const Color(0xFF10B981).withValues(alpha: 0.1),
-              shape: BoxShape.circle,
+    final c = _c;
+    return FamCard(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
+      child: SizedBox(
+        width: double.infinity,
+        child: Column(
+          children: [
+            Text(
+              '目前沒有警示',
+              textAlign: TextAlign.center,
+              style: famText(c.text, 19, weight: FontWeight.w900),
             ),
-            child: const Icon(
-              Icons.check_circle_rounded,
-              size: 80,
-              color: Color(0xFF10B981),
+            const SizedBox(height: 6),
+            Text(
+              '${widget.elderName} 的健康狀況良好',
+              textAlign: TextAlign.center,
+              style: famText(c.text2, 14, height: 1.4),
             ),
-          ),
-          const SizedBox(height: 24),
-          Text(
-            '目前沒有警示',
-            style: GoogleFonts.notoSansTc(
-              fontSize: 20,
-              fontWeight: FontWeight.w900,
-              color: const Color(0xFF1E293B),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '${widget.elderName} 的健康狀況良好',
-            style: GoogleFonts.notoSansTc(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: const Color(0xFF64748B),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
+  /// 健康建議摘要：一般 [FamCard]＋兩格 [FamStat]。
   Widget _buildSummaryCard() {
-    final highPriorityCount = _alerts.where((a) => 
+    final highPriorityCount = _alerts.where((a) =>
       a.priority == AlertPriority.high || a.priority == AlertPriority.urgent
     ).length;
     final actionRequiredCount = _alerts.where((a) => a.actionRequired).length;
 
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFFEF4444), Color(0xFFF59E0B)],
-        ),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFFEF4444).withValues(alpha: 0.3),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
+    return FamCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(
-                  Icons.notifications_active_rounded,
-                  color: Colors.white,
-                  size: 28,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '警示總覽',
-                      style: GoogleFonts.notoSansTc(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    Text(
-                      '共 ${_alerts.length} 個警示項目',
-                      style: GoogleFonts.notoSansTc(
-                        color: Colors.white.withValues(alpha: 0.8),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+          FamSecHead(
+            title: '警示總覽',
+            trailing: FamChip(label: '共 ${_alerts.length} 項', tone: FamTone.brand),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 12),
           Row(
             children: [
-              Expanded(
-                child: _buildSummaryItem(
-                  '重要警示',
-                  '$highPriorityCount',
-                  Icons.warning_amber_rounded,
-                ),
-              ),
-              Container(
-                width: 1,
-                height: 40,
-                color: Colors.white.withValues(alpha: 0.3),
-              ),
-              Expanded(
-                child: _buildSummaryItem(
-                  '需處理',
-                  '$actionRequiredCount',
-                  Icons.assignment_turned_in_rounded,
-                ),
-              ),
+              Expanded(child: FamStat(label: '重要警示', value: '$highPriorityCount')),
+              const SizedBox(width: 10),
+              Expanded(child: FamStat(label: '需處理', value: '$actionRequiredCount')),
             ],
           ),
         ],
       ),
-    ).animate().fadeIn(duration: 400.ms).slideY(begin: -0.1, end: 0);
-  }
-
-  Widget _buildSummaryItem(String label, String value, IconData icon) {
-    return Column(
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: Colors.white, size: 20),
-            const SizedBox(width: 6),
-            Text(
-              value,
-              style: GoogleFonts.notoSansTc(
-                color: Colors.white,
-                fontSize: 28,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: GoogleFonts.notoSansTc(
-            color: Colors.white.withValues(alpha: 0.9),
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ],
     );
   }
 
@@ -1702,206 +1312,71 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          '警示詳情',
-          style: GoogleFonts.notoSansTc(
-            fontSize: 18,
-            fontWeight: FontWeight.w900,
-            color: const Color(0xFF1E293B),
-          ),
-        ),
+        const FamSecHead(title: '警示詳情'),
         const SizedBox(height: 12),
-        ..._alerts.asMap().entries.map((entry) {
-          return _buildAlertCard(entry.value, entry.key);
-        }),
+        ..._alerts.map(_buildAlertCard),
       ],
     );
   }
 
-  Widget _buildAlertCard(Alert alert, int index) {
-    final priorityColor = _getPriorityColor(alert.priority);
+  FamTone _priorityTone(AlertPriority p) {
+    switch (p) {
+      case AlertPriority.urgent:
+      case AlertPriority.high:
+        return FamTone.danger;
+      case AlertPriority.medium:
+        return FamTone.warm;
+      case AlertPriority.low:
+        return FamTone.info;
+    }
+  }
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: alert.priority == AlertPriority.high || alert.priority == AlertPriority.urgent
-              ? priorityColor.withValues(alpha: 0.3)
-              : const Color(0xFFE2E8F0),
-          width: 2,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: priorityColor.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      _getAlertIcon(alert.type),
-                      size: 16,
-                      color: priorityColor,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      alert.priorityLabel,
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: priorityColor,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              // ★ 2026-08-10 第二十輪（需求 2）：警報型別標籤由後端下發，長度不可控。
-              Flexible(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF1F5F9),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    alert.typeLabel,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: const Color(0xFF64748B),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            alert.title,
-            style: GoogleFonts.notoSansTc(
-              fontSize: 16,
-              fontWeight: FontWeight.w900,
-              color: const Color(0xFF1E293B),
+  Widget _buildAlertCard(Alert alert) {
+    final c = _c;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: FamCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                FamChip(label: alert.priorityLabel, tone: _priorityTone(alert.priority), dot: true),
+                const SizedBox(width: 8),
+                // ★ 2026-08-10 第二十輪（需求 2）：警報型別標籤由後端下發，長度不可控。
+                Flexible(child: FamChip(label: alert.typeLabel)),
+              ],
             ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            alert.description,
-            style: GoogleFonts.notoSansTc(
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              color: const Color(0xFF64748B),
-              height: 1.4,
-            ),
-          ),
-          if (alert.recommendedActions.isNotEmpty) ...[
             const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.lightbulb_outline_rounded,
-                        size: 16,
-                        color: Color(0xFF3B82F6),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        '建議行動',
-                        style: GoogleFonts.notoSansTc(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: const Color(0xFF3B82F6),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  ...alert.recommendedActions.map((action) => Padding(
+            Text(
+              alert.title,
+              style: famText(c.text, 16, weight: FontWeight.w900, height: 1.35),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              alert.description,
+              style: famText(c.text2, 14, height: 1.5),
+            ),
+            if (alert.recommendedActions.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              Text('建議行動', style: famText(c.brandStrong, 13, weight: FontWeight.w700)),
+              const SizedBox(height: 6),
+              ...alert.recommendedActions.map((action) => Padding(
                     padding: const EdgeInsets.only(bottom: 4),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('• ', style: TextStyle(color: Color(0xFF64748B))),
+                        Text('• ', style: famText(c.text2, 14.5, height: 1.6)),
                         Expanded(
-                          child: Text(
-                            action,
-                            style: GoogleFonts.notoSansTc(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                              color: const Color(0xFF64748B),
-                              height: 1.3,
-                            ),
-                          ),
+                          child: Text(action, style: famText(c.text2, 14.5, height: 1.6)),
                         ),
                       ],
                     ),
                   )),
-                ],
-              ),
-            ),
+            ],
           ],
-        ],
+        ),
       ),
-    ).animate(delay: (index * 100).ms)
-      .fadeIn(duration: 400.ms)
-      .slideX(begin: 0.1, end: 0);
-  }
-
-  Color _getPriorityColor(AlertPriority priority) {
-    switch (priority) {
-      case AlertPriority.urgent:
-        return const Color(0xFFDC2626);
-      case AlertPriority.high:
-        return const Color(0xFFEF4444);
-      case AlertPriority.medium:
-        return const Color(0xFFF59E0B);
-      case AlertPriority.low:
-        return const Color(0xFF3B82F6);
-    }
-  }
-
-  IconData _getAlertIcon(AlertType type) {
-    switch (type) {
-      case AlertType.emotionAbnormal:
-        return Icons.mood_bad_rounded;
-      case AlertType.vitalSignAbnormal:
-        return Icons.favorite_rounded;
-      case AlertType.activityAbnormal:
-        return Icons.directions_walk_rounded;
-      case AlertType.trendPrediction:
-        return Icons.trending_up_rounded;
-      case AlertType.medicationReminder:
-        return Icons.medication_rounded;
-      case AlertType.appointmentReminder:
-        return Icons.event_rounded;
-    }
+    );
   }
 }
