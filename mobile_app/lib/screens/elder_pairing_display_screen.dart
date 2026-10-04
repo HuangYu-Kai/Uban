@@ -7,6 +7,8 @@ import 'elder_home_screen.dart';
 import 'elder_screen.dart'; // ★ 監控機模式導向
 import 'elder_profile_onboarding_screen.dart'; // ★ 第五十三輪 onboard53：長 9 強制補填
 import '../utils/profile_completeness.dart';
+import '../widgets/login_flow_parts.dart';
+import '../widgets/ui/ui.dart';
 import 'dart:async';
 
 class ElderPairingDisplayScreen extends StatefulWidget {
@@ -713,143 +715,128 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final c = UbanColors.of(context);
     return Scaffold(
-      backgroundColor: const Color(0xFFFFFBF0),
+      backgroundColor: c.bg,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
+            padding: const EdgeInsets.fromLTRB(22, 20, 22, 32),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 560),
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(
-                    Icons.qr_code_scanner_rounded,
-                    size: 80,
-                    color: Colors.orange,
-                  ),
-                  const SizedBox(height: 24),
-                  Text(
-                    '等待家人配對',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 32,
-                      fontWeight: FontWeight.bold,
-                      color: const Color(0xFF333333),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    '請子女開啟手機上的 Uban App\n並掃描下方 QR Code 或輸入配對碼',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 18, color: Colors.grey),
-                  ),
-                  const SizedBox(height: 32),
-                  if (_isLoading)
-                    const CircularProgressIndicator()
-                  else if (_pairingCode != null)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 24,
-                        vertical: 24,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(32),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.08),
-                            blurRadius: 24,
-                            offset: const Offset(0, 10),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        children: [
-                          FittedBox(
-                            child: Text(
-                              _pairingCode!,
-                              style: GoogleFonts.inter(
-                                fontSize: 64,
-                                fontWeight: FontWeight.w900,
-                                color: Colors.orange,
-                                letterSpacing: 8,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          QrImageView(
-                            data: _pairingCode!,
-                            version: QrVersions.auto,
-                            size: 150.0,
-                            backgroundColor: Colors.white,
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            '配對倒數: $_secondsLeft 秒',
-                            style: const TextStyle(
-                              color: Colors.redAccent,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  const SizedBox(height: 32),
-
-                  // 🌟 方案 A：長者自主模式按鈕（極致醒目、長輩友善）
-                  Container(
-                    width: double.infinity,
-                    constraints: const BoxConstraints(maxWidth: 420),
-                    child: ElevatedButton.icon(
-                      onPressed: _startAutonomousMode,
-                      icon: const Icon(Icons.auto_awesome_rounded, size: 24),
-                      label: Text(
-                        '🌟 我自己使用（直接進入體驗）',
-                        style: GoogleFonts.notoSansTc(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF59B294),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        elevation: 4,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    '無須等待家人，點此先享受 AI 伴侶、農民曆與小豬養成（日後隨時可補綁家人）',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 13,
-                      color: const Color(0xFF64748B),
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-
-                  // 次要操作區
+                  // 標題區：閃爍小點＋狀態＋主標
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      TextButton.icon(
-                        onPressed: _requestNewCode,
-                        icon: const Icon(Icons.refresh_rounded, size: 18),
-                        label: const Text('更換代碼', style: TextStyle(fontSize: 16)),
+                      const _LiveDot(),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          '正在等家人配對',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                          style: ubanText(18, FontWeight.w700, c.brandStrong),
+                        ),
                       ),
-                      const SizedBox(width: 16),
-                      TextButton.icon(
-                        onPressed: _quickLoginSameElder,
-                        icon: const Icon(Icons.history_rounded, size: 18),
-                        label: const Text(
-                          '登入上次長輩',
-                          style: TextStyle(fontSize: 16),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '請家人輸入這組號碼',
+                    textAlign: TextAlign.center,
+                    style: ubanH1(context),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // 配對碼卡片
+                  UbanCard(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 22),
+                    child: _isLoading
+                        ? const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 40),
+                            child: Center(child: CircularProgressIndicator()),
+                          )
+                        : (_pairingCode != null
+                            ? Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  _PairingCodeBoxes(code: _pairingCode!),
+                                  const SizedBox(height: 16),
+                                  // QR 碼底色固定白色，確保深色模式下仍可掃描。
+                                  Container(
+                                    width: 160,
+                                    height: 160,
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                    child: QrImageView(
+                                      data: _pairingCode!,
+                                      version: QrVersions.auto,
+                                      size: 140.0,
+                                      backgroundColor: Colors.white,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    '或讓家人用手機掃這個條碼',
+                                    textAlign: TextAlign.center,
+                                    style: ubanBody(context),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    '配對倒數: $_secondsLeft 秒',
+                                    textAlign: TextAlign.center,
+                                    style: ubanText(
+                                        18, FontWeight.w700, c.danger),
+                                  ),
+                                ],
+                              )
+                            : Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 24),
+                                child: Text(
+                                  '目前沒有配對碼，請點下方「更換代碼」重試',
+                                  textAlign: TextAlign.center,
+                                  style: ubanBody(context),
+                                ),
+                              )),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // 🌟 方案 A：長者自主模式按鈕（極致醒目、長輩友善）
+                  UbanButton(
+                    label: '我自己使用',
+                    size: UbanButtonSize.xl,
+                    onPressed: _startAutonomousMode,
+                  ),
+                  const SizedBox(height: 12),
+
+                  // 次要操作區（長輩端維持 60 高以上的點擊區）
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: UbanButton(
+                          label: '更換代碼',
+                          variant: UbanButtonVariant.tonal,
+                          onPressed: _requestNewCode,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: UbanButton(
+                          label: '登入上次長輩',
+                          variant: UbanButtonVariant.tonal,
+                          onPressed: _quickLoginSameElder,
                         ),
                       ),
                     ],
@@ -859,6 +846,115 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// 設計稿 `.livedot`：10 圓、1.6 秒呼吸閃爍。系統「移除動畫」時不閃。
+class _LiveDot extends StatefulWidget {
+  const _LiveDot();
+
+  @override
+  State<_LiveDot> createState() => _LiveDotState();
+}
+
+class _LiveDotState extends State<_LiveDot>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1600),
+  );
+  bool _started = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final reduce = reduceMotion(context);
+    if (reduce && _started) {
+      _ctrl.stop();
+      _ctrl.value = 0;
+      _started = false;
+    } else if (!reduce && !_started) {
+      _ctrl.repeat();
+      _started = true;
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = UbanColors.of(context);
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (context, _) {
+        // blink：50% 時 opacity .3，頭尾 1。
+        final t = _ctrl.value;
+        final opacity = 1 - 0.7 * (1 - (t - .5).abs() * 2);
+        return Opacity(
+          opacity: opacity,
+          child: Container(
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(color: c.brand, shape: BoxShape.circle),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// 設計稿 `.code`：每碼一格（44×60、圓角 14、brandSoft 底、Poppins 34）。
+/// 格寬依可用寬度縮小，6 碼在 360 寬也排得下。
+class _PairingCodeBoxes extends StatelessWidget {
+  final String code;
+  const _PairingCodeBoxes({required this.code});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = UbanColors.of(context);
+    final chars = code.split('');
+    return Semantics(
+      label: '配對碼 ${chars.join(' ')}',
+      excludeSemantics: true,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          const gap = 6.0;
+          final n = chars.isEmpty ? 1 : chars.length;
+          final avail = constraints.maxWidth.isFinite ? constraints.maxWidth : 300.0;
+          final w = ((avail - gap * (n - 1)) / n).clamp(20.0, 44.0);
+          return Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              for (var i = 0; i < chars.length; i++) ...[
+                if (i > 0) const SizedBox(width: gap),
+                Container(
+                  width: w,
+                  height: 60,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: c.brandSoft,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      chars[i],
+                      maxLines: 1,
+                      textScaler: TextScaler.noScaling,
+                      style: ubanBrandText(34, FontWeight.w600, c.brandStrong),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          );
+        },
       ),
     );
   }

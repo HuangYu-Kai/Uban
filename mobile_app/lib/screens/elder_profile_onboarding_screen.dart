@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
-import '../theme/app_theme.dart';
 import '../widgets/age_stepper_field.dart';
 import '../widgets/city_district_picker.dart';
+import '../widgets/login_flow_parts.dart';
+import '../widgets/ui/ui.dart';
 
 /// 長輩帳號「年齡／居住地」強制補填畫面（長輩尺規）。
 ///
@@ -114,86 +115,104 @@ class _ElderProfileOnboardingScreenState
 
   @override
   Widget build(BuildContext context) {
+    final c = UbanColors.of(context);
     return PopScope(
       canPop: false,
       child: Scaffold(
-        backgroundColor: const Color(0xFFFFFBF0),
+        backgroundColor: c.bg,
         body: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(28.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 8),
-                const Icon(Icons.assignment_ind_rounded, size: 56, color: AppColors.primary),
-                const SizedBox(height: 20),
-                Text('請完成基本資料', style: ElderScale.sectionTitle),
-                const SizedBox(height: 12),
-                Text(
-                  '${widget.userName} 您好，麻煩您確認一下年齡跟居住的縣市／地區，這樣才能繼續使用喔！',
-                  style: ElderScale.body,
+          child: LayoutBuilder(
+            builder: (context, constraints) => SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(22, 24, 22, 32),
+              child: ConstrainedBox(
+                // 內容不足一屏時 CTA 沉到底；超出（小螢幕／大字級）則整頁可捲。
+                constraints: BoxConstraints(
+                  minHeight: (constraints.maxHeight - 56).clamp(0.0, double.infinity),
+                  maxWidth: 560,
                 ),
-                const SizedBox(height: 32),
-                AgeStepperField(
-                  elderMode: true,
-                  value: _age,
-                  onChanged: (v) => setState(() {
-                    _age = v;
-                    _errorMessage = null;
-                  }),
-                ),
-                const SizedBox(height: 28),
-                CityDistrictPicker(
-                  elderMode: true,
-                  initialCity: _residenceCity,
-                  initialDistrict: _residenceDistrict,
-                  onChanged: (city, district) => setState(() {
-                    _residenceCity = city;
-                    _residenceDistrict = district;
-                    _errorMessage = null;
-                  }),
-                ),
-                if (_errorMessage != null) ...[
-                  const SizedBox(height: 20),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFEE2E2),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: const Color(0xFFDC2626), width: 1.5),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        const Icon(Icons.error_outline_rounded, color: Color(0xFFDC2626), size: 28),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            _errorMessage!,
-                            style: ElderScale.body.copyWith(color: const Color(0xFF991B1B)),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: UbanMarkBox(
+                            size: 64,
+                            radius: 20,
+                            color: c.brandContainer,
+                            child: Icon(Icons.person_outline_rounded,
+                                size: 34, color: c.brandStrong),
                           ),
                         ),
+                        const SizedBox(height: 20),
+                        Text('請完成基本資料', style: ubanH1(context)),
+                        const SizedBox(height: 20),
+                        Text(
+                          '${widget.userName} 您好，麻煩您確認一下年齡跟居住的縣市／地區，這樣才能繼續使用喔！',
+                          style: ubanBody(context, size: 20),
+                        ),
+                        const SizedBox(height: 20),
+                        AgeStepperField(
+                          elderMode: true,
+                          value: _age,
+                          onChanged: (v) => setState(() {
+                            _age = v;
+                            _errorMessage = null;
+                          }),
+                        ),
+                        const SizedBox(height: 20),
+                        CityDistrictPicker(
+                          elderMode: true,
+                          initialCity: _residenceCity,
+                          initialDistrict: _residenceDistrict,
+                          onChanged: (city, district) => setState(() {
+                            _residenceCity = city;
+                            _residenceDistrict = district;
+                            _errorMessage = null;
+                          }),
+                        ),
+                        if (_errorMessage != null) ...[
+                          const SizedBox(height: 20),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 14),
+                            decoration: BoxDecoration(
+                              color: c.dangerContainer,
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(color: c.danger, width: 1.5),
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Icon(Icons.error_outline_rounded,
+                                    color: c.danger, size: 28),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    _errorMessage!,
+                                    style: ubanText(20, FontWeight.w600, c.text,
+                                        height: 1.4),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 28),
                       ],
                     ),
-                  ),
-                ],
-                const SizedBox(height: 32),
-                SizedBox(
-                  width: double.infinity,
-                  height: ElderScale.buttonHeight,
-                  child: ElevatedButton(
-                    onPressed: _isSaving ? null : _submit,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(ElderScale.cardRadius)),
+                    UbanButton(
+                      label: '確定，開始使用',
+                      size: UbanButtonSize.xl,
+                      loading: _isSaving,
+                      onPressed: _isSaving ? null : _submit,
                     ),
-                    child: _isSaving
-                        ? const CircularProgressIndicator(color: Colors.white)
-                        : Text('確定，開始使用', style: ElderScale.button.copyWith(color: Colors.white)),
-                  ),
+                  ],
                 ),
-                const SizedBox(height: 16),
-              ],
+              ),
             ),
           ),
         ),

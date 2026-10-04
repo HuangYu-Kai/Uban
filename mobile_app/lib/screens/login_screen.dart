@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
@@ -10,6 +9,8 @@ import 'family_profile_onboarding_screen.dart';
 import '../globals.dart';
 import '../services/auth_service.dart';
 import '../utils/profile_completeness.dart';
+import '../widgets/login_flow_parts.dart';
+import '../widgets/ui/ui.dart';
 
 // 家屬/照護者登入畫面
 class LoginScreen extends StatefulWidget {
@@ -219,220 +220,181 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final c = UbanColors.of(context);
     return Scaffold(
-      backgroundColor: const Color(0xFFFFFBF0), // 溫馨米黃
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black, size: 32),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
+      backgroundColor: c.bg,
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 24), // Reduced from 40
-
-// 標題: 歡迎回來
-              Center(
-                child: Text(
-                  '歡迎回來',
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 28, // Reduced from 32
-                    fontWeight: FontWeight.bold,
-                    color: const Color(0xFF333333),
-                  ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: UbanIconButton(
+                  icon: Icons.arrow_back_ios_new_rounded,
+                  semanticLabel: '返回',
+                  flat: true,
+                  onTap: () => Navigator.pop(context),
                 ),
               ),
-              const SizedBox(height: 8),
-
-// 副標題
-              Center(
-                child: Text(
-                  '登入以管理家人的陪伴計畫',
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 14, // Reduced from 16
-                    color: Colors.grey[600],
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 32), // Reduced from 48
-
-// Email / 手機號碼 輸入框
-              _buildTextField(
-                controller: _emailController,
-                hintText: 'Email / 手機號碼',
-              ),
-
-              const SizedBox(height: 12), // Reduced from 16
-
-// 密碼 輸入框
-              _buildTextField(
-                controller: _passwordController,
-                hintText: '密碼',
-                isPassword: true,
-                obscureText: _obscurePassword,
-                onToggleVisibility: () {
-                  setState(() {
-                    _obscurePassword = !_obscurePassword;
-                  });
-                },
-              ),
-
-              const SizedBox(height: 8), // Reduced from 16
-
-// 忘記密碼?
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton(
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('已傳送重設連結至您的 Email')),
-                    );
-                  },
-                  child: Text(
-                    '忘記密碼?',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 14,
-                      color: Colors.black,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 16), // Reduced from 24
-
-// 登入按鈕
-              SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton(
-                  onPressed: _isLoading ? null : _handleLogin,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFFF7043), // 橘色
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    elevation: 2,
-                  ),
-                  child: _isLoading
-                      ? const CircularProgressIndicator(color: Colors.white)
-                      : Text(
-                          '登入',
-                          style: GoogleFonts.notoSansTc(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(22, 12, 22, 32),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 560),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // 標題區：標誌＋歡迎回來＋說明
+                        const Align(
+                          alignment: Alignment.centerLeft,
+                          child: UbanMarkBox(
+                            size: 56,
+                            radius: 18,
+                            child: UbanHeartMark(size: 36),
                           ),
                         ),
-                ),
-              ),
+                        const SizedBox(height: 8),
+                        Text('歡迎回來', style: ubanH1(context)),
+                        const SizedBox(height: 8),
+                        Text('登入後就能看到長輩今天過得好不好',
+                            style: ubanBody(context, size: 17)),
+                        const SizedBox(height: 22),
 
-              const SizedBox(height: 12),
+                        // Email / 手機號碼 輸入框
+                        _buildTextField(
+                          controller: _emailController,
+                          label: 'Email／手機號碼',
+                          keyboardType: TextInputType.emailAddress,
+                        ),
 
-              // 快速登入按鈕 (boyo@uban.com)
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: OutlinedButton.icon(
-                  onPressed: _isLoading ? null : _quickFillUserAccount,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFF0284C7),
-                    side: const BorderSide(color: Color(0xFF0284C7), width: 1.5),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                  icon: const Icon(Icons.flash_on_rounded, color: Color(0xFF0284C7), size: 22),
-                  label: Text(
-                    '⚡ 快速登入 (boyo@uban.com)',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
+                        const SizedBox(height: 14),
 
-              const SizedBox(height: 16),
+                        // 密碼 輸入框
+                        _buildTextField(
+                          controller: _passwordController,
+                          label: '密碼',
+                          isPassword: true,
+                          obscureText: _obscurePassword,
+                          onToggleVisibility: () {
+                            setState(() {
+                              _obscurePassword = !_obscurePassword;
+                            });
+                          },
+                        ),
 
-              // 註冊連結
-              Center(
-                child: TextButton(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const RegistrationScreen(),
-                      ),
-                    );
-                  },
-                  child: RichText(
-                    text: TextSpan(
-                      text: '還沒有帳號？',
-                      style: GoogleFonts.notoSansTc(color: Colors.grey[600]),
-                      children: [
-                        TextSpan(
-                          text: ' 立即註冊',
-                          style: GoogleFonts.notoSansTc(
-                            color: const Color(0xFFFF7043),
-                            fontWeight: FontWeight.bold,
+                        // 忘記密碼？（照現狀只跳提示）
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: UbanButton(
+                            label: '忘記密碼？',
+                            variant: UbanButtonVariant.ghost,
+                            expand: false,
+                            onPressed: () {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                    content: Text('已傳送重設連結至您的 Email')),
+                              );
+                            },
                           ),
+                        ),
+
+                        const SizedBox(height: 4),
+
+                        // 登入按鈕
+                        UbanButton(
+                          label: '登入',
+                          loading: _isLoading,
+                          onPressed: _isLoading ? null : _handleLogin,
+                        ),
+
+                        const SizedBox(height: 14),
+
+                        // 快速登入按鈕 (boyo@uban.com，開發用)
+                        UbanButton(
+                          label: '快速登入（開發用）',
+                          variant: UbanButtonVariant.tonal,
+                          onPressed: _isLoading ? null : _quickFillUserAccount,
+                        ),
+
+                        const SizedBox(height: 22),
+
+                        // 分隔線：或
+                        Row(
+                          children: [
+                            Expanded(child: Container(height: 1, color: c.line)),
+                            Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 12),
+                              child: Text('或',
+                                  style:
+                                      ubanText(14, FontWeight.w400, c.text3)),
+                            ),
+                            Expanded(child: Container(height: 1, color: c.line)),
+                          ],
+                        ),
+
+                        const SizedBox(height: 22),
+
+                        // 社群登入按鈕
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            _buildSocialButton(
+                              icon: FontAwesomeIcons.google,
+                              semanticLabel: 'Google 登入',
+                              // Google 品牌固定色
+                              iconColor: const Color(0xFF4285F4),
+                              background: c.surface,
+                              onTap: _isLoading ? () {} : _handleGoogleLogin,
+                            ),
+                            const SizedBox(width: 16),
+                            _buildSocialButton(
+                              icon: FontAwesomeIcons.line,
+                              semanticLabel: 'LINE 登入',
+                              iconColor: Colors.white,
+                              background: c.lineGreen,
+                              onTap: _isLoading ? () {} : _handleLineLogin,
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(height: 22),
+
+                        // 註冊連結
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Flexible(
+                              child: Text('還沒有帳號？',
+                                  style: ubanText(16, FontWeight.w400, c.text2)),
+                            ),
+                            UbanButton(
+                              label: '註冊',
+                              variant: UbanButtonVariant.ghost,
+                              expand: false,
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) =>
+                                        const RegistrationScreen(),
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
                         ),
                       ],
                     ),
                   ),
                 ),
               ),
-
-              const SizedBox(height: 48),
-
-// 分隔線 or
-              Row(
-                children: [
-                  Expanded(child: Divider(color: Colors.grey[300])),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Text(
-                      'or',
-                      style: GoogleFonts.inter(
-                        color: Colors.grey[400],
-                        fontSize: 16,
-                      ),
-                    ),
-                  ),
-                  Expanded(child: Divider(color: Colors.grey[300])),
-                ],
-              ),
-
-              const SizedBox(height: 40),
-
-              // 社群登入按鈕
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  _buildSocialButton(
-                    icon: FontAwesomeIcons.google,
-                    color: Colors.red,
-                    onTap: _isLoading ? () {} : _handleGoogleLogin,
-                  ),
-                  _buildSocialButton(
-                    icon: FontAwesomeIcons.line,
-                    color: const Color(0xFF00C300),
-                    onTap: _isLoading ? () {} : _handleLineLogin,
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 24),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -440,70 +402,65 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Widget _buildTextField({
     required TextEditingController controller,
-    required String hintText,
+    required String label,
+    TextInputType? keyboardType,
     bool isPassword = false,
     bool obscureText = false,
     VoidCallback? onToggleVisibility,
   }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey[300]!),
-      ),
-      child: TextField(
-        controller: controller,
-        obscureText: obscureText,
-        decoration: InputDecoration(
-          hintText: hintText,
-          hintStyle: GoogleFonts.notoSansTc(
-            color: Colors.grey[500],
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-          ),
-          border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 20,
-            vertical: 16,
-          ),
-          suffixIcon: isPassword
-              ? IconButton(
-                  icon: Icon(
-                    obscureText
-                        ? Icons.visibility_outlined
-                        : Icons.visibility_off_outlined,
-                    color: Colors.grey[600],
-                  ),
-                  onPressed: onToggleVisibility,
-                )
-              : null,
-        ),
-      ),
+    final c = UbanColors.of(context);
+    return UbanTextField(
+      controller: controller,
+      label: label,
+      keyboardType: keyboardType,
+      obscureText: obscureText,
+      suffixIcon: isPassword
+          ? IconButton(
+              tooltip: obscureText ? '顯示密碼' : '隱藏密碼',
+              icon: Icon(
+                obscureText
+                    ? Icons.visibility_outlined
+                    : Icons.visibility_off_outlined,
+                color: c.text2,
+              ),
+              onPressed: onToggleVisibility,
+            )
+          : null,
     );
   }
 
+  /// 設計稿 `.roundbtn`：64 圓、卡片陰影、按壓縮放＋液態暈開。
   Widget _buildSocialButton({
     required dynamic icon,
-    required Color color,
+    required String semanticLabel,
+    required Color iconColor,
+    required Color background,
     required VoidCallback onTap,
   }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(50),
-      child: Container(
-        width: 60,
-        height: 60,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          // color: Colors.white,
-          // border: Border.all(color: Colors.grey[300]!),
-        ),
-        child: Center(
-          // 使用 Stack 模擬彩色 icon
-          child: FaIcon(
-            icon ?? FontAwesomeIcons.question,
-            size: 60, // 加大圖示
-            color: color,
+    final c = UbanColors.of(context);
+    return Semantics(
+      button: true,
+      label: semanticLabel,
+      excludeSemantics: true,
+      child: PressableScale(
+        onTap: onTap,
+        child: BlobRipple(
+          color: c.brand.withValues(alpha: .22),
+          borderRadius: BorderRadius.circular(32),
+          child: Container(
+            width: 64,
+            height: 64,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: background,
+              shape: BoxShape.circle,
+              boxShadow: c.shadows.card,
+            ),
+            child: FaIcon(
+              icon ?? FontAwesomeIcons.question,
+              size: 28,
+              color: iconColor,
+            ),
           ),
         ),
       ),

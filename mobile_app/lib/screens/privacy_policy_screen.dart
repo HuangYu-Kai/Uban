@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../data/privacy_policy_content.dart';
 import '../services/video_call_permission_service.dart';
 import '../widgets/policy_detail_dialog.dart';
+import '../widgets/login_flow_parts.dart';
+import '../widgets/ui/ui.dart';
 import 'identification_screen.dart';
 
 /// ★ 2026-08-23 建立、2026-09-11 第四十五輪改為「勾選同意」形式。
@@ -45,12 +46,6 @@ class PrivacyPolicyScreen extends StatefulWidget {
 }
 
 class _PrivacyPolicyScreenState extends State<PrivacyPolicyScreen> {
-  static const Color _primaryGreen = Color(0xFF59B294);
-  static const Color _darkGreen = Color(0xFF2F7A63);
-  static const Color _textDark = Color(0xFF3A3A3A);
-  static const Color _textBody = Color(0xFF4A4A4A);
-  static const Color _background = Color(0xFFFDFDFB);
-
   bool _isSaving = false;
 
   void _openPolicyDetail() {
@@ -59,8 +54,8 @@ class _PrivacyPolicyScreenState extends State<PrivacyPolicyScreen> {
       title: PrivacyPolicyContent.title,
       introText: PrivacyPolicyContent.introText,
       headerIcon: Icons.privacy_tip_outlined,
-      primaryColor: _primaryGreen,
-      secondaryColor: _darkGreen,
+      primaryColor: UbanColors.of(context).brandStrong,
+      secondaryColor: UbanColors.of(context).brandFill,
       sections: PrivacyPolicyContent.sections,
       lastUpdated: '最後更新：${PrivacyPolicyContent.lastUpdated}',
     );
@@ -97,79 +92,74 @@ class _PrivacyPolicyScreenState extends State<PrivacyPolicyScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final c = UbanColors.of(context);
     return Scaffold(
-      backgroundColor: _background,
+      backgroundColor: c.bg,
       body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // 1. 溫暖圖標與標題
-                Center(
-                  child: Container(
-                    width: 68,
-                    height: 68,
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [_primaryGreen, _darkGreen],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
+        child: LayoutBuilder(
+          builder: (context, constraints) => SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(22, 28, 22, 32),
+            child: ConstrainedBox(
+              // 內容不足一屏時，CTA 沉到底部；內容超出（小螢幕／大字級）則整頁可捲。
+              constraints: BoxConstraints(
+                  minHeight: (constraints.maxHeight - 60).clamp(0.0, double.infinity),
+                  maxWidth: 560),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Align(
+                        alignment: Alignment.centerLeft,
+                        child: UbanMarkBox(child: UbanHeartMark()),
                       ),
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: _primaryGreen.withValues(alpha: 0.35),
-                          blurRadius: 14,
-                          offset: const Offset(0, 5),
-                        ),
-                      ],
-                    ),
-                    child: const Icon(
-                      Icons.volunteer_activism_rounded,
-                      size: 36,
-                      color: Colors.white,
-                    ),
+                      const SizedBox(height: 22),
+                      Text('開始之前，\n先跟您說三件事', style: ubanH1(context)),
+                      const SizedBox(height: 22),
+                      // 三個安心承諾
+                      _buildPillarItem(
+                        icon: Icons.check_circle_outline_rounded,
+                        title: '完全免費安心用',
+                        desc: '基本功能不收費，不會偷偷扣款',
+                      ),
+                      const SizedBox(height: 10),
+                      _buildPillarItem(
+                        icon: Icons.verified_user_outlined,
+                        title: '嚴密保護您的隱私',
+                        desc: '資料只給您配對的家人看',
+                      ),
+                      const SizedBox(height: 10),
+                      _buildPillarItem(
+                        icon: Icons.favorite_border_rounded,
+                        title: '關懷長輩日常生活',
+                        desc: '提醒吃藥、陪聊天、一鍵視訊',
+                      ),
+                      const SizedBox(height: 26),
+                    ],
                   ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  '👵 歡迎使用 UBan 陪伴生活',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 23,
-                    fontWeight: FontWeight.w800,
-                    color: _textDark,
-                    letterSpacing: 0.5,
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // 特大「同意並開始使用」按鈕
+                      UbanButton(
+                        label: '同意並開始使用',
+                        size: UbanButtonSize.xl,
+                        loading: _isSaving,
+                        onPressed: _isSaving ? null : _accept,
+                      ),
+                      const SizedBox(height: 6),
+                      // 輔助詳細法律條款
+                      UbanButton(
+                        label: '閱讀完整條款',
+                        variant: UbanButtonVariant.ghost,
+                        onPressed: _openPolicyDetail,
+                      ),
+                    ],
                   ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  '專為長輩與家人量身打造的暖心守護服務',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: _textBody.withValues(alpha: 0.85),
-                  ),
-                ),
-                const SizedBox(height: 20),
-
-                // 2. 「👵 3 秒安心導讀卡（完全免費、保護隱私、關懷長輩）」
-                _buildQuickAssuranceCard(),
-
-                const SizedBox(height: 22),
-
-                // 3. 特大「同意並開始使用」按鈕
-                _buildAcceptButton(),
-
-                const SizedBox(height: 12),
-
-                // 4. 輔助詳細法律條款超連結
-                _buildDetailedPolicyLink(),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -177,188 +167,42 @@ class _PrivacyPolicyScreenState extends State<PrivacyPolicyScreen> {
     );
   }
 
-  /// 3 秒安心導讀卡
-  Widget _buildQuickAssuranceCard() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF6FAF7),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: _primaryGreen.withValues(alpha: 0.35),
-          width: 1.5,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.verified_user_rounded,
-                color: _darkGreen,
-                size: 22,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                '安心使用承諾（完全免費・保護隱私）',
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: _darkGreen,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          _buildPillarItem(
-            icon: Icons.money_off_csred_rounded,
-            iconBg: const Color(0xFFE8F5E9),
-            iconColor: const Color(0xFF2E7D32),
-            title: '完全免費安心用',
-            desc: '本服務完全免費、絕無廣告干擾，絕不向長輩收取任何電話費或月租費，請放心安心使用。',
-          ),
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 8),
-            child: Divider(height: 1, color: Color(0xFFE2ECE5)),
-          ),
-          _buildPillarItem(
-            icon: Icons.lock_outline_rounded,
-            iconBg: const Color(0xFFE3F2FD),
-            iconColor: const Color(0xFF1976D2),
-            title: '嚴密保護您的隱私',
-            desc: '您的聊天、用藥與位置資料皆經高規格安全加密，僅供您與家人關心，絕不外流外洩。',
-          ),
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 8),
-            child: Divider(height: 1, color: Color(0xFFE2ECE5)),
-          ),
-          _buildPillarItem(
-            icon: Icons.favorite_rounded,
-            iconBg: const Color(0xFFFCE4EC),
-            iconColor: const Color(0xFFD81B60),
-            title: '關懷長輩日常生活',
-            desc: '定時提醒吃藥、一鍵視訊通話聯絡家人、外出平平安安定位，長輩與全家生活好幫手。',
-          ),
-        ],
-      ),
-    );
-  }
-
+  /// 設計稿卡片列：52 圖示底＋標題 20/900＋說明 16。
   Widget _buildPillarItem({
     required IconData icon,
-    required Color iconBg,
-    required Color iconColor,
     required String title,
     required String desc,
   }) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          width: 36,
-          height: 36,
-          decoration: BoxDecoration(
-            color: iconBg,
-            shape: BoxShape.circle,
+    final c = UbanColors.of(context);
+    return UbanCard(
+      child: Row(
+        children: [
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: c.brandSoft,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Icon(icon, size: 24, color: c.brandStrong),
           ),
-          child: Icon(icon, size: 20, color: iconColor),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: _textDark,
-                ),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                desc,
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 13,
-                  height: 1.45,
-                  color: _textBody,
-                ),
-              ),
-            ],
+          const SizedBox(width: 16),
+          // 標題／說明可收縮換行，大字級不溢位。
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(title,
+                    style: ubanText(20, FontWeight.w900, c.text, height: 1.3)),
+                const SizedBox(height: 2),
+                Text(desc,
+                    style:
+                        ubanText(16, FontWeight.w400, c.text2, height: 1.45)),
+              ],
+            ),
           ),
-        ),
-      ],
-    );
-  }
-
-  /// 特大「同意並開始使用」按鈕
-  Widget _buildAcceptButton() {
-    return SizedBox(
-      width: double.infinity,
-      height: 60,
-      child: ElevatedButton(
-        onPressed: _isSaving ? null : _accept,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: _primaryGreen,
-          foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          elevation: 3,
-          shadowColor: _primaryGreen.withValues(alpha: 0.4),
-        ),
-        child: _isSaving
-            ? const SizedBox(
-                width: 26,
-                height: 26,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.8,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                ),
-              )
-            : Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.check_circle_rounded, size: 26, color: Colors.white),
-                  const SizedBox(width: 10),
-                  Text(
-                    '同意並開始使用',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ],
-              ),
-      ),
-    );
-  }
-
-  /// 查閱完整詳細條款
-  Widget _buildDetailedPolicyLink() {
-    return Center(
-      child: TextButton.icon(
-        onPressed: _openPolicyDetail,
-        icon: const Icon(Icons.description_outlined, size: 16, color: Color(0xFF718096)),
-        label: Text(
-          '查閱完整法律條款與隱私權細則',
-          style: GoogleFonts.notoSansTc(
-            fontSize: 13,
-            fontWeight: FontWeight.w500,
-            color: const Color(0xFF718096),
-            decoration: TextDecoration.underline,
-          ),
-        ),
+        ],
       ),
     );
   }

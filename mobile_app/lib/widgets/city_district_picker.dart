@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
-import '../theme/app_theme.dart';
 import '../utils/taiwan_districts.dart';
+import 'ui/ui.dart';
 
 /// 縣市／行政區串聯下拉選單。
 ///
@@ -18,8 +17,9 @@ import '../utils/taiwan_districts.dart';
 /// 成對合法（見 [isValidCityDistrict]），留著舊值只會製造「縣市與行政區對不
 /// 起來」的髒資料。
 ///
-/// [elderMode] 為 true 時套用 [ElderScale]（長輩端尺規：大字體、
-/// `ElderScale.buttonHeight` = 84 的高點擊區）；為 false 時走一般家屬端尺寸。
+/// [elderMode] 為 true 時套用長輩尺規（欄高 68、字級 20、縣市／行政區上下排列）；
+/// 為 false 時走設計稿 `.input`（高 58、縣市／行政區並排）。外觀走 [UbanColors]，
+/// 參數與回傳不變。
 class CityDistrictPicker extends StatefulWidget {
   final String? initialCity;
   final String? initialDistrict;
@@ -70,24 +70,38 @@ class _CityDistrictPickerState extends State<CityDistrictPicker> {
   Widget build(BuildContext context) {
     final districts = _city != null ? (kTaiwanDistricts[_city] ?? const <String>[]) : const <String>[];
 
-    return Column(
+    final cityField = _buildDropdown(
+      label: '縣市',
+      value: _city,
+      items: kTaiwanCities,
+      hint: '請選擇縣市',
+      onChanged: _onCityChanged,
+    );
+    final districtField = _buildDropdown(
+      label: '區',
+      value: _district,
+      items: districts,
+      hint: _city == null ? '請先選縣市' : '請選擇行政區',
+      onChanged: districts.isEmpty ? null : _onDistrictChanged,
+    );
+
+    if (widget.elderMode) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          cityField,
+          const SizedBox(height: 20),
+          districtField,
+        ],
+      );
+    }
+    // 設計稿：縣市與區並排，各佔一半；內容可收縮，窄螢幕／大字級不溢位。
+    return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildDropdown(
-          label: '縣／市',
-          value: _city,
-          items: kTaiwanCities,
-          hint: '請選擇縣市',
-          onChanged: _onCityChanged,
-        ),
-        SizedBox(height: widget.elderMode ? 20 : 14),
-        _buildDropdown(
-          label: '區／鄉／鎮／市',
-          value: _district,
-          items: districts,
-          hint: _city == null ? '請先選擇縣市' : '請選擇行政區',
-          onChanged: districts.isEmpty ? null : _onDistrictChanged,
-        ),
+        Expanded(child: cityField),
+        const SizedBox(width: 10),
+        Expanded(child: districtField),
       ],
     );
   }
@@ -99,29 +113,28 @@ class _CityDistrictPickerState extends State<CityDistrictPicker> {
     required String hint,
     required ValueChanged<String?>? onChanged,
   }) {
+    final c = UbanColors.of(context);
     final bool elderMode = widget.elderMode;
-    final TextStyle labelStyle = elderMode
-        ? ElderScale.body
-        : GoogleFonts.notoSansTc(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary);
-    final TextStyle itemStyle = elderMode
-        ? ElderScale.button.copyWith(color: AppColors.textPrimary)
-        : GoogleFonts.notoSansTc(fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.textPrimary);
-    final TextStyle hintStyle = elderMode
-        ? ElderScale.body.copyWith(color: AppColors.textHint)
-        : GoogleFonts.notoSansTc(fontSize: 16, color: AppColors.textHint);
+    final TextStyle labelStyle =
+        ubanText(elderMode ? 18 : 15, FontWeight.w700, c.text2);
+    final TextStyle itemStyle =
+        ubanText(elderMode ? 20 : 17, FontWeight.w500, c.text);
+    final TextStyle hintStyle =
+        ubanText(elderMode ? 20 : 16, FontWeight.w500, c.text3);
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(label, style: labelStyle),
-        SizedBox(height: elderMode ? 12 : 8),
+        Text(label,
+            maxLines: 1, overflow: TextOverflow.ellipsis, style: labelStyle),
+        const SizedBox(height: 6),
         Container(
-          constraints: BoxConstraints(minHeight: elderMode ? ElderScale.buttonHeight : 56),
-          padding: EdgeInsets.symmetric(horizontal: elderMode ? 20 : 16),
+          constraints: BoxConstraints(minHeight: elderMode ? 68 : 58),
+          padding: const EdgeInsets.symmetric(horizontal: 18),
           decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppColors.border, width: 1.5),
+            color: c.surface,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: c.line, width: 1.5),
           ),
           // ★ 刻意用 DropdownButton（受控 value）而非 DropdownButtonFormField：
           //   後者的 initialValue 只在第一次建立時生效，換縣市時用 setState 把
@@ -134,7 +147,10 @@ class _CityDistrictPickerState extends State<CityDistrictPicker> {
             value: value,
             isExpanded: true, // 讓選中文字在按鈕內可收縮，長行政區名不會溢出
             underline: const SizedBox.shrink(), // 外層已有自訂邊框，不需要預設底線
-            icon: Icon(Icons.arrow_drop_down_rounded, size: elderMode ? 32 : 24),
+            dropdownColor: c.surface,
+            borderRadius: BorderRadius.circular(18),
+            icon: Icon(Icons.arrow_drop_down_rounded,
+                size: elderMode ? 32 : 24, color: c.text2),
             hint: Text(hint, style: hintStyle, overflow: TextOverflow.ellipsis),
             items: items
                 .map((item) => DropdownMenuItem<String>(

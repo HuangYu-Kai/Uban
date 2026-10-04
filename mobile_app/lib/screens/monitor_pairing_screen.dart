@@ -1,11 +1,12 @@
 // lib/screens/monitor_pairing_screen.dart
 // ★ issue 7：監視器角色 - 透過家屬產生的 6 位數綁定碼，自動配對到家屬指定的長輩
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import '../globals.dart';
 import 'elder_screen.dart';
+import '../widgets/login_flow_parts.dart';
+import '../widgets/ui/ui.dart';
 
 class MonitorPairingScreen extends StatefulWidget {
   const MonitorPairingScreen({super.key});
@@ -91,74 +92,94 @@ class _MonitorPairingScreenState extends State<MonitorPairingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final c = UbanColors.of(context);
     return Scaffold(
-      backgroundColor: const Color(0xFFFDFDFB),
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.black87),
-      ),
+      backgroundColor: c.bg,
       body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.videocam_rounded, size: 80, color: Colors.grey),
-                const SizedBox(height: 24),
-                Text(
-                  '設定監控設備',
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: const Color(0xFF333333),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  '請向家屬索取「新增監控設備」產生的 6 位數綁定碼，\n輸入後即可自動配對至家屬指定的長輩',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 16, color: Colors.grey),
-                ),
-                const SizedBox(height: 40),
-                TextField(
-                  controller: _codeController,
-                  keyboardType: TextInputType.number,
-                  maxLength: 6,
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.inter(
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 8,
-                  ),
-                  decoration: const InputDecoration(
-                    counterText: '',
-                    border: OutlineInputBorder(),
-                    hintText: '------',
-                  ),
-                ),
-                const SizedBox(height: 24),
-                if (_isLoading)
-                  const CircularProgressIndicator()
-                else
-                  ElevatedButton(
-                    onPressed: _submitCode,
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(56),
-                      backgroundColor: const Color(0xFF59B294),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(22, 12, 22, 32),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 560),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const UbanTopBar(title: '設定監控設備'),
+                  const SizedBox(height: 20),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: UbanMarkBox(
+                      size: 72,
+                      radius: 22,
+                      color: c.surface2,
+                      child:
+                          Icon(Icons.videocam_outlined, size: 38, color: c.text2),
                     ),
-                    child: const Text('開始監控', style: TextStyle(fontSize: 18)),
                   ),
-              ],
+                  const SizedBox(height: 20),
+                  Text(
+                    '請在家屬的手機上開啟「新增監控設備」，把畫面上的 6 位數號碼輸入到下方。',
+                    style: ubanBody(context),
+                  ),
+                  const SizedBox(height: 20),
+                  _buildCodeField(c),
+                  const SizedBox(height: 20),
+                  UbanButton(
+                    label: '開始監控',
+                    size: UbanButtonSize.xl,
+                    loading: _isLoading,
+                    onPressed: _isLoading ? null : _submitCode,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
       ),
+    );
+  }
+
+  /// 設計稿 `.idinput`：置中、Poppins 42、字距 .3em、高 84。
+  /// 展示用大字（≥40pt）固定字級，不隨系統字級放大，避免 6 碼擠出欄位。
+  Widget _buildCodeField(UbanColors c) {
+    final radius = BorderRadius.circular(18);
+    OutlineInputBorder border(Color color) => OutlineInputBorder(
+          borderRadius: radius,
+          borderSide: BorderSide(color: color, width: 1.5),
+        );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('6 位數設定碼',
+            style: ubanText(15, FontWeight.w700, c.text2)),
+        const SizedBox(height: 6),
+        MediaQuery(
+          data: MediaQuery.of(context).copyWith(textScaler: TextScaler.noScaling),
+          child: TextField(
+            controller: _codeController,
+            keyboardType: TextInputType.number,
+            maxLength: 6,
+            textAlign: TextAlign.center,
+            cursorColor: c.brand,
+            style: ubanBrandText(42, FontWeight.w600, c.text)
+                .copyWith(letterSpacing: 42 * .3, height: 1.1),
+            decoration: InputDecoration(
+              counterText: '',
+              hintText: '------',
+              hintStyle: ubanBrandText(42, FontWeight.w600, c.text3)
+                  .copyWith(letterSpacing: 42 * .3, height: 1.1),
+              filled: true,
+              fillColor: c.surface,
+              constraints: const BoxConstraints(minHeight: 84),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+              border: border(c.line),
+              enabledBorder: border(c.line),
+              focusedBorder: border(c.brand),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

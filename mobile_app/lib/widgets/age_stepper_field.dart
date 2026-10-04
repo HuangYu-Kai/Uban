@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
-import '../theme/app_theme.dart';
+import 'ui/ui.dart';
 
 /// 年齡輸入元件：用「-／+」加減按鈕取代純數字鍵盤輸入。
 ///
@@ -12,8 +11,8 @@ import '../theme/app_theme.dart';
 ///   / `taiwan_regions.py` 的合理範圍檢查一致），Stepper 天生就不會產生超出
 ///   範圍或非數字的髒值，省去前端另外寫數字格式檢查。
 ///
-/// [elderMode] 為 true 時套用 [ElderScale]（大字體、大按鈕，`ElderScale.buttonHeight`
-/// = 84），符合長輩端 UI 尺規要求；為 false 時走一般家屬端尺寸。
+/// [elderMode] 為 true 時套用長輩尺規（按鈕 72、字級 ≥18）；為 false 時走設計稿
+/// `.stepper`（58 圓按鈕＋58 高數值框）。外觀走 [UbanColors]，參數與回傳不變。
 class AgeStepperField extends StatelessWidget {
   final int? value;
   final ValueChanged<int> onChanged;
@@ -40,49 +39,54 @@ class AgeStepperField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = UbanColors.of(context);
     final displayText = value == null ? '請選擇' : '$value 歲';
-    final double buttonSize = elderMode ? ElderScale.buttonHeight : 52;
-    final double iconSize = elderMode ? ElderScale.buttonIcon : 24;
-    final TextStyle labelStyle = elderMode
-        ? ElderScale.body
-        : GoogleFonts.notoSansTc(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary);
-    final TextStyle valueStyle = elderMode
-        ? ElderScale.sectionTitle
-        : GoogleFonts.notoSansTc(fontSize: 22, fontWeight: FontWeight.w800, color: AppColors.textPrimary);
+    final double buttonSize = elderMode ? 72 : 58;
+    final TextStyle labelStyle = ubanText(
+        elderMode ? 18 : 15, FontWeight.w700, c.text2);
+    final TextStyle valueStyle = ubanText(
+        elderMode ? 32 : 26, FontWeight.w600, value == null ? c.text3 : c.text);
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(label, style: labelStyle),
-        SizedBox(height: elderMode ? 12 : 8),
+        Text(label,
+            maxLines: 1, overflow: TextOverflow.ellipsis, style: labelStyle),
+        const SizedBox(height: 6),
         Row(
           children: [
             _StepButton(
-              icon: Icons.remove_rounded,
+              glyph: '−',
+              semantics: '減一歲',
               size: buttonSize,
-              iconSize: iconSize,
               onTap: value == null || value! <= minAge ? null : () => _step(-1),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 10),
             Expanded(
               child: Container(
                 height: buttonSize,
                 alignment: Alignment.center,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
                 decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppColors.border, width: 1.5),
+                  color: c.surface,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: c.line, width: 1.5),
                 ),
+                // 數值是展示文字，用 FittedBox 縮放而非省略。
                 child: FittedBox(
-                  child: Text(displayText, style: valueStyle),
+                  fit: BoxFit.scaleDown,
+                  child: Text(displayText,
+                      maxLines: 1,
+                      textScaler: TextScaler.noScaling,
+                      style: valueStyle),
                 ),
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 10),
             _StepButton(
-              icon: Icons.add_rounded,
+              glyph: '+',
+              semantics: '加一歲',
               size: buttonSize,
-              iconSize: iconSize,
               onTap: value != null && value! >= maxAge ? null : () => _step(1),
             ),
           ],
@@ -93,31 +97,48 @@ class AgeStepperField extends StatelessWidget {
 }
 
 class _StepButton extends StatelessWidget {
-  final IconData icon;
+  final String glyph;
+  final String semantics;
   final double size;
-  final double iconSize;
   final VoidCallback? onTap;
 
   const _StepButton({
-    required this.icon,
+    required this.glyph,
+    required this.semantics,
     required this.size,
-    required this.iconSize,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final bool enabled = onTap != null;
-    return Material(
-      color: enabled ? AppColors.primary : AppColors.border,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: SizedBox(
-          width: size,
-          height: size,
-          child: Icon(icon, size: iconSize, color: Colors.white),
+    final c = UbanColors.of(context);
+    final enabled = onTap != null;
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: semantics,
+      excludeSemantics: true,
+      child: Opacity(
+        opacity: enabled ? 1 : .4,
+        child: PressableScale(
+          enabled: enabled,
+          onTap: onTap,
+          child: BlobRipple(
+            enabled: enabled,
+            color: c.brand.withValues(alpha: .22),
+            borderRadius: BorderRadius.circular(size / 2),
+            child: Container(
+              width: size,
+              height: size,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                  color: c.brandContainer, shape: BoxShape.circle),
+              child: Text(glyph,
+                  textScaler: TextScaler.noScaling,
+                  style: ubanText(28, FontWeight.w700, c.brandStrong,
+                      height: 1.1)),
+            ),
+          ),
         ),
       ),
     );

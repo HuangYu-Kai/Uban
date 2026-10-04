@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../data/privacy_policy_content.dart';
 import '../services/api_service.dart';
 import '../widgets/policy_detail_dialog.dart';
 import '../widgets/age_stepper_field.dart';
 import '../widgets/city_district_picker.dart';
+import '../widgets/ui/ui.dart';
 import 'family_onboarding_screen.dart';
 import '../globals.dart';
 
@@ -40,8 +40,8 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       title: '醫療免責聲明',
       introText: '本聲明旨在明確界定系統非醫療器材，且不負擔因 AI 判斷、語音建議或緊急求救（SOS）延誤而產生的醫療法律責任。',
       headerIcon: Icons.gavel_rounded,
-      primaryColor: const Color(0xFFFF7043),
-      secondaryColor: const Color(0xFFFF8A65),
+      primaryColor: UbanColors.of(context).warm,
+      secondaryColor: UbanColors.of(context).warm,
       sections: const [
         PrivacyPolicySection(
           title: '1. 非醫療診斷與建議之提供',
@@ -100,8 +100,8 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       title: PrivacyPolicyContent.title,
       introText: PrivacyPolicyContent.introText,
       headerIcon: Icons.shield_outlined,
-      primaryColor: const Color(0xFF0284C7),
-      secondaryColor: const Color(0xFF0EA5E9),
+      primaryColor: UbanColors.of(context).brandStrong,
+      secondaryColor: UbanColors.of(context).brandFill,
       sections: PrivacyPolicyContent.sections,
       lastUpdated: '最後更新：${PrivacyPolicyContent.lastUpdated}',
     );
@@ -229,226 +229,181 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final c = UbanColors.of(context);
     return Scaffold(
-      backgroundColor: const Color(0xFFFFFBF0),
-      appBar: AppBar(
-        title: Text('帳號註冊', style: GoogleFonts.notoSansTc(color: Colors.black)),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
+      backgroundColor: c.bg,
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '加入 UBan 陪伴計畫',
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: const Color(0xFF333333),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '填寫資料以開始串接長輩的陪伴系統',
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 16,
-                  color: Colors.grey[600],
-                ),
-              ),
-              const SizedBox(height: 32),
-
-              _buildTextField(
-                _nameController,
-                '您的姓名',
-                Icons.person_outline,
-                onChanged: (_) => setState(() => _errorMessage = null),
-              ),
-              const SizedBox(height: 16),
-              _buildTextField(
-                _emailController,
-                'Email',
-                Icons.email_outlined,
-                onChanged: (_) => setState(() => _errorMessage = null),
-              ),
-              const SizedBox(height: 16),
-              _buildTextField(
-                _passwordController,
-                '密碼',
-                Icons.lock_outline,
-                isPassword: true,
-                onChanged: (_) => setState(() => _errorMessage = null),
-              ),
-              const SizedBox(height: 24),
-
-              // ★ 第五十三輪 onboard53（家 4）：年齡／居住地改為必填，
-              //   在註冊表單一次收集，不再另開一個可略過的畫面。
-              Text(
-                '年齡與居住地',
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: const Color(0xFF333333),
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                '僅用於平台統計分析，不會對外公開',
-                style: GoogleFonts.notoSansTc(fontSize: 12, color: Colors.grey[600]),
-              ),
-              const SizedBox(height: 12),
-              AgeStepperField(
-                value: _age,
-                onChanged: (v) => setState(() {
-                  _age = v;
-                  _errorMessage = null;
-                }),
-              ),
-              const SizedBox(height: 16),
-              CityDistrictPicker(
-                initialCity: _residenceCity,
-                initialDistrict: _residenceDistrict,
-                onChanged: (city, district) => setState(() {
-                  _residenceCity = city;
-                  _residenceDistrict = district;
-                  _errorMessage = null;
-                }),
-              ),
-              const SizedBox(height: 24),
-
-              // 同意條款 Checkbox
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
+          padding: const EdgeInsets.fromLTRB(22, 10, 22, 32),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 560),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Checkbox(
-                    value: _agreedToTerms,
-                    activeColor: const Color(0xFFFF7043),
-                    onChanged: (val) {
-                      setState(() {
-                        _agreedToTerms = val ?? false;
-                        _errorMessage = null;
-                      });
-                    },
+                  UbanTopBar(
+                    title: '帳號註冊',
+                    onBack: () => Navigator.pop(context),
                   ),
-                  Expanded(
-                    child: RichText(
-                      text: TextSpan(
-                        text: '我已閱讀並同意 ',
-                        style: GoogleFonts.notoSansTc(
-                          color: Colors.grey[700],
-                          fontSize: 14,
-                        ),
-                        children: [
-                          WidgetSpan(
-                            alignment: PlaceholderAlignment.middle,
-                            child: GestureDetector(
-                              onTap: () => _showPrivacyPolicyDialog(context),
-                              child: Text(
-                                '《隱私權政策》',
-                                style: GoogleFonts.notoSansTc(
-                                  color: const Color(0xFFFF7043),
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14,
-                                ),
-                              ),
-                            ),
-                          ),
-                          TextSpan(
-                            text: ' 與 ',
-                            style: GoogleFonts.notoSansTc(
-                              color: Colors.grey[700],
-                              fontSize: 14,
-                            ),
-                          ),
-                          WidgetSpan(
-                            alignment: PlaceholderAlignment.middle,
-                            child: GestureDetector(
-                              onTap: () => _showDisclaimerDialog(context),
-                              child: Text(
-                                '《醫療免責聲明》',
-                                style: GoogleFonts.notoSansTc(
-                                  color: const Color(0xFFFF7043),
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+                  const SizedBox(height: 18),
 
-              const SizedBox(height: 24),
-
-              // ★ 持久化錯誤橫幅：取代原本容易被忽略的 SnackBar，
-              //   確保使用者（包含自動化測試代理）能看到失敗原因並停留在畫面上。
-              if (_errorMessage != null) ...[
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFEE2E2),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFFDC2626)),
+                  _buildTextField(
+                    _nameController,
+                    '您的名字',
+                    onChanged: (_) => setState(() => _errorMessage = null),
                   ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  const SizedBox(height: 14),
+                  _buildTextField(
+                    _emailController,
+                    'Email',
+                    keyboardType: TextInputType.emailAddress,
+                    onChanged: (_) => setState(() => _errorMessage = null),
+                  ),
+                  const SizedBox(height: 14),
+                  _buildTextField(
+                    _passwordController,
+                    '密碼',
+                    isPassword: true,
+                    onChanged: (_) => setState(() => _errorMessage = null),
+                  ),
+                  const SizedBox(height: 14),
+
+                  // ★ 第五十三輪 onboard53（家 4）：年齡／居住地改為必填，
+                  //   在註冊表單一次收集，不再另開一個可略過的畫面。
+                  AgeStepperField(
+                    value: _age,
+                    onChanged: (v) => setState(() {
+                      _age = v;
+                      _errorMessage = null;
+                    }),
+                  ),
+                  const SizedBox(height: 14),
+                  CityDistrictPicker(
+                    initialCity: _residenceCity,
+                    initialDistrict: _residenceDistrict,
+                    onChanged: (city, district) => setState(() {
+                      _residenceCity = city;
+                      _residenceDistrict = district;
+                      _errorMessage = null;
+                    }),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '年齡與居住地僅用於平台統計分析，不會對外公開',
+                    style: ubanText(14, FontWeight.w500, c.text3, height: 1.4),
+                  ),
+                  const SizedBox(height: 14),
+
+                  // 同意條款（設計稿 .trow + .tick）
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      const Icon(
-                        Icons.error_outline_rounded,
-                        color: Color(0xFFDC2626),
+                      Semantics(
+                        button: true,
+                        checked: _agreedToTerms,
+                        label: '同意隱私權政策與醫療免責聲明',
+                        excludeSemantics: true,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () {
+                            setState(() {
+                              _agreedToTerms = !_agreedToTerms;
+                              _errorMessage = null;
+                            });
+                          },
+                          child: SizedBox(
+                            width: 48,
+                            height: 48,
+                            child: Center(
+                              child: _TermsTick(checked: _agreedToTerms),
+                            ),
+                          ),
+                        ),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 8),
                       Expanded(
-                        child: Text(
-                          _errorMessage!,
-                          style: GoogleFonts.notoSansTc(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            color: const Color(0xFF991B1B),
+                        child: RichText(
+                          textScaler: MediaQuery.textScalerOf(context),
+                          text: TextSpan(
+                            text: '我已閱讀並同意 ',
+                            style: ubanText(16, FontWeight.w400, c.text2,
+                                height: 1.5),
+                            children: [
+                              WidgetSpan(
+                                alignment: PlaceholderAlignment.middle,
+                                child: GestureDetector(
+                                  onTap: () => _showPrivacyPolicyDialog(context),
+                                  child: Text(
+                                    '《隱私權政策》',
+                                    style: ubanText(
+                                        16, FontWeight.w700, c.brandStrong,
+                                        height: 1.5),
+                                  ),
+                                ),
+                              ),
+                              TextSpan(
+                                text: ' 與 ',
+                                style: ubanText(16, FontWeight.w400, c.text2,
+                                    height: 1.5),
+                              ),
+                              WidgetSpan(
+                                alignment: PlaceholderAlignment.middle,
+                                child: GestureDetector(
+                                  onTap: () => _showDisclaimerDialog(context),
+                                  child: Text(
+                                    '《醫療免責聲明》',
+                                    style: ubanText(
+                                        16, FontWeight.w700, c.brandStrong,
+                                        height: 1.5),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
                     ],
                   ),
-                ),
-                const SizedBox(height: 16),
-              ],
 
-              SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton(
-                  onPressed: _isLoading ? null : _handleRegister,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFFF7043),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                  child: _isLoading
-                      ? const CircularProgressIndicator(color: Colors.white)
-                      : Text(
-                          '註冊並繼續',
-                          style: GoogleFonts.notoSansTc(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
+                  const SizedBox(height: 18),
+
+                  // ★ 持久化錯誤橫幅：取代原本容易被忽略的 SnackBar，
+                  //   確保使用者（包含自動化測試代理）能看到失敗原因並停留在畫面上。
+                  if (_errorMessage != null) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: c.dangerContainer,
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: c.danger, width: 1.5),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.error_outline_rounded, color: c.danger),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              _errorMessage!,
+                              style: ubanText(15, FontWeight.w700, c.text,
+                                  height: 1.4),
+                            ),
                           ),
-                        ),
-                ),
-              ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
 
-              const SizedBox(height: 16),
-            ],
+                  UbanButton(
+                    label: '建立帳號',
+                    loading: _isLoading,
+                    onPressed: _isLoading ? null : _handleRegister,
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -457,33 +412,42 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
   Widget _buildTextField(
     TextEditingController controller,
-    String hint,
-    IconData icon, {
+    String label, {
     bool isPassword = false,
     TextInputType keyboardType = TextInputType.text,
     ValueChanged<String>? onChanged,
   }) {
-    return Container(
+    return UbanTextField(
+      controller: controller,
+      label: label,
+      obscureText: isPassword,
+      keyboardType: keyboardType,
+      onChanged: onChanged,
+    );
+  }
+}
+
+/// 設計稿 `.tick`：40 圓，勾選後填品牌色並顯示勾。
+class _TermsTick extends StatelessWidget {
+  final bool checked;
+  const _TermsTick({required this.checked});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = UbanColors.of(context);
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 250),
+      width: 40,
+      height: 40,
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey[300]!),
+        shape: BoxShape.circle,
+        color: checked ? c.brandFill : Colors.transparent,
+        border: Border.all(
+            color: checked ? c.brandFill : c.surface3, width: 2.5),
       ),
-      child: TextField(
-        controller: controller,
-        obscureText: isPassword,
-        keyboardType: keyboardType,
-        onChanged: onChanged,
-        decoration: InputDecoration(
-          hintText: hint,
-          prefixIcon: Icon(icon, color: Colors.grey[600]),
-          border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 20,
-            vertical: 16,
-          ),
-        ),
-      ),
+      child: checked
+          ? Icon(Icons.check_rounded, size: 24, color: c.onBrand)
+          : null,
     );
   }
 }
