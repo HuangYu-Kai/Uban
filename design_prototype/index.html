@@ -1,0 +1,789 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style><script type="text/javascript" nonce="d4d916b38dce4f799f3cf954577" src="//local.adguard.org?ts=1790906828287&amp;type=content-script&amp;dmn=edcfea51-05e5-45ab-b5ec-83afef73feb1.frame.claudeusercontent.com&amp;url=https%3A%2F%2Fedcfea51-05e5-45ab-b5ec-83afef73feb1.frame.claudeusercontent.com%2F_f%2F1790859304-d24e%2F_src%2Findex.html%3F__frame_t%3Dn8Q7U6hIqsfmwibtOYpM-EKs.5645f3c1-fb97-4d5d-ad43-b21b15e05564.fd235c2b-7985-4a5c-a1af-d4a5620e129c.1790911383&amp;app=com.apple.Safari&amp;css=3&amp;js=1&amp;rel=1&amp;rji=1&amp;sbe=1&amp;stealth=1&amp;st-push&amp;st-loc&amp;st-dnt"></script><script type="text/javascript" nonce="d4d916b38dce4f799f3cf954577" src="//local.adguard.org?ts=1790906828287&amp;name=AdGuard%20Popup%20Blocker&amp;name=AdGuard%20Extra&amp;type=user-script"></script></head><body>
+<title>Uban 新介面設計稿</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=Poppins:wght@500;600&display=swap">
+<link rel="stylesheet" href="ui.css">
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
+    <symbol id="i-up" viewBox="0 0 24 24"><path d="M5 15l7-7 7 7"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+    <symbol id="i-phone" viewBox="0 0 24 24"><path d="M6.6 3.5h2.6l1.4 4.1-2 1.6a12 12 0 0 0 6.2 6.2l1.6-2 4.1 1.4v2.6a2 2 0 0 1-2.1 2.1A15 15 0 0 1 4.5 5.6a2 2 0 0 1 2.1-2.1z"/></symbol>
+    <symbol id="i-video" viewBox="0 0 24 24"><rect x="3" y="6" width="12.5" height="12" rx="3"/><path d="M15.5 10.5l5-3v9l-5-3"/></symbol>
+    <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></symbol>
+    <symbol id="i-kbd" viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="3"/><path d="M6.5 10h.01M10 10h.01M14 10h.01M17.5 10h.01M8 14h8"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><rect x="6.5" y="5" width="4" height="14" rx="1.2" fill="currentColor"/><rect x="13.5" y="5" width="4" height="14" rx="1.2" fill="currentColor"/></symbol>
+    <symbol id="i-prev" viewBox="0 0 24 24"><path d="M18 6v12l-8.5-6zM7 6v12" fill="currentColor"/></symbol>
+    <symbol id="i-next" viewBox="0 0 24 24"><path d="M6 6v12l8.5-6zM17 6v12" fill="currentColor"/></symbol>
+    <symbol id="i-vol" viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></symbol>
+    <symbol id="i-ear" viewBox="0 0 24 24"><path d="M7 9a5 5 0 0 1 10 0c0 3-3 4-3 7a3 3 0 0 1-5.5 1.6"/><path d="M10 9.5a2 2 0 0 1 4 0"/></symbol>
+    <symbol id="i-cam" viewBox="0 0 24 24"><rect x="3" y="6" width="12.5" height="12" rx="3"/><path d="M15.5 10.5l5-3v9l-5-3"/></symbol>
+    <symbol id="i-flip" viewBox="0 0 24 24"><path d="M4 8.5h3l1.5-2h7l1.5 2h3v10H4z"/><path d="M9.5 13a2.5 2.5 0 0 1 4.4-1.6M14.5 13a2.5 2.5 0 0 1-4.4 1.6"/></symbol>
+    <symbol id="i-hang" viewBox="0 0 24 24"><path d="M3.3 13.8c4.9-4.4 12.5-4.4 17.4 0l-1.9 2.9-3.6-1.2-.4-2.6a10 10 0 0 0-5.6 0l-.4 2.6-3.6 1.2z" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-pill" viewBox="0 0 24 24"><rect x="3" y="8.5" width="18" height="7" rx="3.5" transform="rotate(-35 12 12)"/><path d="M9.6 8.6l4.8 6.8"/></symbol>
+    <symbol id="i-drop" viewBox="0 0 24 24"><path d="M12 3.5s6 6.4 6 10.5a6 6 0 0 1-12 0c0-4.1 6-10.5 6-10.5z"/></symbol>
+    <symbol id="i-walk" viewBox="0 0 24 24"><circle cx="13" cy="4.5" r="1.8"/><path d="M10 21l2-6-2.5-2.5 1-5 3 3 3 1M9.5 9.5l-3 2M12 15l3 6"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l7.5 3v5.5c0 4.4-3.1 8.2-7.5 9.5-4.4-1.3-7.5-5.1-7.5-9.5V6z"/><path d="M8.8 12l2.3 2.3 4.2-4.3"/></symbol>
+    <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20s-7-4.2-7-9.2A3.9 3.9 0 0 1 12 8.4a3.9 3.9 0 0 1 7 2.4c0 5-7 9.2-7 9.2z"/></symbol>
+    <symbol id="i-comment" viewBox="0 0 24 24"><path d="M5 5h14a1.5 1.5 0 0 1 1.5 1.5v9A1.5 1.5 0 0 1 19 17h-7l-4.5 3.5V17H5a1.5 1.5 0 0 1-1.5-1.5v-9A1.5 1.5 0 0 1 5 5z"/></symbol>
+    <symbol id="i-free" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M8.5 12.5l2.4 2.4 4.6-4.8"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l2.7-2.7a4.5 4.5 0 0 0-6.4-6.4L11.5 6M14 10a4.5 4.5 0 0 0-6.4 0l-2.7 2.7a4.5 4.5 0 0 0 6.4 6.4l1.2-1.2"/></symbol>
+    <symbol id="i-swap" viewBox="0 0 24 24"><path d="M4 8h14l-3.5-3.5M20 16H6l3.5 3.5"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.4"/></symbol>
+    <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.5a2.5 2.5 0 1 1 3.4 2.3c-.6.3-1 .8-1 1.5v.7M12 17h.01"/></symbol>
+    <symbol id="i-replay" viewBox="0 0 24 24"><path d="M4.5 12a7.5 7.5 0 1 0 2.3-5.4M4.5 4v4h4"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8.5" r="3.3"/><path d="M3 19.5a6 6 0 0 1 12 0M15.5 5.6a3.3 3.3 0 0 1 0 6.2M17.5 14a6 6 0 0 1 3.5 5.5"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4v11M7 10.5l5 5 5-5M5 20h14"/></symbol>
+    <symbol id="i-pen" viewBox="0 0 24 24"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3.5l1.8 5.2 5.2 1.8-5.2 1.8L12 17.5l-1.8-5.2L5 10.5l5.2-1.8z"/></symbol>
+    <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M7 18.5h10a4 4 0 0 0 .5-8 5.5 5.5 0 0 0-10.6 1.3A3.4 3.4 0 0 0 7 18.5z"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></symbol>
+    <symbol id="i-trophy" viewBox="0 0 24 24"><path d="M7.5 4h9v5a4.5 4.5 0 0 1-9 0zM7.5 6H4.5a3 3 0 0 0 3 4M16.5 6h3a3 3 0 0 1-3 4M12 13.5V17M8.5 20h7l-.8-3H9.3z"/></symbol>
+    <symbol id="i-music" viewBox="0 0 24 24"><path d="M9 17.5V5.5l10-2v12"/><circle cx="6.5" cy="17.5" r="2.5"/><circle cx="16.5" cy="15.5" r="2.5"/></symbol>
+    <symbol id="i-cal" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="3"/><circle cx="9" cy="10" r="1.8"/><path d="M4 17l5-4.5 4 3.5 3-2.5 4 3.5"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></symbol>
+    <symbol id="i-scan" viewBox="0 0 24 24"><path d="M4 9V6a2 2 0 0 1 2-2h3M15 4h3a2 2 0 0 1 2 2v3M20 15v3a2 2 0 0 1-2 2h-3M9 20H6a2 2 0 0 1-2-2v-3M4 12h16"/></symbol>
+    <symbol id="i-qr" viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><path d="M14 14h2v2h-2zM18 14h2M14 18h2v2M18 18h2v2"/></symbol>
+    <symbol id="i-steps" viewBox="0 0 24 24"><path d="M7.5 4c1.7 0 2.5 2 2.5 4.5S9 13 7.5 13 5 11 5 8.5 5.8 4 7.5 4zM16.5 9c1.7 0 2.5 2 2.5 4.5S18 18 16.5 18 14 16 14 13.5 14.8 9 16.5 9zM5.5 15.5h4M14.5 20.5h4"/></symbol>
+    <symbol id="i-wifioff" viewBox="0 0 24 24"><path d="M3 3l18 18M8.5 16a5 5 0 0 1 7 0M5 12.5a10 10 0 0 1 5-2.6M14.5 10a10 10 0 0 1 4.5 2.5M2 9a15 15 0 0 1 4.5-2.8M11 5.5A15 15 0 0 1 22 9M12 19.5h.01"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15zM10 20.5a2 2 0 0 0 4 0"/></symbol>
+    <symbol id="i-exit" viewBox="0 0 24 24"><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4M10 16l-4-4 4-4M6 12h10"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></symbol>
+    <symbol id="i-person" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></symbol>
+    <symbol id="i-flame" viewBox="0 0 24 24"><defs><linearGradient id="fg1" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#F26B3A"/><stop offset="1" stop-color="#FFB547"/></linearGradient></defs><path d="M12 22c-4.4 0-7.5-3-7.5-7.2 0-3.4 2.2-5.7 3.7-7.3.4 1.7 1.3 2.9 2.4 3.4C10.3 7 12 4 14.6 2c-.1 2.8 1.3 4.6 2.8 6.4 1.3 1.5 2.6 3.3 2.6 6.2C20 19 16.6 22 12 22z" fill="url(#fg1)"/><path d="M12 22c-2.2 0-3.7-1.5-3.7-3.6 0-1.9 1.3-3.2 2.4-4.4.2 1 .8 1.6 1.5 1.8.1-1.9 1-3.4 2.3-4.3 0 1.6.6 2.6 1.3 3.6.6.9 1.1 1.8 1.1 3.1C16.9 20.4 14.8 22 12 22z" fill="#FFE08A"/></symbol>
+    <symbol id="i-heartmark" viewBox="0 0 64 64"><circle cx="32" cy="15" r="9" fill="#D1EEE7"/><path d="M32 54C20 46 12 38 12 30a10 10 0 0 1 20-3 10 10 0 0 1 20 3c0 8-8 16-20 24z" fill="none" stroke="#D1EEE7" stroke-width="5" stroke-linejoin="round"/><path d="M17 37l15-10" stroke="#D1EEE7" stroke-width="5" stroke-linecap="round"/></symbol>
+    <symbol id="i-figure" viewBox="0 0 300 420"><ellipse cx="150" cy="150" rx="70" ry="82" fill="#C9A88C"/><path d="M80 120c0-50 30-78 70-78s70 28 70 78c-14-22-40-30-70-30s-56 8-70 30z" fill="#2E2622"/><path d="M20 420c6-110 60-160 130-160s124 50 130 160z" fill="#2F6E5A"/><path d="M118 262h64l-10 34h-44z" fill="#C9A88C"/></symbol>
+  </defs>
+</svg>
+
+<div class="stage">
+  <aside class="panel" id="panel">
+    <div class="stack" style="gap:8px">
+      <div class="mark" style="width:52px;height:52px;border-radius:16px"><svg viewBox="0 0 64 64" style="width:34px;height:34px"><use href="#i-heartmark"/></svg></div>
+      <h1><span>Uban</span> 新介面設計稿 v2</h1>
+      <p>登入流程與長輩端。手機裡的按鈕都能按，可以實際感受動畫。資料、照片、視訊畫面都是示意，功能接線維持原樣。</p>
+    </div>
+    <div class="group">
+      <div class="group-label">外觀</div>
+      <div class="seg" id="themeSeg">
+        <button data-theme-set="system" class="on">跟隨系統</button><button data-theme-set="light">淺色</button><button data-theme-set="dark">深色</button>
+      </div>
+    </div>
+    <div class="group">
+      <div class="group-label">登入流程</div>
+      <div class="chips">
+        <button class="chip" data-go="splash">開場動畫</button>
+        <button class="chip" data-go="privacy">隱私同意</button>
+        <button class="chip" data-go="identify">誰在使用</button>
+        <button class="chip" data-go="login">家屬登入</button>
+        <button class="chip" data-go="register">帳號註冊</button>
+        <button class="chip" data-go="pairing">長輩配對碼</button>
+        <button class="chip" data-go="onboard">基本資料</button>
+        <button class="chip" data-go="monitor">監控設備</button>
+      </div>
+    </div>
+    <div class="group">
+      <div class="group-label">長輩端分頁</div>
+      <div class="chips">
+        <button class="chip" data-go="elder:home">首頁</button>
+        <button class="chip" data-go="elder:phone">電話</button>
+        <button class="chip" data-go="elder:pet">小豬（含祝福圖）</button>
+        <button class="chip" data-go="elder:chat">聊天</button>
+        <button class="chip" data-go="elder:profile">我的</button>
+      </div>
+    </div>
+    <div class="group">
+      <div class="group-label">小豬</div>
+      <div class="chips">
+        <button class="chip" data-evo>進化動畫</button>
+        <button class="chip" data-streak>連勝慶祝</button>
+        <button class="chip" data-walk>走一段</button>
+      </div>
+      <div class="seg" id="breedSeg" aria-label="品種"><button data-breed="pink" class="on">粉紅豬</button><button data-breed="black">黑豬</button></div>
+      <div class="seg" id="wxSeg" aria-label="天氣"><button data-wx="auto" class="on">依天氣</button><button data-wx="sunny">晴</button><button data-wx="shower">陣雨</button><button data-wx="rain">陰雨</button></div>
+      <div class="seg" id="todSeg" aria-label="場景時段">
+        <button data-tod="auto" class="on">依時間</button><button data-tod="dawn">清晨</button><button data-tod="day">白天</button><button data-tod="dusk">黃昏</button><button data-tod="night">夜晚</button>
+      </div>
+    </div>
+    <div class="group">
+      <div class="group-label">長輩子畫面</div>
+      <div class="chips">
+        <button class="chip" data-go="news">新聞收聽</button>
+        <button class="chip" data-go="article">新聞文章</button>
+        <button class="chip" data-go="moments">朋友圈</button>
+        <button class="chip" data-go="addfriend">加好友</button>
+        <button class="chip" data-go="almanac">農民曆</button>
+        <button class="chip" data-go="permguide">權限引導</button>
+        <button class="chip" data-go="states">載入／空／錯誤</button>
+      </div>
+    </div>
+    <div class="group">
+      <div class="group-label">通話房（長輩端）</div>
+      <div class="chips">
+        <button class="chip" data-go="call:idle">待撥</button>
+        <button class="chip" data-go="call:dialing">撥出中</button>
+        <button class="chip" data-go="call:voice">語音通話</button>
+        <button class="chip" data-go="call:video">視訊通話</button>
+        <button class="chip" data-go="call:emergency">緊急通話</button>
+        <button class="chip" data-go="call:cctv">監視模式</button>
+      </div>
+      <div class="group-label" style="margin-top:6px">通話房（家屬端）</div>
+      <div class="chips">
+        <button class="chip" data-go="fcall:video">視訊</button>
+        <button class="chip" data-go="fcall:voice">語音</button>
+        <button class="chip" data-go="fcall:monitor">監看畫面</button>
+      </div>
+    </div>
+    <div class="group">
+      <div class="group-label">浮層與教學</div>
+      <div class="chips">
+        <button class="chip" data-tutorial="main">首次教學（6 步）</button>
+        <button class="chip" data-tutorial="home">首頁教學</button>
+        <button class="chip" data-overlay="call">來電</button>
+        <button class="chip" data-overlay="reminder">用藥提醒</button>
+        <button class="chip" data-overlay="heartbeat">主動關懷</button>
+        <button class="chip" data-overlay="assistant">小嘎助理</button>
+        <button class="chip" data-overlay="tasks">任務清單</button>
+        <button class="chip" data-overlay="help">說明抽屜</button>
+      </div>
+    </div>
+    <div class="specs">
+      <b>按壓</b><span>50ms 內縮到 0.96，放開彈回</span>
+      <b>主按鈕</b><span>從指尖冒出開場動畫同款液態暈開</span>
+      <b>導覽列</b><span>彈簧 阻尼 0.8／剛度 380，移動時拉伸</span>
+      <b>陰影</b><span>移除帶色光暈，只留中性淡陰影</span>
+      <b>餵食</b><span>只有胡蘿蔔：點右下角或拖到小豬身上</span><b>耳標</b><span>掛在耳朵上，有自己的搖晃節奏</span><b>連勝</b><span>把今天的任務全打勾會跳慶祝</span>
+    </div>
+  </aside>
+
+  <div class="phone">
+    <div class="screen" id="screen">
+      <div class="canvas" id="canvas">
+      <div class="statusbar" id="statusbar"><span>9:41</span><span class="bat"></span></div>
+
+      <!-- ============ 登入流程 ============ -->
+      <section class="view" id="splash" hidden><canvas id="splashCanvas"></canvas></section>
+
+      <section class="view" id="privacy" hidden>
+        <div class="stack" style="gap:26px;min-height:100%;justify-content:space-between">
+          <div class="stack" style="gap:22px;padding-top:28px">
+            <div class="mark"><svg viewBox="0 0 64 64"><use href="#i-heartmark"/></svg></div>
+            <h1 class="h1">開始之前，<br>先跟您說三件事</h1>
+            <div class="stack" style="gap:10px">
+              <div class="card row" style="gap:16px"><div class="action" style="padding:0;box-shadow:none;width:auto;background:none"><div class="ib"><svg class="ic24"><use href="#i-free"/></svg></div></div><div class="grow"><div class="h2" style="font-size:20px">完全免費安心用</div><p class="body" style="font-size:16px">基本功能不收費，不會偷偷扣款</p></div></div>
+              <div class="card row" style="gap:16px"><div class="action" style="padding:0;box-shadow:none;width:auto;background:none"><div class="ib"><svg class="ic24"><use href="#i-shield"/></svg></div></div><div class="grow"><div class="h2" style="font-size:20px">嚴密保護您的隱私</div><p class="body" style="font-size:16px">資料只給您配對的家人看</p></div></div>
+              <div class="card row" style="gap:16px"><div class="action" style="padding:0;box-shadow:none;width:auto;background:none"><div class="ib"><svg class="ic24"><use href="#i-heart"/></svg></div></div><div class="grow"><div class="h2" style="font-size:20px">關懷長輩日常生活</div><p class="body" style="font-size:16px">提醒吃藥、陪聊天、一鍵視訊</p></div></div>
+            </div>
+          </div>
+          <div class="stack" style="gap:6px">
+            <button class="btn filled xl press" data-blob data-go="identify">同意並開始使用</button>
+            <button class="btn ghost press" data-toast="開啟完整條款">閱讀完整條款</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="identify" hidden>
+        <div class="stack" style="gap:22px;padding-top:28px">
+          <div class="stack" style="gap:8px"><span class="label">UBAN</span><h1 class="h1">誰在使用這支手機？</h1></div>
+          <button class="role press" data-blob data-go="pairing">
+            <div class="face" style="background:#FDF0E2"><svg viewBox="0 0 60 60"><circle cx="30" cy="24" r="12" fill="#F2C9A0"/><path d="M18 22c0-9 6-13 12-13s12 4 12 13c-3-4-7-5-12-5s-9 1-12 5z" fill="#E8E4DE"/><path d="M12 56a18 18 0 0 1 36 0z" fill="#C9782C"/></svg></div>
+            <div class="grow"><h3>我是長者</h3><p>看新聞、跟家人視訊、和小嘎聊天</p></div>
+            <svg class="ic24" style="color:var(--text-3)"><use href="#i-chev"/></svg>
+          </button>
+          <button class="role press" data-blob data-go="login">
+            <div class="face" style="background:var(--brand-container)"><svg viewBox="0 0 60 60"><circle cx="30" cy="23" r="11" fill="#F2C9A0"/><path d="M19 21c0-7 5-11 11-11s11 4 11 11c-2-3-6-4-11-4s-9 1-11 4z" fill="#3B3330"/><path d="M12 56a18 18 0 0 1 36 0z" fill="#3D9C7C"/></svg></div>
+            <div class="grow"><h3>我是家屬／照護者</h3><p>關心長輩近況、設定提醒</p></div>
+            <svg class="ic24" style="color:var(--text-3)"><use href="#i-chev"/></svg>
+          </button>
+          <button class="btn ghost press" data-go="monitor">這台是監控設備</button>
+        </div>
+      </section>
+
+      <section class="view" id="login" hidden>
+        <div class="stack" style="gap:22px;padding-top:20px">
+          <div class="stack" style="gap:8px">
+            <div class="mark" style="width:56px;height:56px;border-radius:18px"><svg viewBox="0 0 64 64" style="width:36px;height:36px"><use href="#i-heartmark"/></svg></div>
+            <h1 class="h1">歡迎回來</h1>
+            <p class="body" style="font-size:17px">登入後就能看到長輩今天過得好不好</p>
+          </div>
+          <form class="stack" id="loginForm" style="gap:14px">
+            <div class="field"><label for="email">Email／手機號碼</label><input class="input" id="email" type="text" value="boyo@uban.com" autocomplete="username"></div>
+            <div class="field"><label for="pw">密碼</label><input class="input" id="pw" type="password" value="password" autocomplete="current-password"></div>
+            <div style="display:flex;justify-content:flex-end"><button type="button" class="more press" data-toast="已傳送重設連結至您的 Email">忘記密碼？</button></div>
+            <button class="btn filled press" data-blob type="submit">登入</button>
+            <button type="button" class="btn tonal press" data-blob data-toast="已帶入 boyo@uban.com，正在登入...">快速登入（開發用）</button>
+          </form>
+          <div class="divider">或</div>
+          <div class="row" style="justify-content:center;gap:16px">
+            <button class="roundbtn press" aria-label="Google 登入" data-toast="Google 登入（OIDC 測試）"><svg viewBox="0 0 24 24" width="26" height="26"><path d="M21.6 12.2c0-.7-.1-1.4-.2-2H12v3.8h5.4a4.6 4.6 0 0 1-2 3v2.5h3.2c1.9-1.7 3-4.3 3-7.3z" fill="#4285F4"/><path d="M12 22c2.7 0 5-.9 6.6-2.4l-3.2-2.5c-.9.6-2 1-3.4 1-2.6 0-4.8-1.8-5.6-4.1H3.1v2.6A10 10 0 0 0 12 22z" fill="#34A853"/><path d="M6.4 14a6 6 0 0 1 0-3.9V7.5H3.1a10 10 0 0 0 0 9z" fill="#FBBC05"/><path d="M12 6c1.5 0 2.8.5 3.8 1.5l2.9-2.9A10 10 0 0 0 3.1 7.5l3.3 2.6C7.2 7.8 9.4 6 12 6z" fill="#EA4335"/></svg></button>
+            <button class="roundbtn press" aria-label="LINE 登入" data-toast="LINE 登入（OIDC 測試）" style="background:var(--line-green)"><svg viewBox="0 0 24 24" width="28" height="28"><path d="M12 4C7 4 3 7.2 3 11.2c0 3.6 3.2 6.6 7.5 7.1.3.1.7.2.8.5.1.2 0 .6 0 .8l-.1.8c0 .2-.2.9.8.5s5.4-3.2 7.4-5.4c1.3-1.5 1.9-2.9 1.9-4.4C21.3 7.2 17.2 4 12 4z" fill="#fff"/></svg></button>
+          </div>
+          <p class="body" style="text-align:center;font-size:16px">還沒有帳號？<button class="more press" data-go="register">註冊</button></p>
+        </div>
+      </section>
+
+      <section class="view" id="register" hidden>
+        <div class="stack" style="gap:18px;padding-top:6px">
+          <div class="topbar"><button class="iconbtn flat press" data-go="login" aria-label="返回"><svg class="ic24"><use href="#i-back"/></svg></button><h1 class="h1">帳號註冊</h1></div>
+          <form class="stack" id="regForm" style="gap:14px">
+            <div class="field"><label for="rname">您的名字</label><input class="input" id="rname" value="林宇璿"></div>
+            <div class="field"><label for="remail">Email</label><input class="input" id="remail" value="yuxuan@example.com"></div>
+            <div class="field"><label for="rpw">密碼</label><input class="input" id="rpw" type="password" value="password"></div>
+            <div class="field"><label>年齡</label><div class="stepper" data-stepper><button type="button" class="press" data-step="-1" aria-label="減一歲">−</button><div class="val">34</div><button type="button" class="press" data-step="1" aria-label="加一歲">+</button></div></div>
+            <div class="row" style="gap:10px;align-items:flex-end">
+              <div class="field grow"><label for="city">縣市</label><select class="input" id="city"><option>臺北市</option><option>新北市</option><option>臺中市</option><option>高雄市</option></select></div>
+              <div class="field grow"><label for="dist">區</label><select class="input" id="dist"><option>大安區</option><option>信義區</option><option>中正區</option></select></div>
+            </div>
+            <div class="trow" id="terms" style="border:0;padding:4px 0;cursor:pointer"><span class="tick" style="width:40px;height:40px"><svg viewBox="0 0 24 24"><use href="#i-check"/></svg></span><span style="font-size:16px;color:var(--text-2)">我已閱讀並同意 <b style="color:var(--brand-strong)">隱私權政策</b> 與 <b style="color:var(--brand-strong)">醫療免責聲明</b></span></div>
+            <button class="btn filled press" data-blob type="submit">建立帳號</button>
+          </form>
+        </div>
+      </section>
+
+      <section class="view" id="pairing" hidden>
+        <div class="stack" style="gap:20px;padding-top:20px;text-align:center">
+          <div class="stack" style="gap:8px;align-items:center">
+            <div class="row" style="gap:8px;color:var(--brand-strong);font-weight:700;font-size:16px"><span class="livedot"></span>正在等家人配對</div>
+            <h1 class="h1">請家人輸入這組號碼</h1>
+          </div>
+          <div class="card stack" style="gap:16px;padding:22px 16px">
+            <div class="code" aria-label="配對碼 482917"><span>4</span><span>8</span><span>2</span><span>9</span><span>1</span><span>7</span></div>
+            <div class="qr"><canvas class="qrc" data-seed="482917" width="29" height="29"></canvas></div>
+            <p class="body" style="font-size:16px">或讓家人用手機掃這個條碼</p>
+          </div>
+          <div class="stack" style="gap:6px">
+            <button class="btn filled xl press" data-blob data-go="onboard">我自己使用</button>
+            <div class="row" style="justify-content:center;gap:4px">
+              <button class="btn ghost press" style="width:auto" data-toast="已更換新的配對碼">更換代碼</button>
+              <button class="btn ghost press" style="width:auto" data-go="elder:home">登入上次長輩</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="onboard" hidden>
+        <div class="stack" style="gap:20px;padding-top:24px;min-height:100%">
+          <div class="mark" style="width:64px;height:64px;border-radius:20px;background:var(--brand-container)"><svg class="ic24" style="width:34px;height:34px;color:var(--brand-strong)"><use href="#i-person"/></svg></div>
+          <h1 class="h1">請完成基本資料</h1>
+          <p class="body" style="font-size:20px">秀枝阿嬤您好，麻煩確認一下年齡跟居住的地方，這樣才能繼續使用喔！</p>
+          <div class="field"><label style="font-size:18px">年齡</label><div class="stepper" data-stepper><button class="press" data-step="-1" aria-label="減一歲">−</button><div class="val" style="height:72px;font-size:32px">76</div><button class="press" data-step="1" aria-label="加一歲">+</button></div></div>
+          <div class="row" style="gap:10px;align-items:flex-end">
+            <div class="field grow"><label for="ocity" style="font-size:18px">縣市</label><select class="input" id="ocity" style="height:68px;font-size:20px"><option>臺北市</option><option>新北市</option></select></div>
+            <div class="field grow"><label for="odist" style="font-size:18px">區</label><select class="input" id="odist" style="height:68px;font-size:20px"><option>萬華區</option><option>大安區</option></select></div>
+          </div>
+          <div style="flex:1"></div>
+          <button class="btn filled xl press" data-blob data-go="elder:home" data-after-tutorial>確定，開始使用</button>
+        </div>
+      </section>
+
+      <section class="view" id="monitor" hidden>
+        <div class="stack" style="gap:20px;padding-top:12px">
+          <div class="topbar"><button class="iconbtn flat press" data-go="identify" aria-label="返回"><svg class="ic24"><use href="#i-back"/></svg></button><h1 class="h1">設定監控設備</h1></div>
+          <div class="mark" style="width:72px;height:72px;background:var(--surface-2)"><svg class="ic24" style="width:38px;height:38px;color:var(--text-2)"><use href="#i-video"/></svg></div>
+          <p class="body">請在家屬的手機上開啟「新增監控設備」，把畫面上的 6 位數號碼輸入到下方。</p>
+          <div class="field"><label for="mcode">6 位數設定碼</label><input class="input idinput" id="mcode" maxlength="6" value="305" inputmode="numeric" style="letter-spacing:.35em"></div>
+          <button class="btn filled xl press" data-blob data-go="call:cctv">開始監控</button>
+        </div>
+      </section>
+
+      <!-- ============ 長輩端外殼 ============ -->
+      <section class="view" id="elder" hidden style="padding:0;overflow:hidden">
+
+        <div class="view tabview" id="tabHome">
+          <div class="greet">
+            <div class="avatar">秀</div>
+            <div class="grow">
+              <div class="body" style="font-size:17px">早安</div>
+              <div class="row" style="gap:8px"><span class="h2 ellipsis" style="font-size:26px">秀枝阿嬤</span><span class="badge gold"><img src="img/pig_badge_gold.png" alt="" style="width:22px;height:22px;flex:none">金豬會員</span></div>
+            </div>
+          </div>
+          <div class="stack">
+            <button class="card today press" data-go="almanac" data-tut="date">
+              <div><div class="label">今天</div><div class="date" style="margin-top:6px">10<small>月</small>1<small>日</small></div><div style="font-size:20px;font-weight:700;margin-top:6px">星期三</div></div>
+              <div class="weather"><div class="wx" style="color:var(--brand-strong)" aria-hidden="true"><span class="sun"></span><span class="cloud2"></span></div><b>27°</b><span>台北 多雲</span></div>
+              <div class="lunar"><span class="tag">農曆八月廿一</span><span class="tag">寒露 還有 7 天</span></div>
+            </button>
+            <div class="card taskcard-wrap" data-taskcard="list"></div>
+            <div class="card" data-tut="news">
+              <div class="sec-head"><span class="h2">今日頭條</span><button class="more press" data-go="news" data-tut="more">更多</button></div>
+              <button class="news-hero press" data-go="news"><span class="note">示意圖</span><span class="play"><svg class="ic24" style="width:18px;height:18px"><use href="#i-play"/></svg>點我聆聽</span></button>
+              <div style="font-size:21px;font-weight:900;line-height:1.4">寒露將至早晚溫差大，醫師提醒長輩外出加件薄外套</div>
+              <div style="margin-top:8px">
+                <button class="headline press" data-go="news"><span class="n">2</span><span class="grow ellipsis">敬老卡點數新制上路 搭公車更划算</span></button>
+                <button class="headline press" data-go="news"><span class="n">3</span><span class="grow ellipsis">社區據點秋季健走 本週六早上開跑</span></button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="view tabview" id="tabPhone" hidden>
+          <h1 class="h1" style="margin-bottom:14px">打電話</h1>
+          <div class="segbig" data-seg><span class="thumb"></span><button class="on" data-pane="fam"><svg class="ic24"><use href="#i-heart"/></svg>家人</button><button data-pane="fri"><svg class="ic24"><use href="#i-users"/></svg>朋友</button></div>
+          <div class="stack" style="margin-top:16px" data-pane-body="fam">
+            <div class="card">
+              <div class="person"><div class="avatar">璿</div><div class="grow"><h3 class="ellipsis">宇璿</h3><p>兒子</p></div><span class="online"><i></i>在線</span></div>
+              <div class="callrow"><button class="callbtn voice press" data-blob data-go="call:dialing"><svg class="ic24"><use href="#i-phone"/></svg>電話</button><button class="callbtn video press" data-blob data-go="call:video"><svg class="ic24"><use href="#i-video"/></svg>視訊</button></div>
+            </div>
+            <div class="card">
+              <div class="person"><div class="avatar warm">婷</div><div class="grow"><h3 class="ellipsis">佳婷</h3><p>女兒</p></div></div>
+              <div class="callrow"><button class="callbtn voice press" data-blob data-go="call:dialing"><svg class="ic24"><use href="#i-phone"/></svg>電話</button><button class="callbtn video press" data-blob data-go="call:video"><svg class="ic24"><use href="#i-video"/></svg>視訊</button></div>
+            </div>
+          </div>
+          <div class="stack" style="margin-top:16px" data-pane-body="fri" hidden>
+            <button class="btn tonal press" data-blob data-go="addfriend"><svg class="ic24"><use href="#i-plus"/></svg>加好友</button>
+            <button class="action press" data-blob data-go="moments"><div class="ib"><svg class="ic24"><use href="#i-users"/></svg></div><div class="grow"><h4>朋友圈</h4><p>看看朋友的近況、分享自己的生活</p></div><svg class="ic24" style="color:var(--text-3)"><use href="#i-chev"/></svg></button>
+            <div class="sec-head" style="margin-top:4px"><span class="h2">好友邀請</span><span class="badge" style="background:var(--danger-container);color:var(--danger)">1</span></div>
+            <div class="card" id="reqCard">
+              <div class="person"><div class="avatar info">金</div><div class="grow"><h3 class="ellipsis" style="font-size:21px">金花</h3><p>ID：M3T8　想加您為好友</p></div></div>
+              <div class="reqbtns"><button class="btn outline press" data-req="no">拒絕</button><button class="btn filled press" data-blob data-req="yes">接受</button></div>
+            </div>
+            <div class="sec-head" style="margin-top:4px"><span class="h2">我的好友</span></div>
+            <div class="card">
+              <div class="person"><div class="avatar">美</div><div class="grow"><h3 class="ellipsis">美玉</h3><p>ID：K7Q2</p></div></div>
+              <div class="callrow"><button class="callbtn video press" data-blob data-go="call:video"><svg class="ic24"><use href="#i-video"/></svg>視訊</button><button class="callbtn press" style="background:var(--surface-2);color:var(--text-2)" data-toast="確定要解除好友嗎？（確認對話框）">解除好友</button></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="view tabview" id="tabPet" hidden>
+          <div class="sec-head" style="margin-bottom:14px"><h1 class="h1">小豬</h1><span class="streakchip" data-streakchip></span></div>
+          <div class="stack">
+            <div class="buddy" data-buddy data-tut="pet" id="petStage">
+              <div class="sky"></div><div class="stars"></div><div class="orb"></div><div class="overcast"></div>
+              <div class="cloud" style="top:40px;width:70px;animation-duration:38s"></div>
+              <div class="cloud" style="top:86px;width:54px;animation-duration:52s;animation-delay:-20s"></div>
+              <div class="cloud more" style="top:22px;width:90px;animation-duration:44s;animation-delay:-8s"></div>
+              <div class="cloud more" style="top:64px;width:76px;animation-duration:60s;animation-delay:-34s"></div>
+              <svg class="hills" viewBox="0 0 400 130" preserveAspectRatio="none"><polygon class="c" points="0,130 0,70 50,40 95,62 140,28 190,58 240,22 290,54 340,30 400,60 400,130"/><polygon class="b" points="0,130 0,92 60,64 120,86 175,58 235,84 300,60 360,82 400,70 400,130"/><polygon class="a" points="0,130 0,108 80,90 150,104 220,88 300,102 400,92 400,130"/></svg>
+              <div class="ground"></div>
+              <span class="puddle" style="left:14%;bottom:26px;width:70px"></span><span class="puddle" style="right:26%;bottom:14px;width:54px"></span>
+              <svg class="tuft" style="left:12%" viewBox="0 0 22 16"><path d="M2 16l3-10 3 10zM8 16l3-14 3 14zM14 16l3-9 3 9z"/></svg>
+              <svg class="tuft" style="right:10%" viewBox="0 0 22 16"><path d="M2 16l3-10 3 10zM8 16l3-14 3 14zM14 16l3-9 3 9z"/></svg>
+              <div class="pigpos"><div class="walker" id="walker"><div class="shadow"></div><button class="pig" id="petPig" aria-label="摸摸小豬"><span class="pigbody" id="pigBody"><img alt="小豬" data-pigimg><img class="eartag" id="earTag" alt=""></span></button></div></div>
+              <canvas class="rain" id="rain"></canvas>
+              <div class="corner"><button class="press" aria-label="背景音樂" data-toast="背景音樂已靜音（長按可調整）"><svg class="ic24" style="width:22px;height:22px"><use href="#i-music"/></svg></button></div>
+              <button class="carrot press" id="carrotBtn" aria-label="餵胡蘿蔔"><img src="img/carrot.svg" alt="" draggable="false"><span class="cnt">0</span></button>
+              <span class="tod" data-todlabel></span>
+              <div class="fx" id="petFx"></div>
+            </div>
+
+            <div class="card statcard">
+              <div class="sec-head"><span class="tag" data-stagelabel>第 2 階</span><span style="font:600 20px var(--brandfont)"><span data-weight>39.82</span><small style="font:700 15px var(--sans);color:var(--text-2)"> 公斤</small></span></div>
+              <div class="bar"><i data-stagebar></i></div>
+              <div style="font-size:15px;color:var(--text-2)" data-stagehint></div>
+            </div>
+
+            <div class="card" data-tut="board">
+              <div class="sec-head"><span class="h2">好友排行榜</span><span class="tag" style="background:var(--warm-container);color:var(--warm)">第 3 季・還有 12 天</span></div>
+              <div id="board" class="board"></div>
+            </div>
+
+            <div class="sec-head" style="margin-top:8px"><div><span class="label">小豬幫您做</span><div class="h2">今日祝福圖</div></div><div class="segbig small" data-seg style="width:176px"><span class="thumb"></span><button class="on">經典</button><button>AI 生圖</button></div></div>
+            <div class="gcard" id="gcard" data-tpl="sunrise"><span class="note">模板示意</span>
+              <div class="gscene sunrise"><div class="sun"></div><div class="hill"></div></div>
+              <div class="gscene lotus">
+                <div class="water"></div><div class="pad p1"></div><div class="pad p2"></div>
+                <svg class="lotus-f" viewBox="0 0 100 90" aria-hidden="true"><g fill="#F4A6C4" stroke="#E483AC" stroke-width="1.6"><ellipse cx="50" cy="52" rx="11" ry="30"/><ellipse cx="50" cy="52" rx="11" ry="30" transform="rotate(32 50 52)"/><ellipse cx="50" cy="52" rx="11" ry="30" transform="rotate(-32 50 52)"/><ellipse cx="50" cy="52" rx="10" ry="26" transform="rotate(64 50 52)"/><ellipse cx="50" cy="52" rx="10" ry="26" transform="rotate(-64 50 52)"/></g><ellipse cx="50" cy="56" rx="8" ry="11" fill="#FBD873"/></svg>
+              </div>
+              <div class="gscene koi">
+                <span class="ripple r1"></span><span class="ripple r2"></span>
+                <svg class="koi-f k1" viewBox="0 0 120 56" aria-hidden="true"><path d="M8 28 C28 8 74 8 96 24 C100 27 100 29 96 32 C74 48 28 48 8 28 Z" fill="#F47A3C"/><path d="M96 20 C110 12 118 18 115 28 C118 38 110 44 96 36 C104 30 104 26 96 20 Z" fill="#F68A50"/><circle cx="28" cy="25" r="3" fill="#20303a"/><path d="M44 18 C56 12 70 14 80 20" stroke="#fff" stroke-width="7" fill="none" opacity=".75" stroke-linecap="round"/></svg>
+                <svg class="koi-f k2" viewBox="0 0 120 56" aria-hidden="true"><path d="M8 28 C28 8 74 8 96 24 C100 27 100 29 96 32 C74 48 28 48 8 28 Z" fill="#EFE7DC"/><path d="M96 20 C110 12 118 18 115 28 C118 38 110 44 96 36 C104 30 104 26 96 20 Z" fill="#E4D8C6"/><circle cx="28" cy="25" r="3" fill="#20303a"/><path d="M44 18 C56 12 70 14 80 20" stroke="#F47A3C" stroke-width="7" fill="none" opacity=".7" stroke-linecap="round"/></svg>
+              </div>
+              <img class="gpig" data-pigimg-front alt=""><h3 data-bless>旭日東昇　平安喜樂</h3><div class="from">秀枝阿嬤 敬上</div></div>
+            <div class="thumbs" aria-label="模板">
+              <button class="on" data-tpl="sunrise" style="background:linear-gradient(170deg,#F8D79F,#E9955A 58%,#4E7E63)" aria-label="日出"></button>
+              <button data-tpl="lotus" style="background:linear-gradient(170deg,#FCE1EC,#F2A7C3 55%,#4E7E63)" aria-label="蓮花"></button>
+              <button data-tpl="koi" style="background:linear-gradient(170deg,#CDE9F2,#5FA9C0 55%,#1F5C72)" aria-label="鯉魚"></button>
+            </div>
+            <button class="btn line xl press" data-blob data-toast="分享到 LINE"><svg viewBox="0 0 24 24" width="28" height="28"><path d="M12 4C7 4 3 7.2 3 11.2c0 3.6 3.2 6.6 7.5 7.1.3.1.7.2.8.5.1.2 0 .6 0 .8l-.1.8c0 .2-.2.9.8.5s5.4-3.2 7.4-5.4c1.3-1.5 1.9-2.9 1.9-4.4C21.3 7.2 17.2 4 12 4z" fill="#fff"/></svg>傳給 LINE 好友／群組</button>
+            <div class="row" style="gap:10px"><button class="btn tonal press" data-blob data-toast="已保存到相簿"><svg class="ic24"><use href="#i-down"/></svg>存相簿</button><button class="btn tonal press" data-blob data-toast="設定您的祝賀署名"><svg class="ic24"><use href="#i-pen"/></svg>改署名</button></div>
+          </div>
+        </div>
+
+        <div class="view tabview" id="tabChat" hidden style="padding:0;display:flex;flex-direction:column">
+          <div class="sec-head chat-head"><h1 class="h1" style="font-size:28px">和小嘎聊天</h1><div class="langseg"><button class="on">國語</button><button>台語</button></div></div>
+          <div class="chat-scroll">
+          <div class="chat">
+            <div class="bub ai">阿嬤，昨晚睡得好嗎？<div class="replay"><svg class="ic24" style="width:18px;height:18px"><use href="#i-vol"/></svg>再聽一次</div></div>
+            <div class="bub me">睡得不錯，就是半夜起來一次</div>
+            <div class="bub ai">那很正常喔，年紀大了比較淺眠。白天記得多走動、曬點太陽，晚上會更好睡。</div>
+            <div class="bub me">好，等等去公園走走</div>
+            <div class="bub ai">太好了！要不要我幫您記下來，等到下午提醒您出門散步？</div>
+            <div class="bub me">好啊，謝謝你</div>
+            <div class="bub ai">沒問題，我會在下午三點提醒您。對了，記得帶水壺多喝水。</div>
+            <div class="bub ai">阿嬤早安！今天台北多雲 27 度，出門記得帶把傘喔。<div class="replay"><svg class="ic24" style="width:18px;height:18px"><use href="#i-vol"/></svg>再聽一次</div></div>
+            <div class="bub me">今天有什麼新聞？</div>
+            <div class="bub ai">今天的頭條是寒露快到了，早晚溫差大。要我唸給您聽嗎？<br><button class="link press" data-go="news"><svg class="ic24" style="width:18px;height:18px"><use href="#i-play"/></svg>點閱新聞</button></div>
+            <div class="bub ai typing" aria-label="小嘎想想…"><i></i><i></i><i></i></div>
+          </div>
+          </div>
+        </div>
+        <div class="chatbar" id="chatbar" hidden>
+          <button class="roundbtn press" aria-label="改用打字" data-toast="切換成打字"><svg class="ic24" style="width:28px;height:28px"><use href="#i-kbd"/></svg></button>
+          <button class="talk" id="talk"><svg class="ic24" style="width:28px;height:28px"><use href="#i-mic"/></svg><span>按住　說話</span></button>
+        </div>
+
+        <div class="view tabview" id="tabProfile" hidden>
+          <div class="greet"><div class="avatar">秀</div><div class="grow"><span class="h2 ellipsis" style="font-size:26px;display:block">秀枝阿嬤</span><span style="font-size:16px;color:var(--text-2)">76 歲・臺北市萬華區</span></div></div>
+          <div class="stack">
+            <div class="card streakcard">
+              <div class="row" style="gap:14px"><div class="flame"><svg viewBox="0 0 24 24"><use href="#i-flame"/></svg></div><div class="grow"><div class="streaknum"><b data-streaknum>6</b> 天</div><div style="font-size:16px;color:var(--text-2)">連續把每天的事都做完</div></div></div>
+              <div class="week" data-week></div>
+            </div>
+            <div class="card taskcard-wrap" data-taskcard data-tut="tasks"></div>
+            <button class="action press" data-blob data-toast="出示配對碼（家人綁定）" data-tut="pair"><div class="ib"><svg class="ic24"><use href="#i-link"/></svg></div><div class="grow"><h4>家人綁定</h4><p>出示配對碼給家人掃</p></div><svg class="ic24" style="color:var(--text-3)"><use href="#i-chev"/></svg></button>
+            <button class="action press" data-blob data-overlay="assistant" data-tut="ai"><div class="ib"><svg class="ic24"><use href="#i-mic"/></svg></div><div class="grow"><h4>語音助理</h4><p>喊「Hey 嘎蛙」叫小嘎</p></div><svg class="ic24" style="color:var(--text-3)"><use href="#i-chev"/></svg></button>
+            <div class="action"><div class="ib"><svg class="ic24"><use href="#i-pin"/></svg></div><div class="grow"><h4>分享我的位置</h4><p id="locText">子女可以看到您的位置與移動路線</p></div><button class="switch on" id="locSwitch" aria-label="分享位置"></button></div>
+            <button class="action press" data-tutorial="main"><div class="ib"><svg class="ic24"><use href="#i-replay"/></svg></div><div class="grow"><h4>重新觀看新手導覽</h4><p>忘記功能怎麼用？點這裡</p></div></button>
+            <button class="action press" data-go="identify"><div class="ib danger"><svg class="ic24"><use href="#i-swap"/></svg></div><div class="grow"><h4>切換身分</h4><p>登出並回到身分選擇</p></div></button>
+          </div>
+        </div>
+
+        <button class="mic press" aria-label="語音助理" data-overlay="assistant"><svg class="ic24"><use href="#i-mic"/></svg></button>
+        <button class="helppill press" data-overlay="help"><svg class="ic24" style="width:20px;height:20px"><use href="#i-help"/></svg>怎麼用？</button>
+
+        <div class="navwrap">
+          <nav class="nav" id="nav" aria-label="長輩端主選單">
+            <span class="ind" id="ind"></span>
+            <button data-tab="home" class="on"><span class="icw"><svg class="ic" viewBox="0 0 24 24"><path class="s" d="M3.5 10.2 12 3.5l8.5 6.7V19a1.5 1.5 0 0 1-1.5 1.5h-4.5v-6h-5v6H5A1.5 1.5 0 0 1 3.5 19z"/></svg></span><span>首頁</span></button>
+            <button data-tab="phone"><span class="icw"><svg class="ic" viewBox="0 0 24 24"><path class="s" d="M6.6 3.5h2.6l1.4 4.1-2 1.6a12 12 0 0 0 6.2 6.2l1.6-2 4.1 1.4v2.6a2 2 0 0 1-2.1 2.1A15 15 0 0 1 4.5 5.6a2 2 0 0 1 2.1-2.1z"/></svg></span><span>電話</span></button>
+            <button data-tab="pet"><span class="icw"><svg class="ic" viewBox="0 0 24 24"><path class="s" d="M6.2 8.6 5 3.8l4.4 2.4zM17.8 8.6 19 3.8l-4.4 2.4z"/><circle class="s" cx="12" cy="13" r="7.6"/><ellipse class="d" cx="12" cy="15" rx="3.2" ry="2.3"/><circle class="dd" cx="10.9" cy="15" r=".75"/><circle class="dd" cx="13.1" cy="15" r=".75"/></svg></span><span>小豬</span></button>
+            <button data-tab="chat"><span class="icw"><svg class="ic" viewBox="0 0 24 24"><path class="s" d="M6 3.8h12a2.3 2.3 0 0 1 2.3 2.3v8.6a2.3 2.3 0 0 1-2.3 2.3h-6.3L7 20.5V17H6a2.3 2.3 0 0 1-2.3-2.3V6.1A2.3 2.3 0 0 1 6 3.8z"/><circle class="dd" cx="8.5" cy="10.4" r="1.2"/><circle class="dd" cx="12" cy="10.4" r="1.2"/><circle class="dd" cx="15.5" cy="10.4" r="1.2"/></svg></span><span>聊天</span></button>
+            <button data-tab="profile"><span class="icw"><svg class="ic" viewBox="0 0 24 24"><circle class="s" cx="12" cy="8" r="4"/><path class="s" d="M4.5 20.5a7.5 7.5 0 0 1 15 0z"/></svg></span><span>我的</span></button>
+          </nav>
+        </div>
+      </section>
+
+      <!-- ============ 新聞 ============ -->
+      <section class="view" id="news" hidden>
+        <div class="nl">
+          <div class="nl-top">
+            <button class="glassbtn press" style="width:52px;height:52px;justify-content:center" data-go="elder:home" aria-label="返回"><svg class="ic24"><use href="#i-back"/></svg></button>
+            <div class="grow"></div>
+            <button class="glassbtn press" style="padding:12px 18px;font-size:17px" data-summary><svg class="ic24" style="width:20px;height:20px"><use href="#i-spark"/></svg>重點整理</button>
+          </div>
+          <h1 class="nl-title">代誌<br>報給你知</h1>
+          <div class="nowcard">
+            <div class="row" style="justify-content:space-between"><span style="font-weight:700;font-size:17px">正在播放</span><span class="eq" id="eq"><i></i><i></i><i></i><i></i><i></i><i></i></span></div>
+            <h3 id="nowTitle">寒露將至早晚溫差大，醫師提醒長輩外出加件薄外套</h3>
+            <div class="meta" id="nowMeta">第 1／12 則・健康・2026-10-01</div>
+          </div>
+          <div class="ctrls">
+            <button class="sm press" data-track="-1" aria-label="上一則"><svg class="ic24" style="width:26px;height:26px"><use href="#i-prev"/></svg></button>
+            <button class="lg press" id="playBtn" aria-label="播放"><svg class="ic24" style="width:34px;height:34px"><use href="#i-play"/></svg></button>
+            <button class="sm press" data-track="1" aria-label="下一則"><svg class="ic24" style="width:26px;height:26px"><use href="#i-next"/></svg></button>
+          </div>
+          <div class="subs" id="subs"></div>
+          <button class="uphint press" data-npanel="open"><svg class="ic24"><use href="#i-up"/></svg>往上滑看更多新聞</button>
+        </div>
+        <div class="npanel" id="npanel">
+          <button class="grab" aria-label="拖曳或點一下收起"></button>
+          <div class="catrow" id="catrow"><button class="on">全部</button><button>健康</button><button>生活</button><button>國際</button><button>財經</button></div>
+          <div class="nlist" id="nlist"></div>
+        </div>
+        <div class="listenpig"><div class="bub"><small>正在唸：</small><span id="pigSay">寒露將至早晚溫差大…</span></div><button class="ear press" data-summary aria-label="小豬幫您整理重點">聽</button></div>
+      </section>
+
+      <section class="view" id="article" hidden>
+        <div class="ahero"><button class="back press" data-go="news"><svg class="ic24"><use href="#i-back"/></svg>返回</button><span class="note" style="position:absolute;right:14px;top:58px">示意圖</span></div>
+        <div class="abody">
+          <span class="tag" style="align-self:flex-start;background:var(--brand-container);color:var(--brand-strong)">健康</span>
+          <h1 class="h1" style="font-size:28px">寒露將至早晚溫差大，醫師提醒長輩外出加件薄外套</h1>
+          <span style="color:var(--text-3);font-size:16px">2026-10-01・中央社</span>
+          <button class="btn filled xl press" data-blob data-go="news"><svg class="ic24"><use href="#i-vol"/></svg>聆聽新聞</button>
+          <p class="txt">中央氣象署表示，下週三進入寒露節氣，各地早晚氣溫明顯下降，白天與夜間溫差可能超過 8 度。</p>
+          <p class="txt">醫師提醒，長輩血管對溫度變化較敏感，清晨出門運動前可先在室內暖身，並多帶一件薄外套，洗澡水溫也不宜過高。</p>
+        </div>
+      </section>
+
+      <!-- ============ 朋友圈 ============ -->
+      <section class="view" id="moments" hidden>
+        <div class="topbar"><button class="iconbtn flat press" data-go="elder:phone" aria-label="返回"><svg class="ic24"><use href="#i-back"/></svg></button><h1 class="h1">朋友圈</h1></div>
+        <div class="stack">
+          <button class="btn filled xl press" data-blob data-sheet="post"><svg class="ic24"><use href="#i-plus"/></svg>分享到朋友圈</button>
+          <article class="card post">
+            <div class="head"><div class="avatar">美</div><div class="grow"><b class="ellipsis" style="display:block">美玉</b><small>15 分鐘前</small></div></div>
+            <p class="content">今天跟社區的姊妹去公園健走，走了快五千步！天氣好舒服。</p>
+            <div class="pimg" style="background:linear-gradient(160deg,#BFE3C9,#5E9C78)"><span class="note">示意照片</span></div>
+            <div class="pacts"><button class="press" data-like><svg class="ic24"><use href="#i-heart"/></svg>讚 <span>3</span></button><button class="press" data-sheet="comments"><svg class="ic24"><use href="#i-comment"/></svg>留言 2</button></div>
+          </article>
+          <article class="card post">
+            <div class="head"><div class="avatar warm">金</div><div class="grow"><b class="ellipsis" style="display:block">金花</b><small>昨天</small></div></div>
+            <p class="content">孫子幫我裝了這個 App，以後可以常常跟大家聊天了。</p>
+            <div class="pacts"><button class="press" data-like><svg class="ic24"><use href="#i-heart"/></svg>讚 <span>8</span></button><button class="press" data-sheet="comments"><svg class="ic24"><use href="#i-comment"/></svg>留言 5</button></div>
+          </article>
+          <p style="text-align:center;color:var(--text-3);font-size:16px;margin:4px 0 0">已經到底囉</p>
+        </div>
+      </section>
+
+      <!-- ============ 加好友 ============ -->
+      <section class="view" id="addfriend" hidden>
+        <div class="topbar"><button class="iconbtn flat press" data-go="elder:phone" aria-label="返回"><svg class="ic24"><use href="#i-back"/></svg></button><h1 class="h1">加朋友</h1></div>
+        <div class="segbig small" data-seg><span class="thumb"></span><button class="on" data-pane="qr"><svg class="ic24"><use href="#i-qr"/></svg>我的條碼</button><button data-pane="scan"><svg class="ic24"><use href="#i-scan"/></svg>掃描</button><button data-pane="id"><svg class="ic24"><use href="#i-search"/></svg>輸入 ID</button></div>
+        <div class="stack" style="margin-top:16px;text-align:center" data-pane-body="qr">
+          <div class="card stack" style="align-items:center;gap:12px">
+            <div class="qr" style="width:190px;height:190px"><canvas class="qrc" data-seed="7172" width="29" height="29"></canvas></div>
+            <div class="bigid">K7Q2</div>
+          </div>
+          <p class="body">把這組號碼唸給朋友聽，或讓朋友掃描上面的條碼</p>
+        </div>
+        <div class="stack" style="margin-top:16px" data-pane-body="scan" hidden>
+          <p class="body" style="text-align:center">把朋友的 Uban 條碼對準框框</p>
+          <div class="scanbox"><div class="frame"><i></i><i></i><i></i><i></i><div class="line"></div></div></div>
+          <button class="btn tonal press" data-blob data-toast="找到朋友：美玉">模擬掃到條碼</button>
+        </div>
+        <div class="stack" style="margin-top:16px" data-pane-body="id" hidden>
+          <p class="body" style="text-align:center">輸入朋友的 4 碼 ID</p>
+          <input class="input idinput" id="fid" maxlength="4" value="M3T8" aria-label="朋友 ID">
+          <button class="btn filled xl press" data-blob id="searchBtn">搜尋</button>
+          <div class="card" id="fresult" hidden>
+            <div class="person"><div class="avatar info" style="width:72px;height:72px">金</div><div class="grow"><h3 class="ellipsis">金花</h3><p>ID：M3T8</p></div></div>
+            <button class="btn filled press" data-blob id="sendReq" style="margin-top:14px"><svg class="ic24"><use href="#i-plus"/></svg>加好友</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 農民曆 ============ -->
+      <section class="view" id="almanac" hidden style="padding:0;display:flex;flex-direction:column">
+        <div class="alm-scroll" style="flex:1;overflow-y:auto;scrollbar-width:none;padding:56px 22px 14px">
+        <div class="topbar"><button class="iconbtn flat press" data-go="elder:home" aria-label="返回"><svg class="ic24"><use href="#i-back"/></svg></button><h1 class="h1 grow">農民曆</h1><button class="btn tonal press" style="width:auto;min-height:52px;font-size:17px" id="ttsBtn"><svg class="ic24"><use href="#i-vol"/></svg><span>唸給我聽</span></button></div>
+        <div class="stack">
+          <div class="card" style="padding:0">
+            <div class="alm-head"><span>歲次丙午年（馬）</span><span class="badge" style="background:rgba(255,255,255,.2);color:#fff">今天</span></div>
+            <div class="alm-day">
+              <div style="text-align:center"><div style="font-size:20px;font-weight:700">十月</div><div class="d">1</div><span class="tag" style="margin-top:6px">星期三</span></div>
+              <div class="stack" style="gap:8px"><span class="tag" style="align-self:flex-start">農曆・丁酉月</span><div style="font-size:28px;font-weight:900">八月廿一</div><span class="tag" style="align-self:flex-start;background:var(--brand-container);color:var(--brand-strong)">寒露 還有 7 天</span><span style="color:var(--text-2);font-size:17px">戊申日</span></div>
+            </div>
+          </div>
+          <div class="card" style="background:var(--brand-soft)">
+            <div class="h2" style="font-size:20px">平安吉祥日</div>
+            <p class="body" style="margin-top:4px">距離【重陽節】還有 17 天</p>
+          </div>
+          <div class="card">
+            <div class="sec-head"><span class="h2" style="font-size:20px">今日宜忌</span><span style="font-size:14px;color:var(--text-3)">點一下看白話解說</span></div>
+            <div class="row" style="align-items:flex-start;margin-top:12px"><span class="badge" style="background:var(--brand-fill);color:var(--on-brand);font-size:16px">宜</span><div class="yi"><button class="good press" data-meaning="祭祀：拜拜、祭拜祖先">祭祀</button><button class="good press" data-meaning="出行：出門遠行、旅遊">出行</button><button class="good press" data-meaning="會友：拜訪親友、聚會">會友</button></div></div>
+            <div class="row" style="align-items:flex-start;margin-top:12px"><span class="badge" style="background:var(--danger);color:#fff;font-size:16px">忌</span><div class="yi"><button class="bad press" data-meaning="動土：開工挖地、蓋房子">動土</button><button class="bad press" data-meaning="安葬：辦理下葬">安葬</button></div></div>
+          </div>
+          <div class="card">
+            <div class="h2" style="font-size:20px;margin-bottom:10px">吉神方位</div>
+            <div class="row" style="flex-wrap:wrap;gap:8px"><span class="tag">財神 正北</span><span class="tag">喜神 東南</span><span class="tag">福神 西南</span></div>
+            <div class="tag" style="margin-top:10px;background:var(--warm-container);color:var(--warm)">今日沖煞：沖虎 煞南</div>
+          </div>
+        </div>
+        </div>
+        <div class="alm-bar"><button class="press" data-toast="前一日"><svg class="ic24" style="width:20px;height:20px"><use href="#i-back"/></svg>前一日</button><button class="now press" disabled>回今天</button><button class="press" aria-label="選日期" data-toast="選擇日期"><svg class="ic24"><use href="#i-cal"/></svg></button><button class="press" data-toast="後一日">後一日<svg class="ic24" style="width:20px;height:20px"><use href="#i-chev"/></svg></button></div>
+      </section>
+
+      <!-- ============ 權限引導 ============ -->
+      <section class="view" id="permguide" hidden>
+        <div class="topbar"><button class="iconbtn flat press" data-go="elder:home" aria-label="返回"><svg class="ic24"><use href="#i-back"/></svg></button><h1 class="h1" style="font-size:24px">鎖屏與背景權限</h1></div>
+        <div class="stack">
+          <p class="body" style="font-size:19px">這支手機需要多開兩個設定，家人打來時，電話畫面才能在鎖住螢幕時跳出來。</p>
+          <div class="card stack" style="gap:12px">
+            <div class="row"><div class="action" style="padding:0;box-shadow:none;width:auto;background:none"><div class="ib warm"><svg class="ic24"><use href="#i-lock"/></svg></div></div><div class="grow"><b style="font-size:19px">鎖定螢幕顯示</b><p class="body" style="font-size:16px">鎖住時也能看到來電</p></div></div>
+            <div class="row"><div class="action" style="padding:0;box-shadow:none;width:auto;background:none"><div class="ib warm"><svg class="ic24"><use href="#i-bell"/></svg></div></div><div class="grow"><b style="font-size:19px">後台彈出介面</b><p class="body" style="font-size:16px">讓來電畫面可以自己跳出</p></div></div>
+            <div style="background:var(--surface-2);border-radius:16px;padding:12px 14px;font-size:16px;line-height:1.6">設定 → 應用程式 → Uban → 其他權限</div>
+          </div>
+          <div class="card" style="background:var(--warm-container);color:var(--warm);font-weight:700;font-size:17px">需要您手動確認，系統不會告訴我們有沒有開好</div>
+          <button class="btn filled xl press" data-blob data-toast="開啟系統設定">前往設定</button>
+          <div class="row" style="gap:10px"><button class="btn ghost press" data-go="elder:home">稍後再說</button><button class="btn outline press" data-go="elder:home">我已完成設定</button></div>
+        </div>
+      </section>
+
+      <!-- ============ 狀態範例 ============ -->
+      <section class="view" id="states" hidden>
+        <div class="topbar"><button class="iconbtn flat press" data-go="elder:home" aria-label="返回"><svg class="ic24"><use href="#i-back"/></svg></button><h1 class="h1">狀態範例</h1></div>
+        <div class="stack">
+          <span class="label">讀取中</span>
+          <div class="card stack" style="gap:12px"><div class="row"><div class="sk" style="width:56px;height:56px;border-radius:50%"></div><div class="grow stack" style="gap:8px"><div class="sk" style="height:18px;width:60%"></div><div class="sk" style="height:14px;width:40%"></div></div></div><div class="sk" style="height:64px;border-radius:20px"></div></div>
+          <span class="label">還沒有資料</span>
+          <div class="card empty"><div class="big"><svg class="ic24"><use href="#i-users"/></svg></div><b style="font-size:22px">還沒有朋友</b><p class="body">點上面的「加好友」開始交朋友吧</p></div>
+          <span class="label">連不上網路</span>
+          <div class="card empty"><div class="big" style="background:var(--danger-container);color:var(--danger)"><svg class="ic24"><use href="#i-wifioff"/></svg></div><b style="font-size:20px">目前無法取得您的好友資料</b><p class="body">請檢查網路後再試一次</p><button class="btn filled press" data-blob style="max-width:200px" data-toast="重新讀取中…">重試</button></div>
+        </div>
+      </section>
+
+      <!-- ============ 通話房（長輩） ============ -->
+      <section class="view call" id="call" hidden data-state="video">
+        <div class="remote" data-show="video emergency"><svg class="figure"><use href="#i-figure"/></svg><span class="note">示意畫面</span></div>
+        <div class="cctv-room" data-show="cctv"><span class="note">示意畫面（本機鏡頭）</span></div>
+        <div class="top" data-show="voice video emergency">
+          <span class="pillg emg" data-show="emergency">緊急通話</span>
+          <span class="pillg"><span class="rec"></span><span data-timer>00:00</span></span>
+          <div class="grow"></div>
+        </div>
+        <div class="top" data-show="cctv"><div class="grow"></div><button class="pillg press" data-go="identify"><svg class="ic24" style="width:20px;height:20px"><use href="#i-exit"/></svg>退出監視機</button></div>
+        <div data-show="voice">
+          <div class="vtile" style="top:110px;bottom:350px"><div class="avatar">璿</div><h3>宇璿</h3><span style="opacity:.7;font-size:16px">兒子</span></div>
+          <div class="vtile me" style="top:calc(100% - 330px);height:180px"><div class="avatar">秀</div><b style="font-size:18px">您</b><span class="mute" data-mutebadge><svg class="ic24" style="width:20px;height:20px;color:#fff"><use href="#i-mic"/></svg></span></div>
+        </div>
+        <div class="dial" data-show="dialing idle"><div class="pulse"><div class="avatar">璿</div></div><h2>宇璿</h2><p data-show="dialing" class="dots3">正在呼叫家人</p><p data-show="idle">按下面的按鈕打給家人</p></div>
+        <div class="pip" id="pip" data-show="video emergency"><div class="off"><svg class="ic24" style="width:26px;height:26px"><use href="#i-cam"/></svg>鏡頭已關閉</div><span class="me">您</span></div>
+        <div class="ctlbar" data-show="dialing voice video emergency">
+          <button class="ctl press" data-ctl="speaker" aria-label="切換聽筒或擴音"><svg class="ic24"><use href="#i-vol"/></svg></button>
+          <button class="ctl press" data-ctl="mic" aria-label="麥克風"><svg class="ic24"><use href="#i-mic"/></svg><span class="slash"></span></button>
+          <button class="ctl press" data-ctl="cam" aria-label="鏡頭"><svg class="ic24"><use href="#i-cam"/></svg><span class="slash"></span></button>
+          <button class="ctl press" data-ctl="flip" aria-label="翻轉鏡頭"><svg class="ic24"><use href="#i-flip"/></svg></button>
+          <button class="ctl hang press" data-go="elder:phone" aria-label="掛斷"><svg class="ic24" style="width:30px;height:30px"><use href="#i-hang"/></svg></button>
+        </div>
+        <div class="idle-call" data-show="idle"><button class="btn xl press" data-blob data-go="call:dialing" style="background:#6FCBAA;color:#062A1D"><svg class="ic24"><use href="#i-phone"/></svg>呼叫家人</button></div>
+        <div class="cctv-label" data-show="cctv"><span class="livedot" style="background:#FF6B6E"></span><div class="grow"><b>監視中</b><small>推播連線正常</small></div></div>
+      </section>
+
+      <!-- ============ 通話房（家屬） ============ -->
+      <section class="view call" id="fcall" hidden data-state="video">
+        <div class="remote" data-show="video monitor"><svg class="figure" style="width:260px;height:360px"><use href="#i-figure"/></svg><span class="note">示意畫面（長輩那邊）</span></div>
+        <div class="top" data-show="video voice">
+          <span class="pillg"><svg class="ic24" style="width:18px;height:18px"><use href="#i-video"/></svg><span data-ftype>視訊通話</span></span>
+          <span class="pillg"><span class="rec"></span><span data-timer>00:00</span></span>
+        </div>
+        <div class="top" data-show="monitor"><button class="pillg press" data-go="identify"><svg class="ic24" style="width:20px;height:20px"><use href="#i-back"/></svg>返回</button><div class="grow"></div><span class="pillg">客廳</span></div>
+        <div data-show="voice"><div class="vtile" style="top:110px;bottom:180px"><div class="avatar warm">秀</div><h3>秀枝阿嬤</h3><span style="opacity:.7;font-size:16px">語音通話中</span></div></div>
+        <div class="pip" id="fpip" data-show="video" style="top:auto"><div class="off"><svg class="ic24" style="width:26px;height:26px"><use href="#i-cam"/></svg>鏡頭已關閉</div><span class="me">您</span></div>
+        <div class="ctlbar">
+          <button class="ctl press" data-ctl="speaker" aria-label="切換聽筒或擴音"><svg class="ic24"><use href="#i-vol"/></svg></button>
+          <button class="ctl press" data-ctl="mic" aria-label="麥克風"><svg class="ic24"><use href="#i-mic"/></svg><span class="slash"></span></button>
+          <button class="ctl hang press" data-show="video voice" data-go="identify" aria-label="掛斷"><svg class="ic24" style="width:30px;height:30px"><use href="#i-hang"/></svg></button>
+          <button class="ctl press" data-show="video voice" data-ctl="cam" aria-label="鏡頭"><svg class="ic24"><use href="#i-cam"/></svg><span class="slash"></span></button>
+          <button class="ctl press" data-show="video voice" data-ctl="flip" aria-label="翻轉鏡頭"><svg class="ic24"><use href="#i-flip"/></svg></button>
+        </div>
+      </section>
+
+      <!-- ============ 浮層 ============ -->
+      <div class="scrim" id="scrim" data-close></div>
+
+      <div class="sheet" id="sh-help" role="dialog" aria-label="怎麼用">
+        <div class="grab"></div>
+        <div class="h2" style="margin-bottom:12px">需要什麼幫忙？</div>
+        <div class="stack" style="gap:10px">
+          <button class="action press" data-blob data-overlay="assistant"><div class="ib"><svg class="ic24"><use href="#i-mic"/></svg></div><div class="grow"><h4>用說的問小嘎</h4><p>直接說出您想做什麼</p></div></button>
+          <button class="action press" data-blob data-tutorial="home"><div class="ib"><svg class="ic24"><use href="#i-replay"/></svg></div><div class="grow"><h4>看這頁的教學</h4><p>一步一步帶您認識按鈕</p></div></button>
+          <button class="action press" data-blob data-go="elder:phone"><div class="ib"><svg class="ic24"><use href="#i-phone"/></svg></div><div class="grow"><h4>打電話給家人</h4><p>直接到電話頁</p></div></button>
+        </div>
+      </div>
+
+      <div class="sheet" id="sh-tasks" role="dialog" aria-label="今天要做的事">
+        <div class="grab"></div>
+        <div class="sec-head"><span class="h2">今天要做的事</span><span class="tag" data-taskcount>3／8</span></div>
+        <div id="taskgroups" style="margin-top:6px"></div>
+      </div>
+
+      <div class="sheet" id="sh-post" role="dialog" aria-label="分享到朋友圈">
+        <div class="grab"></div>
+        <div class="h2">分享到朋友圈</div>
+        <p class="body" style="font-size:16px;margin:2px 0 12px">好友都看得到這則貼文</p>
+        <div class="stack" style="gap:12px">
+          <textarea class="input" rows="3" id="postText" placeholder="想說些什麼呢？" maxlength="200" style="font-size:19px"></textarea>
+          <button class="photo-add press" data-toast="從相簿挑一張照片"><svg class="ic24"><use href="#i-image"/></svg>加張照片（選填）</button>
+          <button class="btn filled xl press" data-blob data-close data-toast="發佈成功">發佈</button>
+        </div>
+      </div>
+
+      <div class="sheet" id="sh-comments" role="dialog" aria-label="留言">
+        <div class="grab"></div>
+        <div class="h2" style="margin-bottom:12px">留言（2）</div>
+        <div class="stack" style="gap:10px">
+          <div class="cm"><b>金花</b><p>好厲害！下次約我一起去</p></div>
+          <div class="cm"><b>宇璿</b><p>媽，記得多喝水喔</p></div>
+          <div class="row" style="gap:10px;margin-top:6px"><input class="input grow" placeholder="寫下想說的話⋯⋯" aria-label="留言內容"><button class="btn filled press" data-blob style="width:auto;padding:0 22px" data-close data-toast="留言已送出">送出</button></div>
+        </div>
+      </div>
+
+      <div class="sheet" id="sh-assistant" role="dialog" aria-label="小嘎語音助理">
+        <div class="grab"></div>
+        <div class="row" style="margin-bottom:10px"><div class="avatar" style="width:48px;height:48px;font-size:20px">嘎</div><div class="grow"><b style="font-size:19px">小嘎</b><div style="font-size:14px;color:var(--text-2)">AI 陪伴助理</div></div><button class="iconbtn flat press" data-close aria-label="關閉"><svg class="ic24"><use href="#i-close"/></svg></button></div>
+        <div class="row" style="justify-content:center;padding:6px 0 14px"><span class="wave" style="height:34px;gap:5px"><i></i><i></i><i></i><i></i><i></i></span></div>
+        <div class="chat" style="gap:10px;max-height:180px;overflow-y:auto">
+          <div class="bub ai" style="font-size:19px">怎麼了嗎，秀枝阿嬤？</div>
+          <div class="bub me" style="font-size:19px">今天台北天氣如何？</div>
+        </div>
+        <div class="confirm" style="margin-top:12px"><b style="font-size:18px;color:var(--brand-strong)">我聽到您說的是上面這句話，這樣對嗎？</b><div class="row" style="gap:10px;margin-top:10px"><button class="btn outline press" data-toast="請再說一次">重新說一次</button><button class="btn filled press" data-blob data-toast="送出給小嘎">送出</button></div></div>
+        <div class="qchips" style="margin-top:12px"><button class="press">今天天氣如何</button><button class="press">讀最新的新聞</button><button class="press">想聽輕鬆老歌</button><button class="press">陪我聊聊天</button></div>
+      </div>
+
+      <div class="dialog" id="dl-reminder" role="dialog" aria-label="用藥提醒">
+        <div class="row" style="justify-content:space-between"><span class="badge" style="font-size:15px;padding:6px 12px"><svg class="ic24" style="width:18px;height:18px"><use href="#i-pill"/></svg>用藥提醒</span><button class="iconbtn flat press" data-close aria-label="關閉" style="width:44px;height:44px"><svg class="ic24"><use href="#i-close"/></svg></button></div>
+        <h2 style="font-size:30px;font-weight:900;margin:14px 0 8px">降血壓藥 1 顆</h2>
+        <span class="tag">今日 12:30</span>
+        <div style="background:var(--surface-2);border-radius:18px;padding:14px;margin-top:14px;font-size:18px;line-height:1.55"><b style="color:var(--brand-strong)">子女叮嚀：</b>飯後吃，配溫開水</div>
+        <div style="display:grid;grid-template-columns:2fr 3fr;gap:10px;margin-top:18px"><button class="btn outline press" data-close>稍後提醒</button><button class="btn filled press" data-blob data-close data-checkin-next>我做好了！打卡</button></div>
+      </div>
+
+      <div class="dialog" id="dl-heartbeat" role="dialog" aria-label="主動關懷">
+        <span class="badge" style="background:var(--brand-container);color:var(--brand-strong);font-size:15px;padding:6px 12px"><svg class="ic24" style="width:18px;height:18px"><use href="#i-sun"/></svg>溫馨問候</span>
+        <p style="font-size:26px;font-weight:700;line-height:1.5;margin:16px 0 20px">阿嬤，下午有點熱，記得喝杯水、休息一下喔！</p>
+        <button class="btn filled xl press" data-blob data-close>好喔，我知道了</button>
+      </div>
+
+      <div class="dialog" id="dl-summary" role="dialog" aria-label="重點整理">
+        <div class="row"><img class="sumpig" src="img/pet/pink_front_2.png" alt=""><div class="grow"><b style="font-size:22px">小豬幫您整理</b><div style="font-size:15px;color:var(--text-2)">三個重點</div></div></div>
+        <ol class="sum" style="padding-left:24px;margin:14px 0">
+          <li>下週三開始變冷</li><li>早晚溫差超過 8 度</li><li>出門多帶一件外套</li>
+        </ol>
+        <button class="btn filled press" data-blob data-close>我知道了</button>
+      </div>
+
+      <div class="dialog" id="dl-meaning" role="dialog" aria-label="白話解說">
+        <b style="font-size:24px" data-meaning-t>祭祀</b>
+        <p class="body" style="margin:10px 0 18px;font-size:20px" data-meaning-b></p>
+        <button class="btn filled press" data-close>知道了</button>
+      </div>
+
+      <div class="callmodal" id="incoming" role="dialog" aria-label="家屬來電">
+        <div style="display:flex;flex-direction:column;align-items:center;text-align:center"><div class="pulse"><div class="avatar">璿</div></div><h2>宇璿 來電</h2><p>您的家人正在呼叫您！</p></div>
+        <div class="callacts"><button class="btn danger press" data-close><svg class="ic24" style="width:32px;height:32px"><use href="#i-hang"/></svg>拒接</button><button class="btn accept press" data-blob data-go="call:video"><svg class="ic24" style="width:30px;height:30px"><use href="#i-phone"/></svg>接聽</button></div>
+      </div>
+
+      <div class="evo" id="evo">
+        <div class="rays"></div>
+        <div class="box">
+          <div class="pigs"><img class="old" src="img/pet/pink_front_2.png" alt=""><img class="new" src="img/pet/pink_front_3.png" alt="第 3 階小豬"></div>
+          <h2>長大到第 3 階了！</h2>
+          <p>福氣小豬變得更有精神了</p>
+          <button class="btn filled xl press" data-blob data-evo-close>太棒了</button>
+        </div>
+      </div>
+
+      <div class="tut" id="tut">
+        <svg class="mask" id="tutMask"><defs><mask id="tm"><rect width="100%" height="100%" fill="#fff"/><rect id="tutHole" rx="20" fill="#000"/></mask></defs><rect width="100%" height="100%" fill="rgba(0,0,0,.75)" mask="url(#tm)"/></svg>
+        <div class="hole-ring" id="tutRing"></div>
+        <div class="tutcard" id="tutCard">
+          <div class="row" style="justify-content:space-between"><div class="dots" id="tutDots"></div><span style="font-size:14px;color:var(--text-3)" id="tutStep"></span></div>
+          <h3 id="tutT"></h3><p id="tutB"></p>
+          <div class="acts"><button class="btn outline press" id="tutSkip">跳過教學</button><button class="btn filled press" data-blob id="tutNext">下一步</button></div>
+        </div>
+      </div>
+
+      <div class="streakfx" id="streakfx" role="dialog" aria-label="連續完成慶祝">
+        <canvas id="confetti"></canvas>
+        <div class="sbox">
+          <div class="flame big"><svg viewBox="0 0 24 24"><use href="#i-flame"/></svg></div>
+          <div class="roll"><span class="from" data-sfrom>6</span><span class="to" data-sto>7</span></div>
+          <h2>連續 <span data-sto2>7</span> 天全部完成！</h2>
+          <div class="week" data-week></div>
+          <div class="reward">
+            <img src="img/carrot.svg" alt="">
+            <div class="grow"><b>今天打卡賺到 <span data-earned>5</span> 根胡蘿蔔</b><p>拿去餵小豬吧</p></div>
+          </div>
+          <button class="btn filled xl press" data-blob data-feedcarrot>去餵小豬</button>
+          <button class="btn ghost press" data-streak-close style="color:#fff">好</button>
+        </div>
+      </div>
+      <div class="listen" id="listen"><span class="wave"><i></i><i></i><i></i><i></i><i></i></span>小嘎在聽，請說話…</div>
+      <div class="toast" id="toast"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="ui.js"></script>
+
+</body></html>

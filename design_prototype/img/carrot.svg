@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- 葉子 -->
+  <g fill="#62B85A" stroke="#4E9E49" stroke-width="1.4" stroke-linejoin="round">
+    <path d="M31.5 24C26 16 19 12.5 13 13c1 6.5 7.5 11.5 18 12z"/>
+    <path d="M33 24C38 15 45.5 11.5 51 12.5c-1.5 6.5-8.5 11-18 12.5z"/>
+    <path d="M32 24.5C30.5 15 31.5 8.5 32.5 5c2.5 4 4 11 2.5 19.5z"/>
+  </g>
+  <!-- 身體 -->
+  <path d="M20.5 25.5C24 21 40 21 43.5 25.5C41 40 35.5 53 32 58C28.5 53 23 40 20.5 25.5Z"
+        fill="#F38B2E" stroke="#DC6F18" stroke-width="2" stroke-linejoin="round"/>
+  <!-- 左側高光 -->
+  <path d="M26 28C24.5 31 24.5 37 27 44.5C28.8 49.8 30.2 52.5 31 55C27 48.5 23.5 37 26 28Z"
+        fill="#FBB16A" opacity=".85"/>
+  <!-- 橫紋 -->
+  <g stroke="#DC6F18" stroke-width="1.8" stroke-linecap="round" opacity=".6" fill="none">
+    <path d="M25.5 31.5 31 33.5"/>
+    <path d="M26.5 39 32.5 41"/>
+    <path d="M28.5 46 33.5 47.5"/>
+  </g>
+</svg>
