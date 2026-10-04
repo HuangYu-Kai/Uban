@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../services/friend_service.dart';
-import '../theme/app_theme.dart';
+import '../widgets/ui/ui.dart';
+import 'elder_tabs/widgets/elder_social_widgets.dart';
 import 'widgets/friend_avatar.dart';
 
-/// 長輩「加朋友」畫面（第四十一輪 item 3）。
+/// 長輩「加好友」畫面（第四十一輪 item 3）。
 ///
 /// 三種加好友方式（我的 QR 碼／掃描朋友／輸入 ID）在同一個畫面內用分頁切換，
 /// 刻意不做成多層跳轉（使用者要求 UX 不過度複雜，像 LINE 的加好友頁）。
@@ -181,101 +181,40 @@ class _ElderAddFriendScreenState extends State<ElderAddFriendScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final c = UbanColors.of(context);
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      appBar: AppBar(
-        toolbarHeight: 70,
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: Text(
-          '加朋友',
-          style: GoogleFonts.notoSansTc(
-            fontSize: 26,
-            fontWeight: FontWeight.w900,
-            color: AppColors.textPrimary,
-          ),
-        ),
-      ),
+      backgroundColor: c.bg,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _buildModeSwitcher(),
-              const SizedBox(height: 20),
-              Expanded(
-                child: SingleChildScrollView(
-                  child: _buildModeBody(),
-                ),
+        bottom: false,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 14, 16, 12),
+              child: UbanTopBar(title: '加好友'),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: _buildModeSwitcher(),
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+                child: _buildModeBody(),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 
+  /// 三模式切換：外觀換成 [UbanSegmented]，仍呼叫既有 [_switchMode]。
   Widget _buildModeSwitcher() {
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: const Color(0xFFE2E8F0),
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Row(
-        children: [
-          _modeTab(_AddFriendMode.myQr, Icons.qr_code_rounded, '我的 QR 碼'),
-          _modeTab(_AddFriendMode.scan, Icons.qr_code_scanner_rounded, '掃描朋友'),
-          _modeTab(_AddFriendMode.search, Icons.pin_rounded, '輸入 ID'),
-        ],
-      ),
-    );
-  }
-
-  Widget _modeTab(_AddFriendMode mode, IconData icon, String label) {
-    final bool selected = _mode == mode;
-    return Expanded(
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => _switchMode(mode),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          decoration: BoxDecoration(
-            color: selected ? Colors.white : Colors.transparent,
-            borderRadius: BorderRadius.circular(14),
-            boxShadow: selected
-                ? [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.08),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ]
-                : null,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon,
-                  size: 26,
-                  color: selected ? AppColors.primaryDark : AppColors.textHint),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                  color: selected ? AppColors.primaryDark : AppColors.textHint,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+    return UbanSegmented(
+      labels: const ['我的條碼', '掃描', '輸入 ID'],
+      index: _mode.index,
+      onChanged: (i) => _switchMode(_AddFriendMode.values[i]),
     );
   }
 
@@ -290,57 +229,63 @@ class _ElderAddFriendScreenState extends State<ElderAddFriendScreen> {
     }
   }
 
-  // ── 我的 QR 碼 ──────────────────────────────────────────
-  Widget _buildMyQrBody() {
-    if (_isLoadingMyId) {
-      return const Padding(
+  Widget _buildLoadingBlock() => const Padding(
         padding: EdgeInsets.symmetric(vertical: 60),
         child: Center(child: CircularProgressIndicator()),
       );
-    }
-    if (_myElderId == null) {
-      return _buildInlineErrorBlock(
-        '目前無法取得您的好友 ID，請檢查網路後重試',
-        _loadMyElderId,
+
+  Widget _buildIdUnavailable() => ElderErrorBlock(
+        message: '目前無法取得您的好友 ID，請檢查網路後重試',
+        onRetry: _loadMyElderId,
       );
-    }
+
+  // ── 我的條碼 ──────────────────────────────────────────
+  Widget _buildMyQrBody() {
+    if (_isLoadingMyId) return _buildLoadingBlock();
+    if (_myElderId == null) return _buildIdUnavailable();
+    final c = UbanColors.of(context);
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Container(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(28),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.06),
-                blurRadius: 20,
-                offset: const Offset(0, 8),
+        UbanCard(
+          padding: const EdgeInsets.fromLTRB(18, 22, 18, 22),
+          child: Column(
+            children: [
+              // 設計稿 `.qr`：QR 一律白底（深色模式也一樣，掃描器才讀得到）。
+              Container(
+                width: 190,
+                height: 190,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: QrImageView(
+                  data: '$_qrPrefix$_myElderId',
+                  version: QrVersions.auto,
+                  size: 170,
+                  backgroundColor: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 14),
+              // 設計稿 `.bigid`：Poppins 52/600、字距 .18em；FittedBox 讓大字級也不溢位。
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  _myElderId!,
+                  maxLines: 1,
+                  style: ubanBrandText(52, FontWeight.w600, c.text, height: 1.2)
+                      .copyWith(letterSpacing: 52 * .18),
+                ),
               ),
             ],
-          ),
-          child: QrImageView(
-            data: '$_qrPrefix$_myElderId',
-            version: QrVersions.auto,
-            size: 200,
-            backgroundColor: Colors.white,
-          ),
-        ),
-        const SizedBox(height: 24),
-        Text(
-          _myElderId!,
-          style: GoogleFonts.inter(
-            fontSize: 56,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 10,
-            color: AppColors.primaryDark,
           ),
         ),
         const SizedBox(height: 14),
         Text(
-          '把這組號碼唸給朋友，或讓朋友掃描上面的 QR 碼',
+          '把這組號碼唸給朋友聽，或讓朋友掃描上面的條碼',
           textAlign: TextAlign.center,
-          style: ElderScale.caption,
+          style: ubanText(18, FontWeight.w500, c.text2, height: 1.55),
         ),
       ],
     );
@@ -348,27 +293,18 @@ class _ElderAddFriendScreenState extends State<ElderAddFriendScreen> {
 
   // ── 掃描朋友 ────────────────────────────────────────────
   Widget _buildScanBody() {
-    if (_isLoadingMyId) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 60),
-        child: Center(child: CircularProgressIndicator()),
-      );
-    }
-    if (_myElderId == null) {
-      return _buildInlineErrorBlock(
-        '目前無法取得您的好友 ID，請檢查網路後重試',
-        _loadMyElderId,
-      );
-    }
+    final c = UbanColors.of(context);
+    if (_isLoadingMyId) return _buildLoadingBlock();
+    if (_myElderId == null) return _buildIdUnavailable();
     if (_isSearching) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 60),
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 60),
         child: Center(
           child: Column(
             children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 12),
-              Text('查詢中…'),
+              const CircularProgressIndicator(),
+              const SizedBox(height: 12),
+              Text('查詢中…', style: ubanText(18, FontWeight.w500, c.text2)),
             ],
           ),
         ),
@@ -376,140 +312,108 @@ class _ElderAddFriendScreenState extends State<ElderAddFriendScreen> {
     }
     if (_searchResult != null) {
       return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _buildResultCard(),
-          const SizedBox(height: 16),
-          TextButton.icon(
+          const SizedBox(height: 14),
+          UbanButton(
+            label: '重新掃描',
+            icon: Icons.refresh_rounded,
+            variant: UbanButtonVariant.tonal,
             onPressed: _restartScan,
-            icon: const Icon(Icons.refresh_rounded),
-            label: Text('重新掃描', style: ElderScale.caption),
           ),
         ],
       );
     }
     if (_hasHandledScan && _searchError != null) {
       return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _buildErrorBanner(_searchError!),
-          const SizedBox(height: 20),
-          SizedBox(
-            height: ElderScale.buttonHeight,
-            child: ElevatedButton.icon(
-              onPressed: _restartScan,
-              icon: const Icon(Icons.refresh_rounded),
-              label: Text('重新掃描', style: ElderScale.button.copyWith(color: Colors.white, fontSize: 22)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-              ),
-            ),
+          ElderNoticeBanner(message: _searchError!),
+          const SizedBox(height: 18),
+          UbanButton(
+            label: '重新掃描',
+            icon: Icons.refresh_rounded,
+            size: UbanButtonSize.xl,
+            onPressed: _restartScan,
           ),
         ],
       );
     }
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          '把朋友的 Uban QR 碼對準框框',
+          '把朋友的 Uban 條碼對準框框',
           textAlign: TextAlign.center,
-          style: ElderScale.body,
+          style: ubanText(18, FontWeight.w500, c.text2, height: 1.55),
         ),
         const SizedBox(height: 12),
-        if (_scannerController != null)
-          ClipRRect(
-            borderRadius: BorderRadius.circular(24),
-            child: SizedBox(
-              height: 340,
-              child: MobileScanner(
-                controller: _scannerController!,
-                onDetect: _onScanDetect,
-              ),
+        // 設計稿 `.scanbox`：深色底、圓角 24、白色四角框＋品牌色掃描線。
+        ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: Container(
+            height: 320,
+            color: const Color(0xFF1A2420),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                if (_scannerController != null)
+                  MobileScanner(
+                    controller: _scannerController!,
+                    onDetect: _onScanDetect,
+                    errorBuilder: (context, error) => Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Text(
+                          '無法開啟相機，請到手機設定允許 Uban 使用相機',
+                          textAlign: TextAlign.center,
+                          style: ubanText(18, FontWeight.w500, Colors.white,
+                              height: 1.5),
+                        ),
+                      ),
+                    ),
+                  ),
+                const _ScanFrameOverlay(),
+              ],
             ),
           ),
+        ),
       ],
     );
   }
 
   // ── 輸入 ID ────────────────────────────────────────────
   Widget _buildSearchBody() {
-    if (_isLoadingMyId) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 60),
-        child: Center(child: CircularProgressIndicator()),
-      );
-    }
-    if (_myElderId == null) {
-      return _buildInlineErrorBlock(
-        '目前無法取得您的好友 ID，請檢查網路後重試',
-        _loadMyElderId,
-      );
-    }
+    final c = UbanColors.of(context);
+    if (_isLoadingMyId) return _buildLoadingBlock();
+    if (_myElderId == null) return _buildIdUnavailable();
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('輸入朋友的 4 碼 ID', style: ElderScale.body),
-        const SizedBox(height: 16),
-        TextField(
-          controller: _searchController,
-          keyboardType: TextInputType.text,
+        Text(
+          '輸入朋友的 4 碼 ID',
           textAlign: TextAlign.center,
-          textCapitalization: TextCapitalization.characters,
-          maxLength: 4,
-          inputFormatters: [
-            // ★ 第五十一輪：好友代碼改為 4 碼大寫英數字（後端同步排除易混淆的
-            // 0/O/1/I），允許輸入英數字並即時轉大寫，不再限制只能輸入數字。
-            FilteringTextInputFormatter.allow(RegExp(r'[0-9A-Za-z]')),
-            LengthLimitingTextInputFormatter(4),
-            TextInputFormatter.withFunction(
-              (oldValue, newValue) => newValue.copyWith(text: newValue.text.toUpperCase()),
-            ),
-          ],
-          style: GoogleFonts.inter(
-            fontSize: 40,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 10,
-            color: AppColors.textPrimary,
-          ),
-          decoration: InputDecoration(
-            counterText: '',
-            hintText: 'ABCD',
-            filled: true,
-            fillColor: Colors.white,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(18),
-              borderSide: BorderSide(color: AppColors.border),
-            ),
-          ),
+          style: ubanText(18, FontWeight.w500, c.text2, height: 1.55),
         ),
-        const SizedBox(height: 16),
-        SizedBox(
-          height: ElderScale.buttonHeight,
-          child: ElevatedButton.icon(
-            onPressed: _isSearching
-                ? null
-                : () => _performSearch(_searchController.text.trim()),
-            icon: _isSearching
-                ? const SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
-                  )
-                : const Icon(Icons.search_rounded, size: 28),
-            label: Text(
-              _isSearching ? '查詢中...' : '搜尋',
-              style: ElderScale.button.copyWith(color: Colors.white),
-            ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-            ),
-          ),
+        const SizedBox(height: 14),
+        _IdInput(controller: _searchController),
+        const SizedBox(height: 14),
+        UbanButton(
+          label: _isSearching ? '查詢中...' : '搜尋',
+          icon: Icons.search_rounded,
+          size: UbanButtonSize.xl,
+          loading: _isSearching,
+          onPressed: _isSearching
+              ? null
+              : () => _performSearch(_searchController.text.trim()),
         ),
         if (_searchError != null) ...[
-          const SizedBox(height: 16),
-          _buildErrorBanner(_searchError!),
+          const SizedBox(height: 14),
+          ElderNoticeBanner(message: _searchError!),
         ],
         if (_searchResult != null) ...[
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
           _buildResultCard(),
         ],
       ],
@@ -517,113 +421,242 @@ class _ElderAddFriendScreenState extends State<ElderAddFriendScreen> {
   }
 
   // ── 共用元件 ────────────────────────────────────────────
+  /// 設計稿 `.card > .person`：頭像 72、名字 24/900、ID 15、下方「加好友」大鈕。
   Widget _buildResultCard() {
+    final c = UbanColors.of(context);
     final data = _searchResult!;
     final name = (data['elder_name'] ?? '長輩').toString();
     final idStr = (data['elder_id'] ?? '').toString();
     final avatarUrl = data['avatar_url'] as String?;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.border),
-      ),
+    return UbanCard(
+      padding: const EdgeInsets.all(18),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          FriendAvatar(avatarUrl: avatarUrl, name: name, radius: 44),
-          const SizedBox(height: 14),
-          Text(
-            name,
-            textAlign: TextAlign.center,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: ElderScale.body.copyWith(fontWeight: FontWeight.w900),
+          Row(
+            children: [
+              FriendAvatar(avatarUrl: avatarUrl, name: name, radius: 36),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: ubanText(24, FontWeight.w900, c.text, height: 1.25),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'ID：$idStr',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: ubanText(16, FontWeight.w500, c.text2),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 4),
-          Text('ID：$idStr', style: ElderScale.caption),
-          const SizedBox(height: 18),
-          if (_sendResultMessage != null)
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
-              decoration: BoxDecoration(
-                color: AppColors.primaryLight,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              width: double.infinity,
-              child: Text(
-                _sendResultMessage!,
-                textAlign: TextAlign.center,
-                style: ElderScale.caption.copyWith(
-                  color: AppColors.primaryDark,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            )
-          else
-            SizedBox(
-              width: double.infinity,
-              height: ElderScale.buttonHeight,
-              child: ElevatedButton.icon(
-                onPressed: _isSendingRequest ? null : _sendRequest,
-                icon: _isSendingRequest
-                    ? const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
-                      )
-                    : const Icon(Icons.person_add_alt_1_rounded, size: 28),
-                label: Text(
-                  _isSendingRequest ? '送出中' : '加好友',
-                  style: ElderScale.button.copyWith(color: Colors.white),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildErrorBanner(String message) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFEF2F2),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFFCA5A5)),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.info_outline_rounded, color: Color(0xFFDC2626)),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              message,
-              style: ElderScale.caption.copyWith(color: const Color(0xFFB91C1C)),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildInlineErrorBlock(String message, VoidCallback onRetry) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 40),
-      child: Column(
-        children: [
-          const Icon(Icons.wifi_off_rounded, size: 64, color: AppColors.textHint),
-          const SizedBox(height: 12),
-          Text(message, textAlign: TextAlign.center, style: ElderScale.body),
           const SizedBox(height: 16),
-          ElevatedButton(onPressed: onRetry, child: const Text('重試')),
+          if (_sendResultMessage != null)
+            ElderNoticeBanner(message: _sendResultMessage!, isError: false)
+          else
+            UbanButton(
+              label: _isSendingRequest ? '送出中' : '加好友',
+              icon: Icons.person_add_alt_1_rounded,
+              size: UbanButtonSize.xl,
+              loading: _isSendingRequest,
+              onPressed: _isSendingRequest ? null : _sendRequest,
+            ),
         ],
+      ),
+    );
+  }
+}
+
+/// 設計稿 `.scanbox` 的疊層：四個白色轉角＋品牌色掃描線（2.2 秒來回；
+/// 系統開啟「移除動畫」時掃描線停在中央）。純裝飾，不攔截觸控。
+class _ScanFrameOverlay extends StatefulWidget {
+  const _ScanFrameOverlay();
+
+  @override
+  State<_ScanFrameOverlay> createState() => _ScanFrameOverlayState();
+}
+
+class _ScanFrameOverlayState extends State<_ScanFrameOverlay>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 2200),
+  );
+  bool _started = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_started && !reduceMotion(context)) {
+      _started = true;
+      _ctrl.repeat(reverse: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = UbanColors.of(context);
+    Widget corner({bool left = true, bool top = true}) {
+      const side = BorderSide(color: Colors.white, width: 4);
+      return Positioned(
+        left: left ? 0 : null,
+        right: left ? null : 0,
+        top: top ? 0 : null,
+        bottom: top ? null : 0,
+        child: Container(
+          width: 34,
+          height: 34,
+          decoration: BoxDecoration(
+            border: Border(
+              left: left ? side : BorderSide.none,
+              right: left ? BorderSide.none : side,
+              top: top ? side : BorderSide.none,
+              bottom: top ? BorderSide.none : side,
+            ),
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(left && top ? 14 : 0),
+              topRight: Radius.circular(!left && top ? 14 : 0),
+              bottomLeft: Radius.circular(left && !top ? 14 : 0),
+              bottomRight: Radius.circular(!left && !top ? 14 : 0),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return IgnorePointer(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 70, vertical: 60),
+        child: LayoutBuilder(builder: (context, box) {
+          return Stack(
+            children: [
+              corner(left: true, top: true),
+              corner(left: false, top: true),
+              corner(left: true, top: false),
+              corner(left: false, top: false),
+              AnimatedBuilder(
+                animation: _ctrl,
+                builder: (context, _) {
+                  final t = reduceMotion(context)
+                      ? .5
+                      : Curves.easeInOut.transform(_ctrl.value);
+                  return Positioned(
+                    left: 8,
+                    right: 8,
+                    top: (box.maxHeight - 3) * (.08 + .82 * t),
+                    child: Container(
+                      height: 3,
+                      decoration: BoxDecoration(
+                        color: c.brand,
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
+          );
+        }),
+      ),
+    );
+  }
+}
+
+/// 設計稿 `.idinput`：置中、Poppins 42/600、字距加大、高 84、自動轉大寫。
+///
+/// 輸入規則沿用第五十一輪：4 碼大寫英數字（後端排除易混淆的 0/O/1/I）。
+class _IdInput extends StatefulWidget {
+  final TextEditingController controller;
+
+  const _IdInput({required this.controller});
+
+  @override
+  State<_IdInput> createState() => _IdInputState();
+}
+
+class _IdInputState extends State<_IdInput> {
+  final FocusNode _node = FocusNode();
+  bool _focused = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _node.addListener(() {
+      if (mounted && _focused != _node.hasFocus) {
+        setState(() => _focused = _node.hasFocus);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _node.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = UbanColors.of(context);
+    final radius = BorderRadius.circular(18);
+    OutlineInputBorder border(Color color) => OutlineInputBorder(
+          borderRadius: radius,
+          borderSide: BorderSide(color: color, width: 1.5),
+        );
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      decoration: BoxDecoration(
+        borderRadius: radius,
+        boxShadow: _focused
+            ? [BoxShadow(color: c.brand.withValues(alpha: .18), spreadRadius: 4)]
+            : const [],
+      ),
+      child: TextField(
+        controller: widget.controller,
+        focusNode: _node,
+        keyboardType: TextInputType.text,
+        textAlign: TextAlign.center,
+        textCapitalization: TextCapitalization.characters,
+        maxLength: 4,
+        cursorColor: c.brand,
+        inputFormatters: [
+          // ★ 第五十一輪：允許輸入英數字並即時轉大寫，不再限制只能輸入數字。
+          FilteringTextInputFormatter.allow(RegExp(r'[0-9A-Za-z]')),
+          LengthLimitingTextInputFormatter(4),
+          TextInputFormatter.withFunction(
+            (oldValue, newValue) =>
+                newValue.copyWith(text: newValue.text.toUpperCase()),
+          ),
+        ],
+        style: ubanBrandText(42, FontWeight.w600, c.text)
+            .copyWith(letterSpacing: 42 * .2),
+        decoration: InputDecoration(
+          counterText: '',
+          hintText: 'ABCD',
+          hintStyle: ubanBrandText(42, FontWeight.w600, c.text3)
+              .copyWith(letterSpacing: 42 * .2),
+          filled: true,
+          fillColor: c.surface,
+          constraints: const BoxConstraints(minHeight: 84),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+          border: border(_focused ? c.brand : c.line),
+          enabledBorder: border(_focused ? c.brand : c.line),
+          focusedBorder: border(c.brand),
+        ),
       ),
     );
   }

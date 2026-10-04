@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../../services/api_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/ui/uban_text.dart';
 
 /// 朋友圈共用的頭像顯示元件（第四十一輪 item 3）。
 ///
@@ -35,19 +35,17 @@ class FriendAvatar extends StatelessWidget {
   Widget build(BuildContext context) {
     final url = avatarUrl;
     final resolved = (url != null && url.isNotEmpty) ? resolveUrl(url) : null;
+    // 顏色走 UbanColors：長輩端品牌綠、家屬端（FamilyThemeScope）自動換海灣藍。
+    final c = UbanColors.of(context);
     return CircleAvatar(
       radius: radius,
-      backgroundColor: AppColors.primaryLight,
+      backgroundColor: c.brandContainer,
       backgroundImage: resolved != null ? NetworkImage(resolved) : null,
       onBackgroundImageError: resolved != null ? (_, __) {} : null,
       child: resolved == null
           ? Text(
               name.isNotEmpty ? name.substring(0, 1) : '友',
-              style: GoogleFonts.notoSansTc(
-                fontSize: radius * 0.75,
-                fontWeight: FontWeight.w900,
-                color: AppColors.primaryDark,
-              ),
+              style: ubanText(radius * 0.75, FontWeight.w900, c.brandStrong),
             )
           : null,
     );

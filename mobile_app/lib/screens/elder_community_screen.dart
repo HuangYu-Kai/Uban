@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
@@ -11,10 +10,11 @@ import '../models/community_post.dart';
 import '../services/api_service.dart';
 import '../services/community_service.dart';
 import '../services/friend_service.dart';
-import '../theme/app_theme.dart';
+import '../widgets/ui/ui.dart';
 import 'elder_add_friend_screen.dart';
 import 'elder_friend_feed_screen.dart';
 import 'elder_tabs/profile/widgets/friend_id_card.dart';
+import 'elder_tabs/widgets/elder_social_widgets.dart';
 import 'widgets/pet_reward_dialog.dart';
 import 'widgets/polaroid_post_card.dart';
 
@@ -154,6 +154,7 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen>
     double? width,
     BoxFit fit = BoxFit.cover,
   }) {
+    final c = UbanColors.of(context);
     final isRemote = imageSource.startsWith('http://') ||
         imageSource.startsWith('https://') ||
         imageSource.startsWith('/uploads');
@@ -172,7 +173,7 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen>
           return Container(
             height: height ?? 150,
             width: width,
-            color: AppColors.background,
+            color: c.surface2,
             alignment: Alignment.center,
             child: const CircularProgressIndicator(strokeWidth: 2),
           );
@@ -181,8 +182,8 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen>
           height: height ?? 90,
           width: width,
           alignment: Alignment.center,
-          color: AppColors.background,
-          child: Text('圖片載入失敗', style: ElderScale.caption),
+          color: c.surface2,
+          child: Text('圖片載入失敗', style: ubanText(16, FontWeight.w500, c.text3)),
         ),
       );
     } else {
@@ -195,8 +196,8 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen>
           height: height ?? 90,
           width: width,
           alignment: Alignment.center,
-          color: AppColors.background,
-          child: Text('圖片無法顯示', style: ElderScale.caption),
+          color: c.surface2,
+          child: Text('圖片無法顯示', style: ubanText(16, FontWeight.w500, c.text3)),
         ),
       );
     }
@@ -226,324 +227,190 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen>
       {'key': 'energy', 'icon': '💪', 'name': '活力'},
     ];
 
-    final shouldPublish = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      useRootNavigator: true,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) {
+    final shouldPublish = await showUbanSheet<bool>(
+      context,
+      (sheetContext) {
         return StatefulBuilder(
           builder: (context, setSheetState) {
-            return Container(
-              padding: EdgeInsets.fromLTRB(
-                20,
-                20,
-                20,
-                MediaQuery.viewInsetsOf(context).bottom + 24,
-              ),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+            final c = UbanColors.of(context);
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
                   children: [
-                    Row(
-                      children: [
-                        Text('分享近況', style: ElderScale.sectionTitle),
-                        const Spacer(),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: AppColors.primaryLight,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.lock_rounded, size: 16, color: AppColors.primaryDark),
-                              const SizedBox(width: 4),
-                              Text('家人專屬', style: ElderScale.caption.copyWith(color: AppColors.primaryDark, fontWeight: FontWeight.bold)),
-                            ],
-                          ),
-                        ),
-                      ],
+                    Flexible(
+                      child: Text('分享近況',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: ubanText(22, FontWeight.w900, c.text)),
                     ),
-                    const SizedBox(height: 8),
-                    Text('只有家人與認識的朋友看得到', style: ElderScale.caption),
-                    const SizedBox(height: 16),
-
-                    Text('選擇寵物心情印章', style: ElderScale.body),
-                    const SizedBox(height: 8),
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: stamps.map((st) {
-                          final isSelected = selectedStamp == st['key'];
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: GestureDetector(
-                              onTap: () => setSheetState(() => selectedStamp = st['key']!),
-                              behavior: HitTestBehavior.opaque,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                                decoration: BoxDecoration(
-                                  color: isSelected ? const Color(0xFFDCFCE7) : const Color(0xFFF1F5F9),
-                                  borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(
-                                    color: isSelected ? const Color(0xFF166534) : const Color(0xFFCBD5E1),
-                                    width: 2,
-                                  ),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Text(st['icon']!, style: const TextStyle(fontSize: 20)),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      st['name']!,
-                                      style: GoogleFonts.notoSansTc(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w800,
-                                        color: isSelected ? const Color(0xFF166534) : const Color(0xFF475569),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    ),
-
-                    const SizedBox(height: 16),
-                    Text('今天心情', style: ElderScale.body),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: ['😊', '❤️', '🌼', '👍'].map((mood) {
-                        final isSelected = selectedMood == mood;
-                        return Expanded(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 4),
-                            child: InkWell(
-                              onTap: () => setSheetState(() => selectedMood = mood),
-                              borderRadius: BorderRadius.circular(18),
-                              child: Container(
-                                height: 58,
-                                alignment: Alignment.center,
-                                decoration: BoxDecoration(
-                                  color: isSelected ? AppColors.primaryLight : AppColors.background,
-                                  borderRadius: BorderRadius.circular(18),
-                                  border: Border.all(
-                                    color: isSelected ? AppColors.primary : AppColors.border,
-                                    width: 2,
-                                  ),
-                                ),
-                                child: Text(mood, style: const TextStyle(fontSize: 30)),
-                              ),
-                            ),
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                    const SizedBox(height: 16),
-                    Text('快速選一句', style: ElderScale.body),
-                    const SizedBox(height: 8),
-                    ...quickMessages.map(
-                      (message) => Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: () {
-                            controller.text = message;
-                            controller.selection = TextSelection.collapsed(offset: controller.text.length);
-                          },
-                          child: Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF8FAFC),
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: const Color(0xFFCBD5E1), width: 1.5),
-                            ),
-                            child: Text(
-                              message,
-                              style: GoogleFonts.notoSansTc(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w700,
-                                color: const Color(0xFF1E293B),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: controller,
-                      minLines: 3,
-                      maxLines: 5,
-                      maxLength: 120,
-                      style: ElderScale.body,
-                      decoration: InputDecoration(
-                        hintText: '也可以自己輸入想說的話',
-                        hintStyle: ElderScale.caption,
-                        filled: true,
-                        fillColor: AppColors.background,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(18),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    if (selectedLocalImagePath != null) ...[
-                      Stack(
-                        children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(16),
-                            child: Image.file(
-                              File(selectedLocalImagePath!),
-                              width: double.infinity,
-                              height: 160,
-                              fit: BoxFit.cover,
-                            ),
-                          ),
-                          Positioned(
-                            top: 8,
-                            right: 8,
-                            child: Material(
-                              color: Colors.black.withValues(alpha: 0.65),
-                              shape: const CircleBorder(),
-                              child: IconButton(
-                                tooltip: '移除圖片',
-                                onPressed: () => setSheetState(() => selectedLocalImagePath = null),
-                                icon: const Icon(Icons.close_rounded, color: Colors.white),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                    ],
-                    Row(
-                      children: [
-                        Expanded(
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: isUploading
-                                ? null
-                                : () async {
-                                    final picked = await _pickLocalImage();
-                                    if (picked != null) {
-                                      setSheetState(() => selectedLocalImagePath = picked);
-                                    }
-                                  },
-                            child: Container(
-                              height: 60,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFF1F5F9),
-                                borderRadius: BorderRadius.circular(18),
-                                border: Border.all(color: const Color(0xFFCBD5E1), width: 1.5),
-                              ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const Icon(Icons.add_photo_alternate_rounded, size: 28, color: Color(0xFF475569)),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    selectedLocalImagePath == null ? '加張照片' : '已選照片',
-                                    style: GoogleFonts.notoSansTc(
-                                      fontSize: 17,
-                                      fontWeight: FontWeight.w800,
-                                      color: const Color(0xFF475569),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: isUploading
-                                ? null
-                                : () async {
-                                    if (controller.text.trim().isEmpty && selectedLocalImagePath == null) {
-                                      ScaffoldMessenger.of(sheetContext).showSnackBar(
-                                        const SnackBar(content: Text('請先選一句、輸入內容或附上照片')),
-                                      );
-                                      return;
-                                    }
-                                    setSheetState(() => isUploading = true);
-
-                                    String? uploadedUrl;
-                                    if (selectedLocalImagePath != null) {
-                                      uploadedUrl = await ApiService.uploadCommunityImage(
-                                        File(selectedLocalImagePath!),
-                                      );
-                                    }
-
-                                    if (!context.mounted) return;
-                                    final posts = await _communityService.createPost(
-                                      userId: widget.userId,
-                                      userName: widget.userName,
-                                      userRole: 'elder',
-                                      familyId: widget.familyId,
-                                      content: controller.text.isEmpty ? '分享了生活照片' : controller.text,
-                                      mood: selectedMood,
-                                      stampType: selectedStamp,
-                                      imageUrl: uploadedUrl ?? selectedLocalImagePath,
-                                    );
-                                    if (mounted) {
-                                      setState(() => _posts = posts);
-                                    }
-                                    if (sheetContext.mounted) {
-                                      Navigator.pop(sheetContext, true);
-                                    }
-                                  },
-                            child: Container(
-                              height: 60,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF55B695),
-                                borderRadius: BorderRadius.circular(18),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: const Color(0xFF55B695).withValues(alpha: 0.35),
-                                    blurRadius: 10,
-                                    offset: const Offset(0, 4),
-                                  ),
-                                ],
-                              ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  if (isUploading)
-                                    const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
-                                  else
-                                    const Icon(Icons.send_rounded, size: 26, color: Colors.white),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    isUploading ? '發佈中...' : '發佈近況',
-                                    style: GoogleFonts.notoSansTc(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.w900,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
+                    const Spacer(),
+                    const SizedBox(width: 8),
+                    ElderTagPill(
+                      label: '家人專屬',
+                      bg: c.brandContainer,
+                      fg: c.brandStrong,
+                      fontSize: 15,
                     ),
                   ],
                 ),
-              ),
+                const SizedBox(height: 2),
+                Text('只有家人與認識的朋友看得到',
+                    style: ubanText(16, FontWeight.w500, c.text2)),
+                const SizedBox(height: 16),
+                Text('選擇寵物心情印章',
+                    style: ubanText(18, FontWeight.w700, c.text)),
+                const SizedBox(height: 8),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      for (final st in stamps)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: _ChoiceChip(
+                            label: '${st['icon']} ${st['name']}',
+                            selected: selectedStamp == st['key'],
+                            onTap: () =>
+                                setSheetState(() => selectedStamp = st['key']!),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text('今天心情', style: ubanText(18, FontWeight.w700, c.text)),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    for (final mood in ['😊', '❤️', '🌼', '👍'])
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          child: _MoodBox(
+                            mood: mood,
+                            selected: selectedMood == mood,
+                            onTap: () => setSheetState(() => selectedMood = mood),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Text('快速選一句', style: ubanText(18, FontWeight.w700, c.text)),
+                const SizedBox(height: 8),
+                for (final message in quickMessages)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: _QuickLine(
+                      text: message,
+                      onTap: () {
+                        controller.text = message;
+                        controller.selection = TextSelection.collapsed(
+                            offset: controller.text.length);
+                      },
+                    ),
+                  ),
+                const SizedBox(height: 4),
+                UbanTextField(
+                  controller: controller,
+                  minLines: 3,
+                  maxLines: 5,
+                  maxLength: 120,
+                  hintText: '也可以自己輸入想說的話',
+                ),
+                const SizedBox(height: 12),
+                if (selectedLocalImagePath != null) ...[
+                  Stack(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(18),
+                        child: Image.file(
+                          File(selectedLocalImagePath!),
+                          width: double.infinity,
+                          height: 160,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: Material(
+                          color: Colors.black.withValues(alpha: 0.65),
+                          shape: const CircleBorder(),
+                          child: IconButton(
+                            tooltip: '移除圖片',
+                            onPressed: () => setSheetState(
+                                () => selectedLocalImagePath = null),
+                            icon: const Icon(Icons.close_rounded,
+                                color: Colors.white),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                ElderPhotoAddButton(
+                  label: selectedLocalImagePath == null ? '加張照片' : '已選照片',
+                  onTap: isUploading
+                      ? null
+                      : () async {
+                          final picked = await _pickLocalImage();
+                          if (picked != null) {
+                            setSheetState(() => selectedLocalImagePath = picked);
+                          }
+                        },
+                ),
+                const SizedBox(height: 12),
+                UbanButton(
+                  label: isUploading ? '發佈中...' : '發佈近況',
+                  icon: Icons.send_rounded,
+                  size: UbanButtonSize.xl,
+                  loading: isUploading,
+                  onPressed: isUploading
+                      ? null
+                      : () async {
+                          if (controller.text.trim().isEmpty &&
+                              selectedLocalImagePath == null) {
+                            ScaffoldMessenger.of(sheetContext).showSnackBar(
+                              const SnackBar(
+                                  content: Text('請先選一句、輸入內容或附上照片')),
+                            );
+                            return;
+                          }
+                          setSheetState(() => isUploading = true);
+
+                          String? uploadedUrl;
+                          if (selectedLocalImagePath != null) {
+                            uploadedUrl = await ApiService.uploadCommunityImage(
+                              File(selectedLocalImagePath!),
+                            );
+                          }
+
+                          if (!context.mounted) return;
+                          final posts = await _communityService.createPost(
+                            userId: widget.userId,
+                            userName: widget.userName,
+                            userRole: 'elder',
+                            familyId: widget.familyId,
+                            content: controller.text.isEmpty
+                                ? '分享了生活照片'
+                                : controller.text,
+                            mood: selectedMood,
+                            stampType: selectedStamp,
+                            imageUrl: uploadedUrl ?? selectedLocalImagePath,
+                          );
+                          if (mounted) {
+                            setState(() => _posts = posts);
+                          }
+                          if (sheetContext.mounted) {
+                            Navigator.pop(sheetContext, true);
+                          }
+                        },
+                ),
+              ],
             );
           },
         );
@@ -569,291 +436,192 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen>
     String? selectedImagePath;
     bool isSubmitting = false;
 
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useRootNavigator: true,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) {
+    await showUbanSheet<void>(
+      context,
+      (sheetContext) {
         return StatefulBuilder(
           builder: (context, setSheetState) {
+            final c = UbanColors.of(context);
             final latestPost = _posts.firstWhere(
               (item) => item.id == post.id,
               orElse: () => post,
             );
-            return Container(
-              constraints: BoxConstraints(
-                maxHeight: MediaQuery.sizeOf(context).height * 0.85,
-              ),
-              padding: EdgeInsets.fromLTRB(
-                20,
-                20,
-                20,
-                MediaQuery.viewInsetsOf(context).bottom + 20,
-              ),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    children: [
-                      Text('留言', style: ElderScale.sectionTitle),
-                      const SizedBox(width: 8),
-                      Text('(${latestPost.comments.length})', style: ElderScale.caption),
-                    ],
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('留言（${latestPost.comments.length}）',
+                    style: ubanText(22, FontWeight.w900, c.text)),
+                const SizedBox(height: 12),
+                if (latestPost.comments.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 20),
+                    child: Center(
+                      child: Text('還沒有留言，來給予第一句溫馨叮嚀吧！',
+                          textAlign: TextAlign.center,
+                          style: ubanText(18, FontWeight.w500, c.text2)),
+                    ),
+                  )
+                else
+                  // 留言多時只讓清單捲動，輸入區與送出鈕仍在面板內看得到。
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 260),
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: latestPost.comments.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 10),
+                      itemBuilder: (context, index) {
+                        final comment = latestPost.comments[index];
+                        final isFamily = comment.authorRole == 'family';
+                        return ElderCommentTile(
+                          name: comment.authorName,
+                          message: comment.message,
+                          badge: isFamily ? '家人' : '長輩',
+                          badgeIsFamily: isFamily,
+                          timeText: _formatTime(comment.createdAt),
+                          image: (comment.imagePath != null &&
+                                  comment.imagePath!.isNotEmpty)
+                              ? _buildAdaptiveImage(
+                                  comment.imagePath!,
+                                  height: 180,
+                                  fit: BoxFit.cover,
+                                )
+                              : null,
+                        );
+                      },
+                    ),
                   ),
-                  const SizedBox(height: 12),
-                  if (latestPost.comments.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 24),
-                      child: Center(
-                        child: Text('還沒有留言，來給予第一句溫馨叮嚀吧！', style: ElderScale.caption),
-                      ),
-                    )
-                  else
-                    Flexible(
-                      child: ListView.separated(
-                        shrinkWrap: true,
-                        itemCount: latestPost.comments.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 10),
-                        itemBuilder: (context, index) {
-                          final comment = latestPost.comments[index];
-                          final isFamily = comment.authorRole == 'family';
-                          return Container(
-                            padding: const EdgeInsets.all(14),
-                            decoration: BoxDecoration(
-                              color: isFamily ? const Color(0xFFF0FDF4) : AppColors.primaryLight,
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(
-                                color: isFamily ? const Color(0xFF86EFAC) : AppColors.primary.withValues(alpha: 0.2),
-                              ),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                Row(
-                                  children: [
-                                    // ★ 第四十五輪（例行溢位檢查）：authorName 是家人／
-                                    // 長輩的顯示名稱，長度不可控，ElderScale.caption
-                                    // 本身就是 18pt，同列還有角色徽章與 Spacer 後的
-                                    // 時間文字，包 Flexible 並加 ellipsis 可收縮。
-                                    Flexible(
-                                      child: Text(
-                                        comment.authorName,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: ElderScale.caption.copyWith(
-                                          color: isFamily ? const Color(0xFF15803D) : AppColors.primaryDark,
-                                          fontWeight: FontWeight.w900,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: isFamily ? const Color(0xFFDCFCE7) : Colors.white,
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: Text(
-                                        isFamily ? '家人 💖' : '長輩 🌿',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.bold,
-                                          color: isFamily ? const Color(0xFF166534) : AppColors.primaryDark,
-                                        ),
-                                      ),
-                                    ),
-                                    const Spacer(),
-                                    Text(
-                                      _formatTime(comment.createdAt),
-                                      style: const TextStyle(fontSize: 12, color: AppColors.textHint),
-                                    ),
-                                  ],
-                                ),
-                                if (comment.message.isNotEmpty) ...[
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    comment.message,
-                                    style: ElderScale.caption.copyWith(
-                                      color: AppColors.textPrimary,
-                                      fontSize: 18,
-                                    ),
-                                  ),
-                                ],
-                                if (comment.imagePath != null && comment.imagePath!.isNotEmpty) ...[
-                                  const SizedBox(height: 10),
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(14),
-                                    child: _buildAdaptiveImage(
-                                      comment.imagePath!,
-                                      height: 180,
-                                      fit: BoxFit.cover,
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          );
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final reply in quickReplies)
+                      _ChoiceChip(
+                        label: reply,
+                        selected: false,
+                        onTap: () {
+                          controller.text = reply;
+                          controller.selection = TextSelection.collapsed(
+                              offset: controller.text.length);
+                          setSheetState(() {});
                         },
                       ),
-                    ),
-                  const SizedBox(height: 14),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: quickReplies
-                        .map(
-                          (reply) => ActionChip(
-                            label: Text(reply, style: ElderScale.caption),
-                            onPressed: () {
-                              controller.text = reply;
-                              controller.selection = TextSelection.collapsed(offset: controller.text.length);
-                              setSheetState(() {});
-                            },
-                            backgroundColor: AppColors.background,
-                            side: const BorderSide(color: AppColors.border),
-                            padding: const EdgeInsets.all(8),
-                          ),
-                        )
-                        .toList(),
-                  ),
-                  const SizedBox(height: 12),
-                  if (selectedImagePath != null) ...[
-                    Stack(
-                      children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(16),
-                          child: Image.file(
-                            File(selectedImagePath!),
-                            width: double.infinity,
-                            height: 130,
-                            fit: BoxFit.cover,
-                          ),
-                        ),
-                        Positioned(
-                          top: 8,
-                          right: 8,
-                          child: Material(
-                            color: Colors.black.withValues(alpha: 0.65),
-                            shape: const CircleBorder(),
-                            child: IconButton(
-                              tooltip: '移除圖片',
-                              onPressed: () => setSheetState(() => selectedImagePath = null),
-                              icon: const Icon(Icons.close_rounded, color: Colors.white),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
                   ],
-                  TextField(
-                    controller: controller,
-                    style: ElderScale.body,
-                    minLines: 2,
-                    maxLines: 4,
-                    maxLength: 120,
-                    onChanged: (_) => setSheetState(() {}),
-                    decoration: InputDecoration(
-                      hintText: '寫下想對家人說的話⋯⋯',
-                      counterText: '',
-                      filled: true,
-                      fillColor: AppColors.background,
-                      contentPadding: const EdgeInsets.all(16),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(18),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
+                ),
+                const SizedBox(height: 12),
+                if (selectedImagePath != null) ...[
+                  Stack(
                     children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: isSubmitting
-                              ? null
-                              : () async {
-                                  final picked = await _pickLocalImage();
-                                  if (picked != null) {
-                                    setSheetState(() => selectedImagePath = picked);
-                                  }
-                                },
-                          icon: const Icon(Icons.add_photo_alternate_rounded, size: 28),
-                          label: Text(
-                            selectedImagePath == null ? '加入圖片' : '已選照片',
-                            style: ElderScale.caption,
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            minimumSize: const Size.fromHeight(60),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-                          ),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(18),
+                        child: Image.file(
+                          File(selectedImagePath!),
+                          width: double.infinity,
+                          height: 130,
+                          fit: BoxFit.cover,
                         ),
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: (controller.text.trim().isEmpty && selectedImagePath == null) || isSubmitting
-                              ? null
-                              : () async {
-                                  setSheetState(() => isSubmitting = true);
-                                  String? uploadedUrl;
-                                  if (selectedImagePath != null) {
-                                    uploadedUrl = await ApiService.uploadCommunityImage(
-                                      File(selectedImagePath!),
-                                    );
-                                  }
-
-                                  if (!context.mounted) return;
-                                  final posts = await _communityService.addComment(
-                                    userId: widget.userId,
-                                    userName: widget.userName,
-                                    userRole: 'elder',
-                                    familyId: widget.familyId,
-                                    postId: post.id,
-                                    message: controller.text.trim(),
-                                    imageUrl: uploadedUrl ?? selectedImagePath,
-                                  );
-                                  if (mounted) {
-                                    setState(() => _posts = posts);
-                                  }
-                                  setSheetState(() {
-                                    isSubmitting = false;
-                                    selectedImagePath = null;
-                                    controller.clear();
-                                  });
-                                  if (sheetContext.mounted) {
-                                    Navigator.pop(sheetContext);
-                                  }
-                                  if (context.mounted) {
-                                    PetRewardDialog.show(
-                                      context,
-                                      title: '留言已送出！',
-                                      message: '小嘎幫你把溫馨叮嚀送到家人身邊～',
-                                      intimacyExp: 5,
-                                      coins: 1,
-                                    );
-                                  }
-                                },
-                          icon: isSubmitting
-                              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                              : const Icon(Icons.send_rounded, size: 28),
-                          label: Text(isSubmitting ? '傳送中' : '送出', style: ElderScale.caption),
-                          style: ElevatedButton.styleFrom(
-                            minimumSize: const Size.fromHeight(60),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: Material(
+                          color: Colors.black.withValues(alpha: 0.65),
+                          shape: const CircleBorder(),
+                          child: IconButton(
+                            tooltip: '移除圖片',
+                            onPressed: () =>
+                                setSheetState(() => selectedImagePath = null),
+                            icon: const Icon(Icons.close_rounded,
+                                color: Colors.white),
                           ),
                         ),
                       ),
                     ],
                   ),
+                  const SizedBox(height: 10),
                 ],
-              ),
+                UbanTextField(
+                  controller: controller,
+                  minLines: 2,
+                  maxLines: 4,
+                  maxLength: 120,
+                  hintText: '寫下想對家人說的話⋯⋯',
+                  onChanged: (_) => setSheetState(() {}),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: ElderPhotoAddButton(
+                        label: selectedImagePath == null ? '加入圖片' : '已選照片',
+                        onTap: isSubmitting
+                            ? null
+                            : () async {
+                                final picked = await _pickLocalImage();
+                                if (picked != null) {
+                                  setSheetState(() => selectedImagePath = picked);
+                                }
+                              },
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: UbanButton(
+                        label: isSubmitting ? '傳送中' : '送出',
+                        icon: Icons.send_rounded,
+                        loading: isSubmitting,
+                        onPressed: (controller.text.trim().isEmpty &&
+                                    selectedImagePath == null) ||
+                                isSubmitting
+                            ? null
+                            : () async {
+                                setSheetState(() => isSubmitting = true);
+                                String? uploadedUrl;
+                                if (selectedImagePath != null) {
+                                  uploadedUrl =
+                                      await ApiService.uploadCommunityImage(
+                                    File(selectedImagePath!),
+                                  );
+                                }
+
+                                if (!context.mounted) return;
+                                final posts = await _communityService.addComment(
+                                  userId: widget.userId,
+                                  userName: widget.userName,
+                                  userRole: 'elder',
+                                  familyId: widget.familyId,
+                                  postId: post.id,
+                                  message: controller.text.trim(),
+                                  imageUrl: uploadedUrl ?? selectedImagePath,
+                                );
+                                if (mounted) {
+                                  setState(() => _posts = posts);
+                                }
+                                setSheetState(() {
+                                  isSubmitting = false;
+                                  selectedImagePath = null;
+                                  controller.clear();
+                                });
+                                if (sheetContext.mounted) {
+                                  Navigator.pop(sheetContext);
+                                }
+                                if (context.mounted) {
+                                  PetRewardDialog.show(
+                                    context,
+                                    title: '留言已送出！',
+                                    message: '小嘎幫你把溫馨叮嚀送到家人身邊～',
+                                    intimacyExp: 5,
+                                    coins: 1,
+                                  );
+                                }
+                              },
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             );
           },
         );
@@ -903,127 +671,133 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen>
 
   @override
   Widget build(BuildContext context) {
+    final c = UbanColors.of(context);
     final familyContent = _buildFamilyContent();
 
-    if (!widget.showFriendTab) {
-      // 家屬端（預設 showFriendTab: false）走這條分支——與改動前逐位元組
-      // 相同的 Scaffold／AppBar／body 結構，零回歸。
-      return Scaffold(
-        backgroundColor: const Color(0xFFF8FAFC),
-        appBar: AppBar(
-          automaticallyImplyLeading: false,
-          toolbarHeight: 70,
-          backgroundColor: Colors.white,
-          elevation: 0,
-          title: Text(
+    // 2026-10 新設計：AppBar 換成「大標題＋膠囊分段」。顏色全走 UbanColors——
+    // 長輩端是品牌綠，家屬端（外層包 FamilyThemeScope）自動變海灣藍。
+    // 字級採長輩尺度（標題 30、分段 18），家屬端看起來略大無妨。
+    // 分段仍是 TabBar（內含 Tab），只是外觀做成設計稿 `.segbig` 的膠囊；
+    // 這樣 TabController 與既有的 Tab 結構（測試也依賴）完全不變。
+    final header = Padding(
+      padding: const EdgeInsets.fromLTRB(18, 14, 18, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
             '家庭社群',
-            style: GoogleFonts.notoSansTc(
-              fontSize: 28,
-              fontWeight: FontWeight.w900,
-              color: AppColors.textPrimary,
-            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: ubanText(30, FontWeight.w900, c.text, height: 1.25),
           ),
-        ),
-        body: familyContent,
-      );
-    }
+          if (widget.showFriendTab) ...[
+            const SizedBox(height: 14),
+            _buildSegmentTabs(c),
+          ],
+        ],
+      ),
+    );
 
-    // ★ 第四十二輪：長輩端「社群」分頁多一個「朋友」標籤。TabBar 樣式沿用
-    // friends_screen.dart 第四十一輪已上線的「家人／朋友」寫法（字級 20、
-    // FontWeight.w900、圖示 28、indicatorWeight 4）——長輩端已經看過一次，
-    // 不是新視覺語言。
+    // 家屬端（預設 showFriendTab: false）走單一畫面分支，沒有 TabBar。
+    final Widget body = !widget.showFriendTab
+        ? familyContent
+        : TabBarView(
+            controller: _tabController,
+            children: [
+              familyContent,
+              // 朋友標籤：家屬端傳入 friendTabContent（FamilyFriendFeedBody）時
+              // 維持原樣、完全不變——不會被下面的 FriendIdCard 影響。
+              // 長輩端自己的路徑（friendTabContent 為 null）才在最上方加一張
+              // FriendIdCard（★ 任務 C：從「我的」分頁搬過來），下方仍 100% 重用
+              // FriendFeedBody（elder_friend_feed_screen.dart），與「電話 → 朋友 →
+              // 朋友圈」（ElderFriendFeedScreen）共用同一份邏輯。
+              widget.friendTabContent ??
+                  Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(18, 14, 18, 0),
+                        child: FriendIdCard(myFriendElderId: _myFriendElderId),
+                      ),
+                      // ★ 第五十二輪任務 A：社群「朋友」分頁的明確加好友入口
+                      // （導去同一個 ElderAddFriendScreen，與「電話 → 朋友」互不影響）。
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
+                        child: _buildAddFriendButton(),
+                      ),
+                      Expanded(
+                        child: FriendFeedBody(
+                          userId: widget.userId,
+                          userName: widget.userName,
+                        ),
+                      ),
+                    ],
+                  ),
+            ],
+          );
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        toolbarHeight: 70,
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: Text(
-          '家庭社群',
-          style: GoogleFonts.notoSansTc(
-            fontSize: 28,
-            fontWeight: FontWeight.w900,
-            color: AppColors.textPrimary,
-          ),
-        ),
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: AppColors.primary,
-          indicatorWeight: 4,
-          labelColor: AppColors.primary,
-          unselectedLabelColor: AppColors.textHint,
-          labelStyle: GoogleFonts.notoSansTc(
-            fontSize: 20,
-            fontWeight: FontWeight.w900,
-          ),
-          unselectedLabelStyle: GoogleFonts.notoSansTc(
-            fontSize: 20,
-            fontWeight: FontWeight.w700,
-          ),
-          tabs: [
-            Tab(
-              icon: const Icon(Icons.family_restroom_rounded, size: 28),
-              text: widget.familyTabLabel,
-            ),
-            const Tab(
-              icon: Icon(Icons.groups_rounded, size: 28),
-              text: '朋友',
-            ),
+      backgroundColor: c.bg,
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            header,
+            const SizedBox(height: 4),
+            Expanded(child: body),
           ],
         ),
       ),
-      body: TabBarView(
+    );
+  }
+
+  /// 設計稿 `.segbig` 外觀的 TabBar：surface2 膠囊、padding 5、白色滑動 thumb。
+  Widget _buildSegmentTabs(UbanColors c) {
+    final labelStyle = ubanText(18, FontWeight.w700, c.text2);
+    return Container(
+      padding: const EdgeInsets.all(5),
+      decoration: BoxDecoration(
+        color: c.surface2,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: TabBar(
         controller: _tabController,
-        children: [
-          familyContent,
-          // 朋友標籤：家屬端傳入 friendTabContent（FamilyFriendFeedBody）時
-          // 維持原樣、完全不變——不會被下面的 FriendIdCard 影響。
-          // 長輩端自己的路徑（friendTabContent 為 null，長輩端呼叫點的現況）
-          // 才在最上方加一張 FriendIdCard（★ 任務 C：從「我的」分頁搬過來，
-          // 文案語境本就屬於朋友圈），下方仍 100% 重用 FriendFeedBody
-          // （elder_friend_feed_screen.dart），與「電話 → 朋友 → 朋友圈」
-          // （ElderFriendFeedScreen）共用同一份邏輯。
-          widget.friendTabContent ??
-              Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                    child: FriendIdCard(myFriendElderId: _myFriendElderId),
-                  ),
-                  // ★ 第五十二輪任務 A：社群「朋友」分頁補回明確的加好友
-                  // 入口。這裡原本（第四十二／五十一輪）只有上面那張唯讀
-                  // 的 FriendIdCard，完全沒有按鈕導去 ElderAddFriendScreen
-                  // ——長輩只能繞去「電話 → 朋友」（friends_screen.dart
-                  // 既有的 _buildAddFriendButton，原樣保留不動）才找得到，
-                  // 使用者因此誤以為社群裡的加好友功能被拿掉了。兩個入口
-                  // 導去同一個畫面、共用同一份邏輯，互不影響。
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                    child: _buildAddFriendButton(),
-                  ),
-                  Expanded(
-                    child: FriendFeedBody(
-                      userId: widget.userId,
-                      userName: widget.userName,
-                    ),
-                  ),
-                ],
-              ),
+        dividerColor: Colors.transparent,
+        indicatorSize: TabBarIndicatorSize.tab,
+        splashBorderRadius: BorderRadius.circular(999),
+        overlayColor: const WidgetStatePropertyAll(Colors.transparent),
+        labelPadding: EdgeInsets.zero,
+        labelColor: c.brandStrong,
+        unselectedLabelColor: c.text2,
+        labelStyle: labelStyle,
+        unselectedLabelStyle: labelStyle,
+        indicator: BoxDecoration(
+          color: c.surface,
+          borderRadius: BorderRadius.circular(999),
+          boxShadow: const [
+            BoxShadow(
+              color: Color.fromRGBO(0, 0, 0, .08),
+              blurRadius: 8,
+              offset: Offset(0, 2),
+            ),
+          ],
+        ),
+        tabs: [
+          Tab(height: 52, text: widget.familyTabLabel),
+          const Tab(height: 52, text: '朋友'),
         ],
       ),
     );
   }
 
-  /// 加好友大按鈕——文案／圖示／字級與 friends_screen.dart 的
-  /// `_buildAddFriendButton` 刻意保持一致（同樣導去 ElderAddFriendScreen，
-  /// 長輩不會因為從哪個入口進來而看到不同的用詞）。長輩字級／點擊區
-  /// （ElderScale.buttonHeight = 84），不重寫任何加好友邏輯。回來後重新
-  /// 載入自己的好友 ID，讓剛送出的邀請／新好友狀態能反映在 FriendIdCard。
+  /// 加好友大按鈕——文案「加好友」與 friends_screen.dart 的入口一致（測試鎖定
+  /// 它必須是 [ElevatedButton]，所以外觀用 style 做成 `.btn.filled.xl`：膠囊、高 76）。
+  /// 回來後重新載入自己的好友 ID，讓剛送出的邀請／新好友狀態能反映在 FriendIdCard。
   Widget _buildAddFriendButton() {
+    final c = UbanColors.of(context);
     return SizedBox(
       width: double.infinity,
-      height: ElderScale.buttonHeight,
+      height: 76,
       child: ElevatedButton.icon(
         onPressed: () async {
           await Navigator.push(
@@ -1037,42 +811,44 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen>
           );
           if (mounted) _loadMyFriendElderId();
         },
-        icon: const Icon(Icons.person_add_alt_1_rounded, size: ElderScale.buttonIcon),
-        label: Text('加好友', style: ElderScale.button.copyWith(color: Colors.white)),
+        icon: const Icon(Icons.person_add_alt_1_rounded, size: 26),
+        label: Text('加好友', style: ubanText(22, FontWeight.w700, c.onBrand)),
         style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.primary,
+          backgroundColor: c.brandFill,
+          foregroundColor: c.onBrand,
           elevation: 0,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(ElderScale.cardRadius)),
+          shadowColor: Colors.transparent,
+          shape: const StadiumBorder(),
         ),
       ),
     );
   }
 
   Widget _buildFamilyContent() {
-    return SafeArea(
-      bottom: false,
-      child: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _loadPosts,
-              child: ListView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 132),
-                children: [
-                  _buildPrivacyCard(),
-                  const SizedBox(height: 14),
-                  _buildCreatePostButton(),
-                  const SizedBox(height: 18),
-                  Text('大家的近況', style: ElderScale.sectionTitle),
-                  const SizedBox(height: 12),
-                  if (_posts.isEmpty) _buildEmptyState(),
-                  // ★ 第四十一輪（item 2）：改用 asMap().entries 取得 index，
-                  //   只在第一則貼文（index == 0）傳入教學高光用的 key，
-                  //   其餘貼文不受影響、渲染順序與內容完全未變。
-                  ..._posts.asMap().entries.map((entry) {
-                    final int index = entry.key;
-                    final CommunityPost post = entry.value;
-                    return PolaroidPostCard(
+    final c = UbanColors.of(context);
+    return _isLoading
+        ? const Center(child: CircularProgressIndicator())
+        : RefreshIndicator(
+            onRefresh: _loadPosts,
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(18, 14, 18, 132),
+              children: [
+                _buildPrivacyCard(),
+                const SizedBox(height: 14),
+                _buildCreatePostButton(),
+                const SizedBox(height: 20),
+                Text('大家的近況', style: ubanText(22, FontWeight.w900, c.text)),
+                const SizedBox(height: 12),
+                if (_posts.isEmpty) _buildEmptyState(),
+                // ★ 第四十一輪（item 2）：只在第一則貼文（index == 0）傳入教學
+                //   高光用的 key，其餘貼文不受影響。
+                ..._posts.asMap().entries.map((entry) {
+                  final int index = entry.key;
+                  final CommunityPost post = entry.value;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 14),
+                    child: PolaroidPostCard(
                       post: post,
                       onLike: () => _toggleLike(post),
                       onComment: () => _showComments(post),
@@ -1080,30 +856,36 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen>
                           index == 0 ? widget.firstPostLikeKey : null,
                       commentButtonKey:
                           index == 0 ? widget.firstPostCommentKey : null,
-                    );
-                  }),
-                ],
-              ),
+                    ),
+                  );
+                }),
+              ],
             ),
-    );
+          );
   }
 
   Widget _buildPrivacyCard() {
+    final c = UbanColors.of(context);
     return Container(
       key: widget.privacyCardKey,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.primaryDark,
-        borderRadius: BorderRadius.circular(ElderScale.cardRadius),
+        color: c.brandContainer,
+        borderRadius: BorderRadius.circular(24),
       ),
       child: Row(
         children: [
-          const Icon(Icons.lock_rounded, color: Colors.white, size: 36),
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(color: c.surface, shape: BoxShape.circle),
+            child: Icon(Icons.lock_rounded, color: c.brandStrong, size: 26),
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
               '這裡只有家人和認識的朋友',
-              style: ElderScale.caption.copyWith(color: Colors.white),
+              style: ubanText(18, FontWeight.w700, c.brandStrong, height: 1.4),
             ),
           ),
         ],
@@ -1112,51 +894,23 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen>
   }
 
   Widget _buildCreatePostButton() {
-    return SizedBox(
-      height: ElderScale.buttonHeight,
-      child: GestureDetector(
-        key: widget.createPostButtonKey,
-        behavior: HitTestBehavior.opaque,
-        onTap: _showCreatePostSheet,
-        child: Container(
-          decoration: BoxDecoration(
-            color: AppColors.primary,
-            borderRadius: BorderRadius.circular(ElderScale.cardRadius),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.primary.withValues(alpha: 0.3),
-                blurRadius: 8,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          alignment: Alignment.center,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.add_circle_rounded, size: ElderScale.buttonIcon, color: Colors.white),
-              const SizedBox(width: 8),
-              Text('分享我的近況', style: ElderScale.button.copyWith(color: Colors.white)),
-            ],
-          ),
-        ),
+    return Container(
+      key: widget.createPostButtonKey,
+      child: UbanButton(
+        label: '分享我的近況',
+        icon: Icons.add_rounded,
+        size: UbanButtonSize.xl,
+        onPressed: _showCreatePostSheet,
       ),
     );
   }
 
   Widget _buildEmptyState() {
-    return Container(
-      padding: const EdgeInsets.all(30),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(ElderScale.cardRadius),
-      ),
-      child: Column(
-        children: [
-          const Icon(Icons.forum_outlined, size: 72, color: AppColors.textHint),
-          const SizedBox(height: 12),
-          Text('還沒有近況，點上方按鈕發佈第一則吧！', style: ElderScale.body),
-        ],
+    return const Padding(
+      padding: EdgeInsets.only(bottom: 14),
+      child: ElderEmptyCard(
+        icon: Icons.forum_outlined,
+        message: '還沒有近況，點上方按鈕發佈第一則吧！',
       ),
     );
   }
@@ -1168,5 +922,126 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen>
     if (difference.inDays < 1) return '${difference.inHours} 小時前';
     if (difference.inDays == 1) return '昨天';
     return '${time.month} 月 ${time.day} 日';
+  }
+}
+
+/// 發文／留言面板的選項小膠囊（印章、快速留言）：高 ≥48，選中時 brand 色。
+class _ChoiceChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _ChoiceChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final c = UbanColors.of(context);
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: label,
+      excludeSemantics: true,
+      child: PressableScale(
+        onTap: onTap,
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 48),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: selected ? c.brandContainer : c.surface2,
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: selected ? c.brand : Colors.transparent,
+              width: 2,
+            ),
+          ),
+          child: Text(
+            label,
+            maxLines: 1,
+            style: ubanText(
+                18, FontWeight.w700, selected ? c.brandStrong : c.text2),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 「今天心情」方塊：高 58、圓角 18。
+class _MoodBox extends StatelessWidget {
+  final String mood;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _MoodBox({
+    required this.mood,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final c = UbanColors.of(context);
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: '心情 $mood',
+      excludeSemantics: true,
+      child: PressableScale(
+        onTap: onTap,
+        child: Container(
+          height: 58,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: selected ? c.brandContainer : c.surface2,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: selected ? c.brand : Colors.transparent,
+              width: 2,
+            ),
+          ),
+          child: Text(mood, style: const TextStyle(fontSize: 28)),
+        ),
+      ),
+    );
+  }
+}
+
+/// 「快速選一句」整列：surface2 底、圓角 18、內文 18。
+class _QuickLine extends StatelessWidget {
+  final String text;
+  final VoidCallback onTap;
+
+  const _QuickLine({required this.text, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = UbanColors.of(context);
+    return Semantics(
+      button: true,
+      label: text,
+      excludeSemantics: true,
+      child: PressableScale(
+        onTap: onTap,
+        child: Container(
+          width: double.infinity,
+          constraints: const BoxConstraints(minHeight: 56),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          alignment: Alignment.centerLeft,
+          decoration: BoxDecoration(
+            color: c.surface2,
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Text(
+            text,
+            style: ubanText(18, FontWeight.w500, c.text, height: 1.4),
+          ),
+        ),
+      ),
+    );
   }
 }
