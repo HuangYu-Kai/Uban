@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../services/api_service.dart';
+import '../../../widgets/ui/ui.dart';
 import '../news_article_screen.dart';
 
 class NewsCardList extends StatelessWidget {
@@ -39,17 +40,16 @@ class NewsCardList extends StatelessWidget {
             .where((item) => (item['category'] ?? '') == selectedCategory)
             .toList();
 
+    final c = UbanColors.of(context);
+
     if (filteredItems.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 40),
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 40),
         child: Center(
           child: Text(
             '目前沒有此分類的新聞',
-            style: TextStyle(
-              color: Color(0xFF9CA3AF),
-              fontSize: 18,
-              fontWeight: FontWeight.w500,
-            ),
+            textAlign: TextAlign.center,
+            style: ubanText(18, FontWeight.w500, c.text3),
           ),
         ),
       );
@@ -73,8 +73,8 @@ class NewsCardList extends StatelessWidget {
         final hasImage = imageUrl.startsWith('http');
 
         return Padding(
-          padding: const EdgeInsets.only(bottom: 20),
-          child: GestureDetector(
+          padding: const EdgeInsets.only(bottom: 14),
+          child: PressableScale(
             onTap: () {
               Navigator.push(
                 context,
@@ -94,36 +94,21 @@ class NewsCardList extends StatelessWidget {
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 300),
               decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                border: isCurrent
-                    ? Border.all(
-                        color: const Color(0xFF59B294),
-                        width: 3,
-                      )
-                    : null,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.08),
-                    blurRadius: 16,
-                    offset: const Offset(0, 4),
-                  ),
-                  if (isCurrent)
-                    BoxShadow(
-                      color: const Color(0xFF59B294).withValues(alpha: 0.2),
-                      blurRadius: 20,
-                      spreadRadius: 2,
-                    ),
-                ],
+                color: c.surface,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(
+                  color: isCurrent ? c.brand : c.line,
+                  width: isCurrent ? 2 : 1,
+                ),
               ),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(isCurrent ? 17 : 20),
+                borderRadius: BorderRadius.circular(isCurrent ? 22 : 23),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // 圖片區域
                     SizedBox(
-                      height: 180,
+                      height: 150,
                       width: double.infinity,
                       child: Stack(
                         fit: StackFit.expand,
@@ -132,29 +117,30 @@ class NewsCardList extends StatelessWidget {
                               ? Image.network(
                                   imageUrl,
                                   fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => _buildGradientPlaceholder(source),
+                                  errorBuilder: (_, __, ___) =>
+                                      _buildGradientPlaceholder(source),
                                 )
                               : _buildGradientPlaceholder(source),
-                          // 分類標籤
+                          // 分類標籤（疊在圖上，固定白底深字）
                           Positioned(
                             top: 12,
                             left: 12,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 5,
-                              ),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF1E293B)
-                                    .withValues(alpha: 0.85),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Text(
-                                source,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w700,
+                            right: 110,
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.92),
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Text(
+                                  source,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: ubanText(
+                                      15, FontWeight.w700, const Color(0xFF16201C)),
                                 ),
                               ),
                             ),
@@ -166,30 +152,20 @@ class NewsCardList extends StatelessWidget {
                               right: 12,
                               child: Container(
                                 padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 5,
-                                ),
+                                    horizontal: 10, vertical: 5),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF59B294),
-                                  borderRadius: BorderRadius.circular(8),
+                                  color: c.brandFill,
+                                  borderRadius: BorderRadius.circular(999),
                                 ),
-                                child: const Row(
+                                child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Icon(
-                                      Icons.volume_up_rounded,
-                                      color: Colors.white,
-                                      size: 16,
-                                    ),
-                                    SizedBox(width: 4),
-                                    Text(
-                                      '播放中',
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
+                                    Icon(Icons.volume_up_rounded,
+                                        color: c.onBrand, size: 18),
+                                    const SizedBox(width: 4),
+                                    Text('播放中',
+                                        style: ubanText(
+                                            15, FontWeight.w700, c.onBrand)),
                                   ],
                                 ),
                               ),
@@ -199,7 +175,7 @@ class NewsCardList extends StatelessWidget {
                     ),
                     // 文字內容區域
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -207,23 +183,15 @@ class NewsCardList extends StatelessWidget {
                             title,
                             maxLines: 3,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Color(0xFF1E293B),
-                              fontSize: 24,
-                              fontWeight: FontWeight.w800,
-                              height: 1.3,
-                              letterSpacing: -0.3,
-                            ),
+                            style: ubanText(21, FontWeight.w900, c.text,
+                                height: 1.4),
                           ),
-                          const SizedBox(height: 10),
+                          const SizedBox(height: 6),
                           Text(
-                            '$source · $date'.toUpperCase(),
-                            style: const TextStyle(
-                              color: Color(0xFF9CA3AF),
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: 0.8,
-                            ),
+                            '$source · $date',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: ubanText(16, FontWeight.w500, c.text3),
                           ),
                         ],
                       ),

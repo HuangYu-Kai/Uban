@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../../models/almanac_data_helper.dart';
+import '../../widgets/ui/ui.dart';
 
 /// 長輩專用「每日農民曆與神明誕辰」大字版專頁
 class FarmerAlmanacScreen extends StatefulWidget {
@@ -94,13 +94,13 @@ class _FarmerAlmanacScreenState extends State<FarmerAlmanacScreen> {
       lastDate: DateTime(2050, 12, 31),
       locale: const Locale('zh', 'TW'),
       builder: (context, child) {
+        final c = UbanColors.of(context);
         return Theme(
           data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.light(
-              primary: Color(0xFFC2410C),
-              onPrimary: Colors.white,
-              onSurface: Color(0xFF1E293B),
-            ),
+            colorScheme: Theme.of(context).colorScheme.copyWith(
+                  primary: c.brandFill,
+                  onPrimary: c.onBrand,
+                ),
           ),
           child: child!,
         );
@@ -136,501 +136,291 @@ class _FarmerAlmanacScreenState extends State<FarmerAlmanacScreen> {
   void _showMeaningDialog(String term) {
     HapticFeedback.lightImpact();
     final meaning = AlmanacDataHelper.getMeaning(term);
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        backgroundColor: Colors.white,
-        title: Row(
+    // 設計稿 `#dl-meaning`：詞彙大標＋白話解說＋「知道了」。
+    showUbanDialog<void>(
+      context,
+      (ctx) {
+        final c = UbanColors.of(ctx);
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFEF3C7),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Text('📖', style: TextStyle(fontSize: 22)),
-            ),
-            const SizedBox(width: 10),
             Text(
               '「$term」是什麼意思？',
-              style: GoogleFonts.notoSansTc(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: const Color(0xFF1E293B),
-              ),
+              style: ubanText(24, FontWeight.w900, c.text, height: 1.3),
             ),
+            const SizedBox(height: 10),
+            Text(
+              meaning,
+              style: ubanText(20, FontWeight.w500, c.text2, height: 1.6),
+            ),
+            const SizedBox(height: 18),
+            UbanButton(label: '知道了', onPressed: () => Navigator.pop(ctx)),
           ],
-        ),
-        content: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
-          child: Text(
-            meaning,
-            style: GoogleFonts.notoSansTc(
-              fontSize: 18,
-              height: 1.5,
-              color: const Color(0xFF334155),
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            style: TextButton.styleFrom(
-              backgroundColor: const Color(0xFF55B695),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-            ),
-            child: Text(
-              '知道了',
-              style: GoogleFonts.notoSansTc(fontSize: 17, fontWeight: FontWeight.bold),
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
+  /// 農民曆頭部固定色（內容固定色，不隨亮暗模式）：設計稿 `.alm-head`。
+  static const Color _almRed = Color(0xFFC8553D);
+  static const Color _almRedDeep = Color(0xFFA63D2B);
+
   @override
   Widget build(BuildContext context) {
-    final isToday = _currentDate.year == DateTime.now().year &&
-        _currentDate.month == DateTime.now().month &&
-        _currentDate.day == DateTime.now().day;
+    final c = UbanColors.of(context);
+    final now = DateTime.now();
+    final isToday = _currentDate.year == now.year &&
+        _currentDate.month == now.month &&
+        _currentDate.day == now.day;
+    // 字級放大到 1.15 以上時，「唸給我聽」換到標題下一列，避免標題被擠成省略號。
+    final bigText = MediaQuery.textScalerOf(context).scale(10) > 11.5;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      appBar: _buildAppBar(isToday),
+      backgroundColor: c.bg,
       body: SafeArea(
         child: Column(
           children: [
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
+                padding: const EdgeInsets.fromLTRB(18, 12, 18, 14),
                 children: [
+                  _buildTopBar(c, bigText),
+                  const SizedBox(height: 16),
+
                   // 1. 傳統吉祥大撕曆卡片
-                  _buildTearCalendarCard(isToday),
-                  const SizedBox(height: 16),
+                  _buildTearCalendarCard(c, isToday),
+                  const SizedBox(height: 14),
 
-                  // 2. 🌟 神明聖誕金光特報卡（或下個神誕倒數）
-                  _buildDeityCelebrationCard(),
-                  const SizedBox(height: 16),
+                  // 2. 神明聖誕特報卡（或下個神誕倒數）
+                  _buildDeityCelebrationCard(c),
+                  const SizedBox(height: 14),
 
-                  // 3. ⚖️ 每日宜忌吉凶對照面板
-                  _buildYiJiPanel(),
-                  const SizedBox(height: 16),
+                  // 3. 每日宜忌吉凶對照面板
+                  _buildYiJiPanel(c),
+                  const SizedBox(height: 14),
 
-                  // 4. 🧭 吉神方位、沖煞生肖與百忌
-                  _buildLuckyDirectionAndChongCard(),
+                  // 4. 吉神方位、沖煞生肖
+                  _buildLuckyDirectionAndChongCard(c),
                 ],
               ),
             ),
 
             // 5. 底部快速翻日切換列
-            _buildDateSwitcherBottomBar(isToday),
+            _buildDateSwitcherBottomBar(c, isToday),
           ],
         ),
       ),
     );
   }
 
-  PreferredSizeWidget _buildAppBar(bool isToday) {
-    return AppBar(
-      backgroundColor: const Color(0xFFFFFFFF),
-      elevation: 0,
-      scrolledUnderElevation: 2,
-      centerTitle: true,
-      leading: IconButton(
-        icon: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF1F5F9),
-            shape: BoxShape.circle,
-            border: Border.all(color: const Color(0xFFCBD5E1)),
-          ),
-          child: const Icon(Icons.arrow_back_ios_new_rounded, size: 20, color: Color(0xFF1E293B)),
+  /// 頂列：返回＋標題＋「唸給我聽」切換（`_toggleTts` 原函式）。
+  Widget _buildTopBar(UbanColors c, bool bigText) {
+    final tts = _buildTtsButton(c);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        UbanTopBar(
+          title: '農民曆',
+          onBack: () {
+            HapticFeedback.lightImpact();
+            _stopTts();
+            Navigator.pop(context);
+          },
+          trailing: bigText ? null : tts,
         ),
-        onPressed: () {
-          HapticFeedback.lightImpact();
-          _stopTts();
-          Navigator.pop(context);
-        },
-      ),
-      title: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Text('🏮', style: TextStyle(fontSize: 22)),
-          const SizedBox(width: 6),
-          Text(
-            '每日農民曆',
-            style: GoogleFonts.notoSansTc(
-              fontSize: 22,
-              fontWeight: FontWeight.w900,
-              color: const Color(0xFF0F172A),
-            ),
-          ),
+        if (bigText) ...[
+          const SizedBox(height: 10),
+          tts,
         ],
+      ],
+    );
+  }
+
+  Widget _buildTtsButton(UbanColors c) {
+    return UbanButton(
+      label: _isSpeaking ? '停止' : '唸給我聽',
+      icon: _isSpeaking ? Icons.stop_circle_rounded : Icons.volume_up_rounded,
+      variant:
+          _isSpeaking ? UbanButtonVariant.danger : UbanButtonVariant.tonal,
+      expand: false,
+      onPressed: _toggleTts,
+    );
+  }
+
+  /// 設計稿 `.tag`：膠囊標籤。
+  Widget _tag(String text, Color bg, Color fg, {double size = 16}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(999),
       ),
-      actions: [
-        Padding(
-          padding: const EdgeInsets.only(right: 14),
-          child: InkWell(
-            onTap: _toggleTts,
-            borderRadius: BorderRadius.circular(20),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 250),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              decoration: BoxDecoration(
-                color: _isSpeaking ? const Color(0xFFEF4444) : const Color(0xFFE0F2FE),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: _isSpeaking ? const Color(0xFFDC2626) : const Color(0xFF0284C7),
-                  width: 1.5,
+      child: Text(text, style: ubanText(size, FontWeight.w700, fg)),
+    );
+  }
+
+  Widget _buildTearCalendarCard(UbanColors c, bool isToday) {
+    return UbanCard(
+      padding: EdgeInsets.zero,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: Column(
+          children: [
+            // 紅色頭部：內容固定色（農民曆傳統紅），白字
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [_almRed, _almRedDeep],
                 ),
               ),
               child: Row(
-                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
-                    _isSpeaking ? Icons.stop_circle_rounded : Icons.volume_up_rounded,
-                    color: _isSpeaking ? Colors.white : const Color(0xFF0369A1),
-                    size: 20,
+                  Expanded(
+                    child: Text(
+                      '歲次 ${_almanacInfo.ganZhiYear}年（${_almanacInfo.shengXiao}）',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: ubanText(18, FontWeight.w900, Colors.white),
+                    ),
                   ),
-                  const SizedBox(width: 4),
-                  Text(
-                    _isSpeaking ? '停止' : '唸給我聽',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                      color: _isSpeaking ? Colors.white : const Color(0xFF0369A1),
+                  const SizedBox(width: 8),
+                  if (isToday)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text('今天',
+                          style: ubanText(16, FontWeight.w700, Colors.white)),
+                    )
+                  else
+                    Text(
+                      '${_currentDate.year}年',
+                      style: ubanText(
+                          18, FontWeight.w700, Colors.white.withValues(alpha: 0.92)),
+                    ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(18),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '${_currentDate.month}月',
+                        style: ubanText(20, FontWeight.w700, c.text2),
+                      ),
+                      Text(
+                        '${_currentDate.day}',
+                        style: ubanBrandText(74, FontWeight.w600, _almRed,
+                            height: 1),
+                      ),
+                      const SizedBox(height: 6),
+                      _tag(_almanacInfo.solarWeekDay, c.surface2, c.text2),
+                    ],
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _tag('農曆・${_almanacInfo.ganZhiMonth}', c.surface2,
+                            c.text2),
+                        const SizedBox(height: 8),
+                        // 農曆日期可能較長，字級放大時縮小而不是溢位
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            _almanacInfo.lunarShort,
+                            maxLines: 1,
+                            style: ubanText(28, FontWeight.w900, c.text),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        if (_almanacInfo.solarTerm.isNotEmpty) ...[
+                          _tag(_almanacInfo.solarTerm, c.brandContainer,
+                              c.brandStrong),
+                          const SizedBox(height: 8),
+                        ],
+                        Text(
+                          _almanacInfo.ganZhiDay,
+                          style: ubanText(18, FontWeight.w500, c.text2),
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ),
             ),
-          ),
+          ],
         ),
-      ],
-    );
-  }
-
-  Widget _buildTearCalendarCard(bool isToday) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF0F172A).withValues(alpha: 0.06),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Color(0xFFDC2626), Color(0xFFEA580C)],
-              ),
-              borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.wb_sunny_rounded, color: Color(0xFFFEF08A), size: 20),
-                const SizedBox(width: 6),
-                Text(
-                  '歲次 ${_almanacInfo.ganZhiYear}年（${_almanacInfo.shengXiao}）',
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
-                    color: Colors.white,
-                  ),
-                ),
-                const Spacer(),
-                if (isToday)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      '今日吉日',
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w900,
-                        color: const Color(0xFFDC2626),
-                      ),
-                    ),
-                  )
-                else
-                  Text(
-                    '${_currentDate.year}年',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                      color: const Color(0xFFFEF08A),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(20),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Expanded(
-                  flex: 5,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '${_currentDate.month}月',
-                        style: GoogleFonts.notoSansTc(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w800,
-                          color: const Color(0xFF64748B),
-                        ),
-                      ),
-                      Text(
-                        '${_currentDate.day}',
-                        style: GoogleFonts.notoSansTc(
-                          fontSize: 66,
-                          fontWeight: FontWeight.w900,
-                          color: const Color(0xFFDC2626),
-                          height: 1.0,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF1F5F9),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          _almanacInfo.solarWeekDay,
-                          style: GoogleFonts.notoSansTc(
-                            fontSize: 17,
-                            fontWeight: FontWeight.bold,
-                            color: const Color(0xFF1E293B),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Container(
-                  height: 110,
-                  width: 1.5,
-                  color: const Color(0xFFE2E8F0),
-                  margin: const EdgeInsets.symmetric(horizontal: 12),
-                ),
-                Expanded(
-                  flex: 6,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFFEF3C7),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              '農曆',
-                              style: GoogleFonts.notoSansTc(
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                                color: const Color(0xFF92400E),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            _almanacInfo.ganZhiMonth,
-                            style: GoogleFonts.notoSansTc(
-                              fontSize: 14,
-                              color: const Color(0xFF64748B),
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        _almanacInfo.lunarShort,
-                        style: GoogleFonts.notoSansTc(
-                          fontSize: 28,
-                          fontWeight: FontWeight.w900,
-                          color: const Color(0xFF0F172A),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          if (_almanacInfo.solarTerm.isNotEmpty)
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFDCFCE7),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: const Color(0xFF16A34A).withValues(alpha: 0.3)),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Text('🍃', style: TextStyle(fontSize: 13)),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    _almanacInfo.solarTerm,
-                                    style: GoogleFonts.notoSansTc(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.bold,
-                                      color: const Color(0xFF15803D),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          const SizedBox(width: 8),
-                          Text(
-                            _almanacInfo.ganZhiDay,
-                            style: GoogleFonts.notoSansTc(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
-                              color: const Color(0xFF64748B),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }
 
-  Widget _buildDeityCelebrationCard() {
+  Widget _buildDeityCelebrationCard(UbanColors c) {
     if (_almanacInfo.hasDeityBirthday) {
       final deity = _almanacInfo.deities.first;
       return Container(
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFFFFFBEB), Color(0xFFFEF3C7)],
-          ),
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: const Color(0xFFF59E0B), width: 1.8),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFFF59E0B).withValues(alpha: 0.18),
-              blurRadius: 14,
-              offset: const Offset(0, 4),
-            ),
-          ],
+          color: c.warmContainer,
+          borderRadius: BorderRadius.circular(24),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Text(deity.iconEmoji, style: const TextStyle(fontSize: 28)),
-                const SizedBox(width: 8),
+                Text(deity.iconEmoji, style: const TextStyle(fontSize: 32)),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFB45309),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              '今日神明萬壽',
-                              style: GoogleFonts.notoSansTc(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w900,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            deity.category,
-                            style: GoogleFonts.notoSansTc(
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
-                              color: const Color(0xFFB45309),
-                            ),
-                          ),
+                          _tag('今日神明萬壽', c.warm, c.warmContainer, size: 15),
+                          Text(deity.category,
+                              style: ubanText(16, FontWeight.w700, c.warm)),
                         ],
                       ),
                       const SizedBox(height: 4),
                       Text(
                         deity.name,
-                        style: GoogleFonts.notoSansTc(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w900,
-                          color: const Color(0xFF78350F),
-                        ),
+                        style: ubanText(24, FontWeight.w900, c.warm,
+                            height: 1.3),
                       ),
                     ],
                   ),
                 ),
               ],
             ),
-            const Divider(color: Color(0xFFFDE68A), thickness: 1.5, height: 22),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('🙏 ', style: TextStyle(fontSize: 16)),
-                Expanded(
-                  child: Text(
-                    deity.blessing,
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 16.5,
-                      fontWeight: FontWeight.w700,
-                      color: const Color(0xFF92400E),
-                    ),
-                  ),
-                ),
-              ],
+            const SizedBox(height: 12),
+            Text(
+              '🙏 ${deity.blessing}',
+              style: ubanText(18, FontWeight.w700, c.text, height: 1.5),
             ),
             if (deity.customNote.isNotEmpty) ...[
               const SizedBox(height: 6),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('🏮 ', style: TextStyle(fontSize: 16)),
-                  Expanded(
-                    child: Text(
-                      '傳統習俗：${deity.customNote}',
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: const Color(0xFFB45309),
-                      ),
-                    ),
-                  ),
-                ],
+              Text(
+                '🏮 傳統習俗：${deity.customNote}',
+                style: ubanText(18, FontWeight.w500, c.text2, height: 1.5),
               ),
             ],
           ],
@@ -640,290 +430,167 @@ class _FarmerAlmanacScreenState extends State<FarmerAlmanacScreen> {
 
     final upcoming = _almanacInfo.upcomingDeity;
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: const Color(0xFFF0FDF4),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF86EFAC)),
+        color: c.brandSoft,
+        borderRadius: BorderRadius.circular(24),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('🍀', style: TextStyle(fontSize: 30)),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '平安吉祥日',
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                    color: const Color(0xFF166534),
-                  ),
-                ),
-                const SizedBox(height: 3),
-                if (upcoming != null)
-                  Text(
-                    '🌟 距離【${upcoming.deity.title}】還有 ${upcoming.daysAway} 天',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                      color: const Color(0xFF15803D),
-                    ),
-                  )
-                else
-                  Text(
-                    '身心自在，心寬延壽，福澤綿長。',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: const Color(0xFF15803D),
-                    ),
-                  ),
-              ],
-            ),
+          Text('平安吉祥日', style: ubanText(20, FontWeight.w900, c.text)),
+          const SizedBox(height: 4),
+          Text(
+            upcoming != null
+                ? '距離【${upcoming.deity.title}】還有 ${upcoming.daysAway} 天'
+                : '身心自在，心寬延壽，福澤綿長。',
+            style: ubanText(18, FontWeight.w500, c.text2, height: 1.5),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildYiJiPanel() {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Text('⚖️', style: TextStyle(fontSize: 22)),
-              const SizedBox(width: 8),
-              Text(
-                '今日宜忌指南',
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w900,
-                  color: const Color(0xFF0F172A),
-                ),
-              ),
-              const Spacer(),
-              Text(
-                '（點擊查看白話解說）',
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: const Color(0xFF94A3B8),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF16A34A),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  '宜',
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _almanacInfo.yiList.isEmpty
-                  ? Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text(
-                        '諸事皆宜',
-                        style: GoogleFonts.notoSansTc(
-                          fontSize: 17,
-                          fontWeight: FontWeight.bold,
-                          color: const Color(0xFF166534),
-                        ),
-                      ),
-                    )
-                  : Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: _almanacInfo.yiList.map((term) {
-                        return InkWell(
-                          onTap: () => _showMeaningDialog(term),
-                          borderRadius: BorderRadius.circular(10),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF0FDF4),
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: const Color(0xFFBBF7D0)),
-                            ),
-                            child: Text(
-                              term,
-                              style: GoogleFonts.notoSansTc(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: const Color(0xFF166534),
-                              ),
-                            ),
-                          ),
-                        );
-                      }).toList(),
-                    ),
-              ),
-            ],
-          ),
-
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 12),
-            child: Divider(color: Color(0xFFF1F5F9), thickness: 1.5),
-          ),
-
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFDC2626),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  '忌',
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _almanacInfo.jiList.isEmpty
-                  ? Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text(
-                        '無特定禁忌',
-                        style: GoogleFonts.notoSansTc(
-                          fontSize: 17,
-                          fontWeight: FontWeight.bold,
-                          color: const Color(0xFF475569),
-                        ),
-                      ),
-                    )
-                  : Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: _almanacInfo.jiList.map((term) {
-                        return InkWell(
-                          onTap: () => _showMeaningDialog(term),
-                          borderRadius: BorderRadius.circular(10),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFFEF2F2),
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: const Color(0xFFFECACA)),
-                            ),
-                            child: Text(
-                              term,
-                              style: GoogleFonts.notoSansTc(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: const Color(0xFF991B1B),
-                              ),
-                            ),
-                          ),
-                        );
-                      }).toList(),
-                    ),
-              ),
-            ],
-          ),
-        ],
+  /// 宜／忌詞彙膠囊（點擊 → 白話解說，原 `_showMeaningDialog`）。
+  Widget _termChip(String term, Color bg, Color fg) {
+    return PressableScale(
+      onTap: () => _showMeaningDialog(term),
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 48),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(term, style: ubanText(18, FontWeight.w700, fg)),
       ),
     );
   }
 
-  Widget _buildLuckyDirectionAndChongCard() {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
-      ),
+  Widget _yiJiRow({
+    required String badge,
+    required Color badgeBg,
+    required Color badgeFg,
+    required List<String> terms,
+    required String emptyText,
+    required Color emptyColor,
+    required Color chipBg,
+    required Color chipFg,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: badgeBg,
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Text(badge, style: ubanText(18, FontWeight.w900, badgeFg)),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: terms.isEmpty
+              ? Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(emptyText,
+                      style: ubanText(18, FontWeight.w700, emptyColor)),
+                )
+              : Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: terms
+                      .map((term) => _termChip(term, chipBg, chipFg))
+                      .toList(),
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildYiJiPanel(UbanColors c) {
+    return UbanCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Text('🧭', style: TextStyle(fontSize: 22)),
+              Flexible(
+                child: Text('今日宜忌',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: ubanText(20, FontWeight.w900, c.text)),
+              ),
               const SizedBox(width: 8),
-              Text(
-                '吉神方位與沖煞提醒',
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w900,
-                  color: const Color(0xFF0F172A),
+              Flexible(
+                child: Text(
+                  '點一下看白話解說',
+                  textAlign: TextAlign.right,
+                  maxLines: 2,
+                  style: ubanText(15, FontWeight.w500, c.text3),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-
-          Row(
-            children: [
-              Expanded(
-                child: _buildDirectionPill('💰 財神', _almanacInfo.caiShen, const Color(0xFFFEF3C7), const Color(0xFF92400E)),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _buildDirectionPill('💖 喜神', _almanacInfo.xiShen, const Color(0xFFFCE7F3), const Color(0xFF9D174D)),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _buildDirectionPill('🍀 福神', _almanacInfo.fuShen, const Color(0xFFE0F2FE), const Color(0xFF075985)),
               ),
             ],
           ),
           const SizedBox(height: 12),
+          _yiJiRow(
+            badge: '宜',
+            badgeBg: c.brandFill,
+            badgeFg: c.onBrand,
+            terms: _almanacInfo.yiList,
+            emptyText: '諸事皆宜',
+            emptyColor: c.brandStrong,
+            chipBg: c.brandContainer,
+            chipFg: c.brandStrong,
+          ),
+          const SizedBox(height: 14),
+          _yiJiRow(
+            badge: '忌',
+            badgeBg: c.danger,
+            badgeFg: Colors.white,
+            terms: _almanacInfo.jiList,
+            emptyText: '無特定禁忌',
+            emptyColor: c.text2,
+            chipBg: c.dangerContainer,
+            chipFg: c.danger,
+          ),
+        ],
+      ),
+    );
+  }
 
+  Widget _buildLuckyDirectionAndChongCard(UbanColors c) {
+    String dir(String d) => d.isEmpty ? '正北' : d;
+    return UbanCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('吉神方位與沖煞提醒', style: ubanText(20, FontWeight.w900, c.text)),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _tag('財神 ${dir(_almanacInfo.caiShen)}', c.surface2, c.text,
+                  size: 18),
+              _tag('喜神 ${dir(_almanacInfo.xiShen)}', c.surface2, c.text,
+                  size: 18),
+              _tag('福神 ${dir(_almanacInfo.fuShen)}', c.surface2, c.text,
+                  size: 18),
+            ],
+          ),
+          const SizedBox(height: 12),
           Container(
+            width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
-              color: const Color(0xFFFFF7ED),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFFFFEDD5)),
+              color: c.warmContainer,
+              borderRadius: BorderRadius.circular(16),
             ),
-            child: Row(
-              children: [
-                const Text('⚠️', style: TextStyle(fontSize: 18)),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    '今日沖煞：${_almanacInfo.chongDesc}',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: const Color(0xFFC2410C),
-                    ),
-                  ),
-                ),
-              ],
+            child: Text(
+              '今日沖煞：${_almanacInfo.chongDesc}',
+              style: ubanText(18, FontWeight.w700, c.warm, height: 1.4),
             ),
           ),
         ],
@@ -931,133 +598,86 @@ class _FarmerAlmanacScreenState extends State<FarmerAlmanacScreen> {
     );
   }
 
-  Widget _buildDirectionPill(String title, String direction, Color bg, Color textColor) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        children: [
-          Text(
-            title,
-            style: GoogleFonts.notoSansTc(fontSize: 13, fontWeight: FontWeight.bold, color: textColor),
+  /// 底部翻日列（設計稿 `.alm-bar`）：前一日／回今天／日曆／後一日，高 56。
+  Widget _buildDateSwitcherBottomBar(UbanColors c, bool isToday) {
+    Widget barButton({
+      required VoidCallback? onTap,
+      required Widget child,
+      Color? bg,
+    }) {
+      return PressableScale(
+        enabled: onTap != null,
+        onTap: onTap,
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 56),
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          decoration: BoxDecoration(
+            color: bg ?? Colors.transparent,
+            borderRadius: BorderRadius.circular(999),
           ),
-          const SizedBox(height: 2),
-          Text(
-            direction.isEmpty ? '正北' : direction,
-            style: GoogleFonts.notoSansTc(fontSize: 16, fontWeight: FontWeight.w900, color: textColor),
-          ),
-        ],
-      ),
-    );
-  }
+          child: FittedBox(fit: BoxFit.scaleDown, child: child),
+        ),
+      );
+    }
 
-  Widget _buildDateSwitcherBottomBar(bool isToday) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      margin: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+      padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 10,
-            offset: const Offset(0, -3),
-          ),
-        ],
+        color: c.glass,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: c.glassLine),
+        boxShadow: c.shadows.card,
       ),
       child: Row(
         children: [
           Expanded(
-            child: SizedBox(
-              height: 48,
-              child: OutlinedButton(
-                onPressed: () => _changeDate(-1),
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.5),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  padding: EdgeInsets.zero,
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.chevron_left_rounded, size: 24, color: Color(0xFF334155)),
-                    Text(
-                      '前一日',
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: const Color(0xFF334155),
-                      ),
-                    ),
-                  ],
-                ),
+            child: barButton(
+              onTap: () => _changeDate(-1),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.chevron_left_rounded, size: 24, color: c.text),
+                  Text('前一日', style: ubanText(17, FontWeight.w700, c.text)),
+                ],
               ),
             ),
           ),
-          const SizedBox(width: 10),
-
-          SizedBox(
-            height: 48,
-            child: ElevatedButton(
-              onPressed: isToday ? null : _resetToToday,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFDC2626),
-                foregroundColor: Colors.white,
-                disabledBackgroundColor: const Color(0xFFE2E8F0),
-                disabledForegroundColor: const Color(0xFF94A3B8),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                elevation: isToday ? 0 : 2,
-              ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: barButton(
+              onTap: isToday ? null : _resetToToday,
+              bg: isToday ? c.surface2 : c.brandFill,
               child: Text(
                 '回今天',
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w900,
-                ),
+                style: ubanText(17, FontWeight.w700,
+                    isToday ? c.text3 : c.onBrand),
               ),
             ),
           ),
-          const SizedBox(width: 10),
-
-          IconButton(
-            onPressed: _pickCustomDate,
-            style: IconButton.styleFrom(
-              backgroundColor: const Color(0xFFF1F5F9),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-              padding: const EdgeInsets.all(12),
+          const SizedBox(width: 6),
+          SizedBox(
+            width: 56,
+            child: Tooltip(
+              message: '選擇日期',
+              child: barButton(
+                onTap: _pickCustomDate,
+                child: Icon(Icons.calendar_month_rounded,
+                    size: 26, color: c.text),
+              ),
             ),
-            icon: const Icon(Icons.calendar_month_rounded, color: Color(0xFF0F172A), size: 24),
-            tooltip: '選擇日期',
           ),
-          const SizedBox(width: 10),
-
+          const SizedBox(width: 6),
           Expanded(
-            child: SizedBox(
-              height: 48,
-              child: OutlinedButton(
-                onPressed: () => _changeDate(1),
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.5),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  padding: EdgeInsets.zero,
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      '後一日',
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: const Color(0xFF334155),
-                      ),
-                    ),
-                    const Icon(Icons.chevron_right_rounded, size: 24, color: Color(0xFF334155)),
-                  ],
-                ),
+            child: barButton(
+              onTap: () => _changeDate(1),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('後一日', style: ubanText(17, FontWeight.w700, c.text)),
+                  Icon(Icons.chevron_right_rounded, size: 24, color: c.text),
+                ],
               ),
             ),
           ),

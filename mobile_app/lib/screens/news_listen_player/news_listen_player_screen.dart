@@ -9,6 +9,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../../globals.dart';
 import '../../services/api_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/ui/ui.dart';
 import 'widgets/news_card_list.dart';
 import 'widgets/news_category_selector.dart';
 import 'widgets/news_sound_wave_indicator.dart';
@@ -512,18 +513,27 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
 
   @override
   Widget build(BuildContext context) {
+    final c = UbanColors.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final double screenHeight = MediaQuery.of(context).size.height;
-    final double panelHeight = screenHeight * 0.88; // 提高白色面板展開比例至 88%，完全蓋過「正在播放」部分
+    final double panelHeight = screenHeight * 0.88; // 面板展開比例 88%，完全蓋過「正在播放」部分
+
+    // 背景：品牌綠柔和漸層（設計稿 --news-a/--news-b）。亮色取 brandFill→brandStrong，
+    // 深色用較深的綠（#1E4A3B→#0F231C）。疊在其上的白字為內容固定色。
+    final gradientColors = isDark
+        ? const [Color(0xFF1E4A3B), Color(0xFF0F231C)]
+        : [c.brandFill, c.brandStrong];
 
     return Scaffold(
+      backgroundColor: gradientColors.last,
       body: Container(
         width: double.infinity,
         height: double.infinity,
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF8BAF88), Color(0xFF56B59F)],
+            begin: const Alignment(-0.4, -1),
+            end: const Alignment(0.4, 1),
+            colors: gradientColors,
           ),
         ),
         child: Stack(
@@ -536,7 +546,7 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
                 onVerticalDragUpdate: (details) {
                   final delta = details.primaryDelta;
                   if (delta == null) return;
-                  
+
                   // Dragging UP (negative delta) pulls panel UP (increases animation value)
                   // Dragging DOWN (positive delta) pulls panel DOWN (decreases animation value)
                   _panelController.value =
@@ -566,70 +576,82 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
                     }
                   }
                 },
-                child: _buildListeningView(),
+                child: _buildListeningView(c),
               ),
             ),
 
-            // 上層：白色面板（自定義 Positioned，延伸至螢幕最底部）
-            _buildCustomWhitePanel(panelHeight),
+            // 上層：新聞列表面板（自定義 Positioned，延伸至螢幕最底部）
+            _buildCustomWhitePanel(panelHeight, c),
 
-            // 小豬 + 對話框（當白色面板展開時，以彈性動畫出現在右下角）
-            _buildPigMascot(panelHeight),
+            // 小豬 + 對話框（當面板展開時，以彈性動畫出現在右下角）
+            _buildPigMascot(panelHeight, c),
           ],
         ),
       ),
     );
   }
 
+  /// 疊在綠色漸層上的玻璃鈕底（設計稿 `.glassbtn`）。
+  BoxDecoration _glassDecoration() => BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
+      );
+
   /// 聆聽介面（底層）
-  Widget _buildListeningView() {
+  Widget _buildListeningView(UbanColors c) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+      padding: const EdgeInsets.fromLTRB(18, 10, 18, 8),
       child: Column(
         children: [
-          // 返回 + 重點整理按鈕（聆聽模式下，改用精緻的玻璃卡片按鈕，並在中間加入隨面板上滑漸顯的導航欄標題）
+          // 返回 + 重點整理按鈕（玻璃鈕），中間有隨面板上滑漸顯的導航欄標題
           Stack(
             alignment: Alignment.center,
             children: [
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.arrow_back_ios_new_rounded,
-                        color: Colors.white, size: 26),
+                  Semantics(
+                    button: true,
+                    label: '返回',
+                    excludeSemantics: true,
+                    child: PressableScale(
+                      onTap: () => Navigator.pop(context),
+                      child: Container(
+                        width: 52,
+                        height: 52,
+                        decoration: _glassDecoration(),
+                        child: const Icon(Icons.arrow_back_ios_new_rounded,
+                            color: Colors.white, size: 24),
+                      ),
+                    ),
                   ),
                   if (!_isSheetExpanded)
-                    GestureDetector(
-                      onTap: _showNewsSummary,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.05),
-                              blurRadius: 10,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.auto_awesome, color: Colors.white, size: 16),
-                            SizedBox(width: 6),
-                            Text(
-                              '重點整理',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
+                    Flexible(
+                      child: PressableScale(
+                        onTap: _showNewsSummary,
+                        child: Container(
+                          constraints: const BoxConstraints(minHeight: 52),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 18, vertical: 8),
+                          decoration: _glassDecoration(),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.auto_awesome,
+                                  color: Colors.white, size: 22),
+                              const SizedBox(width: 6),
+                              Flexible(
+                                child: Text(
+                                  '重點整理',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: ubanText(
+                                      18, FontWeight.w700, Colors.white),
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       )
                           .animate(
@@ -644,34 +666,38 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
                     ),
                 ],
               ),
-              // 中間的導航欄標題：當面板滑上來時漸顯，滑下去時漸隱，字體清晰大氣
+              // 中間的導航欄標題：當面板滑上來時漸顯，滑下去時漸隱
               IgnorePointer(
                 child: Opacity(
                   opacity: _panelAnimation.value,
-                  child: const Text(
-                    '代誌報給你知',
-                    style: TextStyle(
-                      fontFamily: 'StarPanda',
-                      color: Colors.white,
-                      fontSize: 30,
-                      fontWeight: FontWeight.bold,
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 64),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        '代誌報給你知',
+                        maxLines: 1,
+                        style: TextStyle(
+                          fontFamily: 'StarPanda',
+                          color: Colors.white,
+                          fontSize: 30,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
                   ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 4),
-          // 動態高度與縮放的標題：邊往上擠邊把文字縮小以符合寬度
+          // 動態高度與縮放的標題：邊往上擠邊淡出
           _buildAnimatedTitle(),
-          // ★ 第五十三輪 item 8：20→12、下方 15→10，理由見
-          // `_buildPlayerHeader()` 尾端合併雙重 SizedBox 處的完整說明——
-          // 同一輪 widget test 量出的既有溢位，這兩處都是通用留白（不屬於
-          // 任何品牌化元素），一併貢獻出空間。
-          const SizedBox(height: 12),
-          _buildPlayerHeader(),
           const SizedBox(height: 10),
-          // 字幕顯示區域
+          _buildNowCard(),
+          const SizedBox(height: 14),
+          _buildControls(),
+          const SizedBox(height: 14),
+          // 字幕顯示區域（卡拉 OK 高對比進度）
           Expanded(
             child: NewsSubtitleViewer(
               subtitles: _subtitles,
@@ -680,23 +706,10 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
             ),
           ),
           const SizedBox(height: 6),
-          // 提示文字：第五十三輪 item 8——原文「往下滑查看更多新聞」方向寫反了
-          // （見上方 onVerticalDragUpdate 的註解：往上滑〔負值 delta〕才會展開
-          // 面板露出更多新聞，`velocity < -300` 觸發的也是往上滑手勢），且長輩
-          // 端反映字級太小、顏色不夠顯眼。改成「在此處往上滑查看更多新聞」，
-          // 字級沿用 [ElderScale.body]（22pt，「長輩可讀最小值」，比原本硬寫死
-          // 的 18pt 更大），顏色改用 [AppColors.accent]（品牌橘色強調色，與本
-          // 畫面原本的綠色漸層背景形成互補色對比，比 `Colors.white70` 顯眼）。
-          // 箭頭方向同步從向下改成向上，避免文字與圖示互相矛盾。
-          //
-          // ⚠️ `maxLines: 1` 是防禦性寫法（鐵律 #14）：字級放大＋文字變長，
-          // widget test 實測若不設上限會在較矮的可視高度換成兩行，讓整個
-          // `_buildListeningView()` 的外層 Column（無 Expanded 可再吸收）
-          // 溢位（實測過：不設 maxLines 時在測試視窗溢位 26px）。本文字在
-          // 一般手機寬度下本來就一行就能顯示完，`maxLines: 1` 不會造成實際
-          // 裁切，純粹是保險。同一理由把前後 SizedBox 從 10→6，換回放大
-          // 字級所需的空間（比照 `elder_home_tab.dart` 第五十一輪的既有作法：
-          // 省下的垂直空間直接讓給需要放大的內容）。
+          // 提示文字（第五十三輪 item 8，有測試 news_listen_player_scroll_hint_test）：
+          // 「在此處往上滑查看更多新聞」＋向上箭頭；字級沿用 ElderScale.body、顏色
+          // AppColors.accent（測試鎖定）。這次外加深色半透明膠囊底提升對比，並用
+          // FittedBox(scaleDown) 讓 textScaler 1.3 時整句縮小而不是被省略。
           AnimatedOpacity(
             opacity: _isSheetExpanded ? 0.0 : 1.0,
             duration: const Duration(milliseconds: 200),
@@ -705,71 +718,86 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: _expandPanel,
-                child: Column(
-                  children: [
-                    Text('在此處往上滑查看更多新聞',
-                        textAlign: TextAlign.center,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: ElderScale.body.copyWith(
-                          color: AppColors.accent,
-                          fontWeight: FontWeight.w800,
-                        )),
-                    const Icon(Icons.keyboard_arrow_up_rounded,
-                        color: AppColors.accent, size: 32),
-                  ],
+                child: Container(
+                  width: double.infinity,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.28),
+                    borderRadius: BorderRadius.circular(28),
+                  ),
+                  child: Column(
+                    children: [
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text('在此處往上滑查看更多新聞',
+                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            style: ElderScale.body.copyWith(
+                              color: AppColors.accent,
+                              fontWeight: FontWeight.w800,
+                            )),
+                      ),
+                      const Icon(Icons.keyboard_arrow_up_rounded,
+                          color: AppColors.accent, size: 32),
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
-          const SizedBox(height: 6),
         ],
       ),
     );
   }
 
-  /// 動態縮放與佈局擠壓的標題文字
+  /// 大標題「代誌 報給你知」（StarPanda 個性字，設計稿 `.nl-title` 46px）。
+  /// 面板上滑時淡出並收縮高度；字不隨系統字級放大（已是 46px 展示字）。
   Widget _buildAnimatedTitle() {
-    // 當面板滑上來時，大標題逐漸淡出至完全隱形
     final opacity = (1.0 - _panelAnimation.value).clamp(0.0, 1.0);
-    // 佈局高度隨之收縮，把下方內容往上推擠
-    final containerHeight = 110.0 * opacity;
-    
+    final containerHeight = 104.0 * opacity;
+
     return Opacity(
       opacity: opacity,
       child: Container(
         height: containerHeight,
-        alignment: Alignment.center,
+        width: double.infinity,
+        alignment: Alignment.centerLeft,
         clipBehavior: Clip.hardEdge,
         decoration: const BoxDecoration(),
-        child: const Text(
-          '代誌\n報給你知',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontFamily: 'StarPanda',
-            fontSize: 48,
-            height: 1.0,
-            color: Colors.white,
+        child: const FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text(
+            '代誌\n報給你知',
+            textScaler: TextScaler.noScaling,
+            style: TextStyle(
+              fontFamily: 'StarPanda',
+              fontSize: 46,
+              height: 1.05,
+              letterSpacing: 0.9,
+              color: Colors.white,
+            ),
           ),
         ),
       ),
     );
   }
 
-  /// 自定義白色面板（動畫包裹定位，高度固定以防止溢出，直接返回 Positioned 作為 Stack 子組件）
-  Widget _buildCustomWhitePanel(double panelHeight) {
+  /// 新聞列表面板（舊稱白色面板；現用 surface 色，隨亮暗模式）。
+  Widget _buildCustomWhitePanel(double panelHeight, UbanColors c) {
     final bottomOffset = -panelHeight + (panelHeight * _panelAnimation.value);
-    
+
     return Positioned(
       left: 0,
       right: 0,
       bottom: bottomOffset,
       height: panelHeight,
       child: Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-          boxShadow: [
+        decoration: BoxDecoration(
+          color: c.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+          boxShadow: const [
             BoxShadow(
               color: Color(0x30000000),
               blurRadius: 20,
@@ -808,15 +836,15 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
               onTap: _collapsePanel,
               child: Container(
                 width: double.infinity,
-                padding: const EdgeInsets.only(top: 14, bottom: 14),
+                padding: const EdgeInsets.only(top: 12, bottom: 14),
                 color: Colors.transparent,
                 child: Center(
                   child: Container(
-                    width: 44,
-                    height: 5,
+                    width: 56,
+                    height: 6,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFD1D5DB),
-                      borderRadius: BorderRadius.circular(10),
+                      color: c.surface3,
+                      borderRadius: BorderRadius.circular(999),
                     ),
                   ),
                 ),
@@ -824,7 +852,7 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
             ),
             // 分類選擇器
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 18),
+              padding: const EdgeInsets.symmetric(horizontal: 14),
               child: NewsCategorySelector(
                 categories: _categories,
                 selectedCategory: _selectedCategory,
@@ -842,15 +870,15 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
             // 新聞列表 (使用 BouncingScrollPhysics 帶來更流暢的滑動感受)
             Expanded(
               child: RefreshIndicator(
-                color: const Color(0xFF59B294),
-                backgroundColor: Colors.white,
+                color: c.brand,
+                backgroundColor: c.surface,
                 onRefresh: _refreshNews,
                 child: ListView(
                   controller: _newsScrollController,
                   physics: const BouncingScrollPhysics(
                     parent: AlwaysScrollableScrollPhysics(),
                   ),
-                  padding: const EdgeInsets.symmetric(horizontal: 18),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
                   children: [
                     NewsCardList(
                       newsItems: _localNewsItems,
@@ -860,15 +888,13 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
                       onSelectTrack: _selectTrack,
                     ),
                     if (_isLoadingMore)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 30),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 30),
                         child: Center(
-                          child: CircularProgressIndicator(
-                            color: Color(0xFF59B294),
-                          ),
+                          child: CircularProgressIndicator(color: c.brand),
                         ),
                       ),
-                    const SizedBox(height: 100),
+                    const SizedBox(height: 120),
                   ],
                 ),
               ),
@@ -879,8 +905,8 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
     );
   }
 
-  /// 小豬吉祥物 + 對話框（當白色面板展開時，在右下角以彈性效果縮放出現，直接返回 Positioned 作為 Stack 子組件）
-  Widget _buildPigMascot(double panelHeight) {
+  /// 小豬吉祥物 + 對話框（面板展開時在右下角以彈性效果縮放出現）
+  Widget _buildPigMascot(double panelHeight, UbanColors c) {
     if (_panelAnimation.value < 0.1) {
       return const Positioned(
         right: 0,
@@ -894,14 +920,9 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
         ? '${currentTitle.substring(0, 20)}...'
         : currentTitle;
 
-    // 豬置於螢幕右下角 (當白色面板展開時顯示在右下角角落)
-    // 為了避免擋住系統的底部返回條，將 bottom 設在離底部約 30 像素的位置
-    const double bottomPosition = 30.0;
-    const double rightPosition = 15.0;
-
     return Positioned(
-      right: rightPosition,
-      bottom: bottomPosition,
+      right: 14,
+      bottom: 24,
       child: ScaleTransition(
         scale: _pigScaleAnim,
         alignment: Alignment.bottomRight,
@@ -911,73 +932,63 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
           children: [
             // 對話框
             if (currentTitle.isNotEmpty)
-              Container(
-                constraints: const BoxConstraints(maxWidth: 180),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.12),
-                      blurRadius: 12,
-                      offset: const Offset(0, 3),
+              Flexible(
+                child: Container(
+                  constraints: const BoxConstraints(maxWidth: 200),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: c.surface,
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(16),
+                      topRight: Radius.circular(16),
+                      bottomLeft: Radius.circular(16),
+                      bottomRight: Radius.circular(4),
                     ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text(
-                      '正在唸：',
-                      style: TextStyle(
-                        color: Color(0xFF9CA3AF),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
+                    boxShadow: c.shadows.card,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('正在唸：',
+                          style: ubanText(14, FontWeight.w600, c.text3)),
+                      const SizedBox(height: 2),
+                      Text(
+                        displayText,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style:
+                            ubanText(18, FontWeight.w700, c.text, height: 1.3),
                       ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      displayText,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Color(0xFF1E293B),
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        height: 1.3,
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            const SizedBox(width: 6),
-            // 圓形「聽」圖標
-            GestureDetector(
-              onTap: _showNewsSummary,
-              child: Container(
-                width: 60,
-                height: 60,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: const Color(0xFF7FBFA6),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.15),
-                      blurRadius: 8,
-                      offset: const Offset(0, 4),
+            const SizedBox(width: 8),
+            // 圓形「聽」按鈕
+            Semantics(
+              button: true,
+              label: '小豬幫您整理重點',
+              excludeSemantics: true,
+              child: PressableScale(
+                onTap: _showNewsSummary,
+                child: Container(
+                  width: 64,
+                  height: 64,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: c.brandFill,
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    '聽',
+                    textScaler: TextScaler.noScaling,
+                    style: TextStyle(
+                      fontFamily: 'StarPanda',
+                      fontSize: 32,
+                      color: c.onBrand,
                     ),
-                  ],
-                ),
-                alignment: Alignment.center,
-                child: const Text(
-                  '聽',
-                  style: TextStyle(
-                    fontFamily: 'StarPanda',
-                    fontSize: 30,
-                    color: Colors.white,
                   ),
                 ),
               ),
@@ -988,7 +999,8 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
     );
   }
 
-  Widget _buildPlayerHeader() {
+  /// 「正在播放」卡（設計稿 `.nowcard`）：標籤＋音波、標題、第幾則・分類・日期。
+  Widget _buildNowCard() {
     final item = _localNewsItems.isEmpty
         ? const <String, dynamic>{}
         : _localNewsItems[_currentIndex];
@@ -998,113 +1010,98 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
     final totalCount = max(_localNewsItems.length, 1);
     final currentCount = _localNewsItems.isEmpty ? 0 : (_currentIndex + 1);
 
-    return Column(
-      children: [
-        Container(
-          width: double.infinity,
-          // ★ 第五十三輪 item 8：16/18→12/14，理由見
-          // `_buildListeningView()` 尾端合併雙重 SizedBox 處的說明——同一輪
-          // widget test 量出 360x640 這個常見窄機尺寸下既有的 RenderFlex
-          // 溢位，這裡的卡片內距是通用留白，一併貢獻出空間。
-          padding: const EdgeInsets.fromLTRB(18, 12, 18, 14),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.2),
-            borderRadius: BorderRadius.circular(24),
-          ),
-          child: Column(
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              const Text(
-                '正在播放：',
-                style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 33,
-                    fontWeight: FontWeight.w700),
+              Expanded(
+                child: Text(
+                  '正在播放',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: ubanText(18, FontWeight.w700, Colors.white),
+                ),
               ),
-              const SizedBox(height: 6),
-              Text(
-                '第 $currentCount / $totalCount 則 · $source · $publishedDate',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 23,
-                    fontWeight: FontWeight.w600,
-                    height: 1.3),
-              ),
-              const SizedBox(height: 10),
+              const SizedBox(width: 8),
               // 音波波動畫 (已模組化)
               NewsSoundWaveIndicator(isPlaying: _isPlaying),
-              if (_error != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  _error!,
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Colors.white, fontSize: 14),
-                ),
-              ],
             ],
           ),
-        ),
-        // ★ 第五十三輪 item 8：本檔第一次有 widget test 覆蓋（見
-        // `news_listen_player_scroll_hint_test.dart`），實測發現本畫面在
-        // 360x640／375x667 這兩個常見手機尺寸下，即使完全不改動任何文字
-        // 內容，`_buildListeningView()` 外層 Column 本來就已經 RenderFlex
-        // 溢位（分別溢位 10px／25px；360x640 正是本專案 `elder_home_tab`
-        // 系列測試一直沿用的「窄機」基準）——鐵律 #14 是無條件的
-        // 硬性規則，不是「只管新增的部分」，這是修這裡的既有問題，不是
-        // 為了塞任務 8 的字級刻意去動別的地方。這裡原本是緊鄰的兩個
-        // SizedBox（28＋10＝38px），疑似歷史上分次修改留下的重複間距，
-        // 合併縮小成一個，把省下的空間讓給下方（含任務 8 放大後的提示
-        // 文字）。播放控制列與上方卡片之間仍保留足夠視覺區隔，只是不再
-        // 多此一舉地疊兩層留白。
-        const SizedBox(height: 18),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            _buildRoundControl(
-              key: const ValueKey('prev_button'),
-              tooltip: '上一則',
-              icon: Icons.fast_rewind_rounded,
-              onTap: () => _changeTrack(-1),
-            ),
-            const SizedBox(width: 42),
-            _isLoadingAudio
-                ? const SizedBox(
-                    width: 58,
-                    height: 58,
-                    child: CircularProgressIndicator(
-                        color: Colors.white, strokeWidth: 3),
-                  )
-                : _buildRoundControl(
-                    key: const ValueKey('play_pause_button'),
-                    tooltip: _isPlaying ? '暫停' : '播放',
-                    icon: _isPlaying
-                        ? Icons.pause_rounded
-                        : Icons.play_arrow_rounded,
-                    onTap: _togglePlayPause,
-                    big: true,
-                  ),
-            const SizedBox(width: 42),
-            _buildRoundControl(
-              key: const ValueKey('next_button'),
-              tooltip: '下一則',
-              icon: Icons.fast_forward_rounded,
-              onTap: () => _changeTrack(1),
+          const SizedBox(height: 4),
+          Text(
+            title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: ubanText(22, FontWeight.w900, Colors.white, height: 1.35),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '第 $currentCount / $totalCount 則 · $source · $publishedDate',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: ubanText(
+                16, FontWeight.w600, Colors.white.withValues(alpha: 0.9)),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              _error!,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: ubanText(18, FontWeight.w700, Colors.white),
             ),
           ],
+        ],
+      ),
+    );
+  }
+
+  /// 播放控制列：上一則／播放暫停／下一則（key 有測試，勿改）。
+  Widget _buildControls() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        _buildRoundControl(
+          key: const ValueKey('prev_button'),
+          tooltip: '上一則',
+          icon: Icons.fast_rewind_rounded,
+          onTap: () => _changeTrack(-1),
+        ),
+        const SizedBox(width: 30),
+        _isLoadingAudio
+            ? const SizedBox(
+                width: 78,
+                height: 78,
+                child: Padding(
+                  padding: EdgeInsets.all(18),
+                  child: CircularProgressIndicator(
+                      color: Colors.white, strokeWidth: 3),
+                ),
+              )
+            : _buildRoundControl(
+                key: const ValueKey('play_pause_button'),
+                tooltip: _isPlaying ? '暫停' : '播放',
+                icon: _isPlaying
+                    ? Icons.pause_rounded
+                    : Icons.play_arrow_rounded,
+                onTap: _togglePlayPause,
+                big: true,
+              ),
+        const SizedBox(width: 30),
+        _buildRoundControl(
+          key: const ValueKey('next_button'),
+          tooltip: '下一則',
+          icon: Icons.fast_forward_rounded,
+          onTap: () => _changeTrack(1),
         ),
       ],
     );
@@ -1117,31 +1114,29 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
     Key? key,
     String? tooltip,
   }) {
-    final size = big ? 74.0 : 60.0;
+    final size = big ? 78.0 : 60.0;
+    final c = UbanColors.of(context);
     return Tooltip(
       message: tooltip ?? '',
-      child: InkWell(
-        key: key,
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(999),
-        child: Container(
-          width: size,
-          height: size,
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.95),
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.18),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Icon(
-            icon,
-            color: const Color(0xFF59B294),
-            size: big ? 42 : 30,
+      child: Semantics(
+        button: true,
+        label: tooltip,
+        excludeSemantics: true,
+        child: PressableScale(
+          key: key,
+          onTap: onTap,
+          child: Container(
+            width: size,
+            height: size,
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              icon,
+              color: c.brandStrong,
+              size: big ? 38 : 30,
+            ),
           ),
         ),
       ),

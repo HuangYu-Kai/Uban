@@ -16,7 +16,7 @@ class NewsSoundWaveIndicator extends StatefulWidget {
 
 class _NewsSoundWaveIndicatorState extends State<NewsSoundWaveIndicator> {
   Timer? _waveTimer;
-  List<double> _waveHeights = List<double>.filled(11, 34);
+  List<double> _waveHeights = List<double>.filled(7, 34);
   final Random _random = Random();
 
   @override
@@ -52,7 +52,7 @@ class _NewsSoundWaveIndicatorState extends State<NewsSoundWaveIndicator> {
     _waveTimer = Timer.periodic(const Duration(milliseconds: 280), (_) {
       if (!mounted || !widget.isPlaying) return;
       setState(() {
-        _waveHeights = List<double>.generate(11, (i) {
+        _waveHeights = List<double>.generate(7, (i) {
           final base = 28 + (i.isOdd ? 8 : 0);
           return base + _random.nextInt(50).toDouble();
         });
@@ -65,26 +65,27 @@ class _NewsSoundWaveIndicatorState extends State<NewsSoundWaveIndicator> {
     _waveTimer = null;
     if (!mounted) return;
     setState(() {
-      _waveHeights = List<double>.filled(11, 34);
+      _waveHeights = List<double>.filled(7, 34);
     });
   }
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 60,
+      height: 26,
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: List.generate(_waveHeights.length, (i) {
           return AnimatedContainer(
             duration: const Duration(milliseconds: 240),
-            width: 8,
-            height: _waveHeights[i] * 0.6,
-            margin: const EdgeInsets.symmetric(horizontal: 5),
+            width: 5,
+            height: (_waveHeights[i] * 0.3).clamp(6.0, 26.0),
+            margin: const EdgeInsets.symmetric(horizontal: 2),
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.95),
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(3),
             ),
           );
         }),

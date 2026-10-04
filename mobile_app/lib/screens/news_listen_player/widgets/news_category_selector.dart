@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 
+import '../../../widgets/ui/ui.dart';
+
+/// 新聞分類列（設計稿 `.catrow`）：膠囊鈕、高 ≥48，選中者用 text／bg 反白。
 class NewsCategorySelector extends StatelessWidget {
   final List<String> categories;
   final String selectedCategory;
   final ValueChanged<String> onCategorySelected;
 
-  /// 是否在白色面板中使用（深色文字模式）
+  /// 是否在面板（surface 底）中使用；false 時改為疊在綠色漸層上的玻璃膠囊。
   final bool onWhiteBackground;
 
   const NewsCategorySelector({
@@ -18,8 +21,9 @@ class NewsCategorySelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = UbanColors.of(context);
     return Container(
-      margin: const EdgeInsets.only(bottom: 20),
+      margin: const EdgeInsets.only(bottom: 12),
       height: 52,
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
@@ -28,61 +32,30 @@ class NewsCategorySelector extends StatelessWidget {
         child: Row(
           children: categories.map((category) {
             final isSelected = selectedCategory == category;
+            final Color bg = onWhiteBackground
+                ? (isSelected ? c.text : c.surface2)
+                : (isSelected
+                    ? Colors.white
+                    : Colors.white.withValues(alpha: 0.18));
+            final Color fg = onWhiteBackground
+                ? (isSelected ? c.bg : c.text2)
+                : (isSelected ? const Color(0xFF16201C) : Colors.white);
             return Padding(
-              padding: const EdgeInsets.only(right: 10),
-              child: GestureDetector(
+              padding: const EdgeInsets.only(right: 8),
+              child: PressableScale(
                 onTap: () => onCategorySelected(category),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 250),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  constraints: const BoxConstraints(minHeight: 48),
+                  alignment: Alignment.center,
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
                   decoration: BoxDecoration(
-                    color: onWhiteBackground
-                        ? (isSelected
-                            ? const Color(0xFF1E293B)
-                            : Colors.white)
-                        : (isSelected
-                            ? const Color(0xFFFFD700).withValues(alpha: 0.95)
-                            : Colors.white.withValues(alpha: 0.1)),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: onWhiteBackground
-                          ? (isSelected
-                              ? const Color(0xFF1E293B)
-                              : const Color(0xFFE5E7EB))
-                          : (isSelected
-                              ? const Color(0xFFFFD700)
-                              : Colors.white.withValues(alpha: 0.2)),
-                      width: 1.5,
-                    ),
-                    boxShadow: isSelected
-                        ? [
-                            BoxShadow(
-                              color: onWhiteBackground
-                                  ? const Color(0xFF1E293B)
-                                      .withValues(alpha: 0.15)
-                                  : const Color(0xFFFFD700)
-                                      .withValues(alpha: 0.25),
-                              blurRadius: 12,
-                              spreadRadius: 1,
-                            ),
-                          ]
-                        : [],
+                    color: bg,
+                    borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(
                     category,
-                    style: TextStyle(
-                      color: onWhiteBackground
-                          ? (isSelected
-                              ? Colors.white
-                              : const Color(0xFF6B7280))
-                          : (isSelected
-                              ? const Color(0xFF1E293B)
-                              : Colors.white.withValues(alpha: 0.9)),
-                      fontSize: 17,
-                      fontWeight:
-                          isSelected ? FontWeight.w900 : FontWeight.w500,
-                    ),
+                    style: ubanText(18, FontWeight.w700, fg),
                   ),
                 ),
               ),

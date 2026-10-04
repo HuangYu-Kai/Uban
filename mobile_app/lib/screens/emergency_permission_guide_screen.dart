@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_application_1/utils/app_logger.dart';
+import 'package:flutter_application_1/widgets/ui/ui.dart';
 
 /// ★ 2026-08-20 新增：MIUI 專有的「鎖定螢幕顯示」「後台彈出介面」權限引導頁。
 ///
@@ -134,35 +134,24 @@ class _EmergencyPermissionGuideScreenState
 
   @override
   Widget build(BuildContext context) {
+    final c = UbanColors.of(context);
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      appBar: AppBar(
-        title: Text(
-          '鎖屏與背景權限設定',
-          style: GoogleFonts.notoSansTc(
-            fontWeight: FontWeight.bold,
-            color: Colors.black87,
-          ),
-        ),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: true,
-        iconTheme: const IconThemeData(color: Colors.black87),
-      ),
+      backgroundColor: c.bg,
       body: SafeArea(
         child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(18, 12, 18, 28),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const SizedBox(height: 12),
-              _buildIntroCard(),
-              const SizedBox(height: 12),
-              _buildStepsCard(),
-              const SizedBox(height: 12),
-              _buildStatusBanner(),
-              const SizedBox(height: 24),
+              const UbanTopBar(title: '鎖屏與背景權限'),
+              const SizedBox(height: 16),
+              _buildIntroCard(c),
+              const SizedBox(height: 14),
+              _buildStepsCard(c),
+              const SizedBox(height: 14),
+              _buildStatusBanner(c),
+              const SizedBox(height: 20),
               _buildActionButtons(),
-              const SizedBox(height: 32),
             ],
           ),
         ),
@@ -170,56 +159,28 @@ class _EmergencyPermissionGuideScreenState
     );
   }
 
-  /// 卡片外層樣式比照 `family_settings_view.dart` 的 `_buildSettingsGroup`
-  /// （灰色小標題 + 白底容器），維持同一套視覺語言，不另外發明新樣式。
-  Widget _buildGroup(String title, Widget child) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-          child: Text(
-            title,
-            style: GoogleFonts.notoSansTc(
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-              color: Colors.grey[600],
-            ),
-          ),
-        ),
-        Container(
-          width: double.infinity,
-          color: Colors.white,
-          padding: const EdgeInsets.all(16),
-          child: child,
-        ),
-      ],
+  /// 卡片標題（長輩尺度：20pt 粗體）。
+  Widget _cardTitle(UbanColors c, String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Text(title, style: ubanText(20, FontWeight.w900, c.text)),
     );
   }
 
-  Widget _buildIntroCard() {
-    return _buildGroup(
-      '為什麼需要這兩項設定',
-      Column(
+  Widget _buildIntroCard(UbanColors c) {
+    return UbanCard(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          _cardTitle(c, '為什麼需要這兩項設定'),
           Text.rich(
             TextSpan(
-              style: GoogleFonts.notoSansTc(
-                fontSize: 14,
-                color: Colors.grey[800],
-                height: 1.6,
-              ),
+              style: ubanText(18, FontWeight.w500, c.text, height: 1.6),
               children: [
                 const TextSpan(text: '這兩項設定只用於緊急情況：'),
                 TextSpan(
                   text: '長輩端的來電畫面顯示、家屬端的跌倒警報彈出',
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 14,
-                    color: Colors.grey[900],
-                    fontWeight: FontWeight.bold,
-                    height: 1.6,
-                  ),
+                  style: ubanText(18, FontWeight.w900, c.text, height: 1.6),
                 ),
                 const TextSpan(
                   text: '。開啟後，即使手機處於鎖定畫面，或 Uban 正在背景執行，'
@@ -234,71 +195,59 @@ class _EmergencyPermissionGuideScreenState
             '「鎖定螢幕顯示」與「後台彈出介面」是小米（MIUI）系統專有的設定，'
             'Android 本身沒有提供讓 APP 讀取目前狀態的方式，因此需要您手動確認'
             '已經開啟——這是誠實的作法，不是 APP 偷懶。',
-            style: GoogleFonts.notoSansTc(
-              fontSize: 12,
-              color: Colors.grey[600],
-              height: 1.5,
-            ),
+            style: ubanText(16, FontWeight.w500, c.text2, height: 1.55),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildStepsCard() {
-    return _buildGroup(
-      '設定步驟',
-      Column(
+  Widget _buildStepsCard(UbanColors c) {
+    return UbanCard(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          _cardTitle(c, '設定步驟'),
           _buildPermissionExplainRow(
+            c,
             icon: Icons.lock_outline,
             title: '鎖定螢幕顯示',
             description: '讓長輩端手機處於鎖定畫面時，家人的來電畫面仍能顯示出來',
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           _buildPermissionExplainRow(
+            c,
             icon: Icons.layers_outlined,
             title: '後台彈出介面',
             description: '讓家屬端在背景使用其他 APP 時，長輩的跌倒警報仍能立即彈出',
           ),
           const SizedBox(height: 16),
-          const Divider(height: 1),
-          const SizedBox(height: 16),
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             decoration: BoxDecoration(
-              color: const Color(0xFFFFF3E0),
-              borderRadius: BorderRadius.circular(8),
+              color: c.surface2,
+              borderRadius: BorderRadius.circular(16),
             ),
             child: Text(
               '設定 → 應用程式 → Uban → 其他權限 → 開啟「鎖定螢幕顯示」與「後台'
               '彈出介面」',
-              style: GoogleFonts.notoSansTc(
-                fontSize: 13,
-                color: const Color(0xFF8A5A00),
-                fontWeight: FontWeight.w600,
-                height: 1.6,
-              ),
+              style: ubanText(17, FontWeight.w600, c.text, height: 1.6),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           Text(
             '按下方「前往設定」按鈕，部分機型會直接進入上述頁面；若您的機型沒有'
             '直接跳轉，請依這個路徑自行前往。',
-            style: GoogleFonts.notoSansTc(
-              fontSize: 12,
-              color: Colors.grey[600],
-              height: 1.5,
-            ),
+            style: ubanText(16, FontWeight.w500, c.text2, height: 1.55),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildPermissionExplainRow({
+  Widget _buildPermissionExplainRow(
+    UbanColors c, {
     required IconData icon,
     required String title,
     required String description,
@@ -306,24 +255,25 @@ class _EmergencyPermissionGuideScreenState
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, color: const Color(0xFFFF9800), size: 22),
+        Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: c.warmContainer,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Icon(icon, color: c.warm, size: 26),
+        ),
         const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                title,
-                style: GoogleFonts.notoSansTc(fontWeight: FontWeight.w600),
-              ),
+              Text(title, style: ubanText(19, FontWeight.w900, c.text)),
               const SizedBox(height: 2),
               Text(
                 description,
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 12,
-                  color: Colors.grey[600],
-                  height: 1.4,
-                ),
+                style: ubanText(16, FontWeight.w500, c.text2, height: 1.45),
               ),
             ],
           ),
@@ -332,13 +282,12 @@ class _EmergencyPermissionGuideScreenState
     );
   }
 
-  /// 狀態橫幅——這是本畫面「誠實限制」的具體呈現：只有「需手動確認」（amber，
-  /// 尚未回報）與「已確認過」（藍灰色，使用者自行回報）兩種狀態，**沒有**
+  /// 狀態橫幅——這是本畫面「誠實限制」的具體呈現：只有「需手動確認」（暖色，
+  /// 尚未回報）與「已確認過」（資訊藍，使用者自行回報）兩種狀態，**沒有**
   /// 任何一種會顯示綠色或「已授權」字樣，避免讓使用者誤以為 APP 驗證過。
-  Widget _buildStatusBanner() {
-    final chipBg = _isAcknowledged ? Colors.blueGrey[50]! : Colors.amber[50]!;
-    final chipFg =
-        _isAcknowledged ? Colors.blueGrey[700]! : Colors.amber[900]!;
+  Widget _buildStatusBanner(UbanColors c) {
+    final chipBg = _isAcknowledged ? c.infoContainer : c.warmContainer;
+    final chipFg = _isAcknowledged ? c.info : c.warm;
     final label = _isAcknowledged ? '已確認過' : '需手動確認';
     final explain = _isAcknowledged
         ? '這是您先前自行確認的結果，並非 APP 驗證過的授權狀態。若手機重新開機'
@@ -346,106 +295,62 @@ class _EmergencyPermissionGuideScreenState
         : 'APP 無法讀取這兩項 MIUI 專有設定的實際開關狀態，因此無法顯示「已'
             '授權」，請依上方步驟確認後按下方「我已完成設定」。';
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: chipBg,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: chipFg.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                label,
-                style: TextStyle(
-                  color: chipFg,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              explain,
-              style: GoogleFonts.notoSansTc(
-                fontSize: 12,
-                color: chipFg,
-                height: 1.5,
-              ),
-            ),
-          ],
-        ),
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: chipBg,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: ubanText(19, FontWeight.w900, chipFg)),
+          const SizedBox(height: 6),
+          Text(
+            explain,
+            style: ubanText(17, FontWeight.w700, chipFg, height: 1.5),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildActionButtons() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Column(
-        children: [
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: _isOpeningSettings ? null : _openSettings,
-              icon: const Icon(Icons.settings_outlined),
-              label: Text(
-                '前往設定',
-                style: GoogleFonts.notoSansTc(fontWeight: FontWeight.w600),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFFF9800),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        UbanButton(
+          label: '前往設定',
+          icon: Icons.settings_outlined,
+          size: UbanButtonSize.xl,
+          onPressed: _isOpeningSettings ? null : _openSettings,
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              // ghost 本身高 48，外包 60 讓觸控區達長輩尺度
+              child: SizedBox(
+                height: 60,
+                child: UbanButton(
+                  label: '稍後再說',
+                  variant: UbanButtonVariant.ghost,
+                  onPressed: _dismissLater,
                 ),
               ),
             ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: TextButton(
-                  onPressed: _dismissLater,
-                  child: Text(
-                    '稍後再說',
-                    style: GoogleFonts.notoSansTc(color: Colors.grey[700]),
-                  ),
-                ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: UbanButton(
+                label: '我已完成設定',
+                variant: UbanButtonVariant.outline,
+                onPressed: _acknowledge,
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: _acknowledge,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFFFF9800),
-                    side: const BorderSide(color: Color(0xFFFF9800)),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: Text(
-                    '我已完成設定',
-                    style: GoogleFonts.notoSansTc(fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

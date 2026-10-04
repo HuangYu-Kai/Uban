@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:google_fonts/google_fonts.dart';
 
+import '../../../widgets/ui/ui.dart';
+
+/// 「重點整理」對話框（設計稿 `#dl-summary`）：小豬＋標題＋整理內容＋「我知道了」。
 class NewsSummaryDialog extends StatelessWidget {
   final String summaryText;
   final VoidCallback onClose;
@@ -14,55 +16,41 @@ class NewsSummaryDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      backgroundColor: Colors.white.withValues(alpha: 0.95),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
-      content: Column(
+    final c = UbanColors.of(context);
+    return UbanDialog(
+      child: Column(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
               Image.asset(
                 'assets/images/pig_summary_expert.png',
-                width: 70,
-                height: 70,
-              ).animate(onPlay: (controller) => controller.repeat())
-               .shimmer(duration: 2.seconds)
-               .scale(begin: const Offset(1, 1), end: const Offset(1.1, 1.1), duration: 1.seconds, curve: Curves.easeInOut),
-              const SizedBox(width: 15),
+                width: 72,
+                height: 72,
+              )
+                  .animate(onPlay: (controller) => controller.repeat())
+                  .scale(
+                      begin: const Offset(1, 1),
+                      end: const Offset(1.06, 1.06),
+                      duration: 1.2.seconds,
+                      curve: Curves.easeInOut),
+              const SizedBox(width: 14),
               Expanded(
                 child: Text(
                   '總結專家小豬',
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: const Color(0xFF59B294),
-                  ),
+                  style: ubanText(24, FontWeight.w900, c.text),
                 ),
               ),
             ],
           ),
-          const Divider(height: 30),
+          const SizedBox(height: 14),
           Text(
             summaryText,
-            style: GoogleFonts.notoSansTc(
-              fontSize: 22,
-              height: 1.6,
-              color: Colors.black87,
-            ),
-          ).animate().fadeIn(duration: 600.ms).slideY(begin: 0.2, end: 0),
-          const SizedBox(height: 25),
-          ElevatedButton(
-            onPressed: onClose,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF59B294),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              elevation: 0,
-            ),
-            child: const Text('我知道了', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-          ),
+            style: ubanText(20, FontWeight.w500, c.text, height: 1.6),
+          ).animate().fadeIn(duration: 600.ms).slideY(begin: 0.1, end: 0),
+          const SizedBox(height: 20),
+          UbanButton(label: '我知道了', onPressed: onClose),
         ],
       ),
     );

@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../../services/api_service.dart';
+import '../../widgets/ui/ui.dart';
 
 /// 新聞文章閱讀頁面
 ///
-/// 提供無干擾的閱讀體驗，22px 內文字體，
+/// 提供無干擾的閱讀體驗，20pt 內文（行高 1.85），
 /// 並包含「聆聽新聞」按鈕可跳回播放模式。
 class NewsArticleScreen extends StatelessWidget {
   final Map<String, dynamic> newsItem;
@@ -52,201 +53,158 @@ class NewsArticleScreen extends StatelessWidget {
         : rawImageUrl;
     final hasImage = imageUrl.startsWith('http');
 
+    final c = UbanColors.of(context);
+
     return Scaffold(
-      backgroundColor: const Color(0xFFFAFAFA),
+      backgroundColor: c.bg,
       body: ScrollConfiguration(
         behavior: const NoOverscrollBehavior(),
         child: CustomScrollView(
           physics: const ClampingScrollPhysics(),
           slivers: [
-          // 頂部圖片 + 返回按鈕
-          SliverAppBar(
-            expandedHeight: 240,
-            pinned: true,
-            backgroundColor: Colors.white,
-            surfaceTintColor: Colors.transparent,
-            leadingWidth: 120,
-            leading: Padding(
-              padding: const EdgeInsets.only(left: 12, top: 8, bottom: 8),
-              child: GestureDetector(
-                onTap: () => Navigator.pop(context),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.95),
-                    borderRadius: BorderRadius.circular(24),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.15),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
+            // 頂部圖片 + 返回按鈕（設計稿 `.ahero`）
+            SliverAppBar(
+              expandedHeight: 240,
+              toolbarHeight: 64,
+              pinned: true,
+              backgroundColor: c.surface,
+              surfaceTintColor: Colors.transparent,
+              leadingWidth: 128,
+              leading: Padding(
+                padding: const EdgeInsets.only(left: 14, top: 8, bottom: 8),
+                child: Semantics(
+                  button: true,
+                  label: '返回',
+                  excludeSemantics: true,
+                  child: PressableScale(
+                    onTap: () => Navigator.pop(context),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.94),
+                        borderRadius: BorderRadius.circular(999),
                       ),
-                    ],
-                  ),
-                  child: const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.arrow_back_rounded,
-                        color: Color(0xFF1E293B),
-                        size: 20,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.arrow_back_ios_new_rounded,
+                              color: Color(0xFF16201C), size: 20),
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              '返回',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: ubanText(
+                                  18, FontWeight.w700, const Color(0xFF16201C)),
+                            ),
+                          ),
+                        ],
                       ),
-                      SizedBox(width: 4),
-                      Text(
-                        '返回',
-                        style: TextStyle(
-                          color: Color(0xFF1E293B),
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
               ),
+              flexibleSpace: FlexibleSpaceBar(
+                background: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    hasImage
+                        ? Image.network(
+                            imageUrl,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) =>
+                                _buildGradientPlaceholder(source),
+                          )
+                        : _buildGradientPlaceholder(source),
+                    if (!hasImage)
+                      Positioned(
+                        right: 14,
+                        bottom: 12,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.32),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text('示意圖',
+                              style: ubanText(
+                                  14, FontWeight.w600, Colors.white)),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             ),
-            flexibleSpace: FlexibleSpaceBar(
-              background: hasImage
-                  ? Image.network(
-                      imageUrl,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => _buildGradientPlaceholder(source),
-                    )
-                  : _buildGradientPlaceholder(source),
-            ),
-          ),
 
-          // 文章內容
-          SliverToBoxAdapter(
-            child: Container(
-              color: Colors.white,
+            // 文章內容（設計稿 `.abody`）
+            SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
+                padding: const EdgeInsets.fromLTRB(22, 20, 22, 40),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // 分類標籤
                     Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 6,
-                      ),
+                          horizontal: 14, vertical: 6),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF59B294).withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(8),
+                        color: c.brandContainer,
+                        borderRadius: BorderRadius.circular(999),
                       ),
                       child: Text(
                         source,
-                        style: const TextStyle(
-                          color: Color(0xFF59B294),
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // 標題
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        color: Color(0xFF1E293B),
-                        fontSize: 30,
-                        fontWeight: FontWeight.w900,
-                        height: 1.3,
-                        letterSpacing: -0.5,
+                        style: ubanText(16, FontWeight.w700, c.brandStrong),
                       ),
                     ),
                     const SizedBox(height: 12),
 
+                    // 標題
+                    Text(
+                      title,
+                      style:
+                          ubanText(28, FontWeight.w900, c.text, height: 1.35),
+                    ),
+                    const SizedBox(height: 10),
+
                     // 日期
                     Text(
                       date,
-                      style: const TextStyle(
-                        color: Color(0xFF9CA3AF),
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
-                        letterSpacing: 0.5,
-                      ),
+                      style: ubanText(16, FontWeight.w500, c.text3),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 16),
 
-                    // 分隔線
-                    Container(
-                      height: 1,
-                      color: const Color(0xFFE5E7EB),
-                    ),
-                    const SizedBox(height: 24),
-
-                    // 聆聽新聞按鈕
-                    GestureDetector(
-                      onTap: () {
+                    // 聆聽新聞按鈕（主要 CTA，xl 76）
+                    UbanButton(
+                      label: '聆聽新聞',
+                      icon: Icons.headphones_rounded,
+                      size: UbanButtonSize.xl,
+                      onPressed: () {
                         onListenNews();
                         Navigator.pop(context);
                       },
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(vertical: 18),
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFF8BAF88), Color(0xFF59B294)],
-                          ),
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [
-                            BoxShadow(
-                              color:
-                                  const Color(0xFF59B294).withValues(alpha: 0.3),
-                              blurRadius: 16,
-                              offset: const Offset(0, 6),
-                            ),
-                          ],
-                        ),
-                        child: const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.headphones_rounded,
-                              color: Colors.white,
-                              size: 28,
-                            ),
-                            SizedBox(width: 10),
-                            Text(
-                              '聆聽新聞',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 22,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
                     ),
-                    const SizedBox(height: 28),
+                    const SizedBox(height: 20),
 
-                    // 內文
+                    // 內文：20pt、行高 1.85
                     Text(
                       content.isNotEmpty ? content : '（此新聞暫無內文）',
-                      style: TextStyle(
-                        color: content.isNotEmpty
-                            ? const Color(0xFF374151)
-                            : const Color(0xFF9CA3AF),
-                        fontSize: 22,
-                        fontWeight: FontWeight.w400,
-                        height: 1.8,
-                        letterSpacing: 0.2,
+                      style: ubanText(
+                        20,
+                        FontWeight.w400,
+                        content.isNotEmpty ? c.text : c.text3,
+                        height: 1.85,
                       ),
                     ),
-                    const SizedBox(height: 60),
                   ],
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ),
-  );
-}
+    );
+  }
 
   Widget _buildGradientPlaceholder(String category) {
     final List<Color> colors;

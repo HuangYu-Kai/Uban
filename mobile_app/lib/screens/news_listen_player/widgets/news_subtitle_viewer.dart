@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../widgets/ui/ui.dart';
+
 class NewsSubtitleViewer extends StatefulWidget {
   final List<dynamic> subtitles;
   final int currentSubtitleIndex;
@@ -82,74 +84,70 @@ class _NewsSubtitleViewerState extends State<NewsSubtitleViewer> {
 
   @override
   Widget build(BuildContext context) {
+    // 疊在綠色漸層上的字幕面板：固定深色半透明底＋白字（內容固定色，亮暗模式皆同）。
+    // 卡拉 OK 進度「高對比」：已唸＝純白＋粗體，未唸＝白 55%，非當前句＝白 45%。
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.symmetric(vertical: 10),
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 18),
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.3),
+        color: Colors.black.withValues(alpha: 0.28),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-            color: Colors.white.withValues(alpha: 0.1),
-            width: 1),
       ),
       child: widget.subtitles.isEmpty
-          ? const Center(
+          ? Center(
               child: Text(
                 '準備播放中...',
-                style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 30,
-                    fontWeight: FontWeight.bold),
+                textAlign: TextAlign.center,
+                style: ubanText(
+                    26, FontWeight.w900, Colors.white.withValues(alpha: 0.9)),
               ),
             )
           : SingleChildScrollView(
               controller: _subtitleScrollController,
               physics: const BouncingScrollPhysics(),
-              padding: const EdgeInsets.symmetric(vertical: 100),
+              padding: const EdgeInsets.symmetric(vertical: 60),
               child: Column(
                 children: List.generate(widget.subtitles.length, (index) {
                   final isCurrent = index == widget.currentSubtitleIndex;
                   final text = widget.subtitles[index]['text'] as String;
+                  final split = (text.length * widget.subtitleProgress)
+                      .round()
+                      .clamp(0, text.length);
 
                   return AnimatedOpacity(
                     key: _subtitleKeys[index],
                     duration: const Duration(milliseconds: 200),
-                    opacity: isCurrent ? 1.0 : 0.4,
+                    opacity: 1.0,
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      padding: const EdgeInsets.symmetric(vertical: 5),
                       child: RichText(
                         textAlign: TextAlign.center,
+                        textScaler: MediaQuery.textScalerOf(context),
                         text: TextSpan(
-                          style: TextStyle(
-                            fontSize: isCurrent ? 30 : 22,
-                            fontWeight: isCurrent ? FontWeight.w900 : FontWeight.w600,
-                            height: 1.4,
+                          style: ubanText(
+                            isCurrent ? 26 : 20,
+                            isCurrent ? FontWeight.w900 : FontWeight.w600,
+                            Colors.white,
+                            height: 1.45,
                           ),
                           children: [
                             if (isCurrent) ...[
                               TextSpan(
-                                text: text.substring(
-                                    0,
-                                    (text.length * widget.subtitleProgress)
-                                        .round()
-                                        .clamp(0, text.length)),
-                                style: const TextStyle(color: Color(0xFFFFD700)),
-                              ),
-                              TextSpan(
-                                text: text.substring((text.length *
-                                        widget.subtitleProgress)
-                                    .round()
-                                    .clamp(0, text.length)),
+                                text: text.substring(0, split),
                                 style: const TextStyle(color: Colors.white),
                               ),
-                            ] else ...[
+                              TextSpan(
+                                text: text.substring(split),
+                                style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.55)),
+                              ),
+                            ] else
                               TextSpan(
                                 text: text,
                                 style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.4)),
+                                    color: Colors.white.withValues(alpha: 0.45)),
                               ),
-                            ],
                           ],
                         ),
                       ),
