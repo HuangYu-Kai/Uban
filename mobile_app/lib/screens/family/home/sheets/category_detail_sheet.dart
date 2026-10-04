@@ -1,258 +1,167 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../../../theme/app_theme.dart';
+import '../../widgets/fam_ui.dart';
 import '../models/activity_log_entry.dart';
 import '../dialogs/full_dialogue_dialog.dart';
 
-/// 顯示單一主題分類詳細動態清單 BottomSheet
+/// 顯示單一主題分類詳細動態清單 BottomSheet（設計稿 `.sheet`＋`.fitem`）。
+///
+/// 外觀：面板 surface、圓角 32、左右下 inset 8、grab 44×5；每筆紀錄為 surface2 區塊，
+/// 不放分類圖示與分類色（分類以文字標示）。
 void showCategoryDetailModal(
   BuildContext context, {
   required String categoryTitle,
-  required IconData categoryIcon,
-  required Color categoryColor,
   required List<Map<String, dynamic>> items,
 }) {
   final cs = Theme.of(context).colorScheme;
-  final isDark = Theme.of(context).brightness == Brightness.dark;
+  final c0 = UbanColors.of(context);
 
-  final cleanTitle = categoryTitle.replaceAll(RegExp(r'^[^\w\u4e00-\u9fa5]+'), '').trim();
+  final cleanTitle = categoryTitle.replaceAll(RegExp(r'^[^\w一-龥]+'), '').trim();
   final displayTitle = cleanTitle.isNotEmpty ? cleanTitle : categoryTitle;
 
   showModalBottomSheet(
     context: context,
     isScrollControlled: true,
+    useSafeArea: true,
     backgroundColor: Colors.transparent,
-    builder: (c) {
-      return Container(
-        height: MediaQuery.of(context).size.height * 0.8,
-        decoration: BoxDecoration(
-          color: cs.surfaceContainer,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-          boxShadow: [
-            BoxShadow(
-              color: isDark ? Colors.black87 : cs.primary.withValues(alpha: 0.08),
-              blurRadius: 30,
-              spreadRadius: 5,
-            ),
-          ],
-        ),
-        child: Column(
-          children: [
-            const SizedBox(height: 14),
-            Container(
-              width: 44,
-              height: 5,
-              decoration: BoxDecoration(
-                color: cs.outlineVariant,
-                borderRadius: BorderRadius.circular(10),
+    elevation: 0,
+    barrierColor: c0.scrim,
+    builder: (sheetContext) {
+      final c = UbanColors.of(sheetContext);
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+        child: Container(
+          height: MediaQuery.of(sheetContext).size.height * 0.8,
+          decoration: BoxDecoration(
+            color: c.surface,
+            borderRadius: BorderRadius.circular(32),
+          ),
+          child: Column(
+            children: [
+              Container(
+                width: 44,
+                height: 5,
+                margin: const EdgeInsets.only(top: 12, bottom: 14),
+                decoration: BoxDecoration(
+                  color: c.surface3,
+                  borderRadius: BorderRadius.circular(999),
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: categoryColor.withValues(alpha: 0.2),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(categoryIcon, color: categoryColor, size: 24),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          displayTitle,
-                          style: GoogleFonts.notoSansTc(
-                            fontSize: 19,
-                            fontWeight: FontWeight.w900,
-                            color: cs.onSurface,
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 22),
+                child: Row(
+                  children: [
+                    // ★ 鐵律 #14：標題可收縮；關閉鈕固定在右側。
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            displayTitle,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: famText(c.text, 19, weight: FontWeight.w900),
                           ),
-                        ),
-                        Text(
-                          '共 ${items.length} 筆$displayTitle詳細紀錄',
-                          style: GoogleFonts.notoSansTc(
-                            fontSize: 13.5,
-                            color: cs.onSurfaceVariant,
-                            fontWeight: FontWeight.w600,
+                          const SizedBox(height: 2),
+                          Text(
+                            '共 ${items.length} 筆$displayTitle詳細紀錄',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: famText(c.text2, 13.5, weight: FontWeight.w600),
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.close_rounded, color: cs.onSurfaceVariant),
-                    onPressed: () => Navigator.pop(c),
-                  ),
-                ],
-              ),
-            ),
-            Divider(color: cs.outlineVariant.withValues(alpha: 0.3), height: 24),
-            Expanded(
-              child: items.isEmpty
-                  ? Center(
-                      child: Text(
-                        '尚無該主題分類的新紀錄',
-                        style: GoogleFonts.notoSansTc(color: cs.onSurfaceVariant),
+                        ],
                       ),
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-                      itemCount: items.length,
-                      itemBuilder: (context, idx) {
-                        final item = items[idx];
-                        final parsed = ActivityLogParser.parseActivityLogItem(item, cs);
-                        final isChat = parsed.isChat || item['isChat'] == true;
-
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          padding: const EdgeInsets.all(15),
-                          decoration: BoxDecoration(
-                            color: cs.surfaceContainerLow,
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(
-                              color: cs.outline.withValues(alpha: isDark ? 0.3 : 0.15),
-                              width: 1.2,
-                            ),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3.5),
-                                    decoration: BoxDecoration(
-                                      color: parsed.themeColor.withValues(alpha: isDark ? 0.25 : 0.12),
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    child: Text(
-                                      parsed.categoryTag,
-                                      style: GoogleFonts.notoSansTc(
-                                        fontSize: 12.5,
-                                        fontWeight: FontWeight.w700,
-                                        color: parsed.themeColor,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
-                                    decoration: BoxDecoration(
-                                      color: isDark ? cs.surfaceContainerHighest : cs.surfaceContainerHighest.withValues(alpha: 0.6),
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    child: Text(
-                                      parsed.statusText,
-                                      style: GoogleFonts.notoSansTc(
-                                        fontSize: 12.0,
-                                        fontWeight: FontWeight.w700,
-                                        color: cs.onSurfaceVariant,
-                                      ),
-                                    ),
-                                  ),
-                                  const Spacer(),
-                                  if (parsed.timeText.isNotEmpty)
-                                    Text(
-                                      parsed.timeText,
-                                      style: GoogleFonts.inter(
-                                        fontSize: 13.0,
-                                        color: cs.onSurfaceVariant,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                ],
-                              ),
-                              const SizedBox(height: 10),
-                              Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Container(
-                                    width: 32,
-                                    height: 32,
-                                    decoration: BoxDecoration(
-                                      color: parsed.themeColor.withValues(alpha: isDark ? 0.25 : 0.12),
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: Icon(parsed.icon, size: 17, color: parsed.themeColor),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          parsed.title,
-                                          style: GoogleFonts.notoSansTc(
-                                            fontSize: 16.0,
-                                            fontWeight: FontWeight.bold,
-                                            color: cs.onSurface,
-                                            height: 1.35,
-                                          ),
-                                        ),
-                                        if (parsed.subtitle != null && parsed.subtitle!.isNotEmpty) ...[
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            parsed.subtitle!,
-                                            style: GoogleFonts.notoSansTc(
-                                              fontSize: 13.5,
-                                              height: 1.4,
-                                              color: cs.onSurfaceVariant,
-                                              fontWeight: FontWeight.w500,
-                                            ),
-                                          ),
-                                        ],
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              if (isChat && (parsed.fullQuery.isNotEmpty || item['fullQuery'] != null)) ...[
-                                const SizedBox(height: 12),
-                                InkWell(
-                                  onTap: () {
-                                    showFullDialogueDialog(
-                                      context,
-                                      parsed.fullQuery.isNotEmpty ? parsed.fullQuery : (item['fullQuery'] as String? ?? ''),
-                                      parsed.fullAi.isNotEmpty ? parsed.fullAi : (item['fullAi'] as String? ?? ''),
-                                      parsed.timeText.isNotEmpty ? parsed.timeText : (item['time'] as String? ?? ''),
-                                    );
-                                  },
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFF59E0B).withValues(alpha: isDark ? 0.2 : 0.1),
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        const Icon(Icons.auto_awesome_rounded, size: 15, color: Color(0xFFF59E0B)),
-                                        const SizedBox(width: 6),
-                                        Text(
-                                          '📖 展開檢視長輩與 AI 完整對話逐字稿',
-                                          style: GoogleFonts.notoSansTc(
-                                            fontSize: 13.5,
-                                            fontWeight: FontWeight.bold,
-                                            color: isDark ? const Color(0xFFFCD34D) : const Color(0xFFB45309),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        );
-                      },
                     ),
-            ),
-          ],
+                    const SizedBox(width: 8),
+                    FamMore(label: '關閉', onTap: () => Navigator.pop(sheetContext)),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              Expanded(
+                child: items.isEmpty
+                    ? Center(
+                        child: Text(
+                          '尚無該主題分類的新紀錄',
+                          style: famText(c.text2, 15),
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+                        itemCount: items.length,
+                        itemBuilder: (context, idx) {
+                          final item = items[idx];
+                          final parsed = ActivityLogParser.parseActivityLogItem(item, cs);
+                          final isChat = parsed.isChat || item['isChat'] == true;
+
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 10),
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: c.surface2,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        '${parsed.categoryTag}・${parsed.statusText}',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: famText(c.text3, 12.5, weight: FontWeight.w700),
+                                      ),
+                                    ),
+                                    if (parsed.timeText.isNotEmpty) ...[
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        parsed.timeText,
+                                        maxLines: 1,
+                                        style: famText(c.text2, 13,
+                                            weight: FontWeight.w600, tabular: true),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  parsed.title,
+                                  style: famText(c.text, 16, weight: FontWeight.w700, height: 1.4),
+                                ),
+                                if (parsed.subtitle != null && parsed.subtitle!.isNotEmpty) ...[
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    parsed.subtitle!,
+                                    style: famText(c.text2, 13.5, height: 1.45),
+                                  ),
+                                ],
+                                if (isChat && (parsed.fullQuery.isNotEmpty || item['fullQuery'] != null)) ...[
+                                  const SizedBox(height: 10),
+                                  FamButton(
+                                    label: '展開檢視完整對話逐字稿',
+                                    kind: FamButtonKind.tonal,
+                                    height: 44,
+                                    expand: false,
+                                    onPressed: () {
+                                      showFullDialogueDialog(
+                                        context,
+                                        parsed.fullQuery.isNotEmpty ? parsed.fullQuery : (item['fullQuery'] as String? ?? ''),
+                                        parsed.fullAi.isNotEmpty ? parsed.fullAi : (item['fullAi'] as String? ?? ''),
+                                        parsed.timeText.isNotEmpty ? parsed.timeText : (item['time'] as String? ?? ''),
+                                      );
+                                    },
+                                  ),
+                                ],
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
         ),
       );
     },

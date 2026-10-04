@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import '../../../../theme/app_theme.dart';
+import '../../widgets/fam_ui.dart';
 
-/// 長輩目前所在區域 / 監視機前偵測卡片
+/// 長輩目前所在區域 / 監視機前偵測卡片（設計稿 `.zone`，不放房間圖示）。
 class HomeZoneCard extends StatelessWidget {
   final List<dynamic> monitorDevices;
   final Map<String, dynamic>? elderZone;
@@ -15,8 +16,7 @@ class HomeZoneCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final c = UbanColors.of(context);
     final List<dynamic> monitors = monitorDevices;
     final dynamic firstMonitor = monitors.isNotEmpty ? monitors.first : null;
     final int? deviceId = firstMonitor is Map
@@ -25,75 +25,60 @@ class HomeZoneCard extends StatelessWidget {
     final String deviceName =
         firstMonitor is Map ? (firstMonitor['deviceName']?.toString() ?? '監視機') : '監視機';
 
-    Widget header() {
-      return Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: cs.primary,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Icon(Icons.my_location_rounded, color: cs.onPrimary, size: 22),
-          ),
-          const SizedBox(width: 12),
-          Text(
-            '長輩所在位置',
-            style: GoogleFonts.notoSansTc(
-              fontSize: 17,
-              fontWeight: FontWeight.w900,
-              color: cs.onSurface,
-            ),
-          ),
-        ],
-      );
-    }
-
-    Widget shell(Widget child) {
-      return Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: cs.surface,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: cs.outline,
-            width: 1.5,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: (isDark ? Colors.black : cs.outline).withValues(alpha: isDark ? 0.35 : 0.08),
-              blurRadius: 6,
-              offset: const Offset(0, 3),
+    Widget shell({
+      required String title,
+      required String subtitle,
+      DateTime? updatedAt,
+      bool active = false,
+    }) {
+      return FamCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('長輩所在位置',
+                style: famText(c.text3, 12, weight: FontWeight.w700, letterSpacing: 1.2)),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                FamDot(color: active ? c.brand : c.text3),
+                const SizedBox(width: 10),
+                // ★ 鐵律 #14：標題／副標含動態字串（監視機名稱），皆可收縮。
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: famText(c.text, 16.5, weight: FontWeight.w900),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: famText(c.text2, 13.5, height: 1.4),
+                      ),
+                      if (updatedAt != null) ...[
+                        const SizedBox(height: 4),
+                        _buildZoneUpdatedHint(c, updatedAt),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
             ),
           ],
         ),
-        child: child,
-      ).animate().fadeIn(duration: 400.ms).slideY(begin: -0.05);
+      ).animate().fadeIn(duration: 300.ms);
     }
 
     // 狀態 1：尚未綁定監視機——不呼叫任何 API，純粹依清單是否為空判斷。
     if (monitors.isEmpty || deviceId == null) {
       return shell(
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            header(),
-            const SizedBox(height: 14),
-            Text(
-              '尚未綁定監視機',
-              style: GoogleFonts.notoSansTc(
-                fontSize: 14,
-                color: cs.onSurface,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '綁定監視機後即可查看長輩目前所在的區域',
-              style: GoogleFonts.notoSansTc(fontSize: 12, color: cs.onSurfaceVariant),
-            ),
-          ],
-        ),
+        title: '尚未綁定監視機',
+        subtitle: '綁定監視機後即可查看長輩目前所在的區域',
       );
     }
 
@@ -102,32 +87,10 @@ class HomeZoneCard extends StatelessWidget {
 
     // 狀態 2：裝置已綁定，但目前沒有偵測到長輩。
     if (!present) {
-      final DateTime? lastUpdatedAt = zone?['updatedAt'] as DateTime?;
       return shell(
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            header(),
-            const SizedBox(height: 14),
-            Text(
-              '目前未偵測到長輩',
-              style: GoogleFonts.notoSansTc(
-                fontSize: 14,
-                color: cs.onSurface,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '「$deviceName」目前鏡頭前沒有偵測到人',
-              style: GoogleFonts.notoSansTc(fontSize: 12, color: cs.onSurfaceVariant),
-            ),
-            if (lastUpdatedAt != null) ...[
-              const SizedBox(height: 10),
-              _buildZoneUpdatedHint(lastUpdatedAt),
-            ],
-          ],
-        ),
+        title: '目前未偵測到長輩',
+        subtitle: '「$deviceName」目前鏡頭前沒有偵測到人',
+        updatedAt: zone?['updatedAt'] as DateTime?,
       );
     }
 
@@ -137,49 +100,14 @@ class HomeZoneCard extends StatelessWidget {
 
     // 狀態 3：目前偵測到長輩
     return shell(
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          header(),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF10B981).withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: const Color(0xFF34D399)),
-                ),
-                child: Text(
-                  '偵測到長輩',
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: isDark ? const Color(0xFF6EE7B7) : const Color(0xFF006C4C),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  '已持續 ${_formatZoneDwell(enteredAt)}',
-                  style: GoogleFonts.notoSansTc(fontSize: 13, color: cs.onSurfaceVariant),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-          if (updatedAt != null) ...[
-            const SizedBox(height: 10),
-            _buildZoneUpdatedHint(updatedAt),
-          ],
-        ],
-      ),
+      title: '偵測到長輩',
+      subtitle: '已持續 ${_formatZoneDwell(enteredAt)}',
+      updatedAt: updatedAt,
+      active: true,
     );
   }
 
-  Widget _buildZoneUpdatedHint(DateTime updatedAt) {
+  Widget _buildZoneUpdatedHint(UbanColors c, DateTime updatedAt) {
     final Duration diff = DateTime.now().difference(updatedAt);
     final String text;
     if (diff.inMinutes < 1) {
@@ -193,7 +121,9 @@ class HomeZoneCard extends StatelessWidget {
     }
     return Text(
       text,
-      style: GoogleFonts.notoSansTc(fontSize: 11, color: const Color(0xFF64748B)),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: famText(c.text3, 12),
     );
   }
 

@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // 添加觸覺反饋
-import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import 'dart:convert';
-import 'dart:ui';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'family/family_home_tab.dart';
 import 'family/family_interaction_tab.dart';
 import 'family/family_data_tab.dart';
 import '../theme/family_theme.dart';
+import '../theme/app_theme.dart' show UbanColors;
+import '../widgets/ui/uban_glass_nav_bar.dart';
+import '../widgets/ui/uban_sheet.dart';
+import 'family/widgets/fam_ui.dart';
 import 'family/alert_center_screen.dart';
 import 'family/elder_location_map_screen.dart';
 import 'family/subscription_test_screen.dart';
@@ -51,7 +52,10 @@ class FamilyMainScreen extends StatefulWidget {
 
 class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBindingObserver {
   int _selectedIndex = 0;
-  bool _isDarkMode = false; // 子女端 M3 薄荷綠主題：預設為淺色模式 (Light)
+  /// 家屬端深淺色偏好。2026-10 起改由 [FamilyThemeController] 持有（讀寫的仍是同一個
+  /// SharedPreferences 鍵 `family_theme_is_dark`），好讓 push 出去的家屬頁（[FamilyThemeScope]）
+  /// 與本殼同步；預設淺色。
+  bool get _isDarkMode => FamilyThemeController.instance.value;
   final Signaling _signaling = Signaling();
   /// 💬 長輩提問收件匣的刷新訊號；收到 Socket `elder-question` 時遞增。
   int _questionRefreshToken = 0;
@@ -384,6 +388,8 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     pendingAcceptedCall.addListener(_onPendingCallChanged);
+    // 深淺色偏好改變時重建本 State，好讓資料分頁的 isDarkMode 參數同步（與改版前 setState 等效）。
+    FamilyThemeController.instance.addListener(_onFamilyThemeChanged);
 
     appLogger.d('🔍 FamilyMainScreen initialized:');
     appLogger.d('   userId: ${widget.userId}');
@@ -461,23 +467,20 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     }
   }
 
+  void _onFamilyThemeChanged() {
+    if (mounted) setState(() {});
+  }
+
   /// 載入使用者在外觀設定中所選的深淺色偏好（預設為 Light）
   Future<void> _loadThemePreference() async {
-    final prefs = await SharedPreferences.getInstance();
-    if (mounted) {
-      setState(() {
-        _isDarkMode = prefs.getBool('family_theme_is_dark') ?? false;
-      });
-    }
+    // 讀寫同一個鍵 `family_theme_is_dark`（見 FamilyThemeController.prefsKey）。
+    await FamilyThemeController.instance.load();
   }
 
   /// 由資料 Tab (FamilyDataTab) 呼叫切換深淺色模式並持久化儲存
   Future<void> _setDarkMode(bool isDark) async {
-    setState(() {
-      _isDarkMode = isDark;
-    });
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('family_theme_is_dark', isDark);
+    // controller 的值一變，主殼與所有 FamilyThemeScope 都會即時重建。
+    await FamilyThemeController.instance.setDark(isDark);
   }
   Future<void> _initializeElderManagerAndConnect() async {
     appLogger.d('🔄 FamilyMainScreen: Starting ElderManager initialization');
@@ -1451,98 +1454,34 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     showDialog(
       context: context,
       barrierDismissible: false,
+      barrierColor: _famScrim(),
       builder: (dialogContext) {
-        return AlertDialog(
-          title: Row(
-            children: [
-              const Icon(Icons.warning_amber_rounded,
-                  color: Color(0xFFB91C1C), size: 28),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  isReminder ? '提醒：$typeLabel尚未處理' : '偵測到$typeLabel',
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFFB91C1C),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+        // 本方法用的 context 在家屬主題之上（主題在 build() 內才掛），
+        // 彈窗要自己包一層 FamilyThemeScope 才吃得到家屬色票。
+        return FamilyThemeScope(
+          // 外觀照設計稿 `.alarm`：底部升起、danger 警示塊、資訊列、按鈕直排。
+          // 按鈕集合與條件（canView／canShowLocation／我知道了）與改版前完全相同。
+          child: FamAlarmSheet(
+            title: isReminder ? '提醒：$typeLabel尚未處理' : '偵測到$typeLabel',
+            description: isReminder
+                ? (alertType == 'sos_voice'
+                    ? '長輩先前開口求救的狀況目前仍未處理，請盡快主動聯繫或致電長輩確認狀況；如情況危急請直接撥打 119。'
+                    : '這是提醒通知：長輩的狀況目前仍未處理，請盡快查看監視畫面確認狀況。')
+                : (alertType == 'sos_voice'
+                    ? '長輩剛透過語音助理開口求救，這次沒有監視畫面可查看，請盡快主動聯繫或致電長輩確認狀況；如情況危急請直接撥打 119。'
+                    : '請立即查看監視畫面確認長輩狀況。'),
+            detailLines: [
               // ★ 2026-09-16：'sos_voice' 的 device_id 是哨兵值 0，_monitorDevices
-              //   查不到對應設備，deviceName 會退回寫死的「監視機」字面值——顯示
-              //   「監視機：監視機」對語音 SOS 沒有意義，故此列只在有真實監視機時顯示。
-              if (alertType != 'sos_voice') Text('監視機：$deviceName'),
-              if (confText.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Text(confText, style: const TextStyle(color: Colors.black54)),
-              ],
+              //   查不到對應設備，deviceName 會退回寫死的「監視機」字面值——
+              //   顯示「監視機：監視機」對語音 SOS 沒有意義，故此列只在有真實監視機時顯示。
+              if (alertType != 'sos_voice') '監視機：$deviceName',
+              if (confText.isNotEmpty) confText,
               // ★ 2026-10-02：語音求救附位置且後端給了定位時間才顯示相對時間。
-              if (lastLocationText != null) ...[
-                const SizedBox(height: 4),
-                Text(lastLocationText,
-                    style: const TextStyle(color: Colors.black54)),
-              ],
-              const SizedBox(height: 8),
-              Text(
-                isReminder
-                    ? (alertType == 'sos_voice'
-                        ? '長輩先前開口求救的狀況目前仍未處理，請盡快主動聯繫或致電長輩確認狀況；如情況危急請直接撥打 119。'
-                        : '這是提醒通知：長輩的狀況目前仍未處理，請盡快查看監視畫面確認狀況。')
-                    : (alertType == 'sos_voice'
-                        ? '長輩剛透過語音助理開口求救，這次沒有監視畫面可查看，請盡快主動聯繫或致電長輩確認狀況；如情況危急請直接撥打 119。'
-                        : '請立即查看監視畫面確認長輩狀況。'),
-                style: const TextStyle(color: Colors.black87),
-              ),
+              if (lastLocationText != null) lastLocationText,
             ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop();
-                // ★ 點擊「我知道了」：解除警報狀態，還原介面樣式與動畫
-                if (mounted) {
-                  setState(() {
-                    final String alertDevice = (alert['device_id'] ?? alert['deviceId'])?.toString() ?? '';
-                    _activeAlerts.removeWhere((a) =>
-                        (a['device_id'] ?? a['deviceId'])?.toString() == alertDevice ||
-                        a['alert_id'] == alert['alert_id']);
-                  });
-                }
-              },
-              child: const Text('我知道了'),
-            ),
-            // ★ 2026-10-02：語音求救附有最後位置 → 「查看位置」開長輩 GPS 地圖。
-            //   刻意不移除 _activeAlerts（家屬還沒按「我知道了」，警報仍待處理）；
-            //   彈窗關閉的 .then() 會照常停 TTS／取消通知。
-            if (canShowLocation)
-              ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.of(dialogContext).pop();
-                  if (!mounted) return;
-                  Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => ElderLocationMapScreen(
-                      elderId: rawElderId,
-                      userId: widget.userId,
-                      elderName: sosElderName,
-                    ),
-                  ));
-                },
-                icon: const Icon(Icons.place_rounded),
-                label: const Text('查看位置'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFB91C1C),
-                  foregroundColor: Colors.white,
-                ),
-              ),
-            if (canView)
-              ElevatedButton.icon(
-                onPressed: () {
+            primary: [
+              if (canView)
+                FamAlarmAction('查看監視畫面', () {
                   Navigator.of(dialogContext).pop();
                   // ★ 2026-08-31 第三十八輪：改呼叫共用方法 _openMonitorViewForDevice，
                   //   與 FamilyHomeTab.onOpenMonitorView 共用同一份 VideoCallScreen
@@ -1560,15 +1499,36 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                       });
                     },
                   );
-                },
-                icon: const Icon(Icons.videocam_rounded),
-                label: const Text('查看監視畫面'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFB91C1C),
-                  foregroundColor: Colors.white,
-                ),
-              ),
-          ],
+                }),
+              // ★ 2026-10-02：語音求救附有最後位置 → 「查看位置」開長輩 GPS 地圖。
+              //   刻意不移除 _activeAlerts（家屬還沒按「我知道了」，警報仍待處理）；
+              //   彈窗關閉的 .then() 會照常停 TTS／取消通知。
+              if (canShowLocation)
+                FamAlarmAction('查看位置', () {
+                  Navigator.of(dialogContext).pop();
+                  if (!mounted) return;
+                  Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => ElderLocationMapScreen(
+                      elderId: rawElderId,
+                      userId: widget.userId,
+                      elderName: sosElderName,
+                    ),
+                  ));
+                }),
+            ],
+            dismiss: FamAlarmAction('我知道了', () {
+              Navigator.of(dialogContext).pop();
+              // ★ 點擊「我知道了」：解除警報狀態，還原介面樣式與動畫
+              if (mounted) {
+                setState(() {
+                  final String alertDevice = (alert['device_id'] ?? alert['deviceId'])?.toString() ?? '';
+                  _activeAlerts.removeWhere((a) =>
+                      (a['device_id'] ?? a['deviceId'])?.toString() == alertDevice ||
+                      a['alert_id'] == alert['alert_id']);
+                });
+              }
+            }),
+          ),
         );
       },
     ).then((_) async {
@@ -1654,83 +1614,80 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (dialogContext) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            Icon(Icons.warning_amber_rounded, color: Colors.orange.shade700),
-            const SizedBox(width: 10),
-            const Expanded(child: Text('監視機數量超過方案上限')),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('目前方案：$_tierDisplayName（每位長輩上限 $_devicesMax 台）'),
-            if (endDate != null && endDate.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text('訂閱到期日：$endDate',
-                  style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
-            ],
-            const SizedBox(height: 4),
-            Text('目前使用中：共 $totalDevicesInUse 台',
-                style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
-            const SizedBox(height: 12),
-            // 逐位長輩列出超量狀況，讓使用者知道要從哪一位長輩底下刪除
-            ...elders.where((e) => e['over_limit'] == true).map(
-                  (e) => Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Text(
-                      '• ${e['elder_name'] ?? e['elder_id']}：'
-                      '${e['devices_in_use']} / ${e['devices_max']} 台',
-                      style: TextStyle(
-                          fontSize: 13,
-                          color: Colors.red.shade700,
-                          fontWeight: FontWeight.w600),
-                    ),
+      barrierColor: _famScrim(),
+      builder: (dialogContext) => FamilyThemeScope(
+        child: Builder(builder: (themed) {
+          final c = UbanColors.of(themed);
+          return AlertDialog(
+            title: Text('監視機數量超過方案上限',
+                style: famText(c.text, 18, weight: FontWeight.w900)),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('目前方案：$_tierDisplayName（每位長輩上限 $_devicesMax 台）',
+                      style: famText(c.text, 15)),
+                  if (endDate != null && endDate.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text('訂閱到期日：$endDate',
+                        style: famText(c.text2, 13)),
+                  ],
+                  const SizedBox(height: 4),
+                  Text('目前使用中：共 $totalDevicesInUse 台',
+                      style: famText(c.text2, 13)),
+                  const SizedBox(height: 12),
+                  // 逐位長輩列出超量狀況，讓使用者知道要從哪一位長輩底下刪除
+                  // （待處理 → 暖色）
+                  ...elders.where((e) => e['over_limit'] == true).map(
+                        (e) => Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: Text(
+                            '• ${e['elder_name'] ?? e['elder_id']}：'
+                            '${e['devices_in_use']} / ${e['devices_max']} 台',
+                            style: famText(c.warm, 13,
+                                weight: FontWeight.w700),
+                          ),
+                        ),
+                      ),
+                  const SizedBox(height: 12),
+                  Text(
+                    '請選擇繼續訂閱以保留全部監視機，或刪除部分監視機以符合目前方案。',
+                    style: famText(c.text, 13, height: 1.5),
                   ),
-                ),
-            const SizedBox(height: 12),
-            const Text(
-              '請選擇繼續訂閱以保留全部監視機，或刪除部分監視機以符合目前方案。',
-              style: TextStyle(fontSize: 13),
+                ],
+              ),
             ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: Text('稍後再說', style: TextStyle(color: Colors.grey.shade600)),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(dialogContext);
-              _showDeleteMonitorDeviceDialog();
-            },
-            child: Text('刪除部分監視機',
-                style: TextStyle(color: Colors.red.shade700)),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(dialogContext);
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                    builder: (_) => const FamilySubscriptionScreen()),
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF59B294),
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('繼續訂閱'),
-          ),
-        ],
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: Text('稍後再說', style: famText(c.text2, 15, weight: FontWeight.w700)),
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(dialogContext);
+                  _showDeleteMonitorDeviceDialog();
+                },
+                child: Text('刪除部分監視機',
+                    style: famText(c.danger, 15, weight: FontWeight.w700)),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(dialogContext);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const FamilySubscriptionScreen()),
+                  );
+                },
+                child: const Text('繼續訂閱'),
+              ),
+            ],
+          );
+        }),
       ),
     );
   }
-
   /// ★ 2026-08-04 第 4 項：刪除監視機的挑選介面。
   /// 只列出「目前關照中的這位長輩」底下的監視機——Socket 的
   /// `elder-devices-update` 本來就只推送當前長輩的設備清單，
@@ -1747,76 +1704,88 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
 
     showDialog(
       context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (dialogContext, setDialogState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: Text('刪除監視機（${elder.displayName}）'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: _monitorDevices.isEmpty
-                ? const Text('這位長輩目前沒有連接任何監視機設備')
-                : ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: _monitorDevices.length,
-                    itemBuilder: (_, index) {
-                      final device = _monitorDevices[index];
-                      final name =
-                          (device['deviceName'] ?? 'Unnamed').toString();
-                      final isOnline = device['isOnline'] == true;
-                      return ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: Icon(
-                          Icons.videocam_rounded,
-                          color: isOnline ? const Color(0xFF59B294) : Colors.grey,
-                        ),
-                        title: Text(name, style: const TextStyle(fontSize: 15)),
-                        subtitle: Text(isOnline ? '線上' : '離線',
-                            style: TextStyle(
-                                fontSize: 12, color: Colors.grey.shade600)),
-                        trailing: IconButton(
-                          icon: Icon(Icons.delete_outline,
-                              color: Colors.red.shade600),
-                          onPressed: () async {
-                            final confirmed = await _confirmDeleteDevice(name);
-                            if (confirmed != true) return;
-                            // ★ 2026-08-26：補上 `userId`。後端
-                            //   `routers/pairing.py::delete_monitor_device` 在
-                            //   `user_id is None` 時直接回 404（見 G45／§3.8）——
-                            //   缺這個參數會讓這顆刪除鍵每次都必然失敗。
-                            //   `widget.userId` 與 `family_interaction_tab.dart`
-                            //   `_showDeleteMonitorDeviceDialog` 能成功刪除時用的是
-                            //   同一顆家屬 user_id，來源相同（`FamilyMainScreen`
-                            //   建構子的 `required this.userId`）。
-                            final ok = await ApiService.deleteMonitorDevice(
-                              elderId: rawElderId,
-                              deviceName: name,
-                              userId: widget.userId,
-                            );
-                            if (!mounted) return;
-                            if (ok) {
-                              // 後端刪除後會廣播 elder-devices-update，
-                              // _monitorDevices 會自動更新；這裡同步移除以便彈窗即時反映。
-                              setState(() => _monitorDevices.removeWhere(
-                                  (d) => d['deviceName'] == name));
-                              setDialogState(() {});
-                              await _loadSubscriptionTier();
-                            } else {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('刪除失敗，請稍後再試')),
-                              );
-                            }
-                          },
-                        ),
-                      );
-                    },
-                  ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('完成'),
-            ),
-          ],
+      barrierColor: _famScrim(),
+      builder: (dialogContext) => FamilyThemeScope(
+        child: StatefulBuilder(
+          builder: (dialogContext2, setDialogState) {
+            final c = UbanColors.of(dialogContext2);
+            return AlertDialog(
+              title: Text('刪除監視機（${elder.displayName}）',
+                  style: famText(c.text, 18, weight: FontWeight.w900)),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: _monitorDevices.isEmpty
+                    ? Text('這位長輩目前沒有連接任何監視機設備',
+                        style: famText(c.text, 15))
+                    : ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: _monitorDevices.length,
+                        itemBuilder: (_, index) {
+                          final device = _monitorDevices[index];
+                          final name =
+                              (device['deviceName'] ?? 'Unnamed').toString();
+                          final isOnline = device['isOnline'] == true;
+                          return ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: FamDot(
+                                color: isOnline ? c.brand : c.text3),
+                            minLeadingWidth: 16,
+                            title: Text(name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: famText(c.text, 15,
+                                    weight: FontWeight.w700)),
+                            subtitle: Text(isOnline ? '線上' : '離線',
+                                style: famText(c.text2, 12)),
+                            trailing: IconButton(
+                              icon: Icon(Icons.delete_outline,
+                                  color: c.danger),
+                              onPressed: () async {
+                                final confirmed =
+                                    await _confirmDeleteDevice(name);
+                                if (confirmed != true) return;
+                                // ★ 2026-08-26：補上 `userId`。後端
+                                //   `routers/pairing.py::delete_monitor_device` 在
+                                //   `user_id is None` 時直接回 404（見 G45／§3.8）——
+                                //   缺這個參數會讓這顆刪除鍵每次都必然失敗。
+                                //   `widget.userId` 與 `family_interaction_tab.dart`
+                                //   `_showDeleteMonitorDeviceDialog` 能成功刪除時用的是
+                                //   同一顆家屬 user_id，來源相同（`FamilyMainScreen`
+                                //   建構子的 `required this.userId`）。
+                                final ok =
+                                    await ApiService.deleteMonitorDevice(
+                                  elderId: rawElderId,
+                                  deviceName: name,
+                                  userId: widget.userId,
+                                );
+                                if (!mounted) return;
+                                if (ok) {
+                                  // 後端刪除後會廣播 elder-devices-update，
+                                  // _monitorDevices 會自動更新；這裡同步移除以便彈窗即時反映。
+                                  setState(() => _monitorDevices.removeWhere(
+                                      (d) => d['deviceName'] == name));
+                                  setDialogState(() {});
+                                  await _loadSubscriptionTier();
+                                } else {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                        content: Text('刪除失敗，請稍後再試')),
+                                  );
+                                }
+                              },
+                            ),
+                          );
+                        },
+                      ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('完成'),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -1825,24 +1794,31 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   Future<bool?> _confirmDeleteDevice(String deviceName) {
     return showDialog<bool>(
       context: context,
-      builder: (confirmContext) => AlertDialog(
-        title: const Text('確認刪除'),
-        content: Text('確定要移除監視機「$deviceName」嗎？\n該設備將被登出並停止推送畫面。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(confirmContext, false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(confirmContext, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red.shade700),
-            child: const Text('刪除'),
-          ),
-        ],
+      barrierColor: _famScrim(),
+      builder: (confirmContext) => FamilyThemeScope(
+        child: Builder(builder: (themed) {
+          final c = UbanColors.of(themed);
+          return AlertDialog(
+            title: Text('確認刪除',
+                style: famText(c.text, 18, weight: FontWeight.w900)),
+            content: Text('確定要移除監視機「$deviceName」嗎？\n該設備將被登出並停止推送畫面。',
+                style: famText(c.text, 15, height: 1.5)),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(confirmContext, false),
+                child: const Text('取消'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(confirmContext, true),
+                style: TextButton.styleFrom(foregroundColor: c.danger),
+                child: const Text('刪除'),
+              ),
+            ],
+          );
+        }),
       ),
     );
   }
-
   /// ★ 第五十一輪（任務 1）：App 冷啟動時把上次持久化的「已滑掉警示」紀錄
   /// 讀回來。讀取的同時順手做一次過期／上限清理（見
   /// `_persistedDismissedTimestamps` 欄位宣告的完整理由）；若清理後筆數
@@ -2082,219 +2058,257 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   void _showIncomingCallDialog(String roomId, String senderId, String? callId, {bool isEmergency = false, String? callerName}) {
     if (_isIncomingCallDialogOpen) return; // 防止重複彈窗
     _isIncomingCallDialogOpen = true;
-    
+
     showDialog(
       context: context,
       barrierDismissible: false,
+      barrierColor: _famScrim(),
       builder: (dialogContext) {
-        return AlertDialog(
-          title: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: isEmergency ? Colors.red.shade100 : Colors.green.shade100,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  isEmergency ? Icons.warning : Icons.phone_callback,
-                  color: isEmergency ? Colors.red : Colors.green,
-                  size: 28,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Flexible(
-                child: Text(
-                  isEmergency ? '🚨 緊急來電' : '📞 長輩來電',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-          content: Text(
-            // ★ issue 11：優先使用後端解析出的實際來電者名稱，
-            //   避免在切換關照長輩後，來電通知仍顯示先前選擇的長輩名稱
-            '${callerName ?? _currentElder?.displayName ?? "長輩"} 正在呼叫您！',
-            style: const TextStyle(fontSize: 18),
-          ),
-          backgroundColor: isEmergency ? Colors.red.shade50 : Colors.green.shade50,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          actions: [
-            ElevatedButton.icon(
-              onPressed: () {
-                _signaling.sendCallBusy(senderId, callId: callId);
-                Navigator.of(dialogContext).pop();
-                _isIncomingCallDialogOpen = false;
-              },
-              icon: const Icon(Icons.call_end),
-              label: const Text('拒接', style: TextStyle(fontSize: 16)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              ),
-            ),
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.of(dialogContext).pop();
-                _isIncomingCallDialogOpen = false;
-                // 先發送接聽信號
-                _signaling.sendCallAccept(senderId, callId: callId);
-                // 跳轉到視訊通話頁面
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => VideoCallScreen(
-                      roomId: roomId,
-                      targetSocketId: senderId,
-                      isIncomingCall: true,
-                      callId: callId,
-                      sendAcceptOnOpen: false,
-                      isVideoCall: _signaling.isVideoCallFor(callId), // ★ Fix E
+        return FamilyThemeScope(
+          child: Builder(builder: (themed) {
+            final c = UbanColors.of(themed);
+            final Color accentBg = isEmergency ? c.dangerContainer : c.brandContainer;
+            final Color accentFg = isEmergency ? c.danger : c.brandStrong;
+            return AlertDialog(
+              title: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: accentBg,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      isEmergency ? Icons.warning : Icons.phone_callback,
+                      color: accentFg,
+                      size: 28,
                     ),
                   ),
-                ).then((_) {
-                  if (mounted) _setupSignalingCallbacks();
-                });
-              },
-              icon: const Icon(Icons.videocam),
-              label: const Text('接聽', style: TextStyle(fontSize: 16)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  const SizedBox(width: 12),
+                  Flexible(
+                    child: Text(
+                      isEmergency ? '🚨 緊急來電' : '📞 長輩來電',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: famText(isEmergency ? c.danger : c.text, 20,
+                          weight: FontWeight.w900),
+                    ),
+                  ),
+                ],
               ),
-            ),
-          ],
+              content: Text(
+                // ★ issue 11：優先使用後端解析出的實際來電者名稱，
+                //   避免在切換關照長輩後，來電通知仍顯示先前選擇的長輩名稱
+                '${callerName ?? _currentElder?.displayName ?? "長輩"} 正在呼叫您！',
+                style: famText(c.text, 18),
+              ),
+              actions: [
+                ElevatedButton.icon(
+                  onPressed: () {
+                    _signaling.sendCallBusy(senderId, callId: callId);
+                    Navigator.of(dialogContext).pop();
+                    _isIncomingCallDialogOpen = false;
+                  },
+                  icon: const Icon(Icons.call_end),
+                  label: const Text('拒接', style: TextStyle(fontSize: 16)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: c.danger,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  ),
+                ),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop();
+                    _isIncomingCallDialogOpen = false;
+                    // 先發送接聽信號
+                    _signaling.sendCallAccept(senderId, callId: callId);
+                    // 跳轉到視訊通話頁面
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => VideoCallScreen(
+                          roomId: roomId,
+                          targetSocketId: senderId,
+                          isIncomingCall: true,
+                          callId: callId,
+                          sendAcceptOnOpen: false,
+                          isVideoCall: _signaling.isVideoCallFor(callId), // ★ Fix E
+                        ),
+                      ),
+                    ).then((_) {
+                      if (mounted) _setupSignalingCallbacks();
+                    });
+                  },
+                  icon: const Icon(Icons.videocam),
+                  label: const Text('接聽', style: TextStyle(fontSize: 16)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: c.brandFill,
+                    foregroundColor: c.onBrand,
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  ),
+                ),
+              ],
+            );
+          }),
         );
       },
     ).then((_) {
       _isIncomingCallDialogOpen = false;
     });
   }
+  /// 家屬彈窗／面板的遮罩色（本檔 State 的 context 在家屬主題之上，取不到 extension，
+  /// 依目前深淺色偏好直接取家屬色票）。
+  Color _famScrim() =>
+      (_isDarkMode ? UbanColors.familyDark : UbanColors.familyLight).scrim;
 
   void _showElderSelector() {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    // 外觀照設計稿 `#sh-elder`（`.eldersel`）；行為不變：點長輩 → 關閉並 _switchElder，
+    // 點「配對新的長輩裝置」→ 關閉並開 CaregiverPairingScreen，返回後 _refreshElders。
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      backgroundColor: cs.surfaceContainerHigh,
-      builder: (context) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-                  child: Text(
-                    '切換關照對象',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                      color: cs.onSurface,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                if (_elders.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                    child: Text(
-                      '目前沒有配對的長輩裝置',
-                      style: GoogleFonts.notoSansTc(color: cs.outline),
-                    ),
-                  )
-                else
-                  Flexible(
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: _elders.length,
-                      itemBuilder: (context, index) {
-                        final elder = _elders[index];
-                        final isSelected = elder.id == _currentElder?.id;
-                        return ListTile(
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
-                          leading: CircleAvatar(
-                            radius: 20,
-                            backgroundColor: elder.gender == 'F'
-                                ? (isDark ? const Color(0xFF3F202B) : const Color(0xFFFDF2F8))
-                                : cs.secondaryContainer,
-                            child: Text(
-                              elder.genderEmoji,
-                              style: const TextStyle(fontSize: 20),
-                            ),
-                          ),
-                          title: Text(
-                            elder.displayName,
-                            style: GoogleFonts.notoSansTc(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                              color: isSelected ? cs.primary : cs.onSurface,
-                            ),
-                          ),
-                          subtitle: Text(
-                            'ID: ${elder.id} • ${elder.age ?? "?"}歲',
-                            style: GoogleFonts.inter(
-                              fontSize: 12,
-                              color: cs.onSurfaceVariant,
-                            ),
-                          ),
-                          trailing: isSelected
-                              ? Icon(Icons.check_circle_rounded, color: cs.primary)
-                              : null,
-                          onTap: () {
-                            Navigator.pop(context);
-                            _switchElder(elder);
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                Divider(height: 24, color: cs.outlineVariant.withValues(alpha: 0.5)),
-                ListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 24),
-                  leading: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: cs.primaryContainer.withValues(alpha: 0.5),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(Icons.person_add_alt_1_rounded, color: cs.primary, size: 20),
-                  ),
-                  title: Text(
-                    '配對新的長輩裝置',
-                    style: GoogleFonts.notoSansTc(
-                      fontWeight: FontWeight.bold,
-                      color: cs.primary,
-                    ),
-                  ),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => CaregiverPairingScreen(
-                          familyId: widget.userId,
-                          familyName: widget.userName,
-                        ),
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      barrierColor: _famScrim(),
+      builder: (sheetContext) {
+        return FamilyThemeScope(
+          child: Builder(builder: (themed) {
+            final c = UbanColors.of(themed);
+            return UbanSheet(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('切換關照對象',
+                      style: famText(c.text, 18, weight: FontWeight.w900)),
+                  const SizedBox(height: 12),
+                  if (_elders.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: Text('目前沒有配對的長輩裝置',
+                          style: famText(c.text2, 15)),
+                    )
+                  else
+                    for (final elder in _elders) ...[
+                      _buildElderSelectorRow(
+                        c,
+                        elder,
+                        isSelected: elder.id == _currentElder?.id,
+                        onTap: () {
+                          Navigator.pop(sheetContext);
+                          _switchElder(elder);
+                        },
                       ),
-                    ).then((_) => _refreshElders());
-                  },
-                ),
-              ],
-            ),
-          ),
+                      const SizedBox(height: 8),
+                    ],
+                  const SizedBox(height: 4),
+                  FamButton(
+                    label: '配對新的長輩裝置',
+                    kind: FamButtonKind.tonal,
+                    height: 52,
+                    onPressed: () {
+                      Navigator.pop(sheetContext);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => CaregiverPairingScreen(
+                            familyId: widget.userId,
+                            familyName: widget.userName,
+                          ),
+                        ),
+                      ).then((_) => _refreshElders());
+                    },
+                  ),
+                ],
+              ),
+            );
+          }),
         );
       },
     );
   }
+
+  /// `.eldersel`：頭像、名字、副標、單選圓點；選中者外框 2px 海灣藍。
+  Widget _buildElderSelectorRow(
+    UbanColors c,
+    Elder elder, {
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: c.surface2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(
+          color: isSelected ? c.brand : Colors.transparent,
+          width: 2,
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              FamAvatar(
+                name: elder.displayName,
+                size: 48,
+                tone: isSelected ? FamTone.brand : FamTone.info,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      elder.displayName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: famText(c.text, 16.5, weight: FontWeight.w900),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'ID ${elder.id}・${elder.age ?? "?"} 歲',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: famText(c.text2, 13),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              // `.radio`
+              Container(
+                width: 24,
+                height: 24,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: isSelected ? c.brandFill : Colors.transparent,
+                  border: Border.all(
+                    color: isSelected ? c.brandFill : c.line,
+                    width: 2,
+                  ),
+                ),
+                child: isSelected
+                    ? Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                            color: c.onBrand, shape: BoxShape.circle),
+                      )
+                    : null,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
 
   @override
   void dispose() {
@@ -2307,6 +2321,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     _alertTts?.stop();
     WakelockPlus.disable();
     pendingAcceptedCall.removeListener(_onPendingCallChanged);
+    FamilyThemeController.instance.removeListener(_onFamilyThemeChanged);
     // ★ 2026-08-10 第十九輪（E）：原本只清 onElderDevicesUpdate，
     //   onCallRequest / onEmergencyCall / onCancelCall 三個覆寫留在 Signaling
     //   singleton 上（Signaling 是全域單例，不會隨本畫面銷毀），closure 持續
@@ -2552,140 +2567,163 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   }
 
   PreferredSizeWidget _buildAppBar(BuildContext context, ColorScheme cs) {
+    // 照設計稿 `.fbar`：長輩頭像 40＋名字 17/900＋在線點與狀態 12.5、下拉箭頭；
+    // 右側 PRO 膠囊（無皇冠圖示）與配對圓鈕。
+    final c = UbanColors.of(context);
+    final elder = _currentElder;
     return AppBar(
-      backgroundColor: cs.surface,
+      backgroundColor: c.bg,
       elevation: 0,
       scrolledUnderElevation: 0,
+      surfaceTintColor: Colors.transparent,
       centerTitle: false,
-      titleSpacing: 16,
-      title: _currentElder == null
-          ? Text(
-              'Uban 照護中樞',
-              style: GoogleFonts.notoSansTc(
-                color: cs.onSurface,
-                fontWeight: FontWeight.w900,
-                fontSize: 24,
+      titleSpacing: 10,
+      toolbarHeight: 68,
+      title: elder == null
+          ? Padding(
+              padding: const EdgeInsets.only(left: 6),
+              child: Text(
+                'Uban 照護中樞',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: famText(c.text, 22, weight: FontWeight.w900),
               ),
             )
           : InkWell(
               onTap: _showElderSelector,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(999),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                padding: const EdgeInsets.fromLTRB(4, 4, 8, 4),
                 child: Row(
-                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    CircleAvatar(
-                      radius: 20,
-                      backgroundColor: cs.surfaceContainerHighest,
-                      child: Text(
-                        _currentElder?.genderEmoji ?? '',
-                        style: const TextStyle(fontSize: 20),
-                      ),
-                    ),
+                    FamAvatar(name: elder.displayName, size: 40),
                     const SizedBox(width: 10),
                     // ★ 2026-08-10 第二十輪（需求 2）：長輩名字長度不可控，
                     //   這條 AppBar 標題列出現在家屬端每一頁的最上方，
-                    //   不包 Flexible 就會整條往右溢出（黃黑斜紋 RenderFlex 警示）。
-                    Flexible(
-                      child: Text(
-                        _currentElder?.displayName ?? '',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.notoSansTc(
-                          color: cs.onSurface,
-                          fontWeight: FontWeight.w900,
-                          fontSize: 22,
-                        ),
+                    //   不包 Expanded／Flexible 就會整條往右溢出（黃黑斜紋 RenderFlex 警示）。
+                    Expanded(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            elder.displayName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: famText(c.text, 17, weight: FontWeight.w900),
+                          ),
+                          Row(
+                            children: [
+                              FamDot(
+                                  color: _isElderOnline ? c.brand : c.text3,
+                                  size: 8),
+                              const SizedBox(width: 5),
+                              Flexible(
+                                child: Text(
+                                  _isElderOnline ? '在線' : '離線',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: famText(c.text2, 12.5),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(width: 6),
-                    Icon(
-                      Icons.keyboard_arrow_down_rounded,
-                      color: cs.primary,
-                      size: 24,
-                    ),
-                    const SizedBox(width: 10),
-                    _PulseDot(
-                      color: _isElderOnline
-                          ? cs.primary
-                          : cs.outline,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      _isElderOnline ? '在線' : '離線',
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 14,
-                        color: _isElderOnline
-                            ? cs.primary
-                            : cs.outline,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                    Icon(Icons.keyboard_arrow_down_rounded,
+                        color: c.text3, size: 22),
                   ],
                 ),
               ),
             ),
       actions: [
-        IconButton(
-          icon: const Icon(Icons.workspace_premium_rounded, color: Color(0xFFF59E0B), size: 26),
-          tooltip: '訂閱測試（為長輩開通）',
-          onPressed: () {
-            final elder = _currentElder;
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                // 帶入 elder_id → RevenueCat App User ID 綁成 elder_<id>，
-                // 購買才會落到這位長輩身上（見 SubscriptionTestScreen 說明）。
-                builder: (context) => SubscriptionTestScreen(
-                  elderId: elder?.elderId ?? elder?.id.toString(),
-                  elderName: elder?.displayName,
+        Tooltip(
+          message: '訂閱測試（為長輩開通）',
+          child: InkWell(
+            borderRadius: BorderRadius.circular(999),
+            onTap: () {
+              final elder = _currentElder;
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  // 帶入 elder_id → RevenueCat App User ID 綁成 elder_<id>，
+                  // 購買才會落到這位長輩身上（見 SubscriptionTestScreen 說明）。
+                  builder: (context) => SubscriptionTestScreen(
+                    elderId: elder?.elderId ?? elder?.id.toString(),
+                    elderName: elder?.displayName,
+                  ),
                 ),
+              );
+            },
+            child: Container(
+              height: 36,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: c.brandContainer,
+                borderRadius: BorderRadius.circular(999),
               ),
-            );
-          },
-        ),
-        IconButton(
-          icon: Icon(Icons.person_add_alt_1_rounded, color: cs.primary, size: 28),
-          tooltip: '配對新長輩',
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => CaregiverPairingScreen(
-                  familyId: widget.userId,
-                  familyName: widget.userName,
-                ),
+              child: Text(
+                'PRO',
+                style: famText(c.brandStrong, 13,
+                    weight: FontWeight.w700, letterSpacing: .3),
               ),
-            ).then((_) => _refreshElders());
-          },
+            ),
+          ),
         ),
         const SizedBox(width: 8),
-      ],
-      bottom: PreferredSize(
-        preferredSize: const Size.fromHeight(1),
-        child: Container(
-          color: cs.outlineVariant.withValues(alpha: 0.4),
-          height: 1,
+        Tooltip(
+          message: '配對新長輩',
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => CaregiverPairingScreen(
+                    familyId: widget.userId,
+                    familyName: widget.userName,
+                  ),
+                ),
+              ).then((_) => _refreshElders());
+            },
+            child: Container(
+              width: 44,
+              height: 44,
+              alignment: Alignment.center,
+              decoration:
+                  BoxDecoration(color: c.surface2, shape: BoxShape.circle),
+              child: Icon(Icons.add_rounded, color: c.text, size: 22),
+            ),
+          ),
         ),
-      ),
+        const SizedBox(width: 14),
+      ],
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final familyTheme = FamilyTheme.buildTheme(context, isDark: _isDarkMode);
-    final cs = familyTheme.colorScheme;
-
-    return Theme(
-      data: familyTheme,
+    // 家屬主題由 FamilyThemeScope 提供（監聽 FamilyThemeController，
+    // 資料分頁的深色開關即時生效）。
+    return FamilyThemeScope(
       child: Builder(
         builder: (context) {
+          final cs = Theme.of(context).colorScheme;
+          final c = UbanColors.of(context);
+          // 鍵盤開著時收起導覽列（導覽列在 Stack 裡，否則會浮在鍵盤上方擋住輸入框）。
+          final bool keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
+
           return Scaffold(
-            backgroundColor: cs.surface,
-            extendBody: true,
+            backgroundColor: c.bg,
             appBar: _buildAppBar(context, cs),
-            body: IndexedStack(
+            // 導覽列固定在底部、三個分頁各自捲動；各分頁底部留白 =
+            // UbanGlassNavBar.totalHeight + 安全區 + 16。
+            body: Stack(
+              children: [
+                Positioned.fill(
+                  child: IndexedStack(
               index: _selectedIndex,
               children: [
                 FamilyHomeTab(
@@ -2806,138 +2844,44 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                 ),
               ],
             ),
-            bottomNavigationBar: SafeArea(
-              child: Container(
-                margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                height: 74,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(28),
-                  boxShadow: [
-                    BoxShadow(
-                      color: (_isDarkMode ? Colors.black : cs.outline).withValues(alpha: _isDarkMode ? 0.45 : 0.1),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
                 ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(28),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: cs.surface.withValues(alpha: 0.96),
-                        borderRadius: BorderRadius.circular(28),
-                        border: Border.all(
-                          color: cs.outline,
-                          width: 1.5,
+                if (!keyboardOpen)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: UbanGlassNavBar(
+                      currentIndex: _selectedIndex,
+                      // 教學用的 GlobalKey 掛在各項的 GestureDetector 上（既有 _navItemKeys）；
+                      // 點擊走既有切換邏輯 _onItemTapped。
+                      onTap: _onItemTapped,
+                      items: [
+                        UbanNavItem(
+                          icon: Icons.home_outlined,
+                          selectedIcon: Icons.home_rounded,
+                          label: '首頁',
+                          key: _navItemKeys[0],
                         ),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
-                        children: [
-                          _buildNavItem(0, Icons.home_rounded, '首頁', cs),
-                          _buildNavItem(1, Icons.chat_bubble_rounded, '互動', cs),
-                          _buildNavItem(2, Icons.settings_rounded, '資料', cs),
-                        ],
-                      ),
+                        UbanNavItem(
+                          icon: Icons.chat_bubble_outline_rounded,
+                          selectedIcon: Icons.chat_bubble_rounded,
+                          label: '互動',
+                          key: _navItemKeys[1],
+                        ),
+                        UbanNavItem(
+                          icon: Icons.settings_outlined,
+                          selectedIcon: Icons.settings_rounded,
+                          label: '資料',
+                          key: _navItemKeys[2],
+                        ),
+                      ],
                     ),
                   ),
-                ),
-              ),
+              ],
             ),
           );
         },
       ),
     );
-  }
-
-  Widget _buildNavItem(int index, IconData icon, String label, ColorScheme cs) {
-    final isSelected = _selectedIndex == index;
-
-    return Expanded(
-      child: GestureDetector(
-        key: _navItemKeys[index],
-        onTap: () => _onItemTapped(index),
-        behavior: HitTestBehavior.opaque,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 4),
-                decoration: BoxDecoration(
-                  color: isSelected ? cs.primary : Colors.transparent,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: isSelected
-                      ? [
-                          BoxShadow(
-                            color: cs.primary.withValues(alpha: 0.35),
-                            blurRadius: 6,
-                            offset: const Offset(0, 2),
-                          ),
-                        ]
-                      : null,
-                ),
-                child: AnimatedScale(
-                  scale: isSelected ? 1.05 : 1.0,
-                  duration: const Duration(milliseconds: 200),
-                  curve: Curves.easeOut,
-                  child: Icon(
-                    icon,
-                    color: isSelected ? cs.onPrimary : cs.onSurfaceVariant,
-                    size: 24,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                label,
-                style: GoogleFonts.notoSansTc(
-                  color: isSelected ? cs.onSurface : cs.onSurfaceVariant,
-                  fontSize: 12,
-                  fontWeight: isSelected ? FontWeight.w900 : FontWeight.w600,
-                  height: 1.1,
-                ),
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _PulseDot extends StatelessWidget {
-  final Color color;
-  const _PulseDot({required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 10,
-      height: 10,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: color,
-        boxShadow: [
-          BoxShadow(
-            color: color.withValues(alpha: 0.4),
-            blurRadius: 4,
-            spreadRadius: 1,
-          ),
-        ],
-      ),
-    )
-        .animate(onPlay: (c) => c.repeat())
-        .fade(duration: 1200.ms, begin: 1.0, end: 0.3)
-        .then()
-        .fade(duration: 1200.ms, begin: 0.3, end: 1.0);
   }
 }

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../../../services/api/elder_question_api.dart';
+import '../../../theme/app_theme.dart';
+import '../../../widgets/ui/uban_dialog.dart';
+import 'fam_ui.dart';
 
 /// 💬 長輩提問收件匣（數位助理升級機制的家屬端）
 ///
@@ -62,74 +64,89 @@ class _ElderQuestionInboxState extends State<ElderQuestionInbox> {
     if (qid == null) return;
 
     final controller = TextEditingController();
+    // 外觀照設計稿 `.dialog`；行為不變：取消 → null、送出 → 去頭尾空白的文字。
     final text = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text(
-          '回覆 ${q['elder_name'] ?? '長輩'}',
-          style: GoogleFonts.notoSansTc(
-            color: const Color(0xFFE2E8F0),
-            fontWeight: FontWeight.w800,
-            fontSize: 18,
-          ),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '「${q['question'] ?? ''}」',
-              style: GoogleFonts.notoSansTc(
-                color: const Color(0xFF94A3B8),
-                fontSize: 14,
-                height: 1.5,
+      barrierColor: UbanColors.of(context).scrim,
+      builder: (ctx) {
+        final c = UbanColors.of(ctx);
+        return UbanDialog(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                '回覆 ${q['elder_name'] ?? '長輩'}',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: famText(c.text, 18, weight: FontWeight.w900),
               ),
-            ),
-            const SizedBox(height: 14),
-            TextField(
-              controller: controller,
-              autofocus: true,
-              maxLines: 3,
-              style: GoogleFonts.notoSansTc(color: const Color(0xFFE2E8F0)),
-              decoration: InputDecoration(
-                // 提示子女用長輩聽得懂的說法——「滑出通知欄、點齒輪圖標」
-                // 這種講法長輩聽不懂，回了也等於沒回。
-                hintText: '用爸媽聽得懂的話說，例如「按螢幕最下面那排左邊第二個」',
-                hintStyle: GoogleFonts.notoSansTc(
-                  color: const Color(0xFF64748B),
-                  fontSize: 13,
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: c.brandSoft,
+                  borderRadius: BorderRadius.circular(16),
                 ),
-                filled: true,
-                fillColor: const Color(0xFF0F172A),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
+                child: Text(
+                  '「${q['question'] ?? ''}」',
+                  style: famText(c.text, 14.5, height: 1.5),
                 ),
               ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('取消',
-                style: GoogleFonts.notoSansTc(color: const Color(0xFF94A3B8))),
+              const SizedBox(height: 14),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                maxLines: 3,
+                style: famText(c.text, 15, height: 1.45),
+                decoration: InputDecoration(
+                  // 提示子女用長輩聽得懂的說法——「滑出通知欄、點齒輪圖標」
+                  // 這種講法長輩聽不懂，回了也等於沒回。
+                  hintText: '用爸媽聽得懂的話說，例如「按螢幕最下面那排左邊第二個」',
+                  hintStyle: famText(c.text3, 13.5, height: 1.4),
+                  filled: true,
+                  fillColor: c.surface2,
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide.none,
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide.none,
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide(color: c.brand, width: 2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: FamButton(
+                      label: '取消',
+                      kind: FamButtonKind.tonal,
+                      height: 48,
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FamButton(
+                      label: '送出',
+                      height: 48,
+                      onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF10B981),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
-            ),
-            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-            child: Text('送出',
-                style: GoogleFonts.notoSansTc(
-                    color: Colors.white, fontWeight: FontWeight.w700)),
-          ),
-        ],
-      ),
+        );
+      },
     );
 
     if (text == null || text.isEmpty || !mounted) return;
@@ -144,10 +161,13 @@ class _ElderQuestionInboxState extends State<ElderQuestionInbox> {
     setState(() => _sending.remove(qid));
 
     // ⚠️ 依實際結果回報，送失敗時絕不顯示「已回覆」。
+    final cSnack = UbanColors.of(context);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(ok ? '已回覆，爸媽的小嘎會轉達' : '送出失敗，請稍後再試一次'),
-        backgroundColor: ok ? const Color(0xFF10B981) : const Color(0xFFDC2626),
+        content: Text(ok ? '已回覆，爸媽的小嘎會轉達' : '送出失敗，請稍後再試一次',
+            style: famText(cSnack.surface, 14, weight: FontWeight.w700)),
+        // 成功沿用家屬 snackBarTheme；失敗用 danger 底。
+        backgroundColor: ok ? null : cSnack.danger,
       ),
     );
     if (ok) _load();
@@ -158,153 +178,93 @@ class _ElderQuestionInboxState extends State<ElderQuestionInbox> {
     // 載入中或沒有待回覆問題時完全不顯示，不在家屬首頁佔位。
     if (_isLoading || _questions.isEmpty) return const SizedBox.shrink();
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E293B),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFF334155)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Text('💬', style: TextStyle(fontSize: 18)),
-              const SizedBox(width: 8),
-              // ⚠️ 同列有徽章，標題需可收縮（鐵律 #14）
-              Expanded(
-                child: Text(
-                  '爸媽問你的問題',
-                  style: GoogleFonts.notoSansTc(
-                    color: const Color(0xFFE2E8F0),
-                    fontSize: 17,
-                    fontWeight: FontWeight.w900,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
+    final c = UbanColors.of(context);
+
+    // 設計稿 `.card.ask`：標題＋「待回覆」徽章（待處理 → 暖色），其下每則問題一塊引用。
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: FamCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ⚠️ 同列有徽章，標題需可收縮（鐵律 #14；FamSecHead 內為 Expanded＋ellipsis）
+            FamSecHead(
+              title: '爸媽問你的問題',
+              trailing: FamChip(
+                label: '${_questions.length} 則待回覆',
+                tone: FamTone.warm,
               ),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF59E0B).withValues(alpha: 0.18),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  '${_questions.length} 則待回覆',
-                  style: GoogleFonts.notoSansTc(
-                    color: const Color(0xFFF59E0B),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
+            ),
+            const SizedBox(height: 12),
+            for (var i = 0; i < _questions.length; i++) ...[
+              if (i > 0) const SizedBox(height: 14),
+              _buildQuestionCard(c, _questions[i]),
             ],
-          ),
-          const SizedBox(height: 12),
-          ..._questions.map(_buildQuestionCard),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildQuestionCard(Map<String, dynamic> q) {
+  Widget _buildQuestionCard(UbanColors c, Map<String, dynamic> q) {
     final qid = int.tryParse('${q['question_id']}') ?? -1;
     final isSending = _sending.contains(qid);
     final context_ = (q['screen_context'] ?? '').toString();
     final isBlockedTopic = (q['reason'] ?? '') == 'blocked_topic';
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(13),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0F172A),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          // 詐騙／金錢類問題用警示色標出來：這類問題小嘎一律不自行回答，
-          // 子女要知道這不是普通的操作疑問。
-          color: isBlockedTopic
-              ? const Color(0xFFDC2626).withValues(alpha: 0.5)
-              : const Color(0xFF334155),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (isBlockedTopic) ...[
-            Row(
-              children: [
-                const Icon(Icons.warning_amber_rounded,
-                    size: 15, color: Color(0xFFDC2626)),
-                const SizedBox(width: 5),
-                Expanded(
-                  child: Text(
-                    '涉及金錢或安全，小嘎沒有自行回答',
-                    style: GoogleFonts.notoSansTc(
-                      color: const Color(0xFFDC2626),
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w700,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // 詐騙／金錢類問題用警示色標出來：這類問題小嘎一律不自行回答，
+        // 子女要知道這不是普通的操作疑問。
+        if (isBlockedTopic) ...[
+          Row(
+            children: [
+              FamDot(color: c.danger, size: 8),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '涉及金錢或安全，小嘎沒有自行回答',
+                  style: famText(c.danger, 13, weight: FontWeight.w700),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
-              ],
-            ),
-            const SizedBox(height: 7),
-          ],
-          Text(
-            '${q['elder_name'] ?? '長輩'}：「${q['question'] ?? ''}」',
-            style: GoogleFonts.notoSansTc(
-              color: const Color(0xFFE2E8F0),
-              fontSize: 14.5,
-              fontWeight: FontWeight.w700,
-              height: 1.45,
-            ),
+              ),
+            ],
           ),
-          if (context_.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Text(
-              '當時在：$context_',
-              style: GoogleFonts.notoSansTc(
-                color: const Color(0xFF94A3B8),
-                fontSize: 12,
-                height: 1.4,
-              ),
-            ),
-          ],
-          const SizedBox(height: 10),
-          Align(
-            alignment: Alignment.centerRight,
-            child: ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF10B981),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(11)),
-              ),
-              onPressed: isSending ? null : () => _answer(q),
-              icon: isSending
-                  ? const SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white),
-                    )
-                  : const Icon(Icons.reply_rounded, size: 17),
-              label: Text(
-                isSending ? '送出中…' : '回覆',
-                style: GoogleFonts.notoSansTc(
-                    fontWeight: FontWeight.w800, fontSize: 13.5),
-              ),
-            ),
+          const SizedBox(height: 8),
+        ],
+        // `.ask blockquote`
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: c.brandSoft,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Text(
+            '${q['elder_name'] ?? '長輩'}：「${q['question'] ?? ''}」',
+            style: famText(c.text, 15, height: 1.5),
+          ),
+        ),
+        if (context_.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(
+            '當時在：$context_',
+            style: famText(c.text2, 12.5, height: 1.4),
           ),
         ],
-      ),
+        const SizedBox(height: 10),
+        Align(
+          alignment: Alignment.centerRight,
+          child: FamButton(
+            label: isSending ? '送出中…' : '回覆',
+            height: 44,
+            expand: false,
+            loading: isSending,
+            onPressed: isSending ? null : () => _answer(q),
+          ),
+        ),
+      ],
     );
   }
 }

@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/elder.dart';
 import '../../services/api_service.dart';
+import '../../theme/app_theme.dart';
+import '../../widgets/ui/uban_glass_nav_bar.dart';
 import 'home/widgets/home_elder_header_card.dart';
 import 'home/widgets/home_zone_card.dart';
 import 'home/widgets/home_gps_trail_card.dart';
@@ -140,15 +142,19 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final bool isTabletLandscape = constraints.maxWidth >= 900;
+        final c = UbanColors.of(context);
+        // 底部留白 = 懸浮導覽列高度 + 安全區 + 16（導覽列浮在內容上方，見 FamilyMainScreen）。
+        final double bottomPad =
+            UbanGlassNavBar.totalHeight + MediaQuery.paddingOf(context).bottom + 16;
 
         if (isTabletLandscape) {
           return RefreshIndicator(
-            color: const Color(0xFF38BDF8),
-            backgroundColor: const Color(0xFF1E293B),
+            color: c.brandFill,
+            backgroundColor: c.surface,
             onRefresh: _loadDynamicData,
             child: SingleChildScrollView(
               physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
+              padding: EdgeInsets.fromLTRB(20, 16, 20, bottomPad),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -238,8 +244,8 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
 
         // 📱 手機模式：單欄流式佈局
         return RefreshIndicator(
-          color: const Color(0xFF38BDF8),
-          backgroundColor: const Color(0xFF1E293B),
+          color: c.brandFill,
+          backgroundColor: c.surface,
           onRefresh: _loadDynamicData,
           child: CustomScrollView(
             physics: const BouncingScrollPhysics(
@@ -247,7 +253,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
             ),
             slivers: [
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
+                padding: EdgeInsets.fromLTRB(16, 16, 16, bottomPad),
                 sliver: SliverList(
                   delegate: SliverChildListDelegate([
                     // 1. 長輩頂部極光卡片與在線狀態

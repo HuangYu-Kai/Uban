@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../widgets/ui/uban_glass_nav_bar.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -1111,7 +1112,8 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
       ),
       slivers: [
         SliverPadding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
+          padding: EdgeInsets.fromLTRB(
+              16, 16, 16, UbanGlassNavBar.totalHeight + MediaQuery.paddingOf(context).bottom + 16),
           sliver: SliverList(
             delegate: SliverChildListDelegate([
               // 1. 視訊呼叫區（大按鈕，顯眼）

@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../../../models/elder.dart';
+import '../../../../theme/app_theme.dart';
 import '../../../../utils/alert_display.dart';
+import '../../widgets/fam_ui.dart';
 import '../../alert_center_screen.dart';
 import '../../elder_location_map_screen.dart';
 import '../../placeholder_screens.dart';
@@ -181,152 +182,75 @@ class HomeAlertPreviewCard extends StatelessWidget {
     final displayAlerts = dismissedKeysLoaded
         ? visibleAlerts.take(30).toList()
         : const <Map<String, dynamic>>[];
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final c = UbanColors.of(context);
 
-    return Container(
+    // 設計稿 `.card`＋`.sec-head`；待處理（嚴重）才用 danger 色點，其餘不染色。
+    return FamCard(
       key: alertPreviewKey,
-      margin: const EdgeInsets.symmetric(vertical: 8),
-      padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        color: cs.surface,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: cs.error,
-          width: 1.5,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: cs.error.withValues(alpha: isDark ? 0.25 : 0.1),
-            blurRadius: 6,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Flexible(
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: cs.error,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: cs.outline, width: 1.5),
-                      ),
-                      child: const Icon(
-                        Icons.notifications_active_rounded,
-                        color: Colors.white,
-                        size: 22,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Flexible(
-                      child: Text(
-                        '最新警示',
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.notoSansTc(
-                          fontSize: 19,
-                          fontWeight: FontWeight.w900,
-                          color: cs.onSurface,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: cs.error,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: cs.outline, width: 1.2),
-                      ),
-                      child: Text(
-                        '${displayAlerts.length}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ),
-                  ],
+          // ★ 鐵律 #14：標題可收縮（FamSecHead 內為 Expanded＋ellipsis），
+          //   計數徽章與「查看全部」固定在右側。
+          FamSecHead(
+            title: '最新警示',
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                FamChip(
+                  label: '${displayAlerts.length}',
+                  tone: displayAlerts.isEmpty ? FamTone.neutral : FamTone.danger,
                 ),
-              ),
-              GestureDetector(
-                onTap: () {
-                  HapticFeedback.lightImpact();
-                  if (onNavigateToAlerts != null) {
-                    onNavigateToAlerts!();
-                  } else if (context.mounted) {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (c) => AlertCenterScreen(
-                          elderName: currentElder?.displayName ?? '長輩',
-                          elderId: currentElder?.id,
-                          elderRoomId: currentElder?.elderId ?? currentElder?.id.toString(),
-                          activeAlerts: activeAlerts,
-                          userId: userId,
+                const SizedBox(width: 4),
+                FamMore(
+                  label: '查看全部',
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    if (onNavigateToAlerts != null) {
+                      onNavigateToAlerts!();
+                    } else if (context.mounted) {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (c) => AlertCenterScreen(
+                            elderName: currentElder?.displayName ?? '長輩',
+                            elderId: currentElder?.id,
+                            elderRoomId: currentElder?.elderId ?? currentElder?.id.toString(),
+                            activeAlerts: activeAlerts,
+                            userId: userId,
+                          ),
                         ),
-                      ),
-                    );
-                  }
-                },
-                child: Row(
-                  children: [
-                    Text(
-                      '查看全部',
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: cs.primary,
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    Icon(Icons.arrow_forward_ios_rounded, size: 13, color: cs.primary),
-                  ],
+                      );
+                    }
+                  },
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
 
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
 
           if (!dismissedKeysLoaded)
             // ★ 第五十二輪（任務一）：沿用「目前沒有任何警示」同一副版面
-            //   （置中圖示 + 8px 間距 + 說明文字），只換掉圖示與文字——當下
-            //   還不知道濾掉已讀警示後是否真的沒有項目，不可以宣稱「目前
-            //   沒有任何警示」（那句話當下並不成立、也可能不成立）。
+            //   （置中 + 說明文字），只換掉文字——當下還不知道濾掉已讀警示後
+            //   是否真的沒有項目，不可以宣稱「目前沒有任何警示」。
             Center(
               child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 12),
+                padding: const EdgeInsets.symmetric(vertical: 14),
                 child: Column(
                   children: [
                     SizedBox(
-                      width: 44,
-                      height: 44,
-                      child: Padding(
-                        padding: const EdgeInsets.all(11),
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.4,
-                          color: cs.onSurfaceVariant.withValues(alpha: 0.4),
-                        ),
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.4,
+                        color: c.text3,
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 10),
                     Text(
                       '警示讀取中…',
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 14,
-                        color: cs.onSurfaceVariant,
-                        fontWeight: FontWeight.w600,
-                      ),
+                      style: famText(c.text2, 14, weight: FontWeight.w600),
                     ),
                   ],
                 ),
@@ -335,17 +259,16 @@ class HomeAlertPreviewCard extends StatelessWidget {
           else if (displayAlerts.isEmpty)
             Center(
               child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                child: Column(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.verified_rounded, color: cs.onSurfaceVariant.withValues(alpha: 0.4), size: 44),
-                    const SizedBox(height: 8),
-                    Text(
-                      '目前沒有任何警示',
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 14,
-                        color: cs.onSurfaceVariant,
-                        fontWeight: FontWeight.w600,
+                    FamDot(color: c.brand),
+                    const SizedBox(width: 10),
+                    Flexible(
+                      child: Text(
+                        '目前沒有任何警示',
+                        style: famText(c.text2, 14.5, weight: FontWeight.w600),
                       ),
                     ),
                   ],
@@ -361,7 +284,7 @@ class HomeAlertPreviewCard extends StatelessWidget {
                 onAlertItemDismissed?.call(itemId);
               }
               return Padding(
-                padding: EdgeInsets.only(bottom: e.key < displayAlerts.length - 1 ? 12 : 0),
+                padding: EdgeInsets.only(bottom: e.key < displayAlerts.length - 1 ? 10 : 0),
                 child: Dismissible(
                   key: ValueKey(itemId),
                   direction: DismissDirection.endToStart,
@@ -382,15 +305,15 @@ class HomeAlertPreviewCard extends StatelessWidget {
   }
 
   Widget _buildAlertDismissBackground(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+    final c = UbanColors.of(context);
     return Container(
       decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest,
+        color: c.surface3,
         borderRadius: BorderRadius.circular(18),
       ),
       alignment: Alignment.centerRight,
       padding: const EdgeInsets.symmetric(horizontal: 22),
-      child: Icon(Icons.done_all_rounded, color: cs.onSurfaceVariant, size: 24),
+      child: Text('已讀', style: famText(c.text2, 14, weight: FontWeight.w700)),
     );
   }
 
@@ -475,76 +398,30 @@ class HomeAlertItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final c = UbanColors.of(context);
 
-    Color levelColor;
-    Color iconBgColor;
-    Color cardBgColor;
-    Color titleColor;
-    Color descColor;
-    BorderSide borderSide;
+    // `.sev`：嚴重度用 10px 色點表達（取代圖示方塊）。
+    // high → danger；medium → warm（待處理）；其餘 → 品牌色。
+    final String level = data['level'] as String;
+    final Color sev = level == 'high'
+        ? c.danger
+        : (level == 'medium' ? c.warm : c.brand);
 
-    switch (data['level'] as String) {
-      case 'high':
-        levelColor = const Color(0xFFF87171);
-        iconBgColor = isDark ? const Color(0xFF7F1D1D) : const Color(0xFFFEE2E2);
-        cardBgColor = isDark ? const Color(0xFF231012) : const Color(0xFFFEF2F2);
-        titleColor = isDark ? const Color(0xFFFECACA) : const Color(0xFF991B1B);
-        descColor = isDark ? const Color(0xFFFCA5A5) : const Color(0xFFB91C1C);
-        borderSide = BorderSide(color: const Color(0xFFEF4444).withValues(alpha: 0.5), width: 1.2);
-        break;
-      case 'medium':
-        levelColor = const Color(0xFFFBBF24);
-        iconBgColor = isDark ? const Color(0xFF78350F) : const Color(0xFFFEF3C7);
-        cardBgColor = isDark ? const Color(0xFF221A08) : const Color(0xFFFFFBEB);
-        titleColor = isDark ? const Color(0xFFFEF08A) : const Color(0xFF92400E);
-        descColor = isDark ? const Color(0xFFFDE68A) : const Color(0xFFB45309);
-        borderSide = BorderSide(color: const Color(0xFFF59E0B).withValues(alpha: 0.5), width: 1.2);
-        break;
-      default:
-        levelColor = cs.primary;
-        iconBgColor = cs.primaryContainer;
-        cardBgColor = cs.surfaceContainerLow;
-        titleColor = cs.onSurface;
-        descColor = cs.onSurfaceVariant;
-        borderSide = BorderSide(color: cs.primary.withValues(alpha: 0.4), width: 1.2);
-    }
-
+    // 設計稿 `.alert`：surface2 底、圓角 18、padding 12/14。
     final card = Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(14, 12, 6, 12),
       decoration: BoxDecoration(
-        color: cardBgColor,
+        color: c.surface2,
         borderRadius: BorderRadius.circular(18),
-        border: Border.fromBorderSide(borderSide),
-        boxShadow: [
-          BoxShadow(
-            color: levelColor.withValues(alpha: 0.08),
-            blurRadius: 10,
-          ),
-        ],
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: iconBgColor,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Icon(
-              data['icon'] as IconData,
-              color: (data['level'] == 'high' && !isDark)
-                  ? const Color(0xFFDC2626)
-                  : ((data['level'] == 'medium' && !isDark)
-                      ? const Color(0xFFD97706)
-                      : (data['level'] != 'high' && data['level'] != 'medium' && !isDark
-                          ? cs.primary
-                          : levelColor)),
-              size: 22,
-            ),
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: FamDot(color: sev),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -553,35 +430,18 @@ class HomeAlertItem extends StatelessWidget {
                   data['title'] as String,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: titleColor,
-                  ),
+                  style: famText(c.text, 15, weight: FontWeight.w900),
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(height: 2),
                 Text(
                   data['desc'] as String,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 13.5,
-                    color: descColor,
-                    fontWeight: FontWeight.w500,
-                    height: 1.35,
-                  ),
+                  style: famText(c.text2, 13, height: 1.4),
                 ),
               ],
             ),
           ),
-          if (onTap != null) ...[
-            const SizedBox(width: 8),
-            Icon(
-              Icons.chevron_right_rounded,
-              color: levelColor,
-              size: 22,
-            ),
-          ],
           if (onDismiss != null) ...[
             const SizedBox(width: 4),
             GestureDetector(
@@ -591,7 +451,7 @@ class HomeAlertItem extends StatelessWidget {
                 padding: const EdgeInsets.all(8),
                 child: Icon(
                   Icons.close_rounded,
-                  color: descColor.withValues(alpha: 0.7),
+                  color: c.text3,
                   size: 16,
                 ),
               ),

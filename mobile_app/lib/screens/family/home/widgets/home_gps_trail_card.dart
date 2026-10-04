@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../../../models/elder.dart';
 import '../../../../services/api/location_api.dart';
 import '../../../../services/location_device_status.dart';
+import '../../../../theme/app_theme.dart';
+import '../../widgets/fam_ui.dart';
 import '../../elder_location_map_screen.dart';
 
 /// 長輩戶外 GPS 定位 / 每日移動軌跡卡片。
@@ -108,45 +109,30 @@ class _HomeGpsTrailCardState extends State<HomeGpsTrailCard> {
     );
   }
 
+  /// 距離拆成「數字＋單位」給三格數字用（規則同 [formatDistance]）。
+  static (String, String) _distanceParts(num meters) {
+    if (meters < 1000) return ('${meters.round()}', '公尺');
+    return ((meters / 1000).toStringAsFixed(1), '公里');
+  }
+
+  /// 在外時間：滿 1 小時用「H:MM 小時」，否則「N 分鐘」。
+  static (String, String) _durationParts(int minutes) {
+    if (minutes < 60) return ('$minutes', '分鐘');
+    return ('${minutes ~/ 60}:${(minutes % 60).toString().padLeft(2, '0')}', '小時');
+  }
+
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final c = UbanColors.of(context);
 
-    Widget header() {
-      return Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: cs.secondary,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Icon(Icons.route_rounded, color: cs.onSecondary, size: 22),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              'GPS 移動軌跡',
-              style: GoogleFonts.notoSansTc(
-                fontSize: 17,
-                fontWeight: FontWeight.w900,
-                color: cs.onSurface,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          const Icon(Icons.chevron_right_rounded),
-        ],
-      );
-    }
-
-    // 第一行（主要資訊）與第二行（狀態＋最後更新）。
+    // 第一行（主要資訊）與第二行（狀態）；最後更新放右上小標籤。
     String subtitle;
-    String? detail;
+    String? statusLine;
+    String? updatedChip;
     // 長輩手機定位有問題時，警示優先於「目前在家／外出中」（那個狀態此時不可信）。
     String? deviceWarning;
+    // 三格數字（僅有資料時）。
+    List<(String, String, String?)>? kv;
     switch (_state) {
       case _CardState.loading:
         subtitle = '讀取中…';
@@ -184,70 +170,86 @@ class _HomeGpsTrailCardState extends State<HomeGpsTrailCard> {
         } else {
           status = '';
         }
-        final updated = _lastUpdateText(lastUpdate);
-        detail = [
-          if (status.isNotEmpty) status,
-          if (updated != null) updated,
-        ].join('・');
-        if (detail.isEmpty) detail = null;
+        statusLine = status.isEmpty ? null : status;
+        updatedChip = _lastUpdateText(lastUpdate);
+        if (!(pointCount == 0 && lastUpdate == null)) {
+          final dist = _distanceParts((sm['distance_m'] as num?) ?? 0);
+          final outMin = (sm['outside_minutes'] as num?)?.toInt();
+          kv = [
+            ('移動距離', dist.$1, dist.$2),
+            if (outMin != null)
+              ('在外時間', _durationParts(outMin).$1, _durationParts(outMin).$2),
+            if (outingCount != null) ('外出次數', '$outingCount', '次'),
+          ];
+        }
         break;
     }
 
-    return GestureDetector(
+    final bool ready = _state == _CardState.ready;
+
+    return FamCard(
       onTap: _openMap,
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: cs.surface,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: cs.outline, width: 1.5),
-          boxShadow: [
-            BoxShadow(
-              color: (isDark ? Colors.black : cs.outline).withValues(alpha: isDark ? 0.35 : 0.08),
-              blurRadius: 6,
-              offset: const Offset(0, 3),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            header(),
-            const SizedBox(height: 14),
-            Text(
-              subtitle,
-              style: GoogleFonts.notoSansTc(
-                fontSize: 15,
-                fontWeight: _state == _CardState.ready ? FontWeight.w800 : FontWeight.w500,
-                color: _state == _CardState.ready ? cs.onSurface : cs.onSurfaceVariant,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            // 第二行是動態字串（含「設定家」提示），放寬到 2 行並保留 ellipsis，避免溢位（鐵律 #14）。
-            if (detail != null) ...[
-              const SizedBox(height: 4),
-              Text(
-                detail,
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 13,
-                  fontWeight: deviceWarning != null ? FontWeight.w800 : FontWeight.normal,
-                  color: deviceWarning != null ? const Color(0xFFB45309) : cs.onSurfaceVariant,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ★ 刻意與 HomeZoneCard（室內 IPS）用不同標題：GPS 是戶外，兩個是獨立子系統。
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'GPS 移動軌跡',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: famText(c.text3, 12, weight: FontWeight.w700, letterSpacing: 1.2),
                 ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
               ),
+              Text('查看地圖', style: famText(c.brandStrong, 13, weight: FontWeight.w700)),
             ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            subtitle,
+            style: ready
+                ? famText(c.text, 18, weight: FontWeight.w900, height: 1.35)
+                : famText(c.text2, 15),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          // 狀態行是動態字串（含「設定家」提示），放寬到 2 行並保留 ellipsis（鐵律 #14）。
+          if (statusLine != null) ...[
             const SizedBox(height: 4),
             Text(
-              '點此查看目前位置與每日移動軌跡',
-              style: GoogleFonts.notoSansTc(fontSize: 12, color: cs.onSurfaceVariant),
-              maxLines: 1,
+              statusLine,
+              style: deviceWarning != null
+                  ? famText(c.warm, 13.5, weight: FontWeight.w700)
+                  : famText(c.text2, 13.5),
+              maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
           ],
-        ),
+          if (kv != null) ...[
+            const SizedBox(height: 12),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (var i = 0; i < kv.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 8),
+                  Expanded(
+                    child: FamKv(label: kv[i].$1, value: kv[i].$2, unit: kv[i].$3),
+                  ),
+                ],
+              ],
+            ),
+          ],
+          if (updatedChip != null) ...[
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FamChip(label: updatedChip, tone: FamTone.brand, dot: true),
+            ),
+          ],
+        ],
       ),
-    ).animate().fadeIn(duration: 400.ms).slideY(begin: -0.05);
+    ).animate().fadeIn(duration: 300.ms);
   }
 }

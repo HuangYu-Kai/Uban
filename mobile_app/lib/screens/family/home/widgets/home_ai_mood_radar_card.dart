@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../../../models/elder.dart';
+import '../../../../theme/app_theme.dart';
+import '../../widgets/fam_ui.dart';
 import '../sheets/send_care_card_sheet.dart';
 
 /// 🤖 AI 長輩情緒氣象台 & 破冰話題卡片
@@ -26,12 +27,10 @@ class HomeAiMoodRadarCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final c = UbanColors.of(context);
     final name = currentElder?.displayName ?? '長輩';
     final moodTitle = moodInsightData?['mood_title'] ?? '溫馨平穩';
     final moodScore = moodInsightData?['mood_score'] ?? 88;
-    final moodIcon = moodInsightData?['mood_icon'] ?? '🍵';
 
     final String summaryText;
     final String icebreakerTopic;
@@ -70,294 +69,172 @@ class HomeAiMoodRadarCard extends StatelessWidget {
       icebreakerTopic = '$name！今天過得好嗎？已有段時間沒聽到您的聲音，撥個電話問候關心您！';
     }
 
-    return Container(
+    final double? scoreNum = double.tryParse('$moodScore');
+    final double meter = ((scoreNum ?? 0) / 100).clamp(0.0, 1.0);
+
+    return FamCard(
       key: aiMoodRadarKey,
-      padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        color: cs.surface,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: cs.outline,
-          width: 1.5,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: (isDark ? Colors.black : cs.outline).withValues(alpha: isDark ? 0.35 : 0.08),
-            blurRadius: 6,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 頂部標題與情緒指標徽章
+          // 設計稿 `.mood`：分數方塊＋標籤＋心情標題＋細進度條。
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
+              Container(
+                width: 56,
+                height: 56,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: c.brandContainer,
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Text(
+                  '$moodScore',
+                  maxLines: 1,
+                  style: famText(c.brandStrong, 22, weight: FontWeight.w700, tabular: true),
+                ),
+              ),
+              const SizedBox(width: 14),
+              // ★ 鐵律 #14：心情標題為後端字串，需可收縮。
               Expanded(
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: cs.primary,
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: Icon(Icons.sentiment_satisfied_alt_rounded, color: cs.onPrimary, size: 24),
+                    Text('長輩身心觀察',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: famText(c.text3, 12, weight: FontWeight.w700, letterSpacing: 1.2)),
+                    const SizedBox(height: 2),
+                    Text(
+                      '$moodTitle',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: famText(c.text, 18, weight: FontWeight.w900, height: 1.3),
                     ),
-                    const SizedBox(width: 12),
-                    Flexible(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '長輩身心觀察',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.notoSansTc(
-                              fontSize: 19,
-                              fontWeight: FontWeight.w900,
-                              color: cs.onSurface,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
-                          Text(
-                            '近期情緒與日常狀態',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.notoSansTc(
-                              fontSize: 12,
-                              color: cs.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
+                    const SizedBox(height: 8),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(999),
+                      child: LinearProgressIndicator(
+                        value: meter,
+                        minHeight: 8,
+                        backgroundColor: c.surface3,
+                        color: c.brandFill,
                       ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
-              // 情緒指標 Badge
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 180),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: cs.tertiary,
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text('$moodIcon ', style: const TextStyle(fontSize: 13)),
-                      Flexible(
-                        child: Text(
-                          '$moodTitle ($moodScore%)',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.notoSansTc(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w900,
-                            color: cs.outline,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
             ],
           ),
 
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
 
           // 情緒分析描述
           Text(
             summaryText,
-            style: GoogleFonts.notoSansTc(
-              fontSize: 15,
-              height: 1.6,
-              fontWeight: FontWeight.w500,
-              color: cs.onSurface,
-            ),
+            style: famText(c.text, 15, height: 1.6),
           ),
 
-          const SizedBox(height: 18),
-          Divider(height: 1, color: cs.outline.withValues(alpha: 0.2)),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
+          Text('今天可以聊',
+              style: famText(c.text3, 12, weight: FontWeight.w700, letterSpacing: 1.2)),
+          const SizedBox(height: 8),
 
-          // 💡 關懷話題建議標題
-          Row(
-            children: [
-              Icon(Icons.chat_bubble_outline_rounded, color: isDark ? const Color(0xFFFDE24F) : cs.outline, size: 20),
-              const SizedBox(width: 8),
-              Text(
-                '今日關懷話題建議：',
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w900,
-                  color: cs.onSurface,
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 10),
-
-          // 溫馨金句卡（第一人稱溫情問候）
+          // 話題列（不放 spark 圖示）
           Container(
-            padding: const EdgeInsets.all(16),
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
-              color: isDark ? cs.surfaceContainerHigh : const Color(0xFFFFF9DB),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: cs.outline, width: 1.5),
+              color: c.surface2,
+              borderRadius: BorderRadius.circular(14),
             ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '“',
-                  style: TextStyle(
-                    fontSize: 32,
-                    height: 0.8,
-                    fontWeight: FontWeight.w900,
-                    color: isDark ? const Color(0xFFFDE68A) : const Color(0xFFD97706),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    icebreakerTopic,
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: isDark ? const Color(0xFFFEF3C7) : const Color(0xFF78350F),
-                      height: 1.5,
-                    ),
-                  ),
-                ),
-              ],
+            child: Text(
+              icebreakerTopic,
+              style: famText(c.text, 14.5, height: 1.5),
             ),
           ),
 
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
 
           // 方案 B：直接動作按鈕 (Action Buttons)
           Row(
             children: [
               Expanded(
-                child: ElevatedButton.icon(
+                child: FamButton(
+                  label: '撥打電話聊聊',
+                  height: 48,
                   onPressed: () {
                     HapticFeedback.mediumImpact();
                     showDialog(
                       context: context,
-                      builder: (c) => AlertDialog(
-                        backgroundColor: cs.surfaceContainerHigh,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                      builder: (c2) => AlertDialog(
                         title: Text(
-                          '📞 撥打關懷電話給$name',
-                          style: GoogleFonts.notoSansTc(color: cs.onSurface, fontWeight: FontWeight.w800),
+                          '撥打關懷電話給$name',
+                          style: famText(c.text, 18, weight: FontWeight.w900),
                         ),
                         content: Column(
                           mainAxisSize: MainAxisSize.min,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              '💡 推薦聊天開場白：',
-                              style: GoogleFonts.notoSansTc(color: isDark ? const Color(0xFFFCD34D) : const Color(0xFFB45309), fontWeight: FontWeight.bold),
+                              '推薦聊天開場白',
+                              style: famText(c.text3, 12, weight: FontWeight.w700, letterSpacing: 1.2),
                             ),
                             const SizedBox(height: 6),
                             Container(
+                              width: double.infinity,
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: cs.surfaceContainerLow,
-                                borderRadius: BorderRadius.circular(12),
+                                color: c.surface2,
+                                borderRadius: BorderRadius.circular(14),
                               ),
                               child: Text(
                                 icebreakerTopic,
-                                style: GoogleFonts.notoSansTc(color: cs.onSurface, height: 1.4),
+                                style: famText(c.text, 15, height: 1.5),
                               ),
                             ),
                           ],
                         ),
                         actions: [
                           TextButton(
-                            onPressed: () => Navigator.pop(c),
-                            child: Text('取消', style: GoogleFonts.notoSansTc(color: cs.outline)),
+                            onPressed: () => Navigator.pop(c2),
+                            child: Text('取消', style: famText(c.text2, 15, weight: FontWeight.w700)),
                           ),
-                          ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: cs.primary,
-                              foregroundColor: cs.onPrimary,
-                            ),
+                          ElevatedButton(
                             onPressed: () {
-                              Navigator.pop(c);
+                              Navigator.pop(c2);
                               final startCall = onStartVideoCall;
                               if (startCall != null) {
                                 startCall();
                               } else {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
-                                    content: Text('目前無法發起通話，請稍後再試', style: GoogleFonts.notoSansTc()),
-                                    backgroundColor: const Color(0xFFEF4444),
+                                    content: Text('目前無法發起通話，請稍後再試',
+                                        style: famText(Colors.white, 14)),
+                                    backgroundColor: c.danger,
                                   ),
                                 );
                               }
                             },
-                            icon: Icon(Icons.phone_rounded, color: cs.onPrimary, size: 18),
-                            label: Text('開始撥號', style: GoogleFonts.notoSansTc(color: cs.onPrimary, fontWeight: FontWeight.bold)),
+                            child: const Text('開始撥號'),
                           ),
                         ],
                       ),
                     );
                   },
-                  icon: Icon(Icons.phone_in_talk_rounded, size: 18, color: cs.onPrimary),
-                  label: Text(
-                    '撥打電話聊聊',
-                    style: GoogleFonts.notoSansTc(
-                      fontWeight: FontWeight.w800,
-                      color: cs.onPrimary,
-                    ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: cs.primary,
-                    foregroundColor: cs.onPrimary,
-                    elevation: 1,
-                    shadowColor: cs.primary.withValues(alpha: 0.35),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                  ),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Expanded(
-                child: ElevatedButton.icon(
+                child: FamButton(
+                  label: '傳送關懷卡',
+                  kind: FamButtonKind.tonal,
+                  height: 48,
                   onPressed: () => SendCareCardSheet.show(
                     context,
                     currentElder: currentElder,
                     elderName: name,
                     onCareMessageSent: onCareMessageSent,
-                  ),
-                  icon: Icon(Icons.mark_email_unread_rounded, size: 18, color: cs.outline),
-                  label: Text(
-                    '傳送關懷卡',
-                    style: GoogleFonts.notoSansTc(
-                      fontWeight: FontWeight.w800,
-                      color: cs.outline,
-                    ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: cs.tertiary,
-                    foregroundColor: cs.outline,
-                    elevation: 1,
-                    shadowColor: cs.tertiary.withValues(alpha: 0.35),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
                 ),
               ),
@@ -365,6 +242,6 @@ class HomeAiMoodRadarCard extends StatelessWidget {
           ),
         ],
       ),
-    ).animate().fadeIn(delay: 100.ms, duration: 400.ms).slideY(begin: 0.05);
+    ).animate().fadeIn(delay: 100.ms, duration: 300.ms);
   }
 }

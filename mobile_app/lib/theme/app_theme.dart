@@ -338,7 +338,15 @@ class UbanColors extends ThemeExtension<UbanColors> {
       info,
       infoContainer,
       lineGreen,
-      scrim;
+      scrim,
+      // 地圖專用色（family.css 的 --map-*）。
+      mapLand,
+      mapBlock,
+      mapRoad,
+      mapRoadEdge,
+      mapWater,
+      mapPark,
+      mapLabel;
   final UbanShadows shadows;
 
   const UbanColors({
@@ -366,6 +374,13 @@ class UbanColors extends ThemeExtension<UbanColors> {
     required this.infoContainer,
     required this.lineGreen,
     required this.scrim,
+    required this.mapLand,
+    required this.mapBlock,
+    required this.mapRoad,
+    required this.mapRoadEdge,
+    required this.mapWater,
+    required this.mapPark,
+    required this.mapLabel,
     required this.shadows,
   });
 
@@ -394,6 +409,13 @@ class UbanColors extends ThemeExtension<UbanColors> {
     infoContainer: Color(0xFFE5EFFA),
     lineGreen: Color(0xFF06C755),
     scrim: Color.fromRGBO(5, 15, 11, .45),
+    mapLand: Color(0xFFEEF2EF),
+    mapBlock: Color(0xFFE4EAE6),
+    mapRoad: Color(0xFFFFFFFF),
+    mapRoadEdge: Color(0xFFD9E1DC),
+    mapWater: Color(0xFFCFE4EC),
+    mapPark: Color(0xFFD5EBDD),
+    mapLabel: Color(0xFF7A8A83),
     shadows: UbanShadows.light,
   );
 
@@ -422,7 +444,70 @@ class UbanColors extends ThemeExtension<UbanColors> {
     infoContainer: Color(0xFF18273A),
     lineGreen: Color(0xFF06C755),
     scrim: Color.fromRGBO(0, 0, 0, .6),
+    mapLand: Color(0xFF141B18),
+    mapBlock: Color(0xFF18211D),
+    mapRoad: Color(0xFF25302B),
+    mapRoadEdge: Color(0xFF1C2622),
+    mapWater: Color(0xFF102530),
+    mapPark: Color(0xFF14291F),
+    mapLabel: Color(0xFF6E7F78),
     shadows: UbanShadows.dark,
+  );
+
+  /// 家屬端色票（family.css `.fam[data-accent="ocean"]`，淺色）。
+  /// 以 [light] 為底，只覆寫 ocean 區塊有指定的欄位。
+  static final UbanColors familyLight = light.copyWith(
+    brand: const Color(0xFF5B8DB0),
+    brandFill: const Color(0xFF3F6F94),
+    onBrand: const Color(0xFFFFFFFF),
+    brandStrong: const Color(0xFF2C5878),
+    brandContainer: const Color(0xFFDDE8F0),
+    brandSoft: const Color(0xFFEFF4F8),
+    bg: const Color(0xFFF6F6F3),
+    surface2: const Color(0xFFEEEEEA),
+    surface3: const Color(0xFFE4E4DF),
+    line: const Color(0xFFE4E4DF),
+    text2: const Color(0xFF5E625F),
+    text3: const Color(0xFF8D918D),
+    info: const Color(0xFF7B6A9B),
+    infoContainer: const Color(0xFFECE8F3),
+    warm: const Color(0xFF7A5C30),
+    warmContainer: const Color(0xFFF1EADD),
+    mapLand: const Color(0xFFEFEFEA),
+    mapBlock: const Color(0xFFE6E6E0),
+    mapRoad: const Color(0xFFFFFFFF),
+    mapRoadEdge: const Color(0xFFDCDCD5),
+    mapWater: const Color(0xFFD3E2EA),
+    mapPark: const Color(0xFFDCE8D8),
+    mapLabel: const Color(0xFF8A8D88),
+  );
+
+  /// 家屬端色票（ocean，深色）。
+  static final UbanColors familyDark = dark.copyWith(
+    brand: const Color(0xFF8FB4D2),
+    brandFill: const Color(0xFF8FB4D2),
+    onBrand: const Color(0xFF10263A),
+    brandStrong: const Color(0xFFB5CEE3),
+    brandContainer: const Color(0xFF1E3142),
+    brandSoft: const Color(0xFF172430),
+    bg: const Color(0xFF121312),
+    surface: const Color(0xFF1B1C1B),
+    surface2: const Color(0xFF232422),
+    surface3: const Color(0xFF2D2E2B),
+    line: const Color(0xFF2D2E2B),
+    text2: const Color(0xFFA3A7A2),
+    text3: const Color(0xFF73776F),
+    info: const Color(0xFFB3A4CF),
+    infoContainer: const Color(0xFF2A2436),
+    warm: const Color(0xFFD6BB8E),
+    warmContainer: const Color(0xFF2C2619),
+    mapLand: const Color(0xFF161716),
+    mapBlock: const Color(0xFF1C1D1B),
+    mapRoad: const Color(0xFF2A2B28),
+    mapRoadEdge: const Color(0xFF202120),
+    mapWater: const Color(0xFF14232B),
+    mapPark: const Color(0xFF18241A),
+    mapLabel: const Color(0xFF73776F),
   );
 
   /// 取目前主題的色票；沒掛 extension 時退回淺色。
@@ -455,6 +540,13 @@ class UbanColors extends ThemeExtension<UbanColors> {
     Color? infoContainer,
     Color? lineGreen,
     Color? scrim,
+    Color? mapLand,
+    Color? mapBlock,
+    Color? mapRoad,
+    Color? mapRoadEdge,
+    Color? mapWater,
+    Color? mapPark,
+    Color? mapLabel,
     UbanShadows? shadows,
   }) =>
       UbanColors(
@@ -482,6 +574,13 @@ class UbanColors extends ThemeExtension<UbanColors> {
         infoContainer: infoContainer ?? this.infoContainer,
         lineGreen: lineGreen ?? this.lineGreen,
         scrim: scrim ?? this.scrim,
+        mapLand: mapLand ?? this.mapLand,
+        mapBlock: mapBlock ?? this.mapBlock,
+        mapRoad: mapRoad ?? this.mapRoad,
+        mapRoadEdge: mapRoadEdge ?? this.mapRoadEdge,
+        mapWater: mapWater ?? this.mapWater,
+        mapPark: mapPark ?? this.mapPark,
+        mapLabel: mapLabel ?? this.mapLabel,
         shadows: shadows ?? this.shadows,
       );
 
@@ -514,6 +613,13 @@ class UbanColors extends ThemeExtension<UbanColors> {
       infoContainer: l(infoContainer, other.infoContainer),
       lineGreen: l(lineGreen, other.lineGreen),
       scrim: l(scrim, other.scrim),
+      mapLand: l(mapLand, other.mapLand),
+      mapBlock: l(mapBlock, other.mapBlock),
+      mapRoad: l(mapRoad, other.mapRoad),
+      mapRoadEdge: l(mapRoadEdge, other.mapRoadEdge),
+      mapWater: l(mapWater, other.mapWater),
+      mapPark: l(mapPark, other.mapPark),
+      mapLabel: l(mapLabel, other.mapLabel),
       shadows: UbanShadows.lerp(shadows, other.shadows, t),
     );
   }

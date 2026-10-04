@@ -11,6 +11,7 @@ import '../../models/elder_place.dart';
 import '../../services/api/location_api.dart';
 import '../../services/location_device_status.dart';
 import '../../services/location_trail_processor.dart';
+import '../../theme/family_theme.dart';
 import 'elder_places_screen.dart';
 
 /// 家屬端：長輩戶外 GPS 定位 + 指定日期完整移動軌跡。
@@ -318,6 +319,13 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // 2026-10：家屬新設計——push 出來的家屬頁要自己掛家屬主題（外觀分批改版中，此處先只包一層）。
+    return FamilyThemeScope(
+      child: Builder(builder: _buildScreen),
+    );
+  }
+
+  Widget _buildScreen(BuildContext context) {
     final dateLabel = '${_selectedDate.month}/${_selectedDate.day}';
     return Scaffold(
       appBar: AppBar(

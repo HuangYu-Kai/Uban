@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../../../models/elder.dart';
+import '../../../../theme/app_theme.dart';
+import '../../widgets/fam_ui.dart';
 
-/// 監控設備狀態（含跌倒警報高亮與長輩在此高亮）
+/// 監控設備狀態（含跌倒警報高亮與長輩在此高亮；設計稿 `.cam`／`.devrow`）。
+///
+/// 原卡片沒有即時縮圖也沒有按鈕，所以不放縮圖（不畫假畫面）；每台監視機一列：
+/// 狀態色點＋名稱＋說明，警報時整列換 danger 底，長輩在此時換淡海灣藍底。
 class HomeMonitorDeviceCard extends StatelessWidget {
   final List<dynamic> monitorDevices;
   final List<Map<String, dynamic>> activeAlerts;
@@ -22,69 +26,31 @@ class HomeMonitorDeviceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final List<dynamic> monitors = monitorDevices;
     if (monitors.isEmpty) return const SizedBox.shrink();
 
-    return Container(
+    final rows = <Widget>[];
+    for (final d in monitors) {
+      if (rows.isNotEmpty) rows.add(const SizedBox(height: 8));
+      rows.add(_buildMonitorStatusCard(context, d));
+    }
+
+    return FamCard(
       key: monitorStatusKey,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: cs.surface,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: cs.outline,
-          width: 1.5,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: (isDark ? Colors.black : cs.outline).withValues(alpha: isDark ? 0.35 : 0.08),
-            blurRadius: 6,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: cs.primary,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Icon(Icons.videocam_rounded, color: cs.onPrimary, size: 22),
-              ),
-              const SizedBox(width: 12),
-              Text(
-                '監控設備狀態',
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w900,
-                  color: cs.onSurface,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          ...monitors.map(
-            (d) => Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: _buildMonitorStatusCard(context, d),
-            ),
-          ),
+          const FamSecHead(title: '監控設備狀態'),
+          const SizedBox(height: 12),
+          ...rows,
         ],
       ),
-    ).animate().fadeIn(duration: 400.ms).slideY(begin: -0.05);
+    ).animate().fadeIn(duration: 300.ms);
   }
 
   Widget _buildMonitorStatusCard(BuildContext context, dynamic device) {
     if (device is! Map) return const SizedBox.shrink();
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final c = UbanColors.of(context);
     final String name = (device['deviceName'] ?? 'Unnamed').toString();
     final bool isOnline = device['isOnline'] == true;
     final dynamic deviceId = device['deviceId'] ?? device['id'];
@@ -107,54 +73,26 @@ class HomeMonitorDeviceCard extends StatelessWidget {
         isElderPresent ? (elderZone?['zone'])?.toString() : null;
     final bool showZoneName = presentZoneName != null && presentZoneName != 'unknown';
 
+    final Color rowBg = hasActiveAlert
+        ? c.dangerContainer
+        : (isElderPresent ? c.brandSoft : c.surface2);
+    final Color dotColor = hasActiveAlert
+        ? c.danger
+        : (isOnline ? c.brand : c.text3);
+    final Color subColor = hasActiveAlert
+        ? c.danger
+        : (isElderPresent ? c.brandStrong : c.text2);
+
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 18),
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
       decoration: BoxDecoration(
-        color: hasActiveAlert
-            ? (isDark ? const Color(0xFF3F1D1D) : const Color(0xFFFEF2F2))
-            : (isElderPresent
-                ? (isDark ? const Color(0xFF083344) : cs.primaryContainer)
-                : cs.surfaceContainerLow),
+        color: rowBg,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: hasActiveAlert
-              ? const Color(0xFFF87171)
-              : (isElderPresent
-                  ? cs.primary
-                  : cs.outlineVariant.withValues(alpha: 0.4)),
-          width: (hasActiveAlert || isElderPresent) ? 2.0 : 1.0,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: hasActiveAlert
-                ? Colors.red.withValues(alpha: 0.22)
-                : (isElderPresent
-                    ? cs.primary.withValues(alpha: 0.15)
-                    : (isDark ? Colors.black.withValues(alpha: 0.25) : Colors.black.withValues(alpha: 0.04))),
-            blurRadius: (hasActiveAlert || isElderPresent) ? 12 : 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
       ),
       child: Row(
         children: [
-          Container(
-            width: 10,
-            height: 10,
-            decoration: BoxDecoration(
-              color: isOnline ? const Color(0xFF34D399) : const Color(0xFF475569),
-              shape: BoxShape.circle,
-              boxShadow: isOnline
-                  ? [
-                      BoxShadow(
-                        color: const Color(0xFF34D399).withValues(alpha: 0.5),
-                        blurRadius: 6,
-                      ),
-                    ]
-                  : null,
-            ),
-          ),
-          const SizedBox(width: 14),
+          FamDot(color: dotColor),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -164,69 +102,34 @@ class HomeMonitorDeviceCard extends StatelessWidget {
                     Flexible(
                       child: Text(
                         isOnline ? name : '(離線) $name',
+                        maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: isOnline ? cs.onSurface : cs.onSurfaceVariant,
-                        ),
+                        style: famText(isOnline ? c.text : c.text2, 15.5,
+                            weight: FontWeight.w700),
                       ),
                     ),
                     if (hasActiveAlert) ...[
                       const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.red.shade500,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          _shortAlertTypeLabel(alertType),
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: Colors.white,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
+                      FamChip(label: _shortAlertTypeLabel(alertType), tone: FamTone.danger),
                     ] else if (isElderPresent) ...[
                       const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: isDark ? const Color(0xFF06B6D4) : cs.primary,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          '長輩在此',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: isDark ? Colors.white : cs.onPrimary,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
+                      const FamChip(label: '長輩在此', tone: FamTone.brand),
                     ],
                   ],
                 ),
                 const SizedBox(height: 2),
                 Text(
                   hasActiveAlert
-                      ? '⚠️ $elderName ${_shortAlertTypeLabel(alertType)}，請立即查看監視畫面'
+                      ? '$elderName ${_shortAlertTypeLabel(alertType)}，請立即查看監視畫面'
                       : (isElderPresent
-                          ? '📍 目前長輩所在此處${showZoneName ? ' · $presentZoneName' : ''}'
+                          ? '目前長輩所在此處${showZoneName ? '・$presentZoneName' : ''}'
                           : (isOnline ? '線上監控中' : '離線')),
                   overflow: TextOverflow.ellipsis,
                   maxLines: 2,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: hasActiveAlert
-                        ? (isDark ? const Color(0xFFFCA5A5) : const Color(0xFFDC2626))
-                        : (isElderPresent ? (isDark ? const Color(0xFF7DD3FC) : cs.primary) : cs.onSurfaceVariant),
-                    fontWeight: (hasActiveAlert || isElderPresent)
-                        ? FontWeight.w600
-                        : FontWeight.normal,
-                  ),
+                  style: famText(subColor, 13,
+                      weight: (hasActiveAlert || isElderPresent)
+                          ? FontWeight.w600
+                          : FontWeight.w500),
                 ),
               ],
             ),

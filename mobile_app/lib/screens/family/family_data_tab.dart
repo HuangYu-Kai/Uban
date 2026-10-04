@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../widgets/ui/uban_glass_nav_bar.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -621,7 +622,8 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
       ),
       slivers: [
         SliverPadding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
+          padding: EdgeInsets.fromLTRB(
+              16, 16, 16, UbanGlassNavBar.totalHeight + MediaQuery.paddingOf(context).bottom + 16),
           sliver: SliverList(
             delegate: SliverChildListDelegate([
               // ★ 第五十一輪（任務 2）：以下每一張動態卡片都包了一層

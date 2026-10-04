@@ -7,6 +7,7 @@ import '../../services/predictive_alert_service.dart';
 import '../../services/api_service.dart';
 import '../../utils/alert_display.dart';
 import '../../utils/error_handler.dart';
+import '../../theme/family_theme.dart';
 import 'elder_location_map_screen.dart';
 
 /// ★ 第五十二輪 F2：警示紀錄清單的時間範圍篩選。放在檔案頂層（非
@@ -497,10 +498,13 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      appBar: _buildAppBar(),
-      body: _isLoading ? _buildLoading() : _buildContent(),
+    // 2026-10：家屬新設計——push 出來的家屬頁要自己掛家屬主題（外觀分批改版中，此處先只包一層）。
+    return FamilyThemeScope(
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF8FAFC),
+        appBar: _buildAppBar(),
+        body: _isLoading ? _buildLoading() : _buildContent(),
+      ),
     );
   }
 
