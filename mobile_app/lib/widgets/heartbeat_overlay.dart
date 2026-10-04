@@ -1,8 +1,14 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
-import 'package:google_fonts/google_fonts.dart';
 
+import '../theme/app_theme.dart';
+import '../theme/uban_motion.dart';
+import 'elder_overlay_button.dart';
+import 'ui/uban_dialog.dart';
+import 'ui/uban_text.dart';
+
+/// 主動關懷對話框（設計稿 `#dl-heartbeat`）：徽章＋大字訊息＋「好喔，我知道了」。
+///
+/// 由呼叫端以 `showDialog` 顯示；[onDismiss] 的行為（關閉自己）由呼叫端決定。
 class HeartbeatOverlay extends StatelessWidget {
   final String message;
   final String type; // greeting, medication, family, weather, chat
@@ -17,139 +23,32 @@ class HeartbeatOverlay extends StatelessWidget {
     required this.onDismiss,
   });
 
-  Color _getThemeColor() {
+  /// 徽章底色／字色：依類型取設計系統色票（不再用高飽和的 accent 色）。
+  (Color bg, Color fg) _badgeColors(UbanColors c) {
     switch (type) {
       case 'medication':
-        return Colors.redAccent;
-      case 'family':
-        return Colors.blueAccent;
       case 'weather':
-        return Colors.orangeAccent;
-      case 'greeting':
-        return Colors.greenAccent;
+        return (c.warmContainer, c.warm);
+      case 'family':
+        return (c.infoContainer, c.info);
       default:
-        return Colors.amberAccent;
+        return (c.brandContainer, c.brandStrong);
     }
   }
 
   IconData _getIcon() {
     switch (type) {
       case 'medication':
-        return Icons.medication;
+        return Icons.medication_rounded;
       case 'family':
-        return Icons.family_restroom;
+        return Icons.family_restroom_rounded;
       case 'weather':
-        return Icons.wb_sunny;
+        return Icons.wb_sunny_rounded;
       case 'greeting':
-        return Icons.wb_twilight;
+        return Icons.wb_twilight_rounded;
       default:
-        return Icons.favorite;
+        return Icons.favorite_rounded;
     }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final themeColor = _getThemeColor();
-    
-    return Material(
-      color: Colors.transparent,
-      child: Center(
-        child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 30),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(30),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 3, sigmaY: 3),
-              child: Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(30),
-                  border: Border.all(
-                    color: themeColor.withValues(alpha: 0.5),
-                    width: 2,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: themeColor.withValues(alpha: 0.2),
-                      blurRadius: 20,
-                      spreadRadius: 5,
-                    ),
-                  ],
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Icon & Type Header
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(_getIcon(), color: themeColor, size: 32),
-                        const SizedBox(width: 12),
-                        Text(
-                          _getTypeLabel(),
-                          style: GoogleFonts.notoSansTc(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: themeColor,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    
-                    // The Message
-                    Text(
-                      message,
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 26,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                        height: 1.4,
-                      ),
-                    ),
-                    const SizedBox(height: 30),
-                    
-                    // Interaction Button
-                    GestureDetector(
-                      onTap: onDismiss,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [themeColor, themeColor.withValues(alpha: 0.7)],
-                          ),
-                          borderRadius: BorderRadius.circular(40),
-                          boxShadow: [
-                            BoxShadow(
-                              color: themeColor.withValues(alpha: 0.4),
-                              blurRadius: 10,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: Text(
-                          "好喔，我知道了",
-                          style: GoogleFonts.notoSansTc(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ).animate().scale(
-        duration: 400.ms,
-        curve: Curves.easeOutBack,
-      ).fadeIn(),
-    );
   }
 
   String _getTypeLabel() {
@@ -165,5 +64,67 @@ class HeartbeatOverlay extends StatelessWidget {
       default:
         return 'AI 關懷';
     }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = UbanColors.of(context);
+    final (badgeBg, badgeFg) = _badgeColors(c);
+
+    final dialog = UbanDialog(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: badgeBg,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(_getIcon(), size: 18, color: badgeFg),
+                  const SizedBox(width: 4),
+                  Flexible(
+                    child: Text(
+                      _getTypeLabel(),
+                      overflow: TextOverflow.ellipsis,
+                      style: ubanText(16, FontWeight.w700, badgeFg),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            message,
+            style: ubanText(26, FontWeight.w700, c.text, height: 1.5),
+          ),
+          const SizedBox(height: 20),
+          OverlayButton(
+            label: '好喔，我知道了',
+            fontSize: 22,
+            minHeight: 76,
+            onPressed: onDismiss,
+          ),
+        ],
+      ),
+    );
+
+    // 設計稿 .dialog：400ms 彈性縮放 .92→1（系統「移除動畫」時不縮放）。
+    if (reduceMotion(context)) return dialog;
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: .92, end: 1),
+      duration: UbanMotion.dialogDuration,
+      curve: UbanMotion.dialog,
+      builder: (context, scale, child) =>
+          Transform.scale(scale: scale, child: child),
+      child: dialog,
+    );
   }
 }

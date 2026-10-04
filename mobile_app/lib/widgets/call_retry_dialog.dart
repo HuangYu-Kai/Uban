@@ -1,6 +1,11 @@
 // lib/widgets/call_retry_dialog.dart
 import 'package:flutter/material.dart';
 
+import '../theme/app_theme.dart';
+import 'elder_overlay_button.dart';
+import 'ui/uban_dialog.dart';
+import 'ui/uban_text.dart';
+
 /// 使用者在「無人接聽／連線逾時」對話框上的選擇。
 enum CallRetryChoice {
   /// 離開通話房間，回到主畫面。
@@ -33,87 +38,79 @@ Future<CallRetryChoice?> showCallRetryDialog(
   String message = '要離開通話房間，還是重新撥打一次？',
   bool largeText = false,
 }) {
-  final double titleSize = largeText ? 26 : 20;
-  final double bodySize = largeText ? 22 : 16;
-  final double buttonSize = largeText ? 22 : 17;
-  final EdgeInsets buttonPadding = largeText
-      ? const EdgeInsets.symmetric(vertical: 16)
-      : const EdgeInsets.symmetric(vertical: 12);
+  // 外觀改版（長輩端 UI 改版）：AlertDialog → UbanDialog。行為（不可點外框關閉、
+  // 返回鍵無效、兩個選項的回傳值）一律與改版前相同。
+  final double titleSize = largeText ? 26 : 22;
+  final double bodySize = largeText ? 22 : 18;
+  final double buttonSize = largeText ? 22 : 19;
 
   return showDialog<CallRetryChoice>(
     context: context,
     // 這是一個必須做出選擇的分岔點：點外框或按返回鍵都不應該讓使用者
     // 卡在一個已經斷線的通話畫面上。
     barrierDismissible: false,
-    builder: (dialogContext) => PopScope(
-      canPop: false,
-      child: AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            Icon(Icons.phone_missed, color: Colors.redAccent, size: titleSize + 6),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                title,
-                style: TextStyle(
-                  fontSize: titleSize,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ],
-        ),
-        content: Text(
-          message,
-          style: TextStyle(fontSize: bodySize, height: 1.4),
-        ),
-        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        actions: [
-          Row(
+    builder: (dialogContext) {
+      final c = UbanColors.of(dialogContext);
+      return PopScope(
+        canPop: false,
+        child: UbanDialog(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () =>
-                      Navigator.of(dialogContext).pop(CallRetryChoice.leave),
-                  icon: Icon(Icons.close, size: buttonSize + 2),
-                  label: Text(
-                    '離開通話',
-                    style: TextStyle(fontSize: buttonSize),
+              Row(
+                children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                        color: c.dangerContainer, shape: BoxShape.circle),
+                    child: Icon(Icons.phone_missed_rounded,
+                        color: c.danger, size: 26),
                   ),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.grey.shade700,
-                    padding: buttonPadding,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: ubanText(titleSize, FontWeight.w900, c.text,
+                          height: 1.3),
                     ),
                   ),
-                ),
+                ],
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: () =>
-                      Navigator.of(dialogContext).pop(CallRetryChoice.retry),
-                  icon: Icon(Icons.refresh, size: buttonSize + 2),
-                  label: Text(
-                    '重新撥打',
-                    style: TextStyle(fontSize: buttonSize),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF4CAF50),
-                    foregroundColor: Colors.white,
-                    padding: buttonPadding,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
+              const SizedBox(height: 14),
+              Text(
+                message,
+                style: ubanText(bodySize, FontWeight.w500, c.text2,
+                    height: 1.55),
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Expanded(
+                    child: OverlayButton(
+                      label: '離開通話',
+                      filled: false,
+                      fontSize: buttonSize,
+                      onPressed: () =>
+                          Navigator.of(dialogContext).pop(CallRetryChoice.leave),
                     ),
                   ),
-                ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OverlayButton(
+                      label: '重新撥打',
+                      fontSize: buttonSize,
+                      onPressed: () =>
+                          Navigator.of(dialogContext).pop(CallRetryChoice.retry),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
-        ],
-      ),
-    ),
+        ),
+      );
+    },
   );
 }

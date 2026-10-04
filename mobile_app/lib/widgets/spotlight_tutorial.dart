@@ -1,7 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/physics.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import '../theme/app_theme.dart';
+import '../theme/uban_motion.dart';
+import 'elder_overlay_button.dart';
+import 'ui/uban_text.dart';
 
 /// 單一教學步驟的定義。
 ///
@@ -61,7 +67,7 @@ class SpotlightTutorial {
     BuildContext context, {
     required String tutorialId,
     required List<TutorialStep> steps,
-    double titleFontSize = 22,
+    double titleFontSize = 24,
     double bodyFontSize = 18,
     double buttonHeight = 56,
   }) async {
@@ -123,7 +129,7 @@ class SpotlightTutorial {
     BuildContext context, {
     required String tutorialId,
     required List<TutorialStep> steps,
-    double titleFontSize = 22,
+    double titleFontSize = 24,
     double bodyFontSize = 18,
     double buttonHeight = 56,
   }) async {
@@ -170,6 +176,32 @@ class SpotlightTutorial {
   }
 }
 
+/// 以 [UbanMotion.tutorialSpring]（設計稿 `Spring(.75, 300)`）驅動的單一數值。
+class _SpringValue {
+  _SpringValue(TickerProvider vsync, double initial)
+      : controller = AnimationController.unbounded(vsync: vsync, value: initial);
+
+  final AnimationController controller;
+
+  double get value => controller.value;
+
+  void to(double target, {required bool snap}) {
+    if (snap) {
+      controller.stop();
+      controller.value = target;
+      return;
+    }
+    controller.animateWith(SpringSimulation(
+      UbanMotion.tutorialSpring,
+      controller.value,
+      target,
+      controller.velocity,
+    ));
+  }
+
+  void dispose() => controller.dispose();
+}
+
 class _SpotlightTutorialView extends StatefulWidget {
   final List<TutorialStep> steps;
   final double titleFontSize;
@@ -188,30 +220,77 @@ class _SpotlightTutorialView extends StatefulWidget {
       _SpotlightTutorialViewState();
 }
 
-class _SpotlightTutorialViewState extends State<_SpotlightTutorialView> {
+class _SpotlightTutorialViewState extends State<_SpotlightTutorialView>
+    with TickerProviderStateMixin {
   int _stepIndex = 0;
 
-  /// 目前步驟高光目標「捲動完成後」量到的螢幕座標。
+  /// 目前步驟高光目標「捲動完成後」量到的螢幕座標（已外擴 8）。
   ///
-  /// 之所以不在 build() 內直接同步呼叫 `_resolveTargetRect`，是因為切換步驟
-  /// 時必須先把目標捲進視野（見 [_scrollTargetIntoView]），量測結果只能取自
-  /// 捲動「完成之後」——捲動途中量到的座標是舊的，會讓高光框停在錯的位置。
-  /// null 代表「暫時不挖洞」：可能是這一步本來就沒有目標、目標量不到、或
-  /// 正在捲動中尚未量到新結果（此時退化成置中卡片，不會顯示錯誤位置的洞）。
+  /// 之所以不在 build() 內直接同步量測，是因為切換步驟時必須先把目標捲進視野
+  /// （見 [_scrollTargetIntoView]），量測結果只能取自捲動「完成之後」。
+  /// null 代表「沒有洞」：這一步本來就沒有目標、或目標量不到（退化成置中卡片）。
+  /// 換到「有目標」的下一步時**不清空**舊值——挖洞要像設計稿一樣以彈簧從上一個
+  /// 目標直接移到新目標，而不是先縮成一點再長出來；新結果量到前卡片位置沿用舊的。
   Rect? _targetRect;
 
   /// 每次切換步驟遞增一次。用來讓「使用者在捲動完成前又連按下一步」時，
   /// 前一步驟過期的非同步捲動結果不會在回來後覆蓋新步驟已經量到的結果。
   int _updateToken = 0;
 
+  // 洞口的 x／y／w／h 各自一條彈簧（同設計稿 hs[0..3]）。
+  late final _SpringValue _hx;
+  late final _SpringValue _hy;
+  late final _SpringValue _hw;
+  late final _SpringValue _hh;
+  bool _springsReady = false;
+  late final Listenable _holeListenable;
+
   @override
   void initState() {
     super.initState();
+    _hx = _SpringValue(this, 0);
+    _hy = _SpringValue(this, 0);
+    _hw = _SpringValue(this, 0);
+    _hh = _SpringValue(this, 0);
+    _holeListenable = Listenable.merge(
+        [_hx.controller, _hy.controller, _hw.controller, _hh.controller]);
     // 等本 widget 自己也至少畫過一影格再開始捲動／量測，做法與
     // SpotlightTutorial.showIfNeeded 開對話框前的 postFrameCallback 一致。
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _scrollTargetIntoView();
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_springsReady) {
+      _springsReady = true;
+      // 初始：洞口是螢幕正中央的一個點，之後才彈開到第一個目標。
+      final Size s = MediaQuery.sizeOf(context);
+      _hx.to(s.width / 2, snap: true);
+      _hy.to(s.height / 2, snap: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _hx.dispose();
+    _hy.dispose();
+    _hw.dispose();
+    _hh.dispose();
+    super.dispose();
+  }
+
+  /// 把洞口彈到 [rect]；null 代表縮回螢幕中央的一個點（無目標的步驟）。
+  void _applyHole(Rect? rect) {
+    final Size s = MediaQuery.sizeOf(context);
+    final bool snap = reduceMotion(context);
+    final Rect r = rect ?? Rect.fromLTWH(s.width / 2, s.height / 2, 0, 0);
+    _hx.to(r.left, snap: snap);
+    _hy.to(r.top, snap: snap);
+    _hw.to(r.width, snap: snap);
+    _hh.to(r.height, snap: snap);
   }
 
   void _handleNext() {
@@ -221,9 +300,9 @@ class _SpotlightTutorialViewState extends State<_SpotlightTutorialView> {
     }
     setState(() {
       _stepIndex++;
-      // 換下一步先清空舊高光——舊座標對應的是上一步的目標，留著只會讓洞口
-      // 停在錯的地方，不如先退化成置中卡片，等新目標捲好、量好再顯示。
-      _targetRect = null;
+      // 無目標的步驟：舊洞口立刻失效（卡片置中、洞縮成點）。
+      // 有目標的步驟：保留舊洞口位置直到新目標捲好、量好（見 _targetRect 註解）。
+      if (widget.steps[_stepIndex].targetKey == null) _targetRect = null;
     });
     _scrollTargetIntoView();
   }
@@ -241,17 +320,18 @@ class _SpotlightTutorialViewState extends State<_SpotlightTutorialView> {
   /// 把目前步驟的目標（若有）捲進視野，捲動確定完成後才量測並套用高光矩形。
   ///
   /// 三種既有防呆情境原封不動保留，任何一種都不會拋例外或卡住教學：
-  /// - `targetKey == null`（純文字步驟）→ 不呼叫 ensureVisible，`_targetRect`
-  ///   維持 null（見欄位註解，呼叫端已先在 setState 或初始值清空）。
+  /// - `targetKey == null`（純文字步驟）→ 不呼叫 ensureVisible，不挖洞。
   /// - `targetKey.currentContext == null`（元件尚未 layout，例如在 lazy list
-  ///   裡從未被 build 過）→ ensureVisible 對這種情況無能為力，略過捲動，
-  ///   直接落到下面的量測（結果同樣是 null），等同既有的「跳過高光」行為。
+  ///   裡從未被 build 過）→ 略過捲動，量測結果同樣是 null，退化為置中卡片。
   /// - 目標不在任何 Scrollable 內（例如釘在 AppBar／底部導覽列上）→
   ///   `Scrollable.ensureVisible` 對此本身就是安全的立即完成 no-op。
   void _scrollTargetIntoView() {
     final int token = ++_updateToken;
     final GlobalKey? key = widget.steps[_stepIndex].targetKey;
-    if (key == null) return;
+    if (key == null) {
+      _applyHole(null);
+      return;
+    }
     unawaited(_scrollAndMeasure(key, token));
   }
 
@@ -262,8 +342,7 @@ class _SpotlightTutorialViewState extends State<_SpotlightTutorialView> {
         await Scrollable.ensureVisible(
           targetContext,
           // 讓目標落在畫面中間偏上：挖洞的高光留在上半部，下方留出足夠空間
-          // 給指引卡片（_buildCard 的上下半判斷才不會卡在邊界附近），也避免
-          // 卡片（最高可達螢幕 55%）從下往上蓋到剛捲好的目標。
+          // 給指引卡片，也避免卡片（最高可達螢幕 55%）蓋到剛捲好的目標。
           alignment: 0.3,
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeInOut,
@@ -277,12 +356,14 @@ class _SpotlightTutorialViewState extends State<_SpotlightTutorialView> {
     if (!mounted) return; // widget 可能在 await 期間被 dispose。
     if (token != _updateToken) return; // 捲動完成前使用者已切到別的步驟，結果過期。
 
-    setState(() => _targetRect = _resolveTargetRect(key));
+    final Rect? measured = _resolveTargetRect(key)?.inflate(8);
+    setState(() => _targetRect = measured);
+    _applyHole(measured);
   }
 
   /// 量測目標元件目前在螢幕上的位置與大小。
   /// 量不到（尚未 layout、已被 dispose、或不是 RenderBox）一律回傳 null，
-  /// 呼叫端據此退化為無挖洞的置中卡片——見類別註解的防呆說明。
+  /// 呼叫端據此退化為無挖洞的置中卡片。
   Rect? _resolveTargetRect(GlobalKey? key) {
     if (key == null) return null;
     final BuildContext? targetContext = key.currentContext;
@@ -301,8 +382,7 @@ class _SpotlightTutorialViewState extends State<_SpotlightTutorialView> {
   @override
   Widget build(BuildContext context) {
     final TutorialStep step = widget.steps[_stepIndex];
-    final Size screenSize = MediaQuery.of(context).size;
-    final Rect? holeRect = _targetRect?.inflate(8);
+    final Size screenSize = MediaQuery.sizeOf(context);
 
     return Material(
       type: MaterialType.transparency,
@@ -316,23 +396,25 @@ class _SpotlightTutorialViewState extends State<_SpotlightTutorialView> {
               onTap: () {},
               child: CustomPaint(
                 size: Size.infinite,
-                painter: _SpotlightPainter(holeRect: holeRect),
+                painter: _SpotlightPainter(
+                  x: _hx.controller,
+                  y: _hy.controller,
+                  w: _hw.controller,
+                  h: _hh.controller,
+                  repaint: _holeListenable,
+                ),
               ),
             ),
           ),
-          _buildCard(context, step, screenSize, holeRect),
+          _buildCard(context, step, screenSize),
         ],
       ),
     );
   }
 
-  Widget _buildCard(
-    BuildContext context,
-    TutorialStep step,
-    Size screenSize,
-    Rect? holeRect,
-  ) {
-    final EdgeInsets safePadding = MediaQuery.of(context).padding;
+  Widget _buildCard(BuildContext context, TutorialStep step, Size screenSize) {
+    final EdgeInsets safePadding = MediaQuery.paddingOf(context);
+    final Rect? hole = _targetRect;
     final card = _TutorialCard(
       step: step,
       stepIndex: _stepIndex,
@@ -345,25 +427,27 @@ class _SpotlightTutorialViewState extends State<_SpotlightTutorialView> {
       onSkip: _handleSkip,
     );
 
-    // 無目標的步驟（例如歡迎詞）→ 卡片直接置中。
-    if (holeRect == null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
+    // 無目標 → 置中；有目標 → 放在洞的另一側（洞在上半部卡片放下面，反之亦然）。
+    // 以 AnimatedAlign 讓卡片在三個位置間以彈性曲線移動（設計稿 top/bottom 450ms）。
+    final Alignment alignment = hole == null
+        ? Alignment.center
+        : (hole.center.dy < screenSize.height / 2
+            ? Alignment.bottomCenter
+            : Alignment.topCenter);
+
+    return Positioned.fill(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+            16, safePadding.top + 24, 16, safePadding.bottom + 28),
+        child: AnimatedAlign(
+          alignment: alignment,
+          duration: reduceMotion(context)
+              ? Duration.zero
+              : const Duration(milliseconds: 450),
+          curve: const Cubic(.34, 1.3, .64, 1),
           child: card,
         ),
-      );
-    }
-
-    // 有目標 → 卡片放在挖洞的另一側，避免蓋住高光目標。
-    // 洞在螢幕上半部 → 卡片放下面；洞在下半部 → 卡片放上面。
-    final bool holeInTopHalf = holeRect.center.dy < screenSize.height / 2;
-    return Positioned(
-      left: 20,
-      right: 20,
-      top: holeInTopHalf ? null : safePadding.top + 24,
-      bottom: holeInTopHalf ? safePadding.bottom + 24 : null,
-      child: card,
+      ),
     );
   }
 }
@@ -393,27 +477,50 @@ class _TutorialCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = UbanColors.of(context);
     final bool isLastStep = stepIndex >= stepCount - 1;
+    final double btnFont = bodyFontSize < 18 ? 18 : bodyFontSize;
 
-    return Material(
-      color: Colors.white,
-      elevation: 12,
-      borderRadius: BorderRadius.circular(20),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(maxHeight: maxHeight),
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: maxHeight),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: c.surface,
+          borderRadius: BorderRadius.circular(28),
+        ),
         child: Padding(
           padding: const EdgeInsets.all(20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                '第 ${stepIndex + 1} / 共 $stepCount 步',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey.shade600,
-                  fontWeight: FontWeight.w600,
-                ),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (int i = 0; i < stepCount; i++)
+                          AnimatedContainer(
+                            duration: const Duration(milliseconds: 300),
+                            width: i == stepIndex ? 22 : 8,
+                            height: 8,
+                            decoration: BoxDecoration(
+                              color: i == stepIndex ? c.brand : c.surface3,
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    '第 ${stepIndex + 1}／共 $stepCount 步',
+                    style: ubanText(15, FontWeight.w600, c.text3),
+                  ),
+                ],
               ),
               const SizedBox(height: 8),
               Flexible(
@@ -424,71 +531,41 @@ class _TutorialCard extends StatelessWidget {
                     children: [
                       Text(
                         step.title,
-                        style: TextStyle(
-                          fontSize: titleFontSize,
-                          fontWeight: FontWeight.bold,
-                          color: const Color(0xFF1E293B),
-                        ),
+                        style: ubanText(titleFontSize, FontWeight.w900, c.text,
+                            height: 1.3),
                       ),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 8),
                       Text(
                         step.body,
-                        style: TextStyle(
-                          fontSize: bodyFontSize,
-                          color: const Color(0xFF334155),
-                          height: 1.4,
-                        ),
+                        style: ubanText(bodyFontSize, FontWeight.w500, c.text2,
+                            height: 1.55),
                       ),
                     ],
                   ),
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
+              // 設計稿 .acts：1fr 1.4fr。
               Row(
                 children: [
                   Expanded(
-                    child: SizedBox(
-                      height: buttonHeight,
-                      child: OutlinedButton(
-                        onPressed: onSkip,
-                        style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: Color(0xFF94A3B8)),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                        ),
-                        child: Text(
-                          '跳過教學',
-                          style: TextStyle(
-                            fontSize: bodyFontSize,
-                            fontWeight: FontWeight.w700,
-                            color: const Color(0xFF64748B),
-                          ),
-                        ),
-                      ),
+                    flex: 5,
+                    child: OverlayButton(
+                      label: '跳過教學',
+                      filled: false,
+                      fontSize: btnFont,
+                      minHeight: buttonHeight,
+                      onPressed: onSkip,
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 10),
                   Expanded(
-                    child: SizedBox(
-                      height: buttonHeight,
-                      child: ElevatedButton(
-                        onPressed: onNext,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF59B294),
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                        ),
-                        child: Text(
-                          isLastStep ? '完成' : '下一步',
-                          style: TextStyle(
-                            fontSize: bodyFontSize,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ),
+                    flex: 7,
+                    child: OverlayButton(
+                      label: isLastStep ? '完成' : '下一步',
+                      fontSize: btnFont,
+                      minHeight: buttonHeight,
+                      onPressed: onNext,
                     ),
                   ),
                 ],
@@ -501,14 +578,20 @@ class _TutorialCard extends StatelessWidget {
   }
 }
 
-/// 全螢幕暗色遮罩 + 挖洞聚焦效果。
+/// 全螢幕 75% 黑遮罩 + 挖洞聚焦（圓角 20）＋ 3px 白框。
 /// 用 `Path.combine(PathOperation.difference, ...)` 直接從遮罩路徑中挖掉目標
-/// 區域（而非貼圖或近似做法），挖空處完全透明、直接透出下方畫面內容。
+/// 區域，挖空處完全透明、直接透出下方畫面內容。洞口數值來自四條彈簧。
 class _SpotlightPainter extends CustomPainter {
-  final Rect? holeRect;
-  static const double _holeRadius = 16;
+  final AnimationController x, y, w, h;
+  static const double _holeRadius = 20;
 
-  const _SpotlightPainter({required this.holeRect});
+  _SpotlightPainter({
+    required this.x,
+    required this.y,
+    required this.w,
+    required this.h,
+    required Listenable repaint,
+  }) : super(repaint: repaint);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -517,29 +600,29 @@ class _SpotlightPainter extends CustomPainter {
     final Path outerPath = Path()
       ..addRect(Rect.fromLTWH(0, 0, size.width, size.height));
 
-    final Rect? hole = holeRect;
-    if (hole == null) {
+    // 彈簧過衝時寬高可能短暫為負；與設計稿一致，寬度 ≤ 8 視為沒有洞。
+    final double hw = w.value;
+    final double hh = h.value;
+    if (hw <= 8 || hh <= 8) {
       canvas.drawPath(outerPath, overlayPaint);
       return;
     }
 
-    final RRect holeRRect =
-        RRect.fromRectAndRadius(hole, const Radius.circular(_holeRadius));
-    final Path holePath = Path()..addRRect(holeRRect);
-    final Path combined =
-        Path.combine(PathOperation.difference, outerPath, holePath);
+    final RRect holeRRect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(x.value, y.value, hw, hh),
+        const Radius.circular(_holeRadius));
+    final Path combined = Path.combine(
+        PathOperation.difference, outerPath, Path()..addRRect(holeRRect));
     canvas.drawPath(combined, overlayPaint);
 
-    // 高光邊框，加強聚焦感。
-    final Paint borderPaint = Paint()
+    // 白框：CSS border 畫在盒內，所以把筆畫往內縮半個線寬。
+    final Paint ringPaint = Paint()
       ..color = Colors.white.withValues(alpha: 0.9)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 3;
-    canvas.drawRRect(holeRRect, borderPaint);
+    canvas.drawRRect(holeRRect.deflate(1.5), ringPaint);
   }
 
   @override
-  bool shouldRepaint(covariant _SpotlightPainter oldDelegate) {
-    return oldDelegate.holeRect != holeRect;
-  }
+  bool shouldRepaint(covariant _SpotlightPainter oldDelegate) => false;
 }

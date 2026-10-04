@@ -3,6 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../theme/app_theme.dart';
+import 'ui/uban_glass_nav_bar.dart';
+
 /// ★ 2026-09-22 第五十一輪（長5）：長輩端語音助理的**全域**入口。
 ///
 /// 在這之前，叫得出小嘎的地方只有兩個，而且兩個都活在 `ElderHomeScreen` 的
@@ -85,12 +88,17 @@ class GlobalAssistantButton extends StatefulWidget {
 class _GlobalAssistantButtonState extends State<GlobalAssistantButton> {
   static const double _expandedSize = 72; // 長輩端的手指尺寸，不要再縮小
   static const double _collapsedSize = 40;
-  static const double _margin = 8;
+  static const double _margin = 16; // 設計稿 .mic：left 16
+  // 浮鈕底緣與導覽列頂緣的間距（設計稿 .mic bottom:112 ≈ 導覽列 98 + 14）。
+  static const double _navGap = 14;
+  // 靠右時要讓開「怎麼用？」膠囊（右下、導覽列上方 14，高約 56）再加一點間距。
+  static const double _helpPillReserve = 56 + 12;
   static const Duration _idleBeforeCollapse = Duration(seconds: 5);
 
   /// 0 = 靠左、1 = 靠右；垂直則是 0（頂）~1（底）的比例。
-  double _dxFraction = 1;
-  double _dyFraction = 0.62;
+  /// 預設：左下角、導覽列正上方（右下角留給「怎麼用？」膠囊）。
+  double _dxFraction = 0;
+  double _dyFraction = 1;
   bool _collapsed = false;
   bool _dragging = false;
   bool _loaded = false;
@@ -188,11 +196,20 @@ class _GlobalAssistantButtonState extends State<GlobalAssistantButton> {
     final media = MediaQuery.of(context);
     final padding = media.padding;
     final size = _collapsed ? _collapsedSize : _expandedSize;
+    final c = UbanColors.of(context);
 
     final double minX = _margin;
     final double maxX = media.size.width - size - _margin;
     final double minY = padding.top + _margin;
-    final double maxY = media.size.height - padding.bottom - size - _margin;
+    // 底緣一律停在導覽列上方（導覽列高 UbanGlassNavBar.totalHeight）。
+    // 靠右吸附時（非拖曳中）再多讓出右下「怎麼用？」膠囊的高度，兩者不得重疊。
+    final bool avoidHelpPill = !_dragging && _dxFraction >= 0.5;
+    final double maxY = media.size.height -
+        padding.bottom -
+        UbanGlassNavBar.totalHeight -
+        _navGap -
+        size -
+        (avoidHelpPill ? _helpPillReserve : 0);
     final double spanX = (maxX - minX).clamp(0.0, double.infinity);
     final double spanY = (maxY - minY).clamp(0.0, double.infinity);
 
@@ -237,25 +254,22 @@ class _GlobalAssistantButtonState extends State<GlobalAssistantButton> {
             height: size,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFF2E7D5B), Color(0xFF1A472A)],
-              ),
+              color: c.brandFill,
+              // 設計稿 .mic：中性陰影，不帶色光暈。
               boxShadow: _collapsed
                   ? const []
                   : const [
                       BoxShadow(
-                        color: Color(0x552E7D5B),
-                        blurRadius: 14,
+                        color: Color(0x24000000),
+                        blurRadius: 12,
                         offset: Offset(0, 4),
                       ),
                     ],
             ),
             child: Icon(
-              Icons.mic,
-              color: Colors.white,
-              size: _collapsed ? 22 : 38,
+              Icons.mic_rounded,
+              color: c.onBrand,
+              size: _collapsed ? 22 : 34,
               semanticLabel: '語音助理',
             ),
           ),

@@ -2,12 +2,15 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/stt_locale.dart';
+import 'elder_overlay_button.dart';
 import 'global_assistant_button.dart';
+import 'ui/pressable_scale.dart';
+import 'ui/uban_text.dart';
+import 'ui/uban_text_field.dart';
 
 /// Uban 專屬全域長輩 AI 語音助理彈出視窗與服務
 class GoogleAssistantOverlay extends StatefulWidget {
@@ -42,7 +45,7 @@ class GoogleAssistantOverlay extends StatefulWidget {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      barrierColor: Colors.black.withValues(alpha: 0.55),
+      barrierColor: UbanColors.of(context).scrim,
       // ★ 第五十一輪：助理面板自己撐開時，全域浮動麥克風鈕讓位，不要疊在面板上。
       builder: (ctx) => AssistantHiddenZone(
         child: GoogleAssistantOverlay(
@@ -464,258 +467,240 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
 
   @override
   Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final mq = MediaQuery.of(context);
+    final c = UbanColors.of(context);
+    final bottomInset = mq.viewInsets.bottom;
+    final String initial =
+        widget.aiName.trim().isEmpty ? '嘎' : widget.aiName.trim().characters.first;
 
+    // 設計稿 `#sh-assistant`：左右下 inset 8、圓角 32、surface 底、grab 44×5。
     return Container(
-      margin: EdgeInsets.only(bottom: bottomInset),
-      decoration: const BoxDecoration(
-        color: Color(0xFF0F172A), // Uban 獨特夜空藍黑奢華風格
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(32),
-          topRight: Radius.circular(32),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black54,
-            blurRadius: 30,
-            spreadRadius: 6,
-            offset: Offset(0, -6),
-          ),
-        ],
+      margin: EdgeInsets.fromLTRB(8, 0, 8, 8 + bottomInset),
+      constraints: BoxConstraints(
+        maxHeight: mq.size.height - mq.padding.top - bottomInset - 16,
+      ),
+      decoration: BoxDecoration(
+        color: c.surface,
+        borderRadius: BorderRadius.circular(32),
       ),
       child: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+          padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // 頂部 Handle 條與標題
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  // ★ AI 名稱為使用者可自訂字串，長度不定；用 Expanded 包住左側
-                  //   區塊並讓標題文字省略號截斷，避免把右側關閉鈕推出螢幕。
-                  Expanded(
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF38BDF8).withValues(alpha: 0.15),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.graphic_eq_rounded,
-                            color: Color(0xFF38BDF8),
-                            size: 24,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            'Uban AI 陪伴助理 • ${widget.aiName}',
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 1,
-                            style: GoogleFonts.notoSansTc(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close_rounded, color: Colors.white70),
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              // 🤖 Uban 專屬動態極光音波脈衝 (Cyber Aurora Waveform)
-              _buildUbanPulseEqualizer(),
-
-              const SizedBox(height: 20),
-
-              // 對話區域
               Container(
-                constraints: const BoxConstraints(maxHeight: 220),
-                padding: const EdgeInsets.all(16),
+                width: 44,
+                height: 5,
+                margin: const EdgeInsets.only(bottom: 14),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.05),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: const Color(0xFF38BDF8).withValues(alpha: 0.18),
-                  ),
+                  color: c.surface3,
+                  borderRadius: BorderRadius.circular(999),
                 ),
+              ),
+              // 內容過高（小螢幕、大字級、鍵盤彈出）時在面板內捲動，不溢位。
+              Flexible(
                 child: SingleChildScrollView(
-                  controller: _scrollController,
                   child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      for (final msg in _dialogHistory)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: Align(
-                            alignment: msg["role"] == "user"
-                                ? Alignment.centerRight
-                                : Alignment.centerLeft,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 12,
-                              ),
-                              decoration: BoxDecoration(
-                                color: msg["role"] == "user"
-                                    ? const Color(0xFF0EA5E9)
-                                    : Colors.white.withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              child: Text(
-                                msg["text"] ?? '',
-                                style: GoogleFonts.notoSansTc(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.white,
-                                  height: 1.4,
-                                ),
-                              ),
+                      // 標頭：頭像＋名稱＋關閉。
+                      // ★ AI 名稱為使用者可自訂字串，長度不定；用 Expanded 包住
+                      //   名稱並以省略號截斷，避免把右側關閉鈕推出螢幕。
+                      Row(
+                        children: [
+                          Container(
+                            width: 48,
+                            height: 48,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: c.brandContainer,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Text(
+                              initial,
+                              style: ubanText(20, FontWeight.w900, c.brandStrong),
                             ),
                           ),
-                        ),
-                      if (_isThinking)
-                        Row(
-                          children: [
-                            const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Color(0xFF38BDF8),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  widget.aiName,
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
+                                  style: ubanText(19, FontWeight.w700, c.text),
+                                ),
+                                Text(
+                                  'AI 陪伴助理',
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
+                                  style: ubanText(15, FontWeight.w500, c.text2),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Semantics(
+                            button: true,
+                            label: '關閉',
+                            excludeSemantics: true,
+                            child: PressableScale(
+                              onTap: () => Navigator.of(context).pop(),
+                              child: Container(
+                                width: 48,
+                                height: 48,
+                                decoration: BoxDecoration(
+                                  color: c.surface2,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(Icons.close_rounded,
+                                    color: c.text, size: 24),
                               ),
                             ),
-                            const SizedBox(width: 10),
-                            Text(
-                              '${widget.aiName} 思考中…',
-                              style: GoogleFonts.notoSansTc(
-                                fontSize: 16,
-                                color: Colors.white70,
-                              ),
-                            ),
-                          ],
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              // 快捷推薦 Card Chips
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    _buildChip('☀️ 今天台北天氣如何？'),
-                    const SizedBox(width: 8),
-                    _buildChip('📰 讀最新的重點新聞'),
-                    const SizedBox(width: 8),
-                    _buildChip('🎵 想聽輕鬆老歌'),
-                    const SizedBox(width: 8),
-                    _buildChip('💬 陪我聊聊天'),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              // 第五十三輪：語音辨識出最終結果後的確認區塊，插在快捷 chip
-              // 與輸入列之間；下方的 TextField 仍可直接用鍵盤修改文字。
-              if (_awaitingVoiceConfirm) ...[
-                _buildVoiceConfirmPanel(),
-                const SizedBox(height: 16),
-              ],
-
-              // 輸入欄位與麥克風按鈕
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _textController,
-                      style: GoogleFonts.notoSansTc(
-                        color: Colors.white,
-                        fontSize: 18,
-                      ),
-                      decoration: InputDecoration(
-                        hintText: _isListening
-                            ? '正在聆聽您的呼叫…'
-                            : '跟 ${widget.aiName} 說點什麼…',
-                        hintStyle: GoogleFonts.notoSansTc(
-                          color: Colors.white54,
-                          fontSize: 16,
-                        ),
-                        filled: true,
-                        fillColor: Colors.white.withValues(alpha: 0.08),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 14,
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(30),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                      onSubmitted: (val) => _processUserQuery(val),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  // Send or Mic button
-                  GestureDetector(
-                    onTap: _isListening
-                        ? _stopListeningForConfirm
-                        : () {
-                            if (_textController.text.trim().isNotEmpty) {
-                              _processUserQuery(_textController.text.trim());
-                            } else {
-                              _startListening();
-                            }
-                          },
-                    child: Container(
-                      width: 52,
-                      height: 52,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: _isListening
-                              ? [const Color(0xFFEF4444), const Color(0xFFF87171)]
-                              : [const Color(0xFF38BDF8), const Color(0xFF0284C7)],
-                        ),
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: (_isListening
-                                    ? Colors.redAccent
-                                    : const Color(0xFF38BDF8))
-                                .withValues(alpha: 0.4),
-                            blurRadius: 10,
-                            spreadRadius: 2,
                           ),
                         ],
                       ),
-                      child: Icon(
-                        _isListening
-                            ? Icons.mic
-                            : (_textController.text.trim().isNotEmpty
-                                ? Icons.send
-                                : Icons.mic_none),
-                        color: Colors.white,
-                        size: 26,
+
+                      // 音波（設計稿 .wave，聆聽／思考時跳動）
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(0, 10, 0, 14),
+                        child: _buildWave(c),
                       ),
-                    ),
+
+                      // 對話區域
+                      Container(
+                        constraints: const BoxConstraints(maxHeight: 180),
+                        child: LayoutBuilder(
+                          builder: (context, box) => SingleChildScrollView(
+                            controller: _scrollController,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                for (final msg in _dialogHistory)
+                                  Padding(
+                                    padding: const EdgeInsets.only(bottom: 10),
+                                    child: Align(
+                                      alignment: msg["role"] == "user"
+                                          ? Alignment.centerRight
+                                          : Alignment.centerLeft,
+                                      child: ConstrainedBox(
+                                        constraints: BoxConstraints(
+                                            maxWidth: box.maxWidth * .84),
+                                        child: _buildBubble(
+                                          c,
+                                          msg["text"] ?? '',
+                                          isUser: msg["role"] == "user",
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                if (_isThinking)
+                                  Row(
+                                    children: [
+                                      SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2.5,
+                                          color: c.brand,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Flexible(
+                                        child: Text(
+                                          '${widget.aiName} 思考中…',
+                                          style: ubanText(
+                                              18, FontWeight.w500, c.text2),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      // 第五十三輪：語音辨識出最終結果後的確認區塊，插在對話與
+                      // 快捷 chip 之間；下方的輸入欄仍可直接用鍵盤修改文字。
+                      if (_awaitingVoiceConfirm) ...[
+                        const SizedBox(height: 12),
+                        _buildVoiceConfirmPanel(c),
+                      ],
+
+                      const SizedBox(height: 12),
+
+                      // 快捷推薦 chips（顯示文字與送出的提示語一致）
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            _buildChip(c, '今天台北天氣如何？'),
+                            const SizedBox(width: 8),
+                            _buildChip(c, '讀最新的重點新聞'),
+                            const SizedBox(width: 8),
+                            _buildChip(c, '想聽輕鬆老歌'),
+                            const SizedBox(width: 8),
+                            _buildChip(c, '陪我聊聊天'),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      // 輸入欄位與麥克風／送出按鈕
+                      Row(
+                        children: [
+                          Expanded(
+                            child: UbanTextField(
+                              controller: _textController,
+                              hintText: _isListening
+                                  ? '正在聆聽您的呼叫…'
+                                  : '跟 ${widget.aiName} 說點什麼…',
+                              onSubmitted: (val) => _processUserQuery(val),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          // Send or Mic button
+                          GestureDetector(
+                            onTap: _isListening
+                                ? _stopListeningForConfirm
+                                : () {
+                                    if (_textController.text.trim().isNotEmpty) {
+                                      _processUserQuery(
+                                          _textController.text.trim());
+                                    } else {
+                                      _startListening();
+                                    }
+                                  },
+                            child: Container(
+                              width: 58,
+                              height: 58,
+                              decoration: BoxDecoration(
+                                color: _isListening ? c.danger : c.brandFill,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                _isListening
+                                    ? Icons.mic
+                                    : (_textController.text.trim().isNotEmpty
+                                        ? Icons.send
+                                        : Icons.mic_none),
+                                color: _isListening ? Colors.white : c.onBrand,
+                                size: 28,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ],
           ),
@@ -724,98 +709,56 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
     );
   }
 
-  /// Uban 專屬動態極光音波脈衝 (Cyber Aurora Waveform)
-  Widget _buildUbanPulseEqualizer() {
-    final colors = [
-      const Color(0xFF38BDF8), // Cyan
-      const Color(0xFF10B981), // Emerald
-      const Color(0xFF14B8A6), // Teal
-      const Color(0xFFF59E0B), // Amber
-      const Color(0xFF14B8A6), // Teal
-      const Color(0xFF10B981), // Emerald
-      const Color(0xFF38BDF8), // Cyan
-    ];
+  /// 對話泡泡（設計稿 `.bub`）：圓角 24、靠發言者一側的下角收成 8。
+  Widget _buildBubble(UbanColors c, String text, {required bool isUser}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+      decoration: BoxDecoration(
+        color: isUser ? c.brandFill : c.surface2,
+        borderRadius: BorderRadius.only(
+          topLeft: const Radius.circular(24),
+          topRight: const Radius.circular(24),
+          bottomLeft: Radius.circular(isUser ? 24 : 8),
+          bottomRight: Radius.circular(isUser ? 8 : 24),
+        ),
+      ),
+      child: Text(
+        text,
+        style: ubanText(19, FontWeight.w500, isUser ? c.onBrand : c.text,
+            height: 1.55),
+      ),
+    );
+  }
 
+  /// 設計稿 `.wave`：5 條 brand 色圓角條（寬 4、間距 5、高 34 內跳動）。
+  Widget _buildWave(UbanColors c) {
+    const factors = [.35, .8, .55, 1.0, .65];
     return AnimatedBuilder(
       animation: _waveController,
       builder: (context, child) {
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.04),
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(
-              color: const Color(0xFF38BDF8).withValues(alpha: 0.25),
-            ),
-          ),
+        return SizedBox(
+          height: 34,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // 光芒 AI 核心波點
-              Container(
-                width: 10,
-                height: 10,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF38BDF8),
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF38BDF8).withValues(alpha: 0.8),
-                      blurRadius: 10,
-                      spreadRadius: 2,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 16),
-              // 7 條漸變動態音波等化器
-              ...List.generate(7, (index) {
-                final factor = (index == 3) ? 1.0 : (index == 2 || index == 4 ? 0.75 : 0.5);
-                final phase = (index * 0.2);
-                final rawVal = (math.sin((_waveController.value * math.pi * 2) + phase) + 1) / 2;
-                final height = 8.0 + (rawVal * 24.0 * factor);
-
-                return Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 4),
-                  width: 6,
-                  height: height,
+              for (int i = 0; i < 5; i++) ...[
+                if (i > 0) const SizedBox(width: 5),
+                Container(
+                  width: 4,
+                  height: 8.0 +
+                      26.0 *
+                          factors[i] *
+                          ((math.sin((_waveController.value * math.pi * 2) +
+                                      i * 0.6) +
+                                  1) /
+                              2),
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.bottomCenter,
-                      end: Alignment.topCenter,
-                      colors: [
-                        colors[index],
-                        colors[index].withValues(alpha: 0.4),
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(10),
-                    boxShadow: [
-                      BoxShadow(
-                        color: colors[index].withValues(alpha: 0.5),
-                        blurRadius: 6,
-                        spreadRadius: 1,
-                      ),
-                    ],
+                    color: c.brand,
+                    borderRadius: BorderRadius.circular(4),
                   ),
-                );
-              }),
-              const SizedBox(width: 16),
-              // 右側對稱 AI 核心波點
-              Container(
-                width: 10,
-                height: 10,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF10B981),
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF10B981).withValues(alpha: 0.8),
-                      blurRadius: 10,
-                      spreadRadius: 2,
-                    ),
-                  ],
                 ),
-              ),
+              ],
             ],
           ),
         );
@@ -823,123 +766,63 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
     );
   }
 
-  Widget _buildChip(String label) {
-    return GestureDetector(
-      onTap: () {
-        final cleanPrompt = label.substring(2).trim();
-        _processUserQuery(cleanPrompt);
-      },
+  /// 快捷 chip（設計稿 `.qchips button`）：點下去送出的提示語 = 顯示文字。
+  Widget _buildChip(UbanColors c, String prompt) {
+    return PressableScale(
+      onTap: () => _processUserQuery(prompt),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
+          color: c.surface2,
+          borderRadius: BorderRadius.circular(999),
         ),
         child: Text(
-          label,
-          style: GoogleFonts.notoSansTc(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-            color: Colors.white.withValues(alpha: 0.9),
-          ),
+          prompt,
+          style: ubanText(18, FontWeight.w700, c.text),
         ),
       ),
     );
   }
 
-  /// 語音辨識完成後的確認區塊——第五十三輪新增。
+  /// 語音辨識完成後的確認區塊——第五十三輪新增（設計稿 `.confirm`）。
   ///
-  /// 用大字級＋ElderScale.buttonHeight（長輩端統一的大按鈕高度）讓長輩一眼
-  /// 看懂「這是我剛剛說的話嗎」，並給「送出」／「重新說一次」兩個選擇；
-  /// 辨識到的文字本身仍留在上方可編輯的 TextField 中，長輩也可以直接用
-  /// 鍵盤修改後再按送出，不必整句重講。
-  Widget _buildVoiceConfirmPanel() {
+  /// 用大字級＋大按鈕讓長輩一眼看懂「這是我剛剛說的話嗎」，並給「送出」／
+  /// 「重新說一次」兩個選擇；辨識到的文字本身仍留在下方可編輯的輸入欄中，
+  /// 長輩也可以直接用鍵盤修改後再按送出，不必整句重講。
+  Widget _buildVoiceConfirmPanel(UbanColors c) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF10B981).withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: const Color(0xFF10B981).withValues(alpha: 0.45),
-          width: 2,
-        ),
+        color: c.brandSoft,
+        borderRadius: BorderRadius.circular(22),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Icon(Icons.hearing_rounded, color: Color(0xFF10B981), size: 26),
-              const SizedBox(width: 10),
-              // 文案刻意具體（「我聽到您說的是上面這句話，這樣對嗎？」），
-              // 不用「確認送出」這類抽象詞——長輩要判斷的是「這句話對不
-              // 對」，不是理解一個操作術語。固定字串，仍包 Expanded／
-              // overflow 是比照本檔其他標題列的一貫寫法（鐵律 #14）。
-              Expanded(
-                child: Text(
-                  '我聽到您說的是上面這句話，這樣對嗎？',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                    height: 1.3,
-                  ),
-                ),
-              ),
-            ],
+          // 文案刻意具體（「我聽到您說的是上面這句話，這樣對嗎？」），
+          // 不用「確認送出」這類抽象詞——長輩要判斷的是「這句話對不
+          // 對」，不是理解一個操作術語。固定字串，仍允許換行（鐵律 #14）。
+          Text(
+            '我聽到您說的是上面這句話，這樣對嗎？',
+            style: ubanText(18, FontWeight.w700, c.brandStrong, height: 1.4),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 10),
           Row(
             children: [
               Expanded(
-                child: SizedBox(
-                  height: ElderScale.buttonHeight,
-                  child: OutlinedButton.icon(
-                    onPressed: _retryVoiceInput,
-                    icon: const Icon(Icons.mic_rounded, size: 26),
-                    label: Text(
-                      '重新說一次',
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 19,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.white,
-                      side: const BorderSide(color: Colors.white54, width: 2),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                    ),
-                  ),
+                child: OverlayButton(
+                  label: '重新說一次',
+                  filled: false,
+                  minHeight: 64,
+                  onPressed: _retryVoiceInput,
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Expanded(
-                child: SizedBox(
-                  height: ElderScale.buttonHeight,
-                  child: ElevatedButton.icon(
-                    onPressed: _confirmVoiceInput,
-                    icon: const Icon(Icons.send_rounded, size: 26),
-                    label: Text(
-                      '送出',
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 19,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF10B981),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                    ),
-                  ),
+                child: OverlayButton(
+                  label: '送出',
+                  minHeight: 64,
+                  onPressed: _confirmVoiceInput,
                 ),
               ),
             ],
