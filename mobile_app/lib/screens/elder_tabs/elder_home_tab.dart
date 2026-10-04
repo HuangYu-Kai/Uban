@@ -8,7 +8,6 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../almanac/farmer_almanac_screen.dart';
 import '../news_listen_player/news_listen_player_screen.dart';
-import '../../models/almanac_data_helper.dart';
 import '../../models/chinese_converter.dart';
 import '../../models/elder_place.dart';
 import '../../services/api_service.dart';
@@ -18,8 +17,11 @@ import '../../services/subscription_service.dart';
 import '../../services/weather_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/reminder_schedule.dart';
+import '../../widgets/ui/ui.dart';
 import 'elder_layout.dart';
-import '../../widgets/glass_card.dart';
+import 'widgets/elder_task_sheet.dart';
+import 'widgets/gem_in.dart';
+import 'widgets/weather_glyph.dart';
 
 class ElderHomeTab extends StatefulWidget {
   final int userId;
@@ -50,6 +52,21 @@ class ElderHomeTab extends StatefulWidget {
   @visibleForTesting
   final List<Map<String, dynamic>>? debugInitialNewsItemsForTest;
 
+  /// ⚠️ 僅供 widget test 注入假提醒資料（同上，正式呼叫端恆為 null）。非 null 時
+  /// 不呼叫 `_loadNextDoseData`（不讀 SharedPreferences、不打 API），任務卡／抽屜
+  /// 直接用這份資料與 [debugInitialCompletedIdsForTest] 建構。
+  @visibleForTesting
+  final List<Map<String, dynamic>>? debugInitialRemindersForTest;
+
+  /// ⚠️ 僅供 widget test：搭配 [debugInitialRemindersForTest] 指定「今天已完成」的提醒 id。
+  @visibleForTesting
+  final Set<int>? debugInitialCompletedIdsForTest;
+
+  /// ⚠️ 僅供 widget test：直接指定「家」（非 null 時不呼叫 `_loadHomePlace`，
+  /// 不連網）。正式呼叫端恆為 null。
+  @visibleForTesting
+  final ElderPlace? debugInitialHomePlaceForTest;
+
   const ElderHomeTab({
     super.key,
     required this.userId,
@@ -60,6 +77,9 @@ class ElderHomeTab extends StatefulWidget {
     this.newsCardKey,
     this.moreNewsKey,
     this.debugInitialNewsItemsForTest,
+    this.debugInitialRemindersForTest,
+    this.debugInitialCompletedIdsForTest,
+    this.debugInitialHomePlaceForTest,
   });
 
   @override
@@ -70,8 +90,6 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
   late String _lunarDate;
   late String _solarTerm;
   late String _dayName;
-  late String _dateStr;
-  late String _monthStr;
 
   List<Map<String, dynamic>> _newsItems = [];
   bool _isLoadingNews = true;
@@ -118,8 +136,20 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     }
     _loadSubscription();
     _fetchWeather();
-    _loadNextDoseData();
-    _loadHomePlace();
+    final debugReminders = widget.debugInitialRemindersForTest;
+    if (debugReminders != null) {
+      _reminders = List<Map<String, dynamic>>.from(debugReminders);
+      _completedReminderIds = {...?widget.debugInitialCompletedIdsForTest};
+      _isLoadingNextDose = false;
+    } else {
+      _loadNextDoseData();
+    }
+    final debugHome = widget.debugInitialHomePlaceForTest;
+    if (debugHome != null) {
+      _homePlace = debugHome;
+    } else {
+      _loadHomePlace();
+    }
   }
 
   /// 「帶我回家」：先用本機快取立即顯示，再向後端同步最新的「家」。
@@ -167,43 +197,6 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         margin: const EdgeInsets.all(20),
-      ),
-    );
-  }
-
-  /// 「帶我回家」大按鈕（只有已設定家時才會顯示）。
-  ///
-  /// 高度 72（比 [ElderScale.buttonHeight] 84 略矮）：首頁有「一屏到底」的垂直空間
-  /// 預算（見 [build] 內說明），按鈕放在最上方、字級仍用 26pt 大字。
-  Widget _buildGoHomeButton() {
-    return SizedBox(
-      height: 72,
-      child: ElevatedButton(
-        onPressed: _goHome,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.primaryDark,
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppRadius.pill),
-          ),
-        ),
-        // ⚠️ 固定字串，但仍用 Flexible／ellipsis 防系統字體放大時溢位（鐵律 #14）。
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.home_rounded, size: ElderScale.buttonIcon - 6),
-            const SizedBox(width: 12),
-            Flexible(
-              child: Text(
-                '帶我回家',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: ElderScale.button.copyWith(fontSize: 26),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -469,443 +462,241 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
 
       try {
         _dayName = DateFormat('EEEE', 'zh_TW').format(now);
-        _dateStr = DateFormat('dd').format(now);
-        _monthStr = DateFormat('MM月', 'zh_TW').format(now);
       } catch (e) {
         debugPrint('DateFormat error: $e');
         _dayName = "星期${['一', '二', '三', '四', '五', '六', '日'][now.weekday - 1]}";
-        _dateStr = now.day.toString().padLeft(2, '0');
-        _monthStr = "${now.month}月";
       }
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      // 頂部封面漸層（Figma：55B695 → FFFFFF）
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0xFF55B695), Color(0xFFFFFFFF)],
-        ),
-      ),
+    final c = UbanColors.of(context);
+    return ColoredBox(
+      color: c.bg,
       child: SafeArea(
         bottom: false,
-        child: Column(
-          children: [
-            const SizedBox(height: 52), // 第一層：teal 封面帶
-            Expanded(
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  // 第二層：DFFFF4 → 白（偏左、右側內縮露出圓角，往上露出一截）
-                  Positioned(
-                    top: 0,
-                    left: 0,
-                    right: 58,
-                    bottom: 0,
-                    child: Container(
-                      decoration: const BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [Color(0xFFDFFFF4), Color(0xFFFFFFFF)],
-                          stops: [0.0, 0.5],
-                        ),
-                        borderRadius: BorderRadius.only(
-                          topLeft: Radius.circular(20),
-                          topRight: Radius.circular(20),
-                        ),
-                      ),
+        child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          padding: EdgeInsets.fromLTRB(18, 14, 18, elderNavClearance(context)),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // 「帶我回家」：只有家屬設定了家才出現，併進問候列右側（見 [_buildGreeting]），
+              // 不另佔一列——360x640 要讓「今日頭條」留在第一屏（G204）。
+              _buildGreeting(c),
+              // ★ 一屏到底：首頁只留三張卡（今天／任務／今日頭條），依序以寶石鑲入錯開入場。
+              // 刻意不把新聞卡排到前面——今天與任務是健康相關資訊，優先度更高。
+              // 超出第一屏的部分交給外層既有的 SingleChildScrollView 捲動。
+              GemIn(index: 0, child: _buildTodayCard(c)),
+              const SizedBox(height: _cardGap),
+              GemIn(index: 1, child: _buildTaskCard(c)),
+              const SizedBox(height: _cardGap),
+              GemIn(index: 2, child: _buildFeaturedNewsCard(c)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  static const double _cardGap = 14;
+
+  /// 依時間的問候語：05–11 早安、12–17 午安，其餘晚安。
+  String _greetingText() {
+    final h = DateTime.now().hour;
+    if (h >= 5 && h < 12) return '早安';
+    if (h >= 12 && h < 18) return '午安';
+    return '晚安';
+  }
+
+  /// 設計稿 `.greet`：頭像＋問候＋名字＋金豬會員徽章（徽章沿用 [_isPro]）。
+  Widget _buildGreeting(UbanColors c) {
+    final name = widget.userName.trim();
+    final initial = name.isNotEmpty ? String.fromCharCode(name.runes.first) : '長';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 18),
+      child: Row(
+        children: [
+          Container(
+            width: 56,
+            height: 56,
+            alignment: Alignment.center,
+            decoration:
+                BoxDecoration(color: c.brandContainer, shape: BoxShape.circle),
+            child: Text(initial,
+                style: ubanText(24, FontWeight.w900, c.brandStrong)),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(_greetingText(),
+                    style: ubanText(18, FontWeight.w400, c.text2)),
+                // ⚠️ 名字（動態）＋徽章同列：用 Wrap，放不下時徽章換行，名字也可省略（鐵律 #14）。
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 2,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text(
+                      name.isEmpty ? '您好' : name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: ubanText(26, FontWeight.w900, c.text, height: 1.25),
                     ),
-                  ),
-                  // 第三層：DDE6DE 主內容 sheet（往下 offset，露出第二層）
-                  Positioned(
-                    top: 42,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    child: Container(
-                      decoration: const BoxDecoration(
-                        color: Color(0xFFDDE6DE),
-                        borderRadius: BorderRadius.only(
-                          topLeft: Radius.circular(20),
-                          topRight: Radius.circular(20),
-                        ),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 44),
-                        child: SingleChildScrollView(
-                          physics: const BouncingScrollPhysics(),
-                          child: Padding(
-                            padding: EdgeInsets.fromLTRB(20, 0, 20, elderNavClearance(context)),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                // ★ 一屏到底修復：首頁只留三塊（今天卡／下一包藥／新聞），
-                                // 天氣併入今天卡、日期卡與天氣卡合一，
-                                // 移除跟底部導覽列「電話」分頁重複的「打電話給家人」大按鈕。
-                                //
-                                // ★ 第五十輪（任務 A）／第五十二輪（任務 A，見
-                                // `_buildFeaturedNewsCard` 開頭完整說明）：新聞卡歷經
-                                // 「精簡列→大圖直式→精簡列」的來回調整，第五十二輪定案
-                                // 為固定尺寸縮圖的精簡列——大圖直式在真實長輩手機上會把
-                                // 整張卡片擠出第一屏，這正是「今日頭條看不到」的根因。
-                                // 刻意**不**把新聞卡的順序搬到「今天」／「下一包藥」前面
-                                // ——這兩塊是健康相關資訊，優先度更高，不應該被排到新聞
-                                // 後面。三塊都完整保留原尺寸／可讀性，若系統字體被調大等
-                                // 邊界情況仍裝不下，交給外層既有的 `SingleChildScrollView`
-                                // 捲動（本頁本來就可捲動，並非新增行為）。
-                                // 「帶我回家」：只有家屬設定了家才出現，放在最上方。
-                                if (_homePlace != null) ...[
-                                  _buildGoHomeButton(),
-                                  const SizedBox(height: AppSpacing.md),
-                                ],
-                                _buildTodayCard(),
-                                // ★ 第五十一輪（任務 3）：24→16。省下的每一點
-                                // 垂直空間都直接換成新聞卡在第一屏內能多露出
-                                // 多少——見 `_buildFeaturedNewsCard` 開頭的
-                                // 完整測量與理由，這裡只改間距，不動字級。
-                                const SizedBox(height: AppSpacing.md),
-                                _buildNextDoseCard(),
-                                const SizedBox(height: AppSpacing.md),
-                                _buildFeaturedNewsCard(),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  // 會員徽章 + 頭像（浮在右上、坐在第三層 sheet 上緣）
-                  Positioned(
-                    top: 20,
-                    right: 20,
-                    child: _buildHeader(),
-                  ),
-                ],
+                    // 會員徽章：只有已訂閱才亮金豬，未訂閱不顯示（不做銀／銅階）。
+                    if (_isPro) _buildMembershipBadge(c),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          // 「帶我回家」（GPS，`_goHome()`）：tonal 小鈕，高 60，視覺文字縮成「回家」＋圖示，
+          // Semantics 仍念「帶我回家」。只有已設定家才出現。
+          if (_homePlace != null) ...[
+            const SizedBox(width: 10),
+            Semantics(
+              button: true,
+              label: '帶我回家',
+              excludeSemantics: true,
+              onTap: _goHome,
+              child: ExcludeSemantics(
+                child: UbanButton(
+                  label: '回家',
+                  icon: Icons.home_rounded,
+                  variant: UbanButtonVariant.tonal,
+                  expand: false,
+                  onPressed: _goHome,
+                ),
               ),
             ),
           ],
-        ),
+        ],
       ),
     );
   }
 
-  Widget _buildHeader() {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        // 會員徽章：只有已訂閱才亮金豬，未訂閱不顯示（不做銀/銅階）
-        if (_isPro) ...[
-          _buildMembershipBadge(),
-          const SizedBox(width: 10),
-        ],
-        // 使用者頭像
-        Container(
-          width: 60,
-          height: 60,
-          padding: const EdgeInsets.all(2.5),
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: Colors.white,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.15),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: ClipOval(
-            child: Image.asset(
-              'assets/images/user_avatar.png',
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => const Icon(Icons.person_rounded,
-                  color: AppColors.primary, size: 36),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// 訂閱徽章膠囊（金豬會員）。
-  /// 只有一階：家屬已為長輩開通 PRO 就亮金豬，未訂閱則整個膠囊不顯示。
-  /// （不做銀豬 / 銅豬分級；assets 內的 silver/bronze 圖暫時用不到。）
-  Widget _buildMembershipBadge() {
-    const String tierLabel = '金豬會員';
-    const String badgeAsset = 'assets/images/pig_badge_gold.png';
-    const Color pillColor = Color(0xFFFFF1C4);
-    const Color textColor = Color(0xFF9A6B1E);
-
+  /// 訂閱徽章膠囊（金豬會員）。只有一階：家屬已為長輩開通 PRO 就亮金豬。
+  Widget _buildMembershipBadge(UbanColors c) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: pillColor.withValues(alpha: 0.92),
-        borderRadius: BorderRadius.circular(AppRadius.pill),
-        border:
-            Border.all(color: Colors.white.withValues(alpha: 0.6), width: 1.5),
+        color: c.warmContainer,
+        borderRadius: BorderRadius.circular(999),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           SizedBox(
-            width: 34,
-            height: 34,
+            width: 24,
+            height: 24,
             child: Image.asset(
-              badgeAsset,
+              'assets/images/pig_badge_gold.png',
               fit: BoxFit.contain,
               errorBuilder: (_, __, ___) => const Center(
-                  child: Text('🐷', style: TextStyle(fontSize: 24))),
+                  child: Text('🐷', style: TextStyle(fontSize: 18))),
             ),
           ),
-          const SizedBox(width: 8),
-          Text(
-            tierLabel,
-            style: GoogleFonts.notoSansTc(
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-              color: textColor,
-            ),
-          ),
+          const SizedBox(width: 4),
+          Text('金豬會員', style: ubanText(16, FontWeight.w700, c.warm)),
         ],
       ),
     );
   }
 
-  /// 「今天」卡右半天氣直欄（回應林阿公「看不到天氣」的抱怨）。
+  /// 「今天」卡右側的天氣方塊（設計稿 `.weather`）。
   ///
-  /// ★ 一屏到底修復：原本獨立一張天氣 [GlassCard] 併入日期／農民曆卡，
-  /// 此方法只回傳右半內容，容器由 [_buildTodayCard] 統一提供。
-  /// 讀取中顯示精簡佔位；失敗（[WeatherService] 回傳 null）只讓「這半邊」
-  /// 顯示平靜的「稍後再試」文案並塌陷，左半日期／農民曆長條不受影響——
-  /// 刻意不做任何看起來像錯誤/警示的紅色狀態，這位長輩容易被警告字樣嚇到。
-  /// ★ 天氣圖示必須跟著實際天氣走。原本寫死 Icons.wb_sunny_rounded，
-  /// 下雨天會在「陰雨綿綿」旁邊畫一顆太陽——對看不清小字的長輩來說，
-  /// 圖示才是主要訊號，畫錯等於給錯出門建議。
-  /// 分級與 WeatherService 的三段文案同源（降雨 <20 / <50 / 其餘）。
-  IconData _weatherIcon(WeatherInfo w) {
-    if (w.rainProbability >= 50) return Icons.umbrella_rounded;
-    if (w.rainProbability >= 20) return Icons.grain_rounded;
-    return Icons.wb_sunny_rounded;
-  }
+  /// 讀取中顯示精簡佔位；失敗（[WeatherService] 回傳 null）只讓「這一塊」顯示平靜的
+  /// 「稍後再試」文案——刻意不做紅色警示，這位長輩容易被警告字樣嚇到。
+  /// 天氣小圖跟著實際降雨機率走（分級與 [WeatherService] 三段文案同源：<20／<50／其餘）。
+  Widget _buildWeatherBox(UbanColors c) {
+    Widget box(Widget child) => Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: c.brandSoft,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: child,
+        );
 
-  Color _weatherIconColor(WeatherInfo w) {
-    if (w.rainProbability >= 50) return const Color(0xFF4A6FA5);
-    if (w.rainProbability >= 20) return const Color(0xFF6B8CBE);
-    return AppColors.accent;
-  }
-
-  Widget _buildWeatherHalf() {
     if (_isLoadingWeather) {
-      return const Align(
-        alignment: Alignment.centerRight,
-        child: SizedBox(
-          width: 24,
-          height: 24,
-          child: CircularProgressIndicator(strokeWidth: 3),
+      return box(const SizedBox(
+        width: 40,
+        height: 40,
+        child: Center(
+          child: SizedBox(
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator(strokeWidth: 3),
+          ),
         ),
-      );
+      ));
     }
 
     final weather = _weatherInfo;
     if (weather == null) {
-      return Text(
-        '天氣資訊暫時看不到，稍後再試',
-        style: ElderScale.caption,
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-        textAlign: TextAlign.end,
+      return ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 140),
+        child: box(Text(
+          '天氣暫時看不到，稍後再試',
+          maxLines: 3,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: ubanText(16, FontWeight.w400, c.text2),
+        )),
       );
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        // ⚠️ 溫度區間是動態字串、跟圖示同列，包 Flexible／ellipsis 避免窄
-        // 螢幕溢位。
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(_weatherIcon(weather),
-                size: 22, color: _weatherIconColor(weather)),
-            const SizedBox(width: 4),
-            Flexible(
-              child: Text(
-                '${weather.minTemp.round()}°–${weather.maxTemp.round()}°',
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.primaryDark,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 4),
-        Text(
-          '${weather.condition}・降雨${weather.rainProbability}%',
-          style: ElderScale.caption,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          textAlign: TextAlign.end,
-        ),
-        // ★ 第四十九輪：WeatherInfo.isFromCache 之前定義了卻從沒被畫面讀過
-        // （全 repo 搜尋只有 weather_service.dart 自己的定義處）——連線失敗
-        // 時頂替的舊資料，長輩看起來跟剛查到的一模一樣。現在補上這行小字，
-        // 只在 isFromCache 為 true 時顯示，不影響平常（新資料）的畫面。
-        if (weather.isFromCache) ...[
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 150),
+      child: box(Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          WeatherGlyph(rainy: weather.rainProbability >= 50, size: 40),
           const SizedBox(height: 2),
+          // ⚠️ 溫度區間是動態字串，包 FittedBox 防止窄螢幕／大字級溢位。
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              '${weather.minTemp.round()}°–${weather.maxTemp.round()}°',
+              maxLines: 1,
+              style: ubanBrandText(22, FontWeight.w600, c.text, height: 1.2),
+            ),
+          ),
           Text(
-            '（上次查到的資料）',
-            style: ElderScale.caption.copyWith(color: AppColors.textSecondary),
+            weather.condition,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.end,
+            textAlign: TextAlign.center,
+            style: ubanText(16, FontWeight.w400, c.text2),
           ),
         ],
-      ],
+      )),
     );
   }
 
-  /// 下一筆待辦提醒卡片，回應林陳阿嬤「只想看下一筆藥」的需求。
-  ///
-  /// 視覺選擇：沿用首頁既有的 teal/slate 語言（[GlassCard] + [AppColors]），
-  /// 而不是「我的」分頁提醒清單用的暖色系（bg 0xFFFFFDF9／border
-  /// 0xFFEADBCE）——理由是本卡片與同一版面上的天氣卡、日期卡、新聞卡並排，
-  /// 沿用暖色會讓整頁風格分裂成兩套系統；暖色系留給「我的」分頁自己的
-  /// 清單語境即可。
-  Widget _buildNextDoseCard() {
-    // ★ 第五十一輪（任務 3）：以下四個 GlassCard 的 vertical padding
-    // 22/20→16/14，理由與幅度說明見 `_buildFeaturedNewsCard` 開頭；
-    // 只縮容器留白，文字字級（body/sectionTitle/34pt emoji/20pt 打卡按鈕）
-    // 完全不動。
-    if (_isLoadingNextDose) {
-      return GlassCard(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-        child: Row(
-          children: [
-            const SizedBox(
-              width: 28,
-              height: 28,
-              child: CircularProgressIndicator(strokeWidth: 3),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Text(
-                '提醒讀取中…',
-                style: ElderScale.body,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    final next = nextDue(_reminders, _completedReminderIds, DateTime.now());
-    if (next == null) {
-      // ★ 第四十九輪：「讀取失敗」與「真的沒有提醒／都已完成」以前是同一張卡片
-      // （`_reminders` 空陣列時兩者都會走到這裡），長輩開 App 那一刻網路不穩
-      // 會被誤導成「今天沒有藥要吃」。改用 [_hasNextDoseLoadError] 分流成兩種
-      // 語氣不同的文案：讀取失敗用中性圖示與措辭，不使用 🌟 慶祝語氣。
-      if (_hasNextDoseLoadError) {
-        return GlassCard(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-          child: Row(
-            children: [
-              const Icon(Icons.wifi_off_rounded,
-                  size: 28, color: Color(0xFF9CA3AF)),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Text(
-                  '提醒暫時讀不到，請確認網路連線',
-                  style: ElderScale.body,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-        );
-      }
-      return GlassCard(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-        child: Row(
-          children: [
-            const Text('🌟', style: TextStyle(fontSize: 28)),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Text(
-                '今天的提醒都完成了 🌟',
-                style: ElderScale.body,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    final category = (next['category'] ?? '').toString();
-    final emoji = _reminderEmoji(category);
-    final timeStr = (next['time_str'] ?? '').toString();
-    final title = (next['title'] ?? '提醒').toString();
-
-    return GlassCard(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+  Widget _infoTag(UbanColors c, String text, {IconData? icon}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+      decoration: BoxDecoration(
+        color: c.surface2,
+        borderRadius: BorderRadius.circular(999),
+      ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Text(emoji, style: const TextStyle(fontSize: 34)),
-          const SizedBox(width: 14),
-          // ⚠️ 時間＋標題同列且皆為動態長度（後端自訂文字），包 Expanded／
-          // ellipsis 避免窄螢幕溢位。
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  timeStr,
-                  style: ElderScale.sectionTitle
-                      .copyWith(color: AppColors.primaryDark),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  title,
-                  style: ElderScale.body,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          ElevatedButton(
-            onPressed: () => _completeNextDose(next),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(AppRadius.pill),
-              ),
-            ),
+          if (icon != null) ...[
+            Icon(icon, size: 18, color: c.text2),
+            const SizedBox(width: 4),
+          ],
+          Flexible(
             child: Text(
-              '打卡',
-              style: GoogleFonts.notoSansTc(
-                fontSize: 20,
-                fontWeight: FontWeight.w800,
-              ),
+              text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: ubanText(17, FontWeight.w700, c.text2),
             ),
           ),
         ],
@@ -913,46 +704,15 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     );
   }
 
-  /// 提醒分類對應的 emoji 圖示。無法辨識的分類一律回傳鬧鐘，跟「我的」
-  /// 分頁其他提醒相關畫面的預設圖示保持一致的保守作法。
-  String _reminderEmoji(String category) {
-    switch (category) {
-      case 'medication':
-        return '💊';
-      case 'water':
-        return '🚰';
-      case 'exercise':
-        return '🚶';
-      default:
-        return '⏰';
-    }
-  }
-
-  /// 「今天」卡（毛玻璃，日期／農曆＋天氣合一，點擊跳轉至農民曆與神明誕辰）。
-  ///
-  /// ★ 一屏到底修復：原本天氣卡與日期／農曆卡是首頁兩張獨立的卡片（合計
-  /// 約 359px），現在合成一張約 168px 的卡片——左半沿用既有
-  /// [ElderDateSummaryRow]（完全不改它的原始碼，只用外層 [Expanded] 縮減
-  /// 可用寬度，讓它自己既有的 [FittedBox] 等比縮小保護視需要接手）、右半
-  /// 是新的 [_buildWeatherHalf]。[FarmerAlmanacScreen] 的唯一入口——底部的
-  /// 農民曆長條——原封不動保留在卡片下半部。
-  Widget _buildTodayCard() {
+  /// 「今天」卡（設計稿 `.today`）：日期／星期＋天氣方塊＋農曆節氣 tag，
+  /// 點擊跳轉至農民曆與神明誕辰（[FarmerAlmanacScreen] 的唯一入口）。
+  Widget _buildTodayCard(UbanColors c) {
     final now = DateTime.now();
-    final almanac = AlmanacDataHelper.calculateForDate(now);
+    final weather = _weatherInfo;
+    final dateStyle = ubanBrandText(46, FontWeight.w600, c.text, height: 1);
+    final unitStyle = ubanText(22, FontWeight.w700, c.text);
 
-    // 提煉今日精華摘要（神誕 / 宜忌精簡）
-    String summaryText;
-    if (almanac.hasDeityBirthday) {
-      final deityName = almanac.deities.first.name;
-      summaryText = '🌟 今日【$deityName】・宜 ${almanac.yiList.take(2).join('、')}';
-    } else if (almanac.yiList.isNotEmpty && almanac.jiList.isNotEmpty) {
-      summaryText =
-          '📜 今日農民曆：宜 ${almanac.yiList.take(2).join('、')} ｜ 忌 ${almanac.jiList.take(2).join('、')}';
-    } else {
-      summaryText = '📜 點此查看今日農民曆・神明誕辰與吉凶';
-    }
-
-    return GlassCard(
+    return UbanCard(
       key: widget.dateCardKey,
       onTap: () {
         HapticFeedback.lightImpact();
@@ -965,145 +725,249 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
           ),
         );
       },
-      // ★ 第五十一輪（任務 3）：vertical 14→10。只縮容器的留白，卡片內文字
-      // 大小（44/26/24/22pt）完全不動——見 `_buildFeaturedNewsCard` 開頭
-      // 的完整說明：這是「一屏到底」與「新聞被擠到摺線外」之間的垂直空間
-      // 重新分配，不是縮小可讀性。
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Expanded(
-                flex: 3,
-                child: ElderDateSummaryRow(
-                  monthStr: _monthStr,
-                  dateStr: _dateStr,
-                  dayName: _dayName,
-                  lunarDate: _lunarDate,
-                  solarTerm: _solarTerm,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('今天',
+                        style: ubanText(16, FontWeight.w700, c.text3,
+                            letterSpacingEm: .1)),
+                    const SizedBox(height: 4),
+                    // ≥40pt 的展示文字用 FittedBox：大字級／窄螢幕時等比縮小而不溢位。
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text.rich(
+                        TextSpan(
+                          children: [
+                            TextSpan(text: '${now.month}', style: dateStyle),
+                            TextSpan(text: '月', style: unitStyle),
+                            TextSpan(text: '${now.day}', style: dateStyle),
+                            TextSpan(text: '日', style: unitStyle),
+                          ],
+                        ),
+                        maxLines: 1,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _dayName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: ubanText(20, FontWeight.w700, c.text),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(width: 10),
-              Expanded(flex: 2, child: _buildWeatherHalf()),
+              const SizedBox(width: 12),
+              _buildWeatherBox(c),
             ],
           ),
-          const SizedBox(height: 8),
-          // 🌿 農民曆與神明吉凶資訊導引列（薄荷綠毛玻璃質感，融於首頁主視覺）
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-            decoration: BoxDecoration(
-              color: AppColors.primary.withValues(alpha: 0.09),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: AppColors.primary.withValues(alpha: 0.22),
-                width: 1.2,
-              ),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    summaryText,
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 15.5,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.primaryDark,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                const SizedBox(width: 6),
-                const Icon(
-                  Icons.arrow_forward_ios_rounded,
-                  size: 13,
-                  color: AppColors.primaryDark,
-                ),
-              ],
-            ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _infoTag(c, '農曆$_lunarDate'),
+              if (_solarTerm.isNotEmpty) _infoTag(c, _solarTerm),
+              if (weather != null && weather.rainProbability >= 20)
+                _infoTag(c, '降雨 ${weather.rainProbability}%',
+                    icon: Icons.umbrella_rounded),
+              if (weather != null && weather.isFromCache)
+                _infoTag(c, '上次查到的天氣'),
+            ],
           ),
         ],
       ),
     );
   }
 
-  /// 今日頭條精簡列（小縮圖 + 最多兩行標題 + 「點我聆聽」＋「更多」）。
+  /// 任務卡（設計稿 `.taskcard`）：進度環（中間只寫「done/total」）＋下一件＋打卡鈕；
+  /// 點卡片開「今天要做的事」抽屜。
   ///
-  /// ★ 第五十二輪（任務 A，回應「今日頭條經三輪處理仍看不到」的第三次
-  /// 回報）：徹底移除「依剩餘空間決定大圖或精簡列」的動態邏輯（原
-  /// `_availableNewsImageHeight`）。那套邏輯正是三輪修復都沒解決問題的
-  /// 根因——第五十輪把第四十七輪版本（`git show
-  /// fbed914:mobile_app/lib/screens/elder_tabs/elder_home_tab.dart`）裡
-  /// 「空間不足就退回精簡列」的下限判斷（`if (leftover < 190) return 0;`）
-  /// 拿掉，改成一律 `leftover.clamp(170.0, 260.0)`——無論剩餘空間算出來是
-  /// 多少，一律強制擠出至少 170px 的大圖。真實長輩手機可用高度約
-  /// 510～570px，扣掉「今天」與「下一包藥」兩張卡片後往往只剩不到
-  /// 100px，這 170px 下限加上圖片外的卡片留白／標題／按鈕，會把整張
-  /// 「今日頭條」卡片擠出第一屏、甚至讓標題本身也貼齊或超出摺線——這正是
-  /// 使用者回報「憑空消失」的實際成因，不是資料抓不到（後端 `/api/news`
-  /// 一直是活的，見任務交接筆記）。
-  ///
-  /// 改法：不再計算「剩餘空間夠不夠長成大圖」，縮圖固定為一個很小的尺寸
-  /// （見下方 `thumbSize`），讀取中／無資料／有資料三種狀態共用同一套
-  /// 「縮圖在左、文字在右」的橫向精簡列版面，總高度可預期、不隨其餘卡片
-  /// 高度變動而暴衝，「今天」「下一包藥」「今日頭條」三張卡片才能穩定地在
-  /// 360x640 這種真實長輩手機尺寸的第一屏內顯示完整（含標題文字）。標題／
-  /// 按鈕字級沿用第五十輪已放大的版本（22pt／14pt）不變，只縮小「圖片」
-  /// 本身與卡片留白——鐵律 #14 要求長輩端字級不得為了塞版面縮小。
-  ///
-  /// 新聞抓取與 TTS 聆聽功能完全沿用既有邏輯（[_openNewsListenPlayer]／
-  /// [_openNewsListFromTopEntry] 皆未改動），只重做呈現。
-  Widget _buildFeaturedNewsCard() {
-    // ★ 第五十輪（任務 A）：標題字級 20→26，紅點提示也跟著放大，讓「今日
-    // 頭條」這個區塊標籤本身就更醒目，不再像是順手加的小標籤。第五十二輪
-    // 沿用不動。
-    Widget header = Row(
-      children: [
-        Container(
-          width: 14,
-          height: 14,
-          decoration: const BoxDecoration(
-            color: Colors.redAccent,
-            shape: BoxShape.circle,
-          ),
+  /// 視覺沿用 [UbanCard]。讀取失敗與「真的沒有提醒／都完成了」分成兩種畫面
+  /// （第四十九輪：避免網路不穩被誤導成「今天沒有藥要吃」）。
+  Widget _buildTaskCard(UbanColors c) {
+    if (_isLoadingNextDose) {
+      return UbanCard(
+        child: Row(
+          children: [
+            const SizedBox(
+              width: 28,
+              height: 28,
+              child: CircularProgressIndicator(strokeWidth: 3),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Text('提醒讀取中…',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: ubanText(19, FontWeight.w700, c.text)),
+            ),
+          ],
         ),
-        const SizedBox(width: 10),
-        Text(
-          '今日頭條',
-          style: GoogleFonts.notoSansTc(
-            fontSize: 26,
-            fontWeight: FontWeight.w900,
-            color: AppColors.textPrimary,
-          ),
-        ),
-      ],
-    );
+      );
+    }
 
-    // 縮圖固定尺寸：不再依 MediaQuery 動態計算（理由見上方方法說明）。
-    // 76px 比第四十七輪精簡列的縮圖（64px）略大，搭配第五十輪放大過的
-    // 22pt 標題字級，視覺比例不會顯得縮圖過小。
+    final now = DateTime.now();
+    final next = nextDue(_reminders, _completedReminderIds, now);
+    if (next == null && _hasNextDoseLoadError) {
+      return UbanCard(
+        child: Row(
+          children: [
+            Icon(Icons.wifi_off_rounded, size: 28, color: c.text3),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text('提醒暫時讀不到，請確認網路連線',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: ubanText(19, FontWeight.w700, c.text)),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final groups = groupByStatus(_reminders, _completedReminderIds, now);
+    final done = groups.done.length;
+    final total = done + groups.dueNow.length + groups.later.length;
+
+    final Widget right;
+    if (next == null) {
+      right = Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.check_circle_rounded, size: 24, color: c.brandStrong),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  total == 0 ? '今天沒有要做的事' : '今天的事都做完了',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: ubanText(19, FontWeight.w900, c.brandStrong),
+                ),
+              ),
+            ],
+          ),
+          if (total > 0) ...[
+            const SizedBox(height: 4),
+            Text('小豬也替您開心', style: ubanText(16, FontWeight.w400, c.text2)),
+          ],
+        ],
+      );
+    } else {
+      final timeStr = (next['time_str'] ?? '').toString();
+      final title = (next['title'] ?? '提醒').toString();
+      // ⚠️ 時間＋標題皆為動態長度（後端自訂文字），時間用 FittedBox、標題限 2 行省略。
+      right = Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('下一件',
+              style: ubanText(16, FontWeight.w700, c.text3, letterSpacingEm: .1)),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(timeStr,
+                maxLines: 1,
+                style: ubanBrandText(24, FontWeight.w600, c.text, height: 1.3)),
+          ),
+          Text(title,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: ubanText(19, FontWeight.w700, c.text, height: 1.3)),
+        ],
+      );
+    }
+
+    return UbanCard(
+      onTap: total > 0 ? _openTaskSheet : null,
+      child: Row(
+        children: [
+          UbanProgressRing(done: done, total: total),
+          const SizedBox(width: 16),
+          Expanded(child: right),
+          if (next != null) ...[
+            const SizedBox(width: 12),
+            UbanButton(
+              label: '打卡',
+              expand: false,
+              onPressed: () => _completeNextDose(next),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// 開「今天要做的事」抽屜（設計稿 `#sh-tasks`）。抽屜內打卡仍走 [_completeNextDose]。
+  void _openTaskSheet() {
+    HapticFeedback.lightImpact();
+    showUbanSheet<void>(
+      context,
+      (ctx) => ElderTaskSheetBody(
+        readGroups: () =>
+            groupByStatus(_reminders, _completedReminderIds, DateTime.now()),
+        onCheckIn: _completeNextDose,
+      ),
+    );
+  }
+
+  /// 今日頭條卡（設計稿 `.news-hero`＋`.headline`）。
+  ///
+  /// ★ 第五十二輪起的鐵則（`elder_home_tab_news_visibility_test.dart` 鎖定）：
+  /// 「今日頭條」標題必須在 360x640 第一屏內，所以讀取中／無資料兩態一律用固定 76px 的
+  /// 小縮圖精簡列，不得回到「依剩餘空間長出大圖」（第五十輪 `leftover.clamp(170, 260)`
+  /// 把整張卡擠出第一屏的教訓）。有資料時的 150px 主圖在標題「之後」，不影響標題位置。
+  ///
+  /// 新聞抓取與 TTS 聆聽沿用既有 [_openNewsListenPlayer]／[_openNewsListFromTopEntry]，
+  /// 這裡只做呈現。
+  Widget _buildFeaturedNewsCard(UbanColors c) {
+    Widget header({bool withMore = false}) => Row(
+          children: [
+            Expanded(
+              child: Text('今日頭條',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: ubanText(22, FontWeight.w900, c.text)),
+            ),
+            if (withMore)
+              // 看更多新聞 → 新聞列表（沿用既有 _openNewsListFromTopEntry）
+              UbanButton(
+                key: widget.moreNewsKey,
+                label: '更多',
+                variant: UbanButtonVariant.ghost,
+                expand: false,
+                onPressed: _openNewsListFromTopEntry,
+              ),
+          ],
+        );
+
+    // 縮圖固定尺寸：不依 MediaQuery 動態計算（理由見上方說明）。
     const double thumbSize = 76;
 
     if (_isLoadingNews) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          header,
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Row(
+      return UbanCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            header(),
+            const SizedBox(height: 10),
+            Row(
               children: [
-                SizedBox(
+                const SizedBox(
                   width: thumbSize,
                   height: thumbSize,
-                  child: const Center(
+                  child: Center(
                     child: SizedBox(
                       width: 26,
                       height: 26,
@@ -1113,70 +977,54 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Text(
-                    '新聞讀取中…',
-                    style: ElderScale.body,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                  child: Text('新聞讀取中…',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: ubanText(19, FontWeight.w700, c.text)),
                 ),
               ],
             ),
-          ),
-        ],
+          ],
+        ),
       );
     }
 
     if (_newsItems.isEmpty) {
-      // ★ 第五十輪（任務 A）：舊文案「目前沒有新聞，稍後再看看」太不起眼，
-      // 長輩會誤以為「頭條」這個功能被拿掉了。改成明確的「還在整理中」。
-      // ★ 第五十二輪：卡片外觀改回精簡列（縮圖＋文字同列），不再用大圖
-      // 佔位框——大佔位框正是把整張卡片擠出第一屏的元凶之一，見上方方法
-      // 說明。
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          header,
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Row(
+      // 明確寫「還在整理中」，長輩才不會誤以為「頭條」功能被拿掉（第五十輪）。
+      return UbanCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            header(),
+            const SizedBox(height: 10),
+            Row(
               children: [
                 Container(
                   width: thumbSize,
                   height: thumbSize,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: AppColors.primary.withValues(alpha: 0.12),
+                    color: c.brandSoft,
                     borderRadius: BorderRadius.circular(14),
                   ),
-                  child: Icon(
-                    Icons.newspaper_rounded,
-                    size: 30,
-                    color: AppColors.primary.withValues(alpha: 0.6),
-                  ),
+                  child: Icon(Icons.newspaper_rounded,
+                      size: 30, color: c.brand),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Text(
-                    '今天的新聞還在整理中，請稍候',
-                    style: ElderScale.body,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                  child: Text('今天的新聞還在整理中，請稍候',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: ubanText(19, FontWeight.w700, c.text)),
                 ),
               ],
             ),
-          ),
-        ],
+          ],
+        ),
       );
     }
 
-    // 頭條優先挑「有圖片」的新聞當縮圖；都沒有才退回第一則
+    // 頭條優先挑「有圖片」的新聞當主圖；都沒有才退回第一則
     bool itemHasImage(Map<String, dynamic> it) {
       final u = ((it['image_url'] ?? it['image']) ?? '').toString().trim();
       return u.startsWith('http://') || u.startsWith('https://');
@@ -1191,184 +1039,119 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     final hasImage = itemHasImage(item);
     final title = (item['title'] ?? '無標題').toString();
 
-    // ★ 第五十三輪 item 7（回應「新聞頭條版面被縮小，可以插入更多新聞頭條」）：
-    // 主卡片之後視螢幕高度補上最多 [_extraHeadlineCount] 則精簡新聞列，見該
-    // 方法的完整量測基準說明。用 `!=`（參照相等）排除掉已經是主卡片的那一則
-    // ——`item` 本身就是 `_newsItems`裡的某個元素參照，不是複製品。
+    // 主卡片之外再補幾則精簡列（見 [_extraHeadlineCount]）。用 `!=`（參照相等）
+    // 排除主卡片那一則——`item` 就是 `_newsItems` 裡的元素本身。
     final int extraCount = _extraHeadlineCount(context);
     final List<Map<String, dynamic>> extraItems = extraCount <= 0
         ? const []
         : _newsItems.where((it) => it != item).take(extraCount).toList();
 
-    // 無圖時的縮圖底
-    Widget fallbackThumb = Container(
-      color: AppColors.primary,
-      alignment: Alignment.center,
-      child: Icon(
-        Icons.newspaper_rounded,
-        size: 26,
-        color: Colors.white.withValues(alpha: 0.7),
-      ),
+    // 無圖（或圖片載入失敗）時的主圖底：品牌漸層＋「示意圖」小標。
+    Widget fallbackHero = Stack(
+      fit: StackFit.expand,
+      children: [
+        DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [c.brand, c.brandFill, c.brandStrong],
+              stops: const [0, .6, 1],
+            ),
+          ),
+        ),
+        Center(
+          child: Icon(Icons.article_rounded,
+              size: 48, color: Colors.white.withValues(alpha: .5)),
+        ),
+        Positioned(
+          right: 10,
+          top: 10,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: c.surface.withValues(alpha: .92),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text('示意圖', style: ubanText(16, FontWeight.w700, c.text2)),
+          ),
+        ),
+      ],
     );
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        header,
-        const SizedBox(height: 8),
-        // 整塊卡片可點 → 聆聽新聞畫面（沿用既有 _openNewsListenPlayer）
-        Material(
-          key: widget.newsCardKey,
-          color: Colors.transparent,
-          child: InkWell(
+    return UbanCard(
+      key: widget.newsCardKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          header(withMore: true),
+          // 主圖＋標題：點擊 → 聆聽新聞畫面（沿用既有 _openNewsListenPlayer）
+          PressableScale(
             onTap: () => _openNewsListenPlayer(item),
-            borderRadius: BorderRadius.circular(20),
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.14),
-                    blurRadius: 16,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
-              ),
-              // ★ 第五十二輪：固定橫排（縮圖在左、文字在右），不再依剩餘
-              // 空間切換直排／橫排——理由見上方方法說明。橫排時 Row 寬度
-              // 恆為有界，文字欄可以放心用 Expanded，不必再用
-              // Flexible(fit: loose) 防禦「父層高度不受限」的直排情境。
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(14),
-                    child: SizedBox(
-                      width: thumbSize,
-                      height: thumbSize,
-                      child: hasImage
-                          ? Image.network(
-                              imageUrl,
-                              fit: BoxFit.cover,
-                              loadingBuilder: (context, child, progress) =>
-                                  progress == null ? child : fallbackThumb,
-                              errorBuilder: (_, __, ___) => fallbackThumb,
-                            )
-                          : fallbackThumb,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  // ⚠️ 標題是後端動態文字、長度不可控，包 Expanded／ellipsis
-                  // 避免窄螢幕溢位。
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const SizedBox(height: 4),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: SizedBox(
+                    height: 150,
+                    child: Stack(
+                      fit: StackFit.expand,
                       children: [
-                        // ★ 第五十輪（任務 A）：標題 17→22，符合「大標題」的
-                        // 長輩閱讀需求；第五十二輪沿用不動，仍保留
-                        // maxLines/ellipsis 防止溢位。
-                        Text(
-                          title,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.notoSansTc(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w800,
-                            height: 1.3,
-                            color: AppColors.textPrimary,
+                        if (hasImage)
+                          Image.network(
+                            imageUrl,
+                            fit: BoxFit.cover,
+                            loadingBuilder: (context, child, progress) =>
+                                progress == null ? child : fallbackHero,
+                            errorBuilder: (_, __, ___) => fallbackHero,
+                          )
+                        else
+                          fallbackHero,
+                        Positioned(
+                          left: 14,
+                          bottom: 14,
+                          child: Container(
+                            padding: const EdgeInsets.fromLTRB(12, 10, 16, 10),
+                            decoration: BoxDecoration(
+                              color: c.surface.withValues(alpha: .94),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.play_circle_fill_rounded,
+                                    size: 22, color: c.brandStrong),
+                                const SizedBox(width: 8),
+                                Text('點我聆聽',
+                                    style: ubanText(17, FontWeight.w700, c.text)),
+                              ],
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 6),
-                        // ⚠️「點我聆聽」為固定字串，但跟按鈕同列，仍防禦性
-                        // 包 Flexible／ellipsis，避免系統字體放大時溢位。
-                        Row(
-                          children: [
-                            const Icon(Icons.play_circle_fill_rounded,
-                                size: 18, color: AppColors.primary),
-                            const SizedBox(width: 4),
-                            Flexible(
-                              child: Text(
-                                '點我聆聽',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: GoogleFonts.notoSansTc(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.primary,
-                                ),
-                              ),
-                            ),
-                            const Spacer(),
-                            // 看更多新聞 → 新聞列表（沿用既有
-                            // _openNewsListFromTopEntry）
-                            TextButton(
-                              key: widget.moreNewsKey,
-                              onPressed: _openNewsListFromTopEntry,
-                              style: TextButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 6, vertical: 2),
-                                minimumSize: Size.zero,
-                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    '更多',
-                                    style: GoogleFonts.notoSansTc(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w700,
-                                      color: AppColors.primaryDark,
-                                    ),
-                                  ),
-                                  const Icon(Icons.chevron_right_rounded,
-                                      size: 16, color: AppColors.primaryDark),
-                                ],
-                              ),
-                            ),
-                          ],
                         ),
                       ],
                     ),
                   ),
-                ],
-              ),
-            ),
-          ),
-        ),
-        // ★ 第五十三輪 item 7：主卡片之後，視螢幕高度補上更多精簡新聞列，
-        // 填滿第一屏剩餘空間，不再讓長輩覺得「新聞版面被縮小到只剩一則」。
-        // 空清單時 `extraItems.isEmpty` 直接不渲染，維持原本外觀不變。
-        if (extraItems.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(18),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.08),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
+                ),
+                const SizedBox(height: 12),
+                // ⚠️ 標題是後端動態文字、長度不可控，限 2 行省略（鐵律 #14）。
+                Text(
+                  title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: ubanText(21, FontWeight.w900, c.text, height: 1.4),
                 ),
               ],
             ),
-            child: Column(
-              children: [
-                for (int i = 0; i < extraItems.length; i++) ...[
-                  if (i > 0)
-                    const Divider(
-                        height: 1, thickness: 1, color: Color(0xFFEFEFEF)),
-                  _buildCompactHeadlineRow(extraItems[i]),
-                ],
-              ],
-            ),
           ),
+          if (extraItems.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            for (int i = 0; i < extraItems.length; i++)
+              _buildHeadlineRow(extraItems[i], i + 2, c),
+          ],
         ],
-      ],
+      ),
     );
   }
 
@@ -1398,40 +1181,36 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     return 0;
   }
 
-  /// 精簡新聞列：比主卡片更輕量的單行標題，用於 [_extraHeadlineCount] > 0
-  /// 時補在主卡片下方。刻意不含縮圖／「點我聆聽」子列，只保留「可點擊＋
-  /// 一行省略號標題」，讓每列高度固定可預期（見 [_extraHeadlineCount] 的
-  /// 計算基準）。點擊行為與主卡片一致，沿用既有 [_openNewsListenPlayer]。
-  Widget _buildCompactHeadlineRow(Map<String, dynamic> item) {
+  /// 設計稿 `.headline`：序號＋單行標題，整列可點，沿用既有 [_openNewsListenPlayer]。
+  /// 每列高度固定可預期（單行 ellipsis），見 [_extraHeadlineCount] 的量測基準。
+  Widget _buildHeadlineRow(Map<String, dynamic> item, int number, UbanColors c) {
     final title = (item['title'] ?? '無標題').toString();
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () => _openNewsListenPlayer(item),
-        borderRadius: BorderRadius.circular(14),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 4),
-          child: Row(
-            children: [
-              const Icon(Icons.chevron_right_rounded,
-                  size: 18, color: AppColors.primary),
-              const SizedBox(width: 6),
-              // ⚠️ 標題是後端動態文字、長度不可控，包 Expanded／ellipsis
-              // 避免窄螢幕溢位（鐵律 #14）。
-              Expanded(
-                child: Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
+    return PressableScale(
+      onTap: () => _openNewsListenPlayer(item),
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 60),
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        decoration: BoxDecoration(
+          border: Border(top: BorderSide(color: c.line)),
+        ),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 24,
+              child: Text('$number',
+                  style: ubanBrandText(18, FontWeight.w600, c.brandStrong)),
+            ),
+            const SizedBox(width: 8),
+            // ⚠️ 標題是後端動態文字、長度不可控，包 Expanded／ellipsis（鐵律 #14）。
+            Expanded(
+              child: Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: ubanText(18, FontWeight.w500, c.text),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

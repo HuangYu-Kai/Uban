@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../theme/app_theme.dart';
+import '../widgets/ui/ui.dart';
 import 'elder_tabs/elder_layout.dart';
+import 'elder_tabs/widgets/elder_call_button.dart';
 import '../services/api_service.dart';
 import '../services/friend_service.dart';
 import 'elder_add_friend_screen.dart';
@@ -281,98 +283,189 @@ class _FriendsScreenState extends State<FriendsScreen>
     );
   }
 
+  // ── 以下全是呈現層（設計稿 #tabPhone）：撥打／好友操作全部沿用上方原函式 ──
+
   @override
   Widget build(BuildContext context) {
+    final c = UbanColors.of(context);
     return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        title: Text(
-          '我的朋友',
-          style: GoogleFonts.notoSansTc(
-            fontSize: 30,
-            fontWeight: FontWeight.w900,
-            color: AppColors.textPrimary,
-          ),
-        ),
-        centerTitle: true,
-        toolbarHeight: 80,
-        backgroundColor: AppColors.surface,
-        foregroundColor: AppColors.textPrimary,
-        elevation: 0,
-        // ★ 第四十一輪（item 4）：「家人／朋友」分頁。長輩端字級放大、圖示
-        // 置頂，沿用 elder_home_screen.dart::_buildNavItem 的視覺語言（圖示
-        // 在上、文字在下）；TabBar 是 Flutter 內建元件，未引入新 UI 套件。
-        bottom: TabBar(
-          key: widget.tabBarKey,
-          controller: _tabController,
-          indicatorColor: AppColors.primary,
-          indicatorWeight: 4,
-          labelColor: AppColors.primary,
-          unselectedLabelColor: AppColors.textHint,
-          labelStyle: GoogleFonts.notoSansTc(
-            fontSize: 20,
-            fontWeight: FontWeight.w900,
-          ),
-          unselectedLabelStyle: GoogleFonts.notoSansTc(
-            fontSize: 20,
-            fontWeight: FontWeight.w700,
-          ),
-          tabs: const [
-            Tab(
-              icon: Icon(Icons.family_restroom_rounded, size: 28),
-              text: '家人',
+      backgroundColor: c.bg,
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 14, 18, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    '打電話',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: ubanText(30, FontWeight.w900, c.text, height: 1.25),
+                  ),
+                  const SizedBox(height: 14),
+                  // ★ 第四十一輪（item 4）的「家人／朋友」分頁：切換仍由同一個
+                  // TabController 驅動（兩個分頁內容的建構函式不變）；分段鈕只是它的
+                  // 新外觀。tabBarKey（新手指引高光目標）掛在 UbanSegmented 上。
+                  AnimatedBuilder(
+                    animation: _tabController,
+                    builder: (context, _) => UbanSegmented(
+                      key: widget.tabBarKey,
+                      labels: const ['家人', '朋友'],
+                      index: _tabController.index,
+                      onChanged: (i) => _tabController.animateTo(i),
+                    ),
+                  ),
+                ],
+              ),
             ),
-            Tab(
-              icon: Icon(Icons.person_add_alt_1_rounded, size: 28),
-              text: '朋友',
+            const SizedBox(height: 16),
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  // 家人：現有清單與行為，未改動。
+                  _isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : _familyList.isEmpty
+                          ? _buildEmptyState()
+                          : _buildFriendList(),
+                  // 朋友：好友社群系統（第四十一輪 item 3）。
+                  _buildFriendsTab(),
+                ],
+              ),
             ),
           ],
         ),
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          // 家人：現有清單與行為，未改動。
-          SafeArea(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _familyList.isEmpty
-                    ? _buildEmptyState()
-                    : _buildFriendList(),
-          ),
-          // 朋友：好友社群系統（第四十一輪 item 3）。
-          SafeArea(child: _buildFriendsTab()),
-        ],
       ),
     );
   }
 
   Widget _buildEmptyState() {
+    final c = UbanColors.of(context);
     return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.group_outlined, size: 96, color: c.text3),
+            const SizedBox(height: AppSpacing.lg),
+            Text(
+              '目前還沒有朋友',
+              textAlign: TextAlign.center,
+              style: ubanText(24, FontWeight.w800, c.text2),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              '請家人先完成配對',
+              textAlign: TextAlign.center,
+              style: ubanText(18, FontWeight.w400, c.text3),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 設計稿 `.sec-head`：區塊標題＋（選填）數量徽章。
+  Widget _sectionHead(UbanColors c, String title, {int? badge}) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(
         children: [
-          Icon(Icons.group_outlined, size: 96, color: AppColors.textHint),
-          const SizedBox(height: AppSpacing.lg),
-          Text(
-            '目前還沒有朋友',
-            style: GoogleFonts.notoSansTc(
-              fontSize: 24,
-              fontWeight: FontWeight.w800,
-              color: AppColors.textSecondary,
-            ),
+          Flexible(
+            child: Text(title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: ubanText(22, FontWeight.w900, c.text)),
           ),
-          const SizedBox(height: AppSpacing.sm),
-          Text(
-            '請家人先完成配對',
-            style: GoogleFonts.notoSansTc(
-              fontSize: 18,
-              color: AppColors.textHint,
+          if (badge != null) ...[
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+              decoration: BoxDecoration(
+                color: c.dangerContainer,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text('$badge',
+                  style: ubanBrandText(16, FontWeight.w600, c.danger)),
             ),
-          ),
+          ],
         ],
       ),
+    );
+  }
+
+  /// 設計稿 `.person .avatar`：圓形頭像；有網址顯示圖片，否則（或載入失敗）顯示姓名字首。
+  Widget _personAvatar(UbanColors c, String name, String? avatarUrl,
+      {double size = 64, int tone = 0}) {
+    final bg = tone == 1
+        ? c.warmContainer
+        : tone == 2
+            ? c.infoContainer
+            : c.brandContainer;
+    final fg = tone == 1
+        ? c.warm
+        : tone == 2
+            ? c.info
+            : c.brandStrong;
+    final initial =
+        name.isNotEmpty ? String.fromCharCode(name.runes.first) : '友';
+    final fallback = Container(
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
+      child: Text(initial, style: ubanText(26, FontWeight.w900, fg)),
+    );
+    if (avatarUrl == null || avatarUrl.isEmpty) return fallback;
+    return ClipOval(
+      child: Image.network(
+        FriendAvatar.resolveUrl(avatarUrl),
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => fallback,
+        loadingBuilder: (context, child, progress) =>
+            progress == null ? child : fallback,
+      ),
+    );
+  }
+
+  /// 設計稿 `.person`：頭像＋姓名／副標＋（選填）在線標記。
+  Widget _personRow(
+    UbanColors c, {
+    required Widget avatar,
+    required String name,
+    required String subtitle,
+    double nameSize = 24,
+  }) {
+    return Row(
+      children: [
+        avatar,
+        const SizedBox(width: 14),
+        // ⚠️ 姓名／副標是使用者或後端的動態字串，必須可收縮（鐵律 #14）。
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: ubanText(nameSize, FontWeight.w900, c.text)),
+              const SizedBox(height: 2),
+              Text(subtitle,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: ubanText(16, FontWeight.w400, c.text2)),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -393,39 +486,25 @@ class _FriendsScreenState extends State<FriendsScreen>
     if (_myElderId == null) {
       return _buildFriendsFullError('目前無法取得您的好友資料，請檢查網路後重試', _loadFriendsData);
     }
+    final c = UbanColors.of(context);
     return RefreshIndicator(
       onRefresh: _loadFriendsData,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md,
-            AppSpacing.md, elderNavClearance(context)),
+        padding: EdgeInsets.fromLTRB(18, 0, 18, elderNavClearance(context)),
         children: [
           _buildAddFriendButton(),
-          const SizedBox(height: AppSpacing.md),
+          const SizedBox(height: 12),
           _buildFriendCircleEntryCard(),
           if (_incomingRequests.isNotEmpty) ...[
-            const SizedBox(height: AppSpacing.lg),
-            Text(
-              '好友邀請',
-              style: GoogleFonts.notoSansTc(
-                fontSize: 22,
-                fontWeight: FontWeight.w900,
-                color: AppColors.textPrimary,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.sm),
+            const SizedBox(height: 20),
+            _sectionHead(c, '好友邀請', badge: _incomingRequests.length),
+            const SizedBox(height: 12),
             ..._incomingRequests.map(_buildIncomingRequestCard),
           ],
-          const SizedBox(height: AppSpacing.lg),
-          Text(
-            '我的好友',
-            style: GoogleFonts.notoSansTc(
-              fontSize: 22,
-              fontWeight: FontWeight.w900,
-              color: AppColors.textPrimary,
-            ),
-          ),
-          const SizedBox(height: AppSpacing.sm),
+          const SizedBox(height: 20),
+          _sectionHead(c, '我的好友'),
+          const SizedBox(height: 12),
           ..._buildFriendsListSection(),
         ],
       ),
@@ -433,113 +512,71 @@ class _FriendsScreenState extends State<FriendsScreen>
   }
 
   Widget _buildAddFriendButton() {
-    return SizedBox(
-      height: ElderScale.buttonHeight,
-      child: ElevatedButton.icon(
-        onPressed: _openAddFriendScreen,
-        icon: const Icon(Icons.person_add_alt_1_rounded, size: ElderScale.buttonIcon),
-        label: Text('加好友', style: ElderScale.button.copyWith(color: Colors.white)),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.primary,
-          elevation: 0,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(ElderScale.cardRadius)),
-        ),
-      ),
+    return UbanButton(
+      label: '加好友',
+      icon: Icons.person_add_alt_1_rounded,
+      variant: UbanButtonVariant.tonal,
+      onPressed: _openAddFriendScreen,
     );
   }
 
   Widget _buildFriendCircleEntryCard() {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
+    return UbanActionTile(
+      icon: Icons.dynamic_feed_rounded,
+      title: '朋友圈',
+      subtitle: '看看朋友的近況、分享自己的生活',
+      trailing: UbanActionTile.chevron(context),
       onTap: () => Navigator.push(
         context,
         MaterialPageRoute(
           builder: (_) => ElderFriendFeedScreen(userId: widget.userId, userName: widget.userName),
         ),
       ),
-      child: Container(
-        padding: const EdgeInsets.all(AppSpacing.md),
-        decoration: BoxDecoration(color: AppColors.primaryDark, borderRadius: AppRadius.lgAll),
-        child: Row(
-          children: [
-            const Icon(Icons.dynamic_feed_rounded, color: Colors.white, size: 36),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '朋友圈',
-                    style: GoogleFonts.notoSansTc(fontSize: 22, fontWeight: FontWeight.w900, color: Colors.white),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '看看朋友的近況、分享自己的生活',
-                    style: GoogleFonts.notoSansTc(fontSize: 15, color: Colors.white70, fontWeight: FontWeight.w600),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(Icons.chevron_right_rounded, color: Colors.white, size: 32),
-          ],
-        ),
-      ),
     );
   }
 
   Widget _buildIncomingRequestCard(Map<String, dynamic> req) {
+    final c = UbanColors.of(context);
     final name = (req['from_elder_name'] ?? '長輩').toString();
     final id = (req['from_elder_id'] ?? '').toString();
     final requestId = req['request_id'];
     final isBusy = _respondingRequestIds.contains(requestId);
-    return Container(
-      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: AppRadius.lgAll,
-        border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              FriendAvatar(avatarUrl: req['avatar_url'] as String?, name: name, radius: 26),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  '$name（ID: $id）想加你為好友',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.notoSansTc(fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: UbanCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _personRow(
+              c,
+              avatar: _personAvatar(c, name, req['avatar_url'] as String?,
+                  size: 56, tone: 2),
+              name: name,
+              nameSize: 21,
+              subtitle: 'ID：$id　想加您為好友',
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: UbanButton(
+                    label: '拒絕',
+                    variant: UbanButtonVariant.outline,
+                    onPressed: isBusy ? null : () => _respondRequest(requestId, false),
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: isBusy ? null : () => _respondRequest(requestId, false),
-                  style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(52)),
-                  child: Text('拒絕', style: GoogleFonts.notoSansTc(fontSize: 17, fontWeight: FontWeight.w700)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: UbanButton(
+                    label: '接受',
+                    loading: isBusy,
+                    onPressed: isBusy ? null : () => _respondRequest(requestId, true),
+                  ),
                 ),
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: isBusy ? null : () => _respondRequest(requestId, true),
-                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, minimumSize: const Size.fromHeight(52)),
-                  child: isBusy
-                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                      : Text('接受', style: GoogleFonts.notoSansTc(fontSize: 17, fontWeight: FontWeight.w700, color: Colors.white)),
-                ),
-              ),
-            ],
-          ),
-        ],
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -555,85 +592,68 @@ class _FriendsScreenState extends State<FriendsScreen>
   }
 
   Widget _buildFriendListCard(Map<String, dynamic> friend) {
+    final c = UbanColors.of(context);
     final name = (friend['elder_name'] ?? '朋友').toString();
     final id = (friend['elder_id'] ?? '').toString();
-    return Container(
-      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: AppRadius.lgAll,
-        boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 12, offset: const Offset(0, 6)),
-        ],
-      ),
-      child: Row(
-        children: [
-          FriendAvatar(avatarUrl: friend['avatar_url'] as String?, name: name, radius: 30),
-          const SizedBox(width: AppSpacing.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: UbanCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _personRow(
+              c,
+              avatar: _personAvatar(c, name, friend['avatar_url'] as String?),
+              name: name,
+              subtitle: 'ID：$id',
+            ),
+            const SizedBox(height: 14),
+            // ★ 第四十二輪：好友視訊撥打鍵在「解除好友」之前，正面動作優先於破壞性動作。
+            Row(
               children: [
-                Text(
-                  name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.notoSansTc(fontSize: 24, fontWeight: FontWeight.w900, color: AppColors.textPrimary),
+                Expanded(
+                  child: ElderCallButton(
+                    label: '視訊',
+                    icon: Icons.videocam_rounded,
+                    onTap: () => _startFriendCall(id, name, isVideo: true),
+                  ),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  'ID: $id',
-                  style: GoogleFonts.notoSansTc(fontSize: 15, color: AppColors.textSecondary, fontWeight: FontWeight.w600),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: ElderCallButton(
+                    label: '解除好友',
+                    tone: ElderCallButtonTone.neutral,
+                    onTap: () => _confirmRemoveFriend(id, name),
+                  ),
                 ),
               ],
             ),
-          ),
-          // ★ 第四十二輪：好友視訊撥打鍵。加在「解除好友」之前，正面動作優先於
-          // 破壞性動作；與旁邊的 IconButton 一樣是固定寬度元件，Row 的溢位防線
-          // 仍由左側 Expanded 內的 name Text（maxLines:1 + ellipsis）承擔，
-          // 未破壞既有的可收縮設計（鐵律 #14／G142：判準是「字級 × 同列元素
-          // 數」，這裡多一顆固定寬度的 IconButton 不影響 Expanded 的收縮行為）。
-          IconButton(
-            tooltip: '視訊通話',
-            onPressed: () => _startFriendCall(id, name, isVideo: true),
-            icon: const Icon(Icons.videocam_rounded, color: AppColors.primary),
-          ),
-          IconButton(
-            tooltip: '解除好友',
-            onPressed: () => _confirmRemoveFriend(id, name),
-            icon: const Icon(Icons.person_remove_alt_1_outlined, color: AppColors.textHint),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildNoFriendsYet() {
+    final c = UbanColors.of(context);
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.lg),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.people_alt_rounded, size: 96, color: AppColors.textHint),
+            Icon(Icons.people_alt_rounded, size: 96, color: c.text3),
             const SizedBox(height: AppSpacing.lg),
             Text(
               '還沒有朋友',
-              style: GoogleFonts.notoSansTc(
-                fontSize: 24,
-                fontWeight: FontWeight.w800,
-                color: AppColors.textSecondary,
-              ),
+              textAlign: TextAlign.center,
+              style: ubanText(24, FontWeight.w800, c.text2),
             ),
             const SizedBox(height: AppSpacing.sm),
             Text(
               '點上面的「加好友」開始交朋友吧',
               textAlign: TextAlign.center,
-              style: GoogleFonts.notoSansTc(
-                fontSize: 18,
-                color: AppColors.textHint,
-              ),
+              style: ubanText(18, FontWeight.w400, c.text3),
             ),
           ],
         ),
@@ -642,21 +662,22 @@ class _FriendsScreenState extends State<FriendsScreen>
   }
 
   Widget _buildFriendsFullError(String message, Future<void> Function() onRetry) {
+    final c = UbanColors.of(context);
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.lg),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.wifi_off_rounded, size: 80, color: AppColors.textHint),
+            Icon(Icons.wifi_off_rounded, size: 80, color: c.text3),
             const SizedBox(height: AppSpacing.md),
             Text(
               message,
               textAlign: TextAlign.center,
-              style: GoogleFonts.notoSansTc(fontSize: 18, color: AppColors.textSecondary),
+              style: ubanText(18, FontWeight.w400, c.text2),
             ),
             const SizedBox(height: AppSpacing.md),
-            ElevatedButton(onPressed: onRetry, child: const Text('重試')),
+            UbanButton(label: '重試', expand: false, onPressed: onRetry),
           ],
         ),
       ),
@@ -665,10 +686,9 @@ class _FriendsScreenState extends State<FriendsScreen>
 
   Widget _buildFriendList() {
     return ListView.separated(
-      padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md,
-          AppSpacing.md, elderNavClearance(context)),
+      padding: EdgeInsets.fromLTRB(18, 0, 18, elderNavClearance(context)),
       itemCount: _familyList.length,
-      separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.md),
+      separatorBuilder: (_, __) => const SizedBox(height: 14),
       itemBuilder: (context, index) {
         final map = _familyList[index] is Map
             ? _familyList[index] as Map
@@ -676,127 +696,49 @@ class _FriendsScreenState extends State<FriendsScreen>
         final name = (map['user_name'] ?? '家人').toString();
         // ★ 第四十一輪（item 2）：新手指引只點亮第一張卡片的按鈕，其餘卡片
         //   不受影響。
-        return _buildFriendCard(name, isFirst: index == 0);
+        // 不顯示「在線」：後端 /user/{id}/family 的 is_online 寫死為 True，
+        // 沒有真實來源，顯示出來是假資訊。
+        return _buildFriendCard(name, isFirst: index == 0, index: index);
       },
     );
   }
 
-  Widget _buildFriendCard(String name, {bool isFirst = false}) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: AppRadius.lgAll,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 12,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 34,
-            backgroundColor: AppColors.primaryLight,
-            child: Text(
-              name.isNotEmpty ? name.substring(0, 1) : '家',
-              style: GoogleFonts.notoSansTc(
-                fontSize: 30,
-                fontWeight: FontWeight.w900,
-                color: AppColors.primaryDark,
-              ),
-            ),
-          ),
-          const SizedBox(width: AppSpacing.md),
-          // 名字
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w900,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '家人',
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 16,
-                    color: AppColors.textSecondary,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          // 右邊：電話 + 視訊
-          _callAction(
-            actionKey: isFirst ? widget.firstCallKey : null,
-            icon: Icons.call_rounded,
-            label: '電話',
-            color: AppColors.primary,
-            onTap: () => _startCall(name, isVideo: false),
-          ),
-          const SizedBox(width: AppSpacing.sm),
-          _callAction(
-            actionKey: isFirst ? widget.firstVideoKey : null,
-            icon: Icons.videocam_rounded,
-            label: '視訊',
-            color: AppColors.primaryDark,
-            onTap: () => _startCall(name, isVideo: true),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // 右側圓形動作鈕（圖示 + 下方小字）
-  Widget _callAction({
-    Key? actionKey,
-    required IconData icon,
-    required String label,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      key: actionKey,
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(AppRadius.pill),
+  Widget _buildFriendCard(String name,
+      {bool isFirst = false, int index = 0}) {
+    final c = UbanColors.of(context);
+    return UbanCard(
       child: Column(
-        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(
-            width: 62,
-            height: 62,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: color,
-              boxShadow: [
-                BoxShadow(
-                  color: color.withValues(alpha: 0.3),
-                  blurRadius: 8,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Icon(icon, color: Colors.white, size: 32),
+          _personRow(
+            c,
+            avatar: _personAvatar(c, name, null, tone: index % 3),
+            name: name,
+            subtitle: '家人',
           ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: GoogleFonts.notoSansTc(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              color: color,
-            ),
+          const SizedBox(height: 14),
+          // 電話（filled）＋視訊（tonal）；firstCallKey／firstVideoKey 仍只掛第一位家人。
+          Row(
+            children: [
+              Expanded(
+                child: ElderCallButton(
+                  key: isFirst ? widget.firstCallKey : null,
+                  label: '電話',
+                  icon: Icons.call_rounded,
+                  tone: ElderCallButtonTone.filled,
+                  onTap: () => _startCall(name, isVideo: false),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: ElderCallButton(
+                  key: isFirst ? widget.firstVideoKey : null,
+                  label: '視訊',
+                  icon: Icons.videocam_rounded,
+                  onTap: () => _startCall(name, isVideo: true),
+                ),
+              ),
+            ],
           ),
         ],
       ),
