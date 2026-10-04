@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:geolocator/geolocator.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/services.dart';
@@ -13,7 +12,8 @@ import '../../services/elder_location_service.dart';
 import 'elder_layout.dart';
 import '../../services/api/location_api.dart';
 import '../../services/location_device_status.dart';
-import '../../theme/app_theme.dart' show ElderScale;
+import '../../utils/reminder_schedule.dart';
+import '../../widgets/ui/ui.dart';
 import '../../services/elder_reminder_manager.dart';
 import '../../widgets/spotlight_tutorial.dart';
 
@@ -21,8 +21,13 @@ import '../../widgets/spotlight_tutorial.dart';
 import 'profile/models/pet_mood.dart'; // ⚠️ 只借用 PetHeartParticle，PetMood 列舉本身在小豬之家改版後已不再使用
 import 'profile/dialogs/family_pairing_dialog.dart';
 import 'profile/dialogs/ai_assistant_settings_dialog.dart';
-import 'profile/widgets/today_tasks_handmade_section.dart';
-import 'profile/widgets/profile_action_card.dart';
+import 'profile/widgets/profile_greet_row.dart';
+import 'profile/widgets/profile_location_hint.dart';
+import 'profile/widgets/profile_task_card.dart';
+import 'streak/streak_celebration.dart';
+import 'streak/streak_service.dart';
+import 'streak/streak_widgets.dart';
+import 'widgets/elder_task_sheet.dart';
 
 class ElderProfileTab extends StatefulWidget {
   final int userId;
@@ -34,6 +39,18 @@ class ElderProfileTab extends StatefulWidget {
   final GlobalKey? familyPairingKey;
   final GlobalKey? aiAssistantKey;
 
+  /// 連勝慶祝畫面的「去餵小豬」：由 `ElderHomeScreen` 傳入，轉成既有的 `_onNavTap(2)`。
+  final VoidCallback? onGoFeedPig;
+
+  /// ⚠️ 僅供 widget test 注入假提醒（正式呼叫端恆為 null）。非 null 時不讀 SharedPreferences、
+  /// 不打 API（提醒、好友 id、位置分享狀態、年齡地區都跳過），畫面直接用這份資料。
+  @visibleForTesting
+  final List<Map<String, dynamic>>? debugInitialRemindersForTest;
+
+  /// ⚠️ 僅供 widget test：搭配 [debugInitialRemindersForTest] 指定「今天已完成」的提醒 id。
+  @visibleForTesting
+  final Set<int>? debugInitialCompletedIdsForTest;
+
   const ElderProfileTab({
     super.key,
     required this.userId,
@@ -41,6 +58,9 @@ class ElderProfileTab extends StatefulWidget {
     this.tasksKey,
     this.familyPairingKey,
     this.aiAssistantKey,
+    this.onGoFeedPig,
+    this.debugInitialRemindersForTest,
+    this.debugInitialCompletedIdsForTest,
   });
 
   @override
@@ -89,6 +109,13 @@ class _ElderProfileTabState extends State<ElderProfileTab>
   // 沒有安排提醒」顯示成同一張空狀態卡片。
   bool _hasReminderLoadError = false;
 
+  // ── 🔥 連勝紀錄（新功能，見 streak/streak_service.dart）──────────
+  late StreakSnapshot _streak = StreakService.buildSnapshot({}, DateTime.now());
+  bool _taskSheetOpen = false;
+
+  // ── 👤 頁首：年齡／地區（只用既有的 getElderProfile，拿不到就不顯示）──
+  String? _headerDetail;
+
   // ── 🎨 小豬對話氣泡文字 ──────────────────────────────
   // 小豬頁面搬到 ElderPetTab 後，本分頁不再顯示氣泡；任務打卡失敗回退仍照舊
   // 重設這個值（_toggleTaskCompletion 邏輯一行未改），故保留欄位。
@@ -123,10 +150,20 @@ class _ElderProfileTabState extends State<ElderProfileTab>
       vsync: this,
     );
 
-    _loadElderReminders();
+    final debugReminders = widget.debugInitialRemindersForTest;
+    if (debugReminders != null) {
+      // 測試注入：不連網、不讀本機。
+      _reminders = List<Map<String, dynamic>>.from(debugReminders);
+      _completedReminderIds = {...?widget.debugInitialCompletedIdsForTest};
+    } else {
+      _loadElderReminders();
+      _loadMyFriendElderId();
+      _loadLocationSharingState();
+      _loadHeaderDetail();
+      _loadStreak();
+    }
     ElderReminderManager.instance.addListener(_onReminderManagerUpdate);
-    _loadMyFriendElderId();
-    _loadLocationSharingState();
+    StreakService.changes.addListener(_loadStreak);
     // 長輩從手機「設定」頁（開定位／改權限）回到 App 時，重新檢查定位權限，
     // 讓「我的」分頁的提示自動消失、位置回報自動恢復。這個觀察者只做這一件
     // 事（見 didChangeAppLifecycleState），與 ElderHomeScreen 自己的觀察者
@@ -141,6 +178,27 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     if (state == AppLifecycleState.resumed && _locationSharingEnabled) {
       unawaited(ElderLocationService.instance.recheckDeviceStatus());
     }
+  }
+
+  /// 頁首年齡／地區：沿用既有的 `ApiService.getElderProfile`（聊天頁也在用），
+  /// 失敗或欄位空白就維持只顯示名字，不新增 API、不補假資料。
+  Future<void> _loadHeaderDetail() async {
+    try {
+      final res = await ApiService.getElderProfile(widget.userId);
+      final data = res['data'];
+      final profile = data is Map<String, dynamic>
+          ? data
+          : (res['status'] == 'error' ? null : res);
+      final detail = ProfileGreetRow.buildDetail(profile);
+      if (mounted && detail != _headerDetail) {
+        setState(() => _headerDetail = detail);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _loadStreak() async {
+    final snap = await StreakService.load();
+    if (mounted) setState(() => _streak = snap);
   }
 
   /// 讀取目前「與家人分享我的位置」開關狀態，供 [_buildLocationSharingCard] 顯示。
@@ -174,7 +232,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
   }
 
   void _onReminderManagerUpdate() {
-    if (mounted) {
+    if (mounted && widget.debugInitialRemindersForTest == null) {
       _loadElderReminders();
     }
   }
@@ -183,6 +241,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     ElderReminderManager.instance.removeListener(_onReminderManagerUpdate);
+    StreakService.changes.removeListener(_loadStreak);
     _particleController.dispose();
     _petBounceController.dispose();
     super.dispose();
@@ -364,7 +423,32 @@ class _ElderProfileTabState extends State<ElderProfileTab>
           ),
         );
       }
+      // ★ 連勝紀錄（新功能）：打卡「成功之後」才檢查，上面的樂觀更新／回退邏輯不變。
+      if (success) unawaited(_checkStreak());
+    } else {
+      // 取消打卡：今天就不再是「全部完成」，讓連勝紀錄同步（不會觸發慶祝）。
+      unawaited(_checkStreak());
     }
+  }
+
+  /// 連勝：今天的提醒剛好全部完成、且今天還沒慶祝過，就顯示慶祝畫面。
+  /// 失敗一律吞掉（見 [StreakService.syncToday]），不影響打卡本身。
+  Future<void> _checkStreak() async {
+    final celebration = await StreakService.syncToday(
+      reminders: _reminders,
+      completedIds: _completedReminderIds,
+    );
+    if (celebration == null || !mounted) return;
+    // 抽屜若還開著就先收起來：否則按「去餵小豬」切到小豬分頁後，抽屜會還蓋在上面。
+    // （_taskSheetOpen 只在抽屜存在期間為 true，此時最上層路由就是抽屜。）
+    if (_taskSheetOpen) {
+      final nav = Navigator.of(context, rootNavigator: true);
+      if (nav.canPop()) nav.pop();
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      if (!mounted) return;
+    }
+    await showStreakCelebration(context, celebration,
+        onFeedPig: widget.onGoFeedPig);
   }
 
   void _handleLogout() {
@@ -415,456 +499,168 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     );
   }
 
-  // 💡 長輩後悔藥：隨時重新觀看新手教學（暖色手作系統，全頁唯一抽出的
-  // inline widget——標題／副標題皆為固定文案，非使用者可控字串，但仍加
-  // maxLines/ellipsis 做防禦）。
-  Widget _buildTutorialReplayCard(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFFDF9),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFEADBCE), width: 1.5),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF78350F).withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-        leading: Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: const Color(0xFFFEF3C7),
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: const Icon(Icons.school_rounded,
-              color: Color(0xFFB45309), size: 28),
-        ),
-        title: Text(
-          '重新觀看新手導覽',
-          style: GoogleFonts.notoSansTc(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: const Color(0xFF451A03),
-          ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        subtitle: Text(
-          '忘記功能怎麼用？點此重新開啟操作介紹',
-          style: GoogleFonts.notoSansTc(
-              fontSize: 14, color: const Color(0xFF8C6D58)),
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-        ),
-        trailing: const Icon(Icons.arrow_forward_ios_rounded,
-            size: 18, color: Color(0xFFD4C5B9)),
-        onTap: () async {
-          await SpotlightTutorial.resetAllTutorials();
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('已重新開啟教學！切換至首頁即可重新查看導覽。')),
-            );
-          }
-        },
-      ),
-    );
-  }
+  // ── 🎯 打卡入口（任務卡「打卡」鈕與抽屜共用）─────────────────────
+  // 新版介面只提供「把還沒做的打勾」，不再有取消打勾；而 _toggleTaskCompletion
+  // 本身是「切換」，所以這裡擋掉「已完成」與「處理中」的重複點擊，避免連點兩下
+  // 被後面那下切回未完成。
+  final Set<int> _checkInFlight = {};
 
-  // 🛰️ 與家人分享我的位置：長輩本人的隱私開關，系統預設開啟，長輩可隨時
-  // 自行關閉（完全由長輩本人決定，家屬無法代為切換）。關閉時家屬即使
-  // 已配對也看不到位置資料（伺服器端讀取端會再檢查一次，這裡的開關只
-  // 決定裝置要不要持續耗電回報）。標題／副標題為固定文案，仍加
-  // maxLines/ellipsis 防禦（Row 內含開關元件，同列有其他元素）。
-  Widget _buildLocationSharingCard(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFFDF9),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFEADBCE), width: 1.5),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF78350F).withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SwitchListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-            secondary: Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFEF3C7),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: const Icon(Icons.route_rounded,
-                  color: Color(0xFFB45309), size: 28),
-            ),
-            title: Text(
-              '與家人分享我的位置',
-              style: GoogleFonts.notoSansTc(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: const Color(0xFF451A03),
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            subtitle: Text(
-              _locationSharingEnabled ? '子女可以看到您的位置與移動路線' : '目前未分享，子女無法看到您的位置',
-              style: GoogleFonts.notoSansTc(
-                  fontSize: 14, color: const Color(0xFF8C6D58)),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            value: _locationSharingEnabled,
-            onChanged: _locationSharingBusy ? null : _handleLocationSharingToggle,
-            activeThumbColor: const Color(0xFFB45309),
-          ),
-          // 手機的定位功能／權限沒開時，開關雖然是「開」，位置其實傳不出去：
-          // 在開關下方直接告訴長輩原因與怎麼修。
-          ValueListenableBuilder<String?>(
-            valueListenable: ElderLocationService.instance.deviceStatus,
-            builder: (context, status, _) {
-              if (!_locationSharingEnabled ||
-                  !LocationDeviceStatus.isProblem(status)) {
-                return const SizedBox.shrink();
-              }
-              return _buildLocationStatusHint(status!);
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// 位置分享卡片下方的「手機沒開定位」提示：白話說明原因 + 一顆大按鈕直接
-  /// 帶長輩去修。沒有 Row——文字與按鈕都是整列寬度、可自動換行，不會溢位
-  /// （鐵律 #14）。長輩從設定頁回來後由 [didChangeAppLifecycleState] 重查，
-  /// 修好了提示就會自己消失。
-  Widget _buildLocationStatusHint(String status) {
-    final String message;
-    final String buttonLabel;
-    final Future<bool> Function() onPressed;
-    switch (status) {
-      case LocationDeviceStatus.serviceDisabled:
-        message = '手機的定位功能關閉了';
-        buttonLabel = '打開定位';
-        onPressed = Geolocator.openLocationSettings;
-        break;
-      case LocationDeviceStatus.foregroundOnly:
-        message = '位置權限只開了「使用 App 時」，請改成「一律允許」，家人才看得到';
-        buttonLabel = '前往設定';
-        onPressed = Geolocator.openAppSettings;
-        break;
-      default: // permission_denied／permission_denied_forever
-        message = '還沒允許 Uban 使用位置';
-        buttonLabel = '前往設定';
-        onPressed = Geolocator.openAppSettings;
+  Future<void> _checkIn(Map<String, dynamic> reminder) async {
+    final id = int.tryParse(reminder['id']?.toString() ?? '');
+    if (id == null) return;
+    if (_completedReminderIds.contains(id) || !_checkInFlight.add(id)) return;
+    try {
+      await _toggleTaskCompletion(id);
+    } finally {
+      _checkInFlight.remove(id);
     }
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFEF3C7),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFF59E0B), width: 1.5),
+  }
+
+  /// 開「今天要做的事」抽屜（與首頁共用 [ElderTaskSheetBody]）。
+  void _openTaskSheet() {
+    HapticFeedback.lightImpact();
+    _taskSheetOpen = true;
+    showUbanSheet<void>(
+      context,
+      (ctx) => ElderTaskSheetBody(
+        readGroups: () =>
+            groupByStatus(_reminders, _completedReminderIds, DateTime.now()),
+        onCheckIn: _checkIn,
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            '⚠️ $message',
-            style: ElderScale.body.copyWith(
-              color: const Color(0xFF7C2D12),
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            height: 64,
-            child: FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFFB45309),
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-              onPressed: () async {
-                try {
-                  await onPressed();
-                } catch (e) {
-                  debugPrint('⚠️ [ElderProfileTab] 開啟手機設定失敗: $e');
-                }
-              },
-              child: Text(
-                buttonLabel,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: ElderScale.body.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+    ).whenComplete(() => _taskSheetOpen = false);
+  }
+
+  Future<void> _replayTutorial() async {
+    await SpotlightTutorial.resetAllTutorials();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('已重新開啟教學！切換至首頁即可重新查看導覽。')),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final hour = DateTime.now().hour;
-    String greetingTitle = '早安';
-    if (hour >= 12 && hour < 18) greetingTitle = '午安';
-    if (hour >= 18 || hour < 5) greetingTitle = '晚安';
-    final orientation = MediaQuery.of(context).orientation;
-    final bool isLandscape = orientation == Orientation.landscape &&
-        MediaQuery.of(context).size.width >= 720;
-    final String greetingLine = '$greetingTitle，${widget.userName}';
+    final c = UbanColors.of(context);
+    const gap = SizedBox(height: 14);
 
-    // 小豬已搬到「小豬」分頁（ElderPetTab）；本頁只剩任務、家人綁定、
-    // 語音助理、教學重播、位置分享與切換身分。
-    final Widget body = isLandscape
-        ? _buildLandscapeBody(context)
-        : _buildPortraitBody(greetingLine, context);
-
-    return Container(
-      color: const Color(0xFFFAF7F2), // 溫暖手作燕麥宣紙底色
-      width: double.infinity,
-      height: double.infinity,
+    return ColoredBox(
+      color: c.bg,
       child: SafeArea(
         bottom: false,
         child: SingleChildScrollView(
           physics: const BouncingScrollPhysics(),
-          padding: EdgeInsets.only(
-            top: isLandscape ? 6 : 0,
-            bottom: elderNavClearance(context),
-          ),
-          child: body,
-        ),
-      ),
-    );
-  }
-
-  // ── 直屏 ──
-  Widget _buildPortraitBody(
-    String greetingLine,
-    BuildContext context,
-  ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // 0. 頁首：小豬搬走後留下的簡單標題（用戶名可能很長，需可收縮）
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '我的',
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w900,
-                  color: const Color(0xFF451A03),
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              Text(
-                greetingLine,
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w600,
-                  color: const Color(0xFF8C6D58),
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
-        ),
-
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // 3. 今日生活排程與用藥打卡手帳
-              TodayTasksHandmadeSection(
-                key: widget.tasksKey,
-                reminders: _reminders,
-                completedReminderIds: _completedReminderIds,
-                isLoadingReminders: _isLoadingReminders,
-                onToggleTask: _toggleTaskCompletion,
-                hasLoadError: _hasReminderLoadError,
-              ),
-
-              const SizedBox(height: 16),
-
-              // 4. 底部快捷操作列
-              Row(
+          padding: EdgeInsets.fromLTRB(18, 14, 18, elderNavClearance(context)),
+          child: Align(
+            alignment: Alignment.topCenter,
+            // 平板橫放時不要讓卡片拉成整排，限制最大寬度。
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 560),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Expanded(
-                    child: ProfileActionCard(
-                      key: widget.familyPairingKey,
-                      icon: Icons.family_restroom_rounded,
-                      title: '家人綁定',
-                      subtitle: '出示配對碼',
-                      color: const Color(0xFFF59E0B),
-                      // ★ 第四十九輪修復：過去沒傳 explicitElderId，對話框內部
-                      // 只能猜 SharedPreferences 的 caregiver_id/last_elder_id，
-                      // 兩鍵都讀不到時會靜默送出缺 id 的配對碼請求，被後端當成
-                      // 新長輩註冊、家屬綁到幽靈帳號（見
-                      // family_pairing_dialog.dart 的 fetchCode 說明）。這裡是
-                      // 呼叫端手上現成、保證非空的正確長輩 id，直接明確傳入。
-                      onTap: () =>
-                          showFamilyPairingDialog(context, widget.userId),
+                  ProfileGreetRow(name: widget.userName, detail: _headerDetail),
+                  const SizedBox(height: 18),
+
+                  // 連勝卡（新功能）
+                  StreakCard(snapshot: _streak),
+                  gap,
+
+                  // 今日任務卡：進度環＋下一件，點開抽屜；打卡仍走 _toggleTaskCompletion
+                  ProfileTaskCard(
+                    key: widget.tasksKey,
+                    reminders: _reminders,
+                    completedIds: _completedReminderIds,
+                    isLoading: _isLoadingReminders,
+                    hasLoadError: _hasReminderLoadError,
+                    onCheckIn: _checkIn,
+                    onOpenSheet: _openTaskSheet,
+                  ),
+                  gap,
+
+                  // 家人綁定
+                  UbanActionTile(
+                    key: widget.familyPairingKey,
+                    icon: Icons.link_rounded,
+                    title: '家人綁定',
+                    subtitle: '出示配對碼給家人掃',
+                    trailing: UbanActionTile.chevron(context),
+                    // ★ 第四十九輪修復：明確傳入保證非空的長輩 id（理由見
+                    // family_pairing_dialog.dart 的 fetchCode 說明），不能讓對話框自己猜。
+                    onTap: () =>
+                        showFamilyPairingDialog(context, widget.userId),
+                  ),
+                  gap,
+
+                  // 語音助理
+                  UbanActionTile(
+                    key: widget.aiAssistantKey,
+                    icon: Icons.mic_rounded,
+                    title: '語音助理',
+                    subtitle: '喊「Hey 嘎蛙」叫小嘎',
+                    trailing: UbanActionTile.chevron(context),
+                    onTap: () => showAiAssistantSettingsDialog(
+                      context: context,
+                      userId: widget.userId,
+                      userName: widget.userName,
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ProfileActionCard(
-                      key: widget.aiAssistantKey,
-                      icon: Icons.assistant_rounded,
-                      title: '語音助理',
-                      subtitle: 'Hey 嘎蛙',
-                      color: const Color(0xFFF59E0B),
-                      onTap: () => showAiAssistantSettingsDialog(
-                        context: context,
-                        userId: widget.userId,
-                        userName: widget.userName,
-                      ),
+                  gap,
+
+                  // 分享我的位置（長輩本人的隱私開關；關閉時家屬看不到位置）
+                  UbanActionTile(
+                    icon: Icons.place_rounded,
+                    title: '分享我的位置',
+                    subtitle: _locationSharingEnabled
+                        ? '子女可以看到您的位置與移動路線'
+                        : '目前未分享，子女無法看到您的位置',
+                    trailing: UbanSwitch(
+                      value: _locationSharingEnabled,
+                      onChanged: _locationSharingBusy
+                          ? null
+                          : _handleLocationSharingToggle,
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ProfileActionCard(
-                      icon: Icons.logout_rounded,
-                      title: '切換身分',
-                      subtitle: '登出系統',
-                      color: const Color(0xFFEF4444),
-                      onTap: _handleLogout,
-                    ),
+                  // 手機的定位功能／權限沒開時，開關雖然是「開」，位置其實傳不出去：
+                  // 在開關下方整列寬直接告訴長輩原因與怎麼修。
+                  ValueListenableBuilder<String?>(
+                    valueListenable: ElderLocationService.instance.deviceStatus,
+                    builder: (context, status, _) {
+                      if (!_locationSharingEnabled ||
+                          !LocationDeviceStatus.isProblem(status)) {
+                        return const SizedBox.shrink();
+                      }
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 14),
+                        child: LocationStatusHint(status: status!),
+                      );
+                    },
+                  ),
+                  gap,
+
+                  // 重新觀看新手導覽
+                  UbanActionTile(
+                    icon: Icons.replay_rounded,
+                    title: '重新觀看新手導覽',
+                    subtitle: '忘記功能怎麼用？點這裡',
+                    onTap: _replayTutorial,
+                  ),
+                  gap,
+
+                  // 切換身分（登出）
+                  UbanActionTile(
+                    icon: Icons.swap_horiz_rounded,
+                    tone: UbanTone.danger,
+                    title: '切換身分',
+                    subtitle: '登出並回到身分選擇',
+                    onTap: _handleLogout,
                   ),
                 ],
               ),
-
-              const SizedBox(height: 16),
-
-              // 5. 重新觀看新手導覽
-              _buildTutorialReplayCard(context),
-
-              const SizedBox(height: 12),
-
-              // 6. 與家人分享我的位置（GPS 移動軌跡隱私開關）
-              _buildLocationSharingCard(context),
-            ],
+            ),
           ),
         ),
-      ],
-    );
-  }
-
-  // ── 橫屏模式（平板座充模式）：左欄排程、右欄快捷操作 ──
-  Widget _buildLandscapeBody(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // 👉 右欄：今日生活排程打卡手帳 ＆ 底部快捷操作列（佔 50%）
-              Expanded(
-                flex: 5,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    TodayTasksHandmadeSection(
-                      key: widget.tasksKey,
-                      reminders: _reminders,
-                      completedReminderIds: _completedReminderIds,
-                      isLoadingReminders: _isLoadingReminders,
-                      onToggleTask: _toggleTaskCompletion,
-                      isLandscape: true,
-                      hasLoadError: _hasReminderLoadError,
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: ProfileActionCard(
-                            key: widget.familyPairingKey,
-                            icon: Icons.family_restroom_rounded,
-                            title: '家人綁定',
-                            subtitle: '出示配對碼',
-                            color: const Color(0xFFF59E0B),
-                            // ★ 第四十九輪修復：理由同直屏版本，見上方
-                            // _buildPortraitBody 對應按鈕的註解。
-                            onTap: () =>
-                                showFamilyPairingDialog(context, widget.userId),
-                            isLandscape: true,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: ProfileActionCard(
-                            key: widget.aiAssistantKey,
-                            icon: Icons.assistant_rounded,
-                            title: '語音助理',
-                            subtitle: 'Hey 嘎蛙',
-                            color: const Color(0xFFF59E0B),
-                            onTap: () => showAiAssistantSettingsDialog(
-                              context: context,
-                              userId: widget.userId,
-                              userName: widget.userName,
-                            ),
-                            isLandscape: true,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: ProfileActionCard(
-                            icon: Icons.logout_rounded,
-                            title: '切換身分',
-                            subtitle: '登出系統',
-                            color: const Color(0xFFEF4444),
-                            onTap: _handleLogout,
-                            isLandscape: true,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 8),
-
-          // ★ 橫向版面原本漏掉「重新觀看新手導覽」，本輪補回
-          _buildTutorialReplayCard(context),
-
-          const SizedBox(height: 8),
-
-          _buildLocationSharingCard(context),
-        ],
       ),
     );
   }
 }
-

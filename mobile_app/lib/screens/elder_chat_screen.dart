@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
@@ -13,6 +14,8 @@ import '../services/api_service.dart';
 import '../services/friend_service.dart';
 import '../services/memoir_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/ui/ui.dart';
+import 'elder_tabs/chat/chat_widgets.dart';
 import 'elder_tabs/elder_layout.dart';
 import '../widgets/youtube_bubble_player.dart';
 import 'news_listen_player/news_listen_player_screen.dart';
@@ -87,6 +90,10 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
   String _selectedLanguage = 'mandarin'; // 'mandarin' 或 'taigi'
   bool _isNavigatingToNews = false; // 防連擊鎖與載入狀態
   String _currentAppellation = ''; // 長輩/子女設定的專屬稱呼
+
+  // 橡皮筋拉伸量（有正負號；見 ChatRubberBand）。(0, 0) 代表沒有拉伸。
+  final ValueNotifier<({double pull, int edge})> _pull =
+      ValueNotifier((pull: 0.0, edge: 0));
 
   @override
   void initState() {
@@ -506,6 +513,7 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
     _audioPlayer.dispose();
     _controller.dispose();
     _scroll.dispose();
+    _pull.dispose();
     super.dispose();
   }
 
@@ -858,150 +866,90 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
   }
 
   Widget _buildHeader() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    final c = UbanColors.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 14, 10, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ★ 鐵律 #14 例行檢查（第四十九輪）：這一列的固定內容（頭像＋標題）
-          // 與右側固定寬度的語言切換鈕（130px）＋兩顆 IconButton 同列競爭
-          // 空間，外層 Row 用 spaceBetween、兩側皆未提供可收縮空間；長輩端
-          // 常見放大系統字級，22pt 標題疊加窄螢幕時可能超出可用寬度。包
-          // Flexible（非 Expanded，避免搶走右側固定按鈕的空間）並讓標題可
-          // ellipsis 收縮，右側按鈕群維持原樣不動。
-          Flexible(
-            child: Row(
-              children: [
-                CircleAvatar(
-                  backgroundColor: AppColors.primary,
-                  radius: 20,
-                  child: const Text('嘎', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
-                ),
-                const SizedBox(width: 10),
-                Flexible(
-                  child: Text(
-                    '和小嘎聊天',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+          // ★ 鐵律 #14：標題（28pt）與兩顆 48 寬的圖示鈕同列，標題用 Expanded 可收縮、
+          // 最多兩行；國語／台語分段放在下一列，窄螢幕＋大字級也不會擠出右邊。
           Row(
             children: [
-              _buildLanguageToggle(key: widget.languageToggleKey),
-              const SizedBox(width: 2),
+              Expanded(
+                child: Text(
+                  '和小嘎聊天',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: ubanText(28, FontWeight.w900, c.text, height: 1.25),
+                ),
+              ),
               IconButton(
-                icon: const Icon(Icons.refresh_rounded, color: Colors.grey, size: 24),
+                constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                icon: Icon(Icons.refresh_rounded, color: c.text2, size: 28),
                 tooltip: '重新載入歷史紀錄',
                 onPressed: _loadChatHistory,
               ),
               IconButton(
-                icon: const Icon(Icons.delete_outline_rounded, color: Colors.grey, size: 24),
+                constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                icon: Icon(Icons.delete_outline_rounded,
+                    color: c.text2, size: 28),
                 tooltip: '清空紀錄',
                 onPressed: _clearChatHistory,
               ),
             ],
           ),
+          const SizedBox(height: 6),
+          _buildLanguageToggle(key: widget.languageToggleKey),
         ],
       ),
     );
   }
 
+  /// 國語／台語分段（設計稿 `.langseg`）。切換仍只是改 [_selectedLanguage]，
+  /// 後續送出與 TTS 讀的是同一個欄位。
   Widget _buildLanguageToggle({Key? key}) {
-    return Container(
+    return ChatLangSeg(
       key: key,
-      width: 130,
-      height: 40,
-      decoration: BoxDecoration(
-        color: Colors.grey[200],
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Stack(
-        children: [
-          AnimatedAlign(
-            duration: const Duration(milliseconds: 200),
-            curve: Curves.easeInOut,
-            alignment: _selectedLanguage == 'taigi'
-                ? Alignment.centerRight
-                : Alignment.centerLeft,
-            child: Container(
-              width: 63,
-              height: 36,
-              margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
-              decoration: BoxDecoration(
-                color: AppColors.primary,
-                borderRadius: BorderRadius.circular(18),
-              ),
-            ),
-          ),
-          Row(
-            children: [
-              Expanded(
-                child: GestureDetector(
-                  onTap: () => setState(() => _selectedLanguage = 'mandarin'),
-                  behavior: HitTestBehavior.opaque,
-                  child: Center(
-                    child: Text(
-                      '國語',
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: _selectedLanguage == 'mandarin'
-                            ? Colors.white
-                            : Colors.grey[600],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              Expanded(
-                child: GestureDetector(
-                  onTap: () => setState(() => _selectedLanguage = 'taigi'),
-                  behavior: HitTestBehavior.opaque,
-                  child: Center(
-                    child: Text(
-                      '台語',
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: _selectedLanguage == 'taigi'
-                            ? Colors.white
-                            : Colors.grey[600],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
+      labels: const ['國語', '台語'],
+      index: _selectedLanguage == 'taigi' ? 1 : 0,
+      onChanged: (i) =>
+          setState(() => _selectedLanguage = i == 1 ? 'taigi' : 'mandarin'),
     );
+  }
+
+  /// 橡皮筋：只在捲到頂再往下拉、或捲到底再往上拉（BouncingScrollPhysics 產生超出量）
+  /// 時才算出拉伸量，正常捲動時恆為 (0, 0)。公式見 [ChatRubberBand]。
+  bool _onChatScroll(ScrollNotification n) {
+    if (n.depth != 0 || reduceMotion(context)) return false;
+    final m = n.metrics;
+    final v = ChatRubberBand.fromMetrics(
+      pixels: m.pixels,
+      minScrollExtent: m.minScrollExtent,
+      maxScrollExtent: m.maxScrollExtent,
+    );
+    if (v == _pull.value) return false;
+    // 版面計算階段送出的捲動通知（例如內容變短）不能立刻通知 ValueListenableBuilder
+    // 重建，延到這一幀結束再更新。
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _pull.value = v;
+      });
+    } else {
+      _pull.value = v;
+    }
+    return false;
   }
 
   @override
   Widget build(BuildContext context) {
+    final c = UbanColors.of(context);
+    final total = _messages.length + (_isThinking ? 1 : 0);
     return Scaffold(
       backgroundColor: Colors.transparent,
-      body: Container(
-        color: AppColors.background,
+      body: ColoredBox(
+        color: c.bg,
         child: SafeArea(
           child: Stack(
             children: [
@@ -1009,17 +957,33 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
                 children: [
                   _buildHeader(),
                   Expanded(
-                    child: ListView.builder(
-                      controller: _scroll,
-                      physics: const BouncingScrollPhysics(),
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-                      itemCount: _messages.length + (_isThinking ? 1 : 0),
-                      itemBuilder: (context, index) {
-                        if (index == _messages.length) {
-                          return _buildThinkingBubble();
-                        }
-                        return _buildBubble(_messages[index]);
-                      },
+                    child: Stack(
+                      children: [
+                        NotificationListener<ScrollNotification>(
+                          onNotification: _onChatScroll,
+                          child: ListView.builder(
+                            controller: _scroll,
+                            physics: const AlwaysScrollableScrollPhysics(
+                                parent: BouncingScrollPhysics()),
+                            padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+                            itemCount: total,
+                            itemBuilder: (context, index) {
+                              final Widget item = index == _messages.length
+                                  ? _buildThinkingBubble()
+                                  : _buildBubble(_messages[index]);
+                              return ChatPullItem(
+                                index: index,
+                                count: total,
+                                pull: _pull,
+                                child: item,
+                              );
+                            },
+                          ),
+                        ),
+                        // 標題下、輸入列上的漸層遮底：泡泡靠近時淡出到背景色。
+                        const ChatEdgeFade(atTop: true, height: 18),
+                        const ChatEdgeFade(atTop: false, height: 30),
+                      ],
                     ),
                   ),
                   _buildInputBar(),
@@ -1088,6 +1052,7 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
   }
 
   Widget _buildBubble(_ChatMessage msg) {
+    final c = UbanColors.of(context);
     final isUser = msg.isUser;
 
     // --- [YouTube 影片 ID 偵測與提煉] ---
@@ -1106,382 +1071,145 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
       videoId = urlMatch.group(1);
     }
 
+    TextStyle md(double size, FontWeight w, {FontStyle? italic}) => ubanText(
+          size,
+          w,
+          c.text,
+          height: 1.5,
+        ).copyWith(fontStyle: italic);
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        mainAxisAlignment:
-            isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Flexible(
-            child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-              decoration: BoxDecoration(
-                color: isUser ? AppColors.primary : Colors.white,
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(22),
-                  topRight: const Radius.circular(22),
-                  bottomLeft: Radius.circular(isUser ? 22 : 6),
-                  bottomRight: Radius.circular(isUser ? 6 : 22),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.06),
-                    blurRadius: 8,
-                    offset: const Offset(0, 3),
+      child: ChatBubbleFrame(
+        isUser: isUser,
+        // ── 使用者訊息：純文字；AI 訊息：Markdown 渲染 ──
+        child: isUser
+            ? Text(
+                msg.text,
+                style: ubanText(20, FontWeight.w600, c.onBrand, height: 1.5),
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  MarkdownBody(
+                    data: displayLine.isEmpty ? ' ' : displayLine,
+                    onTapLink: (text, href, title) {
+                      debugPrint('🔗 [Markdown Link Tapped] text: $text, href: $href');
+                      if (href != null) {
+                        if (href.startsWith('news://')) {
+                          final newsIdStr = href.replaceFirst('news://', '');
+                          _handleNewsLinkClick(newsIdStr);
+                        } else if (href.contains('news') && href.contains('id=')) {
+                          final uri = Uri.tryParse(href);
+                          final newsIdStr = uri?.queryParameters['id'] ?? '';
+                          _handleNewsLinkClick(newsIdStr);
+                        } else if (href.startsWith('call://')) {
+                          _handleCallLinkClick();
+                        }
+                      }
+                    },
+                    styleSheet: MarkdownStyleSheet(
+                      p: md(20, FontWeight.w500),
+                      strong: md(20, FontWeight.w800),
+                      em: md(20, FontWeight.w500, italic: FontStyle.italic),
+                      // 設計稿 `.bub .link`：連結用 brandStrong 粗體。
+                      a: ubanText(20, FontWeight.w700, c.brandStrong,
+                              height: 1.5)
+                          .copyWith(decoration: TextDecoration.underline),
+                      listBullet: md(20, FontWeight.w500),
+                      code: GoogleFonts.sourceCodePro(
+                        fontSize: 18,
+                        backgroundColor: c.surface2,
+                        color: c.brandStrong,
+                      ),
+                      h1: ubanText(24, FontWeight.w900, c.text),
+                      h2: ubanText(22, FontWeight.w800, c.text),
+                      h3: ubanText(20, FontWeight.w700, c.text),
+                      blockquoteDecoration: BoxDecoration(
+                        border: Border(
+                          left: BorderSide(color: c.brand, width: 4),
+                        ),
+                        color: c.brandSoft,
+                      ),
+                    ),
+                    softLineBreak: true,
                   ),
+                  if (videoId != null && !msg.isStreaming) ...[
+                    const SizedBox(height: 12),
+                    YoutubeBubblePlayer(
+                      key: ValueKey(videoId),
+                      videoId: videoId,
+                      onPlay: () {
+                        debugPrint('🎥 YouTube video started playing -> Stopping TTS to release audio focus');
+                        _audioPlayer.stop();
+                      },
+                    ),
+                  ],
+                  // 串流中：顯示打字游標動畫
+                  if (msg.isStreaming)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: _StreamingCursor(),
+                    ),
+                  // 非串流中：顯示當時 TTS 朗讀的語系與「再聽一次」重播鈕
+                  if (!msg.isStreaming &&
+                      (msg.ttsText?.isNotEmpty == true || msg.text.isNotEmpty))
+                    _buildTtsReplayBar(msg),
                 ],
               ),
-              // ── 使用者訊息：純文字；AI 訊息：Markdown 渲染 ──
-              child: isUser
-                  ? Text(
-                      msg.text,
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 20,
-                        height: 1.4,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                    )
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        MarkdownBody(
-                          data: displayLine.isEmpty ? ' ' : displayLine,
-                          onTapLink: (text, href, title) {
-                            debugPrint('🔗 [Markdown Link Tapped] text: $text, href: $href');
-                            if (href != null) {
-                              if (href.startsWith('news://')) {
-                                final newsIdStr = href.replaceFirst('news://', '');
-                                _handleNewsLinkClick(newsIdStr);
-                              } else if (href.contains('news') && href.contains('id=')) {
-                                final uri = Uri.tryParse(href);
-                                final newsIdStr = uri?.queryParameters['id'] ?? '';
-                                _handleNewsLinkClick(newsIdStr);
-                              } else if (href.startsWith('call://')) {
-                                _handleCallLinkClick();
-                              }
-                            }
-                          },
-                          styleSheet: MarkdownStyleSheet(
-                            p: GoogleFonts.notoSansTc(
-                              fontSize: 20,
-                              height: 1.5,
-                              fontWeight: FontWeight.w500,
-                              color: AppColors.textPrimary,
-                            ),
-                            strong: GoogleFonts.notoSansTc(
-                              fontSize: 20,
-                              height: 1.5,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.textPrimary,
-                            ),
-                            em: GoogleFonts.notoSansTc(
-                              fontSize: 20,
-                              height: 1.5,
-                              fontStyle: FontStyle.italic,
-                              color: AppColors.textPrimary,
-                            ),
-                            listBullet: GoogleFonts.notoSansTc(
-                              fontSize: 20,
-                              height: 1.5,
-                              color: AppColors.textPrimary,
-                            ),
-                            code: GoogleFonts.sourceCodePro(
-                              fontSize: 16,
-                              backgroundColor: const Color(0xFFF0F0F0),
-                              color: const Color(0xFF2E7D78),
-                            ),
-                            h1: GoogleFonts.notoSansTc(
-                              fontSize: 24,
-                              fontWeight: FontWeight.w900,
-                              color: AppColors.textPrimary,
-                            ),
-                            h2: GoogleFonts.notoSansTc(
-                              fontSize: 22,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.textPrimary,
-                            ),
-                            h3: GoogleFonts.notoSansTc(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.textPrimary,
-                            ),
-                            blockquoteDecoration: BoxDecoration(
-                              border: Border(
-                                left: BorderSide(
-                                  color: AppColors.primary,
-                                  width: 4,
-                                ),
-                              ),
-                              color: AppColors.primary.withValues(alpha: 0.06),
-                            ),
-                          ),
-                          softLineBreak: true,
-                        ),
-                        if (videoId != null && !msg.isStreaming) ...[
-                          const SizedBox(height: 12),
-                          YoutubeBubblePlayer(
-                            key: ValueKey(videoId),
-                            videoId: videoId,
-                            onPlay: () {
-                              debugPrint('🎥 YouTube video started playing -> Stopping TTS to release audio focus');
-                              _audioPlayer.stop();
-                            },
-                          ),
-                        ],
-                        // 串流中：顯示打字游標動畫
-                        if (msg.isStreaming)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 4),
-                            child: _StreamingCursor(),
-                          ),
-                        // 非串流中：顯示當時 TTS 朗讀純文字紀錄與再聽一次重播條
-                        if (!msg.isStreaming &&
-                            (msg.ttsText?.isNotEmpty == true || msg.text.isNotEmpty))
-                          _buildTtsReplayBar(msg),
-                      ],
-                    ),
-            ),
-          ),
-        ],
       ),
     );
   }
 
-  /// AI 對話框中的語系標記與語音重播按鈕（不重複呈現文字，僅以聲音圖示提供隨時重聽）
+  /// AI 泡泡的「再聽一次」（設計稿 `.bub .replay`），點擊仍呼叫 [_playOrReplayTts]；
+  /// 同時標示當時朗讀用的是國語還是台語。
   Widget _buildTtsReplayBar(_ChatMessage msg) {
-    final bool isTaigi = msg.ttsLanguage == 'taigi';
-    final bool isPlaying = msg.isPlayingAudio;
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 10),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // 語系標籤 (記錄當時是用台語還是國語)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: isTaigi ? const Color(0xFFEA580C) : const Color(0xFF16A34A),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text(
-              isTaigi ? '🏮 台語' : '🗣️ 國語',
-              style: GoogleFonts.notoSansTc(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          // 聲音 ICON（直接點擊播放/停止，不寫「再聽一次」文字）
-          InkWell(
-            onTap: () => _playOrReplayTts(msg),
-            borderRadius: BorderRadius.circular(22),
-            child: Container(
-              padding: const EdgeInsets.all(7),
-              decoration: BoxDecoration(
-                color: isPlaying
-                    ? const Color(0xFFFEF3C7)
-                    : (isTaigi ? const Color(0xFFFFF7ED) : const Color(0xFFF0FDF4)),
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: isPlaying
-                      ? const Color(0xFFF59E0B)
-                      : (isTaigi ? const Color(0xFFFDBA74) : const Color(0xFF86EFAC)),
-                  width: 1.5,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.06),
-                    blurRadius: 3,
-                    offset: const Offset(0, 1),
-                  ),
-                ],
-              ),
-              child: Icon(
-                isPlaying ? Icons.pause_circle_filled_rounded : Icons.volume_up_rounded,
-                color: isPlaying
-                    ? const Color(0xFFD97706)
-                    : (isTaigi ? const Color(0xFFEA580C) : const Color(0xFF16A34A)),
-                size: 24,
-              ),
-            ),
-          ),
-        ],
-      ),
+    return ChatReplayButton(
+      isPlaying: msg.isPlayingAudio,
+      languageLabel: msg.ttsLanguage == 'taigi' ? '台語' : '國語',
+      onTap: () => _playOrReplayTts(msg),
     );
   }
 
   Widget _buildThinkingBubble() {
+    final c = UbanColors.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(22),
+      child: ChatBubbleFrame(
+        isUser: false,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const ChatThinkingDots(),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text(
+                '小嘎想想…',
+                style: ubanText(18, FontWeight.w600, c.text2),
+              ),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _ThinkingDots(),
-                const SizedBox(width: 8),
-                Text(
-                  '小嘎想想…',
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildInputBar() {
-    return Container(
-      padding: EdgeInsets.fromLTRB(
-        16,
-        10,
-        16,
-        MediaQuery.of(context).viewInsets.bottom > 0
-            ? 12
-            : elderNavClearance(context),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          // 切換：語音 / 鍵盤
-          GestureDetector(
-            key: widget.voiceToggleKey,
-            onTap: () => setState(() => _voiceMode = !_voiceMode),
-            behavior: HitTestBehavior.opaque,
-            child: Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.white,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.08),
-                    blurRadius: 8,
-                    offset: const Offset(0, 3),
-                  ),
-                ],
-              ),
-              child: Icon(
-                _voiceMode ? Icons.keyboard_rounded : Icons.mic_none_rounded,
-                color: AppColors.primaryDark,
-                size: 30,
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: KeyedSubtree(
-              key: widget.inputAreaKey,
-              child: _voiceMode ? _buildHoldToTalkBar() : _buildTextField(),
-            ),
-          ),
-          if (!_voiceMode) ...[
-            const SizedBox(width: 10),
-            Material(
-              color: AppColors.primary,
-              shape: const CircleBorder(),
-              child: InkWell(
-                customBorder: const CircleBorder(),
-                onTap: _send,
-                child: const Padding(
-                  padding: EdgeInsets.all(15),
-                  child:
-                      Icon(Icons.send_rounded, color: Colors.white, size: 30),
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  // 「按住 說話」列
-  Widget _buildHoldToTalkBar() {
-    return GestureDetector(
-      onLongPressStart: (_) => _startListening(),
-      onLongPressEnd: (_) => _stopListeningAndSend(),
-      onLongPressCancel: () => _stopListeningAndSend(),
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        height: 56,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: _isListening ? AppColors.primaryLight : Colors.white,
-          borderRadius: BorderRadius.circular(28),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.08),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Text(
-          _isListening ? '放開　送出' : '按住　說話',
-          style: GoogleFonts.notoSansTc(
-            fontSize: 20,
-            fontWeight: FontWeight.w800,
-            color: AppColors.primaryDark,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTextField() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(28),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: TextField(
-        controller: _controller,
-        minLines: 1,
-        maxLines: 4,
-        autofocus: true,
-        textInputAction: TextInputAction.send,
-        onSubmitted: (_) => _send(),
-        style: GoogleFonts.notoSansTc(
-          fontSize: 20,
-          fontWeight: FontWeight.w600,
-          color: AppColors.textPrimary,
-        ),
-        decoration: InputDecoration(
-          hintText: '想跟小嘎說什麼…',
-          hintStyle:
-              GoogleFonts.notoSansTc(fontSize: 19, color: AppColors.textHint),
-          border: InputBorder.none,
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
-        ),
-      ),
+    return ChatInputBar(
+      voiceMode: _voiceMode,
+      isListening: _isListening,
+      // 切換：語音 / 鍵盤
+      onToggleMode: () => setState(() => _voiceMode = !_voiceMode),
+      // 「按住 說話」：長按開始／結束仍是原本的錄音函式
+      onHoldStart: _startListening,
+      onHoldEnd: _stopListeningAndSend,
+      controller: _controller,
+      onSend: _send,
+      bottomPadding: MediaQuery.of(context).viewInsets.bottom > 0
+          ? 12
+          : elderNavClearance(context),
+      toggleKey: widget.voiceToggleKey,
+      inputAreaKey: widget.inputAreaKey,
     );
   }
 }
@@ -1521,72 +1249,10 @@ class _StreamingCursorState extends State<_StreamingCursor>
         width: 10,
         height: 20,
         decoration: BoxDecoration(
-          color: AppColors.primary,
+          color: UbanColors.of(context).brand,
           borderRadius: BorderRadius.circular(2),
         ),
       ),
-    );
-  }
-}
-
-// ── 三點跳動「思考中」動畫 ──
-class _ThinkingDots extends StatefulWidget {
-  @override
-  State<_ThinkingDots> createState() => _ThinkingDotsState();
-}
-
-class _ThinkingDotsState extends State<_ThinkingDots>
-    with TickerProviderStateMixin {
-  late List<AnimationController> _ctrls;
-  late List<Animation<double>> _anims;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrls = List.generate(3, (i) {
-      final ctrl = AnimationController(
-        vsync: this,
-        duration: const Duration(milliseconds: 500),
-      );
-      Future.delayed(Duration(milliseconds: i * 160), () {
-        if (mounted) ctrl.repeat(reverse: true);
-      });
-      return ctrl;
-    });
-    _anims = _ctrls
-        .map((c) => Tween<double>(begin: 0, end: -6).animate(
-              CurvedAnimation(parent: c, curve: Curves.easeInOut),
-            ))
-        .toList();
-  }
-
-  @override
-  void dispose() {
-    for (final c in _ctrls) c.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: List.generate(3, (i) {
-        return AnimatedBuilder(
-          animation: _anims[i],
-          builder: (_, __) => Transform.translate(
-            offset: Offset(0, _anims[i].value),
-            child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 2),
-              width: 8,
-              height: 8,
-              decoration: BoxDecoration(
-                color: AppColors.primary,
-                shape: BoxShape.circle,
-              ),
-            ),
-          ),
-        );
-      }),
     );
   }
 }

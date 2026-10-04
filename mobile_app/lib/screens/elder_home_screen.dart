@@ -1363,6 +1363,8 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
                 dateCardKey: _homeDateCardKey,
                 newsCardKey: _homeNewsCardKey,
                 moreNewsKey: _homeMoreNewsKey,
+                // 連勝慶祝畫面的「去餵小豬」：切到小豬分頁（沿用既有 _onNavTap）。
+                onGoFeedPig: () => _onNavTap(2),
               ),
               // 1 電話（好友列表）
               FriendsScreen(
@@ -1394,6 +1396,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
                 tasksKey: _profileTasksKey,
                 familyPairingKey: _profileFamilyPairingKey,
                 aiAssistantKey: _profileAiAssistantKey,
+                onGoFeedPig: () => _onNavTap(2),
               ),
             ],
           ),

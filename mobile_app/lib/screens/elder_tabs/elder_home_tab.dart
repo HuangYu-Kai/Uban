@@ -20,6 +20,8 @@ import '../../utils/reminder_schedule.dart';
 import '../../widgets/ui/ui.dart';
 import 'elder_layout.dart';
 import 'widgets/elder_task_sheet.dart';
+import 'streak/streak_celebration.dart';
+import 'streak/streak_service.dart';
 import 'widgets/gem_in.dart';
 import 'widgets/weather_glyph.dart';
 
@@ -30,6 +32,9 @@ class ElderHomeTab extends StatefulWidget {
 
   /// 切換到「聊天」分頁的回呼（首頁「和小雲聊天」大按鈕用）。
   final VoidCallback? onNavigateToChat;
+
+  /// 連勝慶祝畫面的「去餵小豬」：由 `ElderHomeScreen` 傳入，轉成既有的 `_onNavTap(2)`。
+  final VoidCallback? onGoFeedPig;
 
   // ★ 第四十一輪（item 2）：新手指引用的高光目標 GlobalKey。全部選填、預設
   //   null——GlobalKey 必須由上層 ElderHomeScreen 持有並傳入（IndexedStack
@@ -73,6 +78,7 @@ class ElderHomeTab extends StatefulWidget {
     required this.userName,
     this.roomId,
     this.onNavigateToChat,
+    this.onGoFeedPig,
     this.dateCardKey,
     this.newsCardKey,
     this.moreNewsKey,
@@ -331,6 +337,30 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
         ),
       );
     }
+    // ★ 連勝紀錄（新功能）：打卡「成功之後」才檢查，上面的樂觀更新／回退邏輯不變。
+    if (success) unawaited(_checkStreak());
+  }
+
+  bool _taskSheetOpen = false;
+
+  /// 連勝：今天的提醒剛好全部完成、且今天還沒慶祝過，就顯示慶祝畫面。
+  /// 失敗一律吞掉（見 [StreakService.syncToday]），不影響打卡本身。
+  Future<void> _checkStreak() async {
+    final celebration = await StreakService.syncToday(
+      reminders: _reminders,
+      completedIds: _completedReminderIds,
+    );
+    if (celebration == null || !mounted) return;
+    // 抽屜若還開著就先收起來：否則按「去餵小豬」切到小豬分頁後，抽屜會還蓋在上面。
+    // （_taskSheetOpen 只在抽屜存在期間為 true，此時最上層路由就是抽屜。）
+    if (_taskSheetOpen) {
+      final nav = Navigator.of(context, rootNavigator: true);
+      if (nav.canPop()) nav.pop();
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      if (!mounted) return;
+    }
+    await showStreakCelebration(context, celebration,
+        onFeedPig: widget.onGoFeedPig);
   }
 
   /// 長輩端的 roomId 即 elder_profile.elder_id（見 main.dart 的 elderIdUuid）。
@@ -912,6 +942,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
   /// 開「今天要做的事」抽屜（設計稿 `#sh-tasks`）。抽屜內打卡仍走 [_completeNextDose]。
   void _openTaskSheet() {
     HapticFeedback.lightImpact();
+    _taskSheetOpen = true;
     showUbanSheet<void>(
       context,
       (ctx) => ElderTaskSheetBody(
@@ -919,7 +950,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
             groupByStatus(_reminders, _completedReminderIds, DateTime.now()),
         onCheckIn: _completeNextDose,
       ),
-    );
+    ).whenComplete(() => _taskSheetOpen = false);
   }
 
   /// 今日頭條卡（設計稿 `.news-hero`＋`.headline`）。
