@@ -13,6 +13,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../models/almanac_data_helper.dart';
+import 'elder_layout.dart';
 import '../pet_companion_studio/models/pet_growth_state.dart';
 
 /// 兩種長輩圖模式：
@@ -137,10 +138,16 @@ class ElderGreetingTab extends StatefulWidget {
   final int userId;
   final String userName;
 
+  /// 嵌入模式：作為「小豬」分頁下半部的子區塊使用（由外層的捲動容器負責捲動與
+  /// 底部導覽列留白）。true 時不自帶 SafeArea／Expanded／內部捲動，一律用單欄
+  /// 版面；其餘邏輯（範本、金句、分享、存圖）完全不變。
+  final bool embedded;
+
   const ElderGreetingTab({
     super.key,
     required this.userId,
     required this.userName,
+    this.embedded = false,
   });
 
   @override
@@ -778,13 +785,9 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: Color(0xFF55B695),
-      ),
-      child: SafeArea(
-        bottom: false,
-        child: Column(
+    final bool embedded = widget.embedded;
+    final Widget content = Column(
+          mainAxisSize: embedded ? MainAxisSize.min : MainAxisSize.max,
           children: [
             // 頂部列：喜慶標題與朗讀
             Padding(
@@ -829,8 +832,8 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
             ),
 
             // 主內容視圖（宣紙溫暖大底盤）
-            Expanded(
-              child: Container(
+            _expandUnlessEmbedded(
+              Container(
                 decoration: const BoxDecoration(
                   color: Color(0xFFFAF7F2),
                   borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
@@ -842,7 +845,8 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
                   borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
                   child: LayoutBuilder(
                     builder: (context, constraints) {
-                      final bool isTablet = constraints.maxWidth >= 680;
+                      final bool isTablet =
+                          !embedded && constraints.maxWidth >= 680;
                       if (isTablet) {
                         return _buildTabletLayout();
                       } else {
@@ -854,10 +858,18 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
               ),
             ),
           ],
-        ),
+        );
+    return Container(
+      decoration: const BoxDecoration(
+        color: Color(0xFF55B695),
       ),
+      child: embedded ? content : SafeArea(bottom: false, child: content),
     );
   }
+
+  /// 嵌入模式不能用 Expanded（外層捲動容器給的是無限高度）。
+  Widget _expandUnlessEmbedded(Widget child) =>
+      widget.embedded ? child : Expanded(child: child);
 
   /// 📱 平板 / 寬螢幕雙欄佈局：左欄 1:1 卡片，右欄工具與一鍵傳 LINE，長輩不需滾動
   Widget _buildTabletLayout() {
@@ -869,7 +881,7 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
           flex: 5,
           child: SingleChildScrollView(
             physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(24, 16, 16, 120),
+            padding: EdgeInsets.fromLTRB(24, 16, 16, elderNavClearance(context)),
             child: Column(
               children: [
                 _buildModeSelector(),
@@ -889,7 +901,7 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
           flex: 6,
           child: SingleChildScrollView(
             physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(16, 16, 24, 120),
+            padding: EdgeInsets.fromLTRB(16, 16, 24, elderNavClearance(context)),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -950,10 +962,7 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
 
   /// 📱 手機直向單欄佈局
   Widget _buildPhoneLayout() {
-    return SingleChildScrollView(
-      physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 120),
-      child: Column(
+    final Widget column = Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _buildModeSelector(),
@@ -1013,7 +1022,18 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
             ],
           ),
         ],
-      ),
+      );
+    // 嵌入模式：由外層（小豬分頁）捲動並負責導覽列留白，這裡只留 16 底距。
+    if (widget.embedded) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+        child: column,
+      );
+    }
+    return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
+      padding: EdgeInsets.fromLTRB(16, 14, 16, elderNavClearance(context)),
+      child: column,
     );
   }
 

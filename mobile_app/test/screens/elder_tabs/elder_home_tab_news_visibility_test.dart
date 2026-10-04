@@ -47,11 +47,11 @@ void main() {
     GoogleFonts.config.allowRuntimeFetching = false;
   });
 
-  // 導覽列淨空：elder_home_tab.dart 自己的 `_availableNewsImageHeight`
-  // 內文記載「底部 130 已含浮動導覽列 104 的淨空」——直接沿用這份檔案
-  // 自己記載的常數當作「第一屏可視範圍」的判準，不需要另外讀
-  // elder_home_screen.dart（本輪禁止改動的檔案）。
-  const double navClearance = 130;
+  // 導覽列淨空：v3 改用懸浮玻璃導覽列（UbanGlassNavBar），佔
+  // `UbanGlassNavBar.totalHeight`(98) + 安全區（測試環境為 0）；首頁底部留白
+  // 現在是 `elderNavClearance` = 98 + 安全區 + 16 = 114（舊導覽列高 104，
+  // 舊判準寫死 130）。「今日頭條」標題必須在這條線以上才算第一屏可見。
+  const double navClearance = 114;
 
   final sizes = <({String label, double width, double height})>[
     (label: '360x640（窄機）', width: 360.0, height: 640.0),
@@ -245,7 +245,7 @@ void main() {
       }
 
       final headerRect = tester.getRect(find.text('今日頭條'));
-      const double visibleBottom = 640.0 - 130; // navClearance，見上方常數
+      const double visibleBottom = 640.0 - 114; // navClearance，見上方常數
       // ignore: avoid_print
       print('[量測/360x640＋真實資料] 今日頭條標題 bottom='
           '${headerRect.bottom.toStringAsFixed(1)}，可視底線=$visibleBottom');
@@ -296,7 +296,7 @@ void main() {
 
       final headerRect = tester.getRect(find.text('今日頭條'));
       final lastRowRect = tester.getRect(find.text('TEST_NEWS_ITEM_3'));
-      const double visibleBottom = 915.0 - 130; // navClearance，見上方常數
+      const double visibleBottom = 915.0 - 114; // navClearance，見上方常數
       // ignore: avoid_print
       print('[量測/412x915＋真實資料] 今日頭條標題 bottom='
           '${headerRect.bottom.toStringAsFixed(1)}，'

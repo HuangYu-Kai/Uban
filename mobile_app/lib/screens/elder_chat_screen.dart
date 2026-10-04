@@ -13,6 +13,7 @@ import '../services/api_service.dart';
 import '../services/friend_service.dart';
 import '../services/memoir_service.dart';
 import '../theme/app_theme.dart';
+import 'elder_tabs/elder_layout.dart';
 import '../widgets/youtube_bubble_player.dart';
 import 'news_listen_player/news_listen_player_screen.dart';
 import 'elder_screen.dart';
@@ -1353,7 +1354,9 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
         16,
         10,
         16,
-        MediaQuery.of(context).viewInsets.bottom > 0 ? 12 : 120,
+        MediaQuery.of(context).viewInsets.bottom > 0
+            ? 12
+            : elderNavClearance(context),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,

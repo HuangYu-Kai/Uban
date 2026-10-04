@@ -18,6 +18,7 @@ import '../../services/subscription_service.dart';
 import '../../services/weather_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/reminder_schedule.dart';
+import 'elder_layout.dart';
 import '../../widgets/glass_card.dart';
 
 class ElderHomeTab extends StatefulWidget {
@@ -539,7 +540,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
                         child: SingleChildScrollView(
                           physics: const BouncingScrollPhysics(),
                           child: Padding(
-                            padding: const EdgeInsets.fromLTRB(20, 0, 20, 130),
+                            padding: EdgeInsets.fromLTRB(20, 0, 20, elderNavClearance(context)),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [

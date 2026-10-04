@@ -1,11 +1,12 @@
+import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'elder_tabs/elder_home_tab.dart';
 import 'friends_screen.dart';
-import 'elder_tabs/elder_greeting_tab.dart';
+import 'elder_tabs/elder_pet_tab.dart';
+import 'elder_tabs/elder_layout.dart';
 import 'elder_chat_screen.dart';
 import 'elder_tabs/elder_profile_tab.dart';
 import '../globals.dart';
@@ -26,6 +27,7 @@ import '../widgets/global_assistant_button.dart';
 import '../services/local_call_notification.dart';
 // ★ 第四十一輪（item 2）：步驟式高光新手指引元件。
 import '../widgets/spotlight_tutorial.dart';
+import '../widgets/ui/ui.dart';
 // ⏰ 排程提醒管理器
 import '../services/elder_reminder_manager.dart';
 import '../services/local_reminder_notification.dart';
@@ -64,7 +66,7 @@ class ElderHomeScreen extends StatefulWidget {
 }
 
 class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingObserver {
-  int _selectedIndex = 0; // 0:首頁 1:電話 2:社群 3:聊天 4:我的
+  int _selectedIndex = 0; // 0:首頁 1:電話 2:小豬（含祝福圖） 3:聊天 4:我的
 
   bool _isNavigatingToCall = false;
 
@@ -95,8 +97,9 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
   final GlobalKey _chatVoiceToggleKey = GlobalKey();
   final GlobalKey _chatInputAreaKey = GlobalKey();
   final GlobalKey _chatLanguageToggleKey = GlobalKey();
+  // 小豬分頁（掛在 PetHeroStage 上）
+  final GlobalKey _petKey = GlobalKey();
   // 我的分頁
-  final GlobalKey _profilePetKey = GlobalKey();
   final GlobalKey _profileTasksKey = GlobalKey();
   final GlobalKey _profileFamilyPairingKey = GlobalKey();
   final GlobalKey _profileAiAssistantKey = GlobalKey();
@@ -561,11 +564,11 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
       case 1:
         return '【電話】分頁。頁面上列出長輩的家人與親友聯絡人卡片，點擊可直接撥打視訊或電話給老伴或子女';
       case 2:
-        return '【每日祝賀圖】分頁。頁面上會自動結合今天的農民曆、節氣與元氣小豬狀態，生成精美喜氣的早安祝賀圖，長輩可以一鍵分享到 LINE 給親友群拜早安';
+        return '【小豬】分頁。上半是一隻可愛粉紅的元氣小豬夥伴，中間有金黃色「餵小豬」大按鈕，並顯示成長階段與活力；下半是每日吉祥祝賀圖，會結合今天的農民曆、節氣與小豬狀態生成喜氣的早安祝賀圖，長輩可以一鍵分享到 LINE 給親友群拜早安';
       case 3:
         return '【聊天】分頁。這裡是長輩與您（AI 伴侶小嘎）一對一的語音文字聊天室，長輩可以向您傾訴心情、回憶過去或詢問生活';
       case 4:
-        return '【我的／小豬之家】分頁。頁面上是一隻可愛粉紅的元氣小豬夥伴，中間有金黃色「餵小豬」大按鈕，並顯示成長階段與活力，下方有今日生活排程與用藥進度';
+        return '【我的】分頁。頁面上有今日生活排程與用藥進度、家人綁定（出示配對碼）、語音助理設定、重新觀看新手導覽、與家人分享位置的開關，以及切換身分';
       default:
         return '【主功能頁面】';
     }
@@ -1172,8 +1175,8 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
         ),
         TutorialStep(
           targetKey: _navItemKeys[2],
-          title: '社群',
-          body: '這裡可以看家人分享的近況，您也可以分享自己的照片和心情。',
+          title: '小豬',
+          body: '這裡有陪伴您的小豬夥伴，往下還有每天的吉祥祝賀圖，可以傳給親友。',
         ),
         TutorialStep(
           targetKey: _navItemKeys[3],
@@ -1183,7 +1186,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
         TutorialStep(
           targetKey: _navItemKeys[4],
           title: '我的',
-          body: '這裡有您的小豬夥伴、每天的小任務，還有跟家人配對、設定的地方。',
+          body: '這裡有每天的小任務，還有跟家人配對、設定的地方。',
         ),
       ],
     );
@@ -1203,7 +1206,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
         _showPhoneTutorial();
         break;
       case 2:
-        _showGreetingTutorial();
+        _showPetTutorial();
         break;
       case 3:
         _showChatTutorial();
@@ -1266,11 +1269,16 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     );
   }
 
-  void _showGreetingTutorial() {
+  void _showPetTutorial() {
     SpotlightTutorial.showIfNeeded(
       context,
-      tutorialId: 'elder_greeting_v1',
+      tutorialId: 'elder_pet_v1',
       steps: [
+        TutorialStep(
+          targetKey: _petKey,
+          title: '您的小豬夥伴',
+          body: '這是陪伴您的小豬，按一下摸摸牠，牠會陪您一起變健康。',
+        ),
         const TutorialStep(
           title: '每日吉利祝賀圖',
           body: '每天早上這裡會自動為您準備喜氣的早安祝賀圖，點一下就能傳到 LINE 給朋友！',
@@ -1309,11 +1317,6 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
       tutorialId: 'elder_profile_v1',
       steps: [
         TutorialStep(
-          targetKey: _profilePetKey,
-          title: '您的小豬夥伴',
-          body: '這是陪伴您的小豬，按一下摸摸牠，牠會陪您一起變健康。',
-        ),
-        TutorialStep(
           targetKey: _profileTasksKey,
           title: '今日任務',
           body: '這裡看家人幫您安排的小任務，完成了記得來打勾。',
@@ -1345,7 +1348,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
         }
       },
       child: Scaffold(
-        backgroundColor: const Color(0xFFF1F5F9),
+        backgroundColor: UbanColors.of(context).bg,
         body: Stack(
         children: [
           // 頁面內容切換
@@ -1370,10 +1373,11 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
                 firstCallKey: _phoneCallKey,
                 firstVideoKey: _phoneVideoKey,
               ),
-              // 2 每日吉利祝賀圖（長輩圖、節氣與小豬結合）
-              ElderGreetingTab(
+              // 2 小豬（上半小豬之家、下半每日吉利祝賀圖）
+              ElderPetTab(
                 userId: widget.userId,
                 userName: widget.userName,
+                petKey: _petKey,
               ),
               // 3 聊天（小雲 AI 聊天）
               ElderChatScreen(
@@ -1387,7 +1391,6 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
               ElderProfileTab(
                 userId: widget.userId,
                 userName: widget.userName,
-                petKey: _profilePetKey,
                 tasksKey: _profileTasksKey,
                 familyPairingKey: _profileFamilyPairingKey,
                 aiAssistantKey: _profileAiAssistantKey,
@@ -1401,10 +1404,12 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
             bottom: 0,
             child: _buildFloatingNavBar(),
           ),
-          // 🛟 長輩隨身救生圈：「❓ 怎麼用」隨叫隨到求助按鈕
+          // 🛟 長輩隨身救生圈：「❓ 怎麼用」隨叫隨到求助按鈕（在導覽列上方）
           Positioned(
             right: 16,
-            bottom: 116,
+            bottom: UbanGlassNavBar.totalHeight +
+                MediaQuery.paddingOf(context).bottom +
+                14,
             child: _buildHelpButton(),
           ),
         ],
@@ -1413,39 +1418,47 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
   );
 }
 
+  /// 設計稿 `.helppill`：玻璃膠囊（blur 20、glass 底、glassLine 邊框）。
   Widget _buildHelpButton() {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
+    final c = UbanColors.of(context);
+    final radius = BorderRadius.circular(999);
+    return Semantics(
+      button: true,
+      label: '怎麼用？',
+      excludeSemantics: true,
+      child: PressableScale(
         onTap: _showHelpSheet,
-        borderRadius: BorderRadius.circular(30),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: DecoratedBox(
           decoration: BoxDecoration(
-            color: const Color(0xFF2E7D78),
-            borderRadius: BorderRadius.circular(30),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.18),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
+            borderRadius: radius,
+            boxShadow: c.shadows.glass,
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.help_outline_rounded, color: Colors.white, size: 22),
-              const SizedBox(width: 6),
-              Text(
-                '怎麼用？',
-                style: GoogleFonts.notoSansTc(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
+          child: ClipRRect(
+            borderRadius: radius,
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(12, 10, 16, 10),
+                decoration: BoxDecoration(
+                  color: c.glass,
+                  borderRadius: radius,
+                  border: Border.all(color: c.glassLine, width: 1),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.help_outline_rounded,
+                        size: 20, color: c.brandStrong),
+                    const SizedBox(width: 6),
+                    Text(
+                      '怎麼用？',
+                      maxLines: 1,
+                      style: ubanText(16, FontWeight.w700, c.brandStrong),
+                    ),
+                  ],
                 ),
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -1453,100 +1466,56 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
   }
 
   void _showHelpSheet() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) {
-        return Container(
-          padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Center(
-                child: Container(
-                  width: 44,
-                  height: 5,
-                  decoration: BoxDecoration(
-                    color: Colors.grey[300],
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 18),
-              Text(
-                '👵 阿公阿嬤安心救生圈',
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: const Color(0xFF1E293B),
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '遇到看不懂或按不出來？點選下方隨時幫您：',
-                style: GoogleFonts.notoSansTc(fontSize: 16, color: const Color(0xFF64748B)),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 20),
-              ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  _triggerGoogleAssistantOverlay('請告訴我這個畫面怎麼用');
-                },
-                icon: const Icon(Icons.mic_rounded, size: 26),
-                label: Text(
-                  '🎙️ 聽小嘎說話（語音幫忙）',
-                  style: GoogleFonts.notoSansTc(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF2E7D78),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                ),
-              ),
-              const SizedBox(height: 12),
-              OutlinedButton.icon(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  _replayCurrentTabTutorial();
-                },
-                icon: const Icon(Icons.menu_book_rounded, size: 24),
-                label: Text(
-                  '📖 觀看本頁功能導覽',
-                  style: GoogleFonts.notoSansTc(fontSize: 17, fontWeight: FontWeight.bold),
-                ),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF2E7D78),
-                  side: const BorderSide(color: Color(0xFF2E7D78), width: 1.5),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextButton.icon(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  _onNavTap(1);
-                },
-                icon: const Icon(Icons.phone_rounded, color: Color(0xFF0284C7), size: 24),
-                label: Text(
-                  '📞 撥打電話給家人',
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 16,
-                    color: const Color(0xFF0284C7),
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
-          ),
+    showUbanSheet<void>(
+      context,
+      useRootNavigator: false,
+      (ctx) {
+        final c = UbanColors.of(ctx);
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              '👵 阿公阿嬤安心救生圈',
+              style: ubanText(22, FontWeight.w900, c.text),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '遇到看不懂或按不出來？點選下方隨時幫您：',
+              style: ubanText(16, FontWeight.w500, c.text2),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 20),
+            UbanButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                _triggerGoogleAssistantOverlay('請告訴我這個畫面怎麼用');
+              },
+              icon: Icons.mic_rounded,
+              label: '🎙️ 聽小嘎說話（語音幫忙）',
+            ),
+            const SizedBox(height: 12),
+            UbanButton(
+              variant: UbanButtonVariant.tonal,
+              onPressed: () {
+                Navigator.pop(ctx);
+                _replayCurrentTabTutorial();
+              },
+              icon: Icons.menu_book_rounded,
+              label: '📖 觀看本頁功能導覽',
+            ),
+            const SizedBox(height: 12),
+            UbanButton(
+              variant: UbanButtonVariant.ghost,
+              onPressed: () {
+                Navigator.pop(ctx);
+                _onNavTap(1);
+              },
+              icon: Icons.phone_rounded,
+              label: '📞 撥打電話給家人',
+            ),
+          ],
         );
       },
     );
@@ -1616,77 +1585,10 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
   }
 
   Widget _buildFloatingNavBar() {
-    return Container(
-      height: 104,
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(30),
-          topRight: Radius.circular(30),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, -5),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _buildNavItem(0, Icons.home_rounded, '首頁'),
-          _buildNavItem(1, Icons.phone_rounded, '電話'),
-          _buildNavItem(2, Icons.local_florist_rounded, '祝福圖'),
-          _buildNavItem(3, Icons.chat_bubble_rounded, '聊天'),
-          _buildNavItem(4, Icons.person_rounded, '我的'),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildNavItem(int index, IconData icon, String label) {
-    final isSelected = _selectedIndex == index;
-    final Color activeColor = const Color(0xFF59B294);
-    final Color inactiveColor = const Color(0xFF94A3B8);
-    return Expanded(
-      child: GestureDetector(
-        key: _navItemKeys[index],
-        onTap: () => _onNavTap(index),
-        behavior: HitTestBehavior.opaque,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 250),
-          curve: Curves.easeOutCubic,
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-          decoration: BoxDecoration(
-            color: isSelected
-                ? activeColor.withValues(alpha: 0.12)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                icon,
-                size: 32,
-                color: isSelected ? activeColor : inactiveColor,
-              ),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 17,
-                  fontWeight: isSelected ? FontWeight.w900 : FontWeight.w700,
-                  color: isSelected ? activeColor : inactiveColor,
-                  height: 1.0,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+    return UbanGlassNavBar(
+      items: buildElderNavItems(_navItemKeys),
+      currentIndex: _selectedIndex,
+      onTap: _onNavTap,
     );
   }
 }

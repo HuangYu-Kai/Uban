@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../theme/app_theme.dart';
+import 'elder_tabs/elder_layout.dart';
 import '../services/api_service.dart';
 import '../services/friend_service.dart';
 import 'elder_add_friend_screen.dart';
@@ -396,8 +397,8 @@ class _FriendsScreenState extends State<FriendsScreen>
       onRefresh: _loadFriendsData,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(
-            AppSpacing.md, AppSpacing.md, AppSpacing.md, 120),
+        padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md,
+            AppSpacing.md, elderNavClearance(context)),
         children: [
           _buildAddFriendButton(),
           const SizedBox(height: AppSpacing.md),
@@ -664,8 +665,8 @@ class _FriendsScreenState extends State<FriendsScreen>
 
   Widget _buildFriendList() {
     return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(
-          AppSpacing.md, AppSpacing.md, AppSpacing.md, 120),
+      padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md,
+          AppSpacing.md, elderNavClearance(context)),
       itemCount: _familyList.length,
       separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.md),
       itemBuilder: (context, index) {
