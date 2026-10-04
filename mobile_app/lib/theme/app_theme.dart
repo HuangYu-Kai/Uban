@@ -199,6 +199,7 @@ ThemeData buildAppTheme(BuildContext context) {
     colorScheme: colorScheme,
     useMaterial3: true,
     scaffoldBackgroundColor: AppColors.background,
+    extensions: const <ThemeExtension<dynamic>>[UbanColors.light],
     textTheme: GoogleFonts.notoSansTcTextTheme(Theme.of(context).textTheme),
     appBarTheme: const AppBarTheme(
       backgroundColor: AppColors.surface,
@@ -224,4 +225,296 @@ ThemeData buildAppTheme(BuildContext context) {
       shape: RoundedRectangleBorder(borderRadius: AppRadius.cardAll),
     ),
   );
+}
+
+/// 新設計系統的深色 ThemeData（與 [buildAppTheme] 同結構）。
+ThemeData buildAppDarkTheme(BuildContext context) {
+  const c = UbanColors.dark;
+  final colorScheme = ColorScheme.fromSeed(
+    seedColor: AppColors.primary,
+    brightness: Brightness.dark,
+  ).copyWith(surface: c.surface);
+
+  return ThemeData(
+    colorScheme: colorScheme,
+    useMaterial3: true,
+    scaffoldBackgroundColor: c.bg,
+    extensions: const <ThemeExtension<dynamic>>[UbanColors.dark],
+    textTheme: GoogleFonts.notoSansTcTextTheme(
+      ThemeData(brightness: Brightness.dark).textTheme,
+    ),
+    appBarTheme: AppBarTheme(
+      backgroundColor: c.surface,
+      foregroundColor: c.text,
+      elevation: 0,
+      centerTitle: true,
+    ),
+    cardTheme: CardThemeData(
+      color: c.surface,
+      elevation: 0,
+      shape: RoundedRectangleBorder(borderRadius: AppRadius.cardAll),
+    ),
+  );
+}
+
+/// 新設計系統陰影（ui.css 的 --shadow / --glass-shadow，中性、不帶色光暈）。
+@immutable
+class UbanShadows {
+  final List<BoxShadow> card;
+  final List<BoxShadow> glass;
+
+  const UbanShadows({required this.card, required this.glass});
+
+  static const light = UbanShadows(
+    card: [
+      BoxShadow(
+          color: Color.fromRGBO(16, 40, 30, .05),
+          blurRadius: 2,
+          offset: Offset(0, 1)),
+      BoxShadow(
+          color: Color.fromRGBO(16, 40, 30, .05),
+          blurRadius: 20,
+          offset: Offset(0, 6)),
+    ],
+    glass: [
+      BoxShadow(
+          color: Color.fromRGBO(20, 40, 32, .12),
+          blurRadius: 30,
+          offset: Offset(0, 10)),
+    ],
+  );
+
+  static const dark = UbanShadows(
+    card: [
+      BoxShadow(
+          color: Color.fromRGBO(0, 0, 0, .3),
+          blurRadius: 2,
+          offset: Offset(0, 1)),
+      BoxShadow(
+          color: Color.fromRGBO(0, 0, 0, .2),
+          blurRadius: 20,
+          offset: Offset(0, 6)),
+    ],
+    glass: [
+      BoxShadow(
+          color: Color.fromRGBO(0, 0, 0, .45),
+          blurRadius: 30,
+          offset: Offset(0, 10)),
+    ],
+  );
+
+  static UbanShadows lerp(UbanShadows a, UbanShadows b, double t) =>
+      UbanShadows(
+        card: BoxShadow.lerpList(a.card, b.card, t) ?? a.card,
+        glass: BoxShadow.lerpList(a.glass, b.glass, t) ?? a.glass,
+      );
+}
+
+/// 新設計系統色票（對應 design_prototype/ui.css 的 CSS 變數，淺／深各一組）。
+///
+/// 取用：`UbanColors.of(context).brand`。既有 [AppColors] 保留作相容層。
+@immutable
+class UbanColors extends ThemeExtension<UbanColors> {
+  final Color brand,
+      brandFill,
+      onBrand,
+      brandStrong,
+      brandContainer,
+      brandSoft,
+      bg,
+      surface,
+      surface2,
+      surface3,
+      glass,
+      glassLine,
+      line,
+      text,
+      text2,
+      text3,
+      warm,
+      warmContainer,
+      danger,
+      dangerContainer,
+      info,
+      infoContainer,
+      lineGreen,
+      scrim;
+  final UbanShadows shadows;
+
+  const UbanColors({
+    required this.brand,
+    required this.brandFill,
+    required this.onBrand,
+    required this.brandStrong,
+    required this.brandContainer,
+    required this.brandSoft,
+    required this.bg,
+    required this.surface,
+    required this.surface2,
+    required this.surface3,
+    required this.glass,
+    required this.glassLine,
+    required this.line,
+    required this.text,
+    required this.text2,
+    required this.text3,
+    required this.warm,
+    required this.warmContainer,
+    required this.danger,
+    required this.dangerContainer,
+    required this.info,
+    required this.infoContainer,
+    required this.lineGreen,
+    required this.scrim,
+    required this.shadows,
+  });
+
+  static const UbanColors light = UbanColors(
+    brand: Color(0xFF59B294),
+    brandFill: Color(0xFF3D9C7C),
+    onBrand: Color(0xFFFFFFFF),
+    brandStrong: Color(0xFF1F7A5C),
+    brandContainer: Color(0xFFDFF3EB),
+    brandSoft: Color(0xFFEEF8F4),
+    bg: Color(0xFFF6F8F7),
+    surface: Color(0xFFFFFFFF),
+    surface2: Color(0xFFEEF3F1),
+    surface3: Color(0xFFE3EAE7),
+    glass: Color.fromRGBO(255, 255, 255, .76),
+    glassLine: Color.fromRGBO(255, 255, 255, .8),
+    line: Color(0xFFE3EAE7),
+    text: Color(0xFF16201C),
+    text2: Color(0xFF5B6B64),
+    text3: Color(0xFF8A9A93),
+    warm: Color(0xFFB8661F),
+    warmContainer: Color(0xFFFDF0E2),
+    danger: Color(0xFFE5484D),
+    dangerContainer: Color(0xFFFDE8E8),
+    info: Color(0xFF2F6FB3),
+    infoContainer: Color(0xFFE5EFFA),
+    lineGreen: Color(0xFF06C755),
+    scrim: Color.fromRGBO(5, 15, 11, .45),
+    shadows: UbanShadows.light,
+  );
+
+  static const UbanColors dark = UbanColors(
+    brand: Color(0xFF6FCBAA),
+    brandFill: Color(0xFF6FCBAA),
+    onBrand: Color(0xFF062A1D),
+    brandStrong: Color(0xFF9BE3C8),
+    brandContainer: Color(0xFF17372C),
+    brandSoft: Color(0xFF132520),
+    bg: Color(0xFF0E1412),
+    surface: Color(0xFF171E1B),
+    surface2: Color(0xFF1E2724),
+    surface3: Color(0xFF26302C),
+    glass: Color.fromRGBO(30, 39, 36, .74),
+    glassLine: Color.fromRGBO(255, 255, 255, .09),
+    line: Color(0xFF26302C),
+    text: Color(0xFFECF2EF),
+    text2: Color(0xFF9DB0A8),
+    text3: Color(0xFF6E7F78),
+    warm: Color(0xFFF5B877),
+    warmContainer: Color(0xFF3A2A18),
+    danger: Color(0xFFFF6B6E),
+    dangerContainer: Color(0xFF3A1A1B),
+    info: Color(0xFF8DBBEA),
+    infoContainer: Color(0xFF18273A),
+    lineGreen: Color(0xFF06C755),
+    scrim: Color.fromRGBO(0, 0, 0, .6),
+    shadows: UbanShadows.dark,
+  );
+
+  /// 取目前主題的色票；沒掛 extension 時退回淺色。
+  static UbanColors of(BuildContext context) =>
+      Theme.of(context).extension<UbanColors>() ?? light;
+
+  @override
+  UbanColors copyWith({
+    Color? brand,
+    Color? brandFill,
+    Color? onBrand,
+    Color? brandStrong,
+    Color? brandContainer,
+    Color? brandSoft,
+    Color? bg,
+    Color? surface,
+    Color? surface2,
+    Color? surface3,
+    Color? glass,
+    Color? glassLine,
+    Color? line,
+    Color? text,
+    Color? text2,
+    Color? text3,
+    Color? warm,
+    Color? warmContainer,
+    Color? danger,
+    Color? dangerContainer,
+    Color? info,
+    Color? infoContainer,
+    Color? lineGreen,
+    Color? scrim,
+    UbanShadows? shadows,
+  }) =>
+      UbanColors(
+        brand: brand ?? this.brand,
+        brandFill: brandFill ?? this.brandFill,
+        onBrand: onBrand ?? this.onBrand,
+        brandStrong: brandStrong ?? this.brandStrong,
+        brandContainer: brandContainer ?? this.brandContainer,
+        brandSoft: brandSoft ?? this.brandSoft,
+        bg: bg ?? this.bg,
+        surface: surface ?? this.surface,
+        surface2: surface2 ?? this.surface2,
+        surface3: surface3 ?? this.surface3,
+        glass: glass ?? this.glass,
+        glassLine: glassLine ?? this.glassLine,
+        line: line ?? this.line,
+        text: text ?? this.text,
+        text2: text2 ?? this.text2,
+        text3: text3 ?? this.text3,
+        warm: warm ?? this.warm,
+        warmContainer: warmContainer ?? this.warmContainer,
+        danger: danger ?? this.danger,
+        dangerContainer: dangerContainer ?? this.dangerContainer,
+        info: info ?? this.info,
+        infoContainer: infoContainer ?? this.infoContainer,
+        lineGreen: lineGreen ?? this.lineGreen,
+        scrim: scrim ?? this.scrim,
+        shadows: shadows ?? this.shadows,
+      );
+
+  @override
+  UbanColors lerp(ThemeExtension<UbanColors>? other, double t) {
+    if (other is! UbanColors) return this;
+    Color l(Color a, Color b) => Color.lerp(a, b, t)!;
+    return UbanColors(
+      brand: l(brand, other.brand),
+      brandFill: l(brandFill, other.brandFill),
+      onBrand: l(onBrand, other.onBrand),
+      brandStrong: l(brandStrong, other.brandStrong),
+      brandContainer: l(brandContainer, other.brandContainer),
+      brandSoft: l(brandSoft, other.brandSoft),
+      bg: l(bg, other.bg),
+      surface: l(surface, other.surface),
+      surface2: l(surface2, other.surface2),
+      surface3: l(surface3, other.surface3),
+      glass: l(glass, other.glass),
+      glassLine: l(glassLine, other.glassLine),
+      line: l(line, other.line),
+      text: l(text, other.text),
+      text2: l(text2, other.text2),
+      text3: l(text3, other.text3),
+      warm: l(warm, other.warm),
+      warmContainer: l(warmContainer, other.warmContainer),
+      danger: l(danger, other.danger),
+      dangerContainer: l(dangerContainer, other.dangerContainer),
+      info: l(info, other.info),
+      infoContainer: l(infoContainer, other.infoContainer),
+      lineGreen: l(lineGreen, other.lineGreen),
+      scrim: l(scrim, other.scrim),
+      shadows: UbanShadows.lerp(shadows, other.shadows, t),
+    );
+  }
 }

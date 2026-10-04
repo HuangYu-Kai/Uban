@@ -1,6 +1,8 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 
+import '../theme/app_theme.dart';
+
 /// 蘋果風「毛玻璃」容器（frosted / liquid glass）。
 ///
 /// 半透明底 + 背景模糊 + 細白邊 + 柔和高光與陰影。
@@ -17,6 +19,10 @@ class GlassCard extends StatelessWidget {
   final double borderOpacity;
   final VoidCallback? onTap;
 
+  /// true 時改用新設計系統（UbanColors）的玻璃底、細邊與中性陰影；
+  /// 預設 false，外觀與舊版完全相同。
+  final bool useUbanColors;
+
   const GlassCard({
     super.key,
     required this.child,
@@ -27,11 +33,13 @@ class GlassCard extends StatelessWidget {
     this.tintOpacity = 0.5,
     this.borderOpacity = 0.55,
     this.onTap,
+    this.useUbanColors = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final radiusObj = BorderRadius.circular(radius);
+    final uc = useUbanColors ? UbanColors.of(context) : null;
 
     Widget glass = ClipRRect(
       borderRadius: radiusObj,
@@ -40,18 +48,25 @@ class GlassCard extends StatelessWidget {
         child: Container(
           decoration: BoxDecoration(
             borderRadius: radiusObj,
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                tint.withValues(alpha: (tintOpacity + 0.12).clamp(0.0, 1.0)),
-                tint.withValues(alpha: (tintOpacity - 0.08).clamp(0.0, 1.0)),
-              ],
-            ),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: borderOpacity),
-              width: 1.5,
-            ),
+            color: uc?.glass,
+            gradient: uc != null
+                ? null
+                : LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      tint.withValues(
+                          alpha: (tintOpacity + 0.12).clamp(0.0, 1.0)),
+                      tint.withValues(
+                          alpha: (tintOpacity - 0.08).clamp(0.0, 1.0)),
+                    ],
+                  ),
+            border: uc != null
+                ? Border.all(color: uc.glassLine, width: 1)
+                : Border.all(
+                    color: Colors.white.withValues(alpha: borderOpacity),
+                    width: 1.5,
+                  ),
           ),
           child: Padding(padding: padding, child: child),
         ),
@@ -61,13 +76,14 @@ class GlassCard extends StatelessWidget {
     Widget shadowed = DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: radiusObj,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: 22,
-            offset: const Offset(0, 12),
-          ),
-        ],
+        boxShadow: uc?.shadows.glass ??
+            [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.08),
+                blurRadius: 22,
+                offset: const Offset(0, 12),
+              ),
+            ],
       ),
       child: glass,
     );
