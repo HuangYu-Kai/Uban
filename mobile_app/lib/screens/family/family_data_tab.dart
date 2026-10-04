@@ -22,6 +22,7 @@ import 'memoirs_gallery_screen.dart';
 // 接進來等於在誠實的分頁裡塞一張假資料卡片，違反本輪誠實性要求，故留待
 // 之後真的接上裝置資料再處理。
 import 'health_trends_screen.dart';
+import 'outing_trends_screen.dart';
 import 'widgets/emotion_preview_card.dart';
 import '../../widgets/error_boundary.dart';
 
@@ -663,6 +664,9 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
                 // 2.5 健康趨勢入口 + 情緒關注預覽卡（第五十輪：接回導覽，見檔頭註解）
                 ErrorBoundary(name: '健康趨勢入口卡片', builder: () => _buildHealthTrendsEntryCard()),
                 const SizedBox(height: 18),
+                // 2.6 外出趨勢入口（移動軌跡延伸第三階段）
+                ErrorBoundary(name: '外出趨勢入口卡片', builder: () => _buildOutingTrendsEntryCard()),
+                const SizedBox(height: 18),
                 ErrorBoundary(
                   name: '情緒關注預覽卡片',
                   builder: () => EmotionPreviewCard(
@@ -1295,6 +1299,91 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
         ),
       ),
     ).animate().fadeIn(delay: 75.ms, duration: 350.ms);
+  }
+
+  // ─── 2.6 外出趨勢入口卡 (Outing Trends Entry) ───
+  // 移動軌跡延伸第三階段：點進 `OutingTrendsScreen` 看長輩最近 7／30 天的
+  // 外出次數、移動距離與在外時間。刻意用靜態文字、不在本分頁預先打
+  // `getDaily`——本頁已有多支啟動即呼叫的 API，而且父層輪詢會頻繁重建，
+  // 入口卡不值得多一個網路請求；數字都在點進去的畫面裡。
+  // 版面照 `_buildHealthTrendsEntryCard` 第五十二輪修正後的寫法：標題是
+  // `Row` 內 `Expanded` 底下 `Column` 的一般 `Text`，不可在 Column 裡再包
+  // `Flexible`（會在無界高度下於 layout 階段丟例外）。
+
+  Widget _buildOutingTrendsEntryCard() {
+    if (widget.currentElder == null) return const SizedBox.shrink();
+    final elder = widget.currentElder!;
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(24),
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => OutingTrendsScreen(
+              // 與首頁 GPS 軌跡卡片一致：優先用長輩的 elderId 字串，缺漏才退回資料庫 id。
+              elderId: elder.elderId ?? elder.id.toString(),
+              userId: widget.userId,
+              elderName: elder.displayName,
+            ),
+          ),
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: cs.surface,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: cs.outline, width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: (isDark ? Colors.black : cs.outline).withValues(alpha: isDark ? 0.35 : 0.08),
+              blurRadius: 6,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: cs.secondary,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: cs.outline, width: 1.2),
+              ),
+              child: Icon(Icons.directions_walk_rounded, color: cs.onSecondary, size: 24),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '外出趨勢',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.notoSansTc(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      color: cs.onSurface,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '每天外出次數、移動距離與在外時間',
+                    style: GoogleFonts.notoSansTc(fontSize: 13, color: cs.onSurfaceVariant, fontWeight: FontWeight.w500),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.arrow_forward_ios_rounded, color: cs.outline, size: 16),
+          ],
+        ),
+      ),
+    ).animate().fadeIn(delay: 85.ms, duration: 350.ms);
   }
 
   // ─── 3. 人生故事膠囊 (Memoirs & Family Legacy) ───

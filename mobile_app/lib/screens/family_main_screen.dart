@@ -11,6 +11,7 @@ import 'family/family_interaction_tab.dart';
 import 'family/family_data_tab.dart';
 import '../theme/family_theme.dart';
 import 'family/alert_center_screen.dart';
+import 'family/elder_location_map_screen.dart';
 import 'family/subscription_test_screen.dart';
 // ⚠️ 這行 import 在分支整合時遺失（:798 有 const FamilySubscriptionScreen() 卻無 import），
 //    2026-08-10 第十九輪補回。
@@ -31,6 +32,8 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import '../services/cctv_alert_notification.dart';
+import '../services/location_alert_notification.dart';
+import '../utils/alert_display.dart';
 
 class FamilyMainScreen extends StatefulWidget {
   final int userId;
@@ -107,6 +110,8 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   //   誤清，裝置在線清單自此不再更新直到重啟 App。
   Function(List<dynamic>)? _ownElderDevicesUpdate;
   Function(Map<String, dynamic>)? _ownElderZoneUpdate;
+  // 📍 安心提醒（location-alert）回呼的「自己那一份」，dispose 時以 identical() 歸還（G102）。
+  Function(Map<String, dynamic>)? _ownLocationAlert;
 
   // ★ 移植自 family_dashboard_view.dart：監控裝置清單、CCTV 警報、訂閱層級
   //   （型別對齊該檔實際宣告：_monitorDevices 為 List<dynamic>、_tierLevel 為 String）
@@ -414,6 +419,46 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _maybeShowMainTutorial();
     });
+
+    // 📍 冷啟動：App 被殺死時點了「安心提醒」通知，payload 只在 launch details。
+    //   刻意放在家屬主畫面而不是 main.dart：能走到這裡就代表 Splash 已把家屬導進
+    //   主畫面，不必改動 main.dart 既有的冷啟動導航邏輯（護欄 G13）。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _maybeOpenLocationAlertFromLaunch();
+    });
+  }
+
+  /// 📍 冷啟動消費「安心提醒」通知的點擊 → 開啟該長輩的 GPS 地圖。
+  ///
+  /// 來電永遠優先：Splash 尚未結束（`splashActive`）時先等（比照 main.dart 的
+  /// 200ms 輪詢、上限 20s）；等完或消費前後只要有待接聽的 `pendingAcceptedCall`
+  /// 就放棄導航——不疊在來電畫面前，也不重試。`consumeLaunchTap()` 本身一次啟動
+  /// 只回傳一次，且內含家屬端角色守門（fail-closed）。
+  Future<void> _maybeOpenLocationAlertFromLaunch() async {
+    try {
+      final tap = await LocationAlertNotification.consumeLaunchTap();
+      if (tap == null) return;
+      int tick = 0;
+      while (splashActive && tick < 100 && mounted) {
+        await Future.delayed(const Duration(milliseconds: 200));
+        tick++;
+      }
+      if (!mounted) return;
+      if (pendingAcceptedCall.value != null) {
+        debugPrint('📍 [FamilyMainScreen] 有待接聽來電，放棄安心提醒冷啟動導航');
+        return;
+      }
+      if (widget.userId <= 0) return;
+      Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => ElderLocationMapScreen(
+          elderId: tap.$1,
+          userId: widget.userId,
+          elderName: tap.$2,
+        ),
+      ));
+    } catch (e) {
+      debugPrint('⚠️ [FamilyMainScreen] 安心提醒冷啟動導航失敗: $e');
+    }
   }
 
   /// 載入使用者在外觀設定中所選的深淺色偏好（預設為 Light）
@@ -594,6 +639,23 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
       if (!mounted) return;
       setState(() => _questionRefreshToken++);
     };
+
+    // 📍 長輩定位異常的「安心提醒」：家屬 App 開著時走 Socket，沒有收件匣 UI，
+    //    所以這裡直接補一則一般優先級的本機通知（點擊開 GPS 地圖，見 main.dart）。
+    //    刻意**不**檢查 `mounted`：通知不需要 context，畫面即使剛被換掉也不該漏掉
+    //    一則安心提醒；欄位歸還由 dispose 的 identical() 守衛負責。
+    //    欄位對應：Socket 是 snake_case（elder_id…），通知 API 是 camelCase。
+    _ownLocationAlert = (data) {
+      LocationAlertNotification.show(
+        elderId: (data['elder_id'] ?? '').toString(),
+        elderName: (data['elder_name'] ?? '').toString(),
+        rule: (data['rule'] ?? '').toString(),
+        title: '安心提醒',
+        body: (data['message'] ?? '').toString(),
+        alertId: (data['alert_id'] ?? '').toString(),
+      );
+    };
+    _signaling.onLocationAlert = _ownLocationAlert;
 
     _ownElderDevicesUpdate = (devices) {
       if (!mounted) return;
@@ -1105,6 +1167,10 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
       if (_knownAlertKeys.length > 100) {
         _knownAlertKeys.remove(_knownAlertKeys.first);
       }
+      // ★ 2026-10-02：語音求救（sos_voice）可能附帶長輩最後位置（latitude／longitude／
+      //   location_at，只在後端有位置時才有）。這裡整包 Map 原樣複製，欄位就直接留在
+      //   _activeAlerts 的項目裡，由各畫面用 AlertDisplay.parseLocation／parseLocationAt
+      //   容錯解析，不另外建模型、也不在這裡補預設值（沒有位置就是沒有鍵）。
       final newAlert = Map<String, dynamic>.from(data is Map ? data : {});
       setState(() {
         _activeAlerts.insert(0, newAlert);
@@ -1248,6 +1314,11 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     //   家屬把第 N 次提醒誤會成又一次新事件。
     final bool isReminder =
         (alert['is_reminder'] ?? alert['isReminder'])?.toString() == 'true';
+    // ★ 2026-10-02：語音求救附帶的長輩最後位置（沒有位置就是 null，彈窗不顯示任何位置 UI）。
+    final ({double lat, double lng})? sosLocation = alertType == 'sos_voice'
+        ? AlertDisplay.parseLocation(alert)
+        : null;
+    final bool hasSosLocation = sosLocation != null;
 
     // 1) 保持螢幕亮著——僅限 App 本來就在前景時（見 _lifecycleState 欄位說明）。
     //   背景時開啟對「目前看不見的視窗」沒有實際點亮效果，只會讓 wakelock
@@ -1280,6 +1351,10 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
         // ★ 第四十九輪 item 12：告訴 CctvAlertNotification.show() 這是
         //   逾時未處理的重複提醒還是第一次偵測，切換通知標題／內文文案。
         'isReminder': isReminder.toString(),
+        // ★ 2026-10-02：語音求救附帶位置時，通知內文會加註「（已附上最後位置）」
+        //   （見 CctvAlertNotification._resolveBody）；沒有位置就不放這個鍵。
+        if (sosLocation != null) 'latitude': sosLocation.lat.toString(),
+        if (sosLocation != null) 'longitude': sosLocation.lng.toString(),
       });
     } catch (e) {
       debugPrint('⚠️ [FamilyMainScreen] 跌倒警報通知發送失敗: $e');
@@ -1350,6 +1425,23 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     final String rawElderId =
         (alert['elder_id'] ?? alert['elderId'] ?? '').toString();
 
+    // ★ 2026-10-02：「查看位置」需要家屬 userId；沒有位置、或 userId 無效就不顯示這個鍵。
+    final bool canShowLocation =
+        hasSosLocation && widget.userId > 0 && rawElderId.isNotEmpty;
+    final String? lastLocationText = hasSosLocation
+        ? AlertDisplay.lastLocationText(AlertDisplay.parseLocationAt(alert))
+        : null;
+    // 地圖標題用的長輩名：警報自帶 elder_name 優先，其次從已配對長輩比對 elder_id。
+    final String sosElderName = () {
+      final String fromAlert =
+          (alert['elder_name'] ?? alert['elderName'] ?? '').toString();
+      if (fromAlert.isNotEmpty) return fromAlert;
+      for (final e in _elders) {
+        if ((e.elderId ?? e.id.toString()) == rawElderId) return e.displayName;
+      }
+      return _currentElder?.displayName ?? '長輩';
+    }();
+
     final double? conf = double.tryParse(
         (alert['confidence'] ?? '').toString());
     final String confText =
@@ -1390,6 +1482,12 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                 const SizedBox(height: 4),
                 Text(confText, style: const TextStyle(color: Colors.black54)),
               ],
+              // ★ 2026-10-02：語音求救附位置且後端給了定位時間才顯示相對時間。
+              if (lastLocationText != null) ...[
+                const SizedBox(height: 4),
+                Text(lastLocationText,
+                    style: const TextStyle(color: Colors.black54)),
+              ],
               const SizedBox(height: 8),
               Text(
                 isReminder
@@ -1419,6 +1517,29 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
               },
               child: const Text('我知道了'),
             ),
+            // ★ 2026-10-02：語音求救附有最後位置 → 「查看位置」開長輩 GPS 地圖。
+            //   刻意不移除 _activeAlerts（家屬還沒按「我知道了」，警報仍待處理）；
+            //   彈窗關閉的 .then() 會照常停 TTS／取消通知。
+            if (canShowLocation)
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.of(dialogContext).pop();
+                  if (!mounted) return;
+                  Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => ElderLocationMapScreen(
+                      elderId: rawElderId,
+                      userId: widget.userId,
+                      elderName: sosElderName,
+                    ),
+                  ));
+                },
+                icon: const Icon(Icons.place_rounded),
+                label: const Text('查看位置'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFB91C1C),
+                  foregroundColor: Colors.white,
+                ),
+              ),
             if (canView)
               ElevatedButton.icon(
                 onPressed: () {
@@ -2200,6 +2321,9 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     if (identical(_signaling.onElderZoneUpdate, _ownElderZoneUpdate)) {
       _signaling.onElderZoneUpdate = null;
     }
+    if (identical(_signaling.onLocationAlert, _ownLocationAlert)) {
+      _signaling.onLocationAlert = null;
+    }
     if (identical(_signaling.onCallRequest, _ownCallRequest)) {
       _signaling.onCallRequest = null;
     }
@@ -2594,6 +2718,8 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                             // ★ 第四十一輪（item 1）：與傳給 FamilyHomeTab 的是同一份
                             // _activeAlerts，避免「查看全部」展開後即時警報消失。
                             activeAlerts: _activeAlerts,
+                            // ★ 2026-10-02：語音求救附位置的「查看位置」需要 userId。
+                            userId: widget.userId,
                           ),
                         ),
                       );

@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../../../models/elder.dart';
 import '../../../../services/api/location_api.dart';
+import '../../../../services/location_device_status.dart';
 import '../../elder_location_map_screen.dart';
 
 /// 長輩戶外 GPS 定位 / 每日移動軌跡卡片。
@@ -28,7 +29,9 @@ enum _CardState { loading, ready, sharingDisabled, unavailable }
 
 class _HomeGpsTrailCardState extends State<HomeGpsTrailCard> {
   _CardState _state = _CardState.loading;
-  DateTime? _recordedAt;
+
+  /// 今日摘要（`LocationApi.getSummary`），僅 [_CardState.ready] 時有值。
+  Map<String, dynamic>? _summary;
 
   String? get _elderId => widget.currentElder?.elderId ?? widget.currentElder?.id.toString();
 
@@ -55,7 +58,8 @@ class _HomeGpsTrailCardState extends State<HomeGpsTrailCard> {
       return;
     }
 
-    final result = await LocationApi.getCurrentLocation(elderId: elderId, userId: userId);
+    // 今日摘要已含 sharing_enabled 與 last_update，不必再額外呼叫 getCurrentLocation。
+    final result = await LocationApi.getSummary(elderId: elderId, userId: userId);
     if (!mounted) return;
 
     if (result == null) {
@@ -66,12 +70,26 @@ class _HomeGpsTrailCardState extends State<HomeGpsTrailCard> {
       setState(() => _state = _CardState.sharingDisabled);
       return;
     }
-    final point = result['point'] as Map<String, dynamic>?;
     setState(() {
       _state = _CardState.ready;
-      _recordedAt =
-          point != null ? DateTime.tryParse(point['recorded_at'] as String) : null;
+      _summary = result;
     });
+  }
+
+  /// 距離顯示：未滿 1 公里用「公尺」，其餘用「x.x 公里」。
+  static String formatDistance(num meters) {
+    if (meters < 1000) return '${meters.round()} 公尺';
+    return '${(meters / 1000).toStringAsFixed(1)} 公里';
+  }
+
+  /// 「最後更新」相對時間文字（與舊版同一套分級：剛剛／分鐘／小時／天）。
+  static String? _lastUpdateText(DateTime? at) {
+    if (at == null) return null;
+    final diff = DateTime.now().difference(at);
+    if (diff.inMinutes < 1) return '最後更新 剛剛';
+    if (diff.inMinutes < 60) return '最後更新 ${diff.inMinutes} 分鐘前';
+    if (diff.inHours < 24) return '最後更新 ${diff.inHours} 小時前';
+    return '最後更新 ${diff.inDays} 天前';
   }
 
   void _openMap() {
@@ -124,7 +142,11 @@ class _HomeGpsTrailCardState extends State<HomeGpsTrailCard> {
       );
     }
 
+    // 第一行（主要資訊）與第二行（狀態＋最後更新）。
     String subtitle;
+    String? detail;
+    // 長輩手機定位有問題時，警示優先於「目前在家／外出中」（那個狀態此時不可信）。
+    String? deviceWarning;
     switch (_state) {
       case _CardState.loading:
         subtitle = '讀取中…';
@@ -136,21 +158,38 @@ class _HomeGpsTrailCardState extends State<HomeGpsTrailCard> {
         subtitle = '長輩尚未開啟位置分享';
         break;
       case _CardState.ready:
-        final recordedAt = _recordedAt;
-        if (recordedAt == null) {
-          subtitle = '尚無定位資料';
+        final sm = _summary ?? const <String, dynamic>{};
+        final lastUpdate = LocationApi.parseRecordedAt(sm['last_update']);
+        final pointCount = (sm['point_count'] as num?)?.toInt() ?? 0;
+        final distance = formatDistance((sm['distance_m'] as num?) ?? 0);
+        final outingCount = (sm['outing_count'] as num?)?.toInt();
+        if (pointCount == 0 && lastUpdate == null) {
+          subtitle = '今天尚無定位資料';
+        } else if (outingCount != null) {
+          subtitle = '今天外出 $outingCount 次・$distance';
         } else {
-          final diff = DateTime.now().difference(recordedAt);
-          if (diff.inMinutes < 1) {
-            subtitle = '最後更新：剛剛';
-          } else if (diff.inMinutes < 60) {
-            subtitle = '最後更新：${diff.inMinutes} 分鐘前';
-          } else if (diff.inHours < 24) {
-            subtitle = '最後更新：${diff.inHours} 小時前';
-          } else {
-            subtitle = '最後更新：${diff.inDays} 天前';
-          }
+          // 沒設定「家」就無法計算外出次數，只顯示移動距離。
+          subtitle = '今天移動 $distance';
         }
+        deviceWarning = LocationDeviceStatus.shortLabel(sm['device_status']);
+        final String status;
+        if (deviceWarning != null) {
+          status = deviceWarning;
+        } else if (sm['has_home'] != true) {
+          status = '到地圖設定家的位置，就能看到外出次數';
+        } else if (sm['at_home'] == true) {
+          status = '目前在家';
+        } else if (sm['at_home'] == false) {
+          status = '目前外出中';
+        } else {
+          status = '';
+        }
+        final updated = _lastUpdateText(lastUpdate);
+        detail = [
+          if (status.isNotEmpty) status,
+          if (updated != null) updated,
+        ].join('・');
+        if (detail.isEmpty) detail = null;
         break;
     }
 
@@ -177,10 +216,28 @@ class _HomeGpsTrailCardState extends State<HomeGpsTrailCard> {
             const SizedBox(height: 14),
             Text(
               subtitle,
-              style: GoogleFonts.notoSansTc(fontSize: 13, color: cs.onSurfaceVariant),
+              style: GoogleFonts.notoSansTc(
+                fontSize: 15,
+                fontWeight: _state == _CardState.ready ? FontWeight.w800 : FontWeight.w500,
+                color: _state == _CardState.ready ? cs.onSurface : cs.onSurfaceVariant,
+              ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
+            // 第二行是動態字串（含「設定家」提示），放寬到 2 行並保留 ellipsis，避免溢位（鐵律 #14）。
+            if (detail != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                detail,
+                style: GoogleFonts.notoSansTc(
+                  fontSize: 13,
+                  fontWeight: deviceWarning != null ? FontWeight.w800 : FontWeight.normal,
+                  color: deviceWarning != null ? const Color(0xFFB45309) : cs.onSurfaceVariant,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
             const SizedBox(height: 4),
             Text(
               '點此查看目前位置與每日移動軌跡',

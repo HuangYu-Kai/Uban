@@ -3,7 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../../../models/elder.dart';
+import '../../../../utils/alert_display.dart';
 import '../../alert_center_screen.dart';
+import '../../elder_location_map_screen.dart';
 import '../../placeholder_screens.dart';
 import '../../health_reminder_screen.dart';
 
@@ -27,6 +29,11 @@ class HomeAlertPreviewCard extends StatelessWidget {
   final ValueChanged<String?>? onOpenMonitorView;
   final GlobalKey? alertPreviewKey;
 
+  /// ★ 2026-10-02：目前登入的家屬 user id。語音求救（`sos_voice`）附有長輩最後位置時，
+  /// 點擊項目會開 [ElderLocationMapScreen]，該畫面的 REST 需要 `userId` 做關係驗證；
+  /// 為 `null`（既有呼叫端／測試未傳）時，求救項目一律不可點，不會誤跳到監視畫面。
+  final int? userId;
+
   const HomeAlertPreviewCard({
     super.key,
     this.currentElder,
@@ -39,6 +46,7 @@ class HomeAlertPreviewCard extends StatelessWidget {
     this.onAlertItemDismissed,
     this.onOpenMonitorView,
     this.alertPreviewKey,
+    this.userId,
   });
 
   @override
@@ -54,17 +62,15 @@ class HomeAlertPreviewCard extends StatelessWidget {
       final type = (a['alert_type'] ?? a['alertType'] ?? 'fall').toString();
       final conf = a['confidence'];
       final confText = conf != null ? ' (信心度 ${(conf * 100).toStringAsFixed(0)}%)' : '';
-      String title = '🚨 跌倒緊急警報';
-      String desc = '監視機偵測到長輩疑似跌倒$confText，請立即確認！';
-      if (type == 'crawl') {
-        title = '⚠️ 疑似爬行警報';
-        desc = '監視機偵測到長輩異常爬行動作$confText，請多加留意。';
-      } else if (type == 'lying_down') {
-        title = '⚠️ 久躺未起警報';
-        desc = '長輩在監視區域久躺不起$confText，建議關懷確認。';
-      } else if (type == 'prolonged_inactivity') {
-        title = '⚠️ 長時間無活動警報';
-        desc = '長輩活動量異常偏低$confText，請留意長輩身體狀況。';
+      // ★ 2026-10-02（G196）：文案集中到 AlertDisplay；`sos_voice` 不再被寫成跌倒，
+      //   未知型別退回中性的「異常狀況」。
+      final String title = AlertDisplay.title(type);
+      String desc = AlertDisplay.liveDesc(type, confText: AlertDisplay.isSos(type) ? '' : confText);
+      // 語音求救附帶的最後位置（後端只在有位置時才帶；沒有就什麼都不顯示）。
+      final loc = AlertDisplay.isSos(type) ? AlertDisplay.parseLocation(a) : null;
+      if (loc != null) {
+        final String? locText = AlertDisplay.lastLocationText(AlertDisplay.parseLocationAt(a));
+        desc = locText != null ? '$desc $locText，點擊查看' : '$desc 點擊查看最後位置';
       }
       final String? liveDeviceId = (a['device_id'] ?? a['deviceId'])?.toString();
       final String? liveAlertIdRaw = (a['alert_id'] ?? a['alertId'])?.toString();
@@ -77,8 +83,9 @@ class HomeAlertPreviewCard extends StatelessWidget {
         'title': title,
         'desc': desc,
         'level': 'high',
-        'icon': Icons.warning_amber_rounded,
-        'routeType': 'monitor',
+        'icon': AlertDisplay.icon(type),
+        // 求救沒有監視畫面：有位置 → 開地圖；沒位置 → 不可點（不可導向監視畫面）
+        'routeType': AlertDisplay.isSos(type) ? (loc != null ? 'location' : null) : 'monitor',
         'deviceId': liveDeviceId,
       });
     }
@@ -135,20 +142,17 @@ class HomeAlertPreviewCard extends StatelessWidget {
       if (detectedAt.length >= 16) {
         whenStr = '${detectedAt.substring(5, 7)}/${detectedAt.substring(8, 10)} ${detectedAt.substring(11, 16)}';
       }
-      String title = '🚨 跌倒緊急警報';
-      String desc = '監視機曾偵測到長輩疑似跌倒。';
-      if (type == 'crawl') {
-        title = '⚠️ 疑似爬行警報';
-        desc = '監視機曾偵測到長輩異常爬行動作。';
-      } else if (type == 'lying_down') {
-        title = '⚠️ 久躺未起警報';
-        desc = '長輩曾在監視區域久躺不起。';
-      } else if (type == 'prolonged_inactivity') {
-        title = '⚠️ 長時間無活動警報';
-        desc = '長輩曾出現活動量異常偏低。';
-      }
+      final String title = AlertDisplay.title(type);
+      String desc = AlertDisplay.pastDesc(type);
       if (whenStr.isNotEmpty) {
         desc = '$desc（發生於 $whenStr）';
+      }
+      // 歷史求救若附有位置：點擊開地圖並直接顯示警報當天的軌跡。
+      final loc = AlertDisplay.isSos(type) ? AlertDisplay.parseLocation(row as Map) : null;
+      DateTime? locDate;
+      if (loc != null) {
+        desc = '$desc 點擊查看最後位置';
+        locDate = AlertDisplay.parseLocationAt(row) ?? DateTime.tryParse(detectedAt);
       }
       final String? persistedDeviceId = (row['device_id'] ?? row['deviceId'])?.toString();
       final String? persistedAlertIdRaw = (row['alert_id'] ?? row['alertId'])?.toString();
@@ -160,9 +164,10 @@ class HomeAlertPreviewCard extends StatelessWidget {
         'title': title,
         'desc': desc,
         'level': 'high',
-        'icon': Icons.warning_amber_rounded,
-        'routeType': 'monitor',
+        'icon': AlertDisplay.icon(type),
+        'routeType': AlertDisplay.isSos(type) ? (loc != null ? 'location' : null) : 'monitor',
         'deviceId': persistedDeviceId,
+        'locationDate': locDate,
       };
     }).toList();
 
@@ -267,6 +272,7 @@ class HomeAlertPreviewCard extends StatelessWidget {
                           elderId: currentElder?.id,
                           elderRoomId: currentElder?.elderId ?? currentElder?.id.toString(),
                           activeAlerts: activeAlerts,
+                          userId: userId,
                         ),
                       ),
                     );
@@ -399,6 +405,27 @@ class HomeAlertPreviewCard extends StatelessWidget {
         return () {
           HapticFeedback.lightImpact();
           onOpenMonitorView!(deviceId);
+        };
+      case 'location':
+        // ★ 2026-10-02：語音求救附帶位置 → 開長輩 GPS 地圖。elderId 與
+        //   HomeGpsTrailCard 同一套算法（`elderId ?? id.toString()`，4 位數房間代號）。
+        final elder = currentElder;
+        final int? uid = userId;
+        if (elder == null || uid == null || uid <= 0) return null;
+        final DateTime? date = item['locationDate'] as DateTime?;
+        return () {
+          HapticFeedback.lightImpact();
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ElderLocationMapScreen(
+                elderId: elder.elderId ?? elder.id.toString(),
+                userId: uid,
+                elderName: elder.displayName,
+                initialDate: date,
+              ),
+            ),
+          );
         };
       case 'schedule':
         final elder = currentElder;
